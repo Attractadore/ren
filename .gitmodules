@@ -1,0 +1,6 @@
+[submodule "external/TrivialVector"]
+	path = external/TrivialVector
+	url = https://github.com/Attractadore/TrivialVector.git
+[submodule "external/Vulkan-Headers"]
+	path = external/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers
