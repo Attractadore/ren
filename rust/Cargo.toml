@@ -1,0 +1,12 @@
+[package]
+name = "renderer2"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+bindgen = "0.61.0"
+cmake = "0.1.49"
+
+[dev-dependencies]
+ash = "0.37.0"
+sdl2 = "0.35.2"
