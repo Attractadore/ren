@@ -8,11 +8,11 @@
 
 #include <vector>
 
-namespace Ren {
+namespace ren {
 using Attractadore::InlineTrivialVector;
 using Attractadore::TrivialVector;
 
-namespace Detail {
+namespace detail {
 template <typename T, typename Allocator> struct VectorImpl {
   using type = std::vector<T, Allocator>;
 };
@@ -57,17 +57,20 @@ requires std::is_trivial_v<T>
 struct SmallVectorImpl<T, InlineCapacity, void> {
   using type = InlineTrivialVector<T, InlineCapacity>;
 };
-}; // namespace Detail
+
+}; // namespace detail
 
 template <typename T, typename Allocator = void>
-using Vector = Detail::VectorImpl<T, Allocator>::type;
+using Vector = typename detail::VectorImpl<T, Allocator>::type;
 
-template <typename T, unsigned InlineCapacity, typename Allocator = void>
-using SmallVector = Detail::SmallVectorImpl<T, InlineCapacity, Allocator>::type;
+template <typename T, size_t InlineCapacity = detail::BufferCount<T, 64>,
+          typename Allocator = void>
+using SmallVector =
+    typename detail::SmallVectorImpl<T, InlineCapacity, Allocator>::type;
 
 template <typename T, unsigned InlineBufferCapacity, typename Allocator = void>
 using SmallVectorBytes =
-    SmallVector<T, Detail::BufferCount<T, InlineBufferCapacity>, Allocator>;
+    SmallVector<T, detail::BufferCount<T, InlineBufferCapacity>, Allocator>;
 
 template <typename T, typename Allocator = void>
 using SmallVector64B = SmallVectorBytes<T, 64, Allocator>;
@@ -90,6 +93,10 @@ using SmallVector2K = SmallVectorBytes<T, 2048, Allocator>;
 template <typename T, typename Allocator = void>
 using SmallVector4K = SmallVectorBytes<T, 4096, Allocator>;
 
+template <size_t N> struct SizedSmallVector {
+  template <typename T> using impl = SmallVector<T, N>;
+};
+
 template <typename T, unsigned InlineCapacity>
 using StaticVector = boost::container::static_vector<T, InlineCapacity>;
 
@@ -108,4 +115,4 @@ constexpr auto VecAppend(Vec &vec, I i, S s) {
     return vec.insert(vec.end(), CI(std::move(i)), CI(std::move(s)));
   }
 }
-} // namespace Ren
+} // namespace ren

@@ -232,8 +232,8 @@ def main():
     header = h_out.name
 
     table_name = "VulkanDispatchTable"
-    load_instance_f = "LoadInstanceFunctions"
-    load_device_f = "LoadDeviceFunctions"
+    load_instance_f = "loadInstanceFunctions"
+    load_device_f = "loadDeviceFunctions"
     instance_mixin = "InstanceFunctionsMixin"
     device_mixin = "DeviceFunctionsMixin"
     physical_device_mixin = "PhysicalDeviceFunctionsMixin"

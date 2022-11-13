@@ -1,10 +1,14 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Vector.hpp"
+#include "Vulkan/VulkanCommandAllocator.hpp"
+#include "Vulkan/VulkanRenderGraph.hpp"
+#include "Vulkan/VulkanSwapchain.hpp"
+#include "Vulkan/VulkanTexture.hpp"
 
 #include <array>
 
-namespace Ren {
+namespace ren {
 namespace {
 int findQueueFamilyWithCapabilities(VulkanDevice *device, VkQueueFlags caps) {
   unsigned qcnt = 0;
@@ -29,9 +33,9 @@ int findGraphicsQueueFamily(VulkanDevice *device) {
 } // namespace
 
 VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-                           VkPhysicalDevice physical_device)
-    : m_instance(instance), m_physical_device(physical_device) {
-  LoadInstanceFunctions(proc, m_instance, &m_vk);
+                           VkPhysicalDevice m_adapter)
+    : m_instance(instance), m_adapter(m_adapter) {
+  loadInstanceFunctions(proc, m_instance, &m_vk);
 
   m_graphics_queue_family = findGraphicsQueueFamily(this);
 
@@ -69,13 +73,107 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .ppEnabledExtensionNames = extensions.data(),
   };
 
-  ThrowIfFailed(CreateDevice(&create_info, &m_device),
+  throwIfFailed(CreateDevice(&create_info, &m_device),
                 "Vulkan: Failed to create device");
 
-  LoadDeviceFunctions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
+  loadDeviceFunctions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
 
   GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
+
+  VmaVulkanFunctions vma_vulkan_functions = {
+      .vkGetInstanceProcAddr = m_vk.GetInstanceProcAddr,
+      .vkGetDeviceProcAddr = m_vk.GetDeviceProcAddr,
+  };
+
+  VmaAllocatorCreateInfo allocator_info = {
+      .physicalDevice = m_adapter,
+      .device = m_device,
+      .pAllocationCallbacks = getAllocator(),
+      .pVulkanFunctions = &vma_vulkan_functions,
+      .instance = m_instance,
+      .vulkanApiVersion = getRequiredAPIVersion(),
+  };
+
+  throwIfFailed(vmaCreateAllocator(&allocator_info, &m_allocator),
+                "VMA: Failed to create allocator");
 }
 
-VulkanDevice::~VulkanDevice() { DestroyDevice(); }
-} // namespace Ren
+VulkanDevice::~VulkanDevice() {
+  vmaDestroyAllocator(m_allocator);
+  DestroyDevice();
+}
+
+Texture VulkanDevice::createTexture(const TextureDesc &desc) {
+  return {
+      .desc = desc,
+      .handle = std::make_shared<VulkanTexture>(this, m_allocator, desc),
+  };
+}
+
+VkSemaphore VulkanDevice::createBinarySemaphore() {
+  VkSemaphoreCreateInfo semaphore_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+  };
+  VkSemaphore semaphore;
+  throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
+                "Vulkan: Failed to create binary semaphore");
+  return semaphore;
+}
+
+VkSemaphore VulkanDevice::createTimelineSemaphore(uint64_t initial_value) {
+  VkSemaphoreTypeCreateInfo semaphore_type_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+      .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+      .initialValue = initial_value,
+  };
+  VkSemaphoreCreateInfo semaphore_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+      .pNext = &semaphore_type_info,
+  };
+  VkSemaphore semaphore;
+  throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
+                "Vulkan: Failed to create timeline semaphore");
+  return semaphore;
+}
+
+SemaphoreWaitResult
+VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
+                               std::chrono::nanoseconds timeout) {
+  VkSemaphoreWaitInfo wait_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+      .semaphoreCount = 1,
+      .pSemaphores = &sem,
+      .pValues = &value,
+  };
+  auto r = WaitSemaphores(&wait_info, timeout.count());
+  switch (r) {
+    using enum SemaphoreWaitResult;
+  case VK_SUCCESS:
+    return Ready;
+  case VK_TIMEOUT:
+    return Timeout;
+  default:
+    throw std::runtime_error{"Vulkan: Failed to wait for semaphore"};
+  };
+}
+
+std::unique_ptr<RenderGraphBuilder> VulkanDevice::createRenderGraphBuilder() {
+  return std::make_unique<VulkanRenderGraphBuilder>(this);
+}
+
+std::unique_ptr<CommandAllocator>
+VulkanDevice::createCommandBufferPool(unsigned pipeline_depth) {
+  return std::make_unique<VulkanCommandAllocator>(this, pipeline_depth);
+}
+
+SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
+  assert(desc.type == SyncType::Semaphore);
+  return {
+      .desc = desc,
+      .handle = Ref<void>(createBinarySemaphore(),
+                          [device = this](VkSemaphore semaphore) {
+                            device->DestroySemaphore(semaphore);
+                          }),
+  };
+}
+} // namespace ren

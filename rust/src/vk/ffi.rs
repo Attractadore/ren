@@ -3,4 +3,4 @@
 #![allow(non_snake_case)]
 include!(concat!(env!("OUT_DIR"), "/ren-vk.rs"));
 
-use crate::ffi::RenDevice;
+use crate::ffi::{RenDevice, RenSwapchain};
