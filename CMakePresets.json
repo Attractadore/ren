@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "configurePresets": [
+    {
+      "name": "devel",
+      "displayName": "Development Config",
+      "description": "Development build with debug info, assertions and validation",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/devel",
+      "cacheVariables": {
+        "BUILD_EXAMPLES": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release Config",
+      "description": "Release build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ]
+}
