@@ -12,7 +12,7 @@ class VulkanCommandAllocator final : public CommandAllocator {
   VulkanDevice *m_device;
   SmallVector<VulkanCommandPool, 3> m_frame_pools;
   StableVector<VulkanCommandBuffer> m_frame_cmd_buffers;
-  SmallVector<Vector<Ref<void>>, 3> m_frame_resource_lists;
+  SmallVector<Vector<AnyRef>, 3> m_frame_resource_lists;
   VkSemaphore m_frame_semaphore;
   uint64_t m_frame_time;
   // For indexing frame data
@@ -20,7 +20,7 @@ class VulkanCommandAllocator final : public CommandAllocator {
 
 private:
   VulkanCommandPool &getFrameCommandPool();
-  Vector<Ref<void>> &getFrameResourceList();
+  Vector<AnyRef> &getFrameResourceList();
 
 public:
   VulkanCommandAllocator(VulkanDevice *device, unsigned pipeline_depth);
@@ -36,7 +36,7 @@ public:
   void beginFrame() override;
   void endFrame() override;
 
-  void addFrameResource(Ref<void> resoure);
+  void addFrameResource(AnyRef resoure);
 
   void addFrameResource(Texture texture) {
     addFrameResource(std::move(texture.handle));

@@ -10,6 +10,6 @@ struct SyncDesc {
 
 struct SyncObject {
   SyncDesc desc;
-  Ref<void> handle;
+  AnyRef handle;
 };
 }; // namespace ren

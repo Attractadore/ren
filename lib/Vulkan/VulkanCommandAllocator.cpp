@@ -29,7 +29,7 @@ VulkanCommandPool &VulkanCommandAllocator::getFrameCommandPool() {
   return m_frame_pools[m_frame_index];
 }
 
-Vector<Ref<void>> &VulkanCommandAllocator::getFrameResourceList() {
+Vector<AnyRef> &VulkanCommandAllocator::getFrameResourceList() {
   return m_frame_resource_lists[m_frame_index];
 }
 
@@ -68,7 +68,7 @@ void VulkanCommandAllocator::endFrame() {
   m_device->graphicsQueueSubmit(asSpan(submit_info));
 }
 
-void VulkanCommandAllocator::addFrameResource(Ref<void> resource) {
+void VulkanCommandAllocator::addFrameResource(AnyRef resource) {
   getFrameResourceList().push_back(std::move(resource));
 }
 } // namespace ren

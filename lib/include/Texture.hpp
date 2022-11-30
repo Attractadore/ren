@@ -38,7 +38,7 @@ struct TextureDesc {
 
 struct Texture {
   TextureDesc desc;
-  Ref<void> handle;
+  AnyRef handle;
 };
 
 struct TextureSubresource {

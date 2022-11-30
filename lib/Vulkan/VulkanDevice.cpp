@@ -128,11 +128,11 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
 
   return {
       .desc = desc,
-      .handle = Ref<void>(image,
-                          [this, allocation](VkImage image) {
-                            vmaDestroyImage(m_allocator, image, allocation);
-                            destroyImageViews(image);
-                          }),
+      .handle = AnyRef(image,
+                       [this, allocation](VkImage image) {
+                         vmaDestroyImage(m_allocator, image, allocation);
+                         destroyImageViews(image);
+                       }),
   };
 }
 
@@ -232,10 +232,10 @@ SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
   assert(desc.type == SyncType::Semaphore);
   return {
       .desc = desc,
-      .handle = Ref<void>(createBinarySemaphore(),
-                          [device = this](VkSemaphore semaphore) {
-                            device->DestroySemaphore(semaphore);
-                          }),
+      .handle = AnyRef(createBinarySemaphore(),
+                       [device = this](VkSemaphore semaphore) {
+                         device->DestroySemaphore(semaphore);
+                       }),
   };
 }
 } // namespace ren

@@ -152,15 +152,13 @@ void VulkanSwapchain::create() {
   };
 
   auto swapchain_ref =
-      Ref<void>(m_swapchain, [device = m_device](VkSwapchainKHR swapchain) {
+      AnyRef(m_swapchain, [device = m_device](VkSwapchainKHR swapchain) {
         device->DestroySwapchainKHR(swapchain);
       });
-
   m_textures.resize(image_count);
   for (size_t i = 0; i < image_count; ++i) {
     m_textures[i] = {.desc = tex_desc,
-                     .handle =
-                         Ref<void>(images[i], [swapchain_ref](VkImage) {})};
+                     .handle = AnyRef(images[i], [swapchain_ref](VkImage) {})};
   }
 }
 
