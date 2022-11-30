@@ -3,7 +3,6 @@
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
-#include "Vulkan/VulkanSync.inl"
 #include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/view.hpp>
@@ -21,20 +20,6 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
 }
 
 namespace {
-constexpr auto render_target_load_op_map = std::array{
-    std::pair(RenderTargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR),
-    std::pair(RenderTargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD),
-    std::pair(RenderTargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE),
-};
-
-constexpr auto render_target_store_op_map = std::array{
-    std::pair(RenderTargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE),
-    std::pair(RenderTargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE),
-};
-
-constexpr auto getVkAttachmentLoadOp = enumMap<render_target_load_op_map>;
-constexpr auto getVkAttachmentStoreOp = enumMap<render_target_store_op_map>;
-
 template <typename T>
 VkRenderingAttachmentInfo getVkRenderingAttachmentInfo(VulkanDevice *device,
                                                        const T &rt_cfg) {

@@ -1,11 +1,33 @@
 #pragma once
 #include "CommandBuffer.hpp"
+#include "Support/Enum.hpp"
 #include "Support/Vector.hpp"
 #include "VulkanSync.hpp"
 
-#include <vulkan/vulkan.h>
-
 namespace ren {
+namespace detail {
+constexpr auto render_target_load_op_map = std::array{
+    std::pair(RenderTargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR),
+    std::pair(RenderTargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD),
+    std::pair(RenderTargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE),
+};
+
+constexpr auto render_target_store_op_map = std::array{
+    std::pair(RenderTargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE),
+    std::pair(RenderTargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE),
+};
+} // namespace detail
+
+constexpr auto getVkAttachmentLoadOp =
+    enumMap<detail::render_target_load_op_map>;
+constexpr auto getRenderTargetLoadOp =
+    inverseEnumMap<detail::render_target_load_op_map>;
+
+constexpr auto getVkAttachmentStoreOp =
+    enumMap<detail::render_target_store_op_map>;
+constexpr auto getRenderTargetStoreOp =
+    inverseEnumMap<detail::render_target_store_op_map>;
+
 class VulkanDevice;
 class VulkanCommandAllocator;
 

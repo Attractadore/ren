@@ -4,7 +4,7 @@
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
-#include "Vulkan/VulkanSync.inl"
+#include "Vulkan/VulkanSync.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/range.hpp>
