@@ -94,7 +94,7 @@ template <typename T, typename Allocator = void>
 using SmallVector4K = SmallVectorBytes<T, 4096, Allocator>;
 
 template <size_t N> struct SizedSmallVector {
-  template <typename T> using impl = SmallVector<T, N>;
+  template <typename T> using Vector = SmallVector<T, N>;
 };
 
 template <typename T, unsigned InlineCapacity>

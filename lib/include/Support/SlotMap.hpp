@@ -7,10 +7,10 @@ namespace detail {
 template <typename T> using DefaultVector = Vector<T>;
 }
 
-template <typename T>
-using SlotMap = Attractadore::SlotMap<T, uint64_t, detail::DefaultVector>;
+template <typename V, std::unsigned_integral K = uint32_t>
+using SlotMap = Attractadore::SlotMap<V, K, detail::DefaultVector>;
 
-template <typename T, size_t N>
+template <typename V, size_t N = detail::BufferCount<V, 64>, std::unsigned_integral K = uint32_t>
 using SmallSlotMap =
-    Attractadore::SlotMap<T, uint64_t, SizedSmallVector<N>::template impl>;
+    Attractadore::SlotMap<V, K, SizedSmallVector<N>::template Vector>;
 } // namespace ren

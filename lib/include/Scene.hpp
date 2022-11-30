@@ -9,7 +9,7 @@ class CommandAllocator;
 struct Camera {};
 
 class Cameras {
-  using CameraMap = SlotMap<Camera>;
+  using CameraMap = SlotMap<Camera, uint64_t>;
   using CameraKey = CameraMap::key_type;
   CameraMap m_cameras;
 
