@@ -59,8 +59,8 @@ void Scene::draw() {
   auto rt = draw.addOutput(rt_desc, MemoryAccess::ColorWrite,
                            PipelineStage::ColorOutput);
   rgb->setDesc(rt, "Color buffer");
-  draw.setCallback([=](CommandBuffer &cmd, RGResources &resources) {
-    cmd.beginRendering(resources.getTexture(rt));
+  draw.setCallback([=](CommandBuffer &cmd, RenderGraph &rg) {
+    cmd.beginRendering(rg.getTexture(rt));
     cmd.endRendering();
   });
 
@@ -71,7 +71,7 @@ void Scene::draw() {
       rt, MemoryAccess::StorageRead | MemoryAccess::StorageWrite,
       PipelineStage::Compute);
   rgb->setDesc(pprt, "Post-processed color buffer");
-  pp.setCallback([](CommandBuffer &cmd, RGResources &resource) {});
+  pp.setCallback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
   // Present to swapchain
   rgb->setSwapchain(m_swapchain);

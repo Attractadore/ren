@@ -2,7 +2,7 @@
 #include "Def.hpp"
 #include "PipelineStages.hpp"
 #include "Support/HashMap.hpp"
-#include "Support/Vector.hpp"
+#include "Support/SlotMap.hpp"
 #include "Sync.hpp"
 #include "Texture.hpp"
 
@@ -10,14 +10,13 @@
 #include <optional>
 
 namespace ren {
-enum class RGTextureID;
-enum class RGSyncID;
-enum class RGNodeID;
-
-class RenderGraphBuilder;
 class CommandAllocator;
 class CommandBuffer;
-class RGResources;
+class RenderGraph;
+
+enum class RGNodeID;
+enum class RGTextureID;
+enum class RGSyncID;
 
 struct RGTextureDesc {
   TextureType type = TextureType::e2D;
@@ -35,48 +34,47 @@ struct RGSyncDesc {
   SyncType type;
 };
 
-using PassCallback =
-    std::function<void(CommandBuffer &cmd, RGResources &resources)>;
+using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
 
-class RGNodeBuilder {
-  friend class RenderGraphBuilder;
+class RenderGraph {
+protected:
+  struct Batch {
+    SmallVector<RGCallback, 16> barrier_cbs;
+    SmallVector<RGCallback, 16> pass_cbs;
+  };
 
-  RGNodeID m_node;
-  RenderGraphBuilder *m_builder;
+protected:
+  Swapchain *m_swapchain;
+  Vector<Batch> m_batches;
 
-  RGNodeBuilder(RGNodeID node, RenderGraphBuilder *builder)
-      : m_node(node), m_builder(builder) {}
+  Vector<Texture> m_textures;
+  HashMap<RGTextureID, unsigned> m_phys_textures;
+  Vector<SyncObject> m_syncs;
 
 public:
-  void addReadInput(RGTextureID texture, MemoryAccessFlags accesses,
-                    PipelineStageFlags stages);
+  class Builder;
+  RenderGraph(Swapchain *swapchain, Vector<Batch> batches,
+              Vector<Texture> textures,
+              HashMap<RGTextureID, unsigned> phys_textures,
+              Vector<SyncObject> syncs)
+      : m_swapchain(swapchain), m_batches(std::move(batches)),
+        m_textures(std::move(textures)),
+        m_phys_textures(std::move(phys_textures)), m_syncs(std::move(syncs)) {}
+  virtual ~RenderGraph() = default;
 
-  [[nodiscard]] RGTextureID addWriteInput(RGTextureID texture,
-                                          MemoryAccessFlags accesses,
-                                          PipelineStageFlags stages);
+  void setTexture(RGTextureID id, Texture tex);
+  const Texture &getTexture(RGTextureID tex) const;
 
-  [[nodiscard]] RGTextureID addOutput(const RGTextureDesc &desc,
-                                      MemoryAccessFlags accesses,
-                                      PipelineStageFlags stages);
+  void setSyncObject(RGSyncID id, SyncObject sync);
+  const SyncObject &getSyncObject(RGSyncID sync) const;
 
-  [[nodiscard]] RGTextureID addExternalTextureOutput(MemoryAccessFlags accesses,
-                                                     PipelineStageFlags stages);
-
-  void addWaitSync(RGSyncID sync);
-
-  [[nodiscard]] RGSyncID addSignalSync(const RGSyncDesc &desc);
-
-  [[nodiscard]] RGSyncID addExternalSignalSync();
-
-  void setCallback(PassCallback cb);
-
-  void setDesc(std::string desc);
+  virtual void execute(CommandAllocator *cmd_pool) = 0;
 };
 
-class RenderGraphBuilder {
+class RenderGraph::Builder {
 protected:
   struct TextureAccess {
-    RGTextureID tex;
+    RGTextureID texture;
     MemoryAccessFlags accesses;
     PipelineStageFlags stages;
   };
@@ -90,8 +88,8 @@ protected:
     SmallVector<TextureAccess> write_textures;
     SmallVector<SyncAccess> wait_syncs;
     SmallVector<SyncAccess> signal_syncs;
-    PassCallback barrier_cb;
-    PassCallback pass_cb;
+    RGCallback barrier_cb;
+    RGCallback pass_cb;
   };
 
 protected:
@@ -99,19 +97,17 @@ protected:
 
   Vector<RGNode> m_nodes;
 
-  HashMap<RGTextureID, RGNodeID> m_tex_defs;
-  HashMap<RGTextureID, RGTextureDesc> m_tex_descs;
-  HashMap<RGTextureID, RGNodeID> m_tex_redefs;
-  HashMap<RGTextureID, RGTextureID> m_tex_aliases;
+  SlotMap<RGNodeID> m_texture_defs;
+  using VTextureKey = decltype(m_texture_defs)::key_type;
+  Vector<RGTextureDesc> m_texture_descs;
+  HashMap<RGTextureID, RGNodeID> m_texture_kills;
+  HashMap<RGTextureID, unsigned> m_phys_textures;
 
-  HashMap<RGSyncID, RGNodeID> m_sync_defs;
-  HashMap<RGSyncID, RGSyncDesc> m_sync_descs;
+  Vector<RGNodeID> m_sync_defs;
+  Vector<RGSyncDesc> m_sync_descs;
 
   Swapchain *m_swapchain = nullptr;
   RGTextureID m_final_image;
-
-  unsigned m_next_tex = 0;
-  unsigned m_next_sync = 0;
 
   HashMap<RGNodeID, std::string> m_node_text_descs;
   HashMap<RGTextureID, std::string> m_tex_text_descs;
@@ -122,24 +118,24 @@ protected:
   RGNode &getNode(RGNodeID node);
   RGNodeID getNodeID(const RGNode &node) const;
 
-  RGTextureID defineTexture(RGNodeID node);
-  RGTextureID defineTexture(const RGTextureDesc &desc, RGNodeID node);
+  unsigned createPhysicalTexture(const RGTextureDesc &desc);
+  RGTextureID createVirtualTexture(unsigned tex, RGNodeID node);
+
+  std::pair<unsigned, RGTextureID> createTexture(RGNodeID node);
   RGNodeID getTextureDef(RGTextureID tex) const;
 
-  RGTextureID redefineTexture(RGTextureID tex, RGNodeID node);
-  std::optional<RGNodeID> getTextureRedef(RGTextureID tex) const;
+  std::optional<RGNodeID> getTextureKill(RGTextureID tex) const;
 
-  RGSyncID defineSync(RGNodeID node);
-  RGSyncID defineSync(const RGSyncDesc &desc, RGNodeID node);
+  bool isExternalTexture(unsigned tex) const;
+
+  unsigned getPhysTextureCount() const;
+
+  RGSyncID createSync(RGNodeID node);
   RGNodeID getSyncDef(RGSyncID sync) const;
 
-public:
-  RenderGraphBuilder(Device *device) : m_device(device) {}
-  virtual ~RenderGraphBuilder() = default;
+  bool isExternalSync(unsigned sync) const;
 
-  [[nodiscard]] RGNodeBuilder addNode();
-  void setSwapchain(Swapchain *swapchain);
-  void setFinalImage(RGTextureID texture);
+  unsigned getSyncObjectCount() const;
 
   void addReadInput(RGNodeID node, RGTextureID texture,
                     MemoryAccessFlags accesses, PipelineStageFlags stages);
@@ -162,32 +158,23 @@ public:
 
   [[nodiscard]] RGSyncID addExternalSignalSync(RGNodeID node);
 
-  void setCallback(RGNodeID node, PassCallback cb);
+  void setCallback(RGNodeID node, RGCallback cb);
 
   void setDesc(RGNodeID node, std::string desc);
   std::string_view getDesc(RGNodeID node) const;
-
-  void setDesc(RGTextureID, std::string desc);
-  std::string_view getDesc(RGTextureID tex) const;
-
-  void setDesc(RGSyncID, std::string desc);
-  std::string_view getDesc(RGSyncID sync) const;
-
-  class RenderGraph;
-  [[nodiscard]] std::unique_ptr<RenderGraph> build();
 
 protected:
   virtual void addPresentNodes() = 0;
 
   Vector<RGNode> schedulePasses();
 
-  [[nodiscard]] HashMap<RGTextureID, TextureUsageFlags>
+  Vector<TextureUsageFlags>
   deriveTextureUsageFlags(std::span<const RGNode> scheduled_passes);
 
-  [[nodiscard]] HashMap<RGTextureID, Texture> createTextures(
-      const HashMap<RGTextureID, TextureUsageFlags> &texture_usage_flags);
+  Vector<Texture>
+  createTextures(std::span<const TextureUsageFlags> texture_usage_flags);
 
-  [[nodiscard]] HashMap<RGSyncID, SyncObject> createSyncObjects();
+  Vector<SyncObject> createSyncObjects();
 
   struct BarrierConfig {
     RGTextureID texture;
@@ -197,65 +184,84 @@ protected:
     PipelineStageFlags dst_stages;
   };
 
-  virtual PassCallback
+  virtual RGCallback
   generateBarrierGroup(std::span<const BarrierConfig> configs) = 0;
   void generateBarriers(std::span<RGNode> scheduled_passes);
-
-  struct Batch {
-    SmallVector<PassCallback, 16> barrier_cbs;
-    SmallVector<PassCallback, 16> pass_cbs;
-  };
 
   Vector<Batch> batchPasses(auto scheduled_passes);
 
   virtual std::unique_ptr<RenderGraph>
-  createRenderGraph(Vector<Batch> batches,
-                    HashMap<RGTextureID, Texture> textures,
-                    HashMap<RGTextureID, RGTextureID> texture_aliases,
-                    HashMap<RGSyncID, SyncObject> syncs) = 0;
-};
-
-class RGResources {
-  HashMap<RGTextureID, Texture> m_textures;
-  HashMap<RGTextureID, RGTextureID> m_tex_aliases;
-  HashMap<RGSyncID, SyncObject> m_syncs;
+  createRenderGraph(Vector<Batch> batches, Vector<Texture> textures,
+                    HashMap<RGTextureID, unsigned> phys_textures,
+                    Vector<SyncObject> syncs) = 0;
 
 public:
-  RGResources(HashMap<RGTextureID, Texture> textures,
-              HashMap<RGTextureID, RGTextureID> texture_aliases,
-              HashMap<RGSyncID, SyncObject> syncs)
-      : m_textures(std::move(textures)),
-        m_tex_aliases(std::move(texture_aliases)), m_syncs(std::move(syncs)) {}
+  Builder(Device *device) : m_device(device) {}
+  virtual ~Builder() = default;
 
-  void setTexture(RGTextureID id, Texture tex);
-  const Texture &getTexture(RGTextureID tex) const;
+  class NodeBuilder;
+  [[nodiscard]] NodeBuilder addNode();
+  void setSwapchain(Swapchain *swapchain);
+  void setFinalImage(RGTextureID texture);
 
-  void setSyncObject(RGSyncID id, SyncObject sync);
-  const SyncObject &getSyncObject(RGSyncID sync) const;
+  void setDesc(RGTextureID, std::string desc);
+  std::string_view getDesc(RGTextureID tex) const;
+
+  void setDesc(RGSyncID, std::string desc);
+  std::string_view getDesc(RGSyncID sync) const;
+
+  [[nodiscard]] std::unique_ptr<RenderGraph> build();
 };
 
-class RenderGraphBuilder::RenderGraph {
-protected:
-  friend RenderGraphBuilder;
-
-  Swapchain *m_swapchain;
-  Vector<Batch> m_batches;
-  RGResources m_resources;
-
-  using Batch = Batch;
+class RenderGraph::Builder::NodeBuilder {
+  RGNodeID m_node;
+  Builder *m_builder;
 
 public:
-  RenderGraph(Swapchain *swapchain, Vector<Batch> batches,
-              HashMap<RGTextureID, Texture> textures,
-              HashMap<RGTextureID, RGTextureID> texture_aliases,
-              HashMap<RGSyncID, SyncObject> syncs)
-      : m_swapchain(swapchain), m_batches(std::move(batches)),
-        m_resources(std::move(textures), std::move(texture_aliases),
-                    std::move(syncs)) {}
-  virtual ~RenderGraph() = default;
+  NodeBuilder(RGNodeID node, Builder *builder)
+      : m_node(node), m_builder(builder) {}
 
-  virtual void execute(CommandAllocator *cmd_pool) = 0;
+  void addReadInput(RGTextureID texture, MemoryAccessFlags accesses,
+                    PipelineStageFlags stages) {
+    m_builder->addReadInput(m_node, texture, accesses, stages);
+  }
+
+  [[nodiscard]] RGTextureID addWriteInput(RGTextureID texture,
+                                          MemoryAccessFlags accesses,
+                                          PipelineStageFlags stages) {
+    return m_builder->addWriteInput(m_node, texture, accesses, stages);
+  }
+
+  [[nodiscard]] RGTextureID addOutput(const RGTextureDesc &desc,
+                                      MemoryAccessFlags accesses,
+                                      PipelineStageFlags stages) {
+    return m_builder->addOutput(m_node, desc, accesses, stages);
+  }
+
+  [[nodiscard]] RGTextureID
+  addExternalTextureOutput(MemoryAccessFlags accesses,
+                           PipelineStageFlags stages) {
+    return m_builder->addExternalTextureOutput(m_node, accesses, stages);
+  }
+
+  void addWaitSync(RGSyncID sync) {
+    return m_builder->addWaitSync(m_node, sync);
+  }
+
+  [[nodiscard]] RGSyncID addSignalSync(const RGSyncDesc &desc) {
+    return m_builder->addSignalSync(m_node, desc);
+  }
+
+  [[nodiscard]] RGSyncID addExternalSignalSync() {
+    return m_builder->addExternalSignalSync(m_node);
+  }
+
+  void setCallback(RGCallback cb) {
+    return m_builder->setCallback(m_node, std::move(cb));
+  }
+
+  void setDesc(std::string desc) {
+    return m_builder->setDesc(m_node, std::move(desc));
+  }
 };
-
-using RenderGraph = RenderGraphBuilder::RenderGraph;
 } // namespace ren

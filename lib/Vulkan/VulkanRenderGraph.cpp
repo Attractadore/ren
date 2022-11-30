@@ -11,7 +11,7 @@
 #include <range/v3/view.hpp>
 
 namespace ren {
-void VulkanRenderGraphBuilder::addPresentNodes() {
+void VulkanRenderGraph::Builder::addPresentNodes() {
   auto *vk_swapchain = static_cast<VulkanSwapchain *>(m_swapchain);
 
   auto acquire = addNode();
@@ -29,17 +29,16 @@ void VulkanRenderGraphBuilder::addPresentNodes() {
       m_swapchain_image, MemoryAccess::TransferWrite, PipelineStage::Blit);
   setDesc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
   blit.addWaitSync(m_acquire_semaphore);
-  blit.setCallback(
-      [=, final_image = m_final_image, swapchain_image = m_swapchain_image,
-       acquire_semaphore = m_acquire_semaphore](CommandBuffer &cmd,
-                                                RGResources &resources) {
-        auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-        auto &&src_tex = resources.getTexture(final_image);
-        auto &&dst_tex = resources.getTexture(swapchain_image);
-        vk_cmd->wait(resources.getSyncObject(acquire_semaphore),
-                     PipelineStage::Blit);
-        vk_cmd->blit(src_tex, dst_tex);
-      });
+  blit.setCallback([=, final_image = m_final_image,
+                    swapchain_image = m_swapchain_image,
+                    acquire_semaphore = m_acquire_semaphore](CommandBuffer &cmd,
+                                                             RenderGraph &rg) {
+    auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
+    auto &&src_tex = rg.getTexture(final_image);
+    auto &&dst_tex = rg.getTexture(swapchain_image);
+    vk_cmd->wait(rg.getSyncObject(acquire_semaphore), PipelineStage::Blit);
+    vk_cmd->blit(src_tex, dst_tex);
+  });
 
   auto present = addNode();
   present.setDesc(
@@ -48,19 +47,18 @@ void VulkanRenderGraphBuilder::addPresentNodes() {
   m_present_semaphore = present.addSignalSync({.type = SyncType::Semaphore});
   setDesc(m_present_semaphore, "Vulkan: swapchain image present semaphore");
   present.setCallback([=, present_semaphore = m_present_semaphore](
-                          CommandBuffer &cmd, RGResources &resources) {
+                          CommandBuffer &cmd, RenderGraph &rg) {
     auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-    vk_cmd->signal(resources.getSyncObject(present_semaphore), {});
+    vk_cmd->signal(rg.getSyncObject(present_semaphore), {});
   });
 }
 
-std::unique_ptr<RenderGraph> VulkanRenderGraphBuilder::createRenderGraph(
-    Vector<Batch> batches, HashMap<RGTextureID, Texture> textures,
-    HashMap<RGTextureID, RGTextureID> texture_aliases,
-    HashMap<RGSyncID, SyncObject> syncs) {
+std::unique_ptr<RenderGraph> VulkanRenderGraph::Builder::createRenderGraph(
+    Vector<Batch> batches, Vector<Texture> textures,
+    HashMap<RGTextureID, unsigned> phys_textures, Vector<SyncObject> syncs) {
   return std::make_unique<VulkanRenderGraph>(
       m_swapchain, std::move(batches), std::move(textures),
-      std::move(texture_aliases), std::move(syncs), m_swapchain_image,
+      std::move(phys_textures), std::move(syncs), m_swapchain_image,
       m_acquire_semaphore, m_present_semaphore);
 }
 
@@ -86,7 +84,7 @@ VkImageLayout getImageLayoutFromAccessesAndStages(MemoryAccessFlags accesses,
 }
 } // namespace
 
-PassCallback VulkanRenderGraphBuilder::generateBarrierGroup(
+RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
     std::span<const BarrierConfig> configs) {
   auto textures = configs |
                   ranges::views::transform([](const BarrierConfig &config) {
@@ -110,13 +108,13 @@ PassCallback VulkanRenderGraphBuilder::generateBarrierGroup(
       ranges::to<SmallVector<VkImageMemoryBarrier2, 8>>;
 
   return [textures = std::move(textures), barriers = std::move(barriers)](
-             CommandBuffer &cmd, RGResources &resources) mutable {
+             CommandBuffer &cmd, RenderGraph &rg) mutable {
     auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
     auto vk_device = vk_cmd->getDevice();
     auto vk_cmd_buffer = vk_cmd->get();
 
     for (auto &&[tex, barrier] : ranges::views::zip(textures, barriers)) {
-      auto &&texture = resources.getTexture(tex);
+      auto &&texture = rg.getTexture(tex);
       barrier.image = getVkImage(texture);
       barrier.subresourceRange = {
           .aspectMask = getFormatAspectFlags(texture.desc.format),
@@ -144,8 +142,8 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
       vk_device->createSyncObject({.type = SyncType::Semaphore});
   vk_cmd_pool->addFrameResource(acquire_semaphore);
   vk_swapchain->acquireImage(getVkSemaphore(acquire_semaphore));
-  m_resources.setTexture(m_swapchain_image, vk_swapchain->getTexture());
-  m_resources.setSyncObject(m_acquire_semaphore, std::move(acquire_semaphore));
+  setTexture(m_swapchain_image, vk_swapchain->getTexture());
+  setSyncObject(m_acquire_semaphore, std::move(acquire_semaphore));
 
   SmallVector<VkSubmitInfo2, 16> submit_infos;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
@@ -161,10 +159,10 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
       cmd = vk_cmd_pool->allocateVulkanCommandBuffer();
       if (barrier_cb) {
-        barrier_cb(*cmd, m_resources);
+        barrier_cb(*cmd, *this);
       }
       if (pass_cb) {
-        pass_cb(*cmd, m_resources);
+        pass_cb(*cmd, *this);
       }
       cmd->close();
       cmd_buffer_infos.push_back(
@@ -200,7 +198,7 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
 
   vk_device->graphicsQueueSubmit(submit_infos);
 
-  auto &&present_semaphore = m_resources.getSyncObject(m_present_semaphore);
+  auto &&present_semaphore = getSyncObject(m_present_semaphore);
   vk_swapchain->presentImage(getVkSemaphore(present_semaphore));
 }
 } // namespace ren

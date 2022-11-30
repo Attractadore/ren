@@ -77,7 +77,7 @@ public:
     return QueuePresentKHR(getGraphicsQueue(), &present_info);
   }
 
-  std::unique_ptr<RenderGraphBuilder> createRenderGraphBuilder() override;
+  std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
   std::unique_ptr<CommandAllocator>
   createCommandBufferPool(unsigned pipeline_depth) override;
 

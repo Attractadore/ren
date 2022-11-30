@@ -1,204 +1,179 @@
 #include "RenderGraph.hpp"
 #include "Device.hpp"
+#include "Support/FlatSet.hpp"
 #include "Support/HashSet.hpp"
 #include "Support/PriorityQueue.hpp"
+#include "Support/Views.hpp"
 
 #include <range/v3/action.hpp>
 #include <range/v3/algorithm.hpp>
 #include <range/v3/view.hpp>
 
+#include <bit>
+
 namespace ren {
-void RGNodeBuilder::addReadInput(RGTextureID texture,
-                                 MemoryAccessFlags accesses,
-                                 PipelineStageFlags stages) {
-  m_builder->addReadInput(m_node, texture, accesses, stages);
-}
-
-RGTextureID RGNodeBuilder::addWriteInput(RGTextureID texture,
-                                         MemoryAccessFlags accesses,
-                                         PipelineStageFlags stages) {
-  return m_builder->addWriteInput(m_node, texture, accesses, stages);
-}
-
-RGTextureID RGNodeBuilder::addOutput(const RGTextureDesc &desc,
-                                     MemoryAccessFlags accesses,
-                                     PipelineStageFlags stages) {
-  return m_builder->addOutput(m_node, desc, accesses, stages);
-}
-
-RGTextureID RGNodeBuilder::addExternalTextureOutput(MemoryAccessFlags accesses,
-                                                    PipelineStageFlags stages) {
-  return m_builder->addExternalTextureOutput(m_node, accesses, stages);
-}
-
-void RGNodeBuilder::addWaitSync(RGSyncID sync) {
-  return m_builder->addWaitSync(m_node, sync);
-}
-
-RGSyncID RGNodeBuilder::addSignalSync(const RGSyncDesc &desc) {
-  return m_builder->addSignalSync(m_node, desc);
-}
-
-RGSyncID RGNodeBuilder::addExternalSignalSync() {
-  return m_builder->addExternalSignalSync(m_node);
-}
-
-void RGNodeBuilder::setCallback(PassCallback cb) {
-  return m_builder->setCallback(m_node, std::move(cb));
-}
-
-void RGNodeBuilder::setDesc(std::string name) {
-  return m_builder->setDesc(m_node, std::move(name));
-}
-
-RGNodeID RenderGraphBuilder::createNode() {
+RGNodeID RenderGraph::Builder::createNode() {
   auto node = m_nodes.size();
   m_nodes.emplace_back();
   return static_cast<RGNodeID>(node);
 }
 
-auto RenderGraphBuilder::getNode(RGNodeID node) -> RGNode & {
+auto RenderGraph::Builder::getNode(RGNodeID node) -> RGNode & {
   auto idx = static_cast<size_t>(node);
   return m_nodes[idx];
 }
 
-RGNodeID RenderGraphBuilder::getNodeID(const RGNode &node) const {
+RGNodeID RenderGraph::Builder::getNodeID(const RGNode &node) const {
   return static_cast<RGNodeID>(&node - m_nodes.data());
 }
 
-RGTextureID RenderGraphBuilder::defineTexture(RGNodeID node) {
-  auto tex = static_cast<RGTextureID>(m_next_tex++);
-  m_tex_defs[tex] = node;
-  m_tex_aliases[tex] = tex;
+unsigned
+RenderGraph::Builder::createPhysicalTexture(const RGTextureDesc &desc) {
+  auto tex = getPhysTextureCount();
+  m_texture_descs.push_back(desc);
   return tex;
 }
 
-RGTextureID RenderGraphBuilder::defineTexture(const RGTextureDesc &desc,
-                                              RGNodeID node) {
-  auto tex = defineTexture(node);
-  m_tex_descs[tex] = desc;
-  return tex;
+RGTextureID RenderGraph::Builder::createVirtualTexture(unsigned tex,
+                                                       RGNodeID node) {
+  auto vtex = std::bit_cast<RGTextureID>(m_texture_defs.insert(node));
+  m_phys_textures[vtex] = tex;
+  return vtex;
 }
 
-RGNodeID RenderGraphBuilder::getTextureDef(RGTextureID tex) const {
-  auto it = m_tex_defs.find(tex);
-  assert(it != m_tex_defs.end() && "Undefined texture");
+std::pair<unsigned, RGTextureID>
+RenderGraph::Builder::createTexture(RGNodeID node) {
+  auto tex = createPhysicalTexture({});
+  auto vtex = createVirtualTexture(tex, node);
+  return {tex, vtex};
+}
+
+RGNodeID RenderGraph::Builder::getTextureDef(RGTextureID tex) const {
+  auto it = m_texture_defs.find(std::bit_cast<VTextureKey>(tex));
+  assert(it != m_texture_defs.end() && "Undefined texture");
   return it->second;
 }
 
-RGTextureID RenderGraphBuilder::redefineTexture(RGTextureID tex,
-                                                RGNodeID node) {
-  auto new_tex = static_cast<RGTextureID>(m_next_tex++);
-  m_tex_defs[new_tex] = node;
-  m_tex_redefs[tex] = node;
-  m_tex_aliases[new_tex] = m_tex_aliases[tex];
-  return new_tex;
-}
-
 std::optional<RGNodeID>
-RenderGraphBuilder::getTextureRedef(RGTextureID tex) const {
-  auto it = m_tex_redefs.find(tex);
-  if (it != m_tex_redefs.end()) {
+RenderGraph::Builder::getTextureKill(RGTextureID tex) const {
+  auto it = m_texture_kills.find(tex);
+  if (it != m_texture_kills.end()) {
     return it->second;
   }
   return std::nullopt;
 }
 
-RGSyncID RenderGraphBuilder::defineSync(RGNodeID node) {
-  auto sync = static_cast<RGSyncID>(m_next_sync++);
-  m_sync_defs[sync] = node;
+bool RenderGraph::Builder::isExternalTexture(unsigned tex) const {
+  return m_texture_descs[tex].format == Format::Undefined;
+}
+
+unsigned RenderGraph::Builder::getPhysTextureCount() const {
+  return m_texture_descs.size();
+}
+
+RGSyncID RenderGraph::Builder::createSync(RGNodeID node) {
+  auto sync = static_cast<RGSyncID>(getSyncObjectCount());
+  m_sync_defs.push_back(node);
+  m_sync_descs.emplace_back();
   return sync;
 }
 
-RGSyncID RenderGraphBuilder::defineSync(const RGSyncDesc &desc, RGNodeID node) {
-  auto sync = defineSync(node);
-  m_sync_descs[sync] = desc;
-  return sync;
+RGNodeID RenderGraph::Builder::getSyncDef(RGSyncID sync) const {
+  return m_sync_defs[static_cast<unsigned>(sync)];
 }
 
-RGNodeID RenderGraphBuilder::getSyncDef(RGSyncID sync) const {
-  auto it = m_sync_defs.find(sync);
-  assert(it != m_sync_defs.end() && "Undefined sync object");
-  return it->second;
+namespace {
+constexpr auto EXTERNAL_SYNC_TYPE = SyncType(0xe8a14a1);
 }
 
-RGNodeBuilder RenderGraphBuilder::addNode() {
-  auto node = createNode();
-  return RGNodeBuilder(node, this);
+bool RenderGraph::Builder::isExternalSync(unsigned sync) const {
+  return m_sync_descs[sync].type == EXTERNAL_SYNC_TYPE;
 }
 
-void RenderGraphBuilder::addReadInput(RGNodeID node, RGTextureID tex,
-                                      MemoryAccessFlags accesses,
-                                      PipelineStageFlags stages) {
+unsigned RenderGraph::Builder::getSyncObjectCount() const {
+  return m_sync_defs.size();
+}
+
+auto RenderGraph::Builder::addNode() -> NodeBuilder {
+  return {createNode(), this};
+}
+
+void RenderGraph::Builder::addReadInput(RGNodeID node, RGTextureID tex,
+                                        MemoryAccessFlags accesses,
+                                        PipelineStageFlags stages) {
   getNode(node).read_textures.push_back({
-      .tex = tex,
+      .texture = tex,
       .accesses = accesses,
       .stages = stages,
   });
 }
 
-RGTextureID RenderGraphBuilder::addWriteInput(RGNodeID node, RGTextureID tex,
-                                              MemoryAccessFlags accesses,
-                                              PipelineStageFlags stages) {
-  auto new_tex = redefineTexture(tex, node);
+RGTextureID RenderGraph::Builder::addWriteInput(RGNodeID node, RGTextureID tex,
+                                                MemoryAccessFlags accesses,
+                                                PipelineStageFlags stages) {
+  m_texture_kills[tex] = node;
+  auto new_tex = createVirtualTexture(m_phys_textures[tex], node);
   getNode(node).write_textures.push_back({
-      .tex = new_tex,
+      .texture = new_tex,
       .accesses = accesses,
       .stages = stages,
   });
   return new_tex;
 }
 
-RGTextureID RenderGraphBuilder::addOutput(RGNodeID node,
-                                          const RGTextureDesc &desc,
-                                          MemoryAccessFlags accesses,
-                                          PipelineStageFlags stages) {
-  auto tex = defineTexture(desc, node);
+RGTextureID RenderGraph::Builder::addOutput(RGNodeID node,
+                                            const RGTextureDesc &desc,
+                                            MemoryAccessFlags accesses,
+                                            PipelineStageFlags stages) {
+  auto [tex, vtex] = createTexture(node);
+  m_texture_descs[tex] = desc;
   getNode(node).write_textures.push_back({
-      .tex = tex,
+      .texture = vtex,
       .accesses = accesses,
       .stages = stages,
   });
-  return tex;
+  return vtex;
 }
 
-RGTextureID RenderGraphBuilder::addExternalTextureOutput(
+RGTextureID RenderGraph::Builder::addExternalTextureOutput(
     RGNodeID node, MemoryAccessFlags accesses, PipelineStageFlags stages) {
-  auto tex = defineTexture(node);
+  auto [_, tex] = createTexture(node);
   getNode(node).write_textures.push_back({
-      .tex = tex,
+      .texture = tex,
       .accesses = accesses,
       .stages = stages,
   });
   return tex;
 }
 
-void RenderGraphBuilder::addWaitSync(RGNodeID node, RGSyncID sync) {
+void RenderGraph::Builder::addWaitSync(RGNodeID node, RGSyncID sync) {
   getNode(node).wait_syncs.push_back({.sync = sync});
 }
 
-RGSyncID RenderGraphBuilder::addSignalSync(RGNodeID node,
-                                           const RGSyncDesc &desc) {
-  auto sync = defineSync(desc, node);
+RGSyncID RenderGraph::Builder::addSignalSync(RGNodeID node,
+                                             const RGSyncDesc &desc) {
+  auto sync = createSync(node);
+  m_sync_descs[static_cast<unsigned>(sync)] = desc;
   getNode(node).signal_syncs.push_back({.sync = sync});
   return sync;
 }
 
-RGSyncID RenderGraphBuilder::addExternalSignalSync(RGNodeID node) {
-  auto sync = defineSync(node);
+RGSyncID RenderGraph::Builder::addExternalSignalSync(RGNodeID node) {
+  auto sync = createSync(node);
+  m_sync_descs[static_cast<unsigned>(sync)] = {.type = EXTERNAL_SYNC_TYPE};
   getNode(node).signal_syncs.push_back({.sync = sync});
   return sync;
 }
 
-void RenderGraphBuilder::setCallback(RGNodeID node, PassCallback cb) {
+void RenderGraph::Builder::setCallback(RGNodeID node, RGCallback cb) {
   getNode(node).pass_cb = std::move(cb);
 }
 
-void RenderGraphBuilder::setDesc(RGNodeID node, std::string name) {
+void RenderGraph::Builder::setDesc(RGNodeID node, std::string name) {
   m_node_text_descs.insert_or_assign(node, std::move(name));
 }
 
-std::string_view RenderGraphBuilder::getDesc(RGNodeID node) const {
+std::string_view RenderGraph::Builder::getDesc(RGNodeID node) const {
   auto it = m_node_text_descs.find(node);
   if (it != m_node_text_descs.end()) {
     return it->second;
@@ -206,11 +181,11 @@ std::string_view RenderGraphBuilder::getDesc(RGNodeID node) const {
   return "";
 }
 
-void RenderGraphBuilder::setDesc(RGTextureID tex, std::string name) {
+void RenderGraph::Builder::setDesc(RGTextureID tex, std::string name) {
   m_tex_text_descs.insert_or_assign(tex, std::move(name));
 }
 
-std::string_view RenderGraphBuilder::getDesc(RGTextureID tex) const {
+std::string_view RenderGraph::Builder::getDesc(RGTextureID tex) const {
   auto it = m_tex_text_descs.find(tex);
   if (it != m_tex_text_descs.end()) {
     return it->second;
@@ -218,11 +193,11 @@ std::string_view RenderGraphBuilder::getDesc(RGTextureID tex) const {
   return "";
 }
 
-void RenderGraphBuilder::setDesc(RGSyncID sync, std::string name) {
+void RenderGraph::Builder::setDesc(RGSyncID sync, std::string name) {
   m_sync_text_descs.insert_or_assign(sync, std::move(name));
 }
 
-std::string_view RenderGraphBuilder::getDesc(RGSyncID sync) const {
+std::string_view RenderGraph::Builder::getDesc(RGSyncID sync) const {
   auto it = m_sync_text_descs.find(sync);
   if (it != m_sync_text_descs.end()) {
     return it->second;
@@ -230,28 +205,66 @@ std::string_view RenderGraphBuilder::getDesc(RGSyncID sync) const {
   return "";
 }
 
-void RenderGraphBuilder::setSwapchain(Swapchain *swapchain) {
+void RenderGraph::Builder::setSwapchain(Swapchain *swapchain) {
   m_swapchain = swapchain;
 }
 
-void RenderGraphBuilder::setFinalImage(RGTextureID tex) { m_final_image = tex; }
+void RenderGraph::Builder::setFinalImage(RGTextureID tex) {
+  m_final_image = tex;
+}
 
-auto RenderGraphBuilder::schedulePasses() -> Vector<RGNode> {
-  auto node_count = m_nodes.size();
+auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
+  Vector<SmallFlatSet<RGNodeID>> successors(m_nodes.size());
+  Vector<int> predecessor_count(m_nodes.size());
 
-  Vector<SmallVector<RGNodeID, 16>> edge_list(node_count);
-  HashMap<RGNodeID, unsigned> predecessor_count;
+  auto get_node_idx = [](RGNodeID node) { return static_cast<size_t>(node); };
 
-  auto get_successors = [&](RGNodeID node) -> decltype(auto) {
-    return edge_list[static_cast<size_t>(node)];
+  auto get_dag_successors = [&](RGNodeID node) -> auto & {
+    return successors[get_node_idx(node)];
   };
 
   auto add_edge = [&](RGNodeID from, RGNodeID to) {
-    auto &node_edges = get_successors(from);
-    if (not ranges::contains(node_edges, to)) {
-      node_edges.push_back(to);
-      predecessor_count[to]++;
+    if (get_dag_successors(from).insert(to).second) {
+      ++predecessor_count[get_node_idx(to)];
     }
+  };
+
+  auto get_texture_def = [&](const TextureAccess &tex_access) {
+    return getTextureDef(tex_access.texture);
+  };
+  auto get_texture_kill = [&](const TextureAccess &tex_access) {
+    return getTextureKill(tex_access.texture);
+  };
+  auto get_sync_def = [&](const SyncAccess &sync_access) {
+    return getSyncDef(sync_access.sync);
+  };
+
+  SmallVector<RGNodeID> dependents;
+  auto get_dependants = [&](const RGNode &node) -> const auto & {
+    // Reads must happen before writes
+    dependents.assign(node.read_textures | filter_map(get_texture_kill));
+    return dependents;
+  };
+
+  SmallVector<RGNodeID> dependencies;
+  auto get_dependencies = [&](const RGNode &node) -> const auto & {
+    dependencies.assign(concat(
+        // Reads must happen after creation
+        node.read_textures | map(get_texture_def),
+        // Writes must happen after creation
+        node.write_textures | map(get_texture_def) |
+            filter([&](RGNodeID def) { return def != getNodeID(node); }),
+        // Waits on sync objects must happen after they are signaled
+        // TODO: this is not the case for timeline semaphores
+        node.wait_syncs | map(get_sync_def)));
+    return dependencies;
+  };
+
+  SmallVector<RGNodeID> outputs;
+  auto get_outputs = [&](const RGNode &node) -> const auto & {
+    outputs.assign(concat(node.write_textures | map(get_texture_def),
+                          node.signal_syncs | map(get_sync_def)));
+    return outputs;
   };
 
   struct QueueEntry {
@@ -261,104 +274,58 @@ auto RenderGraphBuilder::schedulePasses() -> Vector<RGNode> {
     auto operator<=>(const QueueEntry &) const = default;
   };
 
-  // Schedule nodes whose dependencies were scheduled the longest time ago first
-  MinQueue<QueueEntry> unscheduled_nodes;
-
-  SmallVector<RGNodeID, 16> successors;
-  auto get_dependants = [&](const RGNode &node) -> const auto & {
-    successors.clear();
-    for (const auto &rtex : node.read_textures) {
-      if (auto redef = getTextureRedef(rtex.tex)) {
-        // Reads must happen before writes
-        successors.push_back(*redef);
-      }
-    }
-    return successors;
-  };
-
-  SmallVector<RGNodeID, 16> predecessors;
-  auto get_dependencies = [&](const RGNode &node) -> const auto & {
-    predecessors.clear();
-    for (const auto &rtex : node.read_textures) {
-      // Reads must happen after creation
-      predecessors.push_back(getTextureDef(rtex.tex));
-    }
-    for (const auto &wtex : node.write_textures) {
-      // Writes must happen after creation
-      auto def = getTextureDef(wtex.tex);
-      if (def != getNodeID(node)) {
-        predecessors.push_back(def);
-      }
-    }
-    for (const auto &wsync : node.wait_syncs) {
-      // Waits on sync objects must happen after they are signaled
-      // TODO: this is not the case for timeline semaphores
-      predecessors.push_back(getSyncDef(wsync.sync));
-    }
-    return predecessors;
-  };
-
-  SmallVector<RGNodeID, 16> outputs;
-  auto get_outputs = [&](const RGNode &node) -> const auto & {
-    outputs.clear();
-    for (const auto &wtex : node.write_textures) {
-      outputs.push_back(getTextureDef(wtex.tex));
-    }
-    for (const auto &ssync : node.signal_syncs) {
-      outputs.push_back(getSyncDef(ssync.sync));
-    }
-    return outputs;
-  };
+  // Schedule passes whose dependencies were scheduled the longest time ago
+  // first
+  MinQueue<QueueEntry> unsched_passes;
 
   // Build DAG
-  for (const auto &node : m_nodes) {
-    auto &predecessors = get_dependencies(node);
+  for (const auto &pass : m_nodes) {
+    const auto &predecessors = get_dependencies(pass);
 
-    auto id = getNodeID(node);
+    auto id = getNodeID(pass);
     for (auto p : predecessors) {
       add_edge(p, id);
     }
-    for (auto s : get_dependants(node)) {
+    for (auto s : get_dependants(pass)) {
       add_edge(id, s);
     }
 
     if (predecessors.empty()) {
-      // This is a node with no dependencies and can be scheduled right away
-      unscheduled_nodes.push({-1, id});
+      // This is a pass with no dependencies and it can be scheduled right away
+      unsched_passes.push({-1, id});
     }
   }
 
-  Vector<RGNodeID> scheduled_pass_ids(m_nodes.size());
-  HashMap<RGNodeID, int> node_sched_time;
+  Vector<RGNodeID> sched_passes;
+  sched_passes.reserve(m_nodes.size());
+  auto &pass_sched_time = predecessor_count;
 
-  for (int i = 0; i < scheduled_pass_ids.size(); ++i) {
-    assert(not unscheduled_nodes.empty());
-    auto [dep_sched_time, node] = unscheduled_nodes.top();
-    unscheduled_nodes.pop();
-    assert(dep_sched_time < i);
-    scheduled_pass_ids[i] = node;
-    node_sched_time[node] = i;
+  while (not unsched_passes.empty()) {
+    auto [dep_sched_time, pass] = unsched_passes.top();
+    unsched_passes.pop();
 
-    for (auto s : get_successors(node)) {
-      if (--predecessor_count[s] == 0) {
-        int max_dep_sched_time = 0;
-        for (auto d : get_dependencies(getNode(s))) {
-          max_dep_sched_time = std::max(max_dep_sched_time, node_sched_time[d]);
-        }
-        unscheduled_nodes.push({max_dep_sched_time, s});
+    int time = sched_passes.size();
+    assert(dep_sched_time < time);
+    sched_passes.push_back(pass);
+    pass_sched_time[get_node_idx(pass)] = time;
+
+    for (auto s : get_dag_successors(pass)) {
+      if (--predecessor_count[get_node_idx(s)] == 0) {
+        int max_dep_sched_time = ranges::max(
+            concat(once(-1), get_dependencies(getNode(s)) | map([&](auto d) {
+                               return pass_sched_time[get_node_idx(d)];
+                             })));
+        unsched_passes.push({max_dep_sched_time, s});
       }
     }
   }
-  assert(unscheduled_nodes.empty());
 
-  auto scheduled_passes = scheduled_pass_ids |
-                          ranges::views::transform([&](RGNodeID node) {
-                            return std::move(getNode(node));
-                          }) |
-                          ranges::to<Vector<RGNode>>;
+  auto passes = sched_passes |
+                map([&](RGNodeID pass) { return std::move(getNode(pass)); }) |
+                ranges::to<Vector>;
   m_nodes.clear();
 
-  return scheduled_passes;
+  return passes;
 }
 
 namespace {
@@ -381,81 +348,80 @@ getTextureUsageFlagsFromAccessesAndStages(MemoryAccessFlags accesses,
 }
 } // namespace
 
-HashMap<RGTextureID, TextureUsageFlags>
-RenderGraphBuilder::deriveTextureUsageFlags(
+Vector<TextureUsageFlags> RenderGraph::Builder::deriveTextureUsageFlags(
     std::span<const RGNode> scheduled_passes) {
-  HashMap<RGTextureID, TextureUsageFlags> texture_usage;
+  Vector<TextureUsageFlags> texture_usage(getPhysTextureCount());
   for (const auto &pass : scheduled_passes) {
-    auto textures =
+    auto tex_accesses =
         ranges::views::concat(pass.read_textures, pass.write_textures);
-    for (const auto &tex : textures) {
-      auto src_tex = m_tex_aliases[tex.tex];
-      texture_usage[src_tex] |=
-          getTextureUsageFlagsFromAccessesAndStages(tex.accesses, tex.stages);
+    for (const auto &tex_access : tex_accesses) {
+      auto tex = m_phys_textures[tex_access.texture];
+      texture_usage[tex] |= getTextureUsageFlagsFromAccessesAndStages(
+          tex_access.accesses, tex_access.stages);
     }
   }
   return texture_usage;
 }
 
-HashMap<RGTextureID, Texture> RenderGraphBuilder::createTextures(
-    const HashMap<RGTextureID, TextureUsageFlags> &texture_usage_flags) {
-  HashMap<RGTextureID, Texture> textures;
-  for (const auto &[tex, desc] : m_tex_descs) {
-    auto usage = [&, tex = tex] {
-      auto it = texture_usage_flags.find(tex);
-      assert(it != texture_usage_flags.end() &&
-             "Texture usage flags are unknown");
-      return it->second;
-    }();
-    textures[tex] = m_device->createTexture({
-        .type = desc.type,
-        .format = desc.format,
-        .usage = usage,
-        .width = desc.width,
-        .height = desc.height,
-        .layers = desc.layers,
-        .levels = desc.levels,
-    });
+Vector<Texture> RenderGraph::Builder::createTextures(
+    std::span<const TextureUsageFlags> texture_usage_flags) {
+  Vector<Texture> textures(getPhysTextureCount());
+  for (unsigned tex = 0; tex < getPhysTextureCount(); ++tex) {
+    if (not isExternalTexture(tex)) {
+      const auto &desc = m_texture_descs[tex];
+      textures[tex] = m_device->createTexture({
+          .type = desc.type,
+          .format = desc.format,
+          .usage = texture_usage_flags[tex],
+          .width = desc.width,
+          .height = desc.height,
+          .layers = desc.layers,
+          .levels = desc.levels,
+      });
+    }
   }
   return textures;
 }
 
-HashMap<RGSyncID, SyncObject> RenderGraphBuilder::createSyncObjects() {
-  HashMap<RGSyncID, SyncObject> syncs;
-  for (const auto &[sync, desc] : m_sync_descs) {
-    syncs[sync] = m_device->createSyncObject({.type = desc.type});
+Vector<SyncObject> RenderGraph::Builder::createSyncObjects() {
+  Vector<SyncObject> syncs(getSyncObjectCount());
+  for (unsigned sync = 0; sync < getSyncObjectCount(); ++sync) {
+    if (not isExternalSync(sync)) {
+      const auto &desc = m_sync_descs[sync];
+      syncs[sync] = m_device->createSyncObject({.type = desc.type});
+    }
   }
   return syncs;
 }
 
-void RenderGraphBuilder::generateBarriers(std::span<RGNode> scheduled_passes) {
+void RenderGraph::Builder::generateBarriers(
+    std::span<RGNode> scheduled_passes) {
   struct ResourceAccess {
     MemoryAccessFlags accesses;
     PipelineStageFlags stages;
   };
-  HashMap<RGTextureID, ResourceAccess> latest_accesses;
+  Vector<ResourceAccess> latest_accesses(getPhysTextureCount());
   SmallVector<BarrierConfig, 16> barrier_configs;
   for (auto &pass : scheduled_passes) {
-    auto v =
-        ranges::views::concat(pass.read_textures, pass.write_textures) |
-        ranges::views::transform([&](const TextureAccess &tex_access) {
+    barrier_configs.assign(
+        concat(pass.read_textures, pass.write_textures) |
+        map([&](const TextureAccess &tex_access) {
           auto src_access = std::exchange(
-              latest_accesses[m_tex_aliases[tex_access.tex]],
+              latest_accesses[m_phys_textures[tex_access.texture]],
               {.accesses = tex_access.accesses, .stages = tex_access.stages});
           return BarrierConfig{
-              .texture = tex_access.tex,
+              .texture = tex_access.texture,
               .src_accesses = src_access.accesses,
               .src_stages = src_access.stages,
               .dst_accesses = tex_access.accesses,
               .dst_stages = tex_access.stages,
           };
-        });
-    barrier_configs.assign(v.begin(), v.end());
+        }));
     pass.barrier_cb = generateBarrierGroup(barrier_configs);
   }
 }
 
-auto RenderGraphBuilder::batchPasses(auto scheduled_passes) -> Vector<Batch> {
+auto RenderGraph::Builder::batchPasses(auto scheduled_passes) -> Vector<Batch> {
   scheduled_passes |= ranges::actions::remove_if(
       [](RGNode &node) { return !node.pass_cb and !node.barrier_cb; });
 
@@ -479,7 +445,7 @@ auto RenderGraphBuilder::batchPasses(auto scheduled_passes) -> Vector<Batch> {
   return batches;
 }
 
-auto RenderGraphBuilder::build() -> std::unique_ptr<RenderGraph> {
+auto RenderGraph::Builder::build() -> std::unique_ptr<RenderGraph> {
   addPresentNodes();
   auto scheduled_passes = schedulePasses();
   auto texture_usage_flags = deriveTextureUsageFlags(scheduled_passes);
@@ -488,28 +454,28 @@ auto RenderGraphBuilder::build() -> std::unique_ptr<RenderGraph> {
   generateBarriers(scheduled_passes);
   auto batches = batchPasses(std::move(scheduled_passes));
   return createRenderGraph(std::move(batches), std::move(textures),
-                           std::move(m_tex_aliases), std::move(syncs));
+                           std::move(m_phys_textures), std::move(syncs));
 }
 
-void RGResources::setTexture(RGTextureID id, Texture tex) {
-  bool inserted = m_textures.emplace(std::pair(id, std::move(tex))).second;
-  assert(inserted && "Texture already defined");
+void RenderGraph::setTexture(RGTextureID vtex, Texture texture) {
+  auto tex = m_phys_textures[vtex];
+  assert(!m_textures[tex].handle.get() && "Texture already defined");
+  m_textures[tex] = std::move(texture);
 }
 
-const Texture &RGResources::getTexture(RGTextureID tex) const {
-  auto it = m_tex_aliases.find(tex);
-  assert(it != m_tex_aliases.end() && "Undefined texture");
-  return m_textures.find(it->second)->second;
+const Texture &RenderGraph::getTexture(RGTextureID tex) const {
+  auto it = m_phys_textures.find(tex);
+  assert(it != m_phys_textures.end() && "Undefined texture");
+  return m_textures[it->second];
 }
 
-void RGResources::setSyncObject(RGSyncID id, SyncObject sync) {
-  bool inserted = m_syncs.emplace(std::pair(id, std::move(sync))).second;
-  assert(inserted && "Sync object already defined");
+void RenderGraph::setSyncObject(RGSyncID id, SyncObject sync) {
+  auto idx = static_cast<unsigned>(id);
+  assert(!m_syncs[idx].handle.get() && "Sync object already defined");
+  m_syncs[idx] = std::move(sync);
 }
 
-const SyncObject &RGResources::getSyncObject(RGSyncID sync) const {
-  auto it = m_syncs.find(sync);
-  assert(it != m_syncs.end() && "Undefined sync object");
-  return it->second;
+const SyncObject &RenderGraph::getSyncObject(RGSyncID sync) const {
+  return m_syncs[static_cast<unsigned>(sync)];
 }
 } // namespace ren

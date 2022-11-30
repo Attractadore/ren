@@ -3,6 +3,7 @@
 
 namespace ren {
 enum class Format {
+  Undefined = 0,
   RGB8,
   RGB8_SRGB,
   BGR8,

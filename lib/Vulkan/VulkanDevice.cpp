@@ -219,8 +219,8 @@ VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
   };
 }
 
-std::unique_ptr<RenderGraphBuilder> VulkanDevice::createRenderGraphBuilder() {
-  return std::make_unique<VulkanRenderGraphBuilder>(this);
+std::unique_ptr<RenderGraph::Builder> VulkanDevice::createRenderGraphBuilder() {
+  return std::make_unique<VulkanRenderGraph::Builder>(this);
 }
 
 std::unique_ptr<CommandAllocator>
