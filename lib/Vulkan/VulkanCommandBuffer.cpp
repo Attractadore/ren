@@ -4,7 +4,7 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSync.inl"
-#include "Vulkan/VulkanTexture.inl"
+#include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/view.hpp>
 
@@ -35,10 +35,12 @@ constexpr auto render_target_store_op_map = std::array{
 constexpr auto getVkAttachmentLoadOp = enumMap<render_target_load_op_map>;
 constexpr auto getVkAttachmentStoreOp = enumMap<render_target_store_op_map>;
 
-auto getVkRenderingAttachmentInfo = []<typename T>(const T &rt_cfg) {
+template <typename T>
+VkRenderingAttachmentInfo getVkRenderingAttachmentInfo(VulkanDevice *device,
+                                                       const T &rt_cfg) {
   return VkRenderingAttachmentInfo{
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = getVkTextureView(rt_cfg.view),
+      .imageView = device->getVkImageView(rt_cfg.view),
       .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
       .loadOp = getVkAttachmentLoadOp(rt_cfg.load_op),
       .storeOp = getVkAttachmentStoreOp(rt_cfg.store_op),
@@ -61,7 +63,6 @@ void VulkanCommandBuffer::beginRendering(
     SmallVector<RenderTargetConfig, 8> render_targets,
     std::optional<DepthRenderTargetConfig> depth_render_target,
     std::optional<StencilRenderTargetConfig> stencil_render_target) {
-
   VkRenderingInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .renderArea = {.offset = {x, y}, .extent = {width, height}},
@@ -69,7 +70,9 @@ void VulkanCommandBuffer::beginRendering(
   };
 
   auto color_attachments =
-      render_targets | ranges::views::transform(getVkRenderingAttachmentInfo) |
+      render_targets | ranges::views::transform([&](const auto &rt_cfg) {
+        return getVkRenderingAttachmentInfo(m_device, rt_cfg);
+      }) |
       ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>;
   rendering_info.colorAttachmentCount = color_attachments.size();
   rendering_info.pColorAttachments = color_attachments.data();
@@ -80,12 +83,14 @@ void VulkanCommandBuffer::beginRendering(
 
   VkRenderingAttachmentInfo depth_attachment, stencil_attachment;
   if (depth_render_target) {
-    depth_attachment = getVkRenderingAttachmentInfo(*depth_render_target);
+    depth_attachment =
+        getVkRenderingAttachmentInfo(m_device, *depth_render_target);
     rendering_info.pDepthAttachment = &depth_attachment;
     m_parent->addFrameResource(std::move(depth_render_target->view));
   }
   if (stencil_render_target) {
-    stencil_attachment = getVkRenderingAttachmentInfo(*stencil_render_target);
+    stencil_attachment =
+        getVkRenderingAttachmentInfo(m_device, *stencil_render_target);
     rendering_info.pStencilAttachment = &stencil_attachment;
     m_parent->addFrameResource(std::move(stencil_render_target->view));
   }

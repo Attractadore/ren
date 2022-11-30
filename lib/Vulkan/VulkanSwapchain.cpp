@@ -1,7 +1,7 @@
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Support/Errors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
-#include "Vulkan/VulkanTexture.inl"
+#include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -157,13 +157,10 @@ void VulkanSwapchain::create() {
       });
 
   m_textures.resize(image_count);
-  for (int i = 0; i < image_count; ++i) {
-    m_textures[i] = {
-        .desc = tex_desc,
-        .handle = Ref<VulkanTexture>(
-            new VulkanTexture(m_device, images[i], tex_desc),
-            [swapchain_ref](VulkanTexture *tex) { delete tex; }),
-    };
+  for (size_t i = 0; i < image_count; ++i) {
+    m_textures[i] = {.desc = tex_desc,
+                     .handle =
+                         Ref<void>(images[i], [swapchain_ref](VkImage) {})};
   }
 }
 

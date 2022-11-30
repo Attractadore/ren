@@ -17,7 +17,6 @@ add_library(ren-vk SHARED ren-vk.cpp
   VulkanDevice.cpp
   VulkanRenderGraph.cpp
   VulkanSwapchain.cpp
-  VulkanTexture.cpp
 )
 target_include_directories(ren-vk PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(

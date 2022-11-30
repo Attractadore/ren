@@ -47,7 +47,7 @@ struct TextureSubresource {
   unsigned first_layer = 0;
   unsigned layer_count = 1;
 
-  bool operator==(const TextureSubresource &) const = default;
+  auto operator<=>(const TextureSubresource &) const = default;
 };
 
 enum class TextureViewType {
@@ -58,7 +58,7 @@ struct TextureViewDesc {
   TextureViewType type = TextureViewType::e2D;
   TextureSubresource subresource;
 
-  bool operator==(const TextureViewDesc &) const = default;
+  auto operator<=>(const TextureViewDesc &) const = default;
 };
 
 struct TextureView {

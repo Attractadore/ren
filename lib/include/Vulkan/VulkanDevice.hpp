@@ -1,6 +1,7 @@
 #pragma once
 #include "Device.hpp"
 #include "Support/Errors.hpp"
+#include "Support/FlatMap.hpp"
 #include "VulkanDispatchTable.hpp"
 #include "vma.h"
 
@@ -25,6 +26,11 @@ class VulkanDevice final : public Device,
   VkQueue m_graphics_queue = VK_NULL_HANDLE;
   VulkanDispatchTable m_vk = {};
 
+  HashMap<VkImage, SmallFlatMap<TextureViewDesc, VkImageView, 3>> m_image_views;
+
+private:
+  void destroyImageViews(VkImage image);
+
 public:
   VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
                VkPhysicalDevice m_adapter);
@@ -43,6 +49,8 @@ public:
   const VkAllocationCallbacks *getAllocator() const { return nullptr; }
 
   Texture createTexture(const TextureDesc &desc) override;
+
+  VkImageView getVkImageView(const TextureView &view);
 
   VkSemaphore createBinarySemaphore();
   VkSemaphore createTimelineSemaphore(uint64_t initial_value = 0);

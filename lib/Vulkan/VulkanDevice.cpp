@@ -2,6 +2,7 @@
 #include "Support/Errors.hpp"
 #include "Support/Vector.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
+#include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Vulkan/VulkanTexture.hpp"
@@ -104,10 +105,71 @@ VulkanDevice::~VulkanDevice() {
 }
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
+  VkImageCreateInfo image_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .imageType = getVkImageType(desc.type),
+      .format = getVkFormat(desc.format),
+      .extent = {desc.width, desc.height, desc.depth},
+      .mipLevels = desc.levels,
+      .arrayLayers = desc.layers,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = VK_IMAGE_TILING_OPTIMAL,
+      .usage = getVkImageUsageFlags(desc.usage),
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+
+  VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
+
+  VkImage image;
+  VmaAllocation allocation;
+  throwIfFailed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
+                               &allocation, nullptr),
+                "VMA: Failed to create image");
+
   return {
       .desc = desc,
-      .handle = std::make_shared<VulkanTexture>(this, m_allocator, desc),
+      .handle = Ref<void>(image,
+                          [this, allocation](VkImage image) {
+                            vmaDestroyImage(m_allocator, image, allocation);
+                            destroyImageViews(image);
+                          }),
   };
+}
+
+void VulkanDevice::destroyImageViews(VkImage image) {
+  for (auto &&[_, view] : m_image_views[image]) {
+    DestroyImageView(view);
+  }
+  m_image_views.erase(image);
+}
+
+VkImageView VulkanDevice::getVkImageView(const TextureView &view) {
+  auto image = getVkImage(view.texture);
+  auto &image_views = m_image_views[image];
+  auto it = image_views.find(view.desc);
+  if (it != image_views.end()) {
+    return it->second;
+  }
+
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = image,
+      .viewType = getVkImageViewType(view.desc.type),
+      .format = getVkFormat(view.texture.desc.format),
+      .subresourceRange = {
+          .aspectMask = getFormatAspectFlags(view.texture.desc.format),
+          .baseMipLevel = view.desc.subresource.first_mip_level,
+          .levelCount = view.desc.subresource.mip_level_count,
+          .baseArrayLayer = view.desc.subresource.first_layer,
+          .layerCount = view.desc.subresource.layer_count,
+      }};
+
+  VkImageView vk_view;
+  throwIfFailed(CreateImageView(&view_info, &vk_view),
+                "Vulkan: Failed to create image view");
+  image_views.insert(std::pair(view.desc, vk_view));
+
+  return vk_view;
 }
 
 VkSemaphore VulkanDevice::createBinarySemaphore() {

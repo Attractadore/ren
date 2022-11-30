@@ -5,7 +5,10 @@
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Vulkan/VulkanSync.inl"
-#include "Vulkan/VulkanTexture.inl"
+#include "Vulkan/VulkanTexture.hpp"
+
+#include <range/v3/range.hpp>
+#include <range/v3/view.hpp>
 
 namespace ren {
 void VulkanRenderGraphBuilder::addPresentNodes() {
