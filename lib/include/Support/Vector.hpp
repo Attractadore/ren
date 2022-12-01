@@ -1,6 +1,4 @@
 #pragma once
-#include "Attractadore/TrivialVector.hpp"
-
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
 #include <range/v3/range/concepts.hpp>
@@ -9,110 +7,72 @@
 #include <vector>
 
 namespace ren {
-using Attractadore::InlineTrivialVector;
-using Attractadore::TrivialVector;
-
 namespace detail {
-template <typename T, typename Allocator> struct VectorImpl {
-  using type = std::vector<T, Allocator>;
-};
+template <class Base> struct VectorMixin : public Base {
+  using Base::Base;
 
-template <typename T> struct VectorImpl<T, void> {
-  using type = std::vector<T>;
-};
-
-template <typename T, typename Allocator>
-requires std::is_trivial_v<T>
-struct VectorImpl<T, Allocator> {
-  using type = TrivialVector<T, Allocator>;
-};
-
-template <typename T>
-requires std::is_trivial_v<T>
-struct VectorImpl<T, void> {
-  using type = TrivialVector<T>;
-};
-
-template <typename T, unsigned BufferSize>
-constexpr auto BufferCount = BufferSize / sizeof(T);
-
-template <typename T, unsigned InlineCapacity, typename Allocator>
-struct SmallVectorImpl {
-  using type = boost::container::small_vector<T, InlineCapacity, Allocator>;
-};
-
-template <typename T, unsigned InlineCapacity>
-struct SmallVectorImpl<T, InlineCapacity, void> {
-  using type = boost::container::small_vector<T, InlineCapacity>;
-};
-
-template <typename T, unsigned InlineCapacity, typename Allocator>
-requires std::is_trivial_v<T>
-struct SmallVectorImpl<T, InlineCapacity, Allocator> {
-  using type = InlineTrivialVector<T, InlineCapacity, Allocator>;
-};
-
-template <typename T, unsigned InlineCapacity>
-requires std::is_trivial_v<T>
-struct SmallVectorImpl<T, InlineCapacity, void> {
-  using type = InlineTrivialVector<T, InlineCapacity>;
-};
-
-}; // namespace detail
-
-template <typename T, typename Allocator = void>
-using Vector = typename detail::VectorImpl<T, Allocator>::type;
-
-template <typename T, size_t InlineCapacity = detail::BufferCount<T, 64>,
-          typename Allocator = void>
-using SmallVector =
-    typename detail::SmallVectorImpl<T, InlineCapacity, Allocator>::type;
-
-template <typename T, unsigned InlineBufferCapacity, typename Allocator = void>
-using SmallVectorBytes =
-    SmallVector<T, detail::BufferCount<T, InlineBufferCapacity>, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector64B = SmallVectorBytes<T, 64, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector128B = SmallVectorBytes<T, 128, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector256B = SmallVectorBytes<T, 256, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector512B = SmallVectorBytes<T, 512, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector1K = SmallVectorBytes<T, 1024, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector2K = SmallVectorBytes<T, 2048, Allocator>;
-
-template <typename T, typename Allocator = void>
-using SmallVector4K = SmallVectorBytes<T, 4096, Allocator>;
-
-template <size_t N> struct SizedSmallVector {
-  template <typename T> using Vector = SmallVector<T, N>;
-};
-
-template <typename T, unsigned InlineCapacity>
-using StaticVector = boost::container::static_vector<T, InlineCapacity>;
-
-template <typename Vec, ranges::input_range R>
-constexpr auto VecAppend(Vec &vec, R &&r) {
-  auto v = ranges::views::common(r);
-  return vec.insert(vec.end(), v.begin(), v.end());
-}
-
-template <typename Vec, std::input_iterator I, std::sentinel_for<I> S>
-constexpr auto VecAppend(Vec &vec, I i, S s) {
-  if constexpr (std::same_as<I, S>) {
-    return vec.insert(vec.end(), std::move(i), std::move(s));
-  } else {
-    using CI = std::common_iterator<I, S>;
-    return vec.insert(vec.end(), CI(std::move(i)), CI(std::move(s)));
+  constexpr auto append(ranges::input_range auto &&r) {
+    return this->append(ranges::begin(r), ranges::end(r));
   }
-}
+
+  template <std::input_iterator I, std::sentinel_for<I> S>
+  constexpr auto append(I i, S s) {
+    if constexpr (std::same_as<I, S>) {
+      return this->insert(this->end(), i, s);
+    } else {
+      using CI = std::common_iterator<I, S>;
+      return this->insert(this->end(), CI(i), CI(s));
+    }
+  }
+
+  using Base::assign;
+
+  constexpr void assign(ranges::input_range auto &&r) {
+    this->assign(ranges::begin(r), ranges::end(r));
+  }
+
+  template <std::input_iterator I, std::sentinel_for<I> S>
+    requires(not std::same_as<I, S>)
+  constexpr void assign(I i, S s) {
+    using CI = std::common_iterator<I, S>;
+    this->assign(CI(i), CI(s));
+  }
+};
+} // namespace detail
+
+// FIXME: keep these hacks until Clang implements CTAD for aliases
+#if __clang__
+template <typename T> struct Vector : detail::VectorMixin<std::vector<T>> {
+  using mixin = detail::VectorMixin<std::vector<T>>;
+  using mixin::mixin;
+};
+
+template <typename T, size_t N = 64 / sizeof(T)>
+struct SmallVector : detail::VectorMixin<boost::container::small_vector<T, N>> {
+  using mixin = detail::VectorMixin<boost::container::small_vector<T, N>>;
+  using mixin::mixin;
+};
+
+template <typename T> struct TinyVector : SmallVector<T> {
+  using SmallVector<T>::SmallVector;
+};
+
+template <typename T, size_t N>
+struct StaticVector
+    : detail::VectorMixin<boost::container::static_vector<T, N>> {
+  using mixin = detail::VectorMixin<boost::container::static_vector<T, N>>;
+  using mixin::mixin;
+};
+#else
+template <typename T> using Vector = detail::VectorMixin<std::vector<T>>;
+
+template <typename T, size_t N = 64 / sizeof(T)>
+using SmallVector = detail::VectorMixin<boost::container::small_vector<T, N>>;
+
+// Typedef for ranges::to
+template <typename T> using TinyVector = SmallVector<T>;
+
+template <typename T, size_t N>
+using StaticVector = detail::VectorMixin<boost::container::static_vector<T, N>>;
+#endif
 } // namespace ren
