@@ -193,6 +193,8 @@ VkSemaphore VulkanDevice::createBinarySemaphore() {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
   };
   VkSemaphore semaphore;
+  // FIXME: Windows :/
+#undef CreateSemaphore
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
                 "Vulkan: Failed to create binary semaphore");
   return semaphore;

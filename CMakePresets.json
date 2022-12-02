@@ -11,7 +11,22 @@
         "BUILD_EXAMPLES": "ON",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "REN_VULKAN_VALIDATION": "ON"
+      }
+    },
+    {
+      "name": "mingw-devel",
+      "displayName": "Development Config (MinGW)",
+      "description": "Development build for MinGW on Linux with debug info and assertions",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/mingw-devel",
+      "cacheVariables": {
+        "BUILD_EXAMPLES": "ON",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "REN_VULKAN_VALIDATION": "OFF"
       }
     },
     {
