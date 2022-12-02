@@ -9,6 +9,9 @@ find_package(range-v3 REQUIRED)
 add_subdirectory(${EXTERNAL_DIR}/SlotMap ${CMAKE_CURRENT_BINARY_DIR}/SlotMap)
 
 add_subdirectory(Vulkan)
+if (WIN32)
+  add_subdirectory(DirectX12)
+endif()
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})

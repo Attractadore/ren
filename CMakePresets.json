@@ -26,7 +26,8 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_VULKAN_VALIDATION": "OFF"
+        "REN_VULKAN_VALIDATION": "OFF",
+        "REN_DIRECTX12_DEBUG": "OFF"
       }
     },
     {
