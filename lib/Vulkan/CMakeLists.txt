@@ -1,5 +1,6 @@
 set(VULKAN_HEADERS_DIR ${EXTERNAL_DIR}/Vulkan-Headers)
 set(VMA_DIR ${EXTERNAL_DIR}/VulkanMemoryAllocator)
+set(REN_VULKAN_VALIDATION TRUE CACHE BOOL "Enable Vulkan validation layer")
 
 add_subdirectory(${VULKAN_HEADERS_DIR} ${CMAKE_CURRENT_BINARY_DIR}/Vulkan-Headers)
 
@@ -23,3 +24,4 @@ target_link_libraries(
   ren-vk
   PUBLIC ren
   PRIVATE VulkanDispatchTable Support vma)
+target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION=${REN_VULKAN_VALIDATION})

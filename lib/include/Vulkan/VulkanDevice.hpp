@@ -9,6 +9,8 @@
 #include <chrono>
 
 namespace ren {
+class VulkanSwapchain;
+
 enum class SemaphoreWaitResult {
   Ready,
   Timeout,
@@ -37,6 +39,8 @@ public:
   ~VulkanDevice();
 
   static uint32_t getRequiredAPIVersion() { return VK_API_VERSION_1_3; }
+  static std::span<const char *const> getRequiredLayers();
+  static std::span<const char *const> getRequiredExtensions();
 
   const VulkanDispatchTable &getDispatchTable() const { return m_vk; }
 
@@ -82,5 +86,7 @@ public:
   createCommandBufferPool(unsigned pipeline_depth) override;
 
   SyncObject createSyncObject(const SyncDesc &desc) override;
+
+  std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 };
 } // namespace ren

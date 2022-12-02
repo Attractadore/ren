@@ -1,11 +1,12 @@
 #pragma once
 #include "Support/Vector.hpp"
 #include "Swapchain.hpp"
-#include "VulkanDevice.hpp"
 #include "VulkanTexture.hpp"
 #include "ren/ren-vk.h"
 
 namespace ren {
+class VulkanDevice;
+
 class VulkanSwapchain final : public Swapchain {
   VulkanDevice *m_device;
   VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;

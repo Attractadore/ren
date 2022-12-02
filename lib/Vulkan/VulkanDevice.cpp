@@ -1,4 +1,5 @@
 #include "Vulkan/VulkanDevice.hpp"
+#include "Support/Array.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Vector.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
@@ -10,6 +11,21 @@
 #include <array>
 
 namespace ren {
+std::span<const char *const> VulkanDevice::getRequiredLayers() {
+  static constexpr auto layers = makeArray<const char *>(
+#if REN_VULKAN_VALIDATION
+      "VK_LAYER_KHRONOS_validation"
+#endif
+  );
+
+  return layers;
+}
+
+std::span<const char *const> VulkanDevice::getRequiredExtensions() {
+  static constexpr auto extensions = makeArray<const char *>();
+  return extensions;
+}
+
 namespace {
 int findQueueFamilyWithCapabilities(VulkanDevice *device, VkQueueFlags caps) {
   unsigned qcnt = 0;
@@ -237,5 +253,10 @@ SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
                          device->DestroySemaphore(semaphore);
                        }),
   };
+}
+
+std::unique_ptr<VulkanSwapchain>
+VulkanDevice::createSwapchain(VkSurfaceKHR surface) {
+  return std::make_unique<VulkanSwapchain>(this, surface);
 }
 } // namespace ren

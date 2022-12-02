@@ -1,11 +1,10 @@
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Support/Errors.hpp"
+#include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/algorithm.hpp>
-
-#include <span>
 
 namespace ren {
 namespace {
