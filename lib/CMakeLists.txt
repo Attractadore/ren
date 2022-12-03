@@ -18,7 +18,11 @@ target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
 target_link_libraries(Support INTERFACE SlotMap Boost::container
                                         range-v3::range-v3)
 
-add_library(ren SHARED ren.cpp RenderGraph.cpp Scene.cpp)
+add_library(ren SHARED ren.cpp
+  CommandAllocator.cpp
+  RenderGraph.cpp
+  Scene.cpp
+)
 target_include_directories(ren PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(ren PRIVATE Support)
 

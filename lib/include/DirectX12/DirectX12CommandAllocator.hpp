@@ -6,15 +6,15 @@
 
 namespace ren {
 class DirectX12CommandAllocator final : public CommandAllocator {
+private:
+  void waitForFrame(uint64_t frame) override;
+  void beginFrameImpl() override;
+  void endFrameImpl() override;
+
 public:
   DirectX12CommandAllocator(ComPtr<ID3D12Device> device,
-                            unsigned pipeline_depth);
-
-  unsigned getPipelineDepth() const override;
+                            uint64_t pipeline_depth);
 
   CommandBuffer *allocateCommandBuffer() override;
-
-  void beginFrame() override;
-  void endFrame() override;
 };
 } // namespace ren
