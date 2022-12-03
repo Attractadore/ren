@@ -66,7 +66,8 @@ DirectX12Device::createRenderGraphBuilder() {
 
 std::unique_ptr<ren::CommandAllocator>
 DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
-  return std::make_unique<DirectX12CommandAllocator>(m_device, pipeline_depth);
+  return std::make_unique<DirectX12CommandAllocator>(
+      m_device.Get(), m_graphics_queue.Get(), pipeline_depth);
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {

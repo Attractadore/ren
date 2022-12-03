@@ -13,4 +13,8 @@ inline void throwIfFailed(bool good, const char *msg) {
     throw std::runtime_error{msg};
   }
 }
+
+template <typename P> void throwIfFailed(P *ptr, const char *msg) {
+  throwIfFailed(ptr != nullptr, msg);
+}
 } // namespace ren
