@@ -14,8 +14,11 @@ file(WRITE ${D3D12MA_PATCH} "
 ")
 target_precompile_headers(D3D12MemoryAllocator PRIVATE ${D3D12MA_PATCH})
 
-add_library(ren-dx12 SHARED ren-dx12.cpp DirectX12Device.cpp
-                            DirectX12Swapchain.cpp)
+add_library(ren-dx12 SHARED ren-dx12.cpp
+  DirectX12CommandAllocator.cpp
+  DirectX12Device.cpp
+  DirectX12Swapchain.cpp
+)
 target_include_directories(ren-dx12 PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(
   ren-dx12

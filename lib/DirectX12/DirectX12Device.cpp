@@ -1,7 +1,7 @@
 #include "DirectX12/DirectX12Device.hpp"
+#include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/Errors.hpp"
-#include "Support/ComPtr.hpp"
 
 #include <d3d12sdklayers.h>
 #include <dxgi1_3.h>
@@ -23,7 +23,7 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   {
     ComPtr<ID3D12Debug> debug_controller;
     throwIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)),
-                  "DirectX 12: Failed to get debug controller");
+                  "D3D12: Failed to get debug controller");
     debug_controller->EnableDebugLayer();
   }
 #endif
@@ -42,7 +42,7 @@ DirectX12Device::DirectX12Device(LUID adapter) {
 
   throwIfFailed(D3D12CreateDevice(m_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                                   IID_PPV_ARGS(&m_device)),
-                "DirectX 12: Failed to create device");
+                "D3D12: Failed to create device");
 
   D3D12_COMMAND_QUEUE_DESC queue_desc = {
       .Type = D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -50,7 +50,7 @@ DirectX12Device::DirectX12Device(LUID adapter) {
 
   throwIfFailed(m_device->CreateCommandQueue(&queue_desc,
                                              IID_PPV_ARGS(&m_graphics_queue)),
-                "DirectX 12: Failed to create graphics queue");
+                "D3D12: Failed to create graphics queue");
 }
 
 std::unique_ptr<DirectX12Swapchain>
@@ -66,7 +66,7 @@ DirectX12Device::createRenderGraphBuilder() {
 
 std::unique_ptr<ren::CommandAllocator>
 DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
-  DIRECTX12_UNIMPLEMENTED;
+  return std::make_unique<DirectX12CommandAllocator>(m_device, pipeline_depth);
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
