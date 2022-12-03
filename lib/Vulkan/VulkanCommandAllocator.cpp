@@ -17,7 +17,7 @@ VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice *device,
 }
 
 VulkanCommandAllocator::~VulkanCommandAllocator() {
-  m_device->waitForSemaphore(m_frame_semaphore, getFrameNumber());
+  waitForFrame(getFrameNumber());
   m_device->DestroySemaphore(m_frame_semaphore);
 }
 
@@ -38,7 +38,10 @@ void VulkanCommandAllocator::waitForFrame(uint64_t frame) {
   m_device->waitForSemaphore(m_frame_semaphore, frame);
 }
 
-void VulkanCommandAllocator::beginFrameImpl() { getFrameCommandPool().reset(); }
+void VulkanCommandAllocator::beginFrameImpl() {
+  getFrameCommandPool().reset();
+  m_frame_cmd_buffers.clear();
+}
 
 void VulkanCommandAllocator::endFrameImpl() {
   VkSemaphoreSubmitInfo signal_info = {
