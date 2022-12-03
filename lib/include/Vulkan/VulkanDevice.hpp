@@ -2,8 +2,8 @@
 #include "Device.hpp"
 #include "Support/Errors.hpp"
 #include "Support/FlatMap.hpp"
+#include "VMA.h"
 #include "VulkanDispatchTable.hpp"
-#include "vma.h"
 
 #include <cassert>
 #include <chrono>
