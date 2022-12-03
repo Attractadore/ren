@@ -24,4 +24,8 @@ target_link_libraries(
   ren-vk
   PUBLIC ren
   PRIVATE VulkanDispatchTable Support vma)
-target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION=${REN_VULKAN_VALIDATION})
+target_compile_definitions(ren-vk PRIVATE)
+if(REN_VULKAN_VALIDATION)
+  message(STATUS "Enable Vulkan validation layer")
+  target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION)
+endif()
