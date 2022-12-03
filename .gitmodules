@@ -10,3 +10,9 @@
 [submodule "external/VulkanMemoryAllocator"]
 	path = external/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "external/D3D12MemoryAllocator"]
+	path = external/D3D12MemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
+[submodule "external/DirectX-Headers"]
+	path = external/DirectX-Headers
+	url = https://github.com/microsoft/DirectX-Headers
