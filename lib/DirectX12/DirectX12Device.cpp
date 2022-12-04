@@ -1,5 +1,6 @@
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
+#include "DirectX12/DirectX12RenderGraph.hpp"
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/Errors.hpp"
 
@@ -61,7 +62,7 @@ DirectX12Device::createSwapchain(HWND hwnd) {
 
 std::unique_ptr<RenderGraph::Builder>
 DirectX12Device::createRenderGraphBuilder() {
-  DIRECTX12_UNIMPLEMENTED;
+  return std::make_unique<DirectX12RenderGraph::Builder>(this);
 }
 
 std::unique_ptr<ren::CommandAllocator>
