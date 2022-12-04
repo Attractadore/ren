@@ -5,4 +5,11 @@ public:
   CreateDeviceApp() : AppBase("Create Device (DirectX 12)") {}
 };
 
-int main() { CreateDeviceApp().run(); }
+int main() {
+  try {
+    CreateDeviceApp().run();
+  } catch (const std::exception &e) {
+    std::cerr << e.what() << "\n";
+    return -1;
+  }
+}
