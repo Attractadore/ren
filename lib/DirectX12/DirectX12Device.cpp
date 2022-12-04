@@ -1,7 +1,9 @@
 #include "DirectX12/DirectX12Device.hpp"
+#include "DirectX12/DXGIFormat.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12RenderGraph.hpp"
 #include "DirectX12/DirectX12Swapchain.hpp"
+#include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
 
 #include <d3d12sdklayers.h>
@@ -45,6 +47,16 @@ DirectX12Device::DirectX12Device(LUID adapter) {
                                   IID_PPV_ARGS(&m_device)),
                 "D3D12: Failed to create device");
 
+  D3D12MA::ALLOCATOR_DESC allocator_desc = {
+      .pDevice = m_device.Get(),
+      .pAdapter = m_adapter.Get(),
+  };
+
+  D3D12MA::Allocator *allocator;
+  throwIfFailed(D3D12MA::CreateAllocator(&allocator_desc, &allocator),
+                "D3D12MA: Failed to create allocator");
+  m_allocator = allocator;
+
   D3D12_COMMAND_QUEUE_DESC queue_desc = {
       .Type = D3D12_COMMAND_LIST_TYPE_DIRECT,
   };
@@ -72,7 +84,31 @@ DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
-  DIRECTX12_UNIMPLEMENTED;
+  D3D12_RESOURCE_DESC resource_desc = {
+      .Dimension = getD3D12ResourceDimension(desc.type),
+      .Width = desc.width,
+      .Height = desc.height,
+      .DepthOrArraySize = desc.layers,
+      .MipLevels = desc.levels,
+      .Format = getDXGIFormat(desc.format),
+      .SampleDesc = {.Count = 1},
+      .Flags = getD3D12ResourceFlags(desc.usage),
+  };
+
+  D3D12MA::ALLOCATION_DESC allocation_desc = {.HeapType =
+                                                  D3D12_HEAP_TYPE_DEFAULT};
+
+  D3D12MA::Allocation *allocation;
+  throwIfFailed(m_allocator->CreateResource(&allocation_desc, &resource_desc,
+                                            D3D12_RESOURCE_STATE_COMMON,
+                                            nullptr, &allocation, IID_NULL,
+                                            nullptr),
+                "D3D12MA: Failed to create texture");
+  return {
+      .desc = desc,
+      .handle = AnyRef(allocation->GetResource(),
+                       [allocation](void *) { allocation->Release(); }),
+  };
 }
 
 SyncObject DirectX12Device::createSyncObject(const ren::SyncDesc &desc) {

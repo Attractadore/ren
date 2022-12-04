@@ -12,9 +12,11 @@ enum class TextureType {
 
 enum class TextureUsage {
   RenderTarget = 1 << 0,
-  TransferSRC = 1 << 1,
-  TransferDST = 1 << 2,
-  Storage = 1 << 3,
+  DepthStencilTarget = 1 << 1,
+  TransferSRC = 1 << 2,
+  TransferDST = 1 << 3,
+  Storage = 1 << 4,
+  Sample = 1 << 5,
 };
 
 template <> struct EnableFlags<TextureUsage> {
@@ -29,11 +31,11 @@ struct TextureDesc {
   TextureUsageFlags usage;
   unsigned width = 1;
   unsigned height = 1;
-  unsigned layers = 1;
   union {
-    unsigned depth = 1;
-    unsigned levels;
+    unsigned short depth = 1;
+    unsigned short layers;
   };
+  unsigned short levels = 1;
 };
 
 struct Texture {

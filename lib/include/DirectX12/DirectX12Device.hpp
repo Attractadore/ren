@@ -1,4 +1,5 @@
 #pragma once
+#include "D3D12MA.hpp"
 #include "Device.hpp"
 #include "Support/ComPtr.hpp"
 
@@ -12,6 +13,7 @@ class DirectX12Device final : public Device {
   ComPtr<IDXGIFactory2> m_factory;
   ComPtr<IDXGIAdapter1> m_adapter;
   ComPtr<ID3D12Device> m_device;
+  ComPtr<D3D12MA::Allocator> m_allocator;
   ComPtr<ID3D12CommandQueue> m_graphics_queue;
 
 public:

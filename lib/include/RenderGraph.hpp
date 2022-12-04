@@ -24,10 +24,10 @@ struct RGTextureDesc {
   unsigned width = 1;
   unsigned height = 1;
   union {
-    unsigned depth = 1;
-    unsigned layers;
+    unsigned short depth = 1;
+    unsigned short layers;
   };
-  unsigned levels = 1;
+  unsigned short levels = 1;
 };
 
 struct RGSyncDesc {
