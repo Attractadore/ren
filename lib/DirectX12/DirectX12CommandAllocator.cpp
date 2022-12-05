@@ -67,4 +67,6 @@ void DirectX12CommandAllocator::beginFrameImpl() {
 void DirectX12CommandAllocator::endFrameImpl() {
   m_queue->Signal(m_fence.Get(), getFrameNumber());
 }
+
+void DirectX12CommandAllocator::flush() { DIRECTX12_UNIMPLEMENTED; }
 } // namespace ren

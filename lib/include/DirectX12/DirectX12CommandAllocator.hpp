@@ -28,5 +28,9 @@ public:
 
   DirectX12CommandBuffer *allocateDirectX12CommandBuffer();
   CommandBuffer *allocateCommandBuffer() override;
+
+  ID3D12CommandQueue* getQueue() { return m_queue; }
+
+  void flush();
 };
 } // namespace ren

@@ -30,5 +30,7 @@ public:
 
   void close() override;
   void reset(ID3D12CommandAllocator *command_allocator);
+
+  ID3D12GraphicsCommandList* get() { return m_cmd_list.Get(); }
 };
 } // namespace ren
