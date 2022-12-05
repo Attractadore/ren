@@ -8,6 +8,7 @@ target_include_directories(
   D3D12MA
   PUBLIC ${D3D12MA_DIR}/include ${REN_PRIVATE_INCLUDE_DIR}
   PRIVATE ${D3D12MA_DIR}/src)
+target_link_libraries(D3D12MA PUBLIC d3d12 dxgi dxguid)
 target_compile_features(D3D12MA PUBLIC cxx_std_14)
 
 add_library(ren-dx12 SHARED ren-dx12.cpp
@@ -26,6 +27,7 @@ if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG)
 endif()
+target_compile_definitions(ren-dx12 PRIVATE NOMINMAX)
 
 target_sources(
   ren-dx12
