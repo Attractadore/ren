@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "configurePresets": [
     {
       "name": "devel",
@@ -12,7 +12,8 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_VULKAN_VALIDATION": "ON"
+        "REN_VULKAN_VALIDATION": "ON",
+        "REN_DIRECTX12_DEBUG": "ON"
       }
     },
     {
@@ -34,10 +35,11 @@
       "name": "release",
       "displayName": "Release Config",
       "description": "Release build",
-      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "REN_VULKAN_VALIDATION": "OFF",
+        "REN_DIRECTX12_DEBUG": "OFF"
       }
     }
   ]
