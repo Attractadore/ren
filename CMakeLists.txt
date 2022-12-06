@@ -12,10 +12,11 @@ set(REN_DIRECTX12_TARGETS RenDirectX12Targets)
 
 add_subdirectory(lib)
 
-set(BUILD_EXAMPLES
+set(REN_BUILD_EXAMPLES
     FALSE
     CACHE BOOL "Build example excutables")
-if(${BUILD_EXAMPLES})
+if(REN_BUILD_EXAMPLES)
+  message(STATUS "Build examples")
   add_subdirectory(examples)
 endif()
 

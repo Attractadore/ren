@@ -1,5 +1,5 @@
 set(REN_VULKAN_VALIDATION
-    TRUE
+    OFF
     CACHE BOOL "Enable Vulkan validation layer")
 
 set(VULKAN_HEADERS_DIR ${EXTERNAL_DIR}/Vulkan-Headers)

@@ -1,5 +1,9 @@
-set(REN_LOG_SEVERITY "ERROR;WARN;INFO"
-  CACHE STRING "Enable logging for these severity levels (Available levels are: ERROR, WARN, INFO, DEBUG)")
+set(REN_LOG_SEVERITY
+    "ERROR;WARN;INFO"
+    CACHE
+      STRING
+      "Enable logging for these severity levels (Available levels are: ERROR, WARN, INFO, DEBUG)"
+)
 
 set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -13,8 +17,10 @@ find_package(range-v3 REQUIRED)
 find_package(fmt REQUIRED)
 add_subdirectory(${EXTERNAL_DIR}/SlotMap ${CMAKE_CURRENT_BINARY_DIR}/SlotMap)
 
+message(STATUS "Enable Vulkan renderer")
 add_subdirectory(Vulkan)
 if(WIN32)
+  message(STATUS "Enable DirectX 12 renderer")
   add_subdirectory(DirectX12)
 endif()
 
@@ -27,7 +33,7 @@ foreach(SEVERITY ${REN_LOG_SEVERITY})
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
 endforeach()
 
-if (REN_ERROR_LOG)
+if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
 

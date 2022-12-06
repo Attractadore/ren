@@ -8,12 +8,13 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/devel",
       "cacheVariables": {
-        "BUILD_EXAMPLES": "ON",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_VULKAN_VALIDATION": "ON",
-        "REN_DIRECTX12_DEBUG": "ON"
+        "REN_BUILD_EXAMPLES": "ON",
+        "REN_DIRECTX12_DEBUG": "ON",
+        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
+        "REN_VULKAN_VALIDATION": "ON"
       }
     },
     {
@@ -23,12 +24,11 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/mingw-devel",
       "cacheVariables": {
-        "BUILD_EXAMPLES": "ON",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_VULKAN_VALIDATION": "OFF",
-        "REN_DIRECTX12_DEBUG": "OFF"
+        "REN_BUILD_EXAMPLES": "ON",
+        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG"
       }
     },
     {
@@ -37,9 +37,7 @@
       "description": "Release build",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "REN_VULKAN_VALIDATION": "OFF",
-        "REN_DIRECTX12_DEBUG": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ]

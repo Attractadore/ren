@@ -1,9 +1,9 @@
 set(REN_DIRECTX12_DEBUG
-    TRUE
+    OFF
     CACHE BOOL "Enable DirectX 12 debug layer")
 
 set(D3D12MA_DIR ${EXTERNAL_DIR}/D3D12MemoryAllocator)
-add_library(D3D12MA D3D12MA.cpp)
+add_library(D3D12MA STATIC D3D12MA.cpp)
 target_include_directories(
   D3D12MA
   PUBLIC ${D3D12MA_DIR}/include ${REN_PRIVATE_INCLUDE_DIR}
@@ -11,13 +11,10 @@ target_include_directories(
 target_link_libraries(D3D12MA PUBLIC d3d12 dxgi dxguid)
 target_compile_features(D3D12MA PUBLIC cxx_std_14)
 
-add_library(ren-dx12 SHARED ren-dx12.cpp
-  DirectX12CommandAllocator.cpp
-  DirectX12CommandBuffer.cpp
-  DirectX12Device.cpp
-  DirectX12RenderGraph.cpp
-  DirectX12Swapchain.cpp
-)
+add_library(
+  ren-dx12 SHARED
+  ren-dx12.cpp DirectX12CommandAllocator.cpp DirectX12CommandBuffer.cpp
+  DirectX12Device.cpp DirectX12RenderGraph.cpp DirectX12Swapchain.cpp)
 target_include_directories(ren-dx12 PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(
   ren-dx12
