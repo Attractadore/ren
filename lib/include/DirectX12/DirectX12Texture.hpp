@@ -37,7 +37,7 @@ constexpr auto getTextureType = inverseEnumMap<detail::resource_dimension_map>;
 
 inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
   auto flags = detail::getD3D12ResourceFlagsHelper(usage);
-  if (!usage.isSet(TextureUsage::Sample)) {
+  if (!usage.isSet(TextureUsage::Sampled)) {
     flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
   }
   return flags;
@@ -46,7 +46,7 @@ inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
 inline TextureUsageFlags getTextureUsageFlags(D3D12_RESOURCE_FLAGS flags) {
   auto usage = detail::getTextureUsageHelper(flags);
   if (!(flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)) {
-    usage |= TextureUsage::Sample;
+    usage |= TextureUsage::Sampled;
   }
   return usage;
 }

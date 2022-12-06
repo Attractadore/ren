@@ -11,16 +11,14 @@ static_assert(ScopedEnum<TestEnumClass>);
 enum TestEnum {};
 static_assert(not ScopedEnum<TestEnum>);
 
+template <ScopedEnum E> constexpr bool EnableFlags = false;
+
 struct EmptyFlagsT {};
 } // namespace detail
-inline constexpr detail::EmptyFlagsT EmptyFlags;
-
-template <detail::ScopedEnum E> struct EnableFlags {
-  static constexpr bool enable = false;
-};
+constexpr detail::EmptyFlagsT EmptyFlags;
 
 template <typename E>
-concept FlagsEnum = EnableFlags<E>::enable;
+concept FlagsEnum = detail::EnableFlags<E>;
 
 template <FlagsEnum E> class Flags {
   E m_value = E(0);
@@ -77,10 +75,6 @@ public:
   constexpr bool operator==(const Flags &) const noexcept = default;
 };
 
-#define ENABLE_FLAGS(E)                                                        \
-  template <> struct EnableFlags<E> { static constexpr bool enable = true; };  \
-  using E##Flags = Flags<E>;
-
 template <FlagsEnum E> constexpr E operator&(E l, E r) {
   using U = std::underlying_type_t<E>;
   return static_cast<E>(static_cast<U>(l) & static_cast<U>(r));
@@ -95,4 +89,20 @@ template <FlagsEnum E> constexpr Flags<E> operator|(E l, E r) {
 template <FlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
   return r | l;
 }
+
+// clang-format off
+#define BEGIN_FLAGS_ENUM(E)                                                    \
+  namespace detail::E##_impl {                                                 \
+    constexpr auto first = __LINE__;                                           \
+    enum class E
+
+#define FLAG(flag) flag = 1 << (__LINE__ - first - 1)
+
+#define END_FLAGS_ENUM(E)                                                      \
+  ;                                                                            \
+  }                                                                            \
+  using E = detail::E##_impl::E;                                               \
+  template <> constexpr inline bool detail::EnableFlags<E> = true;             \
+  using E##Flags = Flags<E>
+// clang-format on
 } // namespace ren

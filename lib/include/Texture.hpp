@@ -10,20 +10,16 @@ enum class TextureType {
   e3D,
 };
 
-enum class TextureUsage {
-  RenderTarget = 1 << 0,
-  DepthStencilTarget = 1 << 1,
-  TransferSRC = 1 << 2,
-  TransferDST = 1 << 3,
-  Storage = 1 << 4,
-  Sample = 1 << 5,
-};
-
-template <> struct EnableFlags<TextureUsage> {
-  static constexpr bool enable = true;
-};
-
-using TextureUsageFlags = Flags<TextureUsage>;
+// clang-format off
+BEGIN_FLAGS_ENUM(TextureUsage) {
+  FLAG(RenderTarget),
+  FLAG(DepthStencilTarget),
+  FLAG(TransferSRC),
+  FLAG(TransferDST),
+  FLAG(Storage),
+  FLAG(Sampled),
+} END_FLAGS_ENUM(TextureUsage);
+// clang-format on
 
 struct TextureDesc {
   TextureType type = TextureType::e2D;

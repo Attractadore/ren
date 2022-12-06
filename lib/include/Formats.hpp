@@ -15,14 +15,14 @@ enum class Format {
   RGBA16F,
 };
 
-enum class FormatProperty {
-  Color = 1 << 0,
-  SRGB = 1 << 1,
-  Depth = 1 << 2,
-  Stencil = 1 << 3,
-};
-
-ENABLE_FLAGS(FormatProperty);
+// clang-format off
+BEGIN_FLAGS_ENUM(FormatProperty) {
+  FLAG(Color),
+  FLAG(SRGB),
+  FLAG(Depth),
+  FLAG(Stencil),
+} END_FLAGS_ENUM(FormatProperty);
+// clang-format on
 
 struct FormatProperties {
   FormatPropertyFlags flags;
