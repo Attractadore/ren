@@ -1,90 +1,140 @@
 #pragma once
 #include "Flags.hpp"
 
-#include <array>
+#include <boost/preprocessor/seq.hpp>
+
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
-#include <utility>
 
 namespace ren {
+#define REN_DEFINE_ENUM(E, fields) enum class E { BOOST_PP_SEQ_ENUM(fields) }
+
+#define REN_DEFINE_ENUM_WITH_UNKNOWN(E, fields)                                \
+  enum class E { Unknown = 0, Undefined = 0, BOOST_PP_SEQ_ENUM(fields) }
+
 namespace detail {
-template <typename E> struct FlagsTypeImpl { using type = uint64_t; };
-
-template <FlagsEnum E> struct FlagsTypeImpl<E> { using type = Flags<E>; };
-
-template <typename E> using FlagsType = typename FlagsTypeImpl<E>::type;
-
-template <auto Map>
-inline constexpr auto reverse_map = [] {
-  constexpr auto N = Map.size();
-  using P = typename decltype(Map)::value_type;
-  using From = typename P::first_type;
-  using To = typename P::second_type;
-  std::array<std::pair<To, From>, N> reverse_map;
-  for (int i = 0; i < N; ++i) {
-    reverse_map[i] = {Map[i].second, Map[i].first};
+template <size_t N>
+using FlagsSizeT = decltype([] {
+  if constexpr (N <= 32) {
+    return uint32_t();
+  } else if constexpr (N <= 64) {
+    return uint64_t();
   }
-  return reverse_map;
-}();
+}());
+}
+
+#define REN_DETAIL_DEFINE_FLAGS_ENUM_FIELD(r, data, i, field) field = 1 << i,
+
+#define REN_DEFINE_FLAGS_ENUM(E, fields)                                       \
+  enum class E : detail::FlagsSizeT<BOOST_PP_SEQ_SIZE(fields)>{                \
+      BOOST_PP_SEQ_FOR_EACH_I(REN_DETAIL_DEFINE_FLAGS_ENUM_FIELD, ~, fields)}; \
+  ENABLE_FLAGS(E)
+
+#define REN_DEFINE_FLAGS_ENUM_WITH_UNKNOWN(E, fields)                          \
+  enum class E : detail::FlagsSizeT<BOOST_PP_SEQ_SIZE(fields)>{                \
+      Unknown = 0, Undefined = 0,                                              \
+      BOOST_PP_SEQ_FOR_EACH_I(REN_DETAIL_DEFINE_FLAGS_ENUM_FIELD, ~, fields)}; \
+  ENABLE_FLAGS(E)
+
+namespace detail {
+template <typename E> struct EnumConvert;
+template <typename E> using EnumConvertT = typename EnumConvert<E>::type;
+
+template <auto From> constexpr bool FieldIsMapped = false;
+template <auto From>
+requires FieldIsMapped<From>
+constexpr EnumConvertT<decltype(From)> EnumFieldMap;
+
+template <typename E> struct EnumFlags { using type = E; };
+template <FlagsEnum E> struct EnumFlags<E> { using type = Flags<E>; };
+template <typename E> using EnumFlagsT = typename EnumFlags<E>::type;
+template <typename E>
+using EnumConvertFlagsT = typename EnumFlags<EnumConvertT<E>>::type;
 } // namespace detail
 
-template <typename From, typename To, unsigned N,
-          std::array<std::pair<From, To>, N> Map>
-constexpr detail::FlagsType<To> remapFlags(detail::FlagsType<From> from_flags) {
-  detail::FlagsType<To> to_flags{};
-  for (const auto &[ff, tf] : Map) {
-    if (int(from_flags & ff)) {
-      to_flags |= tf;
-    }
+#define REN_MAP_TYPE(From, To)                                                 \
+  template <> struct detail::EnumConvert<From> { using type = To; };
+
+#define REN_MAP_FIELD(from, to)                                                \
+  template <> inline constexpr bool detail::FieldIsMapped<from> = true;        \
+  template <> inline constexpr auto detail::EnumFieldMap<from> = to
+
+#define REN_ENUM_FLAGS(E, F)                                                   \
+  template <> struct detail::EnumFlags<E> { using type = F; };
+
+#define REN_DETAIL_DEFINE_FROM_CASE(r, data, e)                                \
+  case e:                                                                      \
+    return detail::EnumFieldMap<e>;
+
+#define REN_MAP_ENUM(name, E, fields)                                          \
+  inline detail::EnumConvertT<E> name(E from) {                                \
+    using enum E;                                                              \
+    switch (from) {                                                            \
+      BOOST_PP_SEQ_FOR_EACH(REN_DETAIL_DEFINE_FROM_CASE, ~, fields)            \
+    }                                                                          \
+    /* Silence GCC -Wreturn-type */                                            \
+    assert(!"Unhandled enum value");                                           \
+  }
+
+namespace detail {
+template <typename E>
+concept EnumWithUnknown = requires {
+  E::Unknown;
+};
+} // namespace detail
+
+#define REN_DETAIL_DEFINE_TO_CASE(r, data, e)                                  \
+  case detail::EnumFieldMap<e>:                                                \
+    return e;
+
+#define REN_REVERSE_MAP_ENUM(name, E, fields)                                  \
+  inline E name(detail::EnumConvertT<E> from) {                                \
+    using enum E;                                                              \
+    switch (from) {                                                            \
+    default: {                                                                 \
+      if constexpr (detail::EnumWithUnknown<E>) {                              \
+        return static_cast<E>(0);                                              \
+      } else {                                                                 \
+        assert(!"Unhandled enum value");                                       \
+      }                                                                        \
+    }                                                                          \
+      BOOST_PP_SEQ_FOR_EACH(REN_DETAIL_DEFINE_TO_CASE, ~, fields)              \
+    }                                                                          \
+  }
+
+namespace detail {
+template <typename E, auto convert>
+EnumConvertFlagsT<E> mapFlags(EnumFlagsT<E> from_flags) {
+  EnumConvertFlagsT<E> to_flags{};
+  auto flags = static_cast<typename Flags<E>::Underlying>(from_flags.get());
+  while (flags) {
+    auto lsb_mask = flags & (~flags + 1);
+    auto flag = flags & lsb_mask;
+    to_flags |= convert(static_cast<E>(flag));
+    flags = flags & ~lsb_mask;
   }
   return to_flags;
 }
 
-template <typename From, typename To, unsigned N,
-          std::array<std::pair<From, To>, N> Map>
-constexpr To remapEnum(From from) {
-  for (auto [fe, te] : Map) {
-    if (from == fe) {
-      return te;
-    }
+template <typename E, auto convert>
+EnumFlagsT<E> reverseMapFlags(EnumConvertFlagsT<E> flags) {
+  EnumFlagsT<E> to_flags{};
+  while (flags) {
+    auto lsb_mask = flags & (~flags + 1);
+    auto flag = flags & lsb_mask;
+    to_flags |= convert(static_cast<EnumConvertT<E>>(flag));
+    flags = static_cast<EnumConvertFlagsT<E>>(flags & ~lsb_mask);
   }
-  assert(!"Unknown enum value");
-  return To();
+  return to_flags;
 }
+} // namespace detail
 
-template <auto Map>
-inline constexpr auto flagsMap = [] {
-  constexpr auto N = Map.size();
-  using P = typename decltype(Map)::value_type;
-  using From = typename P::first_type;
-  using To = typename P::second_type;
-  return remapFlags<From, To, N, Map>;
-}();
+#define REN_MAP_ENUM_AND_FLAGS(name, E, fields)                                \
+  REN_MAP_ENUM(name, E, fields)                                                \
+  constexpr auto name##Flags = detail::mapFlags<E, name>
 
-template <auto Map>
-inline constexpr auto inverseFlagsMap = [] {
-  constexpr auto N = Map.size();
-  using P = typename decltype(Map)::value_type;
-  using To = typename P::first_type;
-  using From = typename P::second_type;
-  return remapFlags<From, To, N, detail::reverse_map<Map>>;
-}();
-
-template <auto Map>
-inline constexpr auto enumMap = [] {
-  constexpr auto N = Map.size();
-  using P = typename decltype(Map)::value_type;
-  using From = typename P::first_type;
-  using To = typename P::second_type;
-  return remapEnum<From, To, N, Map>;
-}();
-
-template <auto Map>
-inline constexpr auto inverseEnumMap = [] {
-  constexpr auto N = Map.size();
-  using P = typename decltype(Map)::value_type;
-  using To = typename P::first_type;
-  using From = typename P::second_type;
-  return remapEnum<From, To, N, detail::reverse_map<Map>>;
-}();
+#define REN_REVERSE_MAP_ENUM_AND_FLAGS(name, E, fields)                        \
+  REN_REVERSE_MAP_ENUM(name, E, fields)                                        \
+  constexpr auto name##Flags = detail::reverseMapFlags<E, name>
 } // namespace ren

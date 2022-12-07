@@ -1,5 +1,4 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
-#include "Support/Enum.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
@@ -120,13 +119,6 @@ VkImageBlit getVkImageBlit(const BlitRegion &region) {
           },
   };
 }
-
-constexpr auto filter_map = std::array{
-    std::pair(Filter::Nearest, VK_FILTER_NEAREST),
-    std::pair(Filter::Linear, VK_FILTER_LINEAR),
-};
-
-constexpr auto getVkFilter = enumMap<filter_map>;
 } // namespace
 
 void VulkanCommandBuffer::blit(Texture src, Texture dst,

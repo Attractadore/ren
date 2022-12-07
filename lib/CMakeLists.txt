@@ -11,7 +11,7 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 find_package(
   Boost
-  COMPONENTS container
+  COMPONENTS container headers
   REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(fmt REQUIRED)
@@ -26,7 +26,7 @@ endif()
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
-target_link_libraries(Support INTERFACE SlotMap Boost::container
+target_link_libraries(Support INTERFACE SlotMap Boost::container Boost::headers
                                         range-v3::range-v3 fmt::fmt)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")

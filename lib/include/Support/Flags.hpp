@@ -90,6 +90,10 @@ template <FlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
   return r | l;
 }
 
+#define ENABLE_FLAGS(E)                                                        \
+  template <> constexpr inline bool detail::EnableFlags<E> = true;             \
+  using E##Flags = Flags<E>
+
 // clang-format off
 #define BEGIN_FLAGS_ENUM(E)                                                    \
   namespace detail::E##_impl {                                                 \
@@ -102,7 +106,6 @@ template <FlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
   ;                                                                            \
   }                                                                            \
   using E = detail::E##_impl::E;                                               \
-  template <> constexpr inline bool detail::EnableFlags<E> = true;             \
-  using E##Flags = Flags<E>
+  ENABLE_FLAGS(E)
 // clang-format on
 } // namespace ren

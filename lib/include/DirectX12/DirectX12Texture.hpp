@@ -1,42 +1,46 @@
 #pragma once
-#include "Support/Enum.hpp"
 #include "Texture.hpp"
 
 #include <d3d12.h>
 
 namespace ren {
+REN_MAP_TYPE(TextureType, D3D12_RESOURCE_DIMENSION);
+REN_MAP_FIELD(TextureType::e1D, D3D12_RESOURCE_DIMENSION_TEXTURE1D);
+REN_MAP_FIELD(TextureType::e2D, D3D12_RESOURCE_DIMENSION_TEXTURE2D);
+REN_MAP_FIELD(TextureType::e3D, D3D12_RESOURCE_DIMENSION_TEXTURE3D);
+
+REN_MAP_ENUM(getD3D12ResourceDimension, TextureType, REN_TEXTURE_TYPES);
+REN_REVERSE_MAP_ENUM(getTextureType, TextureType, REN_TEXTURE_TYPES);
+
+#define REN_D3D12_TEXTURE_USAGES (RenderTarget)(DepthStencilTarget)(Storage)
+REN_MAP_TYPE(TextureUsage, D3D12_RESOURCE_FLAGS);
+REN_MAP_FIELD(TextureUsage::RenderTarget,
+              D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+REN_MAP_FIELD(TextureUsage::DepthStencilTarget,
+              D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+REN_MAP_FIELD(TextureUsage::Storage,
+              D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
 namespace detail {
-constexpr std::array resource_dimension_map = {
-    std::pair(TextureType::e1D, D3D12_RESOURCE_DIMENSION_TEXTURE1D),
-    std::pair(TextureType::e2D, D3D12_RESOURCE_DIMENSION_TEXTURE2D),
-    std::pair(TextureType::e3D, D3D12_RESOURCE_DIMENSION_TEXTURE3D),
-};
-
-template <> struct FlagsTypeImpl<D3D12_RESOURCE_FLAGS> {
-  using type = D3D12_RESOURCE_FLAGS;
-};
-
-constexpr std::array resource_flag_map = {
-    std::pair(TextureUsage::RenderTarget,
-              D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
-    std::pair(TextureUsage::DepthStencilTarget,
-              D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-    std::pair(TextureUsage::Storage,
-              D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-};
-
-constexpr auto getD3D12ResourceFlagsHelper =
-    flagsMap<resource_flag_map>;
-constexpr auto getTextureUsageHelper =
-    inverseFlagsMap<resource_flag_map>;
+REN_MAP_ENUM(getD3D12ResourceUsage, TextureUsage, REN_D3D12_TEXTURE_USAGES);
+REN_REVERSE_MAP_ENUM(getTextureUsage, TextureUsage, REN_D3D12_TEXTURE_USAGES);
 } // namespace detail
 
-constexpr auto getD3D12ResourceDimension =
-    enumMap<detail::resource_dimension_map>;
-constexpr auto getTextureType = inverseEnumMap<detail::resource_dimension_map>;
+#undef REN_D3D12_TEXTURE_USAGES
+
+inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlag(TextureUsage usage) {
+  switch (usage) {
+  case TextureUsage::TransferSRC:
+  case TextureUsage::TransferDST:
+  case TextureUsage::Sampled:
+    return {};
+  default:
+    return detail::getD3D12ResourceUsage(usage);
+  }
+}
 
 inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
-  auto flags = detail::getD3D12ResourceFlagsHelper(usage);
+  auto flags = detail::mapFlags<TextureUsage, getD3D12ResourceFlag>(usage);
   if (!usage.isSet(TextureUsage::Sampled)) {
     flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
   }
@@ -44,10 +48,13 @@ inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
 }
 
 inline TextureUsageFlags getTextureUsageFlags(D3D12_RESOURCE_FLAGS flags) {
-  auto usage = detail::getTextureUsageHelper(flags);
+  auto usage =
+      detail::reverseMapFlags<TextureUsage, detail::getTextureUsage>(flags);
   if (!(flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)) {
     usage |= TextureUsage::Sampled;
   }
+  usage |= TextureUsage::TransferSRC;
+  usage |= TextureUsage::TransferDST;
   return usage;
 }
 

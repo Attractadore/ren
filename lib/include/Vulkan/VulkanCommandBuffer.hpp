@@ -1,32 +1,26 @@
 #pragma once
 #include "CommandBuffer.hpp"
-#include "Support/Enum.hpp"
 #include "Support/Vector.hpp"
 #include "VulkanSync.hpp"
 
 namespace ren {
-namespace detail {
-constexpr auto render_target_load_op_map = std::array{
-    std::pair(RenderTargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR),
-    std::pair(RenderTargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD),
-    std::pair(RenderTargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE),
-};
+REN_MAP_TYPE(RenderTargetLoadOp, VkAttachmentLoadOp);
+REN_MAP_FIELD(RenderTargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
+REN_MAP_FIELD(RenderTargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
+REN_MAP_FIELD(RenderTargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+REN_MAP_ENUM(getVkAttachmentLoadOp, RenderTargetLoadOp,
+             REN_RENDER_TARGET_LOAD_OPS);
 
-constexpr auto render_target_store_op_map = std::array{
-    std::pair(RenderTargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE),
-    std::pair(RenderTargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE),
-};
-} // namespace detail
+REN_MAP_TYPE(RenderTargetStoreOp, VkAttachmentStoreOp);
+REN_MAP_FIELD(RenderTargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
+REN_MAP_FIELD(RenderTargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+REN_MAP_ENUM(getVkAttachmentStoreOp, RenderTargetStoreOp,
+             REN_RENDER_TARGET_STORE_OPS);
 
-constexpr auto getVkAttachmentLoadOp =
-    enumMap<detail::render_target_load_op_map>;
-constexpr auto getRenderTargetLoadOp =
-    inverseEnumMap<detail::render_target_load_op_map>;
-
-constexpr auto getVkAttachmentStoreOp =
-    enumMap<detail::render_target_store_op_map>;
-constexpr auto getRenderTargetStoreOp =
-    inverseEnumMap<detail::render_target_store_op_map>;
+REN_MAP_TYPE(Filter, VkFilter);
+REN_MAP_FIELD(Filter::Nearest, VK_FILTER_NEAREST);
+REN_MAP_FIELD(Filter::Linear, VK_FILTER_LINEAR);
+REN_MAP_ENUM(getVkFilter, Filter, REN_FILTERS);
 
 class VulkanDevice;
 class VulkanCommandAllocator;

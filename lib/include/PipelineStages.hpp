@@ -1,23 +1,11 @@
 #pragma once
-#include "Support/Flags.hpp"
+#include "Support/Enum.hpp"
 
 namespace ren {
-// clang-format off
-BEGIN_FLAGS_ENUM(PipelineStage) {
-  FLAG(ColorOutput),
-  FLAG(Present),
-  FLAG(Compute),
-  FLAG(Blit),
-} END_FLAGS_ENUM(PipelineStage);
-// clang-format on
+#define REN_PIPELINE_STAGES (ColorOutput)(Present)(Compute)(Blit)
+REN_DEFINE_FLAGS_ENUM(PipelineStage, REN_PIPELINE_STAGES);
 
-// clang-format off
-BEGIN_FLAGS_ENUM(MemoryAccess) {
-  FLAG(ColorWrite),
-  FLAG(StorageRead),
-  FLAG(StorageWrite),
-  FLAG(TransferRead),
-  FLAG(TransferWrite),
-} END_FLAGS_ENUM(MemoryAccess);
-// clang-format on
+#define REN_MEMORY_ACCESSES                                                    \
+  (ColorWrite)(StorageRead)(StorageWrite)(TransferRead)(TransferWrite)
+REN_DEFINE_FLAGS_ENUM(MemoryAccess, REN_MEMORY_ACCESSES);
 }; // namespace ren

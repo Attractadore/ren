@@ -1,5 +1,6 @@
 #pragma once
 #include "PipelineStages.hpp"
+#include "Support/Enum.hpp"
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
 #include "Sync.hpp"
@@ -8,16 +9,11 @@
 #include <optional>
 
 namespace ren {
-enum class RenderTargetLoadOp {
-  Clear,
-  Load,
-  Discard,
-};
+#define REN_RENDER_TARGET_LOAD_OPS (Clear)(Load)(Discard)
+REN_DEFINE_ENUM(RenderTargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
 
-enum class RenderTargetStoreOp {
-  Store,
-  Discard,
-};
+#define REN_RENDER_TARGET_STORE_OPS (Store)(Discard)
+REN_DEFINE_ENUM(RenderTargetStoreOp, REN_RENDER_TARGET_STORE_OPS);
 
 struct RenderTargetConfig {
   TextureView view;
@@ -50,10 +46,8 @@ struct BlitRegion {
   unsigned dst_offsets[2][3];
 };
 
-enum class Filter {
-  Nearest,
-  Linear,
-};
+#define REN_FILTERS (Nearest)(Linear)
+REN_DEFINE_ENUM(Filter, REN_FILTERS);
 
 class CommandBuffer {
 public:

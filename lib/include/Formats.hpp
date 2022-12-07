@@ -1,30 +1,16 @@
 #pragma once
-#include "Support/Flags.hpp"
+#include "Support/Enum.hpp"
 
 namespace ren {
-enum class Format {
-  Undefined = 0,
-  RGB8,
-  RGB8_SRGB,
-  BGR8,
-  BGR8_SRGB,
-  RGBA8,
-  RGBA8_SRGB,
-  BGRA8,
-  BGRA8_SRGB,
-  RGBA16F,
-};
+#define REN_FORMATS /*(RGB8)(RGB8_SRGB)(BGR8)(BGR8_SRGB)*/                     \
+  (RGBA8)(RGBA8_SRGB)(BGRA8)(BGRA8_SRGB)(RGBA16F)
 
-// clang-format off
-BEGIN_FLAGS_ENUM(FormatProperty) {
-  FLAG(Color),
-  FLAG(SRGB),
-  FLAG(Depth),
-  FLAG(Stencil),
-} END_FLAGS_ENUM(FormatProperty);
-// clang-format on
+REN_DEFINE_ENUM_WITH_UNKNOWN(Format, REN_FORMATS);
+
+#define REN_FORMAT_PROPERTIES (Color)(SRGB)(Depth)(Stencil)
+REN_DEFINE_FLAGS_ENUM(FormatProperty, REN_FORMAT_PROPERTIES);
 
 struct FormatProperties {
   FormatPropertyFlags flags;
 };
-}
+} // namespace ren

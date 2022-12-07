@@ -1,8 +1,6 @@
 #pragma once
 #include "Formats.hpp"
 
-#include <cassert>
-
 namespace ren {
 inline FormatProperties getFormatProperties(Format format) {
   using enum Format;
@@ -11,15 +9,19 @@ inline FormatProperties getFormatProperties(Format format) {
   default:
     assert(!"Unknown Format");
     return {};
+#if 0
   case RGB8:
   case BGR8:
+#endif
   case RGBA8:
   case BGRA8:
   case RGBA16F:
     return {.flags = Color};
+#if 0
   case RGB8_SRGB:
-  case RGBA8_SRGB:
   case BGR8_SRGB:
+#endif
+  case RGBA8_SRGB:
   case BGRA8_SRGB:
     return {.flags = Color | SRGB};
   }

@@ -1,25 +1,15 @@
 #pragma once
 #include "Formats.hpp"
-#include "Support/Flags.hpp"
+#include "Support/Enum.hpp"
 #include "Support/Ref.hpp"
 
 namespace ren {
-enum class TextureType {
-  e1D,
-  e2D,
-  e3D,
-};
+#define REN_TEXTURE_TYPES (e1D)(e2D)(e3D)
+REN_DEFINE_ENUM_WITH_UNKNOWN(TextureType, REN_TEXTURE_TYPES);
 
-// clang-format off
-BEGIN_FLAGS_ENUM(TextureUsage) {
-  FLAG(RenderTarget),
-  FLAG(DepthStencilTarget),
-  FLAG(TransferSRC),
-  FLAG(TransferDST),
-  FLAG(Storage),
-  FLAG(Sampled),
-} END_FLAGS_ENUM(TextureUsage);
-// clang-format on
+#define REN_TEXTURE_USAGES                                                     \
+  (RenderTarget)(DepthStencilTarget)(TransferSRC)(TransferDST)(Storage)(Sampled)
+REN_DEFINE_FLAGS_ENUM(TextureUsage, REN_TEXTURE_USAGES);
 
 struct TextureDesc {
   TextureType type = TextureType::e2D;
@@ -48,9 +38,8 @@ struct TextureSubresource {
   auto operator<=>(const TextureSubresource &) const = default;
 };
 
-enum class TextureViewType {
-  e2D,
-};
+#define REN_TEXTURE_VIEW_TYPES (e2D)
+REN_DEFINE_ENUM_WITH_UNKNOWN(TextureViewType, REN_TEXTURE_VIEW_TYPES);
 
 struct TextureViewDesc {
   TextureViewType type = TextureViewType::e2D;
