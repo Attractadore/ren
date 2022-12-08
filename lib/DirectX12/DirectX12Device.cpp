@@ -10,15 +10,13 @@
 #include <dxgi1_3.h>
 
 namespace ren {
-namespace {
-constexpr UINT factory_flags =
-#if REN_DIRECTX12_DEBUG
-    DXGI_CREATE_FACTORY_DEBUG |
-#endif
-    0;
-} // namespace
-
 DirectX12Device::DirectX12Device(LUID adapter) {
+  constexpr UINT factory_flags =
+#if REN_DIRECTX12_DEBUG
+      DXGI_CREATE_FACTORY_DEBUG |
+#endif
+      0;
+
   throwIfFailed(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&m_factory)),
                 "DXGI: Failed to create factory");
 
@@ -61,15 +59,15 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       .Type = D3D12_COMMAND_LIST_TYPE_DIRECT,
   };
 
-  throwIfFailed(m_device->CreateCommandQueue(&queue_desc,
-                                             IID_PPV_ARGS(&m_graphics_queue)),
-                "D3D12: Failed to create graphics queue");
+  throwIfFailed(
+      m_device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&m_direct_queue)),
+      "D3D12: Failed to create graphics queue");
 }
 
 std::unique_ptr<DirectX12Swapchain>
 DirectX12Device::createSwapchain(HWND hwnd) {
   return std::make_unique<DirectX12Swapchain>(m_factory.Get(),
-                                              m_graphics_queue.Get(), hwnd);
+                                              m_direct_queue.Get(), hwnd);
 }
 
 std::unique_ptr<RenderGraph::Builder>
@@ -79,8 +77,7 @@ DirectX12Device::createRenderGraphBuilder() {
 
 std::unique_ptr<ren::CommandAllocator>
 DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
-  return std::make_unique<DirectX12CommandAllocator>(
-      m_device.Get(), m_graphics_queue.Get(), pipeline_depth);
+  return std::make_unique<DirectX12CommandAllocator>(this, pipeline_depth);
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
@@ -111,7 +108,15 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
   };
 }
 
-SyncObject DirectX12Device::createSyncObject(const ren::SyncDesc &desc) {
+SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {
+  DIRECTX12_UNIMPLEMENTED;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12Device::getRTV(const TextureView &view) {
+  DIRECTX12_UNIMPLEMENTED;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12Device::getDSV(const TextureView &view) {
   DIRECTX12_UNIMPLEMENTED;
 }
 } // namespace ren

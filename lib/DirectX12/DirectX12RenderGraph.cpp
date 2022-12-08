@@ -102,12 +102,13 @@ std::unique_ptr<RenderGraph> DirectX12RenderGraph::Builder::createRenderGraph(
 
 void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
   auto *dx_cmd_alloc = static_cast<DirectX12CommandAllocator *>(cmd_alloc);
+  auto *dx_device = dx_cmd_alloc->getDevice();
   auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
 
   dx_swapchain->AcquireBuffer(*dx_cmd_alloc);
   setTexture(m_swapchain_buffer, dx_swapchain->getTexture());
 
-  auto *queue = dx_cmd_alloc->getQueue();
+  auto *queue = dx_device->getDirectQueue();
   SmallVector<ID3D12CommandList *, 16> cmd_lists;
   for (const auto &batch : m_batches) {
     for (auto &&[barrier, pass] :

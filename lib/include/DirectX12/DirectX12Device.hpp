@@ -2,6 +2,7 @@
 #include "D3D12MA.hpp"
 #include "Device.hpp"
 #include "Support/ComPtr.hpp"
+#include "Support/Errors.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_2.h>
@@ -14,7 +15,7 @@ class DirectX12Device final : public Device {
   ComPtr<IDXGIAdapter1> m_adapter;
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
-  ComPtr<ID3D12CommandQueue> m_graphics_queue;
+  ComPtr<ID3D12CommandQueue> m_direct_queue;
 
 public:
   DirectX12Device(LUID adapter);
@@ -28,5 +29,38 @@ public:
   Texture createTexture(const ren::TextureDesc &desc) override;
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
+
+  ID3D12CommandQueue *getDirectQueue() { return m_direct_queue.Get(); }
+
+  D3D12_CPU_DESCRIPTOR_HANDLE getRTV(const ren::TextureView &view);
+  D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const ren::TextureView &view);
+
+  ID3D12CommandAllocator *createCommandAllocator(D3D12_COMMAND_LIST_TYPE type) {
+    ID3D12CommandAllocator *cmd_alloc;
+    throwIfFailed(
+        m_device->CreateCommandAllocator(type, IID_PPV_ARGS(&cmd_alloc)),
+        "D3D12: Failed to create command allocator");
+    return cmd_alloc;
+  }
+
+  ID3D12GraphicsCommandList *
+  createCommandList(D3D12_COMMAND_LIST_TYPE type,
+                    ID3D12CommandAllocator *pCommandAllocator,
+                    ID3D12PipelineState *pInitialState) {
+    ID3D12GraphicsCommandList *cmd_list;
+    throwIfFailed(m_device->CreateCommandList(0, type, pCommandAllocator,
+                                              pInitialState,
+                                              IID_PPV_ARGS(&cmd_list)),
+                  "D3D12: Failed to create command list");
+    return cmd_list;
+  }
+
+  ID3D12Fence *createFence(UINT64 initial_value, D3D12_FENCE_FLAGS flags) {
+    ID3D12Fence *fence;
+    throwIfFailed(
+        m_device->CreateFence(initial_value, flags, IID_PPV_ARGS(&fence)),
+        "D3D12: Failed to create fence");
+    return fence;
+  }
 };
 } // namespace ren

@@ -1,25 +1,17 @@
 #include "DirectX12/DirectX12CommandAllocator.hpp"
+#include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/Errors.hpp"
 
 namespace ren {
-DirectX12CommandAllocator::DirectX12CommandAllocator(ID3D12Device *device,
-                                                     ID3D12CommandQueue *queue,
+DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
                                                      uint64_t pipeline_depth)
     : CommandAllocator(pipeline_depth) {
   m_device = device;
-  m_queue = queue;
-
   for (int i = 0; i < pipeline_depth; ++i) {
-    m_frame_cmd_allocators.emplace_back();
-    throwIfFailed(m_device->CreateCommandAllocator(
-                      D3D12_COMMAND_LIST_TYPE_DIRECT,
-                      IID_PPV_ARGS(&m_frame_cmd_allocators.back())),
-                  "D3D12: Failed to create command allocator");
+    m_frame_cmd_allocators.emplace_back(
+        m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT));
   }
-
-  throwIfFailed(m_device->CreateFence(getFrameNumber(), D3D12_FENCE_FLAG_NONE,
-                                      IID_PPV_ARGS(&m_fence)),
-                "D3D12: Failed to create fence");
+  m_fence = m_device->createFence(getFrameNumber(), D3D12_FENCE_FLAG_NONE);
   m_event = CreateEvent(nullptr, false, false, nullptr);
   throwIfFailed(m_event, "WIN32: Failed to create event handle");
 }
@@ -37,7 +29,7 @@ DirectX12CommandBuffer *
 DirectX12CommandAllocator::allocateDirectX12CommandBuffer() {
   auto cmd_alloc = getFrameCommandAllocator();
   if (m_used_cmd_buffer_count == m_cmd_buffers.size()) {
-    m_cmd_buffers.emplace_back(this, m_device, cmd_alloc);
+    m_cmd_buffers.emplace_back(m_device, this, cmd_alloc);
   } else {
     m_cmd_buffers.back().reset(cmd_alloc);
   }
@@ -65,7 +57,7 @@ void DirectX12CommandAllocator::beginFrameImpl() {
 }
 
 void DirectX12CommandAllocator::endFrameImpl() {
-  m_queue->Signal(m_fence.Get(), getFrameNumber());
+  m_device->getDirectQueue()->Signal(m_fence.Get(), getFrameNumber());
 }
 
 void DirectX12CommandAllocator::flush() { DIRECTX12_UNIMPLEMENTED; }
