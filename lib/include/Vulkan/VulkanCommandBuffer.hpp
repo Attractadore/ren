@@ -4,17 +4,18 @@
 #include "VulkanSync.hpp"
 
 namespace ren {
-REN_MAP_TYPE(RenderTargetLoadOp, VkAttachmentLoadOp);
-REN_MAP_FIELD(RenderTargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
-REN_MAP_FIELD(RenderTargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
-REN_MAP_FIELD(RenderTargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
-REN_MAP_ENUM(getVkAttachmentLoadOp, RenderTargetLoadOp,
-             REN_RENDER_TARGET_LOAD_OPS);
+REN_MAP_TYPE(TargetLoadOp, VkAttachmentLoadOp);
+REN_MAP_FIELD(TargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
+REN_MAP_FIELD(TargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
+REN_MAP_FIELD(TargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+REN_MAP_FIELD(TargetLoadOp::None, VK_ATTACHMENT_LOAD_OP_NONE_EXT);
+REN_MAP_ENUM(getVkAttachmentLoadOp, TargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
 
-REN_MAP_TYPE(RenderTargetStoreOp, VkAttachmentStoreOp);
-REN_MAP_FIELD(RenderTargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
-REN_MAP_FIELD(RenderTargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
-REN_MAP_ENUM(getVkAttachmentStoreOp, RenderTargetStoreOp,
+REN_MAP_TYPE(TargetStoreOp, VkAttachmentStoreOp);
+REN_MAP_FIELD(TargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
+REN_MAP_FIELD(TargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+REN_MAP_FIELD(TargetStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
+REN_MAP_ENUM(getVkAttachmentStoreOp, TargetStoreOp,
              REN_RENDER_TARGET_STORE_OPS);
 
 REN_MAP_TYPE(Filter, VkFilter);
@@ -39,8 +40,7 @@ public:
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthRenderTargetConfig> depth_render_target,
-      std::optional<StencilRenderTargetConfig> stencil_render_target) override;
+      std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
   void blit(Texture src, Texture dst, std::span<const BlitRegion> regions,

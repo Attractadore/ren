@@ -21,8 +21,7 @@ public:
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthRenderTargetConfig> depth_render_target,
-      std::optional<StencilRenderTargetConfig> stencil_render_target) override;
+      std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
   void blit(Texture src, Texture dst, std::span<const BlitRegion> regions,
@@ -31,6 +30,6 @@ public:
   void close() override;
   void reset(ID3D12CommandAllocator *command_allocator);
 
-  ID3D12GraphicsCommandList* get() { return m_cmd_list.Get(); }
+  ID3D12GraphicsCommandList *get() { return m_cmd_list.Get(); }
 };
 } // namespace ren

@@ -24,8 +24,7 @@ void DirectX12CommandBuffer::signal(SyncObject sync,
 void DirectX12CommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
     SmallVector<RenderTargetConfig, 8> render_targets,
-    std::optional<DepthRenderTargetConfig> depth_render_target,
-    std::optional<StencilRenderTargetConfig> stencil_render_target) {
+    std::optional<DepthStencilTargetConfig> depth_stencil_target) {
   DIRECTX12_UNIMPLEMENTED;
 }
 

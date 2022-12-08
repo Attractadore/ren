@@ -9,30 +9,26 @@
 #include <optional>
 
 namespace ren {
-#define REN_RENDER_TARGET_LOAD_OPS (Clear)(Load)(Discard)
-REN_DEFINE_ENUM(RenderTargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
+#define REN_RENDER_TARGET_LOAD_OPS (Clear)(Load)(Discard)(None)
+REN_DEFINE_ENUM(TargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
 
-#define REN_RENDER_TARGET_STORE_OPS (Store)(Discard)
-REN_DEFINE_ENUM(RenderTargetStoreOp, REN_RENDER_TARGET_STORE_OPS);
+#define REN_RENDER_TARGET_STORE_OPS (Store)(Discard)(None)
+REN_DEFINE_ENUM(TargetStoreOp, REN_RENDER_TARGET_STORE_OPS);
 
 struct RenderTargetConfig {
   TextureView view;
-  RenderTargetLoadOp load_op = RenderTargetLoadOp::Clear;
-  RenderTargetStoreOp store_op = RenderTargetStoreOp::Store;
+  TargetLoadOp load_op = TargetLoadOp::Clear;
+  TargetStoreOp store_op = TargetStoreOp::Store;
   std::array<float, 4> clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
-struct DepthRenderTargetConfig {
+struct DepthStencilTargetConfig {
   TextureView view;
-  RenderTargetLoadOp load_op = RenderTargetLoadOp::Clear;
-  RenderTargetStoreOp store_op = RenderTargetStoreOp::Store;
+  TargetLoadOp depth_load_op = TargetLoadOp::Clear;
+  TargetStoreOp depth_store_op = TargetStoreOp::Store;
+  TargetLoadOp stencil_load_op = TargetLoadOp::None;
+  TargetStoreOp stencil_store_op = TargetStoreOp::None;
   float clear_depth = 0.0f;
-};
-
-struct StencilRenderTargetConfig {
-  TextureView view;
-  RenderTargetLoadOp load_op = RenderTargetLoadOp::Clear;
-  RenderTargetStoreOp store_op = RenderTargetStoreOp::Store;
   uint32_t clear_stencil;
 };
 
@@ -59,11 +55,10 @@ public:
   virtual void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthRenderTargetConfig> depth_render_target,
-      std::optional<StencilRenderTargetConfig> stencil_render_target) = 0;
+      std::optional<DepthStencilTargetConfig> depth_stencil_target) = 0;
   void beginRendering(Texture render_target) {
     beginRendering(0, 0, render_target.desc.width, render_target.desc.height,
-                   {{.view = {.texture = std::move(render_target)}}}, {}, {});
+                   {{.view = {.texture = std::move(render_target)}}}, {});
   }
   virtual void endRendering() = 0;
 
