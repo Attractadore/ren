@@ -5,6 +5,8 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
+#include "Format/Texture.hpp"
+#include "Support/Log.hpp"
 
 #include <d3d12sdklayers.h>
 #include <dxgi1_3.h>
@@ -62,6 +64,11 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   throwIfFailed(
       m_device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&m_direct_queue)),
       "D3D12: Failed to create graphics queue");
+
+  m_rtv_pool = std::make_unique<DirectX12DescriptorPool>(
+      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+  m_dsv_pool = std::make_unique<DirectX12DescriptorPool>(
+      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 }
 
 std::unique_ptr<DirectX12Swapchain>
@@ -104,23 +111,96 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
   return {
       .desc = desc,
       .handle = AnyRef(allocation->GetResource(),
-                       [allocation](void *) { allocation->Release(); }),
+                       [this, allocation](ID3D12Resource *resource) {
+                         destroyResourceData(resource);
+                         allocation->Release();
+                       }),
   };
 }
 
-SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {
-  DIRECTX12_UNIMPLEMENTED;
+void DirectX12Device::destroyResourceData(ID3D12Resource *resource) {
+  destroyResourceViews(resource);
+}
+
+void DirectX12Device::destroyResourceRTVs(ID3D12Resource *resource) {
+  for (auto &&[_, desciptor] : m_rtvs[resource]) {
+    m_rtv_pool->free({.cpu_handle = desciptor});
+  }
+  m_rtvs.erase(resource);
+}
+
+void DirectX12Device::destroyResourceDSVs(ID3D12Resource *resource) {
+  for (auto &&[_, desciptor] : m_dsvs[resource]) {
+    m_dsv_pool->free({.cpu_handle = desciptor});
+  }
+  m_dsvs.erase(resource);
+}
+
+void DirectX12Device::destroyResourceViews(ID3D12Resource *resource) {
+  destroyResourceRTVs(resource);
+  destroyResourceDSVs(resource);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE
 DirectX12Device::getRTV(const RenderTargetView &rtv) {
-  DIRECTX12_UNIMPLEMENTED;
+  auto *resource = getD3D12Resource(rtv.texture);
+  // TODO: null descriptors
+  assert(resource);
+
+  dx12Log("Get RTV for resource {}", fmt::ptr(resource));
+  dx12Debug("RTV desc: {}", rtv.desc);
+
+  auto [it, inserted] = m_rtvs[resource].insert(rtv.desc, {});
+  auto &handle = std::get<1>(*it);
+  if (inserted) {
+    dx12Log("No existing RTV found, create a new one");
+    handle = m_rtv_pool->allocate().cpu_handle;
+    D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
+        .Format = getDXGIFormat(getRTVFormat(rtv)),
+        .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY,
+        .Texture2DArray = {
+            .MipSlice = rtv.desc.level,
+            .FirstArraySlice = rtv.desc.layer,
+            .ArraySize = 1,
+        }};
+    m_device->CreateRenderTargetView(resource, &rtv_desc, handle);
+  }
+  return handle;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE
 DirectX12Device::getDSV(const DepthStencilView &dsv,
                         TargetStoreOp depth_store_op,
                         TargetStoreOp stencil_store_op) {
+  auto *resource = getD3D12Resource(dsv.texture);
+  dx12Log("Get DSV for resource {}", fmt::ptr(resource));
+  // TODO: null descriptors
+  assert(resource);
+  auto [it, inserted] = m_dsvs[resource].insert(dsv.desc, {});
+  auto &handle = std::get<1>(*it);
+  if (inserted) {
+    dx12Log("Create new DSV for resource {}", fmt::ptr(resource));
+    handle = m_dsv_pool->allocate().cpu_handle;
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {
+        .Format = getDXGIFormat(getDSVFormat(dsv)),
+        .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY,
+        .Texture2DArray = {
+            .MipSlice = dsv.desc.level,
+            .FirstArraySlice = dsv.desc.layer,
+            .ArraySize = 1,
+        }};
+    if (depth_store_op == TargetStoreOp::None) {
+      dsv_desc.Flags |= D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+    }
+    if (stencil_store_op == TargetStoreOp::None) {
+      dsv_desc.Flags |= D3D12_DSV_FLAG_READ_ONLY_STENCIL;
+    }
+    m_device->CreateDepthStencilView(resource, &dsv_desc, handle);
+  }
+  return handle;
+}
+
+SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {
   DIRECTX12_UNIMPLEMENTED;
 }
 } // namespace ren

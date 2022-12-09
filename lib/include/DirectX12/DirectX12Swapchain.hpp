@@ -9,10 +9,12 @@
 
 namespace ren {
 class DirectX12CommandAllocator;
+class DirectX12Device;
 
 class DirectX12Swapchain final : public Swapchain {
   static constexpr auto c_buffer_count = 3;
 
+  DirectX12Device *m_device;
   HWND m_hwnd;
   ComPtr<IDXGISwapChain3> m_swapchain;
   SmallVector<Texture, 3> m_textures;
@@ -21,8 +23,7 @@ private:
   void setTextures();
 
 public:
-  DirectX12Swapchain(IDXGIFactory2 *factory, ID3D12CommandQueue *queue,
-                     HWND hwnd);
+  DirectX12Swapchain(DirectX12Device *device, HWND hwnd);
 
   void setSize(unsigned width, unsigned height) override {}
 

@@ -33,6 +33,8 @@ struct RenderTargetViewDesc {
   Format format = Format::Undefined;
   unsigned level = 0;
   unsigned layer = 0;
+
+  constexpr auto operator<=>(const RenderTargetViewDesc &) const = default;
 };
 
 struct RenderTargetView {
@@ -48,6 +50,8 @@ inline Format getRTVFormat(const RenderTargetView &rtv) {
 struct DepthStencilViewDesc {
   unsigned level = 0;
   unsigned layer = 0;
+
+  constexpr auto operator<=>(const DepthStencilViewDesc &) const = default;
 };
 
 struct DepthStencilView {

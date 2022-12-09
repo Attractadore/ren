@@ -1,12 +1,13 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DXGIFormat.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
+#include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
 
 namespace ren {
-DirectX12Swapchain::DirectX12Swapchain(IDXGIFactory2 *factory,
-                                       ID3D12CommandQueue *queue, HWND hwnd) {
+DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
+  m_device = device;
   m_hwnd = hwnd;
   DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {
       .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -15,8 +16,9 @@ DirectX12Swapchain::DirectX12Swapchain(IDXGIFactory2 *factory,
       .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
   };
   ComPtr<IDXGISwapChain1> swapchain;
-  throwIfFailed(factory->CreateSwapChainForHwnd(queue, hwnd, &swapchain_desc,
-                                                nullptr, nullptr, &swapchain),
+  throwIfFailed(m_device->getDXGIFactory()->CreateSwapChainForHwnd(
+                    m_device->getDirectQueue(), m_hwnd, &swapchain_desc,
+                    nullptr, nullptr, &swapchain),
                 "DXGI: Failed to create swapchain");
   throwIfFailed(swapchain.As(&m_swapchain), "DXGI: Failed to create swapchain");
   m_textures.resize(c_buffer_count);
@@ -39,7 +41,10 @@ void DirectX12Swapchain::setTextures() {
                 .layers = desc.DepthOrArraySize,
                 .levels = desc.MipLevels,
             },
-        .handle = AnyRef(surface.Get(), [](void *) {}),
+        .handle = AnyRef(surface.Get(),
+                         [device = m_device](ID3D12Resource *resource) {
+                           device->destroyResourceData(resource);
+                         }),
     };
   }
 }

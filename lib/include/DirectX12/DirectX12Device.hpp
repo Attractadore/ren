@@ -2,8 +2,10 @@
 #include "CommandBuffer.hpp"
 #include "D3D12MA.hpp"
 #include "Device.hpp"
-#include "Support/ComPtr.hpp"
+#include "DirectX12DescriptorPool.hpp"
 #include "Support/Errors.hpp"
+#include "Support/HashMap.hpp"
+#include "Support/LinearMap.hpp"
 
 #include <d3d12.h>
 #include <dxgi1_2.h>
@@ -17,9 +19,24 @@ class DirectX12Device final : public Device {
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
   ComPtr<ID3D12CommandQueue> m_direct_queue;
+  std::unique_ptr<DirectX12DescriptorPool> m_rtv_pool;
+  std::unique_ptr<DirectX12DescriptorPool> m_dsv_pool;
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<RenderTargetViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
+      m_rtvs;
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<DepthStencilViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
+      m_dsvs;
+
+private:
+  void destroyResourceRTVs(ID3D12Resource *resource);
+  void destroyResourceDSVs(ID3D12Resource *resource);
+  void destroyResourceViews(ID3D12Resource *resource);
 
 public:
   DirectX12Device(LUID adapter);
+
+  IDXGIFactory2 *getDXGIFactory() { return m_factory.Get(); }
 
   std::unique_ptr<DirectX12Swapchain> createSwapchain(HWND hwnd);
 
@@ -28,15 +45,16 @@ public:
   createCommandBufferPool(unsigned pipeline_depth) override;
 
   Texture createTexture(const ren::TextureDesc &desc) override;
-
-  SyncObject createSyncObject(const ren::SyncDesc &desc) override;
-
-  ID3D12CommandQueue *getDirectQueue() { return m_direct_queue.Get(); }
+  void destroyResourceData(ID3D12Resource *resource);
 
   D3D12_CPU_DESCRIPTOR_HANDLE getRTV(const RenderTargetView &rtv);
   D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
                                      TargetStoreOp depth_store_op,
                                      TargetStoreOp stencil_store_op);
+
+  SyncObject createSyncObject(const ren::SyncDesc &desc) override;
+
+  ID3D12CommandQueue *getDirectQueue() { return m_direct_queue.Get(); }
 
   ID3D12CommandAllocator *createCommandAllocator(D3D12_COMMAND_LIST_TYPE type) {
     ID3D12CommandAllocator *cmd_alloc;
