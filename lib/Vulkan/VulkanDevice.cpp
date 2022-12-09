@@ -1,14 +1,23 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Support/Array.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Vector.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
-#include <array>
+constexpr bool operator==(const VkImageViewCreateInfo &lhs,
+                          const VkImageViewCreateInfo &rhs) {
+  return lhs.flags == rhs.flags and lhs.viewType == rhs.viewType and
+         lhs.format == rhs.format and
+         lhs.subresourceRange.aspectMask == rhs.subresourceRange.aspectMask and
+         lhs.subresourceRange.baseMipLevel ==
+             rhs.subresourceRange.baseMipLevel and
+         lhs.subresourceRange.levelCount == rhs.subresourceRange.levelCount and
+         lhs.subresourceRange.baseArrayLayer ==
+             rhs.subresourceRange.baseArrayLayer and
+         lhs.subresourceRange.layerCount == rhs.subresourceRange.layerCount;
+}
 
 namespace ren {
 std::span<const char *const> VulkanDevice::getRequiredLayers() {
@@ -17,7 +26,6 @@ std::span<const char *const> VulkanDevice::getRequiredLayers() {
       "VK_LAYER_KHRONOS_validation"
 #endif
   );
-
   return layers;
 }
 
@@ -159,33 +167,54 @@ void VulkanDevice::destroyImageViews(VkImage image) {
   m_image_views.erase(image);
 }
 
-VkImageView VulkanDevice::getVkImageView(const TextureView &view) {
-  auto image = getVkImage(view.texture);
-  auto &image_views = m_image_views[image];
-  auto it = image_views.find(view.desc);
-  if (it != image_views.end()) {
-    return it->second;
-  }
-
+VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
+  auto image = getVkImage(rtv.texture);
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
-      .viewType = getVkImageViewType(view.desc.type),
-      .format = getVkFormat(view.texture.desc.format),
+      .viewType = VK_IMAGE_VIEW_TYPE_2D,
+      .format = getVkFormat(getRTVFormat(rtv)),
       .subresourceRange = {
-          .aspectMask = getFormatAspectFlags(view.texture.desc.format),
-          .baseMipLevel = view.desc.subresource.first_mip_level,
-          .levelCount = view.desc.subresource.mip_level_count,
-          .baseArrayLayer = view.desc.subresource.first_layer,
-          .layerCount = view.desc.subresource.layer_count,
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = rtv.desc.level,
+          .levelCount = 1,
+          .baseArrayLayer = rtv.desc.layer,
+          .layerCount = 1,
       }};
+  return getVkImageViewImpl(image, view_info);
+}
 
-  VkImageView vk_view;
-  throwIfFailed(CreateImageView(&view_info, &vk_view),
-                "Vulkan: Failed to create image view");
-  image_views.insert(std::pair(view.desc, vk_view));
+VkImageView VulkanDevice::getVkImageView(const DepthStencilView &dsv) {
+  auto image = getVkImage(dsv.texture);
+  auto format = getDSVFormat(dsv);
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = image,
+      .viewType = VK_IMAGE_VIEW_TYPE_2D,
+      .format = getVkFormat(format),
+      .subresourceRange = {
+          .aspectMask = getFormatAspectFlags(format),
+          .baseMipLevel = dsv.desc.level,
+          .levelCount = 1,
+          .baseArrayLayer = dsv.desc.layer,
+          .layerCount = 1,
+      }};
+  return getVkImageViewImpl(image, view_info);
+}
 
-  return vk_view;
+VkImageView
+VulkanDevice::getVkImageViewImpl(VkImage image,
+                                 const VkImageViewCreateInfo &view_info) {
+  if (!image) {
+    return VK_NULL_HANDLE;
+  }
+  auto [it, inserted] = m_image_views[image].insert(view_info, VK_NULL_HANDLE);
+  auto &view = std::get<1>(*it);
+  if (inserted) {
+    throwIfFailed(CreateImageView(&view_info, &view),
+                  "Vulkan: Failed to create image view");
+  }
+  return view;
 }
 
 VkSemaphore VulkanDevice::createBinarySemaphore() {

@@ -16,20 +16,20 @@ REN_DEFINE_ENUM(TargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
 REN_DEFINE_ENUM(TargetStoreOp, REN_RENDER_TARGET_STORE_OPS);
 
 struct RenderTargetConfig {
-  TextureView view;
+  RenderTargetView rtv;
   TargetLoadOp load_op = TargetLoadOp::Clear;
   TargetStoreOp store_op = TargetStoreOp::Store;
   std::array<float, 4> clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct DepthStencilTargetConfig {
-  TextureView view;
+  DepthStencilView dsv;
   TargetLoadOp depth_load_op = TargetLoadOp::Clear;
   TargetStoreOp depth_store_op = TargetStoreOp::Store;
   TargetLoadOp stencil_load_op = TargetLoadOp::None;
   TargetStoreOp stencil_store_op = TargetStoreOp::None;
   float clear_depth = 0.0f;
-  uint32_t clear_stencil;
+  uint8_t clear_stencil = 0;
 };
 
 struct BlitRegion {
@@ -52,13 +52,12 @@ public:
   virtual void wait(SyncObject sync, PipelineStageFlags stages) = 0;
   virtual void signal(SyncObject sync, PipelineStageFlags stages) = 0;
 
-  virtual void beginRendering(
-      int x, int y, unsigned width, unsigned height,
-      SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthStencilTargetConfig> depth_stencil_target) = 0;
-  void beginRendering(Texture render_target) {
-    beginRendering(0, 0, render_target.desc.width, render_target.desc.height,
-                   {{.view = {.texture = std::move(render_target)}}}, {});
+  virtual void beginRendering(int x, int y, unsigned width, unsigned height,
+                              SmallVector<RenderTargetConfig, 8> rts,
+                              std::optional<DepthStencilTargetConfig> dst) = 0;
+  void beginRendering(Texture rt) {
+    beginRendering(0, 0, rt.desc.width, rt.desc.height,
+                   {{.rtv = {.texture = std::move(rt)}}}, {});
   }
   virtual void endRendering() = 0;
 

@@ -26,13 +26,6 @@ REN_MAP_ENUM_AND_FLAGS(getVkImageUsage, TextureUsage, REN_TEXTURE_USAGES);
 REN_REVERSE_MAP_ENUM_AND_FLAGS(getTextureUsage, TextureUsage,
                                REN_TEXTURE_USAGES);
 
-REN_MAP_TYPE(TextureViewType, VkImageViewType);
-REN_MAP_FIELD(TextureViewType::e2D, VK_IMAGE_VIEW_TYPE_2D);
-
-REN_MAP_ENUM(getVkImageViewType, TextureViewType, REN_TEXTURE_VIEW_TYPES);
-REN_REVERSE_MAP_ENUM(getTextureViewType, TextureViewType,
-                     REN_TEXTURE_VIEW_TYPES);
-
 inline VkImage getVkImage(const Texture &tex) {
   return reinterpret_cast<VkImage>(tex.handle.get());
 }

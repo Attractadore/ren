@@ -39,8 +39,12 @@ public:
     addFrameResource(std::move(texture.handle));
   }
 
-  void addFrameResource(TextureView view) {
-    addFrameResource(std::move(view.texture));
+  void addFrameResource(RenderTargetView rtv) {
+    addFrameResource(std::move(rtv.texture));
+  }
+
+  void addFrameResource(DepthStencilView dsv) {
+    addFrameResource(std::move(dsv.texture));
   }
 
   void addFrameResource(SyncObject sync) {

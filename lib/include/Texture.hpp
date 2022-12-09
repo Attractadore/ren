@@ -29,27 +29,33 @@ struct Texture {
   AnyRef handle;
 };
 
-struct TextureSubresource {
-  unsigned first_mip_level = 0;
-  unsigned mip_level_count = 1;
-  unsigned first_layer = 0;
-  unsigned layer_count = 1;
-
-  auto operator<=>(const TextureSubresource &) const = default;
+struct RenderTargetViewDesc {
+  Format format = Format::Undefined;
+  unsigned level = 0;
+  unsigned layer = 0;
 };
 
-#define REN_TEXTURE_VIEW_TYPES (e2D)
-REN_DEFINE_ENUM_WITH_UNKNOWN(TextureViewType, REN_TEXTURE_VIEW_TYPES);
-
-struct TextureViewDesc {
-  TextureViewType type = TextureViewType::e2D;
-  TextureSubresource subresource;
-
-  auto operator<=>(const TextureViewDesc &) const = default;
-};
-
-struct TextureView {
-  TextureViewDesc desc;
+struct RenderTargetView {
+  RenderTargetViewDesc desc;
   Texture texture;
 };
+
+inline Format getRTVFormat(const RenderTargetView &rtv) {
+  return rtv.desc.format != Format::Undefined ? rtv.desc.format
+                                              : rtv.texture.desc.format;
+}
+
+struct DepthStencilViewDesc {
+  unsigned level = 0;
+  unsigned layer = 0;
+};
+
+struct DepthStencilView {
+  DepthStencilViewDesc desc;
+  Texture texture;
+};
+
+inline Format getDSVFormat(const DepthStencilView &dsv) {
+  return dsv.texture.desc.format;
+}
 } // namespace ren

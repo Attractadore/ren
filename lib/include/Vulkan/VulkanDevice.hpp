@@ -1,7 +1,7 @@
 #pragma once
 #include "Device.hpp"
 #include "Support/Errors.hpp"
-#include "Support/FlatMap.hpp"
+#include "Support/LinearMap.hpp"
 #include "VMA.h"
 #include "VulkanDispatchTable.hpp"
 
@@ -28,9 +28,12 @@ class VulkanDevice final : public Device,
   VkQueue m_graphics_queue = VK_NULL_HANDLE;
   VulkanDispatchTable m_vk = {};
 
-  HashMap<VkImage, SmallFlatMap<TextureViewDesc, VkImageView, 3>> m_image_views;
+  HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
+      m_image_views;
 
 private:
+  VkImageView getVkImageViewImpl(VkImage image,
+                                 const VkImageViewCreateInfo &view_info);
   void destroyImageViews(VkImage image);
 
 public:
@@ -54,7 +57,8 @@ public:
 
   Texture createTexture(const TextureDesc &desc) override;
 
-  VkImageView getVkImageView(const TextureView &view);
+  VkImageView getVkImageView(const RenderTargetView &rtv);
+  VkImageView getVkImageView(const DepthStencilView &dsv);
 
   VkSemaphore createBinarySemaphore();
   VkSemaphore createTimelineSemaphore(uint64_t initial_value = 0);

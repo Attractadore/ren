@@ -25,11 +25,10 @@ void DirectX12CommandBuffer::signal(SyncObject sync,
 }
 
 namespace {
-UINT getTargetSubresource(const TextureView &view, unsigned plane = 0) {
-  const auto &tex_desc = view.texture.desc;
-  const auto &sr = view.desc.subresource;
-  return plane * (tex_desc.levels * tex_desc.layers) +
-         tex_desc.levels * sr.first_layer + sr.first_mip_level;
+UINT getTargetSubresource(const TextureDesc &tex_desc, unsigned level,
+                          unsigned layer, unsigned plane = 0) {
+  return plane * (tex_desc.levels * tex_desc.layers) + tex_desc.levels * layer +
+         level;
 }
 
 void discardTarget(ID3D12GraphicsCommandList *cmd_list,
@@ -59,10 +58,11 @@ void DirectX12CommandBuffer::beginRendering(
 
   SmallVector<D3D12_CPU_DESCRIPTOR_HANDLE, 8> rtvs;
   for (auto &rt : render_targets) {
-    auto rtv = m_device->getRTV(rt.view);
+    auto rtv = m_device->getRTV(rt.rtv);
     rtvs.push_back(rtv);
-    auto *resource = getD3D12Resource(rt.view.texture);
-    auto sr = getTargetSubresource(rt.view);
+    auto *resource = getD3D12Resource(rt.rtv.texture);
+    auto sr = getTargetSubresource(rt.rtv.texture.desc, rt.rtv.desc.level,
+                                   rt.rtv.desc.layer);
 
     if (rt.load_op == TargetLoadOp::Clear) {
       m_cmd_list->ClearRenderTargetView(rtv, rt.clear_color.data(), 1,
@@ -76,16 +76,18 @@ void DirectX12CommandBuffer::beginRendering(
       rp.discard_subresources.push_back(sr);
     }
 
-    m_parent->addFrameResource(std::move(rt.view));
+    m_parent->addFrameResource(std::move(rt.rtv));
   }
 
   D3D12_CPU_DESCRIPTOR_HANDLE dsv = {};
   if (depth_stencil_target) {
     auto &dst = *depth_stencil_target;
-    dsv = m_device->getDSV(dst.view);
-    auto *resource = getD3D12Resource(dst.view.texture);
-    auto depth_sr = getTargetSubresource(dst.view, 0);
-    auto stencil_sr = getTargetSubresource(dst.view, 1);
+    dsv = m_device->getDSV(dst.dsv, dst.depth_store_op, dst.stencil_store_op);
+    auto *resource = getD3D12Resource(dst.dsv.texture);
+    auto depth_sr = getTargetSubresource(
+        dst.dsv.texture.desc, dst.dsv.desc.level, dst.dsv.desc.layer, 0);
+    auto stencil_sr = getTargetSubresource(
+        dst.dsv.texture.desc, dst.dsv.desc.level, dst.dsv.desc.layer, 1);
 
     D3D12_CLEAR_FLAGS clear_flags{};
     if (dst.depth_load_op == TargetLoadOp::Clear) {
@@ -115,7 +117,7 @@ void DirectX12CommandBuffer::beginRendering(
       rp.discard_subresources.push_back(stencil_sr);
     }
 
-    m_parent->addFrameResource(std::move(dst.view));
+    m_parent->addFrameResource(std::move(dst.dsv));
   }
 
   m_cmd_list->OMSetRenderTargets(rtvs.size(), rtvs.data(), false,

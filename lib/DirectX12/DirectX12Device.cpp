@@ -112,11 +112,15 @@ SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {
   DIRECTX12_UNIMPLEMENTED;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DirectX12Device::getRTV(const TextureView &view) {
+D3D12_CPU_DESCRIPTOR_HANDLE
+DirectX12Device::getRTV(const RenderTargetView &rtv) {
   DIRECTX12_UNIMPLEMENTED;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DirectX12Device::getDSV(const TextureView &view) {
+D3D12_CPU_DESCRIPTOR_HANDLE
+DirectX12Device::getDSV(const DepthStencilView &dsv,
+                        TargetStoreOp depth_store_op,
+                        TargetStoreOp stencil_store_op) {
   DIRECTX12_UNIMPLEMENTED;
 }
 } // namespace ren

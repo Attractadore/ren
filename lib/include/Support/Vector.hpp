@@ -75,4 +75,11 @@ template <typename T> using TinyVector = SmallVector<T>;
 template <typename T, size_t N>
 using StaticVector = detail::VectorMixin<boost::container::static_vector<T, N>>;
 #endif
+
+namespace detail {
+template <size_t N> struct SizedSmallVector {
+  template <typename T> using type = SmallVector<T, N>;
+};
+} // namespace detail
+
 } // namespace ren

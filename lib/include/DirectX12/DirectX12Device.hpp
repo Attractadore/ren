@@ -1,4 +1,5 @@
 #pragma once
+#include "CommandBuffer.hpp"
 #include "D3D12MA.hpp"
 #include "Device.hpp"
 #include "Support/ComPtr.hpp"
@@ -32,8 +33,10 @@ public:
 
   ID3D12CommandQueue *getDirectQueue() { return m_direct_queue.Get(); }
 
-  D3D12_CPU_DESCRIPTOR_HANDLE getRTV(const ren::TextureView &view);
-  D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const ren::TextureView &view);
+  D3D12_CPU_DESCRIPTOR_HANDLE getRTV(const RenderTargetView &rtv);
+  D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
+                                     TargetStoreOp depth_store_op,
+                                     TargetStoreOp stencil_store_op);
 
   ID3D12CommandAllocator *createCommandAllocator(D3D12_COMMAND_LIST_TYPE type) {
     ID3D12CommandAllocator *cmd_alloc;
