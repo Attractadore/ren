@@ -4,12 +4,18 @@
 #include "VulkanSync.hpp"
 
 namespace ren {
-REN_MAP_TYPE(TargetLoadOp, VkAttachmentLoadOp);
-REN_MAP_FIELD(TargetLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
-REN_MAP_FIELD(TargetLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
-REN_MAP_FIELD(TargetLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
-REN_MAP_FIELD(TargetLoadOp::None, VK_ATTACHMENT_LOAD_OP_NONE_EXT);
-REN_MAP_ENUM(getVkAttachmentLoadOp, TargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
+inline VkAttachmentLoadOp getVkAttachmentLoadOp(TargetLoadOp load_op) {
+  using enum TargetLoadOp;
+  switch (load_op) {
+  case Clear:
+    return VK_ATTACHMENT_LOAD_OP_CLEAR;
+  case Discard:
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  case None:
+  case Load:
+    return VK_ATTACHMENT_LOAD_OP_LOAD;
+  }
+}
 
 REN_MAP_TYPE(TargetStoreOp, VkAttachmentStoreOp);
 REN_MAP_FIELD(TargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);

@@ -1,7 +1,6 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
@@ -30,7 +29,9 @@ void VulkanCommandBuffer::beginRendering(
         const auto &cc = rt.clear_color;
         return VkRenderingAttachmentInfo{
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = m_device->getVkImageView(rt.rtv),
+            .imageView = (rt.load_op != TargetLoadOp::None)
+                             ? m_device->getVkImageView(rt.rtv)
+                             : VK_NULL_HANDLE,
             .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
             .loadOp = getVkAttachmentLoadOp(rt.load_op),
             .storeOp = getVkAttachmentStoreOp(rt.store_op),
@@ -50,11 +51,10 @@ void VulkanCommandBuffer::beginRendering(
   if (depth_stencil_target) {
     auto &dst = *depth_stencil_target;
     auto view = m_device->getVkImageView(dst.dsv);
-    auto aspects = getFormatAspectFlags(getDSVFormat(dst.dsv));
     depth_attachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView =
-            (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) ? view : VK_NULL_HANDLE,
+            (dst.depth_load_op != TargetLoadOp::None) ? view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp = getVkAttachmentLoadOp(dst.depth_load_op),
         .storeOp = getVkAttachmentStoreOp(dst.depth_store_op),
@@ -63,7 +63,7 @@ void VulkanCommandBuffer::beginRendering(
     stencil_attachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView =
-            (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ? view : VK_NULL_HANDLE,
+            (dst.stencil_load_op != TargetLoadOp::None) ? view : VK_NULL_HANDLE,
         .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp = getVkAttachmentLoadOp(dst.stencil_load_op),
         .storeOp = getVkAttachmentStoreOp(dst.stencil_store_op),
