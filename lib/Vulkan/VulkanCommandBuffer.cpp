@@ -1,6 +1,7 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
+#include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
@@ -18,64 +19,23 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
   m_device->BeginCommandBuffer(m_cmd_buffer, &begin_info);
 }
 
-namespace {
-enum class TargetType {
-  Color,
-  Depth,
-  Stencil,
-};
-
-template <TargetType type>
-VkRenderingAttachmentInfo getVkRenderingAttachmentInfo(VulkanDevice *device,
-                                                       const auto &cfg) {
-  TargetLoadOp load_op;
-  TargetStoreOp store_op;
-  VkClearValue clear_value;
-  VkImageView image_view = VK_NULL_HANDLE;
-  if constexpr (type == TargetType::Color) {
-    load_op = cfg.load_op;
-    store_op = cfg.store_op;
-    const auto &cc = cfg.clear_color;
-    clear_value = {.color = {.float32 = {cc[0], cc[1], cc[2], cc[3]}}};
-  } else if constexpr (type == TargetType::Depth) {
-    load_op = cfg.depth_load_op;
-    store_op = cfg.depth_store_op;
-    clear_value = {.depthStencil = {.depth = cfg.clear_depth}};
-  } else if constexpr (type == TargetType::Stencil) {
-    load_op = cfg.stencil_load_op;
-    store_op = cfg.stencil_store_op;
-    clear_value = {.depthStencil = {.stencil = cfg.clear_stencil}};
-  }
-  if (load_op != TargetLoadOp::None or store_op != TargetStoreOp::None) {
-    image_view = device->getVkImageView([&] {
-      if constexpr (type == TargetType::Color) {
-        return cfg.rtv;
-      } else if constexpr (type == TargetType::Depth or
-                           type == TargetType::Stencil) {
-        return cfg.dsv;
-      }
-    }());
-  }
-  return VkRenderingAttachmentInfo{
-      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = image_view,
-      .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-      .loadOp = getVkAttachmentLoadOp(load_op),
-      .storeOp = getVkAttachmentStoreOp(store_op),
-      .clearValue = clear_value,
-  };
-};
-} // namespace
-
 void VulkanCommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
     SmallVector<RenderTargetConfig, 8> render_targets,
     std::optional<DepthStencilTargetConfig> depth_stencil_target) {
 
   auto color_attachments =
-      render_targets | ranges::views::transform([&](const auto &rt_cfg) {
-        return getVkRenderingAttachmentInfo<TargetType::Color>(m_device,
-                                                               rt_cfg);
+      render_targets |
+      ranges::views::transform([&](const RenderTargetConfig &rt) {
+        const auto &cc = rt.clear_color;
+        return VkRenderingAttachmentInfo{
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = m_device->getVkImageView(rt.rtv),
+            .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+            .loadOp = getVkAttachmentLoadOp(rt.load_op),
+            .storeOp = getVkAttachmentStoreOp(rt.store_op),
+            .clearValue = {.color = {.float32 = {cc[0], cc[1], cc[2], cc[3]}}},
+        };
       }) |
       ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>;
   for (auto &rt : render_targets) {
@@ -88,10 +48,27 @@ void VulkanCommandBuffer::beginRendering(
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
 
   if (depth_stencil_target) {
-    depth_attachment = getVkRenderingAttachmentInfo<TargetType::Depth>(
-        m_device, *depth_stencil_target);
-    stencil_attachment = getVkRenderingAttachmentInfo<TargetType::Stencil>(
-        m_device, *depth_stencil_target);
+    auto &dst = *depth_stencil_target;
+    auto view = m_device->getVkImageView(dst.dsv);
+    auto aspects = getFormatAspectFlags(getDSVFormat(dst.dsv));
+    depth_attachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView =
+            (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) ? view : VK_NULL_HANDLE,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+        .loadOp = getVkAttachmentLoadOp(dst.depth_load_op),
+        .storeOp = getVkAttachmentStoreOp(dst.depth_store_op),
+        .clearValue = {.depthStencil = {.depth = dst.clear_depth}},
+    };
+    stencil_attachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView =
+            (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ? view : VK_NULL_HANDLE,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+        .loadOp = getVkAttachmentLoadOp(dst.stencil_load_op),
+        .storeOp = getVkAttachmentStoreOp(dst.stencil_store_op),
+        .clearValue = {.depthStencil = {.stencil = dst.clear_stencil}},
+    };
     m_parent->addFrameResource(std::move(depth_stencil_target->dsv));
   }
 
