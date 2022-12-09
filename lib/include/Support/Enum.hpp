@@ -2,6 +2,7 @@
 #include "Flags.hpp"
 
 #include <boost/preprocessor/seq.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -137,4 +138,24 @@ EnumFlagsT<E> reverseMapFlags(EnumConvertFlagsT<E> flags) {
 #define REN_REVERSE_MAP_ENUM_AND_FLAGS(name, E, fields)                        \
   REN_REVERSE_MAP_ENUM(name, E, fields)                                        \
   constexpr auto name##Flags = detail::reverseMapFlags<E, name>
+
+#define REN_DETAIL_DEFINE_STRINGIFY_CASE(r, data, e)                           \
+  case e:                                                                      \
+    return BOOST_PP_STRINGIZE(e);
+
+#define REN_STRINGIFY_ENUM(E, fields)                                          \
+  inline const char *to_string(E e) {                                          \
+    using enum E;                                                              \
+    switch (e) {                                                               \
+    default: {                                                                 \
+      if constexpr (detail::EnumWithUnknown<E>) {                              \
+        return "Undefined";                                                    \
+      } else {                                                                 \
+        assert(!"Unhandled enum " BOOST_PP_STRINGIZE(E) " value");             \
+        return "";                                                             \
+      }                                                                        \
+    }                                                                          \
+      BOOST_PP_SEQ_FOR_EACH(REN_DETAIL_DEFINE_STRINGIFY_CASE, ~, fields)       \
+    }                                                                          \
+  }
 } // namespace ren
