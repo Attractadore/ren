@@ -56,6 +56,7 @@ public:
   const VkAllocationCallbacks *getAllocator() const { return nullptr; }
 
   Texture createTexture(const TextureDesc &desc) override;
+  void destroyImageData(VkImage image);
 
   VkImageView getVkImageView(const RenderTargetView &rtv);
   VkImageView getVkImageView(const DepthStencilView &dsv);

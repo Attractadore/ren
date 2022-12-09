@@ -156,8 +156,12 @@ void VulkanSwapchain::create() {
       });
   m_textures.resize(image_count);
   for (size_t i = 0; i < image_count; ++i) {
-    m_textures[i] = {.desc = tex_desc,
-                     .handle = AnyRef(images[i], [swapchain_ref](VkImage) {})};
+    m_textures[i] = {
+        .desc = tex_desc,
+        .handle = AnyRef(images[i],
+                         [device = m_device, swapchain_ref](VkImage image) {
+                           device->destroyImageData(image);
+                         })};
   }
 }
 

@@ -154,11 +154,13 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
       .desc = desc,
       .handle = AnyRef(image,
                        [this, allocation](VkImage image) {
+                         destroyImageData(image);
                          vmaDestroyImage(m_allocator, image, allocation);
-                         destroyImageViews(image);
                        }),
   };
 }
+
+void VulkanDevice::destroyImageData(VkImage image) { destroyImageViews(image); }
 
 void VulkanDevice::destroyImageViews(VkImage image) {
   for (auto &&[_, view] : m_image_views[image]) {
