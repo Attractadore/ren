@@ -109,6 +109,28 @@ public:
     m_values.push_back(std::move(value));
     return {--end(), true};
   }
+
+  constexpr value_type &operator[](const key_type &key)
+    requires std::default_initializable<value_type>
+  {
+    auto it = find(key);
+    if (it != end()) {
+      return std::get<1>(*it);
+    }
+    m_keys.push_back(key);
+    return m_values.emplace_back();
+  }
+
+  constexpr value_type &operator[](key_type &&key)
+    requires std::default_initializable<value_type>
+  {
+    auto it = find(key);
+    if (it != end()) {
+      return std::get<1>(*it);
+    }
+    m_keys.push_back(std::move(key));
+    return m_values.emplace_back();
+  }
 };
 } // namespace detail
 
