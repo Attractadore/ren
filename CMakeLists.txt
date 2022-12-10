@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.23)
 project(Renderer2)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
+
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 set(REN_INCLUDE_GE $<BUILD_INTERFACE:${REN_INCLUDE}>
                    $<INSTALL_INTERFACE:include>)
