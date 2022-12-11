@@ -89,54 +89,17 @@ void VulkanCommandBuffer::endRendering() {
   m_device->CmdEndRendering(m_cmd_buffer);
 }
 
-namespace {
-VkImageBlit getVkImageBlit(const BlitRegion &region) {
-  return {
-      .srcSubresource =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .mipLevel = region.src_mip_level,
-              .baseArrayLayer = region.src_first_array_layer,
-              .layerCount = region.array_layer_count,
-          },
-      .srcOffsets =
-          {
-              {int(region.src_offsets[0][0]), int(region.src_offsets[0][1]),
-               int(region.src_offsets[0][2])},
-              {int(region.src_offsets[1][0]), int(region.src_offsets[1][1]),
-               int(region.src_offsets[1][2])},
-          },
-      .dstSubresource =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .mipLevel = region.dst_mip_level,
-              .baseArrayLayer = region.dst_first_array_layer,
-              .layerCount = region.array_layer_count,
-          },
-      .dstOffsets =
-          {
-              {int(region.dst_offsets[0][0]), int(region.dst_offsets[0][1]),
-               int(region.dst_offsets[0][2])},
-              {int(region.dst_offsets[1][0]), int(region.dst_offsets[1][1]),
-               int(region.dst_offsets[1][2])},
-          },
-  };
-}
-} // namespace
-
 void VulkanCommandBuffer::blit(Texture src, Texture dst,
-                               std::span<const BlitRegion> regions,
-                               Filter filter) {
+                               std::span<const VkImageBlit> regions,
+                               VkFilter filter) {
   auto vk_src = getVkImage(src);
   auto vk_dst = getVkImage(dst);
-  auto vk_regions = regions | ranges::views::transform(getVkImageBlit) |
-                    ranges::to<SmallVector<VkImageBlit, 8>>;
   m_parent->addFrameResource(std::move(src));
   m_parent->addFrameResource(std::move(dst));
-  m_device->CmdBlitImage(
-      m_cmd_buffer, vk_src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_dst,
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, vk_regions.size(),
-      vk_regions.data(), getVkFilter(filter));
+  m_device->CmdBlitImage(m_cmd_buffer, vk_src,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_dst,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
+                         regions.data(), filter);
 }
 
 namespace {

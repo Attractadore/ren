@@ -15,15 +15,6 @@ DirectX12CommandBuffer::DirectX12CommandBuffer(
                                            cmd_alloc, nullptr);
 }
 
-void DirectX12CommandBuffer::wait(SyncObject sync, PipelineStageFlags stages) {
-  DIRECTX12_UNIMPLEMENTED;
-}
-
-void DirectX12CommandBuffer::signal(SyncObject sync,
-                                    PipelineStageFlags stages) {
-  DIRECTX12_UNIMPLEMENTED;
-}
-
 namespace {
 UINT getTargetSubresource(const TextureDesc &tex_desc, unsigned level,
                           unsigned layer, unsigned plane = 0) {
@@ -132,12 +123,6 @@ void DirectX12CommandBuffer::endRendering() {
   }
   rp.discard_resources.clear();
   rp.discard_subresources.clear();
-}
-
-void DirectX12CommandBuffer::blit(Texture src, Texture dst,
-                                  std::span<const BlitRegion> regions,
-                                  Filter filter) {
-  DIRECTX12_UNIMPLEMENTED;
 }
 
 void DirectX12CommandBuffer::close() {

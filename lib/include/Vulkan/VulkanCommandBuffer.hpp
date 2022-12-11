@@ -49,12 +49,27 @@ public:
       std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
-  void blit(Texture src, Texture dst, std::span<const BlitRegion> regions,
-            Filter filter) override;
-  using CommandBuffer::blit;
+  void blit(Texture src, Texture dst, std::span<const VkImageBlit> regions, VkFilter filter);
+  void blit(Texture src, Texture dst) {
+    VkImageBlit region = {
+      .srcSubresource = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .layerCount = 1,
+      },
+      .srcOffsets = {{},
+        {int(src.desc.width), int(src.desc.height), 1}},
+      .dstSubresource = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .layerCount = 1,
+      },
+      .dstOffsets = {{},
+        {int(dst.desc.width), int(dst.desc.height), 1}},
+    };
+    blit(std::move(src), std::move(dst), asSpan(region), VK_FILTER_LINEAR);
+  }
 
-  void wait(SyncObject sync, PipelineStageFlags stages) override;
-  void signal(SyncObject sync, PipelineStageFlags stages) override;
+  void wait(SyncObject sync, PipelineStageFlags stages);
+  void signal(SyncObject sync, PipelineStageFlags stages);
   std::span<const VkSemaphoreSubmitInfo> getWaitSemaphores() const {
     return m_wait_semaphores;
   }
