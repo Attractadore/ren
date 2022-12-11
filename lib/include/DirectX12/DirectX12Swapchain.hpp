@@ -18,6 +18,8 @@ class DirectX12Swapchain final : public Swapchain {
   HWND m_hwnd;
   ComPtr<IDXGISwapChain3> m_swapchain;
   SmallVector<Texture, 3> m_textures;
+  ComPtr<ID3D12RootSignature> m_blit_root_sig;
+  ComPtr<ID3D12PipelineState> m_blit_pso;
 
 private:
   void setTextures();
@@ -33,6 +35,10 @@ public:
   const Texture &getTexture() {
     return m_textures[m_swapchain->GetCurrentBackBufferIndex()];
   }
+  ID3D12RootSignature *getBlitRootSignature() const {
+    return m_blit_root_sig.Get();
+  }
+  ID3D12PipelineState *getBlitPSO() const { return m_blit_pso.Get(); }
   void PresentBuffer();
 };
 } // namespace ren

@@ -6,6 +6,7 @@ namespace ren {
 REN_DEFINE_FLAGS_ENUM(PipelineStage, REN_PIPELINE_STAGES);
 
 #define REN_MEMORY_ACCESSES                                                    \
-  (ColorWrite)(StorageRead)(StorageWrite)(TransferRead)(TransferWrite)
+  (ColorWrite)(SampledRead)(                                                   \
+      StorageRead)(StorageWrite)(TransferRead)(TransferWrite)
 REN_DEFINE_FLAGS_ENUM(MemoryAccess, REN_MEMORY_ACCESSES);
 }; // namespace ren

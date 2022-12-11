@@ -1,10 +1,10 @@
-#include "DirectX12/DirectX12DescriptorPool.hpp"
+#include "DirectX12/DirectX12CPUDescriptorPool.hpp"
 #include "Support/Errors.hpp"
 
 #include <range/v3/algorithm.hpp>
 
 namespace ren {
-DirectX12DescriptorPool::DirectX12DescriptorPool(
+DirectX12CPUDescriptorPool::DirectX12CPUDescriptorPool(
     ID3D12Device *device, D3D12_DESCRIPTOR_HEAP_TYPE type, unsigned heap_size) {
 
   m_device = device;
@@ -13,15 +13,11 @@ DirectX12DescriptorPool::DirectX12DescriptorPool(
   m_heap_size = heap_size;
 }
 
-void DirectX12DescriptorPool::createHeap() {
+void DirectX12CPUDescriptorPool::createHeap() {
   auto &heap = m_heaps.emplace_back();
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {
       .Type = m_type,
       .NumDescriptors = m_heap_size,
-      .Flags = (m_type == D3D12_DESCRIPTOR_HEAP_TYPE_RTV or
-                m_type == D3D12_DESCRIPTOR_HEAP_TYPE_DSV)
-                   ? D3D12_DESCRIPTOR_HEAP_FLAG_NONE
-                   : D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
   };
   throwIfFailed(
       m_device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap.heap)),
@@ -30,14 +26,14 @@ void DirectX12DescriptorPool::createHeap() {
   heap.gpu_handle = heap.heap->GetGPUDescriptorHandleForHeapStart();
 }
 
-unsigned DirectX12DescriptorPool::findFreeHeap() const {
+unsigned DirectX12CPUDescriptorPool::findFreeHeap() const {
   return ranges::distance(m_heaps.begin(),
                           ranges::find_if(m_heaps, [&](const Heap &heap) {
                             return heap.num_allocated < m_heap_size;
                           }));
 }
 
-auto DirectX12DescriptorPool::allocate() -> Descriptor {
+auto DirectX12CPUDescriptorPool::allocate() -> Descriptor {
   auto heap_index = findFreeHeap();
   if (heap_index == m_heaps.size()) {
     createHeap();
@@ -50,7 +46,7 @@ auto DirectX12DescriptorPool::allocate() -> Descriptor {
   };
 }
 
-void DirectX12DescriptorPool::free(Descriptor descriptor) {
+void DirectX12CPUDescriptorPool::free(Descriptor descriptor) {
   auto &heap = *ranges::find_if(m_heaps, [&](const Heap &heap) {
     return heap.cpu_handle.ptr <= descriptor.cpu_handle.ptr and
            descriptor.cpu_handle.ptr <

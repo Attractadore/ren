@@ -24,8 +24,6 @@ public:
   DirectX12CommandBuffer(DirectX12Device *device,
                          DirectX12CommandAllocator *parent,
                          ID3D12CommandAllocator *cmd_alloc);
-  void wait(SyncObject sync, PipelineStageFlags stages) override;
-  void signal(SyncObject sync, PipelineStageFlags stages) override;
 
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
@@ -33,12 +31,11 @@ public:
       std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
-  void blit(Texture src, Texture dst, std::span<const BlitRegion> regions,
-            Filter filter) override;
-
   void close() override;
   void reset(ID3D12CommandAllocator *command_allocator);
 
-  ID3D12GraphicsCommandList *get() { return m_cmd_list.Get(); }
+  ID3D12GraphicsCommandList *get() const { return m_cmd_list.Get(); }
+  DirectX12CommandAllocator *getParent() const { return m_parent; }
+  DirectX12Device *getDevice() const { return m_device; }
 };
 } // namespace ren

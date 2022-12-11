@@ -2,7 +2,7 @@
 #include "CommandBuffer.hpp"
 #include "D3D12MA.hpp"
 #include "Device.hpp"
-#include "DirectX12DescriptorPool.hpp"
+#include "DirectX12CPUDescriptorPool.hpp"
 #include "Support/Errors.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
@@ -19,24 +19,34 @@ class DirectX12Device final : public Device {
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
   ComPtr<ID3D12CommandQueue> m_direct_queue;
-  std::unique_ptr<DirectX12DescriptorPool> m_rtv_pool;
-  std::unique_ptr<DirectX12DescriptorPool> m_dsv_pool;
+  std::unique_ptr<DirectX12CPUDescriptorPool> m_rtv_pool;
+  std::unique_ptr<DirectX12CPUDescriptorPool> m_dsv_pool;
+  std::unique_ptr<DirectX12CPUDescriptorPool> m_cbv_srv_uav_pool;
   HashMap<ID3D12Resource *,
           SmallLinearMap<RenderTargetViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_rtvs;
   HashMap<ID3D12Resource *,
           SmallLinearMap<DepthStencilViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_dsvs;
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<SampledTextureViewDesc, Descriptor, 3>>
+      m_texture_srvs;
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<StorageTextureViewDesc, Descriptor, 3>>
+      m_texture_uavs;
 
 private:
   void destroyResourceRTVs(ID3D12Resource *resource);
   void destroyResourceDSVs(ID3D12Resource *resource);
-  void destroyResourceViews(ID3D12Resource *resource);
+  void destroyResourceTextureSRVs(ID3D12Resource *resource);
+  void destroyResourceTextureUAVs(ID3D12Resource *resource);
+  void destroyTextureViews(ID3D12Resource *resource);
 
 public:
   DirectX12Device(LUID adapter);
 
-  IDXGIFactory2 *getDXGIFactory() { return m_factory.Get(); }
+  ID3D12Device *get() const { return m_device.Get(); }
+  IDXGIFactory2 *getDXGIFactory() const { return m_factory.Get(); }
 
   std::unique_ptr<DirectX12Swapchain> createSwapchain(HWND hwnd);
 
@@ -51,6 +61,8 @@ public:
   D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
                                      TargetStoreOp depth_store_op,
                                      TargetStoreOp stencil_store_op);
+  Descriptor getSRV(const SampledTextureView &srv);
+  Descriptor getUAV(const StorageTextureView &uav);
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
 

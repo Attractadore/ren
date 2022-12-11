@@ -65,16 +65,15 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       m_device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&m_direct_queue)),
       "D3D12: Failed to create graphics queue");
 
-  m_rtv_pool = std::make_unique<DirectX12DescriptorPool>(
+  m_rtv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-  m_dsv_pool = std::make_unique<DirectX12DescriptorPool>(
+  m_dsv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 }
 
 std::unique_ptr<DirectX12Swapchain>
 DirectX12Device::createSwapchain(HWND hwnd) {
-  return std::make_unique<DirectX12Swapchain>(m_factory.Get(),
-                                              m_direct_queue.Get(), hwnd);
+  return std::make_unique<DirectX12Swapchain>(this, hwnd);
 }
 
 std::unique_ptr<RenderGraph::Builder>
@@ -119,7 +118,7 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
 }
 
 void DirectX12Device::destroyResourceData(ID3D12Resource *resource) {
-  destroyResourceViews(resource);
+  destroyTextureViews(resource);
 }
 
 void DirectX12Device::destroyResourceRTVs(ID3D12Resource *resource) {
@@ -136,9 +135,25 @@ void DirectX12Device::destroyResourceDSVs(ID3D12Resource *resource) {
   m_dsvs.erase(resource);
 }
 
-void DirectX12Device::destroyResourceViews(ID3D12Resource *resource) {
+void DirectX12Device::destroyResourceTextureSRVs(ID3D12Resource *resource) {
+  for (auto &&[_, desciptor] : m_texture_srvs[resource]) {
+    m_cbv_srv_uav_pool->free(desciptor);
+  }
+  m_texture_srvs.erase(resource);
+}
+
+void DirectX12Device::destroyResourceTextureUAVs(ID3D12Resource *resource) {
+  for (auto &&[_, desciptor] : m_texture_uavs[resource]) {
+    m_cbv_srv_uav_pool->free(desciptor);
+  }
+  m_texture_uavs.erase(resource);
+}
+
+void DirectX12Device::destroyTextureViews(ID3D12Resource *resource) {
   destroyResourceRTVs(resource);
   destroyResourceDSVs(resource);
+  destroyResourceTextureSRVs(resource);
+  destroyResourceTextureUAVs(resource);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE
@@ -198,6 +213,68 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
     m_device->CreateDepthStencilView(resource, &dsv_desc, handle);
   }
   return handle;
+}
+
+Descriptor DirectX12Device::getSRV(const SampledTextureView &srv) {
+  auto *resource = getD3D12Resource(srv.texture);
+  // TODO: null descriptors
+  assert(resource);
+
+  dx12Log("Get SRV for texture {}", fmt::ptr(resource));
+#if 0
+  dx12Debug("SRV desc: {}", srv.desc);
+#endif
+
+  auto [it, inserted] = m_texture_srvs[resource].insert(srv.desc, {});
+  auto &descriptor = std::get<1>(*it);
+  if (inserted) {
+    dx12Log("Create new SRV for texture {}", fmt::ptr(resource));
+    descriptor = m_cbv_srv_uav_pool->allocate();
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {
+        .Format = getDXGIFormat(getSampledViewFormat(srv)),
+        .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
+        .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+        .Texture2DArray = {
+            .MostDetailedMip = srv.desc.first_mip_level,
+            .MipLevels = getSampledViewMipLevels(srv),
+            .FirstArraySlice = srv.desc.first_array_layer,
+            .ArraySize = getSampledViewArrayLayers(srv),
+        }};
+    m_device->CreateShaderResourceView(resource, &srv_desc,
+                                       descriptor.cpu_handle);
+  }
+
+  return descriptor;
+}
+
+Descriptor DirectX12Device::getUAV(const StorageTextureView &uav) {
+  auto *resource = getD3D12Resource(uav.texture);
+  // TODO: null descriptors
+  assert(resource);
+
+  dx12Log("Get UAV for texture {}", fmt::ptr(resource));
+#if 0
+  dx12Debug("UAV desc: {}", uav.desc);
+#endif
+
+  auto [it, inserted] = m_texture_uavs[resource].insert(uav.desc, {});
+  auto &descriptor = std::get<1>(*it);
+  if (inserted) {
+    dx12Log("Create new UAV for texture {}", fmt::ptr(resource));
+    descriptor = m_cbv_srv_uav_pool->allocate();
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {
+        .Format = getDXGIFormat(getStorageViewFormat(uav)),
+        .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY,
+        .Texture2DArray = {
+            .MipSlice = uav.desc.mip_level,
+            .FirstArraySlice = uav.desc.first_array_layer,
+            .ArraySize = getStorageViewArrayLayers(uav),
+        }};
+    m_device->CreateUnorderedAccessView(resource, nullptr, &uav_desc,
+                                        descriptor.cpu_handle);
+  }
+
+  return descriptor;
 }
 
 SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {

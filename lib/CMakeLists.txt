@@ -15,19 +15,13 @@ find_package(
   REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(fmt REQUIRED)
+find_package(glm REQUIRED)
 add_subdirectory(${EXTERNAL_DIR}/SlotMap ${CMAKE_CURRENT_BINARY_DIR}/SlotMap)
-
-message(STATUS "Enable Vulkan renderer")
-add_subdirectory(Vulkan)
-if(WIN32)
-  message(STATUS "Enable DirectX 12 renderer")
-  add_subdirectory(DirectX12)
-endif()
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
 target_link_libraries(Support INTERFACE SlotMap Boost::container Boost::headers
-                                        range-v3::range-v3 fmt::fmt)
+                                        range-v3::range-v3 fmt::fmt glm)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
@@ -51,6 +45,13 @@ target_sources(
          ${REN_INCLUDE}/ren/ren.h
          ${REN_INCLUDE}/ren/ren.hpp)
 add_library(ren::ren ALIAS ren)
+
+message(STATUS "Enable Vulkan renderer")
+add_subdirectory(Vulkan)
+if(WIN32)
+  message(STATUS "Enable DirectX 12 renderer")
+  add_subdirectory(DirectX12)
+endif()
 
 include(GNUInstallDirs)
 install(

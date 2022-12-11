@@ -47,6 +47,14 @@ public:
     addFrameResource(std::move(dsv.texture));
   }
 
+  void addFrameResource(SampledTextureView stv) {
+    addFrameResource(std::move(stv.texture));
+  }
+
+  void addFrameResource(StorageTextureView stv) {
+    addFrameResource(std::move(stv.texture));
+  }
+
   void addFrameResource(SyncObject sync) {
     addFrameResource(std::move(sync.handle));
   }

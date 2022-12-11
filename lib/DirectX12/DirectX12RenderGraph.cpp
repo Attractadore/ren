@@ -5,10 +5,15 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
+#include "Support/Errors.hpp"
+#include "Support/Math.hpp"
 #include "Support/Views.hpp"
+#include "hlsl/Texture2DBlitConfig.hlsl"
 
 namespace ren {
 void DirectX12RenderGraph::Builder::addPresentNodes() {
+  auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
+
   auto acquire = addNode();
   acquire.setDesc("D3D12: Acquire swapchain buffer");
   m_swapchain_buffer =
@@ -17,18 +22,51 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
 
   auto blit = addNode();
   blit.setDesc("D3D12: Blit final texture to swapchain");
-  blit.addReadInput(m_final_image, MemoryAccess::TransferRead,
-                    PipelineStage::Blit);
+  blit.addReadInput(m_final_image, MemoryAccess::SampledRead,
+                    PipelineStage::Compute);
   auto blitted_swapchain_buffer = blit.addWriteInput(
-      m_swapchain_buffer, MemoryAccess::TransferWrite, PipelineStage::Blit);
+      m_swapchain_buffer, MemoryAccess::StorageWrite, PipelineStage::Compute);
   setDesc(blitted_swapchain_buffer, "D3D12: Blitted swapchain buffer");
-  blit.setCallback([final_image = m_final_image,
-                    swapchain_buffer = m_swapchain_buffer](CommandBuffer &cmd,
-                                                           RenderGraph &rg) {
-    auto &src_tex = rg.getTexture(final_image);
-    auto &dst_tex = rg.getTexture(swapchain_buffer);
-    cmd.blit(src_tex, dst_tex);
-  });
+  blit.setCallback(
+      [final_texture = m_final_image, swapchain_buffer = m_swapchain_buffer,
+       root_sig = dx_swapchain->getBlitRootSignature(),
+       pso = dx_swapchain->getBlitPSO()](CommandBuffer &cmd, RenderGraph &rg) {
+        auto *dx_cmd = static_cast<DirectX12CommandBuffer *>(&cmd);
+        auto *dx_device = dx_cmd->getDevice();
+        auto *dx_cmd_alloc = dx_cmd->getParent();
+        auto *cmd_list = dx_cmd->get();
+        auto &src_tex = rg.getTexture(final_texture);
+        auto &dst_tex = rg.getTexture(swapchain_buffer);
+        SampledTextureView src_srv = {
+            .desc = {.mip_levels = 1},
+            .texture = src_tex,
+        };
+        StorageTextureView dst_uav = {.texture = dst_tex};
+        std::array cpu_descriptors = {
+            dx_device->getSRV(src_srv).cpu_handle,
+            dx_device->getUAV(dst_uav).cpu_handle,
+        };
+        UINT srv_uav_table_size = cpu_descriptors.size();
+        Descriptor srv_uav_table =
+            dx_cmd_alloc->allocateDescriptors(srv_uav_table_size);
+        dx_device->get()->CopyDescriptors(
+            1, &srv_uav_table.cpu_handle, &srv_uav_table_size,
+            cpu_descriptors.size(), cpu_descriptors.data(), nullptr,
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        cmd_list->SetComputeRootSignature(root_sig);
+        cmd_list->SetPipelineState(pso);
+        cmd_list->SetComputeRootDescriptorTable(0, srv_uav_table.gpu_handle);
+        Texture2DBlitConfig config = {
+            .src_texel_size =
+                1.0f / glm::vec2(src_tex.desc.width, src_tex.desc.height)};
+        cmd_list->SetComputeRoot32BitConstants(
+            1, sizeof(config) / sizeof(uint32_t), &config, 0);
+        cmd_list->Dispatch(ceilDiv(dst_tex.desc.width, BlitTexture2DThreadsX),
+                           ceilDiv(dst_tex.desc.height, BlitTexture2DThreadsY),
+                           1);
+        dx_cmd_alloc->addFrameResource(std::move(src_srv));
+        dx_cmd_alloc->addFrameResource(std::move(dst_uav));
+      });
 
   auto present = addNode();
   present.setDesc(
@@ -52,6 +90,8 @@ getD3D12ResourceStateFromAccessesAndStages(MemoryAccessFlags accesses,
     return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
   } else if (stages.isSet(Present)) {
     return D3D12_RESOURCE_STATE_PRESENT;
+  } else if (accesses == SampledRead) {
+    return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
   }
   return D3D12_RESOURCE_STATE_COMMON;
 }
