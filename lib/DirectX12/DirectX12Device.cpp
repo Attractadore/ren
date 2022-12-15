@@ -69,6 +69,8 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   m_dsv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+  m_cbv_srv_uav_pool = std::make_unique<DirectX12CPUDescriptorPool>(
+      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 std::unique_ptr<DirectX12Swapchain>
@@ -87,13 +89,14 @@ DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
+  auto dxgi_format = getDXGIFormat(desc.format);
   D3D12_RESOURCE_DESC resource_desc = {
       .Dimension = getD3D12ResourceDimension(desc.type),
       .Width = desc.width,
       .Height = desc.height,
       .DepthOrArraySize = desc.layers,
       .MipLevels = desc.levels,
-      .Format = getDXGIFormat(desc.format),
+      .Format = dxgi_format,
       .SampleDesc = {.Count = 1},
       .Flags = getD3D12ResourceFlags(desc.usage),
   };
@@ -101,11 +104,24 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
   D3D12MA::ALLOCATION_DESC allocation_desc = {.HeapType =
                                                   D3D12_HEAP_TYPE_DEFAULT};
 
+  D3D12_CLEAR_VALUE clear_value = {.Format = dxgi_format,
+                                   .Color = {0.0f, 0.0f, 0.0f, 1.0f}};
+
   D3D12MA::Allocation *allocation;
-  throwIfFailed(m_allocator->CreateResource(&allocation_desc, &resource_desc,
-                                            D3D12_RESOURCE_STATE_COMMON,
-                                            nullptr, &allocation, IID_NULL,
-                                            nullptr),
+  throwIfFailed(m_allocator->CreateResource(
+                    &allocation_desc, &resource_desc,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    [&]() -> const D3D12_CLEAR_VALUE * {
+                      if (isColorFormat(desc.format)) {
+                        return &clear_value;
+                      } else if (isDepthFormat(desc.format) or
+                                 isStencilFormat(desc.format)) {
+                        clear_value.DepthStencil = {.Depth = 1.0f};
+                        return &clear_value;
+                      }
+                      return nullptr;
+                    }(),
+                    &allocation, IID_NULL, nullptr),
                 "D3D12MA: Failed to create texture");
   return {
       .desc = desc,

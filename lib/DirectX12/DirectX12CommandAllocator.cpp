@@ -38,15 +38,21 @@ ID3D12CommandAllocator *DirectX12CommandAllocator::getFrameCommandAllocator() {
 }
 
 DirectX12CommandBuffer *
-DirectX12CommandAllocator::allocateDirectX12CommandBuffer() {
+DirectX12CommandAllocator::allocateDirectX12CommandBufferImpl() {
   auto cmd_alloc = getFrameCommandAllocator();
   if (m_used_cmd_buffer_count == m_cmd_buffers.size()) {
     m_cmd_buffers.emplace_back(m_device, this, cmd_alloc);
   } else {
-    m_cmd_buffers.back().reset(cmd_alloc);
+    m_cmd_buffers[m_used_cmd_buffer_count].reset(cmd_alloc);
   }
-  ++m_used_cmd_buffer_count;
-  return &m_cmd_buffers.back();
+  return &m_cmd_buffers[m_used_cmd_buffer_count++];
+}
+
+DirectX12CommandBuffer *
+DirectX12CommandAllocator::allocateDirectX12CommandBuffer() {
+  auto *dx_cmd = allocateDirectX12CommandBufferImpl();
+  dx_cmd->get()->SetDescriptorHeaps(1, m_descriptor_heap.GetAddressOf());
+  return dx_cmd;
 }
 
 CommandBuffer *DirectX12CommandAllocator::allocateCommandBuffer() {

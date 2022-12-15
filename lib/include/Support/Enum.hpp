@@ -58,8 +58,10 @@ using EnumConvertFlagsT = typename EnumFlags<EnumConvertT<E>>::type;
   template <> struct detail::EnumConvert<From> { using type = To; };
 
 #define REN_MAP_FIELD(from, to)                                                \
-  template <> inline constexpr bool detail::FieldIsMapped<from> = true;        \
-  template <> inline constexpr auto detail::EnumFieldMap<from> = to
+  namespace detail {                                                           \
+  template <> inline constexpr bool FieldIsMapped<from> = true;                \
+  template <> inline constexpr auto EnumFieldMap<from> = to;                   \
+  }
 
 #define REN_ENUM_FLAGS(E, F)                                                   \
   template <> struct detail::EnumFlags<E> { using type = F; };

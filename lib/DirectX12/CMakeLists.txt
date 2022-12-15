@@ -29,7 +29,7 @@ target_include_directories(ren-dx12 PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(
   ren-dx12
   PUBLIC ren d3d12 dxgi dxguid
-  PRIVATE Support D3D12MA BlitTexture2DShader)
+  PRIVATE Support D3D12MA FullScreenRectShader BlitToSwapchainShader)
 if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG)

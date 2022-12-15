@@ -8,7 +8,8 @@
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"
 #include "Support/Views.hpp"
-#include "hlsl/Texture2DBlitConfig.hlsl"
+
+#include <range/v3/action.hpp>
 
 namespace ren {
 void DirectX12RenderGraph::Builder::addPresentNodes() {
@@ -23,9 +24,9 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
   auto blit = addNode();
   blit.setDesc("D3D12: Blit final texture to swapchain");
   blit.addReadInput(m_final_image, MemoryAccess::SampledRead,
-                    PipelineStage::Compute);
+                    PipelineStage::FragmentShader);
   auto blitted_swapchain_buffer = blit.addWriteInput(
-      m_swapchain_buffer, MemoryAccess::StorageWrite, PipelineStage::Compute);
+      m_swapchain_buffer, MemoryAccess::ColorWrite, PipelineStage::ColorOutput);
   setDesc(blitted_swapchain_buffer, "D3D12: Blitted swapchain buffer");
   blit.setCallback(
       [final_texture = m_final_image, swapchain_buffer = m_swapchain_buffer,
@@ -41,31 +42,25 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
             .desc = {.mip_levels = 1},
             .texture = src_tex,
         };
-        StorageTextureView dst_uav = {.texture = dst_tex};
-        std::array cpu_descriptors = {
-            dx_device->getSRV(src_srv).cpu_handle,
-            dx_device->getUAV(dst_uav).cpu_handle,
-        };
-        UINT srv_uav_table_size = cpu_descriptors.size();
+        UINT srv_table_size = 1;
+        auto srv = dx_device->getSRV(src_srv).cpu_handle;
         Descriptor srv_uav_table =
-            dx_cmd_alloc->allocateDescriptors(srv_uav_table_size);
+            dx_cmd_alloc->allocateDescriptors(srv_table_size);
         dx_device->get()->CopyDescriptors(
-            1, &srv_uav_table.cpu_handle, &srv_uav_table_size,
-            cpu_descriptors.size(), cpu_descriptors.data(), nullptr,
+            1, &srv_uav_table.cpu_handle, &srv_table_size, 1, &srv, nullptr,
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        cmd_list->SetComputeRootSignature(root_sig);
+
+        dx_cmd->beginRendering(std::move(dst_tex));
+
+        cmd_list->SetGraphicsRootSignature(root_sig);
         cmd_list->SetPipelineState(pso);
-        cmd_list->SetComputeRootDescriptorTable(0, srv_uav_table.gpu_handle);
-        Texture2DBlitConfig config = {
-            .src_texel_size =
-                1.0f / glm::vec2(src_tex.desc.width, src_tex.desc.height)};
-        cmd_list->SetComputeRoot32BitConstants(
-            1, sizeof(config) / sizeof(uint32_t), &config, 0);
-        cmd_list->Dispatch(ceilDiv(dst_tex.desc.width, BlitTexture2DThreadsX),
-                           ceilDiv(dst_tex.desc.height, BlitTexture2DThreadsY),
-                           1);
+        cmd_list->SetGraphicsRootDescriptorTable(0, srv_uav_table.gpu_handle);
+        cmd_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        cmd_list->DrawInstanced(3, 1, 0, 0);
+
+        dx_cmd->endRendering();
+
         dx_cmd_alloc->addFrameResource(std::move(src_srv));
-        dx_cmd_alloc->addFrameResource(std::move(dst_uav));
       });
 
   auto present = addNode();
@@ -80,18 +75,25 @@ getD3D12ResourceStateFromAccessesAndStages(MemoryAccessFlags accesses,
                                            PipelineStageFlags stages) {
   using enum MemoryAccess;
   using enum PipelineStage;
-  if (accesses.isSet(ColorWrite)) {
+  if (accesses == ColorWrite) {
     return D3D12_RESOURCE_STATE_RENDER_TARGET;
-  } else if (accesses.isSet(TransferRead)) {
+  } else if (accesses == TransferRead) {
     return D3D12_RESOURCE_STATE_COPY_SOURCE;
-  } else if (accesses.isSet(TransferWrite)) {
+  } else if (accesses == TransferWrite) {
     return D3D12_RESOURCE_STATE_COPY_DEST;
-  } else if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+  } else if (auto flags = StorageRead | StorageWrite;
+             accesses.anySet(flags) and (accesses & flags) == accesses) {
     return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  } else if (stages.isSet(Present)) {
+  } else if (stages == Present) {
     return D3D12_RESOURCE_STATE_PRESENT;
   } else if (accesses == SampledRead) {
-    return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    if (stages == FragmentShader) {
+      return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    } else if (stages.isSet(FragmentShader)) {
+      return D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+    } else {
+      return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    }
   }
   return D3D12_RESOURCE_STATE_COMMON;
 }
@@ -99,36 +101,44 @@ getD3D12ResourceStateFromAccessesAndStages(MemoryAccessFlags accesses,
 
 RGCallback DirectX12RenderGraph::Builder::generateBarrierGroup(
     std::span<const BarrierConfig> configs) {
+  auto barriers =
+      configs |
+      filter_map([](const BarrierConfig &config)
+                     -> std::optional<D3D12_RESOURCE_BARRIER> {
+        auto state_before = getD3D12ResourceStateFromAccessesAndStages(
+            config.src_accesses, config.src_stages);
+        auto state_after = getD3D12ResourceStateFromAccessesAndStages(
+            config.dst_accesses, config.dst_stages);
+        if (state_before == state_after) {
+          return std::nullopt;
+        }
+        return D3D12_RESOURCE_BARRIER{
+            .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+            .Transition = {
+                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                .StateBefore = state_before,
+                .StateAfter = state_after,
+            }};
+      }) |
+      ranges::to<SmallVector<D3D12_RESOURCE_BARRIER, 8>>;
+
+  if (barriers.empty()) {
+    return [](CommandBuffer &, RenderGraph &) {};
+  }
+
   auto textures = configs |
                   ranges::views::transform([](const BarrierConfig &config) {
                     return config.texture;
                   }) |
                   ranges::to<SmallVector<RGTextureID, 8>>;
 
-  auto barriers =
-      configs | map([](const BarrierConfig &config) {
-        return D3D12_RESOURCE_BARRIER{
-            .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-            .Transition =
-                {
-                    .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                    .StateBefore = getD3D12ResourceStateFromAccessesAndStages(
-                        config.src_accesses, config.src_stages),
-                    .StateAfter = getD3D12ResourceStateFromAccessesAndStages(
-                        config.dst_accesses, config.dst_stages),
-                },
-        };
-      }) |
-      ranges::to<SmallVector<D3D12_RESOURCE_BARRIER, 8>>;
-
   return [textures = std::move(textures), barriers = std::move(barriers)](
              CommandBuffer &cmd, RenderGraph &rg) mutable {
-    for (auto &&[tex, barrier] : ranges::views::zip(textures, barriers)) {
-      barrier.Transition.pResource = getD3D12Resource(rg.getTexture(tex));
+    for (auto &&[texture, barrier] : ranges::views::zip(textures, barriers)) {
+      barrier.Transition.pResource = getD3D12Resource(rg.getTexture(texture));
     }
     auto *dx_cmd = static_cast<DirectX12CommandBuffer *>(&cmd);
-    auto *cmd_list = dx_cmd->get();
-    cmd_list->ResourceBarrier(barriers.size(), barriers.data());
+    dx_cmd->get()->ResourceBarrier(barriers.size(), barriers.data());
   };
 }
 

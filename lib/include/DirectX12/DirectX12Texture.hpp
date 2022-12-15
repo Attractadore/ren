@@ -41,7 +41,8 @@ inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlag(TextureUsage usage) {
 
 inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
   auto flags = detail::mapFlags<TextureUsage, getD3D12ResourceFlag>(usage);
-  if (!usage.isSet(TextureUsage::Sampled)) {
+  if (!usage.isSet(TextureUsage::Sampled) and
+      usage.isSet(TextureUsage::DepthStencilTarget)) {
     flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
   }
   return flags;

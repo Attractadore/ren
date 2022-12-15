@@ -1,11 +1,11 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
-#include "BlitTexture2D.h"
+#include "BlitToSwapchain.h"
 #include "DirectX12/DXGIFormat.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
-#include "hlsl/Texture2DBlitConfig.hlsl"
+#include "FullScreenRect.h"
 
 namespace ren {
 namespace {
@@ -19,34 +19,27 @@ ID3D12RootSignature *createBlitRootSignature(ID3D12Device *device) {
       .MaxLOD = D3D12_FLOAT32_MAX,
   };
 
-  std::array<D3D12_DESCRIPTOR_RANGE1, 2> table_ranges;
-  table_ranges[0] = {
+  D3D12_DESCRIPTOR_RANGE1 table_range = {
       .RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
       .NumDescriptors = 1,
       .Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE,
   };
-  table_ranges[1] = {
-      .RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
-      .NumDescriptors = 1,
-      .Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE,
-      .OffsetInDescriptorsFromTableStart = 1,
-  };
 
-  std::array<D3D12_ROOT_PARAMETER1, 2> params;
-  params[0] = {.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-               .DescriptorTable = {.NumDescriptorRanges = table_ranges.size(),
-                                   .pDescriptorRanges = table_ranges.data()}};
-  params[1] = {
-      .ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
-      .Constants = {.Num32BitValues =
-                        sizeof(Texture2DBlitConfig) / sizeof(uint32_t)},
+  D3D12_ROOT_PARAMETER1 root_param = {
+      .ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+      .DescriptorTable =
+          {
+              .NumDescriptorRanges = 1,
+              .pDescriptorRanges = &table_range,
+          },
+      .ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL,
   };
 
   D3D12_VERSIONED_ROOT_SIGNATURE_DESC root_sig_desc = {
       .Version = D3D_ROOT_SIGNATURE_VERSION_1_1,
       .Desc_1_1 = {
-          .NumParameters = params.size(),
-          .pParameters = params.data(),
+          .NumParameters = 1,
+          .pParameters = &root_param,
           .NumStaticSamplers = 1,
           .pStaticSamplers = &sampler_desc,
       }};
@@ -66,16 +59,26 @@ ID3D12RootSignature *createBlitRootSignature(ID3D12Device *device) {
 }
 
 ID3D12PipelineState *createBlitPSO(ID3D12Device *device,
-                                   ID3D12RootSignature *root_sig) {
-  D3D12_COMPUTE_PIPELINE_STATE_DESC pso_desc = {
+                                   ID3D12RootSignature *root_sig,
+                                   DXGI_FORMAT format) {
+  D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {
       .pRootSignature = root_sig,
-      .CS = {.pShaderBytecode = BlitTexture2DShader,
-             .BytecodeLength = sizeof(BlitTexture2DShader)},
+      .VS = {.pShaderBytecode = FullScreenRectShader,
+             .BytecodeLength = sizeof(FullScreenRectShader)},
+      .PS = {.pShaderBytecode = BlitToSwapchainShader,
+             .BytecodeLength = sizeof(BlitToSwapchainShader)},
+      .SampleMask = UINT_MAX,
+      .RasterizerState = {.FillMode = D3D12_FILL_MODE_SOLID,
+                          .CullMode = D3D12_CULL_MODE_NONE},
+      .PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+      .NumRenderTargets = 1,
+      .RTVFormats = {format},
+      .SampleDesc = {.Count = 1},
   };
   ID3D12PipelineState *pso;
   throwIfFailed(
-      device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&pso)),
-      "D3D12: Failed to create pipeline state");
+      device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pso)),
+      "D3D12: Failed to create graphics pipeline state");
   return pso;
 }
 } // namespace
@@ -83,9 +86,11 @@ ID3D12PipelineState *createBlitPSO(ID3D12Device *device,
 DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   m_device = device;
   m_hwnd = hwnd;
+  auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
   DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {
-      .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+      .Format = format,
       .SampleDesc = {.Count = 1},
+      .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
       .BufferCount = c_buffer_count,
       .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
   };
@@ -99,7 +104,7 @@ DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   setTextures();
 
   m_blit_root_sig = createBlitRootSignature(m_device->get());
-  m_blit_pso = createBlitPSO(m_device->get(), m_blit_root_sig.Get());
+  m_blit_pso = createBlitPSO(m_device->get(), m_blit_root_sig.Get(), format);
 }
 
 void DirectX12Swapchain::setTextures() {

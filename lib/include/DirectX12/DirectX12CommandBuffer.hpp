@@ -29,6 +29,7 @@ public:
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
       std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
+  using CommandBuffer::beginRendering;
   void endRendering() override;
 
   void close() override;

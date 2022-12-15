@@ -91,7 +91,9 @@ template <FlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
 }
 
 #define ENABLE_FLAGS(E)                                                        \
-  template <> constexpr inline bool detail::EnableFlags<E> = true;             \
+  namespace detail {                                                           \
+  template <> constexpr inline bool EnableFlags<E> = true;                     \
+  }                                                                            \
   using E##Flags = Flags<E>
 
 // clang-format off

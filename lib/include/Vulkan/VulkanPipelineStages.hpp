@@ -4,12 +4,14 @@
 #include <vulkan/vulkan.h>
 
 namespace ren {
-#define REN_VULKAN_PIPELINE_STAGES (ColorOutput)(Compute)(Blit)
+#define REN_VULKAN_PIPELINE_STAGES (ColorOutput)(Compute)(Blit)(FragmentShader)
 REN_MAP_TYPE(PipelineStage, VkPipelineStageFlagBits2);
 REN_MAP_FIELD(PipelineStage::ColorOutput,
               VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 REN_MAP_FIELD(PipelineStage::Blit, VK_PIPELINE_STAGE_2_BLIT_BIT);
 REN_MAP_FIELD(PipelineStage::Compute, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+REN_MAP_FIELD(PipelineStage::FragmentShader,
+              VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
 namespace detail {
 REN_MAP_ENUM(getVkPipelineStage, PipelineStage, REN_VULKAN_PIPELINE_STAGES);

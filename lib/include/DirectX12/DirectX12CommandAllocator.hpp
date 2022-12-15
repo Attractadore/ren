@@ -21,10 +21,13 @@ class DirectX12CommandAllocator final : public CommandAllocator {
 
 private:
   ID3D12CommandAllocator *getFrameCommandAllocator();
+  auto &getFrameCommandBuffers();
 
   void waitForFrame(uint64_t frame) override;
   void beginFrameImpl() override;
   void endFrameImpl() override;
+
+  DirectX12CommandBuffer *allocateDirectX12CommandBufferImpl();
 
 public:
   DirectX12CommandAllocator(DirectX12Device *device, uint64_t pipeline_depth);

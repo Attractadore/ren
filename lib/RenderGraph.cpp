@@ -343,6 +343,8 @@ getTextureUsageFlagsFromAccessesAndStages(MemoryAccessFlags accesses,
     flags |= TextureUsage::TransferDST;
   } else if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
     flags |= TextureUsage::Storage;
+  } else if (accesses.isSet(SampledRead)) {
+    flags |= TextureUsage::Sampled;
   }
   return flags;
 }

@@ -12,6 +12,8 @@ set(REN_TARGETS RenTargets)
 set(REN_VULKAN_TARGETS RenVulkanTargets)
 set(REN_DIRECTX12_TARGETS RenDirectX12Targets)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+
 add_subdirectory(${EXTERNAL_DIR})
 add_subdirectory(lib)
 
