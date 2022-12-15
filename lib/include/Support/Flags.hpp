@@ -66,6 +66,11 @@ public:
     return (*this & mask) == EmptyFlags;
   }
 
+  constexpr bool isSubset(Flags super_set) const noexcept {
+    auto intersect = *this & super_set;
+    return intersect and *this == intersect;
+  }
+
   constexpr Enum get() const noexcept { return m_value; }
 
   constexpr explicit operator bool() const noexcept {

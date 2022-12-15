@@ -49,7 +49,7 @@ void Scene::draw() {
   pp.setDesc("Post-process pass");
   auto pprt = pp.addWriteInput(
       rt, MemoryAccess::StorageRead | MemoryAccess::StorageWrite,
-      PipelineStage::Compute);
+      PipelineStage::ComputeShader);
   rgb->setDesc(pprt, "Post-processed color buffer");
   pp.setCallback([](CommandBuffer &cmd, RenderGraph &rg) {});
 

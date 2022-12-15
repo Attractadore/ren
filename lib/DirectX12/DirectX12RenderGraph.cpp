@@ -75,27 +75,49 @@ getD3D12ResourceStateFromAccessesAndStages(MemoryAccessFlags accesses,
                                            PipelineStageFlags stages) {
   using enum MemoryAccess;
   using enum PipelineStage;
+
+  // Handle write-only accesses types
   if (accesses == ColorWrite) {
     return D3D12_RESOURCE_STATE_RENDER_TARGET;
-  } else if (accesses == TransferRead) {
-    return D3D12_RESOURCE_STATE_COPY_SOURCE;
-  } else if (accesses == TransferWrite) {
+  }
+  if (accesses == TransferWrite) {
     return D3D12_RESOURCE_STATE_COPY_DEST;
-  } else if (auto flags = StorageRead | StorageWrite;
-             accesses.anySet(flags) and (accesses & flags) == accesses) {
+  }
+
+  // Handle read-write accesses types
+  if (accesses.isSubset(StorageRead | StorageWrite)) {
     return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-  } else if (stages == Present) {
+  }
+  if (accesses == DepthWrite) {
+    return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+  }
+
+  if (accesses.anySet(ColorWrite | TransferWrite | StorageWrite | DepthWrite)) {
+    return D3D12_RESOURCE_STATE_COMMON;
+  }
+
+  if (stages == Present) {
     return D3D12_RESOURCE_STATE_PRESENT;
-  } else if (accesses == SampledRead) {
-    if (stages == FragmentShader) {
-      return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    } else if (stages.isSet(FragmentShader)) {
-      return D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-    } else {
-      return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+  }
+
+  auto states = D3D12_RESOURCE_STATE_COMMON;
+
+  if (accesses.isSet(DepthRead)) {
+    states |= D3D12_RESOURCE_STATE_DEPTH_READ;
+  }
+  if (accesses.isSet(SampledRead)) {
+    if (stages.isSet(FragmentShader)) {
+      states |= D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    }
+    if (stages.isSet(ComputeShader)) {
+      states |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     }
   }
-  return D3D12_RESOURCE_STATE_COMMON;
+  if (accesses == TransferRead) {
+    states |= D3D12_RESOURCE_STATE_COPY_SOURCE;
+  }
+
+  return states;
 }
 } // namespace
 
