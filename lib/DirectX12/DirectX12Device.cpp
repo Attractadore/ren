@@ -31,21 +31,32 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   }
 #endif
 
-  for (int i = 0;; ++i) {
-    throwIfFailed(m_factory->EnumAdapters1(i, &m_adapter),
-                  "DXGI: Failed to find adapter");
-    DXGI_ADAPTER_DESC1 desc;
-    throwIfFailed(m_adapter->GetDesc1(&desc),
-                  "DXGI: Failed to get adapter description");
-    if (desc.AdapterLuid.HighPart == adapter.HighPart and
-        desc.AdapterLuid.LowPart == adapter.LowPart) {
-      break;
-    }
-  }
+#if REN_DIRECTX12_FORCE_WARP_DEVICE
+  throwIfFailed(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&m_adapter)),
+                "DXGI: Failed to find WARP adapter");
+#else
+  throwIfFailed(m_factory->EnumAdapterByLuid(adapter, IID_PPV_ARGS(&m_adapter)),
+                "DXGI: Failed to find adapter");
+#endif
 
   throwIfFailed(D3D12CreateDevice(m_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                                   IID_PPV_ARGS(&m_device)),
                 "D3D12: Failed to create device");
+
+#if REN_DIRECTX12_DEBUG_CALLBACK
+  {
+    ComPtr<ID3D12InfoQueue1> info_queue;
+    throwIfFailed(m_device->QueryInterface(info_queue.GetAddressOf()),
+                  "D3D12: Failed to query ID3D12InfoQueue1 interface");
+    auto debug_callback = [](D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY,
+                             D3D12_MESSAGE_ID, LPCSTR pDescription,
+                             void *) { std::wcerr << pDescription << "\n"; };
+    throwIfFailed(
+        info_queue->RegisterMessageCallback(
+            debug_callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, nullptr),
+        "D3D12: Failed to set debug callback");
+  }
+#endif
 
   D3D12MA::ALLOCATOR_DESC allocator_desc = {
       .pDevice = m_device.Get(),

@@ -14,7 +14,7 @@ namespace ren {
 class DirectX12Swapchain;
 
 class DirectX12Device final : public Device {
-  ComPtr<IDXGIFactory2> m_factory;
+  ComPtr<IDXGIFactory4> m_factory;
   ComPtr<IDXGIAdapter1> m_adapter;
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
@@ -45,8 +45,8 @@ private:
 public:
   DirectX12Device(LUID adapter);
 
-  ID3D12Device *get() const { return m_device.Get(); }
-  IDXGIFactory2 *getDXGIFactory() const { return m_factory.Get(); }
+  auto *get() const { return m_device.Get(); }
+  auto *getDXGIFactory() const { return m_factory.Get(); }
 
   std::unique_ptr<DirectX12Swapchain> createSwapchain(HWND hwnd);
 
