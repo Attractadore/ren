@@ -3,8 +3,7 @@ set(REN_VULKAN_VALIDATION
     CACHE BOOL "Enable Vulkan validation layer")
 
 set(VULKAN_HEADERS_DIR ${EXTERNAL_DIR}/Vulkan-Headers)
-add_subdirectory(${VULKAN_HEADERS_DIR}
-                 ${CMAKE_CURRENT_BINARY_DIR}/Vulkan-Headers)
+add_subdirectory(${VULKAN_HEADERS_DIR} Vulkan-Headers)
 
 add_subdirectory(generate)
 

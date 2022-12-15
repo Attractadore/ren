@@ -12,6 +12,7 @@ set(REN_TARGETS RenTargets)
 set(REN_VULKAN_TARGETS RenVulkanTargets)
 set(REN_DIRECTX12_TARGETS RenDirectX12Targets)
 
+add_subdirectory(${EXTERNAL_DIR})
 add_subdirectory(lib)
 
 set(REN_BUILD_EXAMPLES
