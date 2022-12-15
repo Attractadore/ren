@@ -54,25 +54,17 @@ struct Swapchain : RenSwapchain {
   auto getHeight() const { return ren_GetSwapchainHeight(this); }
 };
 
-enum class CameraID : RenCameraID;
-
 struct CameraRef {
   RenScene *m_scene;
-  RenCameraID m_camera;
 
 public:
-  CameraRef() : CameraRef(nullptr, CameraID(0)) {}
-  CameraRef(Scene *scene, CameraID camera)
-      : m_scene(reinterpret_cast<RenScene *>(scene)),
-        m_camera(std::bit_cast<RenCameraID>(camera)) {}
-
-  void activate() { ren_SetSceneCamera(m_scene, m_camera); }
+  CameraRef() : CameraRef(nullptr) {}
+  CameraRef(Scene *scene) : m_scene(reinterpret_cast<RenScene *>(scene)) {}
 
   Scene *getScene() { return reinterpret_cast<Scene *>(m_scene); };
   const Scene *getScene() const {
     return reinterpret_cast<const Scene *>(m_scene);
   };
-  auto getID() const { return std::bit_cast<CameraID>(m_camera); }
 };
 
 struct Scene : RenScene {
@@ -82,23 +74,11 @@ struct Scene : RenScene {
 
   auto getPipelineDepth() const { return ren_GetScenePipelineDepth(this); }
 
-  CameraRef createCamera() {
-    return getCamera(std::bit_cast<CameraID>(ren_CreateCamera(this)));
-  }
-
-  void destroyCamera(CameraID camera) {
-    ren_DestroyCamera(this, std::bit_cast<RenCameraID>(camera));
-  }
-
-  void setCamera(CameraID camera) {
-    ren_SetSceneCamera(this, std::bit_cast<RenCameraID>(camera));
-  }
-
   void setSwapchain(Swapchain *swapchain) {
     ren_SetSceneSwapchain(this, swapchain);
   }
 
-  CameraRef getCamera(CameraID camera) { return {this, camera}; }
+  CameraRef getCamera() { return {this}; }
 
   void setOutputSize(unsigned width, unsigned height) {
     ren_SetSceneOutputSize(this, width, height);

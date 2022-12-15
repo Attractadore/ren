@@ -25,11 +25,6 @@ void ren_DestroyScene(Scene *scene) { delete scene; }
 
 void ren_DrawScene(Scene *scene) { scene->draw(); }
 
-CameraID ren_CreateCamera(Scene *scene) {
-  assert(scene);
-  return scene->createCamera();
-}
-
 void ren_SetSceneOutputSize(Scene *scene, unsigned width, unsigned height) {
   scene->setOutputSize(width, height);
 }

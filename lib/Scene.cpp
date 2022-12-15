@@ -8,29 +8,9 @@
 #include <range/v3/range.hpp>
 #include <range/v3/view.hpp>
 
-namespace ren {
-CameraID Cameras::create() {
-  auto key = m_cameras.emplace().key;
-  return std::bit_cast<CameraID>(key);
-}
-
-void Cameras::destroy(CameraID id) {
-  auto key = std::bit_cast<CameraKey>(id);
-  m_cameras.erase(key);
-}
-
-Camera &Cameras::getCamera(CameraID id) {
-  auto key = std::bit_cast<CameraKey>(id);
-  return m_cameras[key];
-}
-} // namespace ren
-
 using namespace ren;
 
-Scene::RenScene(Device *device) : m_device(device) {
-  setPipelineDepth(2);
-  m_default_camera = m_cameras.create();
-}
+Scene::RenScene(Device *device) : m_device(device) { setPipelineDepth(2); }
 
 Scene::~RenScene() = default;
 

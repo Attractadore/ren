@@ -8,7 +8,6 @@ extern "C" {
 typedef struct RenDevice RenDevice;
 typedef struct RenScene RenScene;
 typedef struct RenSwapchain RenSwapchain;
-typedef uint64_t RenCameraID;
 
 void ren_DestroyDevice(RenDevice *device);
 
@@ -23,13 +22,6 @@ unsigned ren_GetSceneOutputWidth(const RenScene *scene);
 unsigned ren_GetSceneOutputHeight(const RenScene *scene);
 
 void ren_DrawScene(RenScene *scene);
-
-RenCameraID ren_CreateCamera(RenScene *scene);
-void ren_DestroyCamera(RenScene *scene, RenCameraID camera);
-
-RenCameraID ren_GetSceneDefaultCamera(const RenScene *scene);
-void ren_SetSceneCamera(RenScene *scene, RenCameraID camera);
-RenCameraID ren_GetSceneCamera(const RenScene *scene);
 
 void ren_SetSceneSwapchain(RenScene *scene, RenSwapchain *swapchain);
 RenSwapchain *ren_GetSceneSwapchain(const RenScene *scene);
