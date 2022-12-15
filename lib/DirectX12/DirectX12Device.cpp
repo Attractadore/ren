@@ -76,6 +76,12 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       m_device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&m_direct_queue)),
       "D3D12: Failed to create graphics queue");
 
+  throwIfFailed(
+      m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)),
+      "D3D12: Failed to create fence");
+  m_event.reset(CreateEvent(nullptr, false, false, nullptr));
+  throwIfFailed(m_event.get(), "WIN32: Failed to create event handle");
+
   m_rtv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
   m_dsv_pool = std::make_unique<DirectX12CPUDescriptorPool>(

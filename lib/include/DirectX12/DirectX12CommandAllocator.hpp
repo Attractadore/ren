@@ -8,9 +8,8 @@
 namespace ren {
 class DirectX12CommandAllocator final : public CommandAllocator {
   DirectX12Device *m_device;
-  ComPtr<ID3D12Fence> m_fence;
-  HANDLE m_event;
   SmallVector<ComPtr<ID3D12CommandAllocator>, 3> m_frame_cmd_allocators;
+  SmallVector<uint64_t, 3> m_frame_end_times;
   StableVector<DirectX12CommandBuffer> m_cmd_buffers;
   unsigned m_used_cmd_buffer_count;
 
@@ -21,7 +20,6 @@ class DirectX12CommandAllocator final : public CommandAllocator {
 
 private:
   ID3D12CommandAllocator *getFrameCommandAllocator();
-  auto &getFrameCommandBuffers();
 
   void waitForFrame(uint64_t frame) override;
   void beginFrameImpl() override;

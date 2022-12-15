@@ -180,7 +180,6 @@ void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
   dx_swapchain->AcquireBuffer(*dx_cmd_alloc);
   setTexture(m_swapchain_buffer, dx_swapchain->getTexture());
 
-  auto *queue = dx_device->getDirectQueue();
   SmallVector<ID3D12CommandList *, 16> cmd_lists;
   for (const auto &batch : m_batches) {
     for (auto &&[barrier, pass] :
@@ -196,7 +195,7 @@ void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
       cmd_lists.push_back(dx_cmd->get());
     }
 
-    queue->ExecuteCommandLists(cmd_lists.size(), cmd_lists.data());
+    dx_device->directQueueSubmit(cmd_lists);
     cmd_lists.clear();
   }
 

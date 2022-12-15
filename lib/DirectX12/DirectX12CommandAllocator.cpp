@@ -11,9 +11,7 @@ DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
     m_frame_cmd_allocators.emplace_back(
         m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT));
   }
-  m_fence = m_device->createFence(getFrameNumber(), D3D12_FENCE_FLAG_NONE);
-  m_event = CreateEvent(nullptr, false, false, nullptr);
-  throwIfFailed(m_event, "WIN32: Failed to create event handle");
+  m_frame_end_times.resize(pipeline_depth, 0);
 
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {
       .Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
@@ -30,7 +28,6 @@ DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
 
 DirectX12CommandAllocator::~DirectX12CommandAllocator() {
   waitForFrame(getFrameNumber());
-  CloseHandle(m_event);
 }
 
 ID3D12CommandAllocator *DirectX12CommandAllocator::getFrameCommandAllocator() {
@@ -39,7 +36,7 @@ ID3D12CommandAllocator *DirectX12CommandAllocator::getFrameCommandAllocator() {
 
 DirectX12CommandBuffer *
 DirectX12CommandAllocator::allocateDirectX12CommandBufferImpl() {
-  auto cmd_alloc = getFrameCommandAllocator();
+  auto *cmd_alloc = getFrameCommandAllocator();
   if (m_used_cmd_buffer_count == m_cmd_buffers.size()) {
     m_cmd_buffers.emplace_back(m_device, this, cmd_alloc);
   } else {
@@ -60,12 +57,8 @@ CommandBuffer *DirectX12CommandAllocator::allocateCommandBuffer() {
 }
 
 void DirectX12CommandAllocator::waitForFrame(uint64_t frame) {
-  if (m_fence->GetCompletedValue() < frame) {
-    throwIfFailed(m_fence->SetEventOnCompletion(frame, m_event),
-                  "D3D12: Failed to set fence completion event");
-    throwIfFailed(WaitForSingleObject(m_event, INFINITE),
-                  "WIN32: Failed to wait for event");
-  }
+  auto idx = frame % getPipelineDepth();
+  m_device->waitForDirectQueueCompletion(m_frame_end_times[idx]);
 }
 
 void DirectX12CommandAllocator::beginFrameImpl() {
@@ -76,7 +69,7 @@ void DirectX12CommandAllocator::beginFrameImpl() {
 }
 
 void DirectX12CommandAllocator::endFrameImpl() {
-  m_device->getDirectQueue()->Signal(m_fence.Get(), getFrameNumber());
+  m_frame_end_times[getFrameIndex()] = m_device->getDirectQueueTime();
 }
 
 void DirectX12CommandAllocator::flush() { DIRECTX12_UNIMPLEMENTED; }

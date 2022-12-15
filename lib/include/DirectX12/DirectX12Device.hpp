@@ -18,7 +18,16 @@ class DirectX12Device final : public Device {
   ComPtr<IDXGIAdapter1> m_adapter;
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
+
   ComPtr<ID3D12CommandQueue> m_direct_queue;
+  uint64_t m_direct_queue_time = 0;
+  ComPtr<ID3D12Fence> m_fence;
+  using Event = std::remove_pointer_t<HANDLE>;
+  struct EventDeleter {
+    void operator()(Event *e) const noexcept { CloseHandle(e); }
+  };
+  std::unique_ptr<Event, EventDeleter> m_event;
+
   std::unique_ptr<DirectX12CPUDescriptorPool> m_rtv_pool;
   std::unique_ptr<DirectX12CPUDescriptorPool> m_dsv_pool;
   std::unique_ptr<DirectX12CPUDescriptorPool> m_cbv_srv_uav_pool;
@@ -66,7 +75,7 @@ public:
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
 
-  ID3D12CommandQueue *getDirectQueue() { return m_direct_queue.Get(); }
+  ID3D12CommandQueue *getDirectQueue() const { return m_direct_queue.Get(); }
 
   ID3D12CommandAllocator *createCommandAllocator(D3D12_COMMAND_LIST_TYPE type) {
     ID3D12CommandAllocator *cmd_alloc;
@@ -88,12 +97,26 @@ public:
     return cmd_list;
   }
 
-  ID3D12Fence *createFence(UINT64 initial_value, D3D12_FENCE_FLAGS flags) {
-    ID3D12Fence *fence;
-    throwIfFailed(
-        m_device->CreateFence(initial_value, flags, IID_PPV_ARGS(&fence)),
-        "D3D12: Failed to create fence");
-    return fence;
+  void waitForDirectQueueCompletion(uint64_t time) const {
+    if (m_fence->GetCompletedValue() < time) {
+      throwIfFailed(m_fence->SetEventOnCompletion(time, m_event.get()),
+                    "D3D12: Failed to set fence completion event");
+      throwIfFailed(WaitForSingleObject(m_event.get(), INFINITE),
+                    "WIN32: Failed to wait for event");
+    }
   }
+
+  void waitForDirectQueueCompletion() const {
+    waitForDirectQueueCompletion(getDirectQueueTime());
+  }
+
+  void directQueueSubmit(std::span<ID3D12CommandList *const> cmd_lists) {
+    auto *queue = getDirectQueue();
+    queue->ExecuteCommandLists(cmd_lists.size(), cmd_lists.data());
+    throwIfFailed(queue->Signal(m_fence.Get(), ++m_direct_queue_time),
+                  "D3D12: Failed to signal fence");
+  }
+
+  uint64_t getDirectQueueTime() const { return m_direct_queue_time; }
 };
 } // namespace ren
