@@ -10,12 +10,15 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
   if(NOT DXC)
     find_package(Vulkan COMPONENTS dxc)
     if(TARGET Vulkan::dxc)
+      message(STATUS "Using DXC from Vulkan SDK")
       set(DXC Vulkan::dxc)
+    else()
+      message(STATUS "Using system DXC")
+      find_program(
+        DXC
+        NAMES dxc REQUIRED
+        DOC "Path to DirectXShaderCompiler")
     endif()
-    find_program(
-      DXC
-      NAMES dxc REQUIRED
-      DOC "Path to DirectXShaderCompiler")
   endif()
 
   cmake_path(GET SHADER_SOURCE PARENT_PATH SHADER_REL_DIR)
