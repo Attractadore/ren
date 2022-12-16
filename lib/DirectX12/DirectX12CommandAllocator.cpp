@@ -4,8 +4,7 @@
 
 namespace ren {
 DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
-                                                     uint64_t pipeline_depth)
-    : CommandAllocator(pipeline_depth) {
+                                                     unsigned pipeline_depth) {
   m_device = device;
   for (int i = 0; i < pipeline_depth; ++i) {
     m_frame_cmd_allocators.emplace_back(
@@ -27,11 +26,11 @@ DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
 }
 
 DirectX12CommandAllocator::~DirectX12CommandAllocator() {
-  waitForFrame(getFrameNumber());
+  m_device->waitForDirectQueueCompletion();
 }
 
 ID3D12CommandAllocator *DirectX12CommandAllocator::getFrameCommandAllocator() {
-  return m_frame_cmd_allocators[getFrameIndex()].Get();
+  return m_frame_cmd_allocators[m_frame_index].Get();
 }
 
 DirectX12CommandBuffer *
@@ -56,12 +55,8 @@ CommandBuffer *DirectX12CommandAllocator::allocateCommandBuffer() {
   return allocateDirectX12CommandBuffer();
 }
 
-void DirectX12CommandAllocator::waitForFrame(uint64_t frame) {
-  auto idx = frame % getPipelineDepth();
-  m_device->waitForDirectQueueCompletion(m_frame_end_times[idx]);
-}
-
 void DirectX12CommandAllocator::beginFrameImpl() {
+  m_device->waitForDirectQueueCompletion(m_frame_end_times[m_frame_index]);
   throwIfFailed(getFrameCommandAllocator()->Reset(),
                 "D3D12: Failed to reset command allocator");
   m_used_cmd_buffer_count = 0;
@@ -69,14 +64,13 @@ void DirectX12CommandAllocator::beginFrameImpl() {
 }
 
 void DirectX12CommandAllocator::endFrameImpl() {
-  m_frame_end_times[getFrameIndex()] = m_device->getDirectQueueTime();
+  m_frame_end_times[m_frame_index] = m_device->getDirectQueueTime();
+  m_frame_index = (m_frame_index + 1) % getPipelineDepth();
 }
-
-void DirectX12CommandAllocator::flush() { DIRECTX12_UNIMPLEMENTED; }
 
 Descriptor DirectX12CommandAllocator::allocateDescriptors(unsigned count) {
   size_t offset =
-      (getFrameIndex() * c_descriptor_heap_size + m_allocated_descriptors) *
+      (m_frame_index * c_descriptor_heap_size + m_allocated_descriptors) *
       m_descriptor_size;
   return {
       .cpu_handle =

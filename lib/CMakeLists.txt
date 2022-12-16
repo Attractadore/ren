@@ -27,7 +27,7 @@ if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
 
-add_library(ren SHARED ren.cpp CommandAllocator.cpp RenderGraph.cpp Scene.cpp)
+add_library(ren SHARED ren.cpp RenderGraph.cpp Scene.cpp)
 target_include_directories(ren PUBLIC ${REN_INCLUDE_GE})
 target_link_libraries(ren PRIVATE Support)
 

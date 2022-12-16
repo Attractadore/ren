@@ -66,8 +66,6 @@ void DirectX12CommandBuffer::beginRendering(
       rp.discard_resources.push_back(resource);
       rp.discard_subresources.push_back(sr);
     }
-
-    m_parent->addFrameResource(std::move(rt.rtv));
   }
 
   D3D12_CPU_DESCRIPTOR_HANDLE dsv = {};
@@ -107,8 +105,6 @@ void DirectX12CommandBuffer::beginRendering(
       rp.discard_resources.push_back(resource);
       rp.discard_subresources.push_back(stencil_sr);
     }
-
-    m_parent->addFrameResource(std::move(dst.dsv));
   }
 
   m_cmd_list->OMSetRenderTargets(rtvs.size(), rtvs.data(), false,

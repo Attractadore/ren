@@ -155,9 +155,9 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
   auto window_size = getWindowSize(m_hwnd);
   auto swapchain_size = getSwapchainSize(m_swapchain.Get());
   if (window_size != swapchain_size) {
+    dx12Unimplemented();
     // All accesses to the swapchain's buffers must be completed and all
     // references to them must be released.
-    cmd_alloc.flush();
     throwIfFailed(m_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0),
                   "DXGI: Failed to resize swapchain");
     setTextures();

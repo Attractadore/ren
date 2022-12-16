@@ -59,8 +59,6 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
         cmd_list->DrawInstanced(3, 1, 0, 0);
 
         dx_cmd->endRendering();
-
-        dx_cmd_alloc->addFrameResource(std::move(src_srv));
       });
 
   auto present = addNode();
