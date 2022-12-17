@@ -1,5 +1,6 @@
 #pragma once
 #include "CommandBuffer.hpp"
+#include "DirectX12Descriptor.hpp"
 #include "Support/ComPtr.hpp"
 
 #include <d3d12.h>
@@ -38,5 +39,7 @@ public:
   ID3D12GraphicsCommandList *get() const { return m_cmd_list.Get(); }
   DirectX12CommandAllocator *getParent() const { return m_parent; }
   DirectX12Device *getDevice() const { return m_device; }
+
+  Descriptor allocateDescriptors(unsigned count);
 };
 } // namespace ren

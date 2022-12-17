@@ -129,4 +129,8 @@ void DirectX12CommandBuffer::reset(ID3D12CommandAllocator *cmd_alloc) {
   throwIfFailed(m_cmd_list->Reset(cmd_alloc, nullptr),
                 "D3D12: Failed to reset command list");
 }
+
+Descriptor DirectX12CommandBuffer::allocateDescriptors(unsigned count) {
+  return m_parent->allocateDescriptors(count);
+}
 } // namespace ren
