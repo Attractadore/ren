@@ -12,6 +12,28 @@
 #include <dxgi1_3.h>
 
 namespace ren {
+namespace {
+LONG NTAPI debugHandler(PEXCEPTION_POINTERS exception) {
+  auto record = exception->ExceptionRecord;
+  if (record->NumberParameters >= 2) {
+    switch (record->ExceptionCode) {
+    case DBG_PRINTEXCEPTION_C: {
+      auto *str = reinterpret_cast<PCSTR>(record->ExceptionInformation[1]);
+      std::cerr << str;
+      break;
+    }
+    case DBG_PRINTEXCEPTION_WIDE_C: {
+      auto *str = reinterpret_cast<PCWSTR>(record->ExceptionInformation[1]);
+      std::wcerr << str;
+      break;
+    }
+    }
+    return EXCEPTION_CONTINUE_EXECUTION;
+  }
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+} // namespace
+
 DirectX12Device::DirectX12Device(LUID adapter) {
   constexpr UINT factory_flags =
 #if REN_DIRECTX12_DEBUG
@@ -43,18 +65,21 @@ DirectX12Device::DirectX12Device(LUID adapter) {
                                   IID_PPV_ARGS(&m_device)),
                 "D3D12: Failed to create device");
 
-#if REN_DIRECTX12_DEBUG_CALLBACK
+#if REN_DIRECTX12_DEBUG
   {
     ComPtr<ID3D12InfoQueue1> info_queue;
-    throwIfFailed(m_device->QueryInterface(info_queue.GetAddressOf()),
-                  "D3D12: Failed to query ID3D12InfoQueue1 interface");
-    auto debug_callback = [](D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY,
-                             D3D12_MESSAGE_ID, LPCSTR pDescription,
-                             void *) { std::wcerr << pDescription << "\n"; };
-    throwIfFailed(
-        info_queue->RegisterMessageCallback(
-            debug_callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, nullptr),
-        "D3D12: Failed to set debug callback");
+    if (SUCCEEDED(m_device->QueryInterface(info_queue.GetAddressOf()))) {
+      auto debug_callback = [](D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY,
+                               D3D12_MESSAGE_ID, LPCSTR pDescription,
+                               void *) { std::wcerr << pDescription << "\n"; };
+      DWORD cookie;
+      throwIfFailed(info_queue->RegisterMessageCallback(
+                        debug_callback, D3D12_MESSAGE_CALLBACK_FLAG_NONE,
+                        nullptr, &cookie),
+                    "D3D12: Failed to set debug callback");
+    } else {
+      AddVectoredExceptionHandler(true, debugHandler);
+    }
   }
 #endif
 

@@ -1,9 +1,6 @@
 set(REN_DIRECTX12_DEBUG
     OFF
     CACHE BOOL "Enable DirectX 12 debug layer")
-set(REN_DIRECTX12_DEBUG_CALLBACK
-    OFF
-    CACHE BOOL "Enable DirectX 12 debug callback")
 set(REN_DIRECTX12_FORCE_WARP_DEVICE
     OFF
     CACHE BOOL "Force WARP device for DirectX 12")
@@ -39,10 +36,6 @@ target_link_libraries(
 if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG)
-  if(REN_DIRECTX12_DEBUG_CALLBACK)
-    message(STATUS "Enable DirectX 12 debug callback")
-    target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG_CALLBACK)
-  endif()
 endif()
 if(REN_DIRECTX12_FORCE_WARP_DEVICE)
   message(STATUS "Force WARP device for DirectX 12")
