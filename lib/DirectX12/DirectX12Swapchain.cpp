@@ -87,7 +87,7 @@ ID3D12PipelineState *createBlitPSO(ID3D12Device *device,
 DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   m_device = device;
   m_hwnd = hwnd;
-  auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  auto format = DXGI_FORMAT_B8G8R8A8_UNORM;
   DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {
       .Format = format,
       .SampleDesc = {.Count = 1},

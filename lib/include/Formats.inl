@@ -42,4 +42,17 @@ inline bool isDepthFormat(Format format) {
 inline bool isStencilFormat(Format format) {
   return getFormatProperties(format).flags.isSet(FormatProperty::Stencil);
 }
+
+inline Format getSRGBFormat(Format format) {
+  using enum Format;
+  switch (format) {
+  default:
+    assert(!"Format without SRGB counterpart");
+    return Undefined;
+  case RGBA8:
+    return RGBA8_SRGB;
+  case BGRA8:
+    return BGRA8_SRGB;
+  }
+}
 } // namespace ren
