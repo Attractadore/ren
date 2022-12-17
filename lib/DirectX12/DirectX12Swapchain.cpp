@@ -87,7 +87,8 @@ ID3D12PipelineState *createBlitPSO(ID3D12Device *device,
 DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   m_device = device;
   m_hwnd = hwnd;
-  auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
+  auto format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  auto srgb_format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
   DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {
       .Format = format,
       .SampleDesc = {.Count = 1},
@@ -109,7 +110,8 @@ DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   m_blit_root_sig =
       DeviceHandle(createBlitRootSignature(m_device->get()), m_device);
   m_blit_pso = DeviceHandle(
-      createBlitPSO(m_device->get(), m_blit_root_sig.get(), format), m_device);
+      createBlitPSO(m_device->get(), m_blit_root_sig.get(), srgb_format),
+      m_device);
 }
 
 DirectX12Swapchain::DirectX12Swapchain(DirectX12Swapchain &&) = default;

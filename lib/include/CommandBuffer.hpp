@@ -46,6 +46,10 @@ public:
     beginRendering(0, 0, rt.desc.width, rt.desc.height,
                    {{.rtv = {.texture = std::move(rt)}}}, {});
   }
+  void beginRendering(RenderTargetView rtv) {
+    beginRendering(0, 0, rtv.texture.desc.width, rtv.texture.desc.height,
+                   {{.rtv = std::move(rtv)}}, {});
+  }
   virtual void endRendering() = 0;
 
   virtual void close() = 0;

@@ -5,6 +5,7 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
+#include "Formats.inl"
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"
 #include "Support/Views.hpp"
@@ -50,7 +51,11 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
             1, &srv_uav_table.cpu_handle, &srv_table_size, 1, &srv, nullptr,
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-        dx_cmd->beginRendering(std::move(dst_tex));
+        RenderTargetView rtv = {
+            .desc = {.format = getSRGBFormat(dst_tex.desc.format)},
+            .texture = std::move(dst_tex),
+        };
+        dx_cmd->beginRendering(std::move(rtv));
 
         cmd_list->SetGraphicsRootSignature(root_sig);
         cmd_list->SetPipelineState(pso);
