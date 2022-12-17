@@ -9,9 +9,11 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
 
   if(NOT DXC)
     find_package(Vulkan COMPONENTS dxc)
-    if(TARGET Vulkan::dxc)
+    if(TARGET Vulkan::dxc_exe)
       message(STATUS "Using DXC from Vulkan SDK")
-      set(DXC Vulkan::dxc)
+      set(DXC
+          $<TARGET_FILE:Vulkan::dxc_exe>
+          CACHE FILEPATH "Path to DirectXShaderCompiler")
     else()
       message(STATUS "Using system DXC")
       find_program(
