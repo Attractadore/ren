@@ -169,7 +169,7 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
   auto window_size = getWindowSize(m_hwnd);
   auto swapchain_size = getSwapchainSize(m_swapchain.get());
   if (window_size != swapchain_size) {
-    dx12Unimplemented();
+    m_device->flush();
     // All accesses to the swapchain's buffers must be completed and all
     // references to them must be released.
     throwIfFailed(m_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0),
@@ -182,5 +182,6 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
 void DirectX12Swapchain::PresentBuffer() {
   throwIfFailed(m_swapchain->Present(1, 0),
                 "DXGI: Failed to present swapchain buffer");
+  m_device->tickDirectQueue();
 }
 } // namespace ren
