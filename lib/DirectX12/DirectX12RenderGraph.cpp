@@ -175,7 +175,7 @@ void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
   auto *dx_device = dx_cmd_alloc->getDevice();
   auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
 
-  dx_swapchain->AcquireBuffer(*dx_cmd_alloc);
+  dx_swapchain->AcquireBuffer();
   setTexture(m_swapchain_buffer, dx_swapchain->getTexture());
 
   SmallVector<ID3D12CommandList *, 16> cmd_lists;

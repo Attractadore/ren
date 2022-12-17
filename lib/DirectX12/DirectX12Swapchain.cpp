@@ -104,7 +104,6 @@ DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   throwIfFailed(swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3)),
                 "DXGI: Failed to query IDXGISwapChain3 interface");
   m_swapchain = DeviceHandle(swapchain3, m_device);
-  m_textures.resize(c_buffer_count);
   setTextures();
 
   m_blit_root_sig =
@@ -118,30 +117,35 @@ DirectX12Swapchain &
 DirectX12Swapchain::operator=(DirectX12Swapchain &&) = default;
 DirectX12Swapchain::~DirectX12Swapchain() = default;
 
+namespace {
+DXGI_SWAP_CHAIN_DESC1 getSwapchainDesc(IDXGISwapChain1 *swapchain) {
+  DXGI_SWAP_CHAIN_DESC1 desc;
+  throwIfFailed(swapchain->GetDesc1(&desc),
+                "DXGI: Failed to get swapchain description");
+  return desc;
+}
+} // namespace
+
 void DirectX12Swapchain::setTextures() {
-  for (int i = 0; i < c_buffer_count; ++i) {
-    ComPtr<ID3D12Resource> surface;
+  m_textures.resize(getSwapchainDesc(m_swapchain.get()).BufferCount);
+  for (size_t i = 0; i < m_textures.size(); ++i) {
+    ID3D12Resource *surface;
     m_swapchain->GetBuffer(i, IID_PPV_ARGS(&surface));
     auto desc = surface->GetDesc();
     m_textures[i] = {
-        .desc =
-            {
-                .type = TextureType::e2D,
-                .format = getFormat(desc.Format),
-                .usage = getTextureUsageFlags(desc.Flags),
-                .width = static_cast<unsigned>(desc.Width),
-                .height = desc.Height,
-                .layers = desc.DepthOrArraySize,
-                .levels = desc.MipLevels,
-            },
-        .handle = AnyRef(surface.Get(),
-                         [device = m_device](ID3D12Resource *resource) {
-                           device->pushToDeleteQueue(
-                               [resource](DirectX12Device &device) {
-                                 device.destroyResourceData(resource);
-                               });
-                         }),
-    };
+        .desc = {.type = TextureType::e2D,
+                 .format = getFormat(desc.Format),
+                 .usage = getTextureUsageFlags(desc.Flags),
+                 .width = static_cast<unsigned>(desc.Width),
+                 .height = desc.Height,
+                 .layers = desc.DepthOrArraySize,
+                 .levels = desc.MipLevels},
+        .handle = AnyRef(surface, [device = m_device](ID3D12Resource *surface) {
+          device->pushToDeleteQueue([surface](DirectX12Device &device) {
+            device.destroyResourceData(surface);
+            surface->Release();
+          });
+        })};
   }
 } // namespace ren
 
@@ -154,14 +158,12 @@ std::tuple<unsigned, unsigned> getWindowSize(HWND hwnd) {
 }
 
 std::tuple<unsigned, unsigned> getSwapchainSize(IDXGISwapChain1 *swapchain) {
-  DXGI_SWAP_CHAIN_DESC1 desc;
-  throwIfFailed(swapchain->GetDesc1(&desc),
-                "DXGI: Failed to get swapchain description");
+  auto desc = getSwapchainDesc(swapchain);
   return {desc.Width, desc.Height};
 }
 } // namespace
 
-void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
+void DirectX12Swapchain::AcquireBuffer() {
   // If the swapchain's window is minimized, don't do anything
   if (IsIconic(m_hwnd)) {
     return;
@@ -169,9 +171,10 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
   auto window_size = getWindowSize(m_hwnd);
   auto swapchain_size = getSwapchainSize(m_swapchain.get());
   if (window_size != swapchain_size) {
-    dx12Unimplemented();
     // All accesses to the swapchain's buffers must be completed and all
     // references to them must be released.
+    m_textures.clear();
+    m_device->flush();
     throwIfFailed(m_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0),
                   "DXGI: Failed to resize swapchain");
     setTextures();
@@ -182,5 +185,6 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
 void DirectX12Swapchain::PresentBuffer() {
   throwIfFailed(m_swapchain->Present(1, 0),
                 "DXGI: Failed to present swapchain buffer");
+  m_device->tickDirectQueue();
 }
 } // namespace ren

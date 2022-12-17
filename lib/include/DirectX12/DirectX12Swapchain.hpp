@@ -36,7 +36,7 @@ public:
 
   HWND getHWND() const { return m_hwnd; }
 
-  void AcquireBuffer(DirectX12CommandAllocator &cmd_alloc);
+  void AcquireBuffer();
   const Texture &getTexture() {
     return m_textures[m_swapchain->GetCurrentBackBufferIndex()];
   }
