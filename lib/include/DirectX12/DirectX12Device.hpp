@@ -3,6 +3,7 @@
 #include "D3D12MA.hpp"
 #include "Device.hpp"
 #include "DirectX12CPUDescriptorPool.hpp"
+#include "DirectX12DeleteQueue.hpp"
 #include "Support/Errors.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
@@ -44,6 +45,8 @@ class DirectX12Device final : public Device {
           SmallLinearMap<StorageTextureViewDesc, Descriptor, 3>>
       m_texture_uavs;
 
+  DirectX12DeleteQueue m_delete_queue;
+
 private:
   void destroyResourceRTVs(ID3D12Resource *resource);
   void destroyResourceDSVs(ID3D12Resource *resource);
@@ -75,8 +78,6 @@ public:
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
 
-  ID3D12CommandQueue *getDirectQueue() const { return m_direct_queue.Get(); }
-
   ID3D12CommandAllocator *createCommandAllocator(D3D12_COMMAND_LIST_TYPE type) {
     ID3D12CommandAllocator *cmd_alloc;
     throwIfFailed(
@@ -97,6 +98,19 @@ public:
     return cmd_list;
   }
 
+  ID3D12CommandQueue *getDirectQueue() const { return m_direct_queue.Get(); }
+
+  void tickDirectQueue() {
+    throwIfFailed(
+        getDirectQueue()->Signal(m_fence.Get(), ++m_direct_queue_time),
+        "D3D12: Failed to signal fence");
+  }
+
+  void directQueueSubmit(std::span<ID3D12CommandList *const> cmd_lists) {
+    getDirectQueue()->ExecuteCommandLists(cmd_lists.size(), cmd_lists.data());
+    tickDirectQueue();
+  }
+
   void waitForDirectQueueCompletion(uint64_t time) const {
     if (m_fence->GetCompletedValue() < time) {
       throwIfFailed(m_fence->SetEventOnCompletion(time, m_event.get()),
@@ -110,13 +124,30 @@ public:
     waitForDirectQueueCompletion(getDirectQueueTime());
   }
 
-  void directQueueSubmit(std::span<ID3D12CommandList *const> cmd_lists) {
-    auto *queue = getDirectQueue();
-    queue->ExecuteCommandLists(cmd_lists.size(), cmd_lists.data());
-    throwIfFailed(queue->Signal(m_fence.Get(), ++m_direct_queue_time),
-                  "D3D12: Failed to signal fence");
-  }
+  void wait() const { waitForDirectQueueCompletion(); }
 
   uint64_t getDirectQueueTime() const { return m_direct_queue_time; }
+  uint64_t getDirectQueueCompletedTime() const {
+    return m_fence->GetCompletedValue();
+  }
+
+  DirectX12DeviceTime getTime() const {
+    return {.direct_queue_time = getDirectQueueTime()};
+  }
+
+  DirectX12DeviceTime getCompletedTime() const {
+    return {.direct_queue_time = getDirectQueueCompletedTime()};
+  }
+
+  void pushToDeleteQueue(DirectX12QueueDeleter &&deleter) {
+    m_delete_queue.push(getTime(), std::move(deleter));
+  }
+
+  void popDeleteQueue() override { m_delete_queue.pop(*this); }
+
+  void flush() {
+    wait();
+    m_delete_queue.flush(*this);
+  }
 };
 } // namespace ren

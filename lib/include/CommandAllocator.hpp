@@ -13,7 +13,7 @@ class CommandAllocator {
 public:
   virtual ~CommandAllocator() = default;
 
-  virtual unsigned getPipelineDepth() const;
+  virtual unsigned getPipelineDepth() const = 0;
 
   virtual CommandBuffer *allocateCommandBuffer() = 0;
 

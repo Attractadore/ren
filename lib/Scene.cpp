@@ -26,6 +26,7 @@ void Scene::setOutputSize(unsigned width, unsigned height) {
 void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
 
 void Scene::draw() {
+  m_device->popDeleteQueue();
   auto rgb = m_device->createRenderGraphBuilder();
 
   // Draw scene

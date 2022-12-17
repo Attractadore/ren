@@ -1,6 +1,7 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "BlitToSwapchain.h"
 #include "DirectX12/DXGIFormat.hpp"
+#include "DirectX12/DeviceHandle.inl"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
@@ -99,13 +100,23 @@ DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
                     m_device->getDirectQueue(), m_hwnd, &swapchain_desc,
                     nullptr, nullptr, &swapchain),
                 "DXGI: Failed to create swapchain");
-  throwIfFailed(swapchain.As(&m_swapchain), "DXGI: Failed to create swapchain");
+  IDXGISwapChain3 *swapchain3;
+  throwIfFailed(swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3)),
+                "DXGI: Failed to query IDXGISwapChain3 interface");
+  m_swapchain = DeviceHandle(swapchain3, m_device);
   m_textures.resize(c_buffer_count);
   setTextures();
 
-  m_blit_root_sig = createBlitRootSignature(m_device->get());
-  m_blit_pso = createBlitPSO(m_device->get(), m_blit_root_sig.Get(), format);
+  m_blit_root_sig =
+      DeviceHandle(createBlitRootSignature(m_device->get()), m_device);
+  m_blit_pso = DeviceHandle(
+      createBlitPSO(m_device->get(), m_blit_root_sig.get(), format), m_device);
 }
+
+DirectX12Swapchain::DirectX12Swapchain(DirectX12Swapchain &&) = default;
+DirectX12Swapchain &
+DirectX12Swapchain::operator=(DirectX12Swapchain &&) = default;
+DirectX12Swapchain::~DirectX12Swapchain() = default;
 
 void DirectX12Swapchain::setTextures() {
   for (int i = 0; i < c_buffer_count; ++i) {
@@ -125,11 +136,14 @@ void DirectX12Swapchain::setTextures() {
             },
         .handle = AnyRef(surface.Get(),
                          [device = m_device](ID3D12Resource *resource) {
-                           device->destroyResourceData(resource);
+                           device->pushToDeleteQueue(
+                               [resource](DirectX12Device &device) {
+                                 device.destroyResourceData(resource);
+                               });
                          }),
     };
   }
-}
+} // namespace ren
 
 namespace {
 std::tuple<unsigned, unsigned> getWindowSize(HWND hwnd) {
@@ -153,7 +167,7 @@ void DirectX12Swapchain::AcquireBuffer(DirectX12CommandAllocator &cmd_alloc) {
     return;
   }
   auto window_size = getWindowSize(m_hwnd);
-  auto swapchain_size = getSwapchainSize(m_swapchain.Get());
+  auto swapchain_size = getSwapchainSize(m_swapchain.get());
   if (window_size != swapchain_size) {
     dx12Unimplemented();
     // All accesses to the swapchain's buffers must be completed and all

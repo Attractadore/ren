@@ -93,5 +93,7 @@ public:
   SyncObject createSyncObject(const SyncDesc &desc) override;
 
   std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
+
+  void popDeleteQueue() override {}
 };
 } // namespace ren

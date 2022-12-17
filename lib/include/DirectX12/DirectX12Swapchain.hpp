@@ -1,5 +1,5 @@
 #pragma once
-#include "Support/ComPtr.hpp"
+#include "DeviceHandle.hpp"
 #include "Support/Vector.hpp"
 #include "Swapchain.hpp"
 #include "Texture.hpp"
@@ -16,16 +16,21 @@ class DirectX12Swapchain final : public Swapchain {
 
   DirectX12Device *m_device;
   HWND m_hwnd;
-  ComPtr<IDXGISwapChain3> m_swapchain;
+  DeviceHandle<IDXGISwapChain3> m_swapchain;
   SmallVector<Texture, 3> m_textures;
-  ComPtr<ID3D12RootSignature> m_blit_root_sig;
-  ComPtr<ID3D12PipelineState> m_blit_pso;
+  DeviceHandle<ID3D12RootSignature> m_blit_root_sig;
+  DeviceHandle<ID3D12PipelineState> m_blit_pso;
 
 private:
   void setTextures();
 
 public:
   DirectX12Swapchain(DirectX12Device *device, HWND hwnd);
+  DirectX12Swapchain(const DirectX12Swapchain &) = delete;
+  DirectX12Swapchain(DirectX12Swapchain &&);
+  DirectX12Swapchain &operator=(const DirectX12Swapchain &) = delete;
+  DirectX12Swapchain &operator=(DirectX12Swapchain &&);
+  ~DirectX12Swapchain();
 
   void setSize(unsigned width, unsigned height) override {}
 
@@ -36,9 +41,9 @@ public:
     return m_textures[m_swapchain->GetCurrentBackBufferIndex()];
   }
   ID3D12RootSignature *getBlitRootSignature() const {
-    return m_blit_root_sig.Get();
+    return m_blit_root_sig.get();
   }
-  ID3D12PipelineState *getBlitPSO() const { return m_blit_pso.Get(); }
+  ID3D12PipelineState *getBlitPSO() const { return m_blit_pso.get(); }
   void PresentBuffer();
 };
 } // namespace ren

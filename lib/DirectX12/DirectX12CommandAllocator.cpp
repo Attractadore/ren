@@ -1,4 +1,5 @@
 #include "DirectX12/DirectX12CommandAllocator.hpp"
+#include "DirectX12/DeviceHandle.inl"
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/Errors.hpp"
 
@@ -8,7 +9,8 @@ DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
   m_device = device;
   for (int i = 0; i < pipeline_depth; ++i) {
     m_frame_cmd_allocators.emplace_back(
-        m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT));
+        m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT),
+        m_device);
   }
   m_frame_end_times.resize(pipeline_depth, 0);
 
@@ -18,19 +20,24 @@ DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device *device,
       .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
   };
 
-  throwIfFailed(m_device->get()->CreateDescriptorHeap(
-                    &heap_desc, IID_PPV_ARGS(&m_descriptor_heap)),
-                "D3D12: Failed to create shader-visible descriptor heap");
+  ID3D12DescriptorHeap *heap;
+  throwIfFailed(
+      m_device->get()->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap)),
+      "D3D12: Failed to create shader-visible descriptor heap");
+  m_descriptor_heap = DeviceHandle(heap, m_device);
+
   m_descriptor_size = m_device->get()->GetDescriptorHandleIncrementSize(
       D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-DirectX12CommandAllocator::~DirectX12CommandAllocator() {
-  m_device->waitForDirectQueueCompletion();
-}
+DirectX12CommandAllocator::DirectX12CommandAllocator(
+    DirectX12CommandAllocator &&) = default;
+DirectX12CommandAllocator &
+DirectX12CommandAllocator::operator=(DirectX12CommandAllocator &&) = default;
+DirectX12CommandAllocator::~DirectX12CommandAllocator() = default;
 
 ID3D12CommandAllocator *DirectX12CommandAllocator::getFrameCommandAllocator() {
-  return m_frame_cmd_allocators[m_frame_index].Get();
+  return m_frame_cmd_allocators[m_frame_index].get();
 }
 
 DirectX12CommandBuffer *
@@ -47,7 +54,8 @@ DirectX12CommandAllocator::allocateDirectX12CommandBufferImpl() {
 DirectX12CommandBuffer *
 DirectX12CommandAllocator::allocateDirectX12CommandBuffer() {
   auto *dx_cmd = allocateDirectX12CommandBufferImpl();
-  dx_cmd->get()->SetDescriptorHeaps(1, m_descriptor_heap.GetAddressOf());
+  auto *heap = m_descriptor_heap.get();
+  dx_cmd->get()->SetDescriptorHeaps(1, &heap);
   return dx_cmd;
 }
 

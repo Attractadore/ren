@@ -142,11 +142,14 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
                 "D3D12MA: Failed to create texture");
   return {
       .desc = desc,
-      .handle = AnyRef(allocation->GetResource(),
-                       [this, allocation](ID3D12Resource *resource) {
-                         destroyResourceData(resource);
-                         allocation->Release();
-                       }),
+      .handle =
+          AnyRef(allocation->GetResource(),
+                 [this, allocation](ID3D12Resource *) {
+                   pushToDeleteQueue([allocation](DirectX12Device &device) {
+                     device.destroyResourceData(allocation->GetResource());
+                     allocation->Release();
+                   });
+                 }),
   };
 }
 

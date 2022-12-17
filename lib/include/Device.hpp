@@ -12,4 +12,6 @@ struct RenDevice {
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 
   virtual ren::SyncObject createSyncObject(const ren::SyncDesc &desc) = 0;
+
+  virtual void popDeleteQueue() = 0;
 };
