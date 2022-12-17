@@ -35,25 +35,24 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
        pso = dx_swapchain->getBlitPSO()](CommandBuffer &cmd, RenderGraph &rg) {
         auto *dx_cmd = static_cast<DirectX12CommandBuffer *>(&cmd);
         auto *dx_device = dx_cmd->getDevice();
-        auto *dx_cmd_alloc = dx_cmd->getParent();
         auto *cmd_list = dx_cmd->get();
-        auto &src_tex = rg.getTexture(final_texture);
-        auto &dst_tex = rg.getTexture(swapchain_buffer);
-        SampledTextureView src_srv = {
-            .desc = {.mip_levels = 1},
-            .texture = src_tex,
-        };
+
+        auto srv = dx_device
+                       ->getSRV({
+                           .desc = {.mip_levels = 1},
+                           .texture = rg.getTexture(final_texture),
+                       })
+                       .cpu_handle;
         UINT srv_table_size = 1;
-        auto srv = dx_device->getSRV(src_srv).cpu_handle;
-        Descriptor srv_uav_table =
-            dx_cmd_alloc->allocateDescriptors(srv_table_size);
+        auto srv_uav_table = dx_cmd->allocateDescriptors(srv_table_size);
         dx_device->get()->CopyDescriptors(
             1, &srv_uav_table.cpu_handle, &srv_table_size, 1, &srv, nullptr,
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
+        const auto &dst_tex = rg.getTexture(swapchain_buffer);
         RenderTargetView rtv = {
             .desc = {.format = getSRGBFormat(dst_tex.desc.format)},
-            .texture = std::move(dst_tex),
+            .texture = dst_tex,
         };
         dx_cmd->beginRendering(std::move(rtv));
 
