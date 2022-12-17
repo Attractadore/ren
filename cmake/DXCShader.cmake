@@ -7,11 +7,13 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
   cmake_parse_arguments(PARSE_ARGV 2 OPTION ${ARGS_OPTIONS} ${ARGS_ONE}
                         ${ARGS_MULTI})
 
+  find_package(Vulkan COMPONENTS dxc)
   if(NOT DXC)
-    find_package(Vulkan COMPONENTS dxc)
-    if(TARGET Vulkan::dxc)
+    if(TARGET Vulkan::dxc_exe)
       message(STATUS "Using DXC from Vulkan SDK")
-      set(DXC Vulkan::dxc)
+      set(DXC
+          $<TARGET_FILE:Vulkan::dxc_exe>
+          CACHE FILEPATH "Path to DirectXShaderCompiler")
     else()
       message(STATUS "Using system DXC")
       find_program(
