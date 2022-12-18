@@ -11,8 +11,9 @@ DirectX12CommandBuffer::DirectX12CommandBuffer(
     ID3D12CommandAllocator *cmd_alloc) {
   m_device = device;
   m_parent = parent;
-  m_cmd_list = m_device->createCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                           cmd_alloc, nullptr);
+  auto cmd_list = m_device->createCommandList(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                              cmd_alloc, nullptr);
+  m_cmd_list.Attach(cmd_list);
 }
 
 namespace {

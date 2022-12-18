@@ -9,7 +9,8 @@
 #include "Support/LinearMap.hpp"
 
 #include <d3d12.h>
-#include <dxgi1_2.h>
+#include <dxgi1_3.h>
+#include <dxgidebug.h>
 
 namespace ren {
 class DirectX12Swapchain;
@@ -17,6 +18,22 @@ class DirectX12Swapchain;
 class DirectX12Device final : public Device {
   ComPtr<IDXGIFactory4> m_factory;
   ComPtr<IDXGIAdapter1> m_adapter;
+
+#if REN_DIRECTX12_DEBUG
+  struct LiveObjectReporter {
+    LiveObjectReporter() = default;
+    LiveObjectReporter(const LiveObjectReporter &) = default;
+    LiveObjectReporter(LiveObjectReporter &&) = default;
+    LiveObjectReporter &operator=(const LiveObjectReporter &) = default;
+    LiveObjectReporter &operator=(LiveObjectReporter &&) = default;
+    ~LiveObjectReporter() {
+      ComPtr<IDXGIDebug> debug_controller;
+      DXGIGetDebugInterface1(0, IID_PPV_ARGS(&debug_controller));
+      debug_controller->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_ALL);
+    }
+  } m_live_object_reporter;
+#endif
+
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
 
@@ -56,6 +73,11 @@ private:
 
 public:
   DirectX12Device(LUID adapter);
+  DirectX12Device(const DirectX12Device &) = delete;
+  DirectX12Device(DirectX12Device &&) = default;
+  DirectX12Device &operator=(const DirectX12Device &) = delete;
+  DirectX12Device &operator=(DirectX12Device &&) = default;
+  ~DirectX12Device();
 
   auto *get() const { return m_device.Get(); }
   auto *getDXGIFactory() const { return m_factory.Get(); }

@@ -6,10 +6,10 @@
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
 #include "Format/Texture.hpp"
-#include "Support/Log.hpp"
 
 #include <d3d12sdklayers.h>
-#include <dxgi1_3.h>
+
+#include <iostream>
 
 namespace ren {
 namespace {
@@ -46,10 +46,11 @@ DirectX12Device::DirectX12Device(LUID adapter) {
 
 #if REN_DIRECTX12_DEBUG
   {
-    ComPtr<ID3D12Debug> debug_controller;
+    ComPtr<ID3D12Debug5> debug_controller;
     throwIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)),
                   "D3D12: Failed to get debug controller");
     debug_controller->EnableDebugLayer();
+    debug_controller->SetEnableAutoName(true);
   }
 #endif
 
@@ -88,10 +89,9 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       .pAdapter = m_adapter.Get(),
   };
 
-  D3D12MA::Allocator *allocator;
-  throwIfFailed(D3D12MA::CreateAllocator(&allocator_desc, &allocator),
-                "D3D12MA: Failed to create allocator");
-  m_allocator = allocator;
+  throwIfFailed(
+      D3D12MA::CreateAllocator(&allocator_desc, m_allocator.GetAddressOf()),
+      "D3D12MA: Failed to create allocator");
 
   D3D12_COMMAND_QUEUE_DESC queue_desc = {
       .Type = D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -114,6 +114,8 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   m_cbv_srv_uav_pool = std::make_unique<DirectX12CPUDescriptorPool>(
       m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
+
+DirectX12Device::~DirectX12Device() { flush(); }
 
 std::unique_ptr<DirectX12Swapchain>
 DirectX12Device::createSwapchain(HWND hwnd) {
@@ -223,13 +225,9 @@ DirectX12Device::getRTV(const RenderTargetView &rtv) {
   // TODO: null descriptors
   assert(resource);
 
-  dx12Log("Get RTV for resource {}", fmt::ptr(resource));
-  dx12Debug("RTV desc: {}", rtv.desc);
-
   auto [it, inserted] = m_rtvs[resource].insert(rtv.desc, {});
   auto &handle = std::get<1>(*it);
   if (inserted) {
-    dx12Log("No existing RTV found, create a new one");
     handle = m_rtv_pool->allocate().cpu_handle;
     D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
         .Format = getDXGIFormat(getRTVFormat(rtv)),
@@ -241,6 +239,7 @@ DirectX12Device::getRTV(const RenderTargetView &rtv) {
         }};
     m_device->CreateRenderTargetView(resource, &rtv_desc, handle);
   }
+
   return handle;
 }
 
@@ -249,13 +248,12 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
                         TargetStoreOp depth_store_op,
                         TargetStoreOp stencil_store_op) {
   auto *resource = getD3D12Resource(dsv.texture);
-  dx12Log("Get DSV for resource {}", fmt::ptr(resource));
   // TODO: null descriptors
   assert(resource);
+
   auto [it, inserted] = m_dsvs[resource].insert(dsv.desc, {});
   auto &handle = std::get<1>(*it);
   if (inserted) {
-    dx12Log("Create new DSV for resource {}", fmt::ptr(resource));
     handle = m_dsv_pool->allocate().cpu_handle;
     D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {
         .Format = getDXGIFormat(getDSVFormat(dsv)),
@@ -273,6 +271,7 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
     }
     m_device->CreateDepthStencilView(resource, &dsv_desc, handle);
   }
+
   return handle;
 }
 
@@ -281,15 +280,9 @@ Descriptor DirectX12Device::getSRV(const SampledTextureView &srv) {
   // TODO: null descriptors
   assert(resource);
 
-  dx12Log("Get SRV for texture {}", fmt::ptr(resource));
-#if 0
-  dx12Debug("SRV desc: {}", srv.desc);
-#endif
-
   auto [it, inserted] = m_texture_srvs[resource].insert(srv.desc, {});
   auto &descriptor = std::get<1>(*it);
   if (inserted) {
-    dx12Log("Create new SRV for texture {}", fmt::ptr(resource));
     descriptor = m_cbv_srv_uav_pool->allocate();
     D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {
         .Format = getDXGIFormat(getSampledViewFormat(srv)),
@@ -313,15 +306,9 @@ Descriptor DirectX12Device::getUAV(const StorageTextureView &uav) {
   // TODO: null descriptors
   assert(resource);
 
-  dx12Log("Get UAV for texture {}", fmt::ptr(resource));
-#if 0
-  dx12Debug("UAV desc: {}", uav.desc);
-#endif
-
   auto [it, inserted] = m_texture_uavs[resource].insert(uav.desc, {});
   auto &descriptor = std::get<1>(*it);
   if (inserted) {
-    dx12Log("Create new UAV for texture {}", fmt::ptr(resource));
     descriptor = m_cbv_srv_uav_pool->allocate();
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {
         .Format = getDXGIFormat(getStorageViewFormat(uav)),
