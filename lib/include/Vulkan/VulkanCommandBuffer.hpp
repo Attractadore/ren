@@ -2,6 +2,7 @@
 #include "CommandBuffer.hpp"
 #include "Support/Vector.hpp"
 #include "VulkanSync.hpp"
+#include "VulkanTexture.hpp"
 
 namespace ren {
 inline VkAttachmentLoadOp getVkAttachmentLoadOp(TargetLoadOp load_op) {
@@ -49,23 +50,18 @@ public:
       std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
-  void blit(Texture src, Texture dst, std::span<const VkImageBlit> regions, VkFilter filter);
-  void blit(Texture src, Texture dst) {
+  void blit(VkImage src, VkImage dst, std::span<const VkImageBlit> regions,
+            VkFilter filter);
+  void blit(const Texture &src, const Texture &dst) {
     VkImageBlit region = {
-      .srcSubresource = {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .layerCount = 1,
-      },
-      .srcOffsets = {{},
-        {int(src.desc.width), int(src.desc.height), 1}},
-      .dstSubresource = {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .layerCount = 1,
-      },
-      .dstOffsets = {{},
-        {int(dst.desc.width), int(dst.desc.height), 1}},
+        .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
+        .srcOffsets = {{}, {int(src.desc.width), int(src.desc.height), 1}},
+        .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
+        .dstOffsets = {{}, {int(dst.desc.width), int(dst.desc.height), 1}},
     };
-    blit(std::move(src), std::move(dst), asSpan(region), VK_FILTER_LINEAR);
+    blit(getVkImage(src), getVkImage(dst), asSpan(region), VK_FILTER_LINEAR);
   }
 
   void wait(SyncObject sync, PipelineStageFlags stages);
