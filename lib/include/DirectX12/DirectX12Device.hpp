@@ -46,20 +46,20 @@ class DirectX12Device final : public Device {
   };
   std::unique_ptr<Event, EventDeleter> m_event;
 
-  std::unique_ptr<DirectX12CPUDescriptorPool> m_rtv_pool;
-  std::unique_ptr<DirectX12CPUDescriptorPool> m_dsv_pool;
-  std::unique_ptr<DirectX12CPUDescriptorPool> m_cbv_srv_uav_pool;
+  DirectX12CPUDescriptorPool m_rtv_pool;
+  DirectX12CPUDescriptorPool m_dsv_pool;
+  DirectX12CPUDescriptorPool m_cbv_srv_uav_pool;
   HashMap<ID3D12Resource *,
           SmallLinearMap<RenderTargetViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_rtvs;
   HashMap<ID3D12Resource *,
           SmallLinearMap<DepthStencilViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_dsvs;
-  HashMap<ID3D12Resource *,
-          SmallLinearMap<SampledTextureViewDesc, Descriptor, 3>>
+  HashMap<ID3D12Resource *, SmallLinearMap<SampledTextureViewDesc,
+                                           D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_srvs;
-  HashMap<ID3D12Resource *,
-          SmallLinearMap<StorageTextureViewDesc, Descriptor, 3>>
+  HashMap<ID3D12Resource *, SmallLinearMap<StorageTextureViewDesc,
+                                           D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_uavs;
 
   DirectX12DeleteQueue m_delete_queue;
@@ -95,8 +95,8 @@ public:
   D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
                                      TargetStoreOp depth_store_op,
                                      TargetStoreOp stencil_store_op);
-  Descriptor getSRV(const SampledTextureView &srv);
-  Descriptor getUAV(const StorageTextureView &uav);
+  D3D12_CPU_DESCRIPTOR_HANDLE getSRV(const SampledTextureView &srv);
+  D3D12_CPU_DESCRIPTOR_HANDLE getUAV(const StorageTextureView &uav);
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
 

@@ -37,12 +37,10 @@ void DirectX12RenderGraph::Builder::addPresentNodes() {
         auto *dx_device = dx_cmd->getDevice();
         auto *cmd_list = dx_cmd->get();
 
-        auto srv = dx_device
-                       ->getSRV({
-                           .desc = {.mip_levels = 1},
-                           .texture = rg.getTexture(final_texture),
-                       })
-                       .cpu_handle;
+        auto srv = dx_device->getSRV({
+            .desc = {.mip_levels = 1},
+            .texture = rg.getTexture(final_texture),
+        });
         UINT srv_table_size = 1;
         auto srv_uav_table = dx_cmd->allocateDescriptors(srv_table_size);
         dx_device->get()->CopyDescriptors(

@@ -107,12 +107,9 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   m_event.reset(CreateEvent(nullptr, false, false, nullptr));
   throwIfFailed(m_event.get(), "WIN32: Failed to create event handle");
 
-  m_rtv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
-      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-  m_dsv_pool = std::make_unique<DirectX12CPUDescriptorPool>(
-      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-  m_cbv_srv_uav_pool = std::make_unique<DirectX12CPUDescriptorPool>(
-      m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+  m_rtv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV};
+  m_dsv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV};
+  m_cbv_srv_uav_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV};
 }
 
 DirectX12Device::~DirectX12Device() { flush(); }
@@ -186,28 +183,28 @@ void DirectX12Device::destroyResourceData(ID3D12Resource *resource) {
 
 void DirectX12Device::destroyResourceRTVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_rtvs[resource]) {
-    m_rtv_pool->free({.cpu_handle = desciptor});
+    m_rtv_pool.free(desciptor);
   }
   m_rtvs.erase(resource);
 }
 
 void DirectX12Device::destroyResourceDSVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_dsvs[resource]) {
-    m_dsv_pool->free({.cpu_handle = desciptor});
+    m_dsv_pool.free(desciptor);
   }
   m_dsvs.erase(resource);
 }
 
 void DirectX12Device::destroyResourceTextureSRVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_texture_srvs[resource]) {
-    m_cbv_srv_uav_pool->free(desciptor);
+    m_cbv_srv_uav_pool.free(desciptor);
   }
   m_texture_srvs.erase(resource);
 }
 
 void DirectX12Device::destroyResourceTextureUAVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_texture_uavs[resource]) {
-    m_cbv_srv_uav_pool->free(desciptor);
+    m_cbv_srv_uav_pool.free(desciptor);
   }
   m_texture_uavs.erase(resource);
 }
@@ -228,7 +225,7 @@ DirectX12Device::getRTV(const RenderTargetView &rtv) {
   auto [it, inserted] = m_rtvs[resource].insert(rtv.desc, {});
   auto &handle = std::get<1>(*it);
   if (inserted) {
-    handle = m_rtv_pool->allocate().cpu_handle;
+    handle = m_rtv_pool.allocate();
     D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
         .Format = getDXGIFormat(getRTVFormat(rtv)),
         .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY,
@@ -254,7 +251,7 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
   auto [it, inserted] = m_dsvs[resource].insert(dsv.desc, {});
   auto &handle = std::get<1>(*it);
   if (inserted) {
-    handle = m_dsv_pool->allocate().cpu_handle;
+    handle = m_dsv_pool.allocate();
     D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {
         .Format = getDXGIFormat(getDSVFormat(dsv)),
         .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY,
@@ -275,7 +272,8 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
   return handle;
 }
 
-Descriptor DirectX12Device::getSRV(const SampledTextureView &srv) {
+D3D12_CPU_DESCRIPTOR_HANDLE
+DirectX12Device::getSRV(const SampledTextureView &srv) {
   auto *resource = getD3D12Resource(srv.texture);
   // TODO: null descriptors
   assert(resource);
@@ -283,7 +281,7 @@ Descriptor DirectX12Device::getSRV(const SampledTextureView &srv) {
   auto [it, inserted] = m_texture_srvs[resource].insert(srv.desc, {});
   auto &descriptor = std::get<1>(*it);
   if (inserted) {
-    descriptor = m_cbv_srv_uav_pool->allocate();
+    descriptor = m_cbv_srv_uav_pool.allocate();
     D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {
         .Format = getDXGIFormat(getSampledViewFormat(srv)),
         .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
@@ -294,14 +292,14 @@ Descriptor DirectX12Device::getSRV(const SampledTextureView &srv) {
             .FirstArraySlice = srv.desc.first_array_layer,
             .ArraySize = getSampledViewArrayLayers(srv),
         }};
-    m_device->CreateShaderResourceView(resource, &srv_desc,
-                                       descriptor.cpu_handle);
+    m_device->CreateShaderResourceView(resource, &srv_desc, descriptor);
   }
 
   return descriptor;
 }
 
-Descriptor DirectX12Device::getUAV(const StorageTextureView &uav) {
+D3D12_CPU_DESCRIPTOR_HANDLE
+DirectX12Device::getUAV(const StorageTextureView &uav) {
   auto *resource = getD3D12Resource(uav.texture);
   // TODO: null descriptors
   assert(resource);
@@ -309,7 +307,7 @@ Descriptor DirectX12Device::getUAV(const StorageTextureView &uav) {
   auto [it, inserted] = m_texture_uavs[resource].insert(uav.desc, {});
   auto &descriptor = std::get<1>(*it);
   if (inserted) {
-    descriptor = m_cbv_srv_uav_pool->allocate();
+    descriptor = m_cbv_srv_uav_pool.allocate();
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {
         .Format = getDXGIFormat(getStorageViewFormat(uav)),
         .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY,
@@ -319,7 +317,7 @@ Descriptor DirectX12Device::getUAV(const StorageTextureView &uav) {
             .ArraySize = getStorageViewArrayLayers(uav),
         }};
     m_device->CreateUnorderedAccessView(resource, nullptr, &uav_desc,
-                                        descriptor.cpu_handle);
+                                        descriptor);
   }
 
   return descriptor;
