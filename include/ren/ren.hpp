@@ -1,7 +1,6 @@
 #pragma once
 #include "ren.h"
 
-#include <bit>
 #include <memory>
 
 struct RenDevice {
@@ -68,12 +67,6 @@ public:
 };
 
 struct Scene : RenScene {
-  void setPipelineDepth(unsigned pipeline_depth) {
-    ren_SetScenePipelineDepth(this, pipeline_depth);
-  }
-
-  auto getPipelineDepth() const { return ren_GetScenePipelineDepth(this); }
-
   void setSwapchain(Swapchain *swapchain) {
     ren_SetSceneSwapchain(this, swapchain);
   }

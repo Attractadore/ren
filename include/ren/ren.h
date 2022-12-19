@@ -14,9 +14,6 @@ void ren_DestroyDevice(RenDevice *device);
 RenScene *ren_CreateScene(RenDevice *device);
 void ren_DestroyScene(RenScene *scene);
 
-void ren_SetScenePipelineDepth(RenScene *scene, unsigned pipeline_depth);
-unsigned ren_GetScenePipelineDepth(const RenScene *scene);
-
 void ren_SetSceneOutputSize(RenScene *scene, unsigned width, unsigned height);
 unsigned ren_GetSceneOutputWidth(const RenScene *scene);
 unsigned ren_GetSceneOutputHeight(const RenScene *scene);
