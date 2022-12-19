@@ -106,12 +106,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkSurfaceKHR surface)
   create();
 }
 
-void VulkanSwapchain::setSize(unsigned width, unsigned height) {
-  m_create_info.imageExtent = {
-      .width = width,
-      .height = height,
-  };
-}
+VulkanSwapchain::~VulkanSwapchain() { destroy(); }
 
 void VulkanSwapchain::create() {
   auto capabilities = getSurfaceCapabilities(m_device, m_create_info.surface);
@@ -131,8 +126,11 @@ void VulkanSwapchain::create() {
   m_create_info.preTransform = capabilities.currentTransform;
   m_create_info.oldSwapchain = m_swapchain;
 
-  throwIfFailed(m_device->CreateSwapchainKHR(&m_create_info, &m_swapchain),
+  VkSwapchainKHR new_swapchain;
+  throwIfFailed(m_device->CreateSwapchainKHR(&m_create_info, &new_swapchain),
                 "Vulkan: Failed to create swapchain");
+  destroy();
+  m_swapchain = new_swapchain;
 
   unsigned image_count = 0;
   throwIfFailed(
@@ -150,21 +148,27 @@ void VulkanSwapchain::create() {
       .height = m_create_info.imageExtent.height,
   };
 
-  auto swapchain_ref =
-      AnyRef(m_swapchain, [device = m_device](VkSwapchainKHR swapchain) {
-        device->DestroySwapchainKHR(swapchain);
-      });
   m_textures.resize(image_count);
   for (size_t i = 0; i < image_count; ++i) {
     m_textures[i] = {
         .desc = tex_desc,
-        .handle = AnyRef(images[i], [device = m_device,
-                                     swapchain_ref](VkImage image) {
-          device->pushToDeleteQueue(
-              [image, swapchain_ref = std::move(swapchain_ref)](
-                  VulkanDevice &device) { device.destroyImageData(image); });
-        })};
+        .handle = AnyRef(images[i], [](VkImage image) {}),
+    };
   }
+}
+
+void VulkanSwapchain::destroy() {
+  m_device->push_to_delete_queue(m_swapchain);
+  for (const auto &texture : m_textures) {
+    m_device->push_to_delete_queue(SwapchainImage{getVkImage(texture)});
+  }
+}
+
+void VulkanSwapchain::setSize(unsigned width, unsigned height) {
+  m_create_info.imageExtent = {
+      .width = width,
+      .height = height,
+  };
 }
 
 void VulkanSwapchain::acquireImage(VkSemaphore signal_semaphore) {

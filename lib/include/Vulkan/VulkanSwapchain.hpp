@@ -14,8 +14,17 @@ class VulkanSwapchain final : public Swapchain {
   unsigned m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info;
 
+private:
+  void create();
+  void destroy();
+
 public:
   VulkanSwapchain(VulkanDevice *device, VkSurfaceKHR surface);
+  VulkanSwapchain(const VulkanSwapchain &) = delete;
+  VulkanSwapchain(VulkanSwapchain &&);
+  VulkanSwapchain &operator=(const VulkanSwapchain &) = delete;
+  VulkanSwapchain &operator=(VulkanSwapchain &&);
+  ~VulkanSwapchain();
 
   void setSize(unsigned width, unsigned height);
 
@@ -25,8 +34,5 @@ public:
     assert(m_image_index < m_textures.size());
     return m_textures[m_image_index];
   }
-
-private:
-  void create();
 };
 } // namespace ren

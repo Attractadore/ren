@@ -1,19 +1,25 @@
 #pragma once
 #include "DeleteQueue.hpp"
+#include "VMA.h"
 
 #include <cstdint>
 
 namespace ren {
 class VulkanDevice;
 
-template <> struct DeviceTime<VulkanDevice> {
-  uint64_t graphics_queue_time;
+template <typename T> using VulkanQueueDeleter = QueueDeleter<VulkanDevice, T>;
+using VulkanQueueCustomDeleter = QueueCustomDeleter<VulkanDevice>;
 
-  auto operator<=>(const DeviceTime &other) const = default;
+struct VMAImage {
+  VkImage image;
+  VmaAllocation allocation;
 };
-using VulkanDeviceTime = DeviceTime<VulkanDevice>;
 
-using VulkanQueueDeleter = QueueDeleter<VulkanDevice>;
+struct SwapchainImage {
+  VkImage image;
+};
 
-using VulkanDeleteQueue = DeleteQueue<VulkanDevice>;
+using VulkanDeleteQueue =
+    DeleteQueue<VulkanDevice, VulkanQueueCustomDeleter, VMAImage, VkSemaphore,
+                VkSwapchainKHR, SwapchainImage>;
 } // namespace ren

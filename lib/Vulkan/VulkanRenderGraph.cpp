@@ -146,17 +146,15 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
 
   SmallVector<VulkanSubmit, 16> submits;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
-  SmallVector<VkSemaphoreSubmitInfo, 16> signal_semaphore_infos;
   SmallVector<unsigned, 16> cmd_buffer_counts;
-  SmallVector<unsigned, 16> signal_semaphore_counts;
 
   for (auto &batch : m_batches) {
-    VulkanCommandBuffer *cmd = nullptr;
-    auto p_cmd_buffer_infos = cmd_buffer_infos.data() + cmd_buffer_infos.size();
-    unsigned cmd_buffer_info_count = batch.pass_cbs.size();
+    SmallVector<VulkanCommandBuffer *, 8> cmds;
+    cmds.reserve(batch.barrier_cbs.size());
+
     for (auto &&[barrier_cb, pass_cb] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      cmd = vk_cmd_pool->allocateVulkanCommandBuffer();
+      auto *cmd = vk_cmd_pool->allocateVulkanCommandBuffer();
       if (barrier_cb) {
         barrier_cb(*cmd, *this);
       }
@@ -167,25 +165,21 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
       cmd_buffer_infos.push_back(
           {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
            .commandBuffer = cmd->get()});
+      cmds.push_back(cmd);
     }
-    assert(cmd);
-    signal_semaphore_infos.append(cmd->getSignalSemaphores());
 
-    cmd_buffer_counts.push_back(batch.pass_cbs.size());
-    signal_semaphore_counts.push_back(cmd->getSignalSemaphores().size());
+    submits.push_back(
+        {.wait_semaphores = cmds.front()->getWaitSemaphores(),
+         .signal_semaphores = cmds.back()->getSignalSemaphores()});
 
-    submits.push_back({.wait_semaphores = cmd->getWaitSemaphores()});
+    cmd_buffer_counts.push_back(cmds.size());
   }
 
   auto *p_cmd_buffer_infos = cmd_buffer_infos.data();
-  auto *p_signal_semaphore_infos = signal_semaphore_infos.data();
   for (size_t i = 0; i < submits.size(); ++i) {
     unsigned cmd_cnt = cmd_buffer_counts[i];
-    unsigned sig_sem_cnt = signal_semaphore_counts[i];
     submits[i].command_buffers = {p_cmd_buffer_infos, cmd_cnt};
-    submits[i].signal_semaphores = {p_signal_semaphore_infos, sig_sem_cnt};
     p_cmd_buffer_infos += cmd_cnt;
-    p_signal_semaphore_infos += sig_sem_cnt;
   }
 
   vk_device->graphicsQueueSubmit(submits);

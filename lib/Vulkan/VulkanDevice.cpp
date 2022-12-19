@@ -2,6 +2,7 @@
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
+#include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
@@ -126,11 +127,16 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
 }
 
 VulkanDevice::~VulkanDevice() {
-  flush();
+  waitForIdle();
+  m_delete_queue.flush(*this);
   DestroySemaphore(m_graphics_queue_semaphore);
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
 }
+
+void VulkanDevice::begin_frame() { m_delete_queue.begin_frame(*this); }
+
+void VulkanDevice::end_frame() { m_delete_queue.end_frame(*this); }
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
@@ -154,22 +160,15 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
                                &allocation, nullptr),
                 "VMA: Failed to create image");
 
-  return {
-      .desc = desc,
-      .handle =
-          AnyRef(image,
-                 [this, allocation](VkImage image) {
-                   pushToDeleteQueue([image, allocation](VulkanDevice &device) {
-                     device.destroyImageData(image);
-                     device.destroyImage(image, allocation);
-                   });
-                 }),
-  };
+  return {.desc = desc,
+          .handle = AnyRef(image, [this, allocation](VkImage image) {
+            push_to_delete_queue(VMAImage{image, allocation});
+          })};
 }
 
-void VulkanDevice::destroyImageData(VkImage image) { destroyImageViews(image); }
-
-void VulkanDevice::destroyImage(VkImage image, VmaAllocation allocation) {
+void VulkanDevice::destroyImageWithAllocation(VkImage image,
+                                              VmaAllocation allocation) {
+  destroyImageViews(image);
   vmaDestroyImage(m_allocator, image, allocation);
 }
 
@@ -291,9 +290,7 @@ SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
   return {.desc = desc,
           .handle =
               AnyRef(createBinarySemaphore(), [this](VkSemaphore semaphore) {
-                pushToDeleteQueue([semaphore](VulkanDevice &device) {
-                  device.DestroySemaphore(semaphore);
-                });
+                push_to_delete_queue(semaphore);
               })};
 }
 

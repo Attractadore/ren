@@ -1,37 +1,26 @@
 #include "Vulkan/VulkanCommandPool.hpp"
 #include "Support/Errors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanDeviceHandle.inl"
 
 namespace ren {
 VulkanCommandPool::VulkanCommandPool(VulkanDevice &device) {
+  m_device = &device;
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-      .queueFamilyIndex = device.getGraphicsQueueFamily(),
+      .queueFamilyIndex = m_device->getGraphicsQueueFamily(),
   };
-
-  VkCommandPool pool;
-  throwIfFailed(device.CreateCommandPool(&pool_info, &pool),
+  throwIfFailed(m_device->CreateCommandPool(&pool_info, &m_pool),
                 "Vulkan: Failed to create command pool");
-  m_pool = {pool, device};
-}
-
-VulkanCommandPool::VulkanCommandPool(VulkanCommandPool &&other) = default;
-
-VulkanCommandPool &VulkanCommandPool::operator=(VulkanCommandPool &&other) {
-  destroy();
-  m_pool = std::move(other.m_pool);
-  m_cmd_buffers = std::move(other.m_cmd_buffers);
-  return *this;
 }
 
 void VulkanCommandPool::destroy() {
   if (m_pool) {
-    getDevice().pushToDeleteQueue([pool = m_pool.get(),
-                                   cmd_buffers = std::move(m_cmd_buffers)](
-                                      VulkanDevice &device) {
+    m_device->push_to_delete_queue([pool = m_pool,
+                                    cmd_buffers = std::move(m_cmd_buffers)](
+                                       VulkanDevice &device) {
       device.FreeCommandBuffers(pool, cmd_buffers.size(), cmd_buffers.data());
+      device.DestroyCommandPool(pool);
     });
   }
 }
@@ -46,11 +35,11 @@ VkCommandBuffer VulkanCommandPool::allocate() {
     uint32_t alloc_count = new_capacity - old_capacity;
     VkCommandBufferAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = m_pool.get(),
+        .commandPool = m_pool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = alloc_count,
     };
-    throwIfFailed(getDevice().AllocateCommandBuffers(
+    throwIfFailed(m_device->AllocateCommandBuffers(
                       &alloc_info, m_cmd_buffers.data() + old_capacity),
                   "Vulkan: Failed to allocate command buffers");
   }
@@ -58,8 +47,8 @@ VkCommandBuffer VulkanCommandPool::allocate() {
 }
 
 void VulkanCommandPool::reset(VulkanCommandPoolResources resources) {
-  getDevice().ResetCommandPool(
-      m_pool.get(), static_cast<VkCommandPoolResetFlagBits>(resources));
+  m_device->ResetCommandPool(
+      m_pool, static_cast<VkCommandPoolResetFlagBits>(resources));
   m_allocated_count = 0;
 }
 } // namespace ren

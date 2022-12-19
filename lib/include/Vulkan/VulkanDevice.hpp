@@ -47,7 +47,6 @@ class VulkanDevice final : public Device,
 private:
   VkImageView getVkImageViewImpl(VkImage image,
                                  const VkImageViewCreateInfo &view_info);
-  void destroyImageViews(VkImage image);
 
   void queueSubmitAndSignal(VkQueue queue,
                             std::span<const VulkanSubmit> submits,
@@ -62,6 +61,9 @@ public:
   VulkanDevice &operator=(VulkanDevice &&);
   ~VulkanDevice();
 
+  void begin_frame() override;
+  void end_frame() override;
+
   static uint32_t getRequiredAPIVersion() { return VK_API_VERSION_1_3; }
   static std::span<const char *const> getRequiredLayers();
   static std::span<const char *const> getRequiredExtensions();
@@ -69,16 +71,14 @@ public:
   const VulkanDispatchTable &getDispatchTable() const { return m_vk; }
 
   VkInstance getInstance() const { return m_instance; }
-
   VkPhysicalDevice getPhysicalDevice() const { return m_adapter; }
-
   VkDevice getDevice() const { return m_device; }
-
+  VmaAllocator getVMAAllocator() const { return m_allocator; }
   const VkAllocationCallbacks *getAllocator() const { return nullptr; }
 
   Texture createTexture(const TextureDesc &desc) override;
-  void destroyImageData(VkImage image);
-  void destroyImage(VkImage image, VmaAllocation allocation);
+  void destroyImageViews(VkImage image);
+  void destroyImageWithAllocation(VkImage image, VmaAllocation allocation);
 
   VkImageView getVkImageView(const RenderTargetView &rtv);
   VkImageView getVkImageView(const DepthStencilView &dsv);
@@ -153,14 +153,6 @@ public:
     return r;
   }
 
-  VulkanDeviceTime getTime() const {
-    return {.graphics_queue_time = getGraphicsQueueTime()};
-  }
-
-  VulkanDeviceTime getCompletedTime() const {
-    return {.graphics_queue_time = getGraphicsQueueCompletedTime()};
-  }
-
   void waitForIdle() const {
     throwIfFailed(DeviceWaitIdle(), "Vulkan: Failed to wait for idle device");
   }
@@ -173,15 +165,8 @@ public:
 
   std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 
-  void pushToDeleteQueue(VulkanQueueDeleter &&deleter) {
-    m_delete_queue.push(getTime(), std::move(deleter));
-  }
-
-  void popDeleteQueue() override { m_delete_queue.pop(*this); }
-
-  void flush() {
-    waitForIdle();
-    m_delete_queue.flush(*this);
+  template <typename T> void push_to_delete_queue(T value) {
+    m_delete_queue.push(std::move(value));
   }
 };
 } // namespace ren
