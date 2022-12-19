@@ -4,6 +4,9 @@
 struct RenDevice {
   virtual ~RenDevice() = default;
 
+  virtual void begin_frame() = 0;
+  virtual void end_frame() = 0;
+
   virtual std::unique_ptr<ren::RenderGraph::Builder>
   createRenderGraphBuilder() = 0;
   virtual std::unique_ptr<ren::CommandAllocator>
@@ -12,6 +15,4 @@ struct RenDevice {
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 
   virtual ren::SyncObject createSyncObject(const ren::SyncDesc &desc) = 0;
-
-  virtual void popDeleteQueue() = 0;
 };

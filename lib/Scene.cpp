@@ -26,7 +26,9 @@ void Scene::setOutputSize(unsigned width, unsigned height) {
 void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
 
 void Scene::draw() {
-  m_device->popDeleteQueue();
+  // FIXME: curretly only cmd pool wait for the old frame to finish
+  m_cmd_pool->beginFrame();
+  m_device->begin_frame();
   auto rgb = m_device->createRenderGraphBuilder();
 
   // Draw scene
@@ -60,7 +62,8 @@ void Scene::draw() {
 
   auto rg = rgb->build();
 
-  m_cmd_pool->beginFrame();
   rg->execute(m_cmd_pool.get());
   m_cmd_pool->endFrame();
+
+  m_device->end_frame();
 }
