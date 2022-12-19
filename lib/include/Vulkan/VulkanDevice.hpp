@@ -2,7 +2,9 @@
 #include "Device.hpp"
 #include "Support/Errors.hpp"
 #include "Support/LinearMap.hpp"
+#include "Support/Span.hpp"
 #include "VMA.h"
+#include "VulkanDeleteQueue.hpp"
 #include "VulkanDispatchTable.hpp"
 
 #include <cassert>
@@ -16,29 +18,48 @@ enum class SemaphoreWaitResult {
   Timeout,
 };
 
+struct VulkanSubmit {
+  std::span<const VkSemaphoreSubmitInfo> wait_semaphores;
+  std::span<const VkCommandBufferSubmitInfo> command_buffers;
+  std::span<const VkSemaphoreSubmitInfo> signal_semaphores;
+};
+
 class VulkanDevice final : public Device,
                            public InstanceFunctionsMixin<VulkanDevice>,
                            public PhysicalDeviceFunctionsMixin<VulkanDevice>,
                            public DeviceFunctionsMixin<VulkanDevice> {
-  VkInstance m_instance = VK_NULL_HANDLE;
-  VkPhysicalDevice m_adapter = VK_NULL_HANDLE;
-  VkDevice m_device = VK_NULL_HANDLE;
-  VmaAllocator m_allocator = VK_NULL_HANDLE;
-  unsigned m_graphics_queue_family = -1;
-  VkQueue m_graphics_queue = VK_NULL_HANDLE;
+  VkInstance m_instance;
+  VkPhysicalDevice m_adapter;
+  VkDevice m_device;
+  VmaAllocator m_allocator;
   VulkanDispatchTable m_vk = {};
+
+  unsigned m_graphics_queue_family = -1;
+  VkQueue m_graphics_queue;
+  VkSemaphore m_graphics_queue_semaphore;
+  uint64_t m_graphics_queue_time = 0;
 
   HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
       m_image_views;
+
+  VulkanDeleteQueue m_delete_queue;
 
 private:
   VkImageView getVkImageViewImpl(VkImage image,
                                  const VkImageViewCreateInfo &view_info);
   void destroyImageViews(VkImage image);
 
+  void queueSubmitAndSignal(VkQueue queue,
+                            std::span<const VulkanSubmit> submits,
+                            VkSemaphore semaphore, uint64_t value);
+
 public:
   VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-               VkPhysicalDevice m_adapter);
+               VkPhysicalDevice adapter);
+  VulkanDevice(const VulkanDevice &) = delete;
+  VulkanDevice(VulkanDevice &&);
+  VulkanDevice &operator=(const VulkanDevice &) = delete;
+  VulkanDevice &operator=(VulkanDevice &&);
   ~VulkanDevice();
 
   static uint32_t getRequiredAPIVersion() { return VK_API_VERSION_1_3; }
@@ -57,6 +78,7 @@ public:
 
   Texture createTexture(const TextureDesc &desc) override;
   void destroyImageData(VkImage image);
+  void destroyImage(VkImage image, VmaAllocation allocation);
 
   VkImageView getVkImageView(const RenderTargetView &rtv);
   VkImageView getVkImageView(const DepthStencilView &dsv);
@@ -64,26 +86,83 @@ public:
   VkSemaphore createBinarySemaphore();
   VkSemaphore createTimelineSemaphore(uint64_t initial_value = 0);
   SemaphoreWaitResult waitForSemaphore(VkSemaphore sem, uint64_t value,
-                                       std::chrono::nanoseconds timeout);
-  void waitForSemaphore(VkSemaphore sem, uint64_t value) {
+                                       std::chrono::nanoseconds timeout) const;
+  void waitForSemaphore(VkSemaphore sem, uint64_t value) const {
     auto r = waitForSemaphore(sem, value, std::chrono::nanoseconds::max());
     assert(r == SemaphoreWaitResult::Ready);
   }
-
-  VkQueue getGraphicsQueue() { return m_graphics_queue; }
-  unsigned getGraphicsQueueFamily() const { return m_graphics_queue_family; }
-  void graphicsQueueSubmit(std::span<const VkSubmitInfo2> submits) {
-    throwIfFailed(QueueSubmit2(getGraphicsQueue(), submits.size(),
-                               submits.data(), VK_NULL_HANDLE),
-                  "Vulkan: Failed to submit work to graphics queue");
+  uint64_t getSemaphoreValue(VkSemaphore semaphore) const {
+    uint64_t value;
+    throwIfFailed(GetSemaphoreCounterValue(semaphore, &value),
+                  "Vulkan: Failed to get semaphore value");
+    return value;
   }
-  void graphicsQueueWaitIdle() {
+
+  VkQueue getGraphicsQueue() const { return m_graphics_queue; }
+  unsigned getGraphicsQueueFamily() const { return m_graphics_queue_family; }
+  VkSemaphore getGraphicsQueueSemaphore() const {
+    return m_graphics_queue_semaphore;
+  }
+  uint64_t getGraphicsQueueTime() const { return m_graphics_queue_time; }
+  uint64_t getGraphicsQueueCompletedTime() const {
+    return getSemaphoreValue(getGraphicsQueueSemaphore());
+  }
+
+  void graphicsQueueSubmit(std::span<const VulkanSubmit> submits) {
+    queueSubmitAndSignal(getGraphicsQueue(), submits,
+                         getGraphicsQueueSemaphore(), ++m_graphics_queue_time);
+  }
+  void waitForGraphicsQueue(uint64_t time) const {
+    waitForSemaphore(getGraphicsQueueSemaphore(), time);
+  }
+  void waitForIdleGraphicsQueue() {
     throwIfFailed(QueueWaitIdle(getGraphicsQueue()),
                   "Vulkan: Failed to wait for idle graphics queue");
   }
 
   VkResult queuePresent(const VkPresentInfoKHR &present_info) {
-    return QueuePresentKHR(getGraphicsQueue(), &present_info);
+    auto queue = getGraphicsQueue();
+    auto r = QueuePresentKHR(queue, &present_info);
+    switch (r) {
+    case VK_SUCCESS:
+    case VK_SUBOPTIMAL_KHR:
+    case VK_ERROR_OUT_OF_DATE_KHR:
+    case VK_ERROR_SURFACE_LOST_KHR:
+    case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT: {
+#if 1
+      VkSemaphoreSubmitInfo semaphore_info = {
+          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+          .semaphore = getGraphicsQueueSemaphore(),
+          .value = ++m_graphics_queue_time,
+      };
+      VkSubmitInfo2 submit_info = {
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+          .signalSemaphoreInfoCount = 1,
+          .pSignalSemaphoreInfos = &semaphore_info,
+      };
+      throwIfFailed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
+                    "Vulkan: Failed to submit semaphore signal operation");
+#else
+      // NOTE: bad stuff (like a dead lock) will happen if someones tries to
+      // wait for this value before signaling the graphics queue with a higher
+      // value.
+      ++m_graphics_queue_time;
+#endif
+    }
+    }
+    return r;
+  }
+
+  VulkanDeviceTime getTime() const {
+    return {.graphics_queue_time = getGraphicsQueueTime()};
+  }
+
+  VulkanDeviceTime getCompletedTime() const {
+    return {.graphics_queue_time = getGraphicsQueueCompletedTime()};
+  }
+
+  void waitForIdle() const {
+    throwIfFailed(DeviceWaitIdle(), "Vulkan: Failed to wait for idle device");
   }
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
@@ -94,6 +173,15 @@ public:
 
   std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 
-  void popDeleteQueue() override {}
+  void pushToDeleteQueue(VulkanQueueDeleter &&deleter) {
+    m_delete_queue.push(getTime(), std::move(deleter));
+  }
+
+  void popDeleteQueue() override { m_delete_queue.pop(*this); }
+
+  void flush() {
+    waitForIdle();
+    m_delete_queue.flush(*this);
+  }
 };
 } // namespace ren

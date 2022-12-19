@@ -140,12 +140,11 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
 
   auto acquire_semaphore =
       vk_device->createSyncObject({.type = SyncType::Semaphore});
-  vk_cmd_pool->addFrameResource(acquire_semaphore);
   vk_swapchain->acquireImage(getVkSemaphore(acquire_semaphore));
   setTexture(m_swapchain_image, vk_swapchain->getTexture());
   setSyncObject(m_acquire_semaphore, std::move(acquire_semaphore));
 
-  SmallVector<VkSubmitInfo2, 16> submit_infos;
+  SmallVector<VulkanSubmit, 16> submits;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
   SmallVector<VkSemaphoreSubmitInfo, 16> signal_semaphore_infos;
   SmallVector<unsigned, 16> cmd_buffer_counts;
@@ -175,28 +174,21 @@ void VulkanRenderGraph::execute(CommandAllocator *cmd_pool) {
     cmd_buffer_counts.push_back(batch.pass_cbs.size());
     signal_semaphore_counts.push_back(cmd->getSignalSemaphores().size());
 
-    submit_infos.push_back({
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-        .waitSemaphoreInfoCount =
-            static_cast<uint32_t>(cmd->getWaitSemaphores().size()),
-        .pWaitSemaphoreInfos = cmd->getWaitSemaphores().data(),
-    });
+    submits.push_back({.wait_semaphores = cmd->getWaitSemaphores()});
   }
 
-  auto p_cmd_buffer_infos = cmd_buffer_infos.data();
-  auto p_signal_semaphore_infos = signal_semaphore_infos.data();
-  for (size_t i = 0; i < submit_infos.size(); ++i) {
-    unsigned cmd_buffer_info_count = cmd_buffer_counts[i];
-    unsigned signal_semaphore_count = signal_semaphore_counts[i];
-    submit_infos[i].commandBufferInfoCount = cmd_buffer_info_count;
-    submit_infos[i].pCommandBufferInfos = p_cmd_buffer_infos;
-    submit_infos[i].signalSemaphoreInfoCount = signal_semaphore_count;
-    submit_infos[i].pSignalSemaphoreInfos = p_signal_semaphore_infos;
-    p_cmd_buffer_infos += cmd_buffer_info_count;
-    p_signal_semaphore_infos += signal_semaphore_count;
+  auto *p_cmd_buffer_infos = cmd_buffer_infos.data();
+  auto *p_signal_semaphore_infos = signal_semaphore_infos.data();
+  for (size_t i = 0; i < submits.size(); ++i) {
+    unsigned cmd_cnt = cmd_buffer_counts[i];
+    unsigned sig_sem_cnt = signal_semaphore_counts[i];
+    submits[i].command_buffers = {p_cmd_buffer_infos, cmd_cnt};
+    submits[i].signal_semaphores = {p_signal_semaphore_infos, sig_sem_cnt};
+    p_cmd_buffer_infos += cmd_cnt;
+    p_signal_semaphore_infos += sig_sem_cnt;
   }
 
-  vk_device->graphicsQueueSubmit(submit_infos);
+  vk_device->graphicsQueueSubmit(submits);
 
   auto &&present_semaphore = getSyncObject(m_present_semaphore);
   vk_swapchain->presentImage(getVkSemaphore(present_semaphore));

@@ -1,5 +1,6 @@
 #pragma once
 #include "Support/Vector.hpp"
+#include "VulkanDeviceHandle.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -12,8 +13,7 @@ enum class VulkanCommandPoolResources {
 };
 
 class VulkanCommandPool {
-  VulkanDevice *m_device;
-  VkCommandPool m_pool;
+  VulkanDeviceHandle<VkCommandPool> m_pool;
   Vector<VkCommandBuffer> m_cmd_buffers;
   unsigned m_allocated_count = 0;
 
@@ -21,14 +21,16 @@ private:
   void destroy();
 
 public:
-  VulkanCommandPool(VulkanDevice *device);
+  VulkanCommandPool(VulkanDevice &device);
   VulkanCommandPool(const VulkanCommandPool &) = delete;
   VulkanCommandPool(VulkanCommandPool &&other);
   VulkanCommandPool &operator=(const VulkanCommandPool &) = delete;
   VulkanCommandPool &operator=(VulkanCommandPool &&other);
   ~VulkanCommandPool();
 
-  VkCommandBuffer allocateCommandBuffer();
+  VulkanDevice &getDevice() const { return *m_pool.getDevice(); }
+
+  VkCommandBuffer allocate();
   void reset(
       VulkanCommandPoolResources resources = VulkanCommandPoolResources::Keep);
 };

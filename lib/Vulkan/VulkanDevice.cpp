@@ -1,5 +1,6 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Support/Array.hpp"
+#include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
@@ -104,6 +105,7 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   loadDeviceFunctions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
 
   GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
+  m_graphics_queue_semaphore = createTimelineSemaphore();
 
   VmaVulkanFunctions vma_vulkan_functions = {
       .vkGetInstanceProcAddr = m_vk.GetInstanceProcAddr,
@@ -124,6 +126,8 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
 }
 
 VulkanDevice::~VulkanDevice() {
+  flush();
+  DestroySemaphore(m_graphics_queue_semaphore);
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
 }
@@ -152,15 +156,22 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
 
   return {
       .desc = desc,
-      .handle = AnyRef(image,
-                       [this, allocation](VkImage image) {
-                         destroyImageData(image);
-                         vmaDestroyImage(m_allocator, image, allocation);
-                       }),
+      .handle =
+          AnyRef(image,
+                 [this, allocation](VkImage image) {
+                   pushToDeleteQueue([image, allocation](VulkanDevice &device) {
+                     device.destroyImageData(image);
+                     device.destroyImage(image, allocation);
+                   });
+                 }),
   };
 }
 
 void VulkanDevice::destroyImageData(VkImage image) { destroyImageViews(image); }
+
+void VulkanDevice::destroyImage(VkImage image, VmaAllocation allocation) {
+  vmaDestroyImage(m_allocator, image, allocation);
+}
 
 void VulkanDevice::destroyImageViews(VkImage image) {
   for (auto &&[_, view] : m_image_views[image]) {
@@ -247,7 +258,7 @@ VkSemaphore VulkanDevice::createTimelineSemaphore(uint64_t initial_value) {
 
 SemaphoreWaitResult
 VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
-                               std::chrono::nanoseconds timeout) {
+                               std::chrono::nanoseconds timeout) const {
   VkSemaphoreWaitInfo wait_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
       .semaphoreCount = 1,
@@ -272,22 +283,58 @@ std::unique_ptr<RenderGraph::Builder> VulkanDevice::createRenderGraphBuilder() {
 
 std::unique_ptr<CommandAllocator>
 VulkanDevice::createCommandBufferPool(unsigned pipeline_depth) {
-  return std::make_unique<VulkanCommandAllocator>(this, pipeline_depth);
+  return std::make_unique<VulkanCommandAllocator>(*this, pipeline_depth);
 }
 
 SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
   assert(desc.type == SyncType::Semaphore);
-  return {
-      .desc = desc,
-      .handle = AnyRef(createBinarySemaphore(),
-                       [device = this](VkSemaphore semaphore) {
-                         device->DestroySemaphore(semaphore);
-                       }),
-  };
+  return {.desc = desc,
+          .handle =
+              AnyRef(createBinarySemaphore(), [this](VkSemaphore semaphore) {
+                pushToDeleteQueue([semaphore](VulkanDevice &device) {
+                  device.DestroySemaphore(semaphore);
+                });
+              })};
 }
 
 std::unique_ptr<VulkanSwapchain>
 VulkanDevice::createSwapchain(VkSurfaceKHR surface) {
   return std::make_unique<VulkanSwapchain>(this, surface);
+}
+
+void VulkanDevice::queueSubmitAndSignal(VkQueue queue,
+                                        std::span<const VulkanSubmit> submits,
+                                        VkSemaphore semaphore, uint64_t value) {
+  auto submit_infos =
+      submits | map([](const VulkanSubmit &submit) {
+        return VkSubmitInfo2{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount = uint32_t(submit.wait_semaphores.size()),
+            .pWaitSemaphoreInfos = submit.wait_semaphores.data(),
+            .commandBufferInfoCount = uint32_t(submit.command_buffers.size()),
+            .pCommandBufferInfos = submit.command_buffers.data(),
+            .signalSemaphoreInfoCount =
+                uint32_t(submit.signal_semaphores.size()),
+            .pSignalSemaphoreInfos = submit.signal_semaphores.data(),
+        };
+      }) |
+      ranges::to<SmallVector<VkSubmitInfo2, 8>>;
+
+  auto final_signal_semaphores =
+      concat(submits.back().signal_semaphores,
+             once(VkSemaphoreSubmitInfo{
+                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                 .semaphore = semaphore,
+                 .value = value,
+             })) |
+      ranges::to<SmallVector<VkSemaphoreSubmitInfo, 8>>;
+
+  auto &final_submit_info = submit_infos.back();
+  final_submit_info.signalSemaphoreInfoCount = final_signal_semaphores.size();
+  final_submit_info.pSignalSemaphoreInfos = final_signal_semaphores.data();
+
+  throwIfFailed(QueueSubmit2(queue, submit_infos.size(), submit_infos.data(),
+                             VK_NULL_HANDLE),
+                "Vulkan: Failed to submit work to queue");
 }
 } // namespace ren

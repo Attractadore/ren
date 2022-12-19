@@ -181,8 +181,8 @@ def format_mixin_command(
     call_args = [replace_args.get(arg.argtype, arg.name) for arg in cmd.args]
     call_args = ', '.join(call_args)
     return "\n".join((
-        f"   {cmd.ret} {name}({args}) {{",
-        f"      auto {impl} = static_cast<{Derived}*>(this);",
+        f"   {cmd.ret} {name}({args}) const {{",
+        f"      auto {impl} = static_cast<const {Derived}*>(this);",
         f"      return {impl}->{get_table}().{name}({call_args});",
         "   }",
     ))

@@ -39,9 +39,6 @@ void VulkanCommandBuffer::beginRendering(
         };
       }) |
       ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>;
-  for (auto &rt : render_targets) {
-    m_parent->addFrameResource(std::move(rt.rtv));
-  }
 
   VkRenderingAttachmentInfo depth_attachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
@@ -69,7 +66,6 @@ void VulkanCommandBuffer::beginRendering(
         .storeOp = getVkAttachmentStoreOp(dst.stencil_store_op),
         .clearValue = {.depthStencil = {.stencil = dst.clear_stencil}},
     };
-    m_parent->addFrameResource(std::move(depth_stencil_target->dsv));
   }
 
   VkRenderingInfo rendering_info = {
@@ -89,15 +85,11 @@ void VulkanCommandBuffer::endRendering() {
   m_device->CmdEndRendering(m_cmd_buffer);
 }
 
-void VulkanCommandBuffer::blit(Texture src, Texture dst,
+void VulkanCommandBuffer::blit(VkImage src, VkImage dst,
                                std::span<const VkImageBlit> regions,
                                VkFilter filter) {
-  auto vk_src = getVkImage(src);
-  auto vk_dst = getVkImage(dst);
-  m_parent->addFrameResource(std::move(src));
-  m_parent->addFrameResource(std::move(dst));
-  m_device->CmdBlitImage(m_cmd_buffer, vk_src,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vk_dst,
+  m_device->CmdBlitImage(m_cmd_buffer, src,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
 }
@@ -112,7 +104,6 @@ void addSemaphore(VulkanCommandAllocator *parent, Vec &semaphores,
       .semaphore = getVkSemaphore(sync),
       .stageMask = getVkPipelineStageFlags(stages),
   });
-  parent->addFrameResource(std::move(sync));
 }
 } // namespace
 
