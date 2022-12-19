@@ -124,9 +124,12 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
 
   throwIfFailed(vmaCreateAllocator(&allocator_info, &m_allocator),
                 "VMA: Failed to create allocator");
+
+  m_cmd_alloc = VulkanCommandAllocator(*this);
 }
 
 VulkanDevice::~VulkanDevice() {
+  m_cmd_alloc = VulkanCommandAllocator();
   waitForIdle();
   m_delete_queue.flush(*this);
   DestroySemaphore(m_graphics_queue_semaphore);
@@ -138,9 +141,11 @@ void VulkanDevice::begin_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);
   m_delete_queue.begin_frame(*this);
+  m_cmd_alloc.begin_frame();
 }
 
 void VulkanDevice::end_frame() {
+  m_cmd_alloc.end_frame();
   m_delete_queue.end_frame(*this);
   m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
 }
@@ -284,12 +289,7 @@ VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
 }
 
 std::unique_ptr<RenderGraph::Builder> VulkanDevice::createRenderGraphBuilder() {
-  return std::make_unique<VulkanRenderGraph::Builder>(this);
-}
-
-std::unique_ptr<CommandAllocator>
-VulkanDevice::createCommandBufferPool(unsigned pipeline_depth) {
-  return std::make_unique<VulkanCommandAllocator>(*this, pipeline_depth);
+  return std::make_unique<VulkanRenderGraph::Builder>(*this);
 }
 
 SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {

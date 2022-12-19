@@ -5,6 +5,7 @@
 #include "Support/LinearMap.hpp"
 #include "Support/Span.hpp"
 #include "VMA.h"
+#include "VulkanCommandAllocator.hpp"
 #include "VulkanDeleteQueue.hpp"
 #include "VulkanDispatchTable.hpp"
 
@@ -50,6 +51,8 @@ class VulkanDevice final : public Device,
   HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
       m_image_views;
 
+  VulkanCommandAllocator m_cmd_alloc;
+
   VulkanDeleteQueue m_delete_queue;
 
 private:
@@ -83,6 +86,10 @@ public:
   VkDevice getDevice() const { return m_device; }
   VmaAllocator getVMAAllocator() const { return m_allocator; }
   const VkAllocationCallbacks *getAllocator() const { return nullptr; }
+  VulkanCommandAllocator &getVulkanCommandAllocator() { return m_cmd_alloc; }
+  CommandAllocator &getCommandAllocator() override {
+    return getVulkanCommandAllocator();
+  }
 
   Texture createTexture(const TextureDesc &desc) override;
   void destroyImageViews(VkImage image);
@@ -166,8 +173,6 @@ public:
   }
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
-  std::unique_ptr<CommandAllocator>
-  createCommandBufferPool(unsigned pipeline_depth) override;
 
   SyncObject createSyncObject(const SyncDesc &desc) override;
 

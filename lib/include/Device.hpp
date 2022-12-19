@@ -9,8 +9,7 @@ struct RenDevice {
 
   virtual std::unique_ptr<ren::RenderGraph::Builder>
   createRenderGraphBuilder() = 0;
-  virtual std::unique_ptr<ren::CommandAllocator>
-  createCommandBufferPool(unsigned pipeline_depth) = 0;
+  virtual ren::CommandAllocator &getCommandAllocator() = 0;
 
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 

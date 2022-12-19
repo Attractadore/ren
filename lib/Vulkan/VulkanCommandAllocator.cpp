@@ -3,18 +3,9 @@
 #include "Vulkan/VulkanDevice.hpp"
 
 namespace ren {
-VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device,
-                                               unsigned pipeline_depth) {
+VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device) {
   m_device = &device;
-  m_frame_pools.reserve(pipeline_depth);
-  for (int i = 0; i < pipeline_depth; ++i) {
-    m_frame_pools.emplace_back(*m_device);
-  }
-  m_frame_times.resize(pipeline_depth, 0);
-}
-
-unsigned VulkanCommandAllocator::getPipelineDepth() const {
-  return m_frame_pools.size();
+  ranges::generate(m_frame_pools, [&] { return VulkanCommandPool(*m_device); });
 }
 
 VulkanCommandBuffer *VulkanCommandAllocator::allocateVulkanCommandBuffer() {
@@ -26,14 +17,11 @@ CommandBuffer *VulkanCommandAllocator::allocateCommandBuffer() {
   return allocateVulkanCommandBuffer();
 }
 
-void VulkanCommandAllocator::beginFrameImpl() {
-  m_device->waitForGraphicsQueue(m_frame_times[m_frame_index]);
+void VulkanCommandAllocator::begin_frame() {
+  m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
   m_frame_pools[m_frame_index].reset();
   m_frame_cmd_buffers.clear();
 }
 
-void VulkanCommandAllocator::endFrameImpl() {
-  m_frame_times[m_frame_index] = m_device->getGraphicsQueueTime();
-  m_frame_index = (m_frame_index + 1) % getPipelineDepth();
-}
+void VulkanCommandAllocator::end_frame() {}
 } // namespace ren

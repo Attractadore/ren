@@ -1,5 +1,5 @@
 #include "Scene.hpp"
-#include "CommandAllocator.hpp"
+#include "CommandBuffer.hpp"
 #include "Device.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Array.hpp"
@@ -10,13 +10,7 @@
 
 using namespace ren;
 
-Scene::RenScene(Device *device) : m_device(device) { setPipelineDepth(2); }
-
-Scene::~RenScene() = default;
-
-void Scene::setPipelineDepth(unsigned depth) {
-  m_cmd_pool = m_device->createCommandBufferPool(depth);
-}
+Scene::RenScene(Device *device) : m_device(device) {}
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
@@ -60,9 +54,7 @@ void Scene::draw() {
 
   auto rg = rgb->build();
 
-  m_cmd_pool->beginFrame();
-  rg->execute(m_cmd_pool.get());
-  m_cmd_pool->endFrame();
+  rg->execute();
 
   m_device->end_frame();
 }

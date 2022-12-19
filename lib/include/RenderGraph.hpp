@@ -52,14 +52,20 @@ protected:
   Vector<SyncObject> m_syncs;
 
 public:
+  struct Config {
+    Swapchain *swapchain;
+    Vector<Batch> batches;
+    Vector<Texture> textures;
+    HashMap<RGTextureID, unsigned> phys_textures;
+    Vector<SyncObject> syncs;
+  };
+
   class Builder;
-  RenderGraph(Swapchain *swapchain, Vector<Batch> batches,
-              Vector<Texture> textures,
-              HashMap<RGTextureID, unsigned> phys_textures,
-              Vector<SyncObject> syncs)
-      : m_swapchain(swapchain), m_batches(std::move(batches)),
-        m_textures(std::move(textures)),
-        m_phys_textures(std::move(phys_textures)), m_syncs(std::move(syncs)) {}
+  RenderGraph(Config config)
+      : m_swapchain(config.swapchain), m_batches(std::move(config.batches)),
+        m_textures(std::move(config.textures)),
+        m_phys_textures(std::move(config.phys_textures)),
+        m_syncs(std::move(config.syncs)) {}
   virtual ~RenderGraph() = default;
 
   void setTexture(RGTextureID id, Texture tex);
@@ -68,7 +74,7 @@ public:
   void setSyncObject(RGSyncID id, SyncObject sync);
   const SyncObject &getSyncObject(RGSyncID sync) const;
 
-  virtual void execute(CommandAllocator *cmd_pool) = 0;
+  virtual void execute() = 0;
 };
 
 class RenderGraph::Builder {
