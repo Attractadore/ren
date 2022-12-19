@@ -134,9 +134,16 @@ VulkanDevice::~VulkanDevice() {
   DestroyDevice();
 }
 
-void VulkanDevice::begin_frame() { m_delete_queue.begin_frame(*this); }
+void VulkanDevice::begin_frame() {
+  m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
+  waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);
+  m_delete_queue.begin_frame(*this);
+}
 
-void VulkanDevice::end_frame() { m_delete_queue.end_frame(*this); }
+void VulkanDevice::end_frame() {
+  m_delete_queue.end_frame(*this);
+  m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
+}
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {

@@ -1,4 +1,5 @@
 #pragma once
+#include "Config.hpp"
 #include "Device.hpp"
 #include "Support/Errors.hpp"
 #include "Support/LinearMap.hpp"
@@ -24,6 +25,10 @@ struct VulkanSubmit {
   std::span<const VkSemaphoreSubmitInfo> signal_semaphores;
 };
 
+struct VulkanDeviceTime {
+  uint64_t graphics_queue_time;
+};
+
 class VulkanDevice final : public Device,
                            public InstanceFunctionsMixin<VulkanDevice>,
                            public PhysicalDeviceFunctionsMixin<VulkanDevice>,
@@ -38,6 +43,9 @@ class VulkanDevice final : public Device,
   VkQueue m_graphics_queue;
   VkSemaphore m_graphics_queue_semaphore;
   uint64_t m_graphics_queue_time = 0;
+
+  unsigned m_frame_index = 0;
+  std::array<VulkanDeviceTime, c_pipeline_depth> m_frame_end_times = {};
 
   HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
       m_image_views;
