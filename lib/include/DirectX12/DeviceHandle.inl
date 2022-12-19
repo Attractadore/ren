@@ -6,10 +6,10 @@
 
 namespace ren {
 namespace detail {
-inline void IUnknownDeleter::operator()(IUnknown *ptr) const noexcept {
-  if (ptr) {
+inline void IUnknownDeleter::operator()(IUnknown *handle) const noexcept {
+  if (handle) {
     assert(m_device);
-    m_device->pushToDeleteQueue([ptr](DirectX12Device &) { ptr->Release(); });
+    m_device->push_to_delete_queue(handle);
   }
 }
 }; // namespace detail

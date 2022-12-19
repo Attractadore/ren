@@ -7,7 +7,6 @@
 #include "DirectX12/Errors.hpp"
 #include "Formats.inl"
 #include "Support/Errors.hpp"
-#include "Support/Math.hpp"
 #include "Support/Views.hpp"
 
 #include <range/v3/action.hpp>
@@ -168,13 +167,17 @@ std::unique_ptr<RenderGraph> DirectX12RenderGraph::Builder::createRenderGraph(
     Vector<Batch> batches, Vector<Texture> textures,
     HashMap<RGTextureID, unsigned> phys_textures, Vector<SyncObject> syncs) {
   return std::make_unique<DirectX12RenderGraph>(
-      m_swapchain, std::move(batches), std::move(textures),
-      std::move(phys_textures), std::move(syncs), m_swapchain_buffer);
+      RenderGraph::Config{.swapchain = m_swapchain,
+                          .batches = std::move(batches),
+                          .textures = std::move(textures),
+                          .phys_textures = std::move(phys_textures),
+                          .syncs = std::move(syncs)},
+      Config{.device = static_cast<DirectX12Device *>(m_device),
+             .swapchain_buffer = m_swapchain_buffer});
 }
 
-void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
-  auto *dx_cmd_alloc = static_cast<DirectX12CommandAllocator *>(cmd_alloc);
-  auto *dx_device = dx_cmd_alloc->getDevice();
+void DirectX12RenderGraph::execute() {
+  auto &dx_cmd_alloc = m_device->getDirectX12CommandAllocator();
   auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
 
   dx_swapchain->AcquireBuffer();
@@ -184,7 +187,7 @@ void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
   for (const auto &batch : m_batches) {
     for (auto &&[barrier, pass] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      auto *dx_cmd = dx_cmd_alloc->allocateDirectX12CommandBuffer();
+      auto *dx_cmd = dx_cmd_alloc.allocateDirectX12CommandBuffer();
       if (barrier) {
         barrier(*dx_cmd, *this);
       }
@@ -195,7 +198,7 @@ void DirectX12RenderGraph::execute(CommandAllocator *cmd_alloc) {
       cmd_lists.push_back(dx_cmd->get());
     }
 
-    dx_device->directQueueSubmit(cmd_lists);
+    m_device->directQueueSubmit(cmd_lists);
     cmd_lists.clear();
   }
 

@@ -104,12 +104,12 @@ DirectX12Swapchain::DirectX12Swapchain(DirectX12Device *device, HWND hwnd) {
   IDXGISwapChain3 *swapchain3;
   throwIfFailed(swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3)),
                 "DXGI: Failed to query IDXGISwapChain3 interface");
-  m_swapchain = DeviceHandle(swapchain3, m_device);
+  m_swapchain = DirectX12DeviceHandle(swapchain3, m_device);
   setTextures();
 
   m_blit_root_sig =
-      DeviceHandle(createBlitRootSignature(m_device->get()), m_device);
-  m_blit_pso = DeviceHandle(
+      DirectX12DeviceHandle(createBlitRootSignature(m_device->get()), m_device);
+  m_blit_pso = DirectX12DeviceHandle(
       createBlitPSO(m_device->get(), m_blit_root_sig.get(), srgb_format),
       m_device);
 }
@@ -131,9 +131,9 @@ DXGI_SWAP_CHAIN_DESC1 getSwapchainDesc(IDXGISwapChain1 *swapchain) {
 void DirectX12Swapchain::setTextures() {
   m_textures.resize(getSwapchainDesc(m_swapchain.get()).BufferCount);
   for (size_t i = 0; i < m_textures.size(); ++i) {
-    ID3D12Resource *surface;
-    m_swapchain->GetBuffer(i, IID_PPV_ARGS(&surface));
-    auto desc = surface->GetDesc();
+    ID3D12Resource *buffer;
+    m_swapchain->GetBuffer(i, IID_PPV_ARGS(&buffer));
+    auto desc = buffer->GetDesc();
     m_textures[i] = {
         .desc = {.type = TextureType::e2D,
                  .format = getFormat(desc.Format),
@@ -142,11 +142,8 @@ void DirectX12Swapchain::setTextures() {
                  .height = desc.Height,
                  .layers = desc.DepthOrArraySize,
                  .levels = desc.MipLevels},
-        .handle = AnyRef(surface, [device = m_device](ID3D12Resource *surface) {
-          device->pushToDeleteQueue([surface](DirectX12Device &device) {
-            device.destroyResourceData(surface);
-            surface->Release();
-          });
+        .handle = AnyRef(buffer, [device = m_device](ID3D12Resource *buffer) {
+          device->push_to_delete_queue(DirectX12Texture{buffer});
         })};
   }
 } // namespace ren

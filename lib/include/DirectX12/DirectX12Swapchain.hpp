@@ -16,10 +16,10 @@ class DirectX12Swapchain final : public Swapchain {
 
   DirectX12Device *m_device;
   HWND m_hwnd;
-  DeviceHandle<IDXGISwapChain3> m_swapchain;
+  DirectX12DeviceHandle<IDXGISwapChain3> m_swapchain;
   SmallVector<Texture, 3> m_textures;
-  DeviceHandle<ID3D12RootSignature> m_blit_root_sig;
-  DeviceHandle<ID3D12PipelineState> m_blit_pso;
+  DirectX12DeviceHandle<ID3D12RootSignature> m_blit_root_sig;
+  DirectX12DeviceHandle<ID3D12PipelineState> m_blit_pso;
 
 private:
   void setTextures();

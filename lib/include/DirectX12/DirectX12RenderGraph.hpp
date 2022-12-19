@@ -2,20 +2,24 @@
 #include "RenderGraph.hpp"
 
 namespace ren {
+class DirectX12Device;
+
 class DirectX12RenderGraph final : public RenderGraph {
+  DirectX12Device *m_device;
   RGTextureID m_swapchain_buffer;
 
 public:
-  DirectX12RenderGraph(Swapchain *swapchain, Vector<Batch> batches,
-                       Vector<Texture> textures,
-                       HashMap<RGTextureID, unsigned> phys_textures,
-                       Vector<SyncObject> syncs, RGTextureID swapchain_buffer)
-      : RenderGraph(swapchain, std::move(batches), std::move(textures),
-                    std::move(phys_textures), std::move(syncs)),
-        m_swapchain_buffer(swapchain_buffer) {}
+  struct Config {
+    DirectX12Device *device;
+    RGTextureID swapchain_buffer;
+  };
 
   class Builder;
-  void execute(CommandAllocator *cmd_pool) override;
+  DirectX12RenderGraph(RenderGraph::Config base_config, Config config)
+      : RenderGraph(std::move(base_config)), m_device(config.device),
+        m_swapchain_buffer(config.swapchain_buffer) {}
+
+  void execute() override;
 };
 
 class DirectX12RenderGraph::Builder final : public RenderGraph::Builder {

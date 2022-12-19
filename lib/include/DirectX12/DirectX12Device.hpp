@@ -3,6 +3,7 @@
 #include "D3D12MA.hpp"
 #include "Device.hpp"
 #include "DirectX12CPUDescriptorPool.hpp"
+#include "DirectX12CommandAllocator.hpp"
 #include "DirectX12DeleteQueue.hpp"
 #include "Support/Errors.hpp"
 #include "Support/HashMap.hpp"
@@ -14,6 +15,10 @@
 
 namespace ren {
 class DirectX12Swapchain;
+
+struct DirectX12DeviceTime {
+  UINT64 direct_queue_time;
+};
 
 class DirectX12Device final : public Device {
   ComPtr<IDXGIFactory4> m_factory;
@@ -62,14 +67,18 @@ class DirectX12Device final : public Device {
                                            D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_uavs;
 
+  DirectX12CommandAllocator m_cmd_alloc;
+
   DirectX12DeleteQueue m_delete_queue;
 
+  unsigned m_frame_index = 0;
+  std::array<DirectX12DeviceTime, c_pipeline_depth> m_frame_end_times = {};
+
 private:
-  void destroyResourceRTVs(ID3D12Resource *resource);
-  void destroyResourceDSVs(ID3D12Resource *resource);
-  void destroyResourceTextureSRVs(ID3D12Resource *resource);
-  void destroyResourceTextureUAVs(ID3D12Resource *resource);
-  void destroyTextureViews(ID3D12Resource *resource);
+  void destroyTextureRTVs(ID3D12Resource *resource);
+  void destroyTextureDSVs(ID3D12Resource *resource);
+  void destroyTextureSRVs(ID3D12Resource *resource);
+  void destroyTextureUAVs(ID3D12Resource *resource);
 
 public:
   DirectX12Device(LUID adapter);
@@ -81,15 +90,22 @@ public:
 
   auto *get() const { return m_device.Get(); }
   auto *getDXGIFactory() const { return m_factory.Get(); }
+  DirectX12CommandAllocator &getDirectX12CommandAllocator() {
+    return m_cmd_alloc;
+  }
+  CommandAllocator &getCommandAllocator() override {
+    return getDirectX12CommandAllocator();
+  }
+
+  void begin_frame() override;
+  void end_frame() override;
 
   std::unique_ptr<DirectX12Swapchain> createSwapchain(HWND hwnd);
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
-  std::unique_ptr<ren::CommandAllocator>
-  createCommandBufferPool(unsigned pipeline_depth) override;
 
   Texture createTexture(const ren::TextureDesc &desc) override;
-  void destroyResourceData(ID3D12Resource *resource);
+  void destroyTextureViews(ID3D12Resource *resource);
 
   D3D12_CPU_DESCRIPTOR_HANDLE getRTV(const RenderTargetView &rtv);
   D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
@@ -146,30 +162,19 @@ public:
     waitForDirectQueueCompletion(getDirectQueueTime());
   }
 
-  void wait() const { waitForDirectQueueCompletion(); }
-
   uint64_t getDirectQueueTime() const { return m_direct_queue_time; }
   uint64_t getDirectQueueCompletedTime() const {
     return m_fence->GetCompletedValue();
   }
 
-  DirectX12DeviceTime getTime() const {
-    return {.direct_queue_time = getDirectQueueTime()};
+  template <std::derived_from<IUnknown> T> void push_to_delete_queue(T *value) {
+    m_delete_queue.push<IUnknown *>(std::move(value));
   }
 
-  DirectX12DeviceTime getCompletedTime() const {
-    return {.direct_queue_time = getDirectQueueCompletedTime()};
+  template <typename T> void push_to_delete_queue(T value) {
+    m_delete_queue.push(std::move(value));
   }
 
-  void pushToDeleteQueue(DirectX12QueueDeleter &&deleter) {
-    m_delete_queue.push(getTime(), std::move(deleter));
-  }
-
-  void popDeleteQueue() override { m_delete_queue.pop(*this); }
-
-  void flush() {
-    wait();
-    m_delete_queue.flush(*this);
-  }
+  void flush();
 };
 } // namespace ren

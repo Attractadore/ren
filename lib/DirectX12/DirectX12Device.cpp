@@ -1,11 +1,11 @@
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DXGIFormat.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
+#include "DirectX12/DirectX12DeleteQueue.inl"
 #include "DirectX12/DirectX12RenderGraph.hpp"
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
-#include "Format/Texture.hpp"
 
 #include <d3d12sdklayers.h>
 
@@ -110,9 +110,30 @@ DirectX12Device::DirectX12Device(LUID adapter) {
   m_rtv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV};
   m_dsv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV};
   m_cbv_srv_uav_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV};
+
+  m_cmd_alloc = DirectX12CommandAllocator(*this);
 }
 
 DirectX12Device::~DirectX12Device() { flush(); }
+
+void DirectX12Device::flush() {
+  waitForDirectQueueCompletion();
+  m_delete_queue.flush(*this);
+}
+
+void DirectX12Device::begin_frame() {
+  m_frame_index = (m_frame_index + 1) % c_pipeline_depth;
+  waitForDirectQueueCompletion(
+      m_frame_end_times[m_frame_index].direct_queue_time);
+  m_delete_queue.begin_frame(*this);
+  m_cmd_alloc.begin_frame();
+}
+
+void DirectX12Device::end_frame() {
+  m_cmd_alloc.end_frame();
+  m_delete_queue.end_frame(*this);
+  m_frame_end_times[m_frame_index].direct_queue_time = getDirectQueueTime();
+}
 
 std::unique_ptr<DirectX12Swapchain>
 DirectX12Device::createSwapchain(HWND hwnd) {
@@ -122,11 +143,6 @@ DirectX12Device::createSwapchain(HWND hwnd) {
 std::unique_ptr<RenderGraph::Builder>
 DirectX12Device::createRenderGraphBuilder() {
   return std::make_unique<DirectX12RenderGraph::Builder>(this);
-}
-
-std::unique_ptr<ren::CommandAllocator>
-DirectX12Device::createCommandBufferPool(unsigned pipeline_depth) {
-  return std::make_unique<DirectX12CommandAllocator>(this, pipeline_depth);
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
@@ -149,6 +165,7 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
                                    .Color = {0.0f, 0.0f, 0.0f, 1.0f}};
 
   D3D12MA::Allocation *allocation;
+  ID3D12Resource *resource;
   throwIfFailed(m_allocator->CreateResource(
                     &allocation_desc, &resource_desc,
                     D3D12_RESOURCE_STATE_COMMON,
@@ -162,58 +179,49 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
                       }
                       return nullptr;
                     }(),
-                    &allocation, IID_NULL, nullptr),
+                    &allocation, IID_PPV_ARGS(&resource)),
                 "D3D12MA: Failed to create texture");
-  return {
-      .desc = desc,
-      .handle =
-          AnyRef(allocation->GetResource(),
-                 [this, allocation](ID3D12Resource *) {
-                   pushToDeleteQueue([allocation](DirectX12Device &device) {
-                     device.destroyResourceData(allocation->GetResource());
-                     allocation->Release();
-                   });
-                 }),
-  };
+  return {.desc = desc,
+          .handle =
+              AnyRef(resource, [this, allocation](ID3D12Resource *resource) {
+                push_to_delete_queue(DirectX12Texture{resource});
+                push_to_delete_queue(allocation);
+              })};
 }
 
-void DirectX12Device::destroyResourceData(ID3D12Resource *resource) {
-  destroyTextureViews(resource);
+void DirectX12Device::destroyTextureViews(ID3D12Resource *resource) {
+  destroyTextureRTVs(resource);
+  destroyTextureDSVs(resource);
+  destroyTextureSRVs(resource);
+  destroyTextureUAVs(resource);
 }
 
-void DirectX12Device::destroyResourceRTVs(ID3D12Resource *resource) {
+void DirectX12Device::destroyTextureRTVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_rtvs[resource]) {
     m_rtv_pool.free(desciptor);
   }
   m_rtvs.erase(resource);
 }
 
-void DirectX12Device::destroyResourceDSVs(ID3D12Resource *resource) {
+void DirectX12Device::destroyTextureDSVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_dsvs[resource]) {
     m_dsv_pool.free(desciptor);
   }
   m_dsvs.erase(resource);
 }
 
-void DirectX12Device::destroyResourceTextureSRVs(ID3D12Resource *resource) {
+void DirectX12Device::destroyTextureSRVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_texture_srvs[resource]) {
     m_cbv_srv_uav_pool.free(desciptor);
   }
   m_texture_srvs.erase(resource);
 }
 
-void DirectX12Device::destroyResourceTextureUAVs(ID3D12Resource *resource) {
+void DirectX12Device::destroyTextureUAVs(ID3D12Resource *resource) {
   for (auto &&[_, desciptor] : m_texture_uavs[resource]) {
     m_cbv_srv_uav_pool.free(desciptor);
   }
   m_texture_uavs.erase(resource);
-}
-
-void DirectX12Device::destroyTextureViews(ID3D12Resource *resource) {
-  destroyResourceRTVs(resource);
-  destroyResourceDSVs(resource);
-  destroyResourceTextureSRVs(resource);
-  destroyResourceTextureUAVs(resource);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE

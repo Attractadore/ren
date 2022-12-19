@@ -12,14 +12,14 @@ class IUnknownDeleter {
 
 public:
   IUnknownDeleter(DirectX12Device *device = nullptr) : m_device(device) {}
-  void operator()(IUnknown *ptr) const noexcept;
+  void operator()(IUnknown *handle) const noexcept;
 };
 } // namespace detail
 
 template <typename T>
-struct DeviceHandle : std::unique_ptr<T, detail::IUnknownDeleter> {
-  DeviceHandle() = default;
-  DeviceHandle(T *ptr, DirectX12Device *device)
+struct DirectX12DeviceHandle : std::unique_ptr<T, detail::IUnknownDeleter> {
+  DirectX12DeviceHandle() = default;
+  DirectX12DeviceHandle(T *ptr, DirectX12Device *device)
       : std::unique_ptr<T, detail::IUnknownDeleter>::unique_ptr(
             ptr, detail::IUnknownDeleter(device)) {}
 };
