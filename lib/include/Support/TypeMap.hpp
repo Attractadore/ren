@@ -27,7 +27,7 @@ template <typename V, typename... Ks> class TypeMap {
 
 private:
   template <typename K>
-    requires(detail::type_index<K, Ks...> < m_values.size())
+    requires(detail::type_index<K, Ks...> < sizeof...(Ks))
   static constexpr size_t key_index = detail::type_index<K, Ks...>;
 
 public:
