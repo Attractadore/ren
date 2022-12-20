@@ -5,9 +5,10 @@
 namespace ren {
 DirectX12CommandAllocator::DirectX12CommandAllocator(DirectX12Device &device) {
   m_device = &device;
-  ranges::generate(m_frame_cmd_allocators, [&] {
-    return m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT);
-  });
+  for (auto &cmd_alloc : m_frame_cmd_allocators) {
+    cmd_alloc.Attach(
+        m_device->createCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT));
+  }
 
   D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {
       .Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
