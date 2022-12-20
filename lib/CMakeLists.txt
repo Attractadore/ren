@@ -6,11 +6,6 @@ set(REN_LOG_SEVERITY
 )
 
 set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(
   Boost
@@ -31,9 +26,6 @@ if(REN_ERROR_LOG)
 endif()
 
 add_library(ren SHARED ren.cpp RenderGraph.cpp Scene.cpp)
-target_include_directories(ren PUBLIC ${REN_INCLUDE_GE})
-target_link_libraries(ren PRIVATE Support)
-
 target_sources(
   ren
   PUBLIC FILE_SET
@@ -43,6 +35,7 @@ target_sources(
          FILES
          ${REN_INCLUDE}/ren/ren.h
          ${REN_INCLUDE}/ren/ren.hpp)
+target_link_libraries(ren PRIVATE Support)
 add_library(ren::ren ALIAS ren)
 
 message(STATUS "Enable Vulkan renderer")
@@ -52,12 +45,14 @@ if(WIN32)
   add_subdirectory(DirectX12)
 endif()
 
-include(GNUInstallDirs)
-install(
-  TARGETS ren
-  EXPORT ${REN_TARGETS}
-  FILE_SET HEADERS)
-install(
-  EXPORT ${REN_TARGETS}
-  NAMESPACE ren::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+if(REN_INSTALL)
+  include(GNUInstallDirs)
+  install(
+    TARGETS ren
+    EXPORT ${REN_TARGETS}
+    FILE_SET HEADERS)
+  install(
+    EXPORT ${REN_TARGETS}
+    NAMESPACE ren::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+endif()

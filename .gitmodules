@@ -10,9 +10,6 @@
 [submodule "external/D3D12MemoryAllocator"]
 	path = external/D3D12MemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator
-[submodule "external/DirectX-Headers"]
-	path = external/DirectX-Headers
-	url = https://github.com/microsoft/DirectX-Headers
 [submodule "external/fmt"]
 	path = external/fmt
 	url = https://github.com/fmtlib/fmt
@@ -21,4 +18,4 @@
 	url = https://github.com/g-truc/glm
 [submodule "external/range-v3"]
 	path = external/range-v3
-	url = https://github.com/ericniebler/range-v3
+	url = https://github.com/Attractadore/range-v3

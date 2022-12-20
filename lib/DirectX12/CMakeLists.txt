@@ -1,9 +1,5 @@
-set(REN_DIRECTX12_DEBUG
-    OFF
-    CACHE BOOL "Enable DirectX 12 debug layer")
-set(REN_DIRECTX12_FORCE_WARP_DEVICE
-    OFF
-    CACHE BOOL "Force WARP device for DirectX 12")
+option(REN_DIRECTX12_DEBUG "Enable DirectX 12 debug layer" OFF)
+option(REN_DIRECTX12_FORCE_WARP_DEVICE "Force WARP device for DirectX 12" OFF)
 
 add_subdirectory(hlsl)
 
@@ -28,7 +24,15 @@ add_library(
   DirectX12Device.cpp
   DirectX12RenderGraph.cpp
   DirectX12Swapchain.cpp)
-target_include_directories(ren-dx12 PUBLIC ${REN_INCLUDE_GE})
+target_sources(
+  ren-dx12
+  PUBLIC FILE_SET
+         HEADERS
+         BASE_DIRS
+         ${REN_INCLUDE}
+         FILES
+         ${REN_INCLUDE}/ren/ren-dx12.h
+         ${REN_INCLUDE}/ren/ren-dx12.hpp)
 target_link_libraries(
   ren-dx12
   PUBLIC ren d3d12 dxgi dxguid
@@ -42,25 +46,17 @@ if(REN_DIRECTX12_FORCE_WARP_DEVICE)
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_FORCE_WARP_DEVICE)
 endif()
 target_compile_definitions(ren-dx12 PRIVATE NOMINMAX)
-
-target_sources(
-  ren-dx12
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren-dx12.h
-         ${REN_INCLUDE}/ren/ren-dx12.hpp)
 set_target_properties(ren-dx12 PROPERTIES EXPORT_NAME "dx12")
 add_library(ren::dx12 ALIAS ren-dx12)
 
-include(GNUInstallDirs)
-install(
-  TARGETS ren-dx12
-  EXPORT ${REN_DIRECTX12_TARGETS}
-  FILE_SET HEADERS)
-install(
-  EXPORT ${REN_DIRECTX12_TARGETS}
-  NAMESPACE ren::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+if(REN_INSTALL)
+  include(GNUInstallDirs)
+  install(
+    TARGETS ren-dx12
+    EXPORT ${REN_DIRECTX12_TARGETS}
+    FILE_SET HEADERS)
+  install(
+    EXPORT ${REN_DIRECTX12_TARGETS}
+    NAMESPACE ren::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+endif()

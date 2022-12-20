@@ -1,6 +1,4 @@
-set(REN_VULKAN_VALIDATION
-    OFF
-    CACHE BOOL "Enable Vulkan validation layer")
+option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 
 set(VULKAN_HEADERS_DIR ${EXTERNAL_DIR}/Vulkan-Headers)
 add_subdirectory(${VULKAN_HEADERS_DIR} Vulkan-Headers)
@@ -23,17 +21,6 @@ add_library(
   VulkanDevice.cpp
   VulkanRenderGraph.cpp
   VulkanSwapchain.cpp)
-target_include_directories(ren-vk PUBLIC ${REN_INCLUDE_GE})
-target_link_libraries(
-  ren-vk
-  PUBLIC ren
-  PRIVATE VulkanDispatchTable Support VMA)
-target_compile_definitions(ren-vk PRIVATE)
-if(REN_VULKAN_VALIDATION)
-  message(STATUS "Enable Vulkan validation layer")
-  target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION)
-endif()
-
 target_sources(
   ren-vk
   PUBLIC FILE_SET
@@ -43,15 +30,26 @@ target_sources(
          FILES
          ${REN_INCLUDE}/ren/ren-vk.h
          ${REN_INCLUDE}/ren/ren-vk.hpp)
+target_link_libraries(
+  ren-vk
+  PUBLIC ren
+  PRIVATE VulkanDispatchTable Support VMA)
+target_compile_definitions(ren-vk PRIVATE)
+if(REN_VULKAN_VALIDATION)
+  message(STATUS "Enable Vulkan validation layer")
+  target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION)
+endif()
 set_target_properties(ren-vk PROPERTIES EXPORT_NAME "vk")
 add_library(ren::vk ALIAS ren-vk)
 
-include(GNUInstallDirs)
-install(
-  TARGETS ren-vk
-  EXPORT ${REN_VULKAN_TARGETS}
-  FILE_SET HEADERS)
-install(
-  EXPORT ${REN_VULKAN_TARGETS}
-  NAMESPACE ren::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+if(REN_INSTALL)
+  include(GNUInstallDirs)
+  install(
+    TARGETS ren-vk
+    EXPORT ${REN_VULKAN_TARGETS}
+    FILE_SET HEADERS)
+  install(
+    EXPORT ${REN_VULKAN_TARGETS}
+    NAMESPACE ren::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+endif()
