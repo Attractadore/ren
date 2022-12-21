@@ -1,5 +1,7 @@
-use ash::extensions::khr;
-use ash::vk::{self, Handle};
+use ash::{
+    extensions::khr,
+    vk::{self, Handle},
+};
 use std::ffi::{CStr, CString};
 
 use renderer2 as ren;
@@ -108,6 +110,10 @@ impl<'e> Surface<'e> {
             ),
         }
     }
+
+    fn as_raw(&self) -> u64 {
+        self.surface.as_raw()
+    }
 }
 
 impl<'e> Drop for Surface<'e> {
@@ -121,11 +127,12 @@ impl<'e> Drop for Surface<'e> {
 fn main() {
     let app_name = "Create Device (Vulkan)";
 
-    println!("Create sdl2::window");
+    println!("Create sdl2::Window");
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let window = video_subsystem
         .window(app_name, 1280, 720)
+        .resizable()
         .vulkan()
         .build()
         .unwrap();
@@ -138,7 +145,7 @@ fn main() {
     println!("Load VK_KHR_surface");
     let khr_surface = khr::Surface::new(&entry, instance.get());
     println!("Create VkSurfaceKHR");
-    let _surface = Surface::new(&khr_surface, instance.get(), &window);
+    let surface = Surface::new(&khr_surface, instance.get(), &window);
 
     println!("Select VkPhysicalDevice");
     let physical_device = instance.select_device();
@@ -147,13 +154,37 @@ fn main() {
     println!("Create ren::Device");
     let get_instance_proc_addr: ren::vk::PFN_vkGetInstanceProcAddr =
         unsafe { std::mem::transmute(instance.get_loader()) };
-    let _device = unsafe {
+    let device = unsafe {
         ren::vk::create_device(
             get_instance_proc_addr,
             instance.as_raw() as ren::vk::VkInstance,
             physical_device.as_raw() as ren::vk::VkPhysicalDevice,
         )
     };
+
+    println!("Create ren::Swapchain");
+    let swapchain =
+        unsafe { ren::vk::create_swapchain(&device, surface.as_raw() as ren::vk::VkSurfaceKHR) };
+
+    println!("Create ren::Scene");
+    let mut scene = ren::Scene::new(&device);
+    scene.set_swapchain(swapchain);
+
+    let mut quit: bool = false;
+    while !quit {
+        for e in sdl_context.event_pump().unwrap().poll_iter() {
+            match e {
+                sdl2::event::Event::Quit { .. } => quit = true,
+                _ => {}
+            }
+        }
+
+        let (width, height) = window.drawable_size();
+        scene.set_output_size(width, height);
+        scene.get_swapchain_mut().unwrap().set_size(width, height);
+
+        scene.draw();
+    }
 
     println!("Done");
 }

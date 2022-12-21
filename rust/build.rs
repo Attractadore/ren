@@ -37,19 +37,19 @@ fn main() {
         cmake::build("..").display()
     );
 
-    let ren_h = "../include/Ren/Ren.h";
-    let ren_lib = "Ren";
+    let ren_h = "../include/ren/ren.h";
+    let ren_lib = "ren";
     let ren_rs = "ren.rs";
 
-    let ren_vk_h = "../include/Ren/RenVulkan.h";
-    let ren_vk_lib = "Ren-Vulkan";
+    let ren_vk_h = "../include/ren/ren-vk.h";
+    let ren_vk_lib = "ren-vk";
     let ren_vk_rs = "ren-vk.rs";
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let bindings_list = [
-        HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("Ren_.*"),
+        HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("ren_.*"),
         HeaderConfig::new(ren_vk_h, ren_vk_lib, ren_vk_rs)
-            .set_allow_function("Ren_Vk_.*")
+            .set_allow_function("ren_vk_.*")
             .set_block_file(ren_h),
     ];
 
@@ -58,6 +58,9 @@ fn main() {
         println!("cargo:rustc-link-lib={}", bindings.lib);
         let mut bb = bindgen::Builder::default()
             .header(bindings.header)
+            .default_enum_style(bindgen::EnumVariation::Rust {
+                non_exhaustive: false,
+            })
             .parse_callbacks(Box::new(bindgen::CargoCallbacks));
         if !bindings.allow_function.is_empty() {
             bb = bb.allowlist_function(bindings.allow_function.as_str())
