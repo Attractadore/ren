@@ -11,13 +11,13 @@ cmake = "0.1.49"
 ash = "0.37.0"
 sdl2 = "0.35.2"
 
-[target.'cfg(target_os = "windows")'.dependencies]
+[target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.4.3"
 
-[target.'cfg(target_os = "windows")'.dev-dependencies]
+[target.'cfg(windows)'.dev-dependencies]
 windows = {version = "0.43.0", features = ["Win32_Graphics_Dxgi", "Win32_Foundation"]}
 
-[target.'cfg(target_os = "windows")'.dev-dependencies.sdl2]
+[target.'cfg(windows)'.dev-dependencies.sdl2]
 features = ["raw-window-handle"]
 
 [target.'cfg(target_env = "msvc")'.dev-dependencies.sdl2]

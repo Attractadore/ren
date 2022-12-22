@@ -32,15 +32,9 @@ impl HeaderConfig {
 }
 
 fn main() {
-    if cfg!(target_env = "gnu") {
-        println!("cargo:rustc-link-lib=dylib=stdc++");
-    } else if cfg!(target_env = "msvc") {
-        if cfg!(release) {
-            println!("cargo:rustc-link-lib=dylib=msvcrt");
-        } else {
-            println!("cargo:rustc-link-lib=dylib=msvcrtd");
-        }
-    }
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     let dst = cmake::build("..");
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
@@ -53,21 +47,36 @@ fn main() {
     let ren_vk_lib = "ren-vk";
     let ren_vk_rs = "ren-vk.rs";
 
-    let ren_dx12_h = "../include/ren/ren-dx12.h";
-    let ren_dx12_lib = "ren-dx12";
-    let ren_dx12_rs = "ren-dx12.rs";
-
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let bindings_list = [
+    let mut bindings_list = vec![
         HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("ren_.*"),
         HeaderConfig::new(ren_vk_h, ren_vk_lib, ren_vk_rs)
             .set_allow_function("ren_vk_.*")
             .set_block_file(ren_h),
-        #[cfg(windows)]
-        HeaderConfig::new(ren_dx12_h, ren_dx12_lib, ren_dx12_rs)
-            .set_allow_function("ren_dx12_.*")
-            .set_block_file(ren_h),
     ];
+
+    if target_os == "windows" {
+        let ren_dx12_h = "../include/ren/ren-dx12.h";
+        let ren_dx12_lib = "ren-dx12";
+        let ren_dx12_rs = "ren-dx12.rs";
+        bindings_list.push(
+            HeaderConfig::new(ren_dx12_h, ren_dx12_lib, ren_dx12_rs)
+                .set_allow_function("ren_dx12_.*")
+                .set_block_file(ren_h),
+        );
+        println!("cargo:rustc-link-lib=dylib=d3d12");
+        println!("cargo:rustc-link-lib=dylib=dxgi");
+        println!("cargo:rustc-link-lib=dylib=dxguid");
+    }
+
+    if target_env == "gnu" {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else if target_env == "msvc" {
+        if cfg!(release) {
+            println!("cargo:rustc-link-lib=dylib=msvcrt");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=msvcrtd");
+        }
+    }
 
     for bindings in bindings_list {
         println!("cargo:rerun-if-changed={}", bindings.header);
@@ -87,7 +96,7 @@ fn main() {
         }
         bb.generate()
             .expect("Unable to generate bindings")
-            .write_to_file(out_path.join(bindings.rust_src))
+            .write_to_file(out_dir.join(bindings.rust_src))
             .expect("Couldn't write bindings!");
     }
 }
