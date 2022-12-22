@@ -1,6 +1,7 @@
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Support/Errors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
+#include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
@@ -169,6 +170,10 @@ void VulkanSwapchain::setSize(unsigned width, unsigned height) {
       .width = width,
       .height = height,
   };
+}
+
+void VulkanSwapchain::set_present_mode(VkPresentModeKHR present_mode) {
+  vkTodo();
 }
 
 void VulkanSwapchain::acquireImage(VkSemaphore signal_semaphore) {

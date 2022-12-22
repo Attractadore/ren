@@ -149,18 +149,22 @@ void DirectX12Swapchain::setTextures() {
 } // namespace ren
 
 namespace {
-std::tuple<unsigned, unsigned> getWindowSize(HWND hwnd) {
+std::pair<unsigned, unsigned> getWindowSize(HWND hwnd) {
   RECT rect;
   throwIfFailed(!!GetClientRect(hwnd, &rect),
                 "WIN32: Failed to get window size");
   return {rect.right, rect.bottom};
 }
 
-std::tuple<unsigned, unsigned> getSwapchainSize(IDXGISwapChain1 *swapchain) {
+std::pair<unsigned, unsigned> getSwapchainSize(IDXGISwapChain1 *swapchain) {
   auto desc = getSwapchainDesc(swapchain);
   return {desc.Width, desc.Height};
 }
 } // namespace
+
+std::pair<unsigned, unsigned> DirectX12Swapchain::get_size() const {
+  return getSwapchainSize(m_swapchain.get());
+}
 
 void DirectX12Swapchain::AcquireBuffer() {
   // If the swapchain's window is minimized, don't do anything

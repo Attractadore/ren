@@ -32,6 +32,7 @@ public:
   DirectX12Swapchain &operator=(DirectX12Swapchain &&);
   ~DirectX12Swapchain();
 
+  std::pair<unsigned, unsigned> get_size() const override;
   void setSize(unsigned width, unsigned height) override {}
 
   HWND getHWND() const { return m_hwnd; }

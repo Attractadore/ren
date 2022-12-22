@@ -26,7 +26,17 @@ public:
   VulkanSwapchain &operator=(VulkanSwapchain &&);
   ~VulkanSwapchain();
 
-  void setSize(unsigned width, unsigned height);
+  std::pair<unsigned, unsigned> get_size() const override {
+    return {m_create_info.imageExtent.width, m_create_info.imageExtent.height};
+  }
+  void setSize(unsigned width, unsigned height) override;
+
+  VkPresentModeKHR get_present_mode() const {
+    return m_create_info.presentMode;
+  }
+  void set_present_mode(VkPresentModeKHR);
+
+  VkSurfaceKHR get_surface() const { return m_create_info.surface; }
 
   void acquireImage(VkSemaphore signal_semaphore);
   void presentImage(VkSemaphore wait_semaphore);
