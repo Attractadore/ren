@@ -53,11 +53,19 @@ fn main() {
     let ren_vk_lib = "ren-vk";
     let ren_vk_rs = "ren-vk.rs";
 
+    let ren_dx12_h = "../include/ren/ren-dx12.h";
+    let ren_dx12_lib = "ren-dx12";
+    let ren_dx12_rs = "ren-dx12.rs";
+
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let bindings_list = [
         HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("ren_.*"),
         HeaderConfig::new(ren_vk_h, ren_vk_lib, ren_vk_rs)
             .set_allow_function("ren_vk_.*")
+            .set_block_file(ren_h),
+        #[cfg(windows)]
+        HeaderConfig::new(ren_dx12_h, ren_dx12_lib, ren_dx12_rs)
+            .set_allow_function("ren_dx12_.*")
             .set_block_file(ren_h),
     ];
 

@@ -1,3 +1,5 @@
+#[cfg(windows)]
+pub mod dx12;
 mod ffi;
 pub mod vk;
 
