@@ -32,10 +32,9 @@ impl HeaderConfig {
 }
 
 fn main() {
-    println!(
-        "cargo:rustc-link-search={}/lib",
-        cmake::build("..").display()
-    );
+    let dst = cmake::build("..");
+    println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    println!("cargo:rustc-link-lib=dylib=stdc++");
 
     let ren_h = "../include/ren/ren.h";
     let ren_lib = "ren";
@@ -55,7 +54,7 @@ fn main() {
 
     for bindings in bindings_list {
         println!("cargo:rerun-if-changed={}", bindings.header);
-        println!("cargo:rustc-link-lib={}", bindings.lib);
+        println!("cargo:rustc-link-lib=static={}", bindings.lib);
         let mut bb = bindgen::Builder::default()
             .header(bindings.header)
             .default_enum_style(bindgen::EnumVariation::Rust {
