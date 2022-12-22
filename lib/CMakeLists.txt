@@ -9,12 +9,12 @@ set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 
 find_package(
   Boost
-  COMPONENTS container headers
+  COMPONENTS headers
   REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
-target_link_libraries(Support INTERFACE SlotMap Boost::container Boost::headers
+target_link_libraries(Support INTERFACE SlotMap Boost::headers
                                         range-v3::range-v3 fmt::fmt glm::glm)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
@@ -25,7 +25,7 @@ if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
 
-add_library(ren SHARED ren.cpp RenderGraph.cpp Scene.cpp)
+add_library(ren ren.cpp RenderGraph.cpp Scene.cpp)
 target_sources(
   ren
   PUBLIC FILE_SET
@@ -36,7 +36,15 @@ target_sources(
          ${REN_INCLUDE}/ren/ren.h
          ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(ren PRIVATE Support)
-add_library(ren::ren ALIAS ren)
+
+if(BUILD_SHARED_LIBS)
+  add_library(ren::ren ALIAS ren)
+else()
+  include(BundleDependencies)
+  bundle_dependencies(ren ren-bundled)
+  set_target_properties(ren-bundled PROPERTIES EXPORT_NAME "ren")
+  add_library(ren::ren ALIAS ren-bundled)
+endif()
 
 message(STATUS "Enable Vulkan renderer")
 add_subdirectory(Vulkan)
@@ -47,10 +55,14 @@ endif()
 
 if(REN_INSTALL)
   include(GNUInstallDirs)
+  get_target_property(ren_target ren::ren ALIASED_TARGET)
   install(
-    TARGETS ren
+    TARGETS ${ren_target}
     EXPORT ${REN_TARGETS}
     FILE_SET HEADERS)
+  if(NOT BUILD_SHARED_LIBS)
+    install(FILES $<TARGET_PROPERTY:${ren_target},ARCHIVE_OUTPUT_NAME> TYPE LIB)
+  endif()
   install(
     EXPORT ${REN_TARGETS}
     NAMESPACE ren::

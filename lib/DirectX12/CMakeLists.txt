@@ -16,7 +16,7 @@ target_link_libraries(D3D12MA PUBLIC D3D12)
 target_compile_features(D3D12MA PUBLIC cxx_std_14)
 
 add_library(
-  ren-dx12 SHARED
+  ren-dx12
   ren-dx12.cpp
   DirectX12CommandAllocator.cpp
   DirectX12CommandBuffer.cpp
@@ -35,7 +35,7 @@ target_sources(
          ${REN_INCLUDE}/ren/ren-dx12.hpp)
 target_link_libraries(
   ren-dx12
-  PUBLIC ren d3d12 dxgi dxguid
+  PUBLIC ren::ren d3d12 dxgi dxguid
   PRIVATE Support D3D12MA FullScreenRectShader BlitToSwapchainShader)
 if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
@@ -46,15 +46,28 @@ if(REN_DIRECTX12_FORCE_WARP_DEVICE)
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_FORCE_WARP_DEVICE)
 endif()
 target_compile_definitions(ren-dx12 PRIVATE NOMINMAX)
-set_target_properties(ren-dx12 PROPERTIES EXPORT_NAME "dx12")
-add_library(ren::dx12 ALIAS ren-dx12)
+
+if(BUILD_SHARED_LIBS)
+  set_target_properties(ren-dx12 PROPERTIES EXPORT_NAME "dx12")
+  add_library(ren::dx12 ALIAS ren-dx12)
+else()
+  include(BundleDependencies)
+  bundle_dependencies(ren-dx12 ren-dx12-bundled)
+  set_target_properties(ren-dx12-bundled PROPERTIES EXPORT_NAME "dx12")
+  add_library(ren::dx12 ALIAS ren-dx12-bundled)
+endif()
 
 if(REN_INSTALL)
   include(GNUInstallDirs)
+  get_target_property(ren_dx12_target ren::dx12 ALIASED_TARGET)
   install(
-    TARGETS ren-dx12
+    TARGETS ${ren_dx12_target}
     EXPORT ${REN_DIRECTX12_TARGETS}
     FILE_SET HEADERS)
+  if(NOT BUILD_SHARED_LIBS)
+    install(FILES $<TARGET_PROPERTY:${ren_dx12_target},ARCHIVE_OUTPUT_NAME>
+            TYPE LIB)
+  endif()
   install(
     EXPORT ${REN_DIRECTX12_TARGETS}
     NAMESPACE ren::
