@@ -5,8 +5,7 @@
       "name": "devel",
       "displayName": "Development Config",
       "description": "Development build with debug info, assertions and validation",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/devel",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
@@ -18,17 +17,18 @@
       }
     },
     {
-      "name": "mingw-devel",
-      "displayName": "Development Config (MinGW)",
-      "description": "Development build for MinGW on Linux with debug info and assertions",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/mingw-devel",
+      "name": "linux-mingw-devel",
+      "displayName": "Development Config (MinGW on Linux)",
+      "description": "Development build for MinGW on Linux with validation disabled",
+      "inherits": "devel",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_COLOR_DIAGNOSTICS": "ON",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_BUILD_EXAMPLES": "ON",
-        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG"
+        "REN_DIRECTX12_DEBUG": "OFF",
+        "REN_VULKAN_VALIDATION": "OFF"
+      },
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
