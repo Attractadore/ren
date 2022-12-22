@@ -68,25 +68,36 @@ function(bundle_dependencies target bundle_target)
   set(bundle_file_name
       ${CMAKE_STATIC_LIBRARY_PREFIX}${target}${CMAKE_STATIC_LIBRARY_SUFFIX})
   set(bundle_file ${CMAKE_CURRENT_BINARY_DIR}/bundle/${bundle_file_name})
-  set(mir_file ${bundle_file}.ar)
-  set(mir_config_file ${mir_file}.in)
+  if(MSVC)
+    set(bundle_lib_files "")
+    foreach(lib ${bundle_libs})
+      list(APPEND bundle_lib_files $<TARGET_FILE:${lib}>)
+    endforeach()
+    add_custom_command(
+      OUTPUT ${bundle_file}
+      DEPENDS ${bundle_libs}
+      COMMAND ${CMAKE_AR} /NOLOGO /OUT:${bundle_file} ${bundle_lib_files}
+      COMMAND_EXPAND_LISTS)
+  else()
+    set(mir_file ${bundle_file}.ar)
+    set(mir_config_file ${mir_file}.in)
+    file(WRITE ${mir_config_file} "CREATE ${bundle_file}\n")
+    foreach(lib ${bundle_libs})
+      file(APPEND ${mir_config_file} "ADDLIB $<TARGET_FILE:${lib}>\n")
+    endforeach()
+    file(APPEND ${mir_config_file} "SAVE\n")
+    file(APPEND ${mir_config_file} "END\n")
+    file(
+      GENERATE
+      OUTPUT ${mir_file}
+      INPUT ${mir_config_file})
 
-  file(WRITE ${mir_config_file} "CREATE ${bundle_file}\n")
-  foreach(lib ${bundle_libs})
-    file(APPEND ${mir_config_file} "ADDLIB $<TARGET_FILE:${lib}>\n")
-  endforeach()
-  file(APPEND ${mir_config_file} "SAVE\n")
-  file(APPEND ${mir_config_file} "END\n")
-  file(
-    GENERATE
-    OUTPUT ${mir_file}
-    INPUT ${mir_config_file})
-
-  add_custom_command(
-    OUTPUT ${bundle_file}
-    DEPENDS ${bundle_libs} ${mir_file}
-    COMMAND ${CMAKE_AR} -M < ${mir_file}
-    COMMAND_EXPAND_LISTS)
+    add_custom_command(
+      OUTPUT ${bundle_file}
+      DEPENDS ${bundle_libs} ${mir_file}
+      COMMAND ${CMAKE_AR} -M < ${mir_file}
+      COMMAND_EXPAND_LISTS)
+  endif()
   add_custom_target(${bundle_target}-bundle ALL DEPENDS ${bundle_file})
   add_library(${bundle_target} INTERFACE)
   add_dependencies(${bundle_target} INTERFACE ${bundle_target}-bundle)
