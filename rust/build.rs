@@ -32,9 +32,18 @@ impl HeaderConfig {
 }
 
 fn main() {
+    if cfg!(target_env = "gnu") {
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else if cfg!(target_env = "msvc") {
+        if cfg!(release) {
+            println!("cargo:rustc-link-lib=dylib=msvcrt");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=msvcrtd");
+        }
+    }
+
     let dst = cmake::build("..");
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-lib=dylib=stdc++");
 
     let ren_h = "../include/ren/ren.h";
     let ren_lib = "ren";
@@ -60,6 +69,7 @@ fn main() {
             .default_enum_style(bindgen::EnumVariation::Rust {
                 non_exhaustive: false,
             })
+            .clang_arg("-isystem../external/Vulkan-Headers/include")
             .parse_callbacks(Box::new(bindgen::CargoCallbacks));
         if !bindings.allow_function.is_empty() {
             bb = bb.allowlist_function(bindings.allow_function.as_str())

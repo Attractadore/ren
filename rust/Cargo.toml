@@ -10,3 +10,6 @@ cmake = "0.1.49"
 [dev-dependencies]
 ash = "0.37.0"
 sdl2 = "0.35.2"
+
+[features]
+sdl2-bundled = ["sdl2/bundled"]
