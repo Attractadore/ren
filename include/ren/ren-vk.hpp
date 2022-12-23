@@ -6,26 +6,27 @@
 
 namespace ren::vk {
 inline namespace v0 {
-inline uint32_t getRequiredAPIVersion() {
+inline uint32_t get_required_api_version() {
   return ren_vk_GetRequiredAPIVersion();
 }
 
-inline std::span<const char *const> getRequiredLayers() {
+inline std::span<const char *const> get_required_layers() {
   return {ren_vk_GetRequiredLayers(), ren_vk_GetRequiredLayerCount()};
 }
 
-inline std::span<const char *const> getRequiredExtensions() {
+inline std::span<const char *const> get_required_extensions() {
   return {ren_vk_GetRequiredExtensions(), ren_vk_GetRequiredExtensionCount()};
 }
 
 struct Swapchain : ::ren::Swapchain {
-  auto getSurface() const { return ren_vk_GetSwapchainSurface(this); }
+  VkSurfaceKHR get_surface() const { return ren_vk_GetSwapchainSurface(this); }
 
-  void setPresentMode(VkPresentModeKHR present_mode) {
+  VkPresentModeKHR get_present_mode() const {
+    return ren_vk_GetSwapchainPresentMode(this);
+  }
+  void set_present_mode(VkPresentModeKHR present_mode) {
     ren_vk_SetSwapchainPresentMode(this, present_mode);
   };
-
-  auto getPresentMode() const { return ren_vk_GetSwapchainPresentMode(this); }
 };
 using UniqueSwapchain = std::unique_ptr<Swapchain, SwapchainDeleter>;
 using SharedSwapchain = std::shared_ptr<Swapchain>;
@@ -44,7 +45,7 @@ struct Device : ::ren::Device {
             DeviceDeleter()};
   }
 
-  UniqueSwapchain createSwapchain(VkSurfaceKHR surface) {
+  UniqueSwapchain create_swapchain(VkSurfaceKHR surface) {
     return {static_cast<Swapchain *>(ren_vk_CreateSwapchain(this, surface)),
             SwapchainDeleter()};
   }

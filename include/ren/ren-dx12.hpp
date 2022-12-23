@@ -4,7 +4,10 @@
 
 namespace ren::dx12 {
 inline namespace v0 {
-struct Swapchain : ::ren::Swapchain {};
+struct Swapchain : ::ren::Swapchain {
+  HWND get_hwnd() const { return ren_dx12_GetSwapchainHWND(this); }
+};
+
 using UniqueSwapchain = std::unique_ptr<Swapchain, SwapchainDeleter>;
 using SharedSwapchain = std::shared_ptr<Swapchain>;
 
@@ -15,7 +18,7 @@ struct Device : ::ren::Device {
             DeviceDeleter()};
   }
 
-  UniqueSwapchain createSwapchain(HWND hwnd) {
+  UniqueSwapchain create_swapchain(HWND hwnd) {
     return {static_cast<Swapchain *>(ren_dx12_CreateSwapchain(this, hwnd)),
             SwapchainDeleter()};
   }
