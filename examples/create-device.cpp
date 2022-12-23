@@ -1,8 +1,8 @@
-#include "AppBase-DirectX12.hpp"
+#include "app-base.hpp"
 
-class CreateDeviceApp : public AppBase<CreateDeviceApp> {
+class CreateDeviceApp : public AppBase {
 public:
-  CreateDeviceApp() : AppBase("Create Device (DirectX 12)") {}
+  CreateDeviceApp() : AppBase("Create Device") {}
 };
 
 int main() {
