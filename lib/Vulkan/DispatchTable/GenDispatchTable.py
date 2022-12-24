@@ -31,8 +31,9 @@ def parse_core_version_or_extension(node, out: dict):
         cmd_requires = [extension_name]
         if feature := r.attrib.get("feature", None):
             cmd_requires.append(feature)
-        if extension := r.attrib.get("extension", None):
-            cmd_requires.append(extension)
+        if extensions := r.attrib.get("extension", None):
+            for extension in extensions.split(','):
+                cmd_requires.append(extension)
 
         for f in filter(lambda f: f.tag == "command", r):
             cmd_name = f.attrib["name"]
