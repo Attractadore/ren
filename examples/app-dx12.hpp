@@ -25,7 +25,7 @@ public:
   }
 
   bool select_adapter(unsigned idx) override {
-    std::cout << "Create IDXGIAdapter1 #" << idx << "\n";
+    std::cout << "Select IDXGIAdapter1 #" << idx << "\n";
     return SUCCEEDED(
         m_factory->EnumAdapters1(idx, m_adapter.ReleaseAndGetAddressOf()));
   }
