@@ -2,28 +2,46 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "devel",
-      "displayName": "Development Config",
-      "description": "Development build with debug info, assertions and validation",
+      "name": "base",
+      "hidden": true,
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "$env{VCPKG_PROFILE_MANIFEST_FEATURES};$env{VCPKG_PLATFORM_MANIFEST_FEATURES}"
+      }
+    },
+    {
+      "name": "base-devel",
+      "hidden": true,
+      "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_EXAMPLES": "ON",
-        "REN_DIRECTX12_DEBUG": "ON",
         "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
         "REN_VULKAN_VALIDATION": "ON"
+      },
+      "environment": {
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples"
       }
     },
     {
-      "name": "linux-mingw-devel",
-      "displayName": "Development Config (MinGW on Linux)",
-      "description": "Development build for MinGW on Linux with validation disabled",
-      "inherits": "devel",
+      "name": "base-release",
+      "hidden": true,
+      "inherits": "base",
       "cacheVariables": {
-        "REN_DIRECTX12_DEBUG": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "environment": {
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "dummy"
+      }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "environment": {
+        "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan"
       },
       "condition": {
         "type": "notEquals",
@@ -32,13 +50,92 @@
       }
     },
     {
-      "name": "release",
-      "displayName": "Release Config",
-      "description": "Release build",
-      "binaryDir": "${sourceDir}/build/release",
+      "name": "linux-mingw",
+      "hidden": true,
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
+      },
+      "environment": {
+        "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan;directx12"
+      },
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
+    },
+    {
+      "name": "windows",
+      "hidden": true,
+      "environment": {
+        "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan;directx12"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-devel",
+      "displayName": "Development Config for Linux",
+      "description": "Development build with debug info, assertions and validation",
+      "inherits": [
+        "linux",
+        "base-devel"
+      ]
+    },
+    {
+      "name": "windows-devel",
+      "displayName": "Development Config for Windows",
+      "description": "Development build with debug info, assertions and validation",
+      "inherits": [
+        "windows",
+        "base-devel"
+      ],
+      "cacheVariables": {
+        "REN_DIRECTX12_DEBUG": "ON"
+      }
+    },
+    {
+      "name": "linux-mingw-devel",
+      "displayName": "Development Config for MinGW on Linux",
+      "description": "Development build with debug info, assertions and validation disabled",
+      "inherits": [
+        "linux-mingw",
+        "base-devel"
+      ],
+      "cacheVariables": {
+        "REN_VULKAN_VALIDATION": "OFF"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Release Config for Linux",
+      "description": "Release build with optimizations",
+      "inherits": [
+        "linux",
+        "base-release"
+      ]
+    },
+    {
+      "name": "linux-mingw-release",
+      "displayName": "Release Config for MinGW on Linux",
+      "description": "Release build with optimizations",
+      "inherits": [
+        "linux-mingw",
+        "base-release"
+      ]
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Release Config for Windows",
+      "description": "Release build with optimizations",
+      "inherits": [
+        "windows",
+        "base-release"
+      ]
     }
   ]
 }

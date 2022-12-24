@@ -1,15 +1,15 @@
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 
-set(VULKAN_HEADERS_DIR ${EXTERNAL_DIR}/Vulkan-Headers)
-add_subdirectory(${VULKAN_HEADERS_DIR} Vulkan-Headers)
+find_package(VulkanHeaders REQUIRED)
+find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
-add_subdirectory(generate)
+add_subdirectory(DispatchTable)
 
-set(VMA_DIR ${EXTERNAL_DIR}/VulkanMemoryAllocator)
 add_library(VMA STATIC VMA.cpp)
-target_include_directories(VMA PUBLIC ${VMA_DIR}/include ${VMA_DIR}/src
-                                      ${REN_PRIVATE_INCLUDE_DIR})
-target_link_libraries(VMA PUBLIC Vulkan::Headers)
+target_include_directories(VMA PUBLIC ${REN_PRIVATE_INCLUDE_DIR})
+target_link_libraries(
+  VMA PUBLIC Vulkan::Headers
+             unofficial::vulkan-memory-allocator::vulkan-memory-allocator)
 target_compile_features(VMA PRIVATE cxx_std_17)
 
 add_library(

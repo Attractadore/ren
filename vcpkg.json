@@ -1,0 +1,31 @@
+{
+  "name": "ren",
+  "dependencies": [
+    "fmt",
+    "range-v3",
+    "glm",
+    "boost-container",
+    "boost-preprocessor"
+  ],
+  "features": {
+    "vulkan": {
+      "description": "Enable Vulkan backend",
+      "dependencies": [
+        "vulkan-headers",
+        "vulkan-memory-allocator"
+      ]
+    },
+    "directx12": {
+      "description": "Enable DirectX 12 backend"
+    },
+    "examples": {
+      "description": "Build example executables",
+      "dependencies": [
+        "sdl2"
+      ]
+    },
+    "dummy": {
+      "description": ""
+    }
+  }
+}

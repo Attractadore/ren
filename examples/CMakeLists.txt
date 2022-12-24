@@ -1,4 +1,5 @@
 find_package(SDL2 REQUIRED)
+find_package(fmt REQUIRED)
 
 add_library(app-base app-base.cpp)
 target_link_libraries(

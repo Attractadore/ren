@@ -9,12 +9,15 @@ set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 
 find_package(
   Boost
-  COMPONENTS headers
+  COMPONENTS container
   REQUIRED)
+find_package(fmt REQUIRED)
+find_package(glm REQUIRED)
+find_package(range-v3 REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
-target_link_libraries(Support INTERFACE SlotMap Boost::headers
+target_link_libraries(Support INTERFACE SlotMap Boost::boost Boost::container
                                         range-v3::range-v3 fmt::fmt glm::glm)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")

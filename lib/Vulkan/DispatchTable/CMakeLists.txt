@@ -4,15 +4,12 @@ find_package(
   REQUIRED)
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
-set(VULKAN_SPEC_XML ${VULKAN_HEADERS_DIR}/registry/vk.xml)
-set(VULKAN_DISPATCH_TABLE_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/include)
-set(VULKAN_DISPATCH_TABLE_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
-set(VULKAN_DISPATCH_TABLE_H
-    ${VULKAN_DISPATCH_TABLE_INCLUDE_DIR}/VulkanDispatchTable.h)
+set(VULKAN_SPEC_XML
+    $<TARGET_PROPERTY:Vulkan::Registry,INTERFACE_INCLUDE_DIRECTORIES>/vk.xml)
+set(VULKAN_DISPATCH_TABLE_H ${CMAKE_CURRENT_BINARY_DIR}/VulkanDispatchTable.h)
 set(VULKAN_DISPATCH_TABLE_HPP
-    ${VULKAN_DISPATCH_TABLE_INCLUDE_DIR}/VulkanDispatchTable.hpp)
-set(VULKAN_DISPATCH_TABLE_C
-    ${VULKAN_DISPATCH_TABLE_SOURCE_DIR}/VulkanDispatchTable.c)
+    ${CMAKE_CURRENT_BINARY_DIR}/VulkanDispatchTable.hpp)
+set(VULKAN_DISPATCH_TABLE_C ${CMAKE_CURRENT_BINARY_DIR}/VulkanDispatchTable.c)
 
 add_custom_command(
   OUTPUT ${VULKAN_DISPATCH_TABLE_H} ${VULKAN_DISPATCH_TABLE_HPP}
@@ -25,5 +22,5 @@ add_custom_command(
   VERBATIM)
 add_library(VulkanDispatchTable STATIC ${VULKAN_DISPATCH_TABLE_C})
 target_include_directories(VulkanDispatchTable
-                           PUBLIC ${VULKAN_DISPATCH_TABLE_INCLUDE_DIR})
+                           PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(VulkanDispatchTable PUBLIC Vulkan::Headers)
