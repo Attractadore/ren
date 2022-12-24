@@ -7,18 +7,23 @@ edition = "2021"
 bindgen = "0.61.0"
 cmake = "0.1.49"
 
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.4.3"
+
 [dev-dependencies]
 ash = "0.37.0"
 sdl2 = "0.35.2"
 
-[target.'cfg(windows)'.dependencies]
-raw-window-handle = "0.4.3"
-
 [target.'cfg(windows)'.dev-dependencies]
-windows = {version = "0.43.0", features = ["Win32_Graphics_Dxgi", "Win32_Foundation"]}
-
-[target.'cfg(windows)'.dev-dependencies.sdl2]
-features = ["raw-window-handle"]
+windows = "0.43.0"
 
 [target.'cfg(target_env = "msvc")'.dev-dependencies.sdl2]
+version = "0.35.2"
 features = ["bundled"]
+
+[[example]]
+name = "create-device-vk"
+
+[[example]]
+name = "create-device-dx12"
+required-features = ["windows/Win32_Graphics_Dxgi", "windows/Win32_Foundation", "sdl2/raw-window-handle"]

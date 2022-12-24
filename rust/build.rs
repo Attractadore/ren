@@ -34,9 +34,27 @@ impl HeaderConfig {
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+    let profile = env::var("PROFILE").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let dst = cmake::build("..");
+    let cmake_preset_os = if cfg!(unix) && target_os == "windows" {
+        "linux-mingw"
+    } else {
+        &target_os
+    };
+
+    let cmake_preset_profile = if profile == "release" {
+        "release"
+    } else {
+        "devel"
+    };
+
+    let dst = cmake::Config::new("..")
+        .configure_arg("--preset")
+        .configure_arg(format!("{cmake_preset_os}-{cmake_preset_profile}"))
+        .configure_arg("-B")
+        .configure_arg(format!("{}/build", out_dir.display()))
+        .build();
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
 
     let ren_h = "../include/ren/ren.h";
@@ -86,7 +104,6 @@ fn main() {
             .default_enum_style(bindgen::EnumVariation::Rust {
                 non_exhaustive: false,
             })
-            .clang_arg("-isystem../external/Vulkan-Headers/include")
             .parse_callbacks(Box::new(bindgen::CargoCallbacks));
         if !bindings.allow_function.is_empty() {
             bb = bb.allowlist_function(bindings.allow_function.as_str())
