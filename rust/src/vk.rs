@@ -1,6 +1,4 @@
-mod ffi;
-
-use crate::{Device, Swapchain};
+use crate::{ffi, Device, Swapchain};
 use std::os::raw::c_char;
 
 pub use ffi::{

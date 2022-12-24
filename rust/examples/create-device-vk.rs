@@ -4,8 +4,6 @@ use ash::{
 };
 use std::ffi::{CStr, CString};
 
-use renderer2 as ren;
-
 struct Instance<'e> {
     entry: &'e ash::Entry,
     instance: ash::Instance,

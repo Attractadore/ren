@@ -1,12 +1,10 @@
 [package]
-name = "renderer2"
+name = "ren"
 version = "0.1.0"
 edition = "2021"
 
 [build-dependencies]
 bindgen = "0.61.0"
-cmake = "0.1.49"
-vcpkg = "0.2.15"
 
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.4.3"
@@ -16,15 +14,8 @@ ash = "0.37.0"
 sdl2 = "0.35.2"
 
 [target.'cfg(windows)'.dev-dependencies]
+sdl2 = {version = "0.35.2", features = ["raw-window-handle", "static-link", "bundled"]}
 windows = {version = "0.43.0", features = ["Win32_Graphics_Dxgi", "Win32_Foundation"]}
-
-[target.'cfg(windows)'.dev-dependencies.sdl2]
-version = "0.35.2"
-features = ["raw-window-handle"]
-
-[target.'cfg(target_env = "msvc")'.dev-dependencies.sdl2]
-version = "0.35.2"
-features = ["bundled"]
 
 [[example]]
 name = "create-device-vk"

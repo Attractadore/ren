@@ -1,8 +1,6 @@
 use windows::core::PCWSTR;
 use windows::Win32::Graphics::Dxgi;
 
-use renderer2 as ren;
-
 fn create_dxgi_factory() -> Dxgi::IDXGIFactory4 {
     unsafe { Dxgi::CreateDXGIFactory2(0).expect("DXGI: Failed to create factory") }
 }

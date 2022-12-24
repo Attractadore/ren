@@ -1,9 +1,8 @@
-mod ffi;
-
-use crate::{Device, Swapchain};
-pub use ffi::LUID;
+use crate::{ffi, Device, Swapchain};
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use std::ffi::c_void;
+
+pub use ffi::LUID;
 
 pub unsafe fn create_device(adapter: LUID) -> Device {
     Device::new(ffi::ren_dx12_CreateDevice(adapter))
@@ -18,7 +17,7 @@ pub unsafe fn create_swapchain<'a>(
             device,
             ffi::ren_dx12_CreateSwapchain(device.device, win32_handle.hwnd as ffi::HWND),
         ),
-        _ => panic!("Failed to get Win32 window"),
+        _ => panic!("Failed to get Win32 window handle"),
     }
 }
 

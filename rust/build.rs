@@ -1,42 +1,13 @@
 use std::env;
 use std::path::PathBuf;
-
-struct HeaderConfig {
-    header: String,
-    lib: String,
-    rust_src: String,
-    allow_function: String,
-    block_file: String,
-}
-
-impl HeaderConfig {
-    fn new(header: &str, lib: &str, rust_src: &str) -> Self {
-        Self {
-            header: header.to_string(),
-            lib: lib.to_string(),
-            rust_src: rust_src.to_string(),
-            allow_function: String::new(),
-            block_file: String::new(),
-        }
-    }
-
-    fn set_allow_function(mut self, func: &str) -> Self {
-        self.allow_function = String::from(func);
-        self
-    }
-
-    fn set_block_file(mut self, func: &str) -> Self {
-        self.block_file = String::from(func);
-        self
-    }
-}
+use std::process::Command;
 
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
     let profile = env::var("PROFILE").unwrap();
+    let root_dir = env::current_dir().unwrap().join("..");
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let build_dir = format!("{}/build", out_dir.display());
 
     let cmake_preset_os = if cfg!(unix) && target_os == "windows" {
         "linux-mingw"
@@ -44,86 +15,118 @@ fn main() {
         &target_os
     };
 
-    let cmake_preset_profile = if profile == "release" {
-        "release"
+    let (cmake_preset_profile, cmake_build_type) = if profile == "release" {
+        ("release", "release")
     } else {
-        "devel"
+        ("devel", "debug")
     };
 
-    let dst = cmake::Config::new("..")
-        .configure_arg("--preset")
-        .configure_arg(format!("{cmake_preset_os}-{cmake_preset_profile}"))
-        .configure_arg("-B")
-        .configure_arg(build_dir)
-        .build();
-    println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    let cmake_preset = format!("{cmake_preset_os}-{cmake_preset_profile}");
+    let rust_preset = format!("rust-{cmake_preset}");
 
-    let ren_h = "../include/ren/ren.h";
+    let build_dir = root_dir.join("build").join(rust_preset);
+    let install_dir = build_dir.join("install");
+    let include_dir = root_dir.join("include");
+    let lib_dir = install_dir.join("lib");
+
+    Command::new("cmake")
+        .arg("--preset")
+        .arg(&cmake_preset)
+        .arg("-S")
+        .arg(&root_dir)
+        .arg("-B")
+        .arg(&build_dir)
+        .status()
+        .expect("Failed to run CMake configure step");
+
+    Command::new("cmake")
+        .arg("--build")
+        .arg(&build_dir)
+        .arg("--config")
+        .arg(cmake_build_type)
+        .status()
+        .expect("Failed to run CMake build step");
+
+    Command::new("cmake")
+        .arg("--install")
+        .arg(&build_dir)
+        .arg("--config")
+        .arg(cmake_build_type)
+        .arg("--prefix")
+        .arg(&install_dir)
+        .status()
+        .expect("Failed to run CMake install step");
+
+    let ren_h = "ren/ren.h";
     let ren_lib = "ren";
-    let ren_rs = "ren.rs";
 
-    let ren_vk_h = "../include/ren/ren-vk.h";
+    let ren_vk_h = "ren/ren-vk.h";
     let ren_vk_lib = "ren-vk";
-    let ren_vk_rs = "ren-vk.rs";
 
-    let ren_dx12_h = "../include/ren/ren-dx12.h";
+    let ren_dx12_h = "ren/ren-dx12.h";
     let ren_dx12_lib = "ren-dx12";
-    let ren_dx12_rs = "ren-dx12.rs";
 
-    let mut bindings_list = vec![
-        HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("ren_.*"),
-        HeaderConfig::new(ren_vk_h, ren_vk_lib, ren_vk_rs)
-            .set_allow_function("ren_vk_.*")
-            .set_block_file(ren_h),
-    ];
+    let (ren_headers, ren_static_libs, mut ren_dynamic_libs) = if target_os == "windows" {
+        (
+            vec![ren_h, ren_vk_h, ren_dx12_h],
+            vec![ren_lib, ren_vk_lib, ren_dx12_lib],
+            vec!["d3d12", "dxgi", "dxguid"],
+        )
+    } else {
+        (vec![ren_h, ren_vk_h], vec![ren_lib, ren_vk_lib], vec![])
+    };
 
-    if target_os == "windows" {
-        bindings_list.push(
-            HeaderConfig::new(ren_dx12_h, ren_dx12_lib, ren_dx12_rs)
-                .set_allow_function("ren_dx12_.*")
-                .set_block_file(ren_h),
+    let ren_ffi_h = out_dir.join("ren-ffi.h");
+    let ren_ffi_rs = out_dir.join("ren-ffi.rs");
+    std::fs::write(&ren_ffi_h, {
+        let mut v = vec![String::from("#pragma once")];
+        v.extend(
+            ren_headers
+                .iter()
+                .map(|h| format!("#include <{0}>", include_dir.join(h).display())),
         );
-        println!("cargo:rustc-link-lib=dylib=d3d12");
-        println!("cargo:rustc-link-lib=dylib=dxgi");
-        println!("cargo:rustc-link-lib=dylib=dxguid");
-    }
+        v.join("\n")
+    })
+    .expect("Failed to create ffi header");
+
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
     if target_env == "gnu" {
-        println!("cargo:rustc-link-lib=dylib=stdc++");
-    } else if target_env == "msvc" {
-        if cfg!(release) {
-            println!("cargo:rustc-link-lib=dylib=msvcrt");
-        } else {
-            println!("cargo:rustc-link-lib=dylib=msvcrtd");
-        }
+        ren_dynamic_libs.push("stdc++");
+    } else if target_env == "msvc" && cmake_build_type == "debug" {
+        ren_dynamic_libs.push("msvcrtd");
     }
 
-    for bindings in bindings_list {
-        println!("cargo:rerun-if-changed={}", bindings.header);
-        println!("cargo:rustc-link-lib=static={}", bindings.lib);
-        let mut bb = bindgen::Builder::default()
-            .header(&bindings.header)
-            .default_enum_style(bindgen::EnumVariation::Rust {
-                non_exhaustive: false,
-            })
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks));
-        if !bindings.allow_function.is_empty() {
-            bb = bb.allowlist_function(bindings.allow_function.as_str())
-        }
-        if !bindings.block_file.is_empty() {
-            bb = bb.blocklist_file(bindings.block_file.as_str());
-        }
-        if bindings.header == ren_vk_h {
-            let vulkan_headers = vcpkg::find_package("vulkan-headers").unwrap();
-            for path in vulkan_headers.include_paths {
-                bb = bb
-                    .clang_arg("-isystem")
-                    .clang_arg(path.display().to_string());
-            }
-        }
-        bb.generate()
-            .expect("Unable to generate bindings")
-            .write_to_file(out_dir.join(bindings.rust_src))
-            .expect("Couldn't write bindings!");
+    for lib in ren_static_libs {
+        println!("cargo:rustc-link-lib=static={lib}");
     }
+    for lib in ren_dynamic_libs {
+        println!("cargo:rustc-link-lib=dylib={lib}");
+    }
+
+    bindgen::Builder::default()
+        .header(ren_ffi_h.into_os_string().to_str().unwrap())
+        .default_enum_style(bindgen::EnumVariation::Rust {
+            non_exhaustive: false,
+        })
+        .allowlist_function("ren_.*")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .clang_arg("-isystem")
+        .clang_arg({
+            let vcpkg_dir = build_dir.join("vcpkg_installed");
+            vcpkg_dir
+                .join(
+                    std::fs::read_to_string(vcpkg_dir.join("target_triplet"))
+                        .unwrap()
+                        .trim_end(),
+                )
+                .join("include")
+                .into_os_string()
+                .into_string()
+                .unwrap()
+        })
+        .generate()
+        .expect("Unable to generate bindings")
+        .write_to_file(ren_ffi_rs)
+        .expect("Couldn't write bindings!");
 }

@@ -32,6 +32,10 @@ if(REN_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
+if(VCPKG_TARGET_TRIPLET)
+  file(WRITE ${PROJECT_BINARY_DIR}/vcpkg_installed/target_triplet ${VCPKG_TARGET_TRIPLET})
+endif()
+
 if(REN_INSTALL)
   include(CMakePackageConfigHelpers)
   include(GNUInstallDirs)
