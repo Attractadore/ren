@@ -7,6 +7,7 @@
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "$env{VCPKG_DEFAULT_TRIPLET}",
         "VCPKG_MANIFEST_FEATURES": "$env{VCPKG_PROFILE_MANIFEST_FEATURES};$env{VCPKG_PLATFORM_MANIFEST_FEATURES}"
       }
     },
@@ -41,6 +42,7 @@
       "name": "linux",
       "hidden": true,
       "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "x64-linux-release",
         "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan"
       },
       "condition": {
@@ -53,10 +55,10 @@
       "name": "linux-mingw",
       "hidden": true,
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
       },
       "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "x64-mingw-static",
         "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan;directx12"
       },
       "condition": {
@@ -69,6 +71,7 @@
       "name": "windows",
       "hidden": true,
       "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "x64-windows-static-md",
         "VCPKG_PLATFORM_MANIFEST_FEATURES": "vulkan;directx12"
       },
       "condition": {
