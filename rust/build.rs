@@ -36,6 +36,7 @@ fn main() {
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
     let profile = env::var("PROFILE").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let build_dir = format!("{}/build", out_dir.display());
 
     let cmake_preset_os = if cfg!(unix) && target_os == "windows" {
         "linux-mingw"
@@ -53,7 +54,7 @@ fn main() {
         .configure_arg("--preset")
         .configure_arg(format!("{cmake_preset_os}-{cmake_preset_profile}"))
         .configure_arg("-B")
-        .configure_arg(format!("{}/build", out_dir.display()))
+        .configure_arg(build_dir)
         .build();
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
 
@@ -65,6 +66,10 @@ fn main() {
     let ren_vk_lib = "ren-vk";
     let ren_vk_rs = "ren-vk.rs";
 
+    let ren_dx12_h = "../include/ren/ren-dx12.h";
+    let ren_dx12_lib = "ren-dx12";
+    let ren_dx12_rs = "ren-dx12.rs";
+
     let mut bindings_list = vec![
         HeaderConfig::new(ren_h, ren_lib, ren_rs).set_allow_function("ren_.*"),
         HeaderConfig::new(ren_vk_h, ren_vk_lib, ren_vk_rs)
@@ -73,9 +78,6 @@ fn main() {
     ];
 
     if target_os == "windows" {
-        let ren_dx12_h = "../include/ren/ren-dx12.h";
-        let ren_dx12_lib = "ren-dx12";
-        let ren_dx12_rs = "ren-dx12.rs";
         bindings_list.push(
             HeaderConfig::new(ren_dx12_h, ren_dx12_lib, ren_dx12_rs)
                 .set_allow_function("ren_dx12_.*")
@@ -100,7 +102,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", bindings.header);
         println!("cargo:rustc-link-lib=static={}", bindings.lib);
         let mut bb = bindgen::Builder::default()
-            .header(bindings.header)
+            .header(&bindings.header)
             .default_enum_style(bindgen::EnumVariation::Rust {
                 non_exhaustive: false,
             })
@@ -110,6 +112,14 @@ fn main() {
         }
         if !bindings.block_file.is_empty() {
             bb = bb.blocklist_file(bindings.block_file.as_str());
+        }
+        if bindings.header == ren_vk_h {
+            let vulkan_headers = vcpkg::find_package("vulkan-headers").unwrap();
+            for path in vulkan_headers.include_paths {
+                bb = bb
+                    .clang_arg("-isystem")
+                    .clang_arg(path.display().to_string());
+            }
         }
         bb.generate()
             .expect("Unable to generate bindings")
