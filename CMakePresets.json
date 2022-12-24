@@ -84,18 +84,9 @@
       "inherits": [
         "linux",
         "base-devel"
-      ]
-    },
-    {
-      "name": "windows-devel",
-      "displayName": "Development Config for Windows",
-      "description": "Development build with debug info, assertions and validation",
-      "inherits": [
-        "windows",
-        "base-devel"
       ],
-      "cacheVariables": {
-        "REN_DIRECTX12_DEBUG": "ON"
+      "environment": {
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan"
       }
     },
     {
@@ -108,6 +99,24 @@
       ],
       "cacheVariables": {
         "REN_VULKAN_VALIDATION": "OFF"
+      },
+      "environment": {
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan;examples-directx12"
+      }
+    },
+    {
+      "name": "windows-devel",
+      "displayName": "Development Config for Windows",
+      "description": "Development build with debug info, assertions and validation",
+      "inherits": [
+        "windows",
+        "base-devel"
+      ],
+      "cacheVariables": {
+        "REN_DIRECTX12_DEBUG": "ON"
+      },
+      "environment": {
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan;examples-directx12"
       }
     },
     {
