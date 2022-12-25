@@ -24,15 +24,8 @@ add_library(
   DirectX12Device.cpp
   DirectX12RenderGraph.cpp
   DirectX12Swapchain.cpp)
-target_sources(
-  ren-dx12
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren-dx12.h
-         ${REN_INCLUDE}/ren/ren-dx12.hpp)
+target_sources(ren-dx12 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                               ${REN_INCLUDE}/ren/ren-dx12.h)
 target_link_libraries(
   ren-dx12
   PUBLIC ren::ren d3d12 dxgi dxguid
@@ -57,11 +50,18 @@ else()
   add_library(ren::dx12 ALIAS ren-dx12-bundled)
 endif()
 
+add_library(ren-dx12-hpp INTERFACE)
+target_sources(ren-dx12-hpp PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
+                                   FILES ${REN_INCLUDE}/ren/ren-dx12.hpp)
+target_link_libraries(ren-dx12-hpp INTERFACE ren::ren-hpp ren::dx12)
+set_target_properties(ren-dx12-hpp PROPERTIES EXPORT_NAME "dx12-hpp")
+add_library(ren::dx12-hpp ALIAS ren-dx12-hpp)
+
 if(REN_INSTALL)
   include(GNUInstallDirs)
   get_target_property(ren_dx12_target ren::dx12 ALIASED_TARGET)
   install(
-    TARGETS ${ren_dx12_target}
+    TARGETS ${ren_dx12_target} ren-dx12-hpp
     EXPORT ${REN_DIRECTX12_TARGETS}
     FILE_SET HEADERS)
   if(NOT BUILD_SHARED_LIBS)

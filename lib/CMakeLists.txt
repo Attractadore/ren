@@ -29,15 +29,8 @@ if(REN_ERROR_LOG)
 endif()
 
 add_library(ren ren.cpp RenderGraph.cpp Scene.cpp)
-target_sources(
-  ren
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren.h
-         ${REN_INCLUDE}/ren/ren.hpp)
+target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                          ${REN_INCLUDE}/ren/ren.h)
 target_link_libraries(ren PRIVATE Support)
 
 if(BUILD_SHARED_LIBS)
@@ -48,6 +41,13 @@ else()
   set_target_properties(ren-bundled PROPERTIES EXPORT_NAME "ren")
   add_library(ren::ren ALIAS ren-bundled)
 endif()
+
+add_library(ren-hpp INTERFACE)
+target_sources(ren-hpp PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                              ${REN_INCLUDE}/ren/ren.hpp)
+target_link_libraries(ren-hpp INTERFACE ren::ren glm::glm)
+target_compile_features(ren-hpp INTERFACE cxx_std_20)
+add_library(ren::ren-hpp ALIAS ren-hpp)
 
 message(STATUS "Enable Vulkan renderer")
 add_subdirectory(Vulkan)
@@ -60,7 +60,7 @@ if(REN_INSTALL)
   include(GNUInstallDirs)
   get_target_property(ren_target ren::ren ALIASED_TARGET)
   install(
-    TARGETS ${ren_target}
+    TARGETS ${ren_target} ren-hpp
     EXPORT ${REN_TARGETS}
     FILE_SET HEADERS)
   if(NOT BUILD_SHARED_LIBS)

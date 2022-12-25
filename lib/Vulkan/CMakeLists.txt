@@ -21,20 +21,12 @@ add_library(
   VulkanDevice.cpp
   VulkanRenderGraph.cpp
   VulkanSwapchain.cpp)
-target_sources(
-  ren-vk
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren-vk.h
-         ${REN_INCLUDE}/ren/ren-vk.hpp)
+target_sources(ren-vk PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                             ${REN_INCLUDE}/ren/ren-vk.h)
 target_link_libraries(
   ren-vk
   PUBLIC ren::ren
   PRIVATE VulkanDispatchTable Support VMA)
-target_compile_definitions(ren-vk PRIVATE)
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION)
@@ -50,11 +42,18 @@ else()
   add_library(ren::vk ALIAS ren-vk-bundled)
 endif()
 
+add_library(ren-vk-hpp INTERFACE)
+target_sources(ren-vk-hpp PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
+                                 FILES ${REN_INCLUDE}/ren/ren-vk.hpp)
+target_link_libraries(ren-vk-hpp INTERFACE ren::ren-hpp ren::vk)
+set_target_properties(ren-vk-hpp PROPERTIES EXPORT_NAME "vk-hpp")
+add_library(ren::vk-hpp ALIAS ren-vk-hpp)
+
 if(REN_INSTALL)
   include(GNUInstallDirs)
   get_target_property(ren_vk_target ren::vk ALIASED_TARGET)
   install(
-    TARGETS ${ren_vk_target}
+    TARGETS ${ren_vk_target} ren-vk-hpp
     EXPORT ${REN_VULKAN_TARGETS}
     FILE_SET HEADERS)
   if(NOT BUILD_SHARED_LIBS)
