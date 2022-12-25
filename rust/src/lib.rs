@@ -35,15 +35,6 @@ impl<'a> Swapchain<'a> {
         }
     }
 
-    pub fn get_size(&self) -> (u32, u32) {
-        unsafe {
-            (
-                ffi::ren_GetSwapchainWidth(self.swapchain),
-                ffi::ren_GetSwapchainHeight(self.swapchain),
-            )
-        }
-    }
-
     pub fn set_size(&mut self, width: u32, height: u32) {
         unsafe { ffi::ren_SetSwapchainSize(self.swapchain, width, height) }
     }
@@ -88,15 +79,6 @@ impl<'a> Scene<'a> {
     pub fn reset_swapchain(&mut self) -> Option<Swapchain<'a>> {
         unsafe { ffi::ren_SetSceneSwapchain(self.scene, std::ptr::null_mut()) }
         self.swapchain.take()
-    }
-
-    pub fn get_output_size(&self) -> (u32, u32) {
-        unsafe {
-            (
-                ffi::ren_GetSceneOutputWidth(self.scene),
-                ffi::ren_GetSceneOutputHeight(self.scene),
-            )
-        }
     }
 
     pub fn set_output_size(&mut self, width: u32, height: u32) {
