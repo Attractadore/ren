@@ -47,6 +47,8 @@ class AppBase {
   ren::UniqueSwapchain m_swapchain;
   ren::UniqueScene m_scene;
 
+  unsigned m_window_width = 1280, m_window_height = 720;
+
 public:
   AppBase(std::string app_name);
   void run();
@@ -54,6 +56,18 @@ public:
 protected:
   virtual void process_event(const SDL_Event &e) {}
   virtual void iterate() {}
+
+  const ren::Scene &get_scene() const { return *m_scene; }
+  ren::Scene &get_scene() { return *m_scene; }
+
+  std::pair<unsigned, unsigned> get_window_size() const {
+    return {m_window_width, m_window_height};
+  }
+
+  float get_window_aspect_ratio() const {
+    auto [width, height] = get_window_size();
+    return float(width) / float(height);
+  }
 
 private:
   void select_renderer();
@@ -71,10 +85,14 @@ inline void AppBase::run() {
       process_event(e);
     }
 
-    int w, h;
-    SDL_GetWindowSize(m_window.get(), &w, &h);
-    m_scene->set_output_size(w, h);
-    m_swapchain->set_size(w, h);
+    {
+      int w, h;
+      SDL_GetWindowSize(m_window.get(), &w, &h);
+      m_window_width = w;
+      m_window_height = h;
+    }
+    m_scene->set_output_size(m_window_width, m_window_height);
+    m_swapchain->set_size(m_window_width, m_window_height);
 
     iterate();
     m_scene->draw();
@@ -87,9 +105,10 @@ inline AppBase::AppBase(std::string app_name)
   select_renderer();
 
   std::cout << "Create SDL_Window\n";
-  m_window.reset(SDL_CreateWindow(
-      m_app_name.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-      1280, 720, SDL_WINDOW_RESIZABLE | m_renderer->get_SDL2_flags()));
+  m_window.reset(
+      SDL_CreateWindow(m_app_name.c_str(), SDL_WINDOWPOS_UNDEFINED,
+                       SDL_WINDOWPOS_UNDEFINED, m_window_width, m_window_height,
+                       SDL_WINDOW_RESIZABLE | m_renderer->get_SDL2_flags()));
 
   m_renderer->create_instance();
 

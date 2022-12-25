@@ -37,3 +37,7 @@ endif()
 add_executable(create-device create-device.cpp)
 target_link_libraries(create-device app-base)
 copy_dlls(create-device)
+
+add_executable(draw-triangle draw-triangle.cpp)
+target_link_libraries(draw-triangle app-base)
+copy_dlls(draw-triangle)
