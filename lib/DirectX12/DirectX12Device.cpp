@@ -34,38 +34,54 @@ LONG NTAPI debugHandler(PEXCEPTION_POINTERS exception) {
 }
 } // namespace
 
-DirectX12Device::DirectX12Device(LUID adapter) {
-  constexpr UINT factory_flags =
+DirectX12Device::DirectX12Device(LUID luid)
+    : m_factory([&] {
+        constexpr UINT factory_flags =
 #if REN_DIRECTX12_DEBUG
-      DXGI_CREATE_FACTORY_DEBUG |
+            DXGI_CREATE_FACTORY_DEBUG |
 #endif
-      0;
+            0;
 
-  throwIfFailed(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&m_factory)),
-                "DXGI: Failed to create factory");
+        IDXGIFactory4 *factory;
+        throwIfFailed(CreateDXGIFactory2(factory_flags, IID_PPV_ARGS(&factory)),
+                      "DXGI: Failed to create factory");
 
-#if REN_DIRECTX12_DEBUG
-  {
-    ComPtr<ID3D12Debug5> debug_controller;
-    throwIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)),
-                  "D3D12: Failed to get debug controller");
-    debug_controller->EnableDebugLayer();
-    debug_controller->SetEnableAutoName(true);
-  }
-#endif
-
+        return factory;
+      }()),
+      m_adapter([&] {
+        IDXGIAdapter1 *adapter;
 #if REN_DIRECTX12_FORCE_WARP_DEVICE
-  throwIfFailed(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&m_adapter)),
-                "DXGI: Failed to find WARP adapter");
+        throwIfFailed(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter)),
+                      "DXGI: Failed to find WARP adapter");
 #else
-  throwIfFailed(m_factory->EnumAdapterByLuid(adapter, IID_PPV_ARGS(&m_adapter)),
-                "DXGI: Failed to find adapter");
+        throwIfFailed(
+            m_factory->EnumAdapterByLuid(luid, IID_PPV_ARGS(&adapter)),
+            "DXGI: Failed to find adapter");
+#endif
+        return adapter;
+      }()),
+      m_device([&] {
+#if REN_DIRECTX12_DEBUG
+        {
+          ComPtr<ID3D12Debug5> debug_controller;
+          throwIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)),
+                        "D3D12: Failed to get debug controller");
+          debug_controller->EnableDebugLayer();
+          debug_controller->SetEnableAutoName(true);
+        }
 #endif
 
-  throwIfFailed(D3D12CreateDevice(m_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
-                                  IID_PPV_ARGS(&m_device)),
-                "D3D12: Failed to create device");
+        ID3D12Device *device;
+        throwIfFailed(D3D12CreateDevice(m_adapter.Get(), D3D_FEATURE_LEVEL_11_0,
+                                        IID_PPV_ARGS(&device)),
+                      "D3D12: Failed to create device");
 
+        return device;
+      }()),
+      m_rtv_pool(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV),
+      m_dsv_pool(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV),
+      m_cbv_srv_uav_pool(m_device.Get(),
+                         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) {
 #if REN_DIRECTX12_DEBUG
   {
     ComPtr<ID3D12InfoQueue1> info_queue;
@@ -106,10 +122,6 @@ DirectX12Device::DirectX12Device(LUID adapter) {
       "D3D12: Failed to create fence");
   m_event.reset(CreateEvent(nullptr, false, false, nullptr));
   throwIfFailed(m_event.get(), "WIN32: Failed to create event handle");
-
-  m_rtv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV};
-  m_dsv_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV};
-  m_cbv_srv_uav_pool = {m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV};
 
   m_cmd_alloc = DirectX12CommandAllocator(*this);
 }
