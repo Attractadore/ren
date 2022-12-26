@@ -185,5 +185,9 @@ public:
   template <typename T> void push_to_delete_queue(T value) {
     m_delete_queue.push(std::move(value));
   }
+
+  void push_to_delete_queue(QueueCustomDeleter<Device> deleter) override {
+    m_delete_queue.push(VulkanQueueCustomDeleter(std::move(deleter)));
+  }
 };
 } // namespace ren

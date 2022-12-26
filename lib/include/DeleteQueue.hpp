@@ -83,8 +83,8 @@ public:
   }
 
   template <std::convertible_to<QueueCustomDeleter<D>> F>
-    requires IsQueueType<QueueCustomDeleter<D>, Ts...>
-  void push(F callback) {
+  requires IsQueueType<QueueCustomDeleter<D>, Ts...> and
+      (not std::same_as<QueueCustomDeleter<D>, F>) void push(F callback) {
     push_impl(QueueCustomDeleter<D>(std::move(callback)));
   }
 
