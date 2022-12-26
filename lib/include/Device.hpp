@@ -1,4 +1,5 @@
 #pragma once
+#include "Buffer.hpp"
 #include "RenderGraph.hpp"
 
 struct RenDevice {
@@ -10,6 +11,10 @@ struct RenDevice {
   virtual std::unique_ptr<ren::RenderGraph::Builder>
   createRenderGraphBuilder() = 0;
   virtual ren::CommandAllocator &getCommandAllocator() = 0;
+
+  virtual bool is_uma() const = 0;
+
+  virtual ren::Buffer create_buffer(const ren::BufferDesc &desc) = 0;
 
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 

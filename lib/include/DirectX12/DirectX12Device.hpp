@@ -104,6 +104,10 @@ public:
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
 
+  bool is_uma() const override;
+
+  Buffer create_buffer(const ren::BufferDesc &desc) override;
+
   Texture createTexture(const ren::TextureDesc &desc) override;
   void destroyTextureViews(ID3D12Resource *resource);
 

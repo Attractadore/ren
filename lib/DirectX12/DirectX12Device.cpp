@@ -157,6 +157,12 @@ DirectX12Device::createRenderGraphBuilder() {
   return std::make_unique<DirectX12RenderGraph::Builder>(this);
 }
 
+bool DirectX12Device::is_uma() const { dx12Unimplemented(); }
+
+Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
+  dx12Unimplemented();
+}
+
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
   auto dxgi_format = getDXGIFormat(desc.format);
   D3D12_RESOURCE_DESC resource_desc = {

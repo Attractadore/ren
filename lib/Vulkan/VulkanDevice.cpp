@@ -3,6 +3,7 @@
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
+#include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
@@ -149,6 +150,10 @@ void VulkanDevice::end_frame() {
   m_delete_queue.end_frame(*this);
   m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
 }
+
+bool VulkanDevice::is_uma() const { vkTodo(); }
+
+Buffer VulkanDevice::create_buffer(const BufferDesc &desc) { vkTodo(); }
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
