@@ -10,7 +10,18 @@
 
 using namespace ren;
 
-Scene::RenScene(Device *device) : m_device(device) {}
+Scene::RenScene(Device *device)
+    : m_device(device),
+      m_vertex_buffer_pool(
+          m_device, {.usage = (m_device->is_uma() ? BufferUsage::HostMapped
+                                                  : BufferUsage::TransferDST) |
+                              BufferUsage::DeviceAddress,
+                     .size = 1 << 26}),
+      m_index_buffer_pool(
+          m_device, {.usage = (m_device->is_uma() ? BufferUsage::HostMapped
+                                                  : BufferUsage::TransferDST) |
+                              BufferUsage::Index,
+                     .size = 1 << 20}) {}
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
@@ -18,6 +29,64 @@ void Scene::setOutputSize(unsigned width, unsigned height) {
 }
 
 void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
+
+MeshID Scene::create_mesh(const MeshDesc &desc) {
+  auto vertex_allocation_size =
+      desc.num_vertices *
+      (sizeof(glm::vec3) + (desc.colors ? sizeof(Mesh::color_t) : 0));
+  auto index_allocation_size = desc.num_indices * sizeof(Mesh::index_t);
+
+  auto &&[key, mesh] = m_meshes.emplace(Mesh{
+      .vertex_allocation =
+          m_vertex_buffer_pool.allocate(vertex_allocation_size),
+      .index_allocation = m_index_buffer_pool.allocate(index_allocation_size),
+      .num_vertices = desc.num_vertices,
+      .num_indices = desc.num_indices,
+  });
+
+  unsigned offset = sizeof(glm::vec3) * mesh.num_vertices;
+  if (desc.colors) {
+    mesh.colors_offset = offset;
+    offset += sizeof(Mesh::color_t) * mesh.num_vertices;
+  }
+
+  if (mesh.vertex_allocation.desc.usage.isSet(BufferUsage::HostMapped)) {
+    auto *positions = get_host_ptr<glm::vec3>(mesh.vertex_allocation);
+    ranges::copy_n(reinterpret_cast<const glm::vec3 *>(desc.positions),
+                   mesh.num_vertices, positions);
+    if (desc.colors) {
+      auto *colors = get_host_ptr<Mesh::color_t>(mesh.vertex_allocation,
+                                                 mesh.colors_offset);
+      ranges::copy(
+          ranges::views::transform(
+              std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
+                        mesh.num_vertices),
+              encode_color),
+          colors);
+    }
+  } else {
+    assert(!"FIXME: Buffers must be host visible");
+  }
+
+  if (mesh.index_allocation.desc.usage.isSet(BufferUsage::HostMapped)) {
+    auto *indices = get_host_ptr<unsigned>(mesh.index_allocation);
+    ranges::copy_n(desc.indices, mesh.num_indices, indices);
+  } else {
+    assert(!"FIXME: Buffers must be host visible");
+  }
+
+  return get_mesh_id(key);
+}
+
+void Scene::destroy_mesh(ren::MeshID id) {
+  auto key = get_mesh_key(id);
+  auto it = m_meshes.find(key);
+  assert(it != m_meshes.end() and "Unknown mesh");
+  auto &mesh = it->second;
+  m_vertex_buffer_pool.free(mesh.vertex_allocation);
+  m_index_buffer_pool.free(mesh.index_allocation);
+  m_meshes.erase(key);
+}
 
 void Scene::draw() {
   m_device->begin_frame();

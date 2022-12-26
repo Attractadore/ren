@@ -48,4 +48,15 @@ unsigned ren_GetSceneOutputHeight(const Scene *scene) {
 void ren_SetSceneSwapchain(Scene *scene, Swapchain *swapchain) {
   scene->setSwapchain(swapchain);
 }
+
+MeshID ren_CreateMesh(Scene *scene, const MeshDesc *desc) {
+  assert(scene);
+  assert(desc);
+  return scene->create_mesh(*desc);
+}
+
+void ren_DestroyMesh(Scene *scene, MeshID mesh) {
+  assert(scene);
+  scene->destroy_mesh(mesh);
+}
 }
