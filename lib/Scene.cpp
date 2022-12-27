@@ -3,6 +3,7 @@
 #include "Device.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Array.hpp"
+#include "hlsl/encode.hlsl"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
@@ -33,8 +34,8 @@ void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
 MeshID Scene::create_mesh(const MeshDesc &desc) {
   auto vertex_allocation_size =
       desc.num_vertices *
-      (sizeof(glm::vec3) + (desc.colors ? sizeof(Mesh::color_t) : 0));
-  auto index_allocation_size = desc.num_indices * sizeof(Mesh::index_t);
+      (sizeof(glm::vec3) + (desc.colors ? sizeof(color_t) : 0));
+  auto index_allocation_size = desc.num_indices * sizeof(unsigned);
 
   auto &&[key, mesh] = m_meshes.emplace(Mesh{
       .vertex_allocation =
@@ -47,7 +48,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   unsigned offset = sizeof(glm::vec3) * mesh.num_vertices;
   if (desc.colors) {
     mesh.colors_offset = offset;
-    offset += sizeof(Mesh::color_t) * mesh.num_vertices;
+    offset += sizeof(color_t) * mesh.num_vertices;
   }
 
   if (mesh.vertex_allocation.desc.usage.isSet(BufferUsage::HostMapped)) {
@@ -55,8 +56,8 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     ranges::copy_n(reinterpret_cast<const glm::vec3 *>(desc.positions),
                    mesh.num_vertices, positions);
     if (desc.colors) {
-      auto *colors = get_host_ptr<Mesh::color_t>(mesh.vertex_allocation,
-                                                 mesh.colors_offset);
+      auto *colors =
+          get_host_ptr<color_t>(mesh.vertex_allocation, mesh.colors_offset);
       ranges::copy(
           ranges::views::transform(
               std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
