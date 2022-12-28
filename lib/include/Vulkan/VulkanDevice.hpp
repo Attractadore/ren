@@ -91,8 +91,6 @@ public:
     return getVulkanCommandAllocator();
   }
 
-  bool is_uma() const override;
-
   Buffer create_buffer(const BufferDesc &desc) override;
 
   Texture createTexture(const TextureDesc &desc) override;

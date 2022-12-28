@@ -6,12 +6,18 @@
 
 namespace ren {
 #define REN_BUFFER_USAGES                                                      \
-  (TransferSRC)(TransferDST)(                                                  \
-      Uniform)(Storage)(Index)(Indirect)(DeviceAddress)(HostMapped)(Readback)
+  (TransferSRC)(TransferDST)(Uniform)(Storage)(Index)(Indirect)(DeviceAddress)
 REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
+
+enum class BufferLocation {
+  Device,
+  Host,
+  HostCached,
+};
 
 struct BufferDesc {
   BufferUsageFlags usage;
+  BufferLocation location = BufferLocation::Device;
   unsigned offset = 0;
   unsigned size;
   void *ptr = nullptr;

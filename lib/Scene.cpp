@@ -14,15 +14,18 @@ using namespace ren;
 Scene::RenScene(Device *device)
     : m_device(device),
       m_vertex_buffer_pool(
-          m_device, {.usage = (m_device->is_uma() ? BufferUsage::HostMapped
-                                                  : BufferUsage::TransferDST) |
-                              BufferUsage::DeviceAddress,
-                     .size = 1 << 26}),
+          m_device,
+          {
+              .usage = BufferUsage::TransferDST | BufferUsage::DeviceAddress,
+              .location = BufferLocation::Device,
+              .size = 1 << 26,
+          }),
       m_index_buffer_pool(
-          m_device, {.usage = (m_device->is_uma() ? BufferUsage::HostMapped
-                                                  : BufferUsage::TransferDST) |
-                              BufferUsage::Index,
-                     .size = 1 << 20}) {}
+          m_device, {
+                        .usage = BufferUsage::TransferDST | BufferUsage::Index,
+                        .location = BufferLocation::Device,
+                        .size = 1 << 22,
+                    }) {}
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
@@ -51,7 +54,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     offset += sizeof(color_t) * mesh.num_vertices;
   }
 
-  if (mesh.vertex_allocation.desc.usage.isSet(BufferUsage::HostMapped)) {
+  if (mesh.vertex_allocation.desc.ptr) {
     auto *positions = get_host_ptr<glm::vec3>(mesh.vertex_allocation);
     ranges::copy_n(reinterpret_cast<const glm::vec3 *>(desc.positions),
                    mesh.num_vertices, positions);
@@ -69,7 +72,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     assert(!"FIXME: Buffers must be host visible");
   }
 
-  if (mesh.index_allocation.desc.usage.isSet(BufferUsage::HostMapped)) {
+  if (mesh.index_allocation.desc.ptr) {
     auto *indices = get_host_ptr<unsigned>(mesh.index_allocation);
     ranges::copy_n(desc.indices, mesh.num_indices, indices);
   } else {

@@ -157,8 +157,6 @@ DirectX12Device::createRenderGraphBuilder() {
   return std::make_unique<DirectX12RenderGraph::Builder>(this);
 }
 
-bool DirectX12Device::is_uma() const { dx12Unimplemented(); }
-
 Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
   dx12Unimplemented();
 }

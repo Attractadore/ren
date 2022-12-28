@@ -13,8 +13,6 @@ struct RenDevice {
   createRenderGraphBuilder() = 0;
   virtual ren::CommandAllocator &getCommandAllocator() = 0;
 
-  virtual bool is_uma() const = 0;
-
   virtual ren::Buffer create_buffer(const ren::BufferDesc &desc) = 0;
 
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;

@@ -151,7 +151,6 @@ void VulkanDevice::end_frame() {
   m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
 }
 
-bool VulkanDevice::is_uma() const { vkTodo(); }
 
 Buffer VulkanDevice::create_buffer(const BufferDesc &desc) { vkTodo(); }
 
