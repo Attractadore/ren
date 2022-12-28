@@ -2,8 +2,6 @@
 #include "VulkanDeleteQueue.hpp"
 #include "VulkanDevice.hpp"
 
-#include <iostream>
-
 namespace ren {
 #define define_vulkan_queue_deleter(T, F)                                      \
   template <> struct QueueDeleter<VulkanDevice, T> {                           \
@@ -11,6 +9,12 @@ namespace ren {
       device.F(handle);                                                        \
     }                                                                          \
   }
+
+template <> struct QueueDeleter<VulkanDevice, VMABuffer> {
+  void operator()(VulkanDevice &device, VMABuffer vma_buffer) const noexcept {
+    device.destroyBufferWithAllocation(vma_buffer.buffer, vma_buffer.allocation);
+  }
+};
 
 template <> struct QueueDeleter<VulkanDevice, VMAImage> {
   void operator()(VulkanDevice &device, VMAImage vma_image) const noexcept {

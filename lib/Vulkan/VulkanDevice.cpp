@@ -1,6 +1,7 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
+#include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
@@ -151,8 +152,51 @@ void VulkanDevice::end_frame() {
   m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
 }
 
+Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
+  BufferDesc desc = in_desc;
+  desc.offset = 0;
 
-Buffer VulkanDevice::create_buffer(const BufferDesc &desc) { vkTodo(); }
+  VkBufferCreateInfo buffer_info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = desc.size,
+      .usage = getVkBufferUsageFlags(desc.usage),
+  };
+
+  VmaAllocationCreateInfo alloc_info = {
+      .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+      .usage = VMA_MEMORY_USAGE_AUTO,
+  };
+
+  switch (desc.location) {
+    using enum BufferLocation;
+  case Device:
+    break;
+  case Host:
+    alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    break;
+  case HostCached:
+    alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+    break;
+  }
+
+  VkBuffer buffer;
+  VmaAllocation allocation;
+  VmaAllocationInfo map_info;
+  throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
+                                &allocation, &map_info),
+                "VMA: Failed to create buffer");
+  desc.ptr = map_info.pMappedData;
+
+  return {.desc = desc,
+          .handle = AnyRef(buffer, [this, allocation](VkBuffer buffer) {
+            push_to_delete_queue(VMABuffer{buffer, allocation});
+          })};
+}
+
+void VulkanDevice::destroyBufferWithAllocation(VkBuffer buffer,
+                                               VmaAllocation allocation) {
+  vmaDestroyBuffer(m_allocator, buffer, allocation);
+}
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
