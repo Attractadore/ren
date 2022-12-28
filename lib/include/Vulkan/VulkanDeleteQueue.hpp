@@ -10,21 +10,11 @@ class VulkanDevice;
 template <typename T> using VulkanQueueDeleter = QueueDeleter<VulkanDevice, T>;
 using VulkanQueueCustomDeleter = QueueCustomDeleter<VulkanDevice>;
 
-struct VMABuffer {
-  VkBuffer buffer;
-  VmaAllocation allocation;
-};
-
-struct VMAImage {
-  VkImage image;
-  VmaAllocation allocation;
-};
-
-struct SwapchainImage {
+struct VulkanImageViews {
   VkImage image;
 };
 
 using VulkanDeleteQueue =
-    DeleteQueue<VulkanDevice, VulkanQueueCustomDeleter, VMABuffer, VMAImage,
-                VkSemaphore, VkSwapchainKHR, SwapchainImage>;
+    DeleteQueue<VulkanDevice, VulkanQueueCustomDeleter, VulkanImageViews,
+                VkBuffer, VkImage, VkSemaphore, VkSwapchainKHR, VmaAllocation>;
 } // namespace ren

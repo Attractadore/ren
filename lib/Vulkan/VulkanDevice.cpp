@@ -189,13 +189,9 @@ Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
 
   return {.desc = desc,
           .handle = AnyRef(buffer, [this, allocation](VkBuffer buffer) {
-            push_to_delete_queue(VMABuffer{buffer, allocation});
+            push_to_delete_queue(buffer);
+            push_to_delete_queue(allocation);
           })};
-}
-
-void VulkanDevice::destroyBufferWithAllocation(VkBuffer buffer,
-                                               VmaAllocation allocation) {
-  vmaDestroyBuffer(m_allocator, buffer, allocation);
 }
 
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
@@ -222,14 +218,10 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
 
   return {.desc = desc,
           .handle = AnyRef(image, [this, allocation](VkImage image) {
-            push_to_delete_queue(VMAImage{image, allocation});
+            push_to_delete_queue(VulkanImageViews{image});
+            push_to_delete_queue(image);
+            push_to_delete_queue(allocation);
           })};
-}
-
-void VulkanDevice::destroyImageWithAllocation(VkImage image,
-                                              VmaAllocation allocation) {
-  destroyImageViews(image);
-  vmaDestroyImage(m_allocator, image, allocation);
 }
 
 void VulkanDevice::destroyImageViews(VkImage image) {

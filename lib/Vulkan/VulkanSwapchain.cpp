@@ -161,7 +161,7 @@ void VulkanSwapchain::create() {
 void VulkanSwapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
-    m_device->push_to_delete_queue(SwapchainImage{getVkImage(texture)});
+    m_device->push_to_delete_queue(VulkanImageViews{getVkImage(texture)});
   }
 }
 

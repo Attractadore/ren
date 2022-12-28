@@ -92,11 +92,9 @@ public:
   }
 
   Buffer create_buffer(const BufferDesc &desc) override;
-  void destroyBufferWithAllocation(VkBuffer buffer, VmaAllocation allocation);
 
   Texture createTexture(const TextureDesc &desc) override;
   void destroyImageViews(VkImage image);
-  void destroyImageWithAllocation(VkImage image, VmaAllocation allocation);
 
   VkImageView getVkImageView(const RenderTargetView &rtv);
   VkImageView getVkImageView(const DepthStencilView &dsv);
