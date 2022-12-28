@@ -143,7 +143,8 @@ void DirectX12Swapchain::setTextures() {
                  .layers = desc.DepthOrArraySize,
                  .levels = desc.MipLevels},
         .handle = AnyRef(buffer, [device = m_device](ID3D12Resource *buffer) {
-          device->push_to_delete_queue(DirectX12Texture{buffer});
+          device->push_to_delete_queue(DirectX12TextureViews{buffer});
+          device->push_to_delete_queue(buffer);
         })};
   }
 } // namespace ren

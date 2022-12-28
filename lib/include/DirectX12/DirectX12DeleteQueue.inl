@@ -9,11 +9,10 @@ template <> struct QueueDeleter<DirectX12Device, IUnknown *> {
   }
 };
 
-template <> struct QueueDeleter<DirectX12Device, DirectX12Texture> {
+template <> struct QueueDeleter<DirectX12Device, DirectX12TextureViews> {
   void operator()(DirectX12Device &device,
-                  DirectX12Texture texture) const noexcept {
-    device.destroyTextureViews(texture.resource);
-    texture.resource->Release();
+                  DirectX12TextureViews views) const noexcept {
+    device.destroyTextureViews(views.resource);
   }
 };
 } // namespace ren

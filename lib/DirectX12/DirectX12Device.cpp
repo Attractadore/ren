@@ -202,32 +202,26 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
   D3D12MA::ALLOCATION_DESC allocation_desc = {.HeapType =
                                                   D3D12_HEAP_TYPE_DEFAULT};
 
-  D3D12_CLEAR_VALUE clear_value = {.Format = dxgi_format,
+  D3D12_CLEAR_VALUE clear_color = {.Format = dxgi_format,
                                    .Color = {0.0f, 0.0f, 0.0f, 1.0f}};
+  D3D12_CLEAR_VALUE clear_depth = {.Format = dxgi_format,
+                                   .DepthStencil = {.Depth = 1.0f}};
 
   D3D12MA::Allocation *allocation;
-  ID3D12Resource *resource;
   throwIfFailed(m_allocator->CreateResource(
                     &allocation_desc, &resource_desc,
                     D3D12_RESOURCE_STATE_COMMON,
-                    [&]() -> const D3D12_CLEAR_VALUE * {
-                      if (isColorFormat(desc.format)) {
-                        return &clear_value;
-                      } else if (isDepthFormat(desc.format) or
-                                 isStencilFormat(desc.format)) {
-                        clear_value.DepthStencil = {.Depth = 1.0f};
-                        return &clear_value;
-                      }
-                      return nullptr;
-                    }(),
-                    &allocation, IID_PPV_ARGS(&resource)),
+                    isColorFormat(desc.format) ? &clear_color : &clear_depth,
+                    &allocation, IID_NULL, nullptr),
                 "D3D12MA: Failed to create texture");
+
   return {.desc = desc,
           .handle =
-              AnyRef(resource, [this, allocation](ID3D12Resource *resource) {
-                push_to_delete_queue(DirectX12Texture{resource});
-                push_to_delete_queue(allocation);
-              })};
+              AnyRef(allocation->GetResource(),
+                     [this, allocation](ID3D12Resource *resource) {
+                       push_to_delete_queue(DirectX12TextureViews{resource});
+                       push_to_delete_queue(allocation);
+                     })};
 }
 
 void DirectX12Device::destroyTextureViews(ID3D12Resource *resource) {
