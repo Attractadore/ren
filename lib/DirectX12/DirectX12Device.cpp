@@ -1,5 +1,6 @@
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DXGIFormat.hpp"
+#include "DirectX12/DirectX12Buffer.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12DeleteQueue.inl"
 #include "DirectX12/DirectX12RenderGraph.hpp"
@@ -158,7 +159,31 @@ DirectX12Device::createRenderGraphBuilder() {
 }
 
 Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
-  dx12Unimplemented();
+  D3D12_RESOURCE_DESC resource_desc = {
+      .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+      .Width = desc.size,
+      .Height = 1,
+      .DepthOrArraySize = 1,
+      .MipLevels = 1,
+      .SampleDesc = {.Count = 1},
+      .Flags = getD3D12ResourceFlags(desc.usage),
+  };
+
+  D3D12MA::ALLOCATION_DESC allocation_desc = {.HeapType =
+                                                  D3D12_HEAP_TYPE_DEFAULT};
+
+  D3D12MA::Allocation *allocation;
+  throwIfFailed(m_allocator->CreateResource(&allocation_desc, &resource_desc,
+                                            D3D12_RESOURCE_STATE_COMMON,
+                                            nullptr, &allocation, IID_NULL,
+                                            nullptr),
+                "D3D12MA: Failed to create texture");
+
+  return {.desc = desc,
+          .handle = AnyRef(allocation->GetResource(),
+                           [this, allocation](ID3D12Resource *) {
+                             push_to_delete_queue(allocation);
+                           })};
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
