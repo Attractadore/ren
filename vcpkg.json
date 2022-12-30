@@ -1,5 +1,6 @@
 {
   "name": "ren",
+  "version": "0.1.0",
   "dependencies": [
     "boost-container",
     "boost-preprocessor",
@@ -21,17 +22,41 @@
       ]
     },
     "examples-directx12": {
-      "description": "Build example executables with support for DirectX12 backend"
+      "description": "Build example executables with support for DirectX12 backend",
+      "dependencies": [
+        {
+          "name": "ren",
+          "default-features": false,
+          "features": [
+            "directx12",
+            "examples"
+          ]
+        }
+      ]
     },
     "examples-vulkan": {
       "description": "Build example executables with support for Vulkan backend",
       "dependencies": [
+        {
+          "name": "ren",
+          "default-features": false,
+          "features": [
+            "examples",
+            "vulkan"
+          ]
+        },
         {
           "name": "sdl2",
           "features": [
             "vulkan"
           ]
         }
+      ]
+    },
+    "tests": {
+      "description": "Enable tests",
+      "dependencies": [
+        "gtest"
       ]
     },
     "vulkan": {

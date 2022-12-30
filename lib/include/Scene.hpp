@@ -1,7 +1,9 @@
 #pragma once
 #include "BufferPool.hpp"
+#include "CommandBuffer.hpp"
 #include "Def.hpp"
 #include "Mesh.hpp"
+#include "ResourceUploader.hpp"
 
 class RenScene {
   ren::Device *m_device;
@@ -24,8 +26,15 @@ class RenScene {
     return std::bit_cast<ren::MeshID>(mesh_key) + 1;
   }
 
+  ren::ResourceUploader m_resource_uploader;
+
+private:
+  void begin_frame();
+  void end_frame();
+
 public:
   RenScene(ren::Device *device);
+  ~RenScene();
 
   void setOutputSize(unsigned width, unsigned height);
   unsigned getOutputWidth() const { return m_output_width; }

@@ -1,4 +1,5 @@
 #pragma once
+#include "Buffer.hpp"
 #include "PipelineStages.hpp"
 #include "Support/Enum.hpp"
 #include "Support/Span.hpp"
@@ -35,6 +36,12 @@ struct DepthStencilTargetConfig {
 #define REN_FILTERS (Nearest)(Linear)
 REN_DEFINE_ENUM(Filter, REN_FILTERS);
 
+struct CopyRegion {
+  size_t src_offset;
+  size_t dst_offset;
+  size_t size;
+};
+
 class CommandBuffer {
 public:
   virtual ~CommandBuffer() = default;
@@ -51,6 +58,12 @@ public:
                    {{.rtv = std::move(rtv)}}, {});
   }
   virtual void endRendering() = 0;
+
+  virtual void copy_buffer(const BufferRef src, const BufferRef dst,
+                           std::span<const CopyRegion> regions);
+  void copy_buffer(const BufferRef src, BufferRef dst, CopyRegion region) {
+    copy_buffer(src, dst, {&region, 1});
+  }
 
   virtual void close() = 0;
 };

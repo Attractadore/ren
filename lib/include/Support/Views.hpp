@@ -15,4 +15,8 @@ inline auto filter_map(auto transform_fn) {
          filter([]<typename T>(const std::optional<T> &opt) { return !!opt; }) |
          map([]<typename T>(const std::optional<T> &opt) { return *opt; });
 }
+
+template <ranges::sized_range R> size_t size_bytes(R &&r) {
+  return ranges::size(r) * sizeof(ranges::range_value_t<R>);
+}
 } // namespace ren

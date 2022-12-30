@@ -8,7 +8,12 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "$env{VCPKG_DEFAULT_TRIPLET}",
-        "VCPKG_MANIFEST_FEATURES": "$env{VCPKG_PROFILE_MANIFEST_FEATURES};$env{VCPKG_PLATFORM_MANIFEST_FEATURES}"
+        "VCPKG_MANIFEST_FEATURES": "$env{VCPKG_PLATFORM_MANIFEST_FEATURES};$env{VCPKG_PROFILE_MANIFEST_FEATURES};$env{VCPKG_PLATFORM_PROFILE_MANIFEST_FEATURES}"
+      },
+      "environment": {
+        "VCPKG_PLATFORM_MANIFEST_FEATURES": "dummy",
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "dummy",
+        "VCPKG_PLATFORM_PROFILE_MANIFEST_FEATURES": "dummy"
       }
     },
     {
@@ -20,11 +25,12 @@
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_EXAMPLES": "ON",
+        "REN_BUILD_TESTS": "ON",
         "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
         "REN_VULKAN_VALIDATION": "ON"
       },
       "environment": {
-        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples"
+        "VCPKG_PROFILE_MANIFEST_FEATURES": "tests"
       }
     },
     {
@@ -33,9 +39,6 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
-      },
-      "environment": {
-        "VCPKG_PROFILE_MANIFEST_FEATURES": "dummy"
       }
     },
     {
@@ -55,6 +58,7 @@
       "name": "linux-mingw",
       "hidden": true,
       "cacheVariables": {
+        "CMAKE_CROSSCOMPILING_EMULATOR": "x86_64-w64-mingw32-wine",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
       },
       "environment": {
@@ -89,7 +93,7 @@
         "base-devel"
       ],
       "environment": {
-        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan"
+        "VCPKG_PLATFORM_PROFILE_MANIFEST_FEATURES": "examples-vulkan"
       }
     },
     {
@@ -101,10 +105,11 @@
         "base-devel"
       ],
       "cacheVariables": {
+        "REN_BUILD_TESTS": "OFF",
         "REN_VULKAN_VALIDATION": "OFF"
       },
       "environment": {
-        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan;examples-directx12"
+        "VCPKG_PLATFORM_PROFILE_MANIFEST_FEATURES": "examples-vulkan;examples-directx12"
       }
     },
     {
@@ -119,7 +124,7 @@
         "REN_DIRECTX12_DEBUG": "ON"
       },
       "environment": {
-        "VCPKG_PROFILE_MANIFEST_FEATURES": "examples;examples-vulkan;examples-directx12"
+        "VCPKG_PLATFORM_PROFILE_MANIFEST_FEATURES": "examples-vulkan;examples-directx12"
       }
     },
     {

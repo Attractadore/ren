@@ -23,25 +23,43 @@ struct BufferDesc {
   void *ptr = nullptr;
 };
 
-struct Buffer {
-  BufferDesc desc;
-  AnyRef handle;
-};
+namespace detail {
+template <typename Buffer> class BufferMixin {
+  const Buffer &get() const { return *static_cast<const Buffer *>(this); }
+  Buffer &get() { return *static_cast<Buffer *>(this); }
 
-struct BufferRef {
+public:
+  template <typename T = std::byte> T *map(unsigned offset = 0) const {
+    if (get().desc.ptr) {
+      return reinterpret_cast<T *>(
+          reinterpret_cast<std::byte *>(get().desc.ptr) +
+          (get().desc.offset + offset));
+    }
+    return nullptr;
+  }
+
+  template <typename T = std::byte>
+  std::span<T> map(unsigned offset, unsigned count) const {
+    assert(get().desc.ptr);
+    return {map<T>(offset), count};
+  }
+};
+} // namespace detail
+
+struct BufferRef : detail::BufferMixin<BufferRef> {
   BufferDesc desc;
   void *handle;
 };
 
-template <typename T = std::byte>
-T *get_host_ptr(const BufferRef &buffer, unsigned offset = 0) {
-  return reinterpret_cast<T *>(reinterpret_cast<std::byte *>(buffer.desc.ptr) +
-                               (buffer.desc.offset + offset));
-}
+struct Buffer : detail::BufferMixin<Buffer> {
+  BufferDesc desc;
+  AnyRef handle;
 
-template <typename T = std::byte>
-std::span<T> get_host_ptr(const BufferRef &buffer, unsigned offset,
-                          unsigned count) {
-  return {get_host_ptr<T>(buffer, offset), count};
-}
+  operator BufferRef() const {
+    return {
+        .desc = desc,
+        .handle = handle.get(),
+    };
+  }
+};
 } // namespace ren

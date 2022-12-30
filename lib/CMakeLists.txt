@@ -4,6 +4,7 @@ set(REN_LOG_SEVERITY
       STRING
       "Enable logging for these severity levels (Available levels are: ERROR, WARN, INFO, DEBUG)"
 )
+option(REN_BUILD_TESTS "Build tests" OFF)
 
 set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 
@@ -28,7 +29,7 @@ if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
 
-add_library(ren ren.cpp RenderGraph.cpp Scene.cpp)
+add_library(ren ren.cpp RenderGraph.cpp Scene.cpp ResourceUploader.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
 target_link_libraries(ren PRIVATE Support)
@@ -54,6 +55,11 @@ add_subdirectory(Vulkan)
 if(WIN32)
   message(STATUS "Enable DirectX 12 renderer")
   add_subdirectory(DirectX12)
+endif()
+
+if(REN_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
 endif()
 
 if(REN_INSTALL)

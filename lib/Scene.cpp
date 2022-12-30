@@ -1,13 +1,13 @@
 #include "Scene.hpp"
-#include "CommandBuffer.hpp"
 #include "Device.hpp"
 #include "RenderGraph.hpp"
+#include "ResourceUploader.inl"
 #include "Support/Array.hpp"
+#include "Support/Views.hpp"
 #include "hlsl/encode.hlsl"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
-#include <range/v3/view.hpp>
 
 using namespace ren;
 
@@ -21,11 +21,17 @@ Scene::RenScene(Device *device)
               .size = 1 << 26,
           }),
       m_index_buffer_pool(
-          m_device, {
-                        .usage = BufferUsage::TransferDST | BufferUsage::Index,
-                        .location = BufferLocation::Device,
-                        .size = 1 << 22,
-                    }) {}
+          m_device,
+          {
+              .usage = BufferUsage::TransferDST | BufferUsage::Index,
+              .location = BufferLocation::Device,
+              .size = 1 << 22,
+          }),
+      m_resource_uploader(*m_device) {
+  begin_frame();
+}
+
+Scene::~RenScene() { end_frame(); }
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
@@ -48,36 +54,24 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       .num_indices = desc.num_indices,
   });
 
-  unsigned offset = sizeof(glm::vec3) * mesh.num_vertices;
+  auto positions = std::span(
+      reinterpret_cast<const glm::vec3 *>(desc.positions), desc.num_vertices);
+  m_resource_uploader.stage_data(positions, mesh.vertex_allocation);
+  unsigned offset = size_bytes(positions);
+
   if (desc.colors) {
+    auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
+                            desc.num_vertices) |
+                  map(encode_color);
+    m_resource_uploader.stage_data(colors, mesh.vertex_allocation,
+                                   mesh.colors_offset);
+
     mesh.colors_offset = offset;
-    offset += sizeof(color_t) * mesh.num_vertices;
+    offset += size_bytes(colors);
   }
 
-  if (mesh.vertex_allocation.desc.ptr) {
-    auto *positions = get_host_ptr<glm::vec3>(mesh.vertex_allocation);
-    ranges::copy_n(reinterpret_cast<const glm::vec3 *>(desc.positions),
-                   mesh.num_vertices, positions);
-    if (desc.colors) {
-      auto *colors =
-          get_host_ptr<color_t>(mesh.vertex_allocation, mesh.colors_offset);
-      ranges::copy(
-          ranges::views::transform(
-              std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
-                        mesh.num_vertices),
-              encode_color),
-          colors);
-    }
-  } else {
-    assert(!"FIXME: Buffers must be host visible");
-  }
-
-  if (mesh.index_allocation.desc.ptr) {
-    auto *indices = get_host_ptr<unsigned>(mesh.index_allocation);
-    ranges::copy_n(desc.indices, mesh.num_indices, indices);
-  } else {
-    assert(!"FIXME: Buffers must be host visible");
-  }
+  auto indices = std::span(desc.indices, desc.num_indices);
+  m_resource_uploader.stage_data(indices, mesh.index_allocation);
 
   return get_mesh_id(key);
 }
@@ -92,8 +86,19 @@ void Scene::destroy_mesh(ren::MeshID id) {
   m_meshes.erase(key);
 }
 
-void Scene::draw() {
+void Scene::begin_frame() {
   m_device->begin_frame();
+  m_resource_uploader.begin_frame();
+}
+
+void Scene::end_frame() {
+  m_resource_uploader.end_frame();
+  m_device->end_frame();
+}
+
+void Scene::draw() {
+  m_resource_uploader.upload_data();
+
   auto rgb = m_device->createRenderGraphBuilder();
 
   // Draw scene
@@ -129,5 +134,6 @@ void Scene::draw() {
 
   rg->execute();
 
-  m_device->end_frame();
+  end_frame();
+  begin_frame();
 }
