@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
   set(ARGS_OPTIONS EMBEDDED SPIRV)
-  set(ARGS_ONE PROFILE)
+  set(ARGS_ONE PROFILE OUTPUT_DIRECTORY)
   set(ARGS_MULTI DXC_FLAGS INCLUDE_DIRECTORIES DEFINES)
   cmake_parse_arguments(PARSE_ARGV 2 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
                         "${ARGS_MULTI}")
@@ -60,9 +60,14 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
     set(DXC_FLAGS ${DXC_FLAGS} -spirv)
   endif()
 
+  set(shader_output_dir ${CMAKE_CURRENT_BINARY_DIR})
+  if(OPTION_OUTPUT_DIRECTORY)
+    set(shader_output_dir ${OPTION_OUTPUT_DIRECTORY})
+  endif()
+
   if(OPTION_EMBEDDED)
     set(SHADER_INC ${SHADER_TARGET}.inc)
-    cmake_path(SET SHADER_INC_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_INC})
+    cmake_path(SET SHADER_INC_FILE ${shader_output_dir}/${SHADER_INC})
 
     add_custom_command(
       OUTPUT ${SHADER_INC_FILE}
@@ -77,7 +82,7 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
     add_custom_target(${SHADER_INC_TARGET} DEPENDS ${SHADER_INC_FILE})
 
     set(SHADER_H ${SHADER_TARGET}.h)
-    cmake_path(SET SHADER_H_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_H})
+    cmake_path(SET SHADER_H_FILE ${shader_output_dir}/${SHADER_H})
 
     set(SHADER_H_CODE
         "#pragma once
@@ -96,8 +101,7 @@ static
     file(WRITE ${SHADER_H_FILE} ${SHADER_H_CODE})
 
     add_library(${SHADER_TARGET} INTERFACE ${SHADER_H_FILE})
-    target_include_directories(${SHADER_TARGET}
-                               INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(${SHADER_TARGET} INTERFACE ${shader_output_dir})
 
     add_dependencies(${SHADER_TARGET} ${SHADER_INC_TARGET})
   else()
@@ -106,7 +110,7 @@ static
       set(blob_suffix spv)
     endif()
     set(SHADER_BLOB ${SHADER_TARGET}.${blob_suffix})
-    cmake_path(SET SHADER_BLOB_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_BLOB})
+    cmake_path(SET SHADER_BLOB_FILE ${shader_output_dir}/${SHADER_BLOB})
 
     add_custom_command(
       OUTPUT ${SHADER_BLOB_FILE}
