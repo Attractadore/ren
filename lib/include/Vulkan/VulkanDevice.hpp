@@ -8,6 +8,8 @@
 #include "VulkanCommandAllocator.hpp"
 #include "VulkanDeleteQueue.hpp"
 #include "VulkanDispatchTable.hpp"
+#include "VulkanErrors.hpp"
+#include "VulkanPipelineCompiler.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -89,6 +91,11 @@ public:
   VulkanCommandAllocator &getVulkanCommandAllocator() { return m_cmd_alloc; }
   CommandAllocator &getCommandAllocator() override {
     return getVulkanCommandAllocator();
+  }
+
+  VulkanPipelineCompiler &getVulkanPipelineCompiler() { vkTodo(); }
+  PipelineCompiler &getPipelineCompiler() override {
+    return getVulkanPipelineCompiler();
   }
 
   Buffer create_buffer(const BufferDesc &desc) override;

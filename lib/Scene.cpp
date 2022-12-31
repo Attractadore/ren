@@ -87,15 +87,12 @@ void Scene::destroy_mesh(ren::MeshID id) {
 }
 
 MaterialID Scene::create_material(const MaterialDesc &desc) {
-  PipelineCompiler *compiler = nullptr;
-  assert(compiler);
   auto &&[key, material] = m_materials.emplace(Material{
-      .pipeline = compiler->get_material_pipeline({
+      .pipeline = m_device->getPipelineCompiler().get_material_pipeline({
           .albedo = static_cast<MaterialAlbedo>(desc.albedo_type),
       }),
       .index = m_material_allocator.allocate(desc, m_resource_uploader),
   });
-
   return get_material_id(key);
 }
 

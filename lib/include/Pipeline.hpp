@@ -5,14 +5,18 @@ namespace ren {
 
 struct PipelineDesc {};
 
-struct Pipeline {
-  PipelineDesc desc;
-  AnyRef handle;
-};
-
 struct PipelineRef {
   PipelineDesc desc;
   void *handle;
+};
+
+struct Pipeline {
+  PipelineDesc desc;
+  AnyRef handle;
+
+  operator PipelineRef() const {
+    return {.desc = desc, .handle = handle.get()};
+  }
 };
 
 } // namespace ren

@@ -5,6 +5,8 @@
 #include "DirectX12CPUDescriptorPool.hpp"
 #include "DirectX12CommandAllocator.hpp"
 #include "DirectX12DeleteQueue.hpp"
+#include "DirectX12PipelineCompiler.hpp"
+#include "Errors.hpp"
 #include "Support/Errors.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
@@ -95,6 +97,13 @@ public:
   }
   CommandAllocator &getCommandAllocator() override {
     return getDirectX12CommandAllocator();
+  }
+
+  DirectX12PipelineCompiler &getDirectX12PipelineCompiler() {
+    dx12Unimplemented();
+  }
+  PipelineCompiler &getPipelineCompiler() override {
+    return getDirectX12PipelineCompiler();
   }
 
   void begin_frame() override;

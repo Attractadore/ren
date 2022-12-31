@@ -3,6 +3,10 @@
 #include "DeleteQueue.hpp"
 #include "RenderGraph.hpp"
 
+namespace ren {
+class PipelineCompiler;
+}
+
 struct RenDevice {
   virtual ~RenDevice() = default;
 
@@ -18,6 +22,8 @@ struct RenDevice {
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 
   virtual ren::SyncObject createSyncObject(const ren::SyncDesc &desc) = 0;
+
+  virtual ren::PipelineCompiler &getPipelineCompiler() = 0;
 
   virtual void
   push_to_delete_queue(ren::QueueCustomDeleter<ren::Device> deleter) = 0;
