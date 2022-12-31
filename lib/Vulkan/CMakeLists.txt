@@ -3,6 +3,7 @@ option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 find_package(VulkanHeaders REQUIRED)
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
+add_subdirectory(hlsl)
 add_subdirectory(DispatchTable)
 
 add_library(VMA STATIC VMA.cpp)

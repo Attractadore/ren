@@ -7,6 +7,7 @@ set(REN_LOG_SEVERITY
 option(REN_BUILD_TESTS "Build tests" OFF)
 
 set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
+set(REN_SHADER_DIR ${CMAKE_CURRENT_LIST_DIR}/hlsl)
 
 find_package(
   Boost

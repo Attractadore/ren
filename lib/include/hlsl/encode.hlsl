@@ -16,7 +16,7 @@ constexpr uint color_green_bits = 11;
 constexpr uint color_blue_bits = 10;
 static_assert(color_red_bits + color_green_bits + color_blue_bits <= 32);
 
-using color_t = uint32_t;
+typedef uint32_t color_t;
 
 inline color_t encode_color(float3 fcolor) {
   uint color = encode_float(fcolor.r, color_red_bits);
