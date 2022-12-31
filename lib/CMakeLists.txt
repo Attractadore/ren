@@ -9,6 +9,20 @@ option(REN_BUILD_TESTS "Build tests" OFF)
 set(REN_PRIVATE_INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/include)
 set(REN_SHADER_DIR ${CMAKE_CURRENT_LIST_DIR}/hlsl)
 
+file(
+  CONFIGURE
+  OUTPUT
+  GeneratedConfig.hpp
+  CONTENT
+  "#pragma once
+
+namespace ren {
+constexpr const char* c_assets_dir = \"${REN_ASSETS_OUTPUT_DIRECTORY}\";
+}
+")
+add_library(Generated INTERFACE)
+target_include_directories(Generated INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
+
 find_package(
   Boost
   COMPONENTS container
@@ -19,8 +33,15 @@ find_package(range-v3 REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
-target_link_libraries(Support INTERFACE SlotMap Boost::boost Boost::container
-                                        range-v3::range-v3 fmt::fmt glm::glm)
+target_link_libraries(
+  Support
+  INTERFACE Generated
+            SlotMap
+            Boost::boost
+            Boost::container
+            range-v3::range-v3
+            fmt::fmt
+            glm::glm)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
