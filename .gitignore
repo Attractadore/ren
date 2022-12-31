@@ -1,3 +1,7 @@
 /.cache
 /build
 /compile_commands.json
+# DXVK log files
+*_dxgi.log
+# VKD3D log files
+vkd3d-proton.cache.write
