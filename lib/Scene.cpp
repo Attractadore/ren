@@ -27,7 +27,7 @@ Scene::RenScene(Device *device)
               .location = BufferLocation::Device,
               .size = 1 << 22,
           }),
-      m_resource_uploader(*m_device) {
+      m_material_allocator(*m_device), m_resource_uploader(*m_device) {
   begin_frame();
 }
 
@@ -84,6 +84,28 @@ void Scene::destroy_mesh(ren::MeshID id) {
   m_vertex_buffer_pool.free(mesh.vertex_allocation);
   m_index_buffer_pool.free(mesh.index_allocation);
   m_meshes.erase(key);
+}
+
+MaterialID Scene::create_material(const MaterialDesc &desc) {
+  PipelineCompiler *compiler = nullptr;
+  assert(compiler);
+  auto &&[key, material] = m_materials.emplace(Material{
+      .pipeline = compiler->get_material_pipeline({
+          .albedo = static_cast<MaterialAlbedo>(desc.albedo_type),
+      }),
+      .index = m_material_allocator.allocate(desc, m_resource_uploader),
+  });
+
+  return get_material_id(key);
+}
+
+void Scene::destroy_material(MaterialID id) {
+  auto key = get_material_key(id);
+  auto it = m_materials.find(key);
+  assert(it != m_materials.end() and "Unknown material");
+  auto &material = it->second;
+  m_material_allocator.free(material.index);
+  m_materials.erase(it);
 }
 
 void Scene::begin_frame() {

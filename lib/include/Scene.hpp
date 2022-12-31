@@ -2,7 +2,10 @@
 #include "BufferPool.hpp"
 #include "CommandBuffer.hpp"
 #include "Def.hpp"
+#include "Material.hpp"
+#include "MaterialAllocator.hpp"
 #include "Mesh.hpp"
+#include "PipelineCompiler.hpp"
 #include "ResourceUploader.hpp"
 
 class RenScene {
@@ -26,6 +29,19 @@ class RenScene {
     return std::bit_cast<ren::MeshID>(mesh_key) + 1;
   }
 
+  ren::MaterialAllocator m_material_allocator;
+
+  using MaterialMap = ren::SlotMap<ren::Material>;
+  MaterialMap m_materials;
+
+  static MaterialMap::key_type get_material_key(ren::MaterialID material) {
+    return std::bit_cast<MaterialMap::key_type>(material - 1);
+  }
+
+  static ren::MaterialID get_material_id(MaterialMap::key_type material_key) {
+    return std::bit_cast<ren::MaterialID>(material_key) + 1;
+  }
+
   ren::ResourceUploader m_resource_uploader;
 
 private:
@@ -45,6 +61,9 @@ public:
 
   ren::MeshID create_mesh(const ren::MeshDesc &desc);
   void destroy_mesh(ren::MeshID mesh);
+
+  ren::MaterialID create_material(const ren::MaterialDesc &desc);
+  void destroy_material(ren::MaterialID material);
 
   void draw();
 };

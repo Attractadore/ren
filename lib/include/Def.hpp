@@ -8,4 +8,7 @@ using Scene = RenScene;
 
 using MeshDesc = RenMeshDesc;
 using MeshID = RenMesh;
+
+using MaterialDesc = RenMaterialDesc;
+using MaterialID = RenMaterial;
 } // namespace ren

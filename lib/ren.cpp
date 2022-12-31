@@ -59,4 +59,15 @@ void ren_DestroyMesh(Scene *scene, MeshID mesh) {
   assert(scene);
   scene->destroy_mesh(mesh);
 }
+
+MaterialID ren_CreateMaterial(Scene *scene, const MaterialDesc *desc) {
+  assert(scene);
+  assert(desc);
+  return scene->create_material(*desc);
+}
+
+void ren_DestroyMaterial(Scene *scene, MaterialID material) {
+  assert(scene);
+  scene->destroy_material(material);
+}
 }
