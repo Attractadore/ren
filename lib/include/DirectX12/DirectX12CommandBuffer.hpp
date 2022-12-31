@@ -33,6 +33,9 @@ public:
   using CommandBuffer::beginRendering;
   void endRendering() override;
 
+  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+                   std::span<const CopyRegion> regions) override;
+
   void close() override;
   void reset(ID3D12CommandAllocator *command_allocator);
 

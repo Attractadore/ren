@@ -1,4 +1,5 @@
 #include "DirectX12/DirectX12CommandBuffer.hpp"
+#include "DirectX12/DirectX12Buffer.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
@@ -120,6 +121,16 @@ void DirectX12CommandBuffer::endRendering() {
   }
   rp.discard_resources.clear();
   rp.discard_subresources.clear();
+}
+
+void DirectX12CommandBuffer::copy_buffer(const BufferRef &src,
+                                         const BufferRef &dst,
+                                         std::span<const CopyRegion> regions) {
+  for (const auto &region : regions) {
+    m_cmd_list->CopyBufferRegion(getD3D12Resource(dst), region.dst_offset,
+                                 getD3D12Resource(src), region.src_offset,
+                                 region.size);
+  }
 }
 
 void DirectX12CommandBuffer::close() {
