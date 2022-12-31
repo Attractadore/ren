@@ -24,9 +24,9 @@ struct BufferDesc {
 };
 
 namespace detail {
-template <typename Buffer> class BufferMixin {
-  const Buffer &get() const { return *static_cast<const Buffer *>(this); }
-  Buffer &get() { return *static_cast<Buffer *>(this); }
+template <typename B> class BufferMixin {
+  const B &get() const { return *static_cast<const B *>(this); }
+  B &get() { return *static_cast<B *>(this); }
 
 public:
   template <typename T = std::byte> T *map(unsigned offset = 0) const {
@@ -49,6 +49,8 @@ public:
 struct BufferRef : detail::BufferMixin<BufferRef> {
   BufferDesc desc;
   void *handle;
+
+  void *get() const { return handle; }
 };
 
 struct Buffer : detail::BufferMixin<Buffer> {
@@ -61,5 +63,10 @@ struct Buffer : detail::BufferMixin<Buffer> {
         .handle = handle.get(),
     };
   }
+
+  void *get() const { return handle.get(); }
 };
+
+template <typename T>
+concept BufferLike = std::same_as<T, Buffer> or std::same_as<T, BufferRef>;
 } // namespace ren

@@ -50,6 +50,9 @@ public:
       std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
+  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+                   std::span<const CopyRegion> regions) override;
+
   void blit(VkImage src, VkImage dst, std::span<const VkImageBlit> regions,
             VkFilter filter);
   void blit(const Texture &src, const Texture &dst) {

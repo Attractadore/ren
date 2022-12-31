@@ -1,4 +1,6 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
+#include "Support/Views.hpp"
+#include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
@@ -83,6 +85,22 @@ void VulkanCommandBuffer::beginRendering(
 
 void VulkanCommandBuffer::endRendering() {
   m_device->CmdEndRendering(m_cmd_buffer);
+}
+
+void VulkanCommandBuffer::copy_buffer(const BufferRef &src,
+                                      const BufferRef &dst,
+                                      std::span<const CopyRegion> regions) {
+  auto vk_regions = map(regions,
+                        [](const CopyRegion &region) {
+                          return VkBufferCopy{
+                              .srcOffset = region.src_offset,
+                              .dstOffset = region.dst_offset,
+                              .size = region.size,
+                          };
+                        }) |
+                    ranges::to<SmallVector<VkBufferCopy, 8>>;
+  m_device->CmdCopyBuffer(m_cmd_buffer, getVkBuffer(src), getVkBuffer(dst),
+                          vk_regions.size(), vk_regions.data());
 }
 
 void VulkanCommandBuffer::blit(VkImage src, VkImage dst,

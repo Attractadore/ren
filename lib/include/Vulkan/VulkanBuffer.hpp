@@ -16,7 +16,7 @@ REN_MAP_FIELD(BufferUsage::DeviceAddress,
               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 REN_MAP_ENUM_AND_FLAGS(getVkBufferUsage, BufferUsage, REN_BUFFER_USAGES);
 
-inline VkBuffer getVkBuffer(const Buffer &buffer) {
-  return reinterpret_cast<VkBuffer>(buffer.handle.get());
+inline VkBuffer getVkBuffer(const BufferLike auto &buffer) {
+  return reinterpret_cast<VkBuffer>(buffer.get());
 }
 } // namespace ren

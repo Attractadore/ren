@@ -59,9 +59,10 @@ public:
   }
   virtual void endRendering() = 0;
 
-  virtual void copy_buffer(const BufferRef src, const BufferRef dst,
-                           std::span<const CopyRegion> regions);
-  void copy_buffer(const BufferRef src, BufferRef dst, CopyRegion region) {
+  virtual void copy_buffer(const BufferRef &src, const BufferRef &dst,
+                           std::span<const CopyRegion> regions) = 0;
+  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+                   const CopyRegion &region) {
     copy_buffer(src, dst, {&region, 1});
   }
 
