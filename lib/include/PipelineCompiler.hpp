@@ -1,4 +1,5 @@
 #pragma once
+#include "Formats.hpp"
 #include "Pipeline.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Vector.hpp"
@@ -16,6 +17,7 @@ enum class MaterialAlbedo {
 };
 
 struct MaterialConfig {
+  Format rt_format;
   MaterialAlbedo albedo;
 
   auto operator<=>(const MaterialConfig &other) const = default;
@@ -41,6 +43,7 @@ class PipelineCompiler {
 
 protected:
   struct PipelineConfig {
+    Format rt_format;
     std::span<const std::byte> vs_code;
     std::span<const std::byte> fs_code;
   };

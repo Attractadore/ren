@@ -128,9 +128,12 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
                 "VMA: Failed to create allocator");
 
   m_cmd_alloc = VulkanCommandAllocator(*this);
+
+  new (&m_pipeline_compiler) VulkanPipelineCompiler(*this);
 }
 
 VulkanDevice::~VulkanDevice() {
+  m_pipeline_compiler.~VulkanPipelineCompiler();
   m_cmd_alloc = VulkanCommandAllocator();
   waitForIdle();
   m_delete_queue.flush(*this);

@@ -18,3 +18,8 @@ foreach(perm ${ALBEDO_PERMUTATIONS})
   add_shader(FragmentShader_${perm} ${REN_SHADER_DIR}/FragmentShader.hlsl
              PROFILE ps_6_0 DEFINES ${perm})
 endforeach()
+
+add_shader(VertexShaderSpvReflect ${REN_SHADER_DIR}/VertexShader.hlsl PROFILE
+           vs_6_0 EMBEDDED)
+add_shader(FragmentShaderSpvReflect ${REN_SHADER_DIR}/FragmentShader.hlsl
+           PROFILE ps_6_0 EMBEDDED)

@@ -19,4 +19,8 @@ inline auto filter_map(auto transform_fn) {
 template <ranges::sized_range R> size_t size_bytes(R &&r) {
   return ranges::size(r) * sizeof(ranges::range_value_t<R>);
 }
+
+template <std::integral I> auto range(I end) {
+  return ranges::views::iota(I(0), end);
+}
 } // namespace ren

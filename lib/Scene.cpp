@@ -89,6 +89,7 @@ void Scene::destroy_mesh(ren::MeshID id) {
 MaterialID Scene::create_material(const MaterialDesc &desc) {
   auto &&[key, material] = m_materials.emplace(Material{
       .pipeline = m_device->getPipelineCompiler().get_material_pipeline({
+          .rt_format = m_rt_format,
           .albedo = static_cast<MaterialAlbedo>(desc.albedo_type),
       }),
       .index = m_material_allocator.allocate(desc, m_resource_uploader),
@@ -124,7 +125,7 @@ void Scene::draw() {
   auto draw = rgb->addNode();
   draw.setDesc("Color pass");
   RGTextureDesc rt_desc = {
-      .format = Format::RGBA16F,
+      .format = m_rt_format,
       .width = m_output_width,
       .height = m_output_height,
   };

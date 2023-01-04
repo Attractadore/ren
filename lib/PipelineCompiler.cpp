@@ -59,6 +59,7 @@ PipelineCompiler::get_material_pipeline(const MaterialConfig &config) {
   load_shader_code(fs_path.c_str(), m_fs_code);
 
   PipelineConfig pipeline_config = {
+      .rt_format = config.rt_format,
       .vs_code = m_vs_code,
       .fs_code = m_fs_code,
   };

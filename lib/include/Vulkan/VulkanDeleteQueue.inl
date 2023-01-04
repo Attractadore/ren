@@ -17,13 +17,15 @@ template <> struct QueueDeleter<VulkanDevice, VulkanImageViews> {
 };
 
 template <> struct QueueDeleter<VulkanDevice, VmaAllocation> {
-  void operator()(VulkanDevice &device, VmaAllocation allocation) const noexcept {
+  void operator()(VulkanDevice &device,
+                  VmaAllocation allocation) const noexcept {
     vmaFreeMemory(device.getVMAAllocator(), allocation);
   }
 };
 
 define_vulkan_queue_deleter(VkBuffer, DestroyBuffer);
 define_vulkan_queue_deleter(VkImage, DestroyImage);
+define_vulkan_queue_deleter(VkPipeline, DestroyPipeline);
 define_vulkan_queue_deleter(VkSemaphore, DestroySemaphore);
 define_vulkan_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
 

@@ -42,6 +42,8 @@ public:
     return items() | ranges::views::values;
   }
 
+  constexpr size_t size() const noexcept { return items().size(); }
+
   constexpr iterator begin() noexcept { return ranges::begin(items()); }
   constexpr const_iterator begin() const noexcept {
     return ranges::begin(items());
@@ -55,6 +57,8 @@ public:
   constexpr const_iterator cend() const noexcept {
     return ranges::end(items());
   }
+
+  constexpr const value_type *data() const noexcept { return m_values.data(); }
 
   constexpr iterator find(const key_type &key) noexcept {
     return begin() +

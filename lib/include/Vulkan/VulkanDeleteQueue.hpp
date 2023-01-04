@@ -16,5 +16,6 @@ struct VulkanImageViews {
 
 using VulkanDeleteQueue =
     DeleteQueue<VulkanDevice, VulkanQueueCustomDeleter, VulkanImageViews,
-                VkBuffer, VkImage, VkSemaphore, VkSwapchainKHR, VmaAllocation>;
+                VkBuffer, VkImage, VkPipeline, VkSemaphore, VkSwapchainKHR,
+                VmaAllocation>;
 } // namespace ren

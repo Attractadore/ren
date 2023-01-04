@@ -57,6 +57,10 @@ class VulkanDevice final : public Device,
 
   VulkanDeleteQueue m_delete_queue;
 
+  union {
+    VulkanPipelineCompiler m_pipeline_compiler;
+  };
+
 private:
   VkImageView getVkImageViewImpl(VkImage image,
                                  const VkImageViewCreateInfo &view_info);
@@ -93,7 +97,9 @@ public:
     return getVulkanCommandAllocator();
   }
 
-  VulkanPipelineCompiler &getVulkanPipelineCompiler() { vkTodo(); }
+  VulkanPipelineCompiler &getVulkanPipelineCompiler() {
+    return m_pipeline_compiler;
+  }
   PipelineCompiler &getPipelineCompiler() override {
     return getVulkanPipelineCompiler();
   }

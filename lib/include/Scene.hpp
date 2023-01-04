@@ -11,6 +11,7 @@
 class RenScene {
   ren::Device *m_device;
 
+  ren::Format m_rt_format = ren::Format::RGBA16F;
   unsigned m_output_width = 0;
   unsigned m_output_height = 0;
   ren::Swapchain *m_swapchain = nullptr;

@@ -63,6 +63,7 @@
     "vulkan": {
       "description": "Enable Vulkan backend",
       "dependencies": [
+        "spirv-reflect",
         "vulkan-headers",
         "vulkan-memory-allocator"
       ]
