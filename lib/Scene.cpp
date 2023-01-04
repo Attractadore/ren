@@ -129,6 +129,33 @@ void Scene::set_camera(const CameraDesc &desc) {
   }
 }
 
+auto Scene::create_model(const ModelDesc &desc) -> ModelID {
+  return get_model_id(m_models.insert({
+      .mesh = desc.mesh,
+      .material = desc.material,
+  }));
+}
+
+void Scene::destroy_model(ModelID model) {
+  m_models.erase(get_model_key(model));
+}
+
+auto Scene::get_model(ModelID model) const -> const Model & {
+  auto key = get_model_key(model);
+  assert(m_models.contains(key) && "Unknown model");
+  return m_models[key];
+}
+
+auto Scene::get_model(ModelID model) -> Model & {
+  auto key = get_model_key(model);
+  assert(m_models.contains(key) && "Unknown model");
+  return m_models[key];
+}
+
+void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) {
+  get_model(model).matrix = matrix;
+}
+
 void Scene::begin_frame() {
   m_device->begin_frame();
   m_resource_uploader.begin_frame();

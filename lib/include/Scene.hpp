@@ -6,6 +6,7 @@
 #include "Material.hpp"
 #include "MaterialAllocator.hpp"
 #include "Mesh.hpp"
+#include "Model.hpp"
 #include "PipelineCompiler.hpp"
 #include "ResourceUploader.hpp"
 
@@ -46,6 +47,17 @@ class RenScene {
     return std::bit_cast<ren::MaterialID>(material_key) + 1;
   }
 
+  using ModelMap = ren::SlotMap<ren::Model>;
+  ModelMap m_models;
+
+  static ModelMap::key_type get_model_key(ren::ModelID model) {
+    return std::bit_cast<ModelMap::key_type>(model - 1);
+  }
+
+  static ren::ModelID get_model_id(ModelMap::key_type model_key) {
+    return std::bit_cast<ren::ModelID>(model_key) + 1;
+  }
+
   ren::ResourceUploader m_resource_uploader;
 
 private:
@@ -70,6 +82,14 @@ public:
   void destroy_material(ren::MaterialID material);
 
   void set_camera(const ren::CameraDesc &desc);
+
+  auto create_model(const ren::ModelDesc &desc) -> ren::ModelID;
+  void destroy_model(ren::ModelID model);
+
+  auto get_model(ren::ModelID model) const -> const ren::Model &;
+  auto get_model(ren::ModelID model) -> ren::Model &;
+
+  void set_model_matrix(ren::ModelID model, const glm::mat4 &matrix);
 
   void draw();
 };

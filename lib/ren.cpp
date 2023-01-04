@@ -76,4 +76,21 @@ void ren_SetSceneCamera(Scene *scene, const CameraDesc *desc) {
   assert(desc);
   scene->set_camera(*desc);
 }
+
+ModelID ren_CreateModel(Scene *scene, const ModelDesc *desc) {
+  assert(scene);
+  assert(desc);
+  return scene->create_model(*desc);
+}
+
+void ren_DestroyModel(Scene *scene, ModelID model) {
+  assert(scene);
+  scene->destroy_model(model);
+}
+
+void ren_SetModelMatrix(Scene *scene, ModelID model, const float matrix[16]) {
+  assert(scene);
+  assert(matrix);
+  scene->set_model_matrix(model, glm::make_mat4(matrix));
+}
 }

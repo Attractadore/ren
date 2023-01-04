@@ -13,4 +13,7 @@ using MaterialDesc = RenMaterialDesc;
 using MaterialID = RenMaterial;
 
 using CameraDesc = RenCameraDesc;
+
+using ModelDesc = RenModelDesc;
+using ModelID = RenModel;
 } // namespace ren
