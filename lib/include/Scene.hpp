@@ -1,5 +1,6 @@
 #pragma once
 #include "BufferPool.hpp"
+#include "Camera.hpp"
 #include "CommandBuffer.hpp"
 #include "Def.hpp"
 #include "Material.hpp"
@@ -18,6 +19,8 @@ class RenScene {
 
   ren::BufferPool m_vertex_buffer_pool;
   ren::BufferPool m_index_buffer_pool;
+
+  ren::Camera m_camera;
 
   using MeshMap = ren::SlotMap<ren::Mesh>;
   MeshMap m_meshes;
@@ -65,6 +68,8 @@ public:
 
   ren::MaterialID create_material(const ren::MaterialDesc &desc);
   void destroy_material(ren::MaterialID material);
+
+  void set_camera(const ren::CameraDesc &desc);
 
   void draw();
 };

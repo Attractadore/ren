@@ -1,4 +1,5 @@
 #include "Scene.hpp"
+#include "Camera.inl"
 #include "Device.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.inl"
@@ -104,6 +105,28 @@ void Scene::destroy_material(MaterialID id) {
   auto &material = it->second;
   m_material_allocator.free(material.index);
   m_materials.erase(it);
+}
+
+void Scene::set_camera(const CameraDesc &desc) {
+  auto pos = glm::make_vec3(desc.position);
+  auto fwd = glm::make_vec3(desc.forward);
+  auto up = glm::make_vec3(desc.up);
+  m_camera.view = glm::lookAt(pos, pos + fwd, up);
+
+  float ar = float(m_output_width) / float(m_output_height);
+  switch (desc.type) {
+  case REN_PROJECTION_PERSPECTIVE: {
+    float fov = desc.perspective.hfov / ar;
+    m_camera.proj = infinitePerspectiveRH_ReverseZ(fov, ar, 0.1f);
+    break;
+  }
+  case REN_PROJECTION_ORTHOGRAPHIC: {
+    float width = desc.orthographic.width;
+    float height = width / ar;
+    m_camera.proj = orthoRH_ReverseZ(width, height, 0.1f, 100.0f);
+    break;
+  }
+  }
 }
 
 void Scene::begin_frame() {

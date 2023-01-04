@@ -47,7 +47,6 @@ typedef struct {
     RenPerspectiveCameraDesc perspective;
     RenOrthographicCameraDesc orthographic;
   };
-  float aspect_ratio;
   float position[3];
   float forward[3];
   float up[3];

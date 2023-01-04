@@ -70,4 +70,10 @@ void ren_DestroyMaterial(Scene *scene, MaterialID material) {
   assert(scene);
   scene->destroy_material(material);
 }
+
+void ren_SetSceneCamera(Scene *scene, const CameraDesc *desc) {
+  assert(scene);
+  assert(desc);
+  scene->set_camera(*desc);
+}
 }

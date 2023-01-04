@@ -33,7 +33,6 @@ protected:
   void iterate() override {
     get_scene().get_camera().config({
         .projection_desc = ren::OrthographicCameraDesc{.width = 2.0f},
-        .aspect_ratio = get_window_aspect_ratio(),
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},

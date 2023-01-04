@@ -64,11 +64,6 @@ protected:
     return {m_window_width, m_window_height};
   }
 
-  float get_window_aspect_ratio() const {
-    auto [width, height] = get_window_size();
-    return float(width) / float(height);
-  }
-
 private:
   void select_renderer();
   void loop();

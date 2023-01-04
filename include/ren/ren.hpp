@@ -150,7 +150,6 @@ using OrthographicCameraDesc = RenOrthographicCameraDesc;
 
 struct CameraDesc {
   std::variant<PerspectiveCameraDesc, OrthographicCameraDesc> projection_desc;
-  float aspect_ratio;
   glm::vec3 position;
   glm::vec3 forward;
   glm::vec3 up;
@@ -169,7 +168,7 @@ public:
   };
 
   void config(const CameraDesc &desc) {
-    RenCameraDesc c_desc = {.aspect_ratio = desc.aspect_ratio};
+    RenCameraDesc c_desc = {};
     std::visit(
         detail::overload_set{[&](const PerspectiveCameraDesc &perspective) {
                                c_desc.type = REN_PROJECTION_PERSPECTIVE;

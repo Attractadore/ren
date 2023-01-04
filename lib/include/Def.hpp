@@ -11,4 +11,6 @@ using MeshID = RenMesh;
 
 using MaterialDesc = RenMaterialDesc;
 using MaterialID = RenMaterial;
+
+using CameraDesc = RenCameraDesc;
 } // namespace ren
