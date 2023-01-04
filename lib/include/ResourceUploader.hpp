@@ -2,6 +2,7 @@
 #include "CommandBuffer.hpp"
 #include "Def.hpp"
 #include "RingBuffer.hpp"
+#include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
 
 namespace ren {
@@ -9,7 +10,7 @@ namespace ren {
 class ResourceUploader {
   Device *m_device;
 
-  RingBuffer m_ring_buffer;
+  Optional<RingBuffer> m_ring_buffer;
 
   struct BufferCopy {
     BufferRef src;

@@ -67,10 +67,10 @@ public:
       create_buffer(size);
     }
     assert(idx < m_buffers.size());
-    auto desc = m_buffer_desc;
-    desc.offset = offset;
-    desc.size = size;
-    return {.desc = desc, .handle = m_buffers[idx].handle.get()};
+    BufferRef buffer = m_buffers[idx];
+    buffer.desc.offset = offset;
+    buffer.desc.size = size;
+    return buffer;
   }
 
   UniqueAllocation allocate_unique(unsigned size, unsigned alignment = 4) {

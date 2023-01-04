@@ -30,6 +30,7 @@ struct RenDevice {
 
   template <std::convertible_to<ren::QueueCustomDeleter<ren::Device>> F>
   void push_to_delete_queue(F deleter) {
-    push_to_delete_queue(std::move(deleter));
+    push_to_delete_queue(
+        ren::QueueCustomDeleter<ren::Device>(std::move(deleter)));
   }
 };

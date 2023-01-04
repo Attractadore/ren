@@ -12,18 +12,23 @@ void ResourceUploader::stage_data(R &&data, BufferRef buffer,
     return;
   }
 
+  if (!m_ring_buffer) {
+    m_ring_buffer = create_ring_buffer(1 << 20);
+    m_ring_buffer->begin_frame();
+  }
+
   unsigned count = 0;
   while (count < ranges::size(data)) {
     auto [offset, num_written] =
-        m_ring_buffer.write(ranges::views::drop(data, count));
+        m_ring_buffer->write(ranges::views::drop(data, count));
 
     if (num_written == 0) {
-      m_ring_buffer.end_frame();
-      m_ring_buffer = create_ring_buffer(2 * m_ring_buffer.size());
-      m_ring_buffer.begin_frame();
+      m_ring_buffer->end_frame();
+      m_ring_buffer = create_ring_buffer(2 * m_ring_buffer->size());
+      m_ring_buffer->begin_frame();
     } else {
       m_buffer_copies.push_back({
-          .src = m_ring_buffer.get_buffer(),
+          .src = m_ring_buffer->get_buffer(),
           .dst = buffer,
           .region =
               {

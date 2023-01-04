@@ -168,11 +168,13 @@ VulkanPipelineCompiler::compile_pipeline(const PipelineConfig &config) {
 
   std::array stages = {
       VkPipelineShaderStageCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage = VK_SHADER_STAGE_VERTEX_BIT,
           .module = vs_module,
           .pName = "main",
       },
       VkPipelineShaderStageCreateInfo{
+          .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
           .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
           .module = fs_module,
           .pName = "main",
@@ -186,6 +188,10 @@ VulkanPipelineCompiler::compile_pipeline(const PipelineConfig &config) {
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
   };
 
   VkPipelineRasterizationStateCreateInfo rasterization_info = {
@@ -227,6 +233,7 @@ VulkanPipelineCompiler::compile_pipeline(const PipelineConfig &config) {
       .pStages = stages.data(),
       .pVertexInputState = &vertex_input_info,
       .pInputAssemblyState = &input_assembly_info,
+      .pViewportState = &viewport_info,
       .pRasterizationState = &rasterization_info,
       .pMultisampleState = &multisample_info,
       .pColorBlendState = &blend_info,

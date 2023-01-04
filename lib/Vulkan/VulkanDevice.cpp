@@ -76,10 +76,23 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .pQueuePriorities = &queue_priority,
   };
 
+  VkPhysicalDeviceFeatures2 vulkan10_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+      .features = {
+          .shaderInt64 = true,
+      }};
+
+  VkPhysicalDeviceVulkan11Features vulkan11_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+      .pNext = &vulkan10_features,
+  };
+
   VkPhysicalDeviceVulkan12Features vulkan12_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+      .pNext = &vulkan11_features,
       .scalarBlockLayout = true,
       .timelineSemaphore = true,
+      .bufferDeviceAddress = true,
   };
 
   VkPhysicalDeviceVulkan13Features vulkan13_features = {
@@ -116,6 +129,7 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   };
 
   VmaAllocatorCreateInfo allocator_info = {
+      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
       .physicalDevice = m_adapter,
       .device = m_device,
       .pAllocationCallbacks = getAllocator(),
@@ -173,6 +187,10 @@ Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
   switch (desc.location) {
     using enum BufferLocation;
   case Device:
+    alloc_info.flags |=
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     break;
   case Host:
     alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;

@@ -5,12 +5,19 @@
 
 namespace ren {
 
-ResourceUploader::ResourceUploader(Device &device)
-    : m_device(&device), m_ring_buffer(create_ring_buffer(1 << 20)) {}
+ResourceUploader::ResourceUploader(Device &device) : m_device(&device) {}
 
-void ResourceUploader::begin_frame() { m_ring_buffer.begin_frame(); }
+void ResourceUploader::begin_frame() {
+  if (m_ring_buffer) {
+    m_ring_buffer->begin_frame();
+  }
+}
 
-void ResourceUploader::end_frame() { m_ring_buffer.end_frame(); }
+void ResourceUploader::end_frame() {
+  if (m_ring_buffer) {
+    m_ring_buffer->end_frame();
+  }
+}
 
 RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
   return RingBuffer(m_device->create_buffer({
@@ -21,6 +28,11 @@ RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
 }
 
 void ResourceUploader::upload_data() {
+  if (m_buffer_copies.empty()) {
+    m_ring_buffer = None;
+    return;
+  }
+
   auto *cmd = m_device->getCommandAllocator().allocateCommandBuffer();
 
   auto same_src_and_dsts = ranges::views::chunk_by(
@@ -36,6 +48,8 @@ void ResourceUploader::upload_data() {
     }));
     cmd->copy_buffer(copy_range.front().src, copy_range.front().dst, regions);
   }
+
+  m_buffer_copies.clear();
 
   // TODO: submit command buffer and wait for signal in render graph
 }

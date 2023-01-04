@@ -64,10 +64,9 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
                             desc.num_vertices) |
                   map(encode_color);
+    mesh.colors_offset = offset;
     m_resource_uploader.stage_data(colors, mesh.vertex_allocation,
                                    mesh.colors_offset);
-
-    mesh.colors_offset = offset;
     offset += size_bytes(colors);
   }
 
