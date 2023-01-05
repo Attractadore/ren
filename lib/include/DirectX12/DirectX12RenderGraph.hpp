@@ -8,16 +8,17 @@ class DirectX12RenderGraph final : public RenderGraph {
   DirectX12Device *m_device;
   RGTextureID m_swapchain_buffer;
 
-public:
+private:
   struct Config {
     DirectX12Device *device;
     RGTextureID swapchain_buffer;
   };
 
-  class Builder;
+public:
   DirectX12RenderGraph(RenderGraph::Config base_config, Config config)
       : RenderGraph(std::move(base_config)), m_device(config.device),
         m_swapchain_buffer(config.swapchain_buffer) {}
+  class Builder;
 
   void execute() override;
 };
@@ -31,10 +32,8 @@ private:
   RGCallback
   generateBarrierGroup(std::span<const BarrierConfig> configs) override;
 
-  std::unique_ptr<RenderGraph>
-  createRenderGraph(Vector<Batch> batches, Vector<Texture> textures,
-                    HashMap<RGTextureID, unsigned> phys_textures,
-                    Vector<SyncObject> syncs) override;
+  auto create_render_graph(RenderGraph::Config config)
+      -> std::unique_ptr<RenderGraph> override;
 
 public:
   using RenderGraph::Builder::Builder;

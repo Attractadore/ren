@@ -10,7 +10,7 @@ class VulkanRenderGraph final : public RenderGraph {
   RGSyncID m_acquire_semaphore;
   RGSyncID m_present_semaphore;
 
-public:
+private:
   struct Config {
     VulkanDevice *device;
     RGTextureID swapchain_image;
@@ -18,12 +18,13 @@ public:
     RGSyncID present_semaphore;
   };
 
-  class Builder;
+public:
   VulkanRenderGraph(RenderGraph::Config base_config, Config config)
       : RenderGraph(std::move(base_config)), m_device(config.device),
         m_swapchain_image(config.swapchain_image),
         m_acquire_semaphore(config.acquire_semaphore),
         m_present_semaphore(config.present_semaphore) {}
+  class Builder;
 
   void execute() override;
 };
@@ -35,10 +36,8 @@ class VulkanRenderGraph::Builder final : public RenderGraph::Builder {
 
 private:
   void addPresentNodes() override;
-  std::unique_ptr<RenderGraph>
-  createRenderGraph(Vector<Batch> batches, Vector<Texture> textures,
-                    HashMap<RGTextureID, unsigned> phys_textures,
-                    Vector<SyncObject> syncs) override;
+  auto create_render_graph(RenderGraph::Config config)
+      -> std::unique_ptr<RenderGraph> override;
   RGCallback
   generateBarrierGroup(std::span<const BarrierConfig> configs) override;
 

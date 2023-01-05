@@ -56,19 +56,13 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
   });
 }
 
-std::unique_ptr<RenderGraph> VulkanRenderGraph::Builder::createRenderGraph(
-    Vector<Batch> batches, Vector<Texture> textures,
-    HashMap<RGTextureID, unsigned> phys_textures, Vector<SyncObject> syncs) {
+auto VulkanRenderGraph::Builder::create_render_graph(RenderGraph::Config config)
+    -> std::unique_ptr<RenderGraph> {
   return std::make_unique<VulkanRenderGraph>(
-      RenderGraph::Config{.swapchain = m_swapchain,
-                          .batches = std::move(batches),
-                          .textures = std::move(textures),
-                          .phys_textures = std::move(phys_textures),
-                          .syncs = std::move(syncs)},
-      Config{.device = static_cast<VulkanDevice *>(m_device),
-             .swapchain_image = m_swapchain_image,
-             .acquire_semaphore = m_acquire_semaphore,
-             .present_semaphore = m_present_semaphore});
+      std::move(config), Config{.device = static_cast<VulkanDevice *>(m_device),
+                                .swapchain_image = m_swapchain_image,
+                                .acquire_semaphore = m_acquire_semaphore,
+                                .present_semaphore = m_present_semaphore});
 }
 
 namespace {

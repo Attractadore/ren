@@ -163,17 +163,13 @@ RGCallback DirectX12RenderGraph::Builder::generateBarrierGroup(
   };
 }
 
-std::unique_ptr<RenderGraph> DirectX12RenderGraph::Builder::createRenderGraph(
-    Vector<Batch> batches, Vector<Texture> textures,
-    HashMap<RGTextureID, unsigned> phys_textures, Vector<SyncObject> syncs) {
+auto DirectX12RenderGraph::Builder::create_render_graph(
+    RenderGraph::Config config) -> std::unique_ptr<RenderGraph> {
   return std::make_unique<DirectX12RenderGraph>(
-      RenderGraph::Config{.swapchain = m_swapchain,
-                          .batches = std::move(batches),
-                          .textures = std::move(textures),
-                          .phys_textures = std::move(phys_textures),
-                          .syncs = std::move(syncs)},
-      Config{.device = static_cast<DirectX12Device *>(m_device),
-             .swapchain_buffer = m_swapchain_buffer});
+      std::move(config), Config{
+                             .device = static_cast<DirectX12Device *>(m_device),
+                             .swapchain_buffer = m_swapchain_buffer,
+                         });
 }
 
 void DirectX12RenderGraph::execute() {

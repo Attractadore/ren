@@ -54,13 +54,13 @@ RGNodeID RenderGraph::Builder::getTextureDef(RGTextureID tex) const {
   return it->second;
 }
 
-std::optional<RGNodeID>
-RenderGraph::Builder::getTextureKill(RGTextureID tex) const {
+auto RenderGraph::Builder::getTextureKill(RGTextureID tex) const
+    -> Optional<RGNodeID> {
   auto it = m_texture_kills.find(tex);
   if (it != m_texture_kills.end()) {
     return it->second;
   }
-  return std::nullopt;
+  return None;
 }
 
 bool RenderGraph::Builder::isExternalTexture(unsigned tex) const {
@@ -69,6 +69,46 @@ bool RenderGraph::Builder::isExternalTexture(unsigned tex) const {
 
 unsigned RenderGraph::Builder::getPhysTextureCount() const {
   return m_texture_descs.size();
+}
+
+auto RenderGraph::Builder::create_physical_buffer(const RGBufferDesc &desc)
+    -> unsigned {
+  auto buffer = get_physical_buffer_count();
+  m_buffer_descs.push_back(desc);
+  return buffer;
+}
+
+auto RenderGraph::Builder::create_virtual_buffer(unsigned buffer, RGNodeID node)
+    -> RGBufferID {
+  auto vbuffer = std::bit_cast<RGBufferID>(m_buffer_defs.insert(node));
+  m_physical_buffers[vbuffer] = buffer;
+  return vbuffer;
+}
+
+auto RenderGraph::Builder::create_buffer(RGNodeID node)
+    -> std::pair<unsigned, RGBufferID> {
+  auto buffer = create_physical_buffer({});
+  auto vbuffer = create_virtual_buffer(buffer, node);
+  return {buffer, vbuffer};
+}
+
+auto RenderGraph::Builder::get_buffer_def(RGBufferID buffer) const -> RGNodeID {
+  auto it = m_buffer_defs.find(std::bit_cast<VBufferKey>(buffer));
+  assert(it != m_buffer_defs.end() && "Undefined buffer");
+  return it->second;
+}
+
+auto RenderGraph::Builder::get_buffer_kill(RGBufferID buffer) const
+    -> Optional<RGNodeID> {
+  auto it = m_buffer_kills.find(buffer);
+  if (it != m_buffer_kills.end()) {
+    return it->second;
+  }
+  return None;
+}
+
+auto RenderGraph::Builder::get_physical_buffer_count() const -> unsigned {
+  return m_buffer_descs.size();
 }
 
 RGSyncID RenderGraph::Builder::createSync(RGNodeID node) {
@@ -135,6 +175,20 @@ RGTextureID RenderGraph::Builder::addOutput(RGNodeID node,
   return vtex;
 }
 
+RGBufferID RenderGraph::Builder::add_output(RGNodeID node,
+                                            const RGBufferDesc &desc,
+                                            MemoryAccessFlags accesses,
+                                            PipelineStageFlags stages) {
+  auto [buffer, vbuffer] = create_buffer(node);
+  m_buffer_descs[buffer] = desc;
+  getNode(node).write_buffers.push_back({
+      .buffer = vbuffer,
+      .accesses = accesses,
+      .stages = stages,
+  });
+  return vbuffer;
+}
+
 RGTextureID RenderGraph::Builder::addExternalTextureOutput(
     RGNodeID node, MemoryAccessFlags accesses, PipelineStageFlags stages) {
   auto [_, tex] = createTexture(node);
@@ -193,6 +247,18 @@ std::string_view RenderGraph::Builder::getDesc(RGTextureID tex) const {
   return "";
 }
 
+void RenderGraph::Builder::set_desc(RGBufferID buffer, std::string name) {
+  m_buffer_text_descs.insert_or_assign(buffer, std::move(name));
+}
+
+std::string_view RenderGraph::Builder::get_desc(RGBufferID buffer) const {
+  auto it = m_buffer_text_descs.find(buffer);
+  if (it != m_buffer_text_descs.end()) {
+    return it->second;
+  }
+  return "";
+}
+
 void RenderGraph::Builder::setDesc(RGSyncID sync, std::string name) {
   m_sync_text_descs.insert_or_assign(sync, std::move(name));
 }
@@ -235,6 +301,12 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
   auto get_texture_kill = [&](const TextureAccess &tex_access) {
     return getTextureKill(tex_access.texture);
   };
+  auto get_buffer_def = [&](const BufferAccess &buffer_access) {
+    return this->get_buffer_def(buffer_access.buffer);
+  };
+  auto get_buffer_kill = [&](const BufferAccess &buffer_access) {
+    return this->get_buffer_kill(buffer_access.buffer);
+  };
   auto get_sync_def = [&](const SyncAccess &sync_access) {
     return getSyncDef(sync_access.sync);
   };
@@ -242,18 +314,21 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
   SmallVector<RGNodeID> dependents;
   auto get_dependants = [&](const RGNode &node) -> const auto & {
     // Reads must happen before writes
-    dependents.assign(node.read_textures | filter_map(get_texture_kill));
+    dependents.assign(concat(node.read_textures | filter_map(get_texture_kill),
+                             node.read_buffers | filter_map(get_buffer_kill)));
     return dependents;
   };
 
   SmallVector<RGNodeID> dependencies;
   auto get_dependencies = [&](const RGNode &node) -> const auto & {
+    auto is_not_create = [&](RGNodeID def) { return def != getNodeID(node); };
     dependencies.assign(concat(
         // Reads must happen after creation
         node.read_textures | map(get_texture_def),
+        node.read_buffers | map(get_buffer_def),
         // Writes must happen after creation
-        node.write_textures | map(get_texture_def) |
-            filter([&](RGNodeID def) { return def != getNodeID(node); }),
+        node.write_textures | map(get_texture_def) | filter(is_not_create),
+        node.write_buffers | map(get_buffer_def) | filter(is_not_create),
         // Waits on sync objects must happen after they are signaled
         // TODO: this is not the case for timeline semaphores
         node.wait_syncs | map(get_sync_def)));
@@ -263,6 +338,7 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
   SmallVector<RGNodeID> outputs;
   auto get_outputs = [&](const RGNode &node) -> const auto & {
     outputs.assign(concat(node.write_textures | map(get_texture_def),
+                          node.write_buffers | map(get_buffer_def),
                           node.signal_syncs | map(get_sync_def)));
     return outputs;
   };
@@ -329,40 +405,71 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
 }
 
 namespace {
-TextureUsageFlags
-getTextureUsageFlagsFromAccessesAndStages(MemoryAccessFlags accesses,
-                                          PipelineStageFlags stages) {
+auto get_texture_usage_flags(MemoryAccessFlags accesses) -> TextureUsageFlags {
   using enum MemoryAccess;
-  using enum PipelineStage;
   TextureUsageFlags flags;
   if (accesses.isSet(ColorWrite)) {
     flags |= TextureUsage::RenderTarget;
-  } else if (accesses.isSet(TransferRead)) {
+  }
+  if (accesses.isSet(TransferRead)) {
     flags |= TextureUsage::TransferSRC;
-  } else if (accesses.isSet(TransferWrite)) {
+  }
+  if (accesses.isSet(TransferWrite)) {
     flags |= TextureUsage::TransferDST;
-  } else if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+  }
+  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
     flags |= TextureUsage::Storage;
-  } else if (accesses.isSet(SampledRead)) {
+  }
+  if (accesses.isSet(SampledRead)) {
     flags |= TextureUsage::Sampled;
+  }
+  return flags;
+}
+
+auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> BufferUsageFlags {
+  using enum MemoryAccess;
+  BufferUsageFlags flags;
+  if (accesses.isSet(TransferRead)) {
+    flags |= BufferUsage::TransferSRC;
+  }
+  if (accesses.isSet(TransferWrite)) {
+    flags |= BufferUsage::TransferDST;
+  }
+  if (accesses.isSet(UniformRead)) {
+    flags |= BufferUsage::Uniform;
+  }
+  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+    flags |= BufferUsage::Storage;
+  }
+  if (accesses.isSet(IndexRead)) {
+    flags |= BufferUsage::Index;
+  }
+  if (accesses.isSet(IndirectRead)) {
+    flags |= BufferUsage::Indirect;
   }
   return flags;
 }
 } // namespace
 
-Vector<TextureUsageFlags> RenderGraph::Builder::deriveTextureUsageFlags(
-    std::span<const RGNode> scheduled_passes) {
+auto RenderGraph::Builder::derive_resource_usage_flags(
+    std::span<const RGNode> scheduled_passes)
+    -> std::pair<Vector<TextureUsageFlags>, Vector<BufferUsageFlags>> {
   Vector<TextureUsageFlags> texture_usage(getPhysTextureCount());
+  Vector<BufferUsageFlags> buffer_usage(get_physical_buffer_count());
   for (const auto &pass : scheduled_passes) {
-    auto tex_accesses =
-        ranges::views::concat(pass.read_textures, pass.write_textures);
-    for (const auto &tex_access : tex_accesses) {
-      auto tex = m_phys_textures[tex_access.texture];
-      texture_usage[tex] |= getTextureUsageFlagsFromAccessesAndStages(
-          tex_access.accesses, tex_access.stages);
+    for (const auto &texture_access :
+         concat(pass.read_textures, pass.write_textures)) {
+      auto texture = m_phys_textures[texture_access.texture];
+      texture_usage[texture] |=
+          get_texture_usage_flags(texture_access.accesses);
+    }
+    for (const auto &buffer_access :
+         concat(pass.read_buffers, pass.write_buffers)) {
+      auto buffer = m_physical_buffers[buffer_access.buffer];
+      buffer_usage[buffer] |= get_buffer_usage_flags(buffer_access.accesses);
     }
   }
-  return texture_usage;
+  return {std::move(texture_usage), std::move(buffer_usage)};
 }
 
 Vector<Texture> RenderGraph::Builder::createTextures(
@@ -383,6 +490,20 @@ Vector<Texture> RenderGraph::Builder::createTextures(
     }
   }
   return textures;
+}
+
+auto RenderGraph::Builder::create_buffers(
+    std::span<const BufferUsageFlags> buffer_usage_flags) -> Vector<Buffer> {
+  Vector<Buffer> buffers(get_physical_buffer_count());
+  for (auto buffer : range<unsigned>(buffers.size())) {
+    const auto &desc = m_buffer_descs[buffer];
+    buffers[buffer] = m_device->create_buffer({
+        .usage = buffer_usage_flags[buffer],
+        .location = desc.location,
+        .size = desc.size,
+    });
+  }
+  return buffers;
 }
 
 Vector<SyncObject> RenderGraph::Builder::createSyncObjects() {
@@ -450,13 +571,22 @@ auto RenderGraph::Builder::batchPasses(auto scheduled_passes) -> Vector<Batch> {
 auto RenderGraph::Builder::build() -> std::unique_ptr<RenderGraph> {
   addPresentNodes();
   auto scheduled_passes = schedulePasses();
-  auto texture_usage_flags = deriveTextureUsageFlags(scheduled_passes);
+  auto [texture_usage_flags, buffer_usage_flags] =
+      derive_resource_usage_flags(scheduled_passes);
   auto textures = createTextures(texture_usage_flags);
+  auto buffers = create_buffers(buffer_usage_flags);
   auto syncs = createSyncObjects();
   generateBarriers(scheduled_passes);
   auto batches = batchPasses(std::move(scheduled_passes));
-  return createRenderGraph(std::move(batches), std::move(textures),
-                           std::move(m_phys_textures), std::move(syncs));
+  return create_render_graph({
+      .swapchain = m_swapchain,
+      .batches = std::move(batches),
+      .textures = std::move(textures),
+      .phys_textures = std::move(m_phys_textures),
+      .buffers = std::move(buffers),
+      .physical_buffers = std::move(m_physical_buffers),
+      .syncs = std::move(syncs),
+  });
 }
 
 void RenderGraph::setTexture(RGTextureID vtex, Texture texture) {
@@ -469,6 +599,18 @@ const Texture &RenderGraph::getTexture(RGTextureID tex) const {
   auto it = m_phys_textures.find(tex);
   assert(it != m_phys_textures.end() && "Undefined texture");
   return m_textures[it->second];
+}
+
+void RenderGraph::set_buffer(RGBufferID vbuffer, Buffer buffer) {
+  auto pbuffer = m_physical_buffers[vbuffer];
+  assert(!m_buffers[pbuffer].get() && "Buffer already defined");
+  m_buffers[pbuffer] = std::move(buffer);
+}
+
+auto RenderGraph::get_buffer(RGBufferID buffer) const -> const Buffer & {
+  auto it = m_physical_buffers.find(buffer);
+  assert(it != m_physical_buffers.end() && "Undefined buffer");
+  return m_buffers[it->second];
 }
 
 void RenderGraph::setSyncObject(RGSyncID id, SyncObject sync) {
