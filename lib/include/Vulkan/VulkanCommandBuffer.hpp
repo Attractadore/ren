@@ -1,6 +1,7 @@
 #pragma once
 #include "CommandBuffer.hpp"
 #include "Support/Vector.hpp"
+#include "VulkanErrors.hpp"
 #include "VulkanSync.hpp"
 #include "VulkanTexture.hpp"
 
@@ -65,6 +66,33 @@ public:
         .dstOffsets = {{}, {int(dst.desc.width), int(dst.desc.height), 1}},
     };
     blit(getVkImage(src), getVkImage(dst), asSpan(region), VK_FILTER_LINEAR);
+  }
+
+  void set_viewports(std::span<const Viewport> viewports) override { vkTodo(); }
+
+  void set_scissor_rects(std::span<const ScissorRect> rects) override {
+    vkTodo();
+  }
+
+  void bind_graphics_pipeline(const PipelineRef &pipeline) override {
+    vkTodo();
+  }
+
+  void set_graphics_push_constants(const PipelineSignature &signature,
+                                   std::span<const std::byte> data,
+                                   unsigned offset) override {
+    vkTodo();
+  }
+
+  void bind_index_buffer(const BufferRef &buffer,
+                         IndexFormat format = IndexFormat::U32) override {
+    vkTodo();
+  }
+
+  void draw_indexed(unsigned num_indices, unsigned num_instances,
+                    unsigned first_index, int vertex_offset,
+                    unsigned first_instance) override {
+    vkTodo();
   }
 
   void wait(SyncObject sync, PipelineStageFlags stages);

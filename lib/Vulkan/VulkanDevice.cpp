@@ -172,6 +172,9 @@ void VulkanDevice::end_frame() {
 Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
   BufferDesc desc = in_desc;
   desc.offset = 0;
+  if (desc.size == 0) {
+    return {.desc = desc};
+  }
 
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,

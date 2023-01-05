@@ -114,6 +114,10 @@ public:
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
 
   Buffer create_buffer(const ren::BufferDesc &desc) override;
+  auto get_buffer_device_address(const ren::BufferRef &buffer) const
+      -> uint64_t override {
+    dx12Unimplemented();
+  }
 
   Texture createTexture(const ren::TextureDesc &desc) override;
   void destroyTextureViews(ID3D12Resource *resource);

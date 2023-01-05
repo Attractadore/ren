@@ -18,6 +18,8 @@ struct RenDevice {
   virtual ren::CommandAllocator &getCommandAllocator() = 0;
 
   virtual ren::Buffer create_buffer(const ren::BufferDesc &desc) = 0;
+  virtual auto get_buffer_device_address(const ren::BufferRef &buffer) const
+      -> uint64_t = 0;
 
   virtual ren::Texture createTexture(const ren::TextureDesc &desc) = 0;
 

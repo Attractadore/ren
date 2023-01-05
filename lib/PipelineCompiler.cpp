@@ -43,11 +43,12 @@ std::string get_fragment_shader_path(const MaterialConfig &config,
 
 } // namespace
 
-PipelineCompiler::PipelineCompiler(const char *blob_suffix)
-    : m_blob_suffix(blob_suffix) {}
+PipelineCompiler::PipelineCompiler(const char *blob_suffix,
+                                   PipelineSignature signature)
+    : m_blob_suffix(blob_suffix), m_signature(std::move(signature)) {}
 
-PipelineRef
-PipelineCompiler::get_material_pipeline(const MaterialConfig &config) {
+auto PipelineCompiler::get_material_pipeline(const MaterialConfig &config)
+    -> const Pipeline & {
   auto it = m_pipelines.find(config);
   if (it != m_pipelines.end()) {
     return it->second;

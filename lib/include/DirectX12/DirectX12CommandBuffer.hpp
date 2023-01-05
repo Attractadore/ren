@@ -1,6 +1,7 @@
 #pragma once
 #include "CommandBuffer.hpp"
 #include "DirectX12Descriptor.hpp"
+#include "Errors.hpp"
 #include "Support/ComPtr.hpp"
 
 #include <d3d12.h>
@@ -35,6 +36,35 @@ public:
 
   void copy_buffer(const BufferRef &src, const BufferRef &dst,
                    std::span<const CopyRegion> regions) override;
+
+  void set_viewports(std::span<const Viewport> viewports) override {
+    dx12Unimplemented();
+  }
+
+  void set_scissor_rects(std::span<const ScissorRect> rects) override {
+    dx12Unimplemented();
+  }
+
+  void bind_graphics_pipeline(const PipelineRef &pipeline) override {
+    dx12Unimplemented();
+  }
+
+  void set_graphics_push_constants(const PipelineSignature &signature,
+                                   std::span<const std::byte> data,
+                                   unsigned offset) override {
+    dx12Unimplemented();
+  }
+
+  void bind_index_buffer(const BufferRef &buffer,
+                         IndexFormat format = IndexFormat::U32) override {
+    dx12Unimplemented();
+  }
+
+  void draw_indexed(unsigned num_indices, unsigned num_instances,
+                    unsigned first_index, int vertex_offset,
+                    unsigned first_instance) override {
+    dx12Unimplemented();
+  }
 
   void close() override;
   void reset(ID3D12CommandAllocator *command_allocator);

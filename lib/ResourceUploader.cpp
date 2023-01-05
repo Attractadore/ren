@@ -29,7 +29,10 @@ RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
 
 void ResourceUploader::upload_data() {
   if (m_buffer_copies.empty()) {
-    m_ring_buffer = None;
+    if (m_ring_buffer) {
+      m_ring_buffer->end_frame();
+      m_ring_buffer = None;
+    }
     return;
   }
 

@@ -4,6 +4,7 @@
 #include "VertexShaderSpvReflect.h"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanFormats.hpp"
+#include "Vulkan/VulkanPipeline.hpp"
 #include "hlsl/cpp_interface.hlsl"
 
 #include <spirv_reflect.h>
@@ -73,23 +74,15 @@ void reflect_descriptor_set_layouts(
     }
   }
 
-  auto max_set = *ranges::max_element(set_infos.keys());
-
-  for (auto set : range(max_set + 1)) {
-    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
-    auto it = set_infos.find(set);
-
-    if (it != set_infos.end()) {
-      const auto &[_, set_info] = *it;
-      VkDescriptorSetLayoutCreateInfo create_info = {
-          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-          .bindingCount = unsigned(set_info.bindings.size()),
-          .pBindings = set_info.bindings.data(),
-      };
-      throwIfFailed(device.CreateDescriptorSetLayout(&create_info, &layout),
-                    "Vulkan: Failed to create descriptor set layout");
-    }
-
+  for (const auto &[_, set_info] : set_infos) {
+    VkDescriptorSetLayoutCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = unsigned(set_info.bindings.size()),
+        .pBindings = set_info.bindings.data(),
+    };
+    VkDescriptorSetLayout layout;
+    throwIfFailed(device.CreateDescriptorSetLayout(&create_info, &layout),
+                  "Vulkan: Failed to create descriptor set layout");
     *out = layout;
   }
 }
@@ -112,28 +105,44 @@ create_pipeline_layout(VulkanDevice &device,
 }
 } // namespace
 
-VulkanPipelineCompiler::VulkanPipelineCompiler(VulkanDevice &device)
-    : PipelineCompiler(".spv"), m_device(&device) {
+auto VulkanPipelineCompiler::create(VulkanDevice &device)
+    -> VulkanPipelineCompiler {
   auto vs = reflect_vs();
   auto fs = reflect_fs();
 
-  reflect_descriptor_set_layouts(*m_device, vs, fs,
-                                 std::back_inserter(m_set_layouts));
+  SmallVector<VkDescriptorSetLayout, 4> set_layouts;
+  reflect_descriptor_set_layouts(device, vs, fs,
+                                 std::back_inserter(set_layouts));
 
   VkPushConstantRange pc_range = {
       .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
       .size = sizeof(ren::ModelData),
   };
 
-  m_pipeline_layout =
-      create_pipeline_layout(*m_device, m_set_layouts, pc_range);
+  auto layout = create_pipeline_layout(device, set_layouts, pc_range);
+
+  return VulkanPipelineCompiler(device, std::move(set_layouts), layout);
 }
+
+VulkanPipelineCompiler::VulkanPipelineCompiler(
+    VulkanDevice &device, SmallVector<VkDescriptorSetLayout, 4> set_layouts,
+    VkPipelineLayout layout)
+    : PipelineCompiler(
+          ".spv",
+          PipelineSignature{
+              .handle = AnyRef(layout,
+                               [device = &device](VkPipelineLayout layout) {
+                                 device->push_to_delete_queue(layout);
+                               })}),
+      m_device(&device), m_set_layouts(std::move(set_layouts)) {}
+
+VulkanPipelineCompiler::VulkanPipelineCompiler(VulkanDevice &device)
+    : VulkanPipelineCompiler(create(device)) {}
 
 void VulkanPipelineCompiler::destroy() {
   for (auto set : m_set_layouts) {
     m_device->DestroyDescriptorSetLayout(set);
   }
-  m_device->DestroyPipelineLayout(m_pipeline_layout);
 }
 
 VulkanPipelineCompiler::~VulkanPipelineCompiler() { destroy(); }
@@ -238,7 +247,7 @@ VulkanPipelineCompiler::compile_pipeline(const PipelineConfig &config) {
       .pMultisampleState = &multisample_info,
       .pColorBlendState = &blend_info,
       .pDynamicState = &dynamic_state_info,
-      .layout = m_pipeline_layout,
+      .layout = getVkPipelineLayout(get_signature()),
   };
 
   VkPipeline pipeline;

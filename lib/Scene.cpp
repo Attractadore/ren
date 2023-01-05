@@ -53,12 +53,16 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       .index_allocation = m_index_buffer_pool.allocate(index_allocation_size),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
+      .index_format = IndexFormat::U32,
   });
+
+  unsigned offset = 0;
 
   auto positions = std::span(
       reinterpret_cast<const glm::vec3 *>(desc.positions), desc.num_vertices);
+  mesh.positions_offset = offset;
   m_resource_uploader.stage_data(positions, mesh.vertex_allocation);
-  unsigned offset = size_bytes(positions);
+  offset += size_bytes(positions);
 
   if (desc.colors) {
     auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
@@ -139,6 +143,31 @@ void Scene::destroy_model(ModelID model) {
   m_models.erase(get_model_key(model));
 }
 
+auto Scene::get_mesh(ren::MeshID mesh) const -> const ren::Mesh & {
+  auto key = get_mesh_key(mesh);
+  assert(m_meshes.contains(key) && "Unknown mesh");
+  return m_meshes[key];
+}
+
+auto Scene::get_mesh(ren::MeshID mesh) -> ren::Mesh & {
+  auto key = get_mesh_key(mesh);
+  assert(m_meshes.contains(key) && "Unknown mesh");
+  return m_meshes[key];
+}
+
+auto Scene::get_material(ren::MaterialID material) const
+    -> const ren::Material & {
+  auto key = get_material_key(material);
+  assert(m_materials.contains(key) && "Unknown material");
+  return m_materials[key];
+}
+
+auto Scene::get_material(ren::MaterialID material) -> ren::Material & {
+  auto key = get_material_key(material);
+  assert(m_materials.contains(key) && "Unknown material");
+  return m_materials[key];
+}
+
 auto Scene::get_model(ModelID model) const -> const Model & {
   auto key = get_model_key(model);
   assert(m_models.contains(key) && "Unknown model");
@@ -173,16 +202,77 @@ void Scene::draw() {
   // Draw scene
   auto draw = rgb->addNode();
   draw.setDesc("Color pass");
-  RGTextureDesc rt_desc = {
-      .format = m_rt_format,
-      .width = m_output_width,
-      .height = m_output_height,
-  };
-  auto rt = draw.addOutput(rt_desc, MemoryAccess::ColorWrite,
-                           PipelineStage::ColorOutput);
+
+  auto rt = draw.addOutput(
+      RGTextureDesc{
+          .format = m_rt_format,
+          .width = m_output_width,
+          .height = m_output_height,
+      },
+      MemoryAccess::ColorWrite, PipelineStage::ColorOutput);
   rgb->setDesc(rt, "Color buffer");
-  draw.setCallback([=](CommandBuffer &cmd, RenderGraph &rg) {
+
+  auto global_cbuffer = draw.add_output(
+      RGBufferDesc{
+          .location = BufferLocation::Host,
+          .size = unsigned(sizeof(GlobalData)),
+      },
+      MemoryAccess::UniformRead,
+      PipelineStage::VertexShader | PipelineStage::FragmentShader);
+  rgb->set_desc(global_cbuffer, "Global cbuffer");
+
+  auto matrix_buffer = draw.add_output(
+      RGBufferDesc{
+          .location = BufferLocation::Host,
+          .size = unsigned(sizeof(glm::mat3x4) * m_models.size()),
+      },
+      MemoryAccess::StorageRead, PipelineStage::VertexShader);
+  rgb->set_desc(matrix_buffer, "Model matrix buffer");
+
+  draw.setCallback([this, rt, matrix_buffer, global_cbuffer](CommandBuffer &cmd,
+                                                             RenderGraph &rg) {
+    const auto &signature = m_device->getPipelineCompiler().get_signature();
+
     cmd.beginRendering(rg.getTexture(rt));
+    cmd.set_viewport({
+        .width = float(m_output_width),
+        .height = float(m_output_height),
+    });
+    cmd.set_scissor_rect({.width = m_output_width, .height = m_output_height});
+
+    const auto &global_cb = rg.get_buffer(global_cbuffer);
+    *global_cb.map<GlobalData>() = {.proj_view = m_camera.proj * m_camera.view};
+
+    auto *matrices = rg.get_buffer(matrix_buffer).map<glm::mat3x4>();
+
+    // TODO: Bind global cbuffer
+    // TODO: Bind matrices
+    // TODO: Bind materials
+
+    for (const auto &&[i, model] :
+         ranges::views::enumerate(m_models.values())) {
+      matrices[i] = model.matrix;
+
+      const auto &mesh = get_mesh(model.mesh);
+      const auto &material = get_material(model.material);
+
+      cmd.bind_graphics_pipeline(material.pipeline);
+
+      auto addr = m_device->get_buffer_device_address(mesh.vertex_allocation);
+      ModelData data = {
+          .matrix_index = unsigned(i),
+          .material_index = material.index,
+          .positions = addr + mesh.positions_offset,
+          .colors = (mesh.colors_offset != ATTRIBUTE_UNUSED)
+                        ? addr + mesh.colors_offset
+                        : 0,
+      };
+      cmd.set_graphics_push_constants(signature, data);
+
+      cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
+      cmd.draw_indexed(mesh.num_indices);
+    }
+
     cmd.endRendering();
   });
 

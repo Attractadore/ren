@@ -13,4 +13,7 @@ REN_DEFINE_FLAGS_ENUM(FormatProperty, REN_FORMAT_PROPERTIES);
 struct FormatProperties {
   FormatPropertyFlags flags;
 };
+
+#define REN_INDEX_FORMATS (U16)(U32)
+REN_DEFINE_ENUM_WITH_UNKNOWN(IndexFormat, REN_INDEX_FORMATS);
 } // namespace ren

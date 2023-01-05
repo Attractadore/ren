@@ -1,5 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
+#include "Formats.hpp"
+#include "Pipeline.hpp"
 #include "PipelineStages.hpp"
 #include "Support/Enum.hpp"
 #include "Support/Span.hpp"
@@ -42,6 +44,22 @@ struct CopyRegion {
   size_t size;
 };
 
+struct Viewport {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width;
+  float height;
+  float min_depth = 0.0f;
+  float max_depth = 1.0f;
+};
+
+struct ScissorRect {
+  int x = 0;
+  int y = 0;
+  unsigned width;
+  unsigned height;
+};
+
 class CommandBuffer {
 public:
   virtual ~CommandBuffer() = default;
@@ -58,6 +76,33 @@ public:
                    {{.rtv = std::move(rtv)}}, {});
   }
   virtual void endRendering() = 0;
+
+  virtual void set_viewports(std::span<const Viewport> viewports) = 0;
+  void set_viewport(const Viewport &viewport) {
+    set_viewports(asSpan(viewport));
+  }
+
+  virtual void set_scissor_rects(std::span<const ScissorRect> rects) = 0;
+  void set_scissor_rect(const ScissorRect &rect) {
+    set_scissor_rects(asSpan(rect));
+  }
+
+  virtual void bind_graphics_pipeline(const PipelineRef &pipeline) = 0;
+
+  virtual void set_graphics_push_constants(const PipelineSignature &signature,
+                                           std::span<const std::byte> data,
+                                           unsigned offset = 0) = 0;
+  void set_graphics_push_constants(const PipelineSignature &signature,
+                                   const auto &data, unsigned offset = 0) {
+    set_graphics_push_constants(signature, std::as_bytes(asSpan(data)), offset);
+  }
+
+  virtual void bind_index_buffer(const BufferRef &buffer,
+                                 IndexFormat format = IndexFormat::U32) = 0;
+
+  virtual void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
+                            unsigned first_index = 0, int vertex_offset = 0,
+                            unsigned first_instance = 0) = 0;
 
   virtual void copy_buffer(const BufferRef &src, const BufferRef &dst,
                            std::span<const CopyRegion> regions) = 0;

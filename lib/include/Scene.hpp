@@ -64,6 +64,15 @@ private:
   void begin_frame();
   void end_frame();
 
+  auto get_mesh(ren::MeshID mesh) const -> const ren::Mesh &;
+  auto get_mesh(ren::MeshID mesh) -> ren::Mesh &;
+
+  auto get_material(ren::MaterialID material) const -> const ren::Material &;
+  auto get_material(ren::MaterialID material) -> ren::Material &;
+
+  auto get_model(ren::ModelID model) const -> const ren::Model &;
+  auto get_model(ren::ModelID model) -> ren::Model &;
+
 public:
   RenScene(ren::Device *device);
   ~RenScene();
@@ -85,9 +94,6 @@ public:
 
   auto create_model(const ren::ModelDesc &desc) -> ren::ModelID;
   void destroy_model(ren::ModelID model);
-
-  auto get_model(ren::ModelID model) const -> const ren::Model &;
-  auto get_model(ren::ModelID model) -> ren::Model &;
 
   void set_model_matrix(ren::ModelID model, const glm::mat4 &matrix);
 
