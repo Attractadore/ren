@@ -140,15 +140,9 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
 
   throwIfFailed(vmaCreateAllocator(&allocator_info, &m_allocator),
                 "VMA: Failed to create allocator");
-
-  m_cmd_alloc = VulkanCommandAllocator(*this);
-
-  new (&m_pipeline_compiler) VulkanPipelineCompiler(*this);
 }
 
 VulkanDevice::~VulkanDevice() {
-  m_pipeline_compiler.~VulkanPipelineCompiler();
-  m_cmd_alloc = VulkanCommandAllocator();
   waitForIdle();
   m_delete_queue.flush(*this);
   DestroySemaphore(m_graphics_queue_semaphore);
@@ -160,13 +154,21 @@ void VulkanDevice::begin_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);
   m_delete_queue.begin_frame(*this);
-  m_cmd_alloc.begin_frame();
 }
 
 void VulkanDevice::end_frame() {
-  m_cmd_alloc.end_frame();
   m_delete_queue.end_frame(*this);
   m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
+}
+
+auto VulkanDevice::create_command_allocator(QueueType queue_type)
+    -> std::unique_ptr<CommandAllocator> {
+  return std::make_unique<VulkanCommandAllocator>(*this);
+}
+
+auto VulkanDevice::create_pipeline_compiler()
+    -> std::unique_ptr<PipelineCompiler> {
+  return std::make_unique<VulkanPipelineCompiler>(*this);
 }
 
 Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {

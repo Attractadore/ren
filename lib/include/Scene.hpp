@@ -58,6 +58,10 @@ class RenScene {
     return std::bit_cast<ren::ModelID>(model_key) + 1;
   }
 
+  std::unique_ptr<CommandAllocator> m_cmd_allocator;
+
+  std::unique_ptr<PipelineCompiler> m_pipeline_compiler;
+
   ren::ResourceUploader m_resource_uploader;
 
 private:

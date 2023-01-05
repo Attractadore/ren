@@ -123,8 +123,6 @@ DirectX12Device::DirectX12Device(LUID luid)
       "D3D12: Failed to create fence");
   m_event.reset(CreateEvent(nullptr, false, false, nullptr));
   throwIfFailed(m_event.get(), "WIN32: Failed to create event handle");
-
-  m_cmd_alloc = DirectX12CommandAllocator(*this);
 }
 
 DirectX12Device::~DirectX12Device() { flush(); }
@@ -139,11 +137,9 @@ void DirectX12Device::begin_frame() {
   waitForDirectQueueCompletion(
       m_frame_end_times[m_frame_index].direct_queue_time);
   m_delete_queue.begin_frame(*this);
-  m_cmd_alloc.begin_frame();
 }
 
 void DirectX12Device::end_frame() {
-  m_cmd_alloc.end_frame();
   m_delete_queue.end_frame(*this);
   m_frame_end_times[m_frame_index].direct_queue_time = getDirectQueueTime();
 }
@@ -156,6 +152,16 @@ DirectX12Device::createSwapchain(HWND hwnd) {
 std::unique_ptr<RenderGraph::Builder>
 DirectX12Device::createRenderGraphBuilder() {
   return std::make_unique<DirectX12RenderGraph::Builder>(this);
+}
+
+auto DirectX12Device::create_command_allocator(QueueType queue_type)
+    -> std::unique_ptr<CommandAllocator> {
+  return std::make_unique<DirectX12CommandAllocator>(*this);
+}
+
+auto DirectX12Device::create_pipeline_compiler()
+    -> std::unique_ptr<PipelineCompiler> {
+  dx12Unimplemented();
 }
 
 Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {

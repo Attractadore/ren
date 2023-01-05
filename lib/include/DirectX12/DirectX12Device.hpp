@@ -69,8 +69,6 @@ class DirectX12Device final : public Device {
                                            D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_uavs;
 
-  DirectX12CommandAllocator m_cmd_alloc;
-
   DirectX12DeleteQueue m_delete_queue;
 
   unsigned m_frame_index = 0;
@@ -92,19 +90,11 @@ public:
 
   auto *get() const { return m_device.Get(); }
   auto *getDXGIFactory() const { return m_factory.Get(); }
-  DirectX12CommandAllocator &getDirectX12CommandAllocator() {
-    return m_cmd_alloc;
-  }
-  CommandAllocator &getCommandAllocator() override {
-    return getDirectX12CommandAllocator();
-  }
 
-  DirectX12PipelineCompiler &getDirectX12PipelineCompiler() {
-    dx12Unimplemented();
-  }
-  PipelineCompiler &getPipelineCompiler() override {
-    return getDirectX12PipelineCompiler();
-  }
+  auto create_command_allocator(QueueType queue_type)
+      -> std::unique_ptr<CommandAllocator> override;
+
+  auto create_pipeline_compiler() -> std::unique_ptr<PipelineCompiler> override;
 
   void begin_frame() override;
   void end_frame() override;

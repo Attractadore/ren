@@ -172,32 +172,33 @@ auto DirectX12RenderGraph::Builder::create_render_graph(
                          });
 }
 
-void DirectX12RenderGraph::execute() {
-  auto &dx_cmd_alloc = m_device->getDirectX12CommandAllocator();
-  auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
+void DirectX12RenderGraph::execute(CommandAllocator &cmd_allocator) {
+  auto &dx_cmd_allocator =
+      *static_cast<DirectX12CommandAllocator *>(&cmd_allocator);
+  auto &dx_swapchain = *static_cast<DirectX12Swapchain *>(m_swapchain);
 
-  dx_swapchain->AcquireBuffer();
-  setTexture(m_swapchain_buffer, dx_swapchain->getTexture());
+  dx_swapchain.AcquireBuffer();
+  setTexture(m_swapchain_buffer, dx_swapchain.getTexture());
 
   SmallVector<ID3D12CommandList *, 16> cmd_lists;
   for (const auto &batch : m_batches) {
     for (auto &&[barrier, pass] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      auto *dx_cmd = dx_cmd_alloc.allocateDirectX12CommandBuffer();
+      auto &cmd = *dx_cmd_allocator.allocateDirectX12CommandBuffer();
       if (barrier) {
-        barrier(*dx_cmd, *this);
+        barrier(cmd, *this);
       }
       if (pass) {
-        pass(*dx_cmd, *this);
+        pass(cmd, *this);
       }
-      dx_cmd->close();
-      cmd_lists.push_back(dx_cmd->get());
+      cmd.close();
+      cmd_lists.push_back(cmd.get());
     }
 
     m_device->directQueueSubmit(cmd_lists);
     cmd_lists.clear();
   }
 
-  dx_swapchain->PresentBuffer();
+  dx_swapchain.PresentBuffer();
 };
 } // namespace ren

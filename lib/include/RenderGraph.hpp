@@ -92,7 +92,7 @@ public:
   void setSyncObject(RGSyncID id, SyncObject sync);
   const SyncObject &getSyncObject(RGSyncID sync) const;
 
-  virtual void execute() = 0;
+  virtual void execute(CommandAllocator &cmd_allocator) = 0;
 };
 
 class RenderGraph::Builder {

@@ -7,6 +7,8 @@
 
 namespace ren {
 
+class CommandAllocator;
+
 class ResourceUploader {
   Device *m_device;
 
@@ -32,7 +34,7 @@ public:
   template <ranges::sized_range R>
   void stage_data(R &&data, ren::BufferRef buffer, unsigned offset = 0);
 
-  void upload_data();
+  void upload_data(CommandAllocator &cmd_allocator);
 };
 
 } // namespace ren

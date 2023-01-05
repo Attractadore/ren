@@ -136,14 +136,15 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
   };
 }
 
-void VulkanRenderGraph::execute() {
-  auto &vk_cmd_alloc = m_device->getVulkanCommandAllocator();
-  auto *vk_swapchain = static_cast<VulkanSwapchain *>(m_swapchain);
+void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
+  auto &vk_cmd_allocator =
+      *static_cast<VulkanCommandAllocator *>(&cmd_allocator);
+  auto &vk_swapchain = *static_cast<VulkanSwapchain *>(m_swapchain);
 
   auto acquire_semaphore =
       m_device->createSyncObject({.type = SyncType::Semaphore});
-  vk_swapchain->acquireImage(getVkSemaphore(acquire_semaphore));
-  setTexture(m_swapchain_image, vk_swapchain->getTexture());
+  vk_swapchain.acquireImage(getVkSemaphore(acquire_semaphore));
+  setTexture(m_swapchain_image, vk_swapchain.getTexture());
   setSyncObject(m_acquire_semaphore, std::move(acquire_semaphore));
 
   SmallVector<VulkanSubmit, 16> submits;
@@ -156,7 +157,7 @@ void VulkanRenderGraph::execute() {
 
     for (auto &&[barrier_cb, pass_cb] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      auto *cmd = vk_cmd_alloc.allocateVulkanCommandBuffer();
+      auto *cmd = vk_cmd_allocator.allocateVulkanCommandBuffer();
       if (barrier_cb) {
         barrier_cb(*cmd, *this);
       }
@@ -187,6 +188,6 @@ void VulkanRenderGraph::execute() {
   m_device->graphicsQueueSubmit(submits);
 
   auto &&present_semaphore = getSyncObject(m_present_semaphore);
-  vk_swapchain->presentImage(getVkSemaphore(present_semaphore));
+  vk_swapchain.presentImage(getVkSemaphore(present_semaphore));
 }
 } // namespace ren

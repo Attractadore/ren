@@ -53,13 +53,7 @@ class VulkanDevice final : public Device,
   HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
       m_image_views;
 
-  VulkanCommandAllocator m_cmd_alloc;
-
   VulkanDeleteQueue m_delete_queue;
-
-  union {
-    VulkanPipelineCompiler m_pipeline_compiler;
-  };
 
 private:
   VkImageView getVkImageViewImpl(VkImage image,
@@ -92,17 +86,11 @@ public:
   VkDevice getDevice() const { return m_device; }
   VmaAllocator getVMAAllocator() const { return m_allocator; }
   const VkAllocationCallbacks *getAllocator() const { return nullptr; }
-  VulkanCommandAllocator &getVulkanCommandAllocator() { return m_cmd_alloc; }
-  CommandAllocator &getCommandAllocator() override {
-    return getVulkanCommandAllocator();
-  }
 
-  VulkanPipelineCompiler &getVulkanPipelineCompiler() {
-    return m_pipeline_compiler;
-  }
-  PipelineCompiler &getPipelineCompiler() override {
-    return getVulkanPipelineCompiler();
-  }
+  auto create_command_allocator(QueueType queue_type)
+      -> std::unique_ptr<CommandAllocator> override;
+
+  auto create_pipeline_compiler() -> std::unique_ptr<PipelineCompiler> override;
 
   Buffer create_buffer(const BufferDesc &desc) override;
   auto get_buffer_device_address(const BufferRef &buffer) const

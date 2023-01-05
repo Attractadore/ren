@@ -20,7 +20,7 @@ public:
         m_swapchain_buffer(config.swapchain_buffer) {}
   class Builder;
 
-  void execute() override;
+  void execute(CommandAllocator &cmd_allocator) override;
 };
 
 class DirectX12RenderGraph::Builder final : public RenderGraph::Builder {

@@ -1,5 +1,6 @@
 #include "Scene.hpp"
 #include "Camera.inl"
+#include "CommandAllocator.hpp"
 #include "Device.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.inl"
@@ -29,6 +30,8 @@ Scene::RenScene(Device *device)
               .size = 1 << 22,
           }),
       m_material_allocator(*m_device), m_resource_uploader(*m_device) {
+  m_cmd_allocator = m_device->create_command_allocator();
+  m_pipeline_compiler = m_device->create_pipeline_compiler();
   begin_frame();
 }
 
@@ -92,7 +95,7 @@ void Scene::destroy_mesh(ren::MeshID id) {
 
 MaterialID Scene::create_material(const MaterialDesc &desc) {
   auto &&[key, material] = m_materials.emplace(Material{
-      .pipeline = m_device->getPipelineCompiler().get_material_pipeline({
+      .pipeline = m_pipeline_compiler->get_material_pipeline({
           .rt_format = m_rt_format,
           .albedo = static_cast<MaterialAlbedo>(desc.albedo_type),
       }),
@@ -186,16 +189,18 @@ void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) {
 
 void Scene::begin_frame() {
   m_device->begin_frame();
+  m_cmd_allocator->begin_frame();
   m_resource_uploader.begin_frame();
 }
 
 void Scene::end_frame() {
   m_resource_uploader.end_frame();
+  m_cmd_allocator->end_frame();
   m_device->end_frame();
 }
 
 void Scene::draw() {
-  m_resource_uploader.upload_data();
+  m_resource_uploader.upload_data(*m_cmd_allocator);
 
   auto rgb = m_device->createRenderGraphBuilder();
 
@@ -231,7 +236,7 @@ void Scene::draw() {
 
   draw.setCallback([this, rt, matrix_buffer, global_cbuffer](CommandBuffer &cmd,
                                                              RenderGraph &rg) {
-    const auto &signature = m_device->getPipelineCompiler().get_signature();
+    const auto &signature = m_pipeline_compiler->get_signature();
 
     cmd.beginRendering(rg.getTexture(rt));
     cmd.set_viewport({
@@ -292,7 +297,7 @@ void Scene::draw() {
 
   auto rg = rgb->build();
 
-  rg->execute();
+  rg->execute(*m_cmd_allocator);
 
   end_frame();
   begin_frame();

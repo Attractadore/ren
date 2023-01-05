@@ -16,15 +16,14 @@ class VulkanCommandAllocator final : public CommandAllocator {
   unsigned m_frame_index = 0;
 
 public:
-  VulkanCommandAllocator() = default;
   VulkanCommandAllocator(VulkanDevice &device);
 
   VulkanDevice *getVulkanDevice() { return m_device; }
 
+  void begin_frame() override;
+  void end_frame() override;
+
   VulkanCommandBuffer *allocateVulkanCommandBuffer();
   CommandBuffer *allocateCommandBuffer() override;
-
-  void begin_frame();
-  void end_frame();
 };
 } // namespace ren

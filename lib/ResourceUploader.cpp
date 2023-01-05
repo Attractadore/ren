@@ -1,6 +1,7 @@
 #include "ResourceUploader.hpp"
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 
 namespace ren {
@@ -27,7 +28,7 @@ RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
   }));
 }
 
-void ResourceUploader::upload_data() {
+void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
   if (m_buffer_copies.empty()) {
     if (m_ring_buffer) {
       m_ring_buffer->end_frame();
@@ -36,7 +37,7 @@ void ResourceUploader::upload_data() {
     return;
   }
 
-  auto *cmd = m_device->getCommandAllocator().allocateCommandBuffer();
+  auto *cmd = cmd_allocator.allocateCommandBuffer();
 
   auto same_src_and_dsts = ranges::views::chunk_by(
       m_buffer_copies, [](const BufferCopy &lhs, const BufferCopy &rhs) {
@@ -52,9 +53,12 @@ void ResourceUploader::upload_data() {
     cmd->copy_buffer(copy_range.front().src, copy_range.front().dst, regions);
   }
 
+  cmd->close();
+
   m_buffer_copies.clear();
 
   // TODO: submit command buffer and wait for signal in render graph
+  todo();
 }
 
 } // namespace ren

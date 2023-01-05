@@ -26,7 +26,7 @@ public:
         m_present_semaphore(config.present_semaphore) {}
   class Builder;
 
-  void execute() override;
+  void execute(CommandAllocator &cmd_allocator) override;
 };
 
 class VulkanRenderGraph::Builder final : public RenderGraph::Builder {

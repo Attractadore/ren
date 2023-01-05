@@ -26,7 +26,6 @@ private:
   DirectX12CommandBuffer *allocateDirectX12CommandBufferImpl();
 
 public:
-  DirectX12CommandAllocator() = default;
   DirectX12CommandAllocator(DirectX12Device &device);
   DirectX12CommandAllocator(const DirectX12CommandAllocator &) = delete;
   DirectX12CommandAllocator(DirectX12CommandAllocator &&);
@@ -35,13 +34,13 @@ public:
   DirectX12CommandAllocator &operator=(DirectX12CommandAllocator &&);
   ~DirectX12CommandAllocator() = default;
 
+  void begin_frame() override;
+  void end_frame() override;
+
   DirectX12Device *getDevice() { return m_device; }
 
   DirectX12CommandBuffer *allocateDirectX12CommandBuffer();
   CommandBuffer *allocateCommandBuffer() override;
   Descriptor allocateDescriptors(unsigned count);
-
-  void begin_frame();
-  void end_frame();
 };
 } // namespace ren
