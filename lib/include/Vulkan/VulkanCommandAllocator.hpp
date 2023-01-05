@@ -11,7 +11,7 @@ class VulkanCommandBuffer;
 
 class VulkanCommandAllocator final : public CommandAllocator {
   VulkanDevice *m_device;
-  std::array<VulkanCommandPool, c_pipeline_depth> m_frame_pools;
+  StaticVector<VulkanCommandPool, c_pipeline_depth> m_frame_pools;
   StableVector<VulkanCommandBuffer> m_frame_cmd_buffers;
   unsigned m_frame_index = 0;
 

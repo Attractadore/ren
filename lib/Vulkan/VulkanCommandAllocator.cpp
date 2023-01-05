@@ -2,10 +2,15 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 
+#include <range/v3/view.hpp>
+
 namespace ren {
 VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device) {
   m_device = &device;
-  ranges::generate(m_frame_pools, [&] { return VulkanCommandPool(*m_device); });
+  m_frame_pools =
+      ranges::views::generate_n([&] { return VulkanCommandPool(*m_device); },
+                                c_pipeline_depth) |
+      ranges::to<decltype(m_frame_pools)>;
 }
 
 VulkanCommandBuffer *VulkanCommandAllocator::allocateVulkanCommandBuffer() {

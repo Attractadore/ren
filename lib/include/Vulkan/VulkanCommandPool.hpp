@@ -21,7 +21,6 @@ private:
   void destroy();
 
 public:
-  VulkanCommandPool() = default;
   VulkanCommandPool(VulkanDevice &device);
   VulkanCommandPool(const VulkanCommandPool &) = delete;
   VulkanCommandPool(VulkanCommandPool &&other);
