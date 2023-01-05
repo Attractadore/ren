@@ -31,6 +31,18 @@ REN_MAP_FIELD(Filter::Nearest, VK_FILTER_NEAREST);
 REN_MAP_FIELD(Filter::Linear, VK_FILTER_LINEAR);
 REN_MAP_ENUM(getVkFilter, Filter, REN_FILTERS);
 
+REN_MAP_TYPE(ShaderStage, VkShaderStageFlagBits);
+REN_ENUM_FLAGS(VkShaderStageFlagBits, VkShaderStageFlags);
+REN_MAP_FIELD(ShaderStage::Vertex, VK_SHADER_STAGE_VERTEX_BIT);
+REN_MAP_FIELD(ShaderStage::Fragment, VK_SHADER_STAGE_FRAGMENT_BIT);
+REN_MAP_FIELD(ShaderStage::Compute, VK_SHADER_STAGE_COMPUTE_BIT);
+REN_MAP_ENUM_AND_FLAGS(getVkShaderStage, ShaderStage, REN_SHADER_STAGES);
+
+REN_MAP_TYPE(IndexFormat, VkIndexType);
+REN_MAP_FIELD(IndexFormat::U16, VK_INDEX_TYPE_UINT16);
+REN_MAP_FIELD(IndexFormat::U32, VK_INDEX_TYPE_UINT32);
+REN_MAP_ENUM(getVkIndexType, IndexFormat, REN_INDEX_FORMATS);
+
 class VulkanDevice;
 class VulkanCommandAllocator;
 
@@ -68,32 +80,22 @@ public:
     blit(getVkImage(src), getVkImage(dst), asSpan(region), VK_FILTER_LINEAR);
   }
 
-  void set_viewports(std::span<const Viewport> viewports) override { vkTodo(); }
+  void set_viewports(std::span<const Viewport> viewports) override;
 
-  void set_scissor_rects(std::span<const ScissorRect> rects) override {
-    vkTodo();
-  }
+  void set_scissor_rects(std::span<const ScissorRect> rects) override;
 
-  void bind_graphics_pipeline(const PipelineRef &pipeline) override {
-    vkTodo();
-  }
+  void bind_graphics_pipeline(const PipelineRef &pipeline) override;
 
   void set_graphics_push_constants(const PipelineSignature &signature,
+                                   ShaderStageFlags stages,
                                    std::span<const std::byte> data,
-                                   unsigned offset) override {
-    vkTodo();
-  }
+                                   unsigned offset) override;
 
-  void bind_index_buffer(const BufferRef &buffer,
-                         IndexFormat format = IndexFormat::U32) override {
-    vkTodo();
-  }
+  void bind_index_buffer(const BufferRef &buffer, IndexFormat format) override;
 
   void draw_indexed(unsigned num_indices, unsigned num_instances,
                     unsigned first_index, int vertex_offset,
-                    unsigned first_instance) override {
-    vkTodo();
-  }
+                    unsigned first_instance) override;
 
   void wait(SyncObject sync, PipelineStageFlags stages);
   void signal(SyncObject sync, PipelineStageFlags stages);

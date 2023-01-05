@@ -267,7 +267,8 @@ void Scene::draw() {
                         ? addr + mesh.colors_offset
                         : 0,
       };
-      cmd.set_graphics_push_constants(signature, data);
+      cmd.set_graphics_push_constants(
+          signature, ShaderStage::Vertex | ShaderStage::Fragment, data);
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);

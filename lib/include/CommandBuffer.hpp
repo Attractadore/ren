@@ -90,11 +90,14 @@ public:
   virtual void bind_graphics_pipeline(const PipelineRef &pipeline) = 0;
 
   virtual void set_graphics_push_constants(const PipelineSignature &signature,
+                                           ShaderStageFlags stages,
                                            std::span<const std::byte> data,
                                            unsigned offset = 0) = 0;
   void set_graphics_push_constants(const PipelineSignature &signature,
-                                   const auto &data, unsigned offset = 0) {
-    set_graphics_push_constants(signature, std::as_bytes(asSpan(data)), offset);
+                                   ShaderStageFlags stages, const auto &data,
+                                   unsigned offset = 0) {
+    set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),
+                                offset);
   }
 
   virtual void bind_index_buffer(const BufferRef &buffer,

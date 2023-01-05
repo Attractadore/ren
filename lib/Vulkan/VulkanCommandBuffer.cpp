@@ -3,6 +3,7 @@
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
+#include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
@@ -110,6 +111,63 @@ void VulkanCommandBuffer::blit(VkImage src, VkImage dst,
                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
+}
+
+void VulkanCommandBuffer::set_viewports(std::span<const Viewport> viewports) {
+  auto vk_viewports = viewports | map([](const Viewport &viewport) {
+                        return VkViewport{
+                            .x = viewport.x,
+                            .y = viewport.y,
+                            .width = viewport.width,
+                            .height = viewport.height,
+                            .minDepth = viewport.min_depth,
+                            .maxDepth = viewport.max_depth,
+                        };
+                      }) |
+                      ranges::to<SmallVector<VkViewport, 8>>;
+  m_device->CmdSetViewportWithCount(m_cmd_buffer, vk_viewports.size(),
+                                    vk_viewports.data());
+}
+
+void VulkanCommandBuffer::set_scissor_rects(
+    std::span<const ScissorRect> rects) {
+  auto vk_rects = rects | map([](const ScissorRect &rect) {
+                    return VkRect2D{
+                        .offset = {rect.x, rect.y},
+                        .extent = {rect.width, rect.height},
+                    };
+                  }) |
+                  ranges::to<SmallVector<VkRect2D, 8>>;
+  m_device->CmdSetScissorWithCount(m_cmd_buffer, vk_rects.size(),
+                                   vk_rects.data());
+}
+
+void VulkanCommandBuffer::bind_graphics_pipeline(const PipelineRef &pipeline) {
+  m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            getVkPipeline(pipeline));
+}
+
+void VulkanCommandBuffer::set_graphics_push_constants(
+    const PipelineSignature &signature, ShaderStageFlags stages,
+    std::span<const std::byte> data, unsigned offset) {
+  assert(not stages.isSet(ShaderStage::Compute));
+  m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),
+                             getVkShaderStageFlags(stages), offset, data.size(),
+                             data.data());
+}
+
+void VulkanCommandBuffer::bind_index_buffer(const BufferRef &buffer,
+                                            IndexFormat format) {
+  m_device->CmdBindIndexBuffer(m_cmd_buffer, getVkBuffer(buffer),
+                               buffer.desc.offset, getVkIndexType(format));
+}
+
+void VulkanCommandBuffer::draw_indexed(unsigned num_indices,
+                                       unsigned num_instances,
+                                       unsigned first_index, int vertex_offset,
+                                       unsigned first_instance) {
+  m_device->CmdDrawIndexed(m_cmd_buffer, num_indices, num_instances,
+                           first_index, vertex_offset, first_instance);
 }
 
 namespace {

@@ -50,13 +50,13 @@ public:
   }
 
   void set_graphics_push_constants(const PipelineSignature &signature,
+                                   ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override {
     dx12Unimplemented();
   }
 
-  void bind_index_buffer(const BufferRef &buffer,
-                         IndexFormat format = IndexFormat::U32) override {
+  void bind_index_buffer(const BufferRef &buffer, IndexFormat format) override {
     dx12Unimplemented();
   }
 
