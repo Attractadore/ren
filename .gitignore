@@ -5,3 +5,4 @@
 *_dxgi.log
 # VKD3D log files
 vkd3d-proton.cache.write
+vkd3d-proton.cache
