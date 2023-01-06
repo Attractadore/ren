@@ -41,6 +41,6 @@ public:
 
   DirectX12CommandBuffer *allocateDirectX12CommandBuffer();
   CommandBuffer *allocateCommandBuffer() override;
-  Descriptor allocateDescriptors(unsigned count);
+  DirectX12Descriptor allocateDescriptors(unsigned count);
 };
 } // namespace ren

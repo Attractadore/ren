@@ -1,12 +1,12 @@
 #include "DirectX12/DirectX12Swapchain.hpp"
-#include "BlitToSwapchain.h"
+#include "BlitToSwapchainShader.h"
 #include "DirectX12/DXGIFormat.hpp"
 #include "DirectX12/DeviceHandle.inl"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12Device.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
 #include "DirectX12/Errors.hpp"
-#include "FullScreenRect.h"
+#include "FullScreenRectShader.h"
 
 namespace ren {
 namespace {

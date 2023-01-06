@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "CommandBuffer.hpp"
 #include "Def.hpp"
+#include "DescriptorSetAllocator.hpp"
 #include "Material.hpp"
 #include "MaterialAllocator.hpp"
 #include "Mesh.hpp"
@@ -60,7 +61,20 @@ class RenScene {
 
   std::unique_ptr<CommandAllocator> m_cmd_allocator;
 
-  std::unique_ptr<PipelineCompiler> m_pipeline_compiler;
+  union {
+    DescriptorSetAllocator m_descriptor_set_allocator;
+  };
+
+  DescriptorSetLayout m_persistent_descriptor_set_layout;
+  DescriptorPool m_persistent_descriptor_pool;
+  DescriptorSet m_persistent_descriptor_set;
+  BufferRef m_materials_buffer = {};
+
+  DescriptorSetLayout m_global_descriptor_set_layout;
+
+  union {
+    ren::MaterialPipelineCompiler m_compiler;
+  };
 
   ren::ResourceUploader m_resource_uploader;
 

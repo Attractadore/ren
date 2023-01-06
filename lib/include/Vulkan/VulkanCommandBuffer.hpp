@@ -60,7 +60,7 @@ public:
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
+      Optional<DepthStencilTargetConfig> depth_stencil_target) override;
   void endRendering() override;
 
   void copy_buffer(const BufferRef &src, const BufferRef &dst,
@@ -86,7 +86,12 @@ public:
 
   void bind_graphics_pipeline(const PipelineRef &pipeline) override;
 
-  void set_graphics_push_constants(const PipelineSignature &signature,
+  void
+  bind_graphics_descriptor_sets(const PipelineSignatureRef &signature,
+                                unsigned first_set,
+                                std::span<const DescriptorSet> sets) override;
+
+  void set_graphics_push_constants(const PipelineSignatureRef &signature,
                                    ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override;

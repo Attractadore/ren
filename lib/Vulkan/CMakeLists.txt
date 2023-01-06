@@ -22,11 +22,13 @@ if(REN_VULKAN_VALIDATION)
   target_compile_definitions(VulkanDevice PRIVATE REN_VULKAN_VALIDATION)
 endif()
 
-add_library(VulkanPipelineCompiler VulkanPipelineCompiler.cpp)
-target_link_libraries(
-  VulkanPipelineCompiler
-  PRIVATE VulkanDevice unofficial::spirv-reflect::spirv-reflect
-          VertexShaderSpvReflect FragmentShaderSpvReflect)
+if(0)
+  add_library(VulkanPipelineCompiler VulkanPipelineCompiler.cpp)
+  target_link_libraries(
+    VulkanPipelineCompiler
+    PRIVATE VulkanDevice unofficial::spirv-reflect::spirv-reflect
+            VertexShaderSpvReflect FragmentShaderSpvReflect)
+endif()
 
 add_library(
   ren-vk ren-vk.cpp VulkanCommandAllocator.cpp VulkanCommandBuffer.cpp
@@ -36,7 +38,7 @@ target_sources(ren-vk PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
 target_link_libraries(
   ren-vk
   PUBLIC ren::ren
-  PRIVATE VulkanDevice VulkanPipelineCompiler)
+  PRIVATE VulkanDevice)
 
 if(BUILD_SHARED_LIBS)
   set_target_properties(ren-vk PROPERTIES EXPORT_NAME "vk")

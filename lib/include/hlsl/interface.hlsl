@@ -1,6 +1,8 @@
+#pragma once
 #include "cpp.hlsl"
 
-namespace ren {
+REN_NAMESPACE_BEGIN
+
 struct GlobalData {
   float4x4 proj_view;
 };
@@ -16,7 +18,11 @@ struct ModelData {
   uint64_t colors;
 };
 
+constexpr uint GLOBAL_SET = 0;
+constexpr uint MATERIALS_SLOT = 1;
+
+constexpr uint SCENE_SET = 1;
 constexpr uint GLOBAL_CB_SLOT = 0;
 constexpr uint MATRICES_SLOT = 1;
-constexpr uint MATERIALS_SLOT = 2;
-} // namespace ren
+
+REN_NAMESPACE_END

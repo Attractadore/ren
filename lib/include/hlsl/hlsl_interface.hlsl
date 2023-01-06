@@ -1,6 +1,8 @@
+#pragma once
 #include "interface.hlsl"
 
-namespace ren {
+REN_NAMESPACE_BEGIN
+
 #if REN_HLSL_VULKAN
 #define PUSH_CONSTANTS(type, name)                                             \
   cbuffer PushConstants { [[vk::push_constant]] type name; }
@@ -16,4 +18,17 @@ template <typename T> T ptr_load(uint64_t base, uint idx) {
   return vk::RawBufferLoad(base + idx * sizeof(T));
 }
 #endif
-} // namespace ren
+
+struct VS_IN {
+  uint index : SV_VertexID;
+};
+
+struct VS_OUT {
+  float4 position : SV_Position;
+#if VERTEX_COLOR
+  float3 color : COLOR0;
+#endif
+};
+typedef VS_OUT PS_IN;
+
+REN_NAMESPACE_END

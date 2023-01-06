@@ -159,11 +159,6 @@ auto DirectX12Device::create_command_allocator(QueueType queue_type)
   return std::make_unique<DirectX12CommandAllocator>(*this);
 }
 
-auto DirectX12Device::create_pipeline_compiler()
-    -> std::unique_ptr<PipelineCompiler> {
-  dx12Unimplemented();
-}
-
 Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
   D3D12_RESOURCE_DESC resource_desc = {
       .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,

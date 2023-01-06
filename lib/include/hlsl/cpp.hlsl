@@ -5,7 +5,15 @@
 #include <cstdint>
 #endif
 
-namespace ren {
+#if __cplusplus
+#define REN_NAMESPACE_BEGIN namespace ren {
+#define REN_NAMESPACE_END } 
+#else
+#define REN_NAMESPACE_BEGIN
+#define REN_NAMESPACE_END
+#endif
+
+REN_NAMESPACE_BEGIN
 
 #if __HLSL_VERSION
 #if __spirv__
@@ -48,4 +56,4 @@ auto lerp(const auto &x, const auto &y, const auto &a) {
 #define constexpr static const
 #endif
 
-} // namespace ren
+REN_NAMESPACE_END

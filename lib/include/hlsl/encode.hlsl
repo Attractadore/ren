@@ -1,7 +1,8 @@
 #pragma once
 #include "cpp.hlsl"
 
-namespace ren {
+REN_NAMESPACE_BEGIN
+
 uint encode_float(float f, uint bits, float from = 0.0f, float to = 1.0f) {
   assert(from <= f && f <= to);
   return (f - from) / (to - from) * ((uint(1) << bits) - 1);
@@ -37,4 +38,5 @@ inline float3 decode_color(color_t color) {
                 decode_float(green, color_green_bits),
                 decode_float(blue, color_blue_bits));
 }
-} // namespace ren
+
+REN_NAMESPACE_END

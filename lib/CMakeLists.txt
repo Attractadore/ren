@@ -51,8 +51,15 @@ if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
 
-add_library(ren ren.cpp RenderGraph.cpp Scene.cpp ResourceUploader.cpp
-                PipelineCompiler.cpp)
+add_library(
+  ren
+  ren.cpp
+  RenderGraph.cpp
+  Scene.cpp
+  ResourceUploader.cpp
+  Pipeline.cpp
+  DescriptorSetAllocator.cpp
+  PipelineCompiler.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
 target_link_libraries(ren PRIVATE Support)

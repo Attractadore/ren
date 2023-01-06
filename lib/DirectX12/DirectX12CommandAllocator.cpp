@@ -78,7 +78,8 @@ void DirectX12CommandAllocator::begin_frame() {
 
 void DirectX12CommandAllocator::end_frame() {}
 
-Descriptor DirectX12CommandAllocator::allocateDescriptors(unsigned count) {
+DirectX12Descriptor
+DirectX12CommandAllocator::allocateDescriptors(unsigned count) {
   size_t offset =
       (m_frame_index * c_descriptor_heap_size + m_allocated_descriptors) *
       m_descriptor_size;

@@ -24,7 +24,7 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
 void VulkanCommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
     SmallVector<RenderTargetConfig, 8> render_targets,
-    std::optional<DepthStencilTargetConfig> depth_stencil_target) {
+    Optional<DepthStencilTargetConfig> depth_stencil_target) {
 
   auto color_attachments =
       render_targets |
@@ -147,8 +147,14 @@ void VulkanCommandBuffer::bind_graphics_pipeline(const PipelineRef &pipeline) {
                             getVkPipeline(pipeline));
 }
 
+void VulkanCommandBuffer::bind_graphics_descriptor_sets(
+    const PipelineSignatureRef &signature, unsigned first_set,
+    std::span<const DescriptorSet> sets) {
+  vkTodo();
+}
+
 void VulkanCommandBuffer::set_graphics_push_constants(
-    const PipelineSignature &signature, ShaderStageFlags stages,
+    const PipelineSignatureRef &signature, ShaderStageFlags stages,
     std::span<const std::byte> data, unsigned offset) {
   assert(not stages.isSet(ShaderStage::Compute));
   m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),

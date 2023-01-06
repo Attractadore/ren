@@ -1,10 +1,11 @@
 #pragma once
-#include "Buffer.hpp"
 #include "DeleteQueue.hpp"
+#include "Descriptors.hpp"
+#include "Pipeline.hpp"
 #include "RenderGraph.hpp"
 
 namespace ren {
-class PipelineCompiler;
+class MaterialPipelineCompiler;
 
 enum class QueueType {
   Graphics,
@@ -27,8 +28,53 @@ struct RenDevice {
   create_command_allocator(QueueType queue_type = QueueType::Graphics)
       -> std::unique_ptr<CommandAllocator> = 0;
 
-  virtual auto create_pipeline_compiler()
-      -> std::unique_ptr<PipelineCompiler> = 0;
+  [[nodiscard]] virtual auto
+  create_descriptor_pool(const DescriptorPoolDesc &desc) -> DescriptorPool = 0;
+
+  virtual void reset_descriptor_pool(const DescriptorPoolRef &pool) = 0;
+
+  [[nodiscard]] virtual auto
+  create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
+      -> DescriptorSetLayout = 0;
+
+  [[nodiscard]] virtual auto
+  allocate_descriptor_sets(const DescriptorPoolRef &pool,
+                           std::span<const DescriptorSetLayoutRef> layouts,
+                           std::span<DescriptorSet> sets) -> bool = 0;
+
+  [[nodiscard]] auto
+  allocate_descriptor_set(const DescriptorPoolRef &pool,
+                          const DescriptorSetLayoutRef &layout)
+      -> Optional<DescriptorSet> {
+    DescriptorSet set;
+    auto success = allocate_descriptor_sets(pool, {&layout, 1}, {&set, 1});
+    if (success) {
+      return std::move(set);
+    }
+    return None;
+  }
+
+  [[nodiscard]] auto
+  allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
+      -> std::pair<DescriptorPool, DescriptorSet> {
+    DescriptorPoolDesc pool_desc = {.set_count = 1};
+    if (layout.desc.flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
+      pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;
+    }
+    for (const auto &binding : layout.desc.bindings) {
+      pool_desc.descriptor_counts[binding.type] += binding.count;
+    }
+    auto pool = create_descriptor_pool(pool_desc);
+    auto set = allocate_descriptor_set(pool, layout);
+    assert(set);
+    return {std::move(pool), std::move(set.value())};
+  }
+
+  virtual void
+  write_descriptor_sets(std::span<const DescriptorSetWriteConfig> configs) = 0;
+  void write_descriptor_set(const DescriptorSetWriteConfig &config) {
+    write_descriptor_sets({&config, 1});
+  }
 
   virtual Buffer create_buffer(const BufferDesc &desc) = 0;
   virtual auto get_buffer_device_address(const BufferRef &buffer) const
@@ -37,6 +83,11 @@ struct RenDevice {
   virtual Texture createTexture(const TextureDesc &desc) = 0;
 
   virtual SyncObject createSyncObject(const SyncDesc &desc) = 0;
+
+  [[nodiscard]] virtual auto get_shader_blob_suffix() const
+      -> std::string_view = 0;
+  [[nodiscard]] virtual auto
+  create_graphics_pipeline(const GraphicsPipelineDesc &desc) -> Pipeline = 0;
 
   virtual void push_to_delete_queue(QueueCustomDeleter<Device> deleter) = 0;
 
