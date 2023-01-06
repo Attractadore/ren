@@ -1,10 +1,8 @@
 #pragma once
+#include "ShaderStages.hpp"
 #include "Support/Ref.hpp"
 
 namespace ren {
-
-#define REN_SHADER_STAGES (Vertex)(Fragment)(Compute)
-REN_DEFINE_FLAGS_ENUM(ShaderStage, REN_SHADER_STAGES);
 
 struct PipelineDesc {};
 

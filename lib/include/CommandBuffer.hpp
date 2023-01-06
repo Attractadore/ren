@@ -1,15 +1,15 @@
 #pragma once
 #include "Buffer.hpp"
+#include "Descriptors.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
 #include "PipelineStages.hpp"
 #include "Support/Enum.hpp"
+#include "Support/Optional.hpp"
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
 #include "Sync.hpp"
 #include "Texture.hpp"
-
-#include <optional>
 
 namespace ren {
 #define REN_RENDER_TARGET_LOAD_OPS (Clear)(Load)(Discard)(None)
@@ -66,7 +66,7 @@ public:
 
   virtual void beginRendering(int x, int y, unsigned width, unsigned height,
                               SmallVector<RenderTargetConfig, 8> rts,
-                              std::optional<DepthStencilTargetConfig> dst) = 0;
+                              Optional<DepthStencilTargetConfig> dst) = 0;
   void beginRendering(Texture rt) {
     beginRendering(0, 0, rt.desc.width, rt.desc.height,
                    {{.rtv = {.texture = std::move(rt)}}}, {});
@@ -89,11 +89,20 @@ public:
 
   virtual void bind_graphics_pipeline(const PipelineRef &pipeline) = 0;
 
-  virtual void set_graphics_push_constants(const PipelineSignature &signature,
-                                           ShaderStageFlags stages,
-                                           std::span<const std::byte> data,
-                                           unsigned offset = 0) = 0;
-  void set_graphics_push_constants(const PipelineSignature &signature,
+  virtual void
+  bind_graphics_descriptor_sets(const PipelineSignatureRef &signature,
+                                unsigned first_set,
+                                std::span<const DescriptorSetRef> sets) = 0;
+  void bind_graphics_descriptor_set(const PipelineSignatureRef &signature,
+                                    unsigned first_set,
+                                    const DescriptorSetRef &set) {
+    bind_graphics_descriptor_sets(signature, first_set, asSpan(set));
+  }
+
+  virtual void set_graphics_push_constants(
+      const PipelineSignatureRef &signature, ShaderStageFlags stages,
+      std::span<const std::byte> data, unsigned offset = 0) = 0;
+  void set_graphics_push_constants(const PipelineSignatureRef &signature,
                                    ShaderStageFlags stages, const auto &data,
                                    unsigned offset = 0) {
     set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),
