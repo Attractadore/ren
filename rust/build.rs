@@ -29,33 +29,42 @@ fn main() {
     let include_dir = root_dir.join("include");
     let lib_dir = install_dir.join("lib");
 
-    Command::new("cmake")
+    let status = Command::new("cmake")
         .arg("--preset")
         .arg(&cmake_preset)
         .arg("-S")
         .arg(&root_dir)
         .arg("-B")
         .arg(&build_dir)
-        .status()
-        .expect("Failed to run CMake configure step");
+        .status();
 
-    Command::new("cmake")
+    if !status.ok().map_or(false, |s| s.success()) {
+        panic!("Failed to run CMake configure step");
+    }
+
+    let status = Command::new("cmake")
         .arg("--build")
         .arg(&build_dir)
         .arg("--config")
         .arg(cmake_build_type)
-        .status()
-        .expect("Failed to run CMake build step");
+        .status();
 
-    Command::new("cmake")
+    if !status.ok().map_or(false, |s| s.success()) {
+        panic!("Failed to run CMake build step");
+    }
+
+    let status = Command::new("cmake")
         .arg("--install")
         .arg(&build_dir)
         .arg("--config")
         .arg(cmake_build_type)
         .arg("--prefix")
         .arg(&install_dir)
-        .status()
-        .expect("Failed to run CMake install step");
+        .status();
+
+    if !status.ok().map_or(false, |s| s.success()) {
+        panic!("Failed to run CMake install step");
+    }
 
     let ren_h = "ren/ren.h";
     let ren_lib = "ren";
