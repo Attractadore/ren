@@ -21,28 +21,36 @@ struct BufferDesc {
   unsigned offset = 0;
   unsigned size;
   void *ptr = nullptr;
+
+  bool operator==(const BufferDesc &other) const = default;
 };
 
 namespace detail {
 template <typename B> class BufferMixin {
-  const B &get() const { return *static_cast<const B *>(this); }
-  B &get() { return *static_cast<B *>(this); }
+  const B &impl() const { return *static_cast<const B *>(this); }
+  B &impl() { return *static_cast<B *>(this); }
 
 public:
   template <typename T = std::byte> T *map(unsigned offset = 0) const {
-    if (get().desc.ptr) {
+    if (impl().desc.ptr) {
       return reinterpret_cast<T *>(
-          reinterpret_cast<std::byte *>(get().desc.ptr) +
-          (get().desc.offset + offset));
+          reinterpret_cast<std::byte *>(impl().desc.ptr) +
+          (impl().desc.offset + offset));
     }
     return nullptr;
   }
 
   template <typename T = std::byte>
   std::span<T> map(unsigned offset, unsigned count) const {
-    assert(get().desc.ptr);
+    assert(impl().desc.ptr);
     return {map<T>(offset), count};
   }
+
+  bool operator==(const BufferMixin &other) const {
+    const auto &lhs = impl();
+    const auto &rhs = other.impl();
+    return lhs.get() == rhs.get() and lhs.desc == rhs.desc;
+  };
 };
 } // namespace detail
 

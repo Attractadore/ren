@@ -9,7 +9,6 @@
 #include "VulkanDeleteQueue.hpp"
 #include "VulkanDispatchTable.hpp"
 #include "VulkanErrors.hpp"
-#include "VulkanPipelineCompiler.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -90,7 +89,27 @@ public:
   auto create_command_allocator(QueueType queue_type)
       -> std::unique_ptr<CommandAllocator> override;
 
-  auto create_pipeline_compiler() -> std::unique_ptr<PipelineCompiler> override;
+  auto create_descriptor_pool(const DescriptorPoolDesc &desc)
+      -> DescriptorPool override;
+
+  void reset_descriptor_pool(const DescriptorPoolRef &pool) override;
+
+  auto create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
+      -> DescriptorSetLayout override;
+
+  auto allocate_descriptor_sets(const DescriptorPoolRef &pool,
+                                std::span<const DescriptorSetLayoutRef> layouts,
+                                std::span<DescriptorSet> sets) -> bool override;
+
+  void write_descriptor_sets(
+      std::span<const DescriptorSetWriteConfig> configs) override;
+
+  auto get_shader_blob_suffix() const -> std::string_view override {
+    return ".spv";
+  }
+
+  auto create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+      -> Pipeline override;
 
   Buffer create_buffer(const BufferDesc &desc) override;
   auto get_buffer_device_address(const BufferRef &buffer) const

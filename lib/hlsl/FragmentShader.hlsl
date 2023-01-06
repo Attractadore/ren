@@ -1,18 +1,12 @@
 #include "hlsl_interface.hlsl"
 
-[[vk::binding(ren::MATERIALS_SLOT)]] StructuredBuffer<ren::MaterialData>
+[[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<MaterialData>
     g_materials;
 
-PUSH_CONSTANTS(ren::ModelData, g_model);
-
-struct PS_IN {
-#if VERTEX_COLOR
-  float3 color : COLOR0;
-#endif
-};
+PUSH_CONSTANTS(ModelData, g_model);
 
 float4 main(PS_IN ps_in) : SV_Target {
-  ren::MaterialData material = g_materials[g_model.material_index];
+  MaterialData material = g_materials[g_model.material_index];
 
   float3 color;
 #if CONST_COLOR

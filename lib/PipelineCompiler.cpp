@@ -1,5 +1,6 @@
 #include "PipelineCompiler.hpp"
 #include "Config.hpp"
+#include "Device.hpp"
 
 #include <fmt/format.h>
 
@@ -30,41 +31,59 @@ const char *get_albedo_str(MaterialAlbedo albedo) {
 }
 
 std::string get_vertex_shader_path(const MaterialConfig &config,
-                                   const char *blob_suffix) {
+                                   std::string_view blob_suffix) {
   return fmt::format("{0}/VertexShader_{1}{2}", c_assets_dir,
                      get_albedo_str(config.albedo), blob_suffix);
 }
 
 std::string get_fragment_shader_path(const MaterialConfig &config,
-                                     const char *blob_suffix) {
+                                     std::string_view blob_suffix) {
   return fmt::format("{0}/FragmentShader_{1}{2}", c_assets_dir,
                      get_albedo_str(config.albedo), blob_suffix);
 }
 
+struct PipelineConfig {
+  PipelineSignatureRef signature;
+  std::span<const std::byte> vs_code;
+  std::span<const std::byte> fs_code;
+  Format rt_format;
+};
+
+Pipeline compile_pipeline(Device &device, const PipelineConfig &config) {
+  return GraphicsPipelineBuilder(device)
+      .set_signature(config.signature)
+      .set_vertex_shader(config.vs_code)
+      .set_fragment_shader(config.fs_code)
+      .add_render_target(config.rt_format)
+      .build();
+}
 } // namespace
 
-PipelineCompiler::PipelineCompiler(const char *blob_suffix,
-                                   PipelineSignature signature)
-    : m_blob_suffix(blob_suffix), m_signature(std::move(signature)) {}
+MaterialPipelineCompiler::MaterialPipelineCompiler(Device &device,
+                                                   PipelineSignature signature)
+    : m_device(&device), m_signature(std::move(signature)) {}
 
-auto PipelineCompiler::get_material_pipeline(const MaterialConfig &config)
-    -> const Pipeline & {
+auto MaterialPipelineCompiler::get_material_pipeline(
+    const MaterialConfig &config, Format rt_format) -> const Pipeline & {
   auto it = m_pipelines.find(config);
   if (it != m_pipelines.end()) {
     return it->second;
   }
 
-  auto vs_path = get_vertex_shader_path(config, m_blob_suffix);
-  auto fs_path = get_fragment_shader_path(config, m_blob_suffix);
-  load_shader_code(vs_path.c_str(), m_vs_code);
-  load_shader_code(fs_path.c_str(), m_fs_code);
+  auto blob_suffix = m_device->get_shader_blob_suffix();
+
+  auto vs = get_vertex_shader_path(config, blob_suffix);
+  auto fs = get_fragment_shader_path(config, blob_suffix);
+  load_shader_code(vs.c_str(), m_vs_code);
+  load_shader_code(fs.c_str(), m_fs_code);
 
   PipelineConfig pipeline_config = {
-      .rt_format = config.rt_format,
+      .signature = m_signature,
       .vs_code = m_vs_code,
       .fs_code = m_fs_code,
+      .rt_format = rt_format,
   };
 
-  return m_pipelines[config] = compile_pipeline(pipeline_config);
+  return m_pipelines[config] = compile_pipeline(*m_device, pipeline_config);
 }
 } // namespace ren

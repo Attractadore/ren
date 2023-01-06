@@ -3,6 +3,7 @@
 #include "Support/Queue.hpp"
 #include "Support/TypeMap.hpp"
 
+#include <cassert>
 #include <functional>
 
 namespace ren {

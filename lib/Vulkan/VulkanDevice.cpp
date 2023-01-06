@@ -6,6 +6,7 @@
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
+#include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Vulkan/VulkanTexture.hpp"
@@ -166,9 +167,30 @@ auto VulkanDevice::create_command_allocator(QueueType queue_type)
   return std::make_unique<VulkanCommandAllocator>(*this);
 }
 
-auto VulkanDevice::create_pipeline_compiler()
-    -> std::unique_ptr<PipelineCompiler> {
-  return std::make_unique<VulkanPipelineCompiler>(*this);
+auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
+    -> DescriptorPool {
+  vkTodo();
+}
+
+void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
+  vkTodo();
+}
+
+auto VulkanDevice::create_descriptor_set_layout(
+    const DescriptorSetLayoutDesc &desc) -> DescriptorSetLayout {
+  vkTodo();
+}
+
+auto VulkanDevice::allocate_descriptor_sets(
+    const DescriptorPoolRef &pool,
+    std::span<const DescriptorSetLayoutRef> layouts,
+    std::span<DescriptorSet> sets) -> bool {
+  vkTodo();
+}
+
+void VulkanDevice::write_descriptor_sets(
+    std::span<const DescriptorSetWriteConfig> configs) {
+  vkTodo();
 }
 
 Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
@@ -407,4 +429,145 @@ void VulkanDevice::queueSubmitAndSignal(VkQueue queue,
                              VK_NULL_HANDLE),
                 "Vulkan: Failed to submit work to queue");
 }
+
+namespace {
+VkShaderModule create_shader_module(VulkanDevice &device,
+                                    std::span<const std::byte> code) {
+  VkShaderModuleCreateInfo module_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = code.size_bytes(),
+      .pCode = reinterpret_cast<const uint32_t *>(code.data()),
+  };
+  VkShaderModule module;
+  throwIfFailed(device.CreateShaderModule(&module_info, &module),
+                "Vulkan: Failed to create shader module");
+  return module;
+}
+} // namespace
+
+REN_MAP_TYPE(PrimitiveTopologyType, VkPrimitiveTopology);
+REN_MAP_FIELD(PrimitiveTopologyType::Points, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+REN_MAP_FIELD(PrimitiveTopologyType::Lines, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+REN_MAP_FIELD(PrimitiveTopologyType::Triangles,
+              VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopologyType,
+             REN_PRIMITIVE_TOPOLOGY_TYPES);
+
+auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+    -> Pipeline {
+  auto rt_formats = desc.render_targets |
+                    map([](const GraphicsPipelineDesc::RTState &rt) {
+                      return getVkFormat(rt.format);
+                    }) |
+                    ranges::to<SmallVector<VkFormat, 8>>;
+
+  VkPipelineRenderingCreateInfo rendering_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+      .colorAttachmentCount = unsigned(rt_formats.size()),
+      .pColorAttachmentFormats = rt_formats.data(),
+  };
+
+  auto modules =
+      desc.shaders | map([&](const GraphicsPipelineDesc::Shader &shader) {
+        VkShaderModuleCreateInfo module_info = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = shader.code.size_bytes(),
+            .pCode = reinterpret_cast<const uint32_t *>(shader.code.data()),
+        };
+        VkShaderModule module;
+        throwIfFailed(CreateShaderModule(&module_info, &module),
+                      "Vulkan: Failed to create shader module");
+        return module;
+      }) |
+      ranges::to<SmallVector<VkShaderModule, 8>>;
+
+  auto stages =
+      ranges::views::zip(desc.shaders, modules) | map([](const auto &p) {
+        const auto &[shader, module] = p;
+        return VkPipelineShaderStageCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = getVkShaderStage(shader.stage),
+            .module = module,
+            .pName = shader.entry_point.c_str(),
+        };
+      }) |
+      ranges::to<SmallVector<VkPipelineShaderStageCreateInfo, 5>>;
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology = getVkPrimitiveTopology(desc.ia_state.topology_type),
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .lineWidth = 1.0f,
+  };
+
+  VkSampleMask mask = desc.ms_state.sample_mask;
+
+  VkPipelineMultisampleStateCreateInfo multisample_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples = VkSampleCountFlagBits(desc.ms_state.samples),
+      .pSampleMask = &mask,
+  };
+
+  VkPipelineColorBlendAttachmentState blend_attachment_info = {
+      .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+  };
+
+  VkPipelineColorBlendStateCreateInfo blend_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .attachmentCount = 1,
+      .pAttachments = &blend_attachment_info,
+  };
+
+  std::array dynamic_states = {
+      VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+  };
+
+  VkPipelineDynamicStateCreateInfo dynamic_state_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+      .dynamicStateCount = unsigned(dynamic_states.size()),
+      .pDynamicStates = dynamic_states.data(),
+  };
+
+  VkGraphicsPipelineCreateInfo pipeline_info = {
+      .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .pNext = &rendering_info,
+      .stageCount = unsigned(stages.size()),
+      .pStages = stages.data(),
+      .pVertexInputState = &vertex_input_info,
+      .pInputAssemblyState = &input_assembly_info,
+      .pViewportState = &viewport_info,
+      .pRasterizationState = &rasterization_info,
+      .pMultisampleState = &multisample_info,
+      .pColorBlendState = &blend_info,
+      .pDynamicState = &dynamic_state_info,
+      .layout = getVkPipelineLayout(desc.signature),
+  };
+
+  VkPipeline pipeline;
+  throwIfFailed(CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
+                "Vulkan: Failed to create graphics pipeline");
+
+  for (auto module : modules) {
+    DestroyShaderModule(module);
+  }
+
+  return {.handle = AnyRef(pipeline, [this](VkPipeline pipeline) {
+            push_to_delete_queue(pipeline);
+          })};
+}
+
 } // namespace ren

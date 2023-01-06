@@ -30,7 +30,7 @@ public:
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
-      std::optional<DepthStencilTargetConfig> depth_stencil_target) override;
+      Optional<DepthStencilTargetConfig> depth_stencil_target) override;
   using CommandBuffer::beginRendering;
   void endRendering() override;
 
@@ -49,7 +49,14 @@ public:
     dx12Unimplemented();
   }
 
-  void set_graphics_push_constants(const PipelineSignature &signature,
+  void
+  bind_graphics_descriptor_sets(const PipelineSignatureRef &signature,
+                                unsigned first_set,
+                                std::span<const DescriptorSet> sets) override {
+    dx12Unimplemented();
+  }
+
+  void set_graphics_push_constants(const PipelineSignatureRef &signature,
                                    ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override {
@@ -73,6 +80,6 @@ public:
   DirectX12CommandAllocator *getParent() const { return m_parent; }
   DirectX12Device *getDevice() const { return m_device; }
 
-  Descriptor allocateDescriptors(unsigned count);
+  DirectX12Descriptor allocateDescriptors(unsigned count);
 };
 } // namespace ren

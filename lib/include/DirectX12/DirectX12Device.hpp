@@ -5,7 +5,6 @@
 #include "DirectX12CPUDescriptorPool.hpp"
 #include "DirectX12CommandAllocator.hpp"
 #include "DirectX12DeleteQueue.hpp"
-#include "DirectX12PipelineCompiler.hpp"
 #include "Errors.hpp"
 #include "Support/Errors.hpp"
 #include "Support/HashMap.hpp"
@@ -93,8 +92,6 @@ public:
 
   auto create_command_allocator(QueueType queue_type)
       -> std::unique_ptr<CommandAllocator> override;
-
-  auto create_pipeline_compiler() -> std::unique_ptr<PipelineCompiler> override;
 
   void begin_frame() override;
   void end_frame() override;
@@ -185,5 +182,40 @@ public:
   }
 
   void flush();
+
+  auto create_descriptor_pool(const DescriptorPoolDesc &desc)
+      -> DescriptorPool override {
+    dx12Unimplemented();
+  }
+
+  void reset_descriptor_pool(const DescriptorPoolRef &pool) override {
+    dx12Unimplemented();
+  }
+
+  auto create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
+      -> DescriptorSetLayout override {
+    dx12Unimplemented();
+  }
+
+  auto allocate_descriptor_sets(const DescriptorPoolRef &pool,
+                                std::span<const DescriptorSetLayoutRef> layouts,
+                                std::span<DescriptorSet> sets)
+      -> bool override {
+    dx12Unimplemented();
+  }
+
+  void write_descriptor_sets(
+      std::span<const DescriptorSetWriteConfig> configs) override {
+    dx12Unimplemented();
+  }
+
+  auto get_shader_blob_suffix() const -> std::string_view override {
+    return ".dxil";
+  }
+
+  auto create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+      -> Pipeline override {
+    dx12Unimplemented();
+  }
 };
 } // namespace ren

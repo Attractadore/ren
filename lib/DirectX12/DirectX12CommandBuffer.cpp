@@ -40,7 +40,7 @@ void discardTarget(ID3D12GraphicsCommandList *cmd_list,
 void DirectX12CommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
     SmallVector<RenderTargetConfig, 8> render_targets,
-    std::optional<DepthStencilTargetConfig> depth_stencil_target) {
+    Optional<DepthStencilTargetConfig> depth_stencil_target) {
   auto &rp = m_current_render_pass;
   rp.render_area = {
       .left = static_cast<LONG>(x),
@@ -142,7 +142,8 @@ void DirectX12CommandBuffer::reset(ID3D12CommandAllocator *cmd_alloc) {
                 "D3D12: Failed to reset command list");
 }
 
-Descriptor DirectX12CommandBuffer::allocateDescriptors(unsigned count) {
+DirectX12Descriptor
+DirectX12CommandBuffer::allocateDescriptors(unsigned count) {
   return m_parent->allocateDescriptors(count);
 }
 } // namespace ren

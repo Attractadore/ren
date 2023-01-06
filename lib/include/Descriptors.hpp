@@ -1,10 +1,13 @@
 #pragma once
+#include "Buffer.hpp"
 #include "ShaderStages.hpp"
 #include "Support/Enum.hpp"
 #include "Support/Ref.hpp"
 #include "Support/Vector.hpp"
+#include "Texture.hpp"
 
 #include <array>
+#include <variant>
 
 namespace ren {
 
@@ -12,7 +15,7 @@ namespace ren {
 REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
 
 #define REN_DESCRIPTORS                                                        \
-  (Sampler)(SampledImage)(StorageImage)(UniformBuffer)(StorageBuffer)
+  (Sampler)(SampledTexture)(StorageTexture)(UniformBuffer)(StorageBuffer)
 REN_DEFINE_ENUM(Descriptor, REN_DESCRIPTORS);
 
 class DescriptorCounts {
@@ -30,6 +33,7 @@ public:
 
 struct DescriptorPoolDesc {
   DescriptorPoolOptionFlags flags;
+  unsigned set_count;
   DescriptorCounts descriptor_counts;
 };
 
@@ -41,6 +45,10 @@ struct DescriptorPoolRef {
 struct DescriptorPool {
   DescriptorPoolDesc desc;
   AnyRef handle;
+
+  operator DescriptorPoolRef() const {
+    return {.desc = desc, .handle = handle.get()};
+  }
 };
 
 #define REN_DESCRIPTOR_SET_LAYOUT_OPTIONS (UpdateAfterBind)
@@ -74,18 +82,45 @@ struct DescriptorSetLayoutRef {
 struct DescriptorSetLayout {
   DescriptorSetLayoutDesc desc;
   AnyRef handle;
+
+  operator DescriptorSetLayoutRef() const {
+    return {.desc = desc, .handle = handle.get()};
+  }
 };
 
 struct DescriptorSetDesc {};
 
-struct DescriptorSetRef {
-  DescriptorSetDesc desc;
-  void *handle;
-};
-
 struct DescriptorSet {
   DescriptorSetDesc desc;
   AnyRef handle;
+};
+
+struct SamplerDescriptors {};
+
+struct UniformBufferDescriptors {
+  std::span<const BufferRef> buffers;
+};
+
+struct StorageBufferDescriptors {
+  std::span<const BufferRef> buffers;
+};
+
+struct SampledTextureDescriptors {
+  std::span<const SampledTextureView> textures;
+};
+
+struct StorageTextureDescriptors {
+  std::span<const StorageTextureView> textures;
+};
+
+struct DescriptorSetWriteConfig {
+  DescriptorSet set;
+  unsigned binding;
+  unsigned array_index = 0;
+  std::variant<SamplerDescriptors, UniformBufferDescriptors,
+               StorageBufferDescriptors, SampledTextureDescriptors,
+               StorageTextureDescriptors>
+      data;
 };
 
 } // namespace ren

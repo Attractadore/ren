@@ -1,10 +1,12 @@
 #include "Scene.hpp"
 #include "Camera.inl"
 #include "CommandAllocator.hpp"
+#include "Descriptors.hpp"
 #include "Device.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.inl"
 #include "Support/Array.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 #include "hlsl/encode.hlsl"
 
@@ -12,6 +14,10 @@
 #include <range/v3/range.hpp>
 
 using namespace ren;
+
+namespace ren {
+MaterialLayout create_material_layout() { todo(); }
+} // namespace ren
 
 Scene::RenScene(Device *device)
     : m_device(device),
@@ -30,12 +36,40 @@ Scene::RenScene(Device *device)
               .size = 1 << 22,
           }),
       m_material_allocator(*m_device), m_resource_uploader(*m_device) {
+
   m_cmd_allocator = m_device->create_command_allocator();
-  m_pipeline_compiler = m_device->create_pipeline_compiler();
+
+  new (&m_descriptor_set_allocator) DescriptorSetAllocator(*m_device);
+
+  auto material_layout = create_material_layout();
+  m_persistent_descriptor_set_layout =
+      std::move(material_layout.persistent_set);
+  m_global_descriptor_set_layout = std::move(material_layout.global_set);
+  new (&m_compiler) MaterialPipelineCompiler(
+      *m_device, std::move(material_layout.pipeline_signature));
+
   begin_frame();
 }
 
-Scene::~RenScene() { end_frame(); }
+Scene::~RenScene() {
+  end_frame();
+  m_compiler.~MaterialPipelineCompiler();
+  m_descriptor_set_allocator.~DescriptorSetAllocator();
+}
+
+void Scene::begin_frame() {
+  m_device->begin_frame();
+  m_cmd_allocator->begin_frame();
+  m_descriptor_set_allocator.begin_frame();
+  m_resource_uploader.begin_frame();
+}
+
+void Scene::end_frame() {
+  m_resource_uploader.end_frame();
+  m_descriptor_set_allocator.end_frame();
+  m_cmd_allocator->end_frame();
+  m_device->end_frame();
+}
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
@@ -95,10 +129,9 @@ void Scene::destroy_mesh(ren::MeshID id) {
 
 MaterialID Scene::create_material(const MaterialDesc &desc) {
   auto &&[key, material] = m_materials.emplace(Material{
-      .pipeline = m_pipeline_compiler->get_material_pipeline({
-          .rt_format = m_rt_format,
-          .albedo = static_cast<MaterialAlbedo>(desc.albedo_type),
-      }),
+      .pipeline = m_compiler.get_material_pipeline(
+          {.albedo = static_cast<MaterialAlbedo>(desc.albedo_type)},
+          m_rt_format),
       .index = m_material_allocator.allocate(desc, m_resource_uploader),
   });
   return get_material_id(key);
@@ -187,20 +220,27 @@ void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) {
   get_model(model).matrix = matrix;
 }
 
-void Scene::begin_frame() {
-  m_device->begin_frame();
-  m_cmd_allocator->begin_frame();
-  m_resource_uploader.begin_frame();
-}
-
-void Scene::end_frame() {
-  m_resource_uploader.end_frame();
-  m_cmd_allocator->end_frame();
-  m_device->end_frame();
-}
-
 void Scene::draw() {
   m_resource_uploader.upload_data(*m_cmd_allocator);
+
+  bool update_persistent_descriptor_pool = false;
+  if (const auto &materials_buffer = m_material_allocator.get_buffer();
+      materials_buffer != m_materials_buffer) {
+    m_materials_buffer = materials_buffer;
+    update_persistent_descriptor_pool = true;
+  }
+
+  if (update_persistent_descriptor_pool) {
+    auto [new_pool, new_set] =
+        m_device->allocate_descriptor_set(m_persistent_descriptor_set_layout);
+    m_persistent_descriptor_pool = std::move(new_pool);
+    m_persistent_descriptor_set = std::move(new_set);
+    m_device->write_descriptor_set({
+        .set = m_persistent_descriptor_set,
+        .binding = MATERIALS_SLOT,
+        .data = StorageBufferDescriptors{.buffers = asSpan(m_materials_buffer)},
+    });
+  }
 
   auto rgb = m_device->createRenderGraphBuilder();
 
@@ -217,26 +257,26 @@ void Scene::draw() {
       MemoryAccess::ColorWrite, PipelineStage::ColorOutput);
   rgb->setDesc(rt, "Color buffer");
 
-  auto global_cbuffer = draw.add_output(
+  auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
           .location = BufferLocation::Host,
           .size = unsigned(sizeof(GlobalData)),
       },
       MemoryAccess::UniformRead,
       PipelineStage::VertexShader | PipelineStage::FragmentShader);
-  rgb->set_desc(global_cbuffer, "Global cbuffer");
+  rgb->set_desc(virtual_global_cbuffer, "Global cbuffer");
 
-  auto matrix_buffer = draw.add_output(
+  auto virtual_matrix_buffer = draw.add_output(
       RGBufferDesc{
           .location = BufferLocation::Host,
           .size = unsigned(sizeof(glm::mat3x4) * m_models.size()),
       },
       MemoryAccess::StorageRead, PipelineStage::VertexShader);
-  rgb->set_desc(matrix_buffer, "Model matrix buffer");
+  rgb->set_desc(virtual_matrix_buffer, "Model matrix buffer");
 
-  draw.setCallback([this, rt, matrix_buffer, global_cbuffer](CommandBuffer &cmd,
-                                                             RenderGraph &rg) {
-    const auto &signature = m_pipeline_compiler->get_signature();
+  draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
+                       CommandBuffer &cmd, RenderGraph &rg) {
+    const auto &signature = m_compiler.get_signature();
 
     cmd.beginRendering(rg.getTexture(rt));
     cmd.set_viewport({
@@ -245,14 +285,37 @@ void Scene::draw() {
     });
     cmd.set_scissor_rect({.width = m_output_width, .height = m_output_height});
 
-    const auto &global_cb = rg.get_buffer(global_cbuffer);
-    *global_cb.map<GlobalData>() = {.proj_view = m_camera.proj * m_camera.view};
+    BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
+    *global_cbuffer.map<GlobalData>() = {.proj_view =
+                                             m_camera.proj * m_camera.view};
 
-    auto *matrices = rg.get_buffer(matrix_buffer).map<glm::mat3x4>();
+    BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
+    auto *matrices = matrix_buffer.map<glm::mat3x4>();
 
-    // TODO: Bind global cbuffer
-    // TODO: Bind matrices
-    // TODO: Bind materials
+    auto scene_descriptor_set =
+        m_descriptor_set_allocator.allocate(m_global_descriptor_set_layout);
+
+    std::array write_configs = {
+        DescriptorSetWriteConfig{
+            .set = scene_descriptor_set,
+            .binding = GLOBAL_CB_SLOT,
+            .data = UniformBufferDescriptors{.buffers = asSpan(global_cbuffer)},
+        },
+        DescriptorSetWriteConfig{
+            .set = scene_descriptor_set,
+            .binding = MATRICES_SLOT,
+            .data = StorageBufferDescriptors{.buffers = asSpan(matrix_buffer)},
+        },
+    };
+
+    m_device->write_descriptor_sets(write_configs);
+
+    std::array descriptor_sets = {
+        m_persistent_descriptor_set,
+        scene_descriptor_set,
+    };
+
+    cmd.bind_graphics_descriptor_sets(signature, 0, descriptor_sets);
 
     for (const auto &&[i, model] :
          ranges::views::enumerate(m_models.values())) {

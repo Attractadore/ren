@@ -59,6 +59,8 @@ public:
     m_device->push_to_delete_queue(
         [this, index](Device &) { m_allocator.free(index); });
   }
+
+  const Buffer &get_buffer() const { return m_buffer; }
 };
 
 } // namespace ren

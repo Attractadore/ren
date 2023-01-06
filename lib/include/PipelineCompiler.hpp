@@ -1,11 +1,11 @@
 #pragma once
+#include "Def.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Vector.hpp"
-#include "ren/ren.h"
 
-#include <boost/functional/hash.hpp>
+#include <boost/container_hash/hash.hpp>
 
 #include <span>
 
@@ -17,7 +17,6 @@ enum class MaterialAlbedo {
 };
 
 struct MaterialConfig {
-  Format rt_format;
   MaterialAlbedo albedo;
 
   auto operator<=>(const MaterialConfig &other) const = default;
@@ -35,30 +34,21 @@ template <> struct std::hash<ren::MaterialConfig> {
 
 namespace ren {
 
-class PipelineCompiler {
-  const char *m_blob_suffix;
+class MaterialPipelineCompiler {
+  Device *m_device;
   PipelineSignature m_signature;
   HashMap<MaterialConfig, Pipeline> m_pipelines;
   Vector<std::byte> m_vs_code;
   Vector<std::byte> m_fs_code;
 
-protected:
-  struct PipelineConfig {
-    Format rt_format;
-    std::span<const std::byte> vs_code;
-    std::span<const std::byte> fs_code;
-  };
-
-  virtual Pipeline compile_pipeline(const PipelineConfig &config) = 0;
-
 public:
-  PipelineCompiler(const char *blob_suffix, PipelineSignature signature);
-  virtual ~PipelineCompiler() = default;
+  MaterialPipelineCompiler(Device &device, PipelineSignature signature);
 
   auto get_signature() const -> const PipelineSignature & {
     return m_signature;
   }
-  const Pipeline &get_material_pipeline(const MaterialConfig &config);
+  auto get_material_pipeline(const MaterialConfig &config, Format rt_format)
+      -> const Pipeline &;
 };
 
 } // namespace ren
