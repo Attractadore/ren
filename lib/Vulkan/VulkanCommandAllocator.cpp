@@ -8,8 +8,8 @@ namespace ren {
 VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device) {
   m_device = &device;
   m_frame_pools =
-      ranges::views::generate_n([&] { return VulkanCommandPool(*m_device); },
-                                c_pipeline_depth) |
+      ranges::views::generate([&] { return VulkanCommandPool(*m_device); }) |
+      ranges::views::take(m_frame_pools.max_size()) |
       ranges::to<decltype(m_frame_pools)>;
 }
 
