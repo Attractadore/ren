@@ -1,5 +1,6 @@
 #pragma once
 #include "Def.hpp"
+#include "Descriptors.hpp"
 #include "Formats.hpp"
 #include "ShaderStages.hpp"
 #include "Support/LinearMap.hpp"
@@ -33,21 +34,30 @@ template <typename T>
 concept PipelineLike =
     std::same_as<Pipeline, T> or std::same_as<PipelineRef, T>;
 
-struct PipelineSignatureDesc {};
+struct PushConstantRange {
+  ShaderStageFlags stages;
+  unsigned offset = 0;
+  unsigned size;
+};
+
+struct PipelineSignatureDesc {
+  SmallVector<DescriptorSetLayout, 4> set_layouts;
+  SmallVector<PushConstantRange> push_constants;
+};
 
 struct PipelineSignatureRef {
-  PipelineSignatureDesc desc;
+  PipelineSignatureDesc* desc;
   void *handle;
 
   void *get() const { return handle; }
 };
 
 struct PipelineSignature {
-  PipelineSignatureDesc desc;
+  std::shared_ptr<PipelineSignatureDesc> desc;
   AnyRef handle;
 
   operator PipelineSignatureRef() const {
-    return {.desc = desc, .handle = handle.get()};
+    return {.desc = desc.get(), .handle = handle.get()};
   }
 
   void *get() const { return handle.get(); }
@@ -60,7 +70,7 @@ template <typename T>
 concept PipelineSignatureLike =
     std::same_as<PipelineSignature, T> or std::same_as<PipelineSignatureRef, T>;
 
-struct GraphicsPipelineDesc {
+struct GraphicsPipelineConfig {
   PipelineSignatureRef signature;
 
   struct Shader {
@@ -82,13 +92,12 @@ struct GraphicsPipelineDesc {
   struct RTState {
     Format format;
   };
-
   StaticVector<RTState, 8> render_targets;
 };
 
 class GraphicsPipelineBuilder {
   Device *m_device;
-  GraphicsPipelineDesc m_desc = {};
+  GraphicsPipelineConfig m_desc = {};
 
 public:
   explicit GraphicsPipelineBuilder(Device &device) : m_device(&device) {}

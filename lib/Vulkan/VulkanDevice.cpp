@@ -453,10 +453,10 @@ REN_MAP_FIELD(PrimitiveTopologyType::Triangles,
 REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopologyType,
              REN_PRIMITIVE_TOPOLOGY_TYPES);
 
-auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
     -> Pipeline {
   auto rt_formats = desc.render_targets |
-                    map([](const GraphicsPipelineDesc::RTState &rt) {
+                    map([](const GraphicsPipelineConfig::RTState &rt) {
                       return getVkFormat(rt.format);
                     }) |
                     ranges::to<SmallVector<VkFormat, 8>>;
@@ -468,7 +468,7 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineDesc &desc)
   };
 
   auto modules =
-      desc.shaders | map([&](const GraphicsPipelineDesc::Shader &shader) {
+      desc.shaders | map([&](const GraphicsPipelineConfig::Shader &shader) {
         VkShaderModuleCreateInfo module_info = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = shader.code.size_bytes(),
@@ -568,6 +568,16 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineDesc &desc)
   return {.handle = AnyRef(pipeline, [this](VkPipeline pipeline) {
             push_to_delete_queue(pipeline);
           })};
+}
+
+auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
+    -> std::unique_ptr<ReflectionModule> {
+  vkTodo();
+}
+
+auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
+    -> PipelineSignature {
+  vkTodo();
 }
 
 } // namespace ren

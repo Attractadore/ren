@@ -84,14 +84,14 @@ public:
 
   void set_scissor_rects(std::span<const ScissorRect> rects) override;
 
-  void bind_graphics_pipeline(const PipelineRef &pipeline) override;
+  void bind_graphics_pipeline(PipelineRef pipeline) override;
 
   void
-  bind_graphics_descriptor_sets(const PipelineSignatureRef &signature,
+  bind_graphics_descriptor_sets(PipelineSignatureRef signature,
                                 unsigned first_set,
                                 std::span<const DescriptorSet> sets) override;
 
-  void set_graphics_push_constants(const PipelineSignatureRef &signature,
+  void set_graphics_push_constants(PipelineSignatureRef signature,
                                    ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override;

@@ -13,10 +13,90 @@
 #include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
 
+#include <filesystem>
+#include <fstream>
+
 using namespace ren;
 
 namespace ren {
-MaterialLayout create_material_layout() { todo(); }
+void reflect_descriptor_set_layouts(
+    ReflectionModule &vs, ReflectionModule &fs,
+    std::output_iterator<DescriptorSetLayoutDesc> auto out) {
+  SmallVector<DescriptorSetLayoutDesc, 4> sets;
+  SmallVector<DescriptorSetBindingReflection, 8> shader_bindings;
+
+  for (auto *shader : {&vs, &fs}) {
+    shader_bindings.resize(shader->get_binding_count());
+    shader->get_bindings(shader_bindings);
+    for (const auto &[set, shader_binding] : shader_bindings) {
+      if (set >= sets.size()) {
+        sets.resize(set + 1);
+      }
+      auto &set_bindings = sets[set].bindings;
+      auto it = ranges::find_if(set_bindings,
+                                [binding = shader_binding.binding](
+                                    const DescriptorSetBinding &set_binding) {
+                                  return set_binding.binding == binding;
+                                });
+      if (it != set_bindings.end()) {
+        auto &set_binding = *it;
+        set_binding.stages |= shader->get_shader_stage();
+        assert(set_binding.binding == shader_binding.binding);
+        assert(set_binding.type == shader_binding.type);
+        assert(set_binding.count == shader_binding.count);
+      } else {
+        set_bindings.push_back(shader_binding);
+      }
+    }
+  }
+
+  ranges::move(sets, out);
+}
+
+void load_shader_reflection_data(const char *path, Vector<std::byte> &blob) {
+  std::ifstream file(path);
+  if (!file) {
+    throw std::runtime_error{
+        fmt::format("Failed read shader reflection data from {0}", path)};
+  }
+  blob.resize(std::filesystem::file_size(path));
+  file.read(reinterpret_cast<char *>(blob.data()), blob.size());
+}
+
+PipelineSignature reflect_material_pipeline_signature(Device &device) {
+  auto reflection_suffix = device.get_shader_reflection_suffix();
+
+  Vector<std::byte> vs_data, fs_data;
+  auto vs_path = fmt::format("{0}/VertexShaderReflection{1}", c_assets_dir,
+                             reflection_suffix);
+  auto fs_path = fmt::format("{0}/FragmentShaderReflection{1}", c_assets_dir,
+                             reflection_suffix);
+  load_shader_reflection_data(vs_path.c_str(), vs_data);
+  load_shader_reflection_data(fs_path.c_str(), fs_data);
+  auto vs = device.create_reflection_module(vs_data);
+  auto fs = device.create_reflection_module(fs_data);
+
+  SmallVector<DescriptorSetLayoutDesc, 2> set_layout_descs;
+  reflect_descriptor_set_layouts(*vs, *fs,
+                                 std::back_inserter(set_layout_descs));
+  assert(set_layout_descs.size() == 2);
+  set_layout_descs[GLOBAL_SET].flags |=
+      DescriptorSetLayoutOption::UpdateAfterBind;
+
+  auto signature = device.create_pipeline_signature({
+      .set_layouts = set_layout_descs |
+                     map([&](const DescriptorSetLayoutDesc &desc) {
+                       return device.create_descriptor_set_layout(desc);
+                     }) |
+                     ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
+      .push_constants = {PushConstantRange{
+          .stages = ShaderStage::Vertex | ShaderStage::Fragment,
+          .size = sizeof(ModelData),
+      }},
+  });
+
+  return signature;
+}
 } // namespace ren
 
 Scene::RenScene(Device *device)
@@ -41,12 +121,13 @@ Scene::RenScene(Device *device)
 
   new (&m_descriptor_set_allocator) DescriptorSetAllocator(*m_device);
 
-  auto material_layout = create_material_layout();
+  auto pipeline_signature = reflect_material_pipeline_signature(*m_device);
   m_persistent_descriptor_set_layout =
-      std::move(material_layout.persistent_set);
-  m_global_descriptor_set_layout = std::move(material_layout.global_set);
-  new (&m_compiler) MaterialPipelineCompiler(
-      *m_device, std::move(material_layout.pipeline_signature));
+      pipeline_signature.desc->set_layouts[GLOBAL_SET];
+  m_global_descriptor_set_layout =
+      pipeline_signature.desc->set_layouts[SCENE_SET];
+  new (&m_compiler)
+      MaterialPipelineCompiler(*m_device, std::move(pipeline_signature));
 
   begin_frame();
 }

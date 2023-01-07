@@ -142,19 +142,19 @@ void VulkanCommandBuffer::set_scissor_rects(
                                    vk_rects.data());
 }
 
-void VulkanCommandBuffer::bind_graphics_pipeline(const PipelineRef &pipeline) {
+void VulkanCommandBuffer::bind_graphics_pipeline(PipelineRef pipeline) {
   m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             getVkPipeline(pipeline));
 }
 
 void VulkanCommandBuffer::bind_graphics_descriptor_sets(
-    const PipelineSignatureRef &signature, unsigned first_set,
+    PipelineSignatureRef signature, unsigned first_set,
     std::span<const DescriptorSet> sets) {
   vkTodo();
 }
 
 void VulkanCommandBuffer::set_graphics_push_constants(
-    const PipelineSignatureRef &signature, ShaderStageFlags stages,
+    PipelineSignatureRef signature, ShaderStageFlags stages,
     std::span<const std::byte> data, unsigned offset) {
   assert(not stages.isSet(ShaderStage::Compute));
   m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),
