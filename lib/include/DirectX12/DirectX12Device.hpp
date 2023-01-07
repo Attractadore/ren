@@ -213,8 +213,22 @@ public:
     return ".dxil";
   }
 
-  auto create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+  auto get_shader_reflection_suffix() const -> std::string_view override {
+    return ".refl";
+  }
+
+  auto create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       -> Pipeline override {
+    dx12Unimplemented();
+  }
+
+  auto create_reflection_module(std::span<const std::byte> data)
+      -> std::unique_ptr<ReflectionModule> override {
+    dx12Unimplemented();
+  }
+
+  auto create_pipeline_signature(const PipelineSignatureDesc &desc)
+      -> PipelineSignature override {
     dx12Unimplemented();
   }
 };
