@@ -20,7 +20,7 @@ using namespace ren;
 
 namespace ren {
 void reflect_descriptor_set_layouts(
-    ReflectionModule &vs, ReflectionModule &fs,
+    const ReflectionModule &vs, const ReflectionModule &fs,
     std::output_iterator<DescriptorSetLayoutDesc> auto out) {
   SmallVector<DescriptorSetLayoutDesc, 4> sets;
   SmallVector<DescriptorSetBindingReflection, 8> shader_bindings;

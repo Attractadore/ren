@@ -31,13 +31,6 @@ REN_MAP_FIELD(Filter::Nearest, VK_FILTER_NEAREST);
 REN_MAP_FIELD(Filter::Linear, VK_FILTER_LINEAR);
 REN_MAP_ENUM(getVkFilter, Filter, REN_FILTERS);
 
-REN_MAP_TYPE(ShaderStage, VkShaderStageFlagBits);
-REN_ENUM_FLAGS(VkShaderStageFlagBits, VkShaderStageFlags);
-REN_MAP_FIELD(ShaderStage::Vertex, VK_SHADER_STAGE_VERTEX_BIT);
-REN_MAP_FIELD(ShaderStage::Fragment, VK_SHADER_STAGE_FRAGMENT_BIT);
-REN_MAP_FIELD(ShaderStage::Compute, VK_SHADER_STAGE_COMPUTE_BIT);
-REN_MAP_ENUM_AND_FLAGS(getVkShaderStage, ShaderStage, REN_SHADER_STAGES);
-
 REN_MAP_TYPE(IndexFormat, VkIndexType);
 REN_MAP_FIELD(IndexFormat::U16, VK_INDEX_TYPE_UINT16);
 REN_MAP_FIELD(IndexFormat::U32, VK_INDEX_TYPE_UINT32);

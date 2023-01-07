@@ -5,6 +5,7 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
+#include "Vulkan/VulkanShaderStages.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/view.hpp>

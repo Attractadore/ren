@@ -7,7 +7,9 @@
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
+#include "Vulkan/VulkanReflection.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
+#include "Vulkan/VulkanShaderStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
@@ -572,7 +574,7 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
 
 auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
     -> std::unique_ptr<ReflectionModule> {
-  vkTodo();
+  return std::make_unique<VulkanReflectionModule>(data);
 }
 
 auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)

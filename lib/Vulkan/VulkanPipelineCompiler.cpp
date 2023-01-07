@@ -13,24 +13,6 @@ namespace ren {
 
 namespace {
 
-spv_reflect::ShaderModule reflect_vs() {
-  spv_reflect::ShaderModule vs(sizeof(VertexShaderSpvReflect),
-                               VertexShaderSpvReflect,
-                               SPV_REFLECT_MODULE_FLAG_NO_COPY);
-  throwIfFailed(vs.GetResult(),
-                "SPIRV-Reflect: Failed to create shader module");
-  return vs;
-}
-
-spv_reflect::ShaderModule reflect_fs() {
-  spv_reflect::ShaderModule fs(sizeof(FragmentShaderSpvReflect),
-                               FragmentShaderSpvReflect,
-                               SPV_REFLECT_MODULE_FLAG_NO_COPY);
-  throwIfFailed(fs.GetResult(),
-                "SPIRV-Reflect: Failed to create shader module");
-  return fs;
-}
-
 void reflect_descriptor_set_layouts(
     VulkanDevice &device, const spv_reflect::ShaderModule &vs,
     const spv_reflect::ShaderModule &fs,
