@@ -1,8 +1,7 @@
 #pragma once
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
-#include <range/v3/range/concepts.hpp>
-#include <range/v3/view/common.hpp>
+#include <range/v3/range.hpp>
 
 #include <vector>
 

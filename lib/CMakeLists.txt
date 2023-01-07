@@ -47,6 +47,30 @@ foreach(SEVERITY ${REN_LOG_SEVERITY})
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
 endforeach()
 
+add_library(Support-PCH INTERFACE)
+target_precompile_headers(
+  Support-PCH
+  INTERFACE
+  <array>
+  <deque>
+  <functional>
+  <memory>
+  <optional>
+  <queue>
+  <span>
+  <tuple>
+  <unordered_map>
+  <variant>
+  <vector>
+  <boost/container/small_vector.hpp>
+  <boost/container/static_vector.hpp>
+  <fmt/format.h>
+  <glm/glm.hpp>
+  <range/v3/action.hpp>
+  <range/v3/algorithm.hpp>
+  <range/v3/range.hpp>
+  <range/v3/view.hpp>)
+
 if(REN_ERROR_LOG)
   message(STATUS "Log errors")
 endif()
@@ -62,7 +86,7 @@ add_library(
   PipelineCompiler.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
-target_link_libraries(ren PRIVATE Support)
+target_link_libraries(ren PRIVATE Support Support-PCH)
 
 if(BUILD_SHARED_LIBS)
   add_library(ren::ren ALIAS ren)

@@ -2,10 +2,18 @@
 #include "Config.hpp"
 #include "Device.hpp"
 
+#include <boost/container_hash/hash.hpp>
 #include <fmt/format.h>
 
 #include <filesystem>
 #include <fstream>
+
+std::size_t std::hash<ren::MaterialConfig>::operator()(
+    ren::MaterialConfig const &cfg) const noexcept {
+  std::size_t seed = 0;
+  boost::hash_combine(seed, cfg.albedo);
+  return seed;
+}
 
 namespace ren {
 

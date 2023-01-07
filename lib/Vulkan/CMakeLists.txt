@@ -20,10 +20,11 @@ add_library(
   VulkanSwapchain.cpp)
 target_sources(ren-vk PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                              ${REN_INCLUDE}/ren/ren-vk.h)
+target_precompile_headers(ren-vk PRIVATE <vk_mem_alloc.h> <vulkan/vulkan.h>)
 target_link_libraries(
   ren-vk
   PUBLIC ren::ren
-  PRIVATE Support VulkanDispatchTable
+  PRIVATE Support Support-PCH VulkanDispatchTable
           unofficial::vulkan-memory-allocator::vulkan-memory-allocator
           unofficial::spirv-reflect::spirv-reflect)
 if(REN_VULKAN_VALIDATION)

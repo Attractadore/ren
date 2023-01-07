@@ -26,10 +26,22 @@ add_library(
   DirectX12Swapchain.cpp)
 target_sources(ren-dx12 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                                ${REN_INCLUDE}/ren/ren-dx12.h)
+target_precompile_headers(
+  ren-dx12
+  PRIVATE
+  <d3d12.h>
+  <d3d12sdklayers.h>
+  <dxgi1_3.h>
+  <dxgi1_4.h>
+  <dxgidebug.h>
+  <dxgiformat.h>
+  <unknwn.h>
+  <wrl/client.h>)
 target_link_libraries(
   ren-dx12
   PUBLIC ren::ren d3d12 dxgi dxguid
-  PRIVATE Support D3D12MA FullScreenRectShader BlitToSwapchainShader)
+  PRIVATE Support Support-PCH D3D12MA FullScreenRectShader
+          BlitToSwapchainShader)
 if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG)

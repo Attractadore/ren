@@ -9,8 +9,6 @@
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 
-#include <range/v3/action.hpp>
-
 namespace ren {
 void DirectX12RenderGraph::Builder::addPresentNodes() {
   auto *dx_swapchain = static_cast<DirectX12Swapchain *>(m_swapchain);
@@ -124,23 +122,23 @@ RGCallback DirectX12RenderGraph::Builder::generateBarrierGroup(
     std::span<const BarrierConfig> configs) {
   auto barriers =
       configs |
-      filter_map([](const BarrierConfig &config)
-                     -> std::optional<D3D12_RESOURCE_BARRIER> {
-        auto state_before = getD3D12ResourceStateFromAccessesAndStages(
-            config.src_accesses, config.src_stages);
-        auto state_after = getD3D12ResourceStateFromAccessesAndStages(
-            config.dst_accesses, config.dst_stages);
-        if (state_before == state_after) {
-          return std::nullopt;
-        }
-        return D3D12_RESOURCE_BARRIER{
-            .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-            .Transition = {
-                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = state_before,
-                .StateAfter = state_after,
-            }};
-      }) |
+      filter_map(
+          [](const BarrierConfig &config) -> Optional<D3D12_RESOURCE_BARRIER> {
+            auto state_before = getD3D12ResourceStateFromAccessesAndStages(
+                config.src_accesses, config.src_stages);
+            auto state_after = getD3D12ResourceStateFromAccessesAndStages(
+                config.dst_accesses, config.dst_stages);
+            if (state_before == state_after) {
+              return None;
+            }
+            return D3D12_RESOURCE_BARRIER{
+                .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                .Transition = {
+                    .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                    .StateBefore = state_before,
+                    .StateAfter = state_after,
+                }};
+          }) |
       ranges::to<SmallVector<D3D12_RESOURCE_BARRIER, 8>>;
 
   if (barriers.empty()) {

@@ -5,8 +5,6 @@
 #include "Support/HashMap.hpp"
 #include "Support/Vector.hpp"
 
-#include <boost/container_hash/hash.hpp>
-
 #include <span>
 
 namespace ren {
@@ -25,11 +23,7 @@ struct MaterialConfig {
 } // namespace ren
 
 template <> struct std::hash<ren::MaterialConfig> {
-  std::size_t operator()(ren::MaterialConfig const &cfg) const noexcept {
-    std::size_t seed = 0;
-    boost::hash_combine(seed, cfg.albedo);
-    return seed;
-  }
+  std::size_t operator()(ren::MaterialConfig const &cfg) const noexcept;
 };
 
 namespace ren {
