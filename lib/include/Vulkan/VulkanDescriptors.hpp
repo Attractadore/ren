@@ -36,4 +36,9 @@ REN_MAP_FIELD(DescriptorBindingOption::VariableDescriptorCount,
 REN_MAP_ENUM_AND_FLAGS(getVkDescriptorBindingOption, DescriptorBindingOption,
                        REN_DESCRIPTOR_SET_BINDING_OPTIONS);
 
+inline VkDescriptorSetLayout
+getVkDescriptorSetLayout(DescriptorSetLayoutRef layout) {
+  return reinterpret_cast<VkDescriptorSetLayout>(layout.handle);
+}
+
 } // namespace ren

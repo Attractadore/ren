@@ -5,12 +5,11 @@
 
 namespace ren {
 
-inline VkPipeline getVkPipeline(const PipelineLike auto &pipeline) {
+inline VkPipeline getVkPipeline(PipelineRef pipeline) {
   return reinterpret_cast<VkPipeline>(pipeline.get());
 }
 
-inline VkPipelineLayout
-getVkPipelineLayout(const PipelineSignatureLike auto &signature) {
+inline VkPipelineLayout getVkPipelineLayout(PipelineSignatureRef signature) {
   return reinterpret_cast<VkPipelineLayout>(signature.get());
 }
 

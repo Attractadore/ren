@@ -618,7 +618,38 @@ auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
 
 auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
     -> PipelineSignature {
-  vkTodo();
+  auto set_layouts = desc.set_layouts |
+                     map([](DescriptorSetLayoutRef set_layout) {
+                       return getVkDescriptorSetLayout(set_layout);
+                     }) |
+                     ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
+
+  auto pc_ranges = desc.push_constants |
+                   map([](const PushConstantRange &pc_range) {
+                     return VkPushConstantRange{
+                         .stageFlags = getVkShaderStageFlags(pc_range.stages),
+                         .offset = pc_range.offset,
+                         .size = pc_range.size,
+                     };
+                   }) |
+                   ranges::to<SmallVector<VkPushConstantRange, 4>>;
+
+  VkPipelineLayoutCreateInfo layout_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount = unsigned(set_layouts.size()),
+      .pSetLayouts = set_layouts.data(),
+      .pushConstantRangeCount = unsigned(pc_ranges.size()),
+      .pPushConstantRanges = pc_ranges.data(),
+  };
+
+  VkPipelineLayout layout;
+  throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
+                "Vulkan: Failed to create pipeline layout");
+
+  return {.desc = std::make_unique<PipelineSignatureDesc>(desc),
+          .handle = AnyRef(layout, [this](VkPipelineLayout layout) {
+            push_to_delete_queue(layout);
+          })};
 }
 
 } // namespace ren

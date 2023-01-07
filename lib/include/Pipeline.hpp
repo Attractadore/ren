@@ -30,10 +30,6 @@ struct Pipeline {
   void *get() const { return handle.get(); }
 };
 
-template <typename T>
-concept PipelineLike =
-    std::same_as<Pipeline, T> or std::same_as<PipelineRef, T>;
-
 struct PushConstantRange {
   ShaderStageFlags stages;
   unsigned offset = 0;
@@ -65,10 +61,6 @@ struct PipelineSignature {
 
 #define REN_PRIMITIVE_TOPOLOGY_TYPES (Points)(Lines)(Triangles)
 REN_DEFINE_ENUM(PrimitiveTopologyType, REN_PRIMITIVE_TOPOLOGY_TYPES);
-
-template <typename T>
-concept PipelineSignatureLike =
-    std::same_as<PipelineSignature, T> or std::same_as<PipelineSignatureRef, T>;
 
 struct GraphicsPipelineConfig {
   PipelineSignatureRef signature;
