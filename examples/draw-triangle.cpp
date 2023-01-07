@@ -9,8 +9,8 @@ public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
     std::array<glm::vec3, 3> positions = {{
         {0.0f, 0.5f, 0.0f},
-        {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
         {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
+        {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
     }};
     std::array<glm::vec3, 3> colors = {{
         {1.0f, 0.0f, 0.0f},

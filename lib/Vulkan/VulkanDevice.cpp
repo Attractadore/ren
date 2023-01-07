@@ -710,7 +710,6 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
   };
 
   VkSampleMask mask = desc.ms.sample_mask;
-
   VkPipelineMultisampleStateCreateInfo multisample_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
       .rasterizationSamples = VkSampleCountFlagBits(desc.ms.samples),

@@ -119,9 +119,9 @@ void VulkanCommandBuffer::set_viewports(std::span<const Viewport> viewports) {
   auto vk_viewports = viewports | map([](const Viewport &viewport) {
                         return VkViewport{
                             .x = viewport.x,
-                            .y = viewport.y,
+                            .y = viewport.y + viewport.height,
                             .width = viewport.width,
-                            .height = viewport.height,
+                            .height = -viewport.height,
                             .minDepth = viewport.min_depth,
                             .maxDepth = viewport.max_depth,
                         };
