@@ -19,7 +19,8 @@ REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
 REN_DEFINE_ENUM(Descriptor, REN_DESCRIPTORS);
 
 class DescriptorCounts {
-  std::array<unsigned, BOOST_PP_SEQ_SIZE(REN_DESCRIPTORS)> m_storage = {};
+  static constexpr auto c_size = BOOST_PP_SEQ_SIZE(REN_DESCRIPTORS);
+  std::array<unsigned, c_size> m_storage = {};
 
 public:
   const auto &operator[](Descriptor idx) const {
@@ -29,6 +30,8 @@ public:
   auto &operator[](Descriptor idx) {
     return m_storage[static_cast<size_t>(idx)];
   }
+
+  static constexpr size_t size() { return c_size; }
 };
 
 struct DescriptorPoolDesc {

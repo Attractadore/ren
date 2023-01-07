@@ -172,7 +172,39 @@ auto VulkanDevice::create_command_allocator(QueueType queue_type)
 
 auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
     -> DescriptorPool {
-  vkTodo();
+  StaticVector<VkDescriptorPoolSize, DescriptorCounts::size()> pool_sizes;
+
+#define push_pool_size(r, data, elem)                                          \
+  {                                                                            \
+    auto type = Descriptor::elem;                                              \
+    auto count = desc.descriptor_counts[type];                                 \
+    if (count > 0) {                                                           \
+      pool_sizes.push_back({                                                   \
+          .type = getVkDescriptorType(type),                                   \
+          .descriptorCount = count,                                            \
+      });                                                                      \
+    }                                                                          \
+  }
+
+  BOOST_PP_SEQ_FOR_EACH(push_pool_size, ~, REN_DESCRIPTORS);
+
+#undef push_pool_size
+
+  VkDescriptorPoolCreateInfo pool_info = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+      .flags = getVkDescriptorPoolOptionFlags(desc.flags),
+      .maxSets = desc.set_count,
+      .poolSizeCount = unsigned(pool_sizes.size()),
+      .pPoolSizes = pool_sizes.data(),
+  };
+
+  VkDescriptorPool pool;
+  throwIfFailed(CreateDescriptorPool(&pool_info, &pool),
+                "Vulkan: Failed to create descriptor pool");
+
+  return {.desc = desc, .handle = AnyRef(pool, [this](VkDescriptorPool pool) {
+                          push_to_delete_queue(pool);
+                        })};
 }
 
 void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
