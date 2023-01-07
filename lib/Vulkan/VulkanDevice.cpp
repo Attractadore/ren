@@ -640,17 +640,14 @@ VkShaderModule create_shader_module(VulkanDevice &device,
 }
 } // namespace
 
-REN_MAP_TYPE(PrimitiveTopologyType, VkPrimitiveTopology);
-REN_MAP_FIELD(PrimitiveTopologyType::Points, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-REN_MAP_FIELD(PrimitiveTopologyType::Lines, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-REN_MAP_FIELD(PrimitiveTopologyType::Triangles,
-              VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopologyType,
-             REN_PRIMITIVE_TOPOLOGY_TYPES);
-
 auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
     -> Pipeline {
-  auto rt_formats = desc.render_targets |
+  SmallVector<VkDynamicState> dynamic_states = {
+      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+  };
+
+  auto rt_formats = desc.rts |
                     map([](const GraphicsPipelineConfig::RTState &rt) {
                       return getVkFormat(rt.format);
                     }) |
@@ -663,7 +660,8 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
   };
 
   auto modules =
-      desc.shaders | map([&](const GraphicsPipelineConfig::Shader &shader) {
+      desc.shaders |
+      map([&](const GraphicsPipelineConfig::ShaderState &shader) {
         VkShaderModuleCreateInfo module_info = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = shader.code.size_bytes(),
@@ -694,8 +692,13 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = getVkPrimitiveTopology(desc.ia_state.topology_type),
+      .topology = std::visit(
+          [](auto topology) { return getVkPrimitiveTopology(topology); },
+          desc.ia.topology),
   };
+  if (std::holds_alternative<PrimitiveTopologyType>(desc.ia.topology)) {
+    dynamic_states.push_back(VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY);
+  }
 
   VkPipelineViewportStateCreateInfo viewport_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -706,11 +709,11 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       .lineWidth = 1.0f,
   };
 
-  VkSampleMask mask = desc.ms_state.sample_mask;
+  VkSampleMask mask = desc.ms.sample_mask;
 
   VkPipelineMultisampleStateCreateInfo multisample_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples = VkSampleCountFlagBits(desc.ms_state.samples),
+      .rasterizationSamples = VkSampleCountFlagBits(desc.ms.samples),
       .pSampleMask = &mask,
   };
 
@@ -723,12 +726,6 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
       .attachmentCount = 1,
       .pAttachments = &blend_attachment_info,
-  };
-
-  std::array dynamic_states = {
-      VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
-      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
   };
 
   VkPipelineDynamicStateCreateInfo dynamic_state_info = {

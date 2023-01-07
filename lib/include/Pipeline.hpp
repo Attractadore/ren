@@ -42,7 +42,7 @@ struct PipelineSignatureDesc {
 };
 
 struct PipelineSignatureRef {
-  PipelineSignatureDesc* desc;
+  PipelineSignatureDesc *desc;
   void *handle;
 
   void *get() const { return handle; }
@@ -62,29 +62,35 @@ struct PipelineSignature {
 #define REN_PRIMITIVE_TOPOLOGY_TYPES (Points)(Lines)(Triangles)
 REN_DEFINE_ENUM(PrimitiveTopologyType, REN_PRIMITIVE_TOPOLOGY_TYPES);
 
+#define REN_PRIMITIVE_TOPOLOGIES                                               \
+  (PointList)(LineList)(                                                       \
+      LineStrip)(TriangleList)(TriangleStrip)(LineListWithAdjacency)(LineStripWithAdjacency)(TriangleListWithAdjacency)(TriangleStripWithAdjacency)
+REN_DEFINE_ENUM(PrimitiveTopology, REN_PRIMITIVE_TOPOLOGIES);
+
 struct GraphicsPipelineConfig {
   PipelineSignatureRef signature;
 
-  struct Shader {
+  struct ShaderState {
     ShaderStage stage;
     std::span<const std::byte> code;
     std::string entry_point;
   };
-  StaticVector<Shader, 2> shaders;
+  StaticVector<ShaderState, 2> shaders;
 
   struct IAState {
-    PrimitiveTopologyType topology_type = PrimitiveTopologyType::Triangles;
-  } ia_state;
+    std::variant<PrimitiveTopologyType, PrimitiveTopology> topology =
+        PrimitiveTopology::TriangleList;
+  } ia;
 
   struct MSState {
     unsigned samples = 1;
     unsigned sample_mask = -1;
-  } ms_state;
+  } ms;
 
   struct RTState {
     Format format;
   };
-  StaticVector<RTState, 8> render_targets;
+  StaticVector<RTState, 8> rts;
 };
 
 class GraphicsPipelineBuilder {
@@ -124,7 +130,7 @@ public:
   }
 
   auto add_render_target(Format format) -> GraphicsPipelineBuilder & {
-    m_desc.render_targets.push_back({.format = format});
+    m_desc.rts.push_back({.format = format});
     return *this;
   }
 
