@@ -1,5 +1,6 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Support/Array.hpp"
+#include "Support/Variant.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
@@ -289,9 +290,93 @@ auto VulkanDevice::allocate_descriptor_sets(
   }
 }
 
+namespace {
+template <Descriptor Type>
+auto get_or_empty(const DescriptorSetWriteConfig &config) {
+  auto *ptr = std::get_if<DescriptorWriteConfig<Type>>(&config.data);
+  return (ptr ? *ptr : DescriptorWriteConfig<Type>()).handles;
+}
+} // namespace
+
 void VulkanDevice::write_descriptor_sets(
     std::span<const DescriptorSetWriteConfig> configs) {
-  vkTodo();
+  auto buffers =
+      configs | map([](const DescriptorSetWriteConfig &config)
+                        -> std::span<const BufferRef> {
+        if (auto *ptr = std::get_if<UniformBufferDescriptors>(&config.data)) {
+          return ptr->handles;
+        }
+        if (auto *ptr = std::get_if<StorageBufferDescriptors>(&config.data)) {
+          return ptr->handles;
+        }
+        return {};
+      });
+
+  auto vk_descriptor_buffer_infos = buffers | ranges::views::join |
+                                    map([](BufferRef buffer) {
+                                      return VkDescriptorBufferInfo{
+                                          .buffer = getVkBuffer(buffer),
+                                          .offset = buffer.desc.offset,
+                                          .range = buffer.desc.size,
+                                      };
+                                    }) |
+                                    ranges::to<Vector>;
+
+  auto buffer_offsets =
+      concat(once(0), buffers | map([](std::span<const BufferRef> handles) {
+                        return handles.size();
+                      }) | ranges::views::partial_sum);
+
+  auto vk_write_descriptor_sets =
+      ranges::views::zip(configs, buffer_offsets) | map([&](const auto &t) {
+        const auto &[config, buffer_offset] = t;
+
+        VkWriteDescriptorSet vk_config = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = getVkDescriptorSet(config.set),
+            .dstBinding = config.binding,
+            .dstArrayElement = config.array_index,
+        };
+
+        std::visit(
+            OverloadSet{
+                [&](const SamplerDescriptors &samplers) {
+                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+                  vkTodo();
+                },
+                [&, offset = buffer_offset](
+                    const UniformBufferDescriptors &uniform_buffers) {
+                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                  vk_config.descriptorCount = uniform_buffers.handles.size();
+                  vk_config.pBufferInfo =
+                      vk_descriptor_buffer_infos.data() + offset;
+                },
+                [&, offset = buffer_offset](
+                    const StorageBufferDescriptors &storage_buffers) {
+                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                  vk_config.descriptorCount = storage_buffers.handles.size();
+                  vk_config.pBufferInfo =
+                      vk_descriptor_buffer_infos.data() + offset;
+                },
+                [&](const SampledTextureDescriptors &sampled_textures) {
+                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+                  vk_config.descriptorCount = sampled_textures.handles.size();
+                  vkTodo();
+                },
+                [&](const StorageTextureDescriptors &storage_textures) {
+                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                  vk_config.descriptorCount = storage_textures.handles.size();
+                  vkTodo();
+                },
+            },
+            config.data);
+
+        return vk_config;
+      }) |
+      ranges::to<Vector>;
+
+  UpdateDescriptorSets(vk_write_descriptor_sets.size(),
+                       vk_write_descriptor_sets.data(), 0, nullptr);
 }
 
 Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {

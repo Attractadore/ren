@@ -319,7 +319,7 @@ void Scene::draw() {
     m_device->write_descriptor_set({
         .set = m_persistent_descriptor_set,
         .binding = MATERIALS_SLOT,
-        .data = StorageBufferDescriptors{.buffers = asSpan(m_materials_buffer)},
+        .data = StorageBufferDescriptors{asSpan(m_materials_buffer)},
     });
   }
 
@@ -357,13 +357,23 @@ void Scene::draw() {
 
   draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
                        CommandBuffer &cmd, RenderGraph &rg) {
+    // FIXME: since null descriptors are not core in Vulkan, have to skip
+    // binding empty matrix buffer
+    if (m_models.empty()) {
+      cmd.beginRendering(rg.getTexture(rt));
+      cmd.set_viewport(
+          {.width = float(m_output_width), .height = float(m_output_height)});
+      cmd.set_scissor_rect(
+          {.width = m_output_width, .height = m_output_height});
+      cmd.endRendering();
+      return;
+    }
+
     const auto &signature = m_compiler.get_signature();
 
     cmd.beginRendering(rg.getTexture(rt));
-    cmd.set_viewport({
-        .width = float(m_output_width),
-        .height = float(m_output_height),
-    });
+    cmd.set_viewport(
+        {.width = float(m_output_width), .height = float(m_output_height)});
     cmd.set_scissor_rect({.width = m_output_width, .height = m_output_height});
 
     BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
@@ -380,12 +390,12 @@ void Scene::draw() {
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
             .binding = GLOBAL_CB_SLOT,
-            .data = UniformBufferDescriptors{.buffers = asSpan(global_cbuffer)},
+            .data = UniformBufferDescriptors{asSpan(global_cbuffer)},
         },
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
             .binding = MATRICES_SLOT,
-            .data = StorageBufferDescriptors{.buffers = asSpan(matrix_buffer)},
+            .data = StorageBufferDescriptors{asSpan(matrix_buffer)},
         },
     };
 

@@ -47,9 +47,13 @@ inline auto getVkDescriptorPool(DescriptorPoolRef pool) -> VkDescriptorPool {
   return reinterpret_cast<VkDescriptorPool>(pool.handle);
 }
 
-inline VkDescriptorSetLayout
-getVkDescriptorSetLayout(DescriptorSetLayoutRef layout) {
+inline auto getVkDescriptorSetLayout(DescriptorSetLayoutRef layout)
+    -> VkDescriptorSetLayout {
   return reinterpret_cast<VkDescriptorSetLayout>(layout.handle);
+}
+
+inline auto getVkDescriptorSet(DescriptorSet set) -> VkDescriptorSet {
+  return reinterpret_cast<VkDescriptorSet>(set.handle);
 }
 
 } // namespace ren

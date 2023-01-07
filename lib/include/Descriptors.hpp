@@ -78,7 +78,7 @@ struct DescriptorSetLayoutDesc {
 };
 
 struct DescriptorSetLayoutRef {
-  DescriptorSetLayoutDesc* desc;
+  DescriptorSetLayoutDesc *desc;
   void *handle;
 };
 
@@ -95,25 +95,37 @@ struct DescriptorSetDesc {};
 
 struct DescriptorSet {
   DescriptorSetDesc desc;
-  void* handle;
+  void *handle;
 };
 
-struct SamplerDescriptors {};
+template <Descriptor Type> struct DescriptorWriteConfig;
 
-struct UniformBufferDescriptors {
-  std::span<const BufferRef> buffers;
+using SamplerDescriptors = DescriptorWriteConfig<Descriptor::Sampler>;
+using UniformBufferDescriptors =
+    DescriptorWriteConfig<Descriptor::UniformBuffer>;
+using StorageBufferDescriptors =
+    DescriptorWriteConfig<Descriptor::StorageBuffer>;
+using SampledTextureDescriptors =
+    DescriptorWriteConfig<Descriptor::SampledTexture>;
+using StorageTextureDescriptors =
+    DescriptorWriteConfig<Descriptor::StorageTexture>;
+
+template <> struct DescriptorWriteConfig<Descriptor::Sampler> {};
+
+template <> struct DescriptorWriteConfig<Descriptor::UniformBuffer> {
+  std::span<const BufferRef> handles;
 };
 
-struct StorageBufferDescriptors {
-  std::span<const BufferRef> buffers;
+template <> struct DescriptorWriteConfig<Descriptor::StorageBuffer> {
+  std::span<const BufferRef> handles;
 };
 
-struct SampledTextureDescriptors {
-  std::span<const SampledTextureView> textures;
+template <> struct DescriptorWriteConfig<Descriptor::SampledTexture> {
+  std::span<const SampledTextureView> handles;
 };
 
-struct StorageTextureDescriptors {
-  std::span<const StorageTextureView> textures;
+template <> struct DescriptorWriteConfig<Descriptor::StorageTexture> {
+  std::span<const SampledTextureView> handles;
 };
 
 struct DescriptorSetWriteConfig {
