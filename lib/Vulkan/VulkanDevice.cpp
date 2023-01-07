@@ -4,6 +4,7 @@
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
+#include "Vulkan/VulkanDescriptors.hpp"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
@@ -180,7 +181,45 @@ void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
 
 auto VulkanDevice::create_descriptor_set_layout(
     const DescriptorSetLayoutDesc &desc) -> DescriptorSetLayout {
-  vkTodo();
+  auto binding_flags =
+      desc.bindings | map([](const DescriptorBinding &binding) {
+        return getVkDescriptorBindingOptionFlags(binding.flags);
+      }) |
+      ranges::to<Vector>;
+
+  auto bindings = desc.bindings | map([](const DescriptorBinding &binding) {
+                    return VkDescriptorSetLayoutBinding{
+                        .binding = binding.binding,
+                        .descriptorType = getVkDescriptorType(binding.type),
+                        .descriptorCount = binding.count,
+                        .stageFlags = getVkShaderStageFlags(binding.stages),
+                    };
+                  }) |
+                  ranges::to<Vector>;
+
+  VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
+      .sType =
+          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+      .bindingCount = unsigned(binding_flags.size()),
+      .pBindingFlags = binding_flags.data(),
+  };
+
+  VkDescriptorSetLayoutCreateInfo layout_info = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .pNext = &binding_flags_info,
+      .flags = getVkDescriptorSetLayoutOptionFlags(desc.flags),
+      .bindingCount = unsigned(bindings.size()),
+      .pBindings = bindings.data(),
+  };
+
+  VkDescriptorSetLayout layout;
+  throwIfFailed(CreateDescriptorSetLayout(&layout_info, &layout),
+                "Vulkan: Failed to create descriptor set layout");
+
+  return {.desc = std::make_shared<DescriptorSetLayoutDesc>(desc),
+          .handle = AnyRef(layout, [this](VkDescriptorSetLayout layout) {
+            push_to_delete_queue(layout);
+          })};
 }
 
 auto VulkanDevice::allocate_descriptor_sets(

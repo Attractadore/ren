@@ -28,7 +28,7 @@ auto VulkanReflectionModule::get_binding_count() const -> unsigned {
 }
 
 void VulkanReflectionModule::get_bindings(
-    std::span<DescriptorSetBindingReflection> out) const {
+    std::span<DescriptorBindingReflection> out) const {
   auto num_bindings = get_binding_count();
   assert(out.size() >= num_bindings);
   SmallVector<SpvReflectDescriptorBinding *> bindings(num_bindings);
@@ -38,7 +38,7 @@ void VulkanReflectionModule::get_bindings(
   ranges::transform(
       bindings, out.data(), [&](const SpvReflectDescriptorBinding *binding) {
         assert(binding);
-        return DescriptorSetBindingReflection{
+        return DescriptorBindingReflection{
             .set = binding->set,
             .binding = {
                 .binding = binding->binding,

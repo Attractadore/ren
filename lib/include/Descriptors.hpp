@@ -58,11 +58,11 @@ REN_DEFINE_FLAGS_ENUM(DescriptorSetLayoutOption,
 #define REN_DESCRIPTOR_SET_BINDING_OPTIONS                                     \
   (UpdateAfterBind)(UpdateUnusedWhilePending)(                                 \
       PartiallyBound)(VariableDescriptorCount)
-REN_DEFINE_FLAGS_ENUM(DescriptorSetBindingOption,
+REN_DEFINE_FLAGS_ENUM(DescriptorBindingOption,
                       REN_DESCRIPTOR_SET_BINDING_OPTIONS);
 
-struct DescriptorSetBinding {
-  DescriptorSetBindingOptionFlags flags;
+struct DescriptorBinding {
+  DescriptorBindingOptionFlags flags;
   unsigned binding;
   Descriptor type;
   unsigned count;
@@ -71,7 +71,7 @@ struct DescriptorSetBinding {
 
 struct DescriptorSetLayoutDesc {
   DescriptorSetLayoutOptionFlags flags;
-  Vector<DescriptorSetBinding> bindings;
+  Vector<DescriptorBinding> bindings;
 };
 
 struct DescriptorSetLayoutRef {

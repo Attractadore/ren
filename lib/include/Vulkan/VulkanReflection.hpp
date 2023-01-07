@@ -13,8 +13,7 @@ public:
 
   auto get_shader_stage() const -> ShaderStage override;
   auto get_binding_count() const -> unsigned override;
-  void
-  get_bindings(std::span<DescriptorSetBindingReflection> out) const override;
+  void get_bindings(std::span<DescriptorBindingReflection> out) const override;
 };
 
 } // namespace ren

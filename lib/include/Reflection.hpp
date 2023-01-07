@@ -5,9 +5,9 @@
 
 namespace ren {
 
-struct DescriptorSetBindingReflection {
+struct DescriptorBindingReflection {
   unsigned set;
-  DescriptorSetBinding binding;
+  DescriptorBinding binding;
 };
 
 class ReflectionModule {
@@ -17,7 +17,7 @@ public:
   virtual auto get_shader_stage() const -> ShaderStage = 0;
   virtual auto get_binding_count() const -> unsigned = 0;
   virtual void
-  get_bindings(std::span<DescriptorSetBindingReflection> out) const = 0;
+  get_bindings(std::span<DescriptorBindingReflection> out) const = 0;
 };
 
 }

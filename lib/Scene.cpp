@@ -23,7 +23,7 @@ void reflect_descriptor_set_layouts(
     const ReflectionModule &vs, const ReflectionModule &fs,
     std::output_iterator<DescriptorSetLayoutDesc> auto out) {
   SmallVector<DescriptorSetLayoutDesc, 4> sets;
-  SmallVector<DescriptorSetBindingReflection, 8> shader_bindings;
+  SmallVector<DescriptorBindingReflection, 8> shader_bindings;
 
   for (auto *shader : {&vs, &fs}) {
     shader_bindings.resize(shader->get_binding_count());
@@ -35,7 +35,7 @@ void reflect_descriptor_set_layouts(
       auto &set_bindings = sets[set].bindings;
       auto it = ranges::find_if(set_bindings,
                                 [binding = shader_binding.binding](
-                                    const DescriptorSetBinding &set_binding) {
+                                    const DescriptorBinding &set_binding) {
                                   return set_binding.binding == binding;
                                 });
       if (it != set_bindings.end()) {

@@ -24,6 +24,7 @@ template <> struct QueueDeleter<VulkanDevice, VmaAllocation> {
 };
 
 define_vulkan_queue_deleter(VkBuffer, DestroyBuffer);
+define_vulkan_queue_deleter(VkDescriptorSetLayout, DestroyDescriptorSetLayout);
 define_vulkan_queue_deleter(VkImage, DestroyImage);
 define_vulkan_queue_deleter(VkPipeline, DestroyPipeline);
 define_vulkan_queue_deleter(VkPipelineLayout, DestroyPipelineLayout);
