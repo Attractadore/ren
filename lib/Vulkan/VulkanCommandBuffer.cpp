@@ -2,6 +2,7 @@
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
+#include "Vulkan/VulkanDescriptors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
@@ -151,7 +152,11 @@ void VulkanCommandBuffer::bind_graphics_pipeline(PipelineRef pipeline) {
 void VulkanCommandBuffer::bind_graphics_descriptor_sets(
     PipelineSignatureRef signature, unsigned first_set,
     std::span<const DescriptorSet> sets) {
-  vkTodo();
+  auto vk_sets =
+      sets | map(getVkDescriptorSet) | ranges::to<SmallVector<VkDescriptorSet>>;
+  m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  getVkPipelineLayout(signature), first_set,
+                                  vk_sets.size(), vk_sets.data(), 0, nullptr);
 }
 
 void VulkanCommandBuffer::set_graphics_push_constants(
