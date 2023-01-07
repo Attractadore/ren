@@ -7,7 +7,7 @@
 
 #if __cplusplus
 #define REN_NAMESPACE_BEGIN namespace ren {
-#define REN_NAMESPACE_END } 
+#define REN_NAMESPACE_END }
 #else
 #define REN_NAMESPACE_BEGIN
 #define REN_NAMESPACE_END

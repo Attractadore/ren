@@ -18,10 +18,10 @@ struct ModelData {
   uint64_t colors;
 };
 
-constexpr uint GLOBAL_SET = 0;
-constexpr uint MATERIALS_SLOT = 1;
+constexpr uint PERSISTENT_SET = 0;
+constexpr uint MATERIALS_SLOT = 0;
 
-constexpr uint SCENE_SET = 1;
+constexpr uint GLOBAL_SET = 1;
 constexpr uint GLOBAL_CB_SLOT = 0;
 constexpr uint MATRICES_SLOT = 1;
 

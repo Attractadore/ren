@@ -80,7 +80,7 @@ PipelineSignature reflect_material_pipeline_signature(Device &device) {
   reflect_descriptor_set_layouts(*vs, *fs,
                                  std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
-  set_layout_descs[GLOBAL_SET].flags |=
+  set_layout_descs[PERSISTENT_SET].flags |=
       DescriptorSetLayoutOption::UpdateAfterBind;
 
   auto signature = device.create_pipeline_signature({
@@ -123,9 +123,9 @@ Scene::RenScene(Device *device)
 
   auto pipeline_signature = reflect_material_pipeline_signature(*m_device);
   m_persistent_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[GLOBAL_SET];
+      pipeline_signature.desc->set_layouts[PERSISTENT_SET];
   m_global_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[SCENE_SET];
+      pipeline_signature.desc->set_layouts[GLOBAL_SET];
   new (&m_compiler)
       MaterialPipelineCompiler(*m_device, std::move(pipeline_signature));
 

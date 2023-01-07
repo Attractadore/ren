@@ -1,6 +1,6 @@
 #include "hlsl_interface.hlsl"
 
-[[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<MaterialData>
+[[vk::binding(MATERIALS_SLOT, PERSISTENT_SET)]] StructuredBuffer<MaterialData>
     g_materials;
 
 PUSH_CONSTANTS(ModelData, g_model);

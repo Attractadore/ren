@@ -1,11 +1,12 @@
 #include "encode.hlsl"
 #include "hlsl_interface.hlsl"
 
-[[vk::binding(GLOBAL_CB_SLOT, SCENE_SET)]] cbuffer GlobalCB {
+[[vk::binding(GLOBAL_CB_SLOT, GLOBAL_SET)]] cbuffer GlobalCB {
   GlobalData g_global;
 };
 
-[[vk::binding(MATRICES_SLOT, SCENE_SET)]] StructuredBuffer<float3x4> g_matrices;
+[[vk::binding(MATRICES_SLOT, GLOBAL_SET)]] StructuredBuffer<float3x4>
+    g_matrices;
 
 PUSH_CONSTANTS(ModelData, g_model);
 
