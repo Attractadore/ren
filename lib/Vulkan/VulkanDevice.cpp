@@ -258,7 +258,35 @@ auto VulkanDevice::allocate_descriptor_sets(
     const DescriptorPoolRef &pool,
     std::span<const DescriptorSetLayoutRef> layouts,
     std::span<DescriptorSet> sets) -> bool {
-  vkTodo();
+  assert(sets.size() >= layouts.size());
+
+  auto vk_layouts = layouts | map(getVkDescriptorSetLayout) |
+                    ranges::to<SmallVector<VkDescriptorSetLayout>>;
+  SmallVector<VkDescriptorSet> vk_sets(vk_layouts.size());
+
+  VkDescriptorSetAllocateInfo alloc_info = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+      .descriptorPool = getVkDescriptorPool(pool),
+      .descriptorSetCount = unsigned(vk_layouts.size()),
+      .pSetLayouts = vk_layouts.data(),
+  };
+
+  auto result = AllocateDescriptorSets(&alloc_info, vk_sets.data());
+  switch (result) {
+  default: {
+    throwIfFailed(result, "Vulkan: Failed to allocate descriptor sets");
+  }
+  case VK_SUCCESS: {
+    ranges::transform(vk_sets, sets.data(), [](VkDescriptorSet set) {
+      return DescriptorSet{.desc = {}, .handle = set};
+    });
+    return true;
+  }
+  case VK_ERROR_FRAGMENTED_POOL:
+  case VK_ERROR_OUT_OF_POOL_MEMORY: {
+    return false;
+  }
+  }
 }
 
 void VulkanDevice::write_descriptor_sets(
@@ -650,10 +678,7 @@ auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
 
 auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
     -> PipelineSignature {
-  auto set_layouts = desc.set_layouts |
-                     map([](DescriptorSetLayoutRef set_layout) {
-                       return getVkDescriptorSetLayout(set_layout);
-                     }) |
+  auto set_layouts = desc.set_layouts | map(getVkDescriptorSetLayout) |
                      ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
 
   auto pc_ranges = desc.push_constants |
