@@ -123,9 +123,7 @@ public:
 
   Buffer create_buffer(const BufferDesc &desc) override;
   auto get_buffer_device_address(const BufferRef &buffer) const
-      -> uint64_t override {
-    vkTodo();
-  }
+      -> uint64_t override;
 
   Texture createTexture(const TextureDesc &desc) override;
   void destroyImageViews(VkImage image);

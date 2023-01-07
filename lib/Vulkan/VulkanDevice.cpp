@@ -428,6 +428,15 @@ Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
           })};
 }
 
+auto VulkanDevice::get_buffer_device_address(const BufferRef &buffer) const
+    -> uint64_t {
+  VkBufferDeviceAddressInfo buffer_info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .buffer = getVkBuffer(buffer),
+  };
+  return GetBufferDeviceAddress(&buffer_info);
+}
+
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
