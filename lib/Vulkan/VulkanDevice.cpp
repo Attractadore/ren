@@ -209,7 +209,7 @@ auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
 }
 
 void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
-  vkTodo();
+  ResetDescriptorPool(getVkDescriptorPool(pool), 0);
 }
 
 auto VulkanDevice::create_descriptor_set_layout(
