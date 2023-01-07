@@ -15,7 +15,7 @@
 
 #if REN_HLSL_VULKAN
 template <typename T> T ptr_load(uint64_t base, uint idx) {
-  return vk::RawBufferLoad(base + idx * sizeof(T));
+  return vk::RawBufferLoad<T>(base + idx * sizeof(T));
 }
 #endif
 

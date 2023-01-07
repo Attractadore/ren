@@ -5,7 +5,7 @@
   GlobalData g_global;
 };
 
-[[vk::binding(MATRICES_SLOT, GLOBAL_SET)]] StructuredBuffer<float3x4>
+[[vk::binding(MATRICES_SLOT, GLOBAL_SET)]] StructuredBuffer<model_matrix_t>
     g_matrices;
 
 PUSH_CONSTANTS(ModelData, g_model);

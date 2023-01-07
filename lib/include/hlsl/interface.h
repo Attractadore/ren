@@ -18,6 +18,8 @@ struct ModelData {
   uint64_t colors;
 };
 
+typedef float3x4 model_matrix_t;
+
 constexpr uint PERSISTENT_SET = 0;
 constexpr uint MATERIALS_SLOT = 0;
 

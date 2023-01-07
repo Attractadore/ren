@@ -253,6 +253,7 @@ auto Scene::create_model(const ModelDesc &desc) -> ModelID {
   return get_model_id(m_models.insert({
       .mesh = desc.mesh,
       .material = desc.material,
+      .matrix = glm::mat4(1.0f),
   }));
 }
 
@@ -349,7 +350,7 @@ void Scene::draw() {
   auto virtual_matrix_buffer = draw.add_output(
       RGBufferDesc{
           .location = BufferLocation::Host,
-          .size = unsigned(sizeof(glm::mat3x4) * m_models.size()),
+          .size = unsigned(sizeof(hlsl::model_matrix_t) * m_models.size()),
       },
       MemoryAccess::StorageRead, PipelineStage::VertexShader);
   rgb->set_desc(virtual_matrix_buffer, "Model matrix buffer");
@@ -380,7 +381,7 @@ void Scene::draw() {
                                                             m_camera.view};
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
-    auto *matrices = matrix_buffer.map<glm::mat3x4>();
+    auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();
 
     auto scene_descriptor_set =
         m_descriptor_set_allocator.allocate(m_global_descriptor_set_layout);
