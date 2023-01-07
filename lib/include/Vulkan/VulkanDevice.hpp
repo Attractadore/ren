@@ -108,8 +108,18 @@ public:
     return ".spv";
   }
 
-  auto create_graphics_pipeline(const GraphicsPipelineDesc &desc)
+  auto get_shader_reflection_suffix() const -> std::string_view override {
+    return ".spv";
+  }
+
+  auto create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       -> Pipeline override;
+
+  auto create_reflection_module(std::span<const std::byte> data)
+      -> std::unique_ptr<ReflectionModule> override;
+
+  auto create_pipeline_signature(const PipelineSignatureDesc &desc)
+      -> PipelineSignature override;
 
   Buffer create_buffer(const BufferDesc &desc) override;
   auto get_buffer_device_address(const BufferRef &buffer) const

@@ -2,6 +2,7 @@
 #include "DeleteQueue.hpp"
 #include "Descriptors.hpp"
 #include "Pipeline.hpp"
+#include "Reflection.hpp"
 #include "RenderGraph.hpp"
 
 namespace ren {
@@ -58,10 +59,10 @@ struct RenDevice {
   allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
       -> std::pair<DescriptorPool, DescriptorSet> {
     DescriptorPoolDesc pool_desc = {.set_count = 1};
-    if (layout.desc.flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
+    if (layout.desc->flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
       pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;
     }
-    for (const auto &binding : layout.desc.bindings) {
+    for (const auto &binding : layout.desc->bindings) {
       pool_desc.descriptor_counts[binding.type] += binding.count;
     }
     auto pool = create_descriptor_pool(pool_desc);
@@ -86,8 +87,16 @@ struct RenDevice {
 
   [[nodiscard]] virtual auto get_shader_blob_suffix() const
       -> std::string_view = 0;
+  [[nodiscard]] virtual auto get_shader_reflection_suffix() const
+      -> std::string_view = 0;
   [[nodiscard]] virtual auto
-  create_graphics_pipeline(const GraphicsPipelineDesc &desc) -> Pipeline = 0;
+  create_graphics_pipeline(const GraphicsPipelineConfig &desc) -> Pipeline = 0;
+  [[nodiscard]] virtual auto
+  create_reflection_module(std::span<const std::byte> data)
+      -> std::unique_ptr<ReflectionModule> = 0;
+  [[nodiscard]] virtual auto
+  create_pipeline_signature(const PipelineSignatureDesc &desc)
+      -> PipelineSignature = 0;
 
   virtual void push_to_delete_queue(QueueCustomDeleter<Device> deleter) = 0;
 

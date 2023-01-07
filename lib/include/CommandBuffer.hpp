@@ -87,22 +87,21 @@ public:
     set_scissor_rects(asSpan(rect));
   }
 
-  virtual void bind_graphics_pipeline(const PipelineRef &pipeline) = 0;
+  virtual void bind_graphics_pipeline(PipelineRef pipeline) = 0;
 
   virtual void
-  bind_graphics_descriptor_sets(const PipelineSignatureRef &signature,
+  bind_graphics_descriptor_sets(PipelineSignatureRef signature,
                                 unsigned first_set,
                                 std::span<const DescriptorSet> sets) = 0;
-  void bind_graphics_descriptor_set(const PipelineSignatureRef &signature,
-                                    unsigned first_set,
-                                    const DescriptorSet &set) {
+  void bind_graphics_descriptor_set(PipelineSignatureRef signature,
+                                    unsigned first_set, DescriptorSet set) {
     bind_graphics_descriptor_sets(signature, first_set, asSpan(set));
   }
 
   virtual void set_graphics_push_constants(
-      const PipelineSignatureRef &signature, ShaderStageFlags stages,
+      PipelineSignatureRef signature, ShaderStageFlags stages,
       std::span<const std::byte> data, unsigned offset = 0) = 0;
-  void set_graphics_push_constants(const PipelineSignatureRef &signature,
+  void set_graphics_push_constants(PipelineSignatureRef signature,
                                    ShaderStageFlags stages, const auto &data,
                                    unsigned offset = 0) {
     set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),

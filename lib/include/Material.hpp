@@ -9,10 +9,4 @@ struct Material {
   unsigned index;
 };
 
-struct MaterialLayout {
-  DescriptorSetLayout persistent_set;
-  DescriptorSetLayout global_set;
-  PipelineSignature pipeline_signature;
-};
-
 } // namespace ren

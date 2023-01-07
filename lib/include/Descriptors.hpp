@@ -71,20 +71,20 @@ struct DescriptorSetBinding {
 
 struct DescriptorSetLayoutDesc {
   DescriptorSetLayoutOptionFlags flags;
-  SmallVector<DescriptorSetBinding, 8> bindings;
+  Vector<DescriptorSetBinding> bindings;
 };
 
 struct DescriptorSetLayoutRef {
-  DescriptorSetLayoutDesc desc;
+  DescriptorSetLayoutDesc* desc;
   void *handle;
 };
 
 struct DescriptorSetLayout {
-  DescriptorSetLayoutDesc desc;
+  std::shared_ptr<DescriptorSetLayoutDesc> desc;
   AnyRef handle;
 
   operator DescriptorSetLayoutRef() const {
-    return {.desc = desc, .handle = handle.get()};
+    return {.desc = desc.get(), .handle = handle.get()};
   }
 };
 
@@ -92,7 +92,7 @@ struct DescriptorSetDesc {};
 
 struct DescriptorSet {
   DescriptorSetDesc desc;
-  AnyRef handle;
+  void* handle;
 };
 
 struct SamplerDescriptors {};
