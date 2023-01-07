@@ -6,7 +6,7 @@
 #endif
 
 #if __cplusplus
-#define REN_NAMESPACE_BEGIN namespace ren {
+#define REN_NAMESPACE_BEGIN namespace ren::hlsl {
 #define REN_NAMESPACE_END }
 #else
 #define REN_NAMESPACE_BEGIN
@@ -14,14 +14,6 @@
 #endif
 
 REN_NAMESPACE_BEGIN
-
-#if __HLSL_VERSION
-#if __spirv__
-#define REN_HLSL_VULKAN 1
-#else
-#define REN_HLSL_DIRECTX12 1
-#endif
-#endif
 
 // built-in types
 #if __cplusplus

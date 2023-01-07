@@ -1,5 +1,5 @@
-#include "encode.hlsl"
-#include "hlsl_interface.hlsl"
+#include "encode.h"
+#include "interface.hlsl"
 
 [[vk::binding(GLOBAL_CB_SLOT, GLOBAL_SET)]] cbuffer GlobalCB {
   GlobalData g_global;

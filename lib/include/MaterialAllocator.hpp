@@ -3,7 +3,7 @@
 #include "ResourceUploader.hpp"
 #include "Support/FreeListAllocator.hpp"
 #include "Support/Span.hpp"
-#include "hlsl/interface.hlsl"
+#include "hlsl/interface.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -13,7 +13,7 @@ class MaterialAllocator {
   Device *m_device;
   Buffer m_buffer;
   FreeListAllocator m_allocator;
-  Vector<MaterialData> m_materials;
+  Vector<hlsl::MaterialData> m_materials;
 
   static constexpr auto c_default_capacity = 128;
 
@@ -21,7 +21,7 @@ class MaterialAllocator {
     return m_device->create_buffer({
         .usage = BufferUsage::TransferDST | BufferUsage::Storage,
         .location = BufferLocation::Device,
-        .size = unsigned(count * sizeof(MaterialData)),
+        .size = unsigned(count * sizeof(hlsl::MaterialData)),
     });
   }
 
@@ -51,7 +51,7 @@ public:
         .color = glm::make_vec3(desc.albedo_color),
     };
     uploader.stage_data(asSpan(m_materials[index]), m_buffer,
-                        index * sizeof(MaterialData));
+                        index * sizeof(hlsl::MaterialData));
     return index;
   };
 

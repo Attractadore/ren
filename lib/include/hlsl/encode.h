@@ -1,5 +1,5 @@
 #pragma once
-#include "cpp.hlsl"
+#include "cpp.h"
 
 REN_NAMESPACE_BEGIN
 

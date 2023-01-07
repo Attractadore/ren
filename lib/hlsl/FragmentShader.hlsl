@@ -1,4 +1,4 @@
-#include "hlsl_interface.hlsl"
+#include "interface.hlsl"
 
 [[vk::binding(MATERIALS_SLOT, PERSISTENT_SET)]] StructuredBuffer<MaterialData>
     g_materials;

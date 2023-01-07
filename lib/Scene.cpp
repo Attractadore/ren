@@ -8,7 +8,7 @@
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"
-#include "hlsl/encode.hlsl"
+#include "hlsl/encode.h"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
@@ -80,7 +80,7 @@ PipelineSignature reflect_material_pipeline_signature(Device &device) {
   reflect_descriptor_set_layouts(*vs, *fs,
                                  std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
-  set_layout_descs[PERSISTENT_SET].flags |=
+  set_layout_descs[hlsl::PERSISTENT_SET].flags |=
       DescriptorSetLayoutOption::UpdateAfterBind;
 
   auto signature = device.create_pipeline_signature({
@@ -91,7 +91,7 @@ PipelineSignature reflect_material_pipeline_signature(Device &device) {
                      ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
       .push_constants = {PushConstantRange{
           .stages = ShaderStage::Vertex | ShaderStage::Fragment,
-          .size = sizeof(ModelData),
+          .size = sizeof(hlsl::ModelData),
       }},
   });
 
@@ -123,9 +123,9 @@ Scene::RenScene(Device *device)
 
   auto pipeline_signature = reflect_material_pipeline_signature(*m_device);
   m_persistent_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[PERSISTENT_SET];
+      pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
   m_global_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[GLOBAL_SET];
+      pipeline_signature.desc->set_layouts[hlsl::GLOBAL_SET];
   new (&m_compiler)
       MaterialPipelineCompiler(*m_device, std::move(pipeline_signature));
 
@@ -162,7 +162,7 @@ void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
 MeshID Scene::create_mesh(const MeshDesc &desc) {
   auto vertex_allocation_size =
       desc.num_vertices *
-      (sizeof(glm::vec3) + (desc.colors ? sizeof(color_t) : 0));
+      (sizeof(glm::vec3) + (desc.colors ? sizeof(hlsl::color_t) : 0));
   auto index_allocation_size = desc.num_indices * sizeof(unsigned);
 
   auto &&[key, mesh] = m_meshes.emplace(Mesh{
@@ -185,7 +185,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   if (desc.colors) {
     auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
                             desc.num_vertices) |
-                  map(encode_color);
+                  map(hlsl::encode_color);
     mesh.colors_offset = offset;
     m_resource_uploader.stage_data(colors, mesh.vertex_allocation,
                                    mesh.colors_offset);
@@ -198,7 +198,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   return get_mesh_id(key);
 }
 
-void Scene::destroy_mesh(ren::MeshID id) {
+void Scene::destroy_mesh(MeshID id) {
   auto key = get_mesh_key(id);
   auto it = m_meshes.find(key);
   assert(it != m_meshes.end() and "Unknown mesh");
@@ -260,26 +260,25 @@ void Scene::destroy_model(ModelID model) {
   m_models.erase(get_model_key(model));
 }
 
-auto Scene::get_mesh(ren::MeshID mesh) const -> const ren::Mesh & {
+auto Scene::get_mesh(MeshID mesh) const -> const Mesh & {
   auto key = get_mesh_key(mesh);
   assert(m_meshes.contains(key) && "Unknown mesh");
   return m_meshes[key];
 }
 
-auto Scene::get_mesh(ren::MeshID mesh) -> ren::Mesh & {
+auto Scene::get_mesh(MeshID mesh) -> Mesh & {
   auto key = get_mesh_key(mesh);
   assert(m_meshes.contains(key) && "Unknown mesh");
   return m_meshes[key];
 }
 
-auto Scene::get_material(ren::MaterialID material) const
-    -> const ren::Material & {
+auto Scene::get_material(MaterialID material) const -> const Material & {
   auto key = get_material_key(material);
   assert(m_materials.contains(key) && "Unknown material");
   return m_materials[key];
 }
 
-auto Scene::get_material(ren::MaterialID material) -> ren::Material & {
+auto Scene::get_material(MaterialID material) -> Material & {
   auto key = get_material_key(material);
   assert(m_materials.contains(key) && "Unknown material");
   return m_materials[key];
@@ -318,7 +317,7 @@ void Scene::draw() {
     m_persistent_descriptor_set = std::move(new_set);
     m_device->write_descriptor_set({
         .set = m_persistent_descriptor_set,
-        .binding = MATERIALS_SLOT,
+        .binding = hlsl::MATERIALS_SLOT,
         .data = StorageBufferDescriptors{asSpan(m_materials_buffer)},
     });
   }
@@ -341,7 +340,7 @@ void Scene::draw() {
   auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
           .location = BufferLocation::Host,
-          .size = unsigned(sizeof(GlobalData)),
+          .size = unsigned(sizeof(hlsl::GlobalData)),
       },
       MemoryAccess::UniformRead,
       PipelineStage::VertexShader | PipelineStage::FragmentShader);
@@ -377,8 +376,8 @@ void Scene::draw() {
     cmd.set_scissor_rect({.width = m_output_width, .height = m_output_height});
 
     BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
-    *global_cbuffer.map<GlobalData>() = {.proj_view =
-                                             m_camera.proj * m_camera.view};
+    *global_cbuffer.map<hlsl::GlobalData>() = {.proj_view = m_camera.proj *
+                                                            m_camera.view};
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
     auto *matrices = matrix_buffer.map<glm::mat3x4>();
@@ -389,12 +388,12 @@ void Scene::draw() {
     std::array write_configs = {
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
-            .binding = GLOBAL_CB_SLOT,
+            .binding = hlsl::GLOBAL_CB_SLOT,
             .data = UniformBufferDescriptors{asSpan(global_cbuffer)},
         },
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
-            .binding = MATRICES_SLOT,
+            .binding = hlsl::MATRICES_SLOT,
             .data = StorageBufferDescriptors{asSpan(matrix_buffer)},
         },
     };
@@ -418,7 +417,7 @@ void Scene::draw() {
       cmd.bind_graphics_pipeline(material.pipeline);
 
       auto addr = m_device->get_buffer_device_address(mesh.vertex_allocation);
-      ModelData data = {
+      hlsl::ModelData data = {
           .matrix_index = unsigned(i),
           .material_index = material.index,
           .positions = addr + mesh.positions_offset,

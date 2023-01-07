@@ -1,28 +1,32 @@
 #pragma once
-#include "cpp.hlsl"
+#include "interface.h"
 
-REN_NAMESPACE_BEGIN
+#if __HLSL_VERSION
+#if __spirv__
+#define REN_HLSL_VULKAN 1
+#else
+#define REN_HLSL_DIRECTX12 1
+#endif
+#endif
 
-struct GlobalData {
-  float4x4 proj_view;
+#if REN_HLSL_VULKAN
+#define PUSH_CONSTANTS(type, name) [[vk::push_constant]] type name
+#endif
+
+#if REN_HLSL_VULKAN
+template <typename T> T ptr_load(uint64_t base, uint idx) {
+  return vk::RawBufferLoad(base + idx * sizeof(T));
+}
+#endif
+
+struct VS_IN {
+  uint index : SV_VertexID;
 };
 
-struct MaterialData {
-  float3 color;
+struct VS_OUT {
+  float4 position : SV_Position;
+#if VERTEX_COLOR
+  float3 color : COLOR0;
+#endif
 };
-
-struct ModelData {
-  uint matrix_index;
-  uint material_index;
-  uint64_t positions;
-  uint64_t colors;
-};
-
-constexpr uint PERSISTENT_SET = 0;
-constexpr uint MATERIALS_SLOT = 0;
-
-constexpr uint GLOBAL_SET = 1;
-constexpr uint GLOBAL_CB_SLOT = 0;
-constexpr uint MATRICES_SLOT = 1;
-
-REN_NAMESPACE_END
+typedef VS_OUT PS_IN;
