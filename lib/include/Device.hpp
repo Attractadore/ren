@@ -46,36 +46,15 @@ struct RenDevice {
   [[nodiscard]] auto
   allocate_descriptor_set(const DescriptorPoolRef &pool,
                           const DescriptorSetLayoutRef &layout)
-      -> Optional<DescriptorSet> {
-    DescriptorSet set;
-    auto success = allocate_descriptor_sets(pool, {&layout, 1}, {&set, 1});
-    if (success) {
-      return std::move(set);
-    }
-    return None;
-  }
+      -> Optional<DescriptorSet>;
 
   [[nodiscard]] auto
   allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
-      -> std::pair<DescriptorPool, DescriptorSet> {
-    DescriptorPoolDesc pool_desc = {.set_count = 1};
-    if (layout.desc->flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
-      pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;
-    }
-    for (const auto &binding : layout.desc->bindings) {
-      pool_desc.descriptor_counts[binding.type] += binding.count;
-    }
-    auto pool = create_descriptor_pool(pool_desc);
-    auto set = allocate_descriptor_set(pool, layout);
-    assert(set);
-    return {std::move(pool), std::move(set.value())};
-  }
+      -> std::pair<DescriptorPool, DescriptorSet>;
 
   virtual void
   write_descriptor_sets(std::span<const DescriptorSetWriteConfig> configs) = 0;
-  void write_descriptor_set(const DescriptorSetWriteConfig &config) {
-    write_descriptor_sets({&config, 1});
-  }
+  void write_descriptor_set(const DescriptorSetWriteConfig &config);
 
   virtual Buffer create_buffer(const BufferDesc &desc) = 0;
   virtual auto get_buffer_device_address(const BufferRef &buffer) const

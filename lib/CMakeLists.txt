@@ -79,6 +79,7 @@ add_library(
   ren.cpp
   AssetLoader.cpp
   DescriptorSetAllocator.cpp
+  Device.cpp
   Pipeline.cpp
   PipelineCompiler.cpp
   RenderGraph.cpp
