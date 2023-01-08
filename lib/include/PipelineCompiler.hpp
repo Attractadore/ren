@@ -1,4 +1,5 @@
 #pragma once
+#include "AssetLoader.hpp"
 #include "Def.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
@@ -32,11 +33,11 @@ class MaterialPipelineCompiler {
   Device *m_device;
   PipelineSignature m_signature;
   HashMap<MaterialConfig, Pipeline> m_pipelines;
-  Vector<std::byte> m_vs_code;
-  Vector<std::byte> m_fs_code;
+  const AssetLoader *m_asset_loader;
 
 public:
-  MaterialPipelineCompiler(Device &device, PipelineSignature signature);
+  MaterialPipelineCompiler(Device &device, PipelineSignature signature,
+                           const AssetLoader *asset_loader);
 
   auto get_signature() const -> const PipelineSignature & {
     return m_signature;

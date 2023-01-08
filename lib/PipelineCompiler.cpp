@@ -5,9 +5,6 @@
 #include <boost/container_hash/hash.hpp>
 #include <fmt/format.h>
 
-#include <filesystem>
-#include <fstream>
-
 std::size_t std::hash<ren::MaterialConfig>::operator()(
     ren::MaterialConfig const &cfg) const noexcept {
   std::size_t seed = 0;
@@ -19,16 +16,7 @@ namespace ren {
 
 namespace {
 
-void load_shader_code(const char *path, Vector<std::byte> &code) {
-  std::ifstream file(path);
-  if (!file) {
-    throw std::runtime_error{fmt::format("Failed read shader from {0}", path)};
-  }
-  code.resize(std::filesystem::file_size(path));
-  file.read(reinterpret_cast<char *>(code.data()), code.size());
-}
-
-const char *get_albedo_str(MaterialAlbedo albedo) {
+std::string_view get_albedo_str(MaterialAlbedo albedo) {
   switch (albedo) {
     using enum MaterialAlbedo;
   case Const:
@@ -38,38 +26,28 @@ const char *get_albedo_str(MaterialAlbedo albedo) {
   }
 }
 
-std::string get_vertex_shader_path(const MaterialConfig &config,
-                                   std::string_view blob_suffix) {
-  return fmt::format("{0}/VertexShader_{1}{2}", c_assets_dir,
-                     get_albedo_str(config.albedo), blob_suffix);
-}
-
-std::string get_fragment_shader_path(const MaterialConfig &config,
-                                     std::string_view blob_suffix) {
-  return fmt::format("{0}/FragmentShader_{1}{2}", c_assets_dir,
-                     get_albedo_str(config.albedo), blob_suffix);
-}
-
 struct PipelineConfig {
   PipelineSignatureRef signature;
-  std::span<const std::byte> vs_code;
-  std::span<const std::byte> fs_code;
+  std::span<const std::byte> vs;
+  std::span<const std::byte> fs;
   Format rt_format;
 };
 
 Pipeline compile_pipeline(Device &device, const PipelineConfig &config) {
   return GraphicsPipelineBuilder(device)
       .set_signature(config.signature)
-      .set_vertex_shader(config.vs_code)
-      .set_fragment_shader(config.fs_code)
+      .set_vertex_shader(config.vs)
+      .set_fragment_shader(config.fs)
       .add_render_target(config.rt_format)
       .build();
 }
 } // namespace
 
-MaterialPipelineCompiler::MaterialPipelineCompiler(Device &device,
-                                                   PipelineSignature signature)
-    : m_device(&device), m_signature(std::move(signature)) {}
+MaterialPipelineCompiler::MaterialPipelineCompiler(
+    Device &device, PipelineSignature signature,
+    const AssetLoader *asset_loader)
+    : m_device(&device), m_signature(std::move(signature)),
+      m_asset_loader(asset_loader) {}
 
 auto MaterialPipelineCompiler::get_material_pipeline(
     const MaterialConfig &config, Format rt_format) -> const Pipeline & {
@@ -78,17 +56,21 @@ auto MaterialPipelineCompiler::get_material_pipeline(
     return it->second;
   }
 
-  auto blob_suffix = m_device->get_shader_blob_suffix();
+  auto get_shader_name = [blob_suffix = m_device->get_shader_blob_suffix()](
+                             std::string_view base_name,
+                             const MaterialConfig &config) {
+    return fmt::format("{0}_{1}{2}", base_name, get_albedo_str(config.albedo),
+                       blob_suffix);
+  };
 
-  auto vs = get_vertex_shader_path(config, blob_suffix);
-  auto fs = get_fragment_shader_path(config, blob_suffix);
-  load_shader_code(vs.c_str(), m_vs_code);
-  load_shader_code(fs.c_str(), m_fs_code);
+  Vector<std::byte> vs, fs;
+  m_asset_loader->load_file(get_shader_name("VertexShader", config), vs);
+  m_asset_loader->load_file(get_shader_name("FragmentShader", config), fs);
 
   PipelineConfig pipeline_config = {
       .signature = m_signature,
-      .vs_code = m_vs_code,
-      .fs_code = m_fs_code,
+      .vs = vs,
+      .fs = fs,
       .rt_format = rt_format,
   };
 

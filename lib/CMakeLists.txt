@@ -15,9 +15,8 @@ file(
   GeneratedConfig.hpp
   CONTENT
   "#pragma once
-
 namespace ren {
-constexpr const char* c_assets_dir = \"${REN_ASSETS_OUTPUT_DIRECTORY}\";
+constexpr const char* c_assets_directory = \"${REN_ASSETS_OUTPUT_DIRECTORY}\";
 }
 ")
 add_library(Generated INTERFACE)
@@ -78,12 +77,13 @@ endif()
 add_library(
   ren
   ren.cpp
-  RenderGraph.cpp
-  Scene.cpp
-  ResourceUploader.cpp
-  Pipeline.cpp
+  AssetLoader.cpp
   DescriptorSetAllocator.cpp
-  PipelineCompiler.cpp)
+  Pipeline.cpp
+  PipelineCompiler.cpp
+  RenderGraph.cpp
+  ResourceUploader.cpp
+  Scene.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
 target_link_libraries(ren PRIVATE Support Support-PCH)

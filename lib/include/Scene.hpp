@@ -1,4 +1,5 @@
 #pragma once
+#include "AssetLoader.hpp"
 #include "BufferPool.hpp"
 #include "Camera.hpp"
 #include "CommandBuffer.hpp"
@@ -13,6 +14,8 @@
 
 class RenScene {
   ren::Device *m_device;
+
+  AssetLoader m_asset_loader;
 
   ren::Format m_rt_format = ren::Format::RGBA16F;
   unsigned m_output_width = 0;

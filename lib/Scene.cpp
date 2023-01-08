@@ -13,9 +13,6 @@
 #include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
 
-#include <filesystem>
-#include <fstream>
-
 using namespace ren;
 
 namespace ren {
@@ -53,28 +50,17 @@ void reflect_descriptor_set_layouts(
   ranges::move(sets, out);
 }
 
-void load_shader_reflection_data(const char *path, Vector<std::byte> &blob) {
-  std::ifstream file(path);
-  if (!file) {
-    throw std::runtime_error{
-        fmt::format("Failed read shader reflection data from {0}", path)};
-  }
-  blob.resize(std::filesystem::file_size(path));
-  file.read(reinterpret_cast<char *>(blob.data()), blob.size());
-}
-
-PipelineSignature reflect_material_pipeline_signature(Device &device) {
+auto reflect_material_pipeline_signature(Device &device,
+                                         const AssetLoader &loader)
+    -> PipelineSignature {
   auto reflection_suffix = device.get_shader_reflection_suffix();
-
-  Vector<std::byte> vs_data, fs_data;
-  auto vs_path = fmt::format("{0}/VertexShaderReflection{1}", c_assets_dir,
-                             reflection_suffix);
-  auto fs_path = fmt::format("{0}/FragmentShaderReflection{1}", c_assets_dir,
-                             reflection_suffix);
-  load_shader_reflection_data(vs_path.c_str(), vs_data);
-  load_shader_reflection_data(fs_path.c_str(), fs_data);
-  auto vs = device.create_reflection_module(vs_data);
-  auto fs = device.create_reflection_module(fs_data);
+  Vector<std::byte> buffer;
+  loader.load_file(fmt::format("VertexShaderReflection{0}", reflection_suffix),
+                   buffer);
+  auto vs = device.create_reflection_module(buffer);
+  loader.load_file(
+      fmt::format("FragmentShaderReflection{0}", reflection_suffix), buffer);
+  auto fs = device.create_reflection_module(buffer);
 
   SmallVector<DescriptorSetLayoutDesc, 2> set_layout_descs;
   reflect_descriptor_set_layouts(*vs, *fs,
@@ -117,17 +103,20 @@ Scene::RenScene(Device *device)
           }),
       m_material_allocator(*m_device), m_resource_uploader(*m_device) {
 
+  m_asset_loader.add_search_directory(c_assets_directory);
+
   m_cmd_allocator = m_device->create_command_allocator();
 
   new (&m_descriptor_set_allocator) DescriptorSetAllocator(*m_device);
 
-  auto pipeline_signature = reflect_material_pipeline_signature(*m_device);
+  auto pipeline_signature =
+      reflect_material_pipeline_signature(*m_device, m_asset_loader);
   m_persistent_descriptor_set_layout =
       pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
   m_global_descriptor_set_layout =
       pipeline_signature.desc->set_layouts[hlsl::GLOBAL_SET];
-  new (&m_compiler)
-      MaterialPipelineCompiler(*m_device, std::move(pipeline_signature));
+  new (&m_compiler) MaterialPipelineCompiler(
+      *m_device, std::move(pipeline_signature), &m_asset_loader);
 
   begin_frame();
 }
