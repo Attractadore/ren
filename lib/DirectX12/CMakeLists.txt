@@ -29,6 +29,7 @@ target_sources(ren-dx12 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
 target_precompile_headers(
   ren-dx12
   PRIVATE
+  <comdef.h>
   <d3d12.h>
   <d3d12sdklayers.h>
   <dxgi1_3.h>

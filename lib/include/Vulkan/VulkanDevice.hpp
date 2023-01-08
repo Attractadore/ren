@@ -55,6 +55,10 @@ class VulkanDevice final : public Device,
   VulkanDeleteQueue m_delete_queue;
 
 private:
+  auto create_buffer_handle(const BufferDesc &desc)
+      -> std::pair<AnyRef, void *> override;
+
+private:
   VkImageView getVkImageViewImpl(VkImage image,
                                  const VkImageViewCreateInfo &view_info);
 
@@ -121,7 +125,6 @@ public:
   auto create_pipeline_signature(const PipelineSignatureDesc &desc)
       -> PipelineSignature override;
 
-  Buffer create_buffer(const BufferDesc &desc) override;
   auto get_buffer_device_address(const BufferRef &buffer) const
       -> uint64_t override;
 

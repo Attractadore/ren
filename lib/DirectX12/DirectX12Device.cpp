@@ -159,7 +159,22 @@ auto DirectX12Device::create_command_allocator(QueueType queue_type)
   return std::make_unique<DirectX12CommandAllocator>(*this);
 }
 
-Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
+auto DirectX12Device::create_buffer_handle(const BufferDesc &desc)
+    -> std::pair<AnyRef, void *> {
+  auto get_resource_state = [](D3D12_HEAP_TYPE heap_type) {
+    switch (heap_type) {
+    case D3D12_HEAP_TYPE_DEFAULT:
+      return D3D12_RESOURCE_STATE_COMMON;
+    case D3D12_HEAP_TYPE_UPLOAD:
+      return D3D12_RESOURCE_STATE_GENERIC_READ;
+    case D3D12_HEAP_TYPE_READBACK:
+      return D3D12_RESOURCE_STATE_COPY_DEST;
+    }
+  };
+
+  D3D12MA::ALLOCATION_DESC alloc_desc = {.HeapType =
+                                             getD3D12HeapType(desc.location)};
+
   D3D12_RESOURCE_DESC resource_desc = {
       .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
       .Width = desc.size,
@@ -167,24 +182,33 @@ Buffer DirectX12Device::create_buffer(const BufferDesc &desc) {
       .DepthOrArraySize = 1,
       .MipLevels = 1,
       .SampleDesc = {.Count = 1},
+      .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
       .Flags = getD3D12ResourceFlags(desc.usage),
   };
 
-  D3D12MA::ALLOCATION_DESC allocation_desc = {.HeapType =
-                                                  D3D12_HEAP_TYPE_DEFAULT};
-
   D3D12MA::Allocation *allocation;
-  throwIfFailed(m_allocator->CreateResource(&allocation_desc, &resource_desc,
-                                            D3D12_RESOURCE_STATE_COMMON,
-                                            nullptr, &allocation, IID_NULL,
-                                            nullptr),
-                "D3D12MA: Failed to create texture");
+  throwIfFailed(
+      m_allocator->CreateResource(&alloc_desc, &resource_desc,
+                                  get_resource_state(alloc_desc.HeapType),
+                                  nullptr, &allocation, IID_NULL, nullptr),
+      "D3D12MA: Failed to create buffer");
+  auto *resource = allocation->GetResource();
 
-  return {.desc = desc,
-          .handle = AnyRef(allocation->GetResource(),
-                           [this, allocation](ID3D12Resource *) {
-                             push_to_delete_queue(allocation);
-                           })};
+  void *map = nullptr;
+  if (alloc_desc.HeapType == D3D12_HEAP_TYPE_UPLOAD) {
+    D3D12_RANGE range = {0, 0};
+    throwIfFailed(resource->Map(0, &range, &map),
+                  "D3D12: Failed to map buffer");
+  } else if (alloc_desc.HeapType == D3D12_HEAP_TYPE_READBACK) {
+    throwIfFailed(resource->Map(0, nullptr, &map),
+                  "D3D12: Failed to map buffer");
+  }
+
+  return {AnyRef(resource,
+                 [this, allocation](ID3D12Resource *) {
+                   push_to_delete_queue(allocation);
+                 }),
+          map};
 }
 
 Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {

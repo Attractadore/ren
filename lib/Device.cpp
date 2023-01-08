@@ -1,5 +1,16 @@
 #include "Device.hpp"
 
+auto Device::create_buffer(BufferDesc desc) -> Buffer {
+  assert(desc.offset == 0);
+  assert(!desc.ptr);
+  if (desc.size == 0) {
+    return {.desc = desc};
+  }
+  auto [handle, ptr] = create_buffer_handle(desc);
+  desc.ptr = ptr;
+  return {.desc = desc, .handle = std::move(handle)};
+}
+
 auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
                                      const DescriptorSetLayoutRef &layout)
     -> Optional<DescriptorSet> {

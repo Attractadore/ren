@@ -18,6 +18,11 @@ enum class QueueType {
 using namespace ren;
 
 struct RenDevice {
+protected:
+  virtual auto create_buffer_handle(const BufferDesc &desc)
+      -> std::pair<AnyRef, void *> = 0;
+
+public:
   virtual ~RenDevice() = default;
 
   virtual void begin_frame() = 0;
@@ -56,7 +61,8 @@ struct RenDevice {
   write_descriptor_sets(std::span<const DescriptorSetWriteConfig> configs) = 0;
   void write_descriptor_set(const DescriptorSetWriteConfig &config);
 
-  virtual Buffer create_buffer(const BufferDesc &desc) = 0;
+  auto create_buffer(BufferDesc desc) -> Buffer;
+
   virtual auto get_buffer_device_address(const BufferRef &buffer) const
       -> uint64_t = 0;
 

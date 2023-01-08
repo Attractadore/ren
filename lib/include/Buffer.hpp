@@ -9,11 +9,8 @@ namespace ren {
   (TransferSRC)(TransferDST)(Uniform)(Storage)(Index)(Indirect)(DeviceAddress)
 REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
 
-enum class BufferLocation {
-  Device,
-  Host,
-  HostCached,
-};
+#define REN_BUFFER_LOCATIONS (Device)(Host)(HostCached)
+REN_DEFINE_ENUM(BufferLocation, REN_BUFFER_LOCATIONS);
 
 struct BufferDesc {
   BufferUsageFlags usage;

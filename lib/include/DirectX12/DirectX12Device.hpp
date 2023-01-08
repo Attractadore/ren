@@ -74,6 +74,10 @@ class DirectX12Device final : public Device {
   std::array<DirectX12DeviceTime, c_pipeline_depth> m_frame_end_times = {};
 
 private:
+  auto create_buffer_handle(const BufferDesc &desc)
+      -> std::pair<AnyRef, void *> override;
+
+private:
   void destroyTextureRTVs(ID3D12Resource *resource);
   void destroyTextureDSVs(ID3D12Resource *resource);
   void destroyTextureSRVs(ID3D12Resource *resource);
@@ -100,7 +104,6 @@ public:
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
 
-  Buffer create_buffer(const ren::BufferDesc &desc) override;
   auto get_buffer_device_address(const ren::BufferRef &buffer) const
       -> uint64_t override {
     dx12Unimplemented();

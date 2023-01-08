@@ -379,13 +379,8 @@ void VulkanDevice::write_descriptor_sets(
                        vk_write_descriptor_sets.data(), 0, nullptr);
 }
 
-Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
-  BufferDesc desc = in_desc;
-  desc.offset = 0;
-  if (desc.size == 0) {
-    return {.desc = desc};
-  }
-
+auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)
+    -> std::pair<AnyRef, void *> {
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = desc.size,
@@ -419,13 +414,15 @@ Buffer VulkanDevice::create_buffer(const BufferDesc &in_desc) {
   throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
                                 &allocation, &map_info),
                 "VMA: Failed to create buffer");
-  desc.ptr = map_info.pMappedData;
 
-  return {.desc = desc,
-          .handle = AnyRef(buffer, [this, allocation](VkBuffer buffer) {
-            push_to_delete_queue(buffer);
-            push_to_delete_queue(allocation);
-          })};
+  return {
+      AnyRef(buffer,
+             [this, allocation](VkBuffer buffer) {
+               push_to_delete_queue(buffer);
+               push_to_delete_queue(allocation);
+             }),
+      map_info.pMappedData,
+  };
 }
 
 auto VulkanDevice::get_buffer_device_address(const BufferRef &buffer) const
