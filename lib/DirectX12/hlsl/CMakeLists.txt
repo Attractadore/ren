@@ -31,19 +31,47 @@ macro(embed_directx12_shader source target)
     ${REN_PRIVATE_INCLUDE_DIR}/hlsl)
 endmacro()
 
-foreach(perm ${ALBEDO_PERMUTATIONS})
-  add_directx12_shader(VertexShader.hlsl VertexShader_${perm}.dxil PROFILE
-                       vs_6_0 DEFINES ${perm})
-  add_directx12_shader(FragmentShader.hlsl FragmentShader_${perm}.dxil PROFILE
-                       ps_6_0 DEFINES ${perm})
+foreach(vf_perm VERTEX_FETCH_LOGICAL VERTEX_FETCH_ATTRIBUTE)
+  foreach(albedo_perm ${ALBEDO_PERMUTATIONS})
+    add_directx12_shader(
+      VertexShader.hlsl
+      VertexShader_${vf_perm}_${albedo_perm}.dxil
+      PROFILE
+      vs_6_0
+      DEFINES
+      ${vf_perm}
+      ${albedo_perm})
+    add_directx12_shader(
+      FragmentShader.hlsl
+      FragmentShader_${vf_perm}_${albedo_perm}.dxil
+      PROFILE
+      ps_6_0
+      DEFINES
+      ${vf_perm}
+      ${albedo_perm})
+  endforeach()
 endforeach()
 
 add_directx12_shader(
-  VertexShader.hlsl ReflectionVertexShader.dxil PROFILE vs_6_0 REFLECTION_FILE
-  ${REN_ASSETS_OUTPUT_DIRECTORY}/ReflectionVertexShader.refl)
+  VertexShader.hlsl
+  ReflectionVertexShader.dxil
+  REFLECTION_FILE
+  ${REN_ASSETS_OUTPUT_DIRECTORY}/ReflectionVertexShader.refl
+  PROFILE
+  vs_6_0
+  DEFINES
+  REFLECTION
+)
 add_directx12_shader(
-  FragmentShader.hlsl ReflectionFragmentShader.dxil PROFILE ps_6_0
-  REFLECTION_FILE ${REN_ASSETS_OUTPUT_DIRECTORY}/ReflectionFragmentShader.refl)
+  FragmentShader.hlsl
+  ReflectionFragmentShader.dxil
+  REFLECTION_FILE
+  ${REN_ASSETS_OUTPUT_DIRECTORY}/ReflectionFragmentShader.refl
+  PROFILE
+  ps_6_0
+  DEFINES
+  REFLECTION
+)
 
 embed_directx12_shader(FullScreenRect.hlsl FullScreenRectShader PROFILE vs_6_0)
 embed_directx12_shader(BlitToSwapchain.hlsl BlitToSwapchainShader PROFILE

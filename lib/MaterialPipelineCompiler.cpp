@@ -1,6 +1,7 @@
 #include "MaterialPipelineCompiler.hpp"
 #include "Config.hpp"
 #include "Device.hpp"
+#include "hlsl/interface.hpp"
 
 #include <boost/container_hash/hash.hpp>
 #include <fmt/format.h>
@@ -15,6 +16,18 @@ std::size_t std::hash<ren::MaterialConfig>::operator()(
 namespace ren {
 
 namespace {
+
+std::string_view get_vertex_fetch_str(hlsl::VertexFetch vf) {
+  switch (vf) {
+    using enum hlsl::VertexFetch;
+  case Physical:
+    return "VERTEX_FETCH_PHYSICAL";
+  case Logical:
+    return "VERTEX_FETCH_LOGICAL";
+  case Attribute:
+    return "VERTEX_FETCH_ATTRIBUTE";
+  }
+}
 
 std::string_view get_albedo_str(MaterialAlbedo albedo) {
   switch (albedo) {
@@ -59,8 +72,9 @@ auto MaterialPipelineCompiler::get_material_pipeline(
   auto get_shader_name = [blob_suffix = m_device->get_shader_blob_suffix()](
                              std::string_view base_name,
                              const MaterialConfig &config) {
-    return fmt::format("{0}_{1}{2}", base_name, get_albedo_str(config.albedo),
-                       blob_suffix);
+    return fmt::format("{0}_{1}_{2}{3}", base_name,
+                       get_vertex_fetch_str(hlsl::VertexFetch::Physical),
+                       get_albedo_str(config.albedo), blob_suffix);
   };
 
   Vector<std::byte> vs, fs;

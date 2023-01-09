@@ -66,7 +66,7 @@ auto reflect_material_pipeline_signature(Device &device,
   reflect_descriptor_set_layouts(*vs, *fs,
                                  std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
-  set_layout_descs[hlsl::PERSISTENT_SET].flags |=
+  set_layout_descs[hlsl::c_persistent_set].flags |=
       DescriptorSetLayoutOption::UpdateAfterBind;
 
   auto signature = device.create_pipeline_signature({
@@ -77,7 +77,8 @@ auto reflect_material_pipeline_signature(Device &device,
                      ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
       .push_constants = {PushConstantRange{
           .stages = ShaderStage::Vertex | ShaderStage::Fragment,
-          .size = sizeof(hlsl::ModelData),
+          .size =
+              sizeof(hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical>),
       }},
   });
 
@@ -112,9 +113,9 @@ Scene::RenScene(Device *device)
   auto pipeline_signature =
       reflect_material_pipeline_signature(*m_device, m_asset_loader);
   m_persistent_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
+      pipeline_signature.desc->set_layouts[hlsl::c_persistent_set];
   m_global_descriptor_set_layout =
-      pipeline_signature.desc->set_layouts[hlsl::GLOBAL_SET];
+      pipeline_signature.desc->set_layouts[hlsl::c_global_set];
   new (&m_compiler) MaterialPipelineCompiler(
       *m_device, std::move(pipeline_signature), &m_asset_loader);
 
@@ -307,7 +308,7 @@ void Scene::draw() {
     m_persistent_descriptor_set = std::move(new_set);
     m_device->write_descriptor_set({
         .set = m_persistent_descriptor_set,
-        .binding = hlsl::MATERIALS_SLOT,
+        .binding = hlsl::c_materials_slot,
         .data = StorageBufferDescriptors{asSpan(m_materials_buffer)},
     });
   }
@@ -378,12 +379,12 @@ void Scene::draw() {
     std::array write_configs = {
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
-            .binding = hlsl::GLOBAL_CB_SLOT,
+            .binding = hlsl::c_global_cb_slot,
             .data = UniformBufferDescriptors{asSpan(global_cbuffer)},
         },
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
-            .binding = hlsl::MATRICES_SLOT,
+            .binding = hlsl::c_matrices_slot,
             .data = StorageBufferDescriptors{asSpan(matrix_buffer)},
         },
     };
@@ -407,13 +408,13 @@ void Scene::draw() {
       cmd.bind_graphics_pipeline(material.pipeline);
 
       auto addr = m_device->get_buffer_device_address(mesh.vertex_allocation);
-      hlsl::ModelData data = {
-          .matrix_index = unsigned(i),
-          .material_index = material.index,
-          .positions = addr + mesh.positions_offset,
-          .colors = (mesh.colors_offset != ATTRIBUTE_UNUSED)
-                        ? addr + mesh.colors_offset
-                        : 0,
+      hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical> data = {
+          .vertex = {.matrix_index = unsigned(i),
+                     .positions = addr + mesh.positions_offset,
+                     .colors = (mesh.colors_offset != ATTRIBUTE_UNUSED)
+                                   ? addr + mesh.colors_offset
+                                   : 0},
+          .pixel = {.material_index = material.index},
       };
       cmd.set_graphics_push_constants(
           signature, ShaderStage::Vertex | ShaderStage::Fragment, data);
