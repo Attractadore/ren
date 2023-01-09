@@ -69,18 +69,26 @@ auto reflect_material_pipeline_signature(Device &device,
   set_layout_descs[hlsl::c_persistent_set].flags |=
       DescriptorSetLayoutOption::UpdateAfterBind;
 
-  auto signature = device.create_pipeline_signature({
-      .set_layouts = set_layout_descs |
-                     map([&](const DescriptorSetLayoutDesc &desc) {
-                       return device.create_descriptor_set_layout(desc);
-                     }) |
-                     ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
-      .push_constants = {PushConstantRange{
-          .stages = ShaderStage::Vertex | ShaderStage::Fragment,
-          .size =
-              sizeof(hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical>),
-      }},
-  });
+  auto signature = device.create_pipeline_signature(
+      {.set_layouts = set_layout_descs |
+                      map([&](const DescriptorSetLayoutDesc &desc) {
+                        return device.create_descriptor_set_layout(desc);
+                      }) |
+                      ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
+       .push_constants = {
+           {.stages = ShaderStage::Vertex,
+            .offset = offsetof(
+                hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical>,
+                vertex),
+            .size = sizeof(hlsl::PushConstantsTemplate<
+                           hlsl::VertexFetch::Physical>::vertex)},
+           {.stages = ShaderStage::Fragment,
+            .offset = offsetof(
+                hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical>,
+                pixel),
+            .size = sizeof(hlsl::PushConstantsTemplate<
+                           hlsl::VertexFetch::Physical>::pixel)},
+       }});
 
   return signature;
 }
@@ -416,8 +424,12 @@ void Scene::draw() {
                                    : 0},
           .pixel = {.material_index = material.index},
       };
-      cmd.set_graphics_push_constants(
-          signature, ShaderStage::Vertex | ShaderStage::Fragment, data);
+      cmd.set_graphics_push_constants(signature, ShaderStage::Vertex,
+                                      data.vertex,
+                                      offsetof(decltype(data), vertex));
+      cmd.set_graphics_push_constants(signature, ShaderStage::Fragment,
+                                      data.pixel,
+                                      offsetof(decltype(data), pixel));
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);
