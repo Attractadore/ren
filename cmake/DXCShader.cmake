@@ -1,16 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
-function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
-  set(ARGS_OPTIONS EMBEDDED SPIRV)
-  set(ARGS_ONE PROFILE OUTPUT_DIRECTORY)
+function(add_dxc_shader SHADER_SOURCE)
+  set(ARGS_OPTIONS STUB)
+  set(ARGS_ONE PROFILE EMBED_TARGET OUTPUT_FILE REFLECTION_FILE)
   set(ARGS_MULTI DXC_FLAGS INCLUDE_DIRECTORIES DEFINES)
   cmake_parse_arguments(PARSE_ARGV 2 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
                         "${ARGS_MULTI}")
 
-  find_package(
-    Vulkan
-    COMPONENTS dxc
-    QUIET)
+  if(NOT TARGET Vulkan::dxc_exe)
+    find_package(
+      Vulkan
+      COMPONENTS dxc
+      QUIET)
+  endif()
+
   if(NOT DXC)
     if(TARGET Vulkan::dxc_exe)
       message(STATUS "Using DXC from Vulkan SDK")
@@ -56,33 +59,25 @@ function(add_dxc_shader SHADER_TARGET SHADER_SOURCE)
       2021
       ${DXC_INCLUDE_FLAGS}
       ${DXC_DEFINE_FLAGS})
-  if(OPTION_SPIRV)
-    set(DXC_FLAGS ${DXC_FLAGS} -spirv)
-  endif()
 
-  set(shader_output_dir ${CMAKE_CURRENT_BINARY_DIR})
-  if(OPTION_OUTPUT_DIRECTORY)
-    set(shader_output_dir ${OPTION_OUTPUT_DIRECTORY})
-  endif()
-
-  if(OPTION_EMBEDDED)
-    set(SHADER_INC ${SHADER_TARGET}.inc)
-    cmake_path(SET SHADER_INC_FILE ${shader_output_dir}/${SHADER_INC})
+  if(OPTION_EMBED_TARGET)
+    set(SHADER_INC ${OPTION_EMBED_TARGET}.inc)
+    cmake_path(SET SHADER_INC_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_INC})
 
     add_custom_command(
       OUTPUT ${SHADER_INC_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
       COMMAND
         ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fh ${SHADER_INC_FILE} -Vn
-        ${SHADER_TARGET} && ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo
+        ${OPTION_EMBED_TARGET} && ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo
         ${SHADER_INC_FILE} -MD -MF ${SHADER_INC_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${SHADER_INC_FILE}.d)
-    set(SHADER_INC_TARGET ${SHADER_TARGET}-inc)
+    set(SHADER_INC_TARGET ${OPTION_EMBED_TARGET}-inc)
     add_custom_target(${SHADER_INC_TARGET} DEPENDS ${SHADER_INC_FILE})
 
-    set(SHADER_H ${SHADER_TARGET}.h)
-    cmake_path(SET SHADER_H_FILE ${shader_output_dir}/${SHADER_H})
+    set(SHADER_H ${OPTION_EMBED_TARGET}.h)
+    cmake_path(SET SHADER_H_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_H})
 
     set(SHADER_H_CODE
         "#pragma once
@@ -100,39 +95,24 @@ static
 ")
     file(WRITE ${SHADER_H_FILE} ${SHADER_H_CODE})
 
-    add_library(${SHADER_TARGET} INTERFACE ${SHADER_H_FILE})
-    target_include_directories(${SHADER_TARGET} INTERFACE ${shader_output_dir})
+    add_library(${OPTION_EMBED_TARGET} INTERFACE ${SHADER_H_FILE})
+    target_include_directories(${OPTION_EMBED_TARGET}
+                               INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
 
-    add_dependencies(${SHADER_TARGET} ${SHADER_INC_TARGET})
+    add_dependencies(${OPTION_EMBED_TARGET} ${SHADER_INC_TARGET})
   else()
-    set(blob_suffix dxil)
-    if(OPTION_SPIRV)
-      set(blob_suffix spv)
+    if(OPTION_REFLECTION_FILE)
+      set(reflection_flags -Fre ${OPTION_REFLECTION_FILE})
     endif()
-    set(SHADER_BLOB ${SHADER_TARGET}.${blob_suffix})
-    cmake_path(SET SHADER_BLOB_FILE ${shader_output_dir}/${SHADER_BLOB})
-
     add_custom_command(
-      OUTPUT ${SHADER_BLOB_FILE}
+      OUTPUT ${OPTION_OUTPUT_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
       COMMAND
-        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${SHADER_BLOB_FILE} &&
-        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${SHADER_BLOB_FILE} -MD
-        -MF ${SHADER_BLOB_FILE}.d
+        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${OPTION_OUTPUT_FILE}
+        ${reflection_flags} && ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo
+        ${OPTION_OUTPUT_FILE} -MD -MF ${OPTION_OUTPUT_FILE}.d
       COMMAND_EXPAND_LISTS
-      DEPFILE ${SHADER_BLOB_FILE}.d)
-    add_custom_target(${SHADER_TARGET} ALL DEPENDS ${SHADER_BLOB_FILE})
+      DEPFILE ${OPTION_OUTPUT_FILE}.d)
   endif()
 
-endfunction()
-
-function(add_vulkan_shader target source)
-  add_dxc_shader(
-    ${target}
-    ${source}
-    ${ARGV}
-    SPIRV
-    DXC_FLAGS
-    -Zpc
-    -fvk-use-scalar-layout)
 endfunction()

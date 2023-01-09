@@ -7,9 +7,9 @@
 #include "DescriptorSetAllocator.hpp"
 #include "Material.hpp"
 #include "MaterialAllocator.hpp"
+#include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
-#include "PipelineCompiler.hpp"
 #include "ResourceUploader.hpp"
 
 class RenScene {

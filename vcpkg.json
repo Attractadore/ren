@@ -11,7 +11,10 @@
   ],
   "features": {
     "directx12": {
-      "description": "Enable DirectX 12 backend"
+      "description": "Enable DirectX 12 backend",
+      "dependencies": [
+        "directx-dxc"
+      ]
     },
     "dummy": {
       "description": ""

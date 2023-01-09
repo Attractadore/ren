@@ -80,8 +80,8 @@ add_library(
   AssetLoader.cpp
   DescriptorSetAllocator.cpp
   Device.cpp
+  MaterialPipelineCompiler.cpp
   Pipeline.cpp
-  PipelineCompiler.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
   Scene.cpp)

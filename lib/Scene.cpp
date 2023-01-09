@@ -55,11 +55,11 @@ auto reflect_material_pipeline_signature(Device &device,
     -> PipelineSignature {
   auto reflection_suffix = device.get_shader_reflection_suffix();
   Vector<std::byte> buffer;
-  loader.load_file(fmt::format("VertexShaderReflection{0}", reflection_suffix),
+  loader.load_file(fmt::format("ReflectionVertexShader{0}", reflection_suffix),
                    buffer);
   auto vs = device.create_reflection_module(buffer);
   loader.load_file(
-      fmt::format("FragmentShaderReflection{0}", reflection_suffix), buffer);
+      fmt::format("ReflectionFragmentShader{0}", reflection_suffix), buffer);
   auto fs = device.create_reflection_module(buffer);
 
   SmallVector<DescriptorSetLayoutDesc, 2> set_layout_descs;

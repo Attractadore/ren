@@ -1,25 +1,46 @@
 include(DXCShader)
+include(ShaderVars)
 
-function(add_shader target source)
-  add_vulkan_shader(
-    ${target}
-    ${source}
+set(vulkan_shaders "")
+
+macro(add_vulkan_shader source output)
+  add_dxc_shader(
+    ${REN_SHADER_DIR}/${source}
     ${ARGV}
+    OUTPUT_FILE
+    ${REN_ASSETS_OUTPUT_DIRECTORY}/${output}
+    DXC_FLAGS
+    -Zpc
+    -fvk-use-scalar-layout
+    -fvk-use-dx-position-w
+    -spirv
     INCLUDE_DIRECTORIES
-    ${REN_PRIVATE_INCLUDE_DIR}/hlsl
-    OUTPUT_DIRECTORY
-    ${REN_ASSETS_OUTPUT_DIRECTORY})
-endfunction()
+    ${REN_PRIVATE_INCLUDE_DIR}/hlsl)
+  list(APPEND vulkan_shaders ${REN_ASSETS_OUTPUT_DIRECTORY}/${output})
+endmacro()
 
-set(ALBEDO_PERMUTATIONS CONST_COLOR VERTEX_COLOR)
 foreach(perm ${ALBEDO_PERMUTATIONS})
-  add_shader(VertexShader_${perm} ${REN_SHADER_DIR}/VertexShader.hlsl PROFILE
-             vs_6_0 DEFINES ${perm})
-  add_shader(FragmentShader_${perm} ${REN_SHADER_DIR}/FragmentShader.hlsl
-             PROFILE ps_6_0 DEFINES ${perm})
+  add_vulkan_shader(VertexShader.hlsl VertexShader_${perm}.spv PROFILE vs_6_0
+                    DEFINES ${perm})
+  add_vulkan_shader(FragmentShader.hlsl FragmentShader_${perm}.spv PROFILE
+                    ps_6_0 DEFINES ${perm})
 endforeach()
 
-add_shader(VertexShaderReflection ${REN_SHADER_DIR}/VertexShader.hlsl PROFILE
-           vs_6_0 DXC_FLAGS -O0)
-add_shader(FragmentShaderReflection ${REN_SHADER_DIR}/FragmentShader.hlsl
-           PROFILE ps_6_0 DXC_FLAGS -O0)
+add_vulkan_shader(
+  VertexShader.hlsl
+  ReflectionVertexShader.spv
+  PROFILE
+  vs_6_0
+  DXC_FLAGS
+  -fspv-reflect
+  -O0)
+add_vulkan_shader(
+  FragmentShader.hlsl
+  ReflectionFragmentShader.spv
+  PROFILE
+  ps_6_0
+  DXC_FLAGS
+  -fspv-reflect
+  -O0)
+
+add_custom_target(VulkanShaders ALL DEPENDS ${vulkan_shaders})

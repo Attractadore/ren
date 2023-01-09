@@ -1,4 +1,4 @@
-#include "PipelineCompiler.hpp"
+#include "MaterialPipelineCompiler.hpp"
 #include "Config.hpp"
 #include "Device.hpp"
 
@@ -20,9 +20,9 @@ std::string_view get_albedo_str(MaterialAlbedo albedo) {
   switch (albedo) {
     using enum MaterialAlbedo;
   case Const:
-    return "CONST_COLOR";
+    return "ALBEDO_CONST";
   case Vertex:
-    return "VERTEX_COLOR";
+    return "ALBEDO_VERTEX";
   }
 }
 
