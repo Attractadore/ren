@@ -144,7 +144,7 @@ void VulkanCommandBuffer::set_scissor_rects(
                                    vk_rects.data());
 }
 
-void VulkanCommandBuffer::bind_graphics_pipeline(PipelineRef pipeline) {
+void VulkanCommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
   m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                             getVkPipeline(pipeline));
 }
@@ -166,6 +166,21 @@ void VulkanCommandBuffer::set_graphics_push_constants(
   m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),
                              getVkShaderStageFlags(stages), offset, data.size(),
                              data.data());
+}
+
+void VulkanCommandBuffer::bind_vertex_buffers(
+    unsigned first_binding, std::span<const BufferRef> buffers) {
+  auto vk_buffers =
+      buffers | map(getVkBuffer) | ranges::to<SmallVector<VkBuffer, 32>>;
+  auto offsets = buffers |
+                 map([](BufferRef buffer) { return buffer.desc.offset; }) |
+                 ranges::to<SmallVector<VkDeviceSize, 32>>;
+  auto sizes = buffers |
+               map([](BufferRef buffer) { return buffer.desc.size; }) |
+               ranges::to<SmallVector<VkDeviceSize, 32>>;
+  m_device->CmdBindVertexBuffers2(m_cmd_buffer, first_binding, buffers.size(),
+                                  vk_buffers.data(), offsets.data(),
+                                  sizes.data(), nullptr);
 }
 
 void VulkanCommandBuffer::bind_index_buffer(const BufferRef &buffer,

@@ -22,10 +22,22 @@ class RenScene {
   unsigned m_output_height = 0;
   ren::Swapchain *m_swapchain = nullptr;
 
-  ren::BufferPool m_vertex_buffer_pool;
-  ren::BufferPool m_index_buffer_pool;
-
   ren::Camera m_camera;
+
+  union {
+    struct {
+      BufferPool m_vertex_buffer_pool;
+      BufferPool m_index_buffer_pool;
+      ResourceUploader m_resource_uploader;
+      MaterialPipelineCompiler m_compiler;
+      MaterialAllocator m_material_allocator;
+      DescriptorSetAllocator m_descriptor_set_allocator;
+    };
+  };
+
+  std::unique_ptr<CommandAllocator> m_cmd_allocator;
+
+  hlsl::VertexFetch m_vertex_fetch = hlsl::VertexFetch::Physical;
 
   using MeshMap = ren::SlotMap<ren::Mesh>;
   MeshMap m_meshes;
@@ -37,8 +49,6 @@ class RenScene {
   static ren::MeshID get_mesh_id(MeshMap::key_type mesh_key) {
     return std::bit_cast<ren::MeshID>(mesh_key) + 1;
   }
-
-  ren::MaterialAllocator m_material_allocator;
 
   using MaterialMap = ren::SlotMap<ren::Material>;
   MaterialMap m_materials;
@@ -62,24 +72,20 @@ class RenScene {
     return std::bit_cast<ren::ModelID>(model_key) + 1;
   }
 
-  std::unique_ptr<CommandAllocator> m_cmd_allocator;
+  PipelineSignature m_pipeline_signature;
 
-  union {
-    DescriptorSetAllocator m_descriptor_set_allocator;
-  };
+  DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
+    return m_pipeline_signature.desc->set_layouts[hlsl::c_persistent_set];
+  }
 
-  DescriptorSetLayout m_persistent_descriptor_set_layout;
   DescriptorPool m_persistent_descriptor_pool;
   DescriptorSet m_persistent_descriptor_set;
+
+  DescriptorSetLayoutRef get_global_descriptor_set_layout() const {
+    return m_pipeline_signature.desc->set_layouts[hlsl::c_global_set];
+  }
+
   BufferRef m_materials_buffer = {};
-
-  DescriptorSetLayout m_global_descriptor_set_layout;
-
-  union {
-    ren::MaterialPipelineCompiler m_compiler;
-  };
-
-  ren::ResourceUploader m_resource_uploader;
 
 private:
   void begin_frame();

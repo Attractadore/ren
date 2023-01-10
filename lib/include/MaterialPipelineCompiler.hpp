@@ -4,7 +4,9 @@
 #include "Formats.hpp"
 #include "Pipeline.hpp"
 #include "Support/HashMap.hpp"
+#include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
+#include "hlsl/interface.hpp"
 
 #include <span>
 
@@ -18,7 +20,28 @@ enum class MaterialAlbedo {
 struct MaterialConfig {
   MaterialAlbedo albedo;
 
+  MaterialConfig(const MaterialDesc &desc)
+      : albedo(static_cast<MaterialAlbedo>(desc.albedo_type)) {}
   auto operator<=>(const MaterialConfig &other) const = default;
+};
+
+template <hlsl::VertexFetch VF> struct VertexFetch {
+  static constexpr auto type = VF;
+};
+
+template <> struct VertexFetch<hlsl::VertexFetch::Attribute> {
+  static constexpr auto type = hlsl::VertexFetch::Attribute;
+  const HashMap<std::string_view, Format> *semantic_formats;
+};
+
+struct MaterialPipelineConfig {
+  MaterialConfig material;
+  PipelineSignatureRef signature;
+  std::variant<VertexFetch<hlsl::VertexFetch::Physical>,
+               VertexFetch<hlsl::VertexFetch::Logical>,
+               VertexFetch<hlsl::VertexFetch::Attribute>>
+      vertex_fetch;
+  Format rt_format;
 };
 
 } // namespace ren
@@ -31,19 +54,17 @@ namespace ren {
 
 class MaterialPipelineCompiler {
   Device *m_device;
-  PipelineSignature m_signature;
-  HashMap<MaterialConfig, Pipeline> m_pipelines;
+  HashMap<MaterialConfig, GraphicsPipeline> m_pipelines;
   const AssetLoader *m_asset_loader;
 
 public:
-  MaterialPipelineCompiler(Device &device, PipelineSignature signature,
-                           const AssetLoader *asset_loader);
+  MaterialPipelineCompiler(Device &device, const AssetLoader *asset_loader);
 
-  auto get_signature() const -> const PipelineSignature & {
-    return m_signature;
-  }
-  auto get_material_pipeline(const MaterialConfig &config, Format rt_format)
-      -> const Pipeline &;
+  auto get_material_pipeline(const MaterialConfig &config) const
+      -> Optional<GraphicsPipelineRef>;
+
+  auto compile_material_pipeline(const MaterialPipelineConfig &config)
+      -> GraphicsPipelineRef;
 };
 
 } // namespace ren

@@ -10,26 +10,6 @@
 
 namespace ren {
 
-struct PipelineDesc {};
-
-struct PipelineRef {
-  PipelineDesc desc;
-  void *handle;
-
-  void *get() const { return handle; }
-};
-
-struct Pipeline {
-  PipelineDesc desc;
-  AnyRef handle;
-
-  operator PipelineRef() const {
-    return {.desc = desc, .handle = handle.get()};
-  }
-
-  void *get() const { return handle.get(); }
-};
-
 struct PushConstantRange {
   ShaderStageFlags stages;
   unsigned offset = 0;
@@ -59,6 +39,24 @@ struct PipelineSignature {
   void *get() const { return handle.get(); }
 };
 
+#define REN_VERTEX_INPUT_RATES (Vertex)(Instance)
+REN_DEFINE_ENUM(VertexInputRate, REN_VERTEX_INPUT_RATES);
+
+struct VertexBinding {
+  unsigned binding;
+  unsigned stride;
+  VertexInputRate rate = VertexInputRate::Vertex;
+};
+
+struct VertexAttribute {
+  std::string semantic;
+  unsigned location;
+  unsigned count = 1;
+  unsigned binding = 0;
+  Format format;
+  unsigned offset = 0;
+};
+
 #define REN_PRIMITIVE_TOPOLOGY_TYPES (Points)(Lines)(Triangles)
 REN_DEFINE_ENUM(PrimitiveTopologyType, REN_PRIMITIVE_TOPOLOGY_TYPES);
 
@@ -67,49 +65,71 @@ REN_DEFINE_ENUM(PrimitiveTopologyType, REN_PRIMITIVE_TOPOLOGY_TYPES);
       LineStrip)(TriangleList)(TriangleStrip)(LineListWithAdjacency)(LineStripWithAdjacency)(TriangleListWithAdjacency)(TriangleStripWithAdjacency)
 REN_DEFINE_ENUM(PrimitiveTopology, REN_PRIMITIVE_TOPOLOGIES);
 
-struct GraphicsPipelineConfig {
-  PipelineSignatureRef signature;
-
-  struct ShaderState {
-    ShaderStage stage;
-    std::span<const std::byte> code;
-    std::string entry_point;
-  };
-  StaticVector<ShaderState, 2> shaders;
-
-  struct IAState {
+struct GraphicsPipelineDesc {
+  struct IADesc {
+    Vector<VertexBinding> bindings;
+    Vector<VertexAttribute> attributes;
     std::variant<PrimitiveTopologyType, PrimitiveTopology> topology =
         PrimitiveTopology::TriangleList;
   } ia;
 
-  struct MSState {
+  struct MSDesc {
     unsigned samples = 1;
     unsigned sample_mask = -1;
   } ms;
 
-  struct RTState {
+  struct RTDesc {
     Format format;
-  };
-  StaticVector<RTState, 8> rts;
+  } rt;
+};
+
+struct GraphicsPipelineRef {
+  std::shared_ptr<GraphicsPipelineDesc> desc;
+  void *handle;
+
+  void *get() const { return handle; }
+};
+
+struct GraphicsPipeline {
+  std::shared_ptr<GraphicsPipelineDesc> desc;
+  AnyRef handle;
+
+  operator GraphicsPipelineRef() const {
+    return {.desc = desc, .handle = handle.get()};
+  }
+
+  void *get() const { return handle.get(); }
+};
+
+struct ShaderStageConfig {
+  ShaderStage stage;
+  std::span<const std::byte> code;
+  std::string entry_point;
+};
+
+struct GraphicsPipelineConfig {
+  PipelineSignatureRef signature;
+  StaticVector<ShaderStageConfig, 2> shaders;
+  GraphicsPipelineDesc desc;
 };
 
 class GraphicsPipelineBuilder {
   Device *m_device;
-  GraphicsPipelineConfig m_desc = {};
+  GraphicsPipelineConfig m_config = {};
 
 public:
   explicit GraphicsPipelineBuilder(Device &device) : m_device(&device) {}
 
-  auto set_signature(const PipelineSignatureRef &signature)
+  auto set_signature(PipelineSignatureRef signature)
       -> GraphicsPipelineBuilder & {
-    m_desc.signature = signature;
+    m_config.signature = signature;
     return *this;
   }
 
   auto set_shader(ShaderStage stage, std::span<const std::byte> code,
                   std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
-    m_desc.shaders.push_back({
+    m_config.shaders.push_back({
         .stage = stage,
         .code = code,
         .entry_point = std::string(entry_point),
@@ -129,12 +149,24 @@ public:
     return set_shader(ShaderStage::Fragment, code, entry_point);
   }
 
-  auto add_render_target(Format format) -> GraphicsPipelineBuilder & {
-    m_desc.rts.push_back({.format = format});
+  auto set_ia_vertex_bindings(Vector<VertexBinding> bindings)
+      -> GraphicsPipelineBuilder & {
+    m_config.desc.ia.bindings = std::move(bindings);
     return *this;
   }
 
-  auto build() -> Pipeline;
+  auto set_ia_vertex_attributes(Vector<VertexAttribute> attributes)
+      -> GraphicsPipelineBuilder & {
+    m_config.desc.ia.attributes = std::move(attributes);
+    return *this;
+  }
+
+  auto set_render_target(Format format) -> GraphicsPipelineBuilder & {
+    m_config.desc.rt = {.format = format};
+    return *this;
+  }
+
+  auto build() -> GraphicsPipeline;
 };
 
 } // namespace ren

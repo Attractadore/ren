@@ -13,6 +13,11 @@ REN_MAP_FIELD(PrimitiveTopologyType::Triangles,
 REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopologyType,
              REN_PRIMITIVE_TOPOLOGY_TYPES);
 
+REN_MAP_TYPE(VertexInputRate, VkVertexInputRate);
+REN_MAP_FIELD(VertexInputRate::Vertex, VK_VERTEX_INPUT_RATE_VERTEX);
+REN_MAP_FIELD(VertexInputRate::Instance, VK_VERTEX_INPUT_RATE_INSTANCE);
+REN_MAP_ENUM(getVkVertexInputRate, VertexInputRate, REN_VERTEX_INPUT_RATES);
+
 REN_MAP_TYPE(PrimitiveTopology, VkPrimitiveTopology);
 REN_MAP_FIELD(PrimitiveTopology::PointList, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
 REN_MAP_FIELD(PrimitiveTopology::LineList, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
@@ -32,7 +37,7 @@ REN_MAP_FIELD(PrimitiveTopology::TriangleStripWithAdjacency,
 REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopology,
              REN_PRIMITIVE_TOPOLOGIES);
 
-inline VkPipeline getVkPipeline(PipelineRef pipeline) {
+inline VkPipeline getVkPipeline(GraphicsPipelineRef pipeline) {
   return reinterpret_cast<VkPipeline>(pipeline.get());
 }
 

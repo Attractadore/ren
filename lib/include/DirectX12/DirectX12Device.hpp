@@ -77,6 +77,11 @@ private:
   auto create_buffer_handle(const BufferDesc &desc)
       -> std::pair<AnyRef, void *> override;
 
+  auto create_graphics_pipeline_handle(const GraphicsPipelineConfig &desc)
+      -> AnyRef override {
+    dx12Unimplemented();
+  }
+
 private:
   void destroyTextureRTVs(ID3D12Resource *resource);
   void destroyTextureDSVs(ID3D12Resource *resource);
@@ -218,11 +223,6 @@ public:
 
   auto get_shader_reflection_suffix() const -> std::string_view override {
     return ".refl";
-  }
-
-  auto create_graphics_pipeline(const GraphicsPipelineConfig &desc)
-      -> Pipeline override {
-    dx12Unimplemented();
   }
 
   auto create_reflection_module(std::span<const std::byte> data)

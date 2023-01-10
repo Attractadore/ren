@@ -19,8 +19,12 @@ using namespace ren;
 
 struct RenDevice {
 protected:
-  virtual auto create_buffer_handle(const BufferDesc &desc)
+  [[nodiscard]] virtual auto create_buffer_handle(const BufferDesc &desc)
       -> std::pair<AnyRef, void *> = 0;
+
+  [[nodiscard]] virtual auto
+  create_graphics_pipeline_handle(const GraphicsPipelineConfig &config)
+      -> AnyRef = 0;
 
 public:
   virtual ~RenDevice() = default;
@@ -74,8 +78,10 @@ public:
       -> std::string_view = 0;
   [[nodiscard]] virtual auto get_shader_reflection_suffix() const
       -> std::string_view = 0;
-  [[nodiscard]] virtual auto
-  create_graphics_pipeline(const GraphicsPipelineConfig &desc) -> Pipeline = 0;
+
+  [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
+      -> GraphicsPipeline;
+
   [[nodiscard]] virtual auto
   create_reflection_module(std::span<const std::byte> data)
       -> std::unique_ptr<ReflectionModule> = 0;

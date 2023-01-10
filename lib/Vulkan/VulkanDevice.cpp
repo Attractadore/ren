@@ -108,6 +108,8 @@ VulkanDevice::VulkanDevice(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   };
 
   std::array extensions = {
+      VK_GOOGLE_HLSL_FUNCTIONALITY1_EXTENSION_NAME,
+      VK_GOOGLE_USER_TYPE_EXTENSION_NAME,
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
 
@@ -637,28 +639,23 @@ VkShaderModule create_shader_module(VulkanDevice &device,
 }
 } // namespace
 
-auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
-    -> Pipeline {
+auto VulkanDevice::create_graphics_pipeline_handle(
+    const GraphicsPipelineConfig &config) -> AnyRef {
   SmallVector<VkDynamicState> dynamic_states = {
       VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
       VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
   };
 
-  auto rt_formats = desc.rts |
-                    map([](const GraphicsPipelineConfig::RTState &rt) {
-                      return getVkFormat(rt.format);
-                    }) |
-                    ranges::to<SmallVector<VkFormat, 8>>;
+  auto rt_format = getVkFormat(config.desc.rt.format);
 
   VkPipelineRenderingCreateInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-      .colorAttachmentCount = unsigned(rt_formats.size()),
-      .pColorAttachmentFormats = rt_formats.data(),
+      .colorAttachmentCount = 1,
+      .pColorAttachmentFormats = &rt_format,
   };
 
   auto modules =
-      desc.shaders |
-      map([&](const GraphicsPipelineConfig::ShaderState &shader) {
+      config.shaders | map([&](const ShaderStageConfig &shader) {
         VkShaderModuleCreateInfo module_info = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
             .codeSize = shader.code.size_bytes(),
@@ -672,7 +669,7 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       ranges::to<SmallVector<VkShaderModule, 8>>;
 
   auto stages =
-      ranges::views::zip(desc.shaders, modules) | map([](const auto &p) {
+      ranges::views::zip(config.shaders, modules) | map([](const auto &p) {
         const auto &[shader, module] = p;
         return VkPipelineShaderStageCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -683,17 +680,45 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       }) |
       ranges::to<SmallVector<VkPipelineShaderStageCreateInfo, 5>>;
 
+  auto bindings = config.desc.ia.bindings |
+                  map([](const VertexBinding &binding) {
+                    return VkVertexInputBindingDescription{
+                        .binding = binding.binding,
+                        .stride = binding.stride,
+                        .inputRate = getVkVertexInputRate(binding.rate),
+                    };
+                  }) |
+                  ranges::to<SmallVector<VkVertexInputBindingDescription, 32>>;
+
+  SmallVector<VkVertexInputAttributeDescription, 32> attributes;
+  for (const auto &attribute : config.desc.ia.attributes) {
+    auto format = getVkFormat(attribute.format);
+    auto format_size = get_format_size(attribute.format);
+    for (int i = 0; i < attribute.count; ++i) {
+      attributes.push_back({
+          .location = attribute.location + i,
+          .binding = attribute.binding,
+          .format = format,
+          .offset = attribute.offset + i * format_size,
+      });
+    }
+  }
+
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+      .vertexBindingDescriptionCount = unsigned(bindings.size()),
+      .pVertexBindingDescriptions = bindings.data(),
+      .vertexAttributeDescriptionCount = unsigned(attributes.size()),
+      .pVertexAttributeDescriptions = attributes.data(),
   };
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
       .topology = std::visit(
           [](auto topology) { return getVkPrimitiveTopology(topology); },
-          desc.ia.topology),
+          config.desc.ia.topology),
   };
-  if (std::holds_alternative<PrimitiveTopologyType>(desc.ia.topology)) {
+  if (std::holds_alternative<PrimitiveTopologyType>(config.desc.ia.topology)) {
     dynamic_states.push_back(VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY);
   }
 
@@ -706,10 +731,10 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       .lineWidth = 1.0f,
   };
 
-  VkSampleMask mask = desc.ms.sample_mask;
+  VkSampleMask mask = config.desc.ms.sample_mask;
   VkPipelineMultisampleStateCreateInfo multisample_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples = VkSampleCountFlagBits(desc.ms.samples),
+      .rasterizationSamples = VkSampleCountFlagBits(config.desc.ms.samples),
       .pSampleMask = &mask,
   };
 
@@ -742,7 +767,7 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
       .pMultisampleState = &multisample_info,
       .pColorBlendState = &blend_info,
       .pDynamicState = &dynamic_state_info,
-      .layout = getVkPipelineLayout(desc.signature),
+      .layout = getVkPipelineLayout(config.signature),
   };
 
   VkPipeline pipeline;
@@ -753,9 +778,9 @@ auto VulkanDevice::create_graphics_pipeline(const GraphicsPipelineConfig &desc)
     DestroyShaderModule(module);
   }
 
-  return {.handle = AnyRef(pipeline, [this](VkPipeline pipeline) {
-            push_to_delete_queue(pipeline);
-          })};
+  return AnyRef(pipeline, [this](VkPipeline pipeline) {
+    push_to_delete_queue(pipeline);
+  });
 }
 
 auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)

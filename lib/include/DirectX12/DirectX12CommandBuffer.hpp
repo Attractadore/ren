@@ -45,7 +45,7 @@ public:
     dx12Unimplemented();
   }
 
-  void bind_graphics_pipeline(PipelineRef pipeline) override {
+  void bind_graphics_pipeline(GraphicsPipelineRef pipeline) override {
     dx12Unimplemented();
   }
 

@@ -15,8 +15,8 @@ inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(BufferUsageFlags usage) {
   return flags;
 }
 
-inline ID3D12Resource *getD3D12Resource(const BufferLike auto &buffer) {
-  return reinterpret_cast<ID3D12Resource *>(buffer.get());
+inline ID3D12Resource *getD3D12Resource(BufferRef buffer) {
+  return reinterpret_cast<ID3D12Resource *>(buffer.handle);
 }
 
 REN_MAP_TYPE(BufferLocation, D3D12_HEAP_TYPE);

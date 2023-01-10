@@ -87,7 +87,7 @@ public:
     set_scissor_rects(asSpan(rect));
   }
 
-  virtual void bind_graphics_pipeline(PipelineRef pipeline) = 0;
+  virtual void bind_graphics_pipeline(GraphicsPipelineRef pipeline) = 0;
 
   virtual void
   bind_graphics_descriptor_sets(PipelineSignatureRef signature,
@@ -107,6 +107,9 @@ public:
     set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),
                                 offset);
   }
+
+  virtual void bind_vertex_buffers(unsigned first_binding,
+                                   std::span<const BufferRef> buffers) = 0;
 
   virtual void bind_index_buffer(const BufferRef &buffer,
                                  IndexFormat format = IndexFormat::U32) = 0;

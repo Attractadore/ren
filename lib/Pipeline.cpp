@@ -1,7 +1,7 @@
 #include "Device.hpp"
 
 namespace ren {
-auto GraphicsPipelineBuilder::build() -> Pipeline {
-  return m_device->create_graphics_pipeline(m_desc);
+auto GraphicsPipelineBuilder::build() -> GraphicsPipeline {
+  return m_device->create_graphics_pipeline(std::exchange(m_config, {}));
 }
 } // namespace ren

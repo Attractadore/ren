@@ -49,9 +49,9 @@ template <typename T> T ptr_load(uint64_t base, uint idx) {
 struct VS_IN {
   uint index : SV_VertexID;
 #if VERTEX_FETCH_ATTRIBUTE
-  float3 position : VERTEX_POSITION;
+  float3 position : POSITION;
 #if ALBEDO_VERTEX
-  float3 color : VERTEX_ALBEDO;
+  float3 color : ALBEDO;
 #endif
 #endif
 };

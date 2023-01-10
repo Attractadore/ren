@@ -6,7 +6,8 @@
 
 namespace ren {
 #define REN_BUFFER_USAGES                                                      \
-  (TransferSRC)(TransferDST)(Uniform)(Storage)(Index)(Indirect)(DeviceAddress)
+  (TransferSRC)(TransferDST)(                                                  \
+      Uniform)(Storage)(Index)(Vertex)(Indirect)(DeviceAddress)
 REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
 
 #define REN_BUFFER_LOCATIONS (Device)(Host)(HostCached)
@@ -43,6 +44,14 @@ public:
     return {map<T>(offset), count};
   }
 
+  B subbuffer(unsigned offset, unsigned size) const {
+    auto sb = impl();
+    assert(offset + size <= sb.desc.size);
+    sb.desc.offset += offset;
+    sb.desc.size = size;
+    return sb;
+  }
+
   bool operator==(const BufferMixin &other) const {
     const auto &lhs = impl();
     const auto &rhs = other.impl();
@@ -71,7 +80,4 @@ struct Buffer : detail::BufferMixin<Buffer> {
 
   void *get() const { return handle.get(); }
 };
-
-template <typename T>
-concept BufferLike = std::same_as<T, Buffer> or std::same_as<T, BufferRef>;
 } // namespace ren

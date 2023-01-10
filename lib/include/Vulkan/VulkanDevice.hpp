@@ -58,6 +58,9 @@ private:
   auto create_buffer_handle(const BufferDesc &desc)
       -> std::pair<AnyRef, void *> override;
 
+  auto create_graphics_pipeline_handle(const GraphicsPipelineConfig &desc)
+      -> AnyRef override;
+
 private:
   VkImageView getVkImageViewImpl(VkImage image,
                                  const VkImageViewCreateInfo &view_info);
@@ -115,9 +118,6 @@ public:
   auto get_shader_reflection_suffix() const -> std::string_view override {
     return ".spv";
   }
-
-  auto create_graphics_pipeline(const GraphicsPipelineConfig &desc)
-      -> Pipeline override;
 
   auto create_reflection_module(std::span<const std::byte> data)
       -> std::unique_ptr<ReflectionModule> override;

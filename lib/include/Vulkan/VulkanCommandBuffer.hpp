@@ -77,7 +77,7 @@ public:
 
   void set_scissor_rects(std::span<const ScissorRect> rects) override;
 
-  void bind_graphics_pipeline(PipelineRef pipeline) override;
+  void bind_graphics_pipeline(GraphicsPipelineRef pipeline) override;
 
   void
   bind_graphics_descriptor_sets(PipelineSignatureRef signature,
@@ -88,6 +88,9 @@ public:
                                    ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override;
+
+  void bind_vertex_buffers(unsigned first_binding,
+                           std::span<const BufferRef> buffers) override;
 
   void bind_index_buffer(const BufferRef &buffer, IndexFormat format) override;
 

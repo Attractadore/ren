@@ -12,6 +12,7 @@ macro(add_vulkan_shader source output)
     DXC_FLAGS
     -Zpc
     # -fspv-flatten-resource-arrays
+    -fspv-reflect
     -fvk-use-dx-position-w
     -fvk-use-scalar-layout
     -spirv
@@ -47,7 +48,6 @@ add_vulkan_shader(
   PROFILE
   vs_6_0
   DXC_FLAGS
-  -fspv-reflect
   -O0
   DEFINES
   REFLECTION)
@@ -57,7 +57,6 @@ add_vulkan_shader(
   PROFILE
   ps_6_0
   DXC_FLAGS
-  -fspv-reflect
   -O0
   DEFINES
   REFLECTION)

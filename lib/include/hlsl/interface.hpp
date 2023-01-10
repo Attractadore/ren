@@ -1,3 +1,4 @@
+#pragma once
 #include "interface.h"
 
 REN_NAMESPACE_BEGIN

@@ -40,3 +40,12 @@ auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
 void Device::write_descriptor_set(const DescriptorSetWriteConfig &config) {
   write_descriptor_sets({&config, 1});
 }
+
+auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
+    -> GraphicsPipeline {
+  auto handle = create_graphics_pipeline_handle(config);
+  return {
+      .desc = std::make_shared<GraphicsPipelineDesc>(std::move(config.desc)),
+      .handle = std::move(handle),
+  };
+}
