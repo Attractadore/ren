@@ -49,3 +49,7 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
       .handle = std::move(handle),
   };
 }
+
+auto Device::supports_buffer_device_address() const -> bool {
+  return supports_feature(DeviceFeature::BufferDeviceAddress);
+}

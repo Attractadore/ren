@@ -157,6 +157,16 @@ VulkanDevice::~VulkanDevice() {
   DestroyDevice();
 }
 
+auto VulkanDevice::supports_feature(DeviceFeature feature) const -> bool {
+  switch (feature) {
+    using enum DeviceFeature;
+  default:
+    return false;
+  case BufferDeviceAddress:
+    return true;
+  }
+}
+
 void VulkanDevice::begin_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);

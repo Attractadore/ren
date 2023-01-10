@@ -81,6 +81,8 @@ public:
   void begin_frame() override;
   void end_frame() override;
 
+  auto supports_feature(DeviceFeature feature) const -> bool override;
+
   static uint32_t getRequiredAPIVersion() { return VK_API_VERSION_1_3; }
   static std::span<const char *const> getRequiredLayers();
   static std::span<const char *const> getRequiredExtensions();

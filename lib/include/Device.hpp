@@ -13,6 +13,11 @@ enum class QueueType {
   Compute,
   Transfer,
 };
+
+enum class DeviceFeature {
+  BufferDeviceAddress,
+};
+
 } // namespace ren
 
 using namespace ren;
@@ -31,6 +36,8 @@ public:
 
   virtual void begin_frame() = 0;
   virtual void end_frame() = 0;
+
+  virtual bool supports_feature(DeviceFeature feature) const = 0;
 
   virtual std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() = 0;
 
@@ -66,6 +73,8 @@ public:
   void write_descriptor_set(const DescriptorSetWriteConfig &config);
 
   auto create_buffer(BufferDesc desc) -> Buffer;
+
+  auto supports_buffer_device_address() const -> bool;
 
   virtual auto get_buffer_device_address(const BufferRef &buffer) const
       -> uint64_t = 0;

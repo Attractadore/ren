@@ -106,7 +106,9 @@ auto reflect_material_pipeline_signature(Device &device,
 Scene::RenScene(Device *device) {
   m_device = device;
 
-  m_vertex_fetch = hlsl::VertexFetch::Attribute;
+  if (m_device->supports_buffer_device_address()) {
+    m_vertex_fetch = hlsl::VertexFetch::Physical;
+  }
 
   BufferUsageFlags vertex_buffer_usage = BufferUsage::TransferDST;
   switch (m_vertex_fetch) {

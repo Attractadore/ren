@@ -96,6 +96,8 @@ public:
   DirectX12Device &operator=(DirectX12Device &&) = default;
   ~DirectX12Device();
 
+  auto supports_feature(DeviceFeature feature) const -> bool override;
+
   auto *get() const { return m_device.Get(); }
   auto *getDXGIFactory() const { return m_factory.Get(); }
 

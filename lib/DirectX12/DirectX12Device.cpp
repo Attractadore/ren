@@ -127,6 +127,14 @@ DirectX12Device::DirectX12Device(LUID luid)
 
 DirectX12Device::~DirectX12Device() { flush(); }
 
+auto DirectX12Device::supports_feature(DeviceFeature feature) const -> bool {
+  switch (feature) {
+    using enum DeviceFeature;
+  default:
+    return false;
+  }
+}
+
 void DirectX12Device::flush() {
   waitForDirectQueueCompletion();
   m_delete_queue.flush(*this);

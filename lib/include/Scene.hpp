@@ -37,7 +37,7 @@ class RenScene {
 
   std::unique_ptr<CommandAllocator> m_cmd_allocator;
 
-  hlsl::VertexFetch m_vertex_fetch = hlsl::VertexFetch::Physical;
+  hlsl::VertexFetch m_vertex_fetch = hlsl::VertexFetch::Attribute;
 
   using MeshMap = ren::SlotMap<ren::Mesh>;
   MeshMap m_meshes;
