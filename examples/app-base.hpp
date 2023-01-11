@@ -57,6 +57,9 @@ protected:
   virtual void process_event(const SDL_Event &e) {}
   virtual void iterate() {}
 
+  const ren::Device &get_device() const { return *m_device; }
+  ren::Device &get_device() { return *m_device; }
+
   const ren::Scene &get_scene() const { return *m_scene; }
   ren::Scene &get_scene() { return *m_scene; }
 
@@ -81,16 +84,22 @@ inline void AppBase::run() {
     }
 
     {
-      int w, h;
-      SDL_GetWindowSize(m_window.get(), &w, &h);
-      m_window_width = w;
-      m_window_height = h;
-    }
-    m_scene->set_output_size(m_window_width, m_window_height);
-    m_swapchain->set_size(m_window_width, m_window_height);
+      ren::Device::FrameScope device_scope(*m_device);
+      ren::Scene::FrameScope scene_scope(*m_scene);
 
-    iterate();
-    m_scene->draw();
+      {
+        int w, h;
+        SDL_GetWindowSize(m_window.get(), &w, &h);
+        m_window_width = w;
+        m_window_height = h;
+      }
+
+      m_scene->set_output_size(m_window_width, m_window_height);
+      m_swapchain->set_size(m_window_width, m_window_height);
+
+      iterate();
+      m_scene->draw();
+    }
   }
   std::cout << "Done\n";
 }

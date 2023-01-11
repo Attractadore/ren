@@ -7,6 +7,9 @@ class DrawTriangleApp : public AppBase {
 
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
+    ren::Device::FrameScope device(get_device());
+    ren::Scene::FrameScope scene(get_scene());
+
     std::array<glm::vec3, 3> positions = {{
         {0.0f, 0.5f, 0.0f},
         {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
@@ -18,14 +21,14 @@ public:
         {0.0f, 0.0f, 1.0f},
     }};
     std::array<unsigned, 3> indices = {0, 1, 2};
-    m_mesh = get_scene().create_unique_mesh({
+    m_mesh = scene.get().create_unique_mesh({
         .positions = positions,
         .colors = colors,
         .indices = indices,
     });
-    m_material = get_scene().create_unique_material(
+    m_material = scene.get().create_unique_material(
         {.albedo = ren::VertexMaterialAlbedo()});
-    m_model = get_scene().create_unique_model(
+    m_model = scene.get().create_unique_model(
         {.mesh = m_mesh.get(), .material = m_material.get()});
   }
 

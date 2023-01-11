@@ -30,8 +30,8 @@ struct Scene;
 namespace detail {
 
 template <typename T>
-concept scoped_enum =
-    std::is_enum_v<T> and not std::convertible_to<T, std::underlying_type_t<T>>;
+concept scoped_enum = std::is_enum_v<T> and not
+std::convertible_to<T, std::underlying_type_t<T>>;
 
 template <scoped_enum H> class SharedHandle;
 
@@ -93,6 +93,23 @@ template <class... Ts> struct overload_set : Ts... {
   using Ts::operator()...;
 };
 
+template <typename T> class FrameScope {
+  struct Deleter {
+    void operator()(T *handle) {
+      if (handle) {
+        handle->end_frame();
+      }
+    }
+  };
+  std::unique_ptr<T, Deleter> m_handle;
+
+public:
+  FrameScope(T &handle) : m_handle(&handle) { m_handle->begin_frame(); }
+
+  const T &get() const { return *m_handle.get(); }
+  T &get() { return *m_handle.get(); }
+};
+
 } // namespace detail
 
 struct Device;
@@ -134,6 +151,10 @@ using UniqueModel = detail::UniqueHandle<Model>;
 using SharedModel = detail::SharedHandle<Model>;
 
 struct Device : RenDevice {
+  using FrameScope = detail::FrameScope<Device>;
+  void begin_frame() { ren_DeviceBeginFrame(this); }
+  void end_frame() { ren_DeviceEndFrame(this); }
+
   UniqueScene create_scene() {
     return {reinterpret_cast<Scene *>(ren_CreateScene(this)), SceneDeleter()};
   }
@@ -218,7 +239,11 @@ struct Scene : RenScene {
     ren_SetSceneOutputSize(this, width, height);
   }
 
-  void draw() { ren_DrawScene(this); }
+  using FrameScope = detail::FrameScope<Scene>;
+  void begin_frame() { ren_SceneBeginFrame(this); }
+  void end_frame() { ren_SceneEndFrame(this); }
+
+  void draw() { ren_SceneDraw(this); }
 
   Mesh create_mesh(const MeshDesc &desc) {
     assert(not desc.positions.empty());

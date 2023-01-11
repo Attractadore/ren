@@ -100,60 +100,51 @@ auto reflect_material_pipeline_signature(
 } // namespace
 } // namespace ren
 
-Scene::RenScene(Device *device) {
-  m_device = device;
+Scene::RenScene(Device *device)
+    : m_device(device),
 
-  if (m_device->supports_buffer_device_address()) {
-    std::construct_at(&m_vertex_fetch, VertexFetchPhysical());
-  } else {
-    std::construct_at(&m_vertex_fetch, VertexFetchAttribute());
-  }
+      m_asset_loader([&] {
+        AssetLoader asset_loader;
+        asset_loader.add_search_directory(c_assets_directory);
+        return asset_loader;
+      }()),
 
-  std::construct_at(&m_vertex_buffer_pool, m_device,
-                    BufferDesc{
-                        .usage = BufferUsage::TransferDST |
-                                 m_vertex_fetch.get_buffer_usage_flags(),
-                        .location = BufferLocation::Device,
-                        .size = 1 << 26,
-                    });
-  std::construct_at(&m_index_buffer_pool, m_device,
-                    BufferDesc{
-                        .usage = BufferUsage::TransferDST | BufferUsage::Index,
-                        .location = BufferLocation::Device,
-                        .size = 1 << 22,
-                    });
+      m_vertex_fetch([&]() -> VertexFetchStrategy {
+        if (m_device->supports_buffer_device_address()) {
+          return VertexFetchPhysical();
+        }
+        return VertexFetchAttribute();
+      }()),
 
-  std::construct_at(&m_resource_uploader, *m_device);
+      m_vertex_buffer_pool(m_device,
+                           BufferDesc{
+                               .usage = BufferUsage::TransferDST |
+                                        m_vertex_fetch.get_buffer_usage_flags(),
+                               .location = BufferLocation::Device,
+                               .size = 1 << 26,
+                           }),
+      m_index_buffer_pool(
+          m_device,
+          BufferDesc{
+              .usage = BufferUsage::TransferDST | BufferUsage::Index,
+              .location = BufferLocation::Device,
+              .size = 1 << 22,
+          }),
 
-  std::construct_at(&m_material_allocator, *m_device);
+      m_resource_uploader(*m_device),
 
-  std::construct_at(&m_compiler, *m_device, &m_asset_loader);
+      m_material_allocator(*m_device),
 
-  std::construct_at(&m_descriptor_set_allocator, *m_device);
+      m_compiler(*m_device, &m_asset_loader),
 
-  m_cmd_allocator = m_device->create_command_allocator();
+      m_descriptor_set_allocator(*m_device),
 
-  m_asset_loader.add_search_directory(c_assets_directory);
+      m_cmd_allocator(m_device->create_command_allocator()),
 
-  m_pipeline_signature = reflect_material_pipeline_signature(
-      *m_device, m_asset_loader, m_vertex_fetch);
-
-  begin_frame();
-}
-
-Scene::~RenScene() {
-  end_frame();
-  m_descriptor_set_allocator.~DescriptorSetAllocator();
-  m_compiler.~MaterialPipelineCompiler();
-  m_resource_uploader.~ResourceUploader();
-  m_material_allocator.~MaterialAllocator();
-  m_index_buffer_pool.~BufferPool();
-  m_vertex_buffer_pool.~BufferPool();
-  m_vertex_fetch.~VertexFetchStrategy();
-}
+      m_pipeline_signature(reflect_material_pipeline_signature(
+          *m_device, m_asset_loader, m_vertex_fetch)) {}
 
 void Scene::begin_frame() {
-  m_device->begin_frame();
   m_cmd_allocator->begin_frame();
   m_descriptor_set_allocator.begin_frame();
   m_resource_uploader.begin_frame();
@@ -163,7 +154,6 @@ void Scene::end_frame() {
   m_resource_uploader.end_frame();
   m_descriptor_set_allocator.end_frame();
   m_cmd_allocator->end_frame();
-  m_device->end_frame();
 }
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
@@ -504,7 +494,4 @@ void Scene::draw() {
   auto rg = rgb->build();
 
   rg->execute(*m_cmd_allocator);
-
-  end_frame();
-  begin_frame();
 }

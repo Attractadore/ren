@@ -7,6 +7,17 @@
 using namespace ren;
 
 extern "C" {
+
+void ren_DeviceBeginFrame(Device *device) {
+  assert(device);
+  device->begin_frame();
+}
+
+void ren_DeviceEndFrame(Device *device) {
+  assert(device);
+  device->end_frame();
+}
+
 void ren_DestroyDevice(Device *device) { delete device; }
 
 void ren_DestroySwapchain(Swapchain *swapchain) { delete swapchain; }
@@ -31,7 +42,17 @@ Scene *ren_CreateScene(Device *device) {
 
 void ren_DestroyScene(Scene *scene) { delete scene; }
 
-void ren_DrawScene(Scene *scene) { scene->draw(); }
+void ren_SceneBeginFrame(Scene *scene) {
+  assert(scene);
+  scene->begin_frame();
+}
+
+void ren_SceneEndFrame(Scene *scene) {
+  assert(scene);
+  scene->end_frame();
+}
+
+void ren_SceneDraw(Scene *scene) { scene->draw(); }
 
 void ren_SetSceneOutputSize(Scene *scene, unsigned width, unsigned height) {
   scene->setOutputSize(width, height);
