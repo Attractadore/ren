@@ -27,6 +27,9 @@ public:
                          DirectX12CommandAllocator *parent,
                          ID3D12CommandAllocator *cmd_alloc);
 
+  const Device &get_device() const override;
+  Device &get_device() override;
+
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,
@@ -60,6 +63,11 @@ public:
                                    ShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override {
+    dx12Unimplemented();
+  }
+
+  void bind_vertex_buffers(unsigned first_binding,
+                           std::span<const BufferRef> buffers) override {
     dx12Unimplemented();
   }
 

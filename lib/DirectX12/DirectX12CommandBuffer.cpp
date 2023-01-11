@@ -7,6 +7,7 @@
 #include "Support/Views.hpp"
 
 namespace ren {
+
 DirectX12CommandBuffer::DirectX12CommandBuffer(
     DirectX12Device *device, DirectX12CommandAllocator *parent,
     ID3D12CommandAllocator *cmd_alloc) {
@@ -17,7 +18,12 @@ DirectX12CommandBuffer::DirectX12CommandBuffer(
   m_cmd_list.Attach(cmd_list);
 }
 
+const Device &DirectX12CommandBuffer::get_device() const { return *m_device; }
+
+Device &DirectX12CommandBuffer::get_device() { return *m_device; }
+
 namespace {
+
 UINT getTargetSubresource(const TextureDesc &tex_desc, unsigned level,
                           unsigned layer, unsigned plane = 0) {
   return plane * (tex_desc.levels * tex_desc.layers) + tex_desc.levels * layer +
