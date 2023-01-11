@@ -64,6 +64,9 @@ class CommandBuffer {
 public:
   virtual ~CommandBuffer() = default;
 
+  virtual const Device &get_device() const = 0;
+  virtual Device &get_device() = 0;
+
   virtual void beginRendering(int x, int y, unsigned width, unsigned height,
                               SmallVector<RenderTargetConfig, 8> rts,
                               Optional<DepthStencilTargetConfig> dst) = 0;

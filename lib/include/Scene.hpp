@@ -11,6 +11,7 @@
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
+#include "VertexFetchStrategy.hpp"
 
 class RenScene {
   ren::Device *m_device;
@@ -26,6 +27,7 @@ class RenScene {
 
   union {
     struct {
+      VertexFetchStrategy m_vertex_fetch;
       BufferPool m_vertex_buffer_pool;
       BufferPool m_index_buffer_pool;
       ResourceUploader m_resource_uploader;
@@ -36,8 +38,6 @@ class RenScene {
   };
 
   std::unique_ptr<CommandAllocator> m_cmd_allocator;
-
-  hlsl::VertexFetch m_vertex_fetch = hlsl::VertexFetch::Attribute;
 
   using MeshMap = ren::SlotMap<ren::Mesh>;
   MeshMap m_meshes;

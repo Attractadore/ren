@@ -50,6 +50,9 @@ public:
   VulkanCommandBuffer(VulkanDevice *device, VkCommandBuffer cmd_buffer,
                       VulkanCommandAllocator *parent);
 
+  const Device &get_device() const override;
+  Device &get_device() override;
+
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
       SmallVector<RenderTargetConfig, 8> render_targets,

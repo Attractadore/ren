@@ -81,4 +81,10 @@ template <size_t N> struct SizedSmallVector {
 };
 } // namespace detail
 
+template <typename V, typename T>
+concept CVector = requires(V vec) {
+                    {
+                      requires(std::initializer_list<T> init) { vec = init; }
+                    }; // namespace ren
+                  };
 } // namespace ren

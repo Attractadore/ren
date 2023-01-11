@@ -9,8 +9,6 @@
 #include "Vulkan/VulkanShaderStages.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
-#include <range/v3/view.hpp>
-
 namespace ren {
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
                                          VkCommandBuffer cmd_buffer,
@@ -22,6 +20,10 @@ VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
   };
   m_device->BeginCommandBuffer(m_cmd_buffer, &begin_info);
 }
+
+const Device &VulkanCommandBuffer::get_device() const { return *m_device; }
+
+Device &VulkanCommandBuffer::get_device() { return *m_device; }
 
 void VulkanCommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,

@@ -62,11 +62,9 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
 
   auto get_shader_name = [&, blob_suffix = m_device->get_shader_blob_suffix()](
                              std::string_view base_name) {
-    return fmt::format(
-        "{0}_{1}_{2}{3}", base_name,
-        get_vertex_fetch_str(std::visit([](const auto &vf) { return vf.type; },
-                                        config.vertex_fetch)),
-        get_albedo_str(config.material.albedo), blob_suffix);
+    return fmt::format("{0}_{1}_{2}{3}", base_name,
+                       get_vertex_fetch_str(config.vertex_fetch->get_type()),
+                       get_albedo_str(config.material.albedo), blob_suffix);
   };
 
   Vector<std::byte> vs, fs;
@@ -75,31 +73,24 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
 
   Vector<VertexBinding> vertex_bindings;
   Vector<VertexAttribute> vertex_attributes;
-  std::visit(
-      OverloadSet{
-          [](const VertexFetch<hlsl::VertexFetch::Physical> &) {},
-          [](const VertexFetch<hlsl::VertexFetch::Logical> &) {},
-          [&](const VertexFetch<hlsl::VertexFetch::Attribute> &vertex_fetch) {
-            auto vs_refl = m_device->create_reflection_module(vs);
-            vertex_attributes.resize(vs_refl->get_input_variable_count());
-            vs_refl->get_input_variables(vertex_attributes);
+  if (const auto *hardware_fetch =
+          config.vertex_fetch->get_if<VertexFetchAttribute>()) {
+    auto vs_refl = m_device->create_reflection_module(vs);
+    vertex_attributes.resize(vs_refl->get_input_variable_count());
+    vs_refl->get_input_variables(vertex_attributes);
 
-            vertex_bindings.resize(vertex_attributes.size());
-            for (auto &attribute : vertex_attributes) {
-              auto binding = attribute.location;
-              auto format =
-                  vertex_fetch.semantic_formats->find(attribute.semantic)
-                      ->second;
-              attribute.binding = binding;
-              attribute.format = format;
-              vertex_bindings[binding] = {
-                  .binding = binding,
-                  .stride = get_format_size(format) * attribute.count,
-              };
-            }
-          },
-      },
-      config.vertex_fetch);
+    vertex_bindings.resize(vertex_attributes.size());
+    for (auto &attribute : vertex_attributes) {
+      auto binding = attribute.location;
+      auto format = hardware_fetch->get_semantic_format(attribute.semantic);
+      attribute.binding = binding;
+      attribute.format = format;
+      vertex_bindings[binding] = {
+          .binding = binding,
+          .stride = get_format_size(format) * attribute.count,
+      };
+    }
+  }
 
   return m_pipelines[config.material] =
              GraphicsPipelineBuilder(*m_device)

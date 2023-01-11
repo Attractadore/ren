@@ -11,11 +11,14 @@
 #include "hlsl/encode.h"
 
 #include <range/v3/algorithm.hpp>
+#include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
 
 using namespace ren;
 
 namespace ren {
+namespace {
+
 void reflect_descriptor_set_layouts(
     const ReflectionModule &vs, const ReflectionModule &fs,
     std::output_iterator<DescriptorSetLayoutDesc> auto out) {
@@ -50,10 +53,9 @@ void reflect_descriptor_set_layouts(
   ranges::move(sets, out);
 }
 
-auto reflect_material_pipeline_signature(Device &device,
-                                         const AssetLoader &loader,
-                                         hlsl::VertexFetch vertex_fetch)
-    -> PipelineSignature {
+auto reflect_material_pipeline_signature(
+    Device &device, const AssetLoader &loader,
+    const VertexFetchStrategy &vertex_fetch) -> PipelineSignature {
   auto reflection_suffix = device.get_shader_reflection_suffix();
   Vector<std::byte> buffer;
   loader.load_file(fmt::format("ReflectionVertexShader{0}", reflection_suffix),
@@ -81,57 +83,36 @@ auto reflect_material_pipeline_signature(Device &device,
     };
   };
 
-  auto signature = device.create_pipeline_signature(
-      {.set_layouts = set_layout_descs |
-                      map([&](const DescriptorSetLayoutDesc &desc) {
-                        return device.create_descriptor_set_layout(desc);
-                      }) |
-                      ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
-       .push_constants = [&] {
-         switch (vertex_fetch) {
-           using enum hlsl::VertexFetch;
-         case Physical:
-           return get_push_constants.operator()<Physical>();
-         case Logical:
-           return get_push_constants.operator()<Logical>();
-         case Attribute:
-           return get_push_constants.operator()<Attribute>();
-         }
-       }()});
+  PipelineSignatureDesc signature_desc = {
+      .set_layouts = set_layout_descs |
+                     map([&](const DescriptorSetLayoutDesc &desc) {
+                       return device.create_descriptor_set_layout(desc);
+                     }) |
+                     ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
+  };
+  vertex_fetch.get_push_constants(signature_desc.push_constants);
+
+  auto signature = device.create_pipeline_signature(std::move(signature_desc));
 
   return signature;
 }
+
+} // namespace
 } // namespace ren
 
 Scene::RenScene(Device *device) {
   m_device = device;
 
   if (m_device->supports_buffer_device_address()) {
-    m_vertex_fetch = hlsl::VertexFetch::Physical;
-  }
-
-  BufferUsageFlags vertex_buffer_usage = BufferUsage::TransferDST;
-  switch (m_vertex_fetch) {
-    using enum hlsl::VertexFetch;
-  case Physical: {
-    vertex_buffer_usage |= BufferUsage::DeviceAddress;
-    break;
-  }
-  case Logical: {
-    vertex_buffer_usage |= BufferUsage::Storage;
-
-    break;
-  }
-  case Attribute: {
-    vertex_buffer_usage |= BufferUsage::Vertex;
-
-    break;
-  }
+    std::construct_at(&m_vertex_fetch, VertexFetchPhysical());
+  } else {
+    std::construct_at(&m_vertex_fetch, VertexFetchAttribute());
   }
 
   std::construct_at(&m_vertex_buffer_pool, m_device,
                     BufferDesc{
-                        .usage = vertex_buffer_usage,
+                        .usage = BufferUsage::TransferDST |
+                                 m_vertex_fetch.get_buffer_usage_flags(),
                         .location = BufferLocation::Device,
                         .size = 1 << 26,
                     });
@@ -168,6 +149,7 @@ Scene::~RenScene() {
   m_material_allocator.~MaterialAllocator();
   m_index_buffer_pool.~BufferPool();
   m_vertex_buffer_pool.~BufferPool();
+  m_vertex_fetch.~VertexFetchStrategy();
 }
 
 void Scene::begin_frame() {
@@ -192,19 +174,29 @@ void Scene::setOutputSize(unsigned width, unsigned height) {
 void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
 
 MeshID Scene::create_mesh(const MeshDesc &desc) {
-  auto color_size = [&] {
-    switch (m_vertex_fetch) {
-      using enum hlsl::VertexFetch;
-    case Physical:
-    case Logical:
-      return sizeof(hlsl::color_t);
-    case Attribute:
-      return sizeof(glm::vec3);
-    }
-  }();
+  std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
+      upload_attributes;
+  upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
+      std::as_bytes(std::span(desc.positions, desc.num_vertices * 3));
+  upload_attributes[MESH_ATTRIBUTE_COLORS] = std::as_bytes(
+      std::span(desc.colors, desc.colors ? desc.num_vertices * 3 : 0));
+
+  auto used_attributes = range(int(MESH_ATTRIBUTE_COUNT)) |
+                         filter_map([&](int i) -> Optional<MeshAttribute> {
+                           auto mesh_attribute = static_cast<MeshAttribute>(i);
+                           if (not upload_attributes[mesh_attribute].empty()) {
+                             return mesh_attribute;
+                           }
+                           return None;
+                         });
 
   auto vertex_allocation_size =
-      desc.num_vertices * (sizeof(glm::vec3) + (desc.colors ? color_size : 0));
+      desc.num_vertices *
+      ranges::accumulate(
+          used_attributes | map([&](MeshAttribute mesh_attribute) {
+            return m_vertex_fetch.get_mesh_attribute_size(mesh_attribute);
+          }),
+          0);
   auto index_allocation_size = desc.num_indices * sizeof(unsigned);
 
   auto &&[key, mesh] = m_meshes.emplace(Mesh{
@@ -216,30 +208,14 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       .index_format = IndexFormat::U32,
   });
 
+  mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
+
   unsigned offset = 0;
-
-  auto positions = std::span(
-      reinterpret_cast<const glm::vec3 *>(desc.positions), desc.num_vertices);
-  m_resource_uploader.stage_data(positions, mesh.vertex_allocation, offset);
-  mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS] = offset;
-  offset += size_bytes(positions);
-
-  if (desc.colors) {
-    mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS] = offset;
-    if (m_vertex_fetch == hlsl::VertexFetch::Attribute) {
-      auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
-                              desc.num_vertices);
-      m_resource_uploader.stage_data(colors, mesh.vertex_allocation, offset);
-      offset += size_bytes(colors);
-    } else {
-      auto colors = std::span(reinterpret_cast<const glm::vec3 *>(desc.colors),
-                              desc.num_vertices) |
-                    map(hlsl::encode_color);
-      m_resource_uploader.stage_data(colors, mesh.vertex_allocation, offset);
-      offset += size_bytes(colors);
-    }
-  } else {
-    mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS] = ATTRIBUTE_UNUSED;
+  for (auto mesh_attribute : used_attributes) {
+    mesh.attribute_offsets[mesh_attribute] = offset;
+    offset += m_vertex_fetch.upload_mesh_attribute(
+        m_resource_uploader, mesh_attribute, upload_attributes[mesh_attribute],
+        mesh.vertex_allocation, offset);
   }
 
   auto indices = std::span(desc.indices, desc.num_indices);
@@ -259,65 +235,31 @@ void Scene::destroy_mesh(MeshID id) {
 }
 
 MaterialID Scene::create_material(const MaterialDesc &desc) {
-  std::array<std::string_view, MESH_ATTRIBUTE_COUNT> mesh_attribute_semantics;
-  mesh_attribute_semantics[MESH_ATTRIBUTE_POSITIONS] = "POSITION";
-  mesh_attribute_semantics[MESH_ATTRIBUTE_COLORS] = "ALBEDO";
-
   auto pipeline = [&] {
     auto pipeline = m_compiler.get_material_pipeline(desc);
     if (pipeline) {
       return *pipeline;
     }
-
-    std::array<Format, MESH_ATTRIBUTE_COUNT> attribute_formats;
-    attribute_formats[MESH_ATTRIBUTE_POSITIONS] = Format::RGB32F;
-    attribute_formats[MESH_ATTRIBUTE_COLORS] = Format::RGB32F;
-
-    HashMap<std::string_view, Format> semantic_formats;
-    for (int i = 0; i < MESH_ATTRIBUTE_COUNT; ++i) {
-      semantic_formats[mesh_attribute_semantics[i]] = attribute_formats[i];
-    }
-
-    MaterialPipelineConfig config = {
+    return m_compiler.compile_material_pipeline({
         .material = desc,
         .signature = m_pipeline_signature,
+        .vertex_fetch = &m_vertex_fetch,
         .rt_format = m_rt_format,
-    };
-
-    switch (m_vertex_fetch) {
-    case hlsl::VertexFetch::Physical: {
-      config.vertex_fetch = VertexFetch<hlsl::VertexFetch::Physical>();
-      break;
-    }
-    case hlsl::VertexFetch::Logical: {
-      config.vertex_fetch = VertexFetch<hlsl::VertexFetch::Logical>();
-      break;
-    }
-    case hlsl::VertexFetch::Attribute: {
-      config.vertex_fetch = VertexFetch<hlsl::VertexFetch::Attribute>{
-          .semantic_formats = &semantic_formats,
-      };
-      break;
-    }
-    }
-
-    return m_compiler.compile_material_pipeline(config);
+    });
   }();
-
-  const auto &attributes = pipeline.desc->ia.attributes;
-  StaticVector<MeshAttribute, MESH_ATTRIBUTE_COUNT> bindings(attributes.size());
-  for (const auto &attribute : attributes) {
-    auto mesh_attribute = static_cast<MeshAttribute>(ranges::distance(
-        mesh_attribute_semantics.begin(),
-        ranges::find(mesh_attribute_semantics, attribute.semantic)));
-    bindings[attribute.binding] = mesh_attribute;
-  }
 
   auto &&[key, material] = m_materials.emplace(Material{
       .pipeline = std::move(pipeline),
       .index = m_material_allocator.allocate(desc, m_resource_uploader),
-      .bindings = std::move(bindings),
   });
+
+  if (const auto *hardware_fetch =
+          m_vertex_fetch.get_if<VertexFetchAttribute>()) {
+    for (const auto &attribute : pipeline.desc->ia.attributes) {
+      material.bindings[attribute.binding] =
+          hardware_fetch->get_semantic_mesh_attribute(attribute.semantic);
+    }
+  }
 
   return get_material_id(key);
 }
@@ -519,47 +461,22 @@ void Scene::draw() {
 
       cmd.bind_graphics_pipeline(material.pipeline);
 
-      if (m_vertex_fetch == hlsl::VertexFetch::Physical) {
-        auto addr = m_device->get_buffer_device_address(mesh.vertex_allocation);
-        auto positions_offset =
-            mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
-        auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
-        hlsl::PushConstantsTemplate<hlsl::VertexFetch::Physical> data = {
-            .vertex = {.matrix_index = unsigned(i),
-                       .positions = addr + positions_offset,
-                       .colors = (colors_offset != ATTRIBUTE_UNUSED)
-                                     ? addr + colors_offset
-                                     : 0},
-            .pixel = {.material_index = material.index},
-        };
-        cmd.set_graphics_push_constants(m_pipeline_signature,
-                                        ShaderStage::Vertex, data.vertex,
-                                        offsetof(decltype(data), vertex));
-        cmd.set_graphics_push_constants(m_pipeline_signature,
-                                        ShaderStage::Fragment, data.pixel,
-                                        offsetof(decltype(data), pixel));
-      } else if (m_vertex_fetch == hlsl::VertexFetch::Attribute) {
-        hlsl::PushConstantsTemplate<hlsl::VertexFetch::Attribute> data = {
-            .vertex = {.matrix_index = unsigned(i)},
-            .pixel = {.material_index = material.index},
-        };
-        cmd.set_graphics_push_constants(m_pipeline_signature,
-                                        ShaderStage::Vertex, data.vertex,
-                                        offsetof(decltype(data), vertex));
-        cmd.set_graphics_push_constants(m_pipeline_signature,
-                                        ShaderStage::Fragment, data.pixel,
-                                        offsetof(decltype(data), pixel));
+      m_vertex_fetch.set_vertex_push_constants(cmd, m_pipeline_signature, mesh,
+                                               i);
+      m_vertex_fetch.set_pixel_push_constants(cmd, m_pipeline_signature,
+                                              material);
 
-        // TODO:
-        // 1) compute capacity correctly
-        // 2) compute data size correctly
-        auto buffers = material.bindings | map([&](MeshAttribute attribute) {
-                         auto offset = mesh.attribute_offsets[attribute];
-                         assert(offset != ATTRIBUTE_UNUSED);
-                         return mesh.vertex_allocation.subbuffer(
-                             offset, sizeof(glm::vec3) * mesh.num_vertices);
-                       }) |
-                       ranges::to<StaticVector<BufferRef, 2>>;
+      if (const auto *hardware_fetch =
+              m_vertex_fetch.get_if<VertexFetchAttribute>()) {
+        auto buffers =
+            material.bindings | map([&](MeshAttribute attribute) {
+              auto offset = mesh.attribute_offsets[attribute];
+              assert(offset != ATTRIBUTE_UNUSED);
+              return mesh.vertex_allocation.subbuffer(
+                  offset, hardware_fetch->get_mesh_attribute_size(attribute) *
+                              mesh.num_vertices);
+            }) |
+            ranges::to<StaticVector<BufferRef, MESH_ATTRIBUTE_COUNT>>;
 
         cmd.bind_vertex_buffers(0, buffers);
       }

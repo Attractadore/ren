@@ -6,6 +6,7 @@
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
+#include "VertexFetchStrategy.hpp"
 #include "hlsl/interface.hpp"
 
 #include <span>
@@ -25,11 +26,11 @@ struct MaterialConfig {
   auto operator<=>(const MaterialConfig &other) const = default;
 };
 
-template <hlsl::VertexFetch VF> struct VertexFetch {
+template <hlsl::VertexFetch VF> struct PipelineVertexFetch {
   static constexpr auto type = VF;
 };
 
-template <> struct VertexFetch<hlsl::VertexFetch::Attribute> {
+template <> struct PipelineVertexFetch<hlsl::VertexFetch::Attribute> {
   static constexpr auto type = hlsl::VertexFetch::Attribute;
   const HashMap<std::string_view, Format> *semantic_formats;
 };
@@ -37,10 +38,7 @@ template <> struct VertexFetch<hlsl::VertexFetch::Attribute> {
 struct MaterialPipelineConfig {
   MaterialConfig material;
   PipelineSignatureRef signature;
-  std::variant<VertexFetch<hlsl::VertexFetch::Physical>,
-               VertexFetch<hlsl::VertexFetch::Logical>,
-               VertexFetch<hlsl::VertexFetch::Attribute>>
-      vertex_fetch;
+  VertexFetchStrategy *vertex_fetch;
   Format rt_format;
 };
 
