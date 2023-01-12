@@ -3,6 +3,7 @@
 #include "DirectX12/DirectX12Buffer.hpp"
 #include "DirectX12/DirectX12CommandAllocator.hpp"
 #include "DirectX12/DirectX12DeleteQueue.inl"
+#include "DirectX12/DirectX12Reflection.hpp"
 #include "DirectX12/DirectX12RenderGraph.hpp"
 #include "DirectX12/DirectX12Swapchain.hpp"
 #include "DirectX12/DirectX12Texture.hpp"
@@ -109,6 +110,10 @@ DirectX12Device::DirectX12Device(LUID luid)
   throwIfFailed(
       D3D12MA::CreateAllocator(&allocator_desc, m_allocator.GetAddressOf()),
       "D3D12MA: Failed to create allocator");
+
+  throwIfFailed(
+      DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&m_compiler_utils)),
+      "DXC: Failed to create compiler utils");
 
   D3D12_COMMAND_QUEUE_DESC queue_desc = {
       .Type = D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -402,4 +407,16 @@ DirectX12Device::getUAV(const RWTextureView &uav) {
 SyncObject DirectX12Device::createSyncObject(const SyncDesc &desc) {
   DIRECTX12_UNIMPLEMENTED;
 }
+
+auto DirectX12Device::create_reflection_module(std::span<const std::byte> data)
+    -> std::unique_ptr<ReflectionModule> {
+  return std::make_unique<DirectX12ReflectionModule>(m_compiler_utils.Get(),
+                                                     data);
+}
+
+auto DirectX12Device::create_pipeline_signature(
+    const PipelineSignatureDesc &desc) -> PipelineSignature {
+  dx12Unimplemented();
+}
+
 } // namespace ren

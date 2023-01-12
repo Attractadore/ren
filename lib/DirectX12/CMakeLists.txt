@@ -1,6 +1,8 @@
 option(REN_DIRECTX12_DEBUG "Enable DirectX 12 debug layer" OFF)
 option(REN_DIRECTX12_FORCE_WARP_DEVICE "Force WARP device for DirectX 12" OFF)
 
+find_package(directx-dxc REQUIRED)
+
 add_subdirectory(hlsl)
 
 add_library(D3D12 INTERFACE)
@@ -18,10 +20,11 @@ target_compile_features(D3D12MA PUBLIC cxx_std_14)
 add_library(
   ren-dx12
   ren-dx12.cpp
+  DirectX12CPUDescriptorPool.cpp
   DirectX12CommandAllocator.cpp
   DirectX12CommandBuffer.cpp
-  DirectX12CPUDescriptorPool.cpp
   DirectX12Device.cpp
+  DirectX12Reflection.cpp
   DirectX12RenderGraph.cpp
   DirectX12Swapchain.cpp)
 target_sources(ren-dx12 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
@@ -32,6 +35,7 @@ target_precompile_headers(
   <comdef.h>
   <d3d12.h>
   <d3d12sdklayers.h>
+  <d3d12shader.h>
   <dxgi1_3.h>
   <dxgi1_4.h>
   <dxgidebug.h>
@@ -42,7 +46,7 @@ target_link_libraries(
   ren-dx12
   PUBLIC ren::ren d3d12 dxgi dxguid
   PRIVATE Support Support-PCH D3D12MA FullScreenRectShader
-          BlitToSwapchainShader)
+          BlitToSwapchainShader Microsoft::DirectXShaderCompiler)
 if(REN_DIRECTX12_DEBUG)
   message(STATUS "Enable DirectX 12 debug layer")
   target_compile_definitions(ren-dx12 PRIVATE REN_DIRECTX12_DEBUG)

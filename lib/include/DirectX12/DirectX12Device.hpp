@@ -1,6 +1,7 @@
 #pragma once
 #include "CommandBuffer.hpp"
 #include "D3D12MA.hpp"
+#include "DXC.hpp"
 #include "Device.hpp"
 #include "DirectX12CPUDescriptorPool.hpp"
 #include "DirectX12CommandAllocator.hpp"
@@ -42,6 +43,7 @@ class DirectX12Device final : public Device {
 
   ComPtr<ID3D12Device> m_device;
   ComPtr<D3D12MA::Allocator> m_allocator;
+  ComPtr<IDxcUtils> m_compiler_utils;
 
   ComPtr<ID3D12CommandQueue> m_direct_queue;
   uint64_t m_direct_queue_time = 0;
@@ -228,13 +230,9 @@ public:
   }
 
   auto create_reflection_module(std::span<const std::byte> data)
-      -> std::unique_ptr<ReflectionModule> override {
-    dx12Unimplemented();
-  }
+      -> std::unique_ptr<ReflectionModule> override;
 
   auto create_pipeline_signature(const PipelineSignatureDesc &desc)
-      -> PipelineSignature override {
-    dx12Unimplemented();
-  }
+      -> PipelineSignature override;
 };
 } // namespace ren
