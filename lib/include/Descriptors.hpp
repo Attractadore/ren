@@ -14,30 +14,26 @@ namespace ren {
 #define REN_DESCRIPTOR_POOL_OPTIONS (UpdateAfterBind)
 REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
 
-#define REN_DESCRIPTORS                                                        \
-  (Sampler)(SampledTexture)(StorageTexture)(UniformBuffer)(StorageBuffer)
-REN_DEFINE_ENUM(Descriptor, REN_DESCRIPTORS);
-
-class DescriptorCounts {
-  static constexpr auto c_size = BOOST_PP_SEQ_SIZE(REN_DESCRIPTORS);
-  std::array<unsigned, c_size> m_storage = {};
-
-public:
-  const auto &operator[](Descriptor idx) const {
-    return m_storage[static_cast<size_t>(idx)];
-  }
-
-  auto &operator[](Descriptor idx) {
-    return m_storage[static_cast<size_t>(idx)];
-  }
-
-  static constexpr size_t size() { return c_size; }
-};
+#define REN_DESCRIPTOR_TYPES                                                   \
+  (DESCRIPTOR_TYPE_SAMPLER)                  /**/                              \
+      (DESCRIPTOR_TYPE_SAMPLED_TEXTURE)      /* Texture */                     \
+      (DESCRIPTOR_TYPE_STORAGE_TEXTURE)      /* RWTexture */                   \
+      (DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) /* Buffer */                      \
+      (DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) /* RWBuffer */                    \
+      (DESCRIPTOR_TYPE_UNIFORM_BUFFER)       /* ConstantBuffer */              \
+      (DESCRIPTOR_TYPE_STRUCTURED_BUFFER)    /**/                              \
+      (DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) /* RWStructuredBuffer,            \
+                                                AppendStructuredBuffer and     \
+                                                ConsumeStructuredBuffer */     \
+      (DESCRIPTOR_TYPE_RAW_BUFFER)           /* ByteAddressBuffer */           \
+      (DESCRIPTOR_TYPE_RW_RAW_BUFFER)        /* RWByteAddressBuffer */
+REN_DEFINE_C_ENUM(DescriptorType, REN_DESCRIPTOR_TYPES);
+constexpr auto DESCRIPTOR_TYPE_COUNT = BOOST_PP_SEQ_SIZE(REN_DESCRIPTOR_TYPES);
 
 struct DescriptorPoolDesc {
   DescriptorPoolOptionFlags flags;
   unsigned set_count;
-  DescriptorCounts descriptor_counts;
+  std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
 };
 
 struct DescriptorPoolRef {
@@ -67,7 +63,7 @@ REN_DEFINE_FLAGS_ENUM(DescriptorBindingOption,
 struct DescriptorBinding {
   DescriptorBindingOptionFlags flags;
   unsigned binding;
-  Descriptor type;
+  DescriptorType type;
   unsigned count;
   ShaderStageFlags stages;
 };
@@ -98,44 +94,74 @@ struct DescriptorSet {
   void *handle;
 };
 
-template <Descriptor Type> struct DescriptorWriteConfig;
+template <DescriptorType DT> struct DescriptorWriteConfig;
 
-using SamplerDescriptors = DescriptorWriteConfig<Descriptor::Sampler>;
-using UniformBufferDescriptors =
-    DescriptorWriteConfig<Descriptor::UniformBuffer>;
-using StorageBufferDescriptors =
-    DescriptorWriteConfig<Descriptor::StorageBuffer>;
-using SampledTextureDescriptors =
-    DescriptorWriteConfig<Descriptor::SampledTexture>;
-using StorageTextureDescriptors =
-    DescriptorWriteConfig<Descriptor::StorageTexture>;
-
-template <> struct DescriptorWriteConfig<Descriptor::Sampler> {};
-
-template <> struct DescriptorWriteConfig<Descriptor::UniformBuffer> {
-  std::span<const BufferRef> handles;
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER> {
+  // TODO
 };
 
-template <> struct DescriptorWriteConfig<Descriptor::StorageBuffer> {
-  std::span<const BufferRef> handles;
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLED_TEXTURE> {
+  std::span<const SampledTextureView> textures;
 };
 
-template <> struct DescriptorWriteConfig<Descriptor::SampledTexture> {
-  std::span<const SampledTextureView> handles;
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXTURE> {
+  std::span<const StorageTextureView> textures;
 };
 
-template <> struct DescriptorWriteConfig<Descriptor::StorageTexture> {
-  std::span<const SampledTextureView> handles;
+template <DescriptorType DT>
+  requires(DT == DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) or
+          (DT == DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+struct DescriptorWriteConfig<DT> {
+  // TODO
 };
+
+template <DescriptorType DT>
+  requires(DT == DESCRIPTOR_TYPE_UNIFORM_BUFFER) or
+          (DT == DESCRIPTOR_TYPE_RAW_BUFFER) or
+          (DT == DESCRIPTOR_TYPE_RW_RAW_BUFFER)
+struct DescriptorWriteConfig<DT> {
+  std::span<const BufferRef> buffers;
+};
+
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_STRUCTURED_BUFFER> {
+  std::span<const BufferRef> buffers;
+  std::span<const unsigned> strides;
+};
+
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER> {
+  std::span<const BufferRef> buffers;
+  std::span<const BufferRef> counters;
+  std::span<const unsigned> strides;
+};
+
+using SamplerWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER>;
+using SampledTextureWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLED_TEXTURE>;
+using StorageTextureWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXTURE>;
+using UniformTexelBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER>;
+using StorageTexelBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER>;
+using UniformBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_UNIFORM_BUFFER>;
+using StructuredBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_STRUCTURED_BUFFER>;
+using RWStructuredBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER>;
+using RawBufferWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_RAW_BUFFER>;
+using RWRawBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_RAW_BUFFER>;
 
 struct DescriptorSetWriteConfig {
   DescriptorSet set;
   unsigned binding;
   unsigned array_index = 0;
-  std::variant<SamplerDescriptors, UniformBufferDescriptors,
-               StorageBufferDescriptors, SampledTextureDescriptors,
-               StorageTextureDescriptors>
+#define define_variant(s, data, e) DescriptorWriteConfig<DescriptorType::e>
+  std::variant<BOOST_PP_SEQ_ENUM(
+      BOOST_PP_SEQ_TRANSFORM(define_variant, ~, REN_DESCRIPTOR_TYPES))>
       data;
+#undef define_variant
 };
 
 } // namespace ren

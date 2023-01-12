@@ -29,7 +29,7 @@ auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
     pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;
   }
   for (const auto &binding : layout.desc->bindings) {
-    pool_desc.descriptor_counts[binding.type] += binding.count;
+    pool_desc.pool_sizes[binding.type] += binding.count;
   }
   auto pool = create_descriptor_pool(pool_desc);
   auto set = allocate_descriptor_set(pool, layout);

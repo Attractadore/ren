@@ -8,7 +8,12 @@ namespace ren {
 REN_DEFINE_ENUM_WITH_UNKNOWN(TextureType, REN_TEXTURE_TYPES);
 
 #define REN_TEXTURE_USAGES                                                     \
-  (RenderTarget)(DepthStencilTarget)(TransferSRC)(TransferDST)(Storage)(Sampled)
+  (TransferSRC)            /**/                                                \
+      (TransferDST)        /**/                                                \
+      (RenderTarget)       /**/                                                \
+      (DepthStencilTarget) /**/                                                \
+      (Sampled)            /* Texture */                                       \
+      (Storage)            /* RWTexture */
 REN_DEFINE_FLAGS_ENUM(TextureUsage, REN_TEXTURE_USAGES);
 
 struct TextureDesc {

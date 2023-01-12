@@ -11,6 +11,8 @@
 namespace ren {
 #define REN_DEFINE_ENUM(E, fields) enum class E { BOOST_PP_SEQ_ENUM(fields) }
 
+#define REN_DEFINE_C_ENUM(E, fields) enum E { BOOST_PP_SEQ_ENUM(fields) }
+
 #define REN_DEFINE_ENUM_WITH_UNKNOWN(E, fields)                                \
   enum class E { Unknown = 0, Undefined = 0, BOOST_PP_SEQ_ENUM(fields) }
 
@@ -44,18 +46,24 @@ template <typename E> using EnumConvertT = typename EnumConvert<E>::type;
 
 template <auto From> constexpr bool FieldIsMapped = false;
 template <auto From>
-requires FieldIsMapped<From>
+  requires FieldIsMapped<From>
 constexpr EnumConvertT<decltype(From)> EnumFieldMap;
 
-template <typename E> struct EnumFlags { using type = E; };
-template <FlagsEnum E> struct EnumFlags<E> { using type = Flags<E>; };
+template <typename E> struct EnumFlags {
+  using type = E;
+};
+template <FlagsEnum E> struct EnumFlags<E> {
+  using type = Flags<E>;
+};
 template <typename E> using EnumFlagsT = typename EnumFlags<E>::type;
 template <typename E>
 using EnumConvertFlagsT = typename EnumFlags<EnumConvertT<E>>::type;
 } // namespace detail
 
 #define REN_MAP_TYPE(From, To)                                                 \
-  template <> struct detail::EnumConvert<From> { using type = To; };
+  template <> struct detail::EnumConvert<From> {                               \
+    using type = To;                                                           \
+  };
 
 #define REN_MAP_FIELD(from, to)                                                \
   namespace detail {                                                           \
@@ -64,7 +72,9 @@ using EnumConvertFlagsT = typename EnumFlags<EnumConvertT<E>>::type;
   }
 
 #define REN_ENUM_FLAGS(E, F)                                                   \
-  template <> struct detail::EnumFlags<E> { using type = F; };
+  template <> struct detail::EnumFlags<E> {                                    \
+    using type = F;                                                            \
+  };
 
 #define REN_DETAIL_DEFINE_FROM_CASE(r, data, e)                                \
   case e:                                                                      \
@@ -82,9 +92,7 @@ using EnumConvertFlagsT = typename EnumFlags<EnumConvertT<E>>::type;
 
 namespace detail {
 template <typename E>
-concept EnumWithUnknown = requires {
-  E::Unknown;
-};
+concept EnumWithUnknown = requires { E::Unknown; };
 } // namespace detail
 
 #define REN_DETAIL_DEFINE_TO_CASE(r, data, e)                                  \

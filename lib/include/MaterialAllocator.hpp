@@ -20,7 +20,7 @@ class MaterialAllocator {
   Buffer create_buffer(unsigned count) const {
     return m_device->create_buffer({
         .usage = BufferUsage::TransferDST | BufferUsage::Storage,
-        .location = BufferLocation::Device,
+        .heap = BufferHeap::Device,
         .size = unsigned(count * sizeof(hlsl::MaterialData)),
     });
   }

@@ -23,7 +23,7 @@ void ResourceUploader::end_frame() {
 RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
   return RingBuffer(m_device->create_buffer({
       .usage = BufferUsage::TransferSRC,
-      .location = BufferLocation::Host,
+      .heap = BufferHeap::Upload,
       .size = size,
   }));
 }

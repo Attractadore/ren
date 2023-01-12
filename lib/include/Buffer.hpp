@@ -5,17 +5,31 @@
 #include <span>
 
 namespace ren {
+
 #define REN_BUFFER_USAGES                                                      \
-  (TransferSRC)(TransferDST)(                                                  \
-      Uniform)(Storage)(Index)(Vertex)(Indirect)(DeviceAddress)
+  (TransferSRC)       /**/                                                     \
+      (TransferDST)   /**/                                                     \
+      (UniformTexel)  /* Buffer */                                             \
+      (StorageTexel)  /* RWBuffer */                                           \
+      (Uniform)       /* ConstantBuffer */                                     \
+      (Storage)       /* StructuredBuffer, ByteAddressBuffer */                \
+      (RWStorage)     /* RWStructuredBuffer, RWByteAddressBuffer,              \
+                         StructuredBuffer, ConsumeStructuredBuffer */          \
+      (Index)         /**/                                                     \
+      (Vertex)        /**/                                                     \
+      (Indirect)      /**/                                                     \
+      (DeviceAddress) /**/
 REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
 
-#define REN_BUFFER_LOCATIONS (Device)(Host)(HostCached)
-REN_DEFINE_ENUM(BufferLocation, REN_BUFFER_LOCATIONS);
+#define REN_BUFFER_LOCATIONS                                                   \
+  (Device)       /**/                                                          \
+      (Upload)   /**/                                                          \
+      (Readback) /**/
+REN_DEFINE_ENUM(BufferHeap, REN_BUFFER_LOCATIONS);
 
 struct BufferDesc {
   BufferUsageFlags usage;
-  BufferLocation location = BufferLocation::Device;
+  BufferHeap heap = BufferHeap::Device;
   unsigned offset = 0;
   unsigned size;
   void *ptr = nullptr;

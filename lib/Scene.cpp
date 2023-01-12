@@ -120,14 +120,14 @@ Scene::RenScene(Device *device)
                            BufferDesc{
                                .usage = BufferUsage::TransferDST |
                                         m_vertex_fetch.get_buffer_usage_flags(),
-                               .location = BufferLocation::Device,
+                               .heap = BufferHeap::Device,
                                .size = 1 << 26,
                            }),
       m_index_buffer_pool(
           m_device,
           BufferDesc{
               .usage = BufferUsage::TransferDST | BufferUsage::Index,
-              .location = BufferLocation::Device,
+              .heap = BufferHeap::Device,
               .size = 1 << 22,
           }),
 
@@ -352,10 +352,12 @@ void Scene::draw() {
         get_persistent_descriptor_set_layout());
     m_persistent_descriptor_pool = std::move(new_pool);
     m_persistent_descriptor_set = std::move(new_set);
+    unsigned stride = sizeof(hlsl::MaterialData);
     m_device->write_descriptor_set({
         .set = m_persistent_descriptor_set,
         .binding = hlsl::c_materials_slot,
-        .data = StorageBufferDescriptors{asSpan(m_materials_buffer)},
+        .data = StructuredBufferWriteConfig{asSpan(m_materials_buffer),
+                                            asSpan(stride)},
     });
   }
 
@@ -376,7 +378,7 @@ void Scene::draw() {
 
   auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
-          .location = BufferLocation::Host,
+          .heap = BufferHeap::Upload,
           .size = unsigned(sizeof(hlsl::GlobalData)),
       },
       MemoryAccess::UniformRead,
@@ -385,7 +387,7 @@ void Scene::draw() {
 
   auto virtual_matrix_buffer = draw.add_output(
       RGBufferDesc{
-          .location = BufferLocation::Host,
+          .heap = BufferHeap::Upload,
           .size = unsigned(sizeof(hlsl::model_matrix_t) * m_models.size()),
       },
       MemoryAccess::StorageRead, PipelineStage::VertexShader);
@@ -415,6 +417,7 @@ void Scene::draw() {
                                                             m_camera.view};
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
+    unsigned matrix_buffer_stride = sizeof(hlsl::model_matrix_t);
     auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();
 
     auto scene_descriptor_set =
@@ -424,12 +427,13 @@ void Scene::draw() {
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
             .binding = hlsl::c_global_cb_slot,
-            .data = UniformBufferDescriptors{asSpan(global_cbuffer)},
+            .data = UniformBufferWriteConfig{asSpan(global_cbuffer)},
         },
         DescriptorSetWriteConfig{
             .set = scene_descriptor_set,
             .binding = hlsl::c_matrices_slot,
-            .data = StorageBufferDescriptors{asSpan(matrix_buffer)},
+            .data = StructuredBufferWriteConfig{asSpan(matrix_buffer),
+                                                asSpan(matrix_buffer_stride)},
         },
     };
 

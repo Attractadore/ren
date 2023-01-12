@@ -185,23 +185,20 @@ auto VulkanDevice::create_command_allocator(QueueType queue_type)
 
 auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
     -> DescriptorPool {
-  StaticVector<VkDescriptorPoolSize, DescriptorCounts::size()> pool_sizes;
+  StaticVector<VkDescriptorPoolSize,
+               std::tuple_size_v<decltype(DescriptorPoolDesc::pool_sizes)>>
+      pool_sizes;
 
-#define push_pool_size(r, data, elem)                                          \
-  {                                                                            \
-    auto type = Descriptor::elem;                                              \
-    auto count = desc.descriptor_counts[type];                                 \
-    if (count > 0) {                                                           \
-      pool_sizes.push_back({                                                   \
-          .type = getVkDescriptorType(type),                                   \
-          .descriptorCount = count,                                            \
-      });                                                                      \
-    }                                                                          \
+  for (int i = 0; i < DESCRIPTOR_TYPE_COUNT; ++i) {
+    auto type = static_cast<DescriptorType>(i);
+    auto count = desc.pool_sizes[type];
+    if (count > 0) {
+      pool_sizes.push_back({
+          .type = getVkDescriptorType(type),
+          .descriptorCount = count,
+      });
+    }
   }
-
-  BOOST_PP_SEQ_FOR_EACH(push_pool_size, ~, REN_DESCRIPTORS);
-
-#undef push_pool_size
 
   VkDescriptorPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -302,26 +299,31 @@ auto VulkanDevice::allocate_descriptor_sets(
   }
 }
 
-namespace {
-template <Descriptor Type>
-auto get_or_empty(const DescriptorSetWriteConfig &config) {
-  auto *ptr = std::get_if<DescriptorWriteConfig<Type>>(&config.data);
-  return (ptr ? *ptr : DescriptorWriteConfig<Type>()).handles;
-}
-} // namespace
-
 void VulkanDevice::write_descriptor_sets(
     std::span<const DescriptorSetWriteConfig> configs) {
   auto buffers =
-      configs | map([](const DescriptorSetWriteConfig &config)
-                        -> std::span<const BufferRef> {
-        if (auto *ptr = std::get_if<UniformBufferDescriptors>(&config.data)) {
-          return ptr->handles;
-        }
-        if (auto *ptr = std::get_if<StorageBufferDescriptors>(&config.data)) {
-          return ptr->handles;
-        }
-        return {};
+      configs | map([](const DescriptorSetWriteConfig &config) {
+        return std::visit(
+            []<DescriptorType DT>(const DescriptorWriteConfig<DT> &config)
+                -> std::span<const BufferRef> {
+              if constexpr (DT == DESCRIPTOR_TYPE_SAMPLER or
+                            DT == DESCRIPTOR_TYPE_SAMPLED_TEXTURE or
+                            DT == DESCRIPTOR_TYPE_STORAGE_TEXTURE) {
+                todo();
+                return {};
+              } else if constexpr (DT == DESCRIPTOR_TYPE_UNIFORM_BUFFER or
+                                   DT == DESCRIPTOR_TYPE_STRUCTURED_BUFFER or
+                                   DT == DESCRIPTOR_TYPE_RAW_BUFFER or
+                                   DT == DESCRIPTOR_TYPE_RW_RAW_BUFFER) {
+                return config.buffers;
+              } else if constexpr (DT == DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
+                                   DT == DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER or
+                                   DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) {
+                todo();
+                return {};
+              }
+            },
+            config.data);
       });
 
   auto vk_descriptor_buffer_infos = buffers | ranges::views::join |
@@ -335,53 +337,27 @@ void VulkanDevice::write_descriptor_sets(
                                     ranges::to<Vector>;
 
   auto buffer_offsets =
-      concat(once(0), buffers | map([](std::span<const BufferRef> handles) {
-                        return handles.size();
+      concat(once(0), buffers | map([](std::span<const BufferRef> buffers) {
+                        return buffers.size();
                       }) | ranges::views::partial_sum);
 
   auto vk_write_descriptor_sets =
-      ranges::views::zip(configs, buffer_offsets) | map([&](const auto &t) {
-        const auto &[config, buffer_offset] = t;
+      ranges::views::zip(configs, buffers, buffer_offsets) |
+      map([&](const auto &t) {
+        const auto &[config, buffers, buffer_offset] = t;
 
         VkWriteDescriptorSet vk_config = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = getVkDescriptorSet(config.set),
             .dstBinding = config.binding,
             .dstArrayElement = config.array_index,
+            .descriptorCount = unsigned(buffers.size()),
+            .descriptorType = getVkDescriptorType(std::visit(
+                []<DescriptorType DT>(const DescriptorWriteConfig<DT> &)
+                    -> DescriptorType { return DT; },
+                config.data)),
+            .pBufferInfo = vk_descriptor_buffer_infos.data() + buffer_offset,
         };
-
-        std::visit(
-            OverloadSet{
-                [&](const SamplerDescriptors &samplers) {
-                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-                  vkTodo();
-                },
-                [&, offset = buffer_offset](
-                    const UniformBufferDescriptors &uniform_buffers) {
-                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                  vk_config.descriptorCount = uniform_buffers.handles.size();
-                  vk_config.pBufferInfo =
-                      vk_descriptor_buffer_infos.data() + offset;
-                },
-                [&, offset = buffer_offset](
-                    const StorageBufferDescriptors &storage_buffers) {
-                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                  vk_config.descriptorCount = storage_buffers.handles.size();
-                  vk_config.pBufferInfo =
-                      vk_descriptor_buffer_infos.data() + offset;
-                },
-                [&](const SampledTextureDescriptors &sampled_textures) {
-                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-                  vk_config.descriptorCount = sampled_textures.handles.size();
-                  vkTodo();
-                },
-                [&](const StorageTextureDescriptors &storage_textures) {
-                  vk_config.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-                  vk_config.descriptorCount = storage_textures.handles.size();
-                  vkTodo();
-                },
-            },
-            config.data);
 
         return vk_config;
       }) |
@@ -404,18 +380,18 @@ auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)
       .usage = VMA_MEMORY_USAGE_AUTO,
   };
 
-  switch (desc.location) {
-    using enum BufferLocation;
+  switch (desc.heap) {
+    using enum BufferHeap;
   case Device:
     alloc_info.flags |=
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
         VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
     alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
     break;
-  case Host:
+  case Upload:
     alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
     break;
-  case HostCached:
+  case Readback:
     alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
     break;
   }

@@ -32,11 +32,7 @@ auto DescriptorSetAllocator::allocate(const DescriptorSetLayoutRef &layout)
   }
 
   DescriptorPoolDesc pool_desc = {.set_count = 16};
-  pool_desc.descriptor_counts[Descriptor::Sampler] = 16;
-  pool_desc.descriptor_counts[Descriptor::UniformBuffer] = 16;
-  pool_desc.descriptor_counts[Descriptor::StorageBuffer] = 16;
-  pool_desc.descriptor_counts[Descriptor::SampledTexture] = 16;
-  pool_desc.descriptor_counts[Descriptor::StorageTexture] = 16;
+  pool_desc.pool_sizes.fill(16);
   auto &pool =
       alloc.pools.emplace_back(m_device->create_descriptor_pool(pool_desc));
 

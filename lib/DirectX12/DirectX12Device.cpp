@@ -181,7 +181,7 @@ auto DirectX12Device::create_buffer_handle(const BufferDesc &desc)
   };
 
   D3D12MA::ALLOCATION_DESC alloc_desc = {.HeapType =
-                                             getD3D12HeapType(desc.location)};
+                                             getD3D12HeapType(desc.heap)};
 
   D3D12_RESOURCE_DESC resource_desc = {
       .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,

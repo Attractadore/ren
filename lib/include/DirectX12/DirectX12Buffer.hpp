@@ -19,10 +19,10 @@ inline ID3D12Resource *getD3D12Resource(BufferRef buffer) {
   return reinterpret_cast<ID3D12Resource *>(buffer.handle);
 }
 
-REN_MAP_TYPE(BufferLocation, D3D12_HEAP_TYPE);
+REN_MAP_TYPE(BufferHeap, D3D12_HEAP_TYPE);
 REN_MAP_FIELD(BufferLocation::Device, D3D12_HEAP_TYPE_DEFAULT);
 REN_MAP_FIELD(BufferLocation::Host, D3D12_HEAP_TYPE_UPLOAD);
 REN_MAP_FIELD(BufferLocation::HostCached, D3D12_HEAP_TYPE_READBACK);
-REN_MAP_ENUM(getD3D12HeapType, BufferLocation, REN_BUFFER_LOCATIONS);
+REN_MAP_ENUM(getD3D12HeapType, BufferHeap, REN_BUFFER_LOCATIONS);
 
 } // namespace ren

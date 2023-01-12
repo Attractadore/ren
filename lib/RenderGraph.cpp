@@ -498,7 +498,7 @@ auto RenderGraph::Builder::create_buffers(
     const auto &desc = m_buffer_descs[buffer];
     buffers[buffer] = m_device->create_buffer({
         .usage = buffer_usage_flags[buffer],
-        .location = desc.location,
+        .heap = desc.heap,
         .size = desc.size,
     });
   }

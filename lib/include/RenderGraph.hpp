@@ -33,7 +33,7 @@ struct RGTextureDesc {
 };
 
 struct RGBufferDesc {
-  BufferLocation location;
+  BufferHeap heap;
   unsigned size;
 };
 
