@@ -4,6 +4,7 @@
 #include "Support/Ref.hpp"
 
 namespace ren {
+
 #define REN_TEXTURE_TYPES (e1D)(e2D)(e3D)
 REN_DEFINE_ENUM_WITH_UNKNOWN(TextureType, REN_TEXTURE_TYPES);
 
@@ -23,52 +24,71 @@ struct TextureDesc {
   unsigned width = 1;
   unsigned height = 1;
   union {
-    unsigned short depth = 1;
-    unsigned short layers;
+    unsigned depth = 1;
+    unsigned array_layers;
   };
-  unsigned short levels = 1;
+  unsigned mip_levels = 1;
+};
+
+struct TextureRef {
+  TextureDesc desc;
+  void *handle;
 };
 
 struct Texture {
   TextureDesc desc;
   AnyRef handle;
+
+  operator TextureRef() const {
+    return {
+        .desc = desc,
+        .handle = handle.get(),
+    };
+  }
 };
 
 constexpr auto PARENT_FORMAT = Format::Undefined;
+constexpr unsigned ALL_MIP_LEVELS = -1;
+constexpr unsigned ALL_ARRAY_LAYERS = -1;
 
 struct RenderTargetViewDesc {
   Format format = PARENT_FORMAT;
-  unsigned level = 0;
-  unsigned layer = 0;
+  unsigned mip_level = 0;
+  unsigned array_layer = 0;
 
   constexpr auto operator<=>(const RenderTargetViewDesc &) const = default;
 };
 
 struct RenderTargetView {
   RenderTargetViewDesc desc;
-  Texture texture;
+  TextureRef texture;
+
+  static RenderTargetView create(const TextureRef &texture,
+                                 RenderTargetViewDesc desc = {}) {
+    if (desc.format == PARENT_FORMAT) {
+
+      desc.format = texture.desc.format;
+    }
+    return {.desc = desc, .texture = texture};
+  }
 };
 
-inline Format getRTVFormat(const RenderTargetView &rtv) {
-  return rtv.desc.format != Format::Undefined ? rtv.desc.format
-                                              : rtv.texture.desc.format;
-}
-
 struct DepthStencilViewDesc {
-  unsigned level = 0;
-  unsigned layer = 0;
+  unsigned mip_level = 0;
+  unsigned array_layer = 0;
 
   constexpr auto operator<=>(const DepthStencilViewDesc &) const = default;
 };
 
 struct DepthStencilView {
   DepthStencilViewDesc desc;
-  Texture texture;
-};
+  TextureRef texture;
 
-inline Format getDSVFormat(const DepthStencilView &dsv) {
-  return dsv.texture.desc.format;
-}
+  static DepthStencilView create(const TextureRef &texture,
+                                 DepthStencilViewDesc desc = {}) {
+    return {.desc = desc, .texture = texture};
+  }
+};
 
 #define REN_SAMPLED_TEXTURE_VIEW_TYPES                                         \
   (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)(Cube)(CubeArray)
@@ -82,9 +102,6 @@ struct TextureComponentMapping {
 
   constexpr auto operator<=>(const TextureComponentMapping &) const = default;
 };
-
-constexpr unsigned ALL_MIP_LEVELS = -1;
-constexpr unsigned ALL_ARRAY_LAYERS = -1;
 
 struct SampledTextureViewDesc {
   SampledTextureViewType type = SampledTextureViewType::e2D;
@@ -100,25 +117,22 @@ struct SampledTextureViewDesc {
 
 struct SampledTextureView {
   SampledTextureViewDesc desc;
-  Texture texture;
+  TextureRef texture;
+
+  SampledTextureView create(const TextureRef &texture,
+                            SampledTextureViewDesc desc = {}) {
+    if (desc.format == PARENT_FORMAT) {
+      desc.format = texture.desc.format;
+    }
+    if (desc.mip_levels == ALL_MIP_LEVELS) {
+      desc.mip_levels = texture.desc.mip_levels - desc.first_mip_level;
+    }
+    if (desc.array_layers == ALL_ARRAY_LAYERS) {
+      desc.array_layers = texture.desc.array_layers - desc.first_array_layer;
+    }
+    return {.desc = desc, .texture = texture};
+  }
 };
-
-inline Format getSampledViewFormat(const SampledTextureView &view) {
-  return view.desc.format == PARENT_FORMAT ? view.texture.desc.format
-                                           : view.desc.format;
-}
-
-inline unsigned getSampledViewMipLevels(const SampledTextureView &view) {
-  return view.desc.mip_levels == ALL_MIP_LEVELS
-             ? view.texture.desc.levels - view.desc.first_mip_level
-             : view.desc.mip_levels;
-}
-
-inline unsigned getSampledViewArrayLayers(const SampledTextureView &view) {
-  return view.desc.array_layers == ALL_ARRAY_LAYERS
-             ? view.texture.desc.layers - view.desc.first_array_layer
-             : view.desc.array_layers;
-}
 
 #define REN_STORAGE_TEXTURE_VIEW_TYPES                                         \
   (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)
@@ -136,17 +150,18 @@ struct StorageTextureViewDesc {
 
 struct StorageTextureView {
   StorageTextureViewDesc desc;
-  Texture texture;
+  TextureRef texture;
+
+  static StorageTextureView create(const TextureRef &texture,
+                                   StorageTextureViewDesc desc = {}) {
+    if (desc.format == PARENT_FORMAT) {
+      desc.format = texture.desc.format;
+    }
+    if (desc.array_layers == ALL_ARRAY_LAYERS) {
+      desc.array_layers = texture.desc.array_layers - desc.first_array_layer;
+    }
+    return {.desc = desc, .texture = texture};
+  }
 };
 
-inline Format getStorageViewFormat(const StorageTextureView &stv) {
-  return stv.desc.format == PARENT_FORMAT ? stv.texture.desc.format
-                                          : stv.desc.format;
-}
-
-inline unsigned getStorageViewArrayLayers(const StorageTextureView &view) {
-  return view.desc.array_layers == ALL_ARRAY_LAYERS
-             ? view.texture.desc.layers - view.desc.first_array_layer
-             : view.desc.array_layers;
-}
 } // namespace ren

@@ -23,7 +23,7 @@ REN_MAP_FIELD(Format::RGB32F, VK_FORMAT_R32G32B32_SFLOAT);
 REN_MAP_ENUM(getVkFormat, Format, REN_FORMATS);
 REN_REVERSE_MAP_ENUM(getFormat, Format, REN_FORMATS);
 
-inline VkImageAspectFlags getFormatAspectFlags(Format format) {
+inline VkImageAspectFlags getVkImageAspectFlags(Format format) {
   if (isColorFormat(format)) {
     return VK_IMAGE_ASPECT_COLOR_BIT;
   }

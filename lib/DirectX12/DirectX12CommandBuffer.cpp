@@ -26,8 +26,8 @@ namespace {
 
 UINT getTargetSubresource(const TextureDesc &tex_desc, unsigned level,
                           unsigned layer, unsigned plane = 0) {
-  return plane * (tex_desc.levels * tex_desc.layers) + tex_desc.levels * layer +
-         level;
+  return plane * (tex_desc.mip_levels * tex_desc.array_layers) +
+         tex_desc.mip_levels * layer + level;
 }
 
 void discardTarget(ID3D12GraphicsCommandList *cmd_list,
@@ -60,8 +60,8 @@ void DirectX12CommandBuffer::beginRendering(
     auto rtv = m_device->getRTV(rt.rtv);
     rtvs.push_back(rtv);
     auto *resource = getD3D12Resource(rt.rtv.texture);
-    auto sr = getTargetSubresource(rt.rtv.texture.desc, rt.rtv.desc.level,
-                                   rt.rtv.desc.layer);
+    auto sr = getTargetSubresource(rt.rtv.texture.desc, rt.rtv.desc.mip_level,
+                                   rt.rtv.desc.array_layer);
 
     if (rt.load_op == TargetLoadOp::Clear) {
       m_cmd_list->ClearRenderTargetView(rtv, rt.clear_color.data(), 1,
@@ -81,10 +81,12 @@ void DirectX12CommandBuffer::beginRendering(
     auto &dst = *depth_stencil_target;
     dsv = m_device->getDSV(dst.dsv, dst.depth_store_op, dst.stencil_store_op);
     auto *resource = getD3D12Resource(dst.dsv.texture);
-    auto depth_sr = getTargetSubresource(
-        dst.dsv.texture.desc, dst.dsv.desc.level, dst.dsv.desc.layer, 0);
-    auto stencil_sr = getTargetSubresource(
-        dst.dsv.texture.desc, dst.dsv.desc.level, dst.dsv.desc.layer, 1);
+    auto depth_sr =
+        getTargetSubresource(dst.dsv.texture.desc, dst.dsv.desc.mip_level,
+                             dst.dsv.desc.array_layer, 0);
+    auto stencil_sr =
+        getTargetSubresource(dst.dsv.texture.desc, dst.dsv.desc.mip_level,
+                             dst.dsv.desc.array_layer, 1);
 
     D3D12_CLEAR_FLAGS clear_flags{};
     if (dst.depth_load_op == TargetLoadOp::Clear) {

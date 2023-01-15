@@ -27,9 +27,9 @@ struct RGTextureDesc {
   unsigned height = 1;
   union {
     unsigned short depth = 1;
-    unsigned short layers;
+    unsigned short array_layers;
   };
-  unsigned short levels = 1;
+  unsigned short mip_levels = 1;
 };
 
 struct RGBufferDesc {

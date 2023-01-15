@@ -27,8 +27,8 @@ Device &VulkanCommandBuffer::get_device() { return *m_device; }
 
 void VulkanCommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
-    SmallVector<RenderTargetConfig, 8> render_targets,
-    Optional<DepthStencilTargetConfig> depth_stencil_target) {
+    std::span<const RenderTargetConfig> render_targets,
+    const Optional<DepthStencilTargetConfig> &depth_stencil_target) {
 
   auto color_attachments =
       render_targets |

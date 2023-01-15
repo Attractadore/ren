@@ -140,8 +140,8 @@ void DirectX12Swapchain::setTextures() {
                  .usage = getTextureUsageFlags(desc.Flags),
                  .width = static_cast<unsigned>(desc.Width),
                  .height = desc.Height,
-                 .layers = desc.DepthOrArraySize,
-                 .levels = desc.MipLevels},
+                 .array_layers = desc.DepthOrArraySize,
+                 .mip_levels = desc.MipLevels},
         .handle = AnyRef(buffer, [device = m_device](ID3D12Resource *buffer) {
           device->push_to_delete_queue(DirectX12TextureViews{buffer});
           device->push_to_delete_queue(buffer);

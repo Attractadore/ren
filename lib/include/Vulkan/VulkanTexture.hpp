@@ -26,7 +26,7 @@ REN_MAP_ENUM_AND_FLAGS(getVkImageUsage, TextureUsage, REN_TEXTURE_USAGES);
 REN_REVERSE_MAP_ENUM_AND_FLAGS(getTextureUsage, TextureUsage,
                                REN_TEXTURE_USAGES);
 
-inline VkImage getVkImage(const Texture &tex) {
-  return reinterpret_cast<VkImage>(tex.handle.get());
+inline VkImage getVkImage(const TextureRef &texture) {
+  return reinterpret_cast<VkImage>(texture.handle);
 }
 } // namespace ren

@@ -120,9 +120,9 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
       auto &&texture = rg.getTexture(tex);
       barrier.image = getVkImage(texture);
       barrier.subresourceRange = {
-          .aspectMask = getFormatAspectFlags(texture.desc.format),
-          .levelCount = texture.desc.levels,
-          .layerCount = texture.desc.layers,
+          .aspectMask = getVkImageAspectFlags(texture.desc.format),
+          .levelCount = texture.desc.mip_levels,
+          .layerCount = texture.desc.array_layers,
       };
     }
 

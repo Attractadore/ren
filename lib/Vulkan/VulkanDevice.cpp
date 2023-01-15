@@ -428,8 +428,8 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
       .imageType = getVkImageType(desc.type),
       .format = getVkFormat(desc.format),
       .extent = {desc.width, desc.height, desc.depth},
-      .mipLevels = desc.levels,
-      .arrayLayers = desc.layers,
+      .mipLevels = desc.mip_levels,
+      .arrayLayers = desc.array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = getVkImageUsageFlags(desc.usage),
@@ -465,12 +465,12 @@ VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
       .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = getVkFormat(getRTVFormat(rtv)),
+      .format = getVkFormat(rtv.desc.format),
       .subresourceRange = {
           .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-          .baseMipLevel = rtv.desc.level,
+          .baseMipLevel = rtv.desc.mip_level,
           .levelCount = 1,
-          .baseArrayLayer = rtv.desc.layer,
+          .baseArrayLayer = rtv.desc.array_layer,
           .layerCount = 1,
       }};
   return getVkImageViewImpl(image, view_info);
@@ -478,17 +478,16 @@ VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
 
 VkImageView VulkanDevice::getVkImageView(const DepthStencilView &dsv) {
   auto image = getVkImage(dsv.texture);
-  auto format = getDSVFormat(dsv);
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
       .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = getVkFormat(format),
+      .format = getVkFormat(dsv.texture.desc.format),
       .subresourceRange = {
-          .aspectMask = getFormatAspectFlags(format),
-          .baseMipLevel = dsv.desc.level,
+          .aspectMask = getVkImageAspectFlags(dsv.texture.desc.format),
+          .baseMipLevel = dsv.desc.mip_level,
           .levelCount = 1,
-          .baseArrayLayer = dsv.desc.layer,
+          .baseArrayLayer = dsv.desc.array_layer,
           .layerCount = 1,
       }};
   return getVkImageViewImpl(image, view_info);

@@ -55,8 +55,8 @@ public:
 
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
-      SmallVector<RenderTargetConfig, 8> render_targets,
-      Optional<DepthStencilTargetConfig> depth_stencil_target) override;
+      std::span<const RenderTargetConfig> render_targets,
+      const Optional<DepthStencilTargetConfig> &depth_stencil_target) override;
   void endRendering() override;
 
   void copy_buffer(const BufferRef &src, const BufferRef &dst,

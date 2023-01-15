@@ -483,8 +483,8 @@ Vector<Texture> RenderGraph::Builder::createTextures(
           .usage = texture_usage_flags[tex],
           .width = desc.width,
           .height = desc.height,
-          .layers = desc.layers,
-          .levels = desc.levels,
+          .array_layers = desc.array_layers,
+          .mip_levels = desc.mip_levels,
       });
     }
   }

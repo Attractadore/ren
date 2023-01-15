@@ -67,16 +67,19 @@ public:
   virtual const Device &get_device() const = 0;
   virtual Device &get_device() = 0;
 
-  virtual void beginRendering(int x, int y, unsigned width, unsigned height,
-                              SmallVector<RenderTargetConfig, 8> rts,
-                              Optional<DepthStencilTargetConfig> dst) = 0;
-  void beginRendering(Texture rt) {
-    beginRendering(0, 0, rt.desc.width, rt.desc.height,
-                   {{.rtv = {.texture = std::move(rt)}}}, {});
-  }
-  void beginRendering(RenderTargetView rtv) {
+  virtual void beginRendering(
+      int x, int y, unsigned width, unsigned height,
+      std::span<const RenderTargetConfig> render_targets,
+      const Optional<DepthStencilTargetConfig> &depth_stencil_target) = 0;
+  void beginRendering(const RenderTargetView &rtv) {
+    RenderTargetConfig rt_cfg = {.rtv = rtv};
     beginRendering(0, 0, rtv.texture.desc.width, rtv.texture.desc.height,
-                   {{.rtv = std::move(rtv)}}, {});
+                   asSpan(rt_cfg), {});
+  }
+  void beginRendering(const TextureRef &texture) {
+    RenderTargetConfig rt_cfg = {.rtv = RenderTargetView::create(texture)};
+    beginRendering(0, 0, texture.desc.width, texture.desc.height,
+                   asSpan(rt_cfg), {});
   }
   virtual void endRendering() = 0;
 
@@ -101,9 +104,10 @@ public:
     bind_graphics_descriptor_sets(signature, first_set, asSpan(set));
   }
 
-  virtual void set_graphics_push_constants(
-      PipelineSignatureRef signature, ShaderStageFlags stages,
-      std::span<const std::byte> data, unsigned offset = 0) = 0;
+  virtual void set_graphics_push_constants(PipelineSignatureRef signature,
+                                           ShaderStageFlags stages,
+                                           std::span<const std::byte> data,
+                                           unsigned offset = 0) = 0;
   void set_graphics_push_constants(PipelineSignatureRef signature,
                                    ShaderStageFlags stages, const auto &data,
                                    unsigned offset = 0) {

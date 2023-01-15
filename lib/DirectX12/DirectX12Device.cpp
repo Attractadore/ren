@@ -225,8 +225,8 @@ Texture DirectX12Device::createTexture(const ren::TextureDesc &desc) {
       .Dimension = getD3D12ResourceDimension(desc.type),
       .Width = desc.width,
       .Height = desc.height,
-      .DepthOrArraySize = desc.layers,
-      .MipLevels = desc.levels,
+      .DepthOrArraySize = desc.array_layers,
+      .MipLevels = desc.mip_levels,
       .Format = dxgi_format,
       .SampleDesc = {.Count = 1},
       .Flags = getD3D12ResourceFlags(desc.usage),
@@ -306,8 +306,8 @@ DirectX12Device::getRTV(const RenderTargetView &rtv) {
         .Format = getDXGIFormat(getRTVFormat(rtv)),
         .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY,
         .Texture2DArray = {
-            .MipSlice = rtv.desc.level,
-            .FirstArraySlice = rtv.desc.layer,
+            .MipSlice = rtv.desc.mip_level,
+            .FirstArraySlice = rtv.desc.array_layer,
             .ArraySize = 1,
         }};
     m_device->CreateRenderTargetView(resource, &rtv_desc, handle);
@@ -332,8 +332,8 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
         .Format = getDXGIFormat(getDSVFormat(dsv)),
         .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY,
         .Texture2DArray = {
-            .MipSlice = dsv.desc.level,
-            .FirstArraySlice = dsv.desc.layer,
+            .MipSlice = dsv.desc.mip_level,
+            .FirstArraySlice = dsv.desc.array_layer,
             .ArraySize = 1,
         }};
     if (depth_store_op == TargetStoreOp::None) {
