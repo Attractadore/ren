@@ -24,7 +24,7 @@ inline D3D12_RESOURCE_FLAGS getD3D12ResourceFlags(TextureUsageFlags usage) {
       flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
     }
   }
-  if (usage.isSet(TextureUsage::Storage)) {
+  if (usage.isSet(TextureUsage::RWStorage)) {
     flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
   }
   return flags;
@@ -42,7 +42,7 @@ inline TextureUsageFlags getTextureUsageFlags(D3D12_RESOURCE_FLAGS flags) {
     usage |= TextureUsage::Sampled;
   }
   if (flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) {
-    usage |= TextureUsage::Storage;
+    usage |= TextureUsage::RWStorage;
   }
   return usage;
 }

@@ -9,8 +9,8 @@ namespace ren {
 #define REN_BUFFER_USAGES                                                      \
   (TransferSRC)       /**/                                                     \
       (TransferDST)   /**/                                                     \
-      (UniformTexel)  /* Buffer */                                             \
-      (StorageTexel)  /* RWBuffer */                                           \
+      (Texel)         /* Buffer */                                             \
+      (RWTexel)       /* RWBuffer */                                           \
       (Uniform)       /* ConstantBuffer */                                     \
       (Storage)       /* StructuredBuffer, ByteAddressBuffer */                \
       (RWStorage)     /* RWStructuredBuffer, RWByteAddressBuffer,              \
@@ -21,11 +21,11 @@ namespace ren {
       (DeviceAddress) /**/
 REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
 
-#define REN_BUFFER_LOCATIONS                                                   \
+#define REN_BUFFER_HEAPS                                                       \
   (Device)       /**/                                                          \
       (Upload)   /**/                                                          \
       (Readback) /**/
-REN_DEFINE_ENUM(BufferHeap, REN_BUFFER_LOCATIONS);
+REN_DEFINE_ENUM(BufferHeap, REN_BUFFER_HEAPS);
 
 struct BufferDesc {
   BufferUsageFlags usage;

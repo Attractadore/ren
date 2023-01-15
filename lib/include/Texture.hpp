@@ -14,7 +14,7 @@ REN_DEFINE_ENUM_WITH_UNKNOWN(TextureType, REN_TEXTURE_TYPES);
       (RenderTarget)       /**/                                                \
       (DepthStencilTarget) /**/                                                \
       (Sampled)            /* Texture */                                       \
-      (Storage)            /* RWTexture */
+      (RWStorage)          /* RWTexture */
 REN_DEFINE_FLAGS_ENUM(TextureUsage, REN_TEXTURE_USAGES);
 
 struct TextureDesc {

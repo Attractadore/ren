@@ -407,20 +407,20 @@ namespace {
 auto get_texture_usage_flags(MemoryAccessFlags accesses) -> TextureUsageFlags {
   using enum MemoryAccess;
   TextureUsageFlags flags;
-  if (accesses.isSet(ColorWrite)) {
-    flags |= TextureUsage::RenderTarget;
-  }
   if (accesses.isSet(TransferRead)) {
     flags |= TextureUsage::TransferSRC;
   }
   if (accesses.isSet(TransferWrite)) {
     flags |= TextureUsage::TransferDST;
   }
-  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
-    flags |= TextureUsage::Storage;
+  if (accesses.isSet(ColorWrite)) {
+    flags |= TextureUsage::RenderTarget;
   }
   if (accesses.isSet(SampledRead)) {
     flags |= TextureUsage::Sampled;
+  }
+  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+    flags |= TextureUsage::RWStorage;
   }
   return flags;
 }
