@@ -307,8 +307,8 @@ void VulkanDevice::write_descriptor_sets(
             []<DescriptorType DT>(const DescriptorWriteConfig<DT> &config)
                 -> std::span<const BufferRef> {
               if constexpr (DT == DESCRIPTOR_TYPE_SAMPLER or
-                            DT == DESCRIPTOR_TYPE_SAMPLED_TEXTURE or
-                            DT == DESCRIPTOR_TYPE_STORAGE_TEXTURE) {
+                            DT == DESCRIPTOR_TYPE_TEXTURE or
+                            DT == DESCRIPTOR_TYPE_RW_TEXTURE) {
                 todo();
                 return {};
               } else if constexpr (DT == DESCRIPTOR_TYPE_UNIFORM_BUFFER or
@@ -316,8 +316,8 @@ void VulkanDevice::write_descriptor_sets(
                                    DT == DESCRIPTOR_TYPE_RAW_BUFFER or
                                    DT == DESCRIPTOR_TYPE_RW_RAW_BUFFER) {
                 return config.buffers;
-              } else if constexpr (DT == DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER or
-                                   DT == DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER or
+              } else if constexpr (DT == DESCRIPTOR_TYPE_TEXEL_BUFFER or
+                                   DT == DESCRIPTOR_TYPE_RW_TEXEL_BUFFER or
                                    DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) {
                 todo();
                 return {};

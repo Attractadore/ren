@@ -90,21 +90,24 @@ struct DepthStencilView {
   }
 };
 
-#define REN_SAMPLED_TEXTURE_VIEW_TYPES                                         \
+#define REN_TEXTURE_VIEW_TYPES                                                 \
   (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)(Cube)(CubeArray)
-REN_DEFINE_ENUM(SampledTextureViewType, REN_SAMPLED_TEXTURE_VIEW_TYPES);
+REN_DEFINE_ENUM(TextureViewType, REN_TEXTURE_VIEW_TYPES);
 
 #define REN_TEXTURE_CHANNELS (Identity)(R)(G)(B)(A)(One)(Zero)
 REN_DEFINE_ENUM(TextureChannel, REN_TEXTURE_CHANNELS);
 
 struct TextureComponentMapping {
-  TextureChannel r, g, b, a;
+  TextureChannel r = TextureChannel::Identity;
+  TextureChannel g = TextureChannel::Identity;
+  TextureChannel b = TextureChannel::Identity;
+  TextureChannel a = TextureChannel::Identity;
 
   constexpr auto operator<=>(const TextureComponentMapping &) const = default;
 };
 
-struct SampledTextureViewDesc {
-  SampledTextureViewType type = SampledTextureViewType::e2D;
+struct TextureViewDesc {
+  TextureViewType type = TextureViewType::e2D;
   Format format = PARENT_FORMAT;
   TextureComponentMapping components;
   unsigned first_mip_level = 0;
@@ -112,15 +115,14 @@ struct SampledTextureViewDesc {
   unsigned first_array_layer = 0;
   unsigned array_layers = 1;
 
-  constexpr auto operator<=>(const SampledTextureViewDesc &) const = default;
+  constexpr auto operator<=>(const TextureViewDesc &) const = default;
 };
 
-struct SampledTextureView {
-  SampledTextureViewDesc desc;
+struct TextureView {
+  TextureViewDesc desc;
   TextureRef texture;
 
-  SampledTextureView create(const TextureRef &texture,
-                            SampledTextureViewDesc desc = {}) {
+  TextureView create(const TextureRef &texture, TextureViewDesc desc = {}) {
     if (desc.format == PARENT_FORMAT) {
       desc.format = texture.desc.format;
     }
@@ -134,26 +136,25 @@ struct SampledTextureView {
   }
 };
 
-#define REN_STORAGE_TEXTURE_VIEW_TYPES                                         \
-  (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)
-REN_DEFINE_ENUM(StorageTextureViewType, REN_STORAGE_TEXTURE_VIEW_TYPES);
+#define REN_RW_TEXTURE_VIEW_TYPES (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)
+REN_DEFINE_ENUM(RWTextureViewType, REN_RW_TEXTURE_VIEW_TYPES);
 
-struct StorageTextureViewDesc {
-  StorageTextureViewType type = StorageTextureViewType::e2D;
+struct RWTextureViewDesc {
+  RWTextureViewType type = RWTextureViewType::e2D;
   Format format = PARENT_FORMAT;
   unsigned mip_level = 0;
   unsigned first_array_layer = 0;
   unsigned array_layers = 1;
 
-  constexpr auto operator<=>(const StorageTextureViewDesc &) const = default;
+  constexpr auto operator<=>(const RWTextureViewDesc &) const = default;
 };
 
-struct StorageTextureView {
-  StorageTextureViewDesc desc;
+struct RWTextureView {
+  RWTextureViewDesc desc;
   TextureRef texture;
 
-  static StorageTextureView create(const TextureRef &texture,
-                                   StorageTextureViewDesc desc = {}) {
+  static RWTextureView create(const TextureRef &texture,
+                              RWTextureViewDesc desc = {}) {
     if (desc.format == PARENT_FORMAT) {
       desc.format = texture.desc.format;
     }

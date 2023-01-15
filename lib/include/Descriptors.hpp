@@ -16,10 +16,10 @@ REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
 
 #define REN_DESCRIPTOR_TYPES                                                   \
   (DESCRIPTOR_TYPE_SAMPLER)                  /**/                              \
-      (DESCRIPTOR_TYPE_SAMPLED_TEXTURE)      /* Texture */                     \
-      (DESCRIPTOR_TYPE_STORAGE_TEXTURE)      /* RWTexture */                   \
-      (DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) /* Buffer */                      \
-      (DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) /* RWBuffer */                    \
+      (DESCRIPTOR_TYPE_TEXTURE)              /* Texture */                     \
+      (DESCRIPTOR_TYPE_RW_TEXTURE)           /* RWTexture */                   \
+      (DESCRIPTOR_TYPE_TEXEL_BUFFER)         /* Buffer */                      \
+      (DESCRIPTOR_TYPE_RW_TEXEL_BUFFER)      /* RWBuffer */                    \
       (DESCRIPTOR_TYPE_UNIFORM_BUFFER)       /* ConstantBuffer */              \
       (DESCRIPTOR_TYPE_STRUCTURED_BUFFER)    /**/                              \
       (DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) /* RWStructuredBuffer,            \
@@ -100,17 +100,17 @@ template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER> {
   // TODO
 };
 
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLED_TEXTURE> {
-  std::span<const SampledTextureView> textures;
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXTURE> {
+  std::span<const TextureView> textures;
 };
 
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXTURE> {
-  std::span<const StorageTextureView> textures;
+template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXTURE> {
+  std::span<const RWTextureView> textures;
 };
 
 template <DescriptorType DT>
-  requires(DT == DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER) or
-          (DT == DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
+  requires(DT == DESCRIPTOR_TYPE_TEXEL_BUFFER) or
+          (DT == DESCRIPTOR_TYPE_RW_TEXEL_BUFFER)
 struct DescriptorWriteConfig<DT> {
   // TODO
 };
@@ -135,14 +135,12 @@ template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER> {
 };
 
 using SamplerWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER>;
-using SampledTextureWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLED_TEXTURE>;
-using StorageTextureWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXTURE>;
-using UniformTexelBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER>;
-using StorageTexelBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER>;
+using TextureWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXTURE>;
+using RWTextureWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXTURE>;
+using TexelBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXEL_BUFFER>;
+using RWTexelBufferWriteConfig =
+    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXEL_BUFFER>;
 using UniformBufferWriteConfig =
     DescriptorWriteConfig<DESCRIPTOR_TYPE_UNIFORM_BUFFER>;
 using StructuredBufferWriteConfig =

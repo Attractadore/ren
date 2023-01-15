@@ -61,11 +61,11 @@ class DirectX12Device final : public Device {
   HashMap<ID3D12Resource *,
           SmallLinearMap<DepthStencilViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_dsvs;
-  HashMap<ID3D12Resource *, SmallLinearMap<SampledTextureViewDesc,
-                                           D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<TextureViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_srvs;
-  HashMap<ID3D12Resource *, SmallLinearMap<StorageTextureViewDesc,
-                                           D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
+  HashMap<ID3D12Resource *,
+          SmallLinearMap<RWTextureViewDesc, D3D12_CPU_DESCRIPTOR_HANDLE, 3>>
       m_texture_uavs;
 
   DirectX12DeleteQueue m_delete_queue;
@@ -123,8 +123,8 @@ public:
   D3D12_CPU_DESCRIPTOR_HANDLE getDSV(const DepthStencilView &dsv,
                                      TargetStoreOp depth_store_op,
                                      TargetStoreOp stencil_store_op);
-  D3D12_CPU_DESCRIPTOR_HANDLE getSRV(const SampledTextureView &srv);
-  D3D12_CPU_DESCRIPTOR_HANDLE getUAV(const StorageTextureView &uav);
+  D3D12_CPU_DESCRIPTOR_HANDLE getSRV(const TextureView &srv);
+  D3D12_CPU_DESCRIPTOR_HANDLE getUAV(const RWTextureView &uav);
 
   SyncObject createSyncObject(const ren::SyncDesc &desc) override;
 

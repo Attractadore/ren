@@ -349,7 +349,7 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE
-DirectX12Device::getSRV(const SampledTextureView &srv) {
+DirectX12Device::getSRV(const TextureView &srv) {
   auto *resource = getD3D12Resource(srv.texture);
   // TODO: null descriptors
   assert(resource);
@@ -375,7 +375,7 @@ DirectX12Device::getSRV(const SampledTextureView &srv) {
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE
-DirectX12Device::getUAV(const StorageTextureView &uav) {
+DirectX12Device::getUAV(const RWTextureView &uav) {
   auto *resource = getD3D12Resource(uav.texture);
   // TODO: null descriptors
   assert(resource);
