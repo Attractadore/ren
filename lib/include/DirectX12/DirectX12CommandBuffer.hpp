@@ -32,8 +32,8 @@ public:
 
   void beginRendering(
       int x, int y, unsigned width, unsigned height,
-      SmallVector<RenderTargetConfig, 8> render_targets,
-      Optional<DepthStencilTargetConfig> depth_stencil_target) override;
+      std::span<const RenderTargetConfig> render_targets,
+      const Optional<DepthStencilTargetConfig> &depth_stencil_target) override;
   using CommandBuffer::beginRendering;
   void endRendering() override;
 

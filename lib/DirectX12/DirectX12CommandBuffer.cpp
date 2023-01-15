@@ -45,8 +45,8 @@ void discardTarget(ID3D12GraphicsCommandList *cmd_list,
 
 void DirectX12CommandBuffer::beginRendering(
     int x, int y, unsigned width, unsigned height,
-    SmallVector<RenderTargetConfig, 8> render_targets,
-    Optional<DepthStencilTargetConfig> depth_stencil_target) {
+    std::span<const RenderTargetConfig> render_targets,
+    const Optional<DepthStencilTargetConfig> &depth_stencil_target) {
   auto &rp = m_current_render_pass;
   rp.render_area = {
       .left = static_cast<LONG>(x),

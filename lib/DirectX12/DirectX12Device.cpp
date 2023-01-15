@@ -303,7 +303,7 @@ DirectX12Device::getRTV(const RenderTargetView &rtv) {
   if (inserted) {
     handle = m_rtv_pool.allocate();
     D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {
-        .Format = getDXGIFormat(getRTVFormat(rtv)),
+        .Format = getDXGIFormat(rtv.desc.format),
         .ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY,
         .Texture2DArray = {
             .MipSlice = rtv.desc.mip_level,
@@ -329,7 +329,7 @@ DirectX12Device::getDSV(const DepthStencilView &dsv,
   if (inserted) {
     handle = m_dsv_pool.allocate();
     D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {
-        .Format = getDXGIFormat(getDSVFormat(dsv)),
+        .Format = getDXGIFormat(dsv.texture.desc.format),
         .ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY,
         .Texture2DArray = {
             .MipSlice = dsv.desc.mip_level,
@@ -359,14 +359,14 @@ DirectX12Device::getSRV(const SampledTextureView &srv) {
   if (inserted) {
     descriptor = m_cbv_srv_uav_pool.allocate();
     D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {
-        .Format = getDXGIFormat(getSampledViewFormat(srv)),
+        .Format = getDXGIFormat(srv.desc.format),
         .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
         .Texture2DArray = {
             .MostDetailedMip = srv.desc.first_mip_level,
-            .MipLevels = getSampledViewMipLevels(srv),
+            .MipLevels = srv.desc.mip_levels,
             .FirstArraySlice = srv.desc.first_array_layer,
-            .ArraySize = getSampledViewArrayLayers(srv),
+            .ArraySize = srv.desc.array_layers,
         }};
     m_device->CreateShaderResourceView(resource, &srv_desc, descriptor);
   }
@@ -385,12 +385,12 @@ DirectX12Device::getUAV(const StorageTextureView &uav) {
   if (inserted) {
     descriptor = m_cbv_srv_uav_pool.allocate();
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {
-        .Format = getDXGIFormat(getStorageViewFormat(uav)),
+        .Format = getDXGIFormat(uav.desc.format),
         .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY,
         .Texture2DArray = {
             .MipSlice = uav.desc.mip_level,
             .FirstArraySlice = uav.desc.first_array_layer,
-            .ArraySize = getStorageViewArrayLayers(uav),
+            .ArraySize = uav.desc.array_layers,
         }};
     m_device->CreateUnorderedAccessView(resource, nullptr, &uav_desc,
                                         descriptor);
