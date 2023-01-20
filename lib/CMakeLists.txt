@@ -107,10 +107,6 @@ add_library(ren::ren-hpp ALIAS ren-hpp)
 
 message(STATUS "Enable Vulkan renderer")
 add_subdirectory(Vulkan)
-if(WIN32)
-  message(STATUS "Enable DirectX 12 renderer")
-  add_subdirectory(DirectX12)
-endif()
 
 if(REN_BUILD_TESTS)
   enable_testing()

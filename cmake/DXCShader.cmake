@@ -2,23 +2,21 @@ cmake_minimum_required(VERSION 3.20)
 
 function(add_dxc_shader SHADER_SOURCE)
   set(ARGS_OPTIONS STUB)
-  set(ARGS_ONE PROFILE EMBED_TARGET OUTPUT_FILE REFLECTION_FILE)
+  set(ARGS_ONE PROFILE EMBED_TARGET OUTPUT_FILE)
   set(ARGS_MULTI DXC_FLAGS INCLUDE_DIRECTORIES DEFINES)
   cmake_parse_arguments(PARSE_ARGV 2 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
                         "${ARGS_MULTI}")
 
-  if(NOT TARGET Vulkan::dxc_exe)
+  if(NOT DXC)
     find_package(
       Vulkan
       COMPONENTS dxc
       QUIET)
-  endif()
-
-  if(NOT DXC)
     if(TARGET Vulkan::dxc_exe)
       message(STATUS "Using DXC from Vulkan SDK")
+      get_target_property(dxc_exe Vulkan::dxc_exe IMPORTED_LOCATION)
       set(DXC
-          $<TARGET_FILE:Vulkan::dxc_exe>
+          ${dxc_exe}
           CACHE FILEPATH "Path to DirectXShaderCompiler")
     else()
       message(STATUS "Using system DXC")
@@ -101,16 +99,13 @@ static
 
     add_dependencies(${OPTION_EMBED_TARGET} ${SHADER_INC_TARGET})
   else()
-    if(OPTION_REFLECTION_FILE)
-      set(reflection_flags -Fre ${OPTION_REFLECTION_FILE})
-    endif()
     add_custom_command(
       OUTPUT ${OPTION_OUTPUT_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
       COMMAND
-        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${OPTION_OUTPUT_FILE}
-        ${reflection_flags} && ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo
-        ${OPTION_OUTPUT_FILE} -MD -MF ${OPTION_OUTPUT_FILE}.d
+        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${OPTION_OUTPUT_FILE} &&
+        ${DXC} ${DXC_FLAGS} ${SHADER_SOURCE_FILE} -Fo ${OPTION_OUTPUT_FILE} -MD
+        -MF ${OPTION_OUTPUT_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${OPTION_OUTPUT_FILE}.d)
   endif()

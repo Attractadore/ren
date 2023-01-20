@@ -11,7 +11,6 @@ macro(add_vulkan_shader source output)
     ${REN_ASSETS_OUTPUT_DIRECTORY}/${output}
     DXC_FLAGS
     -Zpc
-    # -fspv-flatten-resource-arrays
     -fspv-reflect
     -fvk-use-dx-position-w
     -fvk-use-scalar-layout

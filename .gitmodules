@@ -1,6 +1,3 @@
 [submodule "external/SlotMap"]
 	path = external/SlotMap
 	url = https://github.com/Attractadore/SlotMap
-[submodule "external/D3D12MemoryAllocator"]
-	path = external/D3D12MemoryAllocator
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator

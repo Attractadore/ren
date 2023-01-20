@@ -28,8 +28,6 @@ struct Swapchain : ::ren::Swapchain {
     ren_vk_SetSwapchainPresentMode(this, present_mode);
   };
 };
-using UniqueSwapchain = std::unique_ptr<Swapchain, SwapchainDeleter>;
-using SharedSwapchain = std::shared_ptr<Swapchain>;
 
 struct Device : ::ren::Device {
 #ifndef VK_NO_PROTOTYPE
@@ -38,8 +36,7 @@ struct Device : ::ren::Device {
   }
 #endif
 
-  using Unique = std::unique_ptr<Device, DeviceDeleter>;
-  static Unique create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
+  static UniqueDevice create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
                        VkPhysicalDevice adapter) {
     return {static_cast<Device *>(ren_vk_CreateDevice(proc, instance, adapter)),
             DeviceDeleter()};
@@ -50,7 +47,5 @@ struct Device : ::ren::Device {
             SwapchainDeleter()};
   }
 };
-using UniqueDevice = Device::Unique;
-using SharedDevice = std::shared_ptr<Device>;
 } // namespace v0
 } // namespace ren::vk

@@ -23,7 +23,6 @@ set(REN_ASSETS_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/assets)
 
 set(REN_TARGETS ${PROJECT_NAME}-targets)
 set(REN_VULKAN_TARGETS ${PROJECT_NAME}-vk-targets)
-set(REN_DIRECTX12_TARGETS ${PROJECT_NAME}-dx12-targets)
 
 add_subdirectory(external)
 add_subdirectory(lib)
@@ -48,9 +47,7 @@ if(REN_INSTALL)
     WRITE ${CONFIG_CMAKE}
     "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS}.cmake)
 include(\${CMAKE_CURRENT_LIST_DIR}/${REN_VULKAN_TARGETS}.cmake)
-if(WIN32)
-  include(\${CMAKE_CURRENT_LIST_DIR}/${REN_DIRECTX12_TARGETS}.cmake)
-endif()")
+")
   write_basic_package_version_file(${CONFIG_VERSION}
                                    COMPATIBILITY SameMinorVersion)
   install(FILES ${CONFIG_CMAKE} ${CONFIG_VERSION}

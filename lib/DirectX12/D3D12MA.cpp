@@ -1,7 +1,0 @@
-#include <d3d12.h>
-
-#define D3D12_HEAP_FLAG_HARDWARE_PROTECTED static_cast<D3D12_HEAP_FLAGS>(0x100)
-#define D3D12_HEAP_FLAG_ALLOW_WRITE_WATCH static_cast<D3D12_HEAP_FLAGS>(0x200)
-#define D3D12_HEAP_FLAG_ALLOW_SHADER_ATOMICS static_cast<D3D12_HEAP_FLAGS>(0x400)
-
-#include "D3D12MemAlloc.cpp"

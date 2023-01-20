@@ -1,4 +1,5 @@
 find_package(SDL2 REQUIRED)
+find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
 
 function(copy_dlls target)
@@ -18,21 +19,9 @@ endfunction()
 add_library(app-base app-base.cpp)
 target_link_libraries(
   app-base
-  PUBLIC ren::ren-hpp SDL2::SDL2
-  PRIVATE fmt::fmt)
+  PUBLIC ren::ren-hpp SDL2::SDL2 Vulkan::Vulkan
+  PRIVATE fmt::fmt ren::vk-hpp)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
-
-if(TARGET ren::vk)
-  find_package(Vulkan REQUIRED)
-
-  target_link_libraries(app-base PUBLIC ren::vk-hpp Vulkan::Vulkan)
-  target_compile_definitions(app-base PUBLIC REN_VULKAN_RENDERER)
-endif()
-
-if(TARGET ren::dx12)
-  target_link_libraries(app-base PUBLIC ren::dx12-hpp)
-  target_compile_definitions(app-base PUBLIC REN_DIRECTX12_RENDERER)
-endif()
 
 add_executable(create-device create-device.cpp)
 target_link_libraries(create-device app-base)

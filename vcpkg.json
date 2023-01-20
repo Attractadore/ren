@@ -7,48 +7,15 @@
     "boost-preprocessor",
     "fmt",
     "glm",
-    "range-v3"
+    "range-v3",
+    "spirv-reflect",
+    "vulkan-headers",
+    "vulkan-memory-allocator"
   ],
   "features": {
-    "directx12": {
-      "description": "Enable DirectX 12 backend",
-      "dependencies": [
-        "directx-dxc"
-      ]
-    },
-    "dummy": {
-      "description": ""
-    },
     "examples": {
       "description": "Build example executables",
       "dependencies": [
-        "sdl2"
-      ]
-    },
-    "examples-directx12": {
-      "description": "Build example executables with support for DirectX12 backend",
-      "dependencies": [
-        {
-          "name": "ren",
-          "default-features": false,
-          "features": [
-            "directx12",
-            "examples"
-          ]
-        }
-      ]
-    },
-    "examples-vulkan": {
-      "description": "Build example executables with support for Vulkan backend",
-      "dependencies": [
-        {
-          "name": "ren",
-          "default-features": false,
-          "features": [
-            "examples",
-            "vulkan"
-          ]
-        },
         {
           "name": "sdl2",
           "features": [
@@ -58,17 +25,9 @@
       ]
     },
     "tests": {
-      "description": "Enable tests",
+      "description": "Build tests",
       "dependencies": [
         "gtest"
-      ]
-    },
-    "vulkan": {
-      "description": "Enable Vulkan backend",
-      "dependencies": [
-        "spirv-reflect",
-        "vulkan-headers",
-        "vulkan-memory-allocator"
       ]
     }
   }
