@@ -89,10 +89,6 @@ struct DescriptorSetLayout {
   }
 };
 
-struct DescriptorSet {
-  VkDescriptorSet handle;
-};
-
 template <DescriptorType DT> struct DescriptorWriteConfig;
 
 template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER> {
@@ -151,7 +147,7 @@ using RWRawBufferWriteConfig =
     DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_RAW_BUFFER>;
 
 struct DescriptorSetWriteConfig {
-  DescriptorSet set;
+  VkDescriptorSet set;
   unsigned binding;
   unsigned array_index = 0;
 #define define_variant(s, data, e) DescriptorWriteConfig<DescriptorType::e>

@@ -97,9 +97,9 @@ public:
   virtual void
   bind_graphics_descriptor_sets(PipelineSignatureRef signature,
                                 unsigned first_set,
-                                std::span<const DescriptorSet> sets) = 0;
+                                std::span<const VkDescriptorSet> sets) = 0;
   void bind_graphics_descriptor_set(PipelineSignatureRef signature,
-                                    unsigned first_set, DescriptorSet set) {
+                                    unsigned first_set, VkDescriptorSet set) {
     bind_graphics_descriptor_sets(signature, first_set, asSpan(set));
   }
 

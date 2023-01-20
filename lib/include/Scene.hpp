@@ -47,7 +47,7 @@ class RenScene {
   PipelineSignature m_pipeline_signature = {};
 
   DescriptorPool m_persistent_descriptor_pool = {};
-  DescriptorSet m_persistent_descriptor_set = {};
+  VkDescriptorSet m_persistent_descriptor_set = {};
 
   BufferRef m_materials_buffer = {};
 

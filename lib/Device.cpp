@@ -13,8 +13,8 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
 
 auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
                                      const DescriptorSetLayoutRef &layout)
-    -> Optional<DescriptorSet> {
-  DescriptorSet set;
+    -> Optional<VkDescriptorSet> {
+  VkDescriptorSet set;
   auto success = allocate_descriptor_sets(pool, {&layout, 1}, {&set, 1});
   if (success) {
     return std::move(set);
@@ -23,7 +23,7 @@ auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
 }
 
 auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
-    -> std::pair<DescriptorPool, DescriptorSet> {
+    -> std::pair<DescriptorPool, VkDescriptorSet> {
   DescriptorPoolDesc pool_desc = {.set_count = 1};
   if (layout.desc->flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
     pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;

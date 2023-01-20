@@ -57,16 +57,16 @@ public:
   [[nodiscard]] virtual auto
   allocate_descriptor_sets(const DescriptorPoolRef &pool,
                            std::span<const DescriptorSetLayoutRef> layouts,
-                           std::span<DescriptorSet> sets) -> bool = 0;
+                           std::span<VkDescriptorSet> sets) -> bool = 0;
 
   [[nodiscard]] auto
   allocate_descriptor_set(const DescriptorPoolRef &pool,
                           const DescriptorSetLayoutRef &layout)
-      -> Optional<DescriptorSet>;
+      -> Optional<VkDescriptorSet>;
 
   [[nodiscard]] auto
   allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
-      -> std::pair<DescriptorPool, DescriptorSet>;
+      -> std::pair<DescriptorPool, VkDescriptorSet>;
 
   virtual void
   write_descriptor_sets(std::span<const DescriptorSetWriteConfig> configs) = 0;

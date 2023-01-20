@@ -267,7 +267,7 @@ auto VulkanDevice::create_descriptor_set_layout(
 auto VulkanDevice::allocate_descriptor_sets(
     const DescriptorPoolRef &pool,
     std::span<const DescriptorSetLayoutRef> layouts,
-    std::span<DescriptorSet> sets) -> bool {
+    std::span<VkDescriptorSet> sets) -> bool {
   assert(sets.size() >= layouts.size());
 
   auto vk_layouts = layouts | map(getVkDescriptorSetLayout) |
@@ -281,14 +281,12 @@ auto VulkanDevice::allocate_descriptor_sets(
       .pSetLayouts = vk_layouts.data(),
   };
 
-  auto result = AllocateDescriptorSets(&alloc_info, vk_sets.data());
+  auto result = AllocateDescriptorSets(&alloc_info, sets.data());
   switch (result) {
   default: {
     throwIfFailed(result, "Vulkan: Failed to allocate descriptor sets");
   }
   case VK_SUCCESS: {
-    ranges::transform(vk_sets, sets.data(),
-                      [](VkDescriptorSet set) { return DescriptorSet{set}; });
     return true;
   }
   case VK_ERROR_FRAGMENTED_POOL:
@@ -347,7 +345,7 @@ void VulkanDevice::write_descriptor_sets(
 
         VkWriteDescriptorSet vk_config = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = getVkDescriptorSet(config.set),
+            .dstSet = config.set,
             .dstBinding = config.binding,
             .dstArrayElement = config.array_index,
             .descriptorCount = unsigned(buffers.size()),

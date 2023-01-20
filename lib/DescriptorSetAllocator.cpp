@@ -19,7 +19,7 @@ void DescriptorSetAllocator::begin_frame() {
 void DescriptorSetAllocator::end_frame() {}
 
 auto DescriptorSetAllocator::allocate(const DescriptorSetLayoutRef &layout)
-    -> DescriptorSet {
+    -> VkDescriptorSet {
   auto &alloc = get_frame_allocator();
 
   while (alloc.num_used < alloc.pools.size()) {

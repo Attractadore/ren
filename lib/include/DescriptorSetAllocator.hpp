@@ -27,7 +27,7 @@ public:
   void begin_frame();
   void end_frame();
 
-  DescriptorSet allocate(const DescriptorSetLayoutRef &layout);
+  VkDescriptorSet allocate(const DescriptorSetLayoutRef &layout);
 };
 
 } // namespace ren

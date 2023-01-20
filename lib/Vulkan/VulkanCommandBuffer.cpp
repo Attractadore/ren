@@ -153,12 +153,10 @@ void VulkanCommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
 
 void VulkanCommandBuffer::bind_graphics_descriptor_sets(
     PipelineSignatureRef signature, unsigned first_set,
-    std::span<const DescriptorSet> sets) {
-  auto vk_sets =
-      sets | map(getVkDescriptorSet) | ranges::to<SmallVector<VkDescriptorSet>>;
+    std::span<const VkDescriptorSet> sets) {
   m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                   getVkPipelineLayout(signature), first_set,
-                                  vk_sets.size(), vk_sets.data(), 0, nullptr);
+                                  sets.size(), sets.data(), 0, nullptr);
 }
 
 void VulkanCommandBuffer::set_graphics_push_constants(

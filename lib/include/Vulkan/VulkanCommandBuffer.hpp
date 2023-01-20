@@ -82,7 +82,7 @@ public:
   void
   bind_graphics_descriptor_sets(PipelineSignatureRef signature,
                                 unsigned first_set,
-                                std::span<const DescriptorSet> sets) override;
+                                std::span<const VkDescriptorSet> sets) override;
 
   void set_graphics_push_constants(PipelineSignatureRef signature,
                                    ShaderStageFlags stages,

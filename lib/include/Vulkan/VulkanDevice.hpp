@@ -108,7 +108,8 @@ public:
 
   auto allocate_descriptor_sets(const DescriptorPoolRef &pool,
                                 std::span<const DescriptorSetLayoutRef> layouts,
-                                std::span<DescriptorSet> sets) -> bool override;
+                                std::span<VkDescriptorSet> sets)
+      -> bool override;
 
   void write_descriptor_sets(
       std::span<const DescriptorSetWriteConfig> configs) override;
