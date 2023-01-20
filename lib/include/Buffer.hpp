@@ -1,6 +1,8 @@
 #pragma once
 #include "Support/Enum.hpp"
-#include "Support/Ref.hpp"
+#include "Support/Handle.hpp"
+
+#include <vulkan/vulkan.h>
 
 #include <span>
 
@@ -76,14 +78,14 @@ public:
 
 struct BufferRef : detail::BufferMixin<BufferRef> {
   BufferDesc desc;
-  void *handle;
+  VkBuffer handle;
 
-  void *get() const { return handle; }
+  VkBuffer get() const { return handle; }
 };
 
 struct Buffer : detail::BufferMixin<Buffer> {
   BufferDesc desc;
-  AnyRef handle;
+  SharedHandle<VkBuffer> handle;
 
   operator BufferRef() const {
     return {
@@ -92,6 +94,6 @@ struct Buffer : detail::BufferMixin<Buffer> {
     };
   }
 
-  void *get() const { return handle.get(); }
+  VkBuffer get() const { return handle.get(); }
 };
 } // namespace ren

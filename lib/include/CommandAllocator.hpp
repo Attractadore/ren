@@ -1,7 +1,4 @@
 #pragma once
-#include "Support/Vector.hpp"
-#include "Sync.hpp"
-#include "Texture.hpp"
 
 namespace ren {
 class CommandBuffer;

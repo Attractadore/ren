@@ -2,9 +2,11 @@
 #include "Buffer.hpp"
 #include "ShaderStages.hpp"
 #include "Support/Enum.hpp"
-#include "Support/Ref.hpp"
+#include "Support/Handle.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
+
+#include <vulkan/vulkan.h>
 
 #include <array>
 #include <variant>
@@ -38,12 +40,12 @@ struct DescriptorPoolDesc {
 
 struct DescriptorPoolRef {
   DescriptorPoolDesc desc;
-  void *handle;
+  VkDescriptorPool handle;
 };
 
 struct DescriptorPool {
   DescriptorPoolDesc desc;
-  AnyRef handle;
+  SharedHandle<VkDescriptorPool> handle;
 
   operator DescriptorPoolRef() const {
     return {.desc = desc, .handle = handle.get()};
@@ -75,23 +77,20 @@ struct DescriptorSetLayoutDesc {
 
 struct DescriptorSetLayoutRef {
   DescriptorSetLayoutDesc *desc;
-  void *handle;
+  VkDescriptorSetLayout handle;
 };
 
 struct DescriptorSetLayout {
   std::shared_ptr<DescriptorSetLayoutDesc> desc;
-  AnyRef handle;
+  SharedHandle<VkDescriptorSetLayout> handle;
 
   operator DescriptorSetLayoutRef() const {
     return {.desc = desc.get(), .handle = handle.get()};
   }
 };
 
-struct DescriptorSetDesc {};
-
 struct DescriptorSet {
-  DescriptorSetDesc desc;
-  void *handle;
+  VkDescriptorSet handle;
 };
 
 template <DescriptorType DT> struct DescriptorWriteConfig;

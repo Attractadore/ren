@@ -24,4 +24,3 @@ add_library(VulkanDispatchTable STATIC ${VULKAN_DISPATCH_TABLE_C})
 target_include_directories(VulkanDispatchTable
                            PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(VulkanDispatchTable PUBLIC Vulkan::Headers)
-target_compile_definitions(VulkanDispatchTable PUBLIC VK_NO_PROTOTYPE)

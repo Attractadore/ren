@@ -2,10 +2,10 @@
 #include "Buffer.hpp"
 #include "Def.hpp"
 #include "PipelineStages.hpp"
+#include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
 #include "Support/SlotMap.hpp"
-#include "Sync.hpp"
 #include "Texture.hpp"
 
 #include <functional>
@@ -18,7 +18,7 @@ class RenderGraph;
 enum class RGNodeID;
 enum class RGTextureID;
 enum class RGBufferID;
-enum class RGSyncID;
+enum RGSemaphoreID {};
 
 struct RGTextureDesc {
   TextureType type = TextureType::e2D;
@@ -37,15 +37,13 @@ struct RGBufferDesc {
   unsigned size;
 };
 
-struct RGSyncDesc {
-  SyncType type;
-};
-
 using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
 
 class RenderGraph {
 protected:
   struct Batch {
+    SmallVector<VkSemaphoreSubmitInfo, 2> wait_semaphores;
+    SmallVector<VkSemaphoreSubmitInfo, 2> signal_semaphores;
     SmallVector<RGCallback, 16> barrier_cbs;
     SmallVector<RGCallback, 16> pass_cbs;
   };
@@ -58,7 +56,7 @@ protected:
   HashMap<RGTextureID, unsigned> m_phys_textures;
   Vector<Buffer> m_buffers;
   HashMap<RGBufferID, unsigned> m_physical_buffers;
-  Vector<SyncObject> m_syncs;
+  Vector<VkSemaphore> m_semaphores;
 
 protected:
   struct Config {
@@ -68,7 +66,7 @@ protected:
     HashMap<RGTextureID, unsigned> phys_textures;
     Vector<Buffer> buffers;
     HashMap<RGBufferID, unsigned> physical_buffers;
-    Vector<SyncObject> syncs;
+    unsigned num_semaphores;
   };
 
   RenderGraph(Config config)
@@ -77,7 +75,7 @@ protected:
         m_phys_textures(std::move(config.phys_textures)),
         m_buffers(std::move(config.buffers)),
         m_physical_buffers(std::move(config.physical_buffers)),
-        m_syncs(std::move(config.syncs)) {}
+        m_semaphores(config.num_semaphores) {}
 
 public:
   class Builder;
@@ -89,8 +87,8 @@ public:
   void set_buffer(RGBufferID id, Buffer buffer);
   auto get_buffer(RGBufferID buffer) const -> const Buffer &;
 
-  void setSyncObject(RGSyncID id, SyncObject sync);
-  const SyncObject &getSyncObject(RGSyncID sync) const;
+  void set_semaphore(RGSemaphoreID id, VkSemaphore semaphore);
+  auto get_semaphore(RGSemaphoreID semaphore) const -> VkSemaphore;
 
   virtual void execute(CommandAllocator &cmd_allocator) = 0;
 };
@@ -109,17 +107,13 @@ protected:
     PipelineStageFlags stages;
   };
 
-  struct SyncAccess {
-    RGSyncID sync;
-  };
-
   struct RGNode {
     SmallVector<TextureAccess> read_textures;
     SmallVector<TextureAccess> write_textures;
     SmallVector<BufferAccess> read_buffers;
     SmallVector<BufferAccess> write_buffers;
-    SmallVector<SyncAccess> wait_syncs;
-    SmallVector<SyncAccess> signal_syncs;
+    SmallVector<VkSemaphoreSubmitInfo, 2> wait_semaphores;
+    SmallVector<VkSemaphoreSubmitInfo, 2> signal_semaphores;
     RGCallback barrier_cb;
     RGCallback pass_cb;
   };
@@ -143,8 +137,7 @@ protected:
   HashMap<RGBufferID, RGNodeID> m_buffer_kills;
   HashMap<RGBufferID, unsigned> m_physical_buffers;
 
-  Vector<RGNodeID> m_sync_defs;
-  Vector<RGSyncDesc> m_sync_descs;
+  unsigned m_num_semaphores = 0;
 
   Swapchain *m_swapchain = nullptr;
   RGTextureID m_final_image;
@@ -152,7 +145,7 @@ protected:
   HashMap<RGNodeID, std::string> m_node_text_descs;
   HashMap<RGTextureID, std::string> m_tex_text_descs;
   HashMap<RGBufferID, std::string> m_buffer_text_descs;
-  HashMap<RGSyncID, std::string> m_sync_text_descs;
+  HashMap<RGSemaphoreID, std::string> m_semaphore_text_descs;
 
 protected:
   RGNodeID createNode();
@@ -180,13 +173,6 @@ protected:
 
   auto get_physical_buffer_count() const -> unsigned;
 
-  RGSyncID createSync(RGNodeID node);
-  RGNodeID getSyncDef(RGSyncID sync) const;
-
-  bool isExternalSync(unsigned sync) const;
-
-  unsigned getSyncObjectCount() const;
-
   void addReadInput(RGNodeID node, RGTextureID texture,
                     MemoryAccessFlags accesses, PipelineStageFlags stages);
 
@@ -206,11 +192,11 @@ protected:
                                                      MemoryAccessFlags accesses,
                                                      PipelineStageFlags stages);
 
-  void addWaitSync(RGNodeID node, RGSyncID sync);
-
-  [[nodiscard]] RGSyncID addSignalSync(RGNodeID node, const RGSyncDesc &desc);
-
-  [[nodiscard]] RGSyncID addExternalSignalSync(RGNodeID node);
+  [[nodiscard]] auto create_semaphore() -> RGSemaphoreID;
+  void wait_semaphore(RGNodeID node, RGSemaphoreID semaphore, uint64_t value,
+                      VkPipelineStageFlags2 stages);
+  void signal_semaphore(RGNodeID node, RGSemaphoreID semaphore, uint64_t value,
+                        VkPipelineStageFlags2 stages);
 
   void setCallback(RGNodeID node, RGCallback cb);
 
@@ -230,8 +216,6 @@ protected:
 
   auto create_buffers(std::span<const BufferUsageFlags> buffer_usage_flags)
       -> Vector<Buffer>;
-
-  Vector<SyncObject> createSyncObjects();
 
   struct BarrierConfig {
     RGTextureID texture;
@@ -265,8 +249,8 @@ public:
   void set_desc(RGBufferID buffer, std::string desc);
   std::string_view get_desc(RGBufferID buffer) const;
 
-  void setDesc(RGSyncID, std::string desc);
-  std::string_view getDesc(RGSyncID sync) const;
+  void set_desc(RGSemaphoreID semaphore, std::string desc);
+  std::string_view get_desc(RGSemaphoreID semaphore) const;
 
   [[nodiscard]] std::unique_ptr<RenderGraph> build();
 };
@@ -302,22 +286,28 @@ public:
     return m_builder->add_output(m_node, desc, accesses, stages);
   }
 
+  void wait_semaphore(RGSemaphoreID semaphore, uint64_t value,
+                      VkPipelineStageFlags2 stages) {
+    m_builder->wait_semaphore(m_node, semaphore, value, stages);
+  }
+
+  void wait_semaphore(RGSemaphoreID semaphore, VkPipelineStageFlags2 stages) {
+    m_builder->wait_semaphore(m_node, semaphore, 0, stages);
+  }
+
+  void signal_semaphore(RGSemaphoreID semaphore, uint64_t value,
+                        VkPipelineStageFlags2 stages) {
+    m_builder->signal_semaphore(m_node, semaphore, value, stages);
+  }
+
+  void signal_semaphore(RGSemaphoreID semaphore, VkPipelineStageFlags2 stages) {
+    m_builder->signal_semaphore(m_node, semaphore, 0, stages);
+  }
+
   [[nodiscard]] RGTextureID
   addExternalTextureOutput(MemoryAccessFlags accesses,
                            PipelineStageFlags stages) {
     return m_builder->addExternalTextureOutput(m_node, accesses, stages);
-  }
-
-  void addWaitSync(RGSyncID sync) {
-    return m_builder->addWaitSync(m_node, sync);
-  }
-
-  [[nodiscard]] RGSyncID addSignalSync(const RGSyncDesc &desc) {
-    return m_builder->addSignalSync(m_node, desc);
-  }
-
-  [[nodiscard]] RGSyncID addExternalSignalSync() {
-    return m_builder->addExternalSignalSync(m_node);
   }
 
   void setCallback(RGCallback cb) {

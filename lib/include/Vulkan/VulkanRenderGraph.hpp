@@ -7,15 +7,15 @@ class VulkanDevice;
 class VulkanRenderGraph final : public RenderGraph {
   VulkanDevice *m_device;
   RGTextureID m_swapchain_image;
-  RGSyncID m_acquire_semaphore;
-  RGSyncID m_present_semaphore;
+  RGSemaphoreID m_acquire_semaphore;
+  RGSemaphoreID m_present_semaphore;
 
 private:
   struct Config {
     VulkanDevice *device;
     RGTextureID swapchain_image;
-    RGSyncID acquire_semaphore;
-    RGSyncID present_semaphore;
+    RGSemaphoreID acquire_semaphore;
+    RGSemaphoreID present_semaphore;
   };
 
 public:
@@ -31,8 +31,8 @@ public:
 
 class VulkanRenderGraph::Builder final : public RenderGraph::Builder {
   RGTextureID m_swapchain_image;
-  RGSyncID m_acquire_semaphore;
-  RGSyncID m_present_semaphore;
+  RGSemaphoreID m_acquire_semaphore;
+  RGSemaphoreID m_present_semaphore;
 
 private:
   void addPresentNodes() override;

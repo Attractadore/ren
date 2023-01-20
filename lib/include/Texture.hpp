@@ -1,7 +1,9 @@
 #pragma once
 #include "Formats.hpp"
 #include "Support/Enum.hpp"
-#include "Support/Ref.hpp"
+#include "Support/Handle.hpp"
+
+#include <vulkan/vulkan.h>
 
 namespace ren {
 
@@ -32,12 +34,12 @@ struct TextureDesc {
 
 struct TextureRef {
   TextureDesc desc;
-  void *handle;
+  VkImage handle;
 };
 
 struct Texture {
   TextureDesc desc;
-  AnyRef handle;
+  SharedHandle<VkImage> handle;
 
   operator TextureRef() const {
     return {

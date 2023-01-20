@@ -8,7 +8,6 @@
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
-#include "Sync.hpp"
 #include "Texture.hpp"
 
 namespace ren {

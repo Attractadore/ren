@@ -110,27 +110,32 @@ auto RenderGraph::Builder::get_physical_buffer_count() const -> unsigned {
   return m_buffer_descs.size();
 }
 
-RGSyncID RenderGraph::Builder::createSync(RGNodeID node) {
-  auto sync = static_cast<RGSyncID>(getSyncObjectCount());
-  m_sync_defs.push_back(node);
-  m_sync_descs.emplace_back();
-  return sync;
+auto RenderGraph::Builder::create_semaphore() -> RGSemaphoreID {
+  return static_cast<RGSemaphoreID>(m_num_semaphores++);
 }
 
-RGNodeID RenderGraph::Builder::getSyncDef(RGSyncID sync) const {
-  return m_sync_defs[static_cast<unsigned>(sync)];
+void RenderGraph::Builder::wait_semaphore(RGNodeID node,
+                                          RGSemaphoreID semaphore,
+                                          uint64_t value,
+                                          VkPipelineStageFlags2 stages) {
+  getNode(node).wait_semaphores.push_back({
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+      .semaphore = reinterpret_cast<VkSemaphore>(semaphore),
+      .value = value,
+      .stageMask = stages,
+  });
 }
 
-namespace {
-constexpr auto EXTERNAL_SYNC_TYPE = SyncType(0xe8a14a1);
-}
-
-bool RenderGraph::Builder::isExternalSync(unsigned sync) const {
-  return m_sync_descs[sync].type == EXTERNAL_SYNC_TYPE;
-}
-
-unsigned RenderGraph::Builder::getSyncObjectCount() const {
-  return m_sync_defs.size();
+void RenderGraph::Builder::signal_semaphore(RGNodeID node,
+                                            RGSemaphoreID semaphore,
+                                            uint64_t value,
+                                            VkPipelineStageFlags2 stages) {
+  getNode(node).signal_semaphores.push_back({
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+      .semaphore = reinterpret_cast<VkSemaphore>(semaphore),
+      .value = value,
+      .stageMask = stages,
+  });
 }
 
 auto RenderGraph::Builder::addNode() -> NodeBuilder {
@@ -199,25 +204,6 @@ RGTextureID RenderGraph::Builder::addExternalTextureOutput(
   return tex;
 }
 
-void RenderGraph::Builder::addWaitSync(RGNodeID node, RGSyncID sync) {
-  getNode(node).wait_syncs.push_back({.sync = sync});
-}
-
-RGSyncID RenderGraph::Builder::addSignalSync(RGNodeID node,
-                                             const RGSyncDesc &desc) {
-  auto sync = createSync(node);
-  m_sync_descs[static_cast<unsigned>(sync)] = desc;
-  getNode(node).signal_syncs.push_back({.sync = sync});
-  return sync;
-}
-
-RGSyncID RenderGraph::Builder::addExternalSignalSync(RGNodeID node) {
-  auto sync = createSync(node);
-  m_sync_descs[static_cast<unsigned>(sync)] = {.type = EXTERNAL_SYNC_TYPE};
-  getNode(node).signal_syncs.push_back({.sync = sync});
-  return sync;
-}
-
 void RenderGraph::Builder::setCallback(RGNodeID node, RGCallback cb) {
   getNode(node).pass_cb = std::move(cb);
 }
@@ -258,13 +244,13 @@ std::string_view RenderGraph::Builder::get_desc(RGBufferID buffer) const {
   return "";
 }
 
-void RenderGraph::Builder::setDesc(RGSyncID sync, std::string name) {
-  m_sync_text_descs.insert_or_assign(sync, std::move(name));
+void RenderGraph::Builder::set_desc(RGSemaphoreID semaphore, std::string name) {
+  m_semaphore_text_descs.insert_or_assign(semaphore, std::move(name));
 }
 
-std::string_view RenderGraph::Builder::getDesc(RGSyncID sync) const {
-  auto it = m_sync_text_descs.find(sync);
-  if (it != m_sync_text_descs.end()) {
+std::string_view RenderGraph::Builder::get_desc(RGSemaphoreID semaphore) const {
+  auto it = m_semaphore_text_descs.find(semaphore);
+  if (it != m_semaphore_text_descs.end()) {
     return it->second;
   }
   return "";
@@ -306,9 +292,6 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
   auto get_buffer_kill = [&](const BufferAccess &buffer_access) {
     return this->get_buffer_kill(buffer_access.buffer);
   };
-  auto get_sync_def = [&](const SyncAccess &sync_access) {
-    return getSyncDef(sync_access.sync);
-  };
 
   SmallVector<RGNodeID> dependents;
   auto get_dependants = [&](const RGNode &node) -> const auto & {
@@ -327,18 +310,14 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
         node.read_buffers | map(get_buffer_def),
         // Writes must happen after creation
         node.write_textures | map(get_texture_def) | filter(is_not_create),
-        node.write_buffers | map(get_buffer_def) | filter(is_not_create),
-        // Waits on sync objects must happen after they are signaled
-        // TODO: this is not the case for timeline semaphores
-        node.wait_syncs | map(get_sync_def)));
+        node.write_buffers | map(get_buffer_def) | filter(is_not_create)));
     return dependencies;
   };
 
   SmallVector<RGNodeID> outputs;
   auto get_outputs = [&](const RGNode &node) -> const auto & {
     outputs.assign(concat(node.write_textures | map(get_texture_def),
-                          node.write_buffers | map(get_buffer_def),
-                          node.signal_syncs | map(get_sync_def)));
+                          node.write_buffers | map(get_buffer_def)));
     return outputs;
   };
 
@@ -505,17 +484,6 @@ auto RenderGraph::Builder::create_buffers(
   return buffers;
 }
 
-Vector<SyncObject> RenderGraph::Builder::createSyncObjects() {
-  Vector<SyncObject> syncs(getSyncObjectCount());
-  for (unsigned sync = 0; sync < getSyncObjectCount(); ++sync) {
-    if (not isExternalSync(sync)) {
-      const auto &desc = m_sync_descs[sync];
-      syncs[sync] = m_device->createSyncObject({.type = desc.type});
-    }
-  }
-  return syncs;
-}
-
 void RenderGraph::Builder::generateBarriers(
     std::span<RGNode> scheduled_passes) {
   struct ResourceAccess {
@@ -550,16 +518,19 @@ auto RenderGraph::Builder::batchPasses(auto scheduled_passes) -> Vector<Batch> {
   Vector<Batch> batches;
   bool begin_new_batch = true;
   for (auto pass : scheduled_passes) {
-    if (!pass.wait_syncs.empty()) {
+    if (!pass.wait_semaphores.empty()) {
       begin_new_batch = true;
     }
     if (begin_new_batch) {
-      batches.emplace_back();
+      auto &batch = batches.emplace_back();
+      batch.wait_semaphores = std::move(pass.wait_semaphores);
       begin_new_batch = false;
     }
-    batches.back().barrier_cbs.emplace_back(std::move(pass.barrier_cb));
-    batches.back().pass_cbs.emplace_back(std::move(pass.pass_cb));
-    if (!pass.signal_syncs.empty()) {
+    auto &batch = batches.back();
+    batch.barrier_cbs.emplace_back(std::move(pass.barrier_cb));
+    batch.pass_cbs.emplace_back(std::move(pass.pass_cb));
+    if (!pass.signal_semaphores.empty()) {
+      batch.signal_semaphores = std::move(pass.signal_semaphores);
       begin_new_batch = true;
     }
   }
@@ -574,7 +545,6 @@ auto RenderGraph::Builder::build() -> std::unique_ptr<RenderGraph> {
       derive_resource_usage_flags(scheduled_passes);
   auto textures = createTextures(texture_usage_flags);
   auto buffers = create_buffers(buffer_usage_flags);
-  auto syncs = createSyncObjects();
   generateBarriers(scheduled_passes);
   auto batches = batchPasses(std::move(scheduled_passes));
   return create_render_graph({
@@ -584,7 +554,7 @@ auto RenderGraph::Builder::build() -> std::unique_ptr<RenderGraph> {
       .phys_textures = std::move(m_phys_textures),
       .buffers = std::move(buffers),
       .physical_buffers = std::move(m_physical_buffers),
-      .syncs = std::move(syncs),
+      .num_semaphores = m_num_semaphores,
   });
 }
 
@@ -612,13 +582,12 @@ auto RenderGraph::get_buffer(RGBufferID buffer) const -> const Buffer & {
   return m_buffers[it->second];
 }
 
-void RenderGraph::setSyncObject(RGSyncID id, SyncObject sync) {
-  auto idx = static_cast<unsigned>(id);
-  assert(!m_syncs[idx].handle.get() && "Sync object already defined");
-  m_syncs[idx] = std::move(sync);
+void RenderGraph::set_semaphore(RGSemaphoreID id, VkSemaphore semaphore) {
+  m_semaphores[id] = semaphore;
 }
 
-const SyncObject &RenderGraph::getSyncObject(RGSyncID sync) const {
-  return m_syncs[static_cast<unsigned>(sync)];
+auto RenderGraph::get_semaphore(RGSemaphoreID semaphore) const -> VkSemaphore {
+  return m_semaphores[semaphore];
 }
+
 } // namespace ren

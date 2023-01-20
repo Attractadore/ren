@@ -1,10 +1,10 @@
 #include "Vulkan/VulkanRenderGraph.hpp"
+#include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
-#include "Vulkan/VulkanSync.hpp"
 #include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/range.hpp>
@@ -21,8 +21,8 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
   acquire.setDesc("Vulkan: Acquire swapchain image");
   m_swapchain_image = acquire.addExternalTextureOutput(EmptyFlags, EmptyFlags);
   setDesc(m_swapchain_image, "Vulkan: swapchain image");
-  m_acquire_semaphore = acquire.addExternalSignalSync();
-  setDesc(m_acquire_semaphore, "Vulkan: swapchain image acquire semaphore");
+  m_acquire_semaphore = create_semaphore();
+  set_desc(m_acquire_semaphore, "Vulkan: swapchain image acquire semaphore");
 
   auto blit = addNode();
   blit.setDesc("Vulkan: Blit final image to swapchain");
@@ -31,29 +31,22 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
   auto blitted_swapchain_image = blit.addWriteInput(
       m_swapchain_image, MemoryAccess::TransferWrite, PipelineStage::Blit);
   setDesc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
-  blit.addWaitSync(m_acquire_semaphore);
+  blit.wait_semaphore(m_acquire_semaphore, VK_PIPELINE_STAGE_2_BLIT_BIT);
   blit.setCallback([=, final_image = m_final_image,
                     swapchain_image = m_swapchain_image,
                     acquire_semaphore = m_acquire_semaphore](CommandBuffer &cmd,
                                                              RenderGraph &rg) {
     auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-    auto &&src_tex = rg.getTexture(final_image);
-    auto &&dst_tex = rg.getTexture(swapchain_image);
-    vk_cmd->wait(rg.getSyncObject(acquire_semaphore), PipelineStage::Blit);
-    vk_cmd->blit(src_tex, dst_tex);
+    vk_cmd->blit(rg.getTexture(final_image), rg.getTexture(swapchain_image));
   });
 
   auto present = addNode();
   present.setDesc(
       "Vulkan: Transition swapchain image to VK_IMAGE_LAYOUT_PRESENT_SRC_KHR");
   present.addReadInput(blitted_swapchain_image, {}, PipelineStage::Present);
-  m_present_semaphore = present.addSignalSync({.type = SyncType::Semaphore});
-  setDesc(m_present_semaphore, "Vulkan: swapchain image present semaphore");
-  present.setCallback([=, present_semaphore = m_present_semaphore](
-                          CommandBuffer &cmd, RenderGraph &rg) {
-    auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-    vk_cmd->signal(rg.getSyncObject(present_semaphore), {});
-  });
+  m_present_semaphore = create_semaphore();
+  set_desc(m_present_semaphore, "Vulkan: swapchain image present semaphore");
+  present.signal_semaphore(m_present_semaphore, VK_PIPELINE_STAGE_2_NONE);
 }
 
 auto VulkanRenderGraph::Builder::create_render_graph(RenderGraph::Config config)
@@ -141,11 +134,12 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
       *static_cast<VulkanCommandAllocator *>(&cmd_allocator);
   auto &vk_swapchain = *static_cast<VulkanSwapchain *>(m_swapchain);
 
-  auto acquire_semaphore =
-      m_device->createSyncObject({.type = SyncType::Semaphore});
-  vk_swapchain.acquireImage(getVkSemaphore(acquire_semaphore));
+  auto acquire_semaphore = m_device->createBinarySemaphore();
+  auto present_semaphore = m_device->createBinarySemaphore();
+  vk_swapchain.acquireImage(acquire_semaphore.handle.get());
   setTexture(m_swapchain_image, vk_swapchain.getTexture());
-  setSyncObject(m_acquire_semaphore, std::move(acquire_semaphore));
+  set_semaphore(m_acquire_semaphore, acquire_semaphore.handle.get());
+  set_semaphore(m_present_semaphore, present_semaphore.handle.get());
 
   SmallVector<VulkanSubmit, 16> submits;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
@@ -171,9 +165,14 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
       cmds.push_back(cmd);
     }
 
-    submits.push_back(
-        {.wait_semaphores = cmds.front()->getWaitSemaphores(),
-         .signal_semaphores = cmds.back()->getSignalSemaphores()});
+    for (auto &semaphore :
+         concat(batch.wait_semaphores, batch.signal_semaphores)) {
+      semaphore.semaphore = get_semaphore(static_cast<RGSemaphoreID>(
+          reinterpret_cast<uintptr_t>(semaphore.semaphore)));
+    }
+
+    submits.push_back({.wait_semaphores = batch.wait_semaphores,
+                       .signal_semaphores = batch.signal_semaphores});
 
     cmd_buffer_counts.push_back(cmds.size());
   }
@@ -187,7 +186,6 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
 
   m_device->graphicsQueueSubmit(submits);
 
-  auto &&present_semaphore = getSyncObject(m_present_semaphore);
-  vk_swapchain.presentImage(getVkSemaphore(present_semaphore));
+  vk_swapchain.presentImage(present_semaphore.handle.get());
 }
 } // namespace ren

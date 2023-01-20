@@ -56,10 +56,10 @@ class VulkanDevice final : public Device,
 
 private:
   auto create_buffer_handle(const BufferDesc &desc)
-      -> std::pair<AnyRef, void *> override;
+      -> std::pair<SharedHandle<VkBuffer>, void *> override;
 
   auto create_graphics_pipeline_handle(const GraphicsPipelineConfig &desc)
-      -> AnyRef override;
+      -> SharedHandle<VkPipeline> override;
 
 private:
   VkImageView getVkImageViewImpl(VkImage image,
@@ -136,8 +136,8 @@ public:
   VkImageView getVkImageView(const RenderTargetView &rtv);
   VkImageView getVkImageView(const DepthStencilView &dsv);
 
-  VkSemaphore createBinarySemaphore();
-  VkSemaphore createTimelineSemaphore(uint64_t initial_value = 0);
+  auto createBinarySemaphore() -> Semaphore;
+  auto createTimelineSemaphore(uint64_t initial_value = 0) -> VkSemaphore;
   SemaphoreWaitResult waitForSemaphore(VkSemaphore sem, uint64_t value,
                                        std::chrono::nanoseconds timeout) const;
   void waitForSemaphore(VkSemaphore sem, uint64_t value) const {
@@ -211,8 +211,6 @@ public:
   }
 
   std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
-
-  SyncObject createSyncObject(const SyncDesc &desc) override;
 
   std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 

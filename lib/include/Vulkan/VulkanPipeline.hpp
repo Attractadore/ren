@@ -38,11 +38,11 @@ REN_MAP_ENUM(getVkPrimitiveTopology, PrimitiveTopology,
              REN_PRIMITIVE_TOPOLOGIES);
 
 inline VkPipeline getVkPipeline(GraphicsPipelineRef pipeline) {
-  return reinterpret_cast<VkPipeline>(pipeline.get());
+  return reinterpret_cast<VkPipeline>(pipeline.handle);
 }
 
 inline VkPipelineLayout getVkPipelineLayout(PipelineSignatureRef signature) {
-  return reinterpret_cast<VkPipelineLayout>(signature.get());
+  return reinterpret_cast<VkPipelineLayout>(signature.handle);
 }
 
 } // namespace ren

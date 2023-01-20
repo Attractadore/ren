@@ -199,27 +199,6 @@ void VulkanCommandBuffer::draw_indexed(unsigned num_indices,
                            first_index, vertex_offset, first_instance);
 }
 
-namespace {
-template <typename Vec>
-void addSemaphore(VulkanCommandAllocator *parent, Vec &semaphores,
-                  SyncObject sync, PipelineStageFlags stages) {
-  assert(sync.desc.type == SyncType::Semaphore);
-  semaphores.push_back({
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = getVkSemaphore(sync),
-      .stageMask = getVkPipelineStageFlags(stages),
-  });
-}
-} // namespace
-
-void VulkanCommandBuffer::wait(SyncObject sync, PipelineStageFlags stages) {
-  addSemaphore(m_parent, m_wait_semaphores, std::move(sync), stages);
-}
-
-void VulkanCommandBuffer::signal(SyncObject sync, PipelineStageFlags stages) {
-  addSemaphore(m_parent, m_signal_semaphores, std::move(sync), stages);
-}
-
 void VulkanCommandBuffer::close() {
   throwIfFailed(m_device->EndCommandBuffer(m_cmd_buffer),
                 "Vulkan: Failed to record command buffer");

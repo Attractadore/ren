@@ -153,7 +153,7 @@ void VulkanSwapchain::create() {
   for (size_t i = 0; i < image_count; ++i) {
     m_textures[i] = {
         .desc = tex_desc,
-        .handle = AnyRef(images[i], [](VkImage image) {}),
+        .handle = {images[i], [](VkImage image) {}},
     };
   }
 }

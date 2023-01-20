@@ -25,11 +25,11 @@ using namespace ren;
 struct RenDevice {
 protected:
   [[nodiscard]] virtual auto create_buffer_handle(const BufferDesc &desc)
-      -> std::pair<AnyRef, void *> = 0;
+      -> std::pair<SharedHandle<VkBuffer>, void *> = 0;
 
   [[nodiscard]] virtual auto
   create_graphics_pipeline_handle(const GraphicsPipelineConfig &config)
-      -> AnyRef = 0;
+      -> SharedHandle<VkPipeline> = 0;
 
 public:
   virtual ~RenDevice() = default;
@@ -80,8 +80,6 @@ public:
       -> uint64_t = 0;
 
   virtual Texture createTexture(const TextureDesc &desc) = 0;
-
-  virtual SyncObject createSyncObject(const SyncDesc &desc) = 0;
 
   [[nodiscard]] virtual auto get_shader_blob_suffix() const
       -> std::string_view = 0;

@@ -212,9 +212,9 @@ auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
   throwIfFailed(CreateDescriptorPool(&pool_info, &pool),
                 "Vulkan: Failed to create descriptor pool");
 
-  return {.desc = desc, .handle = AnyRef(pool, [this](VkDescriptorPool pool) {
-                          push_to_delete_queue(pool);
-                        })};
+  return {.desc = desc, .handle = {pool, [this](VkDescriptorPool pool) {
+                                     push_to_delete_queue(pool);
+                                   }}};
 }
 
 void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
@@ -259,9 +259,9 @@ auto VulkanDevice::create_descriptor_set_layout(
                 "Vulkan: Failed to create descriptor set layout");
 
   return {.desc = std::make_shared<DescriptorSetLayoutDesc>(desc),
-          .handle = AnyRef(layout, [this](VkDescriptorSetLayout layout) {
-            push_to_delete_queue(layout);
-          })};
+          .handle = {layout, [this](VkDescriptorSetLayout layout) {
+                       push_to_delete_queue(layout);
+                     }}};
 }
 
 auto VulkanDevice::allocate_descriptor_sets(
@@ -287,9 +287,8 @@ auto VulkanDevice::allocate_descriptor_sets(
     throwIfFailed(result, "Vulkan: Failed to allocate descriptor sets");
   }
   case VK_SUCCESS: {
-    ranges::transform(vk_sets, sets.data(), [](VkDescriptorSet set) {
-      return DescriptorSet{.desc = {}, .handle = set};
-    });
+    ranges::transform(vk_sets, sets.data(),
+                      [](VkDescriptorSet set) { return DescriptorSet{set}; });
     return true;
   }
   case VK_ERROR_FRAGMENTED_POOL:
@@ -368,7 +367,7 @@ void VulkanDevice::write_descriptor_sets(
 }
 
 auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)
-    -> std::pair<AnyRef, void *> {
+    -> std::pair<SharedHandle<VkBuffer>, void *> {
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = desc.size,
@@ -404,11 +403,11 @@ auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)
                 "VMA: Failed to create buffer");
 
   return {
-      AnyRef(buffer,
-             [this, allocation](VkBuffer buffer) {
-               push_to_delete_queue(buffer);
-               push_to_delete_queue(allocation);
-             }),
+      {buffer,
+       [this, allocation](VkBuffer buffer) {
+         push_to_delete_queue(buffer);
+         push_to_delete_queue(allocation);
+       }},
       map_info.pMappedData,
   };
 }
@@ -445,11 +444,11 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
                 "VMA: Failed to create image");
 
   return {.desc = desc,
-          .handle = AnyRef(image, [this, allocation](VkImage image) {
-            push_to_delete_queue(VulkanImageViews{image});
-            push_to_delete_queue(image);
-            push_to_delete_queue(allocation);
-          })};
+          .handle = {image, [this, allocation](VkImage image) {
+                       push_to_delete_queue(VulkanImageViews{image});
+                       push_to_delete_queue(image);
+                       push_to_delete_queue(allocation);
+                     }}};
 }
 
 void VulkanDevice::destroyImageViews(VkImage image) {
@@ -508,17 +507,20 @@ VulkanDevice::getVkImageViewImpl(VkImage image,
   return view;
 }
 
-VkSemaphore VulkanDevice::createBinarySemaphore() {
+auto VulkanDevice::createBinarySemaphore() -> Semaphore {
   VkSemaphoreCreateInfo semaphore_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
   };
   VkSemaphore semaphore;
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
                 "Vulkan: Failed to create binary semaphore");
-  return semaphore;
+  return {.handle = {semaphore, [this](VkSemaphore semaphore) {
+                       push_to_delete_queue(semaphore);
+                     }}};
 }
 
-VkSemaphore VulkanDevice::createTimelineSemaphore(uint64_t initial_value) {
+auto VulkanDevice::createTimelineSemaphore(uint64_t initial_value)
+    -> VkSemaphore {
   VkSemaphoreTypeCreateInfo semaphore_type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
@@ -557,15 +559,6 @@ VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
 
 std::unique_ptr<RenderGraph::Builder> VulkanDevice::createRenderGraphBuilder() {
   return std::make_unique<VulkanRenderGraph::Builder>(*this);
-}
-
-SyncObject VulkanDevice::createSyncObject(const SyncDesc &desc) {
-  assert(desc.type == SyncType::Semaphore);
-  return {.desc = desc,
-          .handle =
-              AnyRef(createBinarySemaphore(), [this](VkSemaphore semaphore) {
-                push_to_delete_queue(semaphore);
-              })};
 }
 
 std::unique_ptr<VulkanSwapchain>
@@ -625,7 +618,7 @@ VkShaderModule create_shader_module(VulkanDevice &device,
 } // namespace
 
 auto VulkanDevice::create_graphics_pipeline_handle(
-    const GraphicsPipelineConfig &config) -> AnyRef {
+    const GraphicsPipelineConfig &config) -> SharedHandle<VkPipeline> {
   SmallVector<VkDynamicState> dynamic_states = {
       VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
       VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
@@ -763,9 +756,8 @@ auto VulkanDevice::create_graphics_pipeline_handle(
     DestroyShaderModule(module);
   }
 
-  return AnyRef(pipeline, [this](VkPipeline pipeline) {
-    push_to_delete_queue(pipeline);
-  });
+  return {pipeline,
+          [this](VkPipeline pipeline) { push_to_delete_queue(pipeline); }};
 }
 
 auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
@@ -801,9 +793,9 @@ auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
                 "Vulkan: Failed to create pipeline layout");
 
   return {.desc = std::make_unique<PipelineSignatureDesc>(desc),
-          .handle = AnyRef(layout, [this](VkPipelineLayout layout) {
-            push_to_delete_queue(layout);
-          })};
+          .handle = {layout, [this](VkPipelineLayout layout) {
+                       push_to_delete_queue(layout);
+                     }}};
 }
 
 } // namespace ren

@@ -26,6 +26,8 @@ find_package(
   Boost
   COMPONENTS container
   REQUIRED)
+find_package(VulkanHeaders REQUIRED)
+target_compile_definitions(Vulkan::Headers INTERFACE VK_NO_PROTOTYPE)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
@@ -35,18 +37,20 @@ target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
 target_link_libraries(
   Support
   INTERFACE Generated
-            SlotMap
             Boost::boost
             Boost::container
-            range-v3::range-v3
+            SlotMap
+            Vulkan::Headers
             fmt::fmt
-            glm::glm)
+            glm::glm
+            range-v3::range-v3)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
 endforeach()
 
 add_library(Support-PCH INTERFACE)
+target_link_libraries(Support-PCH INTERFACE Support)
 target_precompile_headers(
   Support-PCH
   INTERFACE
@@ -68,7 +72,8 @@ target_precompile_headers(
   <range/v3/action.hpp>
   <range/v3/algorithm.hpp>
   <range/v3/range.hpp>
-  <range/v3/view.hpp>)
+  <range/v3/view.hpp>
+  <vulkan/vulkan.h>)
 
 if(REN_ERROR_LOG)
   message(STATUS "Log errors")

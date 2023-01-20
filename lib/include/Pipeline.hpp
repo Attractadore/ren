@@ -3,8 +3,10 @@
 #include "Descriptors.hpp"
 #include "Formats.hpp"
 #include "ShaderStages.hpp"
+#include "Support/Handle.hpp"
 #include "Support/LinearMap.hpp"
-#include "Support/Ref.hpp"
+
+#include <vulkan/vulkan.h>
 
 #include <span>
 
@@ -23,20 +25,16 @@ struct PipelineSignatureDesc {
 
 struct PipelineSignatureRef {
   PipelineSignatureDesc *desc;
-  void *handle;
-
-  void *get() const { return handle; }
+  VkPipelineLayout handle;
 };
 
 struct PipelineSignature {
   std::shared_ptr<PipelineSignatureDesc> desc;
-  AnyRef handle;
+  SharedHandle<VkPipelineLayout> handle;
 
   operator PipelineSignatureRef() const {
     return {.desc = desc.get(), .handle = handle.get()};
   }
-
-  void *get() const { return handle.get(); }
 };
 
 #define REN_VERTEX_INPUT_RATES (Vertex)(Instance)
@@ -85,20 +83,16 @@ struct GraphicsPipelineDesc {
 
 struct GraphicsPipelineRef {
   std::shared_ptr<GraphicsPipelineDesc> desc;
-  void *handle;
-
-  void *get() const { return handle; }
+  VkPipeline handle;
 };
 
 struct GraphicsPipeline {
   std::shared_ptr<GraphicsPipelineDesc> desc;
-  AnyRef handle;
+  SharedHandle<VkPipeline> handle;
 
   operator GraphicsPipelineRef() const {
     return {.desc = desc, .handle = handle.get()};
   }
-
-  void *get() const { return handle.get(); }
 };
 
 struct ShaderStageConfig {

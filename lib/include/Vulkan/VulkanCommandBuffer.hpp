@@ -2,7 +2,6 @@
 #include "CommandBuffer.hpp"
 #include "Support/Vector.hpp"
 #include "VulkanErrors.hpp"
-#include "VulkanSync.hpp"
 #include "VulkanTexture.hpp"
 
 namespace ren {
@@ -43,8 +42,6 @@ class VulkanCommandBuffer final : public CommandBuffer {
   VulkanDevice *m_device;
   VkCommandBuffer m_cmd_buffer;
   VulkanCommandAllocator *m_parent;
-  SmallVector<VkSemaphoreSubmitInfo> m_wait_semaphores;
-  SmallVector<VkSemaphoreSubmitInfo> m_signal_semaphores;
 
 public:
   VulkanCommandBuffer(VulkanDevice *device, VkCommandBuffer cmd_buffer,
@@ -100,15 +97,6 @@ public:
   void draw_indexed(unsigned num_indices, unsigned num_instances,
                     unsigned first_index, int vertex_offset,
                     unsigned first_instance) override;
-
-  void wait(SyncObject sync, PipelineStageFlags stages);
-  void signal(SyncObject sync, PipelineStageFlags stages);
-  std::span<const VkSemaphoreSubmitInfo> getWaitSemaphores() const {
-    return m_wait_semaphores;
-  }
-  std::span<const VkSemaphoreSubmitInfo> getSignalSemaphores() const {
-    return m_signal_semaphores;
-  }
 
   void close() override;
 
