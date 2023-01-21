@@ -3,7 +3,6 @@
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanFormats.hpp"
-#include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
 #include <range/v3/range.hpp>
@@ -18,17 +17,19 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
 
   auto acquire = addNode();
   acquire.setDesc("Vulkan: Acquire swapchain image");
-  m_swapchain_image = acquire.addExternalTextureOutput(EmptyFlags, EmptyFlags);
+  m_swapchain_image = acquire.addExternalTextureOutput(
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
   setDesc(m_swapchain_image, "Vulkan: swapchain image");
   m_acquire_semaphore = create_semaphore();
   set_desc(m_acquire_semaphore, "Vulkan: swapchain image acquire semaphore");
 
   auto blit = addNode();
   blit.setDesc("Vulkan: Blit final image to swapchain");
-  blit.addReadInput(m_final_image, MemoryAccess::TransferRead,
-                    PipelineStage::Blit);
-  auto blitted_swapchain_image = blit.addWriteInput(
-      m_swapchain_image, MemoryAccess::TransferWrite, PipelineStage::Blit);
+  blit.addReadInput(m_final_image, VK_ACCESS_2_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_2_BLIT_BIT);
+  auto blitted_swapchain_image =
+      blit.addWriteInput(m_swapchain_image, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                         VK_PIPELINE_STAGE_2_BLIT_BIT);
   setDesc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
   blit.wait_semaphore(m_acquire_semaphore, VK_PIPELINE_STAGE_2_BLIT_BIT);
   blit.setCallback([=, final_image = m_final_image,
@@ -42,7 +43,8 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
   auto present = addNode();
   present.setDesc(
       "Vulkan: Transition swapchain image to VK_IMAGE_LAYOUT_PRESENT_SRC_KHR");
-  present.addReadInput(blitted_swapchain_image, {}, PipelineStage::Present);
+  present.addReadInput(blitted_swapchain_image, {},
+                       VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT);
   m_present_semaphore = create_semaphore();
   set_desc(m_present_semaphore, "Vulkan: swapchain image present semaphore");
   present.signal_semaphore(m_present_semaphore, VK_PIPELINE_STAGE_2_NONE);
@@ -58,22 +60,21 @@ auto VulkanRenderGraph::Builder::create_render_graph(RenderGraph::Config config)
 }
 
 namespace {
-VkImageLayout getImageLayoutFromAccessesAndStages(MemoryAccessFlags accesses,
-                                                  PipelineStageFlags stages) {
-  using enum MemoryAccess;
-  using enum PipelineStage;
-  if (accesses.isSet(ColorWrite)) {
+VkImageLayout
+getImageLayoutFromAccessesAndStages(VkAccessFlags2 accesses,
+                                    VkPipelineStageFlags2 stages) {
+  if (accesses & VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT) {
     return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-  } else if (accesses.isSet(TransferRead)) {
+  } else if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
     return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-  } else if (accesses.isSet(TransferWrite)) {
+  } else if (accesses & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
     return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  } else if (stages.isSet(Present)) {
+  } else if (stages & VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT) {
     return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-  } else if (accesses.isSet(StorageWrite)) {
-    return VK_IMAGE_LAYOUT_GENERAL;
-  } else if (accesses.isSet(StorageRead)) {
+  } else if (accesses & VK_ACCESS_2_SHADER_STORAGE_READ_BIT) {
     return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+  } else if (accesses & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT) {
+    return VK_IMAGE_LAYOUT_GENERAL;
   }
   return VK_IMAGE_LAYOUT_UNDEFINED;
 }
@@ -86,21 +87,21 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
                     return config.texture;
                   }) |
                   ranges::to<SmallVector<RGTextureID, 8>>;
-  auto barriers =
-      configs | ranges::views::transform([](const BarrierConfig &config) {
-        return VkImageMemoryBarrier2{
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = getVkPipelineStageFlags(config.src_stages),
-            .srcAccessMask = getVkAccessFlags(config.src_accesses),
-            .dstStageMask = getVkPipelineStageFlags(config.dst_stages),
-            .dstAccessMask = getVkAccessFlags(config.dst_accesses),
-            .oldLayout = getImageLayoutFromAccessesAndStages(
-                config.src_accesses, config.src_stages),
-            .newLayout = getImageLayoutFromAccessesAndStages(
-                config.dst_accesses, config.dst_stages),
-        };
-      }) |
-      ranges::to<SmallVector<VkImageMemoryBarrier2, 8>>;
+  auto barriers = configs |
+                  ranges::views::transform([](const BarrierConfig &config) {
+                    return VkImageMemoryBarrier2{
+                        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                        .srcStageMask = config.src_stages,
+                        .srcAccessMask = config.src_accesses,
+                        .dstStageMask = config.dst_stages,
+                        .dstAccessMask = config.dst_accesses,
+                        .oldLayout = getImageLayoutFromAccessesAndStages(
+                            config.src_accesses, config.src_stages),
+                        .newLayout = getImageLayoutFromAccessesAndStages(
+                            config.dst_accesses, config.dst_stages),
+                    };
+                  }) |
+                  ranges::to<SmallVector<VkImageMemoryBarrier2, 8>>;
 
   return [textures = std::move(textures), barriers = std::move(barriers)](
              CommandBuffer &cmd, RenderGraph &rg) mutable {

@@ -3,7 +3,6 @@
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
-#include "Vulkan/VulkanPipelineStages.hpp"
 
 namespace ren {
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,

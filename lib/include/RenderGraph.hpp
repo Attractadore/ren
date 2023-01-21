@@ -1,7 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
 #include "Def.hpp"
-#include "PipelineStages.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
@@ -97,14 +96,14 @@ class RenderGraph::Builder {
 protected:
   struct TextureAccess {
     RGTextureID texture;
-    MemoryAccessFlags accesses;
-    PipelineStageFlags stages;
+    VkAccessFlags2 accesses;
+    VkPipelineStageFlags2 stages;
   };
 
   struct BufferAccess {
     RGBufferID buffer;
-    MemoryAccessFlags accesses;
-    PipelineStageFlags stages;
+    VkAccessFlags2 accesses;
+    VkPipelineStageFlags2 stages;
   };
 
   struct RGNode {
@@ -173,24 +172,24 @@ protected:
 
   auto get_physical_buffer_count() const -> unsigned;
 
-  void addReadInput(RGNodeID node, RGTextureID texture,
-                    MemoryAccessFlags accesses, PipelineStageFlags stages);
+  void addReadInput(RGNodeID node, RGTextureID texture, VkAccessFlags2 accesses,
+                    VkPipelineStageFlags2 stages);
 
   [[nodiscard]] RGTextureID addWriteInput(RGNodeID node, RGTextureID texture,
-                                          MemoryAccessFlags accesses,
-                                          PipelineStageFlags stages);
+                                          VkAccessFlags2 accesses,
+                                          VkPipelineStageFlags2 stages);
 
   [[nodiscard]] RGTextureID addOutput(RGNodeID node, const RGTextureDesc &desc,
-                                      MemoryAccessFlags accesses,
-                                      PipelineStageFlags stages);
+                                      VkAccessFlags2 accesses,
+                                      VkPipelineStageFlags2 stages);
 
   [[nodiscard]] auto add_output(RGNodeID node, const RGBufferDesc &desc,
-                                MemoryAccessFlags accesses,
-                                PipelineStageFlags stages) -> RGBufferID;
+                                VkAccessFlags2 accesses,
+                                VkPipelineStageFlags2 stages) -> RGBufferID;
 
-  [[nodiscard]] RGTextureID addExternalTextureOutput(RGNodeID node,
-                                                     MemoryAccessFlags accesses,
-                                                     PipelineStageFlags stages);
+  [[nodiscard]] RGTextureID
+  addExternalTextureOutput(RGNodeID node, VkAccessFlags2 accesses,
+                           VkPipelineStageFlags2 stages);
 
   [[nodiscard]] auto create_semaphore() -> RGSemaphoreID;
   void wait_semaphore(RGNodeID node, RGSemaphoreID semaphore, uint64_t value,
@@ -219,10 +218,10 @@ protected:
 
   struct BarrierConfig {
     RGTextureID texture;
-    MemoryAccessFlags src_accesses;
-    PipelineStageFlags src_stages;
-    MemoryAccessFlags dst_accesses;
-    PipelineStageFlags dst_stages;
+    VkAccessFlags2 src_accesses;
+    VkPipelineStageFlags2 src_stages;
+    VkAccessFlags2 dst_accesses;
+    VkPipelineStageFlags2 dst_stages;
   };
 
   virtual RGCallback
@@ -263,26 +262,26 @@ public:
   NodeBuilder(RGNodeID node, Builder *builder)
       : m_node(node), m_builder(builder) {}
 
-  void addReadInput(RGTextureID texture, MemoryAccessFlags accesses,
-                    PipelineStageFlags stages) {
+  void addReadInput(RGTextureID texture, VkAccessFlags2 accesses,
+                    VkPipelineStageFlags2 stages) {
     m_builder->addReadInput(m_node, texture, accesses, stages);
   }
 
   [[nodiscard]] RGTextureID addWriteInput(RGTextureID texture,
-                                          MemoryAccessFlags accesses,
-                                          PipelineStageFlags stages) {
+                                          VkAccessFlags2 accesses,
+                                          VkPipelineStageFlags2 stages) {
     return m_builder->addWriteInput(m_node, texture, accesses, stages);
   }
 
   [[nodiscard]] RGTextureID addOutput(const RGTextureDesc &desc,
-                                      MemoryAccessFlags accesses,
-                                      PipelineStageFlags stages) {
+                                      VkAccessFlags2 accesses,
+                                      VkPipelineStageFlags2 stages) {
     return m_builder->addOutput(m_node, desc, accesses, stages);
   }
 
   [[nodiscard]] auto add_output(const RGBufferDesc &desc,
-                                MemoryAccessFlags accesses,
-                                PipelineStageFlags stages) -> RGBufferID {
+                                VkAccessFlags2 accesses,
+                                VkPipelineStageFlags2 stages) -> RGBufferID {
     return m_builder->add_output(m_node, desc, accesses, stages);
   }
 
@@ -305,8 +304,8 @@ public:
   }
 
   [[nodiscard]] RGTextureID
-  addExternalTextureOutput(MemoryAccessFlags accesses,
-                           PipelineStageFlags stages) {
+  addExternalTextureOutput(VkAccessFlags2 accesses,
+                           VkPipelineStageFlags2 stages) {
     return m_builder->addExternalTextureOutput(m_node, accesses, stages);
   }
 

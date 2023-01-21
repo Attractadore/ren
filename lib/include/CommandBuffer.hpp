@@ -3,7 +3,6 @@
 #include "Descriptors.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
-#include "PipelineStages.hpp"
 #include "Support/Enum.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"

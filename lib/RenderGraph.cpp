@@ -143,8 +143,8 @@ auto RenderGraph::Builder::addNode() -> NodeBuilder {
 }
 
 void RenderGraph::Builder::addReadInput(RGNodeID node, RGTextureID tex,
-                                        MemoryAccessFlags accesses,
-                                        PipelineStageFlags stages) {
+                                        VkAccessFlags2 accesses,
+                                        VkPipelineStageFlags2 stages) {
   getNode(node).read_textures.push_back({
       .texture = tex,
       .accesses = accesses,
@@ -153,8 +153,8 @@ void RenderGraph::Builder::addReadInput(RGNodeID node, RGTextureID tex,
 }
 
 RGTextureID RenderGraph::Builder::addWriteInput(RGNodeID node, RGTextureID tex,
-                                                MemoryAccessFlags accesses,
-                                                PipelineStageFlags stages) {
+                                                VkAccessFlags2 accesses,
+                                                VkPipelineStageFlags2 stages) {
   m_texture_kills[tex] = node;
   auto new_tex = createVirtualTexture(m_phys_textures[tex], node);
   getNode(node).write_textures.push_back({
@@ -167,8 +167,8 @@ RGTextureID RenderGraph::Builder::addWriteInput(RGNodeID node, RGTextureID tex,
 
 RGTextureID RenderGraph::Builder::addOutput(RGNodeID node,
                                             const RGTextureDesc &desc,
-                                            MemoryAccessFlags accesses,
-                                            PipelineStageFlags stages) {
+                                            VkAccessFlags2 accesses,
+                                            VkPipelineStageFlags2 stages) {
   auto [tex, vtex] = createTexture(node);
   m_texture_descs[tex] = desc;
   getNode(node).write_textures.push_back({
@@ -181,8 +181,8 @@ RGTextureID RenderGraph::Builder::addOutput(RGNodeID node,
 
 RGBufferID RenderGraph::Builder::add_output(RGNodeID node,
                                             const RGBufferDesc &desc,
-                                            MemoryAccessFlags accesses,
-                                            PipelineStageFlags stages) {
+                                            VkAccessFlags2 accesses,
+                                            VkPipelineStageFlags2 stages) {
   auto [buffer, vbuffer] = create_buffer(node);
   m_buffer_descs[buffer] = desc;
   getNode(node).write_buffers.push_back({
@@ -194,7 +194,7 @@ RGBufferID RenderGraph::Builder::add_output(RGNodeID node,
 }
 
 RGTextureID RenderGraph::Builder::addExternalTextureOutput(
-    RGNodeID node, MemoryAccessFlags accesses, PipelineStageFlags stages) {
+    RGNodeID node, VkAccessFlags2 accesses, VkPipelineStageFlags2 stages) {
   auto [_, tex] = createTexture(node);
   getNode(node).write_textures.push_back({
       .texture = tex,
@@ -383,46 +383,46 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
 }
 
 namespace {
-auto get_texture_usage_flags(MemoryAccessFlags accesses) -> VkImageUsageFlags {
-  using enum MemoryAccess;
+auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
   VkImageUsageFlags flags = 0;
-  if (accesses.isSet(TransferRead)) {
+  if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
     flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
   }
-  if (accesses.isSet(TransferWrite)) {
+  if (accesses & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
     flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   }
-  if (accesses.isSet(ColorWrite)) {
+  if (accesses & VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT) {
     flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   }
-  if (accesses.isSet(SampledRead)) {
+  if (accesses & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
     flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
   }
-  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+  if (accesses & VK_ACCESS_2_SHADER_STORAGE_READ_BIT or
+      accesses & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT) {
     flags |= VK_IMAGE_USAGE_STORAGE_BIT;
   }
   return flags;
 }
 
-auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> VkBufferUsageFlags {
-  using enum MemoryAccess;
+auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   VkBufferUsageFlags flags = 0;
-  if (accesses.isSet(TransferRead)) {
+  if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
     flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   }
-  if (accesses.isSet(TransferWrite)) {
+  if (accesses & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
     flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   }
-  if (accesses.isSet(UniformRead)) {
+  if (accesses & VK_ACCESS_2_UNIFORM_READ_BIT) {
     flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   }
-  if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
+  if (accesses & VK_ACCESS_2_SHADER_STORAGE_READ_BIT or
+      accesses & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT) {
     flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   }
-  if (accesses.isSet(IndexRead)) {
+  if (accesses & VK_ACCESS_2_INDEX_READ_BIT) {
     flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   }
-  if (accesses.isSet(IndirectRead)) {
+  if (accesses & VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT) {
     flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
   }
   return flags;
@@ -487,8 +487,8 @@ auto RenderGraph::Builder::create_buffers(
 void RenderGraph::Builder::generateBarriers(
     std::span<RGNode> scheduled_passes) {
   struct ResourceAccess {
-    MemoryAccessFlags accesses;
-    PipelineStageFlags stages;
+    VkAccessFlags2 accesses;
+    VkPipelineStageFlags2 stages;
   };
   Vector<ResourceAccess> latest_accesses(getPhysTextureCount());
   SmallVector<BarrierConfig, 16> barrier_configs;
