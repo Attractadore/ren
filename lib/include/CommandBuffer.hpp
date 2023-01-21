@@ -10,31 +10,22 @@
 #include "Texture.hpp"
 
 namespace ren {
-#define REN_RENDER_TARGET_LOAD_OPS (Clear)(Load)(Discard)(None)
-REN_DEFINE_ENUM(TargetLoadOp, REN_RENDER_TARGET_LOAD_OPS);
-
-#define REN_RENDER_TARGET_STORE_OPS (Store)(Discard)(None)
-REN_DEFINE_ENUM(TargetStoreOp, REN_RENDER_TARGET_STORE_OPS);
-
 struct RenderTargetConfig {
   RenderTargetView rtv;
-  TargetLoadOp load_op = TargetLoadOp::Clear;
-  TargetStoreOp store_op = TargetStoreOp::Store;
+  VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE;
   std::array<float, 4> clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct DepthStencilTargetConfig {
   DepthStencilView dsv;
-  TargetLoadOp depth_load_op = TargetLoadOp::Clear;
-  TargetStoreOp depth_store_op = TargetStoreOp::Store;
-  TargetLoadOp stencil_load_op = TargetLoadOp::None;
-  TargetStoreOp stencil_store_op = TargetStoreOp::None;
+  VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  VkAttachmentStoreOp depth_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  VkAttachmentLoadOp stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  VkAttachmentStoreOp stencil_store_op = VK_ATTACHMENT_STORE_OP_NONE;
   float clear_depth = 0.0f;
   uint8_t clear_stencil = 0;
 };
-
-#define REN_FILTERS (Nearest)(Linear)
-REN_DEFINE_ENUM(Filter, REN_FILTERS);
 
 struct CopyRegion {
   size_t src_offset;

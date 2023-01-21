@@ -4,30 +4,6 @@
 #include "VulkanErrors.hpp"
 
 namespace ren {
-inline VkAttachmentLoadOp getVkAttachmentLoadOp(TargetLoadOp load_op) {
-  using enum TargetLoadOp;
-  switch (load_op) {
-  case Clear:
-    return VK_ATTACHMENT_LOAD_OP_CLEAR;
-  case Discard:
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  case None:
-  case Load:
-    return VK_ATTACHMENT_LOAD_OP_LOAD;
-  }
-}
-
-REN_MAP_TYPE(TargetStoreOp, VkAttachmentStoreOp);
-REN_MAP_FIELD(TargetStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
-REN_MAP_FIELD(TargetStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
-REN_MAP_FIELD(TargetStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
-REN_MAP_ENUM(getVkAttachmentStoreOp, TargetStoreOp,
-             REN_RENDER_TARGET_STORE_OPS);
-
-REN_MAP_TYPE(Filter, VkFilter);
-REN_MAP_FIELD(Filter::Nearest, VK_FILTER_NEAREST);
-REN_MAP_FIELD(Filter::Linear, VK_FILTER_LINEAR);
-REN_MAP_ENUM(getVkFilter, Filter, REN_FILTERS);
 
 class VulkanDevice;
 class VulkanCommandAllocator;
