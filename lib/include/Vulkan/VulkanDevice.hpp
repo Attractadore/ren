@@ -111,8 +111,8 @@ public:
                                 std::span<VkDescriptorSet> sets)
       -> bool override;
 
-  void write_descriptor_sets(
-      std::span<const DescriptorSetWriteConfig> configs) override;
+  void
+  write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) override;
 
   auto get_shader_blob_suffix() const -> std::string_view override {
     return ".spv";

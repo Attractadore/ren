@@ -190,11 +190,11 @@ auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
       pool_sizes;
 
   for (int i = 0; i < DESCRIPTOR_TYPE_COUNT; ++i) {
-    auto type = static_cast<DescriptorType>(i);
+    auto type = static_cast<VkDescriptorType>(i);
     auto count = desc.pool_sizes[type];
     if (count > 0) {
       pool_sizes.push_back({
-          .type = getVkDescriptorType(type),
+          .type = type,
           .descriptorCount = count,
       });
     }
@@ -232,7 +232,7 @@ auto VulkanDevice::create_descriptor_set_layout(
   auto bindings = desc.bindings | map([](const DescriptorBinding &binding) {
                     return VkDescriptorSetLayoutBinding{
                         .binding = binding.binding,
-                        .descriptorType = getVkDescriptorType(binding.type),
+                        .descriptorType = binding.type,
                         .descriptorCount = binding.count,
                         .stageFlags = getVkShaderStageFlags(binding.stages),
                     };
@@ -297,71 +297,8 @@ auto VulkanDevice::allocate_descriptor_sets(
 }
 
 void VulkanDevice::write_descriptor_sets(
-    std::span<const DescriptorSetWriteConfig> configs) {
-  auto buffers =
-      configs | map([](const DescriptorSetWriteConfig &config) {
-        return std::visit(
-            []<DescriptorType DT>(const DescriptorWriteConfig<DT> &config)
-                -> std::span<const BufferRef> {
-              if constexpr (DT == DESCRIPTOR_TYPE_SAMPLER or
-                            DT == DESCRIPTOR_TYPE_TEXTURE or
-                            DT == DESCRIPTOR_TYPE_RW_TEXTURE) {
-                todo();
-                return {};
-              } else if constexpr (DT == DESCRIPTOR_TYPE_UNIFORM_BUFFER or
-                                   DT == DESCRIPTOR_TYPE_STRUCTURED_BUFFER or
-                                   DT == DESCRIPTOR_TYPE_RAW_BUFFER or
-                                   DT == DESCRIPTOR_TYPE_RW_RAW_BUFFER) {
-                return config.buffers;
-              } else if constexpr (DT == DESCRIPTOR_TYPE_TEXEL_BUFFER or
-                                   DT == DESCRIPTOR_TYPE_RW_TEXEL_BUFFER or
-                                   DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) {
-                todo();
-                return {};
-              }
-            },
-            config.data);
-      });
-
-  auto vk_descriptor_buffer_infos = buffers | ranges::views::join |
-                                    map([](BufferRef buffer) {
-                                      return VkDescriptorBufferInfo{
-                                          .buffer = getVkBuffer(buffer),
-                                          .offset = buffer.desc.offset,
-                                          .range = buffer.desc.size,
-                                      };
-                                    }) |
-                                    ranges::to<Vector>;
-
-  auto buffer_offsets =
-      concat(once(0), buffers | map([](std::span<const BufferRef> buffers) {
-                        return buffers.size();
-                      }) | ranges::views::partial_sum);
-
-  auto vk_write_descriptor_sets =
-      ranges::views::zip(configs, buffers, buffer_offsets) |
-      map([&](const auto &t) {
-        const auto &[config, buffers, buffer_offset] = t;
-
-        VkWriteDescriptorSet vk_config = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = config.set,
-            .dstBinding = config.binding,
-            .dstArrayElement = config.array_index,
-            .descriptorCount = unsigned(buffers.size()),
-            .descriptorType = getVkDescriptorType(std::visit(
-                []<DescriptorType DT>(const DescriptorWriteConfig<DT> &)
-                    -> DescriptorType { return DT; },
-                config.data)),
-            .pBufferInfo = vk_descriptor_buffer_infos.data() + buffer_offset,
-        };
-
-        return vk_config;
-      }) |
-      ranges::to<Vector>;
-
-  UpdateDescriptorSets(vk_write_descriptor_sets.size(),
-                       vk_write_descriptor_sets.data(), 0, nullptr);
+    std::span<const VkWriteDescriptorSet> configs) {
+  UpdateDescriptorSets(configs.size(), configs.data(), 0, nullptr);
 }
 
 auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)

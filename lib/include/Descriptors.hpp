@@ -9,28 +9,13 @@
 #include <vulkan/vulkan.h>
 
 #include <array>
-#include <variant>
 
 namespace ren {
 
 #define REN_DESCRIPTOR_POOL_OPTIONS (UpdateAfterBind)
 REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
 
-#define REN_DESCRIPTOR_TYPES                                                   \
-  (DESCRIPTOR_TYPE_SAMPLER)                  /**/                              \
-      (DESCRIPTOR_TYPE_TEXTURE)              /* Texture */                     \
-      (DESCRIPTOR_TYPE_RW_TEXTURE)           /* RWTexture */                   \
-      (DESCRIPTOR_TYPE_TEXEL_BUFFER)         /* Buffer */                      \
-      (DESCRIPTOR_TYPE_RW_TEXEL_BUFFER)      /* RWBuffer */                    \
-      (DESCRIPTOR_TYPE_UNIFORM_BUFFER)       /* ConstantBuffer */              \
-      (DESCRIPTOR_TYPE_STRUCTURED_BUFFER)    /**/                              \
-      (DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER) /* RWStructuredBuffer,            \
-                                                AppendStructuredBuffer and     \
-                                                ConsumeStructuredBuffer */     \
-      (DESCRIPTOR_TYPE_RAW_BUFFER)           /* ByteAddressBuffer */           \
-      (DESCRIPTOR_TYPE_RW_RAW_BUFFER)        /* RWByteAddressBuffer */
-REN_DEFINE_C_ENUM(DescriptorType, REN_DESCRIPTOR_TYPES);
-constexpr auto DESCRIPTOR_TYPE_COUNT = BOOST_PP_SEQ_SIZE(REN_DESCRIPTOR_TYPES);
+constexpr auto DESCRIPTOR_TYPE_COUNT = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1;
 
 struct DescriptorPoolDesc {
   DescriptorPoolOptionFlags flags;
@@ -65,7 +50,7 @@ REN_DEFINE_FLAGS_ENUM(DescriptorBindingOption,
 struct DescriptorBinding {
   DescriptorBindingOptionFlags flags;
   unsigned binding;
-  DescriptorType type;
+  VkDescriptorType type;
   unsigned count;
   ShaderStageFlags stages;
 };
@@ -87,74 +72,6 @@ struct DescriptorSetLayout {
   operator DescriptorSetLayoutRef() const {
     return {.desc = desc.get(), .handle = handle.get()};
   }
-};
-
-template <DescriptorType DT> struct DescriptorWriteConfig;
-
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER> {
-  // TODO
-};
-
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXTURE> {
-  std::span<const TextureView> textures;
-};
-
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXTURE> {
-  std::span<const RWTextureView> textures;
-};
-
-template <DescriptorType DT>
-  requires(DT == DESCRIPTOR_TYPE_TEXEL_BUFFER) or
-          (DT == DESCRIPTOR_TYPE_RW_TEXEL_BUFFER)
-struct DescriptorWriteConfig<DT> {
-  // TODO
-};
-
-template <DescriptorType DT>
-  requires(DT == DESCRIPTOR_TYPE_UNIFORM_BUFFER) or
-          (DT == DESCRIPTOR_TYPE_RAW_BUFFER) or
-          (DT == DESCRIPTOR_TYPE_RW_RAW_BUFFER)
-struct DescriptorWriteConfig<DT> {
-  std::span<const BufferRef> buffers;
-};
-
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_STRUCTURED_BUFFER> {
-  std::span<const BufferRef> buffers;
-  std::span<const unsigned> strides;
-};
-
-template <> struct DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER> {
-  std::span<const BufferRef> buffers;
-  std::span<const BufferRef> counters;
-  std::span<const unsigned> strides;
-};
-
-using SamplerWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_SAMPLER>;
-using TextureWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXTURE>;
-using RWTextureWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXTURE>;
-using TexelBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_TEXEL_BUFFER>;
-using RWTexelBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_TEXEL_BUFFER>;
-using UniformBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_UNIFORM_BUFFER>;
-using StructuredBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_STRUCTURED_BUFFER>;
-using RWStructuredBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_STRUCTURED_BUFFER>;
-using RawBufferWriteConfig = DescriptorWriteConfig<DESCRIPTOR_TYPE_RAW_BUFFER>;
-using RWRawBufferWriteConfig =
-    DescriptorWriteConfig<DESCRIPTOR_TYPE_RW_RAW_BUFFER>;
-
-struct DescriptorSetWriteConfig {
-  VkDescriptorSet set;
-  unsigned binding;
-  unsigned array_index = 0;
-#define define_variant(s, data, e) DescriptorWriteConfig<DescriptorType::e>
-  std::variant<BOOST_PP_SEQ_ENUM(
-      BOOST_PP_SEQ_TRANSFORM(define_variant, ~, REN_DESCRIPTOR_TYPES))>
-      data;
-#undef define_variant
 };
 
 } // namespace ren

@@ -352,12 +352,14 @@ void Scene::draw() {
         get_persistent_descriptor_set_layout());
     m_persistent_descriptor_pool = std::move(new_pool);
     m_persistent_descriptor_set = std::move(new_set);
-    unsigned stride = sizeof(hlsl::MaterialData);
+    auto descriptor = m_materials_buffer.get_descriptor();
     m_device->write_descriptor_set({
-        .set = m_persistent_descriptor_set,
-        .binding = hlsl::c_materials_slot,
-        .data = StructuredBufferWriteConfig{asSpan(m_materials_buffer),
-                                            asSpan(stride)},
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = m_persistent_descriptor_set,
+        .dstBinding = hlsl::c_materials_slot,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &descriptor,
     });
   }
 
@@ -417,23 +419,30 @@ void Scene::draw() {
                                                             m_camera.view};
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
-    unsigned matrix_buffer_stride = sizeof(hlsl::model_matrix_t);
     auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();
 
     auto scene_descriptor_set =
         m_descriptor_set_allocator.allocate(get_global_descriptor_set_layout());
 
+    auto global_ub_descriptor = global_cbuffer.get_descriptor();
+    auto matrix_buffer_descriptor = matrix_buffer.get_descriptor();
+
     std::array write_configs = {
-        DescriptorSetWriteConfig{
-            .set = scene_descriptor_set,
-            .binding = hlsl::c_global_cb_slot,
-            .data = UniformBufferWriteConfig{asSpan(global_cbuffer)},
+        VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = scene_descriptor_set,
+            .dstBinding = hlsl::c_global_cb_slot,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &global_ub_descriptor,
         },
-        DescriptorSetWriteConfig{
-            .set = scene_descriptor_set,
-            .binding = hlsl::c_matrices_slot,
-            .data = StructuredBufferWriteConfig{asSpan(matrix_buffer),
-                                                asSpan(matrix_buffer_stride)},
+        VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = scene_descriptor_set,
+            .dstBinding = hlsl::c_matrices_slot,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo = &matrix_buffer_descriptor,
         },
     };
 

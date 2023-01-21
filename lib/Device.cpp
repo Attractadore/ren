@@ -37,7 +37,7 @@ auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
   return {std::move(pool), std::move(set.value())};
 }
 
-void Device::write_descriptor_set(const DescriptorSetWriteConfig &config) {
+void Device::write_descriptor_set(const VkWriteDescriptorSet &config) {
   write_descriptor_sets({&config, 1});
 }
 

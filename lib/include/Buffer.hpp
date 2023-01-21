@@ -68,6 +68,14 @@ public:
     return sb;
   }
 
+  VkDescriptorBufferInfo get_descriptor() const {
+    return {
+        .buffer = impl().get(),
+        .offset = impl().desc.offset,
+        .range = impl().desc.size,
+    };
+  }
+
   bool operator==(const BufferMixin &other) const {
     const auto &lhs = impl();
     const auto &rhs = other.impl();

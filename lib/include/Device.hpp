@@ -69,8 +69,8 @@ public:
       -> std::pair<DescriptorPool, VkDescriptorSet>;
 
   virtual void
-  write_descriptor_sets(std::span<const DescriptorSetWriteConfig> configs) = 0;
-  void write_descriptor_set(const DescriptorSetWriteConfig &config);
+  write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) = 0;
+  void write_descriptor_set(const VkWriteDescriptorSet &config);
 
   auto create_buffer(BufferDesc desc) -> Buffer;
 
