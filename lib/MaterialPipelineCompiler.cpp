@@ -58,17 +58,11 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
   m_asset_loader->load_file(get_shader_name("VertexShader"), vs);
   m_asset_loader->load_file(get_shader_name("FragmentShader"), fs);
 
-  Vector<VertexBinding> vertex_bindings;
-  Vector<VertexAttribute> vertex_attributes;
-
-  return m_pipelines[config.material] =
-             GraphicsPipelineBuilder(*m_device)
-                 .set_signature(config.signature)
-                 .set_vertex_shader(vs)
-                 .set_fragment_shader(fs)
-                 .set_ia_vertex_bindings(std::move(vertex_bindings))
-                 .set_ia_vertex_attributes(std::move(vertex_attributes))
-                 .set_render_target(config.rt_format)
-                 .build();
+  return m_pipelines[config.material] = GraphicsPipelineBuilder(*m_device)
+                                            .set_signature(config.signature)
+                                            .set_vertex_shader(vs)
+                                            .set_fragment_shader(fs)
+                                            .set_render_target(config.rt_format)
+                                            .build();
 }
 } // namespace ren

@@ -587,36 +587,8 @@ auto VulkanDevice::create_graphics_pipeline_handle(
       }) |
       ranges::to<SmallVector<VkPipelineShaderStageCreateInfo, 5>>;
 
-  auto bindings = config.desc.ia.bindings |
-                  map([](const VertexBinding &binding) {
-                    return VkVertexInputBindingDescription{
-                        .binding = binding.binding,
-                        .stride = binding.stride,
-                        .inputRate = binding.rate,
-                    };
-                  }) |
-                  ranges::to<SmallVector<VkVertexInputBindingDescription, 32>>;
-
-  SmallVector<VkVertexInputAttributeDescription, 32> attributes;
-  for (const auto &attribute : config.desc.ia.attributes) {
-    auto format = attribute.format;
-    auto format_size = get_format_size(attribute.format);
-    for (int i = 0; i < attribute.count; ++i) {
-      attributes.push_back({
-          .location = attribute.location + i,
-          .binding = attribute.binding,
-          .format = format,
-          .offset = attribute.offset + i * format_size,
-      });
-    }
-  }
-
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount = unsigned(bindings.size()),
-      .pVertexBindingDescriptions = bindings.data(),
-      .vertexAttributeDescriptionCount = unsigned(attributes.size()),
-      .pVertexAttributeDescriptions = attributes.data(),
   };
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {

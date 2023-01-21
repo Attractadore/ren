@@ -1,6 +1,5 @@
 #pragma once
 #include "Descriptors.hpp"
-#include "Pipeline.hpp"
 
 #include <span>
 
@@ -20,9 +19,6 @@ public:
   virtual auto get_binding_count() const -> unsigned = 0;
   virtual void
   get_bindings(std::span<DescriptorBindingReflection> out) const = 0;
-
-  virtual auto get_input_variable_count() const -> unsigned = 0;
-  virtual void get_input_variables(std::span<VertexAttribute> out) const = 0;
 };
 
 } // namespace ren
