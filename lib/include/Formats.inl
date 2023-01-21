@@ -1,17 +1,18 @@
 #pragma once
 #include "Formats.hpp"
+#include "Support/Errors.hpp"
+
+#include <vulkan/vulkan.h>
 
 namespace ren {
 
-inline FormatProperties getFormatProperties(Format format) {
-  using enum Format;
+inline FormatProperties getFormatProperties(VkFormat format) {
   using enum FormatProperty;
   switch (format) {
   default:
-    assert(!"Unknown Format");
-    return {};
-  case RGBA8:
-  case BGRA8: {
+    unreachable("Unknown VkFormat {}", int(format));
+  case VK_FORMAT_R8G8B8A8_UNORM:
+  case VK_FORMAT_B8G8R8A8_UNORM: {
     return {
         .flags = Color,
         .red_bits = 8,
@@ -20,7 +21,7 @@ inline FormatProperties getFormatProperties(Format format) {
         .alpha_bits = 8,
     };
   }
-  case RGBA16F:
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
     return {
         .flags = Color,
         .red_bits = 16,
@@ -28,15 +29,15 @@ inline FormatProperties getFormatProperties(Format format) {
         .blue_bits = 16,
         .alpha_bits = 16,
     };
-  case RGB32F:
+  case VK_FORMAT_R32G32B32_SFLOAT:
     return {
         .flags = Color,
         .red_bits = 32,
         .green_bits = 32,
         .blue_bits = 32,
     };
-  case RGBA8_SRGB:
-  case BGRA8_SRGB:
+  case VK_FORMAT_R8G8B8A8_SRGB:
+  case VK_FORMAT_B8G8R8A8_SRGB:
     return {
         .flags = Color | SRGB,
         .red_bits = 8,
@@ -47,36 +48,35 @@ inline FormatProperties getFormatProperties(Format format) {
   }
 }
 
-inline bool isSRGBFormat(Format format) {
+inline bool isSRGBFormat(VkFormat format) {
   return getFormatProperties(format).flags.isSet(FormatProperty::SRGB);
 }
 
-inline bool isColorFormat(Format format) {
+inline bool isColorFormat(VkFormat format) {
   return getFormatProperties(format).flags.isSet(FormatProperty::Color);
 }
 
-inline bool isDepthFormat(Format format) {
+inline bool isDepthFormat(VkFormat format) {
   return getFormatProperties(format).flags.isSet(FormatProperty::Depth);
 }
 
-inline bool isStencilFormat(Format format) {
+inline bool isStencilFormat(VkFormat format) {
   return getFormatProperties(format).flags.isSet(FormatProperty::Stencil);
 }
 
-inline Format getSRGBFormat(Format format) {
-  using enum Format;
+inline VkFormat getSRGBFormat(VkFormat format) {
+  using enum VkFormat;
   switch (format) {
   default:
-    assert(!"Format without SRGB counterpart");
-    return Undefined;
-  case RGBA8:
-    return RGBA8_SRGB;
-  case BGRA8:
-    return BGRA8_SRGB;
+    unreachable("VkFormat {} doesn't have an SRGB counterpart", int(format));
+  case VK_FORMAT_R8G8B8A8_UNORM:
+    return VK_FORMAT_R8G8B8A8_SRGB;
+  case VK_FORMAT_B8G8R8A8_UNORM:
+    return VK_FORMAT_B8G8R8A8_SRGB;
   }
 }
 
-inline unsigned get_format_size(Format format) {
+inline unsigned get_format_size(VkFormat format) {
   auto p = getFormatProperties(format);
   auto bits = [&] {
     if (isColorFormat(format)) {
@@ -86,6 +86,22 @@ inline unsigned get_format_size(Format format) {
     }
   }();
   return bits / CHAR_BIT;
+}
+
+inline VkImageAspectFlags getVkImageAspectFlags(VkFormat format) {
+  if (isColorFormat(format)) {
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+  bool is_depth = isDepthFormat(format);
+  bool is_stencil = isStencilFormat(format);
+  VkImageAspectFlags aspects = 0;
+  if (is_depth) {
+    aspects |= VK_IMAGE_ASPECT_DEPTH_BIT;
+  }
+  if (is_stencil) {
+    aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+  }
+  return aspects;
 }
 
 } // namespace ren

@@ -1,11 +1,11 @@
 #include "Vulkan/VulkanDevice.hpp"
+#include "Formats.inl"
 #include "Support/Array.hpp"
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
-#include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanReflection.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
@@ -355,7 +355,7 @@ Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = desc.type,
-      .format = getVkFormat(desc.format),
+      .format = desc.format,
       .extent = {desc.width, desc.height, desc.depth},
       .mipLevels = desc.mip_levels,
       .arrayLayers = desc.array_layers,
@@ -394,7 +394,7 @@ VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
       .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = getVkFormat(rtv.desc.format),
+      .format = rtv.desc.format,
       .subresourceRange = {
           .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
           .baseMipLevel = rtv.desc.mip_level,
@@ -411,7 +411,7 @@ VkImageView VulkanDevice::getVkImageView(const DepthStencilView &dsv) {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
       .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = getVkFormat(dsv.texture.desc.format),
+      .format = dsv.texture.desc.format,
       .subresourceRange = {
           .aspectMask = getVkImageAspectFlags(dsv.texture.desc.format),
           .baseMipLevel = dsv.desc.mip_level,
@@ -554,7 +554,7 @@ auto VulkanDevice::create_graphics_pipeline_handle(
       VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
   };
 
-  auto rt_format = getVkFormat(config.desc.rt.format);
+  auto rt_format = config.desc.rt.format;
 
   VkPipelineRenderingCreateInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -600,7 +600,7 @@ auto VulkanDevice::create_graphics_pipeline_handle(
 
   SmallVector<VkVertexInputAttributeDescription, 32> attributes;
   for (const auto &attribute : config.desc.ia.attributes) {
-    auto format = getVkFormat(attribute.format);
+    auto format = attribute.format;
     auto format_size = get_format_size(attribute.format);
     for (int i = 0; i < attribute.count; ++i) {
       attributes.push_back({

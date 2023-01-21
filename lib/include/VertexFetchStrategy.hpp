@@ -246,7 +246,7 @@ class VertexFetchAttribute
     : public VertexFetcherMixin<hlsl::VertexFetch::Attribute,
                                 VertexFetchAttribute> {
   std::array<std::string_view, MESH_ATTRIBUTE_COUNT> m_mesh_attribute_semantics;
-  std::array<Format, MESH_ATTRIBUTE_COUNT> m_mesh_attribute_formats;
+  std::array<VkFormat, MESH_ATTRIBUTE_COUNT> m_mesh_attribute_formats;
   std::array<unsigned, MESH_ATTRIBUTE_COUNT> m_mesh_attribute_sizes;
   HashMap<std::string_view, MeshAttribute> m_semantic_mesh_attributes;
 
@@ -255,8 +255,10 @@ public:
     m_mesh_attribute_semantics[MESH_ATTRIBUTE_POSITIONS] = "POSITION";
     m_mesh_attribute_semantics[MESH_ATTRIBUTE_COLORS] = "ALBEDO";
 
-    m_mesh_attribute_formats[MESH_ATTRIBUTE_POSITIONS] = Format::RGB32F;
-    m_mesh_attribute_formats[MESH_ATTRIBUTE_COLORS] = Format::RGB32F;
+    m_mesh_attribute_formats[MESH_ATTRIBUTE_POSITIONS] =
+        VK_FORMAT_R32G32B32_SFLOAT;
+    m_mesh_attribute_formats[MESH_ATTRIBUTE_COLORS] =
+        VK_FORMAT_R32G32B32_SFLOAT;
 
     for (int i = 0; i < MESH_ATTRIBUTE_COUNT; ++i) {
       auto mesh_attribute = static_cast<MeshAttribute>(i);
@@ -271,7 +273,7 @@ public:
     return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   }
 
-  auto get_semantic_format(std::string_view semantic) const -> Format {
+  auto get_semantic_format(std::string_view semantic) const -> VkFormat {
     return m_mesh_attribute_formats[get_semantic_mesh_attribute(semantic)];
   };
 

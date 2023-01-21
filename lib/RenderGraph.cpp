@@ -63,7 +63,7 @@ auto RenderGraph::Builder::getTextureKill(RGTextureID tex) const
 }
 
 bool RenderGraph::Builder::isExternalTexture(unsigned tex) const {
-  return m_texture_descs[tex].format == Format::Undefined;
+  return m_texture_descs[tex].format == VK_FORMAT_UNDEFINED;
 }
 
 unsigned RenderGraph::Builder::getPhysTextureCount() const {

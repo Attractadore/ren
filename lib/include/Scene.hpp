@@ -28,7 +28,7 @@ class RenScene {
   DescriptorSetAllocator m_descriptor_set_allocator;
   std::unique_ptr<CommandAllocator> m_cmd_allocator;
 
-  ren::Format m_rt_format = ren::Format::RGBA16F;
+  VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
   unsigned m_output_width = 0;
   unsigned m_output_height = 0;
   ren::Swapchain *m_swapchain = nullptr;

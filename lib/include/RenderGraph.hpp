@@ -21,7 +21,7 @@ enum RGSemaphoreID {};
 
 struct RGTextureDesc {
   VkImageType type = VK_IMAGE_TYPE_2D;
-  Format format;
+  VkFormat format;
   unsigned width = 1;
   unsigned height = 1;
   union {

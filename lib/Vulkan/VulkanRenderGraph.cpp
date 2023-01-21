@@ -1,8 +1,8 @@
 #include "Vulkan/VulkanRenderGraph.hpp"
+#include "Formats.inl"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
 #include <range/v3/range.hpp>

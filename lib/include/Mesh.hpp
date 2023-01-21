@@ -18,7 +18,7 @@ struct Mesh {
   BufferRef index_allocation;
   unsigned num_vertices;
   unsigned num_indices;
-  IndexFormat index_format;
+  VkIndexType index_format;
   std::array<unsigned, MESH_ATTRIBUTE_COUNT> attribute_offsets;
 };
 } // namespace ren

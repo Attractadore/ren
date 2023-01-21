@@ -32,14 +32,14 @@ template <hlsl::VertexFetch VF> struct PipelineVertexFetch {
 
 template <> struct PipelineVertexFetch<hlsl::VertexFetch::Attribute> {
   static constexpr auto type = hlsl::VertexFetch::Attribute;
-  const HashMap<std::string_view, Format> *semantic_formats;
+  const HashMap<std::string_view, VkFormat> *semantic_formats;
 };
 
 struct MaterialPipelineConfig {
   MaterialConfig material;
   PipelineSignatureRef signature;
   VertexFetchStrategy *vertex_fetch;
-  Format rt_format;
+  VkFormat rt_format;
 };
 
 } // namespace ren

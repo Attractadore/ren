@@ -1,7 +1,6 @@
 #include "Vulkan/VulkanReflection.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanErrors.hpp"
-#include "Vulkan/VulkanFormats.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -40,7 +39,7 @@ void collect_input_variables(const spv_reflect::ShaderModule &module,
             .semantic = var->semantic ? var->semantic : "",
             .location = var->location,
             .count = count,
-            .format = getFormat(static_cast<VkFormat>(var->format)),
+            .format = static_cast<VkFormat>(var->format),
         };
       });
 }

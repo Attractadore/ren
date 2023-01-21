@@ -29,11 +29,6 @@ REN_MAP_FIELD(Filter::Nearest, VK_FILTER_NEAREST);
 REN_MAP_FIELD(Filter::Linear, VK_FILTER_LINEAR);
 REN_MAP_ENUM(getVkFilter, Filter, REN_FILTERS);
 
-REN_MAP_TYPE(IndexFormat, VkIndexType);
-REN_MAP_FIELD(IndexFormat::U16, VK_INDEX_TYPE_UINT16);
-REN_MAP_FIELD(IndexFormat::U32, VK_INDEX_TYPE_UINT32);
-REN_MAP_ENUM(getVkIndexType, IndexFormat, REN_INDEX_FORMATS);
-
 class VulkanDevice;
 class VulkanCommandAllocator;
 
@@ -91,7 +86,7 @@ public:
   void bind_vertex_buffers(unsigned first_binding,
                            std::span<const BufferRef> buffers) override;
 
-  void bind_index_buffer(const BufferRef &buffer, IndexFormat format) override;
+  void bind_index_buffer(const BufferRef &buffer, VkIndexType format) override;
 
   void draw_indexed(unsigned num_indices, unsigned num_instances,
                     unsigned first_index, int vertex_offset,

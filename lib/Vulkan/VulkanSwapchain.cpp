@@ -1,8 +1,8 @@
 #include "Vulkan/VulkanSwapchain.hpp"
+#include "Formats.inl"
 #include "Support/Errors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanErrors.hpp"
-#include "Vulkan/VulkanFormats.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -33,7 +33,7 @@ auto getSurfaceFormats(VulkanDevice *device, VkSurfaceKHR surface) {
 VkSurfaceFormatKHR
 selectSurfaceFormat(std::span<const VkSurfaceFormatKHR> surface_formats) {
   auto it = ranges::find_if(surface_formats, [](const VkSurfaceFormatKHR &sf) {
-    return isSRGBFormat(getFormat(sf.format));
+    return isSRGBFormat(sf.format);
   });
   return it != surface_formats.end() ? *it : surface_formats.front();
 };
@@ -142,7 +142,7 @@ void VulkanSwapchain::create() {
       "Vulkan: Failed to get swapchain images");
 
   TextureDesc tex_desc = {
-      .format = getFormat(m_create_info.imageFormat),
+      .format = m_create_info.imageFormat,
       .usage = m_create_info.imageUsage,
       .width = m_create_info.imageExtent.width,
       .height = m_create_info.imageExtent.height,

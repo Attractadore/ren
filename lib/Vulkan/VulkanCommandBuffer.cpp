@@ -180,9 +180,9 @@ void VulkanCommandBuffer::bind_vertex_buffers(
 }
 
 void VulkanCommandBuffer::bind_index_buffer(const BufferRef &buffer,
-                                            IndexFormat format) {
+                                            VkIndexType format) {
   m_device->CmdBindIndexBuffer(m_cmd_buffer, buffer.handle, buffer.desc.offset,
-                               getVkIndexType(format));
+                               format);
 }
 
 void VulkanCommandBuffer::draw_indexed(unsigned num_indices,

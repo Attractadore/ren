@@ -195,7 +195,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       .index_allocation = m_index_buffer_pool.allocate(index_allocation_size),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
-      .index_format = IndexFormat::U32,
+      .index_format = VK_INDEX_TYPE_UINT32,
   });
 
   mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);

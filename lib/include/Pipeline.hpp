@@ -50,7 +50,7 @@ struct VertexAttribute {
   unsigned location;
   unsigned count = 1;
   unsigned binding = 0;
-  Format format;
+  VkFormat format;
   unsigned offset = 0;
 };
 
@@ -76,7 +76,7 @@ struct GraphicsPipelineDesc {
   } ms;
 
   struct RTDesc {
-    Format format;
+    VkFormat format;
   } rt;
 };
 
@@ -154,7 +154,7 @@ public:
     return *this;
   }
 
-  auto set_render_target(Format format) -> GraphicsPipelineBuilder & {
+  auto set_render_target(VkFormat format) -> GraphicsPipelineBuilder & {
     m_config.desc.rt = {.format = format};
     return *this;
   }

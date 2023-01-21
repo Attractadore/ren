@@ -117,7 +117,7 @@ public:
                                    std::span<const BufferRef> buffers) = 0;
 
   virtual void bind_index_buffer(const BufferRef &buffer,
-                                 IndexFormat format = IndexFormat::U32) = 0;
+                                 VkIndexType format = VK_INDEX_TYPE_UINT32) = 0;
 
   virtual void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
                             unsigned first_index = 0, int vertex_offset = 0,

@@ -8,7 +8,7 @@ namespace ren {
 
 struct TextureDesc {
   VkImageType type = VK_IMAGE_TYPE_2D;
-  Format format;
+  VkFormat format;
   VkImageUsageFlags usage;
   unsigned width = 1;
   unsigned height = 1;
@@ -36,12 +36,12 @@ struct Texture {
   }
 };
 
-constexpr auto PARENT_FORMAT = Format::Undefined;
+constexpr auto PARENT_FORMAT = VK_FORMAT_UNDEFINED;
 constexpr unsigned ALL_MIP_LEVELS = -1;
 constexpr unsigned ALL_ARRAY_LAYERS = -1;
 
 struct RenderTargetViewDesc {
-  Format format = PARENT_FORMAT;
+  VkFormat format = PARENT_FORMAT;
   unsigned mip_level = 0;
   unsigned array_layer = 0;
 
@@ -90,7 +90,7 @@ struct TextureComponentMapping {
 
 struct TextureViewDesc {
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
-  Format format = PARENT_FORMAT;
+  VkFormat format = PARENT_FORMAT;
   TextureComponentMapping components;
   unsigned first_mip_level = 0;
   unsigned mip_levels = ALL_MIP_LEVELS;
@@ -120,7 +120,7 @@ struct TextureView {
 
 struct RWTextureViewDesc {
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
-  Format format = PARENT_FORMAT;
+  VkFormat format = PARENT_FORMAT;
   unsigned mip_level = 0;
   unsigned first_array_layer = 0;
   unsigned array_layers = 1;
