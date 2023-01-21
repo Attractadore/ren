@@ -1,7 +1,7 @@
 #pragma once
 #include "Support/Vector.hpp"
 #include "Swapchain.hpp"
-#include "VulkanTexture.hpp"
+#include "Texture.hpp"
 #include "ren/ren-vk.h"
 
 namespace ren {

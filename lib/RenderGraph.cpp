@@ -383,23 +383,23 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
 }
 
 namespace {
-auto get_texture_usage_flags(MemoryAccessFlags accesses) -> TextureUsageFlags {
+auto get_texture_usage_flags(MemoryAccessFlags accesses) -> VkImageUsageFlags {
   using enum MemoryAccess;
-  TextureUsageFlags flags;
+  VkImageUsageFlags flags = 0;
   if (accesses.isSet(TransferRead)) {
-    flags |= TextureUsage::TransferSRC;
+    flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
   }
   if (accesses.isSet(TransferWrite)) {
-    flags |= TextureUsage::TransferDST;
+    flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   }
   if (accesses.isSet(ColorWrite)) {
-    flags |= TextureUsage::RenderTarget;
+    flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   }
   if (accesses.isSet(SampledRead)) {
-    flags |= TextureUsage::Sampled;
+    flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
   }
   if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
-    flags |= TextureUsage::RWStorage;
+    flags |= VK_IMAGE_USAGE_STORAGE_BIT;
   }
   return flags;
 }
@@ -431,8 +431,8 @@ auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> VkBufferUsageFlags {
 
 auto RenderGraph::Builder::derive_resource_usage_flags(
     std::span<const RGNode> scheduled_passes)
-    -> std::pair<Vector<TextureUsageFlags>, Vector<VkBufferUsageFlags>> {
-  Vector<TextureUsageFlags> texture_usage(getPhysTextureCount());
+    -> std::pair<Vector<VkImageUsageFlags>, Vector<VkBufferUsageFlags>> {
+  Vector<VkImageUsageFlags> texture_usage(getPhysTextureCount());
   Vector<VkBufferUsageFlags> buffer_usage(get_physical_buffer_count());
   for (const auto &pass : scheduled_passes) {
     for (const auto &texture_access :
@@ -451,7 +451,7 @@ auto RenderGraph::Builder::derive_resource_usage_flags(
 }
 
 Vector<Texture> RenderGraph::Builder::createTextures(
-    std::span<const TextureUsageFlags> texture_usage_flags) {
+    std::span<const VkImageUsageFlags> texture_usage_flags) {
   Vector<Texture> textures(getPhysTextureCount());
   for (unsigned tex = 0; tex < getPhysTextureCount(); ++tex) {
     if (not isExternalTexture(tex)) {

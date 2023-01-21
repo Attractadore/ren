@@ -5,7 +5,6 @@
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
-#include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/range.hpp>
 #include <range/v3/view.hpp>
@@ -111,7 +110,7 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
 
     for (auto &&[tex, barrier] : ranges::views::zip(textures, barriers)) {
       auto &&texture = rg.getTexture(tex);
-      barrier.image = getVkImage(texture);
+      barrier.image = texture.handle.get();
       barrier.subresourceRange = {
           .aspectMask = getVkImageAspectFlags(texture.desc.format),
           .levelCount = texture.desc.mip_levels,

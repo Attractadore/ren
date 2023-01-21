@@ -5,7 +5,6 @@
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
 #include "Vulkan/VulkanShaderStages.hpp"
-#include "Vulkan/VulkanTexture.hpp"
 
 namespace ren {
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,

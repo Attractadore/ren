@@ -3,7 +3,6 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
-#include "Vulkan/VulkanTexture.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -144,7 +143,7 @@ void VulkanSwapchain::create() {
 
   TextureDesc tex_desc = {
       .format = getFormat(m_create_info.imageFormat),
-      .usage = getTextureUsageFlags(m_create_info.imageUsage),
+      .usage = m_create_info.imageUsage,
       .width = m_create_info.imageExtent.width,
       .height = m_create_info.imageExtent.height,
   };
@@ -161,7 +160,7 @@ void VulkanSwapchain::create() {
 void VulkanSwapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
-    m_device->push_to_delete_queue(VulkanImageViews{getVkImage(texture)});
+    m_device->push_to_delete_queue(VulkanImageViews{texture.handle.get()});
   }
 }
 

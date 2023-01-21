@@ -11,7 +11,6 @@
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanShaderStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
-#include "Vulkan/VulkanTexture.hpp"
 
 constexpr bool operator==(const VkImageViewCreateInfo &lhs,
                           const VkImageViewCreateInfo &rhs) {
@@ -356,14 +355,14 @@ auto VulkanDevice::get_buffer_device_address(const BufferRef &buffer) const
 Texture VulkanDevice::createTexture(const TextureDesc &desc) {
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = getVkImageType(desc.type),
+      .imageType = desc.type,
       .format = getVkFormat(desc.format),
       .extent = {desc.width, desc.height, desc.depth},
       .mipLevels = desc.mip_levels,
       .arrayLayers = desc.array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
-      .usage = getVkImageUsageFlags(desc.usage),
+      .usage = desc.usage,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
 
@@ -391,7 +390,7 @@ void VulkanDevice::destroyImageViews(VkImage image) {
 }
 
 VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
-  auto image = getVkImage(rtv.texture);
+  auto image = rtv.texture.handle;
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,
@@ -408,7 +407,7 @@ VkImageView VulkanDevice::getVkImageView(const RenderTargetView &rtv) {
 }
 
 VkImageView VulkanDevice::getVkImageView(const DepthStencilView &dsv) {
-  auto image = getVkImage(dsv.texture);
+  auto image = dsv.texture.handle;
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = image,

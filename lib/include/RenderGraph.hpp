@@ -21,7 +21,7 @@ enum class RGBufferID;
 enum RGSemaphoreID {};
 
 struct RGTextureDesc {
-  TextureType type = TextureType::e2D;
+  VkImageType type = VK_IMAGE_TYPE_2D;
   Format format;
   unsigned width = 1;
   unsigned height = 1;
@@ -209,10 +209,10 @@ protected:
   Vector<RGNode> schedulePasses();
 
   auto derive_resource_usage_flags(std::span<const RGNode> scheduled_passes)
-      -> std::pair<Vector<TextureUsageFlags>, Vector<VkBufferUsageFlags>>;
+      -> std::pair<Vector<VkImageUsageFlags>, Vector<VkBufferUsageFlags>>;
 
   Vector<Texture>
-  createTextures(std::span<const TextureUsageFlags> texture_usage_flags);
+  createTextures(std::span<const VkImageUsageFlags> texture_usage_flags);
 
   auto create_buffers(std::span<const VkBufferUsageFlags> buffer_usage_flags)
       -> Vector<Buffer>;

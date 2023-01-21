@@ -2,7 +2,6 @@
 #include "CommandBuffer.hpp"
 #include "Support/Vector.hpp"
 #include "VulkanErrors.hpp"
-#include "VulkanTexture.hpp"
 
 namespace ren {
 inline VkAttachmentLoadOp getVkAttachmentLoadOp(TargetLoadOp load_op) {
@@ -61,7 +60,7 @@ public:
 
   void blit(VkImage src, VkImage dst, std::span<const VkImageBlit> regions,
             VkFilter filter);
-  void blit(const Texture &src, const Texture &dst) {
+  void blit(const TextureRef &src, const TextureRef &dst) {
     VkImageBlit region = {
         .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                            .layerCount = 1},
@@ -70,7 +69,7 @@ public:
                            .layerCount = 1},
         .dstOffsets = {{}, {int(dst.desc.width), int(dst.desc.height), 1}},
     };
-    blit(getVkImage(src), getVkImage(dst), asSpan(region), VK_FILTER_LINEAR);
+    blit(src.handle, dst.handle, asSpan(region), VK_FILTER_LINEAR);
   }
 
   void set_viewports(std::span<const Viewport> viewports) override;

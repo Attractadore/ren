@@ -1,28 +1,15 @@
 #pragma once
 #include "Formats.hpp"
-#include "Support/Enum.hpp"
 #include "Support/Handle.hpp"
 
 #include <vulkan/vulkan.h>
 
 namespace ren {
 
-#define REN_TEXTURE_TYPES (e1D)(e2D)(e3D)
-REN_DEFINE_ENUM_WITH_UNKNOWN(TextureType, REN_TEXTURE_TYPES);
-
-#define REN_TEXTURE_USAGES                                                     \
-  (TransferSRC)            /**/                                                \
-      (TransferDST)        /**/                                                \
-      (RenderTarget)       /**/                                                \
-      (DepthStencilTarget) /**/                                                \
-      (Sampled)            /* Texture */                                       \
-      (RWStorage)          /* RWTexture */
-REN_DEFINE_FLAGS_ENUM(TextureUsage, REN_TEXTURE_USAGES);
-
 struct TextureDesc {
-  TextureType type = TextureType::e2D;
+  VkImageType type = VK_IMAGE_TYPE_2D;
   Format format;
-  TextureUsageFlags usage;
+  VkImageUsageFlags usage;
   unsigned width = 1;
   unsigned height = 1;
   union {
@@ -92,24 +79,17 @@ struct DepthStencilView {
   }
 };
 
-#define REN_TEXTURE_VIEW_TYPES                                                 \
-  (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)(Cube)(CubeArray)
-REN_DEFINE_ENUM(TextureViewType, REN_TEXTURE_VIEW_TYPES);
-
-#define REN_TEXTURE_CHANNELS (Identity)(R)(G)(B)(A)(One)(Zero)
-REN_DEFINE_ENUM(TextureChannel, REN_TEXTURE_CHANNELS);
-
 struct TextureComponentMapping {
-  TextureChannel r = TextureChannel::Identity;
-  TextureChannel g = TextureChannel::Identity;
-  TextureChannel b = TextureChannel::Identity;
-  TextureChannel a = TextureChannel::Identity;
+  VkComponentSwizzle r = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle g = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle b = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
   constexpr auto operator<=>(const TextureComponentMapping &) const = default;
 };
 
 struct TextureViewDesc {
-  TextureViewType type = TextureViewType::e2D;
+  VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   Format format = PARENT_FORMAT;
   TextureComponentMapping components;
   unsigned first_mip_level = 0;
@@ -138,11 +118,8 @@ struct TextureView {
   }
 };
 
-#define REN_RW_TEXTURE_VIEW_TYPES (e1D)(Array1D)(e2D)(Array2D)(e3D)(Array3D)
-REN_DEFINE_ENUM(RWTextureViewType, REN_RW_TEXTURE_VIEW_TYPES);
-
 struct RWTextureViewDesc {
-  RWTextureViewType type = RWTextureViewType::e2D;
+  VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   Format format = PARENT_FORMAT;
   unsigned mip_level = 0;
   unsigned first_array_layer = 0;
