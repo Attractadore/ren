@@ -44,7 +44,7 @@ class RenScene {
   using ModelMap = ren::SlotMap<ren::Model>;
   ModelMap m_models;
 
-  PipelineSignature m_pipeline_signature = {};
+  PipelineLayout m_pipeline_signature = {};
 
   DescriptorPool m_persistent_descriptor_pool = {};
   VkDescriptorSet m_persistent_descriptor_set = {};

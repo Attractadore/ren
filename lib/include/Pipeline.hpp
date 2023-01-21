@@ -17,21 +17,21 @@ struct PushConstantRange {
   unsigned size;
 };
 
-struct PipelineSignatureDesc {
+struct PipelineLayoutDesc {
   SmallVector<DescriptorSetLayout, 4> set_layouts;
   SmallVector<PushConstantRange> push_constants;
 };
 
-struct PipelineSignatureRef {
-  PipelineSignatureDesc *desc;
+struct PipelineLayoutRef {
+  PipelineLayoutDesc *desc;
   VkPipelineLayout handle;
 };
 
-struct PipelineSignature {
-  std::shared_ptr<PipelineSignatureDesc> desc;
+struct PipelineLayout {
+  std::shared_ptr<PipelineLayoutDesc> desc;
   SharedHandle<VkPipelineLayout> handle;
 
-  operator PipelineSignatureRef() const {
+  operator PipelineLayoutRef() const {
     return {.desc = desc.get(), .handle = handle.get()};
   }
 };
@@ -89,7 +89,7 @@ struct ShaderStageConfig {
 };
 
 struct GraphicsPipelineConfig {
-  PipelineSignatureRef signature;
+  PipelineLayoutRef signature;
   StaticVector<ShaderStageConfig, 2> shaders;
   GraphicsPipelineDesc desc;
 };
@@ -101,8 +101,7 @@ class GraphicsPipelineBuilder {
 public:
   explicit GraphicsPipelineBuilder(Device &device) : m_device(&device) {}
 
-  auto set_signature(PipelineSignatureRef signature)
-      -> GraphicsPipelineBuilder & {
+  auto set_signature(PipelineLayoutRef signature) -> GraphicsPipelineBuilder & {
     m_config.signature = signature;
     return *this;
   }

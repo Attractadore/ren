@@ -44,7 +44,7 @@ concept CVertexFetchStrategy =
       };
 
       {
-        requires(CommandBuffer & cmd, PipelineSignatureRef signature,
+        requires(CommandBuffer & cmd, PipelineLayoutRef signature,
                  const Mesh &mesh, unsigned matrix_index) {
           {
             cvf.set_vertex_push_constants(cmd, signature, mesh, matrix_index)
@@ -53,7 +53,7 @@ concept CVertexFetchStrategy =
       };
 
       {
-        requires(CommandBuffer & cmd, PipelineSignatureRef signature,
+        requires(CommandBuffer & cmd, PipelineLayoutRef signature,
                  const Material &material) {
           {
             cvf.set_pixel_push_constants(cmd, signature, material)
@@ -160,8 +160,7 @@ public:
   }
 
   void set_vertex_push_constants(CommandBuffer &cmd,
-                                 PipelineSignatureRef signature,
-                                 const Mesh &mesh,
+                                 PipelineLayoutRef signature, const Mesh &mesh,
                                  unsigned matrix_index) const {
     hlsl::PushConstantsTemplate<VF> data = {
         .vertex =
@@ -172,8 +171,7 @@ public:
                                     offsetof(decltype(data), vertex));
   }
 
-  void set_pixel_push_constants(CommandBuffer &cmd,
-                                PipelineSignatureRef signature,
+  void set_pixel_push_constants(CommandBuffer &cmd, PipelineLayoutRef signature,
 
                                 const Material &material) const {
     hlsl::PushConstantsTemplate<VF> data = {
@@ -344,8 +342,7 @@ public:
   }
 
   auto set_vertex_push_constants(CommandBuffer &cmd,
-                                 PipelineSignatureRef signature,
-                                 const Mesh &mesh,
+                                 PipelineLayoutRef signature, const Mesh &mesh,
                                  unsigned matrix_index) const {
     return std::visit(
         [&](const auto &vf) {
@@ -355,8 +352,7 @@ public:
         m_impl);
   }
 
-  auto set_pixel_push_constants(CommandBuffer &cmd,
-                                PipelineSignatureRef signature,
+  auto set_pixel_push_constants(CommandBuffer &cmd, PipelineLayoutRef signature,
 
                                 const Material &material) const {
     return std::visit(

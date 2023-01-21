@@ -93,8 +93,8 @@ public:
   create_reflection_module(std::span<const std::byte> data)
       -> std::unique_ptr<ReflectionModule> = 0;
   [[nodiscard]] virtual auto
-  create_pipeline_signature(const PipelineSignatureDesc &desc)
-      -> PipelineSignature = 0;
+  create_pipeline_signature(const PipelineLayoutDesc &desc)
+      -> PipelineLayout = 0;
 
   virtual void push_to_delete_queue(QueueCustomDeleter<Device> deleter) = 0;
 

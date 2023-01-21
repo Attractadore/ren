@@ -37,7 +37,7 @@ template <> struct PipelineVertexFetch<hlsl::VertexFetch::Attribute> {
 
 struct MaterialPipelineConfig {
   MaterialConfig material;
-  PipelineSignatureRef signature;
+  PipelineLayoutRef signature;
   VertexFetchStrategy *vertex_fetch;
   VkFormat rt_format;
 };

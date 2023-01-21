@@ -2,7 +2,6 @@
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanPipeline.hpp"
 
 namespace ren {
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
@@ -155,23 +154,23 @@ void VulkanCommandBuffer::set_scissor_rects(
 
 void VulkanCommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
   m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            getVkPipeline(pipeline));
+                            pipeline.handle);
 }
 
 void VulkanCommandBuffer::bind_graphics_descriptor_sets(
-    PipelineSignatureRef signature, unsigned first_set,
+    PipelineLayoutRef layout, unsigned first_set,
     std::span<const VkDescriptorSet> sets) {
   m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  getVkPipelineLayout(signature), first_set,
-                                  sets.size(), sets.data(), 0, nullptr);
+                                  layout.handle, first_set, sets.size(),
+                                  sets.data(), 0, nullptr);
 }
 
 void VulkanCommandBuffer::set_graphics_push_constants(
-    PipelineSignatureRef signature, VkShaderStageFlags stages,
+    PipelineLayoutRef layout, VkShaderStageFlags stages,
     std::span<const std::byte> data, unsigned offset) {
   assert(not(stages & VK_SHADER_STAGE_COMPUTE_BIT));
-  m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),
-                             stages, offset, data.size(), data.data());
+  m_device->CmdPushConstants(m_cmd_buffer, layout.handle, stages, offset,
+                             data.size(), data.data());
 }
 
 void VulkanCommandBuffer::bind_vertex_buffers(

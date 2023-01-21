@@ -55,7 +55,7 @@ void reflect_descriptor_set_layouts(
 
 auto reflect_material_pipeline_signature(
     Device &device, const AssetLoader &loader,
-    const VertexFetchStrategy &vertex_fetch) -> PipelineSignature {
+    const VertexFetchStrategy &vertex_fetch) -> PipelineLayout {
   auto reflection_suffix = device.get_shader_reflection_suffix();
   Vector<std::byte> buffer;
   loader.load_file(fmt::format("ReflectionVertexShader{0}", reflection_suffix),
@@ -73,7 +73,7 @@ auto reflect_material_pipeline_signature(
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
   auto get_push_constants = [&]<hlsl::VertexFetch VF>() {
-    return decltype(PipelineSignatureDesc::push_constants){
+    return decltype(PipelineLayoutDesc::push_constants){
         {.stages = VK_SHADER_STAGE_VERTEX_BIT,
          .offset = offsetof(hlsl::PushConstantsTemplate<VF>, vertex),
          .size = sizeof(hlsl::PushConstantsTemplate<VF>::vertex)},
@@ -83,12 +83,12 @@ auto reflect_material_pipeline_signature(
     };
   };
 
-  PipelineSignatureDesc signature_desc = {
+  PipelineLayoutDesc signature_desc = {
       .set_layouts = set_layout_descs |
                      map([&](const DescriptorSetLayoutDesc &desc) {
                        return device.create_descriptor_set_layout(desc);
                      }) |
-                     ranges::to<decltype(PipelineSignatureDesc::set_layouts)>,
+                     ranges::to<decltype(PipelineLayoutDesc::set_layouts)>,
   };
   vertex_fetch.get_push_constants(signature_desc.push_constants);
 

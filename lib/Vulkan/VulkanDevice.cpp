@@ -6,7 +6,6 @@
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
-#include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanReflection.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
@@ -670,7 +669,7 @@ auto VulkanDevice::create_graphics_pipeline_handle(
       .pMultisampleState = &multisample_info,
       .pColorBlendState = &blend_info,
       .pDynamicState = &dynamic_state_info,
-      .layout = getVkPipelineLayout(config.signature),
+      .layout = config.signature.handle,
   };
 
   VkPipeline pipeline;
@@ -690,8 +689,8 @@ auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
   return std::make_unique<VulkanReflectionModule>(data);
 }
 
-auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
-    -> PipelineSignature {
+auto VulkanDevice::create_pipeline_signature(const PipelineLayoutDesc &desc)
+    -> PipelineLayout {
   auto set_layouts =
       desc.set_layouts |
       map([](const auto &layout) { return layout.handle.get(); }) |
@@ -719,7 +718,7 @@ auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
 
-  return {.desc = std::make_unique<PipelineSignatureDesc>(desc),
+  return {.desc = std::make_unique<PipelineLayoutDesc>(desc),
           .handle = {layout, [this](VkPipelineLayout layout) {
                        push_to_delete_queue(layout);
                      }}};

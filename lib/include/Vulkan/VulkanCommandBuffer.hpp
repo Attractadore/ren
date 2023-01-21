@@ -50,11 +50,10 @@ public:
   void bind_graphics_pipeline(GraphicsPipelineRef pipeline) override;
 
   void
-  bind_graphics_descriptor_sets(PipelineSignatureRef signature,
-                                unsigned first_set,
+  bind_graphics_descriptor_sets(PipelineLayoutRef signature, unsigned first_set,
                                 std::span<const VkDescriptorSet> sets) override;
 
-  void set_graphics_push_constants(PipelineSignatureRef signature,
+  void set_graphics_push_constants(PipelineLayoutRef signature,
                                    VkShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override;

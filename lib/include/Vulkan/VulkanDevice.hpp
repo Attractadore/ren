@@ -125,8 +125,8 @@ public:
   auto create_reflection_module(std::span<const std::byte> data)
       -> std::unique_ptr<ReflectionModule> override;
 
-  auto create_pipeline_signature(const PipelineSignatureDesc &desc)
-      -> PipelineSignature override;
+  auto create_pipeline_signature(const PipelineLayoutDesc &desc)
+      -> PipelineLayout override;
 
   auto get_buffer_device_address(const BufferRef &buffer) const
       -> uint64_t override;
