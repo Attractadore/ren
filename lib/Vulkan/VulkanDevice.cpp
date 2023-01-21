@@ -593,7 +593,7 @@ auto VulkanDevice::create_graphics_pipeline_handle(
                     return VkVertexInputBindingDescription{
                         .binding = binding.binding,
                         .stride = binding.stride,
-                        .inputRate = getVkVertexInputRate(binding.rate),
+                        .inputRate = binding.rate,
                     };
                   }) |
                   ranges::to<SmallVector<VkVertexInputBindingDescription, 32>>;
@@ -622,13 +622,8 @@ auto VulkanDevice::create_graphics_pipeline_handle(
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = std::visit(
-          [](auto topology) { return getVkPrimitiveTopology(topology); },
-          config.desc.ia.topology),
+      .topology = config.desc.ia.topology,
   };
-  if (std::holds_alternative<PrimitiveTopologyType>(config.desc.ia.topology)) {
-    dynamic_states.push_back(VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY);
-  }
 
   VkPipelineViewportStateCreateInfo viewport_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,

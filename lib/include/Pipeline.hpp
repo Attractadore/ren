@@ -36,13 +36,10 @@ struct PipelineSignature {
   }
 };
 
-#define REN_VERTEX_INPUT_RATES (Vertex)(Instance)
-REN_DEFINE_ENUM(VertexInputRate, REN_VERTEX_INPUT_RATES);
-
 struct VertexBinding {
   unsigned binding;
   unsigned stride;
-  VertexInputRate rate = VertexInputRate::Vertex;
+  VkVertexInputRate rate = VK_VERTEX_INPUT_RATE_VERTEX;
 };
 
 struct VertexAttribute {
@@ -54,20 +51,11 @@ struct VertexAttribute {
   unsigned offset = 0;
 };
 
-#define REN_PRIMITIVE_TOPOLOGY_TYPES (Points)(Lines)(Triangles)
-REN_DEFINE_ENUM(PrimitiveTopologyType, REN_PRIMITIVE_TOPOLOGY_TYPES);
-
-#define REN_PRIMITIVE_TOPOLOGIES                                               \
-  (PointList)(LineList)(                                                       \
-      LineStrip)(TriangleList)(TriangleStrip)(LineListWithAdjacency)(LineStripWithAdjacency)(TriangleListWithAdjacency)(TriangleStripWithAdjacency)
-REN_DEFINE_ENUM(PrimitiveTopology, REN_PRIMITIVE_TOPOLOGIES);
-
 struct GraphicsPipelineDesc {
   struct IADesc {
     Vector<VertexBinding> bindings;
     Vector<VertexAttribute> attributes;
-    std::variant<PrimitiveTopologyType, PrimitiveTopology> topology =
-        PrimitiveTopology::TriangleList;
+    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   } ia;
 
   struct MSDesc {
