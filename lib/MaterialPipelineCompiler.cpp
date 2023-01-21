@@ -1,4 +1,5 @@
 #include "MaterialPipelineCompiler.hpp"
+#include "AssetLoader.hpp"
 #include "Config.hpp"
 #include "Device.hpp"
 #include "Formats.inl"

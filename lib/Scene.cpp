@@ -53,9 +53,9 @@ void reflect_descriptor_set_layouts(
   ranges::move(sets, out);
 }
 
-auto reflect_material_pipeline_signature(
-    Device &device, const AssetLoader &loader,
-    const VertexFetchStrategy &vertex_fetch) -> PipelineLayout {
+auto reflect_material_pipeline_signature(Device &device,
+                                         const AssetLoader &loader)
+    -> PipelineLayout {
   auto reflection_suffix = device.get_shader_reflection_suffix();
   Vector<std::byte> buffer;
   loader.load_file(fmt::format("ReflectionVertexShader{0}", reflection_suffix),
@@ -89,8 +89,16 @@ auto reflect_material_pipeline_signature(
                        return device.create_descriptor_set_layout(desc);
                      }) |
                      ranges::to<decltype(PipelineLayoutDesc::set_layouts)>,
+      .push_constants =
+          {
+              {.stages = VK_SHADER_STAGE_VERTEX_BIT,
+               .offset = offsetof(hlsl::PushConstants, vertex),
+               .size = sizeof(hlsl::PushConstants::vertex)},
+              {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+               .offset = offsetof(hlsl::PushConstants, fragment),
+               .size = sizeof(hlsl::PushConstants::fragment)},
+          },
   };
-  vertex_fetch.get_push_constants(signature_desc.push_constants);
 
   auto signature = device.create_pipeline_signature(std::move(signature_desc));
 
@@ -109,16 +117,14 @@ Scene::RenScene(Device *device)
         return asset_loader;
       }()),
 
-      m_vertex_fetch(
-          [&]() -> VertexFetchStrategy { return VertexFetchPhysical(); }()),
-
-      m_vertex_buffer_pool(m_device,
-                           BufferDesc{
-                               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                        m_vertex_fetch.get_buffer_usage_flags(),
-                               .heap = BufferHeap::Device,
-                               .size = 1 << 26,
-                           }),
+      m_vertex_buffer_pool(
+          m_device,
+          BufferDesc{
+              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+              .heap = BufferHeap::Device,
+              .size = 1 << 26,
+          }),
       m_index_buffer_pool(m_device,
                           BufferDesc{
                               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -137,8 +143,8 @@ Scene::RenScene(Device *device)
 
       m_cmd_allocator(m_device->create_command_allocator()),
 
-      m_pipeline_signature(reflect_material_pipeline_signature(
-          *m_device, m_asset_loader, m_vertex_fetch)) {}
+      m_pipeline_signature(
+          reflect_material_pipeline_signature(*m_device, m_asset_loader)) {}
 
 void Scene::begin_frame() {
   m_cmd_allocator->begin_frame();
@@ -176,13 +182,22 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
                            return None;
                          });
 
+  auto get_mesh_attribute_size = [](MeshAttribute attribute) -> unsigned {
+    switch (attribute) {
+    default:
+      unreachable("Unknown mesh attribute {}", int(attribute));
+    case MESH_ATTRIBUTE_POSITIONS: {
+      return sizeof(glm::vec3);
+    }
+    case MESH_ATTRIBUTE_COLORS: {
+      return sizeof(hlsl::color_t);
+    }
+    }
+  };
+
   auto vertex_allocation_size =
       desc.num_vertices *
-      ranges::accumulate(
-          used_attributes | map([&](MeshAttribute mesh_attribute) {
-            return m_vertex_fetch.get_mesh_attribute_size(mesh_attribute);
-          }),
-          0);
+      ranges::accumulate(used_attributes | map(get_mesh_attribute_size), 0);
   auto index_allocation_size = desc.num_indices * sizeof(unsigned);
 
   auto &&[key, mesh] = m_meshes.emplace(Mesh{
@@ -199,9 +214,22 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   unsigned offset = 0;
   for (auto mesh_attribute : used_attributes) {
     mesh.attribute_offsets[mesh_attribute] = offset;
-    offset += m_vertex_fetch.upload_mesh_attribute(
-        m_resource_uploader, mesh_attribute, upload_attributes[mesh_attribute],
-        mesh.vertex_allocation, offset);
+    auto data = upload_attributes[mesh_attribute];
+    switch (mesh_attribute) {
+    default:
+      assert(!"Unknown mesh attribute");
+    case MESH_ATTRIBUTE_POSITIONS: {
+      auto positions = reinterpret_span<const glm::vec3>(data);
+      m_resource_uploader.stage_data(positions, mesh.vertex_allocation, offset);
+      offset += size_bytes(positions);
+    } break;
+    case MESH_ATTRIBUTE_COLORS: {
+      auto colors =
+          reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_color);
+      m_resource_uploader.stage_data(colors, mesh.vertex_allocation, offset);
+      offset += size_bytes(colors);
+    } break;
+    }
   }
 
   auto indices = std::span(desc.indices, desc.num_indices);
@@ -229,7 +257,6 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
     return m_compiler.compile_material_pipeline({
         .material = desc,
         .signature = m_pipeline_signature,
-        .vertex_fetch = &m_vertex_fetch,
         .rt_format = m_rt_format,
     });
   }();
@@ -455,10 +482,23 @@ void Scene::draw() {
 
       cmd.bind_graphics_pipeline(material.pipeline);
 
-      m_vertex_fetch.set_vertex_push_constants(cmd, m_pipeline_signature, mesh,
-                                               i);
-      m_vertex_fetch.set_pixel_push_constants(cmd, m_pipeline_signature,
-                                              material);
+      auto addr = m_device->get_buffer_device_address(mesh.vertex_allocation);
+      auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
+      auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
+      hlsl::PushConstants pcs = {
+          .vertex = {.matrix_index = unsigned(i),
+                     .positions = addr + positions_offset,
+                     .colors = (colors_offset != ATTRIBUTE_UNUSED)
+                                   ? addr + colors_offset
+                                   : 0},
+          .fragment = {.material_index = material.index},
+      };
+      cmd.set_graphics_push_constants(m_pipeline_signature,
+                                      VK_SHADER_STAGE_VERTEX_BIT, pcs.vertex,
+                                      offsetof(decltype(pcs), vertex));
+      cmd.set_graphics_push_constants(
+          m_pipeline_signature, VK_SHADER_STAGE_FRAGMENT_BIT, pcs.fragment,
+          offsetof(decltype(pcs), fragment));
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);

@@ -12,14 +12,12 @@
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
-#include "VertexFetchStrategy.hpp"
 
 class RenScene {
   ren::Device *m_device;
 
   AssetLoader m_asset_loader;
 
-  VertexFetchStrategy m_vertex_fetch;
   BufferPool m_vertex_buffer_pool;
   BufferPool m_index_buffer_pool;
   ResourceUploader m_resource_uploader;

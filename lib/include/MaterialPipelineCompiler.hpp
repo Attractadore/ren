@@ -1,16 +1,13 @@
 #pragma once
-#include "AssetLoader.hpp"
 #include "Def.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
-#include "Support/Vector.hpp"
-#include "VertexFetchStrategy.hpp"
-
-#include <span>
 
 namespace ren {
+
+class AssetLoader;
 
 enum class MaterialAlbedo {
   Const = REN_MATERIAL_ALBEDO_CONST,
@@ -28,7 +25,6 @@ struct MaterialConfig {
 struct MaterialPipelineConfig {
   MaterialConfig material;
   PipelineLayoutRef signature;
-  VertexFetchStrategy *vertex_fetch;
   VkFormat rt_format;
 };
 
