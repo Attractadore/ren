@@ -1,6 +1,5 @@
 #pragma once
 #include "Buffer.hpp"
-#include "ShaderStages.hpp"
 #include "Support/Enum.hpp"
 #include "Support/Handle.hpp"
 #include "Support/Vector.hpp"
@@ -39,7 +38,7 @@ struct DescriptorBinding {
   unsigned binding;
   VkDescriptorType type;
   unsigned count;
-  ShaderStageFlags stages;
+  VkShaderStageFlags stages;
 };
 
 struct DescriptorSetLayoutDesc {

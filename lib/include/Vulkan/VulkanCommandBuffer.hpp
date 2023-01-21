@@ -84,7 +84,7 @@ public:
                                 std::span<const VkDescriptorSet> sets) override;
 
   void set_graphics_push_constants(PipelineSignatureRef signature,
-                                   ShaderStageFlags stages,
+                                   VkShaderStageFlags stages,
                                    std::span<const std::byte> data,
                                    unsigned offset) override;
 

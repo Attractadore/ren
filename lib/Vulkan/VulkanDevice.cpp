@@ -9,7 +9,6 @@
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanReflection.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
-#include "Vulkan/VulkanShaderStages.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
 constexpr bool operator==(const VkImageViewCreateInfo &lhs,
@@ -230,7 +229,7 @@ auto VulkanDevice::create_descriptor_set_layout(
                         .binding = binding.binding,
                         .descriptorType = binding.type,
                         .descriptorCount = binding.count,
-                        .stageFlags = getVkShaderStageFlags(binding.stages),
+                        .stageFlags = binding.stages,
                     };
                   }) |
                   ranges::to<Vector>;
@@ -582,7 +581,7 @@ auto VulkanDevice::create_graphics_pipeline_handle(
         const auto &[shader, module] = p;
         return VkPipelineShaderStageCreateInfo{
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = getVkShaderStage(shader.stage),
+            .stage = shader.stage,
             .module = module,
             .pName = shader.entry_point.c_str(),
         };
@@ -706,7 +705,7 @@ auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
   auto pc_ranges = desc.push_constants |
                    map([](const PushConstantRange &pc_range) {
                      return VkPushConstantRange{
-                         .stageFlags = getVkShaderStageFlags(pc_range.stages),
+                         .stageFlags = pc_range.stages,
                          .offset = pc_range.offset,
                          .size = pc_range.size,
                      };

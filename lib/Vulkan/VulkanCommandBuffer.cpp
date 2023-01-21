@@ -4,7 +4,6 @@
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"
-#include "Vulkan/VulkanShaderStages.hpp"
 
 namespace ren {
 VulkanCommandBuffer::VulkanCommandBuffer(VulkanDevice *device,
@@ -157,12 +156,11 @@ void VulkanCommandBuffer::bind_graphics_descriptor_sets(
 }
 
 void VulkanCommandBuffer::set_graphics_push_constants(
-    PipelineSignatureRef signature, ShaderStageFlags stages,
+    PipelineSignatureRef signature, VkShaderStageFlags stages,
     std::span<const std::byte> data, unsigned offset) {
-  assert(not stages.isSet(ShaderStage::Compute));
+  assert(not(stages & VK_SHADER_STAGE_COMPUTE_BIT));
   m_device->CmdPushConstants(m_cmd_buffer, getVkPipelineLayout(signature),
-                             getVkShaderStageFlags(stages), offset, data.size(),
-                             data.data());
+                             stages, offset, data.size(), data.data());
 }
 
 void VulkanCommandBuffer::bind_vertex_buffers(

@@ -118,10 +118,10 @@ public:
 
   static void get_push_constants(CVector<PushConstantRange> auto &out) {
     out = {
-        {.stages = ShaderStage::Vertex,
+        {.stages = VK_SHADER_STAGE_VERTEX_BIT,
          .offset = offsetof(hlsl::PushConstantsTemplate<VF>, vertex),
          .size = sizeof(hlsl::PushConstantsTemplate<VF>::vertex)},
-        {.stages = ShaderStage::Fragment,
+        {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = offsetof(hlsl::PushConstantsTemplate<VF>, pixel),
          .size = sizeof(hlsl::PushConstantsTemplate<VF>::pixel)},
     };
@@ -167,7 +167,8 @@ public:
         .vertex =
             get_vertex_push_constants(cmd.get_device(), mesh, matrix_index),
     };
-    cmd.set_graphics_push_constants(signature, ShaderStage::Vertex, data.vertex,
+    cmd.set_graphics_push_constants(signature, VK_SHADER_STAGE_VERTEX_BIT,
+                                    data.vertex,
                                     offsetof(decltype(data), vertex));
   }
 
@@ -178,7 +179,7 @@ public:
     hlsl::PushConstantsTemplate<VF> data = {
         .pixel = get_pixel_push_constants(material),
     };
-    cmd.set_graphics_push_constants(signature, ShaderStage::Fragment,
+    cmd.set_graphics_push_constants(signature, VK_SHADER_STAGE_FRAGMENT_BIT,
                                     data.pixel,
                                     offsetof(decltype(data), pixel));
   }

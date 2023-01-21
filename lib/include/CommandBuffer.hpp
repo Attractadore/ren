@@ -104,11 +104,11 @@ public:
   }
 
   virtual void set_graphics_push_constants(PipelineSignatureRef signature,
-                                           ShaderStageFlags stages,
+                                           VkShaderStageFlags stages,
                                            std::span<const std::byte> data,
                                            unsigned offset = 0) = 0;
   void set_graphics_push_constants(PipelineSignatureRef signature,
-                                   ShaderStageFlags stages, const auto &data,
+                                   VkShaderStageFlags stages, const auto &data,
                                    unsigned offset = 0) {
     set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),
                                 offset);

@@ -15,7 +15,7 @@ class ReflectionModule {
 public:
   virtual ~ReflectionModule() = default;
 
-  virtual auto get_shader_stage() const -> ShaderStage = 0;
+  virtual auto get_shader_stage() const -> VkShaderStageFlagBits = 0;
 
   virtual auto get_binding_count() const -> unsigned = 0;
   virtual void

@@ -74,10 +74,10 @@ auto reflect_material_pipeline_signature(
 
   auto get_push_constants = [&]<hlsl::VertexFetch VF>() {
     return decltype(PipelineSignatureDesc::push_constants){
-        {.stages = ShaderStage::Vertex,
+        {.stages = VK_SHADER_STAGE_VERTEX_BIT,
          .offset = offsetof(hlsl::PushConstantsTemplate<VF>, vertex),
          .size = sizeof(hlsl::PushConstantsTemplate<VF>::vertex)},
-        {.stages = ShaderStage::Fragment,
+        {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
          .offset = offsetof(hlsl::PushConstantsTemplate<VF>, pixel),
          .size = sizeof(hlsl::PushConstantsTemplate<VF>::pixel)},
     };

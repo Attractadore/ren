@@ -2,7 +2,6 @@
 #include "Def.hpp"
 #include "Descriptors.hpp"
 #include "Formats.hpp"
-#include "ShaderStages.hpp"
 #include "Support/Handle.hpp"
 #include "Support/LinearMap.hpp"
 
@@ -13,7 +12,7 @@
 namespace ren {
 
 struct PushConstantRange {
-  ShaderStageFlags stages;
+  VkShaderStageFlags stages;
   unsigned offset = 0;
   unsigned size;
 };
@@ -96,7 +95,7 @@ struct GraphicsPipeline {
 };
 
 struct ShaderStageConfig {
-  ShaderStage stage;
+  VkShaderStageFlagBits stage;
   std::span<const std::byte> code;
   std::string entry_point;
 };
@@ -120,7 +119,7 @@ public:
     return *this;
   }
 
-  auto set_shader(ShaderStage stage, std::span<const std::byte> code,
+  auto set_shader(VkShaderStageFlagBits stage, std::span<const std::byte> code,
                   std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
     m_config.shaders.push_back({
@@ -134,13 +133,13 @@ public:
   auto set_vertex_shader(std::span<const std::byte> code,
                          std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
-    return set_shader(ShaderStage::Vertex, code, entry_point);
+    return set_shader(VK_SHADER_STAGE_VERTEX_BIT, code, entry_point);
   }
 
   auto set_fragment_shader(std::span<const std::byte> code,
                            std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
-    return set_shader(ShaderStage::Fragment, code, entry_point);
+    return set_shader(VK_SHADER_STAGE_FRAGMENT_BIT, code, entry_point);
   }
 
   auto set_ia_vertex_bindings(Vector<VertexBinding> bindings)

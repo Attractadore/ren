@@ -13,7 +13,7 @@ class VulkanReflectionModule final : public ReflectionModule {
 public:
   VulkanReflectionModule(std::span<const std::byte> data);
 
-  auto get_shader_stage() const -> ShaderStage override;
+  auto get_shader_stage() const -> VkShaderStageFlagBits override;
 
   auto get_binding_count() const -> unsigned override;
   void get_bindings(std::span<DescriptorBindingReflection> out) const override;

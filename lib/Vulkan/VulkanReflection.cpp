@@ -2,7 +2,6 @@
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
-#include "Vulkan/VulkanShaderStages.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -57,9 +56,8 @@ VulkanReflectionModule::VulkanReflectionModule(std::span<const std::byte> data)
   collect_input_variables(m_module, m_input_variables);
 }
 
-auto VulkanReflectionModule::get_shader_stage() const -> ShaderStage {
-  return getShaderStage(
-      static_cast<VkShaderStageFlagBits>(m_module.GetShaderStage()));
+auto VulkanReflectionModule::get_shader_stage() const -> VkShaderStageFlagBits {
+  return static_cast<VkShaderStageFlagBits>(m_module.GetShaderStage());
 }
 
 auto VulkanReflectionModule::get_binding_count() const -> unsigned {
