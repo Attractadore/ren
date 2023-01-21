@@ -2,7 +2,6 @@
 #include "Support/Array.hpp"
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
-#include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
@@ -304,7 +303,7 @@ auto VulkanDevice::create_buffer_handle(const BufferDesc &desc)
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = desc.size,
-      .usage = getVkBufferUsageFlags(desc.usage),
+      .usage = desc.usage,
   };
 
   VmaAllocationCreateInfo alloc_info = {
@@ -349,7 +348,7 @@ auto VulkanDevice::get_buffer_device_address(const BufferRef &buffer) const
     -> uint64_t {
   VkBufferDeviceAddressInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .buffer = getVkBuffer(buffer),
+      .buffer = buffer.handle,
   };
   return GetBufferDeviceAddress(&buffer_info);
 }

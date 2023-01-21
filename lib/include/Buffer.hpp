@@ -1,5 +1,4 @@
 #pragma once
-#include "Support/Enum.hpp"
 #include "Support/Handle.hpp"
 
 #include <vulkan/vulkan.h>
@@ -8,29 +7,14 @@
 
 namespace ren {
 
-#define REN_BUFFER_USAGES                                                      \
-  (TransferSRC)       /**/                                                     \
-      (TransferDST)   /**/                                                     \
-      (Texel)         /* Buffer */                                             \
-      (RWTexel)       /* RWBuffer */                                           \
-      (Uniform)       /* ConstantBuffer */                                     \
-      (Storage)       /* StructuredBuffer, ByteAddressBuffer */                \
-      (RWStorage)     /* RWStructuredBuffer, RWByteAddressBuffer,              \
-                         StructuredBuffer, ConsumeStructuredBuffer */          \
-      (Index)         /**/                                                     \
-      (Vertex)        /**/                                                     \
-      (Indirect)      /**/                                                     \
-      (DeviceAddress) /**/
-REN_DEFINE_FLAGS_ENUM(BufferUsage, REN_BUFFER_USAGES);
-
-#define REN_BUFFER_HEAPS                                                       \
-  (Device)       /**/                                                          \
-      (Upload)   /**/                                                          \
-      (Readback) /**/
-REN_DEFINE_ENUM(BufferHeap, REN_BUFFER_HEAPS);
+enum class BufferHeap {
+  Device,
+  Upload,
+  Readback,
+};
 
 struct BufferDesc {
-  BufferUsageFlags usage;
+  VkBufferUsageFlags usage = 0;
   BufferHeap heap = BufferHeap::Device;
   unsigned offset = 0;
   unsigned size;
@@ -104,4 +88,5 @@ struct Buffer : detail::BufferMixin<Buffer> {
 
   VkBuffer get() const { return handle.get(); }
 };
+
 } // namespace ren

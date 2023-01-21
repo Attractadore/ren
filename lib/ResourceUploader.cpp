@@ -22,7 +22,7 @@ void ResourceUploader::end_frame() {
 
 RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
   return RingBuffer(m_device->create_buffer({
-      .usage = BufferUsage::TransferSRC,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
       .heap = BufferHeap::Upload,
       .size = size,
   }));

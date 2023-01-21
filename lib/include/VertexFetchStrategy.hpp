@@ -26,7 +26,7 @@ concept CVertexFetchStrategy =
         }
       };
 
-      { cvf.get_buffer_usage_flags() } -> std::same_as<BufferUsageFlags>;
+      { cvf.get_buffer_usage_flags() } -> std::same_as<VkBufferUsageFlags>;
 
       {
         requires(MeshAttribute attribute) {
@@ -213,8 +213,8 @@ class VertexFetchPhysical
   static auto get_vertex_color_size() { return sizeof(hlsl::color_t); }
 
 public:
-  static auto get_buffer_usage_flags() -> BufferUsageFlags {
-    return BufferUsage::DeviceAddress;
+  static auto get_buffer_usage_flags() -> VkBufferUsageFlags {
+    return VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
   }
 };
 
@@ -236,8 +236,8 @@ class VertexFetchLogical : public VertexFetcherMixin<hlsl::VertexFetch::Logical,
   }
 
 public:
-  static auto get_buffer_usage_flags() -> BufferUsageFlags {
-    return BufferUsage::Storage;
+  static auto get_buffer_usage_flags() -> VkBufferUsageFlags {
+    return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   }
 };
 
@@ -266,8 +266,8 @@ public:
     }
   }
 
-  static auto get_buffer_usage_flags() -> BufferUsageFlags {
-    return BufferUsage::Vertex;
+  static auto get_buffer_usage_flags() -> VkBufferUsageFlags {
+    return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
   }
 
   auto get_semantic_format(std::string_view semantic) const -> Format {

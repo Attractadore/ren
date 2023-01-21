@@ -1,6 +1,5 @@
 #include "Vulkan/VulkanCommandBuffer.hpp"
 #include "Support/Views.hpp"
-#include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
@@ -103,7 +102,7 @@ void VulkanCommandBuffer::copy_buffer(const BufferRef &src,
                           };
                         }) |
                     ranges::to<SmallVector<VkBufferCopy, 8>>;
-  m_device->CmdCopyBuffer(m_cmd_buffer, getVkBuffer(src), getVkBuffer(dst),
+  m_device->CmdCopyBuffer(m_cmd_buffer, src.handle, dst.handle,
                           vk_regions.size(), vk_regions.data());
 }
 
@@ -169,13 +168,15 @@ void VulkanCommandBuffer::set_graphics_push_constants(
 
 void VulkanCommandBuffer::bind_vertex_buffers(
     unsigned first_binding, std::span<const BufferRef> buffers) {
-  auto vk_buffers =
-      buffers | map(getVkBuffer) | ranges::to<SmallVector<VkBuffer, 32>>;
-  auto offsets = buffers |
-                 map([](BufferRef buffer) { return buffer.desc.offset; }) |
-                 ranges::to<SmallVector<VkDeviceSize, 32>>;
+  auto vk_buffers = buffers |
+                    map([](const BufferRef &buffer) { return buffer.handle; }) |
+                    ranges::to<SmallVector<VkBuffer, 32>>;
+  auto offsets =
+      buffers |
+      map([](const BufferRef &buffer) { return buffer.desc.offset; }) |
+      ranges::to<SmallVector<VkDeviceSize, 32>>;
   auto sizes = buffers |
-               map([](BufferRef buffer) { return buffer.desc.size; }) |
+               map([](const BufferRef &buffer) { return buffer.desc.size; }) |
                ranges::to<SmallVector<VkDeviceSize, 32>>;
   m_device->CmdBindVertexBuffers2(m_cmd_buffer, first_binding, buffers.size(),
                                   vk_buffers.data(), offsets.data(),
@@ -184,8 +185,8 @@ void VulkanCommandBuffer::bind_vertex_buffers(
 
 void VulkanCommandBuffer::bind_index_buffer(const BufferRef &buffer,
                                             IndexFormat format) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer, getVkBuffer(buffer),
-                               buffer.desc.offset, getVkIndexType(format));
+  m_device->CmdBindIndexBuffer(m_cmd_buffer, buffer.handle, buffer.desc.offset,
+                               getVkIndexType(format));
 }
 
 void VulkanCommandBuffer::draw_indexed(unsigned num_indices,

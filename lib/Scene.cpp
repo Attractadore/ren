@@ -118,18 +118,18 @@ Scene::RenScene(Device *device)
 
       m_vertex_buffer_pool(m_device,
                            BufferDesc{
-                               .usage = BufferUsage::TransferDST |
+                               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                         m_vertex_fetch.get_buffer_usage_flags(),
                                .heap = BufferHeap::Device,
                                .size = 1 << 26,
                            }),
-      m_index_buffer_pool(
-          m_device,
-          BufferDesc{
-              .usage = BufferUsage::TransferDST | BufferUsage::Index,
-              .heap = BufferHeap::Device,
-              .size = 1 << 22,
-          }),
+      m_index_buffer_pool(m_device,
+                          BufferDesc{
+                              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                              .heap = BufferHeap::Device,
+                              .size = 1 << 22,
+                          }),
 
       m_resource_uploader(*m_device),
 

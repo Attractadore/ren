@@ -404,26 +404,26 @@ auto get_texture_usage_flags(MemoryAccessFlags accesses) -> TextureUsageFlags {
   return flags;
 }
 
-auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> BufferUsageFlags {
+auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> VkBufferUsageFlags {
   using enum MemoryAccess;
-  BufferUsageFlags flags;
+  VkBufferUsageFlags flags = 0;
   if (accesses.isSet(TransferRead)) {
-    flags |= BufferUsage::TransferSRC;
+    flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   }
   if (accesses.isSet(TransferWrite)) {
-    flags |= BufferUsage::TransferDST;
+    flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   }
   if (accesses.isSet(UniformRead)) {
-    flags |= BufferUsage::Uniform;
+    flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   }
   if (accesses.isSet(StorageRead) or accesses.isSet(StorageWrite)) {
-    flags |= BufferUsage::Storage;
+    flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   }
   if (accesses.isSet(IndexRead)) {
-    flags |= BufferUsage::Index;
+    flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
   }
   if (accesses.isSet(IndirectRead)) {
-    flags |= BufferUsage::Indirect;
+    flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
   }
   return flags;
 }
@@ -431,9 +431,9 @@ auto get_buffer_usage_flags(MemoryAccessFlags accesses) -> BufferUsageFlags {
 
 auto RenderGraph::Builder::derive_resource_usage_flags(
     std::span<const RGNode> scheduled_passes)
-    -> std::pair<Vector<TextureUsageFlags>, Vector<BufferUsageFlags>> {
+    -> std::pair<Vector<TextureUsageFlags>, Vector<VkBufferUsageFlags>> {
   Vector<TextureUsageFlags> texture_usage(getPhysTextureCount());
-  Vector<BufferUsageFlags> buffer_usage(get_physical_buffer_count());
+  Vector<VkBufferUsageFlags> buffer_usage(get_physical_buffer_count());
   for (const auto &pass : scheduled_passes) {
     for (const auto &texture_access :
          concat(pass.read_textures, pass.write_textures)) {
@@ -471,7 +471,7 @@ Vector<Texture> RenderGraph::Builder::createTextures(
 }
 
 auto RenderGraph::Builder::create_buffers(
-    std::span<const BufferUsageFlags> buffer_usage_flags) -> Vector<Buffer> {
+    std::span<const VkBufferUsageFlags> buffer_usage_flags) -> Vector<Buffer> {
   Vector<Buffer> buffers(get_physical_buffer_count());
   for (auto buffer : range<unsigned>(buffers.size())) {
     const auto &desc = m_buffer_descs[buffer];

@@ -209,12 +209,12 @@ protected:
   Vector<RGNode> schedulePasses();
 
   auto derive_resource_usage_flags(std::span<const RGNode> scheduled_passes)
-      -> std::pair<Vector<TextureUsageFlags>, Vector<BufferUsageFlags>>;
+      -> std::pair<Vector<TextureUsageFlags>, Vector<VkBufferUsageFlags>>;
 
   Vector<Texture>
   createTextures(std::span<const TextureUsageFlags> texture_usage_flags);
 
-  auto create_buffers(std::span<const BufferUsageFlags> buffer_usage_flags)
+  auto create_buffers(std::span<const VkBufferUsageFlags> buffer_usage_flags)
       -> Vector<Buffer>;
 
   struct BarrierConfig {
