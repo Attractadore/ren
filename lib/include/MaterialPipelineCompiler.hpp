@@ -7,7 +7,6 @@
 #include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
 #include "VertexFetchStrategy.hpp"
-#include "hlsl/interface.hpp"
 
 #include <span>
 
@@ -24,15 +23,6 @@ struct MaterialConfig {
   MaterialConfig(const MaterialDesc &desc)
       : albedo(static_cast<MaterialAlbedo>(desc.albedo_type)) {}
   auto operator<=>(const MaterialConfig &other) const = default;
-};
-
-template <hlsl::VertexFetch VF> struct PipelineVertexFetch {
-  static constexpr auto type = VF;
-};
-
-template <> struct PipelineVertexFetch<hlsl::VertexFetch::Attribute> {
-  static constexpr auto type = hlsl::VertexFetch::Attribute;
-  const HashMap<std::string_view, VkFormat> *semantic_formats;
 };
 
 struct MaterialPipelineConfig {

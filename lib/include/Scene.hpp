@@ -86,11 +86,11 @@ private:
   auto get_model(ren::ModelID model) -> ren::Model &;
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
-    return m_pipeline_signature.desc->set_layouts[hlsl::c_persistent_set];
+    return m_pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
   }
 
   DescriptorSetLayoutRef get_global_descriptor_set_layout() const {
-    return m_pipeline_signature.desc->set_layouts[hlsl::c_global_set];
+    return m_pipeline_signature.desc->set_layouts[hlsl::GLOBAL_SET];
   }
 
 public:

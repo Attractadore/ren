@@ -69,17 +69,17 @@ auto reflect_material_pipeline_signature(
   reflect_descriptor_set_layouts(*vs, *fs,
                                  std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
-  set_layout_descs[hlsl::c_persistent_set].flags |=
+  set_layout_descs[hlsl::PERSISTENT_SET].flags |=
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
-  auto get_push_constants = [&]<hlsl::VertexFetch VF>() {
+  auto get_push_constants = [&]() {
     return decltype(PipelineLayoutDesc::push_constants){
         {.stages = VK_SHADER_STAGE_VERTEX_BIT,
-         .offset = offsetof(hlsl::PushConstantsTemplate<VF>, vertex),
-         .size = sizeof(hlsl::PushConstantsTemplate<VF>::vertex)},
+         .offset = offsetof(hlsl::PushConstants, vertex),
+         .size = sizeof(hlsl::PushConstants::vertex)},
         {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
-         .offset = offsetof(hlsl::PushConstantsTemplate<VF>, pixel),
-         .size = sizeof(hlsl::PushConstantsTemplate<VF>::pixel)},
+         .offset = offsetof(hlsl::PushConstants, fragment),
+         .size = sizeof(hlsl::PushConstants::fragment)},
     };
   };
 
@@ -109,12 +109,8 @@ Scene::RenScene(Device *device)
         return asset_loader;
       }()),
 
-      m_vertex_fetch([&]() -> VertexFetchStrategy {
-        if (m_device->supports_buffer_device_address()) {
-          return VertexFetchPhysical();
-        }
-        return VertexFetchAttribute();
-      }()),
+      m_vertex_fetch(
+          [&]() -> VertexFetchStrategy { return VertexFetchPhysical(); }()),
 
       m_vertex_buffer_pool(m_device,
                            BufferDesc{
@@ -243,14 +239,6 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
       .index = m_material_allocator.allocate(desc, m_resource_uploader),
   });
 
-  if (const auto *hardware_fetch =
-          m_vertex_fetch.get_if<VertexFetchAttribute>()) {
-    for (const auto &attribute : pipeline.desc->ia.attributes) {
-      material.bindings[attribute.binding] =
-          hardware_fetch->get_semantic_mesh_attribute(attribute.semantic);
-    }
-  }
-
   return get_material_id(key);
 }
 
@@ -356,7 +344,7 @@ void Scene::draw() {
     m_device->write_descriptor_set({
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = m_persistent_descriptor_set,
-        .dstBinding = hlsl::c_materials_slot,
+        .dstBinding = hlsl::MATERIALS_SLOT,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .pBufferInfo = &descriptor,
@@ -434,7 +422,7 @@ void Scene::draw() {
         VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = scene_descriptor_set,
-            .dstBinding = hlsl::c_global_cb_slot,
+            .dstBinding = hlsl::GLOBAL_CB_SLOT,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .pBufferInfo = &global_ub_descriptor,
@@ -442,7 +430,7 @@ void Scene::draw() {
         VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = scene_descriptor_set,
-            .dstBinding = hlsl::c_matrices_slot,
+            .dstBinding = hlsl::MATRICES_SLOT,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .pBufferInfo = &matrix_buffer_descriptor,
@@ -471,21 +459,6 @@ void Scene::draw() {
                                                i);
       m_vertex_fetch.set_pixel_push_constants(cmd, m_pipeline_signature,
                                               material);
-
-      if (const auto *hardware_fetch =
-              m_vertex_fetch.get_if<VertexFetchAttribute>()) {
-        auto buffers =
-            material.bindings | map([&](MeshAttribute attribute) {
-              auto offset = mesh.attribute_offsets[attribute];
-              assert(offset != ATTRIBUTE_UNUSED);
-              return mesh.vertex_allocation.subbuffer(
-                  offset, hardware_fetch->get_mesh_attribute_size(attribute) *
-                              mesh.num_vertices);
-            }) |
-            ranges::to<StaticVector<BufferRef, MESH_ATTRIBUTE_COUNT>>;
-
-        cmd.bind_vertex_buffers(0, buffers);
-      }
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);

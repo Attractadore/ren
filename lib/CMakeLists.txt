@@ -110,7 +110,7 @@ target_link_libraries(ren-hpp INTERFACE ren::ren glm::glm)
 target_compile_features(ren-hpp INTERFACE cxx_std_20)
 add_library(ren::ren-hpp ALIAS ren-hpp)
 
-message(STATUS "Enable Vulkan renderer")
+add_subdirectory(hlsl)
 add_subdirectory(Vulkan)
 
 if(REN_BUILD_TESTS)
