@@ -2,7 +2,6 @@
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
-#include "Vulkan/VulkanDescriptors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
 #include "Vulkan/VulkanPipelineStages.hpp"

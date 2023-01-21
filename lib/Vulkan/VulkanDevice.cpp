@@ -5,7 +5,6 @@
 #include "Vulkan/VulkanBuffer.hpp"
 #include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
-#include "Vulkan/VulkanDescriptors.hpp"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanFormats.hpp"
 #include "Vulkan/VulkanPipeline.hpp"
@@ -202,7 +201,7 @@ auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
 
   VkDescriptorPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .flags = getVkDescriptorPoolOptionFlags(desc.flags),
+      .flags = desc.flags,
       .maxSets = desc.set_count,
       .poolSizeCount = unsigned(pool_sizes.size()),
       .pPoolSizes = pool_sizes.data(),
@@ -218,15 +217,14 @@ auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)
 }
 
 void VulkanDevice::reset_descriptor_pool(const DescriptorPoolRef &pool) {
-  ResetDescriptorPool(getVkDescriptorPool(pool), 0);
+  ResetDescriptorPool(pool.handle, 0);
 }
 
 auto VulkanDevice::create_descriptor_set_layout(
     const DescriptorSetLayoutDesc &desc) -> DescriptorSetLayout {
   auto binding_flags =
-      desc.bindings | map([](const DescriptorBinding &binding) {
-        return getVkDescriptorBindingOptionFlags(binding.flags);
-      }) |
+      desc.bindings |
+      map([](const DescriptorBinding &binding) { return binding.flags; }) |
       ranges::to<Vector>;
 
   auto bindings = desc.bindings | map([](const DescriptorBinding &binding) {
@@ -249,7 +247,7 @@ auto VulkanDevice::create_descriptor_set_layout(
   VkDescriptorSetLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .pNext = &binding_flags_info,
-      .flags = getVkDescriptorSetLayoutOptionFlags(desc.flags),
+      .flags = desc.flags,
       .bindingCount = unsigned(bindings.size()),
       .pBindings = bindings.data(),
   };
@@ -270,13 +268,13 @@ auto VulkanDevice::allocate_descriptor_sets(
     std::span<VkDescriptorSet> sets) -> bool {
   assert(sets.size() >= layouts.size());
 
-  auto vk_layouts = layouts | map(getVkDescriptorSetLayout) |
+  auto vk_layouts = layouts |
+                    map([](const auto &layout) { return layout.handle; }) |
                     ranges::to<SmallVector<VkDescriptorSetLayout>>;
-  SmallVector<VkDescriptorSet> vk_sets(vk_layouts.size());
 
   VkDescriptorSetAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .descriptorPool = getVkDescriptorPool(pool),
+      .descriptorPool = pool.handle,
       .descriptorSetCount = unsigned(vk_layouts.size()),
       .pSetLayouts = vk_layouts.data(),
   };
@@ -702,8 +700,10 @@ auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
 
 auto VulkanDevice::create_pipeline_signature(const PipelineSignatureDesc &desc)
     -> PipelineSignature {
-  auto set_layouts = desc.set_layouts | map(getVkDescriptorSetLayout) |
-                     ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
+  auto set_layouts =
+      desc.set_layouts |
+      map([](const auto &layout) { return layout.handle.get(); }) |
+      ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
 
   auto pc_ranges = desc.push_constants |
                    map([](const PushConstantRange &pc_range) {

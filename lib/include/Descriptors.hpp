@@ -12,13 +12,10 @@
 
 namespace ren {
 
-#define REN_DESCRIPTOR_POOL_OPTIONS (UpdateAfterBind)
-REN_DEFINE_FLAGS_ENUM(DescriptorPoolOption, REN_DESCRIPTOR_POOL_OPTIONS);
-
 constexpr auto DESCRIPTOR_TYPE_COUNT = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1;
 
 struct DescriptorPoolDesc {
-  DescriptorPoolOptionFlags flags;
+  VkDescriptorPoolCreateFlags flags;
   unsigned set_count;
   std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
 };
@@ -37,18 +34,8 @@ struct DescriptorPool {
   }
 };
 
-#define REN_DESCRIPTOR_SET_LAYOUT_OPTIONS (UpdateAfterBind)
-REN_DEFINE_FLAGS_ENUM(DescriptorSetLayoutOption,
-                      REN_DESCRIPTOR_SET_LAYOUT_OPTIONS);
-
-#define REN_DESCRIPTOR_SET_BINDING_OPTIONS                                     \
-  (UpdateAfterBind)(UpdateUnusedWhilePending)(                                 \
-      PartiallyBound)(VariableDescriptorCount)
-REN_DEFINE_FLAGS_ENUM(DescriptorBindingOption,
-                      REN_DESCRIPTOR_SET_BINDING_OPTIONS);
-
 struct DescriptorBinding {
-  DescriptorBindingOptionFlags flags;
+  VkDescriptorBindingFlags flags;
   unsigned binding;
   VkDescriptorType type;
   unsigned count;
@@ -56,7 +43,7 @@ struct DescriptorBinding {
 };
 
 struct DescriptorSetLayoutDesc {
-  DescriptorSetLayoutOptionFlags flags;
+  VkDescriptorSetLayoutCreateFlags flags;
   Vector<DescriptorBinding> bindings;
 };
 

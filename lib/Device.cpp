@@ -25,8 +25,9 @@ auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
 auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
     -> std::pair<DescriptorPool, VkDescriptorSet> {
   DescriptorPoolDesc pool_desc = {.set_count = 1};
-  if (layout.desc->flags.isSet(DescriptorSetLayoutOption::UpdateAfterBind)) {
-    pool_desc.flags |= DescriptorPoolOption::UpdateAfterBind;
+  if (layout.desc->flags &
+      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT) {
+    pool_desc.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
   }
   for (const auto &binding : layout.desc->bindings) {
     pool_desc.pool_sizes[binding.type] += binding.count;

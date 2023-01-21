@@ -70,7 +70,7 @@ auto reflect_material_pipeline_signature(
                                  std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
   set_layout_descs[hlsl::c_persistent_set].flags |=
-      DescriptorSetLayoutOption::UpdateAfterBind;
+      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
   auto get_push_constants = [&]<hlsl::VertexFetch VF>() {
     return decltype(PipelineSignatureDesc::push_constants){
