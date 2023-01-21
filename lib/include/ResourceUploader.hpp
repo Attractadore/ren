@@ -17,7 +17,7 @@ class ResourceUploader {
   struct BufferCopy {
     BufferRef src;
     BufferRef dst;
-    CopyRegion region;
+    VkBufferCopy region;
   };
 
   Vector<BufferCopy> m_buffer_copies;
@@ -32,7 +32,7 @@ public:
   void end_frame();
 
   template <ranges::sized_range R>
-  void stage_data(R &&data, ren::BufferRef buffer, unsigned offset = 0);
+  void stage_data(R &&data, const BufferRef &buffer, unsigned offset = 0);
 
   void upload_data(CommandAllocator &cmd_allocator);
 };

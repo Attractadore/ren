@@ -83,6 +83,7 @@ add_library(
   ren
   ren.cpp
   AssetLoader.cpp
+  CommandBuffer.cpp
   DescriptorSetAllocator.cpp
   Device.cpp
   MaterialPipelineCompiler.cpp
@@ -92,7 +93,7 @@ add_library(
   Scene.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
-target_link_libraries(ren PRIVATE Support Support-PCH)
+target_link_libraries(ren PRIVATE Support Support-PCH VulkanDispatchTable)
 
 if(BUILD_SHARED_LIBS)
   add_library(ren::ren ALIAS ren)

@@ -38,6 +38,7 @@ void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
   }
 
   auto *cmd = cmd_allocator.allocateCommandBuffer();
+  cmd->begin();
 
   auto same_src_and_dsts = ranges::views::chunk_by(
       m_buffer_copies, [](const BufferCopy &lhs, const BufferCopy &rhs) {
@@ -45,7 +46,7 @@ void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
                lhs.dst.handle == rhs.dst.handle;
       });
 
-  SmallVector<CopyRegion, 8> regions;
+  SmallVector<VkBufferCopy, 8> regions;
   for (auto &&copy_range : same_src_and_dsts) {
     regions.assign(map(copy_range, [](const BufferCopy &buffer_copy) {
       return buffer_copy.region;
@@ -53,7 +54,7 @@ void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
     cmd->copy_buffer(copy_range.front().src, copy_range.front().dst, regions);
   }
 
-  cmd->close();
+  cmd->end();
 
   m_buffer_copies.clear();
 

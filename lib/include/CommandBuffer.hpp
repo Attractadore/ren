@@ -1,15 +1,13 @@
 #pragma once
-#include "Buffer.hpp"
 #include "Descriptors.hpp"
-#include "Formats.hpp"
 #include "Pipeline.hpp"
-#include "Support/Enum.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
-#include "Support/Vector.hpp"
-#include "Texture.hpp"
 
 namespace ren {
+
+class VulkanDevice;
+
 struct RenderTargetConfig {
   RenderTargetView rtv;
   VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -27,99 +25,82 @@ struct DepthStencilTargetConfig {
   uint8_t clear_stencil = 0;
 };
 
-struct CopyRegion {
-  size_t src_offset;
-  size_t dst_offset;
-  size_t size;
-};
-
-struct Viewport {
-  float x = 0.0f;
-  float y = 0.0f;
-  float width;
-  float height;
-  float min_depth = 0.0f;
-  float max_depth = 1.0f;
-};
-
-struct ScissorRect {
-  int x = 0;
-  int y = 0;
-  unsigned width;
-  unsigned height;
-};
-
 class CommandBuffer {
+  VulkanDevice *m_device;
+  VkCommandBuffer m_cmd_buffer;
+
 public:
-  virtual ~CommandBuffer() = default;
+  CommandBuffer(VulkanDevice *device, VkCommandBuffer cmd_buffer);
 
-  virtual const Device &get_device() const = 0;
-  virtual Device &get_device() = 0;
+  const Device &get_device() const;
+  Device &get_device();
 
-  virtual void beginRendering(
+  VkCommandBuffer get() const { return m_cmd_buffer; }
+
+  void begin();
+  void end();
+
+  void begin_rendering(
       int x, int y, unsigned width, unsigned height,
       std::span<const RenderTargetConfig> render_targets,
-      const Optional<DepthStencilTargetConfig> &depth_stencil_target) = 0;
-  void beginRendering(const RenderTargetView &rtv) {
+      const Optional<DepthStencilTargetConfig> &depth_stencil_target);
+
+  void begin_rendering(const RenderTargetView &rtv) {
     RenderTargetConfig rt_cfg = {.rtv = rtv};
-    beginRendering(0, 0, rtv.texture.desc.width, rtv.texture.desc.height,
-                   asSpan(rt_cfg), {});
+    begin_rendering(0, 0, rtv.texture.desc.width, rtv.texture.desc.height,
+                    {&rt_cfg, 1}, {});
   }
-  void beginRendering(const TextureRef &texture) {
+
+  void begin_rendering(const TextureRef &texture) {
     RenderTargetConfig rt_cfg = {.rtv = RenderTargetView::create(texture)};
-    beginRendering(0, 0, texture.desc.width, texture.desc.height,
-                   asSpan(rt_cfg), {});
-  }
-  virtual void endRendering() = 0;
-
-  virtual void set_viewports(std::span<const Viewport> viewports) = 0;
-  void set_viewport(const Viewport &viewport) {
-    set_viewports(asSpan(viewport));
+    begin_rendering(0, 0, texture.desc.width, texture.desc.height, {&rt_cfg, 1},
+                    {});
   }
 
-  virtual void set_scissor_rects(std::span<const ScissorRect> rects) = 0;
-  void set_scissor_rect(const ScissorRect &rect) {
-    set_scissor_rects(asSpan(rect));
-  }
+  void end_rendering();
 
-  virtual void bind_graphics_pipeline(GraphicsPipelineRef pipeline) = 0;
-
-  virtual void
-  bind_graphics_descriptor_sets(PipelineLayoutRef signature, unsigned first_set,
-                                std::span<const VkDescriptorSet> sets) = 0;
-  void bind_graphics_descriptor_set(PipelineLayoutRef signature,
-                                    unsigned first_set, VkDescriptorSet set) {
-    bind_graphics_descriptor_sets(signature, first_set, asSpan(set));
-  }
-
-  virtual void set_graphics_push_constants(PipelineLayoutRef signature,
-                                           VkShaderStageFlags stages,
-                                           std::span<const std::byte> data,
-                                           unsigned offset = 0) = 0;
-  void set_graphics_push_constants(PipelineLayoutRef signature,
-                                   VkShaderStageFlags stages, const auto &data,
-                                   unsigned offset = 0) {
-    set_graphics_push_constants(signature, stages, std::as_bytes(asSpan(data)),
-                                offset);
-  }
-
-  virtual void bind_vertex_buffers(unsigned first_binding,
-                                   std::span<const BufferRef> buffers) = 0;
-
-  virtual void bind_index_buffer(const BufferRef &buffer,
-                                 VkIndexType format = VK_INDEX_TYPE_UINT32) = 0;
-
-  virtual void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
-                            unsigned first_index = 0, int vertex_offset = 0,
-                            unsigned first_instance = 0) = 0;
-
-  virtual void copy_buffer(const BufferRef &src, const BufferRef &dst,
-                           std::span<const CopyRegion> regions) = 0;
   void copy_buffer(const BufferRef &src, const BufferRef &dst,
-                   const CopyRegion &region) {
-    copy_buffer(src, dst, {&region, 1});
+                   std::span<const VkBufferCopy> regions);
+
+  void blit(const TextureRef &src, const TextureRef &dst,
+            std::span<const VkImageBlit> regions, VkFilter filter);
+  void blit(const TextureRef &src, const TextureRef &dst) {
+    VkImageBlit region = {
+        .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
+        .srcOffsets = {{}, {int(src.desc.width), int(src.desc.height), 1}},
+        .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
+        .dstOffsets = {{}, {int(dst.desc.width), int(dst.desc.height), 1}},
+    };
+    blit(src, dst, {&region, 1}, VK_FILTER_LINEAR);
   }
 
-  virtual void close() = 0;
+  void set_viewports(SmallVector<VkViewport, 8> viewports);
+  void set_viewport(const VkViewport &viewport) { set_viewports({viewport}); }
+
+  void set_scissor_rects(std::span<const VkRect2D> rects);
+  void set_scissor_rect(const VkRect2D &rect) { set_scissor_rects({&rect, 1}); }
+
+  void bind_graphics_pipeline(GraphicsPipelineRef pipeline);
+
+  void bind_graphics_descriptor_sets(PipelineLayoutRef layout,
+                                     unsigned first_set,
+                                     std::span<const VkDescriptorSet> sets);
+
+  void set_push_constants(PipelineLayoutRef layout, VkShaderStageFlags stages,
+                          std::span<const std::byte> data, unsigned offset);
+
+  void set_push_constants(PipelineLayoutRef layout, VkShaderStageFlags stages,
+                          const auto &data, unsigned offset = 0) {
+    set_push_constants(layout, stages, std::as_bytes(asSpan(data)), offset);
+  }
+
+  void bind_index_buffer(const BufferRef &buffer, VkIndexType format);
+
+  void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
+                    unsigned first_index = 0, int vertex_offset = 0,
+                    unsigned first_instance = 0);
 };
+
 } // namespace ren

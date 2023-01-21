@@ -36,8 +36,7 @@ void VulkanRenderGraph::Builder::addPresentNodes() {
                     swapchain_image = m_swapchain_image,
                     acquire_semaphore = m_acquire_semaphore](CommandBuffer &cmd,
                                                              RenderGraph &rg) {
-    auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-    vk_cmd->blit(rg.getTexture(final_image), rg.getTexture(swapchain_image));
+    cmd.blit(rg.getTexture(final_image), rg.getTexture(swapchain_image));
   });
 
   auto present = addNode();
@@ -105,9 +104,8 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
 
   return [textures = std::move(textures), barriers = std::move(barriers)](
              CommandBuffer &cmd, RenderGraph &rg) mutable {
-    auto *vk_cmd = static_cast<VulkanCommandBuffer *>(&cmd);
-    auto vk_device = vk_cmd->getDevice();
-    auto vk_cmd_buffer = vk_cmd->get();
+    auto *vk_device = static_cast<VulkanDevice *>(&cmd.get_device());
+    auto vk_cmd_buffer = cmd.get();
 
     for (auto &&[tex, barrier] : ranges::views::zip(textures, barriers)) {
       auto &&texture = rg.getTexture(tex);
@@ -146,19 +144,20 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
   SmallVector<unsigned, 16> cmd_buffer_counts;
 
   for (auto &batch : m_batches) {
-    SmallVector<VulkanCommandBuffer *, 8> cmds;
+    SmallVector<CommandBuffer *, 8> cmds;
     cmds.reserve(batch.barrier_cbs.size());
 
     for (auto &&[barrier_cb, pass_cb] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      auto *cmd = vk_cmd_allocator.allocateVulkanCommandBuffer();
+      auto *cmd = vk_cmd_allocator.allocateCommandBuffer();
+      cmd->begin();
       if (barrier_cb) {
         barrier_cb(*cmd, *this);
       }
       if (pass_cb) {
         pass_cb(*cmd, *this);
       }
-      cmd->close();
+      cmd->end();
       cmd_buffer_infos.push_back(
           {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
            .commandBuffer = cmd->get()});

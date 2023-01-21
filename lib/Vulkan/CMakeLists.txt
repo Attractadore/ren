@@ -12,7 +12,6 @@ add_library(
   VulkanDevice.cpp
   VulkanReflection.cpp
   VulkanCommandAllocator.cpp
-  VulkanCommandBuffer.cpp
   VulkanCommandPool.cpp
   VulkanRenderGraph.cpp
   VulkanSwapchain.cpp)

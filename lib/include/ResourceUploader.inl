@@ -3,7 +3,7 @@
 
 namespace ren {
 template <ranges::sized_range R>
-void ResourceUploader::stage_data(R &&data, BufferRef buffer,
+void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
                                   unsigned dst_offset) {
   using T = ranges::range_value_t<R>;
 
@@ -27,16 +27,13 @@ void ResourceUploader::stage_data(R &&data, BufferRef buffer,
       m_ring_buffer = create_ring_buffer(2 * m_ring_buffer->size());
       m_ring_buffer->begin_frame();
     } else {
-      m_buffer_copies.push_back({
-          .src = m_ring_buffer->get_buffer(),
-          .dst = buffer,
-          .region =
-              {
-                  .src_offset = offset,
-                  .dst_offset = dst_offset,
-                  .size = num_written * sizeof(T),
-              },
-      });
+      m_buffer_copies.push_back({.src = m_ring_buffer->get_buffer(),
+                                 .dst = buffer,
+                                 .region = {
+                                     .srcOffset = offset,
+                                     .dstOffset = dst_offset,
+                                     .size = num_written * sizeof(T),
+                                 }});
     }
 
     count += num_written;

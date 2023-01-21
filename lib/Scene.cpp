@@ -415,22 +415,18 @@ void Scene::draw() {
 
   draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
                        CommandBuffer &cmd, RenderGraph &rg) {
+    cmd.begin_rendering(rg.getTexture(rt));
+    cmd.set_viewport({.width = float(m_output_width),
+                      .height = float(m_output_height),
+                      .maxDepth = 1.0f});
+    cmd.set_scissor_rect({.extent = {m_output_width, m_output_height}});
+
     // FIXME: since null descriptors are not core in Vulkan, have to skip
     // binding empty matrix buffer
     if (m_models.empty()) {
-      cmd.beginRendering(rg.getTexture(rt));
-      cmd.set_viewport(
-          {.width = float(m_output_width), .height = float(m_output_height)});
-      cmd.set_scissor_rect(
-          {.width = m_output_width, .height = m_output_height});
-      cmd.endRendering();
+      cmd.end_rendering();
       return;
     }
-
-    cmd.beginRendering(rg.getTexture(rt));
-    cmd.set_viewport(
-        {.width = float(m_output_width), .height = float(m_output_height)});
-    cmd.set_scissor_rect({.width = m_output_width, .height = m_output_height});
 
     BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
     *global_cbuffer.map<hlsl::GlobalData>() = {.proj_view = m_camera.proj *
@@ -493,18 +489,16 @@ void Scene::draw() {
                                    : 0},
           .fragment = {.material_index = material.index},
       };
-      cmd.set_graphics_push_constants(m_pipeline_signature,
-                                      VK_SHADER_STAGE_VERTEX_BIT, pcs.vertex,
-                                      offsetof(decltype(pcs), vertex));
-      cmd.set_graphics_push_constants(
-          m_pipeline_signature, VK_SHADER_STAGE_FRAGMENT_BIT, pcs.fragment,
-          offsetof(decltype(pcs), fragment));
+      cmd.set_push_constants(m_pipeline_signature, VK_SHADER_STAGE_VERTEX_BIT,
+                             pcs.vertex, offsetof(decltype(pcs), vertex));
+      cmd.set_push_constants(m_pipeline_signature, VK_SHADER_STAGE_FRAGMENT_BIT,
+                             pcs.fragment, offsetof(decltype(pcs), fragment));
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);
     }
 
-    cmd.endRendering();
+    cmd.end_rendering();
   });
 
   // Post-process
