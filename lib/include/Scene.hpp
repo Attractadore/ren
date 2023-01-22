@@ -12,10 +12,11 @@
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
+#include "Support/SlotMap.hpp"
 
 namespace ren {
 class Swapchain;
-}
+} // namespace ren
 
 using namespace ren;
 

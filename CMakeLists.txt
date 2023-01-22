@@ -22,7 +22,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 set(REN_ASSETS_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/assets)
 
 set(REN_TARGETS ${PROJECT_NAME}-targets)
-set(REN_VULKAN_TARGETS ${PROJECT_NAME}-vk-targets)
 
 add_subdirectory(external)
 add_subdirectory(lib)
@@ -43,11 +42,8 @@ if(REN_INSTALL)
   set(CONFIG_CMAKE ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake)
   set(CONFIG_VERSION
       ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake)
-  file(
-    WRITE ${CONFIG_CMAKE}
-    "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS}.cmake)
-include(\${CMAKE_CURRENT_LIST_DIR}/${REN_VULKAN_TARGETS}.cmake)
-")
+  file(WRITE ${CONFIG_CMAKE}
+       "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS}.cmake)")
   write_basic_package_version_file(${CONFIG_VERSION}
                                    COMPATIBILITY SameMinorVersion)
   install(FILES ${CONFIG_CMAKE} ${CONFIG_VERSION}

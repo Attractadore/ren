@@ -20,7 +20,7 @@ add_library(app-base app-base.cpp)
 target_link_libraries(
   app-base
   PUBLIC ren::ren-hpp SDL2::SDL2 Vulkan::Vulkan
-  PRIVATE fmt::fmt ren::vk-hpp)
+  PRIVATE fmt::fmt ren::ren-hpp)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 
 add_executable(create-device create-device.cpp)

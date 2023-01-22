@@ -6,7 +6,7 @@ set(shaders "")
 
 macro(add_shader source output)
   add_dxc_shader(
-    ${REN_SHADER_DIR}/${source}
+    ${source}
     ${ARGV}
     OUTPUT_FILE
     ${REN_ASSETS_OUTPUT_DIRECTORY}/${output}
@@ -16,7 +16,7 @@ macro(add_shader source output)
     -fvk-use-scalar-layout
     -spirv
     INCLUDE_DIRECTORIES
-    ${REN_PRIVATE_INCLUDE_DIR}/hlsl)
+    ${CMAKE_CURRENT_LIST_DIR}/../include/hlsl)
   list(APPEND shaders ${REN_ASSETS_OUTPUT_DIRECTORY}/${output})
 endmacro()
 

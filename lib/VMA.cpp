@@ -1,2 +1,2 @@
 #define VMA_IMPLEMENTATION
-#include "Vulkan/VMA.h"
+#include "VMA.hpp"
