@@ -2,8 +2,6 @@
 #include "ren/ren.h"
 
 namespace ren {
-using Scene = RenScene;
-
 using MeshDesc = RenMeshDesc;
 using MeshID = RenMesh;
 

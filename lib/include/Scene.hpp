@@ -16,12 +16,9 @@
 
 namespace ren {
 class Swapchain;
-} // namespace ren
 
-using namespace ren;
-
-class RenScene {
-  ren::Device *m_device;
+class Scene {
+  Device *m_device;
 
   AssetLoader m_asset_loader;
 
@@ -36,17 +33,17 @@ class RenScene {
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
   unsigned m_output_width = 0;
   unsigned m_output_height = 0;
-  ren::Swapchain *m_swapchain = nullptr;
+  Swapchain *m_swapchain = nullptr;
 
-  ren::Camera m_camera;
+  Camera m_camera;
 
-  using MeshMap = ren::SlotMap<ren::Mesh>;
+  using MeshMap = SlotMap<Mesh>;
   MeshMap m_meshes;
 
-  using MaterialMap = ren::SlotMap<ren::Material>;
+  using MaterialMap = SlotMap<Material>;
   MaterialMap m_materials;
 
-  using ModelMap = ren::SlotMap<ren::Model>;
+  using ModelMap = SlotMap<Model>;
   ModelMap m_models;
 
   PipelineLayout m_pipeline_signature = {};
@@ -57,38 +54,38 @@ class RenScene {
   BufferRef m_materials_buffer = {};
 
 private:
-  static MeshMap::key_type get_mesh_key(ren::MeshID mesh) {
+  static MeshMap::key_type get_mesh_key(MeshID mesh) {
     return std::bit_cast<MeshMap::key_type>(mesh - 1);
   }
 
-  static ren::MeshID get_mesh_id(MeshMap::key_type mesh_key) {
-    return std::bit_cast<ren::MeshID>(mesh_key) + 1;
+  static MeshID get_mesh_id(MeshMap::key_type mesh_key) {
+    return std::bit_cast<MeshID>(mesh_key) + 1;
   }
 
-  auto get_mesh(ren::MeshID mesh) const -> const ren::Mesh &;
-  auto get_mesh(ren::MeshID mesh) -> ren::Mesh &;
+  auto get_mesh(MeshID mesh) const -> const Mesh &;
+  auto get_mesh(MeshID mesh) -> Mesh &;
 
-  static MaterialMap::key_type get_material_key(ren::MaterialID material) {
+  static MaterialMap::key_type get_material_key(MaterialID material) {
     return std::bit_cast<MaterialMap::key_type>(material - 1);
   }
 
-  static ren::MaterialID get_material_id(MaterialMap::key_type material_key) {
-    return std::bit_cast<ren::MaterialID>(material_key) + 1;
+  static MaterialID get_material_id(MaterialMap::key_type material_key) {
+    return std::bit_cast<MaterialID>(material_key) + 1;
   }
 
-  auto get_material(ren::MaterialID material) const -> const ren::Material &;
-  auto get_material(ren::MaterialID material) -> ren::Material &;
+  auto get_material(MaterialID material) const -> const Material &;
+  auto get_material(MaterialID material) -> Material &;
 
-  static ModelMap::key_type get_model_key(ren::ModelID model) {
+  static ModelMap::key_type get_model_key(ModelID model) {
     return std::bit_cast<ModelMap::key_type>(model - 1);
   }
 
-  static ren::ModelID get_model_id(ModelMap::key_type model_key) {
-    return std::bit_cast<ren::ModelID>(model_key) + 1;
+  static ModelID get_model_id(ModelMap::key_type model_key) {
+    return std::bit_cast<ModelID>(model_key) + 1;
   }
 
-  auto get_model(ren::ModelID model) const -> const ren::Model &;
-  auto get_model(ren::ModelID model) -> ren::Model &;
+  auto get_model(ModelID model) const -> const Model &;
+  auto get_model(ModelID model) -> Model &;
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
     return m_pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
@@ -99,30 +96,35 @@ private:
   }
 
 public:
-  RenScene(ren::Device *device);
+  Scene(Device &device);
 
   void setOutputSize(unsigned width, unsigned height);
   unsigned getOutputWidth() const { return m_output_width; }
   unsigned getOutputHeight() const { return m_output_height; }
 
-  void setSwapchain(ren::Swapchain *swapchain);
-  ren::Swapchain *getSwapchain() const { return m_swapchain; }
+  void setSwapchain(Swapchain *swapchain);
+  Swapchain *getSwapchain() const { return m_swapchain; }
 
-  ren::MeshID create_mesh(const ren::MeshDesc &desc);
-  void destroy_mesh(ren::MeshID mesh);
+  MeshID create_mesh(const MeshDesc &desc);
+  void destroy_mesh(MeshID mesh);
 
-  ren::MaterialID create_material(const ren::MaterialDesc &desc);
-  void destroy_material(ren::MaterialID material);
+  MaterialID create_material(const MaterialDesc &desc);
+  void destroy_material(MaterialID material);
 
-  void set_camera(const ren::CameraDesc &desc);
+  void set_camera(const CameraDesc &desc);
 
-  auto create_model(const ren::ModelDesc &desc) -> ren::ModelID;
-  void destroy_model(ren::ModelID model);
+  auto create_model(const ModelDesc &desc) -> ModelID;
+  void destroy_model(ModelID model);
 
-  void set_model_matrix(ren::ModelID model, const glm::mat4 &matrix);
+  void set_model_matrix(ModelID model, const glm::mat4 &matrix);
 
   void begin_frame();
   void end_frame();
 
   void draw();
+};
+} // namespace ren
+
+struct RenScene : ren::Scene {
+  using ren::Scene::Scene;
 };

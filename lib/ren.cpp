@@ -8,23 +8,23 @@
 extern "C" {
 
 uint32_t ren_vk_GetRequiredAPIVersion() {
-  return Device::getRequiredAPIVersion();
+  return ren::Device::getRequiredAPIVersion();
 }
 
 size_t ren_vk_GetRequiredLayerCount() {
-  return Device::getRequiredLayers().size();
+  return ren::Device::getRequiredLayers().size();
 }
 
 const char *const *ren_vk_GetRequiredLayers() {
-  return Device::getRequiredLayers().data();
+  return ren::Device::getRequiredLayers().data();
 }
 
 size_t ren_vk_GetRequiredExtensionCount() {
-  return Device::getRequiredExtensions().size();
+  return ren::Device::getRequiredExtensions().size();
 }
 
 const char *const *ren_vk_GetRequiredExtensions() {
-  return Device::getRequiredExtensions().data();
+  return ren::Device::getRequiredExtensions().data();
 }
 
 RenDevice *ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
@@ -82,81 +82,82 @@ unsigned ren_GetSwapchainHeight(const RenSwapchain *swapchain) {
   return swapchain->get_size().second;
 }
 
-Scene *ren_CreateScene(RenDevice *device) {
+RenScene *ren_CreateScene(RenDevice *device) {
   assert(device);
-  return new Scene(device);
+  return new RenScene(*device);
 }
 
-void ren_DestroyScene(Scene *scene) { delete scene; }
+void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-void ren_SceneBeginFrame(Scene *scene) {
+void ren_SceneBeginFrame(RenScene *scene) {
   assert(scene);
   scene->begin_frame();
 }
 
-void ren_SceneEndFrame(Scene *scene) {
+void ren_SceneEndFrame(RenScene *scene) {
   assert(scene);
   scene->end_frame();
 }
 
-void ren_SceneDraw(Scene *scene) { scene->draw(); }
+void ren_SceneDraw(RenScene *scene) { scene->draw(); }
 
-void ren_SetSceneOutputSize(Scene *scene, unsigned width, unsigned height) {
+void ren_SetSceneOutputSize(RenScene *scene, unsigned width, unsigned height) {
   scene->setOutputSize(width, height);
 }
 
-unsigned ren_GetSceneOutputWidth(const Scene *scene) {
+unsigned ren_GetSceneOutputWidth(const RenScene *scene) {
   return scene->getOutputWidth();
 }
 
-unsigned ren_GetSceneOutputHeight(const Scene *scene) {
+unsigned ren_GetSceneOutputHeight(const RenScene *scene) {
   return scene->getOutputHeight();
 }
 
-void ren_SetSceneSwapchain(Scene *scene, RenSwapchain *swapchain) {
+void ren_SetSceneSwapchain(RenScene *scene, RenSwapchain *swapchain) {
   scene->setSwapchain(swapchain);
 }
 
-MeshID ren_CreateMesh(Scene *scene, const MeshDesc *desc) {
+RenMesh ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc) {
   assert(scene);
   assert(desc);
   return scene->create_mesh(*desc);
 }
 
-void ren_DestroyMesh(Scene *scene, MeshID mesh) {
+void ren_DestroyMesh(RenScene *scene, RenMesh mesh) {
   assert(scene);
   scene->destroy_mesh(mesh);
 }
 
-MaterialID ren_CreateMaterial(Scene *scene, const MaterialDesc *desc) {
+RenMaterial ren_CreateMaterial(RenScene *scene, const RenMaterialDesc *desc) {
   assert(scene);
   assert(desc);
   return scene->create_material(*desc);
 }
 
-void ren_DestroyMaterial(Scene *scene, MaterialID material) {
+void ren_DestroyMaterial(RenScene *scene, RenMaterial material) {
   assert(scene);
   scene->destroy_material(material);
 }
 
-void ren_SetSceneCamera(Scene *scene, const CameraDesc *desc) {
+void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
   assert(scene);
   assert(desc);
   scene->set_camera(*desc);
 }
 
-ModelID ren_CreateModel(Scene *scene, const ModelDesc *desc) {
+RenModel ren_CreateModel(RenScene *scene, const RenModelDesc *desc) {
   assert(scene);
   assert(desc);
   return scene->create_model(*desc);
 }
 
-void ren_DestroyModel(Scene *scene, ModelID model) {
+void ren_DestroyModel(RenScene *scene, RenModel model) {
   assert(scene);
   scene->destroy_model(model);
 }
 
-void ren_SetModelMatrix(Scene *scene, ModelID model, const float matrix[16]) {
+void ren_SetModelMatrix(RenScene *scene, RenModel model,
+                        const float matrix[16]) {
   assert(scene);
   assert(matrix);
   scene->set_model_matrix(model, glm::make_mat4(matrix));

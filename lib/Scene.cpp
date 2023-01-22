@@ -14,8 +14,6 @@
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
 
-using namespace ren;
-
 namespace ren {
 namespace {
 
@@ -102,10 +100,9 @@ auto reflect_material_pipeline_signature(Device &device,
 }
 
 } // namespace
-} // namespace ren
 
-Scene::RenScene(Device *device)
-    : m_device(device),
+Scene::Scene(Device &device)
+    : m_device(&device),
 
       m_asset_loader([&] {
         AssetLoader asset_loader;
@@ -513,3 +510,5 @@ void Scene::draw() {
 
   rg.execute(m_cmd_allocator);
 }
+
+} // namespace ren
