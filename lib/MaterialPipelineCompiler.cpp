@@ -48,11 +48,9 @@ auto MaterialPipelineCompiler::get_material_pipeline(
 
 auto MaterialPipelineCompiler::compile_material_pipeline(
     const MaterialPipelineConfig &config) -> GraphicsPipelineRef {
-
-  auto get_shader_name = [&, blob_suffix = m_device->get_shader_blob_suffix()](
-                             std::string_view base_name) {
-    return fmt::format("{0}_{1}{2}", base_name,
-                       get_albedo_str(config.material.albedo), blob_suffix);
+  auto get_shader_name = [&](std::string_view base_name) {
+    return fmt::format("{0}_{1}.spv", base_name,
+                       get_albedo_str(config.material.albedo));
   };
 
   Vector<std::byte> vs, fs;
@@ -66,4 +64,5 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
                                             .set_render_target(config.rt_format)
                                             .build();
 }
+
 } // namespace ren

@@ -56,18 +56,14 @@ void reflect_descriptor_set_layouts(
 auto reflect_material_pipeline_signature(Device &device,
                                          const AssetLoader &loader)
     -> PipelineLayout {
-  auto reflection_suffix = device.get_shader_reflection_suffix();
   Vector<std::byte> buffer;
-  loader.load_file(fmt::format("ReflectionVertexShader{0}", reflection_suffix),
-                   buffer);
-  auto vs = device.create_reflection_module(buffer);
-  loader.load_file(
-      fmt::format("ReflectionFragmentShader{0}", reflection_suffix), buffer);
-  auto fs = device.create_reflection_module(buffer);
+  loader.load_file("ReflectionVertexShader.spv", buffer);
+  ReflectionModule vs(buffer);
+  loader.load_file("ReflectionFragmentShader.spv", buffer);
+  ReflectionModule fs(buffer);
 
   SmallVector<DescriptorSetLayoutDesc, 2> set_layout_descs;
-  reflect_descriptor_set_layouts(*vs, *fs,
-                                 std::back_inserter(set_layout_descs));
+  reflect_descriptor_set_layouts(vs, fs, std::back_inserter(set_layout_descs));
   assert(set_layout_descs.size() == 2);
   set_layout_descs[hlsl::PERSISTENT_SET].flags |=
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;

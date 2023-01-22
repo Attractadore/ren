@@ -112,17 +112,6 @@ public:
   void
   write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) override;
 
-  auto get_shader_blob_suffix() const -> std::string_view override {
-    return ".spv";
-  }
-
-  auto get_shader_reflection_suffix() const -> std::string_view override {
-    return ".spv";
-  }
-
-  auto create_reflection_module(std::span<const std::byte> data)
-      -> std::unique_ptr<ReflectionModule> override;
-
   auto create_pipeline_signature(const PipelineLayoutDesc &desc)
       -> PipelineLayout override;
 

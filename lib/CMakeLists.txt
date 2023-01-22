@@ -31,6 +31,7 @@ target_compile_definitions(Vulkan::Headers INTERFACE VK_NO_PROTOTYPE)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
+find_package(unofficial-spirv-reflect REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${REN_PRIVATE_INCLUDE_DIR})
@@ -43,7 +44,9 @@ target_link_libraries(
             Vulkan::Headers
             fmt::fmt
             glm::glm
-            range-v3::range-v3)
+            range-v3::range-v3
+            unofficial::spirv-reflect::spirv-reflect
+          )
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
@@ -73,6 +76,7 @@ target_precompile_headers(
   <range/v3/algorithm.hpp>
   <range/v3/range.hpp>
   <range/v3/view.hpp>
+  <spirv_reflect.h>
   <vulkan/vulkan.h>)
 
 if(REN_ERROR_LOG)
@@ -89,12 +93,14 @@ add_library(
   Device.cpp
   MaterialPipelineCompiler.cpp
   Pipeline.cpp
+  Reflection.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
   Scene.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
-target_link_libraries(ren PRIVATE Support Support-PCH VulkanDispatchTable)
+target_link_libraries(ren PRIVATE Support Support-PCH VulkanDispatchTable
+                                )
 
 if(BUILD_SHARED_LIBS)
   add_library(ren::ren ALIAS ren)

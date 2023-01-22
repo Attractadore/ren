@@ -1,11 +1,11 @@
-#include "Vulkan/VulkanReflection.hpp"
+#include "Reflection.hpp"
 #include "Errors.hpp"
 
 #include <range/v3/algorithm.hpp>
 
 namespace ren {
 
-VulkanReflectionModule::VulkanReflectionModule(std::span<const std::byte> data)
+ReflectionModule::ReflectionModule(std::span<const std::byte> data)
     : m_module([&] {
         spv_reflect::ShaderModule module(data.size_bytes(), data.data());
         throwIfFailed(module.GetResult(),
@@ -13,18 +13,18 @@ VulkanReflectionModule::VulkanReflectionModule(std::span<const std::byte> data)
         return module;
       }()) {}
 
-auto VulkanReflectionModule::get_shader_stage() const -> VkShaderStageFlagBits {
+auto ReflectionModule::get_shader_stage() const -> VkShaderStageFlagBits {
   return static_cast<VkShaderStageFlagBits>(m_module.GetShaderStage());
 }
 
-auto VulkanReflectionModule::get_binding_count() const -> unsigned {
+auto ReflectionModule::get_binding_count() const -> unsigned {
   uint32_t num_bindings = 0;
   throwIfFailed(m_module.EnumerateDescriptorBindings(&num_bindings, nullptr),
                 "SPIRV-Reflect: Failed to enumerate shader bindings");
   return num_bindings;
 }
 
-void VulkanReflectionModule::get_bindings(
+void ReflectionModule::get_bindings(
     std::span<DescriptorBindingReflection> out) const {
   auto num_bindings = get_binding_count();
   assert(out.size() >= num_bindings);

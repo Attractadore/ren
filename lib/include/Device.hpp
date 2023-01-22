@@ -81,17 +81,9 @@ public:
 
   virtual Texture createTexture(const TextureDesc &desc) = 0;
 
-  [[nodiscard]] virtual auto get_shader_blob_suffix() const
-      -> std::string_view = 0;
-  [[nodiscard]] virtual auto get_shader_reflection_suffix() const
-      -> std::string_view = 0;
-
   [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
       -> GraphicsPipeline;
 
-  [[nodiscard]] virtual auto
-  create_reflection_module(std::span<const std::byte> data)
-      -> std::unique_ptr<ReflectionModule> = 0;
   [[nodiscard]] virtual auto
   create_pipeline_signature(const PipelineLayoutDesc &desc)
       -> PipelineLayout = 0;

@@ -5,7 +5,6 @@
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
-#include "Vulkan/VulkanReflection.hpp"
 #include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
@@ -653,11 +652,6 @@ auto VulkanDevice::create_graphics_pipeline_handle(
 
   return {pipeline,
           [this](VkPipeline pipeline) { push_to_delete_queue(pipeline); }};
-}
-
-auto VulkanDevice::create_reflection_module(std::span<const std::byte> data)
-    -> std::unique_ptr<ReflectionModule> {
-  return std::make_unique<VulkanReflectionModule>(data);
 }
 
 auto VulkanDevice::create_pipeline_signature(const PipelineLayoutDesc &desc)

@@ -1,19 +1,11 @@
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
-find_package(unofficial-spirv-reflect REQUIRED)
 
 add_subdirectory(DispatchTable)
 
-add_library(
-  ren-vk
-  ren-vk.cpp
-  VMA.cpp
-  VulkanDevice.cpp
-  VulkanReflection.cpp
-  VulkanCommandPool.cpp
-  VulkanRenderGraph.cpp
-  VulkanSwapchain.cpp)
+add_library(ren-vk ren-vk.cpp VMA.cpp VulkanDevice.cpp VulkanCommandPool.cpp
+                   VulkanRenderGraph.cpp VulkanSwapchain.cpp)
 target_sources(ren-vk PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                              ${REN_INCLUDE}/ren/ren-vk.h)
 target_precompile_headers(ren-vk PRIVATE <vk_mem_alloc.h> <vulkan/vulkan.h>)
@@ -21,8 +13,7 @@ target_link_libraries(
   ren-vk
   PUBLIC ren::ren
   PRIVATE Support Support-PCH VulkanDispatchTable
-          unofficial::vulkan-memory-allocator::vulkan-memory-allocator
-          unofficial::spirv-reflect::spirv-reflect)
+          unofficial::vulkan-memory-allocator::vulkan-memory-allocator)
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren-vk PRIVATE REN_VULKAN_VALIDATION)

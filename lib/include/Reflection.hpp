@@ -1,6 +1,8 @@
 #pragma once
 #include "Descriptors.hpp"
 
+#include <spirv_reflect.h>
+
 #include <span>
 
 namespace ren {
@@ -11,14 +13,15 @@ struct DescriptorBindingReflection {
 };
 
 class ReflectionModule {
+  spv_reflect::ShaderModule m_module;
+
 public:
-  virtual ~ReflectionModule() = default;
+  ReflectionModule(std::span<const std::byte> data);
 
-  virtual auto get_shader_stage() const -> VkShaderStageFlagBits = 0;
+  auto get_shader_stage() const -> VkShaderStageFlagBits;
 
-  virtual auto get_binding_count() const -> unsigned = 0;
-  virtual void
-  get_bindings(std::span<DescriptorBindingReflection> out) const = 0;
+  auto get_binding_count() const -> unsigned;
+  void get_bindings(std::span<DescriptorBindingReflection> out) const;
 };
 
 } // namespace ren
