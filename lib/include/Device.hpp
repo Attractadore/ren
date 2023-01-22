@@ -239,8 +239,6 @@ public:
   void write_descriptor_set(const VkWriteDescriptorSet &config);
 
   [[nodiscard]] auto create_buffer(BufferDesc desc) -> Buffer;
-  [[nodiscard]] auto get_buffer_device_address(const BufferRef &buffer) const
-      -> uint64_t;
 
   [[nodiscard]] auto create_texture(const TextureDesc &desc) -> Texture;
   void destroy_image_views(VkImage image);

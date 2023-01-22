@@ -19,6 +19,7 @@ struct BufferDesc {
   unsigned offset = 0;
   unsigned size;
   void *ptr = nullptr;
+  uint64_t gpu_addr = 0;
 
   bool operator==(const BufferDesc &other) const = default;
 };
@@ -29,27 +30,35 @@ template <typename B> class BufferMixin {
   B &impl() { return *static_cast<B *>(this); }
 
 public:
-  template <typename T = std::byte> T *map(unsigned offset = 0) const {
-    if (impl().desc.ptr) {
-      return reinterpret_cast<T *>(
-          reinterpret_cast<std::byte *>(impl().desc.ptr) +
-          (impl().desc.offset + offset));
-    }
-    return nullptr;
+  template <typename T = std::byte> T *map() const {
+    return reinterpret_cast<T *>(impl().desc.ptr);
+  }
+
+  template <typename T = std::byte> std::span<T> map(unsigned count) const {
+    assert(impl().desc.ptr);
+    return {map<T>(), count};
   }
 
   template <typename T = std::byte>
-  std::span<T> map(unsigned offset, unsigned count) const {
-    assert(impl().desc.ptr);
-    return {map<T>(offset), count};
-  }
-
-  B subbuffer(unsigned offset, unsigned size) const {
+  B subbuffer(unsigned offset, unsigned count) const {
     auto sb = impl();
+    auto size = count * sizeof(T);
     assert(offset + size <= sb.desc.size);
     sb.desc.offset += offset;
     sb.desc.size = size;
+    if (sb.desc.ptr) {
+      sb.desc.ptr = reinterpret_cast<std::byte *>(sb.desc.ptr) + offset;
+    }
+    if (sb.desc.gpu_addr) {
+      sb.desc.gpu_addr += offset;
+    }
     return sb;
+  }
+
+  B subbuffer(unsigned offset) const {
+    const auto &desc = impl().desc;
+    assert(offset <= desc.size);
+    return subbuffer(offset, desc.size - offset);
   }
 
   VkDescriptorBufferInfo get_descriptor() const {

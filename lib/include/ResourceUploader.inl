@@ -3,11 +3,10 @@
 
 namespace ren {
 template <ranges::sized_range R>
-void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
-                                  unsigned dst_offset) {
+void ResourceUploader::stage_data(R &&data, const BufferRef &buffer) {
   using T = ranges::range_value_t<R>;
 
-  if (auto *out = buffer.map<T>(dst_offset)) {
+  if (auto *out = buffer.map<T>()) {
     ranges::copy(data, out);
     return;
   }
@@ -31,7 +30,7 @@ void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
                                  .dst = buffer,
                                  .region = {
                                      .srcOffset = offset,
-                                     .dstOffset = dst_offset,
+                                     .dstOffset = buffer.desc.offset,
                                      .size = num_written * sizeof(T),
                                  }});
     }

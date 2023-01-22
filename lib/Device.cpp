@@ -377,20 +377,18 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
                                 &allocation, &map_info),
                 "VMA: Failed to create buffer");
   desc.ptr = map_info.pMappedData;
+  if (desc.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+    VkBufferDeviceAddressInfo query_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = buffer,
+    };
+    desc.gpu_addr = GetBufferDeviceAddress(&query_info);
+  }
 
   return {.desc = desc, .handle = {buffer, [this, allocation](VkBuffer buffer) {
                                      push_to_delete_queue(buffer);
                                      push_to_delete_queue(allocation);
                                    }}};
-}
-
-auto Device::get_buffer_device_address(const BufferRef &buffer) const
-    -> uint64_t {
-  VkBufferDeviceAddressInfo buffer_info = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .buffer = buffer.handle,
-  };
-  return GetBufferDeviceAddress(&buffer_info);
 }
 
 Texture Device::create_texture(const TextureDesc &desc) {
