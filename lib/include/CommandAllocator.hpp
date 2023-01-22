@@ -2,15 +2,35 @@
 #include "CommandBuffer.hpp"
 #include "Config.hpp"
 #include "Support/StableVector.hpp"
-#include "Vulkan/VulkanCommandPool.hpp"
 
 namespace ren {
 
 class VulkanDevice;
 
+class CommandPool {
+  VulkanDevice *m_device = nullptr;
+  VkCommandPool m_pool = VK_NULL_HANDLE;
+  Vector<VkCommandBuffer> m_cmd_buffers;
+  unsigned m_allocated_count = 0;
+
+private:
+  void destroy();
+
+public:
+  CommandPool(VulkanDevice &device);
+  CommandPool(const CommandPool &) = delete;
+  CommandPool(CommandPool &&other);
+  CommandPool &operator=(const CommandPool &) = delete;
+  CommandPool &operator=(CommandPool &&other);
+  ~CommandPool();
+
+  VkCommandBuffer allocate();
+  void reset();
+};
+
 class CommandAllocator {
   VulkanDevice *m_device;
-  StaticVector<VulkanCommandPool, c_pipeline_depth> m_frame_pools;
+  StaticVector<CommandPool, c_pipeline_depth> m_frame_pools;
   unsigned m_frame_index = 0;
 
 public:
