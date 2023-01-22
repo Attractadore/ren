@@ -1,11 +1,12 @@
 #include "CommandAllocator.hpp"
-#include "Vulkan/VulkanDevice.hpp"
+#include "Device.hpp"
+#include "Errors.hpp"
 
 #include <range/v3/view.hpp>
 
 namespace ren {
 
-CommandPool::CommandPool(VulkanDevice &device) {
+CommandPool::CommandPool(Device &device) {
   m_device = &device;
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -38,7 +39,7 @@ void CommandPool::destroy() {
     assert(m_device);
     m_device->push_to_delete_queue([pool = m_pool,
                                     cmd_buffers = std::move(m_cmd_buffers)](
-                                       VulkanDevice &device) {
+                                       Device &device) {
       if (not cmd_buffers.empty()) {
         device.FreeCommandBuffers(pool, cmd_buffers.size(), cmd_buffers.data());
       }
@@ -73,7 +74,7 @@ void CommandPool::reset() {
   m_allocated_count = 0;
 }
 
-CommandAllocator::CommandAllocator(VulkanDevice &device) {
+CommandAllocator::CommandAllocator(Device &device) {
   m_device = &device;
   m_frame_pools =
       ranges::views::generate([&] { return CommandPool(*m_device); }) |

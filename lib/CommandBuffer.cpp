@@ -1,10 +1,11 @@
 #include "CommandBuffer.hpp"
+#include "Device.hpp"
+#include "Errors.hpp"
 #include "Support/Views.hpp"
-#include "Vulkan/VulkanDevice.hpp"
 
 namespace ren {
 
-CommandBuffer::CommandBuffer(VulkanDevice *device, VkCommandBuffer cmd_buffer)
+CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd_buffer)
     : m_device(device), m_cmd_buffer(cmd_buffer) {
   VkCommandBufferBeginInfo begin_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

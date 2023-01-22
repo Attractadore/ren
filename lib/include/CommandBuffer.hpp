@@ -6,7 +6,7 @@
 
 namespace ren {
 
-class VulkanDevice;
+class Device;
 
 struct RenderTargetConfig {
   RenderTargetView rtv;
@@ -26,11 +26,11 @@ struct DepthStencilTargetConfig {
 };
 
 class CommandBuffer {
-  VulkanDevice *m_device;
+  Device *m_device;
   VkCommandBuffer m_cmd_buffer;
 
 public:
-  CommandBuffer(VulkanDevice *device, VkCommandBuffer cmd_buffer);
+  CommandBuffer(Device *device, VkCommandBuffer cmd_buffer);
 
   const Device &get_device() const;
   Device &get_device();

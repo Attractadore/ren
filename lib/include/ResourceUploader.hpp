@@ -1,6 +1,5 @@
 #pragma once
 #include "CommandBuffer.hpp"
-#include "Def.hpp"
 #include "RingBuffer.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Vector.hpp"

@@ -6,10 +6,10 @@
 
 namespace ren {
 
-class VulkanDevice;
+class Device;
 
 class Swapchain {
-  VulkanDevice *m_device;
+  Device *m_device;
   VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
   SmallVector<Texture, 3> m_textures;
   unsigned m_image_index = -1;
@@ -20,7 +20,7 @@ private:
   void destroy();
 
 public:
-  Swapchain(VulkanDevice &device, VkSurfaceKHR surface);
+  Swapchain(Device &device, VkSurfaceKHR surface);
   Swapchain(const Swapchain &) = delete;
   Swapchain(Swapchain &&);
   Swapchain &operator=(const Swapchain &) = delete;

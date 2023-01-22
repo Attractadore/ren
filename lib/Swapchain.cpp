@@ -1,28 +1,28 @@
 #include "Swapchain.hpp"
+#include "Device.hpp"
 #include "Errors.hpp"
 #include "Formats.inl"
-#include "Vulkan/VulkanDevice.hpp"
 
 #include <range/v3/algorithm.hpp>
 
 namespace ren {
 namespace {
-VkSurfaceCapabilitiesKHR getSurfaceCapabilities(VulkanDevice *device,
+VkSurfaceCapabilitiesKHR getSurfaceCapabilities(Device &device,
                                                 VkSurfaceKHR surface) {
   VkSurfaceCapabilitiesKHR capabilities;
   throwIfFailed(
-      device->GetPhysicalDeviceSurfaceCapabilitiesKHR(surface, &capabilities),
+      device.GetPhysicalDeviceSurfaceCapabilitiesKHR(surface, &capabilities),
       "Vulkan: Failed to get surface capabilities");
   return capabilities;
 }
 
-auto getSurfaceFormats(VulkanDevice *device, VkSurfaceKHR surface) {
+auto getSurfaceFormats(Device &device, VkSurfaceKHR surface) {
   unsigned format_count = 0;
-  throwIfFailed(device->GetPhysicalDeviceSurfaceFormatsKHR(
+  throwIfFailed(device.GetPhysicalDeviceSurfaceFormatsKHR(
                     surface, &format_count, nullptr),
                 "Vulkan: Failed to get surface formats");
   SmallVector<VkSurfaceFormatKHR, 8> formats(format_count);
-  throwIfFailed(device->GetPhysicalDeviceSurfaceFormatsKHR(
+  throwIfFailed(device.GetPhysicalDeviceSurfaceFormatsKHR(
                     surface, &format_count, formats.data()),
                 "Vulkan: Failed to get surface formats");
   formats.resize(format_count);
@@ -74,10 +74,10 @@ VkImageUsageFlags selectImageUsage(VkImageUsageFlags image_usage) {
 }
 } // namespace
 
-Swapchain::Swapchain(VulkanDevice &device, VkSurfaceKHR surface)
+Swapchain::Swapchain(Device &device, VkSurfaceKHR surface)
     : m_device(&device), m_create_info([&] {
-        auto capabilities = getSurfaceCapabilities(m_device, surface);
-        auto surface_formats = getSurfaceFormats(m_device, surface);
+        auto capabilities = getSurfaceCapabilities(*m_device, surface);
+        auto surface_formats = getSurfaceFormats(*m_device, surface);
 
         auto image_count = std::max(capabilities.minImageCount, 2u);
         if (capabilities.maxImageCount) {
@@ -108,7 +108,7 @@ Swapchain::Swapchain(VulkanDevice &device, VkSurfaceKHR surface)
 Swapchain::~Swapchain() { destroy(); }
 
 void Swapchain::create() {
-  auto capabilities = getSurfaceCapabilities(m_device, m_create_info.surface);
+  auto capabilities = getSurfaceCapabilities(*m_device, m_create_info.surface);
   m_create_info.imageExtent = [&] {
     constexpr auto special_value = 0xFFFFFFFF;
     if (capabilities.currentExtent.width == special_value and
@@ -159,7 +159,7 @@ void Swapchain::create() {
 void Swapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
-    m_device->push_to_delete_queue(VulkanImageViews{texture.handle.get()});
+    m_device->push_to_delete_queue(ImageViews{texture.handle.get()});
   }
 }
 

@@ -5,10 +5,10 @@
 
 namespace ren {
 
-class VulkanDevice;
+class Device;
 
 class CommandPool {
-  VulkanDevice *m_device = nullptr;
+  Device *m_device = nullptr;
   VkCommandPool m_pool = VK_NULL_HANDLE;
   Vector<VkCommandBuffer> m_cmd_buffers;
   unsigned m_allocated_count = 0;
@@ -17,7 +17,7 @@ private:
   void destroy();
 
 public:
-  CommandPool(VulkanDevice &device);
+  CommandPool(Device &device);
   CommandPool(const CommandPool &) = delete;
   CommandPool(CommandPool &&other);
   CommandPool &operator=(const CommandPool &) = delete;
@@ -29,12 +29,12 @@ public:
 };
 
 class CommandAllocator {
-  VulkanDevice *m_device;
+  Device *m_device;
   StaticVector<CommandPool, c_pipeline_depth> m_frame_pools;
   unsigned m_frame_index = 0;
 
 public:
-  explicit CommandAllocator(VulkanDevice &device);
+  explicit CommandAllocator(Device &device);
 
   void begin_frame();
   void end_frame();

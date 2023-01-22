@@ -1,10 +1,10 @@
 #pragma once
 #include "Config.hpp"
-#include "Def.hpp"
 #include "Descriptors.hpp"
-#include "Support/FreeListAllocator.hpp"
 
 namespace ren {
+
+class Device;
 
 class DescriptorSetAllocator {
   Device *m_device;

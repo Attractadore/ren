@@ -4,9 +4,13 @@
 #include "Pipeline.hpp"
 #include "Reflection.hpp"
 #include "RenderGraph.hpp"
+#include "Support/LinearMap.hpp"
+#include "Vulkan/VMA.h"
+#include "VulkanDispatchTable.hpp"
+
+#include <chrono>
 
 namespace ren {
-class MaterialPipelineCompiler;
 
 enum class QueueType {
   Graphics,
@@ -14,49 +18,106 @@ enum class QueueType {
   Transfer,
 };
 
-enum class DeviceFeature {
-  BufferDeviceAddress,
+enum class SemaphoreWaitResult {
+  Ready,
+  Timeout,
 };
 
-} // namespace ren
+struct Submit {
+  std::span<const VkSemaphoreSubmitInfo> wait_semaphores;
+  std::span<const VkCommandBufferSubmitInfo> command_buffers;
+  std::span<const VkSemaphoreSubmitInfo> signal_semaphores;
+};
 
-using namespace ren;
+struct DeviceTime {
+  uint64_t graphics_queue_time;
+};
 
-struct RenDevice {
-protected:
-  [[nodiscard]] virtual auto create_buffer_handle(const BufferDesc &desc)
-      -> std::pair<SharedHandle<VkBuffer>, void *> = 0;
+class Device : public InstanceFunctionsMixin<Device>,
+               public PhysicalDeviceFunctionsMixin<Device>,
+               public DeviceFunctionsMixin<Device> {
+  VkInstance m_instance;
+  VkPhysicalDevice m_adapter;
+  VkDevice m_device;
+  VmaAllocator m_allocator;
+  VulkanDispatchTable m_vk = {};
 
-  [[nodiscard]] virtual auto
-  create_graphics_pipeline_handle(const GraphicsPipelineConfig &config)
-      -> SharedHandle<VkPipeline> = 0;
+  unsigned m_graphics_queue_family = -1;
+  VkQueue m_graphics_queue;
+  VkSemaphore m_graphics_queue_semaphore;
+  uint64_t m_graphics_queue_time = 0;
+
+  unsigned m_frame_index = 0;
+  std::array<DeviceTime, c_pipeline_depth> m_frame_end_times = {};
+
+  HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
+      m_image_views;
+
+  DeleteQueue m_delete_queue;
+
+private:
+  [[nodiscard]] auto getVkImageView(const VkImageViewCreateInfo &view_info)
+      -> VkImageView;
+
+  void queueSubmitAndSignal(VkQueue queue, std::span<const Submit> submits,
+                            VkSemaphore semaphore, uint64_t value);
 
 public:
-  virtual ~RenDevice() = default;
+  Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
+         VkPhysicalDevice adapter);
+  Device(const Device &) = delete;
+  Device(Device &&);
+  Device &operator=(const Device &) = delete;
+  Device &operator=(Device &&);
+  ~Device();
 
-  virtual void begin_frame() = 0;
-  virtual void end_frame() = 0;
+  void begin_frame();
+  void end_frame();
 
-  virtual bool supports_feature(DeviceFeature feature) const = 0;
+  [[nodiscard]] static auto getRequiredAPIVersion() -> uint32_t {
+    return VK_API_VERSION_1_3;
+  }
 
-  virtual auto
-  create_command_allocator(QueueType queue_type = QueueType::Graphics)
-      -> std::unique_ptr<CommandAllocator> = 0;
+  [[nodiscard]] static auto getRequiredLayers() -> std::span<const char *const>;
+  [[nodiscard]] static auto getRequiredExtensions()
+      -> std::span<const char *const>;
 
-  [[nodiscard]] virtual auto
-  create_descriptor_pool(const DescriptorPoolDesc &desc) -> DescriptorPool = 0;
+  [[nodiscard]] auto getDispatchTable() const -> const VulkanDispatchTable & {
+    return m_vk;
+  }
 
-  virtual void reset_descriptor_pool(const DescriptorPoolRef &pool) = 0;
+  [[nodiscard]] auto getInstance() const -> VkInstance { return m_instance; }
 
-  [[nodiscard]] virtual auto
+  [[nodiscard]] auto getPhysicalDevice() const -> VkPhysicalDevice {
+    return m_adapter;
+  }
+
+  [[nodiscard]] auto getDevice() const -> VkDevice { return m_device; }
+
+  [[nodiscard]] auto getVMAAllocator() const -> VmaAllocator {
+    return m_allocator;
+  }
+  [[nodiscard]] auto getAllocator() const -> const VkAllocationCallbacks * {
+    return nullptr;
+  }
+
+  template <typename T> void push_to_delete_queue(T value) {
+    m_delete_queue.push(std::move(value));
+  }
+
+  [[nodiscard]] auto create_descriptor_pool(const DescriptorPoolDesc &desc)
+      -> DescriptorPool;
+
+  void reset_descriptor_pool(const DescriptorPoolRef &pool);
+
+  [[nodiscard]] auto
   create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
-      -> DescriptorSetLayout = 0;
+      -> DescriptorSetLayout;
 
-  [[nodiscard]] virtual auto
+  [[nodiscard]] auto
   allocate_descriptor_sets(const DescriptorPoolRef &pool,
                            std::span<const DescriptorSetLayoutRef> layouts,
-                           std::span<VkDescriptorSet> sets) -> bool = 0;
-
+                           std::span<VkDescriptorSet> sets) -> bool;
   [[nodiscard]] auto
   allocate_descriptor_set(const DescriptorPoolRef &pool,
                           const DescriptorSetLayoutRef &layout)
@@ -66,30 +127,73 @@ public:
   allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
       -> std::pair<DescriptorPool, VkDescriptorSet>;
 
-  virtual void
-  write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) = 0;
+  void write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs);
   void write_descriptor_set(const VkWriteDescriptorSet &config);
 
-  auto create_buffer(BufferDesc desc) -> Buffer;
+  [[nodiscard]] auto create_buffer(BufferDesc desc) -> Buffer;
+  [[nodiscard]] auto get_buffer_device_address(const BufferRef &buffer) const
+      -> uint64_t;
 
-  auto supports_buffer_device_address() const -> bool;
+  [[nodiscard]] auto create_texture(const TextureDesc &desc) -> Texture;
+  void destroy_image_views(VkImage image);
+  [[nodiscard]] VkImageView getVkImageView(const RenderTargetView &rtv);
+  [[nodiscard]] VkImageView getVkImageView(const DepthStencilView &dsv);
 
-  virtual auto get_buffer_device_address(const BufferRef &buffer) const
-      -> uint64_t = 0;
-
-  virtual Texture createTexture(const TextureDesc &desc) = 0;
+  [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
+      -> PipelineLayout;
 
   [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
       -> GraphicsPipeline;
 
-  [[nodiscard]] virtual auto
-  create_pipeline_signature(const PipelineLayoutDesc &desc)
-      -> PipelineLayout = 0;
+  [[nodiscard]] auto createBinarySemaphore() -> Semaphore;
+  [[nodiscard]] auto createTimelineSemaphore(uint64_t initial_value = 0)
+      -> VkSemaphore;
 
-  virtual void push_to_delete_queue(QueueCustomDeleter<Device> deleter) = 0;
-
-  template <std::convertible_to<QueueCustomDeleter<Device>> F>
-  void push_to_delete_queue(F deleter) {
-    push_to_delete_queue(QueueCustomDeleter<Device>(std::move(deleter)));
+  [[nodiscard]] auto waitForSemaphore(VkSemaphore sem, uint64_t value,
+                                      std::chrono::nanoseconds timeout) const
+      -> SemaphoreWaitResult;
+  void waitForSemaphore(VkSemaphore sem, uint64_t value) const {
+    auto r = waitForSemaphore(sem, value, std::chrono::nanoseconds::max());
+    assert(r == SemaphoreWaitResult::Ready);
   }
+
+  [[nodiscard]] auto getSemaphoreValue(VkSemaphore semaphore) const -> uint64_t;
+
+  [[nodiscard]] auto getGraphicsQueue() const -> VkQueue {
+    return m_graphics_queue;
+  }
+
+  [[nodiscard]] auto getGraphicsQueueFamily() const -> unsigned {
+    return m_graphics_queue_family;
+  }
+
+  [[nodiscard]] auto getGraphicsQueueSemaphore() const -> VkSemaphore {
+    return m_graphics_queue_semaphore;
+  }
+
+  [[nodiscard]] auto getGraphicsQueueTime() const -> uint64_t {
+    return m_graphics_queue_time;
+  }
+
+  [[nodiscard]] auto getGraphicsQueueCompletedTime() const -> uint64_t {
+    return getSemaphoreValue(getGraphicsQueueSemaphore());
+  }
+
+  void graphicsQueueSubmit(std::span<const Submit> submits) {
+    queueSubmitAndSignal(getGraphicsQueue(), submits,
+                         getGraphicsQueueSemaphore(), ++m_graphics_queue_time);
+  }
+
+  void waitForGraphicsQueue(uint64_t time) const {
+    waitForSemaphore(getGraphicsQueueSemaphore(), time);
+  }
+
+  [[nodiscard]] auto queuePresent(const VkPresentInfoKHR &present_info)
+      -> VkResult;
+};
+
+} // namespace ren
+
+struct RenDevice : ren::Device {
+  using ren::Device::Device;
 };

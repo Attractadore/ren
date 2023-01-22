@@ -1,6 +1,6 @@
 #include "ren/ren-vk.h"
+#include "Device.hpp"
 #include "Swapchain.hpp"
-#include "Vulkan/VulkanDevice.hpp"
 
 #include <cassert>
 
@@ -8,36 +8,35 @@ using namespace ren;
 
 extern "C" {
 uint32_t ren_vk_GetRequiredAPIVersion() {
-  return VulkanDevice::getRequiredAPIVersion();
+  return Device::getRequiredAPIVersion();
 }
 
 size_t ren_vk_GetRequiredLayerCount() {
-  return VulkanDevice::getRequiredLayers().size();
+  return Device::getRequiredLayers().size();
 }
 
 const char *const *ren_vk_GetRequiredLayers() {
-  return VulkanDevice::getRequiredLayers().data();
+  return Device::getRequiredLayers().data();
 }
 
 size_t ren_vk_GetRequiredExtensionCount() {
-  return VulkanDevice::getRequiredExtensions().size();
+  return Device::getRequiredExtensions().size();
 }
 
 const char *const *ren_vk_GetRequiredExtensions() {
-  return VulkanDevice::getRequiredExtensions().data();
+  return Device::getRequiredExtensions().data();
 }
 
 RenDevice *ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
                                VkInstance instance,
                                VkPhysicalDevice m_adapter) {
-  return new VulkanDevice(proc, instance, m_adapter);
+  return new RenDevice(proc, instance, m_adapter);
 }
 
 RenSwapchain *ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface) {
   assert(device);
   assert(surface);
-  auto *vk_device = static_cast<VulkanDevice *>(device);
-  return new RenSwapchain(*vk_device, surface);
+  return new RenSwapchain(*device, surface);
 }
 
 VkSurfaceKHR ren_vk_GetSwapchainSurface(const RenSwapchain *swapchain) {

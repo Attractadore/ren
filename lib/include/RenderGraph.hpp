@@ -1,6 +1,5 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Def.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
@@ -13,9 +12,9 @@ namespace ren {
 
 class CommandAllocator;
 class CommandBuffer;
+class Device;
 class RenderGraph;
 class Swapchain;
-class VulkanDevice;
 
 enum class RGNodeID;
 enum class RGTextureID;
@@ -51,7 +50,7 @@ protected:
   };
 
 protected:
-  VulkanDevice *m_device;
+  Device *m_device;
   Vector<Batch> m_batches;
 
   Vector<Texture> m_textures;
@@ -67,7 +66,7 @@ protected:
 
 protected:
   struct Config {
-    VulkanDevice *device;
+    Device *device;
     Vector<Batch> batches;
     Vector<Texture> textures;
     HashMap<RGTextureID, unsigned> phys_textures;

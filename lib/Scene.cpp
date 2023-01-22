@@ -96,7 +96,7 @@ auto reflect_material_pipeline_signature(Device &device,
           },
   };
 
-  auto signature = device.create_pipeline_signature(std::move(signature_desc));
+  auto signature = device.create_pipeline_layout(std::move(signature_desc));
 
   return signature;
 }
@@ -137,13 +137,13 @@ Scene::RenScene(Device *device)
 
       m_descriptor_set_allocator(*m_device),
 
-      m_cmd_allocator(m_device->create_command_allocator()),
+      m_cmd_allocator(*m_device),
 
       m_pipeline_signature(
           reflect_material_pipeline_signature(*m_device, m_asset_loader)) {}
 
 void Scene::begin_frame() {
-  m_cmd_allocator->begin_frame();
+  m_cmd_allocator.begin_frame();
   m_descriptor_set_allocator.begin_frame();
   m_resource_uploader.begin_frame();
 }
@@ -151,7 +151,7 @@ void Scene::begin_frame() {
 void Scene::end_frame() {
   m_resource_uploader.end_frame();
   m_descriptor_set_allocator.end_frame();
-  m_cmd_allocator->end_frame();
+  m_cmd_allocator.end_frame();
 }
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
@@ -349,7 +349,7 @@ void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) {
 }
 
 void Scene::draw() {
-  m_resource_uploader.upload_data(*m_cmd_allocator);
+  m_resource_uploader.upload_data(m_cmd_allocator);
 
   bool update_persistent_descriptor_pool = false;
   if (const auto &materials_buffer = m_material_allocator.get_buffer();
@@ -511,5 +511,5 @@ void Scene::draw() {
 
   auto rg = rgb.build();
 
-  rg.execute(*m_cmd_allocator);
+  rg.execute(m_cmd_allocator);
 }

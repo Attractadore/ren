@@ -4,21 +4,19 @@
 
 #include <cassert>
 
-using namespace ren;
-
 extern "C" {
 
-void ren_DeviceBeginFrame(Device *device) {
+void ren_DeviceBeginFrame(RenDevice *device) {
   assert(device);
   device->begin_frame();
 }
 
-void ren_DeviceEndFrame(Device *device) {
+void ren_DeviceEndFrame(RenDevice *device) {
   assert(device);
   device->end_frame();
 }
 
-void ren_DestroyDevice(Device *device) { delete device; }
+void ren_DestroyDevice(RenDevice *device) { delete device; }
 
 void ren_DestroySwapchain(RenSwapchain *swapchain) { delete swapchain; }
 
@@ -35,7 +33,7 @@ unsigned ren_GetSwapchainHeight(const RenSwapchain *swapchain) {
   return swapchain->get_size().second;
 }
 
-Scene *ren_CreateScene(Device *device) {
+Scene *ren_CreateScene(RenDevice *device) {
   assert(device);
   return new Scene(device);
 }

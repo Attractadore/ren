@@ -1,15 +1,15 @@
 #pragma once
-#include "Def.hpp"
 #include "Descriptors.hpp"
 #include "Formats.hpp"
 #include "Support/Handle.hpp"
-#include "Support/LinearMap.hpp"
 
 #include <vulkan/vulkan.h>
 
 #include <span>
 
 namespace ren {
+
+class Device;
 
 struct PushConstantRange {
   VkShaderStageFlags stages;

@@ -2,11 +2,14 @@
 #include "Config.hpp"
 #include "Support/Queue.hpp"
 #include "Support/TypeMap.hpp"
+#include "Vulkan/VMA.h"
 
 #include <cassert>
 #include <functional>
 
 namespace ren {
+class Device;
+
 namespace detail {
 template <typename T, size_t Idx, typename... Ts>
 constexpr bool IsQueueTypeHelper = [] {
@@ -24,19 +27,20 @@ constexpr bool IsQueueTypeHelper = [] {
 template <typename T, typename... Ts>
 concept IsQueueType = detail::IsQueueTypeHelper<T, 0, Ts...>;
 
-template <typename D> using QueueCustomDeleter = std::function<void(D &device)>;
+using QueueCustomDeleter = std::function<void(Device &device)>;
 
-template <typename D, typename T> struct QueueDeleter {
-  void operator()(D &device, T value) const noexcept;
+template <typename T> struct QueueDeleter {
+  void operator()(Device &device, T value) const noexcept;
 };
 
-template <typename D> struct QueueDeleter<D, QueueCustomDeleter<D>> {
-  void operator()(D &device, QueueCustomDeleter<D> deleter) const noexcept {
+template <> struct QueueDeleter<QueueCustomDeleter> {
+  void operator()(Device &device, QueueCustomDeleter deleter) const noexcept {
     deleter(device);
   }
 };
 
-template <typename D, typename... Ts> class DeleteQueue {
+namespace detail {
+template <typename... Ts> class DeleteQueueImpl {
   struct FrameData {
     TypeMap<unsigned, Ts...> pushed_item_counts;
   };
@@ -58,17 +62,17 @@ private:
     get_frame_pushed_item_count<T>()++;
   }
 
-  template <typename T> void pop(D &device, unsigned count) {
+  template <typename T> void pop(Device &device, unsigned count) {
     auto &queue = get_queue<T>();
     for (int i = 0; i < count; ++i) {
       assert(not queue.empty());
-      QueueDeleter<D, T>()(device, std::move(queue.front()));
+      QueueDeleter<T>()(device, std::move(queue.front()));
       queue.pop();
     }
   }
 
 public:
-  void begin_frame(D &device) {
+  void begin_frame(Device &device) {
     // Increment the frame index when a new frame is begin. If this is done when
     // a frame ends, shared_ptrs that go out of scope after will add their
     // resources to the frame that is about to begin and will be destroyed right
@@ -77,21 +81,34 @@ public:
     (pop<Ts>(device, get_frame_pushed_item_count<Ts>()), ...);
     m_frame_data[m_frame_idx] = {};
   }
-  void end_frame(D &device) {}
+  void end_frame(Device &device) {}
 
   template <IsQueueType<Ts...> T> void push(T value) {
     push_impl(std::move(value));
   }
 
-  template <std::convertible_to<QueueCustomDeleter<D>> F>
-  requires IsQueueType<QueueCustomDeleter<D>, Ts...> and
-      (not std::same_as<QueueCustomDeleter<D>, F>) void push(F callback) {
-    push_impl(QueueCustomDeleter<D>(std::move(callback)));
+  template <std::convertible_to<QueueCustomDeleter> F>
+    requires IsQueueType<QueueCustomDeleter, Ts...> and
+             (not std::same_as<QueueCustomDeleter, F>)
+  void push(F callback) {
+    push_impl(QueueCustomDeleter(std::move(callback)));
   }
 
-  void flush(D &device) {
+  void flush(Device &device) {
     (pop<Ts>(device, get_queue<Ts>().size()), ...);
     m_frame_data.fill({});
   }
 };
+} // namespace detail
+
+struct ImageViews {
+  VkImage image;
+};
+
+using DeleteQueue =
+    detail::DeleteQueueImpl<QueueCustomDeleter, ImageViews, VkBuffer,
+                            VkDescriptorPool, VkDescriptorSetLayout, VkImage,
+                            VkPipeline, VkPipelineLayout, VkSemaphore,
+                            VkSwapchainKHR, VmaAllocation>;
+
 } // namespace ren

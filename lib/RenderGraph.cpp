@@ -7,7 +7,6 @@
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
-#include "Vulkan/VulkanDevice.hpp"
 
 #include <range/v3/action.hpp>
 #include <range/v3/algorithm.hpp>
@@ -457,7 +456,7 @@ Vector<Texture> RenderGraph::Builder::createTextures(
   for (unsigned tex = 0; tex < getPhysTextureCount(); ++tex) {
     if (not isExternalTexture(tex)) {
       const auto &desc = m_texture_descs[tex];
-      textures[tex] = m_device->createTexture({
+      textures[tex] = m_device->create_texture({
           .type = desc.type,
           .format = desc.format,
           .usage = texture_usage_flags[tex],
@@ -549,7 +548,7 @@ auto RenderGraph::Builder::build() -> RenderGraph {
   generateBarriers(scheduled_passes);
   auto batches = batchPasses(std::move(scheduled_passes));
   return {{
-      .device = static_cast<VulkanDevice *>(m_device),
+      .device = m_device,
       .batches = std::move(batches),
       .textures = std::move(textures),
       .phys_textures = std::move(m_phys_textures),
@@ -676,9 +675,6 @@ RGCallback RenderGraph::Builder::generateBarrierGroup(
 
   return [textures = std::move(textures), barriers = std::move(barriers)](
              CommandBuffer &cmd, RenderGraph &rg) mutable {
-    auto *vk_device = static_cast<VulkanDevice *>(&cmd.get_device());
-    auto vk_cmd_buffer = cmd.get();
-
     for (auto &&[tex, barrier] : ranges::views::zip(textures, barriers)) {
       auto &&texture = rg.getTexture(tex);
       barrier.image = texture.handle.get();
@@ -695,7 +691,7 @@ RGCallback RenderGraph::Builder::generateBarrierGroup(
         .pImageMemoryBarriers = barriers.data(),
     };
 
-    vk_device->CmdPipelineBarrier2(vk_cmd_buffer, &dependency_info);
+    cmd.get_device().CmdPipelineBarrier2(cmd.get(), &dependency_info);
   };
 }
 
@@ -707,7 +703,7 @@ void RenderGraph::execute(CommandAllocator &cmd_allocator) {
   set_semaphore(m_acquire_semaphore, acquire_semaphore.handle.get());
   set_semaphore(m_present_semaphore, present_semaphore.handle.get());
 
-  SmallVector<VulkanSubmit, 16> submits;
+  SmallVector<Submit, 16> submits;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
   SmallVector<unsigned, 16> cmd_buffer_counts;
 

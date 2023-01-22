@@ -17,6 +17,8 @@ namespace ren {
 class Swapchain;
 }
 
+using namespace ren;
+
 class RenScene {
   ren::Device *m_device;
 
@@ -28,7 +30,7 @@ class RenScene {
   MaterialPipelineCompiler m_compiler;
   MaterialAllocator m_material_allocator;
   DescriptorSetAllocator m_descriptor_set_allocator;
-  std::unique_ptr<CommandAllocator> m_cmd_allocator;
+  CommandAllocator m_cmd_allocator;
 
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
   unsigned m_output_width = 0;
