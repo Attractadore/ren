@@ -13,6 +13,10 @@
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
 
+namespace ren {
+class Swapchain;
+}
+
 class RenScene {
   ren::Device *m_device;
 

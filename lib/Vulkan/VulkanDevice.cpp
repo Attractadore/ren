@@ -5,7 +5,6 @@
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
-#include "Vulkan/VulkanSwapchain.hpp"
 
 constexpr bool operator==(const VkImageViewCreateInfo &lhs,
                           const VkImageViewCreateInfo &rhs) {
@@ -481,11 +480,6 @@ VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
   default:
     throw std::runtime_error{"Vulkan: Failed to wait for semaphore"};
   };
-}
-
-std::unique_ptr<VulkanSwapchain>
-VulkanDevice::createSwapchain(VkSurfaceKHR surface) {
-  return std::make_unique<VulkanSwapchain>(this, surface);
 }
 
 void VulkanDevice::queueSubmitAndSignal(VkQueue queue,

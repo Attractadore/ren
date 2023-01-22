@@ -6,8 +6,8 @@
 #include "Support/FlatSet.hpp"
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
+#include "Swapchain.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanSwapchain.hpp"
 
 #include <range/v3/action.hpp>
 #include <range/v3/algorithm.hpp>
@@ -596,8 +596,6 @@ auto RenderGraph::get_semaphore(RGSemaphoreID semaphore) const -> VkSemaphore {
 }
 
 void RenderGraph::Builder::addPresentNodes() {
-  auto *vk_swapchain = static_cast<VulkanSwapchain *>(m_swapchain);
-
   auto acquire = addNode();
   acquire.setDesc("Vulkan: Acquire swapchain image");
   m_swapchain_image = acquire.addExternalTextureOutput(
@@ -702,12 +700,10 @@ RGCallback RenderGraph::Builder::generateBarrierGroup(
 }
 
 void RenderGraph::execute(CommandAllocator &cmd_allocator) {
-  auto &vk_swapchain = *static_cast<VulkanSwapchain *>(m_swapchain);
-
   auto acquire_semaphore = m_device->createBinarySemaphore();
   auto present_semaphore = m_device->createBinarySemaphore();
-  vk_swapchain.acquireImage(acquire_semaphore.handle.get());
-  setTexture(m_swapchain_image, vk_swapchain.getTexture());
+  m_swapchain->acquireImage(acquire_semaphore.handle.get());
+  setTexture(m_swapchain_image, m_swapchain->getTexture());
   set_semaphore(m_acquire_semaphore, acquire_semaphore.handle.get());
   set_semaphore(m_present_semaphore, present_semaphore.handle.get());
 
@@ -753,7 +749,7 @@ void RenderGraph::execute(CommandAllocator &cmd_allocator) {
 
   m_device->graphicsQueueSubmit(submits);
 
-  vk_swapchain.presentImage(present_semaphore.handle.get());
+  m_swapchain->presentImage(present_semaphore.handle.get());
 }
 
 } // namespace ren

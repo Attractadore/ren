@@ -1,6 +1,6 @@
 #include "ren/ren-vk.h"
+#include "Swapchain.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanSwapchain.hpp"
 
 #include <cassert>
 
@@ -37,25 +37,22 @@ RenSwapchain *ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface) {
   assert(device);
   assert(surface);
   auto *vk_device = static_cast<VulkanDevice *>(device);
-  return vk_device->createSwapchain(surface).release();
+  return new RenSwapchain(*vk_device, surface);
 }
 
-VkSurfaceKHR ren_vk_GetSwapchainSurface(const Swapchain *swapchain) {
+VkSurfaceKHR ren_vk_GetSwapchainSurface(const RenSwapchain *swapchain) {
   assert(swapchain);
-  auto *vk_swapchain = static_cast<const VulkanSwapchain *>(swapchain);
-  return vk_swapchain->get_surface();
+  return swapchain->get_surface();
 }
 
-VkPresentModeKHR ren_vk_GetSwapchainPresentMode(const Swapchain *swapchain) {
+VkPresentModeKHR ren_vk_GetSwapchainPresentMode(const RenSwapchain *swapchain) {
   assert(swapchain);
-  auto *vk_swapchain = static_cast<const VulkanSwapchain *>(swapchain);
-  return vk_swapchain->get_present_mode();
+  return swapchain->get_present_mode();
 }
 
-void ren_vk_SetSwapchainPresentMode(Swapchain *swapchain,
+void ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
                                     VkPresentModeKHR present_mode) {
   assert(swapchain);
-  auto *vk_swapchain = static_cast<VulkanSwapchain *>(swapchain);
-  vk_swapchain->set_present_mode(present_mode);
+  swapchain->set_present_mode(present_mode);
 }
 }

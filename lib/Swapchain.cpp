@@ -1,4 +1,4 @@
-#include "Vulkan/VulkanSwapchain.hpp"
+#include "Swapchain.hpp"
 #include "Errors.hpp"
 #include "Formats.inl"
 #include "Vulkan/VulkanDevice.hpp"
@@ -74,8 +74,8 @@ VkImageUsageFlags selectImageUsage(VkImageUsageFlags image_usage) {
 }
 } // namespace
 
-VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkSurfaceKHR surface)
-    : m_device(device), m_create_info([&] {
+Swapchain::Swapchain(VulkanDevice &device, VkSurfaceKHR surface)
+    : m_device(&device), m_create_info([&] {
         auto capabilities = getSurfaceCapabilities(m_device, surface);
         auto surface_formats = getSurfaceFormats(m_device, surface);
 
@@ -105,9 +105,9 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevice *device, VkSurfaceKHR surface)
   create();
 }
 
-VulkanSwapchain::~VulkanSwapchain() { destroy(); }
+Swapchain::~Swapchain() { destroy(); }
 
-void VulkanSwapchain::create() {
+void Swapchain::create() {
   auto capabilities = getSurfaceCapabilities(m_device, m_create_info.surface);
   m_create_info.imageExtent = [&] {
     constexpr auto special_value = 0xFFFFFFFF;
@@ -156,25 +156,23 @@ void VulkanSwapchain::create() {
   }
 }
 
-void VulkanSwapchain::destroy() {
+void Swapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
     m_device->push_to_delete_queue(VulkanImageViews{texture.handle.get()});
   }
 }
 
-void VulkanSwapchain::setSize(unsigned width, unsigned height) {
+void Swapchain::set_size(unsigned width, unsigned height) {
   m_create_info.imageExtent = {
       .width = width,
       .height = height,
   };
 }
 
-void VulkanSwapchain::set_present_mode(VkPresentModeKHR present_mode) {
-  todo();
-}
+void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
-void VulkanSwapchain::acquireImage(VkSemaphore signal_semaphore) {
+void Swapchain::acquireImage(VkSemaphore signal_semaphore) {
   while (true) {
     auto r =
         m_device->AcquireNextImageKHR(m_swapchain, UINT64_MAX, signal_semaphore,
@@ -192,7 +190,7 @@ void VulkanSwapchain::acquireImage(VkSemaphore signal_semaphore) {
   }
 }
 
-void VulkanSwapchain::presentImage(VkSemaphore wait_semaphore) {
+void Swapchain::presentImage(VkSemaphore wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,

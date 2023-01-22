@@ -12,7 +12,6 @@
 #include <chrono>
 
 namespace ren {
-class VulkanSwapchain;
 
 enum class SemaphoreWaitResult {
   Ready,
@@ -197,8 +196,6 @@ public:
   void waitForIdle() const {
     throwIfFailed(DeviceWaitIdle(), "Vulkan: Failed to wait for idle device");
   }
-
-  std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 
   template <typename T> void push_to_delete_queue(T value) {
     m_delete_queue.push(std::move(value));

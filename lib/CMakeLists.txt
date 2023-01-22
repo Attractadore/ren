@@ -45,8 +45,7 @@ target_link_libraries(
             fmt::fmt
             glm::glm
             range-v3::range-v3
-            unofficial::spirv-reflect::spirv-reflect
-          )
+            unofficial::spirv-reflect::spirv-reflect)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
@@ -96,11 +95,11 @@ add_library(
   Reflection.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
-  Scene.cpp)
+  Scene.cpp
+  Swapchain.cpp)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.h)
-target_link_libraries(ren PRIVATE Support Support-PCH VulkanDispatchTable
-                                )
+target_link_libraries(ren PRIVATE Support Support-PCH VulkanDispatchTable)
 
 if(BUILD_SHARED_LIBS)
   add_library(ren::ren ALIAS ren)

@@ -20,18 +20,18 @@ void ren_DeviceEndFrame(Device *device) {
 
 void ren_DestroyDevice(Device *device) { delete device; }
 
-void ren_DestroySwapchain(Swapchain *swapchain) { delete swapchain; }
+void ren_DestroySwapchain(RenSwapchain *swapchain) { delete swapchain; }
 
-void ren_SetSwapchainSize(Swapchain *swapchain, unsigned width,
+void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height) {
-  swapchain->setSize(width, height);
+  swapchain->set_size(width, height);
 }
 
-unsigned ren_GetSwapchainWidth(const Swapchain *swapchain) {
+unsigned ren_GetSwapchainWidth(const RenSwapchain *swapchain) {
   return swapchain->get_size().first;
 }
 
-unsigned ren_GetSwapchainHeight(const Swapchain *swapchain) {
+unsigned ren_GetSwapchainHeight(const RenSwapchain *swapchain) {
   return swapchain->get_size().second;
 }
 
@@ -66,7 +66,7 @@ unsigned ren_GetSceneOutputHeight(const Scene *scene) {
   return scene->getOutputHeight();
 }
 
-void ren_SetSceneSwapchain(Scene *scene, Swapchain *swapchain) {
+void ren_SetSceneSwapchain(Scene *scene, RenSwapchain *swapchain) {
   scene->setSwapchain(swapchain);
 }
 

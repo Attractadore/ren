@@ -3,7 +3,6 @@
 
 namespace ren {
 using Device = RenDevice;
-using Swapchain = RenSwapchain;
 using Scene = RenScene;
 
 using MeshDesc = RenMeshDesc;

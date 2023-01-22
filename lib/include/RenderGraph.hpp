@@ -14,6 +14,7 @@ namespace ren {
 class CommandAllocator;
 class CommandBuffer;
 class RenderGraph;
+class Swapchain;
 class VulkanDevice;
 
 enum class RGNodeID;
