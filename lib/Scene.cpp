@@ -374,10 +374,10 @@ void Scene::draw() {
     });
   }
 
-  auto rgb = m_device->createRenderGraphBuilder();
+  RenderGraph::Builder rgb(*m_device);
 
   // Draw scene
-  auto draw = rgb->addNode();
+  auto draw = rgb.addNode();
   draw.setDesc("Color pass");
 
   auto rt = draw.addOutput(
@@ -388,7 +388,7 @@ void Scene::draw() {
       },
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
-  rgb->setDesc(rt, "Color buffer");
+  rgb.setDesc(rt, "Color buffer");
 
   auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
@@ -398,7 +398,7 @@ void Scene::draw() {
       VK_ACCESS_2_UNIFORM_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
-  rgb->set_desc(virtual_global_cbuffer, "Global cbuffer");
+  rgb.set_desc(virtual_global_cbuffer, "Global cbuffer");
 
   auto virtual_matrix_buffer = draw.add_output(
       RGBufferDesc{
@@ -407,7 +407,7 @@ void Scene::draw() {
       },
       VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-  rgb->set_desc(virtual_matrix_buffer, "Model matrix buffer");
+  rgb.set_desc(virtual_matrix_buffer, "Model matrix buffer");
 
   draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
                        CommandBuffer &cmd, RenderGraph &rg) {
@@ -498,20 +498,18 @@ void Scene::draw() {
   });
 
   // Post-process
-  auto pp = rgb->addNode();
+  auto pp = rgb.addNode();
   pp.setDesc("Post-process pass");
   auto pprt = pp.addWriteInput(rt,
                                VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-  rgb->setDesc(pprt, "Post-processed color buffer");
+  rgb.setDesc(pprt, "Post-processed color buffer");
   pp.setCallback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
-  // Present to swapchain
-  rgb->setSwapchain(m_swapchain);
-  rgb->setFinalImage(pprt);
+  rgb.present(m_swapchain, pprt);
 
-  auto rg = rgb->build();
+  auto rg = rgb.build();
 
-  rg->execute(*m_cmd_allocator);
+  rg.execute(*m_cmd_allocator);
 }

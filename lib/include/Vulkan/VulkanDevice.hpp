@@ -198,8 +198,6 @@ public:
     throwIfFailed(DeviceWaitIdle(), "Vulkan: Failed to wait for idle device");
   }
 
-  std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() override;
-
   std::unique_ptr<VulkanSwapchain> createSwapchain(VkSurfaceKHR surface);
 
   template <typename T> void push_to_delete_queue(T value) {

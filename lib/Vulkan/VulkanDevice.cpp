@@ -5,7 +5,6 @@
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
-#include "Vulkan/VulkanRenderGraph.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
 constexpr bool operator==(const VkImageViewCreateInfo &lhs,
@@ -482,10 +481,6 @@ VulkanDevice::waitForSemaphore(VkSemaphore sem, uint64_t value,
   default:
     throw std::runtime_error{"Vulkan: Failed to wait for semaphore"};
   };
-}
-
-std::unique_ptr<RenderGraph::Builder> VulkanDevice::createRenderGraphBuilder() {
-  return std::make_unique<VulkanRenderGraph::Builder>(*this);
 }
 
 std::unique_ptr<VulkanSwapchain>

@@ -10,9 +10,11 @@
 #include <functional>
 
 namespace ren {
+
 class CommandAllocator;
 class CommandBuffer;
 class RenderGraph;
+class VulkanDevice;
 
 enum class RGNodeID;
 enum class RGTextureID;
@@ -48,7 +50,7 @@ protected:
   };
 
 protected:
-  Swapchain *m_swapchain;
+  VulkanDevice *m_device;
   Vector<Batch> m_batches;
 
   Vector<Texture> m_textures;
@@ -57,28 +59,39 @@ protected:
   HashMap<RGBufferID, unsigned> m_physical_buffers;
   Vector<VkSemaphore> m_semaphores;
 
+  Swapchain *m_swapchain;
+  RGTextureID m_swapchain_image;
+  RGSemaphoreID m_acquire_semaphore;
+  RGSemaphoreID m_present_semaphore;
+
 protected:
   struct Config {
-    Swapchain *swapchain;
+    VulkanDevice *device;
     Vector<Batch> batches;
     Vector<Texture> textures;
     HashMap<RGTextureID, unsigned> phys_textures;
     Vector<Buffer> buffers;
     HashMap<RGBufferID, unsigned> physical_buffers;
     unsigned num_semaphores;
+    Swapchain *swapchain;
+    RGTextureID swapchain_image;
+    RGSemaphoreID acquire_semaphore;
+    RGSemaphoreID present_semaphore;
   };
 
   RenderGraph(Config config)
-      : m_swapchain(config.swapchain), m_batches(std::move(config.batches)),
+      : m_device(config.device), m_batches(std::move(config.batches)),
         m_textures(std::move(config.textures)),
         m_phys_textures(std::move(config.phys_textures)),
         m_buffers(std::move(config.buffers)),
         m_physical_buffers(std::move(config.physical_buffers)),
-        m_semaphores(config.num_semaphores) {}
+        m_semaphores(config.num_semaphores), m_swapchain(config.swapchain),
+        m_swapchain_image(config.swapchain_image),
+        m_acquire_semaphore(config.acquire_semaphore),
+        m_present_semaphore(config.present_semaphore) {}
 
 public:
   class Builder;
-  virtual ~RenderGraph() = default;
 
   void setTexture(RGTextureID id, Texture tex);
   const Texture &getTexture(RGTextureID tex) const;
@@ -89,7 +102,7 @@ public:
   void set_semaphore(RGSemaphoreID id, VkSemaphore semaphore);
   auto get_semaphore(RGSemaphoreID semaphore) const -> VkSemaphore;
 
-  virtual void execute(CommandAllocator &cmd_allocator) = 0;
+  void execute(CommandAllocator &cmd_allocator);
 };
 
 class RenderGraph::Builder {
@@ -139,6 +152,9 @@ protected:
   unsigned m_num_semaphores = 0;
 
   Swapchain *m_swapchain = nullptr;
+  RGTextureID m_swapchain_image;
+  RGSemaphoreID m_acquire_semaphore;
+  RGSemaphoreID m_present_semaphore;
   RGTextureID m_final_image;
 
   HashMap<RGNodeID, std::string> m_node_text_descs;
@@ -203,7 +219,7 @@ protected:
   std::string_view getDesc(RGNodeID node) const;
 
 protected:
-  virtual void addPresentNodes() = 0;
+  void addPresentNodes();
 
   Vector<RGNode> schedulePasses();
 
@@ -224,23 +240,17 @@ protected:
     VkPipelineStageFlags2 dst_stages;
   };
 
-  virtual RGCallback
-  generateBarrierGroup(std::span<const BarrierConfig> configs) = 0;
+  RGCallback generateBarrierGroup(std::span<const BarrierConfig> configs);
   void generateBarriers(std::span<RGNode> scheduled_passes);
 
   Vector<Batch> batchPasses(auto scheduled_passes);
 
-  virtual auto create_render_graph(Config config)
-      -> std::unique_ptr<RenderGraph> = 0;
-
 public:
-  Builder(Device *device) : m_device(device) {}
-  virtual ~Builder() = default;
+  Builder(Device &device) : m_device(&device) {}
 
   class NodeBuilder;
   [[nodiscard]] NodeBuilder addNode();
-  void setSwapchain(Swapchain *swapchain);
-  void setFinalImage(RGTextureID texture);
+  void present(Swapchain *swapchain, RGTextureID texture);
 
   void setDesc(RGTextureID, std::string desc);
   std::string_view getDesc(RGTextureID tex) const;
@@ -251,7 +261,7 @@ public:
   void set_desc(RGSemaphoreID semaphore, std::string desc);
   std::string_view get_desc(RGSemaphoreID semaphore) const;
 
-  [[nodiscard]] std::unique_ptr<RenderGraph> build();
+  [[nodiscard]] RenderGraph build();
 };
 
 class RenderGraph::Builder::NodeBuilder {
@@ -317,4 +327,5 @@ public:
     return m_builder->setDesc(m_node, std::move(desc));
   }
 };
+
 } // namespace ren

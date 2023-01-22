@@ -4,8 +4,7 @@ find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
 add_subdirectory(DispatchTable)
 
-add_library(ren-vk ren-vk.cpp VMA.cpp VulkanDevice.cpp VulkanRenderGraph.cpp
-                   VulkanSwapchain.cpp)
+add_library(ren-vk ren-vk.cpp VMA.cpp VulkanDevice.cpp VulkanSwapchain.cpp)
 target_sources(ren-vk PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                              ${REN_INCLUDE}/ren/ren-vk.h)
 target_precompile_headers(ren-vk PRIVATE <vk_mem_alloc.h> <vulkan/vulkan.h>)

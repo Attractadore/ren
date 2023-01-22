@@ -39,8 +39,6 @@ public:
 
   virtual bool supports_feature(DeviceFeature feature) const = 0;
 
-  virtual std::unique_ptr<RenderGraph::Builder> createRenderGraphBuilder() = 0;
-
   virtual auto
   create_command_allocator(QueueType queue_type = QueueType::Graphics)
       -> std::unique_ptr<CommandAllocator> = 0;
