@@ -1,8 +1,7 @@
 #include "Vulkan/VulkanSwapchain.hpp"
+#include "Errors.hpp"
 #include "Formats.inl"
-#include "Support/Errors.hpp"
 #include "Vulkan/VulkanDevice.hpp"
-#include "Vulkan/VulkanErrors.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -172,7 +171,7 @@ void VulkanSwapchain::setSize(unsigned width, unsigned height) {
 }
 
 void VulkanSwapchain::set_present_mode(VkPresentModeKHR present_mode) {
-  vkTodo();
+  todo();
 }
 
 void VulkanSwapchain::acquireImage(VkSemaphore signal_semaphore) {

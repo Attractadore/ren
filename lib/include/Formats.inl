@@ -1,6 +1,6 @@
 #pragma once
 #include "Formats.hpp"
-#include "Support/Errors.hpp"
+#include "Errors.hpp"
 
 #include <vulkan/vulkan.h>
 
