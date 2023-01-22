@@ -5,7 +5,6 @@
 #include "Support/LinearMap.hpp"
 #include "Support/Span.hpp"
 #include "VMA.h"
-#include "VulkanCommandAllocator.hpp"
 #include "VulkanDeleteQueue.hpp"
 #include "VulkanDispatchTable.hpp"
 #include "VulkanErrors.hpp"

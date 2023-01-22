@@ -11,7 +11,6 @@ add_library(
   VMA.cpp
   VulkanDevice.cpp
   VulkanReflection.cpp
-  VulkanCommandAllocator.cpp
   VulkanCommandPool.cpp
   VulkanRenderGraph.cpp
   VulkanSwapchain.cpp)

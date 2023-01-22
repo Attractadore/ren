@@ -1,9 +1,9 @@
 #include "Vulkan/VulkanDevice.hpp"
+#include "CommandAllocator.hpp"
 #include "Formats.inl"
 #include "Support/Array.hpp"
 #include "Support/Variant.hpp"
 #include "Support/Views.hpp"
-#include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDeleteQueue.inl"
 #include "Vulkan/VulkanErrors.hpp"
 #include "Vulkan/VulkanReflection.hpp"
@@ -175,7 +175,7 @@ void VulkanDevice::end_frame() {
 
 auto VulkanDevice::create_command_allocator(QueueType queue_type)
     -> std::unique_ptr<CommandAllocator> {
-  return std::make_unique<VulkanCommandAllocator>(*this);
+  return std::make_unique<CommandAllocator>(*this);
 }
 
 auto VulkanDevice::create_descriptor_pool(const DescriptorPoolDesc &desc)

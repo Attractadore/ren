@@ -37,8 +37,8 @@ void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
     return;
   }
 
-  auto *cmd = cmd_allocator.allocateCommandBuffer();
-  cmd->begin();
+  auto cmd = cmd_allocator.allocate();
+  cmd.begin();
 
   auto same_src_and_dsts = ranges::views::chunk_by(
       m_buffer_copies, [](const BufferCopy &lhs, const BufferCopy &rhs) {
@@ -51,10 +51,10 @@ void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
     regions.assign(map(copy_range, [](const BufferCopy &buffer_copy) {
       return buffer_copy.region;
     }));
-    cmd->copy_buffer(copy_range.front().src, copy_range.front().dst, regions);
+    cmd.copy_buffer(copy_range.front().src, copy_range.front().dst, regions);
   }
 
-  cmd->end();
+  cmd.end();
 
   m_buffer_copies.clear();
 

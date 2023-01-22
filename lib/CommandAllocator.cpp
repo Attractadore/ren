@@ -1,11 +1,11 @@
-#include "Vulkan/VulkanCommandAllocator.hpp"
+#include "CommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 
 #include <range/v3/view.hpp>
 
 namespace ren {
 
-VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device) {
+CommandAllocator::CommandAllocator(VulkanDevice &device) {
   m_device = &device;
   m_frame_pools =
       ranges::views::generate([&] { return VulkanCommandPool(*m_device); }) |
@@ -13,17 +13,16 @@ VulkanCommandAllocator::VulkanCommandAllocator(VulkanDevice &device) {
       ranges::to<decltype(m_frame_pools)>;
 }
 
-CommandBuffer *VulkanCommandAllocator::allocateCommandBuffer() {
+CommandBuffer CommandAllocator::allocate() {
   auto cmd_buffer = m_frame_pools[m_frame_index].allocate();
-  return &m_frame_cmd_buffers.emplace_back(m_device, cmd_buffer);
+  return {m_device, cmd_buffer};
 }
 
-void VulkanCommandAllocator::begin_frame() {
+void CommandAllocator::begin_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
   m_frame_pools[m_frame_index].reset();
-  m_frame_cmd_buffers.clear();
 }
 
-void VulkanCommandAllocator::end_frame() {}
+void CommandAllocator::end_frame() {}
 
 } // namespace ren

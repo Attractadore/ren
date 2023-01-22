@@ -1,7 +1,7 @@
 #include "Vulkan/VulkanRenderGraph.hpp"
+#include "CommandAllocator.hpp"
 #include "Formats.inl"
 #include "Support/Views.hpp"
-#include "Vulkan/VulkanCommandAllocator.hpp"
 #include "Vulkan/VulkanDevice.hpp"
 #include "Vulkan/VulkanSwapchain.hpp"
 
@@ -9,6 +9,7 @@
 #include <range/v3/view.hpp>
 
 namespace ren {
+
 VulkanRenderGraph::Builder::Builder(VulkanDevice &device)
     : RenderGraph::Builder(&device) {}
 
@@ -128,8 +129,6 @@ RGCallback VulkanRenderGraph::Builder::generateBarrierGroup(
 }
 
 void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
-  auto &vk_cmd_allocator =
-      *static_cast<VulkanCommandAllocator *>(&cmd_allocator);
   auto &vk_swapchain = *static_cast<VulkanSwapchain *>(m_swapchain);
 
   auto acquire_semaphore = m_device->createBinarySemaphore();
@@ -144,24 +143,20 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
   SmallVector<unsigned, 16> cmd_buffer_counts;
 
   for (auto &batch : m_batches) {
-    SmallVector<CommandBuffer *, 8> cmds;
-    cmds.reserve(batch.barrier_cbs.size());
-
     for (auto &&[barrier_cb, pass_cb] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
-      auto *cmd = vk_cmd_allocator.allocateCommandBuffer();
-      cmd->begin();
+      auto cmd = cmd_allocator.allocate();
+      cmd.begin();
       if (barrier_cb) {
-        barrier_cb(*cmd, *this);
+        barrier_cb(cmd, *this);
       }
       if (pass_cb) {
-        pass_cb(*cmd, *this);
+        pass_cb(cmd, *this);
       }
-      cmd->end();
+      cmd.end();
       cmd_buffer_infos.push_back(
           {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-           .commandBuffer = cmd->get()});
-      cmds.push_back(cmd);
+           .commandBuffer = cmd.get()});
     }
 
     for (auto &semaphore :
@@ -173,12 +168,12 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
     submits.push_back({.wait_semaphores = batch.wait_semaphores,
                        .signal_semaphores = batch.signal_semaphores});
 
-    cmd_buffer_counts.push_back(cmds.size());
+    cmd_buffer_counts.push_back(batch.pass_cbs.size());
   }
 
   auto *p_cmd_buffer_infos = cmd_buffer_infos.data();
   for (size_t i = 0; i < submits.size(); ++i) {
-    unsigned cmd_cnt = cmd_buffer_counts[i];
+    auto cmd_cnt = cmd_buffer_counts[i];
     submits[i].command_buffers = {p_cmd_buffer_infos, cmd_cnt};
     p_cmd_buffer_infos += cmd_cnt;
   }
@@ -187,4 +182,5 @@ void VulkanRenderGraph::execute(CommandAllocator &cmd_allocator) {
 
   vk_swapchain.presentImage(present_semaphore.handle.get());
 }
+
 } // namespace ren
