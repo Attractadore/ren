@@ -684,22 +684,12 @@ auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
       map([](const auto &layout) { return layout.handle.get(); }) |
       ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
 
-  auto pc_ranges = desc.push_constants |
-                   map([](const PushConstantRange &pc_range) {
-                     return VkPushConstantRange{
-                         .stageFlags = pc_range.stages,
-                         .offset = pc_range.offset,
-                         .size = pc_range.size,
-                     };
-                   }) |
-                   ranges::to<SmallVector<VkPushConstantRange, 4>>;
-
   VkPipelineLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = unsigned(set_layouts.size()),
       .pSetLayouts = set_layouts.data(),
-      .pushConstantRangeCount = unsigned(pc_ranges.size()),
-      .pPushConstantRanges = pc_ranges.data(),
+      .pushConstantRangeCount = unsigned(desc.push_constants.size()),
+      .pPushConstantRanges = desc.push_constants.data(),
   };
 
   VkPipelineLayout layout;

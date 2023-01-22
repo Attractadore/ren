@@ -66,17 +66,6 @@ auto reflect_material_pipeline_signature(Device &device,
   set_layout_descs[hlsl::PERSISTENT_SET].flags |=
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
-  auto get_push_constants = [&]() {
-    return decltype(PipelineLayoutDesc::push_constants){
-        {.stages = VK_SHADER_STAGE_VERTEX_BIT,
-         .offset = offsetof(hlsl::PushConstants, vertex),
-         .size = sizeof(hlsl::PushConstants::vertex)},
-        {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
-         .offset = offsetof(hlsl::PushConstants, fragment),
-         .size = sizeof(hlsl::PushConstants::fragment)},
-    };
-  };
-
   PipelineLayoutDesc signature_desc = {
       .set_layouts = set_layout_descs |
                      map([&](const DescriptorSetLayoutDesc &desc) {
@@ -85,10 +74,10 @@ auto reflect_material_pipeline_signature(Device &device,
                      ranges::to<decltype(PipelineLayoutDesc::set_layouts)>,
       .push_constants =
           {
-              {.stages = VK_SHADER_STAGE_VERTEX_BIT,
+              {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
                .offset = offsetof(hlsl::PushConstants, vertex),
                .size = sizeof(hlsl::PushConstants::vertex)},
-              {.stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+              {.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                .offset = offsetof(hlsl::PushConstants, fragment),
                .size = sizeof(hlsl::PushConstants::fragment)},
           },

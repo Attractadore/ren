@@ -11,15 +11,9 @@ namespace ren {
 
 class Device;
 
-struct PushConstantRange {
-  VkShaderStageFlags stages;
-  unsigned offset = 0;
-  unsigned size;
-};
-
 struct PipelineLayoutDesc {
   SmallVector<DescriptorSetLayout, 4> set_layouts;
-  SmallVector<PushConstantRange> push_constants;
+  SmallVector<VkPushConstantRange> push_constants;
 };
 
 struct PipelineLayoutRef {
