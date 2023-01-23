@@ -232,7 +232,7 @@ def main():
     c_out = Path(argv[4])
     header = h_out.name
 
-    table_name = "VulkanDispatchTable"
+    table_name = "DispatchTable"
     load_instance_f = "loadInstanceFunctions"
     load_device_f = "loadDeviceFunctions"
     instance_mixin = "InstanceFunctionsMixin"

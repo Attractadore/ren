@@ -148,7 +148,7 @@ class Device : public InstanceFunctionsMixin<Device>,
   VkPhysicalDevice m_adapter;
   VkDevice m_device;
   VmaAllocator m_allocator;
-  VulkanDispatchTable m_vk = {};
+  DispatchTable m_vk = {};
 
   unsigned m_graphics_queue_family = -1;
   VkQueue m_graphics_queue;
@@ -187,7 +187,7 @@ public:
   static auto getRequiredLayers() -> std::span<const char *const>;
   static auto getRequiredExtensions() -> std::span<const char *const>;
 
-  auto getDispatchTable() const -> const VulkanDispatchTable & { return m_vk; }
+  auto getDispatchTable() const -> const DispatchTable & { return m_vk; }
 
   auto getInstance() const -> VkInstance { return m_instance; }
 
