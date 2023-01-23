@@ -182,32 +182,22 @@ public:
   void begin_frame();
   void end_frame();
 
-  [[nodiscard]] static auto getRequiredAPIVersion() -> uint32_t {
-    return VK_API_VERSION_1_3;
-  }
+  static auto getRequiredAPIVersion() -> uint32_t { return VK_API_VERSION_1_3; }
 
-  [[nodiscard]] static auto getRequiredLayers() -> std::span<const char *const>;
-  [[nodiscard]] static auto getRequiredExtensions()
-      -> std::span<const char *const>;
+  static auto getRequiredLayers() -> std::span<const char *const>;
+  static auto getRequiredExtensions() -> std::span<const char *const>;
 
-  [[nodiscard]] auto getDispatchTable() const -> const VulkanDispatchTable & {
-    return m_vk;
-  }
+  auto getDispatchTable() const -> const VulkanDispatchTable & { return m_vk; }
 
-  [[nodiscard]] auto getInstance() const -> VkInstance { return m_instance; }
+  auto getInstance() const -> VkInstance { return m_instance; }
 
-  [[nodiscard]] auto getPhysicalDevice() const -> VkPhysicalDevice {
-    return m_adapter;
-  }
+  auto getPhysicalDevice() const -> VkPhysicalDevice { return m_adapter; }
 
-  [[nodiscard]] auto getDevice() const -> VkDevice { return m_device; }
+  auto getDevice() const -> VkDevice { return m_device; }
 
-  [[nodiscard]] auto getVMAAllocator() const -> VmaAllocator {
-    return m_allocator;
-  }
-  [[nodiscard]] auto getAllocator() const -> const VkAllocationCallbacks * {
-    return nullptr;
-  }
+  auto getVMAAllocator() const -> VmaAllocator { return m_allocator; }
+
+  auto getAllocator() const -> const VkAllocationCallbacks * { return nullptr; }
 
   template <typename T> void push_to_delete_queue(T value) {
     m_delete_queue.push(std::move(value));
@@ -242,8 +232,8 @@ public:
 
   [[nodiscard]] auto create_texture(const TextureDesc &desc) -> Texture;
   void destroy_image_views(VkImage image);
-  [[nodiscard]] VkImageView getVkImageView(const RenderTargetView &rtv);
-  [[nodiscard]] VkImageView getVkImageView(const DepthStencilView &dsv);
+  VkImageView getVkImageView(const RenderTargetView &rtv);
+  VkImageView getVkImageView(const DepthStencilView &dsv);
 
   [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
       -> PipelineLayout;
@@ -263,25 +253,23 @@ public:
     assert(r == SemaphoreWaitResult::Ready);
   }
 
-  [[nodiscard]] auto getSemaphoreValue(VkSemaphore semaphore) const -> uint64_t;
+  auto getSemaphoreValue(VkSemaphore semaphore) const -> uint64_t;
 
-  [[nodiscard]] auto getGraphicsQueue() const -> VkQueue {
-    return m_graphics_queue;
-  }
+  auto getGraphicsQueue() const -> VkQueue { return m_graphics_queue; }
 
-  [[nodiscard]] auto getGraphicsQueueFamily() const -> unsigned {
+  auto getGraphicsQueueFamily() const -> unsigned {
     return m_graphics_queue_family;
   }
 
-  [[nodiscard]] auto getGraphicsQueueSemaphore() const -> VkSemaphore {
+  auto getGraphicsQueueSemaphore() const -> VkSemaphore {
     return m_graphics_queue_semaphore;
   }
 
-  [[nodiscard]] auto getGraphicsQueueTime() const -> uint64_t {
+  auto getGraphicsQueueTime() const -> uint64_t {
     return m_graphics_queue_time;
   }
 
-  [[nodiscard]] auto getGraphicsQueueCompletedTime() const -> uint64_t {
+  auto getGraphicsQueueCompletedTime() const -> uint64_t {
     return getSemaphoreValue(getGraphicsQueueSemaphore());
   }
 
