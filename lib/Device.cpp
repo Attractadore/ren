@@ -376,13 +376,13 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
   throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
                                 &allocation, &map_info),
                 "VMA: Failed to create buffer");
-  desc.ptr = map_info.pMappedData;
+  desc.ptr = reinterpret_cast<std::byte *>(map_info.pMappedData);
   if (desc.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-    VkBufferDeviceAddressInfo query_info = {
+    VkBufferDeviceAddressInfo buffer_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .buffer = buffer,
     };
-    desc.gpu_addr = GetBufferDeviceAddress(&query_info);
+    desc.address = GetBufferDeviceAddress(&buffer_info);
   }
 
   return {.desc = desc, .handle = {buffer, [this, allocation](VkBuffer buffer) {

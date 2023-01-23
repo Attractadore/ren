@@ -1,25 +1,23 @@
 #pragma once
 #include "Buffer.hpp"
 #include "Device.hpp"
+#include "Errors.hpp"
 #include "Support/StackAllocatorPool.hpp"
-
-#include <range/v3/algorithm.hpp>
 
 #include <utility>
 
 namespace ren {
-class BufferPool;
 
 class BufferPool {
   Device *m_device;
   BufferDesc m_buffer_desc;
-  SmallVector<Buffer, 8> m_buffers;
+  Vector<Buffer> m_buffers;
   StackAllocatorPool m_allocator;
 
-  void create_buffer(unsigned size) {
+  Buffer &create_buffer(unsigned size) {
     auto desc = m_buffer_desc;
     desc.size = std::max(desc.size, size);
-    m_buffers.emplace_back(m_device->create_buffer(desc));
+    return m_buffers.emplace_back(m_device->create_buffer(desc));
   }
 
 public:
@@ -57,37 +55,36 @@ public:
     }
     ~UniqueAllocation() { destroy(); }
 
-    const BufferRef &get_buffer() const { return m_buffer; }
+    const BufferRef &get() const { return m_buffer; }
   };
 
   BufferRef allocate(unsigned size, unsigned alignment = 4) {
     auto [allocation, offset] = m_allocator.allocate(size, alignment);
     auto [idx, _] = allocation;
     if (idx == m_buffers.size()) {
-      create_buffer(size);
+      assert(offset == 0);
+      return create_buffer(size).subbuffer(0, size);
+    } else {
+      return m_buffers[idx].subbuffer(offset, size);
     }
-    assert(idx < m_buffers.size());
-    BufferRef buffer = m_buffers[idx];
-    buffer.desc.offset = offset;
-    buffer.desc.size = size;
-    return buffer;
   }
 
   UniqueAllocation allocate_unique(unsigned size, unsigned alignment = 4) {
     return {this, allocate(size, alignment)};
   }
 
-  void free(BufferRef buffer_ref) {
-    unsigned idx =
-        ranges::distance(m_buffers.begin(),
-                         ranges::find_if(m_buffers, [&](const Buffer &buffer) {
-                           return buffer.handle.get() == buffer_ref.handle;
-                         }));
-    assert(idx < m_buffers.size());
-    m_device->push_to_delete_queue(
-        [this, idx, size = buffer_ref.desc.size](Device &) {
-          m_allocator.free({.idx = idx, .count = size});
-        });
+  void free(BufferRef buffer) {
+    for (unsigned i = 0; i < m_buffers.size(); ++i) {
+      if (m_buffers[i].handle.get() == buffer.handle) {
+        m_device->push_to_delete_queue(
+            [this, i, size = buffer.desc.size](Device &) {
+              m_allocator.free({.idx = i, .count = size});
+            });
+        return;
+      }
+    }
+    unreachable("Failed to find parent for buffer suballocated from pool");
   }
 };
+
 } // namespace ren

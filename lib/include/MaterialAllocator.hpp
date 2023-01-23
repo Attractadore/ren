@@ -52,8 +52,8 @@ public:
     m_materials[index] = {
         .color = glm::make_vec3(desc.albedo_color),
     };
-    uploader.stage_data(asSpan(m_materials[index]),
-                        m_buffer.subbuffer(index * sizeof(hlsl::MaterialData)));
+    uploader.stage_data(asSpan(m_materials[index]), m_buffer,
+                        index * sizeof(hlsl::MaterialData));
     return index;
   };
 

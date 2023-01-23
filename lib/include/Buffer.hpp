@@ -18,8 +18,8 @@ struct BufferDesc {
   BufferHeap heap = BufferHeap::Device;
   unsigned offset = 0;
   unsigned size;
-  void *ptr = nullptr;
-  uint64_t gpu_addr = 0;
+  std::byte *ptr = nullptr;
+  uint64_t address = 0;
 
   bool operator==(const BufferDesc &other) const = default;
 };
@@ -30,13 +30,8 @@ template <typename B> class BufferMixin {
   B &impl() { return *static_cast<B *>(this); }
 
 public:
-  template <typename T = std::byte> T *map() const {
-    return reinterpret_cast<T *>(impl().desc.ptr);
-  }
-
-  template <typename T = std::byte> std::span<T> map(unsigned count) const {
-    assert(impl().desc.ptr);
-    return {map<T>(), count};
+  template <typename T = std::byte> T *map(unsigned offset = 0) const {
+    return reinterpret_cast<T *>(impl().desc.ptr + offset);
   }
 
   template <typename T = std::byte>
@@ -47,10 +42,10 @@ public:
     sb.desc.offset += offset;
     sb.desc.size = size;
     if (sb.desc.ptr) {
-      sb.desc.ptr = reinterpret_cast<std::byte *>(sb.desc.ptr) + offset;
+      sb.desc.ptr += offset;
     }
-    if (sb.desc.gpu_addr) {
-      sb.desc.gpu_addr += offset;
+    if (sb.desc.address) {
+      sb.desc.address += offset;
     }
     return sb;
   }

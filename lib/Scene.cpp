@@ -202,15 +202,13 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
       auto positions = reinterpret_span<const glm::vec3>(data);
-      m_resource_uploader.stage_data(positions,
-                                     mesh.vertex_allocation.subbuffer(offset));
+      m_resource_uploader.stage_data(positions, mesh.vertex_allocation, offset);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
           reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_color);
-      m_resource_uploader.stage_data(colors,
-                                     mesh.vertex_allocation.subbuffer(offset));
+      m_resource_uploader.stage_data(colors, mesh.vertex_allocation, offset);
       offset += size_bytes(colors);
     } break;
     }
@@ -463,15 +461,16 @@ void Scene::draw() {
       cmd.bind_graphics_pipeline(material.pipeline);
 
       const auto &buffer = mesh.vertex_allocation;
+      auto address = buffer.desc.address;
       auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
       auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
       hlsl::PushConstants pcs = {
           .vertex =
               {
                   .matrix_index = unsigned(i),
-                  .positions = buffer.subbuffer(positions_offset).desc.gpu_addr,
+                  .positions = address + positions_offset,
                   .colors = (colors_offset != ATTRIBUTE_UNUSED)
-                                ? buffer.subbuffer(colors_offset).desc.gpu_addr
+                                ? address + colors_offset
                                 : 0,
               },
           .fragment = {.material_index = material.index},

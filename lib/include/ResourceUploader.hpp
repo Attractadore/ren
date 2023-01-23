@@ -31,7 +31,7 @@ public:
   void end_frame();
 
   template <ranges::sized_range R>
-  void stage_data(R &&data, const BufferRef &buffer);
+  void stage_data(R &&data, const BufferRef &buffer, unsigned offset = 0);
 
   void upload_data(CommandAllocator &cmd_allocator);
 };

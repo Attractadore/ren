@@ -91,7 +91,7 @@ public:
     using T = ranges::range_value_t<R>;
     auto alloc = m_rb.write(ranges::size(data), sizeof(T), alignment);
     ranges::copy(data | ranges::views::take(alloc.count),
-                 m_buffer.subbuffer(alloc.offset).template map<T>());
+                 m_buffer.map<T>(alloc.offset));
     return alloc;
   }
 
