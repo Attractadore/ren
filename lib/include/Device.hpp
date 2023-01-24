@@ -158,15 +158,12 @@ class Device : public InstanceFunctionsMixin<Device>,
   unsigned m_frame_index = 0;
   std::array<DeviceTime, c_pipeline_depth> m_frame_end_times = {};
 
-  HashMap<VkImage, SmallLinearMap<VkImageViewCreateInfo, VkImageView, 3>>
+  HashMap<VkImage, SmallLinearMap<TextureViewDesc, VkImageView, 3>>
       m_image_views;
 
   DeleteQueue m_delete_queue;
 
 private:
-  [[nodiscard]] auto getVkImageView(const VkImageViewCreateInfo &view_info)
-      -> VkImageView;
-
   void queueSubmitAndSignal(VkQueue queue, std::span<const Submit> submits,
                             VkSemaphore semaphore, uint64_t value);
 
@@ -232,8 +229,7 @@ public:
 
   [[nodiscard]] auto create_texture(const TextureDesc &desc) -> Texture;
   void destroy_image_views(VkImage image);
-  VkImageView getVkImageView(const RenderTargetView &rtv);
-  VkImageView getVkImageView(const DepthStencilView &dsv);
+  VkImageView getVkImageView(const TextureView &view);
 
   [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
       -> PipelineLayout;

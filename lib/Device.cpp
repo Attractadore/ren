@@ -4,19 +4,6 @@
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
 
-constexpr bool operator==(const VkImageViewCreateInfo &lhs,
-                          const VkImageViewCreateInfo &rhs) {
-  return lhs.flags == rhs.flags and lhs.viewType == rhs.viewType and
-         lhs.format == rhs.format and
-         lhs.subresourceRange.aspectMask == rhs.subresourceRange.aspectMask and
-         lhs.subresourceRange.baseMipLevel ==
-             rhs.subresourceRange.baseMipLevel and
-         lhs.subresourceRange.levelCount == rhs.subresourceRange.levelCount and
-         lhs.subresourceRange.baseArrayLayer ==
-             rhs.subresourceRange.baseArrayLayer and
-         lhs.subresourceRange.layerCount == rhs.subresourceRange.layerCount;
-}
-
 namespace ren {
 
 std::span<const char *const> Device::getRequiredLayers() {
@@ -427,48 +414,39 @@ void Device::destroy_image_views(VkImage image) {
   m_image_views.erase(image);
 }
 
-VkImageView Device::getVkImageView(const VkImageViewCreateInfo &view_info) {
-  auto image = view_info.image;
+VkImageView Device::getVkImageView(const TextureView &view) {
+  auto image = view.texture;
   if (!image) {
     return VK_NULL_HANDLE;
   }
-  auto [it, inserted] = m_image_views[image].insert(view_info, VK_NULL_HANDLE);
-  auto &view = std::get<1>(*it);
+  auto [it, inserted] = m_image_views[image].insert(view.desc, VK_NULL_HANDLE);
+  auto &image_view = std::get<1>(*it);
   if (inserted) {
-    throwIfFailed(CreateImageView(&view_info, &view),
+    VkImageViewCreateInfo view_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = view.texture,
+        .viewType = view.desc.type,
+        .format = view.desc.format,
+        .components =
+            {
+                .r = view.desc.components.r,
+                .g = view.desc.components.g,
+                .b = view.desc.components.b,
+                .a = view.desc.components.a,
+            },
+        .subresourceRange =
+            {
+                .aspectMask = view.desc.aspects,
+                .baseMipLevel = view.desc.first_mip_level,
+                .levelCount = view.desc.mip_levels,
+                .baseArrayLayer = view.desc.first_array_layer,
+                .layerCount = view.desc.array_layers,
+            },
+    };
+    throwIfFailed(CreateImageView(&view_info, &image_view),
                   "Vulkan: Failed to create image view");
   }
-  return view;
-}
-
-VkImageView Device::getVkImageView(const RenderTargetView &rtv) {
-  return getVkImageView(
-      VkImageViewCreateInfo{.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                            .image = rtv.texture.handle,
-                            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-                            .format = rtv.desc.format,
-                            .subresourceRange = {
-                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                .baseMipLevel = rtv.desc.mip_level,
-                                .levelCount = 1,
-                                .baseArrayLayer = rtv.desc.array_layer,
-                                .layerCount = 1,
-                            }});
-}
-
-VkImageView Device::getVkImageView(const DepthStencilView &dsv) {
-  return getVkImageView(VkImageViewCreateInfo{
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = dsv.texture.handle,
-      .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = dsv.texture.desc.format,
-      .subresourceRange = {
-          .aspectMask = getVkImageAspectFlags(dsv.texture.desc.format),
-          .baseMipLevel = dsv.desc.mip_level,
-          .levelCount = 1,
-          .baseArrayLayer = dsv.desc.array_layer,
-          .layerCount = 1,
-      }});
+  return image_view;
 }
 
 auto Device::createBinarySemaphore() -> Semaphore {

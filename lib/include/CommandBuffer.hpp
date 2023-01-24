@@ -9,14 +9,14 @@ namespace ren {
 class Device;
 
 struct RenderTargetConfig {
-  RenderTargetView rtv;
+  TextureView rtv;
   VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
   VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE;
   std::array<float, 4> clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct DepthStencilTargetConfig {
-  DepthStencilView dsv;
+  TextureView dsv;
   VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
   VkAttachmentStoreOp depth_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
   VkAttachmentLoadOp stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -42,14 +42,10 @@ public:
       std::span<const RenderTargetConfig> render_targets,
       const DepthStencilTargetConfig *depth_stencil_target = nullptr);
 
-  void begin_rendering(const RenderTargetView &rtv) {
-    RenderTargetConfig rt_cfg = {.rtv = rtv};
-    begin_rendering(0, 0, rtv.texture.desc.width, rtv.texture.desc.height,
-                    {&rt_cfg, 1});
-  }
-
   void begin_rendering(const TextureRef &texture) {
-    RenderTargetConfig rt_cfg = {.rtv = RenderTargetView::create(texture)};
+    RenderTargetConfig rt_cfg = {
+        .rtv = TextureView::create(texture,
+                                   {.aspects = VK_IMAGE_ASPECT_COLOR_BIT})};
     begin_rendering(0, 0, texture.desc.width, texture.desc.height,
                     {&rt_cfg, 1});
   }
