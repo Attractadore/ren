@@ -213,7 +213,7 @@ void Device::reset_descriptor_pool(const DescriptorPoolRef &pool) {
   ResetDescriptorPool(pool.handle, 0);
 }
 
-auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
+auto Device::create_descriptor_set_layout(DescriptorSetLayoutDesc desc)
     -> DescriptorSetLayout {
   auto binding_flags =
       desc.bindings |
@@ -249,7 +249,7 @@ auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
   throwIfFailed(CreateDescriptorSetLayout(&layout_info, &layout),
                 "Vulkan: Failed to create descriptor set layout");
 
-  return {.desc = std::make_shared<DescriptorSetLayoutDesc>(desc),
+  return {.desc = std::make_shared<DescriptorSetLayoutDesc>(std::move(desc)),
           .handle = {layout, [this](VkDescriptorSetLayout layout) {
                        push_to_delete_queue(layout);
                      }}};
@@ -257,10 +257,8 @@ auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
 
 auto Device::allocate_descriptor_sets(
     const DescriptorPoolRef &pool,
-    std::span<const DescriptorSetLayoutRef> layouts,
-    std::span<VkDescriptorSet> sets) -> bool {
-  assert(sets.size() >= layouts.size());
-
+    std::span<const DescriptorSetLayoutRef> layouts, VkDescriptorSet *sets)
+    -> bool {
   auto vk_layouts = layouts |
                     map([](const auto &layout) { return layout.handle; }) |
                     ranges::to<SmallVector<VkDescriptorSetLayout>>;
@@ -272,7 +270,7 @@ auto Device::allocate_descriptor_sets(
       .pSetLayouts = vk_layouts.data(),
   };
 
-  auto result = AllocateDescriptorSets(&alloc_info, sets.data());
+  auto result = AllocateDescriptorSets(&alloc_info, sets);
   switch (result) {
   default: {
     throwIfFailed(result, "Vulkan: Failed to allocate descriptor sets");
@@ -288,17 +286,16 @@ auto Device::allocate_descriptor_sets(
 }
 
 auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
-                                     const DescriptorSetLayoutRef &layout)
+                                     DescriptorSetLayoutRef layout)
     -> Optional<VkDescriptorSet> {
   VkDescriptorSet set;
-  auto success = allocate_descriptor_sets(pool, {&layout, 1}, {&set, 1});
-  if (success) {
-    return std::move(set);
+  if (allocate_descriptor_sets(pool, {&layout, 1}, &set)) {
+    return set;
   }
   return None;
 }
 
-auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
+auto Device::allocate_descriptor_set(DescriptorSetLayoutRef layout)
     -> std::pair<DescriptorPool, VkDescriptorSet> {
   DescriptorPoolDesc pool_desc = {.set_count = 1};
   if (layout.desc->flags &
@@ -311,7 +308,7 @@ auto Device::allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
   auto pool = create_descriptor_pool(pool_desc);
   auto set = allocate_descriptor_set(pool, layout);
   assert(set);
-  return {std::move(pool), std::move(set.value())};
+  return {std::move(pool), *set};
 }
 
 void Device::write_descriptor_sets(
@@ -378,7 +375,7 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
                                    }}};
 }
 
-Texture Device::create_texture(const TextureDesc &desc) {
+Texture Device::create_texture(TextureDesc desc) {
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = desc.type,
@@ -655,8 +652,7 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
   };
 }
 
-auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
-    -> PipelineLayout {
+auto Device::create_pipeline_layout(PipelineLayoutDesc desc) -> PipelineLayout {
   auto set_layouts =
       desc.set_layouts |
       map([](const auto &layout) { return layout.handle.get(); }) |
@@ -674,7 +670,7 @@ auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
 
-  return {.desc = std::make_unique<PipelineLayoutDesc>(desc),
+  return {.desc = std::make_unique<PipelineLayoutDesc>(std::move(desc)),
           .handle = {layout, [this](VkPipelineLayout layout) {
                        push_to_delete_queue(layout);
                      }}};

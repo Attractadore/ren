@@ -200,26 +200,23 @@ public:
     m_delete_queue.push(std::move(value));
   }
 
+  [[nodiscard]] auto create_descriptor_set_layout(DescriptorSetLayoutDesc desc)
+      -> DescriptorSetLayout;
+
   [[nodiscard]] auto create_descriptor_pool(const DescriptorPoolDesc &desc)
       -> DescriptorPool;
 
   void reset_descriptor_pool(const DescriptorPoolRef &pool);
 
   [[nodiscard]] auto
-  create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
-      -> DescriptorSetLayout;
-
-  [[nodiscard]] auto
   allocate_descriptor_sets(const DescriptorPoolRef &pool,
                            std::span<const DescriptorSetLayoutRef> layouts,
-                           std::span<VkDescriptorSet> sets) -> bool;
-  [[nodiscard]] auto
-  allocate_descriptor_set(const DescriptorPoolRef &pool,
-                          const DescriptorSetLayoutRef &layout)
+                           VkDescriptorSet *sets) -> bool;
+  [[nodiscard]] auto allocate_descriptor_set(const DescriptorPoolRef &pool,
+                                             DescriptorSetLayoutRef layout)
       -> Optional<VkDescriptorSet>;
 
-  [[nodiscard]] auto
-  allocate_descriptor_set(const DescriptorSetLayoutRef &layout)
+  [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
       -> std::pair<DescriptorPool, VkDescriptorSet>;
 
   void write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs);
@@ -227,11 +224,11 @@ public:
 
   [[nodiscard]] auto create_buffer(BufferDesc desc) -> Buffer;
 
-  [[nodiscard]] auto create_texture(const TextureDesc &desc) -> Texture;
+  [[nodiscard]] auto create_texture(TextureDesc desc) -> Texture;
   void destroy_image_views(VkImage image);
   VkImageView getVkImageView(const TextureView &view);
 
-  [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
+  [[nodiscard]] auto create_pipeline_layout(PipelineLayoutDesc desc)
       -> PipelineLayout;
 
   [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
