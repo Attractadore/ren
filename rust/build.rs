@@ -9,22 +9,25 @@ fn main() {
     let root_dir = env::current_dir().unwrap().join("..");
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let cmake_preset_os = if cfg!(unix) && target_os == "windows" {
-        "linux-mingw"
+    let cmake_preset = if cfg!(unix) && target_os == "windows" {
+        format!("linux-mingw-{profile}")
     } else {
-        &target_os
+        profile.clone()
     };
 
-    let (cmake_preset_profile, cmake_build_type) = if profile == "release" {
-        ("release", "release")
+    let cmake_build_type = &profile;
+
+    let vcpkg_triplet = if target_os == "windows" {
+        if target_env == "gnu" {
+            "x64-mingw-static"
+        } else {
+            "x64-windows-static-md"
+        }
     } else {
-        ("devel", "debug")
+        "x64-linux-release"
     };
 
-    let cmake_preset = format!("{cmake_preset_os}-{cmake_preset_profile}");
-    let rust_preset = format!("rust-{cmake_preset}");
-
-    let build_dir = root_dir.join("build").join(rust_preset);
+    let build_dir = root_dir.join("build").join(format!("rust-{cmake_preset}"));
     let install_dir = build_dir.join("install");
     let include_dir = root_dir.join("include");
     let lib_dir = install_dir.join("lib");
@@ -36,6 +39,7 @@ fn main() {
         .arg(&root_dir)
         .arg("-B")
         .arg(&build_dir)
+        .arg(format!("-DVCPKG_TARGET_TRIPLET={vcpkg_triplet}"))
         .status();
 
     if !status.ok().map_or(false, |s| s.success()) {
@@ -46,7 +50,7 @@ fn main() {
         .arg("--build")
         .arg(&build_dir)
         .arg("--config")
-        .arg(cmake_build_type)
+        .arg(&cmake_build_type)
         .status();
 
     if !status.ok().map_or(false, |s| s.success()) {
@@ -57,7 +61,7 @@ fn main() {
         .arg("--install")
         .arg(&build_dir)
         .arg("--config")
-        .arg(cmake_build_type)
+        .arg(&cmake_build_type)
         .arg("--prefix")
         .arg(&install_dir)
         .status();
@@ -70,20 +74,8 @@ fn main() {
     let ren_lib = "ren";
 
     let ren_vk_h = "ren/ren-vk.h";
-    let ren_vk_lib = "ren-vk";
 
-    let ren_dx12_h = "ren/ren-dx12.h";
-    let ren_dx12_lib = "ren-dx12";
-
-    let (ren_headers, ren_static_libs, mut ren_dynamic_libs) = if target_os == "windows" {
-        (
-            vec![ren_h, ren_vk_h, ren_dx12_h],
-            vec![ren_lib, ren_vk_lib, ren_dx12_lib],
-            vec!["d3d12", "dxgi", "dxguid"],
-        )
-    } else {
-        (vec![ren_h, ren_vk_h], vec![ren_lib, ren_vk_lib], vec![])
-    };
+    let ren_headers = [ren_h, ren_vk_h];
 
     let ren_ffi_h = out_dir.join("ren-ffi.h");
     let ren_ffi_rs = out_dir.join("ren-ffi.rs");
@@ -100,11 +92,15 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
-    if target_env == "gnu" {
-        ren_dynamic_libs.push("stdc++");
+    let ren_static_libs = [ren_lib];
+
+    let ren_dynamic_libs = if target_env == "gnu" {
+        vec!["stdc++"]
     } else if target_env == "msvc" && cmake_build_type == "debug" {
-        ren_dynamic_libs.push("msvcrtd");
-    }
+        vec!["msvcrtd"]
+    } else {
+        vec![]
+    };
 
     for lib in ren_static_libs {
         println!("cargo:rustc-link-lib=static={lib}");
@@ -124,11 +120,7 @@ fn main() {
         .clang_arg({
             let vcpkg_dir = build_dir.join("vcpkg_installed");
             vcpkg_dir
-                .join(
-                    std::fs::read_to_string(vcpkg_dir.join("target_triplet"))
-                        .unwrap()
-                        .trim_end(),
-                )
+                .join(vcpkg_triplet)
                 .join("include")
                 .into_os_string()
                 .into_string()

@@ -123,7 +123,7 @@ impl<'e> Drop for Surface<'e> {
 }
 
 fn main() {
-    let app_name = "Create Device (Vulkan)";
+    let app_name = "Create Device";
 
     println!("Create sdl2::Window");
     let sdl_context = sdl2::init().unwrap();

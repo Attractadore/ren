@@ -5,22 +5,32 @@
       "name": "base",
       "hidden": true,
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-      "binaryDir": "${sourceDir}/build/${presetName}"
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_COLOR_DIAGNOSTICS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug Config",
+      "description": "Debug build with assertions and validation",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
+        "REN_VULKAN_VALIDATION": "ON"
+      }
     },
     {
       "name": "devel",
       "displayName": "Development Config",
-      "description": "Development build with debug info, assertions and validation",
-      "inherits": "base",
+      "description": "Debug build with tests and examples",
+      "inherits": "debug",
       "cacheVariables": {
-        "VCPKG_MANIFEST_FEATURES": "examples;tests",
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_COLOR_DIAGNOSTICS": "ON",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
-        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
-        "REN_VULKAN_VALIDATION": "ON"
+        "VCPKG_MANIFEST_FEATURES": "examples;tests"
       }
     },
     {
@@ -46,16 +56,29 @@
       }
     },
     {
+      "name": "linux-mingw-debug",
+      "displayName": "Debug Config for MinGW on Linux",
+      "description": "Debug build with assertions",
+      "inherits": [
+        "linux-mingw",
+        "debug"
+      ],
+      "cacheVariables": {
+        "REN_VULKAN_VALIDATION": "OFF"
+      }
+    },
+    {
       "name": "linux-mingw-devel",
       "displayName": "Development Config for MinGW on Linux",
-      "description": "Development build with debug info, assertions and validation disabled",
+      "description": "Debug build with examples",
       "inherits": [
         "linux-mingw",
         "devel"
       ],
       "cacheVariables": {
         "REN_BUILD_TESTS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF"
+        "REN_VULKAN_VALIDATION": "OFF",
+        "VCPKG_MANIFEST_FEATURES": "examples"
       }
     },
     {

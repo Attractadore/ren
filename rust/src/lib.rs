@@ -1,5 +1,3 @@
-#[cfg(windows)]
-pub mod dx12;
 mod ffi;
 pub mod vk;
 
@@ -86,7 +84,7 @@ impl<'a> Scene<'a> {
     }
 
     pub fn draw(&mut self) {
-        unsafe { ffi::ren_DrawScene(self.scene) }
+        unsafe { ffi::ren_SceneDraw(self.scene) }
     }
 }
 
