@@ -230,7 +230,7 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
     }
     return m_compiler.compile_material_pipeline({
         .material = desc,
-        .signature = m_pipeline_layout,
+        .layout = m_pipeline_layout,
         .rt_format = m_rt_format,
     });
   }();

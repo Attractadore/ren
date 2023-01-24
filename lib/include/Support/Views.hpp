@@ -9,6 +9,7 @@ constexpr auto enumerate = ranges::views::enumerate;
 constexpr auto filter = ranges::views::filter;
 constexpr auto map = ranges::views::transform;
 constexpr auto once = ranges::views::single;
+constexpr auto zip = ranges::views::zip;
 
 auto filter_map(auto transform_fn) {
   return map(std::move(transform_fn)) |

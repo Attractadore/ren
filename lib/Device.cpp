@@ -538,111 +538,69 @@ void Device::queueSubmitAndSignal(VkQueue queue,
                 "Vulkan: Failed to submit work to queue");
 }
 
+auto Device::create_shader_module(std::span<const std::byte> code)
+    -> SharedHandle<VkShaderModule> {
+  VkShaderModuleCreateInfo module_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = code.size(),
+      .pCode = reinterpret_cast<const uint32_t *>(code.data()),
+  };
+  VkShaderModule module;
+  throwIfFailed(CreateShaderModule(&module_info, &module),
+                "Vulkan: Failed to create shader module");
+  return {module,
+          [this](VkShaderModule module) { DestroyShaderModule(module); }};
+}
+
 auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
     -> GraphicsPipeline {
-  SmallVector<VkDynamicState> dynamic_states = {
-      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-  };
-
-  auto rt_format = config.desc.rt.format;
-
-  VkPipelineRenderingCreateInfo rendering_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-      .colorAttachmentCount = 1,
-      .pColorAttachmentFormats = &rt_format,
-  };
-
-  auto modules =
-      config.shaders | map([&](const ShaderStageConfig &shader) {
-        VkShaderModuleCreateInfo module_info = {
-            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = shader.code.size_bytes(),
-            .pCode = reinterpret_cast<const uint32_t *>(shader.code.data()),
-        };
-        VkShaderModule module;
-        throwIfFailed(CreateShaderModule(&module_info, &module),
-                      "Vulkan: Failed to create shader module");
-        return module;
-      }) |
-      ranges::to<SmallVector<VkShaderModule, 8>>;
-
-  auto stages =
-      ranges::views::zip(config.shaders, modules) | map([](const auto &p) {
-        const auto &[shader, module] = p;
-        return VkPipelineShaderStageCreateInfo{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = shader.stage,
-            .module = module,
-            .pName = shader.entry_point.c_str(),
-        };
-      }) |
-      ranges::to<SmallVector<VkPipelineShaderStageCreateInfo, 5>>;
+  for (auto &&[entry_point, shader] :
+       zip(config.entry_points, config.shaders)) {
+    shader.pName = entry_point.c_str();
+  }
 
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-  };
-
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = config.desc.ia.topology,
   };
 
   VkPipelineViewportStateCreateInfo viewport_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
   };
 
-  VkPipelineRasterizationStateCreateInfo rasterization_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .lineWidth = 1.0f,
-  };
+  config.desc.blend_info.attachmentCount =
+      config.desc.render_target_blend_infos.size();
+  config.desc.blend_info.pAttachments =
+      config.desc.render_target_blend_infos.data();
 
-  VkSampleMask mask = config.desc.ms.sample_mask;
-  VkPipelineMultisampleStateCreateInfo multisample_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples = VkSampleCountFlagBits(config.desc.ms.samples),
-      .pSampleMask = &mask,
-  };
+  config.desc.dynamic_state_info.dynamicStateCount =
+      config.desc.dynamic_states.size();
+  config.desc.dynamic_state_info.pDynamicStates =
+      config.desc.dynamic_states.data();
 
-  VkPipelineColorBlendAttachmentState blend_attachment_info = {
-      .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-  };
-
-  VkPipelineColorBlendStateCreateInfo blend_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-      .attachmentCount = 1,
-      .pAttachments = &blend_attachment_info,
-  };
-
-  VkPipelineDynamicStateCreateInfo dynamic_state_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      .dynamicStateCount = unsigned(dynamic_states.size()),
-      .pDynamicStates = dynamic_states.data(),
-  };
+  config.desc.rendering_info.colorAttachmentCount =
+      config.desc.render_target_formats.size();
+  config.desc.rendering_info.pColorAttachmentFormats =
+      config.desc.render_target_formats.data();
 
   VkGraphicsPipelineCreateInfo pipeline_info = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .pNext = &rendering_info,
-      .stageCount = unsigned(stages.size()),
-      .pStages = stages.data(),
+      .pNext = &config.desc.rendering_info,
+      .stageCount = unsigned(config.shaders.size()),
+      .pStages = config.shaders.data(),
       .pVertexInputState = &vertex_input_info,
-      .pInputAssemblyState = &input_assembly_info,
+      .pInputAssemblyState = &config.desc.input_assembly_info,
       .pViewportState = &viewport_info,
-      .pRasterizationState = &rasterization_info,
-      .pMultisampleState = &multisample_info,
-      .pColorBlendState = &blend_info,
-      .pDynamicState = &dynamic_state_info,
-      .layout = config.signature.handle,
+      .pRasterizationState = &config.desc.rasterization_info,
+      .pMultisampleState = &config.desc.multisample_info,
+      .pColorBlendState = &config.desc.blend_info,
+      .pDynamicState = &config.desc.dynamic_state_info,
+      .layout = config.layout.handle,
   };
 
   VkPipeline pipeline;
   throwIfFailed(CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
                 "Vulkan: Failed to create graphics pipeline");
 
-  for (auto module : modules) {
-    DestroyShaderModule(module);
-  }
   return {
       .desc = std::make_shared<GraphicsPipelineDesc>(std::move(config.desc)),
       .handle = {pipeline,

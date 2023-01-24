@@ -24,7 +24,7 @@ struct MaterialConfig {
 
 struct MaterialPipelineConfig {
   MaterialConfig material;
-  PipelineLayoutRef signature;
+  PipelineLayoutRef layout;
   VkFormat rt_format;
 };
 

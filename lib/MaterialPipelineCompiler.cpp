@@ -1,11 +1,7 @@
 #include "MaterialPipelineCompiler.hpp"
 #include "AssetLoader.hpp"
-#include "Config.hpp"
 #include "Device.hpp"
-#include "Formats.inl"
 #include "Material.hpp"
-#include "Support/Variant.hpp"
-#include "Support/Views.hpp"
 
 #include <boost/container_hash/hash.hpp>
 #include <fmt/format.h>
@@ -53,15 +49,17 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
                        get_albedo_str(config.material.albedo));
   };
 
-  Vector<std::byte> vs, fs;
-  m_asset_loader->load_file(get_shader_name("VertexShader"), vs);
-  m_asset_loader->load_file(get_shader_name("FragmentShader"), fs);
+  Vector<std::byte> buffer;
+  m_asset_loader->load_file(get_shader_name("VertexShader"), buffer);
+  auto vs = m_device->create_shader_module(buffer);
+  m_asset_loader->load_file(get_shader_name("FragmentShader"), buffer);
+  auto fs = m_device->create_shader_module(buffer);
 
   return m_pipelines[config.material] = GraphicsPipelineBuilder(*m_device)
-                                            .set_signature(config.signature)
-                                            .set_vertex_shader(vs)
-                                            .set_fragment_shader(fs)
-                                            .set_render_target(config.rt_format)
+                                            .set_layout(config.layout)
+                                            .add_vertex_shader(vs.get())
+                                            .add_fragment_shader(fs.get())
+                                            .add_render_target(config.rt_format)
                                             .build();
 }
 

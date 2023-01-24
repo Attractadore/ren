@@ -231,6 +231,8 @@ public:
   [[nodiscard]] auto create_pipeline_layout(PipelineLayoutDesc desc)
       -> PipelineLayout;
 
+  [[nodiscard]] auto create_shader_module(std::span<const std::byte> code)
+      -> SharedHandle<VkShaderModule>;
   [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
       -> GraphicsPipeline;
 

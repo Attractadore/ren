@@ -28,18 +28,38 @@ struct PipelineLayout {
 };
 
 struct GraphicsPipelineDesc {
-  struct IADesc {
-    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-  } ia;
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+  };
 
-  struct MSDesc {
-    unsigned samples = 1;
-    unsigned sample_mask = -1;
-  } ms;
+  VkPipelineRasterizationStateCreateInfo rasterization_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .lineWidth = 1.0f,
+  };
 
-  struct RTDesc {
-    VkFormat format;
-  } rt;
+  VkPipelineMultisampleStateCreateInfo multisample_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+  };
+
+  Vector<VkPipelineColorBlendAttachmentState> render_target_blend_infos;
+  VkPipelineColorBlendStateCreateInfo blend_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+  };
+
+  Vector<VkFormat> render_target_formats;
+  VkPipelineRenderingCreateInfo rendering_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+  };
+
+  Vector<VkDynamicState> dynamic_states = {
+      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+  };
+  VkPipelineDynamicStateCreateInfo dynamic_state_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+  };
 };
 
 struct GraphicsPipelineRef {
@@ -56,15 +76,10 @@ struct GraphicsPipeline {
   }
 };
 
-struct ShaderStageConfig {
-  VkShaderStageFlagBits stage;
-  std::span<const std::byte> code;
-  std::string entry_point;
-};
-
 struct GraphicsPipelineConfig {
-  PipelineLayoutRef signature;
-  StaticVector<ShaderStageConfig, 2> shaders;
+  PipelineLayoutRef layout;
+  StaticVector<std::string, 2> entry_points;
+  StaticVector<VkPipelineShaderStageCreateInfo, 2> shaders;
   GraphicsPipelineDesc desc;
 };
 
@@ -75,36 +90,41 @@ class GraphicsPipelineBuilder {
 public:
   explicit GraphicsPipelineBuilder(Device &device) : m_device(&device) {}
 
-  auto set_signature(PipelineLayoutRef signature) -> GraphicsPipelineBuilder & {
-    m_config.signature = signature;
+  auto set_layout(PipelineLayoutRef layout) -> GraphicsPipelineBuilder & {
+    m_config.layout = layout;
     return *this;
   }
 
-  auto set_shader(VkShaderStageFlagBits stage, std::span<const std::byte> code,
+  auto add_shader(VkShaderStageFlagBits stage, VkShaderModule code,
                   std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
+    m_config.entry_points.emplace_back(entry_point);
     m_config.shaders.push_back({
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage,
-        .code = code,
-        .entry_point = std::string(entry_point),
+        .module = code,
     });
     return *this;
   }
 
-  auto set_vertex_shader(std::span<const std::byte> code,
+  auto add_vertex_shader(VkShaderModule code,
                          std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
-    return set_shader(VK_SHADER_STAGE_VERTEX_BIT, code, entry_point);
+    return add_shader(VK_SHADER_STAGE_VERTEX_BIT, code, entry_point);
   }
 
-  auto set_fragment_shader(std::span<const std::byte> code,
+  auto add_fragment_shader(VkShaderModule code,
                            std::string_view entry_point = "main")
       -> GraphicsPipelineBuilder & {
-    return set_shader(VK_SHADER_STAGE_FRAGMENT_BIT, code, entry_point);
+    return add_shader(VK_SHADER_STAGE_FRAGMENT_BIT, code, entry_point);
   }
 
-  auto set_render_target(VkFormat format) -> GraphicsPipelineBuilder & {
-    m_config.desc.rt = {.format = format};
+  auto add_render_target(VkFormat format) -> GraphicsPipelineBuilder & {
+    m_config.desc.render_target_formats.push_back(format);
+    m_config.desc.render_target_blend_infos.push_back({
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    });
     return *this;
   }
 
