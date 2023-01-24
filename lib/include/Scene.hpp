@@ -46,7 +46,7 @@ class Scene {
   using ModelMap = SlotMap<Model>;
   ModelMap m_models;
 
-  PipelineLayout m_pipeline_signature = {};
+  PipelineLayout m_pipeline_layout = {};
 
   DescriptorPool m_persistent_descriptor_pool = {};
   VkDescriptorSet m_persistent_descriptor_set = {};
@@ -88,11 +88,11 @@ private:
   auto get_model(ModelID model) -> Model &;
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
-    return m_pipeline_signature.desc->set_layouts[hlsl::PERSISTENT_SET];
+    return m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET];
   }
 
   DescriptorSetLayoutRef get_global_descriptor_set_layout() const {
-    return m_pipeline_signature.desc->set_layouts[hlsl::GLOBAL_SET];
+    return m_pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET];
   }
 
 public:

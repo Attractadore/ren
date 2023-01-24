@@ -3,8 +3,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <span>
-
 namespace ren {
 
 enum class BufferHeap {

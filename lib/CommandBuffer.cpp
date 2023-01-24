@@ -13,10 +13,6 @@ CommandBuffer::CommandBuffer(Device *device, VkCommandBuffer cmd_buffer)
   };
 }
 
-const Device &CommandBuffer::get_device() const { return *m_device; }
-
-Device &CommandBuffer::get_device() { return *m_device; }
-
 void CommandBuffer::begin() {
   VkCommandBufferBeginInfo begin_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -34,7 +30,7 @@ void CommandBuffer::end() {
 void CommandBuffer::begin_rendering(
     int x, int y, unsigned width, unsigned height,
     std::span<const RenderTargetConfig> render_targets,
-    const Optional<DepthStencilTargetConfig> &depth_stencil_target) {
+    const DepthStencilTargetConfig *depth_stencil_target) {
   auto attachment_is_used = [](VkAttachmentLoadOp load_op,
                                VkAttachmentStoreOp store_op) {
     return not(load_op == VK_ATTACHMENT_LOAD_OP_DONT_CARE and
@@ -43,8 +39,7 @@ void CommandBuffer::begin_rendering(
   };
 
   auto color_attachments =
-      render_targets |
-      ranges::views::transform([&](const RenderTargetConfig &rt) {
+      render_targets | map([&](const RenderTargetConfig &rt) {
         const auto &cc = rt.clear_color;
         return VkRenderingAttachmentInfo{
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -65,7 +60,7 @@ void CommandBuffer::begin_rendering(
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
 
   if (depth_stencil_target) {
-    auto &dst = *depth_stencil_target;
+    const auto &dst = *depth_stencil_target;
     depth_attachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
@@ -123,7 +118,9 @@ void CommandBuffer::blit(const TextureRef &src, const TextureRef &dst,
                          regions.data(), filter);
 }
 
-void CommandBuffer::set_viewports(SmallVector<VkViewport, 8> viewports) {
+void CommandBuffer::set_viewports(std::span<const VkViewport> in_viewports) {
+  SmallVector<VkViewport, 8> viewports(in_viewports.begin(),
+                                       in_viewports.end());
   for (auto &viewport : viewports) {
     viewport.y += viewport.height;
     viewport.height = -viewport.height;
@@ -141,12 +138,12 @@ void CommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
                             pipeline.handle);
 }
 
-void CommandBuffer::bind_graphics_descriptor_sets(
-    PipelineLayoutRef layout, unsigned first_set,
-    std::span<const VkDescriptorSet> sets) {
-  m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  layout.handle, first_set, sets.size(),
-                                  sets.data(), 0, nullptr);
+void CommandBuffer::bind_descriptor_sets(
+    VkPipelineBindPoint bind_point, PipelineLayoutRef layout,
+    unsigned first_set, std::span<const VkDescriptorSet> sets) {
+  m_device->CmdBindDescriptorSets(m_cmd_buffer, bind_point, layout.handle,
+                                  first_set, sets.size(), sets.data(), 0,
+                                  nullptr);
 }
 
 void CommandBuffer::set_push_constants(PipelineLayoutRef layout,
@@ -169,6 +166,10 @@ void CommandBuffer::draw_indexed(unsigned num_indices, unsigned num_instances,
                                  unsigned first_instance) {
   m_device->CmdDrawIndexed(m_cmd_buffer, num_indices, num_instances,
                            first_index, vertex_offset, first_instance);
+}
+
+void CommandBuffer::pipeline_barrier(const VkDependencyInfo &dependency_info) {
+  m_device->CmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
 }
 
 } // namespace ren

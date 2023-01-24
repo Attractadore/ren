@@ -691,7 +691,7 @@ RGCallback RenderGraph::Builder::generateBarrierGroup(
         .pImageMemoryBarriers = barriers.data(),
     };
 
-    cmd.get_device().CmdPipelineBarrier2(cmd.get(), &dependency_info);
+    cmd.pipeline_barrier(dependency_info);
   };
 }
 

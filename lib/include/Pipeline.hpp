@@ -1,9 +1,6 @@
 #pragma once
 #include "Descriptors.hpp"
 #include "Formats.hpp"
-#include "Support/Handle.hpp"
-
-#include <vulkan/vulkan.h>
 
 #include <span>
 
@@ -12,8 +9,8 @@ namespace ren {
 class Device;
 
 struct PipelineLayoutDesc {
-  SmallVector<DescriptorSetLayout, 4> set_layouts;
-  SmallVector<VkPushConstantRange> push_constants;
+  Vector<DescriptorSetLayout> set_layouts;
+  Vector<VkPushConstantRange> push_constants;
 };
 
 struct PipelineLayoutRef {

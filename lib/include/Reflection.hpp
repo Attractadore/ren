@@ -16,12 +16,11 @@ class ReflectionModule {
   spv_reflect::ShaderModule m_module;
 
 public:
-  ReflectionModule(std::span<const std::byte> data);
+  ReflectionModule(std::span<const std::byte> code);
 
   auto get_shader_stage() const -> VkShaderStageFlagBits;
 
-  auto get_binding_count() const -> unsigned;
-  void get_bindings(std::span<DescriptorBindingReflection> out) const;
+  void get_bindings(Vector<DescriptorBindingReflection> &out) const;
 };
 
 } // namespace ren

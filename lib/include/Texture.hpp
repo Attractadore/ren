@@ -2,8 +2,6 @@
 #include "Formats.hpp"
 #include "Support/Handle.hpp"
 
-#include <vulkan/vulkan.h>
-
 namespace ren {
 
 struct TextureDesc {
@@ -88,7 +86,7 @@ struct TextureComponentMapping {
   constexpr auto operator<=>(const TextureComponentMapping &) const = default;
 };
 
-struct TextureViewDesc {
+struct SampledTextureViewDesc {
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   VkFormat format = PARENT_FORMAT;
   TextureComponentMapping components;
@@ -97,14 +95,15 @@ struct TextureViewDesc {
   unsigned first_array_layer = 0;
   unsigned array_layers = 1;
 
-  constexpr auto operator<=>(const TextureViewDesc &) const = default;
+  constexpr auto operator<=>(const SampledTextureViewDesc &) const = default;
 };
 
-struct TextureView {
-  TextureViewDesc desc;
+struct SampledTextureView {
+  SampledTextureViewDesc desc;
   TextureRef texture;
 
-  TextureView create(const TextureRef &texture, TextureViewDesc desc = {}) {
+  SampledTextureView create(const TextureRef &texture,
+                            SampledTextureViewDesc desc = {}) {
     if (desc.format == PARENT_FORMAT) {
       desc.format = texture.desc.format;
     }
@@ -118,22 +117,22 @@ struct TextureView {
   }
 };
 
-struct RWTextureViewDesc {
+struct StorageTextureViewDesc {
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   VkFormat format = PARENT_FORMAT;
   unsigned mip_level = 0;
   unsigned first_array_layer = 0;
   unsigned array_layers = 1;
 
-  constexpr auto operator<=>(const RWTextureViewDesc &) const = default;
+  constexpr auto operator<=>(const StorageTextureViewDesc &) const = default;
 };
 
-struct RWTextureView {
-  RWTextureViewDesc desc;
+struct StorageTextureView {
+  StorageTextureViewDesc desc;
   TextureRef texture;
 
-  static RWTextureView create(const TextureRef &texture,
-                              RWTextureViewDesc desc = {}) {
+  static StorageTextureView create(const TextureRef &texture,
+                                   StorageTextureViewDesc desc = {}) {
     if (desc.format == PARENT_FORMAT) {
       desc.format = texture.desc.format;
     }

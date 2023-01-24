@@ -1,11 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Support/Enum.hpp"
-#include "Support/Handle.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
-
-#include <vulkan/vulkan.h>
 
 #include <array>
 

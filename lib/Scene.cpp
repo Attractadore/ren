@@ -17,14 +17,11 @@
 namespace ren {
 namespace {
 
-void reflect_descriptor_set_layouts(
-    const ReflectionModule &vs, const ReflectionModule &fs,
-    std::output_iterator<DescriptorSetLayoutDesc> auto out) {
-  SmallVector<DescriptorSetLayoutDesc, 4> sets;
-  SmallVector<DescriptorBindingReflection, 8> shader_bindings;
-
-  for (auto *shader : {&vs, &fs}) {
-    shader_bindings.resize(shader->get_binding_count());
+void reflect_descriptor_set_layouts(const ReflectionModule &vs,
+                                    const ReflectionModule &fs,
+                                    Vector<DescriptorSetLayoutDesc> &sets) {
+  Vector<DescriptorBindingReflection> shader_bindings;
+  for (const auto *shader : {&vs, &fs}) {
     shader->get_bindings(shader_bindings);
     for (const auto &[set, shader_binding] : shader_bindings) {
       if (set >= sets.size()) {
@@ -47,12 +44,9 @@ void reflect_descriptor_set_layouts(
       }
     }
   }
-
-  ranges::move(sets, out);
 }
 
-auto reflect_material_pipeline_signature(Device &device,
-                                         const AssetLoader &loader)
+auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
     -> PipelineLayout {
   Vector<std::byte> buffer;
   loader.load_file("ReflectionVertexShader.spv", buffer);
@@ -60,18 +54,18 @@ auto reflect_material_pipeline_signature(Device &device,
   loader.load_file("ReflectionFragmentShader.spv", buffer);
   ReflectionModule fs(buffer);
 
-  SmallVector<DescriptorSetLayoutDesc, 2> set_layout_descs;
-  reflect_descriptor_set_layouts(vs, fs, std::back_inserter(set_layout_descs));
+  Vector<DescriptorSetLayoutDesc> set_layout_descs;
+  reflect_descriptor_set_layouts(vs, fs, set_layout_descs);
   assert(set_layout_descs.size() == 2);
   set_layout_descs[hlsl::PERSISTENT_SET].flags |=
       VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
-  PipelineLayoutDesc signature_desc = {
+  PipelineLayoutDesc layout_desc = {
       .set_layouts = set_layout_descs |
                      map([&](const DescriptorSetLayoutDesc &desc) {
                        return device.create_descriptor_set_layout(desc);
                      }) |
-                     ranges::to<decltype(PipelineLayoutDesc::set_layouts)>,
+                     ranges::to<Vector>,
       .push_constants =
           {
               {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -83,9 +77,7 @@ auto reflect_material_pipeline_signature(Device &device,
           },
   };
 
-  auto signature = device.create_pipeline_layout(std::move(signature_desc));
-
-  return signature;
+  return device.create_pipeline_layout(std::move(layout_desc));
 }
 
 } // namespace
@@ -125,8 +117,8 @@ Scene::Scene(Device &device)
 
       m_cmd_allocator(*m_device),
 
-      m_pipeline_signature(
-          reflect_material_pipeline_signature(*m_device, m_asset_loader)) {}
+      m_pipeline_layout(
+          reflect_material_pipeline_layout(*m_device, m_asset_loader)) {}
 
 void Scene::begin_frame() {
   m_cmd_allocator.begin_frame();
@@ -238,7 +230,7 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
     }
     return m_compiler.compile_material_pipeline({
         .material = desc,
-        .signature = m_pipeline_signature,
+        .signature = m_pipeline_layout,
         .rt_format = m_rt_format,
     });
   }();
@@ -449,7 +441,8 @@ void Scene::draw() {
         scene_descriptor_set,
     };
 
-    cmd.bind_graphics_descriptor_sets(m_pipeline_signature, 0, descriptor_sets);
+    cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout,
+                             0, descriptor_sets);
 
     for (const auto &&[i, model] :
          ranges::views::enumerate(m_models.values())) {
@@ -475,9 +468,9 @@ void Scene::draw() {
               },
           .fragment = {.material_index = material.index},
       };
-      cmd.set_push_constants(m_pipeline_signature, VK_SHADER_STAGE_VERTEX_BIT,
+      cmd.set_push_constants(m_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
                              pcs.vertex, offsetof(decltype(pcs), vertex));
-      cmd.set_push_constants(m_pipeline_signature, VK_SHADER_STAGE_FRAGMENT_BIT,
+      cmd.set_push_constants(m_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
                              pcs.fragment, offsetof(decltype(pcs), fragment));
 
       cmd.bind_index_buffer(mesh.index_allocation, mesh.index_format);
