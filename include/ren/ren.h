@@ -12,8 +12,8 @@ typedef uint32_t RenMesh;
 typedef uint32_t RenMaterial;
 typedef uint32_t RenModel;
 
-void ren_DeviceBeginFrame(RenDevice* device);
-void ren_DeviceEndFrame(RenDevice* device);
+void ren_DeviceBeginFrame(RenDevice *device);
+void ren_DeviceEndFrame(RenDevice *device);
 
 void ren_DestroyDevice(RenDevice *device);
 
@@ -27,12 +27,8 @@ void ren_DestroyScene(RenScene *scene);
 
 void ren_SetSceneOutputSize(RenScene *scene, unsigned width, unsigned height);
 
-void ren_SceneBeginFrame(RenScene* scene);
-void ren_SceneEndFrame(RenScene* scene);
-
-void ren_SceneDraw(RenScene *scene);
-
-void ren_SetSceneSwapchain(RenScene *scene, RenSwapchain *swapchain);
+void ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain);
+void ren_SceneEndFrame(RenScene *scene);
 
 typedef enum {
   REN_PROJECTION_PERSPECTIVE = 0,

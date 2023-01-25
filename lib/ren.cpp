@@ -89,13 +89,16 @@ RenScene *ren_CreateScene(RenDevice *device) {
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-void ren_SceneBeginFrame(RenScene *scene) {
+void ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain) {
   assert(scene);
+  assert(swapchain);
+  scene->setSwapchain(*swapchain);
   scene->begin_frame();
 }
 
 void ren_SceneEndFrame(RenScene *scene) {
   assert(scene);
+  scene->draw();
   scene->end_frame();
 }
 
@@ -111,10 +114,6 @@ unsigned ren_GetSceneOutputWidth(const RenScene *scene) {
 
 unsigned ren_GetSceneOutputHeight(const RenScene *scene) {
   return scene->getOutputHeight();
-}
-
-void ren_SetSceneSwapchain(RenScene *scene, RenSwapchain *swapchain) {
-  scene->setSwapchain(swapchain);
 }
 
 RenMesh ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc) {

@@ -137,7 +137,7 @@ void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_height = height;
 }
 
-void Scene::setSwapchain(Swapchain *swapchain) { m_swapchain = swapchain; }
+void Scene::setSwapchain(Swapchain &swapchain) { m_swapchain = &swapchain; }
 
 MeshID Scene::create_mesh(const MeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>

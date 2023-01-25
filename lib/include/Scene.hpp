@@ -102,8 +102,7 @@ public:
   unsigned getOutputWidth() const { return m_output_width; }
   unsigned getOutputHeight() const { return m_output_height; }
 
-  void setSwapchain(Swapchain *swapchain);
-  Swapchain *getSwapchain() const { return m_swapchain; }
+  void setSwapchain(Swapchain &swapchain);
 
   MeshID create_mesh(const MeshDesc &desc);
   void destroy_mesh(MeshID mesh);

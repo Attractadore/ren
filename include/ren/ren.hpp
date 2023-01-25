@@ -67,9 +67,9 @@ public:
       : m_holder(from_handle(handle), HandleDeleter<H>{scene}) {}
 
   H get() const { return to_handle<H>(m_holder.get()); }
+  operator H() const { return get(); }
 
   const Scene *get_scene() const { return m_holder.get_deleter().scene; }
-
   Scene *get_scene() { return m_holder.get_deleter().scene; }
 };
 
@@ -80,6 +80,7 @@ public:
   SharedHandle(UniqueHandle<H> unique) : m_holder(std::move(unique.m_holder)) {}
 
   H get() const { reinterpret_cast<H>(m_holder.get()); }
+  operator H() const { return get(); }
 
   const Scene *get_scene() const {
     return get_deleter<HandleDeleter<H>>(m_holder)->scene;
@@ -93,7 +94,8 @@ template <class... Ts> struct overload_set : Ts... {
   using Ts::operator()...;
 };
 
-template <typename T> class FrameScope {
+template <typename T> class Frame {
+protected:
   struct Deleter {
     void operator()(T *handle) {
       if (handle) {
@@ -101,13 +103,21 @@ template <typename T> class FrameScope {
       }
     }
   };
-  std::unique_ptr<T, Deleter> m_handle;
+
+private:
+  std::unique_ptr<T, Deleter> m_holder;
+
+protected:
+  Frame(std::unique_ptr<T, Deleter> handle) : m_holder(std::move(handle)) {}
 
 public:
-  FrameScope(T &handle) : m_handle(&handle) { m_handle->begin_frame(); }
+  Frame(T &handle) : m_holder(&handle) { m_holder->begin_frame(); }
 
-  const T &get() const { return *m_handle.get(); }
-  T &get() { return *m_handle.get(); }
+  const T &get() const { return *m_holder.get(); }
+  T &get() { return *m_holder.get(); }
+
+  const T *operator->() const { return m_holder.get(); }
+  T *operator->() { return m_holder.get(); }
 };
 
 } // namespace detail
@@ -151,7 +161,7 @@ using UniqueModel = detail::UniqueHandle<Model>;
 using SharedModel = detail::SharedHandle<Model>;
 
 struct Device : RenDevice {
-  using FrameScope = detail::FrameScope<Device>;
+  using Frame = detail::Frame<Device>;
   void begin_frame() { ren_DeviceBeginFrame(this); }
   void end_frame() { ren_DeviceEndFrame(this); }
 
@@ -229,21 +239,23 @@ struct ModelDesc {
 };
 
 struct Scene : RenScene {
-  void set_swapchain(Swapchain *swapchain) {
-    ren_SetSceneSwapchain(this, swapchain);
-  }
-
   CameraRef get_camera() { return {this}; }
 
   void set_output_size(unsigned width, unsigned height) {
     ren_SetSceneOutputSize(this, width, height);
   }
 
-  using FrameScope = detail::FrameScope<Scene>;
-  void begin_frame() { ren_SceneBeginFrame(this); }
-  void end_frame() { ren_SceneEndFrame(this); }
+  struct Frame : detail::Frame<Scene> {
+    Frame(Scene &scene, Swapchain &swapchain)
+        : detail::Frame<Scene>(std::unique_ptr<Scene, Deleter>(&scene)) {
+      scene.begin_frame(swapchain);
+    }
+  };
 
-  void draw() { ren_SceneDraw(this); }
+  void begin_frame(Swapchain &swapchain) {
+    ren_SceneBeginFrame(this, &swapchain);
+  }
+  void end_frame() { ren_SceneEndFrame(this); }
 
   Mesh create_mesh(const MeshDesc &desc) {
     assert(not desc.positions.empty());
