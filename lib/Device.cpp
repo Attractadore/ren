@@ -157,11 +157,15 @@ define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
 #undef define_queue_deleter
 
 Device::~Device() {
-  DeviceWaitIdle();
-  m_delete_queue.flush(*this);
+  flush();
   DestroySemaphore(m_graphics_queue_semaphore);
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
+}
+
+void Device::flush() {
+  DeviceWaitIdle();
+  m_delete_queue.flush(*this);
 }
 
 void Device::begin_frame() {

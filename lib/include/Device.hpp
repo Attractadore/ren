@@ -176,6 +176,8 @@ public:
   Device &operator=(Device &&);
   ~Device();
 
+  void flush();
+
   void begin_frame();
   void end_frame();
 

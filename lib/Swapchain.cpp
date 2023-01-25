@@ -105,7 +105,10 @@ Swapchain::Swapchain(Device &device, VkSurfaceKHR surface)
   create();
 }
 
-Swapchain::~Swapchain() { destroy(); }
+Swapchain::~Swapchain() {
+  destroy();
+  m_device->flush();
+}
 
 void Swapchain::create() {
   auto capabilities = getSurfaceCapabilities(*m_device, m_create_info.surface);
