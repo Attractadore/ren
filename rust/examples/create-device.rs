@@ -140,15 +140,9 @@ fn main() {
     println!("Create VkInstance");
     let instance = Instance::new(&entry, &window, app_name);
 
-    println!("Load VK_KHR_surface");
-    let khr_surface = khr::Surface::new(&entry, instance.get());
-    println!("Create VkSurfaceKHR");
-    let surface = Surface::new(&khr_surface, instance.get(), &window);
-
-    println!("Select VkPhysicalDevice");
+    println!("Select VkPhysicalDevice #0");
     let physical_device = instance.select_device();
     println!("Running on {}", instance.get_device_name(physical_device));
-
     println!("Create ren::Device");
     let get_instance_proc_addr: ren::vk::PFN_vkGetInstanceProcAddr =
         unsafe { std::mem::transmute(instance.get_loader()) };
@@ -160,28 +154,32 @@ fn main() {
         )
     };
 
+    println!("Load VK_KHR_surface");
+    let khr_surface = khr::Surface::new(&entry, instance.get());
+    println!("Create VkSurfaceKHR");
+    let surface = Surface::new(&khr_surface, instance.get(), &window);
     println!("Create ren::Swapchain");
-    let swapchain =
+    let mut swapchain =
         unsafe { ren::vk::create_swapchain(&device, surface.as_raw() as ren::vk::VkSurfaceKHR) };
 
     println!("Create ren::Scene");
-    let mut scene = ren::Scene::new(&device);
-    scene.set_swapchain(swapchain);
+    let scene = ren::Scene::new(&device);
 
     let mut quit: bool = false;
     while !quit {
         for e in sdl_context.event_pump().unwrap().poll_iter() {
-            match e {
-                sdl2::event::Event::Quit { .. } => quit = true,
-                _ => {}
+            if let sdl2::event::Event::Quit { .. } = e {
+                quit = true;
             }
         }
 
         let (width, height) = window.drawable_size();
-        scene.set_output_size(width, height);
-        scene.get_swapchain_mut().unwrap().set_size(width, height);
+        swapchain.set_size(width, height);
 
-        scene.draw();
+        let device = ren::DeviceFrame::new(&device);
+
+        let mut scene = ren::SceneFrame::new(&device, &scene, &mut swapchain);
+        scene.set_output_size(width, height);
     }
 
     println!("Done");

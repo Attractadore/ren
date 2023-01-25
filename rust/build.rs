@@ -50,7 +50,7 @@ fn main() {
         .arg("--build")
         .arg(&build_dir)
         .arg("--config")
-        .arg(&cmake_build_type)
+        .arg(cmake_build_type)
         .status();
 
     if !status.ok().map_or(false, |s| s.success()) {
@@ -61,7 +61,7 @@ fn main() {
         .arg("--install")
         .arg(&build_dir)
         .arg("--config")
-        .arg(&cmake_build_type)
+        .arg(cmake_build_type)
         .arg("--prefix")
         .arg(&install_dir)
         .status();

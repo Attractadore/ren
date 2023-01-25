@@ -34,7 +34,10 @@ pub unsafe fn create_device(
 }
 
 pub unsafe fn create_swapchain(device: &Device, surface: VkSurfaceKHR) -> Swapchain {
-    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device.device, surface))
+    Swapchain::new(
+        device,
+        ffi::ren_vk_CreateSwapchain(*device.device.borrow(), surface),
+    )
 }
 
 pub fn get_swapchain_surface(swapchain: &Swapchain) -> VkSurfaceKHR {

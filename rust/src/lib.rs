@@ -2,34 +2,59 @@ mod ffi;
 pub mod vk;
 
 use ffi::{RenDevice, RenScene, RenSwapchain};
+use std::cell::{RefCell, RefMut};
 use std::marker::PhantomData;
 
 pub struct Device {
-    device: *mut RenDevice,
+    device: RefCell<*mut RenDevice>,
 }
 
 impl Device {
     unsafe fn new(device: *mut RenDevice) -> Self {
-        Self { device }
+        Self {
+            device: RefCell::new(device),
+        }
     }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
-        unsafe { ffi::ren_DestroyDevice(self.device) }
+        unsafe { ffi::ren_DestroyDevice(*self.device.borrow_mut()) }
+    }
+}
+
+pub struct DeviceFrame<'a> {
+    lock: RefMut<'a, *mut RenDevice>,
+}
+
+impl<'a> DeviceFrame<'a> {
+    pub fn new(device: &'a Device) -> Self {
+        let device = device.device.borrow_mut();
+        unsafe {
+            ffi::ren_DeviceBeginFrame(*device);
+        }
+        Self { lock: device }
+    }
+}
+
+impl<'a> Drop for DeviceFrame<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::ren_DeviceEndFrame(*self.lock);
+        }
     }
 }
 
 pub struct Swapchain<'a> {
-    swapchain: *mut RenSwapchain,
     device: PhantomData<&'a Device>,
+    swapchain: *mut RenSwapchain,
 }
 
 impl<'a> Swapchain<'a> {
     unsafe fn new(_: &'a Device, swapchain: *mut RenSwapchain) -> Self {
         Self {
-            swapchain,
             device: PhantomData,
+            swapchain,
         }
     }
 
@@ -45,51 +70,57 @@ impl<'a> Drop for Swapchain<'a> {
 }
 
 pub struct Scene<'a> {
-    scene: *mut RenScene,
     device: PhantomData<&'a Device>,
-    swapchain: Option<Swapchain<'a>>,
+    scene: RefCell<*mut RenScene>,
 }
 
 impl<'a> Scene<'a> {
     pub fn new(device: &Device) -> Self {
         Self {
-            scene: unsafe { ffi::ren_CreateScene(device.device) },
             device: PhantomData,
-            swapchain: None,
+            scene: RefCell::new(unsafe { ffi::ren_CreateScene(*device.device.borrow()) }),
         }
-    }
-
-    pub fn set_swapchain(&mut self, swapchain: Swapchain<'a>) -> Option<Swapchain<'a>> {
-        unsafe {
-            ffi::ren_SetSceneSwapchain(self.scene, swapchain.swapchain);
-        }
-        std::mem::replace(&mut self.swapchain, Some(swapchain))
-    }
-
-    pub fn get_swapchain(&self) -> Option<&Swapchain<'a>> {
-        self.swapchain.as_ref()
-    }
-
-    pub fn get_swapchain_mut(&mut self) -> Option<&mut Swapchain<'a>> {
-        self.swapchain.as_mut()
-    }
-
-    pub fn reset_swapchain(&mut self) -> Option<Swapchain<'a>> {
-        unsafe { ffi::ren_SetSceneSwapchain(self.scene, std::ptr::null_mut()) }
-        self.swapchain.take()
-    }
-
-    pub fn set_output_size(&mut self, width: u32, height: u32) {
-        unsafe { ffi::ren_SetSceneOutputSize(self.scene, width, height) }
-    }
-
-    pub fn draw(&mut self) {
-        unsafe { ffi::ren_SceneDraw(self.scene) }
     }
 }
 
 impl<'a> Drop for Scene<'a> {
     fn drop(&mut self) {
-        unsafe { ffi::ren_DestroyScene(self.scene) }
+        unsafe { ffi::ren_DestroyScene(*self.scene.borrow_mut()) }
+    }
+}
+
+pub struct SceneFrame<'a, 'd> {
+    device: PhantomData<&'a DeviceFrame<'d>>,
+    swapchain: PhantomData<&'a mut Swapchain<'d>>,
+    lock: RefMut<'a, *mut RenScene>,
+}
+
+impl<'a, 'd> SceneFrame<'a, 'd> {
+    pub fn new(
+        _device: &'a DeviceFrame<'d>,
+        scene: &'a Scene<'d>,
+        swapchain: &'a mut Swapchain<'d>,
+    ) -> Self {
+        let scene = scene.scene.borrow_mut();
+        unsafe {
+            ffi::ren_SceneBeginFrame(*scene, swapchain.swapchain);
+        }
+        Self {
+            device: PhantomData,
+            swapchain: PhantomData,
+            lock: scene,
+        }
+    }
+
+    pub fn set_output_size(&mut self, width: u32, height: u32) {
+        unsafe { ffi::ren_SetSceneOutputSize(*self.lock, width, height) }
+    }
+}
+
+impl<'a, 'd> Drop for SceneFrame<'a, 'd> {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::ren_SceneEndFrame(*self.lock);
+        }
     }
 }
