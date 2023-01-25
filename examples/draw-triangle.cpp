@@ -1,5 +1,7 @@
 #include "app-base.hpp"
 
+#include <fmt/format.h>
+
 class DrawTriangleApp : public AppBase {
   ren::UniqueMesh m_mesh;
   ren::UniqueMaterial m_material;
@@ -57,7 +59,7 @@ int main() {
   try {
     DrawTriangleApp().run();
   } catch (const std::exception &e) {
-    std::cerr << e.what() << "\n";
+    fmt::print(stderr, "{}\n", e.what());
     return -1;
   }
 }
