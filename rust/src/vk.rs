@@ -1,4 +1,5 @@
 use crate::{ffi, Device, Swapchain};
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 pub use ffi::{
@@ -9,7 +10,7 @@ pub fn get_required_api_version() -> u32 {
     unsafe { ffi::ren_vk_GetRequiredAPIVersion() }
 }
 
-pub fn get_required_layers() -> &'static [*const c_char] {
+pub fn get_required_raw_layers() -> &'static [*const c_char] {
     unsafe {
         let layer_cnt = ffi::ren_vk_GetRequiredLayerCount();
         let layers = ffi::ren_vk_GetRequiredLayers();
@@ -17,7 +18,18 @@ pub fn get_required_layers() -> &'static [*const c_char] {
     }
 }
 
-pub fn get_required_extensions() -> &'static [*const c_char] {
+pub fn get_required_layers() -> Vec<CString> {
+    get_required_raw_layers()
+        .iter()
+        .copied()
+        .map(|ext| {
+            let ext = unsafe { CStr::from_ptr(ext) };
+            CString::from(ext)
+        })
+        .collect()
+}
+
+pub fn get_required_raw_extensions() -> &'static [*const c_char] {
     unsafe {
         let extension_cnt = ffi::ren_vk_GetRequiredExtensionCount();
         let extensions = ffi::ren_vk_GetRequiredExtensions();
@@ -25,19 +37,32 @@ pub fn get_required_extensions() -> &'static [*const c_char] {
     }
 }
 
+pub fn get_required_extensions() -> Vec<CString> {
+    get_required_raw_extensions()
+        .iter()
+        .copied()
+        .map(|ext| {
+            let ext = unsafe { CStr::from_ptr(ext) };
+            CString::from(ext)
+        })
+        .collect()
+}
+/// # Safety
+///
+/// Requires valid vkGetInstanceProcAddr, VkInstance and VkPhysicalDevice
 pub unsafe fn create_device(
     proc: PFN_vkGetInstanceProcAddr,
     instance: VkInstance,
-    physical_device: VkPhysicalDevice,
+    adapter: VkPhysicalDevice,
 ) -> Device {
-    Device::new(ffi::ren_vk_CreateDevice(proc, instance, physical_device))
+    Device::new(ffi::ren_vk_CreateDevice(proc, instance, adapter))
 }
 
+/// # Safety
+///
+/// Requires valid VkSurfaceKHR
 pub unsafe fn create_swapchain(device: &Device, surface: VkSurfaceKHR) -> Swapchain {
-    Swapchain::new(
-        device,
-        ffi::ren_vk_CreateSwapchain(*device.device.borrow(), surface),
-    )
+    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device.0, surface))
 }
 
 pub fn get_swapchain_surface(swapchain: &Swapchain) -> VkSurfaceKHR {

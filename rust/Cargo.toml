@@ -6,9 +6,5 @@ edition = "2021"
 [build-dependencies]
 bindgen = "0.61.0"
 
-[dev-dependencies]
-ash = "0.37.0"
-sdl2 = "0.35.2"
-
-[[example]]
-name = "create-device"
+# [[example]]
+# name = "create-device"
