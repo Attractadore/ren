@@ -130,10 +130,10 @@ impl Drop for Surface {
 pub trait App {
     fn get_name(&self) -> &str;
 
-    fn iterate<'a, 'd>(&self, _scene: &mut ren::SceneFrame<'a, 'd>) {}
+    fn iterate(&mut self, _scene: &mut ren::SceneFrame) {}
 }
 
-pub fn run<A: App + 'static>(app: A) {
+pub fn run<A: App + 'static>(mut app: A) {
     let app_name = app.get_name();
 
     println!("Create EventLoop");

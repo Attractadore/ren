@@ -1,11 +1,5 @@
 struct CreateDeviceApp {}
 
-impl CreateDeviceApp {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
 impl examples::App for CreateDeviceApp {
     fn get_name(&self) -> &str {
         "Create Device"
@@ -13,5 +7,5 @@ impl examples::App for CreateDeviceApp {
 }
 
 fn main() {
-    examples::run(CreateDeviceApp::new());
+    examples::run(CreateDeviceApp {});
 }

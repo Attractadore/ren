@@ -62,17 +62,17 @@ pub unsafe fn create_device(
 ///
 /// Requires valid VkSurfaceKHR
 pub unsafe fn create_swapchain(device: &Device, surface: VkSurfaceKHR) -> Swapchain {
-    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device.0, surface))
+    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device.0 .0, surface))
 }
 
 pub fn get_swapchain_surface(swapchain: &Swapchain) -> VkSurfaceKHR {
-    unsafe { ffi::ren_vk_GetSwapchainSurface(swapchain.swapchain) }
+    unsafe { ffi::ren_vk_GetSwapchainSurface(swapchain.0 .0) }
 }
 
 pub fn get_swapchain_present_mode(swapchain: &Swapchain) -> VkPresentModeKHR {
-    unsafe { ffi::ren_vk_GetSwapchainPresentMode(swapchain.swapchain) }
+    unsafe { ffi::ren_vk_GetSwapchainPresentMode(swapchain.0 .0) }
 }
 
 pub fn set_swapchain_present_mode(swapchain: &mut Swapchain, present_mode: VkPresentModeKHR) {
-    unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.swapchain, present_mode) }
+    unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.0 .0, present_mode) }
 }

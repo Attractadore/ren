@@ -1,124 +1,352 @@
 mod ffi;
 pub mod vk;
 
-use ffi::{RenDevice, RenScene, RenSwapchain};
+use ffi::{
+    RenCameraDesc, RenDevice, RenMaterial, RenMaterialAlbedo, RenMaterialDesc, RenMesh,
+    RenMeshDesc, RenModel, RenModelDesc, RenOrthographicCameraDesc, RenPerspectiveCameraDesc,
+    RenProjection, RenScene, RenSwapchain,
+};
 use std::marker::PhantomData;
+
 use std::rc::Rc;
 
-#[derive(Clone)]
-struct DeviceRef(Rc<()>);
-pub struct Device(*mut RenDevice, DeviceRef);
+trait DestroyHandle {
+    unsafe fn destroy(ptr: *mut Self);
+}
 
-impl Device {
-    unsafe fn new(device: *mut RenDevice) -> Self {
-        Self(device, DeviceRef(Rc::new(())))
+#[derive(Clone)]
+struct Handle<T: DestroyHandle>(*mut T, Rc<()>);
+
+impl<T: DestroyHandle> Handle<T> {
+    unsafe fn new(ptr: *mut T) -> Self {
+        Self(ptr, Rc::new(()))
     }
 }
 
-impl Drop for Device {
+impl<T: DestroyHandle> Drop for Handle<T> {
     fn drop(&mut self) {
-        if Rc::strong_count(&self.1 .0) == 1 {
-            unsafe { ffi::ren_DestroyDevice(self.0) }
+        println!(
+            "Drop {}: {}",
+            std::any::type_name::<T>(),
+            Rc::strong_count(&self.1)
+        );
+        if Rc::strong_count(&self.1) == 1 {
+            unsafe { T::destroy(self.0) }
         }
     }
 }
 
+type HDevice = Handle<RenDevice>;
+
+impl DestroyHandle for RenDevice {
+    unsafe fn destroy(device: *mut RenDevice) {
+        ffi::ren_DestroyDevice(device)
+    }
+}
+
+pub struct Device(HDevice);
+
+impl Device {
+    unsafe fn new(device: *mut RenDevice) -> Self {
+        Self(HDevice::new(device))
+    }
+}
+
 pub struct DeviceFrame<'a> {
-    lock: &'a mut Device,
+    device: &'a mut Device,
 }
 
 impl<'a> DeviceFrame<'a> {
     pub fn new(device: &'a mut Device) -> Self {
         unsafe {
-            ffi::ren_DeviceBeginFrame(device.0);
+            ffi::ren_DeviceBeginFrame(device.0 .0);
         }
-        Self { lock: device }
+        Self { device }
     }
 }
 
 impl<'a> Drop for DeviceFrame<'a> {
     fn drop(&mut self) {
         unsafe {
-            ffi::ren_DeviceEndFrame(self.lock.0);
+            ffi::ren_DeviceEndFrame(self.device.0 .0);
         }
     }
 }
 
-pub struct Swapchain {
-    _device: DeviceRef,
-    swapchain: *mut RenSwapchain,
+type HSwapchain = Handle<RenSwapchain>;
+
+impl DestroyHandle for RenSwapchain {
+    unsafe fn destroy(swapchain: *mut RenSwapchain) {
+        ffi::ren_DestroySwapchain(swapchain)
+    }
 }
+
+pub struct Swapchain(HSwapchain, HDevice);
 
 impl Swapchain {
     unsafe fn new(device: &Device, swapchain: *mut RenSwapchain) -> Self {
-        Self {
-            _device: device.1.clone(),
-            swapchain,
-        }
+        Self(HSwapchain::new(swapchain), device.0.clone())
     }
 
     pub fn set_size(&mut self, width: u32, height: u32) {
-        unsafe { ffi::ren_SetSwapchainSize(self.swapchain, width, height) }
+        unsafe { ffi::ren_SetSwapchainSize(self.0 .0, width, height) }
     }
 }
 
-impl Drop for Swapchain {
-    fn drop(&mut self) {
-        unsafe { ffi::ren_DestroySwapchain(self.swapchain) }
+type HScene = Handle<RenScene>;
+
+impl DestroyHandle for RenScene {
+    unsafe fn destroy(scene: *mut RenScene) {
+        ffi::ren_DestroyScene(scene)
     }
 }
 
 pub struct Scene {
-    _device: DeviceRef,
-    scene: *mut RenScene,
+    handle: HScene,
+    device: HDevice,
 }
 
 impl Scene {
     pub fn new(device: &Device) -> Self {
         Self {
-            _device: device.1.clone(),
-            scene: unsafe { ffi::ren_CreateScene(device.0) },
+            handle: unsafe { HScene::new(ffi::ren_CreateScene(device.0 .0)) },
+            device: device.0.clone(),
         }
-    }
-}
-
-impl Drop for Scene {
-    fn drop(&mut self) {
-        unsafe { ffi::ren_DestroyScene(self.scene) }
     }
 }
 
 pub struct SceneFrame<'a, 'd> {
     device: PhantomData<&'a DeviceFrame<'d>>,
     swapchain: PhantomData<&'a mut Swapchain>,
-    lock: &'a mut Scene,
+    scene: &'a mut Scene,
 }
 
 impl<'a, 'd> SceneFrame<'a, 'd> {
     pub fn new(
-        _device: &'a DeviceFrame<'d>,
+        device: &'a DeviceFrame<'d>,
         scene: &'a mut Scene,
         swapchain: &'a mut Swapchain,
     ) -> Self {
+        assert!(device.device.0 .0 == scene.device.0);
+        assert!(device.device.0 .0 == swapchain.1 .0);
         unsafe {
-            ffi::ren_SceneBeginFrame(scene.scene, swapchain.swapchain);
+            ffi::ren_SceneBeginFrame(scene.handle.0, swapchain.0 .0);
         }
         Self {
             device: PhantomData,
             swapchain: PhantomData,
-            lock: scene,
+            scene,
         }
     }
 
-    pub fn set_output_size(&mut self, width: u32, height: u32) {
-        unsafe { ffi::ren_SetSceneOutputSize(self.lock.scene, width, height) }
+    pub fn set_output_size(&self, width: u32, height: u32) {
+        unsafe { ffi::ren_SetSceneOutputSize(self.scene.handle.0, width, height) }
     }
 }
 
 impl<'a, 'd> Drop for SceneFrame<'a, 'd> {
     fn drop(&mut self) {
         unsafe {
-            ffi::ren_SceneEndFrame(self.lock.scene);
+            ffi::ren_SceneEndFrame(self.scene.handle.0);
         }
+    }
+}
+
+trait DestroySceneHandle {
+    unsafe fn destroy(scene: *mut RenScene, handle: Self);
+}
+
+#[derive(Clone)]
+struct SceneHandle<T: DestroySceneHandle + Copy> {
+    handle: T,
+    scene: HScene,
+}
+
+impl<T: DestroySceneHandle + Copy> SceneHandle<T> {
+    fn new(handle: T, scene: &Scene) -> Self {
+        Self {
+            handle,
+            scene: scene.handle.clone(),
+        }
+    }
+}
+
+impl<T: DestroySceneHandle + Copy> Drop for SceneHandle<T> {
+    fn drop(&mut self) {
+        unsafe { T::destroy(self.scene.0, self.handle) }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MeshID(RenMesh);
+type HMesh = SceneHandle<MeshID>;
+pub struct Mesh {
+    handle: HMesh,
+}
+
+impl DestroySceneHandle for MeshID {
+    unsafe fn destroy(scene: *mut RenScene, mesh: MeshID) {
+        ffi::ren_DestroyMesh(scene, mesh.0);
+    }
+}
+
+pub struct MeshDesc<'a> {
+    pub positions: &'a [[f32; 3]],
+    pub colors: Option<&'a [[f32; 3]]>,
+    pub indices: &'a [u32],
+}
+
+impl<'a, 'd> SceneFrame<'a, 'd> {
+    pub fn create_mesh(&self, desc: &MeshDesc) -> Mesh {
+        Mesh {
+            handle: HMesh::new(
+                MeshID({
+                    let num_vertices = desc.positions.len();
+                    let desc = RenMeshDesc {
+                        num_vertices: num_vertices as u32,
+                        num_indices: desc.indices.len() as u32,
+                        positions: desc.positions.as_ptr() as *const f32,
+                        colors: desc.colors.map_or(std::ptr::null(), |colors| {
+                            assert!(colors.len() == num_vertices);
+                            colors.as_ptr() as *const f32
+                        }),
+                        indices: desc.indices.as_ptr(),
+                    };
+                    unsafe { ffi::ren_CreateMesh(self.scene.handle.0, &desc) }
+                }),
+                self.scene,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MaterialID(RenMaterial);
+type HMaterial = SceneHandle<MaterialID>;
+pub struct Material {
+    handle: HMaterial,
+}
+
+impl DestroySceneHandle for MaterialID {
+    unsafe fn destroy(scene: *mut RenScene, material: MaterialID) {
+        ffi::ren_DestroyMaterial(scene, material.0);
+    }
+}
+
+pub enum MaterialAlbedo {
+    Const([f32; 3]),
+    Vertex,
+}
+
+pub struct MaterialDesc {
+    pub albedo: MaterialAlbedo,
+}
+
+impl<'a, 'd> SceneFrame<'a, 'd> {
+    pub fn create_material(&self, desc: &MaterialDesc) -> Material {
+        Material {
+            handle: HMaterial::new(
+                MaterialID({
+                    let desc = RenMaterialDesc {
+                        albedo: match desc.albedo {
+                            MaterialAlbedo::Const(_) => {
+                                RenMaterialAlbedo::REN_MATERIAL_ALBEDO_CONST
+                            }
+                            MaterialAlbedo::Vertex => RenMaterialAlbedo::REN_MATERIAL_ALBEDO_VERTEX,
+                        },
+                        __bindgen_anon_1: match desc.albedo {
+                            MaterialAlbedo::Const(const_albedo) => {
+                                ffi::RenMaterialDesc__bindgen_ty_1 { const_albedo }
+                            }
+                            MaterialAlbedo::Vertex => unsafe { std::mem::zeroed() },
+                        },
+                    };
+                    unsafe { ffi::ren_CreateMaterial(self.scene.handle.0, &desc) }
+                }),
+                self.scene,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ModelID(RenModel);
+type HModel = SceneHandle<ModelID>;
+pub struct Model {
+    handle: HModel,
+    _mesh: Rc<Mesh>,
+    _material: Rc<Material>,
+}
+
+impl DestroySceneHandle for ModelID {
+    unsafe fn destroy(scene: *mut RenScene, model: ModelID) {
+        ffi::ren_DestroyModel(scene, model.0);
+    }
+}
+
+pub struct ModelDesc {
+    pub mesh: Rc<Mesh>,
+    pub material: Rc<Material>,
+}
+
+impl<'a, 'd> SceneFrame<'a, 'd> {
+    pub fn create_model(&self, desc: ModelDesc) -> Model {
+        Model {
+            handle: HModel::new(
+                ModelID({
+                    let desc = RenModelDesc {
+                        mesh: desc.mesh.handle.handle.0,
+                        material: desc.material.handle.handle.0,
+                    };
+                    unsafe { ffi::ren_CreateModel(self.scene.handle.0, &desc) }
+                }),
+                self.scene,
+            ),
+            _mesh: desc.mesh,
+            _material: desc.material,
+        }
+    }
+}
+
+impl Model {
+    pub fn set_matrix(&mut self, matrix: &[f32; 16]) {
+        unsafe {
+            ffi::ren_SetModelMatrix(self.handle.scene.0, self.handle.handle.0, matrix.as_ptr())
+        }
+    }
+}
+
+pub enum CameraProjection {
+    Perspective { hfov: f32 },
+    Orthographic { width: f32 },
+}
+
+pub struct CameraDesc {
+    pub projection: CameraProjection,
+    pub position: [f32; 3],
+    pub forward: [f32; 3],
+    pub up: [f32; 3],
+}
+
+impl<'a, 'd> SceneFrame<'a, 'd> {
+    pub fn set_camera(&mut self, camera: &CameraDesc) {
+        let camera = RenCameraDesc {
+            projection: match camera.projection {
+                CameraProjection::Perspective { .. } => RenProjection::REN_PROJECTION_PERSPECTIVE,
+                CameraProjection::Orthographic { .. } => RenProjection::REN_PROJECTION_ORTHOGRAPHIC,
+            },
+            __bindgen_anon_1: match camera.projection {
+                CameraProjection::Perspective { hfov } => ffi::RenCameraDesc__bindgen_ty_1 {
+                    perspective: RenPerspectiveCameraDesc { hfov },
+                },
+                CameraProjection::Orthographic { width } => ffi::RenCameraDesc__bindgen_ty_1 {
+                    orthographic: RenOrthographicCameraDesc { width },
+                },
+            },
+            position: camera.position,
+            forward: camera.forward,
+            up: camera.up,
+        };
+        unsafe { ffi::ren_SetSceneCamera(self.scene.handle.0, &camera) }
     }
 }
