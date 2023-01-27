@@ -1,6 +1,7 @@
 use crate::{ffi, Device, Swapchain};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::rc::Rc;
 
 pub use ffi::{
     PFN_vkGetInstanceProcAddr, VkInstance, VkPhysicalDevice, VkPresentModeKHR, VkSurfaceKHR,
@@ -54,25 +55,26 @@ pub unsafe fn create_device(
     proc: PFN_vkGetInstanceProcAddr,
     instance: VkInstance,
     adapter: VkPhysicalDevice,
-) -> Device {
+) -> Rc<Device> {
     Device::new(ffi::ren_vk_CreateDevice(proc, instance, adapter))
 }
 
 /// # Safety
 ///
 /// Requires valid VkSurfaceKHR
-pub unsafe fn create_swapchain(device: &Device, surface: VkSurfaceKHR) -> Swapchain {
-    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device.0 .0, surface))
+pub unsafe fn create_swapchain(device: Rc<Device>, surface: VkSurfaceKHR) -> Swapchain {
+    let device_handle = device.handle.0;
+    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device_handle, surface))
 }
 
 pub fn get_swapchain_surface(swapchain: &Swapchain) -> VkSurfaceKHR {
-    unsafe { ffi::ren_vk_GetSwapchainSurface(swapchain.0 .0) }
+    unsafe { ffi::ren_vk_GetSwapchainSurface(swapchain.handle.0) }
 }
 
 pub fn get_swapchain_present_mode(swapchain: &Swapchain) -> VkPresentModeKHR {
-    unsafe { ffi::ren_vk_GetSwapchainPresentMode(swapchain.0 .0) }
+    unsafe { ffi::ren_vk_GetSwapchainPresentMode(swapchain.handle.0) }
 }
 
 pub fn set_swapchain_present_mode(swapchain: &mut Swapchain, present_mode: VkPresentModeKHR) {
-    unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.0 .0, present_mode) }
+    unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.handle.0, present_mode) }
 }
