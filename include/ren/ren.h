@@ -21,6 +21,8 @@ void ren_DestroySwapchain(RenSwapchain *swapchain);
 
 void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height);
+void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *width,
+                          unsigned *height);
 
 RenScene *ren_CreateScene(RenDevice *device);
 void ren_DestroyScene(RenScene *scene);

@@ -58,6 +58,16 @@ void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
   swapchain->set_size(width, height);
 }
 
+void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *width_ptr,
+                          unsigned *height_ptr) {
+  assert(swapchain);
+  assert(width_ptr);
+  assert(height_ptr);
+  auto [width, height] = swapchain->get_size();
+  *width_ptr = width;
+  *height_ptr = height;
+}
+
 VkSurfaceKHR ren_vk_GetSwapchainSurface(const RenSwapchain *swapchain) {
   assert(swapchain);
   return swapchain->get_surface();
@@ -72,14 +82,6 @@ void ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
                                     VkPresentModeKHR present_mode) {
   assert(swapchain);
   swapchain->set_present_mode(present_mode);
-}
-
-unsigned ren_GetSwapchainWidth(const RenSwapchain *swapchain) {
-  return swapchain->get_size().first;
-}
-
-unsigned ren_GetSwapchainHeight(const RenSwapchain *swapchain) {
-  return swapchain->get_size().second;
 }
 
 RenScene *ren_CreateScene(RenDevice *device) {
