@@ -110,8 +110,14 @@ impl Swapchain {
         }
     }
 
-    pub fn set_size(&self, width: u32, height: u32) {
+    pub fn set_size(&mut self, width: u32, height: u32) {
         unsafe { ffi::ren_SetSwapchainSize(self.handle.0, width, height) }
+    }
+
+    pub fn get_size(&self) -> (u32, u32) {
+        let (mut width, mut height) = (0, 0);
+        unsafe { ffi::ren_GetSwapchainSize(self.handle.0, &mut width, &mut height) };
+        (width, height)
     }
 }
 
