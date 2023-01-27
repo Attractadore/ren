@@ -44,7 +44,7 @@ typedef struct {
 } RenOrthographicCameraDesc;
 
 typedef struct {
-  RenProjection type;
+  RenProjection projection;
   union {
     RenPerspectiveCameraDesc perspective;
     RenOrthographicCameraDesc orthographic;
@@ -73,9 +73,9 @@ typedef enum {
 } RenMaterialAlbedo;
 
 typedef struct {
-  RenMaterialAlbedo albedo_type;
+  RenMaterialAlbedo albedo;
   union {
-    float albedo_color[3];
+    float const_albedo[3];
   };
 } RenMaterialDesc;
 

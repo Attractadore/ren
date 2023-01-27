@@ -202,11 +202,11 @@ public:
     RenCameraDesc c_desc = {};
     std::visit(
         detail::overload_set{[&](const PerspectiveCameraDesc &perspective) {
-                               c_desc.type = REN_PROJECTION_PERSPECTIVE;
+                               c_desc.projection = REN_PROJECTION_PERSPECTIVE;
                                c_desc.perspective = perspective;
                              },
                              [&](const OrthographicCameraDesc &ortho) {
-                               c_desc.type = REN_PROJECTION_ORTHOGRAPHIC;
+                               c_desc.projection = REN_PROJECTION_ORTHOGRAPHIC;
                                c_desc.orthographic = ortho;
                              }},
         desc.projection_desc);
@@ -289,12 +289,12 @@ struct Scene : RenScene {
     RenMaterialDesc c_desc = {};
     std::visit(
         detail::overload_set{[&](const ConstMaterialAlbedo &albedo) {
-                               c_desc.albedo_type = REN_MATERIAL_ALBEDO_CONST;
-                               std::memcpy(&c_desc.albedo_color, &albedo.color,
+                               c_desc.albedo = REN_MATERIAL_ALBEDO_CONST;
+                               std::memcpy(&c_desc.const_albedo, &albedo.color,
                                            sizeof(albedo.color));
                              },
                              [&](const VertexMaterialAlbedo &albedo) {
-                               c_desc.albedo_type = REN_MATERIAL_ALBEDO_VERTEX;
+                               c_desc.albedo = REN_MATERIAL_ALBEDO_VERTEX;
                              }},
         desc.albedo);
     return static_cast<Material>(ren_CreateMaterial(this, &c_desc));

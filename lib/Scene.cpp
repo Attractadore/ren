@@ -259,7 +259,7 @@ void Scene::set_camera(const CameraDesc &desc) {
   m_camera.view = glm::lookAt(pos, pos + fwd, up);
 
   float ar = float(m_output_width) / float(m_output_height);
-  switch (desc.type) {
+  switch (desc.projection) {
   case REN_PROJECTION_PERSPECTIVE: {
     float fov = desc.perspective.hfov / ar;
     m_camera.proj = infinitePerspectiveRH_ReverseZ(fov, ar, 0.1f);

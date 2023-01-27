@@ -18,7 +18,7 @@ struct MaterialConfig {
   MaterialAlbedo albedo;
 
   MaterialConfig(const MaterialDesc &desc)
-      : albedo(static_cast<MaterialAlbedo>(desc.albedo_type)) {}
+      : albedo(static_cast<MaterialAlbedo>(desc.albedo)) {}
   auto operator<=>(const MaterialConfig &other) const = default;
 };
 

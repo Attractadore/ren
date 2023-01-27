@@ -50,7 +50,7 @@ public:
     assert(alloc);
     auto index = *alloc;
     m_materials[index] = {
-        .color = glm::make_vec3(desc.albedo_color),
+        .color = glm::make_vec3(desc.const_albedo),
     };
     uploader.stage_data(asSpan(m_materials[index]), m_buffer,
                         index * sizeof(hlsl::MaterialData));
