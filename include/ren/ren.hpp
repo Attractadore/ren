@@ -55,6 +55,15 @@ public:
 
 using unexpected = tl::unexpected<Error>;
 
+namespace detail {
+inline auto to_expected(RenResult result) -> expected<void> {
+  if (result) {
+    return unexpected(static_cast<Error>(result));
+  }
+  return {};
+}
+} // namespace detail
+
 struct Scene;
 
 namespace detail {
@@ -160,10 +169,15 @@ public:
   ~Frame() noexcept(false) = default;
 
   template <typename... Args>
-  [[nodiscard]] auto begin(T &handle, Args &&...args) -> expected<Frame> {
+  [[nodiscard]] static auto begin(T &handle, Args &&...args)
+      -> expected<Frame> {
     return handle.begin_frame(std::forward<Args>(args)...).map([&] {
       return Frame(std::unique_ptr<T, Deleter>(&handle));
     });
+  }
+
+  [[nodiscard]] static auto end(Frame frame) -> expected<void> {
+    return frame->end_frame();
   }
 
   auto get() const -> const T & { return *m_holder.get(); }
@@ -225,25 +239,18 @@ struct Device : RenDevice {
   using Frame = detail::Frame<Device>;
 
   [[nodiscard]] auto begin_frame() -> expected<void> {
-    if (auto err = ren_DeviceBeginFrame(this)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return {};
+    return detail::to_expected(ren_DeviceBeginFrame(this));
   }
 
   [[nodiscard]] auto end_frame() -> expected<void> {
-    if (auto err = ren_DeviceEndFrame(this)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return {};
+    return detail::to_expected(ren_DeviceEndFrame(this));
   }
 
   [[nodiscard]] auto create_scene() -> expected<UniqueScene> {
-    RenScene *scene = nullptr;
-    if (auto err = ren_CreateScene(this, &scene)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return UniqueScene(reinterpret_cast<Scene *>(scene), SceneDeleter());
+    RenScene *scene;
+    return detail::to_expected(ren_CreateScene(this, &scene)).map([&] {
+      return UniqueScene(reinterpret_cast<Scene *>(scene));
+    });
   }
 };
 
@@ -294,25 +301,16 @@ struct Scene : RenScene {
   using Frame = detail::Frame<Scene>;
 
   [[nodiscard]] auto begin_frame(Swapchain &swapchain) -> expected<void> {
-    if (auto err = ren_SceneBeginFrame(this, &swapchain)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return {};
+    return detail::to_expected(ren_SceneBeginFrame(this, &swapchain));
   }
 
   [[nodiscard]] auto end_frame() -> expected<void> {
-    if (auto err = ren_SceneEndFrame(this)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return {};
+    return detail::to_expected(ren_SceneEndFrame(this));
   }
 
   [[nodiscard]] auto set_output_size(unsigned width, unsigned height)
       -> expected<void> {
-    if (auto err = ren_SetSceneOutputSize(this, width, height)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return {};
+    return detail::to_expected(ren_SetSceneOutputSize(this, width, height));
   }
 
   void set_camera(const CameraDesc &desc) {
@@ -347,11 +345,10 @@ struct Scene : RenScene {
                       : reinterpret_cast<const float *>(desc.colors.data()),
         .indices = desc.indices.data(),
     };
-    RenMesh mesh = 0;
-    if (auto err = ren_CreateMesh(this, &c_desc, &mesh)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return static_cast<MeshID>(mesh);
+    RenMesh mesh;
+    return detail::to_expected(ren_CreateMesh(this, &c_desc, &mesh)).map([&] {
+      return static_cast<MeshID>(mesh);
+    });
   }
 
   void destroy_mesh(MeshID mesh) {
@@ -377,11 +374,9 @@ struct Scene : RenScene {
                                c_desc.albedo = REN_MATERIAL_ALBEDO_VERTEX;
                              }},
         desc.albedo);
-    RenMaterial material = 0;
-    if (auto err = ren_CreateMaterial(this, &c_desc, &material)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return static_cast<MaterialID>(material);
+    RenMaterial material;
+    return detail::to_expected(ren_CreateMaterial(this, &c_desc, &material))
+        .map([&] { return static_cast<MaterialID>(material); });
   }
 
   void destroy_material(MaterialID material) {
@@ -399,11 +394,10 @@ struct Scene : RenScene {
         .mesh = static_cast<RenMesh>(desc.mesh),
         .material = static_cast<RenMaterial>(desc.material),
     };
-    RenModel model = 0;
-    if (auto err = ren_CreateModel(this, &c_desc, &model)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return static_cast<ModelID>(model);
+    RenModel model;
+    return detail::to_expected(ren_CreateModel(this, &c_desc, &model)).map([&] {
+      return static_cast<ModelID>(model);
+    });
   }
 
   void destroy_model(ModelID model) {

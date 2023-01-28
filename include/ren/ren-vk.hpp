@@ -45,20 +45,19 @@ struct Device : ::ren::Device {
 
   static auto create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
                      VkPhysicalDevice adapter) -> expected<UniqueDevice> {
-    RenDevice *device = nullptr;
-    if (auto err = ren_vk_CreateDevice(proc, instance, adapter, &device)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return UniqueDevice(static_cast<Device *>(device), DeviceDeleter());
+    RenDevice *device;
+    return detail::to_expected(
+               ren_vk_CreateDevice(proc, instance, adapter, &device))
+        .map([&] { return UniqueDevice(static_cast<Device *>(device)); });
   }
 
   auto create_swapchain(VkSurfaceKHR surface) -> expected<UniqueSwapchain> {
-    RenSwapchain *swapchain = nullptr;
-    if (auto err = ren_vk_CreateSwapchain(this, surface, &swapchain)) {
-      return unexpected(static_cast<Error>(err));
-    }
-    return UniqueSwapchain(static_cast<Swapchain *>(swapchain),
-                           SwapchainDeleter());
+    RenSwapchain *swapchain;
+    return detail::to_expected(
+               ren_vk_CreateSwapchain(this, surface, &swapchain))
+        .map([&] {
+          return UniqueSwapchain(static_cast<Swapchain *>(swapchain));
+        });
   }
 };
 } // namespace v0

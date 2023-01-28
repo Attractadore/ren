@@ -178,6 +178,9 @@ void AppBase::run() {
     m_scene->set_output_size(m_window_width, m_window_height).value();
 
     iterate(scene);
+
+    scene.end(std::move(scene)).value();
+    device.end(std::move(device)).value();
   }
 
   fmt::print("Done\n");
