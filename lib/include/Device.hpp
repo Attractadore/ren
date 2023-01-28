@@ -181,10 +181,12 @@ public:
   void begin_frame();
   void end_frame();
 
-  static auto getRequiredAPIVersion() -> uint32_t { return VK_API_VERSION_1_3; }
+  static auto getRequiredAPIVersion() noexcept -> uint32_t {
+    return VK_API_VERSION_1_3;
+  }
 
-  static auto getRequiredLayers() -> std::span<const char *const>;
-  static auto getRequiredExtensions() -> std::span<const char *const>;
+  static auto getRequiredLayers() noexcept -> std::span<const char *const>;
+  static auto getRequiredExtensions() noexcept -> std::span<const char *const>;
 
   auto getDispatchTable() const -> const DispatchTable & { return m_vk; }
 

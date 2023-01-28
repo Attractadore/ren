@@ -110,12 +110,12 @@ public:
   MaterialID create_material(const MaterialDesc &desc);
   void destroy_material(MaterialID material);
 
-  void set_camera(const CameraDesc &desc);
+  void set_camera(const CameraDesc &desc) noexcept;
 
   auto create_model(const ModelDesc &desc) -> ModelID;
   void destroy_model(ModelID model);
 
-  void set_model_matrix(ModelID model, const glm::mat4 &matrix);
+  void set_model_matrix(ModelID model, const glm::mat4 &matrix) noexcept;
 
   void begin_frame();
   void end_frame();

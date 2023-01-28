@@ -5,6 +5,28 @@
 
 #include <cassert>
 
+namespace {
+
+template <std::invocable F>
+  requires std::same_as<std::invoke_result_t<F>, void>
+RenResult lippincott(F f) noexcept {
+  try {
+    f();
+    return REN_SUCCESS;
+  } catch (const std::system_error &) {
+    return REN_SYSTEM_ERROR;
+  } catch (const std::runtime_error &e) {
+    if (std::string_view(e.what()).starts_with("Vulkan")) {
+      return REN_VULKAN_ERROR;
+    }
+    return REN_RUNTIME_ERROR;
+  } catch (...) {
+    return REN_UNKNOWN_ERROR;
+  }
+}
+
+} // namespace
+
 extern "C" {
 
 uint32_t ren_vk_GetRequiredAPIVersion() {
@@ -27,45 +49,55 @@ const char *const *ren_vk_GetRequiredExtensions() {
   return ren::Device::getRequiredExtensions().data();
 }
 
-RenDevice *ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
-                               VkInstance instance,
-                               VkPhysicalDevice m_adapter) {
-  return new RenDevice(proc, instance, m_adapter);
+RenResult ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
+                              VkInstance instance, VkPhysicalDevice adapter,
+                              RenDevice **p_device) {
+  assert(proc);
+  assert(instance);
+  assert(adapter);
+  assert(p_device);
+  return lippincott(
+      [&] { *p_device = new RenDevice(proc, instance, adapter); });
 }
 
 void ren_DestroyDevice(RenDevice *device) { delete device; }
 
-void ren_DeviceBeginFrame(RenDevice *device) {
+RenResult ren_DeviceBeginFrame(RenDevice *device) {
   assert(device);
-  device->begin_frame();
+  return lippincott([&] { device->begin_frame(); });
 }
 
-void ren_DeviceEndFrame(RenDevice *device) {
+RenResult ren_DeviceEndFrame(RenDevice *device) {
   assert(device);
-  device->end_frame();
+  return lippincott([&] { device->end_frame(); });
 }
 
-RenSwapchain *ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface) {
+RenResult ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface,
+                                 RenSwapchain **p_swapchain) {
   assert(device);
   assert(surface);
-  return new RenSwapchain(*device, surface);
+  assert(p_swapchain);
+  return lippincott([&] { *p_swapchain = new RenSwapchain(*device, surface); });
 }
 
 void ren_DestroySwapchain(RenSwapchain *swapchain) { delete swapchain; }
 
 void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height) {
+  assert(swapchain);
+  assert(width);
+  assert(height);
   swapchain->set_size(width, height);
 }
 
-void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *width_ptr,
-                          unsigned *height_ptr) {
+void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *p_width,
+                          unsigned *p_height) {
   assert(swapchain);
-  assert(width_ptr);
-  assert(height_ptr);
+  assert(p_width);
+  assert(p_height);
   auto [width, height] = swapchain->get_size();
-  *width_ptr = width;
-  *height_ptr = height;
+  *p_width = width;
+  *p_height = height;
 }
 
 VkSurfaceKHR ren_vk_GetSwapchainSurface(const RenSwapchain *swapchain) {
@@ -78,50 +110,47 @@ VkPresentModeKHR ren_vk_GetSwapchainPresentMode(const RenSwapchain *swapchain) {
   return swapchain->get_present_mode();
 }
 
-void ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
-                                    VkPresentModeKHR present_mode) {
+RenResult ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
+                                         VkPresentModeKHR present_mode) {
   assert(swapchain);
-  swapchain->set_present_mode(present_mode);
+  return lippincott([&] { swapchain->set_present_mode(present_mode); });
 }
 
-RenScene *ren_CreateScene(RenDevice *device) {
+RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene) {
   assert(device);
-  return new RenScene(*device);
+  assert(p_scene);
+  return lippincott([&] { *p_scene = new RenScene(*device); });
 }
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-void ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain) {
+RenResult ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain) {
   assert(scene);
   assert(swapchain);
-  scene->setSwapchain(*swapchain);
-  scene->begin_frame();
+  return lippincott([&] {
+    scene->setSwapchain(*swapchain);
+    scene->begin_frame();
+  });
 }
 
-void ren_SceneEndFrame(RenScene *scene) {
+RenResult ren_SceneEndFrame(RenScene *scene) {
   assert(scene);
-  scene->draw();
-  scene->end_frame();
+  return lippincott([&] {
+    scene->draw();
+    scene->end_frame();
+  });
 }
 
-void ren_SceneDraw(RenScene *scene) { scene->draw(); }
-
-void ren_SetSceneOutputSize(RenScene *scene, unsigned width, unsigned height) {
-  scene->setOutputSize(width, height);
+RenResult ren_SetSceneOutputSize(RenScene *scene, unsigned width,
+                                 unsigned height) {
+  return lippincott([&] { scene->setOutputSize(width, height); });
 }
 
-unsigned ren_GetSceneOutputWidth(const RenScene *scene) {
-  return scene->getOutputWidth();
-}
-
-unsigned ren_GetSceneOutputHeight(const RenScene *scene) {
-  return scene->getOutputHeight();
-}
-
-RenMesh ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc) {
+RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
+                         RenMesh *p_mesh) {
   assert(scene);
   assert(desc);
-  return scene->create_mesh(*desc);
+  return lippincott([&] { *p_mesh = scene->create_mesh(*desc); });
 }
 
 void ren_DestroyMesh(RenScene *scene, RenMesh mesh) {
@@ -129,10 +158,11 @@ void ren_DestroyMesh(RenScene *scene, RenMesh mesh) {
   scene->destroy_mesh(mesh);
 }
 
-RenMaterial ren_CreateMaterial(RenScene *scene, const RenMaterialDesc *desc) {
+RenResult ren_CreateMaterial(RenScene *scene, const RenMaterialDesc *desc,
+                             RenMaterial *p_material) {
   assert(scene);
   assert(desc);
-  return scene->create_material(*desc);
+  return lippincott([&] { *p_material = scene->create_material(*desc); });
 }
 
 void ren_DestroyMaterial(RenScene *scene, RenMaterial material) {
@@ -146,10 +176,11 @@ void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
   scene->set_camera(*desc);
 }
 
-RenModel ren_CreateModel(RenScene *scene, const RenModelDesc *desc) {
+RenResult ren_CreateModel(RenScene *scene, const RenModelDesc *desc,
+                          RenModel *p_model) {
   assert(scene);
   assert(desc);
-  return scene->create_model(*desc);
+  return lippincott([&] { *p_model = scene->create_model(*desc); });
 }
 
 void ren_DestroyModel(RenScene *scene, RenModel model) {

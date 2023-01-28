@@ -3,17 +3,14 @@
 #include <fmt/format.h>
 
 class DrawTriangleApp : public AppBase {
-  ren::UniqueMesh m_mesh;
-  ren::UniqueMaterial m_material;
-  ren::UniqueModel m_model;
-  bool m_init = false;
+  ren::Model m_model;
 
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {}
 
 protected:
   void iterate(ren::Scene::Frame &scene) override {
-    if (not m_init) {
+    if (!m_model) {
       std::array<glm::vec3, 3> positions = {{
           {0.0f, 0.5f, 0.0f},
           {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
@@ -28,26 +25,22 @@ protected:
 
       std::array<unsigned, 3> indices = {0, 1, 2};
 
-      m_mesh = scene->create_unique_mesh({
-          .positions = positions,
-          .colors = colors,
-          .indices = indices,
-      });
+      auto mesh = ren::Mesh(scene, {
+                                       .positions = positions,
+                                       .colors = colors,
+                                       .indices = indices,
+                                   });
 
-      m_material = scene->create_unique_material({
-          .albedo = ren::VertexMaterialAlbedo(),
-      });
+      auto material =
+          ren::Material(scene, {
+                                   .albedo = ren::VertexMaterialAlbedo(),
+                               });
 
-      m_model = scene->create_unique_model({
-          .mesh = m_mesh,
-          .material = m_material,
-      });
-
-      m_init = true;
+      m_model = ren::Model(scene, std::move(mesh), std::move(material));
     }
 
-    scene->get_camera().config({
-        .projection_desc = ren::OrthographicCameraDesc{.width = 2.0f},
+    scene->set_camera({
+        .projection = ren::OrthographicProjection{.width = 2.0f},
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},

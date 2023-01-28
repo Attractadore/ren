@@ -9,6 +9,7 @@
     "glm",
     "range-v3",
     "spirv-reflect",
+    "tl-expected",
     "vulkan-headers",
     "vulkan-memory-allocator"
   ],

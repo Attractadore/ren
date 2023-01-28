@@ -20,6 +20,7 @@ target_compile_definitions(Vulkan::Headers INTERFACE VK_NO_PROTOTYPE)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
+find_package(tl-expected REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
@@ -38,7 +39,6 @@ target_precompile_headers(
   Support-PCH
   INTERFACE
   <array>
-  <deque>
   <functional>
   <memory>
   <optional>
@@ -51,6 +51,7 @@ target_precompile_headers(
   <boost/container/small_vector.hpp>
   <boost/container/static_vector.hpp>
   <fmt/format.h>
+  <glm/glm.hpp>
   <range/v3/action.hpp>
   <range/v3/algorithm.hpp>
   <range/v3/range.hpp>
@@ -139,7 +140,7 @@ target_sources(
          FILES
          ${REN_INCLUDE}/ren/ren.hpp
          ${REN_INCLUDE}/ren/ren-vk.hpp)
-target_link_libraries(ren-hpp INTERFACE ren::ren glm::glm)
+target_link_libraries(ren-hpp INTERFACE ren::ren glm::glm tl::expected)
 target_compile_features(ren-hpp INTERFACE cxx_std_20)
 add_library(ren::ren-hpp ALIAS ren-hpp)
 

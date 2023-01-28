@@ -252,7 +252,7 @@ void Scene::destroy_material(MaterialID id) {
   m_materials.erase(it);
 }
 
-void Scene::set_camera(const CameraDesc &desc) {
+void Scene::set_camera(const CameraDesc &desc) noexcept {
   auto pos = glm::make_vec3(desc.position);
   auto fwd = glm::make_vec3(desc.forward);
   auto up = glm::make_vec3(desc.up);
@@ -322,7 +322,7 @@ auto Scene::get_model(ModelID model) -> Model & {
   return m_models[key];
 }
 
-void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) {
+void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) noexcept {
   get_model(model).matrix = matrix;
 }
 

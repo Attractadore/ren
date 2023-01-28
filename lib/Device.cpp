@@ -6,7 +6,7 @@
 
 namespace ren {
 
-std::span<const char *const> Device::getRequiredLayers() {
+std::span<const char *const> Device::getRequiredLayers() noexcept {
   static constexpr auto layers = makeArray<const char *>(
 #if REN_VULKAN_VALIDATION
       "VK_LAYER_KHRONOS_validation"
@@ -15,7 +15,7 @@ std::span<const char *const> Device::getRequiredLayers() {
   return layers;
 }
 
-std::span<const char *const> Device::getRequiredExtensions() {
+std::span<const char *const> Device::getRequiredExtensions() noexcept {
   static constexpr auto extensions = makeArray<const char *>();
   return extensions;
 }

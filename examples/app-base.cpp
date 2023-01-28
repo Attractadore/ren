@@ -131,7 +131,8 @@ AppBase::AppBase(std::string app_name) : m_app_name(std::move(app_name)) {
   }
 
   fmt::print("Create ren::Device\n");
-  m_device = ren::vk::Device::create(m_vk->instance.get(), m_vk->adapter);
+  m_device =
+      ren::vk::Device::create(m_vk->instance.get(), m_vk->adapter).value();
 
   fmt::print("Create VkSurfaceKHR\n");
   VkSurfaceKHR surface = VK_NULL_HANDLE;
@@ -142,10 +143,10 @@ AppBase::AppBase(std::string app_name) : m_app_name(std::move(app_name)) {
   m_vk->surface = {surface, SurfaceDeleter(m_vk->instance.get())};
   auto *vk_device = static_cast<ren::vk::Device *>(m_device.get());
   fmt::print("Create ren::Swapchain\n");
-  m_swapchain = vk_device->create_swapchain(surface);
+  m_swapchain = vk_device->create_swapchain(surface).value();
 
   fmt::print("Create ren::Scene\n");
-  m_scene = m_device->create_scene();
+  m_scene = m_device->create_scene().value();
 }
 
 AppBase::AppBase(AppBase &&) noexcept = default;
@@ -174,7 +175,7 @@ void AppBase::run() {
     ren::Device::Frame device(*m_device);
 
     ren::Scene::Frame scene(*m_scene, *m_swapchain);
-    m_scene->set_output_size(m_window_width, m_window_height);
+    m_scene->set_output_size(m_window_width, m_window_height).value();
 
     iterate(scene);
   }

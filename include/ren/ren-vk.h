@@ -15,16 +15,19 @@ const char *const *ren_vk_GetRequiredLayers();
 size_t ren_vk_GetRequiredExtensionCount();
 const char *const *ren_vk_GetRequiredExtensions();
 
-RenDevice *ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
-                               VkInstance instance, VkPhysicalDevice adapter);
+RenResult ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
+                              VkInstance instance, VkPhysicalDevice adapter,
+                              RenDevice **p_device);
 
-RenSwapchain *ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface);
+RenResult ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface,
+                                 RenSwapchain **p_swapchain);
 
 VkSurfaceKHR ren_vk_GetSwapchainSurface(const RenSwapchain *swapchain);
 
-void ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
-                                    VkPresentModeKHR present_mode);
 VkPresentModeKHR ren_vk_GetSwapchainPresentMode(const RenSwapchain *swapchain);
+
+RenResult ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
+                                         VkPresentModeKHR present_mode);
 
 #ifdef __cplusplus
 }

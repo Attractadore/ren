@@ -166,7 +166,7 @@ void Swapchain::destroy() {
   }
 }
 
-void Swapchain::set_size(unsigned width, unsigned height) {
+void Swapchain::set_size(unsigned width, unsigned height) noexcept {
   m_create_info.imageExtent = {
       .width = width,
       .height = height,

@@ -27,17 +27,19 @@ public:
   Swapchain &operator=(Swapchain &&);
   ~Swapchain();
 
-  std::pair<unsigned, unsigned> get_size() const {
+  std::pair<unsigned, unsigned> get_size() const noexcept {
     return {m_create_info.imageExtent.width, m_create_info.imageExtent.height};
   }
-  void set_size(unsigned width, unsigned height);
 
-  VkPresentModeKHR get_present_mode() const {
+  void set_size(unsigned width, unsigned height) noexcept;
+
+  VkPresentModeKHR get_present_mode() const noexcept {
     return m_create_info.presentMode;
   }
+
   void set_present_mode(VkPresentModeKHR);
 
-  VkSurfaceKHR get_surface() const { return m_create_info.surface; }
+  VkSurfaceKHR get_surface() const noexcept { return m_create_info.surface; }
 
   void acquireImage(VkSemaphore signal_semaphore);
   void presentImage(VkSemaphore wait_semaphore);

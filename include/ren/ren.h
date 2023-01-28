@@ -2,8 +2,36 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
+
+#define REN_NODISCARD [[nodiscard]]
+
+#else
+
+#if _MSC_VER
+#if _MSC_VER >= 1700
+#define REN_NODISCARD _Check_return_
+#endif
+#else
+#define REN_NODISCARD __attribute__((warn_unused_result))
+#endif
+
+#ifndef REN_NODISCARD
+#define REN_NODISCARD
+#endif
+
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum {
+  REN_SUCCESS = 0,
+  REN_VULKAN_ERROR,
+  REN_SYSTEM_ERROR,
+  REN_RUNTIME_ERROR,
+  REN_UNKNOWN_ERROR,
+} RenResult;
 
 typedef struct RenDevice RenDevice;
 typedef struct RenSwapchain RenSwapchain;
@@ -12,25 +40,31 @@ typedef uint32_t RenMesh;
 typedef uint32_t RenMaterial;
 typedef uint32_t RenModel;
 
-void ren_DeviceBeginFrame(RenDevice *device);
-void ren_DeviceEndFrame(RenDevice *device);
+REN_NODISCARD RenResult ren_DeviceBeginFrame(RenDevice *device);
+
+REN_NODISCARD RenResult ren_DeviceEndFrame(RenDevice *device);
 
 void ren_DestroyDevice(RenDevice *device);
 
 void ren_DestroySwapchain(RenSwapchain *swapchain);
 
+void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *p_width,
+                          unsigned *p_height);
+
 void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height);
-void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *width,
-                          unsigned *height);
 
-RenScene *ren_CreateScene(RenDevice *device);
+REN_NODISCARD RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene);
+
 void ren_DestroyScene(RenScene *scene);
 
-void ren_SetSceneOutputSize(RenScene *scene, unsigned width, unsigned height);
+REN_NODISCARD RenResult ren_SceneBeginFrame(RenScene *scene,
+                                            RenSwapchain *swapchain);
 
-void ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain);
-void ren_SceneEndFrame(RenScene *scene);
+REN_NODISCARD RenResult ren_SetSceneOutputSize(RenScene *scene, unsigned width,
+                                               unsigned height);
+
+RenResult ren_SceneEndFrame(RenScene *scene);
 
 typedef enum {
   REN_PROJECTION_PERSPECTIVE = 0,
@@ -39,17 +73,17 @@ typedef enum {
 
 typedef struct {
   float hfov;
-} RenPerspectiveCameraDesc;
+} RenPerspectiveProjection;
 
 typedef struct {
   float width;
-} RenOrthographicCameraDesc;
+} RenOrthographicProjection;
 
 typedef struct {
   RenProjection projection;
   union {
-    RenPerspectiveCameraDesc perspective;
-    RenOrthographicCameraDesc orthographic;
+    RenPerspectiveProjection perspective;
+    RenOrthographicProjection orthographic;
   };
   float position[3];
   float forward[3];
@@ -66,7 +100,8 @@ typedef struct {
   const unsigned *indices;
 } RenMeshDesc;
 
-RenMesh ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc);
+REN_NODISCARD RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
+                                       RenMesh *p_mesh);
 void ren_DestroyMesh(RenScene *scene, RenMesh mesh);
 
 typedef enum {
@@ -81,7 +116,10 @@ typedef struct {
   };
 } RenMaterialDesc;
 
-RenMaterial ren_CreateMaterial(RenScene *scene, const RenMaterialDesc *desc);
+REN_NODISCARD RenResult ren_CreateMaterial(RenScene *scene,
+                                           const RenMaterialDesc *desc,
+                                           RenMaterial *p_material);
+
 void ren_DestroyMaterial(RenScene *scene, RenMaterial material);
 
 typedef struct {
@@ -89,7 +127,10 @@ typedef struct {
   RenMaterial material;
 } RenModelDesc;
 
-RenModel ren_CreateModel(RenScene *scene, const RenModelDesc *desc);
+REN_NODISCARD RenResult ren_CreateModel(RenScene *scene,
+                                        const RenModelDesc *desc,
+                                        RenModel *p_model);
+
 void ren_DestroyModel(RenScene *scene, RenModel model);
 
 void ren_SetModelMatrix(RenScene *scene, RenModel model,

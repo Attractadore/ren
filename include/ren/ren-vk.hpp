@@ -6,26 +6,33 @@
 
 namespace ren::vk {
 inline namespace v0 {
-inline uint32_t get_required_api_version() {
+inline auto get_required_api_version() -> uint32_t {
   return ren_vk_GetRequiredAPIVersion();
 }
 
-inline std::span<const char *const> get_required_layers() {
+inline auto get_required_layers() -> std::span<const char *const> {
   return {ren_vk_GetRequiredLayers(), ren_vk_GetRequiredLayerCount()};
 }
 
-inline std::span<const char *const> get_required_extensions() {
+inline auto get_required_extensions() -> std::span<const char *const> {
   return {ren_vk_GetRequiredExtensions(), ren_vk_GetRequiredExtensionCount()};
 }
 
 struct Swapchain : ::ren::Swapchain {
-  VkSurfaceKHR get_surface() const { return ren_vk_GetSwapchainSurface(this); }
+  auto get_surface() const -> VkSurfaceKHR {
+    return ren_vk_GetSwapchainSurface(this);
+  }
 
-  VkPresentModeKHR get_present_mode() const {
+  auto get_present_mode() const -> VkPresentModeKHR {
     return ren_vk_GetSwapchainPresentMode(this);
   }
-  void set_present_mode(VkPresentModeKHR present_mode) {
-    ren_vk_SetSwapchainPresentMode(this, present_mode);
+
+  [[nodiscard]] auto set_present_mode(VkPresentModeKHR present_mode)
+      -> expected<void> {
+    if (auto err = ren_vk_SetSwapchainPresentMode(this, present_mode)) {
+      return unexpected(static_cast<Error>(err));
+    }
+    return {};
   };
 };
 
@@ -36,15 +43,22 @@ struct Device : ::ren::Device {
   }
 #endif
 
-  static UniqueDevice create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-                       VkPhysicalDevice adapter) {
-    return {static_cast<Device *>(ren_vk_CreateDevice(proc, instance, adapter)),
-            DeviceDeleter()};
+  static auto create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
+                     VkPhysicalDevice adapter) -> expected<UniqueDevice> {
+    RenDevice *device = nullptr;
+    if (auto err = ren_vk_CreateDevice(proc, instance, adapter, &device)) {
+      return unexpected(static_cast<Error>(err));
+    }
+    return UniqueDevice(static_cast<Device *>(device), DeviceDeleter());
   }
 
-  UniqueSwapchain create_swapchain(VkSurfaceKHR surface) {
-    return {static_cast<Swapchain *>(ren_vk_CreateSwapchain(this, surface)),
-            SwapchainDeleter()};
+  auto create_swapchain(VkSurfaceKHR surface) -> expected<UniqueSwapchain> {
+    RenSwapchain *swapchain = nullptr;
+    if (auto err = ren_vk_CreateSwapchain(this, surface, &swapchain)) {
+      return unexpected(static_cast<Error>(err));
+    }
+    return UniqueSwapchain(static_cast<Swapchain *>(swapchain),
+                           SwapchainDeleter());
   }
 };
 } // namespace v0
