@@ -64,7 +64,7 @@ REN_NODISCARD RenResult ren_SceneBeginFrame(RenScene *scene,
 REN_NODISCARD RenResult ren_SetSceneOutputSize(RenScene *scene, unsigned width,
                                                unsigned height);
 
-RenResult ren_SceneEndFrame(RenScene *scene);
+REN_NODISCARD RenResult ren_SceneEndFrame(RenScene *scene);
 
 typedef enum {
   REN_PROJECTION_PERSPECTIVE = 0,
