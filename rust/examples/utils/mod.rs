@@ -198,6 +198,9 @@ pub fn run<A: App + 'static>() -> Result<()> {
                         ren::SceneFrame::new(&device, &scene, &mut swapchain, width, height)?;
 
                     app.iterate(&scene)?;
+
+                    scene.end()?;
+                    device.end()?;
                 }
                 Event::LoopDestroyed => {
                     println!("Done");
