@@ -3,12 +3,37 @@ pub mod vk;
 
 use ffi::{
     RenCameraDesc, RenDevice, RenMaterial, RenMaterialAlbedo, RenMaterialDesc, RenMesh,
-    RenMeshDesc, RenModel, RenModelDesc, RenOrthographicCameraDesc, RenPerspectiveCameraDesc,
-    RenProjection, RenScene, RenSwapchain,
+    RenMeshDesc, RenModel, RenModelDesc, RenOrthographicProjection, RenPerspectiveProjection,
+    RenProjection, RenResult, RenScene, RenSwapchain,
 };
 use std::cell::{RefCell, RefMut};
 use std::marker::PhantomData;
 use std::rc::Rc;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Vulkan runtime error")]
+    Vulkan,
+    #[error("System error")]
+    System,
+    #[error("C++ runtime error")]
+    Runtime,
+    #[error("Unknown error")]
+    Unknown,
+}
+
+impl Error {
+    fn new(result: RenResult) -> Result<(), Self> {
+        match result {
+            RenResult::REN_SUCCESS => Ok(()),
+            RenResult::REN_VULKAN_ERROR => Err(Error::Vulkan),
+            RenResult::REN_SYSTEM_ERROR => Err(Error::System),
+            RenResult::REN_RUNTIME_ERROR => Err(Error::Runtime),
+            _ => Err(Error::Unknown),
+        }
+    }
+}
 
 trait DestroyHandle {
     unsafe fn destroy(ptr: *mut Self);
@@ -70,21 +95,23 @@ pub struct DeviceFrame<'a> {
 }
 
 impl<'a> DeviceFrame<'a> {
-    pub fn new(device: &'a Device) -> Self {
-        unsafe {
-            ffi::ren_DeviceBeginFrame(device.handle.0);
-        }
-        Self {
+    pub fn new(device: &'a Device) -> Result<Self, Error> {
+        Error::new(unsafe { ffi::ren_DeviceBeginFrame(device.handle.0) })?;
+        Ok(Self {
             device,
             _lock: device.guard.lock(),
-        }
+        })
+    }
+
+    pub fn end(self) -> Result<(), Error> {
+        Error::new(unsafe { ffi::ren_DeviceEndFrame(self.device.handle.0) })
     }
 }
 
 impl<'a> Drop for DeviceFrame<'a> {
     fn drop(&mut self) {
-        unsafe {
-            ffi::ren_DeviceEndFrame(self.device.handle.0);
+        if !std::thread::panicking() {
+            Error::new(unsafe { ffi::ren_DeviceEndFrame(self.device.handle.0) }).unwrap();
         }
     }
 }
@@ -136,12 +163,18 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(device: Rc<Device>) -> Rc<Self> {
-        Rc::new(Self {
-            handle: unsafe { HScene::new(ffi::ren_CreateScene(device.handle.0)) },
+    pub fn new(device: Rc<Device>) -> Result<Rc<Self>, Error> {
+        Ok(Rc::new(Self {
+            handle: unsafe {
+                HScene::new({
+                    let mut scene = std::ptr::null_mut();
+                    Error::new(ffi::ren_CreateScene(device.handle.0, &mut scene))?;
+                    scene
+                })
+            },
             guard: FrameGuard::new(),
             device,
-        })
+        }))
     }
 }
 
@@ -159,27 +192,34 @@ impl<'a, 'd> SceneFrame<'a, 'd> {
         swapchain: &'a mut Swapchain,
         width: u32,
         height: u32,
-    ) -> Self {
-        assert!(device.device.handle.0 == scene.device.handle.0);
-        assert!(device.device.handle.0 == swapchain.device.handle.0);
-        assert!(width > 0 && height > 0);
-        unsafe {
-            ffi::ren_SceneBeginFrame(scene.handle.0, swapchain.handle.0);
-            ffi::ren_SetSceneOutputSize(scene.handle.0, width, height);
-        }
-        Self {
+    ) -> Result<Self, Error> {
+        Error::new(unsafe {
+            assert_eq!(device.device.handle.0, scene.device.handle.0);
+            assert_eq!(device.device.handle.0, swapchain.device.handle.0);
+            ffi::ren_SceneBeginFrame(scene.handle.0, swapchain.handle.0)
+        })?;
+        Error::new(unsafe {
+            assert!(width > 0);
+            assert!(height > 0);
+            ffi::ren_SetSceneOutputSize(scene.handle.0, width, height)
+        })?;
+        Ok(Self {
             scene: scene.clone(),
             _lock: scene.guard.lock(),
             device: PhantomData,
             swapchain: PhantomData,
-        }
+        })
+    }
+
+    pub fn end(self) -> Result<(), Error> {
+        Error::new(unsafe { ffi::ren_SceneEndFrame(self.scene.handle.0) })
     }
 }
 
 impl<'a, 'd> Drop for SceneFrame<'a, 'd> {
     fn drop(&mut self) {
-        unsafe {
-            ffi::ren_SceneEndFrame(self.scene.handle.0);
+        if !std::thread::panicking() {
+            Error::new(unsafe { ffi::ren_SceneEndFrame(self.scene.handle.0) }).unwrap();
         }
     }
 }
@@ -226,8 +266,8 @@ pub struct MeshDesc<'a> {
 }
 
 impl<'a, 'd> SceneFrame<'a, 'd> {
-    pub fn create_mesh(&self, desc: &MeshDesc) -> Rc<Mesh> {
-        Rc::new(Mesh {
+    pub fn create_mesh(&self, desc: &MeshDesc) -> Result<Rc<Mesh>, Error> {
+        Ok(Rc::new(Mesh {
             handle: HMesh::new(
                 MeshID({
                     let num_vertices = desc.positions.len();
@@ -241,11 +281,15 @@ impl<'a, 'd> SceneFrame<'a, 'd> {
                         }),
                         indices: desc.indices.as_ptr(),
                     };
-                    unsafe { ffi::ren_CreateMesh(self.scene.handle.0, &desc) }
+                    let mut mesh = Default::default();
+                    Error::new(unsafe {
+                        ffi::ren_CreateMesh(self.scene.handle.0, &desc, &mut mesh)
+                    })?;
+                    mesh
                 }),
                 self.scene.clone(),
             ),
-        })
+        }))
     }
 }
 
@@ -272,8 +316,8 @@ pub struct MaterialDesc {
 }
 
 impl<'a, 'd> SceneFrame<'a, 'd> {
-    pub fn create_material(&self, desc: &MaterialDesc) -> Rc<Material> {
-        Rc::new(Material {
+    pub fn create_material(&self, desc: &MaterialDesc) -> Result<Rc<Material>, Error> {
+        Ok(Rc::new(Material {
             handle: HMaterial::new(
                 MaterialID({
                     let desc = RenMaterialDesc {
@@ -290,11 +334,15 @@ impl<'a, 'd> SceneFrame<'a, 'd> {
                             MaterialAlbedo::Vertex => unsafe { std::mem::zeroed() },
                         },
                     };
-                    unsafe { ffi::ren_CreateMaterial(self.scene.handle.0, &desc) }
+                    let mut material = Default::default();
+                    Error::new(unsafe {
+                        ffi::ren_CreateMaterial(self.scene.handle.0, &desc, &mut material)
+                    })?;
+                    material
                 }),
                 self.scene.clone(),
             ),
-        })
+        }))
     }
 }
 
@@ -319,21 +367,25 @@ pub struct ModelDesc {
 }
 
 impl<'a, 'd> SceneFrame<'a, 'd> {
-    pub fn create_model(&self, desc: ModelDesc) -> Model {
-        Model {
+    pub fn create_model(&self, desc: ModelDesc) -> Result<Model, Error> {
+        Ok(Model {
             handle: HModel::new(
                 ModelID({
                     let desc = RenModelDesc {
                         mesh: desc.mesh.handle.handle.0,
                         material: desc.material.handle.handle.0,
                     };
-                    unsafe { ffi::ren_CreateModel(self.scene.handle.0, &desc) }
+                    let mut model = Default::default();
+                    Error::new(unsafe {
+                        ffi::ren_CreateModel(self.scene.handle.0, &desc, &mut model)
+                    })?;
+                    model
                 }),
                 self.scene.clone(),
             ),
             _mesh: desc.mesh,
             _material: desc.material,
-        }
+        })
     }
 }
 
@@ -370,10 +422,10 @@ impl<'a, 'd> SceneFrame<'a, 'd> {
             },
             __bindgen_anon_1: match camera.projection {
                 CameraProjection::Perspective { hfov } => ffi::RenCameraDesc__bindgen_ty_1 {
-                    perspective: RenPerspectiveCameraDesc { hfov },
+                    perspective: RenPerspectiveProjection { hfov },
                 },
                 CameraProjection::Orthographic { width } => ffi::RenCameraDesc__bindgen_ty_1 {
-                    orthographic: RenOrthographicCameraDesc { width },
+                    orthographic: RenOrthographicProjection { width },
                 },
             },
             position: camera.position,

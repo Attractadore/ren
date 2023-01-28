@@ -114,6 +114,7 @@ fn main() {
         .default_enum_style(bindgen::EnumVariation::Rust {
             non_exhaustive: false,
         })
+        .enable_function_attribute_detection()
         .allowlist_function("ren_.*")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .clang_arg("-isystem")

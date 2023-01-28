@@ -1,4 +1,4 @@
-use crate::{ffi, Device, Swapchain};
+use crate::{ffi, Device, Error, Swapchain};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::rc::Rc;
@@ -55,16 +55,40 @@ pub unsafe fn create_device(
     proc: PFN_vkGetInstanceProcAddr,
     instance: VkInstance,
     adapter: VkPhysicalDevice,
-) -> Rc<Device> {
-    Device::new(ffi::ren_vk_CreateDevice(proc, instance, adapter))
+) -> Result<Rc<Device>, Error> {
+    assert_ne!(proc, None);
+    assert_ne!(instance, std::ptr::null_mut());
+    assert_ne!(adapter, std::ptr::null_mut());
+    Ok(Device::new({
+        let mut device = std::ptr::null_mut();
+        Error::new(ffi::ren_vk_CreateDevice(
+            proc,
+            instance,
+            adapter,
+            &mut device,
+        ))?;
+        device
+    }))
 }
 
 /// # Safety
 ///
 /// Requires valid VkSurfaceKHR
-pub unsafe fn create_swapchain(device: Rc<Device>, surface: VkSurfaceKHR) -> Swapchain {
+pub unsafe fn create_swapchain(
+    device: Rc<Device>,
+    surface: VkSurfaceKHR,
+) -> Result<Swapchain, Error> {
+    assert_ne!(surface, std::ptr::null_mut());
     let device_handle = device.handle.0;
-    Swapchain::new(device, ffi::ren_vk_CreateSwapchain(device_handle, surface))
+    Ok(Swapchain::new(device, {
+        let mut swapchain = std::ptr::null_mut();
+        Error::new(ffi::ren_vk_CreateSwapchain(
+            device_handle,
+            surface,
+            &mut swapchain,
+        ))?;
+        swapchain
+    }))
 }
 
 pub fn get_swapchain_surface(swapchain: &Swapchain) -> VkSurfaceKHR {
@@ -75,6 +99,9 @@ pub fn get_swapchain_present_mode(swapchain: &Swapchain) -> VkPresentModeKHR {
     unsafe { ffi::ren_vk_GetSwapchainPresentMode(swapchain.handle.0) }
 }
 
-pub fn set_swapchain_present_mode(swapchain: &mut Swapchain, present_mode: VkPresentModeKHR) {
-    unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.handle.0, present_mode) }
+pub fn set_swapchain_present_mode(
+    swapchain: &mut Swapchain,
+    present_mode: VkPresentModeKHR,
+) -> Result<(), Error> {
+    Error::new(unsafe { ffi::ren_vk_SetSwapchainPresentMode(swapchain.handle.0, present_mode) })
 }
