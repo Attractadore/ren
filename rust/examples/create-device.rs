@@ -1,11 +1,12 @@
 use anyhow::Result;
+use ren::SceneFrame;
 
 mod utils;
 
 struct CreateDeviceApp {}
 
 impl utils::App for CreateDeviceApp {
-    fn new(_scene: &ren::SceneFrame) -> Result<Self> {
+    fn new(_scene: &mut SceneFrame) -> Result<Self> {
         Ok(Self {})
     }
 

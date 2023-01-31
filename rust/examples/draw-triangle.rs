@@ -1,13 +1,12 @@
 use anyhow::Result;
+use ren::{CameraDesc, CameraProj, MaterialDesc, MeshDesc, MeshInstanceDesc, SceneFrame};
 
 mod utils;
 
-struct DrawTriangleApp {
-    _model: ren::Model,
-}
+struct DrawTriangleApp {}
 
 impl utils::App for DrawTriangleApp {
-    fn new(scene: &ren::SceneFrame) -> Result<Self> {
+    fn new(scene: &mut SceneFrame) -> Result<Self> {
         let positions = [
             [0.0, 0.5, 0.0],
             [-(3.0f32).sqrt() / 4.0, -0.25, 0.0],
@@ -18,30 +17,30 @@ impl utils::App for DrawTriangleApp {
 
         let indices = [0, 1, 2];
 
-        let mesh = scene.create_mesh(&ren::MeshDesc {
+        let mesh = scene.create_mesh(&MeshDesc {
             positions: &positions,
             colors: Some(&colors),
             indices: &indices,
         })?;
 
-        let material = scene.create_material(&ren::MaterialDesc {
+        let material = scene.create_material(&MaterialDesc {
             albedo: ren::MaterialAlbedo::Const([1.0, 0.0, 0.0]),
         })?;
 
-        Ok(Self {
-            _model: scene.create_model(ren::ModelDesc { mesh, material })?,
-        })
+        let _model = scene.create_mesh_instance(&MeshInstanceDesc { mesh, material })?;
+
+        Ok(Self {})
     }
 
     fn get_name(&self) -> &str {
         "Draw Triangle"
     }
 
-    fn iterate(&mut self, scene: &ren::SceneFrame) -> Result<()> {
-        scene.set_camera(&ren::CameraDesc {
-            projection: ren::CameraProjection::Orthographic { width: 2.0 },
-            position: [0.0, 0.0, 1.0],
-            forward: [0.0, 0.0, -1.0],
+    fn iterate(&mut self, scene: &mut SceneFrame) -> Result<()> {
+        scene.set_camera(&CameraDesc {
+            proj: CameraProj::Ortho { width: 2.0 },
+            pos: [0.0, 0.0, 1.0],
+            fwd: [0.0, 0.0, -1.0],
             up: [0.0, 1.0, 0.0],
         });
         Ok(())

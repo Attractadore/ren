@@ -6,6 +6,7 @@ use ash::{
 use raw_window_handle::{
     HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
+use ren::{Device, DeviceFrame, SceneFrame};
 use std::ffi::CStr;
 use winit::{
     dpi::PhysicalSize,
@@ -51,7 +52,7 @@ impl Instance {
         self.0.handle().as_raw()
     }
 
-    fn get_loader(&self, entry: &ash::Entry) -> Result<ren::vk::PFN_vkGetInstanceProcAddr> {
+    fn get_loader(&self, entry: &ash::Entry) -> Result<ren::vk::GetInstanceProcAddr> {
         let get_instance_proc_addr = b"vkGetInstanceProcAddr\0";
         unsafe {
             let get_instance_proc_addr =
@@ -106,13 +107,13 @@ impl Drop for Surface {
 }
 
 pub trait App {
-    fn new(scene: &ren::SceneFrame) -> Result<Self>
+    fn new(scene: &mut SceneFrame) -> Result<Self>
     where
         Self: Sized;
 
     fn get_name(&self) -> &str;
 
-    fn iterate(&mut self, _scene: &ren::SceneFrame) -> Result<()> {
+    fn iterate(&mut self, _scene: &mut SceneFrame) -> Result<()> {
         Ok(())
     }
 }
@@ -144,13 +145,13 @@ pub fn run<A: App + 'static>() -> Result<()> {
     });
 
     println!("Create ren::Device");
-    let device = unsafe {
-        ren::vk::create_device(
+    let mut device = unsafe {
+        Device::new(
             instance.get_loader(&vk)?,
-            instance.as_raw() as ren::vk::VkInstance,
-            adapter.as_raw() as ren::vk::VkPhysicalDevice,
-        )
-    }?;
+            instance.as_raw() as ren::vk::Instance,
+            adapter.as_raw() as ren::vk::PhysicalDevice,
+        )?
+    };
 
     println!("Create VkSurfaceKHR");
     let surface = Surface::new(
@@ -160,17 +161,15 @@ pub fn run<A: App + 'static>() -> Result<()> {
         window.raw_window_handle(),
     )?;
     println!("Create ren::Swapchain");
-    let mut swapchain = unsafe {
-        ren::vk::create_swapchain(device.clone(), surface.as_raw() as ren::vk::VkSurfaceKHR)
-    }?;
+    let swapchain = unsafe { device.create_swapchain(surface.as_raw() as ren::vk::SurfaceKHR)? };
 
     println!("Create ren::Scene");
-    let scene = ren::Scene::new(device.clone())?;
+    let scene = device.create_scene()?;
 
     let mut app = {
-        let device = ren::DeviceFrame::new(&device)?;
-        let scene = ren::SceneFrame::new(&device, &scene, &mut swapchain, 1, 1)?;
-        A::new(&scene)?
+        let mut device = DeviceFrame::new(&mut device)?;
+        let mut scene = SceneFrame::new(&mut device, scene, swapchain, 1, 1)?;
+        A::new(&mut scene)?
     };
     window.set_title(app.get_name());
 
@@ -188,17 +187,16 @@ pub fn run<A: App + 'static>() -> Result<()> {
                     event: WindowEvent::Resized(PhysicalSize { width, height }),
                     ..
                 } => {
-                    swapchain.set_size(width, height);
+                    device
+                        .get_swapchain_mut(swapchain)
+                        .unwrap()
+                        .set_size(width, height);
                 }
                 Event::MainEventsCleared => {
-                    let device = ren::DeviceFrame::new(&device)?;
-
-                    let (width, height) = swapchain.get_size();
-                    let scene =
-                        ren::SceneFrame::new(&device, &scene, &mut swapchain, width, height)?;
-
-                    app.iterate(&scene)?;
-
+                    let mut device = DeviceFrame::new(&mut device)?;
+                    let (width, height) = device.get_swapchain(swapchain).unwrap().get_size();
+                    let mut scene = SceneFrame::new(&mut device, scene, swapchain, width, height)?;
+                    app.iterate(&mut scene)?;
                     scene.end()?;
                     device.end()?;
                 }

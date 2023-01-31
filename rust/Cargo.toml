@@ -1,12 +1,13 @@
 [package]
 name = "ren"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 
 [build-dependencies]
 bindgen = "0.61.0"
 
 [dependencies]
+slotmap = "1.0.6"
 thiserror = "1.0.38"
 
 [dev-dependencies]
