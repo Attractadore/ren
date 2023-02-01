@@ -143,9 +143,9 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
       upload_attributes;
   upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
-      std::as_bytes(std::span(desc.positions, desc.num_vertices * 3));
+      std::as_bytes(std::span(desc.positions, desc.num_vertices));
   upload_attributes[MESH_ATTRIBUTE_COLORS] = std::as_bytes(
-      std::span(desc.colors, desc.colors ? desc.num_vertices * 3 : 0));
+      std::span(desc.colors, desc.colors ? desc.num_vertices : 0));
 
   auto used_attributes = range(int(MESH_ATTRIBUTE_COUNT)) |
                          filter_map([&](int i) -> Optional<MeshAttribute> {
@@ -274,7 +274,7 @@ void Scene::set_camera(const CameraDesc &desc) noexcept {
   }
 }
 
-auto Scene::create_model(const ModelDesc &desc) -> ModelID {
+auto Scene::create_model(const ModelDesc &desc) -> MeshInstanceID {
   return get_model_id(m_models.insert({
       .mesh = desc.mesh,
       .material = desc.material,
@@ -282,7 +282,7 @@ auto Scene::create_model(const ModelDesc &desc) -> ModelID {
   }));
 }
 
-void Scene::destroy_model(ModelID model) {
+void Scene::destroy_model(MeshInstanceID model) {
   m_models.erase(get_model_key(model));
 }
 
@@ -310,19 +310,19 @@ auto Scene::get_material(MaterialID material) -> Material & {
   return m_materials[key];
 }
 
-auto Scene::get_model(ModelID model) const -> const Model & {
+auto Scene::get_model(MeshInstanceID model) const -> const Model & {
   auto key = get_model_key(model);
   assert(m_models.contains(key) && "Unknown model");
   return m_models[key];
 }
 
-auto Scene::get_model(ModelID model) -> Model & {
+auto Scene::get_model(MeshInstanceID model) -> Model & {
   auto key = get_model_key(model);
   assert(m_models.contains(key) && "Unknown model");
   return m_models[key];
 }
 
-void Scene::set_model_matrix(ModelID model, const glm::mat4 &matrix) noexcept {
+void Scene::set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept {
   get_model(model).matrix = matrix;
 }
 

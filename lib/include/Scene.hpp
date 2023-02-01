@@ -59,7 +59,7 @@ private:
   }
 
   static MeshID get_mesh_id(MeshMap::key_type mesh_key) {
-    return std::bit_cast<MeshID>(mesh_key) + 1;
+    return std::bit_cast<MeshID>(std::bit_cast<MeshID>(mesh_key) + 1);
   }
 
   auto get_mesh(MeshID mesh) const -> const Mesh &;
@@ -70,22 +70,24 @@ private:
   }
 
   static MaterialID get_material_id(MaterialMap::key_type material_key) {
-    return std::bit_cast<MaterialID>(material_key) + 1;
+    return std::bit_cast<MaterialID>(std::bit_cast<MaterialID>(material_key) +
+                                     1);
   }
 
   auto get_material(MaterialID material) const -> const Material &;
   auto get_material(MaterialID material) -> Material &;
 
-  static ModelMap::key_type get_model_key(ModelID model) {
+  static ModelMap::key_type get_model_key(MeshInstanceID model) {
     return std::bit_cast<ModelMap::key_type>(model - 1);
   }
 
-  static ModelID get_model_id(ModelMap::key_type model_key) {
-    return std::bit_cast<ModelID>(model_key) + 1;
+  static MeshInstanceID get_model_id(ModelMap::key_type model_key) {
+    return std::bit_cast<MeshInstanceID>(
+        std::bit_cast<MeshInstanceID>(model_key) + 1);
   }
 
-  auto get_model(ModelID model) const -> const Model &;
-  auto get_model(ModelID model) -> Model &;
+  auto get_model(MeshInstanceID model) const -> const Model &;
+  auto get_model(MeshInstanceID model) -> Model &;
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
     return m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET];
@@ -112,10 +114,10 @@ public:
 
   void set_camera(const CameraDesc &desc) noexcept;
 
-  auto create_model(const ModelDesc &desc) -> ModelID;
-  void destroy_model(ModelID model);
+  auto create_model(const ModelDesc &desc) -> MeshInstanceID;
+  void destroy_model(MeshInstanceID model);
 
-  void set_model_matrix(ModelID model, const glm::mat4 &matrix) noexcept;
+  void set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept;
 
   void begin_frame();
   void end_frame();

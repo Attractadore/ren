@@ -1,9 +1,13 @@
 #include "app-base.hpp"
+#include "ren/ren.hpp"
 
 #include <fmt/format.h>
+#include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {
-  ren::Model m_model;
+  ren::UniqueMeshID m_mesh;
+  ren::UniqueMaterialID m_material;
+  ren::UniqueMeshInstanceID m_model;
 
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {}
@@ -25,18 +29,31 @@ protected:
 
       std::array<unsigned, 3> indices = {0, 1, 2};
 
-      auto mesh = ren::Mesh(scene, {
-                                       .positions = positions,
-                                       .colors = colors,
-                                       .indices = indices,
-                                   });
+      m_mesh =
+          scene
+              ->create_unique_mesh({
+                  .positions = std::span(
+                      reinterpret_cast<const ren::Vector3 *>(positions.data()),
+                      positions.size()),
+                  .colors = std::span(
+                      reinterpret_cast<const ren::Vector3 *>(colors.data()),
+                      colors.size()),
+                  .indices = indices,
+              })
+              .value();
 
-      auto material =
-          ren::Material(scene, {
-                                   .albedo = ren::VertexMaterialAlbedo(),
-                               });
+      m_material = scene
+                       ->create_unique_material({
+                           .albedo = ren::VertexMaterialAlbedo(),
+                       })
+                       .value();
 
-      m_model = ren::Model(scene, std::move(mesh), std::move(material));
+      m_model = scene
+                    ->create_unique_mesh_instance({
+                        .mesh = m_mesh.get(),
+                        .material = m_material.get(),
+                    })
+                    .value();
     }
 
     scene->set_camera({

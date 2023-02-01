@@ -1,17 +1,17 @@
 [package]
 name = "ren"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 
 [build-dependencies]
-bindgen = "0.61.0"
+bindgen = "0.61"
 
 [dependencies]
-slotmap = "1.0.6"
-thiserror = "1.0.38"
+slotmap = "1.0"
+thiserror = "1.0"
 
 [dev-dependencies]
-anyhow = "1.0.68"
+anyhow = "1.0"
 ash = "0.37"
 ash-window = "0.12"
 raw-window-handle = "0.5"

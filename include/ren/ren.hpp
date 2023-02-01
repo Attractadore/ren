@@ -1,8 +1,6 @@
 #pragma once
 #include "ren.h"
 
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
 #include <tl/expected.hpp>
 
 #include <cassert>
@@ -69,11 +67,7 @@ struct Scene;
 namespace detail {
 
 template <typename H>
-concept CScopedEnum = std::is_enum_v<H> and not
-std::convertible_to<H, std::underlying_type_t<H>>;
-
-template <typename H>
-concept CHandle = CScopedEnum<H>;
+concept CHandle = std::is_enum_v<H>;
 
 template <typename P, CHandle H> constexpr void (P::*HandleDestroy)(H);
 
@@ -107,6 +101,8 @@ public:
   auto get() const -> H { return to_handle<H>(m_holder.get()); }
   operator H() const { return get(); }
 
+  explicit operator bool() const { return m_holder != nullptr; }
+
   auto get_parent() const -> const P * {
     return get_deleter<HandleDeleter<P, H>>(m_holder)->parent;
   }
@@ -132,6 +128,8 @@ public:
 
   auto get() const -> H { return to_handle<H>(m_holder.get()); }
   operator H() const { return get(); }
+
+  explicit operator bool() const { return m_holder != nullptr; }
 
   auto get_parent() const -> const P * { return m_holder.get_deleter().parent; }
   auto get_parent() -> P * { return m_holder.get_deleter().parent; }
@@ -220,20 +218,23 @@ template <CHandle H> using UniqueSceneHandle = UniqueHandle<Scene, H>;
 template <CHandle H> using SharedSceneHandle = SharedHandle<Scene, H>;
 } // namespace detail
 
-enum class MeshID : RenMesh;
-constexpr auto NullMesh = static_cast<MeshID>(0);
+using MeshID = RenMesh;
+constexpr MeshID NullMesh = REN_NULL_MESH;
 using UniqueMeshID = detail::UniqueSceneHandle<MeshID>;
 using SharedMeshID = detail::SharedSceneHandle<MeshID>;
 
-enum class MaterialID : RenMaterial;
-constexpr auto NullMaterial = static_cast<MaterialID>(0);
+using MaterialID = RenMaterial;
+constexpr MaterialID NullMaterial = REN_NULL_MATERIAL;
 using UniqueMaterialID = detail::UniqueSceneHandle<MaterialID>;
 using SharedMaterialID = detail::SharedSceneHandle<MaterialID>;
 
-enum class ModelID : RenModel;
-constexpr auto NullModel = static_cast<ModelID>(0);
-using UniqueModelID = detail::UniqueSceneHandle<ModelID>;
-using SharedModelID = detail::SharedSceneHandle<ModelID>;
+using MeshInstanceID = RenMeshInstance;
+constexpr MeshInstanceID NullMeshInstance = REN_NULL_MESH_INSTANCE;
+using UniqueMeshInstanceID = detail::UniqueSceneHandle<MeshInstanceID>;
+using SharedMeshInstanceID = detail::SharedSceneHandle<MeshInstanceID>;
+
+using Vector3 = RenVector3;
+using Matrix4x4 = RenMatrix4x4;
 
 struct Device : RenDevice {
   using Frame = detail::Frame<Device>;
@@ -268,31 +269,35 @@ struct Swapchain : RenSwapchain {
 
 using PerspectiveProjection = RenPerspectiveProjection;
 using OrthographicProjection = RenOrthographicProjection;
+using CameraProjection =
+    std::variant<PerspectiveProjection, OrthographicProjection>;
 
 struct CameraDesc {
-  std::variant<PerspectiveProjection, OrthographicProjection> projection;
-  glm::vec3 position;
-  glm::vec3 forward;
-  glm::vec3 up;
+  CameraProjection projection;
+  Vector3 position;
+  Vector3 forward;
+  Vector3 up;
 };
 
 struct MeshDesc {
-  std::span<const glm::vec3> positions;
-  std::span<const glm::vec3> colors;
+  std::span<const Vector3> positions;
+  std::span<const Vector3> colors;
   std::span<const unsigned> indices;
 };
 
 struct ConstMaterialAlbedo {
-  glm::vec3 color;
+  Vector3 color;
 };
 
 struct VertexMaterialAlbedo {};
 
+using MaterialAlbedo = std::variant<ConstMaterialAlbedo, VertexMaterialAlbedo>;
+
 struct MaterialDesc {
-  std::variant<ConstMaterialAlbedo, VertexMaterialAlbedo> albedo;
+  MaterialAlbedo albedo;
 };
 
-struct ModelDesc {
+struct MeshInstanceDesc {
   MeshID mesh;
   MaterialID material;
 };
@@ -339,10 +344,8 @@ struct Scene : RenScene {
     RenMeshDesc c_desc = {
         .num_vertices = unsigned(desc.positions.size()),
         .num_indices = unsigned(desc.indices.size()),
-        .positions = reinterpret_cast<const float *>(desc.positions.data()),
-        .colors = desc.colors.empty()
-                      ? nullptr
-                      : reinterpret_cast<const float *>(desc.colors.data()),
+        .positions = desc.positions.data(),
+        .colors = desc.colors.empty() ? nullptr : desc.colors.data(),
         .indices = desc.indices.data(),
     };
     RenMesh mesh;
@@ -389,165 +392,32 @@ struct Scene : RenScene {
         [&](MaterialID material) { return UniqueMaterialID(this, material); });
   }
 
-  [[nodiscard]] auto create_model(const ModelDesc &desc) -> expected<ModelID> {
-    RenModelDesc c_desc = {
+  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc)
+      -> expected<MeshInstanceID> {
+    RenMeshInstanceDesc c_desc = {
         .mesh = static_cast<RenMesh>(desc.mesh),
         .material = static_cast<RenMaterial>(desc.material),
     };
-    RenModel model;
-    return detail::to_expected(ren_CreateModel(this, &c_desc, &model)).map([&] {
-      return static_cast<ModelID>(model);
+    RenMeshInstance model;
+    return detail::to_expected(ren_CreateMeshInstance(this, &c_desc, &model))
+        .map([&] { return static_cast<MeshInstanceID>(model); });
+  }
+
+  void destroy_mesh_instance(MeshInstanceID mesh_instance) {
+    ren_DestroyMeshInstance(this, static_cast<RenMeshInstance>(mesh_instance));
+  }
+
+  [[nodiscard]] auto create_unique_mesh_instance(const MeshInstanceDesc &desc)
+      -> expected<UniqueMeshInstanceID> {
+    return create_mesh_instance(desc).map([&](MeshInstanceID mesh_instance) {
+      return UniqueMeshInstanceID(this, mesh_instance);
     });
   }
 
-  void destroy_model(ModelID model) {
-    ren_DestroyModel(this, static_cast<RenModel>(model));
+  void set_model_matrix(MeshInstanceID model, const Matrix4x4 &matrix) {
+    ren_SetMeshInstanceMatrix(this, static_cast<RenMeshInstance>(model),
+                              &matrix);
   }
-
-  [[nodiscard]] auto create_unique_model(const ModelDesc &desc)
-      -> expected<UniqueModelID> {
-    return create_model(desc).map(
-        [&](ModelID model) { return UniqueModelID(this, model); });
-  }
-
-  void set_model_matrix(ModelID model, const glm::mat4 &matrix) {
-    ren_SetModelMatrix(this, static_cast<RenModel>(model),
-                       glm::value_ptr(matrix));
-  }
-};
-
-class Mesh {
-  SharedMeshID m_mesh;
-
-public:
-  Mesh() = default;
-
-  explicit Mesh(SharedMeshID mesh) noexcept : m_mesh(std::move(mesh)) {}
-
-  Mesh(Scene::Frame &scene, const MeshDesc &desc)
-      : Mesh(create(scene, desc).value()) {}
-
-  [[nodiscard]] static auto create(Scene::Frame &scene, const MeshDesc &desc)
-      -> expected<Mesh> {
-    return scene->create_unique_mesh(desc).map(
-        [](SharedMeshID mesh) { return Mesh(std::move(mesh)); });
-  }
-
-  auto get() const & -> const SharedMeshID & { return m_mesh; }
-  auto get() && -> SharedMeshID && { return std::move(m_mesh); }
-
-  explicit operator bool() const { return get() != NullMesh; }
-};
-
-class Material {
-  SharedMaterialID m_material;
-
-public:
-  Material() = default;
-
-  explicit Material(SharedMaterialID material) noexcept
-      : m_material(std::move(material)) {}
-
-  Material(Scene::Frame &scene, const MaterialDesc &desc)
-      : Material(create(scene, desc).value()) {}
-
-  [[nodiscard]] static auto create(Scene::Frame &scene,
-                                   const MaterialDesc &desc)
-      -> expected<Material> {
-    return scene->create_unique_material(desc).map(
-        [](SharedMaterialID material) {
-          return Material(std::move(material));
-        });
-  }
-
-  auto get() const & -> const SharedMaterialID & { return m_material; }
-  auto get() && -> SharedMaterialID && { return std::move(m_material); }
-
-  explicit operator bool() const { return get() != NullMaterial; }
-};
-
-namespace detail {
-
-template <typename Model> class ModelMixin {
-  auto impl() const -> const Model & {
-    return static_cast<const Model &>(*this);
-  }
-
-  auto impl() -> Model & { return static_cast<Model &>(*this); }
-
-  auto get() const -> ModelID { return impl().get(); }
-
-  auto get_scene() const -> const Scene * { return impl().get_scene(); }
-  auto get_scene() -> Scene * { return impl().get_scene(); }
-
-public:
-  explicit operator bool() const { return get() != NullModel; }
-
-  void set_matrix(const glm::mat4 &matrix) {
-    get_scene()->set_model_matrix(get(), matrix);
-  }
-};
-
-} // namespace detail
-
-class SharedModel : public detail::ModelMixin<SharedModel> {
-  SharedModelID m_model;
-  SharedMeshID m_mesh;
-  SharedMaterialID m_material;
-
-public:
-  SharedModel() = default;
-
-  SharedModel(SharedModelID model, SharedMeshID mesh,
-              SharedMaterialID material) noexcept
-      : m_model(std::move(model)), m_mesh(std::move(mesh)),
-        m_material(std::move(material)) {}
-
-  auto get() const & -> const SharedModelID & { return m_model; }
-  auto get() && -> SharedModelID && { return std::move(m_model); }
-
-  auto get_scene() const -> const Scene * { return m_model.get_parent(); }
-  auto get_scene() -> Scene * { return m_model.get_parent(); }
-};
-
-class Model : public detail::ModelMixin<Model> {
-  UniqueModelID m_model;
-  SharedMeshID m_mesh;
-  SharedMaterialID m_material;
-
-public:
-  Model() = default;
-  Model(Scene::Frame &scene, Mesh mesh, Material material)
-      : Model(create(scene, std::move(mesh), std::move(material)).value()) {}
-
-  Model(UniqueModelID model, SharedMeshID mesh,
-        SharedMaterialID material) noexcept
-      : m_model(std::move(model)), m_mesh(std::move(mesh)),
-        m_material(std::move(material)) {}
-
-  [[nodiscard]] static auto create(Scene::Frame &scene, Mesh mesh,
-                                   Material material) -> expected<Model> {
-    return scene
-        ->create_unique_model({
-            .mesh = mesh.get(),
-            .material = material.get(),
-        })
-        .map([&](UniqueModelID model) {
-          return Model(std::move(model), std::move(mesh).get(),
-                       std::move(material).get());
-        });
-  }
-
-  operator SharedModel() && {
-    return SharedModel(std::move(m_model), std::move(m_mesh),
-                       std::move(m_material));
-  }
-
-  auto get() const & -> const UniqueModelID & { return m_model; }
-  auto get() && -> UniqueModelID && { return std::move(m_model); }
-
-  auto get_scene() const -> const Scene * { return m_model.get_parent(); }
-  auto get_scene() -> Scene * { return m_model.get_parent(); }
 };
 
 namespace detail {
@@ -559,8 +429,8 @@ template <>
 inline constexpr void (Scene::*HandleDestroy<Scene, MaterialID>)(MaterialID) =
     &Scene::destroy_material;
 template <>
-inline constexpr void (Scene::*HandleDestroy<Scene, ModelID>)(ModelID) =
-    &Scene::destroy_model;
+inline constexpr void (Scene::*HandleDestroy<Scene, MeshInstanceID>)(
+    MeshInstanceID) = &Scene::destroy_mesh_instance;
 
 } // namespace detail
 

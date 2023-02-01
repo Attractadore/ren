@@ -36,9 +36,23 @@ typedef enum {
 typedef struct RenDevice RenDevice;
 typedef struct RenSwapchain RenSwapchain;
 typedef struct RenScene RenScene;
+typedef enum : uint32_t {
+  REN_NULL_MESH = 0,
+} RenMesh;
+typedef enum : uint32_t {
+  REN_NULL_MATERIAL = 0,
+} RenMaterial;
+typedef enum : uint32_t {
+  REN_NULL_MESH_INSTANCE = 0,
+} RenMeshInstance;
+#if 0
 typedef uint32_t RenMesh;
 typedef uint32_t RenMaterial;
-typedef uint32_t RenModel;
+typedef uint32_t RenMeshInstance;
+#endif
+
+typedef float RenVector3[3];
+typedef float RenMatrix4x4[16];
 
 REN_NODISCARD RenResult ren_DeviceBeginFrame(RenDevice *device);
 
@@ -85,9 +99,9 @@ typedef struct {
     RenPerspectiveProjection perspective;
     RenOrthographicProjection orthographic;
   };
-  float position[3];
-  float forward[3];
-  float up[3];
+  RenVector3 position;
+  RenVector3 forward;
+  RenVector3 up;
 } RenCameraDesc;
 
 void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc);
@@ -95,8 +109,8 @@ void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc);
 typedef struct {
   unsigned num_vertices;
   unsigned num_indices;
-  const float *positions;
-  const float *colors;
+  const RenVector3 *positions;
+  const RenVector3 *colors;
   const unsigned *indices;
 } RenMeshDesc;
 
@@ -112,7 +126,7 @@ typedef enum {
 typedef struct {
   RenMaterialAlbedo albedo;
   union {
-    float const_albedo[3];
+    RenVector3 const_albedo;
   };
 } RenMaterialDesc;
 
@@ -125,16 +139,16 @@ void ren_DestroyMaterial(RenScene *scene, RenMaterial material);
 typedef struct {
   RenMesh mesh;
   RenMaterial material;
-} RenModelDesc;
+} RenMeshInstanceDesc;
 
-REN_NODISCARD RenResult ren_CreateModel(RenScene *scene,
-                                        const RenModelDesc *desc,
-                                        RenModel *p_model);
+REN_NODISCARD RenResult ren_CreateMeshInstance(RenScene *scene,
+                                               const RenMeshInstanceDesc *desc,
+                                               RenMeshInstance *p_model);
 
-void ren_DestroyModel(RenScene *scene, RenModel model);
+void ren_DestroyMeshInstance(RenScene *scene, RenMeshInstance model);
 
-void ren_SetModelMatrix(RenScene *scene, RenModel model,
-                        const float matrix[16]);
+void ren_SetMeshInstanceMatrix(RenScene *scene, RenMeshInstance model,
+                               const RenMatrix4x4 *matrix);
 
 #ifdef __cplusplus
 }

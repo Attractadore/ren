@@ -5,67 +5,15 @@ use thiserror::Error;
 
 mod ffi;
 use ffi::{
-    RenCameraDesc, RenDevice, RenMaterial, RenMaterialAlbedo, RenMaterialDesc, RenMesh,
-    RenMeshDesc, RenModel, RenModelDesc, RenOrthographicProjection, RenPerspectiveProjection,
-    RenProjection, RenResult, RenScene, RenSwapchain,
+    RenCameraDesc, RenDevice, RenMaterial, RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInstance,
+    RenMeshInstanceDesc, RenOrthographicProjection, RenPerspectiveProjection, RenResult, RenScene,
+    RenSwapchain, REN_MATERIAL_ALBEDO_CONST, REN_MATERIAL_ALBEDO_VERTEX, REN_NULL_MATERIAL,
+    REN_NULL_MESH, REN_NULL_MESH_INSTANCE, REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE,
+    REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR, REN_VULKAN_ERROR,
 };
 
-mod handle {
-    use crate::ffi::RenScene;
-
-    pub trait DestroyHandle {
-        unsafe fn destroy(handle: *mut Self);
-    }
-
-    #[derive(Clone)]
-    pub struct Handle<T: DestroyHandle>(*mut T);
-
-    impl<T: DestroyHandle> Handle<T> {
-        pub unsafe fn new(handle: *mut T) -> Self {
-            Self(handle)
-        }
-
-        pub fn get(&self) -> *const T {
-            self.0
-        }
-
-        pub fn get_mut(&mut self) -> *mut T {
-            self.0
-        }
-    }
-
-    impl<T: DestroyHandle> Drop for Handle<T> {
-        fn drop(&mut self) {
-            unsafe { T::destroy(self.0) }
-        }
-    }
-
-    pub trait DestroySceneHandle {
-        unsafe fn destroy(scene: *mut RenScene, handle: Self);
-    }
-
-    pub struct SceneHandle<T: DestroySceneHandle + Copy>(T, *mut RenScene);
-
-    impl<T: DestroySceneHandle + Copy> SceneHandle<T> {
-        pub unsafe fn new(scene: *mut RenScene, handle: T) -> Self {
-            Self(handle, scene)
-        }
-
-        pub fn get(&self) -> T {
-            self.0
-        }
-
-        pub fn get_scene_mut(&mut self) -> *mut RenScene {
-            self.1
-        }
-    }
-
-    impl<T: DestroySceneHandle + Copy> Drop for SceneHandle<T> {
-        fn drop(&mut self) {
-            unsafe { T::destroy(self.1, self.0) }
-        }
-    }
-}
+mod handle;
+pub mod vk;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -83,61 +31,13 @@ pub enum Error {
     Unknown,
 }
 
-pub mod vk {
-    use crate::ffi;
-    use std::ffi::{CStr, CString};
-    use std::os::raw::c_char;
-
-    pub use ffi::PFN_vkGetInstanceProcAddr as GetInstanceProcAddr;
-    pub use ffi::VkInstance as Instance;
-    pub use ffi::VkPhysicalDevice as PhysicalDevice;
-    pub use ffi::VkPresentModeKHR as PresentModeKHR;
-    pub use ffi::VkSurfaceKHR as SurfaceKHR;
-
-    pub fn get_required_api_version() -> u32 {
-        unsafe { ffi::ren_vk_GetRequiredAPIVersion() }
-    }
-
-    pub fn get_required_raw_layers() -> &'static [*const c_char] {
-        unsafe {
-            let layers = ffi::ren_vk_GetRequiredLayers();
-            let layer_cnt = ffi::ren_vk_GetRequiredLayerCount();
-            std::slice::from_raw_parts(layers, layer_cnt)
-        }
-    }
-
-    pub fn get_required_layers() -> Vec<CString> {
-        get_required_raw_layers()
-            .iter()
-            .copied()
-            .map(|ext| CString::from(unsafe { CStr::from_ptr(ext) }))
-            .collect()
-    }
-
-    pub fn get_required_raw_extensions() -> &'static [*const c_char] {
-        unsafe {
-            let extensions = ffi::ren_vk_GetRequiredExtensions();
-            let extension_cnt = ffi::ren_vk_GetRequiredExtensionCount();
-            std::slice::from_raw_parts(extensions, extension_cnt)
-        }
-    }
-
-    pub fn get_required_extensions() -> Vec<CString> {
-        get_required_raw_extensions()
-            .iter()
-            .copied()
-            .map(|ext| CString::from(unsafe { CStr::from_ptr(ext) }))
-            .collect()
-    }
-}
-
 impl Error {
     fn new(result: RenResult) -> Result<(), Self> {
         match result {
-            RenResult::REN_SUCCESS => Ok(()),
-            RenResult::REN_VULKAN_ERROR => Err(Error::Vulkan),
-            RenResult::REN_SYSTEM_ERROR => Err(Error::System),
-            RenResult::REN_RUNTIME_ERROR => Err(Error::Runtime),
+            REN_SUCCESS => Ok(()),
+            REN_VULKAN_ERROR => Err(Error::Vulkan),
+            REN_SYSTEM_ERROR => Err(Error::System),
+            REN_RUNTIME_ERROR => Err(Error::Runtime),
             _ => Err(Error::Unknown),
         }
     }
@@ -330,15 +230,15 @@ impl Swapchain {
     }
 }
 
-pub enum CameraProj {
-    Persp { hfov: f32 },
-    Ortho { width: f32 },
+pub enum CameraProjection {
+    Perspective { hfov: f32 },
+    Orthographic { width: f32 },
 }
 
 pub struct CameraDesc {
-    pub proj: CameraProj,
-    pub pos: [f32; 3],
-    pub fwd: [f32; 3],
+    pub projection: CameraProjection,
+    pub position: [f32; 3],
+    pub forward: [f32; 3],
     pub up: [f32; 3],
 }
 
@@ -373,17 +273,17 @@ impl Mesh {
         let desc = RenMeshDesc {
             num_vertices: num_vertices as u32,
             num_indices: desc.indices.len() as u32,
-            positions: desc.positions.as_ptr() as *const f32,
+            positions: desc.positions.as_ptr(),
             colors: desc.colors.map_or(std::ptr::null(), |colors| {
                 assert!(colors.len() == num_vertices);
-                colors.as_ptr() as *const f32
+                colors.as_ptr()
             }),
             indices: desc.indices.as_ptr(),
         };
         Ok(Self {
             handle: unsafe {
                 HMesh::new(scene, {
-                    let mut mesh = Default::default();
+                    let mut mesh = REN_NULL_MESH;
                     Error::new(ffi::ren_CreateMesh(scene, &desc, &mut mesh))?;
                     MeshID(mesh)
                 })
@@ -424,8 +324,8 @@ impl Material {
         let scene = scene.get_mut();
         let desc = RenMaterialDesc {
             albedo: match desc.albedo {
-                MaterialAlbedo::Const(_) => RenMaterialAlbedo::REN_MATERIAL_ALBEDO_CONST,
-                MaterialAlbedo::Vertex => RenMaterialAlbedo::REN_MATERIAL_ALBEDO_VERTEX,
+                MaterialAlbedo::Const(_) => REN_MATERIAL_ALBEDO_CONST,
+                MaterialAlbedo::Vertex => REN_MATERIAL_ALBEDO_VERTEX,
             },
             __bindgen_anon_1: match desc.albedo {
                 MaterialAlbedo::Const(const_albedo) => {
@@ -437,7 +337,7 @@ impl Material {
         Ok(Self {
             handle: unsafe {
                 HMaterial::new(scene, {
-                    let mut material = Default::default();
+                    let mut material = REN_NULL_MATERIAL;
                     Error::new(ffi::ren_CreateMaterial(scene, &desc, &mut material))?;
                     MaterialID(material)
                 })
@@ -447,12 +347,12 @@ impl Material {
 }
 
 #[derive(Clone, Copy)]
-struct MeshInstanceID(RenModel);
+struct MeshInstanceID(RenMeshInstance);
 type HMeshInstance = handle::SceneHandle<MeshInstanceID>;
 
 impl handle::DestroySceneHandle for MeshInstanceID {
     unsafe fn destroy(scene: *mut RenScene, model: MeshInstanceID) {
-        ffi::ren_DestroyModel(scene, model.0);
+        ffi::ren_DestroyMeshInstance(scene, model.0);
     }
 }
 
@@ -472,7 +372,7 @@ pub struct MeshInstanceDesc {
 impl MeshInstance {
     fn new(scene: &mut HScene, mesh: MeshID, material: MaterialID) -> Result<Self, Error> {
         let scene = scene.get_mut();
-        let desc = RenModelDesc {
+        let desc = RenMeshInstanceDesc {
             mesh: mesh.0,
             material: material.0,
         };
@@ -481,8 +381,12 @@ impl MeshInstance {
                 HMeshInstance::new(
                     scene,
                     MeshInstanceID({
-                        let mut mesh_instance = Default::default();
-                        Error::new(ffi::ren_CreateModel(scene, &desc, &mut mesh_instance))?;
+                        let mut mesh_instance = REN_NULL_MESH_INSTANCE;
+                        Error::new(ffi::ren_CreateMeshInstance(
+                            scene,
+                            &desc,
+                            &mut mesh_instance,
+                        ))?;
                         mesh_instance
                     }),
                 )
@@ -492,11 +396,7 @@ impl MeshInstance {
 
     pub fn set_matrix(&mut self, matrix: &[f32; 16]) {
         unsafe {
-            ffi::ren_SetModelMatrix(
-                self.handle.get_scene_mut(),
-                self.handle.get().0,
-                matrix.as_ptr(),
-            )
+            ffi::ren_SetMeshInstanceMatrix(self.handle.get_scene_mut(), self.handle.get().0, matrix)
         }
     }
 }
@@ -631,20 +531,20 @@ impl<'a> DerefMut for SceneFrame<'a> {
 impl<'a> SceneFrame<'a> {
     pub fn set_camera(&mut self, camera: &CameraDesc) {
         let camera = RenCameraDesc {
-            projection: match camera.proj {
-                CameraProj::Persp { .. } => RenProjection::REN_PROJECTION_PERSPECTIVE,
-                CameraProj::Ortho { .. } => RenProjection::REN_PROJECTION_ORTHOGRAPHIC,
+            projection: match camera.projection {
+                CameraProjection::Perspective { .. } => REN_PROJECTION_PERSPECTIVE,
+                CameraProjection::Orthographic { .. } => REN_PROJECTION_ORTHOGRAPHIC,
             },
-            __bindgen_anon_1: match camera.proj {
-                CameraProj::Persp { hfov } => ffi::RenCameraDesc__bindgen_ty_1 {
+            __bindgen_anon_1: match camera.projection {
+                CameraProjection::Perspective { hfov } => ffi::RenCameraDesc__bindgen_ty_1 {
                     perspective: RenPerspectiveProjection { hfov },
                 },
-                CameraProj::Ortho { width } => ffi::RenCameraDesc__bindgen_ty_1 {
+                CameraProjection::Orthographic { width } => ffi::RenCameraDesc__bindgen_ty_1 {
                     orthographic: RenOrthographicProjection { width },
                 },
             },
-            position: camera.pos,
-            forward: camera.fwd,
+            position: camera.position,
+            forward: camera.forward,
             up: camera.up,
         };
         unsafe { ffi::ren_SetSceneCamera(self.handle.get_mut(), &camera) }

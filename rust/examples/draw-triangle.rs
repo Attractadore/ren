@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ren::{CameraDesc, CameraProj, MaterialDesc, MeshDesc, MeshInstanceDesc, SceneFrame};
+use ren::{CameraDesc, CameraProjection, MaterialDesc, MeshDesc, MeshInstanceDesc, SceneFrame};
 
 mod utils;
 
@@ -38,9 +38,9 @@ impl utils::App for DrawTriangleApp {
 
     fn iterate(&mut self, scene: &mut SceneFrame) -> Result<()> {
         scene.set_camera(&CameraDesc {
-            proj: CameraProj::Ortho { width: 2.0 },
-            pos: [0.0, 0.0, 1.0],
-            fwd: [0.0, 0.0, -1.0],
+            projection: CameraProjection::Orthographic { width: 2.0 },
+            position: [0.0, 0.0, 1.0],
+            forward: [0.0, 0.0, -1.0],
             up: [0.0, 1.0, 0.0],
         });
         Ok(())

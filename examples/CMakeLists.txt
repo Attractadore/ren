@@ -1,6 +1,7 @@
 find_package(SDL2 REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
+find_package(glm REQUIRED)
 
 function(copy_dlls target)
   if(WIN32)
@@ -28,5 +29,5 @@ target_link_libraries(create-device app-base)
 copy_dlls(create-device)
 
 add_executable(draw-triangle draw-triangle.cpp)
-target_link_libraries(draw-triangle app-base)
+target_link_libraries(draw-triangle app-base glm::glm)
 copy_dlls(draw-triangle)

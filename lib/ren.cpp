@@ -1,3 +1,4 @@
+#include "ren/ren.h"
 #include "Device.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
@@ -28,6 +29,9 @@ RenResult lippincott(F f) noexcept {
 } // namespace
 
 extern "C" {
+
+static_assert(sizeof(RenVector3) == sizeof(glm::vec3));
+static_assert(sizeof(RenMatrix4x4) == sizeof(glm::mat4));
 
 uint32_t ren_vk_GetRequiredAPIVersion() {
   return ren::Device::getRequiredAPIVersion();
@@ -176,22 +180,23 @@ void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
   scene->set_camera(*desc);
 }
 
-RenResult ren_CreateModel(RenScene *scene, const RenModelDesc *desc,
-                          RenModel *p_model) {
+RenResult ren_CreateMeshInstance(RenScene *scene,
+                                 const RenMeshInstanceDesc *desc,
+                                 RenMeshInstance *p_model) {
   assert(scene);
   assert(desc);
   return lippincott([&] { *p_model = scene->create_model(*desc); });
 }
 
-void ren_DestroyModel(RenScene *scene, RenModel model) {
+void ren_DestroyMeshInstance(RenScene *scene, RenMeshInstance model) {
   assert(scene);
   scene->destroy_model(model);
 }
 
-void ren_SetModelMatrix(RenScene *scene, RenModel model,
-                        const float matrix[16]) {
+void ren_SetMeshInstanceMatrix(RenScene *scene, RenMeshInstance model,
+                               const RenMatrix4x4 *matrix) {
   assert(scene);
   assert(matrix);
-  scene->set_model_matrix(model, glm::make_mat4(matrix));
+  scene->set_model_matrix(model, glm::make_mat4(*matrix));
 }
 }

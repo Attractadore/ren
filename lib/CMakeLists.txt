@@ -140,7 +140,7 @@ target_sources(
          FILES
          ${REN_INCLUDE}/ren/ren.hpp
          ${REN_INCLUDE}/ren/ren-vk.hpp)
-target_link_libraries(ren-hpp INTERFACE ren::ren glm::glm tl::expected)
+target_link_libraries(ren-hpp INTERFACE ren::ren tl::expected)
 target_compile_features(ren-hpp INTERFACE cxx_std_20)
 add_library(ren::ren-hpp ALIAS ren-hpp)
 

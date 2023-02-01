@@ -111,9 +111,11 @@ fn main() {
 
     bindgen::Builder::default()
         .header(ren_ffi_h.into_os_string().to_str().unwrap())
-        .default_enum_style(bindgen::EnumVariation::Rust {
-            non_exhaustive: false,
+        .default_enum_style(bindgen::EnumVariation::NewType {
+            is_bitfield: false,
+            is_global: true,
         })
+        .prepend_enum_name(false)
         .enable_function_attribute_detection()
         .allowlist_function("ren_.*")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
