@@ -13,7 +13,7 @@ public:
   DrawTriangleApp() : AppBase("Draw Triangle") {}
 
 protected:
-  void iterate(ren::Scene::Frame &scene) override {
+  void iterate(ren::Scene &scene) override {
     if (!m_model) {
       std::array<glm::vec3, 3> positions = {{
           {0.0f, 0.5f, 0.0f},
@@ -31,7 +31,7 @@ protected:
 
       m_mesh =
           scene
-              ->create_unique_mesh({
+              .create_unique_mesh({
                   .positions = std::span(
                       reinterpret_cast<const ren::Vector3 *>(positions.data()),
                       positions.size()),
@@ -43,20 +43,20 @@ protected:
               .value();
 
       m_material = scene
-                       ->create_unique_material({
+                       .create_unique_material({
                            .albedo = ren::VertexMaterialAlbedo(),
                        })
                        .value();
 
       m_model = scene
-                    ->create_unique_mesh_instance({
+                    .create_unique_mesh_instance({
                         .mesh = m_mesh.get(),
                         .material = m_material.get(),
                     })
                     .value();
     }
 
-    scene->set_camera({
+    scene.set_camera({
         .projection = ren::OrthographicProjection{.width = 2.0f},
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},

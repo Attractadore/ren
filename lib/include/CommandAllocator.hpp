@@ -36,8 +36,7 @@ class CommandAllocator {
 public:
   explicit CommandAllocator(Device &device);
 
-  void begin_frame();
-  void end_frame();
+  void next_frame();
 
   CommandBuffer allocate();
 };

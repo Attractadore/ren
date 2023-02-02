@@ -168,15 +168,11 @@ void Device::flush() {
   m_delete_queue.flush(*this);
 }
 
-void Device::begin_frame() {
+void Device::next_frame() {
+  m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);
-  m_delete_queue.begin_frame(*this);
-}
-
-void Device::end_frame() {
-  m_delete_queue.end_frame(*this);
-  m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
+  m_delete_queue.next_frame(*this);
 }
 
 auto Device::create_descriptor_pool(const DescriptorPoolDesc &desc)

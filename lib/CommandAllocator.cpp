@@ -21,7 +21,7 @@ CommandPool::CommandPool(CommandPool &&other)
     : m_device(other.m_device),
       m_pool(std::exchange(other.m_pool, VK_NULL_HANDLE)),
       m_cmd_buffers(std::move(other.m_cmd_buffers)),
-      m_allocated_count(std::exchange(m_allocated_count, 0)) {}
+      m_allocated_count(std::exchange(other.m_allocated_count, 0)) {}
 
 CommandPool &CommandPool::operator=(CommandPool &&other) {
   destroy();
@@ -87,11 +87,9 @@ CommandBuffer CommandAllocator::allocate() {
   return {m_device, cmd_buffer};
 }
 
-void CommandAllocator::begin_frame() {
+void CommandAllocator::next_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
   m_frame_pools[m_frame_index].reset();
 }
-
-void CommandAllocator::end_frame() {}
 
 } // namespace ren

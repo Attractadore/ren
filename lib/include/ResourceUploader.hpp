@@ -27,8 +27,7 @@ private:
 public:
   ResourceUploader(Device &device);
 
-  void begin_frame();
-  void end_frame();
+  void next_frame();
 
   template <ranges::sized_range R>
   void stage_data(R &&data, const BufferRef &buffer, unsigned offset = 0);

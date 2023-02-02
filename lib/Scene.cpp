@@ -120,24 +120,17 @@ Scene::Scene(Device &device)
       m_pipeline_layout(
           reflect_material_pipeline_layout(*m_device, m_asset_loader)) {}
 
-void Scene::begin_frame() {
-  m_cmd_allocator.begin_frame();
-  m_descriptor_set_allocator.begin_frame();
-  m_resource_uploader.begin_frame();
-}
-
-void Scene::end_frame() {
-  m_resource_uploader.end_frame();
-  m_descriptor_set_allocator.end_frame();
-  m_cmd_allocator.end_frame();
+void Scene::next_frame() {
+  m_device->next_frame();
+  m_cmd_allocator.next_frame();
+  m_descriptor_set_allocator.next_frame();
+  m_resource_uploader.next_frame();
 }
 
 void Scene::setOutputSize(unsigned width, unsigned height) {
   m_output_width = width;
   m_output_height = height;
 }
-
-void Scene::setSwapchain(Swapchain &swapchain) { m_swapchain = &swapchain; }
 
 MeshID Scene::create_mesh(const MeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
@@ -322,11 +315,15 @@ auto Scene::get_model(MeshInstanceID model) -> Model & {
   return m_models[key];
 }
 
-void Scene::set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept {
+void Scene::set_model_matrix(MeshInstanceID model,
+                             const glm::mat4 &matrix) noexcept {
   get_model(model).matrix = matrix;
 }
 
-void Scene::draw() {
+void Scene::draw(Swapchain &swapchain, unsigned width, unsigned height) {
+  m_output_width = width;
+  m_output_height = height;
+
   m_resource_uploader.upload_data(m_cmd_allocator);
 
   bool update_persistent_descriptor_pool = false;
@@ -490,11 +487,13 @@ void Scene::draw() {
   rgb.setDesc(pprt, "Post-processed color buffer");
   pp.setCallback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
-  rgb.present(m_swapchain, pprt);
+  rgb.present(swapchain, pprt);
 
   auto rg = rgb.build();
 
   rg.execute(m_cmd_allocator);
+
+  next_frame();
 }
 
 } // namespace ren

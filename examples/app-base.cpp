@@ -172,15 +172,9 @@ void AppBase::run() {
     }
     m_swapchain->set_size(m_window_width, m_window_height);
 
-    ren::Device::Frame device(*m_device);
+    iterate(*m_scene);
 
-    ren::Scene::Frame scene(*m_scene, *m_swapchain);
-    m_scene->set_output_size(m_window_width, m_window_height).value();
-
-    iterate(scene);
-
-    scene.end(std::move(scene)).value();
-    device.end(std::move(device)).value();
+    m_scene->draw(*m_swapchain, m_window_width, m_window_height).value();
   }
 
   fmt::print("Done\n");

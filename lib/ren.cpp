@@ -66,16 +66,6 @@ RenResult ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
 
 void ren_DestroyDevice(RenDevice *device) { delete device; }
 
-RenResult ren_DeviceBeginFrame(RenDevice *device) {
-  assert(device);
-  return lippincott([&] { device->begin_frame(); });
-}
-
-RenResult ren_DeviceEndFrame(RenDevice *device) {
-  assert(device);
-  return lippincott([&] { device->end_frame(); });
-}
-
 RenResult ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface,
                                  RenSwapchain **p_swapchain) {
   assert(device);
@@ -128,26 +118,11 @@ RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene) {
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-RenResult ren_SceneBeginFrame(RenScene *scene, RenSwapchain *swapchain) {
+RenResult ren_SceneDraw(RenScene *scene, RenSwapchain *swapchain,
+                        unsigned width, unsigned height) {
   assert(scene);
   assert(swapchain);
-  return lippincott([&] {
-    scene->setSwapchain(*swapchain);
-    scene->begin_frame();
-  });
-}
-
-RenResult ren_SceneEndFrame(RenScene *scene) {
-  assert(scene);
-  return lippincott([&] {
-    scene->draw();
-    scene->end_frame();
-  });
-}
-
-RenResult ren_SetSceneOutputSize(RenScene *scene, unsigned width,
-                                 unsigned height) {
-  return lippincott([&] { scene->setOutputSize(width, height); });
+  return lippincott([&] { scene->draw(*swapchain, width, height); });
 }
 
 RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,

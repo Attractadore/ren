@@ -2,9 +2,7 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-
 #define REN_NODISCARD [[nodiscard]]
-
 #else
 
 #if _MSC_VER
@@ -45,18 +43,9 @@ typedef enum : uint32_t {
 typedef enum : uint32_t {
   REN_NULL_MESH_INSTANCE = 0,
 } RenMeshInstance;
-#if 0
-typedef uint32_t RenMesh;
-typedef uint32_t RenMaterial;
-typedef uint32_t RenMeshInstance;
-#endif
 
 typedef float RenVector3[3];
 typedef float RenMatrix4x4[16];
-
-REN_NODISCARD RenResult ren_DeviceBeginFrame(RenDevice *device);
-
-REN_NODISCARD RenResult ren_DeviceEndFrame(RenDevice *device);
 
 void ren_DestroyDevice(RenDevice *device);
 
@@ -72,13 +61,8 @@ REN_NODISCARD RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene);
 
 void ren_DestroyScene(RenScene *scene);
 
-REN_NODISCARD RenResult ren_SceneBeginFrame(RenScene *scene,
-                                            RenSwapchain *swapchain);
-
-REN_NODISCARD RenResult ren_SetSceneOutputSize(RenScene *scene, unsigned width,
-                                               unsigned height);
-
-REN_NODISCARD RenResult ren_SceneEndFrame(RenScene *scene);
+REN_NODISCARD RenResult ren_SceneDraw(RenScene *scene, RenSwapchain *swapchain,
+                                      unsigned width, unsigned height);
 
 typedef enum {
   REN_PROJECTION_PERSPECTIVE = 0,

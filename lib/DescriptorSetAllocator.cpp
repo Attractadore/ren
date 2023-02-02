@@ -7,7 +7,7 @@ namespace ren {
 DescriptorSetAllocator::DescriptorSetAllocator(Device &device)
     : m_device(&device) {}
 
-void DescriptorSetAllocator::begin_frame() {
+void DescriptorSetAllocator::next_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
   auto &alloc = get_frame_allocator();
   for (auto &pool : alloc.pools) {
@@ -15,8 +15,6 @@ void DescriptorSetAllocator::begin_frame() {
   }
   alloc.num_used = 0;
 }
-
-void DescriptorSetAllocator::end_frame() {}
 
 auto DescriptorSetAllocator::allocate(const DescriptorSetLayoutRef &layout)
     -> VkDescriptorSet {

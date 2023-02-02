@@ -33,7 +33,6 @@ class Scene {
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
   unsigned m_output_width = 0;
   unsigned m_output_height = 0;
-  Swapchain *m_swapchain = nullptr;
 
   Camera m_camera;
 
@@ -97,6 +96,8 @@ private:
     return m_pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET];
   }
 
+  void next_frame();
+
 public:
   Scene(Device &device);
 
@@ -119,10 +120,7 @@ public:
 
   void set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept;
 
-  void begin_frame();
-  void end_frame();
-
-  void draw();
+  void draw(Swapchain &swapchain, unsigned width, unsigned height);
 };
 } // namespace ren
 

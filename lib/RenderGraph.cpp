@@ -259,8 +259,8 @@ std::string_view RenderGraph::Builder::get_desc(RGSemaphoreID semaphore) const {
   return "";
 }
 
-void RenderGraph::Builder::present(Swapchain *swapchain, RGTextureID texture) {
-  m_swapchain = swapchain;
+void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture) {
+  m_swapchain = &swapchain;
   m_final_image = texture;
 }
 

@@ -140,51 +140,6 @@ template <class... Ts> struct overload_set : Ts... {
   using Ts::operator()...;
 };
 
-template <typename T> class Frame {
-protected:
-  struct Deleter {
-    void operator()(T *handle) noexcept(false) {
-      if (handle) {
-        if (std::uncaught_exceptions() == 0) {
-          handle->end_frame().value();
-        }
-      }
-    }
-  };
-
-private:
-  std::unique_ptr<T, Deleter> m_holder;
-
-protected:
-  Frame(std::unique_ptr<T, Deleter> handle) : m_holder(std::move(handle)) {}
-
-public:
-  template <typename... Args>
-  Frame(T &handle, Args &&...args)
-      : Frame(begin(handle, std::forward<Args>(args)...).value()) {}
-  Frame(Frame &&) = default;
-  Frame &operator=(Frame &&) = default;
-  ~Frame() noexcept(false) = default;
-
-  template <typename... Args>
-  [[nodiscard]] static auto begin(T &handle, Args &&...args)
-      -> expected<Frame> {
-    return handle.begin_frame(std::forward<Args>(args)...).map([&] {
-      return Frame(std::unique_ptr<T, Deleter>(&handle));
-    });
-  }
-
-  [[nodiscard]] static auto end(Frame frame) -> expected<void> {
-    return frame->end_frame();
-  }
-
-  auto get() const -> const T & { return *m_holder.get(); }
-  auto get() -> T & { return *m_holder.get(); }
-
-  auto operator->() const -> const T * { return m_holder.get(); }
-  auto operator->() -> T * { return m_holder.get(); }
-};
-
 } // namespace detail
 
 struct Device;
@@ -237,16 +192,6 @@ using Vector3 = RenVector3;
 using Matrix4x4 = RenMatrix4x4;
 
 struct Device : RenDevice {
-  using Frame = detail::Frame<Device>;
-
-  [[nodiscard]] auto begin_frame() -> expected<void> {
-    return detail::to_expected(ren_DeviceBeginFrame(this));
-  }
-
-  [[nodiscard]] auto end_frame() -> expected<void> {
-    return detail::to_expected(ren_DeviceEndFrame(this));
-  }
-
   [[nodiscard]] auto create_scene() -> expected<UniqueScene> {
     RenScene *scene;
     return detail::to_expected(ren_CreateScene(this, &scene)).map([&] {
@@ -303,21 +248,6 @@ struct MeshInstanceDesc {
 };
 
 struct Scene : RenScene {
-  using Frame = detail::Frame<Scene>;
-
-  [[nodiscard]] auto begin_frame(Swapchain &swapchain) -> expected<void> {
-    return detail::to_expected(ren_SceneBeginFrame(this, &swapchain));
-  }
-
-  [[nodiscard]] auto end_frame() -> expected<void> {
-    return detail::to_expected(ren_SceneEndFrame(this));
-  }
-
-  [[nodiscard]] auto set_output_size(unsigned width, unsigned height)
-      -> expected<void> {
-    return detail::to_expected(ren_SetSceneOutputSize(this, width, height));
-  }
-
   void set_camera(const CameraDesc &desc) {
     RenCameraDesc c_desc = {};
     std::visit(detail::overload_set{
@@ -417,6 +347,11 @@ struct Scene : RenScene {
   void set_model_matrix(MeshInstanceID model, const Matrix4x4 &matrix) {
     ren_SetMeshInstanceMatrix(this, static_cast<RenMeshInstance>(model),
                               &matrix);
+  }
+
+  [[nodiscard]] auto draw(Swapchain &swapchain, unsigned width, unsigned height)
+      -> expected<void> {
+    return detail::to_expected(ren_SceneDraw(this, &swapchain, width, height));
   }
 };
 

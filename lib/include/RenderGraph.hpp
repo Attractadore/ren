@@ -250,7 +250,7 @@ public:
 
   class NodeBuilder;
   [[nodiscard]] NodeBuilder addNode();
-  void present(Swapchain *swapchain, RGTextureID texture);
+  void present(Swapchain &swapchain, RGTextureID texture);
 
   void setDesc(RGTextureID, std::string desc);
   std::string_view getDesc(RGTextureID tex) const;

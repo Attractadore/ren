@@ -102,16 +102,11 @@ private:
   }
 
 public:
-  void begin_frame(Device &device) {
-    // Increment the frame index when a new frame is begin. If this is done when
-    // a frame ends, shared_ptrs that go out of scope after will add their
-    // resources to the frame that is about to begin and will be destroyed right
-    // away, rather than after they are no longer in use.
+  void next_frame(Device &device) {
     m_frame_idx = (m_frame_idx + 1) % c_pipeline_depth;
     (pop<Ts>(device, get_frame_pushed_item_count<Ts>()), ...);
     m_frame_data[m_frame_idx] = {};
   }
-  void end_frame(Device &device) {}
 
   template <IsQueueType<Ts...> T> void push(T value) {
     push_impl(std::move(value));
@@ -178,8 +173,7 @@ public:
 
   void flush();
 
-  void begin_frame();
-  void end_frame();
+  void next_frame();
 
   static auto getRequiredAPIVersion() noexcept -> uint32_t {
     return VK_API_VERSION_1_3;

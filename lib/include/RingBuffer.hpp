@@ -29,11 +29,10 @@ public:
 
   unsigned size() const { return m_size; }
 
-  void begin_frame() {
+  void next_frame() {
     m_frame_idx = (m_frame_idx + 1) % m_frame_starts.size();
     m_frame_starts[m_frame_idx] = m_position + m_size;
   }
-  void end_frame() {}
 
   struct Allocation {
     unsigned offset;
@@ -78,8 +77,7 @@ public:
 
   unsigned size() const { return m_rb.size(); }
 
-  void begin_frame() { m_rb.begin_frame(); }
-  void end_frame() { m_rb.end_frame(); }
+  void next_frame() { m_rb.next_frame(); }
 
   template <ranges::sized_range R> auto write(R &&r) {
     using T = ranges::range_value_t<R>;

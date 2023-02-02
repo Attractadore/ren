@@ -35,7 +35,7 @@ public:
 
 protected:
   virtual void process_event(const SDL_Event &e) {}
-  virtual void iterate(ren::Scene::Frame &scene) {}
+  virtual void iterate(ren::Scene &scene) {}
 
   std::pair<unsigned, unsigned> get_window_size() const {
     return {m_window_width, m_window_height};

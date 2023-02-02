@@ -24,8 +24,7 @@ class DescriptorSetAllocator {
 public:
   DescriptorSetAllocator(Device &device);
 
-  void begin_frame();
-  void end_frame();
+  void next_frame();
 
   VkDescriptorSet allocate(const DescriptorSetLayoutRef &layout);
 };

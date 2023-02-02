@@ -8,15 +8,9 @@ namespace ren {
 
 ResourceUploader::ResourceUploader(Device &device) : m_device(&device) {}
 
-void ResourceUploader::begin_frame() {
+void ResourceUploader::next_frame() {
   if (m_ring_buffer) {
-    m_ring_buffer->begin_frame();
-  }
-}
-
-void ResourceUploader::end_frame() {
-  if (m_ring_buffer) {
-    m_ring_buffer->end_frame();
+    m_ring_buffer->next_frame();
   }
 }
 
@@ -30,10 +24,7 @@ RingBuffer ResourceUploader::create_ring_buffer(unsigned size) {
 
 void ResourceUploader::upload_data(CommandAllocator &cmd_allocator) {
   if (m_buffer_copies.empty()) {
-    if (m_ring_buffer) {
-      m_ring_buffer->end_frame();
-      m_ring_buffer = None;
-    }
+    m_ring_buffer = None;
     return;
   }
 
