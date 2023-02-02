@@ -77,26 +77,11 @@ struct InstanceDeleter {
   }
 };
 
-class SurfaceDeleter {
-  VkInstance m_instance;
-
-public:
-  SurfaceDeleter() : m_instance(VK_NULL_HANDLE) {}
-  SurfaceDeleter(VkInstance instance) : m_instance(instance) {}
-  void operator()(VkSurfaceKHR surface) const {
-    if (surface) {
-      assert(m_instance);
-      vkDestroySurfaceKHR(m_instance, surface, nullptr);
-    }
-  }
-};
-
 } // namespace
 
 struct AppBase::VulkanData {
   std::unique_ptr<std::remove_pointer_t<VkInstance>, InstanceDeleter> instance;
   VkPhysicalDevice adapter = VK_NULL_HANDLE;
-  std::unique_ptr<std::remove_pointer_t<VkSurfaceKHR>, SurfaceDeleter> surface;
 };
 
 AppBase::AppBase(std::string app_name) : m_app_name(std::move(app_name)) {
@@ -135,14 +120,13 @@ AppBase::AppBase(std::string app_name) : m_app_name(std::move(app_name)) {
       ren::vk::Device::create(m_vk->instance.get(), m_vk->adapter).value();
 
   fmt::print("Create VkSurfaceKHR\n");
-  VkSurfaceKHR surface = VK_NULL_HANDLE;
+  VkSurfaceKHR surface;
   if (!SDL_Vulkan_CreateSurface(m_window.get(), m_vk->instance.get(),
                                 &surface)) {
     throw std::runtime_error{"SDL_Vulkan: Failed to create VkSurfaceKHR"};
   }
-  m_vk->surface = {surface, SurfaceDeleter(m_vk->instance.get())};
-  auto *vk_device = static_cast<ren::vk::Device *>(m_device.get());
   fmt::print("Create ren::Swapchain\n");
+  auto *vk_device = static_cast<ren::vk::Device *>(m_device.get());
   m_swapchain = vk_device->create_swapchain(surface).value();
 
   fmt::print("Create ren::Scene\n");

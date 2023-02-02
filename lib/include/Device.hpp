@@ -130,11 +130,11 @@ struct ImageViews {
   VkImage image;
 };
 
-using DeleteQueue =
-    detail::DeleteQueueImpl<QueueCustomDeleter, ImageViews, VkBuffer,
-                            VkDescriptorPool, VkDescriptorSetLayout, VkImage,
-                            VkPipeline, VkPipelineLayout, VkSemaphore,
-                            VkSwapchainKHR, VmaAllocation>;
+using DeleteQueue = detail::DeleteQueueImpl<
+    QueueCustomDeleter, ImageViews, VkBuffer, VkDescriptorPool,
+    VkDescriptorSetLayout, VkImage, VkPipeline, VkPipelineLayout, VkSemaphore,
+    VkSwapchainKHR, // Swapchain must be destroyed before surface
+    VkSurfaceKHR, VmaAllocation>;
 
 class Device : public InstanceFunctionsMixin<Device>,
                public PhysicalDeviceFunctionsMixin<Device>,

@@ -152,6 +152,7 @@ define_queue_deleter(VkImage, DestroyImage);
 define_queue_deleter(VkPipeline, DestroyPipeline);
 define_queue_deleter(VkPipelineLayout, DestroyPipelineLayout);
 define_queue_deleter(VkSemaphore, DestroySemaphore);
+define_queue_deleter(VkSurfaceKHR, DestroySurfaceKHR);
 define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
 
 #undef define_queue_deleter

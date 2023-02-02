@@ -107,10 +107,7 @@ Swapchain::Swapchain(Device &device, VkSurfaceKHR surface)
 
 Swapchain::~Swapchain() {
   destroy();
-  // FIXME: this is done to destroy the swapchain before its parent surface. It
-  // would probably be better to acquire ownership of the surface instead and
-  // destroy it together with the swapchain.
-  m_device->flush();
+  m_device->push_to_delete_queue(m_create_info.surface);
 }
 
 void Swapchain::create() {
