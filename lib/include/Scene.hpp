@@ -30,10 +30,6 @@ class Scene {
   DescriptorSetAllocator m_descriptor_set_allocator;
   CommandAllocator m_cmd_allocator;
 
-  VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-  unsigned m_output_width = 0;
-  unsigned m_output_height = 0;
-
   Camera m_camera;
 
   using MeshMap = SlotMap<Mesh>;
@@ -42,6 +38,13 @@ class Scene {
   using MaterialMap = SlotMap<Material>;
   MaterialMap m_materials;
 
+  VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+public:
+  unsigned m_viewport_width = 1280;
+  unsigned m_viewport_height = 720;
+
+private:
   using ModelMap = SlotMap<Model>;
   ModelMap m_models;
 
@@ -101,12 +104,6 @@ private:
 public:
   Scene(Device &device);
 
-  void setOutputSize(unsigned width, unsigned height);
-  unsigned getOutputWidth() const { return m_output_width; }
-  unsigned getOutputHeight() const { return m_output_height; }
-
-  void setSwapchain(Swapchain &swapchain);
-
   MeshID create_mesh(const MeshDesc &desc);
   void destroy_mesh(MeshID mesh);
 
@@ -120,7 +117,7 @@ public:
 
   void set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept;
 
-  void draw(Swapchain &swapchain, unsigned width, unsigned height);
+  void draw(Swapchain &swapchain);
 };
 } // namespace ren
 

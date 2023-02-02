@@ -10,52 +10,53 @@ class DrawTriangleApp : public AppBase {
   ren::UniqueMeshInstanceID m_model;
 
 public:
-  DrawTriangleApp() : AppBase("Draw Triangle") {}
+  DrawTriangleApp() : AppBase("Draw Triangle") {
+    auto &scene = get_scene();
+
+    std::array<glm::vec3, 3> positions = {{
+        {0.0f, 0.5f, 0.0f},
+        {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
+        {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
+    }};
+
+    std::array<glm::vec3, 3> colors = {{
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f},
+    }};
+
+    std::array<unsigned, 3> indices = {0, 1, 2};
+
+    m_mesh =
+        scene
+            .create_unique_mesh({
+                .positions = std::span(
+                    reinterpret_cast<const ren::Vector3 *>(positions.data()),
+                    positions.size()),
+                .colors = std::span(
+                    reinterpret_cast<const ren::Vector3 *>(colors.data()),
+                    colors.size()),
+                .indices = indices,
+            })
+            .value();
+
+    m_material = scene
+                     .create_unique_material({
+                         .albedo = ren::VertexMaterialAlbedo(),
+                     })
+                     .value();
+
+    m_model = scene
+                  .create_unique_mesh_instance({
+                      .mesh = m_mesh.get(),
+                      .material = m_material.get(),
+                  })
+                  .value();
+  }
 
 protected:
-  void iterate(ren::Scene &scene) override {
-    if (!m_model) {
-      std::array<glm::vec3, 3> positions = {{
-          {0.0f, 0.5f, 0.0f},
-          {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
-          {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
-      }};
-
-      std::array<glm::vec3, 3> colors = {{
-          {1.0f, 0.0f, 0.0f},
-          {0.0f, 1.0f, 0.0f},
-          {0.0f, 0.0f, 1.0f},
-      }};
-
-      std::array<unsigned, 3> indices = {0, 1, 2};
-
-      m_mesh =
-          scene
-              .create_unique_mesh({
-                  .positions = std::span(
-                      reinterpret_cast<const ren::Vector3 *>(positions.data()),
-                      positions.size()),
-                  .colors = std::span(
-                      reinterpret_cast<const ren::Vector3 *>(colors.data()),
-                      colors.size()),
-                  .indices = indices,
-              })
-              .value();
-
-      m_material = scene
-                       .create_unique_material({
-                           .albedo = ren::VertexMaterialAlbedo(),
-                       })
-                       .value();
-
-      m_model = scene
-                    .create_unique_mesh_instance({
-                        .mesh = m_mesh.get(),
-                        .material = m_material.get(),
-                    })
-                    .value();
-    }
-
+  void iterate() override {
+    auto &scene = get_scene();
     scene.set_camera({
         .projection = ren::OrthographicProjection{.width = 2.0f},
         .position = {0.0f, 0.0f, 1.0f},

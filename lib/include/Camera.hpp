@@ -1,11 +1,23 @@
 #pragma once
+#include "ren/ren.h"
+
 #include <glm/glm.hpp>
+
+#include <variant>
 
 namespace ren {
 
+using PerspectiveProjection = RenPerspectiveProjection;
+using OrthographicProjection = RenOrthographicProjection;
+
+using CameraProjection =
+    std::variant<PerspectiveProjection, OrthographicProjection>;
+
 struct Camera {
-  glm::mat4 proj;
-  glm::mat4 view;
+  glm::vec3 position;
+  glm::vec3 forward;
+  glm::vec3 up;
+  CameraProjection projection;
 };
 
 } // namespace ren

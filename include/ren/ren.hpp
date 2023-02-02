@@ -267,6 +267,15 @@ struct Scene : RenScene {
     ren_SetSceneCamera(this, &c_desc);
   }
 
+  [[nodiscard]] auto set_viewport(unsigned width, unsigned height)
+      -> expected<void> {
+    return detail::to_expected(ren_SetViewport(this, width, height));
+  }
+
+  [[nodiscard]] auto draw(Swapchain &swapchain) -> expected<void> {
+    return detail::to_expected(ren_DrawScene(this, &swapchain));
+  }
+
   [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {
     assert(not desc.positions.empty());
     assert(desc.colors.empty() or desc.colors.size() == desc.positions.size());
@@ -347,11 +356,6 @@ struct Scene : RenScene {
   void set_model_matrix(MeshInstanceID model, const Matrix4x4 &matrix) {
     ren_SetMeshInstanceMatrix(this, static_cast<RenMeshInstance>(model),
                               &matrix);
-  }
-
-  [[nodiscard]] auto draw(Swapchain &swapchain, unsigned width, unsigned height)
-      -> expected<void> {
-    return detail::to_expected(ren_SceneDraw(this, &swapchain, width, height));
   }
 };
 

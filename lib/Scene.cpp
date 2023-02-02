@@ -127,11 +127,6 @@ void Scene::next_frame() {
   m_resource_uploader.next_frame();
 }
 
-void Scene::setOutputSize(unsigned width, unsigned height) {
-  m_output_width = width;
-  m_output_height = height;
-}
-
 MeshID Scene::create_mesh(const MeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
       upload_attributes;
@@ -246,25 +241,19 @@ void Scene::destroy_material(MaterialID id) {
 }
 
 void Scene::set_camera(const CameraDesc &desc) noexcept {
-  auto pos = glm::make_vec3(desc.position);
-  auto fwd = glm::make_vec3(desc.forward);
-  auto up = glm::make_vec3(desc.up);
-  m_camera.view = glm::lookAt(pos, pos + fwd, up);
-
-  float ar = float(m_output_width) / float(m_output_height);
-  switch (desc.projection) {
-  case REN_PROJECTION_PERSPECTIVE: {
-    float fov = desc.perspective.hfov / ar;
-    m_camera.proj = infinitePerspectiveRH_ReverseZ(fov, ar, 0.1f);
-    break;
-  }
-  case REN_PROJECTION_ORTHOGRAPHIC: {
-    float width = desc.orthographic.width;
-    float height = width / ar;
-    m_camera.proj = orthoRH_ReverseZ(width, height, 0.1f, 100.0f);
-    break;
-  }
-  }
+  m_camera = {
+      .position = glm::make_vec3(desc.position),
+      .forward = glm::make_vec3(desc.forward),
+      .up = glm::make_vec3(desc.up),
+      .projection = [&]() -> CameraProjection {
+        switch (desc.projection) {
+        case REN_PROJECTION_PERSPECTIVE:
+          return desc.perspective;
+        case REN_PROJECTION_ORTHOGRAPHIC:
+          return desc.orthographic;
+        }
+      }(),
+  };
 }
 
 auto Scene::create_model(const ModelDesc &desc) -> MeshInstanceID {
@@ -320,10 +309,7 @@ void Scene::set_model_matrix(MeshInstanceID model,
   get_model(model).matrix = matrix;
 }
 
-void Scene::draw(Swapchain &swapchain, unsigned width, unsigned height) {
-  m_output_width = width;
-  m_output_height = height;
-
+void Scene::draw(Swapchain &swapchain) {
   m_resource_uploader.upload_data(m_cmd_allocator);
 
   bool update_persistent_descriptor_pool = false;
@@ -358,8 +344,8 @@ void Scene::draw(Swapchain &swapchain, unsigned width, unsigned height) {
   auto rt = draw.addOutput(
       RGTextureDesc{
           .format = m_rt_format,
-          .width = m_output_width,
-          .height = m_output_height,
+          .width = m_viewport_width,
+          .height = m_viewport_height,
       },
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
@@ -387,10 +373,10 @@ void Scene::draw(Swapchain &swapchain, unsigned width, unsigned height) {
   draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
                        CommandBuffer &cmd, RenderGraph &rg) {
     cmd.begin_rendering(rg.getTexture(rt));
-    cmd.set_viewport({.width = float(m_output_width),
-                      .height = float(m_output_height),
+    cmd.set_viewport({.width = float(m_viewport_width),
+                      .height = float(m_viewport_height),
                       .maxDepth = 1.0f});
-    cmd.set_scissor_rect({.extent = {m_output_width, m_output_height}});
+    cmd.set_scissor_rect({.extent = {m_viewport_width, m_viewport_height}});
 
     // FIXME: since null descriptors are not core in Vulkan, have to skip
     // binding empty matrix buffer
@@ -399,9 +385,12 @@ void Scene::draw(Swapchain &swapchain, unsigned width, unsigned height) {
       return;
     }
 
+    auto aspect_ratio = float(m_viewport_width) / float(m_viewport_height);
+    auto proj = get_projection_matrix(m_camera, aspect_ratio);
+    auto view = get_view_matrix(m_camera);
+
     BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
-    *global_cbuffer.map<hlsl::GlobalData>() = {.proj_view = m_camera.proj *
-                                                            m_camera.view};
+    *global_cbuffer.map<hlsl::GlobalData>() = {.proj_view = proj * view};
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
     auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();

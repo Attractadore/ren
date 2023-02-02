@@ -171,10 +171,11 @@ void AppBase::run() {
       m_window_height = h;
     }
     m_swapchain->set_size(m_window_width, m_window_height);
+    m_scene->set_viewport(m_window_width, m_window_height).value();
 
-    iterate(*m_scene);
+    iterate();
 
-    m_scene->draw(*m_swapchain, m_window_width, m_window_height).value();
+    m_scene->draw(*m_swapchain).value();
   }
 
   fmt::print("Done\n");

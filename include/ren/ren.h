@@ -61,8 +61,8 @@ REN_NODISCARD RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene);
 
 void ren_DestroyScene(RenScene *scene);
 
-REN_NODISCARD RenResult ren_SceneDraw(RenScene *scene, RenSwapchain *swapchain,
-                                      unsigned width, unsigned height);
+REN_NODISCARD RenResult ren_SetViewport(RenScene *scene, unsigned width,
+                                        unsigned height);
 
 typedef enum {
   REN_PROJECTION_PERSPECTIVE = 0,
@@ -89,6 +89,8 @@ typedef struct {
 } RenCameraDesc;
 
 void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc);
+
+REN_NODISCARD RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain);
 
 typedef struct {
   unsigned num_vertices;

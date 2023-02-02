@@ -118,11 +118,20 @@ RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene) {
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-RenResult ren_SceneDraw(RenScene *scene, RenSwapchain *swapchain,
-                        unsigned width, unsigned height) {
+RenResult ren_SetViewport(RenScene *scene, unsigned width, unsigned height) {
+  assert(scene);
+  assert(width > 0);
+  assert(height > 0);
+  return lippincott([&] {
+    scene->m_viewport_width = width;
+    scene->m_viewport_height = height;
+  });
+}
+
+RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain) {
   assert(scene);
   assert(swapchain);
-  return lippincott([&] { scene->draw(*swapchain, width, height); });
+  return lippincott([&] { scene->draw(*swapchain); });
 }
 
 RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
