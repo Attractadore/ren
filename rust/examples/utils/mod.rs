@@ -47,11 +47,11 @@ pub trait App {
 }
 
 pub struct AppBase {
-    event_loop: EventLoop<()>,
-    window: Window,
+    device: Device,
     // Need to keep Vulkan DLL loaded as long as Device is alive
     _vk: Entry,
-    device: Device,
+    window: Window,
+    event_loop: EventLoop<()>,
     swapchain: SwapchainKey,
     scene: SceneKey,
 }

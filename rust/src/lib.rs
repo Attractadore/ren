@@ -98,12 +98,9 @@ impl Device {
     /// # Safety
     ///
     /// Requires valid VkSurfaceKHR
-    pub unsafe fn create_swapchain<F>(
-        &mut self,
-        mut create_surface: F,
-    ) -> Result<SwapchainKey, Error>
+    pub unsafe fn create_swapchain<F>(&mut self, create_surface: F) -> Result<SwapchainKey, Error>
     where
-        F: Fn(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
+        F: FnOnce(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
     {
         unsafe extern "C" fn helper<F>(
             instance: vk::Instance,
@@ -111,24 +108,27 @@ impl Device {
             p_surface: *mut vk::SurfaceKHR,
         ) -> vk::Result
         where
-            F: Fn(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
+            F: FnOnce(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
         {
-            let f = &*(usrptr as *mut F);
-            match f(instance) {
-                Ok(surface) => {
-                    *p_surface = surface;
-                    ffi::VK_SUCCESS
+            let f = &mut *(usrptr as *mut Option<F>);
+            if let Some(f) = f.take() {
+                match f(instance) {
+                    Ok(surface) => {
+                        *p_surface = surface;
+                        ffi::VK_SUCCESS
+                    }
+                    Err(result) => result,
                 }
-                Err(result) => result,
+            } else {
+                ffi::VK_ERROR_UNKNOWN
             }
         }
 
-        let create_surface: *mut F = &mut create_surface;
-
+        let mut create_surface = Some(create_surface);
         Ok(self.swapchains.insert(Swapchain::new(
             self.handle.get_mut(),
             Some(helper::<F>),
-            create_surface as *mut c_void,
+            &mut create_surface as *mut Option<F> as *mut c_void,
         )?))
     }
 
