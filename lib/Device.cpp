@@ -162,6 +162,7 @@ Device::~Device() {
   DestroySemaphore(m_graphics_queue_semaphore);
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
+  DestroyInstance();
 }
 
 void Device::flush() {

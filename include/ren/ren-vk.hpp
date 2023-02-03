@@ -6,17 +6,6 @@
 
 namespace ren::vk {
 inline namespace v0 {
-inline auto get_required_api_version() -> uint32_t {
-  return ren_vk_GetRequiredAPIVersion();
-}
-
-inline auto get_required_layers() -> std::span<const char *const> {
-  return {ren_vk_GetRequiredLayers(), ren_vk_GetRequiredLayerCount()};
-}
-
-inline auto get_required_extensions() -> std::span<const char *const> {
-  return {ren_vk_GetRequiredExtensions(), ren_vk_GetRequiredExtensionCount()};
-}
 
 struct Swapchain : ::ren::Swapchain {
   auto get_surface() const -> VkSurfaceKHR {
@@ -36,29 +25,54 @@ struct Swapchain : ::ren::Swapchain {
   };
 };
 
+struct DeviceDesc {
+  PFN_vkGetInstanceProcAddr proc;
+  std::span<const char *const> instance_extensions;
+  uint8_t pipeline_cache_uuid[VK_UUID_SIZE];
+};
+
+using PFN_CreateSurface = RenPFNCreateSurface;
+using CreateSurfaceFunction =
+    std::function<VkResult(VkInstance, VkSurfaceKHR *)>;
+
 struct Device : ::ren::Device {
-#ifndef VK_NO_PROTOTYPE
-  static auto create(VkInstance instance, VkPhysicalDevice adapter) {
-    return create(vkGetInstanceProcAddr, instance, adapter);
-  }
-#endif
-
-  static auto create(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-                     VkPhysicalDevice adapter) -> expected<UniqueDevice> {
+  static auto create(const DeviceDesc &desc) -> expected<UniqueDevice> {
+    assert(desc.proc);
+    RenDeviceDesc c_desc = {
+        .proc = desc.proc,
+        .num_instance_extensions = unsigned(desc.instance_extensions.size()),
+        .instance_extensions = desc.instance_extensions.data(),
+    };
+    std::memcpy(c_desc.pipeline_cache_uuid, desc.pipeline_cache_uuid,
+                sizeof(desc.pipeline_cache_uuid));
     RenDevice *device;
-    return detail::to_expected(
-               ren_vk_CreateDevice(proc, instance, adapter, &device))
-        .map([&] { return UniqueDevice(static_cast<Device *>(device)); });
+    return detail::to_expected(ren_vk_CreateDevice(&c_desc, &device)).map([&] {
+      return UniqueDevice(static_cast<Device *>(device));
+    });
   }
 
-  auto create_swapchain(VkSurfaceKHR surface) -> expected<UniqueSwapchain> {
+  auto create_swapchain(PFN_CreateSurface create_surface, void *usrptr)
+      -> expected<UniqueSwapchain> {
     RenSwapchain *swapchain;
     return detail::to_expected(
-               ren_vk_CreateSwapchain(this, surface, &swapchain))
+               ren_vk_CreateSwapchain(this, create_surface, usrptr, &swapchain))
         .map([&] {
           return UniqueSwapchain(static_cast<Swapchain *>(swapchain));
         });
   }
+
+  auto create_swapchain(CreateSurfaceFunction create_surface)
+      -> expected<UniqueSwapchain> {
+    struct Helper {
+      static VkResult call_function(VkInstance instance, void *function,
+                                    VkSurfaceKHR *p_surface) {
+        return (*reinterpret_cast<CreateSurfaceFunction *>(function))(
+            instance, p_surface);
+      }
+    };
+    return create_swapchain(Helper::call_function, &create_surface);
+  }
 };
+
 } // namespace v0
 } // namespace ren::vk

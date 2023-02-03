@@ -53,25 +53,161 @@ const char *const *ren_vk_GetRequiredExtensions() {
   return ren::Device::getRequiredExtensions().data();
 }
 
-RenResult ren_vk_CreateDevice(PFN_vkGetInstanceProcAddr proc,
-                              VkInstance instance, VkPhysicalDevice adapter,
-                              RenDevice **p_device) {
-  assert(proc);
-  assert(instance);
-  assert(adapter);
-  assert(p_device);
-  return lippincott(
-      [&] { *p_device = new RenDevice(proc, instance, adapter); });
+namespace ren {
+namespace {
+
+#define load_vulkan_function(proc, instance, name)                             \
+  [&]() {                                                                      \
+    auto *func = reinterpret_cast<PFN_##name>(proc(instance, #name));          \
+    assert(func);                                                              \
+    return func;                                                               \
+  }()
+
+VkInstance create_instance(PFN_vkGetInstanceProcAddr proc,
+                           std::span<const char *const> external_extensions) {
+  VkApplicationInfo application_info = {
+      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+      .apiVersion = Device::getRequiredAPIVersion(),
+  };
+
+  auto layers = Device::getRequiredLayers();
+
+  SmallVector<const char *> extensions(external_extensions);
+  extensions.append(Device::getRequiredExtensions());
+
+  VkInstanceCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo = &application_info,
+      .enabledLayerCount = static_cast<uint32_t>(layers.size()),
+      .ppEnabledLayerNames = layers.data(),
+      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+      .ppEnabledExtensionNames = extensions.data(),
+  };
+
+  auto vk_create_instance =
+      load_vulkan_function(proc, VK_NULL_HANDLE, vkCreateInstance);
+
+  VkInstance instance;
+  throwIfFailed(vk_create_instance(&create_info, nullptr, &instance),
+                "Vulkan: Failed to create VkInstance");
+
+  return instance;
 }
+
+VkPhysicalDevice find_adapter(PFN_vkGetInstanceProcAddr proc,
+                              VkInstance instance,
+                              std::span<const uint8_t, VK_UUID_SIZE> uuid) {
+  auto vk_enumerate_physical_devices =
+      load_vulkan_function(proc, instance, vkEnumeratePhysicalDevices);
+  auto vk_get_physical_device_properties =
+      load_vulkan_function(proc, instance, vkGetPhysicalDeviceProperties);
+
+  unsigned num_devices = 0;
+  throwIfFailed(vk_enumerate_physical_devices(instance, &num_devices, nullptr),
+                "Vulkan: Failed to enumerate physical device");
+  SmallVector<VkPhysicalDevice> devices(num_devices);
+  throwIfFailed(
+      vk_enumerate_physical_devices(instance, &num_devices, devices.data()),
+      "Vulkan: Failed to enumerate physical device");
+  devices.resize(num_devices);
+
+  for (auto device : devices) {
+    VkPhysicalDeviceProperties props;
+    vk_get_physical_device_properties(device, &props);
+    if (ranges::equal(uuid, std::span(props.pipelineCacheUUID))) {
+      return device;
+    }
+  }
+
+  return VK_NULL_HANDLE;
+}
+
+} // namespace
+} // namespace ren
+
+RenResult ren_vk_CreateDevice(const RenDeviceDesc *desc, RenDevice **p_device) {
+  assert(desc);
+  assert(desc->proc);
+  if (desc->num_instance_extensions > 0) {
+    assert(desc->instance_extensions);
+  }
+  assert(p_device);
+
+  RenResult result = REN_SUCCESS;
+  VkInstance instance = VK_NULL_HANDLE;
+  VkPhysicalDevice adapter = VK_NULL_HANDLE;
+
+  result = lippincott([&] {
+    instance = ren::create_instance(
+        desc->proc, {desc->instance_extensions, desc->num_instance_extensions});
+  });
+  if (result) {
+    goto clean;
+  }
+
+  result = lippincott([&] {
+    adapter =
+        ren::find_adapter(desc->proc, instance, desc->pipeline_cache_uuid);
+    ren::throwIfFailed(adapter, "Vulkan: Failed to find physical device");
+  });
+  if (result) {
+    goto clean;
+  }
+
+  result = lippincott(
+      [&] { *p_device = new RenDevice(desc->proc, instance, adapter); });
+  if (result) {
+    goto clean;
+  }
+
+  return REN_SUCCESS;
+
+clean:
+  if (instance) {
+    auto *vk_destroy_instance =
+        load_vulkan_function(desc->proc, instance, vkDestroyInstance);
+    vk_destroy_instance(instance, nullptr);
+  }
+
+  return result;
+}
+
+#undef load_vulkan_function
 
 void ren_DestroyDevice(RenDevice *device) { delete device; }
 
-RenResult ren_vk_CreateSwapchain(RenDevice *device, VkSurfaceKHR surface,
-                                 RenSwapchain **p_swapchain) {
+RenResult ren_vk_CreateSwapchain(RenDevice *device,
+                                 RenPFNCreateSurface create_surface,
+                                 void *usrptr, RenSwapchain **p_swapchain) {
   assert(device);
-  assert(surface);
+  assert(create_surface);
   assert(p_swapchain);
-  return lippincott([&] { *p_swapchain = new RenSwapchain(*device, surface); });
+
+  RenResult result = REN_SUCCESS;
+  VkSurfaceKHR surface = VK_NULL_HANDLE;
+
+  result = lippincott([&] {
+    ren::throwIfFailed(create_surface(device->getInstance(), usrptr, &surface),
+                       "Vulkan: Failed to create surface");
+  });
+  if (result) {
+    goto clean;
+  }
+
+  result =
+      lippincott([&] { *p_swapchain = new RenSwapchain(*device, surface); });
+  if (result) {
+    goto clean;
+  }
+
+  return REN_SUCCESS;
+
+clean:
+  if (surface) {
+    device->DestroySurfaceKHR(surface);
+  }
+
+  return result;
 }
 
 void ren_DestroySwapchain(RenSwapchain *swapchain) { delete swapchain; }

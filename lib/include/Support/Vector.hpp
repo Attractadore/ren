@@ -10,6 +10,10 @@ namespace detail {
 template <class Base> struct VectorMixin : public Base {
   using Base::Base;
 
+  template <ranges::input_range R> VectorMixin(R &&range) {
+    this->assign(std::forward<R>(range));
+  }
+
   constexpr auto append(ranges::input_range auto &&r) {
     return this->append(ranges::begin(r), ranges::end(r));
   }

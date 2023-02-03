@@ -10,15 +10,12 @@ class AppBase {
     }
   };
 
-  struct VulkanData;
-
   std::string m_app_name;
   struct SDL {
     SDL() { SDL_Init(SDL_INIT_EVERYTHING); }
     ~SDL() { SDL_Quit(); }
   } SDL;
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  std::unique_ptr<VulkanData> m_vk;
   ren::UniqueDevice m_device;
   ren::UniqueSwapchain m_swapchain;
   ren::UniqueScene m_scene;
@@ -27,9 +24,6 @@ class AppBase {
 
 public:
   AppBase(std::string app_name);
-  AppBase(AppBase &&) noexcept;
-  AppBase &operator=(AppBase &&) noexcept;
-  ~AppBase();
 
   void run();
 
