@@ -243,8 +243,8 @@ void Scene::destroy_material(MaterialID id) {
 void Scene::set_camera(const CameraDesc &desc) noexcept {
   m_camera = {
       .position = glm::make_vec3(desc.position),
-      .forward = glm::make_vec3(desc.forward),
-      .up = glm::make_vec3(desc.up),
+      .forward = glm::normalize(glm::make_vec3(desc.forward)),
+      .up = glm::normalize(glm::make_vec3(desc.up)),
       .projection = [&]() -> CameraProjection {
         switch (desc.projection) {
         case REN_PROJECTION_PERSPECTIVE:
