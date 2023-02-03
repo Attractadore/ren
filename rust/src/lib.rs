@@ -1,19 +1,30 @@
 use slotmap::{new_key_type, SlotMap};
-use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
+use std::ffi::{c_char, c_void};
 use thiserror::Error;
 
 mod ffi;
 use ffi::{
     RenCameraDesc, RenDevice, RenMaterial, RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInstance,
-    RenMeshInstanceDesc, RenOrthographicProjection, RenPerspectiveProjection, RenResult, RenScene,
-    RenSwapchain, REN_MATERIAL_ALBEDO_CONST, REN_MATERIAL_ALBEDO_VERTEX, REN_NULL_MATERIAL,
-    REN_NULL_MESH, REN_NULL_MESH_INSTANCE, REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE,
-    REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR, REN_VULKAN_ERROR,
+    RenMeshInstanceDesc, RenOrthographicProjection, RenPFNCreateSurface, RenPerspectiveProjection,
+    RenResult, RenScene, RenSwapchain, REN_MATERIAL_ALBEDO_CONST, REN_MATERIAL_ALBEDO_VERTEX,
+    REN_NULL_MATERIAL, REN_NULL_MESH, REN_NULL_MESH_INSTANCE, REN_PROJECTION_ORTHOGRAPHIC,
+    REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR, REN_VULKAN_ERROR,
 };
 
 mod handle;
-pub mod vk;
+
+pub mod vk {
+    use crate::ffi;
+
+    pub use ffi::PFN_vkGetInstanceProcAddr as GetInstanceProcAddr;
+    pub use ffi::VkInstance as Instance;
+    pub use ffi::VkPresentModeKHR as PresentModeKHR;
+    pub use ffi::VkResult as Result;
+    pub use ffi::VkSurfaceKHR as SurfaceKHR;
+    pub use ffi::VK_ERROR_UNKNOWN as ERROR_UNKNOWN;
+
+    pub const UUID_SIZE: usize = 16;
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -25,8 +36,6 @@ pub enum Error {
     Runtime,
     #[error("Specified object was not found")]
     InvalidKey,
-    #[error("Specified object is in use")]
-    Busy,
     #[error("Unknown error")]
     Unknown,
 }
@@ -57,27 +66,28 @@ pub struct Device {
     handle: HDevice,
 }
 
+pub struct DeviceDesc<'a> {
+    pub proc: vk::GetInstanceProcAddr,
+    pub instance_extensions: &'a [*const c_char],
+    pub pipeline_cache_uuid: [u8; vk::UUID_SIZE],
+}
+
 impl Device {
     /// # Safety
     ///
     /// Requires valid vkGetInstanceProcAddr, VkInstance and VkPhysicalDevice
-    pub unsafe fn new(
-        proc: vk::GetInstanceProcAddr,
-        instance: vk::Instance,
-        adapter: vk::PhysicalDevice,
-    ) -> Result<Self, Error> {
-        assert_ne!(proc, None);
-        assert_ne!(instance, std::ptr::null_mut());
-        assert_ne!(adapter, std::ptr::null_mut());
+    pub unsafe fn new(desc: &DeviceDesc) -> Result<Self, Error> {
+        assert_ne!(desc.proc, None);
         Ok(Self {
             handle: {
+                let desc = ffi::RenDeviceDesc {
+                    proc_: desc.proc,
+                    num_instance_extensions: desc.instance_extensions.len() as u32,
+                    instance_extensions: desc.instance_extensions.as_ptr(),
+                    pipeline_cache_uuid: desc.pipeline_cache_uuid,
+                };
                 let mut device = std::ptr::null_mut();
-                Error::new(ffi::ren_vk_CreateDevice(
-                    proc,
-                    instance,
-                    adapter,
-                    &mut device,
-                ))?;
+                Error::new(ffi::ren_vk_CreateDevice(&desc, &mut device))?;
                 HDevice::new(device)
             },
             swapchains: SlotMap::with_key(),
@@ -88,13 +98,38 @@ impl Device {
     /// # Safety
     ///
     /// Requires valid VkSurfaceKHR
-    pub unsafe fn create_swapchain(
+    pub unsafe fn create_swapchain<F>(
         &mut self,
-        surface: vk::SurfaceKHR,
-    ) -> Result<SwapchainKey, Error> {
-        Ok(self
-            .swapchains
-            .insert(Swapchain::new(self.handle.get_mut(), surface)?))
+        mut create_surface: F,
+    ) -> Result<SwapchainKey, Error>
+    where
+        F: Fn(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
+    {
+        unsafe extern "C" fn helper<F>(
+            instance: vk::Instance,
+            usrptr: *mut c_void,
+            p_surface: *mut vk::SurfaceKHR,
+        ) -> vk::Result
+        where
+            F: Fn(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
+        {
+            let f = &*(usrptr as *mut F);
+            match f(instance) {
+                Ok(surface) => {
+                    *p_surface = surface;
+                    ffi::VK_SUCCESS
+                }
+                Err(result) => result,
+            }
+        }
+
+        let create_surface: *mut F = &mut create_surface;
+
+        Ok(self.swapchains.insert(Swapchain::new(
+            self.handle.get_mut(),
+            Some(helper::<F>),
+            create_surface as *mut c_void,
+        )?))
     }
 
     pub fn destroy_swapchain(&mut self, key: SwapchainKey) {
@@ -124,51 +159,20 @@ impl Device {
     pub fn get_scene_mut(&mut self, key: SceneKey) -> Option<&mut Scene> {
         self.scenes.get_mut(key)
     }
-}
 
-pub struct DeviceFrame<'a> {
-    device: &'a mut Device,
-    active_swapchains: HashSet<SwapchainKey>,
-    active_scenes: HashSet<SceneKey>,
-}
-
-impl<'a> Deref for DeviceFrame<'a> {
-    type Target = Device;
-
-    fn deref(&self) -> &Self::Target {
-        self.device
-    }
-}
-
-impl<'a> DerefMut for DeviceFrame<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.device
-    }
-}
-
-impl<'a> DeviceFrame<'a> {
-    pub fn new(device: &'a mut Device) -> Result<Self, Error> {
-        unsafe { Error::new(ffi::ren_DeviceBeginFrame(device.handle.get_mut()))? };
-        Ok(Self {
-            device,
-            active_swapchains: HashSet::new(),
-            active_scenes: HashSet::new(),
-        })
-    }
-
-    pub fn end(mut self) -> Result<(), Error> {
-        self.end_impl()
-    }
-
-    fn end_impl(&mut self) -> Result<(), Error> {
-        unsafe { Error::new(ffi::ren_DeviceEndFrame(self.handle.get_mut())) }
-    }
-}
-
-impl<'a> Drop for DeviceFrame<'a> {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            self.end_impl().unwrap();
+    // FIXME: this is an unfortunate consequence of a mut Scene requiring a mut Swapchain
+    pub fn draw_scene(&mut self, scene: SceneKey, swapchain: SwapchainKey) -> Result<(), Error> {
+        unsafe {
+            Error::new(ffi::ren_DrawScene(
+                self.get_scene_mut(scene)
+                    .ok_or(Error::InvalidKey)?
+                    .handle
+                    .get_mut(),
+                self.get_swapchain_mut(swapchain)
+                    .ok_or(Error::InvalidKey)?
+                    .handle
+                    .get_mut(),
+            ))
         }
     }
 }
@@ -190,13 +194,21 @@ new_key_type!(
 );
 
 impl Swapchain {
-    unsafe fn new(device: *mut RenDevice, surface: vk::SurfaceKHR) -> Result<Self, Error> {
+    unsafe fn new(
+        device: *mut RenDevice,
+        create_surface: RenPFNCreateSurface,
+        usrptr: *mut c_void,
+    ) -> Result<Self, Error> {
         Ok(Self {
             handle: {
                 assert_ne!(device, std::ptr::null_mut());
-                assert_ne!(surface, std::ptr::null_mut());
                 let mut swapchain = std::ptr::null_mut();
-                Error::new(ffi::ren_vk_CreateSwapchain(device, surface, &mut swapchain))?;
+                Error::new(ffi::ren_vk_CreateSwapchain(
+                    device,
+                    create_surface,
+                    usrptr,
+                    &mut swapchain,
+                ))?;
                 HSwapchain::new(swapchain)
             },
         })
@@ -458,77 +470,7 @@ impl Scene {
     pub fn get_mesh_instance_mut(&mut self, key: MeshInstanceKey) -> Option<&mut MeshInstance> {
         self.mesh_instances.get_mut(key)
     }
-}
 
-pub struct SceneFrame<'a> {
-    scene: &'a mut Scene,
-}
-
-impl<'a> SceneFrame<'a> {
-    pub fn new(
-        device_frame: &'a mut DeviceFrame,
-        scene: SceneKey,
-        swapchain: SwapchainKey,
-        width: u32,
-        height: u32,
-    ) -> Result<Self, Error> {
-        if !device_frame.active_swapchains.insert(swapchain) {
-            return Err(Error::Busy);
-        }
-        if !device_frame.active_scenes.insert(scene) {
-            return Err(Error::Busy);
-        }
-        let swapchain = device_frame
-            .get_swapchain_mut(swapchain)
-            .ok_or(Error::InvalidKey)?
-            .handle
-            .get_mut();
-        let scene = device_frame.get_scene_mut(scene).ok_or(Error::InvalidKey)?;
-        unsafe { Error::new(ffi::ren_SceneBeginFrame(scene.handle.get_mut(), swapchain))? };
-        unsafe {
-            assert!(width > 0);
-            assert!(height > 0);
-            Error::new(ffi::ren_SetSceneOutputSize(
-                scene.handle.get_mut(),
-                width,
-                height,
-            ))?;
-        };
-        Ok(Self { scene })
-    }
-
-    pub fn end(mut self) -> Result<(), Error> {
-        self.end_impl()
-    }
-
-    fn end_impl(&mut self) -> Result<(), Error> {
-        unsafe { Error::new(ffi::ren_SceneEndFrame(self.scene.handle.get_mut())) }
-    }
-}
-
-impl<'a> Drop for SceneFrame<'a> {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            self.end_impl().unwrap()
-        }
-    }
-}
-
-impl<'a> Deref for SceneFrame<'a> {
-    type Target = Scene;
-
-    fn deref(&self) -> &Self::Target {
-        self.scene
-    }
-}
-
-impl<'a> DerefMut for SceneFrame<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.scene
-    }
-}
-
-impl<'a> SceneFrame<'a> {
     pub fn set_camera(&mut self, camera: &CameraDesc) {
         let camera = RenCameraDesc {
             projection: match camera.projection {
@@ -548,6 +490,10 @@ impl<'a> SceneFrame<'a> {
             up: camera.up,
         };
         unsafe { ffi::ren_SetSceneCamera(self.handle.get_mut(), &camera) }
+    }
+
+    pub fn set_viewport(&mut self, width: u32, height: u32) -> Result<(), Error> {
+        unsafe { Error::new(ffi::ren_SetViewport(self.handle.get_mut(), width, height)) }
     }
 
     pub fn create_mesh(&mut self, desc: &MeshDesc) -> Result<MeshKey, Error> {

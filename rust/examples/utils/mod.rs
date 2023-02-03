@@ -1,16 +1,11 @@
 use anyhow::{Context, Result};
-use ash::{
-    extensions::khr,
-    vk::{self, Handle},
-};
-use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
-use ren::{Device, DeviceFrame, SceneFrame};
+use ash::vk::{self, Handle};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use ren::{Device, Scene};
 use std::ffi::CStr;
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, WindowEvent},
+    event::{DeviceEvent, Event, WindowEvent},
     event_loop::EventLoop,
     window::WindowBuilder,
 };
@@ -18,50 +13,11 @@ use winit::{
 struct Instance(ash::Instance);
 
 impl Instance {
-    fn new(entry: &ash::Entry, display: RawDisplayHandle) -> Result<Self> {
-        let layers = ren::vk::get_required_raw_layers();
-
-        let extensions: Vec<_> = ren::vk::get_required_raw_extensions()
-            .iter()
-            .copied()
-            .chain(
-                ash_window::enumerate_required_extensions(display)?
-                    .iter()
-                    .copied(),
-            )
-            .collect();
-
-        let application_info = vk::ApplicationInfo {
-            api_version: ren::vk::get_required_api_version(),
-            ..Default::default()
-        };
-
+    fn new(entry: &ash::Entry) -> Result<Self> {
         let create_info = vk::InstanceCreateInfo {
-            p_application_info: &application_info,
-            enabled_layer_count: layers.len() as u32,
-            pp_enabled_layer_names: layers.as_ptr(),
-            enabled_extension_count: extensions.len() as u32,
-            pp_enabled_extension_names: extensions.as_ptr(),
             ..Default::default()
         };
-
         Ok(Self(unsafe { entry.create_instance(&create_info, None) }?))
-    }
-
-    fn as_raw(&self) -> u64 {
-        self.0.handle().as_raw()
-    }
-
-    fn get_loader(&self, entry: &ash::Entry) -> Result<ren::vk::GetInstanceProcAddr> {
-        let get_instance_proc_addr = b"vkGetInstanceProcAddr\0";
-        unsafe {
-            let get_instance_proc_addr =
-                CStr::from_bytes_with_nul_unchecked(get_instance_proc_addr);
-            Ok(std::mem::transmute(entry.get_instance_proc_addr(
-                self.0.handle(),
-                get_instance_proc_addr.as_ptr(),
-            )))
-        }
     }
 }
 
@@ -71,54 +27,29 @@ impl Drop for Instance {
     }
 }
 
-struct Surface {
-    entry: khr::Surface,
-    surface: vk::SurfaceKHR,
-}
-
-impl Surface {
-    fn new(
-        entry: &ash::Entry,
-        instance: &ash::Instance,
-        display: RawDisplayHandle,
-        window: RawWindowHandle,
-    ) -> Result<Self> {
-        println!("Load VK_KHR_surface");
-        let khr_surface = khr::Surface::new(entry, instance);
-        let surface =
-            unsafe { ash_window::create_surface(entry, instance, display, window, None)? };
-        Ok(Self {
-            entry: khr_surface,
-            surface,
-        })
-    }
-
-    fn as_raw(&self) -> u64 {
-        self.surface.as_raw()
-    }
-}
-
-impl Drop for Surface {
-    fn drop(&mut self) {
-        unsafe {
-            self.entry.destroy_surface(self.surface, None);
-        }
-    }
-}
-
 pub trait App {
-    fn new(scene: &mut SceneFrame) -> Result<Self>
+    type Config;
+
+    fn new(config: Self::Config, scene: &mut Scene) -> Result<Self>
     where
         Self: Sized;
 
     fn get_name(&self) -> &str;
 
-    fn iterate(&mut self, _scene: &mut SceneFrame) -> Result<()> {
+    fn handle_window_event(&mut self, _event: &WindowEvent) -> Result<()> {
+        Ok(())
+    }
+
+    fn handle_device_event(&mut self, _event: &DeviceEvent) -> Result<()> {
+        Ok(())
+    }
+
+    fn iterate(&mut self, _scene: &mut Scene) -> Result<()> {
         Ok(())
     }
 }
 
-pub fn run<A: App + 'static>() -> Result<()> {
+pub fn run<A: App + 'static>(config: A::Config) -> Result<()> {
     println!("Create EventLoop");
     let event_loop = EventLoop::new();
 
@@ -130,75 +61,82 @@ pub fn run<A: App + 'static>() -> Result<()> {
     let vk = unsafe { ash::Entry::load() }?;
 
     println!("Create VkInstance");
-    let instance = Instance::new(&vk, event_loop.raw_display_handle())?;
+    let instance = Instance::new(&vk)?;
 
     println!("Select VkPhysicalDevice #0");
     let adapter = *unsafe { instance.0.enumerate_physical_devices() }?
         .first()
         .context("Failed to find a Vulkan device")?;
-    println!("Running on {}", {
-        unsafe {
-            let props = instance.0.get_physical_device_properties(adapter);
-            CStr::from_ptr(props.device_name.as_ptr())
-        }
-        .to_str()?
-    });
+    let props = unsafe { instance.0.get_physical_device_properties(adapter) };
+    println!(
+        "Running on {}",
+        unsafe { CStr::from_ptr(props.device_name.as_ptr()) }.to_str()?
+    );
 
     println!("Create ren::Device");
     let mut device = unsafe {
-        Device::new(
-            instance.get_loader(&vk)?,
-            instance.as_raw() as ren::vk::Instance,
-            adapter.as_raw() as ren::vk::PhysicalDevice,
-        )?
+        Device::new(&ren::DeviceDesc {
+            proc: std::mem::transmute(vk.static_fn().get_instance_proc_addr),
+            instance_extensions: ash_window::enumerate_required_extensions(
+                event_loop.raw_display_handle(),
+            )?,
+            pipeline_cache_uuid: props.pipeline_cache_uuid,
+        })?
     };
 
-    println!("Create VkSurfaceKHR");
-    let surface = Surface::new(
-        &vk,
-        &instance.0,
-        window.raw_display_handle(),
-        window.raw_window_handle(),
-    )?;
     println!("Create ren::Swapchain");
-    let swapchain = unsafe { device.create_swapchain(surface.as_raw() as ren::vk::SurfaceKHR)? };
+    let swapchain = unsafe {
+        device.create_swapchain(|instance| {
+            let instance =
+                ash::Instance::load(vk.static_fn(), vk::Instance::from_raw(instance as u64));
+            println!("Create VkSurfaceKHR");
+            ash_window::create_surface(
+                &vk,
+                &instance,
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+                None,
+            )
+            .map(|surface| surface.as_raw() as ren::vk::SurfaceKHR)
+            .map_err(|_| ren::vk::ERROR_UNKNOWN)
+        })?
+    };
 
     println!("Create ren::Scene");
     let scene = device.create_scene()?;
+    let (width, height) = device.get_swapchain(swapchain).unwrap().get_size();
+    device
+        .get_scene_mut(scene)
+        .unwrap()
+        .set_viewport(width, height)?;
 
-    let mut app = {
-        let mut device = DeviceFrame::new(&mut device)?;
-        let mut scene = SceneFrame::new(&mut device, scene, swapchain, 1, 1)?;
-        A::new(&mut scene)?
-    };
+    let mut app = A::new(config, device.get_scene_mut(scene).unwrap())?;
     window.set_title(app.get_name());
 
     event_loop.run(move |event, _, control_flow: _| {
         || -> Result<()> {
             control_flow.set_poll();
             match event {
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    control_flow.set_exit();
-                }
-                Event::WindowEvent {
-                    event: WindowEvent::Resized(PhysicalSize { width, height }),
-                    ..
-                } => {
-                    device
-                        .get_swapchain_mut(swapchain)
-                        .unwrap()
-                        .set_size(width, height);
-                }
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => {
+                        control_flow.set_exit();
+                    }
+                    WindowEvent::Resized(PhysicalSize { width, height }) => {
+                        device
+                            .get_swapchain_mut(swapchain)
+                            .unwrap()
+                            .set_size(width, height);
+                        device
+                            .get_scene_mut(scene)
+                            .unwrap()
+                            .set_viewport(width, height)?;
+                    }
+                    _ => app.handle_window_event(&event)?,
+                },
+                Event::DeviceEvent { event, .. } => app.handle_device_event(&event)?,
                 Event::MainEventsCleared => {
-                    let mut device = DeviceFrame::new(&mut device)?;
-                    let (width, height) = device.get_swapchain(swapchain).unwrap().get_size();
-                    let mut scene = SceneFrame::new(&mut device, scene, swapchain, width, height)?;
-                    app.iterate(&mut scene)?;
-                    scene.end()?;
-                    device.end()?;
+                    app.iterate(device.get_scene_mut(scene).unwrap())?;
+                    device.draw_scene(scene, swapchain)?;
                 }
                 Event::LoopDestroyed => {
                     println!("Done");

@@ -1,12 +1,15 @@
 use anyhow::Result;
-use ren::{CameraDesc, CameraProjection, MaterialDesc, MeshDesc, MeshInstanceDesc, SceneFrame};
+use ren::{CameraDesc, CameraProjection, MaterialDesc, MeshDesc, MeshInstanceDesc, Scene};
 
 mod utils;
 
+struct Config {}
 struct DrawTriangleApp {}
 
 impl utils::App for DrawTriangleApp {
-    fn new(scene: &mut SceneFrame) -> Result<Self> {
+    type Config = Config;
+
+    fn new(_config: Config, scene: &mut Scene) -> Result<Self> {
         let positions = [
             [0.0, 0.5, 0.0],
             [-(3.0f32).sqrt() / 4.0, -0.25, 0.0],
@@ -36,7 +39,7 @@ impl utils::App for DrawTriangleApp {
         "Draw Triangle"
     }
 
-    fn iterate(&mut self, scene: &mut SceneFrame) -> Result<()> {
+    fn iterate(&mut self, scene: &mut Scene) -> Result<()> {
         scene.set_camera(&CameraDesc {
             projection: CameraProjection::Orthographic { width: 2.0 },
             position: [0.0, 0.0, 1.0],
@@ -48,5 +51,5 @@ impl utils::App for DrawTriangleApp {
 }
 
 fn main() -> Result<()> {
-    utils::run::<DrawTriangleApp>()
+    utils::run::<DrawTriangleApp>(Config {})
 }

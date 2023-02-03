@@ -1,12 +1,15 @@
 use anyhow::Result;
-use ren::SceneFrame;
+use ren::Scene;
 
 mod utils;
 
+struct Config {}
 struct CreateDeviceApp {}
 
 impl utils::App for CreateDeviceApp {
-    fn new(_scene: &mut SceneFrame) -> Result<Self> {
+    type Config = Config;
+
+    fn new(_config: Config, _scene: &mut Scene) -> Result<Self> {
         Ok(Self {})
     }
 
@@ -16,5 +19,5 @@ impl utils::App for CreateDeviceApp {
 }
 
 fn main() -> Result<()> {
-    utils::run::<CreateDeviceApp>()
+    utils::run::<CreateDeviceApp>(Config {})
 }
