@@ -1,23 +1,17 @@
 use anyhow::Result;
-use ren::Scene;
+use utils::{App, AppBase};
 
 mod utils;
 
-struct Config {}
 struct CreateDeviceApp {}
 
-impl utils::App for CreateDeviceApp {
-    type Config = Config;
-
-    fn new(_config: Config, _scene: &mut Scene) -> Result<Self> {
-        Ok(Self {})
-    }
-
-    fn get_name(&self) -> &str {
+impl App for CreateDeviceApp {
+    fn get_title(&self) -> &str {
         "Create Device"
     }
 }
 
 fn main() -> Result<()> {
-    utils::run::<CreateDeviceApp>(Config {})
+    let base = AppBase::new()?;
+    base.run(CreateDeviceApp {});
 }
