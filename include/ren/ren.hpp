@@ -189,6 +189,7 @@ using UniqueMeshInstanceID = detail::UniqueSceneHandle<MeshInstanceID>;
 using SharedMeshInstanceID = detail::SharedSceneHandle<MeshInstanceID>;
 
 using Vector3 = RenVector3;
+using Vector4 = RenVector4;
 using Matrix4x4 = RenMatrix4x4;
 
 struct Device : RenDevice {
@@ -230,16 +231,14 @@ struct MeshDesc {
   std::span<const unsigned> indices;
 };
 
-struct ConstMaterialAlbedo {
-  Vector3 color;
+enum class MaterialColor {
+  Const = REN_MATERIAL_COLOR_CONST,
+  Vertex = REN_MATERIAL_COLOR_VERTEX,
 };
 
-struct VertexMaterialAlbedo {};
-
-using MaterialAlbedo = std::variant<ConstMaterialAlbedo, VertexMaterialAlbedo>;
-
 struct MaterialDesc {
-  MaterialAlbedo albedo;
+  MaterialColor color;
+  Vector4 base_color = {1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct MeshInstanceDesc {
@@ -305,17 +304,11 @@ struct Scene : RenScene {
 
   [[nodiscard]] auto create_material(const MaterialDesc &desc)
       -> expected<MaterialID> {
-    RenMaterialDesc c_desc = {};
-    std::visit(
-        detail::overload_set{[&](const ConstMaterialAlbedo &albedo) {
-                               c_desc.albedo = REN_MATERIAL_ALBEDO_CONST;
-                               std::memcpy(&c_desc.const_albedo, &albedo.color,
-                                           sizeof(albedo.color));
-                             },
-                             [&](const VertexMaterialAlbedo &albedo) {
-                               c_desc.albedo = REN_MATERIAL_ALBEDO_VERTEX;
-                             }},
-        desc.albedo);
+    RenMaterialDesc c_desc = {
+        .color = static_cast<RenMaterialColor>(desc.color),
+    };
+    static_assert(sizeof(c_desc.base_color) == sizeof(desc.base_color));
+    std::memcpy(c_desc.base_color, desc.base_color, sizeof(desc.base_color));
     RenMaterial material;
     return detail::to_expected(ren_CreateMaterial(this, &c_desc, &material))
         .map([&] { return static_cast<MaterialID>(material); });

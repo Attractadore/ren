@@ -8,7 +8,7 @@ struct GlobalData {
 };
 
 struct MaterialData {
-  float3 color;
+  float4 base_color;
 };
 
 struct VertexData {

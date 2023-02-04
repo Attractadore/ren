@@ -10,15 +10,15 @@ namespace ren {
 class AssetLoader;
 
 enum class MaterialAlbedo {
-  Const = REN_MATERIAL_ALBEDO_CONST,
-  Vertex = REN_MATERIAL_ALBEDO_VERTEX,
+  Const = REN_MATERIAL_COLOR_CONST,
+  Vertex = REN_MATERIAL_COLOR_VERTEX,
 };
 
 struct MaterialConfig {
   MaterialAlbedo albedo;
 
   MaterialConfig(const MaterialDesc &desc)
-      : albedo(static_cast<MaterialAlbedo>(desc.albedo)) {}
+      : albedo(static_cast<MaterialAlbedo>(desc.color)) {}
   auto operator<=>(const MaterialConfig &other) const = default;
 };
 

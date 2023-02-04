@@ -22,7 +22,7 @@ struct VS_IN {
 struct VS_OUT {
   float4 position : SV_Position;
 #if ALBEDO_VERTEX
-  float3 color : COLOR0;
+  float4 color : COLOR0;
 #endif
 };
 typedef VS_OUT FS_IN;

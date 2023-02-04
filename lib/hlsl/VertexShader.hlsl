@@ -22,8 +22,8 @@ VS_OUT main(VS_IN vs_in) {
   vs_out.position = mul(g_global.proj_view, float4(world_position, 1.0f));
 
 #if ALBEDO_VERTEX
-  float3 color =
-      decode_color(ptr_load<color_t>(g_pcs.vertex.colors, vs_in.index));
+  float4 color = float4(
+      decode_color(ptr_load<color_t>(g_pcs.vertex.colors, vs_in.index)), 1.0f);
   vs_out.color = color;
 #endif
 

@@ -40,11 +40,9 @@ public:
             })
             .value();
 
-    m_material = scene
-                     .create_unique_material({
-                         .albedo = ren::VertexMaterialAlbedo(),
-                     })
-                     .value();
+    m_material =
+        scene.create_unique_material({.color = ren::MaterialColor::Vertex})
+            .value();
 
     m_model = scene
                   .create_unique_mesh_instance({

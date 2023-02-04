@@ -45,6 +45,7 @@ typedef enum : uint32_t {
 } RenMeshInstance;
 
 typedef float RenVector3[3];
+typedef float RenVector4[4];
 typedef float RenMatrix4x4[16];
 
 void ren_DestroyDevice(RenDevice *device);
@@ -105,15 +106,13 @@ REN_NODISCARD RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
 void ren_DestroyMesh(RenScene *scene, RenMesh mesh);
 
 typedef enum {
-  REN_MATERIAL_ALBEDO_CONST,
-  REN_MATERIAL_ALBEDO_VERTEX,
-} RenMaterialAlbedo;
+  REN_MATERIAL_COLOR_CONST,
+  REN_MATERIAL_COLOR_VERTEX,
+} RenMaterialColor;
 
 typedef struct {
-  RenMaterialAlbedo albedo;
-  union {
-    RenVector3 const_albedo;
-  };
+  RenMaterialColor color;
+  RenVector4 base_color;
 } RenMaterialDesc;
 
 REN_NODISCARD RenResult ren_CreateMaterial(RenScene *scene,
