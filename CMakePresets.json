@@ -7,8 +7,7 @@
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_COLOR_DIAGNOSTICS": "ON",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_COLOR_DIAGNOSTICS": "ON"
       }
     },
     {
@@ -28,6 +27,7 @@
       "description": "Debug build with tests and examples",
       "inherits": "debug",
       "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
         "VCPKG_MANIFEST_FEATURES": "examples;tests"
