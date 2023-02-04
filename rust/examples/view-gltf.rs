@@ -6,6 +6,7 @@ use ren::{
     MeshInstanceDesc, MeshInstanceKey, MeshKey, Scene,
 };
 use std::{
+    collections::HashMap,
     fmt::{self, Display, Formatter},
     path::PathBuf,
     slice,
@@ -16,14 +17,25 @@ use winit::event::{DeviceEvent, WindowEvent};
 
 mod utils;
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct MaterialInfo {
+    index: Option<usize>,
+    mesh_info: MeshInfo,
+}
+
 struct SceneWalkContext<'a> {
     scene: &'a mut Scene,
     buffers: Vec<gltf::buffer::Data>,
+    materials: HashMap<MaterialInfo, MaterialKey>,
 }
 
 impl<'a> SceneWalkContext<'a> {
     fn new(scene: &'a mut Scene, buffers: Vec<gltf::buffer::Data>) -> Self {
-        Self { scene, buffers }
+        Self {
+            scene,
+            buffers,
+            materials: HashMap::new(),
+        }
     }
 }
 
@@ -130,16 +142,24 @@ fn get_accessor_data(accessor: &gltf::Accessor, ctx: &SceneWalkContext) -> Resul
     }
 }
 
-struct MeshFeatures {
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct MeshInfo {
     colors: bool,
 }
 
-struct Mesh {
-    key: MeshKey,
-    features: MeshFeatures,
-}
+fn create_mesh(
+    primitive: &gltf::Primitive,
+    ctx: &mut SceneWalkContext,
+) -> Result<(MeshKey, MeshInfo)> {
+    let mode = primitive.mode();
+    if !matches!(mode, gltf::mesh::Mode::Triangles) {
+        bail!("Unsupported mesh mode {:?}", mode);
+    }
 
-fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Result<Mesh> {
+    if primitive.morph_targets().next().is_some() {
+        eprintln!("Warn: ignoring mesh morph targets");
+    }
+
     let get_data = |accessor| get_accessor_data(&accessor, ctx);
 
     let positions = get_data(
@@ -167,14 +187,17 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
         })
         .transpose()?;
 
-    let indices = get_data(
-        primitive
-            .indices()
-            .context("Mesh doesn't contain indices")?,
+    let indices = primitive.indices().map_or_else(
+        || {
+            eprintln!("Warn: generating mesh indices");
+            Ok(Data::UInt((0..(positions.len() as u32)).collect()))
+        },
+        get_data,
     )?;
+
     let indices = match indices {
         Data::UShort(indices) => {
-            eprintln!("Warn: converting indices from uint to ushort");
+            eprintln!("Warn: converting indices from ushort to uint");
             indices.into_iter().map(|idx| idx as u32).collect()
         }
         Data::UInt(indices) => indices,
@@ -192,26 +215,87 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
     };
 
     let key = ctx.scene.create_mesh(&desc)?;
-    let features = MeshFeatures {
+    let info = MeshInfo {
         colors: colors.is_some(),
     };
 
-    Ok(Mesh { key, features })
+    Ok((key, info))
 }
 
 fn create_material(
     material: &gltf::Material,
-    mesh_features: &MeshFeatures,
+    info: &MaterialInfo,
     ctx: &mut SceneWalkContext,
 ) -> Result<MaterialKey> {
+    let material_name = material.index().map_or_else(
+        || "default material".to_string(),
+        |index| format!("material #{index}"),
+    );
+    if let Some(alpha_cutoff) = material.alpha_cutoff() {
+        eprintln!("Warn: ignoring alpha cutoff {alpha_cutoff} for {material_name}");
+    }
+
+    let alpha_mode = material.alpha_mode();
+    if !matches!(alpha_mode, gltf::material::AlphaMode::Opaque) {
+        eprintln!(
+            "Warn: ignoring alpha mode {:?} for {material_name}",
+            alpha_mode
+        );
+    }
+
+    let double_sided = material.double_sided();
+    if double_sided {
+        eprintln!("Warn: ignoring double sidedness for {material_name}");
+    }
+
     let desc = MaterialDesc {
-        color: if mesh_features.colors {
+        color: if info.mesh_info.colors {
             MaterialColor::Vertex
         } else {
             MaterialColor::Const
         },
-        base_color: material.pbr_metallic_roughness().base_color_factor(),
+
+        base_color: {
+            let pbr = material.pbr_metallic_roughness();
+            if pbr.base_color_texture().is_some() {
+                eprintln!("Warn: ignoring base color texture for {material_name}");
+            }
+
+            eprintln!(
+                "Warn: ignoring metallic factor {} for {material_name}",
+                pbr.metallic_factor()
+            );
+            eprintln!(
+                "Warn: ignoring roughness factor {} for {material_name}",
+                pbr.roughness_factor()
+            );
+            if pbr.metallic_roughness_texture().is_some() {
+                eprintln!("Warn: ignoring metallic / roughness texture for {material_name}",);
+            }
+
+            pbr.base_color_factor()
+        },
     };
+
+    if material.normal_texture().is_some() {
+        eprintln!("Warn: ignoring normal texture for {material_name}",);
+    }
+
+    if material.occlusion_texture().is_some() {
+        eprintln!("Warn: ignoring occlusion texture for {material_name}");
+    }
+
+    if material.emissive_texture().is_some() {
+        eprintln!("Warn: ignoring emissive texture for {material_name}",);
+    }
+
+    let emissive_factor = material.emissive_factor();
+    if emissive_factor != [0.0, 0.0, 0.0] {
+        eprintln!(
+            "Warn: ignoring emissive factor {:?} for {material_name}",
+            emissive_factor
+        );
+    }
 
     let key = ctx.scene.create_material(&desc)?;
 
@@ -222,11 +306,19 @@ fn create_mesh_instance(
     primitive: &gltf::Primitive,
     ctx: &mut SceneWalkContext,
 ) -> Result<MeshInstanceKey> {
-    let Mesh {
-        key: mesh,
-        features,
-    } = create_mesh(primitive, ctx)?;
-    let material = create_material(&primitive.material(), &features, ctx)?;
+    let (mesh, mesh_info) = create_mesh(primitive, ctx)?;
+    let material = primitive.material();
+    let material_info = MaterialInfo {
+        index: material.index(),
+        mesh_info,
+    };
+    let material = if let Some(material) = ctx.materials.get(&material_info) {
+        *material
+    } else {
+        let material = create_material(&material, &material_info, ctx)?;
+        ctx.materials.insert(material_info, material);
+        material
+    };
     let key = ctx
         .scene
         .create_mesh_instance(&MeshInstanceDesc { mesh, material })?;
@@ -236,11 +328,22 @@ fn create_mesh_instance(
 fn visit_node(node: &gltf::Node, matrix: Mat4, ctx: &mut SceneWalkContext) -> Result<()> {
     let matrix = matrix * Mat4::from_cols_array_2d(&node.transform().matrix());
     if let Some(mesh) = node.mesh() {
+        if mesh.weights().is_some() {
+            eprintln!("Warn: ignoring mesh morph target weights");
+        }
         let matrix = matrix.to_cols_array();
         for primitive in mesh.primitives() {
-            let mesh_instance = create_mesh_instance(&primitive, ctx)?;
-            let mesh_instance = ctx.scene.get_mesh_instance_mut(mesh_instance).unwrap();
-            mesh_instance.set_matrix(&matrix);
+            let mesh_instance = create_mesh_instance(&primitive, ctx);
+            match mesh_instance {
+                Ok(mesh_instance) => {
+                    let mesh_instance = ctx.scene.get_mesh_instance_mut(mesh_instance).unwrap();
+                    mesh_instance.set_matrix(&matrix);
+                }
+                Err(err) => eprintln!(
+                    "Error: failed to create mesh for primitive #{}: {err}",
+                    primitive.index()
+                ),
+            }
         }
     }
     for node in node.children() {
@@ -272,7 +375,8 @@ impl ViewGLTFApp {
             visit_node(&node, matrix, &mut ctx)?;
         }
         let mut camera = Camera::new();
-        camera.position = Vec3A::new(-10.0, 0.0, 0.0);
+        camera.position = Vec3A::new(-3.0, 0.0, 3.0);
+        camera.forward = Vec3A::new(1.0, 0.0, -1.0).normalize();
         let controller = CameraController::new(camera);
         Ok(Self {
             desc: config.desc,
