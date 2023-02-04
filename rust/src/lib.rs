@@ -6,7 +6,7 @@ mod ffi;
 use ffi::{
     RenCameraDesc, RenDevice, RenMaterial, RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInstance,
     RenMeshInstanceDesc, RenOrthographicProjection, RenPFNCreateSurface, RenPerspectiveProjection,
-    RenResult, RenScene, RenSwapchain, REN_MATERIAL_ALBEDO_CONST, REN_MATERIAL_ALBEDO_VERTEX,
+    RenResult, RenScene, RenSwapchain, REN_MATERIAL_COLOR_CONST, REN_MATERIAL_COLOR_VERTEX,
     REN_NULL_MATERIAL, REN_NULL_MESH, REN_NULL_MESH_INSTANCE, REN_PROJECTION_ORTHOGRAPHIC,
     REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR, REN_VULKAN_ERROR,
 };
@@ -322,29 +322,25 @@ new_key_type!(
     pub struct MaterialKey;
 );
 
-pub enum MaterialAlbedo {
-    Const([f32; 3]),
+pub enum MaterialColor {
+    Const,
     Vertex,
 }
 
 pub struct MaterialDesc {
-    pub albedo: MaterialAlbedo,
+    pub color: MaterialColor,
+    pub base_color: [f32; 4],
 }
 
 impl Material {
     fn new(scene: &mut HScene, desc: &MaterialDesc) -> Result<Self, Error> {
         let scene = scene.get_mut();
         let desc = RenMaterialDesc {
-            albedo: match desc.albedo {
-                MaterialAlbedo::Const(_) => REN_MATERIAL_ALBEDO_CONST,
-                MaterialAlbedo::Vertex => REN_MATERIAL_ALBEDO_VERTEX,
+            color: match desc.color {
+                MaterialColor::Const => REN_MATERIAL_COLOR_CONST,
+                MaterialColor::Vertex => REN_MATERIAL_COLOR_VERTEX,
             },
-            __bindgen_anon_1: match desc.albedo {
-                MaterialAlbedo::Const(const_albedo) => {
-                    ffi::RenMaterialDesc__bindgen_ty_1 { const_albedo }
-                }
-                MaterialAlbedo::Vertex => unsafe { std::mem::zeroed() },
-            },
+            base_color: desc.base_color,
         };
         Ok(Self {
             handle: unsafe {

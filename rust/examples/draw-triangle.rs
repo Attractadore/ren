@@ -1,5 +1,7 @@
 use anyhow::Result;
-use ren::{CameraDesc, CameraProjection, MaterialDesc, MeshDesc, MeshInstanceDesc, Scene};
+use ren::{
+    CameraDesc, CameraProjection, MaterialColor, MaterialDesc, MeshDesc, MeshInstanceDesc, Scene,
+};
 use utils::{App, AppBase};
 
 mod utils;
@@ -25,7 +27,8 @@ impl DrawTriangleApp {
         })?;
 
         let material = scene.create_material(&MaterialDesc {
-            albedo: ren::MaterialAlbedo::Const([1.0, 0.0, 0.0]),
+            color: MaterialColor::Const,
+            base_color: [1.0, 0.0, 0.0, 1.0],
         })?;
 
         scene.create_mesh_instance(&MeshInstanceDesc { mesh, material })?;

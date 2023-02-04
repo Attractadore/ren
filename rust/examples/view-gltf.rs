@@ -1,16 +1,18 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec3A, Vec4};
 use ren::{
-    CameraDesc, CameraProjection, MaterialAlbedo, MaterialDesc, MaterialKey, MeshDesc,
+    CameraDesc, CameraProjection, MaterialColor, MaterialDesc, MaterialKey, MeshDesc,
     MeshInstanceDesc, MeshInstanceKey, MeshKey, Scene,
 };
 use std::{
     fmt::{self, Display, Formatter},
     path::PathBuf,
     slice,
+    time::Instant,
 };
-use utils::{App, AppBase};
+use utils::{App, AppBase, Camera, CameraController};
+use winit::event::{DeviceEvent, WindowEvent};
 
 mod utils;
 
@@ -203,12 +205,12 @@ fn create_material(
     ctx: &mut SceneWalkContext,
 ) -> Result<MaterialKey> {
     let desc = MaterialDesc {
-        albedo: if mesh_features.colors {
-            MaterialAlbedo::Vertex
+        color: if mesh_features.colors {
+            MaterialColor::Vertex
         } else {
-            let color = material.pbr_metallic_roughness().base_color_factor();
-            MaterialAlbedo::Const([color[0], color[1], color[2]])
+            MaterialColor::Const
         },
+        base_color: material.pbr_metallic_roughness().base_color_factor(),
     };
 
     let key = ctx.scene.create_material(&desc)?;
@@ -257,6 +259,8 @@ struct Config {
 
 struct ViewGLTFApp {
     desc: String,
+    controller: CameraController,
+    time: Instant,
 }
 
 impl ViewGLTFApp {
@@ -267,21 +271,52 @@ impl ViewGLTFApp {
         for node in gltf_scene.nodes() {
             visit_node(&node, matrix, &mut ctx)?;
         }
-        scene.set_camera(&CameraDesc {
-            projection: CameraProjection::Perspective {
-                hfov: 90f32.to_radians(),
-            },
-            position: [-3.0, 0.0, 3.0],
-            forward: [1.0, 0.0, -1.0],
-            up: [0.0, 0.0, 1.0],
-        });
-        Ok(Self { desc: config.desc })
+        let mut camera = Camera::new();
+        camera.position = Vec3A::new(-10.0, 0.0, 0.0);
+        let controller = CameraController::new(camera);
+        Ok(Self {
+            desc: config.desc,
+            controller,
+            time: Instant::now(),
+        })
     }
 }
 
 impl App for ViewGLTFApp {
     fn get_title(&self) -> &str {
         &self.desc
+    }
+
+    fn handle_window_event(&mut self, event: &WindowEvent) -> Result<()> {
+        if let WindowEvent::KeyboardInput { input, .. } = event {
+            self.controller.handle_key_input(input);
+        }
+        Ok(())
+    }
+
+    fn handle_device_event(&mut self, event: &DeviceEvent) -> Result<()> {
+        if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
+            self.controller
+                .handle_mouse_motion((*dx as f32, *dy as f32))
+        }
+        Ok(())
+    }
+
+    fn handle_frame(&mut self, scene: &mut Scene) -> Result<()> {
+        let now = Instant::now();
+        let dt = now - self.time;
+        self.time = now;
+        self.controller.consume_movement_input(dt.as_secs_f32());
+        self.controller.consume_rotation_input();
+        scene.set_camera(&CameraDesc {
+            projection: CameraProjection::Perspective {
+                hfov: 90f32.to_radians(),
+            },
+            position: self.controller.camera.position.to_array(),
+            forward: self.controller.camera.get_forward_vector().to_array(),
+            up: self.controller.camera.get_up_vector().to_array(),
+        });
+        Ok(())
     }
 }
 
@@ -328,5 +363,15 @@ fn main() -> Result<()> {
         },
         base.get_scene_mut(),
     )?;
+
+    let window = base.get_window();
+    let result = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+    if let Err(winit::error::ExternalError::NotSupported(_)) = result {
+        window.set_cursor_grab(winit::window::CursorGrabMode::Confined)?;
+    } else {
+        result?;
+    }
+    window.set_cursor_visible(false);
+
     base.run(app);
 }

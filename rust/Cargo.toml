@@ -1,6 +1,6 @@
 [package]
 name = "ren"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 
 [build-dependencies]
@@ -15,7 +15,7 @@ anyhow = "1.0"
 ash = "0.37"
 ash-window = "0.12"
 clap = { version = "4.1", features = ["derive"] }
-glam = "0.22.0"
-gltf = "1.0.0"
+glam = "0.22"
+gltf = "1.0"
 raw-window-handle = "0.5"
 winit = "0.27"
