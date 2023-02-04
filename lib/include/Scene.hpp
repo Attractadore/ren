@@ -39,6 +39,7 @@ class Scene {
   MaterialMap m_materials;
 
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+  VkFormat m_depth_format = VK_FORMAT_D32_SFLOAT;
 
 public:
   unsigned m_viewport_width = 1280;

@@ -42,12 +42,27 @@ public:
       std::span<const RenderTargetConfig> render_targets,
       const DepthStencilTargetConfig *depth_stencil_target = nullptr);
 
-  void begin_rendering(const TextureRef &texture) {
+  void begin_rendering(const TextureRef &color_buffer) {
     RenderTargetConfig rt_cfg = {
-        .rtv = TextureView::create(texture,
+        .rtv = TextureView::create(color_buffer,
                                    {.aspects = VK_IMAGE_ASPECT_COLOR_BIT})};
-    begin_rendering(0, 0, texture.desc.width, texture.desc.height,
+    begin_rendering(0, 0, color_buffer.desc.width, color_buffer.desc.height,
                     {&rt_cfg, 1});
+  }
+
+  void begin_rendering(const TextureRef &color_buffer,
+                       const TextureRef &depth_buffer) {
+    assert(color_buffer.desc.width == depth_buffer.desc.width);
+    assert(color_buffer.desc.height == depth_buffer.desc.height);
+    RenderTargetConfig rt = {
+        .rtv = TextureView::create(color_buffer,
+                                   {.aspects = VK_IMAGE_ASPECT_COLOR_BIT})};
+    DepthStencilTargetConfig dst = {
+        .dsv = TextureView::create(depth_buffer,
+                                   {.aspects = VK_IMAGE_ASPECT_DEPTH_BIT}),
+    };
+    begin_rendering(0, 0, color_buffer.desc.width, color_buffer.desc.height,
+                    {&rt, 1}, &dst);
   }
 
   void end_rendering();

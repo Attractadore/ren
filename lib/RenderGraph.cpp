@@ -384,27 +384,46 @@ auto RenderGraph::Builder::schedulePasses() -> Vector<RGNode> {
 
 namespace {
 auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
+  assert((accesses & VK_ACCESS_2_MEMORY_READ_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_MEMORY_WRITE_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_SHADER_READ_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_SHADER_WRITE_BIT) == 0);
+
   VkImageUsageFlags flags = 0;
+  if (accesses & VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT) {
+    flags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+  }
+  if (accesses & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
+    flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+  }
+  if (accesses & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
+    flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+  }
+  if (accesses & (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT)) {
+    flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  }
+  if (accesses & (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)) {
+    flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+  }
   if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
     flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
   }
   if (accesses & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
     flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   }
-  if (accesses & VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT) {
-    flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-  }
-  if (accesses & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
-    flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-  }
-  if (accesses & VK_ACCESS_2_SHADER_STORAGE_READ_BIT or
-      accesses & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT) {
-    flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-  }
+
   return flags;
 }
 
 auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
+  assert((accesses & VK_ACCESS_2_MEMORY_READ_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_MEMORY_WRITE_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_SHADER_READ_BIT) == 0);
+  assert((accesses & VK_ACCESS_2_SHADER_WRITE_BIT) == 0);
+
   VkBufferUsageFlags flags = 0;
   if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
     flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -415,8 +434,8 @@ auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   if (accesses & VK_ACCESS_2_UNIFORM_READ_BIT) {
     flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
   }
-  if (accesses & VK_ACCESS_2_SHADER_STORAGE_READ_BIT or
-      accesses & VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT) {
+  if (accesses & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
     flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
   }
   if (accesses & VK_ACCESS_2_INDEX_READ_BIT) {
@@ -425,6 +444,7 @@ auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   if (accesses & VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT) {
     flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
   }
+
   return flags;
 }
 } // namespace

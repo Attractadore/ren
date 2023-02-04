@@ -26,6 +26,7 @@ struct MaterialPipelineConfig {
   MaterialConfig material;
   PipelineLayoutRef layout;
   VkFormat rt_format;
+  VkFormat depth_format;
 };
 
 } // namespace ren

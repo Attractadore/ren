@@ -594,6 +594,7 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
       .pViewportState = &viewport_info,
       .pRasterizationState = &config.desc.rasterization_info,
       .pMultisampleState = &config.desc.multisample_info,
+      .pDepthStencilState = &config.desc.depth_stencil_info,
       .pColorBlendState = &config.desc.blend_info,
       .pDynamicState = &config.desc.dynamic_state_info,
       .layout = config.layout.handle,

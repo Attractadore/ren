@@ -220,6 +220,7 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
         .material = desc,
         .layout = m_pipeline_layout,
         .rt_format = m_rt_format,
+        .depth_format = m_depth_format,
     });
   }();
 
@@ -350,6 +351,17 @@ void Scene::draw(Swapchain &swapchain) {
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
   rgb.setDesc(rt, "Color buffer");
+  auto dst = draw.addOutput(
+      RGTextureDesc{
+          .format = m_depth_format,
+          .width = m_viewport_width,
+          .height = m_viewport_height,
+      },
+      VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+      VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+  rgb.setDesc(dst, "Depth buffer");
 
   auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
@@ -370,9 +382,10 @@ void Scene::draw(Swapchain &swapchain) {
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
   rgb.set_desc(virtual_matrix_buffer, "Model matrix buffer");
 
-  draw.setCallback([this, rt, virtual_matrix_buffer, virtual_global_cbuffer](
-                       CommandBuffer &cmd, RenderGraph &rg) {
-    cmd.begin_rendering(rg.getTexture(rt));
+  draw.setCallback([this, rt, dst, virtual_matrix_buffer,
+                    virtual_global_cbuffer](CommandBuffer &cmd,
+                                            RenderGraph &rg) {
+    cmd.begin_rendering(rg.getTexture(rt), rg.getTexture(dst));
     cmd.set_viewport({.width = float(m_viewport_width),
                       .height = float(m_viewport_height),
                       .maxDepth = 1.0f});

@@ -1,6 +1,6 @@
 #pragma once
-#include "Formats.hpp"
 #include "Errors.hpp"
+#include "Formats.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -45,6 +45,12 @@ inline FormatProperties getFormatProperties(VkFormat format) {
         .blue_bits = 8,
         .alpha_bits = 8,
     };
+  case VK_FORMAT_D32_SFLOAT: {
+    return {
+        .flags = Depth,
+        .depth_bits = 32,
+    };
+  }
   }
 }
 

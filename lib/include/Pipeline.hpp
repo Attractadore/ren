@@ -43,6 +43,12 @@ struct GraphicsPipelineDesc {
       .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
   };
 
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthWriteEnable = true,
+      .depthCompareOp = VK_COMPARE_OP_GREATER,
+  };
+
   Vector<VkPipelineColorBlendAttachmentState> render_target_blend_infos;
   VkPipelineColorBlendStateCreateInfo blend_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
@@ -125,6 +131,12 @@ public:
         .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
     });
+    return *this;
+  }
+
+  auto add_depth_target(VkFormat format) -> GraphicsPipelineBuilder & {
+    m_config.desc.rendering_info.depthAttachmentFormat = format;
+    m_config.desc.depth_stencil_info.depthTestEnable = true;
     return *this;
   }
 
