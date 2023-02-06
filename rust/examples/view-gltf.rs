@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use glam::{Mat4, Vec3, Vec3A, Vec4};
 use ren::{
-    CameraDesc, CameraProjection, MaterialColor, MaterialDesc, MaterialKey, MeshDesc,
-    MeshInstanceDesc, MeshInstanceKey, MeshKey, Scene,
+    CameraDesc, CameraProjection, DirectionalLightDesc, MaterialColor, MaterialDesc, MaterialKey,
+    MeshDesc, MeshInstanceDesc, MeshInstanceKey, MeshKey, Scene,
 };
 use std::{
     collections::HashMap,
@@ -172,6 +172,16 @@ fn create_mesh(
         format => bail!("Unsupported mesh position format: {format}"),
     };
 
+    let normals = get_data(
+        primitive
+            .get(&gltf::Semantic::Positions)
+            .context("Mesh doesn't contain vertices")?,
+    )?;
+    let normals = match normals {
+        Data::Float3(normals) => normals,
+        format => bail!("Unsupported mesh position format: {format}"),
+    };
+
     let colors = primitive
         .get(&gltf::Semantic::Colors(0))
         .map(get_data)
@@ -208,6 +218,9 @@ fn create_mesh(
         positions: unsafe {
             slice::from_raw_parts(positions.as_ptr() as *const [f32; 3], positions.len())
         },
+        normals: unsafe {
+            slice::from_raw_parts(normals.as_ptr() as *const [f32; 3], normals.len())
+        },
         colors: colors.as_ref().map(|colors| unsafe {
             slice::from_raw_parts(colors.as_ptr() as *const [f32; 3], colors.len())
         }),
@@ -237,15 +250,22 @@ fn create_material(
 
     let alpha_mode = material.alpha_mode();
     if !matches!(alpha_mode, gltf::material::AlphaMode::Opaque) {
-        eprintln!(
-            "Warn: ignoring alpha mode {:?} for {material_name}",
-            alpha_mode
-        );
+        eprintln!("Warn: ignoring alpha mode {alpha_mode:?} for {material_name}");
     }
 
     let double_sided = material.double_sided();
     if double_sided {
         eprintln!("Warn: ignoring double sidedness for {material_name}");
+    }
+
+    let pbr = material.pbr_metallic_roughness();
+
+    if pbr.base_color_texture().is_some() {
+        eprintln!("Warn: ignoring base color texture for {material_name}");
+    }
+
+    if pbr.metallic_roughness_texture().is_some() {
+        eprintln!("Warn: ignoring metallic / roughness texture for {material_name}",);
     }
 
     let desc = MaterialDesc {
@@ -255,26 +275,9 @@ fn create_material(
             MaterialColor::Const
         },
 
-        base_color: {
-            let pbr = material.pbr_metallic_roughness();
-            if pbr.base_color_texture().is_some() {
-                eprintln!("Warn: ignoring base color texture for {material_name}");
-            }
-
-            eprintln!(
-                "Warn: ignoring metallic factor {} for {material_name}",
-                pbr.metallic_factor()
-            );
-            eprintln!(
-                "Warn: ignoring roughness factor {} for {material_name}",
-                pbr.roughness_factor()
-            );
-            if pbr.metallic_roughness_texture().is_some() {
-                eprintln!("Warn: ignoring metallic / roughness texture for {material_name}",);
-            }
-
-            pbr.base_color_factor()
-        },
+        base_color: pbr.base_color_factor(),
+        metallic: pbr.metallic_factor(),
+        roughness: pbr.roughness_factor(),
     };
 
     if material.normal_texture().is_some() {
@@ -291,10 +294,7 @@ fn create_material(
 
     let emissive_factor = material.emissive_factor();
     if emissive_factor != [0.0, 0.0, 0.0] {
-        eprintln!(
-            "Warn: ignoring emissive factor {:?} for {material_name}",
-            emissive_factor
-        );
+        eprintln!("Warn: ignoring emissive factor {emissive_factor:?} for {material_name}");
     }
 
     let key = ctx.scene.create_material(&desc)?;
@@ -374,6 +374,11 @@ impl ViewGLTFApp {
         for node in gltf_scene.nodes() {
             visit_node(&node, matrix, &mut ctx)?;
         }
+        scene.create_directional_light(&DirectionalLightDesc {
+            color: [1.0, 1.0, 1.0],
+            illuminance: 1.0,
+            origin: [0.0, 0.0, 1.0],
+        })?;
         let mut camera = Camera::new();
         camera.position = Vec3A::new(-3.0, 0.0, 3.0);
         camera.forward = Vec3A::new(1.0, 0.0, -1.0).normalize();

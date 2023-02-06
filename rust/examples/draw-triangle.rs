@@ -1,6 +1,7 @@
 use anyhow::Result;
 use ren::{
-    CameraDesc, CameraProjection, MaterialColor, MaterialDesc, MeshDesc, MeshInstanceDesc, Scene,
+    CameraDesc, CameraProjection, DirectionalLightDesc, MaterialColor, MaterialDesc, MeshDesc,
+    MeshInstanceDesc, Scene,
 };
 use utils::{App, AppBase};
 
@@ -16,12 +17,15 @@ impl DrawTriangleApp {
             [3.0f32.sqrt() / 4.0, -0.25, 0.0],
         ];
 
+        let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
+
         let colors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
 
         let indices = [0, 1, 2];
 
         let mesh = scene.create_mesh(&MeshDesc {
             positions: &positions,
+            normals: &normals,
             colors: Some(&colors),
             indices: &indices,
         })?;
@@ -29,9 +33,17 @@ impl DrawTriangleApp {
         let material = scene.create_material(&MaterialDesc {
             color: MaterialColor::Const,
             base_color: [1.0, 0.0, 0.0, 1.0],
+            metallic: 0.0,
+            roughness: 1.0,
         })?;
 
         scene.create_mesh_instance(&MeshInstanceDesc { mesh, material })?;
+
+        scene.create_directional_light(&DirectionalLightDesc {
+            color: [1.0, 1.0, 1.0],
+            illuminance: 1.0,
+            origin: [0.0, 0.0, 1.0],
+        })?;
 
         Ok(Self {})
     }

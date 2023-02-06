@@ -4,9 +4,10 @@ use thiserror::Error;
 
 mod ffi;
 use ffi::{
-    RenCameraDesc, RenDevice, RenMaterial, RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInstance,
-    RenMeshInstanceDesc, RenOrthographicProjection, RenPFNCreateSurface, RenPerspectiveProjection,
-    RenResult, RenScene, RenSwapchain, REN_MATERIAL_COLOR_CONST, REN_MATERIAL_COLOR_VERTEX,
+    RenCameraDesc, RenDevice, RenDirectionalLight, RenDirectionalLightDesc, RenMaterial,
+    RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInstance, RenMeshInstanceDesc,
+    RenOrthographicProjection, RenPFNCreateSurface, RenPerspectiveProjection, RenResult, RenScene,
+    RenSwapchain, REN_MATERIAL_COLOR_CONST, REN_MATERIAL_COLOR_VERTEX, REN_NULL_DIRECTIONAL_LIGHT,
     REN_NULL_MATERIAL, REN_NULL_MESH, REN_NULL_MESH_INSTANCE, REN_PROJECTION_ORTHOGRAPHIC,
     REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR, REN_VULKAN_ERROR,
 };
@@ -274,6 +275,7 @@ new_key_type!(
 
 pub struct MeshDesc<'a> {
     pub positions: &'a [[f32; 3]],
+    pub normals: &'a [[f32; 3]],
     pub colors: Option<&'a [[f32; 3]]>,
     pub indices: &'a [u32],
 }
@@ -282,10 +284,12 @@ impl Mesh {
     fn new(scene: &mut HScene, desc: &MeshDesc) -> Result<Self, Error> {
         let scene = scene.get_mut();
         let num_vertices = desc.positions.len();
+        assert!(desc.normals.len() == num_vertices);
         let desc = RenMeshDesc {
             num_vertices: num_vertices as u32,
             num_indices: desc.indices.len() as u32,
             positions: desc.positions.as_ptr(),
+            normals: desc.normals.as_ptr(),
             colors: desc.colors.map_or(std::ptr::null(), |colors| {
                 assert!(colors.len() == num_vertices);
                 colors.as_ptr()
@@ -330,6 +334,8 @@ pub enum MaterialColor {
 pub struct MaterialDesc {
     pub color: MaterialColor,
     pub base_color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
 }
 
 impl Material {
@@ -341,6 +347,8 @@ impl Material {
                 MaterialColor::Vertex => REN_MATERIAL_COLOR_VERTEX,
             },
             base_color: desc.base_color,
+            metallic: desc.metallic,
+            roughness: desc.roughness,
         };
         Ok(Self {
             handle: unsafe {
@@ -409,6 +417,50 @@ impl MeshInstance {
     }
 }
 
+#[derive(Clone, Copy)]
+struct DirectionalLightID(RenDirectionalLight);
+type HDirectionalLight = handle::SceneHandle<DirectionalLightID>;
+
+impl handle::DestroySceneHandle for DirectionalLightID {
+    unsafe fn destroy(scene: *mut RenScene, light: DirectionalLightID) {
+        ffi::ren_DestroyDirectionalLight(scene, light.0);
+    }
+}
+
+pub struct DirectionalLight {
+    _handle: HDirectionalLight,
+}
+
+new_key_type!(
+    pub struct DirectionalLightKey;
+);
+
+pub struct DirectionalLightDesc {
+    pub color: [f32; 3],
+    pub illuminance: f32,
+    pub origin: [f32; 3],
+}
+
+impl DirectionalLight {
+    fn new(scene: &mut HScene, desc: &DirectionalLightDesc) -> Result<Self, Error> {
+        let scene = scene.get_mut();
+        let desc = RenDirectionalLightDesc {
+            color: desc.color,
+            illuminance: desc.illuminance,
+            origin: desc.origin,
+        };
+        Ok(Self {
+            _handle: unsafe {
+                HDirectionalLight::new(scene, {
+                    let mut light = REN_NULL_DIRECTIONAL_LIGHT;
+                    Error::new(ffi::ren_CreateDirectionalLight(scene, &desc, &mut light))?;
+                    DirectionalLightID(light)
+                })
+            },
+        })
+    }
+}
+
 type HScene = handle::Handle<RenScene>;
 
 impl handle::DestroyHandle for RenScene {
@@ -421,6 +473,7 @@ pub struct Scene {
     meshes: SlotMap<MeshKey, Mesh>,
     materials: SlotMap<MaterialKey, Material>,
     mesh_instances: SlotMap<MeshInstanceKey, MeshInstance>,
+    directional_lights: SlotMap<DirectionalLightKey, DirectionalLight>,
     handle: HScene,
 }
 
@@ -440,6 +493,7 @@ impl Scene {
             meshes: SlotMap::with_key(),
             materials: SlotMap::with_key(),
             mesh_instances: SlotMap::with_key(),
+            directional_lights: SlotMap::with_key(),
         })
     }
 
@@ -465,6 +519,17 @@ impl Scene {
 
     pub fn get_mesh_instance_mut(&mut self, key: MeshInstanceKey) -> Option<&mut MeshInstance> {
         self.mesh_instances.get_mut(key)
+    }
+
+    pub fn get_directional_light(&self, key: DirectionalLightKey) -> Option<&DirectionalLight> {
+        self.directional_lights.get(key)
+    }
+
+    pub fn get_directional_light_mut(
+        &mut self,
+        key: DirectionalLightKey,
+    ) -> Option<&mut DirectionalLight> {
+        self.directional_lights.get_mut(key)
     }
 
     pub fn set_camera(&mut self, camera: &CameraDesc) {
@@ -522,5 +587,17 @@ impl Scene {
 
     pub fn destroy_mesh_instance(&mut self, key: MeshInstanceKey) {
         self.mesh_instances.remove(key);
+    }
+
+    pub fn create_directional_light(
+        &mut self,
+        desc: &DirectionalLightDesc,
+    ) -> Result<DirectionalLightKey, Error> {
+        let light = DirectionalLight::new(&mut self.handle, desc)?;
+        Ok(self.directional_lights.insert(light))
+    }
+
+    pub fn destroy_directional_light(&mut self, key: DirectionalLightKey) {
+        self.directional_lights.remove(key);
     }
 }
