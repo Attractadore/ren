@@ -8,6 +8,7 @@ class DrawTriangleApp : public AppBase {
   ren::UniqueMeshID m_mesh;
   ren::UniqueMaterialID m_material;
   ren::UniqueMeshInstanceID m_model;
+  ren::UniqueDirectionalLightID m_light;
 
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
@@ -17,6 +18,12 @@ public:
         {0.0f, 0.5f, 0.0f},
         {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
         {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
+    }};
+
+    std::array<glm::vec3, 3> normals = {{
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f},
     }};
 
     std::array<glm::vec3, 3> colors = {{
@@ -33,6 +40,9 @@ public:
                 .positions = std::span(
                     reinterpret_cast<const ren::Vector3 *>(positions.data()),
                     positions.size()),
+                .normals = std::span(
+                    reinterpret_cast<const ren::Vector3 *>(normals.data()),
+                    normals.size()),
                 .colors = std::span(
                     reinterpret_cast<const ren::Vector3 *>(colors.data()),
                     colors.size()),
@@ -40,14 +50,23 @@ public:
             })
             .value();
 
-    m_material =
-        scene.create_unique_material({.color = ren::MaterialColor::Vertex})
-            .value();
+    m_material = scene
+                     .create_unique_material({
+                         .color = ren::MaterialColor::Vertex,
+                         .roughness = 1.0f,
+                     })
+                     .value();
 
     m_model = scene
                   .create_unique_mesh_instance({
                       .mesh = m_mesh.get(),
                       .material = m_material.get(),
+                  })
+                  .value();
+
+    m_light = scene
+                  .create_unique_directional_light({
+                      .origin = {0.0f, 0.0f, 1.0f},
                   })
                   .value();
   }

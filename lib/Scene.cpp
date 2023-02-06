@@ -132,6 +132,8 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       upload_attributes;
   upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
       std::as_bytes(std::span(desc.positions, desc.num_vertices));
+  upload_attributes[MESH_ATTRIBUTE_NORMALS] =
+      std::as_bytes(std::span(desc.normals, desc.num_vertices));
   upload_attributes[MESH_ATTRIBUTE_COLORS] = std::as_bytes(
       std::span(desc.colors, desc.colors ? desc.num_vertices : 0));
 
@@ -148,12 +150,12 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     switch (attribute) {
     default:
       unreachable("Unknown mesh attribute {}", int(attribute));
-    case MESH_ATTRIBUTE_POSITIONS: {
+    case MESH_ATTRIBUTE_POSITIONS:
       return sizeof(glm::vec3);
-    }
-    case MESH_ATTRIBUTE_COLORS: {
+    case MESH_ATTRIBUTE_NORMALS:
+      return sizeof(hlsl::normal_t);
+    case MESH_ATTRIBUTE_COLORS:
       return sizeof(hlsl::color_t);
-    }
     }
   };
 
@@ -184,6 +186,12 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
       auto positions = reinterpret_span<const glm::vec3>(data);
       m_resource_uploader.stage_data(positions, mesh.vertex_allocation, offset);
       offset += size_bytes(positions);
+    } break;
+    case MESH_ATTRIBUTE_NORMALS: {
+      auto normals =
+          reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_normal);
+      m_resource_uploader.stage_data(normals, mesh.vertex_allocation, offset);
+      offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
@@ -257,7 +265,7 @@ void Scene::set_camera(const CameraDesc &desc) noexcept {
   };
 }
 
-auto Scene::create_model(const ModelDesc &desc) -> MeshInstanceID {
+auto Scene::create_model(const MeshInstanceDesc &desc) -> MeshInstanceID {
   return get_model_id(m_models.insert({
       .mesh = desc.mesh,
       .material = desc.material,
@@ -308,6 +316,34 @@ auto Scene::get_model(MeshInstanceID model) -> Model & {
 void Scene::set_model_matrix(MeshInstanceID model,
                              const glm::mat4 &matrix) noexcept {
   get_model(model).matrix = matrix;
+}
+
+auto Scene::create_dir_light(const DirLightDesc &desc) -> DirLightID {
+  assert(m_dir_lights.size() < hlsl::MAX_DIRECTIONAL_LIGHTS);
+  auto key = m_dir_lights.insert(hlsl::DirLight{
+      .color = glm::make_vec3(desc.color),
+      .illuminance = desc.illuminance,
+      .origin = glm::make_vec3(desc.origin),
+  });
+  return get_dir_light_id(key);
+};
+
+void Scene::destroy_dir_light(DirLightID light) {
+  auto key = get_dir_light_key(light);
+  assert(m_dir_lights.contains(key) && "Unknown light");
+  m_dir_lights.erase(key);
+}
+
+auto Scene::get_dir_light(DirLightID light) const -> const hlsl::DirLight & {
+  auto key = get_dir_light_key(light);
+  assert(m_dir_lights.contains(key) && "Unknown light");
+  return m_dir_lights[key];
+}
+
+auto Scene::get_dir_light(DirLightID light) -> hlsl::DirLight & {
+  auto key = get_dir_light_key(light);
+  assert(m_dir_lights.contains(key) && "Unknown light");
+  return m_dir_lights[key];
 }
 
 void Scene::draw(Swapchain &swapchain) {
@@ -363,6 +399,8 @@ void Scene::draw(Swapchain &swapchain) {
           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
   rgb.setDesc(dst, "Depth buffer");
 
+  // FIXME: why are buffers outputs???
+
   auto virtual_global_cbuffer = draw.add_output(
       RGBufferDesc{
           .heap = BufferHeap::Upload,
@@ -382,9 +420,17 @@ void Scene::draw(Swapchain &swapchain) {
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
   rgb.set_desc(virtual_matrix_buffer, "Model matrix buffer");
 
+  auto lights_buffer_id = draw.add_output(
+      RGBufferDesc{
+          .heap = BufferHeap::Upload,
+          .size = unsigned(sizeof(hlsl::Lights)),
+      },
+      VK_ACCESS_2_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  rgb.set_desc(lights_buffer_id, "Lights buffer");
+
   draw.setCallback([this, rt, dst, virtual_matrix_buffer,
-                    virtual_global_cbuffer](CommandBuffer &cmd,
-                                            RenderGraph &rg) {
+                    virtual_global_cbuffer,
+                    lights_buffer_id](CommandBuffer &cmd, RenderGraph &rg) {
     cmd.begin_rendering(rg.getTexture(rt), rg.getTexture(dst));
     cmd.set_viewport({.width = float(m_viewport_width),
                       .height = float(m_viewport_height),
@@ -403,16 +449,25 @@ void Scene::draw(Swapchain &swapchain) {
     auto view = get_view_matrix(m_camera);
 
     BufferRef global_cbuffer = rg.get_buffer(virtual_global_cbuffer);
-    *global_cbuffer.map<hlsl::GlobalData>() = {.proj_view = proj * view};
+    *global_cbuffer.map<hlsl::GlobalData>() = {
+        .proj_view = proj * view,
+        .eye = m_camera.position,
+    };
 
     BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
     auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();
+
+    BufferRef lights_buffer = rg.get_buffer(lights_buffer_id);
+    auto *lights = lights_buffer.map<hlsl::Lights>();
+    lights->num_dir_lights = m_dir_lights.size();
+    ranges::copy(m_dir_lights.values(), lights->dir_lights);
 
     auto scene_descriptor_set =
         m_descriptor_set_allocator.allocate(get_global_descriptor_set_layout());
 
     auto global_ub_descriptor = global_cbuffer.get_descriptor();
     auto matrix_buffer_descriptor = matrix_buffer.get_descriptor();
+    auto lights_buffer_descriptor = lights_buffer.get_descriptor();
 
     std::array write_configs = {
         VkWriteDescriptorSet{
@@ -430,6 +485,14 @@ void Scene::draw(Swapchain &swapchain) {
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .pBufferInfo = &matrix_buffer_descriptor,
+        },
+        VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = scene_descriptor_set,
+            .dstBinding = hlsl::LIGHTS_SLOT,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &lights_buffer_descriptor,
         },
     };
 
@@ -455,12 +518,14 @@ void Scene::draw(Swapchain &swapchain) {
       const auto &buffer = mesh.vertex_allocation;
       auto address = buffer.desc.address;
       auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
+      auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
       auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
       hlsl::PushConstants pcs = {
           .vertex =
               {
                   .matrix_index = unsigned(i),
                   .positions = address + positions_offset,
+                  .normals = address + normals_offset,
                   .colors = (colors_offset != ATTRIBUTE_UNUSED)
                                 ? address + colors_offset
                                 : 0,

@@ -9,6 +9,7 @@ inline constexpr unsigned ATTRIBUTE_UNUSED = -1;
 
 enum MeshAttribute {
   MESH_ATTRIBUTE_POSITIONS = 0,
+  MESH_ATTRIBUTE_NORMALS,
   MESH_ATTRIBUTE_COLORS,
   MESH_ATTRIBUTE_COUNT,
 };

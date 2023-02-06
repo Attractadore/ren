@@ -12,6 +12,7 @@ macro(add_shader source output)
     ${REN_ASSETS_OUTPUT_DIRECTORY}/${output}
     DXC_FLAGS
     -Zpc
+    -fspv-debug=vulkan-with-source
     -fvk-use-dx-position-w
     -fvk-use-scalar-layout
     -spirv

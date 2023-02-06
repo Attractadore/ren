@@ -20,7 +20,9 @@ struct VS_IN {
 };
 
 struct VS_OUT {
+  float3 world_position : POSITION;
   float4 position : SV_Position;
+  float3 normal : NORMAL;
 #if ALBEDO_VERTEX
   float4 color : COLOR0;
 #endif

@@ -274,6 +274,12 @@ RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
                          RenMesh *p_mesh) {
   assert(scene);
   assert(desc);
+  assert(desc->num_vertices > 0);
+  assert(desc->positions);
+  assert(desc->normals);
+  assert(desc->num_indices > 0);
+  assert(desc->indices);
+  assert(p_mesh);
   return lippincott([&] { *p_mesh = scene->create_mesh(*desc); });
 }
 
@@ -318,5 +324,38 @@ void ren_SetMeshInstanceMatrix(RenScene *scene, RenMeshInstance model,
   assert(scene);
   assert(matrix);
   scene->set_model_matrix(model, glm::make_mat4(*matrix));
+}
+
+RenResult ren_CreateDirectionalLight(RenScene *scene,
+                                     const RenDirectionalLightDesc *desc,
+                                     RenDirectionalLight *p_light) {
+  assert(scene);
+  assert(desc);
+  assert(p_light);
+  return lippincott([&] { *p_light = scene->create_dir_light(*desc); });
+}
+
+void ren_DestroyDirectionalLight(RenScene *scene, RenDirectionalLight light) {
+  assert(scene);
+  lippincott([&] { scene->destroy_dir_light(light); });
+}
+
+void ren_SetDirectionalLightColor(RenScene *scene, RenDirectionalLight light,
+                                  RenVector3 color) {
+  assert(scene);
+  scene->get_dir_light(light).color = glm::make_vec3(color);
+}
+
+void ren_SetDirectionalLightIntencity(RenScene *scene,
+                                      RenDirectionalLight light,
+                                      float intencity) {
+  assert(scene);
+  scene->get_dir_light(light).illuminance = intencity;
+}
+
+void ren_SetDirectionalLightOrigin(RenScene *scene, RenDirectionalLight light,
+                                   RenVector3 origin) {
+  assert(scene);
+  scene->get_dir_light(light).origin = glm::make_vec3(origin);
 }
 }

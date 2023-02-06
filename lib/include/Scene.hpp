@@ -13,8 +13,11 @@
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/SlotMap.hpp"
+#include "hlsl/interface.hpp"
+#include "hlsl/lighting.hpp"
 
 namespace ren {
+
 class Swapchain;
 
 class Scene {
@@ -46,8 +49,8 @@ public:
   unsigned m_viewport_height = 720;
 
 private:
-  using ModelMap = SlotMap<Model>;
-  ModelMap m_models;
+  using MeshInstanceMap = SlotMap<Model>;
+  MeshInstanceMap m_models;
 
   PipelineLayout m_pipeline_layout = {};
 
@@ -55,6 +58,9 @@ private:
   VkDescriptorSet m_persistent_descriptor_set = {};
 
   BufferRef m_materials_buffer = {};
+
+  using DirLightMap = SlotMap<hlsl::DirLight>;
+  DirLightMap m_dir_lights;
 
 private:
   static MeshMap::key_type get_mesh_key(MeshID mesh) {
@@ -80,17 +86,26 @@ private:
   auto get_material(MaterialID material) const -> const Material &;
   auto get_material(MaterialID material) -> Material &;
 
-  static ModelMap::key_type get_model_key(MeshInstanceID model) {
-    return std::bit_cast<ModelMap::key_type>(model - 1);
+  static MeshInstanceMap::key_type get_model_key(MeshInstanceID model) {
+    return std::bit_cast<MeshInstanceMap::key_type>(model - 1);
   }
 
-  static MeshInstanceID get_model_id(ModelMap::key_type model_key) {
+  static MeshInstanceID get_model_id(MeshInstanceMap::key_type model_key) {
     return std::bit_cast<MeshInstanceID>(
         std::bit_cast<MeshInstanceID>(model_key) + 1);
   }
 
   auto get_model(MeshInstanceID model) const -> const Model &;
   auto get_model(MeshInstanceID model) -> Model &;
+
+  static DirLightMap::key_type get_dir_light_key(DirLightID dir_light) {
+    return std::bit_cast<DirLightMap::key_type>(dir_light - 1);
+  }
+
+  static DirLightID get_dir_light_id(DirLightMap::key_type dir_light_key) {
+    return std::bit_cast<DirLightID>(std::bit_cast<DirLightID>(dir_light_key) +
+                                     1);
+  }
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
     return m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET];
@@ -113,10 +128,16 @@ public:
 
   void set_camera(const CameraDesc &desc) noexcept;
 
-  auto create_model(const ModelDesc &desc) -> MeshInstanceID;
+  auto create_model(const MeshInstanceDesc &desc) -> MeshInstanceID;
   void destroy_model(MeshInstanceID model);
 
   void set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept;
+
+  auto get_dir_light(DirLightID dir_light) const -> const hlsl::DirLight &;
+  auto get_dir_light(DirLightID dir_light) -> hlsl::DirLight &;
+
+  auto create_dir_light(const DirLightDesc &desc) -> DirLightID;
+  void destroy_dir_light(DirLightID light);
 
   void draw(Swapchain &swapchain);
 };

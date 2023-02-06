@@ -188,6 +188,11 @@ constexpr MeshInstanceID NullMeshInstance = REN_NULL_MESH_INSTANCE;
 using UniqueMeshInstanceID = detail::UniqueSceneHandle<MeshInstanceID>;
 using SharedMeshInstanceID = detail::SharedSceneHandle<MeshInstanceID>;
 
+using DirectionalLightID = RenDirectionalLight;
+constexpr DirectionalLightID NullDirectionalLight = REN_NULL_DIRECTIONAL_LIGHT;
+using UniqueDirectionalLightID = detail::UniqueSceneHandle<DirectionalLightID>;
+using SharedDirectionalLightID = detail::SharedSceneHandle<DirectionalLightID>;
+
 using Vector3 = RenVector3;
 using Vector4 = RenVector4;
 using Matrix4x4 = RenMatrix4x4;
@@ -227,6 +232,7 @@ struct CameraDesc {
 
 struct MeshDesc {
   std::span<const Vector3> positions;
+  std::span<const Vector3> normals;
   std::span<const Vector3> colors;
   std::span<const unsigned> indices;
 };
@@ -239,11 +245,20 @@ enum class MaterialColor {
 struct MaterialDesc {
   MaterialColor color;
   Vector4 base_color = {1.0f, 1.0f, 1.0f, 1.0f};
+  float metallic = 0.0f;
+  float roughness = 1.0f;
 };
 
 struct MeshInstanceDesc {
   MeshID mesh;
   MaterialID material;
+};
+
+struct DirectionalLightDesc {
+  Vector3 color = {1.0f, 1.0f, 1.0f};
+  float illuminance = 1.0f;
+  /// Direction from an object to the light
+  Vector3 origin;
 };
 
 struct Scene : RenScene {
@@ -277,12 +292,14 @@ struct Scene : RenScene {
 
   [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {
     assert(not desc.positions.empty());
+    assert(desc.normals.size() == desc.positions.size());
     assert(desc.colors.empty() or desc.colors.size() == desc.positions.size());
     assert(not desc.indices.empty());
     RenMeshDesc c_desc = {
         .num_vertices = unsigned(desc.positions.size()),
         .num_indices = unsigned(desc.indices.size()),
         .positions = desc.positions.data(),
+        .normals = desc.normals.data(),
         .colors = desc.colors.empty() ? nullptr : desc.colors.data(),
         .indices = desc.indices.data(),
     };
@@ -306,6 +323,8 @@ struct Scene : RenScene {
       -> expected<MaterialID> {
     RenMaterialDesc c_desc = {
         .color = static_cast<RenMaterialColor>(desc.color),
+        .metallic = desc.metallic,
+        .roughness = desc.roughness,
     };
     static_assert(sizeof(c_desc.base_color) == sizeof(desc.base_color));
     std::memcpy(c_desc.base_color, desc.base_color, sizeof(desc.base_color));
@@ -350,19 +369,62 @@ struct Scene : RenScene {
     ren_SetMeshInstanceMatrix(this, static_cast<RenMeshInstance>(model),
                               &matrix);
   }
+
+  [[nodiscard]] auto create_directional_light(const DirectionalLightDesc &desc)
+      -> expected<DirectionalLightID> {
+    RenDirectionalLight light;
+    RenDirectionalLightDesc c_desc = {.illuminance = desc.illuminance};
+    static_assert(sizeof(c_desc.color) == sizeof(desc.color));
+    std::memcpy(c_desc.color, desc.color, sizeof(desc.color));
+    static_assert(sizeof(c_desc.origin) == sizeof(desc.origin));
+    std::memcpy(c_desc.origin, desc.origin, sizeof(desc.origin));
+    return detail::to_expected(
+               ren_CreateDirectionalLight(this, &c_desc, &light))
+        .map([&] { return static_cast<DirectionalLightID>(light); });
+  }
+
+  void destroy_directional_light(DirectionalLightID light) {
+    ren_DestroyDirectionalLight(this, static_cast<RenDirectionalLight>(light));
+  }
+
+  [[nodiscard]] auto
+  create_unique_directional_light(const DirectionalLightDesc &desc)
+      -> expected<UniqueDirectionalLightID> {
+    return create_directional_light(desc).map(
+        [&](DirectionalLightID directional_light) {
+          return UniqueDirectionalLightID(this, directional_light);
+        });
+  }
+
+  void set_directional_light_color(DirectionalLightID light, Vector3 color) {
+    ren_SetDirectionalLightColor(this, static_cast<RenDirectionalLight>(light),
+                                 color);
+  }
+
+  void set_directional_light_intensity(DirectionalLightID light,
+                                       float intensity) {
+    ren_SetDirectionalLightIntencity(
+        this, static_cast<RenDirectionalLight>(light), intensity);
+  }
+
+  void set_directional_light_origin(DirectionalLightID light, Vector3 origin) {
+    ren_SetDirectionalLightOrigin(this, static_cast<RenDirectionalLight>(light),
+                                  origin);
+  }
 };
 
 namespace detail {
 
-template <>
-inline constexpr void (Scene::*HandleDestroy<Scene, MeshID>)(MeshID) =
-    &Scene::destroy_mesh;
-template <>
-inline constexpr void (Scene::*HandleDestroy<Scene, MaterialID>)(MaterialID) =
-    &Scene::destroy_material;
-template <>
-inline constexpr void (Scene::*HandleDestroy<Scene, MeshInstanceID>)(
-    MeshInstanceID) = &Scene::destroy_mesh_instance;
+#define ren_destroy_handle(T, F)                                               \
+  template <>                                                                  \
+  inline constexpr void (Scene::*HandleDestroy<Scene, T>)(T) = &Scene::F
+
+ren_destroy_handle(MeshID, destroy_mesh);
+ren_destroy_handle(MaterialID, destroy_material);
+ren_destroy_handle(MeshInstanceID, destroy_mesh_instance);
+ren_destroy_handle(DirectionalLightID, destroy_directional_light);
+
+#undef ren_destroy_handle
 
 } // namespace detail
 

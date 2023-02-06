@@ -19,7 +19,14 @@ VS_OUT main(VS_IN vs_in) {
   float3x4 model = g_matrices[g_pcs.vertex.matrix_index];
   float3 local_position = ptr_load<float3>(g_pcs.vertex.positions, vs_in.index);
   float3 world_position = mul(model, float4(local_position, 1.0f));
-  vs_out.position = mul(g_global.proj_view, float4(world_position, 1.0f));
+  vs_out.world_position = world_position;
+  float4 position = mul(g_global.proj_view, float4(world_position, 1.0f));
+  vs_out.position = position;
+
+  float3 normal =
+      decode_normal(ptr_load<normal_t>(g_pcs.vertex.normals, vs_in.index));
+  // FIXME!!! Normals should be transformed
+  vs_out.normal = normal;
 
 #if ALBEDO_VERTEX
   float4 color = float4(

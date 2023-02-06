@@ -3,12 +3,14 @@
 
 REN_NAMESPACE_BEGIN
 
-inline uint encode_float(float f, uint bits, float from = 0.0f, float to = 1.0f) {
+inline uint encode_float(float f, uint bits, float from = 0.0f,
+                         float to = 1.0f) {
   assert(from <= f && f <= to);
   return (f - from) / (to - from) * ((uint(1) << bits) - 1);
 }
 
-inline float decode_float(uint value, uint bits, float from = 0.0f, float to = 1.0f) {
+inline float decode_float(uint value, uint bits, float from = 0.0f,
+                          float to = 1.0f) {
   float alpha = float(value) / ((uint(1) << bits) - 1);
   return lerp(from, to, float(value) / ((uint(1) << bits) - 1));
 }
@@ -39,5 +41,11 @@ inline float3 decode_color(color_t color) {
                 decode_float(green, color_green_bits),
                 decode_float(blue, color_blue_bits));
 }
+
+typedef float3 normal_t;
+
+inline normal_t encode_normal(float3 normal) { return normal; }
+
+inline float3 decode_normal(normal_t normal) { return normal; }
 
 REN_NAMESPACE_END

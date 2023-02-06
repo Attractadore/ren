@@ -30,10 +30,15 @@ using float4x4 = glm::mat4x4;
 
 // built-in functions
 #if __cplusplus
+
+using namespace glm;
+
 auto lerp(const auto &x, const auto &y, const auto &a) {
   return glm::mix(x, y, a);
 }
+
 #elif __HLSL_VERSION
+
 #endif
 
 // assert

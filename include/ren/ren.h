@@ -43,7 +43,9 @@ typedef enum : uint32_t {
 typedef enum : uint32_t {
   REN_NULL_MESH_INSTANCE = 0,
 } RenMeshInstance;
-
+typedef enum : uint32_t {
+  REN_NULL_DIRECTIONAL_LIGHT = 0,
+} RenDirectionalLight;
 typedef float RenVector3[3];
 typedef float RenVector4[4];
 typedef float RenMatrix4x4[16];
@@ -96,8 +98,13 @@ REN_NODISCARD RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain);
 typedef struct {
   unsigned num_vertices;
   unsigned num_indices;
+  // Mesh positions, required
   const RenVector3 *positions;
+  // Mesh normals, required
+  const RenVector3 *normals;
+  // Mesh vertex colors, optional
   const RenVector3 *colors;
+  // Mesh indices, required
   const unsigned *indices;
 } RenMeshDesc;
 
@@ -113,6 +120,8 @@ typedef enum {
 typedef struct {
   RenMaterialColor color;
   RenVector4 base_color;
+  float metallic;
+  float roughness;
 } RenMaterialDesc;
 
 REN_NODISCARD RenResult ren_CreateMaterial(RenScene *scene,
@@ -134,6 +143,30 @@ void ren_DestroyMeshInstance(RenScene *scene, RenMeshInstance model);
 
 void ren_SetMeshInstanceMatrix(RenScene *scene, RenMeshInstance model,
                                const RenMatrix4x4 *matrix);
+
+typedef struct {
+  RenVector3 color;
+  /// Intensity in lux
+  float illuminance;
+  /// Direction from an object to the light
+  RenVector3 origin;
+} RenDirectionalLightDesc;
+
+REN_NODISCARD RenResult
+ren_CreateDirectionalLight(RenScene *scene, const RenDirectionalLightDesc *desc,
+                           RenDirectionalLight *p_light);
+
+void ren_DestroyDirectionalLight(RenScene *scene, RenDirectionalLight light);
+
+void ren_SetDirectionalLightColor(RenScene *scene, RenDirectionalLight light,
+                                  RenVector3 color);
+
+void ren_SetDirectionalLightIntencity(RenScene *scene,
+                                      RenDirectionalLight light,
+                                      float intensity);
+
+void ren_SetDirectionalLightOrigin(RenScene *scene, RenDirectionalLight light,
+                                   RenVector3 origin);
 
 #ifdef __cplusplus
 }

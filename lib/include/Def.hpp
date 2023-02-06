@@ -10,6 +10,9 @@ using MaterialID = RenMaterial;
 
 using CameraDesc = RenCameraDesc;
 
-using ModelDesc = RenMeshInstanceDesc;
+using MeshInstanceDesc = RenMeshInstanceDesc;
 using MeshInstanceID = RenMeshInstance;
+
+using DirLightDesc = RenDirectionalLightDesc;
+using DirLightID = RenDirectionalLight;
 } // namespace ren
