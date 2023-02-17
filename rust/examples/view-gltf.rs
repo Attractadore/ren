@@ -174,7 +174,7 @@ fn create_mesh(
 
     let normals = get_data(
         primitive
-            .get(&gltf::Semantic::Positions)
+            .get(&gltf::Semantic::Normals)
             .context("Mesh doesn't contain vertices")?,
     )?;
     let normals = match normals {

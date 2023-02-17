@@ -27,13 +27,15 @@ struct PushConstants {
 static_assert(sizeof(PushConstants) <= 128);
 
 typedef float3x4 model_matrix_t;
+typedef float3x3 normal_matrix_t;
 
 constexpr uint PERSISTENT_SET = 0;
 constexpr uint MATERIALS_SLOT = 0;
 
 constexpr uint GLOBAL_SET = 1;
 constexpr uint GLOBAL_CB_SLOT = 0;
-constexpr uint MATRICES_SLOT = 1;
-constexpr uint LIGHTS_SLOT = 2;
+constexpr uint MODEL_MATRICES_SLOT = 1;
+constexpr uint NORMAL_MATRICES_SLOT = 2;
+constexpr uint LIGHTS_SLOT = 3;
 
 REN_NAMESPACE_END

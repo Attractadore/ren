@@ -411,14 +411,23 @@ void Scene::draw(Swapchain &swapchain) {
           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
   rgb.set_desc(virtual_global_cbuffer, "Global cbuffer");
 
-  auto virtual_matrix_buffer = draw.add_output(
+  auto virtual_model_matrix_buffer = draw.add_output(
       RGBufferDesc{
           .heap = BufferHeap::Upload,
           .size = unsigned(sizeof(hlsl::model_matrix_t) * m_models.size()),
       },
       VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-  rgb.set_desc(virtual_matrix_buffer, "Model matrix buffer");
+  rgb.set_desc(virtual_model_matrix_buffer, "Model matrix buffer");
+
+  auto virtual_normal_matrix_buffer = draw.add_output(
+      RGBufferDesc{
+          .heap = BufferHeap::Upload,
+          .size = unsigned(sizeof(hlsl::normal_matrix_t) * m_models.size()),
+      },
+      VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+  rgb.set_desc(virtual_normal_matrix_buffer, "Normal matrix buffer");
 
   auto lights_buffer_id = draw.add_output(
       RGBufferDesc{
@@ -428,8 +437,8 @@ void Scene::draw(Swapchain &swapchain) {
       VK_ACCESS_2_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
   rgb.set_desc(lights_buffer_id, "Lights buffer");
 
-  draw.setCallback([this, rt, dst, virtual_matrix_buffer,
-                    virtual_global_cbuffer,
+  draw.setCallback([this, rt, dst, virtual_model_matrix_buffer,
+                    virtual_normal_matrix_buffer, virtual_global_cbuffer,
                     lights_buffer_id](CommandBuffer &cmd, RenderGraph &rg) {
     cmd.begin_rendering(rg.getTexture(rt), rg.getTexture(dst));
     cmd.set_viewport({.width = float(m_viewport_width),
@@ -454,8 +463,12 @@ void Scene::draw(Swapchain &swapchain) {
         .eye = m_camera.position,
     };
 
-    BufferRef matrix_buffer = rg.get_buffer(virtual_matrix_buffer);
-    auto *matrices = matrix_buffer.map<hlsl::model_matrix_t>();
+    BufferRef model_matrix_buffer = rg.get_buffer(virtual_model_matrix_buffer);
+    auto *model_matrices = model_matrix_buffer.map<hlsl::model_matrix_t>();
+
+    BufferRef normal_matrix_buffer =
+        rg.get_buffer(virtual_normal_matrix_buffer);
+    auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
 
     BufferRef lights_buffer = rg.get_buffer(lights_buffer_id);
     auto *lights = lights_buffer.map<hlsl::Lights>();
@@ -466,7 +479,9 @@ void Scene::draw(Swapchain &swapchain) {
         m_descriptor_set_allocator.allocate(get_global_descriptor_set_layout());
 
     auto global_ub_descriptor = global_cbuffer.get_descriptor();
-    auto matrix_buffer_descriptor = matrix_buffer.get_descriptor();
+    auto model_matrix_buffer_descriptor = model_matrix_buffer.get_descriptor();
+    auto normal_matrix_buffer_descriptor =
+        normal_matrix_buffer.get_descriptor();
     auto lights_buffer_descriptor = lights_buffer.get_descriptor();
 
     std::array write_configs = {
@@ -481,10 +496,18 @@ void Scene::draw(Swapchain &swapchain) {
         VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = scene_descriptor_set,
-            .dstBinding = hlsl::MATRICES_SLOT,
+            .dstBinding = hlsl::MODEL_MATRICES_SLOT,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &matrix_buffer_descriptor,
+            .pBufferInfo = &model_matrix_buffer_descriptor,
+        },
+        VkWriteDescriptorSet{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = scene_descriptor_set,
+            .dstBinding = hlsl::NORMAL_MATRICES_SLOT,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pBufferInfo = &normal_matrix_buffer_descriptor,
         },
         VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -508,7 +531,9 @@ void Scene::draw(Swapchain &swapchain) {
 
     for (const auto &&[i, model] :
          ranges::views::enumerate(m_models.values())) {
-      matrices[i] = model.matrix;
+      model_matrices[i] = model.matrix;
+      normal_matrices[i] =
+          glm::transpose(glm::inverse(glm::mat3(model.matrix)));
 
       const auto &mesh = get_mesh(model.mesh);
       const auto &material = get_material(model.material);
