@@ -46,7 +46,7 @@ struct Device : ::ren::Device {
     std::memcpy(c_desc.pipeline_cache_uuid, desc.pipeline_cache_uuid,
                 sizeof(desc.pipeline_cache_uuid));
     RenDevice *device;
-    return detail::to_expected(ren_vk_CreateDevice(&c_desc, &device)).map([&] {
+    return expected(ren_vk_CreateDevice(&c_desc, &device)).map([&] {
       return UniqueDevice(static_cast<Device *>(device));
     });
   }
@@ -54,7 +54,7 @@ struct Device : ::ren::Device {
   auto create_swapchain(PFN_CreateSurface create_surface, void *usrptr)
       -> expected<UniqueSwapchain> {
     RenSwapchain *swapchain;
-    return detail::to_expected(
+    return expected(
                ren_vk_CreateSwapchain(this, create_surface, usrptr, &swapchain))
         .map([&] {
           return UniqueSwapchain(static_cast<Swapchain *>(swapchain));

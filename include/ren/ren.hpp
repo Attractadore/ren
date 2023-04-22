@@ -4,7 +4,6 @@
 #include <tl/expected.hpp>
 
 #include <cassert>
-#include <concepts>
 #include <cstring>
 #include <memory>
 #include <span>
@@ -32,12 +31,21 @@ enum class Error {
   Unknown = REN_UNKNOWN_ERROR,
 };
 
-template <typename T> class expected : public tl::expected<T, Error> {
+using unexpected = tl::unexpected<Error>;
+
+template <typename T = void> class expected : public tl::expected<T, Error> {
 private:
   using Base = tl::expected<T, Error>;
 
 public:
   using Base::Base;
+  expected(RenResult result)
+      : expected([&]() -> expected {
+          if (result) {
+            return unexpected(static_cast<Error>(result));
+          }
+          return {};
+        }()) {}
   expected(Base &&e) : Base(std::move(e)) {}
 
   using Base::value;
@@ -51,96 +59,60 @@ public:
   }
 };
 
-using unexpected = tl::unexpected<Error>;
+using Vector2 = RenVector2;
+using Vector3 = RenVector3;
+using Vector4 = RenVector4;
+using Matrix4x4 = RenMatrix4x4;
 
-namespace detail {
-inline auto to_expected(RenResult result) -> expected<void> {
-  if (result) {
-    return unexpected(static_cast<Error>(result));
-  }
-  return {};
-}
-} // namespace detail
+using MeshID = RenMesh;
+constexpr MeshID NullMesh = REN_NULL_MESH;
 
-struct Scene;
+using ImageID = RenImage;
+constexpr ImageID NullImage = REN_NULL_IMAGE;
 
-namespace detail {
+using MaterialID = RenMaterial;
+constexpr MaterialID NullMaterial = REN_NULL_MATERIAL;
 
-template <typename H>
-concept CHandle = std::is_enum_v<H>;
+using MeshInstID = RenMeshInst;
+constexpr MeshInstID NullMeshInst = REN_NULL_MESH_INST;
 
-template <typename P, CHandle H> constexpr void (P::*HandleDestroy)(H);
+using DirLightID = RenDirLight;
+constexpr DirLightID NullDirLight = REN_NULL_DIR_LIGHT;
 
-template <CHandle H> constexpr void *from_handle(H handle) {
-  return reinterpret_cast<void *>(static_cast<uintptr_t>(handle));
-}
+using PointLightID = RenPointLight;
+constexpr PointLightID NullPointLight = REN_NULL_POINT_LIGHT;
 
-template <CHandle H> constexpr H to_handle(void *handle) {
-  return static_cast<H>(reinterpret_cast<uintptr_t>(handle));
-}
+using SpotLightID = RenSpotLight;
+constexpr SpotLightID NullSpotLight = REN_NULL_SPOT_LIGHT;
 
-template <typename P, CHandle H> struct HandleDeleter {
-  P *parent = nullptr;
+using PerspectiveProjection = RenPerspectiveProjection;
+using OrthographicProjection = RenOrthographicProjection;
+using CameraDesc = RenCameraDesc;
 
-  void operator()(void *handle) {
-    if (handle) {
-      assert(parent);
-      (parent->*HandleDestroy<P, H>)(to_handle<H>(handle));
-    }
-  }
-};
+using TonemappingDesc = RenTonemappingDesc;
 
-template <typename P, CHandle H> class SharedHandle {
-  std::shared_ptr<void> m_holder;
+using MeshDesc = RenMeshDesc;
 
-public:
-  SharedHandle() = default;
-  SharedHandle(P *parent, H handle)
-      : m_holder(from_handle(handle), HandleDeleter<P, H>{parent}) {}
+using Format = RenFormat;
+using ImageDesc = RenImageDesc;
 
-  auto get() const -> H { return to_handle<H>(m_holder.get()); }
-  operator H() const { return get(); }
+using Filter = RenFilter;
+using WrappingMode = RenWrappingMode;
+using Sampler = RenSampler;
+using TextureChannel = RenTextureChannel;
+using TextureChannelSwizzle = RenTextureChannelSwizzle;
+using Texture = RenTexture;
 
-  explicit operator bool() const { return m_holder != nullptr; }
+using AlphaMode = RenAlphaMode;
+using MaterialDesc = RenMaterialDesc;
 
-  auto get_parent() const -> const P * {
-    return get_deleter<HandleDeleter<P, H>>(m_holder)->parent;
-  }
+using MeshInstDesc = RenMeshInstDesc;
 
-  auto get_parent() -> P * {
-    return get_deleter<HandleDeleter<P, H>>(m_holder)->parent;
-  }
-};
+using DirLightDesc = RenDirLightDesc;
 
-template <typename P, CHandle H> class UniqueHandle {
-  friend class SharedHandle<P, H>;
+using PointLightDesc = RenPointLightDesc;
 
-  std::unique_ptr<void, HandleDeleter<P, H>> m_holder;
-
-public:
-  UniqueHandle() = default;
-  UniqueHandle(P *parent, H handle)
-      : m_holder(from_handle(handle), HandleDeleter<P, H>{parent}) {}
-
-  operator SharedHandle<P, H>() && {
-    return SharedHandle(get_parent(), to_handle<H>(m_holder.release()));
-  }
-
-  auto get() const -> H { return to_handle<H>(m_holder.get()); }
-  operator H() const { return get(); }
-
-  explicit operator bool() const { return m_holder != nullptr; }
-
-  auto get_parent() const -> const P * { return m_holder.get_deleter().parent; }
-  auto get_parent() -> P * { return m_holder.get_deleter().parent; }
-};
-
-template <class... Ts> struct overload_set : Ts... {
-  overload_set(Ts... fs) : Ts(std::move(fs))... {}
-  using Ts::operator()...;
-};
-
-} // namespace detail
+using SpotLightDesc = RenSpotLightDesc;
 
 struct Device;
 struct DeviceDeleter {
@@ -160,6 +132,7 @@ struct SwapchainDeleter {
 using UniqueSwapchain = std::unique_ptr<Swapchain, SwapchainDeleter>;
 using SharedSwapchain = std::shared_ptr<Swapchain>;
 
+struct Scene;
 struct SceneDeleter {
   void operator()(Scene *scene) const noexcept {
     ren_DestroyScene(reinterpret_cast<RenScene *>(scene));
@@ -168,39 +141,10 @@ struct SceneDeleter {
 using UniqueScene = std::unique_ptr<Scene, SceneDeleter>;
 using SharedScene = std::shared_ptr<Scene>;
 
-namespace detail {
-template <CHandle H> using UniqueSceneHandle = UniqueHandle<Scene, H>;
-template <CHandle H> using SharedSceneHandle = SharedHandle<Scene, H>;
-} // namespace detail
-
-using MeshID = RenMesh;
-constexpr MeshID NullMesh = REN_NULL_MESH;
-using UniqueMeshID = detail::UniqueSceneHandle<MeshID>;
-using SharedMeshID = detail::SharedSceneHandle<MeshID>;
-
-using MaterialID = RenMaterial;
-constexpr MaterialID NullMaterial = REN_NULL_MATERIAL;
-using UniqueMaterialID = detail::UniqueSceneHandle<MaterialID>;
-using SharedMaterialID = detail::SharedSceneHandle<MaterialID>;
-
-using MeshInstanceID = RenMeshInstance;
-constexpr MeshInstanceID NullMeshInstance = REN_NULL_MESH_INSTANCE;
-using UniqueMeshInstanceID = detail::UniqueSceneHandle<MeshInstanceID>;
-using SharedMeshInstanceID = detail::SharedSceneHandle<MeshInstanceID>;
-
-using DirectionalLightID = RenDirectionalLight;
-constexpr DirectionalLightID NullDirectionalLight = REN_NULL_DIRECTIONAL_LIGHT;
-using UniqueDirectionalLightID = detail::UniqueSceneHandle<DirectionalLightID>;
-using SharedDirectionalLightID = detail::SharedSceneHandle<DirectionalLightID>;
-
-using Vector3 = RenVector3;
-using Vector4 = RenVector4;
-using Matrix4x4 = RenMatrix4x4;
-
 struct Device : RenDevice {
   [[nodiscard]] auto create_scene() -> expected<UniqueScene> {
     RenScene *scene;
-    return detail::to_expected(ren_CreateScene(this, &scene)).map([&] {
+    return expected(ren_CreateScene(this, &scene)).map([&] {
       return UniqueScene(reinterpret_cast<Scene *>(scene));
     });
   }
@@ -218,215 +162,203 @@ struct Swapchain : RenSwapchain {
   }
 };
 
-using PerspectiveProjection = RenPerspectiveProjection;
-using OrthographicProjection = RenOrthographicProjection;
-using CameraProjection =
-    std::variant<PerspectiveProjection, OrthographicProjection>;
-
-struct CameraDesc {
-  CameraProjection projection;
-  Vector3 position;
-  Vector3 forward;
-  Vector3 up;
-};
-
-struct MeshDesc {
-  std::span<const Vector3> positions;
-  std::span<const Vector3> normals;
-  std::span<const Vector3> colors;
-  std::span<const unsigned> indices;
-};
-
-enum class MaterialColor {
-  Const = REN_MATERIAL_COLOR_CONST,
-  Vertex = REN_MATERIAL_COLOR_VERTEX,
-};
-
-struct MaterialDesc {
-  MaterialColor color;
-  Vector4 base_color = {1.0f, 1.0f, 1.0f, 1.0f};
-  float metallic = 0.0f;
-  float roughness = 1.0f;
-};
-
-struct MeshInstanceDesc {
-  MeshID mesh;
-  MaterialID material;
-};
-
-struct DirectionalLightDesc {
-  Vector3 color = {1.0f, 1.0f, 1.0f};
-  float illuminance = 1.0f;
-  /// Direction from an object to the light
-  Vector3 origin;
-};
-
 struct Scene : RenScene {
-  void set_camera(const CameraDesc &desc) {
-    RenCameraDesc c_desc = {};
-    std::visit(detail::overload_set{
-                   [&](const PerspectiveProjection &perspective) {
-                     c_desc.projection = REN_PROJECTION_PERSPECTIVE;
-                     c_desc.perspective = perspective;
-                   },
-                   [&](const OrthographicProjection &ortho) {
-                     c_desc.projection = REN_PROJECTION_ORTHOGRAPHIC;
-                     c_desc.orthographic = ortho;
-                   },
-               },
-               desc.projection);
-    std::memcpy(c_desc.position, &desc.position, sizeof(desc.position));
-    std::memcpy(c_desc.forward, &desc.forward, sizeof(desc.forward));
-    std::memcpy(c_desc.up, &desc.up, sizeof(desc.up));
-    ren_SetSceneCamera(this, &c_desc);
+  [[nodiscard]] auto set_camera(const CameraDesc &desc) -> expected<void> {
+    return expected(ren_SetSceneCamera(this, &desc));
   }
 
-  [[nodiscard]] auto set_viewport(unsigned width, unsigned height)
+  [[nodiscard]] auto set_tonemapping(const TonemappingDesc &desc)
       -> expected<void> {
-    return detail::to_expected(ren_SetViewport(this, width, height));
+    return expected(ren_SetSceneTonemapping(this, &desc));
   }
 
   [[nodiscard]] auto draw(Swapchain &swapchain) -> expected<void> {
-    return detail::to_expected(ren_DrawScene(this, &swapchain));
+    return expected(ren_DrawScene(this, &swapchain));
   }
 
   [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {
-    assert(not desc.positions.empty());
-    assert(desc.normals.size() == desc.positions.size());
-    assert(desc.colors.empty() or desc.colors.size() == desc.positions.size());
-    assert(not desc.indices.empty());
-    RenMeshDesc c_desc = {
-        .num_vertices = unsigned(desc.positions.size()),
-        .num_indices = unsigned(desc.indices.size()),
-        .positions = desc.positions.data(),
-        .normals = desc.normals.data(),
-        .colors = desc.colors.empty() ? nullptr : desc.colors.data(),
-        .indices = desc.indices.data(),
-    };
     RenMesh mesh;
-    return detail::to_expected(ren_CreateMesh(this, &c_desc, &mesh)).map([&] {
-      return static_cast<MeshID>(mesh);
+    return expected(ren_CreateMesh(this, &desc, &mesh)).map([&] {
+      return mesh;
     });
   }
 
-  void destroy_mesh(MeshID mesh) {
-    ren_DestroyMesh(this, static_cast<RenMesh>(mesh));
+  [[nodiscard]] auto create_image(const ImageDesc &desc) -> expected<ImageID> {
+    RenImage image;
+    return expected(ren_CreateImage(this, &desc, &image)).map([&] {
+      return image;
+    });
   }
 
-  [[nodiscard]] auto create_unique_mesh(const MeshDesc &desc)
-      -> expected<UniqueMeshID> {
-    return create_mesh(desc).map(
-        [&](MeshID mesh) { return UniqueMeshID(this, mesh); });
+  [[nodiscard]] auto create_material(std::span<const MaterialDesc> descs,
+                                     std::span<MaterialID> materials)
+      -> expected<std::span<MaterialID>> {
+    assert(materials.size() >= descs.size());
+    RenMaterial material;
+    return expected(ren_CreateMaterials(this, descs.data(), descs.size(),
+                                        materials.data()))
+        .map([&] { return materials.first(descs.size()); });
   }
 
   [[nodiscard]] auto create_material(const MaterialDesc &desc)
       -> expected<MaterialID> {
-    RenMaterialDesc c_desc = {
-        .color = static_cast<RenMaterialColor>(desc.color),
-        .metallic = desc.metallic,
-        .roughness = desc.roughness,
-    };
-    static_assert(sizeof(c_desc.base_color) == sizeof(desc.base_color));
-    std::memcpy(c_desc.base_color, desc.base_color, sizeof(desc.base_color));
     RenMaterial material;
-    return detail::to_expected(ren_CreateMaterial(this, &c_desc, &material))
-        .map([&] { return static_cast<MaterialID>(material); });
-  }
-
-  void destroy_material(MaterialID material) {
-    ren_DestroyMaterial(this, static_cast<RenMaterial>(material));
-  }
-
-  [[nodiscard]] auto create_unique_material(const MaterialDesc &desc)
-      -> expected<UniqueMaterialID> {
-    return create_material(desc).map(
-        [&](MaterialID material) { return UniqueMaterialID(this, material); });
-  }
-
-  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc)
-      -> expected<MeshInstanceID> {
-    RenMeshInstanceDesc c_desc = {
-        .mesh = static_cast<RenMesh>(desc.mesh),
-        .material = static_cast<RenMaterial>(desc.material),
-    };
-    RenMeshInstance model;
-    return detail::to_expected(ren_CreateMeshInstance(this, &c_desc, &model))
-        .map([&] { return static_cast<MeshInstanceID>(model); });
-  }
-
-  void destroy_mesh_instance(MeshInstanceID mesh_instance) {
-    ren_DestroyMeshInstance(this, static_cast<RenMeshInstance>(mesh_instance));
-  }
-
-  [[nodiscard]] auto create_unique_mesh_instance(const MeshInstanceDesc &desc)
-      -> expected<UniqueMeshInstanceID> {
-    return create_mesh_instance(desc).map([&](MeshInstanceID mesh_instance) {
-      return UniqueMeshInstanceID(this, mesh_instance);
+    return expected(ren_CreateMaterial(this, &desc, &material)).map([&] {
+      return material;
     });
   }
 
-  void set_model_matrix(MeshInstanceID model, const Matrix4x4 &matrix) {
-    ren_SetMeshInstanceMatrix(this, static_cast<RenMeshInstance>(model),
-                              &matrix);
+  [[nodiscard]] auto create_mesh_insts(std::span<const MeshInstDesc> descs,
+                                       std::span<MeshInstID> mesh_insts)
+      -> expected<std::span<MeshInstID>> {
+    RenMeshInst model;
+    return expected(ren_CreateMeshInsts(this, descs.data(), descs.size(),
+                                        mesh_insts.data()))
+        .map([&] { return mesh_insts.first(descs.size()); });
   }
 
-  [[nodiscard]] auto create_directional_light(const DirectionalLightDesc &desc)
-      -> expected<DirectionalLightID> {
-    RenDirectionalLight light;
-    RenDirectionalLightDesc c_desc = {.illuminance = desc.illuminance};
-    static_assert(sizeof(c_desc.color) == sizeof(desc.color));
-    std::memcpy(c_desc.color, desc.color, sizeof(desc.color));
-    static_assert(sizeof(c_desc.origin) == sizeof(desc.origin));
-    std::memcpy(c_desc.origin, desc.origin, sizeof(desc.origin));
-    return detail::to_expected(
-               ren_CreateDirectionalLight(this, &c_desc, &light))
-        .map([&] { return static_cast<DirectionalLightID>(light); });
+  [[nodiscard]] auto create_mesh_inst(const MeshInstDesc &desc)
+      -> expected<MeshInstID> {
+    RenMeshInst model;
+    return expected(ren_CreateMeshInst(this, &desc, &model)).map([&] {
+      return model;
+    });
   }
 
-  void destroy_directional_light(DirectionalLightID light) {
-    ren_DestroyDirectionalLight(this, static_cast<RenDirectionalLight>(light));
+  void destroy_mesh_insts(std::span<const MeshInstID> mesh_insts) {
+    ren_DestroyMeshInsts(this, mesh_insts.data(), mesh_insts.size());
   }
 
-  [[nodiscard]] auto
-  create_unique_directional_light(const DirectionalLightDesc &desc)
-      -> expected<UniqueDirectionalLightID> {
-    return create_directional_light(desc).map(
-        [&](DirectionalLightID directional_light) {
-          return UniqueDirectionalLightID(this, directional_light);
-        });
+  void destroy_mesh_inst(MeshInstID mesh_inst) {
+    ren_DestroyMeshInst(this, mesh_inst);
   }
 
-  void set_directional_light_color(DirectionalLightID light, Vector3 color) {
-    ren_SetDirectionalLightColor(this, static_cast<RenDirectionalLight>(light),
-                                 color);
+  void set_mesh_inst_matrices(std::span<const MeshInstID> mesh_insts,
+                              std::span<const Matrix4x4> matrices) {
+    assert(matrices.size() >= mesh_insts.size());
+    ren_SetMeshInstMatrices(this, mesh_insts.data(), matrices.data(),
+                            mesh_insts.size());
   }
 
-  void set_directional_light_intensity(DirectionalLightID light,
-                                       float intensity) {
-    ren_SetDirectionalLightIntencity(
-        this, static_cast<RenDirectionalLight>(light), intensity);
+  void set_mesh_inst_matrix(MeshInstID mesh_inst, const Matrix4x4 &matrix) {
+    ren_SetMeshInstMatrix(this, mesh_inst, &matrix);
   }
 
-  void set_directional_light_origin(DirectionalLightID light, Vector3 origin) {
-    ren_SetDirectionalLightOrigin(this, static_cast<RenDirectionalLight>(light),
-                                  origin);
+  [[nodiscard]] auto create_dir_lights(std::span<const DirLightDesc> descs,
+                                       std::span<DirLightID> lights)
+      -> expected<std::span<DirLightID>> {
+    assert(lights.size() >= descs.size());
+    return expected(ren_CreateDirLights(this, descs.data(), descs.size(),
+                                        lights.data()))
+        .map([&] { return lights.first(descs.size()); });
+  }
+
+  [[nodiscard]] auto create_dir_light(const DirLightDesc &desc)
+      -> expected<DirLightID> {
+    RenDirLight light;
+    return expected(ren_CreateDirLight(this, &desc, &light)).map([&] {
+      return light;
+    });
+  }
+
+  void destroy_dir_lights(std::span<const DirLightID> lights) {
+    ren_DestroyDirLights(this, lights.data(), lights.size());
+  }
+
+  void destroy_dir_light(DirLightID light) { ren_DestroyDirLight(this, light); }
+
+  [[nodiscard]] auto config_dir_lights(std::span<const DirLightID> lights,
+                                       std::span<const DirLightDesc> descs)
+      -> expected<void> {
+    assert(lights.size() <= descs.size());
+    return expected(
+        ren_ConfigDirLights(this, lights.data(), descs.data(), lights.size()));
+  }
+
+  [[nodiscard]] auto config_dir_light(DirLightID light,
+                                      const DirLightDesc &desc)
+      -> expected<void> {
+    return expected(ren_ConfigDirLight(this, light, &desc));
+  }
+
+  [[nodiscard]] auto create_point_lights(std::span<const PointLightDesc> descs,
+                                         std::span<PointLightID> lights)
+      -> expected<std::span<PointLightID>> {
+    assert(lights.size() >= descs.size());
+    return expected(ren_CreatePointLights(this, descs.data(), descs.size(),
+                                          lights.data()))
+        .map([&] { return lights.first(descs.size()); });
+  }
+
+  [[nodiscard]] auto create_point_light(const PointLightDesc &desc)
+      -> expected<PointLightID> {
+    RenPointLight light;
+    return expected(ren_CreatePointLight(this, &desc, &light)).map([&] {
+      return light;
+    });
+  }
+
+  void destroy_point_lights(std::span<const PointLightID> lights) {
+    ren_DestroyPointLights(this, lights.data(), lights.size());
+  }
+
+  void destroy_point_light(PointLightID light) {
+    ren_DestroyPointLight(this, light);
+  }
+
+  [[nodiscard]] auto config_point_lights(std::span<const PointLightID> lights,
+                                         std::span<const PointLightDesc> descs)
+      -> expected<void> {
+    assert(lights.size() <= descs.size());
+    return expected(ren_ConfigPointLights(this, lights.data(), descs.data(),
+                                          lights.size()));
+  }
+
+  [[nodiscard]] auto config_point_light(PointLightID light,
+                                        const PointLightDesc &desc)
+      -> expected<void> {
+    return expected(ren_ConfigPointLight(this, light, &desc));
+  }
+
+  [[nodiscard]] auto create_spot_lights(std::span<const SpotLightDesc> descs,
+                                        std::span<SpotLightID> lights)
+      -> expected<std::span<SpotLightID>> {
+    assert(lights.size() >= descs.size());
+    return expected(ren_CreateSpotLights(this, descs.data(), descs.size(),
+                                         lights.data()))
+        .map([&] { return lights.first(descs.size()); });
+  }
+
+  [[nodiscard]] auto create_spot_light(const SpotLightDesc &desc)
+      -> expected<SpotLightID> {
+    RenSpotLight light;
+    return expected(ren_CreateSpotLight(this, &desc, &light)).map([&] {
+      return light;
+    });
+  }
+
+  void destroy_spot_lights(std::span<const SpotLightID> lights) {
+    ren_DestroySpotLights(this, lights.data(), lights.size());
+  }
+
+  void destroy_spot_light(SpotLightID light) {
+    ren_DestroySpotLight(this, light);
+  }
+
+  [[nodiscard]] auto config_spot_lights(std::span<const SpotLightID> lights,
+                                        std::span<const SpotLightDesc> descs)
+      -> expected<void> {
+    assert(lights.size() <= descs.size());
+    return expected(
+        ren_ConfigSpotLights(this, lights.data(), descs.data(), lights.size()));
+  }
+
+  [[nodiscard]] auto config_spot_light(SpotLightID light,
+                                       const SpotLightDesc &desc)
+      -> expected<void> {
+    return expected(ren_ConfigSpotLight(this, light, &desc));
   }
 };
-
-namespace detail {
-
-#define ren_destroy_handle(T, F)                                               \
-  template <>                                                                  \
-  inline constexpr void (Scene::*HandleDestroy<Scene, T>)(T) = &Scene::F
-
-ren_destroy_handle(MeshID, destroy_mesh);
-ren_destroy_handle(MaterialID, destroy_material);
-ren_destroy_handle(MeshInstanceID, destroy_mesh_instance);
-ren_destroy_handle(DirectionalLightID, destroy_directional_light);
-
-#undef ren_destroy_handle
-
-} // namespace detail
 
 } // namespace v0
 } // namespace ren
