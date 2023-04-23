@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "dependencies": [
     "boost-container",
-    "boost-container-hash",
     "boost-preprocessor",
     "fmt",
     "glm",

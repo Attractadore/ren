@@ -32,7 +32,7 @@ protected:
   ren::Scene &get_scene() { return *m_scene; }
 
   virtual void process_event(const SDL_Event &e) {}
-  virtual void iterate() {}
+  virtual void iterate(unsigned width, unsigned height);
 
   std::pair<unsigned, unsigned> get_window_size() const {
     return {m_window_width, m_window_height};

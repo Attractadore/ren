@@ -1,24 +1,19 @@
 #pragma once
-#include "Def.hpp"
 #include "Formats.hpp"
 #include "Pipeline.hpp"
+#include "Support/Enum.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
+#include "ren/ren.h"
 
 namespace ren {
 
 class AssetLoader;
 
-enum class MaterialAlbedo {
-  Const = REN_MATERIAL_COLOR_CONST,
-  Vertex = REN_MATERIAL_COLOR_VERTEX,
-};
-
 struct MaterialConfig {
-  MaterialAlbedo albedo;
+public:
+  MaterialConfig(const RenMaterialDesc &desc) {}
 
-  MaterialConfig(const MaterialDesc &desc)
-      : albedo(static_cast<MaterialAlbedo>(desc.color)) {}
   auto operator<=>(const MaterialConfig &other) const = default;
 };
 

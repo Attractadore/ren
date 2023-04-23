@@ -4,6 +4,9 @@
 #include "Swapchain.hpp"
 #include "ren/ren-vk.h"
 
+#include <range/v3/algorithm.hpp>
+#include <range/v3/view.hpp>
+
 #include <cassert>
 
 namespace {
@@ -30,7 +33,9 @@ RenResult lippincott(F f) noexcept {
 
 extern "C" {
 
+static_assert(sizeof(RenVector2) == sizeof(glm::vec2));
 static_assert(sizeof(RenVector3) == sizeof(glm::vec3));
+static_assert(sizeof(RenVector4) == sizeof(glm::vec4));
 static_assert(sizeof(RenMatrix4x4) == sizeof(glm::mat4));
 
 uint32_t ren_vk_GetRequiredAPIVersion() {
@@ -254,108 +259,192 @@ RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene) {
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-RenResult ren_SetViewport(RenScene *scene, unsigned width, unsigned height) {
-  assert(scene);
-  assert(width > 0);
-  assert(height > 0);
-  return lippincott([&] {
-    scene->m_viewport_width = width;
-    scene->m_viewport_height = height;
-  });
-}
-
 RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain) {
   assert(scene);
   assert(swapchain);
   return lippincott([&] { scene->draw(*swapchain); });
 }
 
+RenResult ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
+  assert(scene);
+  assert(desc);
+  return lippincott([&] { scene->set_camera(*desc); });
+}
+
+RenResult ren_SetSceneTonemapping(RenScene *scene,
+                                  const RenTonemappingDesc *desc) {
+  assert(scene);
+  assert(desc);
+  return lippincott([&] {
+    if (desc->oper != REN_TONEMAPPING_OPERATOR_NONE) {
+      ren::todo(fmt::format("{} tonemapping operator is not implemented!",
+                            desc->oper));
+    }
+  });
+}
+
 RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
                          RenMesh *p_mesh) {
   assert(scene);
   assert(desc);
-  assert(desc->num_vertices > 0);
-  assert(desc->positions);
-  assert(desc->normals);
-  assert(desc->num_indices > 0);
-  assert(desc->indices);
   assert(p_mesh);
   return lippincott([&] { *p_mesh = scene->create_mesh(*desc); });
 }
 
-void ren_DestroyMesh(RenScene *scene, RenMesh mesh) {
-  assert(scene);
-  scene->destroy_mesh(mesh);
-}
-
-RenResult ren_CreateMaterial(RenScene *scene, const RenMaterialDesc *desc,
-                             RenMaterial *p_material) {
+RenResult ren_CreateImage(RenScene *scene, const RenImageDesc *desc,
+                          RenImage *p_image) {
   assert(scene);
   assert(desc);
-  return lippincott([&] { *p_material = scene->create_material(*desc); });
+  assert(p_image);
+  return lippincott([&] { ren::todo("Textures are not implemented!"); });
 }
 
-void ren_DestroyMaterial(RenScene *scene, RenMaterial material) {
+RenResult ren_CreateMaterials(RenScene *scene, const RenMaterialDesc *descs,
+                              size_t count, RenMaterial *materials) {
   assert(scene);
-  scene->destroy_material(material);
+  assert(descs);
+  assert(count > 0);
+  assert(materials);
+  return lippincott([&] {
+    // TODO: implement this loop as a scene method
+    ranges::transform(std::span(descs, count), materials,
+                      [&](const RenMaterialDesc &desc) {
+                        return scene->create_material(desc);
+                      });
+  });
 }
 
-void ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
+RenResult ren_CreateMeshInsts(RenScene *scene, const RenMeshInstDesc *descs,
+                              size_t count, RenMeshInst *mesh_insts) {
   assert(scene);
-  assert(desc);
-  scene->set_camera(*desc);
+  assert(descs);
+  assert(count > 0);
+  assert(mesh_insts);
+  return lippincott([&] {
+    // TODO: implement this loop as a scene method
+    ranges::transform(
+        std::span(descs, count), mesh_insts,
+        [&](const RenMeshInstDesc &desc) { return scene->create_model(desc); });
+  });
 }
 
-RenResult ren_CreateMeshInstance(RenScene *scene,
-                                 const RenMeshInstanceDesc *desc,
-                                 RenMeshInstance *p_model) {
+void ren_DestroyMeshInsts(RenScene *scene, const RenMeshInst *mesh_insts,
+                          size_t count) {
   assert(scene);
-  assert(desc);
-  return lippincott([&] { *p_model = scene->create_model(*desc); });
+  assert(mesh_insts);
+  assert(count > 0);
+  // TODO: implement this loop as a scene method
+  for (auto mesh_inst : std::span(mesh_insts, count)) {
+    scene->destroy_model(mesh_inst);
+  }
 }
 
-void ren_DestroyMeshInstance(RenScene *scene, RenMeshInstance model) {
+void ren_SetMeshInstMatrices(RenScene *scene, const RenMeshInst *mesh_insts,
+                             const RenMatrix4x4 *matrices, size_t count) {
   assert(scene);
-  scene->destroy_model(model);
+  assert(mesh_insts);
+  assert(matrices);
+  assert(count > 0);
+  for (const auto &[mesh_inst, matrix] : ranges::views::zip(
+           std::span(mesh_insts, count), std::span(matrices, count))) {
+    scene->set_model_matrix(mesh_inst, glm::make_mat4(matrix));
+  }
 }
 
-void ren_SetMeshInstanceMatrix(RenScene *scene, RenMeshInstance model,
-                               const RenMatrix4x4 *matrix) {
+RenResult ren_CreateDirLights(RenScene *scene, const RenDirLightDesc *descs,
+                              size_t count, RenDirLight *lights) {
   assert(scene);
-  assert(matrix);
-  scene->set_model_matrix(model, glm::make_mat4(*matrix));
+  assert(descs);
+  assert(count > 0);
+  assert(lights);
+  return lippincott([&] {
+    // TODO: implement this loop as a scene method
+    ranges::transform(std::span(descs, count), lights,
+                      [&](const RenDirLightDesc &desc) {
+                        return scene->create_dir_light(desc);
+                      });
+  });
 }
 
-RenResult ren_CreateDirectionalLight(RenScene *scene,
-                                     const RenDirectionalLightDesc *desc,
-                                     RenDirectionalLight *p_light) {
+void ren_DestroyDirLights(RenScene *scene, const RenDirLight *lights,
+                          size_t count) {
   assert(scene);
-  assert(desc);
-  assert(p_light);
-  return lippincott([&] { *p_light = scene->create_dir_light(*desc); });
+  assert(lights);
+  assert(count > 0);
+  // TODO: implement this loop as a scene method
+  for (auto light : std::span(lights, count)) {
+    scene->destroy_dir_light(light);
+  }
 }
 
-void ren_DestroyDirectionalLight(RenScene *scene, RenDirectionalLight light) {
+RenResult ren_ConfigDirLights(RenScene *scene, const RenDirLight *lights,
+                              const RenDirLightDesc *descs, size_t count) {
   assert(scene);
-  lippincott([&] { scene->destroy_dir_light(light); });
+  assert(lights);
+  assert(descs);
+  assert(count > 0);
+  return lippincott([&] {
+    // TODO: implement this loop as a scene method
+    for (const auto &[light, desc] : ranges::views::zip(
+             std::span(lights, count), std::span(descs, count))) {
+      scene->get_dir_light(light) = {
+          .color = glm::make_vec3(desc.color),
+          .illuminance = desc.illuminance,
+          .origin = glm::make_vec3(desc.origin),
+      };
+    }
+  });
 }
 
-void ren_SetDirectionalLightColor(RenScene *scene, RenDirectionalLight light,
-                                  RenVector3 color) {
+RenResult ren_CreatePointLights(RenScene *scene, const RenPointLightDesc *descs,
+                                size_t count, RenPointLight *lights) {
   assert(scene);
-  scene->get_dir_light(light).color = glm::make_vec3(color);
+  assert(descs);
+  assert(count > 0);
+  assert(lights);
+  return lippincott([&] { ren::todo("Point light are not implemented!"); });
 }
 
-void ren_SetDirectionalLightIntencity(RenScene *scene,
-                                      RenDirectionalLight light,
-                                      float intencity) {
+void ren_DestroyPointLights(RenScene *scene, const RenPointLight *lights,
+                            size_t count) {
   assert(scene);
-  scene->get_dir_light(light).illuminance = intencity;
+  assert(lights);
+  assert(count > 0);
+  ren::todo("Point light are not implemented!");
 }
 
-void ren_SetDirectionalLightOrigin(RenScene *scene, RenDirectionalLight light,
-                                   RenVector3 origin) {
+RenResult ren_ConfigPointLights(RenScene *scene, const RenPointLight *lights,
+                                const RenPointLightDesc *descs, size_t count) {
   assert(scene);
-  scene->get_dir_light(light).origin = glm::make_vec3(origin);
+  assert(lights);
+  assert(descs);
+  assert(count > 0);
+  return lippincott([&] { ren::todo("Point light are not implemented!"); });
+}
+
+RenResult ren_CreateSpotLights(RenScene *scene, const RenSpotLightDesc *descs,
+                               size_t count, RenSpotLight *lights) {
+  assert(scene);
+  assert(descs);
+  assert(count > 0);
+  assert(lights);
+  return lippincott([&] { ren::todo("Spot light are not implemented!"); });
+}
+
+void ren_DestroySpotLights(RenScene *scene, const RenSpotLight *lights,
+                           size_t count) {
+  assert(scene);
+  assert(lights);
+  assert(count > 0);
+  ren::todo("Spot light are not implemented!");
+}
+
+RenResult ren_ConfigSpotLights(RenScene *scene, const RenSpotLight *lights,
+                               const RenSpotLightDesc *descs, size_t count) {
+  assert(scene);
+  assert(lights);
+  assert(descs);
+  assert(count > 0);
+  return lippincott([&] { ren::todo("Spot light are not implemented!"); });
 }
 }

@@ -5,10 +5,10 @@
 #include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {
-  ren::UniqueMeshID m_mesh;
-  ren::UniqueMaterialID m_material;
-  ren::UniqueMeshInstanceID m_model;
-  ren::UniqueDirectionalLightID m_light;
+  ren::MeshID m_mesh;
+  ren::MaterialID m_material;
+  ren::MeshInstID m_model;
+  ren::DirLightID m_light;
 
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
@@ -26,60 +26,57 @@ public:
         {0.0f, 0.0f, 1.0f},
     }};
 
-    std::array<glm::vec3, 3> colors = {{
-        {1.0f, 0.0f, 0.0f},
-        {0.0f, 1.0f, 0.0f},
-        {0.0f, 0.0f, 1.0f},
+    std::array<glm::vec4, 3> colors = {{
+        {1.0f, 0.0f, 0.0f, 1.0f},
+        {0.0f, 1.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f, 1.0f},
     }};
 
     std::array<unsigned, 3> indices = {0, 1, 2};
 
-    m_mesh =
-        scene
-            .create_unique_mesh({
-                .positions = std::span(
-                    reinterpret_cast<const ren::Vector3 *>(positions.data()),
-                    positions.size()),
-                .normals = std::span(
-                    reinterpret_cast<const ren::Vector3 *>(normals.data()),
-                    normals.size()),
-                .colors = std::span(
-                    reinterpret_cast<const ren::Vector3 *>(colors.data()),
-                    colors.size()),
-                .indices = indices,
-            })
-            .value();
+    ren::MeshDesc mesh_desc = {};
+    mesh_desc.set_positions(
+        std::span(reinterpret_cast<const ren::Vector3 *>(positions.data()),
+                  positions.size()));
+    mesh_desc.set_normals(
+        std::span(reinterpret_cast<const ren::Vector3 *>(normals.data()),
+                  normals.size()));
+    mesh_desc.set_colors(std::span(
+        reinterpret_cast<const ren::Vector4 *>(colors.data()), colors.size()));
+    mesh_desc.set_indices(indices);
 
-    m_material = scene
-                     .create_unique_material({
-                         .color = ren::MaterialColor::Vertex,
-                         .roughness = 1.0f,
-                     })
-                     .value();
+    m_mesh = scene.create_mesh(mesh_desc).value();
+
+    m_material = scene.create_material({.metallic_factor = 0.0f}).value();
 
     m_model = scene
-                  .create_unique_mesh_instance({
-                      .mesh = m_mesh.get(),
-                      .material = m_material.get(),
+                  .create_mesh_inst({
+                      .mesh = m_mesh,
+                      .material = m_material,
                   })
                   .value();
 
     m_light = scene
-                  .create_unique_directional_light({
+                  .create_dir_light({
+                      .color = {1.0f, 1.0f, 1.0f},
+                      .illuminance = 1.0f,
                       .origin = {0.0f, 0.0f, 1.0f},
                   })
                   .value();
   }
 
 protected:
-  void iterate() override {
+  void iterate(unsigned width, unsigned height) override {
     auto &scene = get_scene();
-    scene.set_camera({
-        .projection = ren::OrthographicProjection{.width = 2.0f},
+    ren::CameraDesc desc = {
+        .width = width,
+        .height = height,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},
-    });
+    };
+    desc.set_projection(ren::OrthographicProjection{.width = 2.0f});
+    scene.set_camera(desc).value();
   }
 };
 

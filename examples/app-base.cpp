@@ -135,10 +135,19 @@ void AppBase::run() {
       m_window_height = h;
     }
     m_swapchain->set_size(m_window_width, m_window_height);
-    m_scene->set_viewport(m_window_width, m_window_height).value();
 
-    iterate();
+    iterate(m_window_width, m_window_height);
 
     m_scene->draw(*m_swapchain).value();
   }
+}
+
+void AppBase::iterate(unsigned width, unsigned height) {
+  auto &scene = get_scene();
+  scene
+      .set_camera({
+          .width = width,
+          .height = height,
+      })
+      .value();
 }

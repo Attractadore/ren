@@ -1,16 +1,6 @@
 #pragma once
 #include "interface.h"
 
-#if REFLECTION
-
-#else
-
-#if ALBEDO_CONST
-#elif ALBEDO_VERTEX
-#else
-#error "Albedo not set"
-#endif
-
 template <typename T> T ptr_load(uint64_t base, uint idx) {
   return vk::RawBufferLoad<T>(base + idx * sizeof(T));
 }
@@ -22,11 +12,7 @@ struct VS_IN {
 struct VS_OUT {
   float3 world_position : POSITION;
   float4 position : SV_Position;
-  float3 normal : NORMAL;
-#if ALBEDO_VERTEX
   float4 color : COLOR0;
-#endif
+  float3 normal : NORMAL;
 };
 typedef VS_OUT FS_IN;
-
-#endif

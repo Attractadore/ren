@@ -77,7 +77,7 @@ public:
     return static_cast<Underlying>(m_value);
   }
 
-  constexpr bool operator==(const Flags &) const noexcept = default;
+  constexpr auto operator<=>(const Flags &) const noexcept = default;
 };
 
 template <FlagsEnum E> constexpr E operator&(E l, E r) {

@@ -127,15 +127,24 @@ void Scene::next_frame() {
   m_resource_uploader.next_frame();
 }
 
-MeshID Scene::create_mesh(const MeshDesc &desc) {
+RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
       upload_attributes;
   upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
       std::as_bytes(std::span(desc.positions, desc.num_vertices));
-  upload_attributes[MESH_ATTRIBUTE_NORMALS] =
-      std::as_bytes(std::span(desc.normals, desc.num_vertices));
   upload_attributes[MESH_ATTRIBUTE_COLORS] = std::as_bytes(
       std::span(desc.colors, desc.colors ? desc.num_vertices : 0));
+  if (!desc.normals) {
+    todo("Normal generation not implemented!");
+  }
+  upload_attributes[MESH_ATTRIBUTE_NORMALS] =
+      std::as_bytes(std::span(desc.normals, desc.num_vertices));
+  if (desc.tangents) {
+    todo("Normal mapping not implemented!");
+  }
+  if (!desc.indices) {
+    todo("Index buffer generation not implemented!");
+  }
 
   auto used_attributes = range(int(MESH_ATTRIBUTE_COUNT)) |
                          filter_map([&](int i) -> Optional<MeshAttribute> {
@@ -195,7 +204,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
-          reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_color);
+          reinterpret_span<const glm::vec4>(data) | map(hlsl::encode_color);
       m_resource_uploader.stage_data(colors, mesh.vertex_allocation, offset);
       offset += size_bytes(colors);
     } break;
@@ -208,17 +217,7 @@ MeshID Scene::create_mesh(const MeshDesc &desc) {
   return get_mesh_id(key);
 }
 
-void Scene::destroy_mesh(MeshID id) {
-  auto key = get_mesh_key(id);
-  auto it = m_meshes.find(key);
-  assert(it != m_meshes.end() and "Unknown mesh");
-  auto &mesh = it->second;
-  m_vertex_buffer_pool.free(mesh.vertex_allocation);
-  m_index_buffer_pool.free(mesh.index_allocation);
-  m_meshes.erase(key);
-}
-
-MaterialID Scene::create_material(const MaterialDesc &desc) {
+RenMaterial Scene::create_material(const RenMaterialDesc &desc) {
   auto pipeline = [&] {
     auto pipeline = m_compiler.get_material_pipeline(desc);
     if (pipeline) {
@@ -240,16 +239,7 @@ MaterialID Scene::create_material(const MaterialDesc &desc) {
   return get_material_id(key);
 }
 
-void Scene::destroy_material(MaterialID id) {
-  auto key = get_material_key(id);
-  auto it = m_materials.find(key);
-  assert(it != m_materials.end() and "Unknown material");
-  auto &material = it->second;
-  m_material_allocator.free(material.index);
-  m_materials.erase(it);
-}
-
-void Scene::set_camera(const CameraDesc &desc) noexcept {
+void Scene::set_camera(const RenCameraDesc &desc) noexcept {
   m_camera = {
       .position = glm::make_vec3(desc.position),
       .forward = glm::normalize(glm::make_vec3(desc.forward)),
@@ -263,9 +253,11 @@ void Scene::set_camera(const CameraDesc &desc) noexcept {
         }
       }(),
   };
+  m_viewport_width = desc.width;
+  m_viewport_height = desc.height;
 }
 
-auto Scene::create_model(const MeshInstanceDesc &desc) -> MeshInstanceID {
+auto Scene::create_model(const RenMeshInstDesc &desc) -> RenMeshInst {
   return get_model_id(m_models.insert({
       .mesh = desc.mesh,
       .material = desc.material,
@@ -273,52 +265,52 @@ auto Scene::create_model(const MeshInstanceDesc &desc) -> MeshInstanceID {
   }));
 }
 
-void Scene::destroy_model(MeshInstanceID model) {
+void Scene::destroy_model(RenMeshInst model) {
   m_models.erase(get_model_key(model));
 }
 
-auto Scene::get_mesh(MeshID mesh) const -> const Mesh & {
+auto Scene::get_mesh(RenMesh mesh) const -> const Mesh & {
   auto key = get_mesh_key(mesh);
   assert(m_meshes.contains(key) && "Unknown mesh");
   return m_meshes[key];
 }
 
-auto Scene::get_mesh(MeshID mesh) -> Mesh & {
+auto Scene::get_mesh(RenMesh mesh) -> Mesh & {
   auto key = get_mesh_key(mesh);
   assert(m_meshes.contains(key) && "Unknown mesh");
   return m_meshes[key];
 }
 
-auto Scene::get_material(MaterialID material) const -> const Material & {
+auto Scene::get_material(RenMaterial material) const -> const Material & {
   auto key = get_material_key(material);
   assert(m_materials.contains(key) && "Unknown material");
   return m_materials[key];
 }
 
-auto Scene::get_material(MaterialID material) -> Material & {
+auto Scene::get_material(RenMaterial material) -> Material & {
   auto key = get_material_key(material);
   assert(m_materials.contains(key) && "Unknown material");
   return m_materials[key];
 }
 
-auto Scene::get_model(MeshInstanceID model) const -> const Model & {
+auto Scene::get_model(RenMeshInst model) const -> const Model & {
   auto key = get_model_key(model);
   assert(m_models.contains(key) && "Unknown model");
   return m_models[key];
 }
 
-auto Scene::get_model(MeshInstanceID model) -> Model & {
+auto Scene::get_model(RenMeshInst model) -> Model & {
   auto key = get_model_key(model);
   assert(m_models.contains(key) && "Unknown model");
   return m_models[key];
 }
 
-void Scene::set_model_matrix(MeshInstanceID model,
+void Scene::set_model_matrix(RenMeshInst model,
                              const glm::mat4 &matrix) noexcept {
   get_model(model).matrix = matrix;
 }
 
-auto Scene::create_dir_light(const DirLightDesc &desc) -> DirLightID {
+auto Scene::create_dir_light(const RenDirLightDesc &desc) -> RenDirLight {
   assert(m_dir_lights.size() < hlsl::MAX_DIRECTIONAL_LIGHTS);
   auto key = m_dir_lights.insert(hlsl::DirLight{
       .color = glm::make_vec3(desc.color),
@@ -328,19 +320,19 @@ auto Scene::create_dir_light(const DirLightDesc &desc) -> DirLightID {
   return get_dir_light_id(key);
 };
 
-void Scene::destroy_dir_light(DirLightID light) {
+void Scene::destroy_dir_light(RenDirLight light) {
   auto key = get_dir_light_key(light);
   assert(m_dir_lights.contains(key) && "Unknown light");
   m_dir_lights.erase(key);
 }
 
-auto Scene::get_dir_light(DirLightID light) const -> const hlsl::DirLight & {
+auto Scene::get_dir_light(RenDirLight light) const -> const hlsl::DirLight & {
   auto key = get_dir_light_key(light);
   assert(m_dir_lights.contains(key) && "Unknown light");
   return m_dir_lights[key];
 }
 
-auto Scene::get_dir_light(DirLightID light) -> hlsl::DirLight & {
+auto Scene::get_dir_light(RenDirLight light) -> hlsl::DirLight & {
   auto key = get_dir_light_key(light);
   assert(m_dir_lights.contains(key) && "Unknown light");
   return m_dir_lights[key];

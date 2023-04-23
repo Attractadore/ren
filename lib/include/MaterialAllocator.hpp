@@ -1,5 +1,4 @@
 #pragma once
-#include "Def.hpp"
 #include "Device.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/FreeListAllocator.hpp"
@@ -41,7 +40,7 @@ public:
       : m_device(&device), m_buffer(create_buffer(c_default_capacity)),
         m_allocator(c_default_capacity), m_materials(c_default_capacity) {}
 
-  unsigned allocate(const MaterialDesc &desc, ResourceUploader &uploader) {
+  unsigned allocate(const RenMaterialDesc &desc, ResourceUploader &uploader) {
     auto alloc = m_allocator.allocate();
     if (!alloc) {
       resize(2 * capacity(), uploader);
@@ -50,9 +49,9 @@ public:
     assert(alloc);
     auto index = *alloc;
     m_materials[index] = {
-        .base_color = glm::make_vec4(desc.base_color),
-        .metallic = desc.metallic,
-        .roughness = desc.roughness,
+        .base_color = glm::make_vec4(desc.base_color_factor),
+        .metallic = desc.metallic_factor,
+        .roughness = desc.roughness_factor,
     };
     uploader.stage_data(asSpan(m_materials[index]), m_buffer,
                         index * sizeof(hlsl::Material));

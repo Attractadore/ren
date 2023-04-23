@@ -4,7 +4,6 @@
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
-#include "Def.hpp"
 #include "DescriptorSetAllocator.hpp"
 #include "Material.hpp"
 #include "MaterialAllocator.hpp"
@@ -15,6 +14,7 @@
 #include "Support/SlotMap.hpp"
 #include "hlsl/interface.hpp"
 #include "hlsl/lighting.hpp"
+#include "ren/ren.h"
 
 namespace ren {
 
@@ -63,48 +63,48 @@ private:
   DirLightMap m_dir_lights;
 
 private:
-  static MeshMap::key_type get_mesh_key(MeshID mesh) {
+  static MeshMap::key_type get_mesh_key(RenMesh mesh) {
     return std::bit_cast<MeshMap::key_type>(mesh - 1);
   }
 
-  static MeshID get_mesh_id(MeshMap::key_type mesh_key) {
-    return std::bit_cast<MeshID>(std::bit_cast<MeshID>(mesh_key) + 1);
+  static RenMesh get_mesh_id(MeshMap::key_type mesh_key) {
+    return std::bit_cast<RenMesh>(std::bit_cast<RenMesh>(mesh_key) + 1);
   }
 
-  auto get_mesh(MeshID mesh) const -> const Mesh &;
-  auto get_mesh(MeshID mesh) -> Mesh &;
+  auto get_mesh(RenMesh mesh) const -> const Mesh &;
+  auto get_mesh(RenMesh mesh) -> Mesh &;
 
-  static MaterialMap::key_type get_material_key(MaterialID material) {
+  static MaterialMap::key_type get_material_key(RenMaterial material) {
     return std::bit_cast<MaterialMap::key_type>(material - 1);
   }
 
-  static MaterialID get_material_id(MaterialMap::key_type material_key) {
-    return std::bit_cast<MaterialID>(std::bit_cast<MaterialID>(material_key) +
-                                     1);
+  static RenMaterial get_material_id(MaterialMap::key_type material_key) {
+    return std::bit_cast<RenMaterial>(std::bit_cast<RenMaterial>(material_key) +
+                                      1);
   }
 
-  auto get_material(MaterialID material) const -> const Material &;
-  auto get_material(MaterialID material) -> Material &;
+  auto get_material(RenMaterial material) const -> const Material &;
+  auto get_material(RenMaterial material) -> Material &;
 
-  static MeshInstanceMap::key_type get_model_key(MeshInstanceID model) {
+  static MeshInstanceMap::key_type get_model_key(RenMeshInst model) {
     return std::bit_cast<MeshInstanceMap::key_type>(model - 1);
   }
 
-  static MeshInstanceID get_model_id(MeshInstanceMap::key_type model_key) {
-    return std::bit_cast<MeshInstanceID>(
-        std::bit_cast<MeshInstanceID>(model_key) + 1);
+  static RenMeshInst get_model_id(MeshInstanceMap::key_type model_key) {
+    return std::bit_cast<RenMeshInst>(std::bit_cast<RenMeshInst>(model_key) +
+                                      1);
   }
 
-  auto get_model(MeshInstanceID model) const -> const Model &;
-  auto get_model(MeshInstanceID model) -> Model &;
+  auto get_model(RenMeshInst model) const -> const Model &;
+  auto get_model(RenMeshInst model) -> Model &;
 
-  static DirLightMap::key_type get_dir_light_key(DirLightID dir_light) {
+  static DirLightMap::key_type get_dir_light_key(RenDirLight dir_light) {
     return std::bit_cast<DirLightMap::key_type>(dir_light - 1);
   }
 
-  static DirLightID get_dir_light_id(DirLightMap::key_type dir_light_key) {
-    return std::bit_cast<DirLightID>(std::bit_cast<DirLightID>(dir_light_key) +
-                                     1);
+  static RenDirLight get_dir_light_id(DirLightMap::key_type dir_light_key) {
+    return std::bit_cast<RenDirLight>(
+        std::bit_cast<RenDirLight>(dir_light_key) + 1);
   }
 
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
@@ -120,24 +120,24 @@ private:
 public:
   Scene(Device &device);
 
-  MeshID create_mesh(const MeshDesc &desc);
-  void destroy_mesh(MeshID mesh);
+  RenMesh create_mesh(const RenMeshDesc &desc);
+  void destroy_mesh(RenMesh mesh);
 
-  MaterialID create_material(const MaterialDesc &desc);
-  void destroy_material(MaterialID material);
+  RenMaterial create_material(const RenMaterialDesc &desc);
+  void destroy_material(RenMaterial material);
 
-  void set_camera(const CameraDesc &desc) noexcept;
+  void set_camera(const RenCameraDesc &desc) noexcept;
 
-  auto create_model(const MeshInstanceDesc &desc) -> MeshInstanceID;
-  void destroy_model(MeshInstanceID model);
+  auto create_model(const RenMeshInstDesc &desc) -> RenMeshInst;
+  void destroy_model(RenMeshInst model);
 
-  void set_model_matrix(MeshInstanceID model, const glm::mat4 &matrix) noexcept;
+  void set_model_matrix(RenMeshInst model, const glm::mat4 &matrix) noexcept;
 
-  auto get_dir_light(DirLightID dir_light) const -> const hlsl::DirLight &;
-  auto get_dir_light(DirLightID dir_light) -> hlsl::DirLight &;
+  auto get_dir_light(RenDirLight dir_light) const -> const hlsl::DirLight &;
+  auto get_dir_light(RenDirLight dir_light) -> hlsl::DirLight &;
 
-  auto create_dir_light(const DirLightDesc &desc) -> DirLightID;
-  void destroy_dir_light(DirLightID light);
+  auto create_dir_light(const RenDirLightDesc &desc) -> RenDirLight;
+  void destroy_dir_light(RenDirLight light);
 
   void draw(Swapchain &swapchain);
 };

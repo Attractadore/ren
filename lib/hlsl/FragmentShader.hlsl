@@ -22,10 +22,7 @@ float4 main(FS_IN fs_in) : SV_Target {
   float3 normal = normalize(fs_in.normal);
   float3 view_dir = normalize(g_global.eye - fs_in.world_position);
 
-  float4 color = material.base_color;
-#if ALBEDO_VERTEX
-  color *= fs_in.color;
-#endif
+  float4 color = material.base_color * fs_in.color;
 
   float metallic = material.metallic;
   float roughness = material.roughness;

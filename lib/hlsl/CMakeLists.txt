@@ -1,7 +1,5 @@
 include(DXCShader)
 
-set(ALBEDO_PERMUTATIONS ALBEDO_CONST ALBEDO_VERTEX)
-
 set(shaders "")
 
 macro(add_shader source output)
@@ -21,12 +19,8 @@ macro(add_shader source output)
   list(APPEND shaders ${REN_ASSETS_OUTPUT_DIRECTORY}/${output})
 endmacro()
 
-foreach(albedo_perm ${ALBEDO_PERMUTATIONS})
-  add_shader(VertexShader.hlsl VertexShader_${albedo_perm}.spv PROFILE vs_6_0
-             DEFINES ${albedo_perm})
-  add_shader(FragmentShader.hlsl FragmentShader_${albedo_perm}.spv PROFILE
-             ps_6_0 DEFINES ${albedo_perm})
-endforeach()
+add_shader(VertexShader.hlsl VertexShader.spv PROFILE vs_6_0)
+add_shader(FragmentShader.hlsl FragmentShader.spv PROFILE ps_6_0)
 
 add_shader(
   VertexShader.hlsl
