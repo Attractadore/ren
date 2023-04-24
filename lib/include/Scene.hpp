@@ -78,23 +78,25 @@ public:
   Scene(Device &device);
 
   RenMesh create_mesh(const RenMeshDesc &desc);
-  void destroy_mesh(RenMesh mesh);
 
-  RenMaterial create_material(const RenMaterialDesc &desc);
-  void destroy_material(RenMaterial material);
+  void create_materials(std::span<const RenMaterialDesc> descs,
+                        RenMaterial *out);
 
   void set_camera(const RenCameraDesc &desc) noexcept;
 
-  auto create_model(const RenMeshInstDesc &desc) -> RenMeshInst;
-  void destroy_model(RenMeshInst model);
+  void create_mesh_insts(std::span<const RenMeshInstDesc> desc,
+                         RenMeshInst *out);
+  void destroy_mesh_insts(std::span<const RenMeshInst> mesh_insts) noexcept;
 
-  void set_model_matrix(RenMeshInst model, const glm::mat4 &matrix) noexcept;
+  void set_mesh_inst_matrices(std::span<const RenMeshInst> mesh_insts,
+                              std::span<const RenMatrix4x4> matrices) noexcept;
 
-  auto get_dir_light(RenDirLight dir_light) const -> const hlsl::DirLight &;
-  auto get_dir_light(RenDirLight dir_light) -> hlsl::DirLight &;
+  void create_dir_lights(std::span<const RenDirLightDesc> descs,
+                         RenDirLight *out);
+  void destroy_dir_lights(std::span<const RenDirLight> lights) noexcept;
 
-  auto create_dir_light(const RenDirLightDesc &desc) -> RenDirLight;
-  void destroy_dir_light(RenDirLight light);
+  void config_dir_lights(std::span<const RenDirLight> lights,
+                         std::span<const RenDirLightDesc> descs);
 
   void draw(Swapchain &swapchain);
 };

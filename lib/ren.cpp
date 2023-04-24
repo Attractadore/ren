@@ -304,13 +304,8 @@ RenResult ren_CreateMaterials(RenScene *scene, const RenMaterialDesc *descs,
   assert(scene);
   assert(descs);
   assert(materials);
-  return lippincott([&] {
-    // TODO: implement this loop as a scene method
-    ranges::transform(std::span(descs, count), materials,
-                      [&](const RenMaterialDesc &desc) {
-                        return scene->create_material(desc);
-                      });
-  });
+  return lippincott(
+      [&] { scene->create_materials(std::span(descs, count), materials); });
 }
 
 RenResult ren_CreateMeshInsts(RenScene *scene, const RenMeshInstDesc *descs,
@@ -318,22 +313,15 @@ RenResult ren_CreateMeshInsts(RenScene *scene, const RenMeshInstDesc *descs,
   assert(scene);
   assert(descs);
   assert(mesh_insts);
-  return lippincott([&] {
-    // TODO: implement this loop as a scene method
-    ranges::transform(
-        std::span(descs, count), mesh_insts,
-        [&](const RenMeshInstDesc &desc) { return scene->create_model(desc); });
-  });
+  return lippincott(
+      [&] { scene->create_mesh_insts(std::span(descs, count), mesh_insts); });
 }
 
 void ren_DestroyMeshInsts(RenScene *scene, const RenMeshInst *mesh_insts,
                           size_t count) {
   assert(scene);
   assert(mesh_insts);
-  // TODO: implement this loop as a scene method
-  for (auto mesh_inst : std::span(mesh_insts, count)) {
-    scene->destroy_model(mesh_inst);
-  }
+  scene->destroy_mesh_insts(std::span(mesh_insts, count));
 }
 
 void ren_SetMeshInstMatrices(RenScene *scene, const RenMeshInst *mesh_insts,
@@ -341,10 +329,8 @@ void ren_SetMeshInstMatrices(RenScene *scene, const RenMeshInst *mesh_insts,
   assert(scene);
   assert(mesh_insts);
   assert(matrices);
-  for (const auto &[mesh_inst, matrix] : ranges::views::zip(
-           std::span(mesh_insts, count), std::span(matrices, count))) {
-    scene->set_model_matrix(mesh_inst, glm::make_mat4(matrix[0]));
-  }
+  scene->set_mesh_inst_matrices(std::span(mesh_insts, count),
+                                std::span(matrices, count));
 }
 
 RenResult ren_CreateDirLights(RenScene *scene, const RenDirLightDesc *descs,
@@ -352,23 +338,15 @@ RenResult ren_CreateDirLights(RenScene *scene, const RenDirLightDesc *descs,
   assert(scene);
   assert(descs);
   assert(lights);
-  return lippincott([&] {
-    // TODO: implement this loop as a scene method
-    ranges::transform(std::span(descs, count), lights,
-                      [&](const RenDirLightDesc &desc) {
-                        return scene->create_dir_light(desc);
-                      });
-  });
+  return lippincott(
+      [&] { scene->create_dir_lights(std::span(descs, count), lights); });
 }
 
 void ren_DestroyDirLights(RenScene *scene, const RenDirLight *lights,
                           size_t count) {
   assert(scene);
   assert(lights);
-  // TODO: implement this loop as a scene method
-  for (auto light : std::span(lights, count)) {
-    scene->destroy_dir_light(light);
-  }
+  scene->destroy_dir_lights(std::span(lights, count));
 }
 
 RenResult ren_ConfigDirLights(RenScene *scene, const RenDirLight *lights,
@@ -377,15 +355,7 @@ RenResult ren_ConfigDirLights(RenScene *scene, const RenDirLight *lights,
   assert(lights);
   assert(descs);
   return lippincott([&] {
-    // TODO: implement this loop as a scene method
-    for (const auto &[light, desc] : ranges::views::zip(
-             std::span(lights, count), std::span(descs, count))) {
-      scene->get_dir_light(light) = {
-          .color = glm::make_vec3(desc.color),
-          .illuminance = desc.illuminance,
-          .origin = glm::make_vec3(desc.origin),
-      };
-    }
+    scene->config_dir_lights(std::span(lights, count), std::span(descs, count));
   });
 }
 

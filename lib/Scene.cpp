@@ -89,13 +89,15 @@ static auto get_model(MeshInstanceMap &m_models, RenMeshInst model) -> Model & {
   return m_models[key];
 }
 
-auto Scene::get_dir_light(RenDirLight light) const -> const hlsl::DirLight & {
+auto get_dir_light(const DirLightMap &m_dir_lights, RenDirLight light)
+    -> const hlsl::DirLight & {
   auto key = get_dir_light_key(light);
   assert(m_dir_lights.contains(key) && "Unknown light");
   return m_dir_lights[key];
 }
 
-auto Scene::get_dir_light(RenDirLight light) -> hlsl::DirLight & {
+auto get_dir_light(DirLightMap &m_dir_lights, RenDirLight light)
+    -> hlsl::DirLight & {
   auto key = get_dir_light_key(light);
   assert(m_dir_lights.contains(key) && "Unknown light");
   return m_dir_lights[key];
@@ -301,27 +303,30 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   return get_mesh_id(key);
 }
 
-RenMaterial Scene::create_material(const RenMaterialDesc &desc) {
-  auto pipeline = [&] {
-    auto pipeline = m_compiler.get_material_pipeline(desc);
-    if (pipeline) {
-      return *pipeline;
-    }
-    return m_compiler.compile_material_pipeline({
-        .material = desc,
-        .layout = m_pipeline_layout,
-        .rt_format = m_rt_format,
-        .depth_format = m_depth_format,
+void Scene::create_materials(std::span<const RenMaterialDesc> descs,
+                             RenMaterial *out) {
+  for (const auto &desc : descs) {
+    auto pipeline = [&] {
+      auto pipeline = m_compiler.get_material_pipeline(desc);
+      if (pipeline) {
+        return *pipeline;
+      }
+      return m_compiler.compile_material_pipeline({
+          .material = desc,
+          .layout = m_pipeline_layout,
+          .rt_format = m_rt_format,
+          .depth_format = m_depth_format,
+      });
+    }();
+
+    auto &&[key, material] = m_materials.emplace(Material{
+        .pipeline = std::move(pipeline),
+        .index =
+            m_material_allocator.allocate(*m_device, desc, m_resource_uploader),
     });
-  }();
 
-  auto &&[key, material] = m_materials.emplace(Material{
-      .pipeline = std::move(pipeline),
-      .index =
-          m_material_allocator.allocate(*m_device, desc, m_resource_uploader),
-  });
-
-  return get_material_id(key);
+    *(out++) = get_material_id(key);
+  }
 }
 
 void Scene::set_camera(const RenCameraDesc &desc) noexcept {
@@ -342,37 +347,60 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
   m_viewport_height = desc.height;
 }
 
-auto Scene::create_model(const RenMeshInstDesc &desc) -> RenMeshInst {
-  return get_model_id(m_models.insert({
-      .mesh = desc.mesh,
-      .material = desc.material,
-      .matrix = glm::mat4(1.0f),
-  }));
+void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
+                              RenMeshInst *out) {
+  for (const auto &desc : descs) {
+    *(out++) = get_model_id(m_models.insert({
+        .mesh = desc.mesh,
+        .material = desc.material,
+        .matrix = glm::mat4(1.0f),
+    }));
+  }
 }
 
-void Scene::destroy_model(RenMeshInst model) {
-  m_models.erase(get_model_key(model));
+void Scene::destroy_mesh_insts(
+    std::span<const RenMeshInst> mesh_insts) noexcept {
+  for (auto mesh_inst : mesh_insts)
+    m_models.erase(get_model_key(mesh_inst));
 }
 
-void Scene::set_model_matrix(RenMeshInst model,
-                             const glm::mat4 &matrix) noexcept {
-  get_model(m_models, model).matrix = matrix;
+void Scene::set_mesh_inst_matrices(
+    std::span<const RenMeshInst> mesh_insts,
+    std::span<const RenMatrix4x4> matrices) noexcept {
+  for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices))
+    get_model(m_models, mesh_inst).matrix = glm::make_mat4(matrix[0]);
 }
 
-auto Scene::create_dir_light(const RenDirLightDesc &desc) -> RenDirLight {
+void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
+                              RenDirLight *out) {
   assert(m_dir_lights.size() < hlsl::MAX_DIRECTIONAL_LIGHTS);
-  auto key = m_dir_lights.insert(hlsl::DirLight{
-      .color = glm::make_vec3(desc.color),
-      .illuminance = desc.illuminance,
-      .origin = glm::make_vec3(desc.origin),
-  });
-  return get_dir_light_id(key);
+  for (const auto &desc : descs) {
+    auto key = m_dir_lights.insert(hlsl::DirLight{
+        .color = glm::make_vec3(desc.color),
+        .illuminance = desc.illuminance,
+        .origin = glm::make_vec3(desc.origin),
+    });
+    *(out++) = get_dir_light_id(key);
+  }
 };
 
-void Scene::destroy_dir_light(RenDirLight light) {
-  auto key = get_dir_light_key(light);
-  assert(m_dir_lights.contains(key) && "Unknown light");
-  m_dir_lights.erase(key);
+void Scene::destroy_dir_lights(std::span<const RenDirLight> lights) noexcept {
+  for (auto light : lights) {
+    auto key = get_dir_light_key(light);
+    assert(m_dir_lights.contains(key) && "Unknown light");
+    m_dir_lights.erase(key);
+  }
+}
+
+void Scene::config_dir_lights(std::span<const RenDirLight> lights,
+                              std::span<const RenDirLightDesc> descs) {
+  for (const auto &[light, desc] : zip(lights, descs)) {
+    get_dir_light(m_dir_lights, light) = {
+        .color = glm::make_vec3(desc.color),
+        .illuminance = desc.illuminance,
+        .origin = glm::make_vec3(desc.origin),
+    };
+  }
 }
 
 struct ColorPassConfig {
