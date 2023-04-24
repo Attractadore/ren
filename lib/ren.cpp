@@ -303,7 +303,6 @@ RenResult ren_CreateMaterials(RenScene *scene, const RenMaterialDesc *descs,
                               size_t count, RenMaterial *materials) {
   assert(scene);
   assert(descs);
-  assert(count > 0);
   assert(materials);
   return lippincott([&] {
     // TODO: implement this loop as a scene method
@@ -318,7 +317,6 @@ RenResult ren_CreateMeshInsts(RenScene *scene, const RenMeshInstDesc *descs,
                               size_t count, RenMeshInst *mesh_insts) {
   assert(scene);
   assert(descs);
-  assert(count > 0);
   assert(mesh_insts);
   return lippincott([&] {
     // TODO: implement this loop as a scene method
@@ -332,7 +330,6 @@ void ren_DestroyMeshInsts(RenScene *scene, const RenMeshInst *mesh_insts,
                           size_t count) {
   assert(scene);
   assert(mesh_insts);
-  assert(count > 0);
   // TODO: implement this loop as a scene method
   for (auto mesh_inst : std::span(mesh_insts, count)) {
     scene->destroy_model(mesh_inst);
@@ -344,10 +341,9 @@ void ren_SetMeshInstMatrices(RenScene *scene, const RenMeshInst *mesh_insts,
   assert(scene);
   assert(mesh_insts);
   assert(matrices);
-  assert(count > 0);
   for (const auto &[mesh_inst, matrix] : ranges::views::zip(
            std::span(mesh_insts, count), std::span(matrices, count))) {
-    scene->set_model_matrix(mesh_inst, glm::make_mat4(matrix));
+    scene->set_model_matrix(mesh_inst, glm::make_mat4(matrix[0]));
   }
 }
 
@@ -355,7 +351,6 @@ RenResult ren_CreateDirLights(RenScene *scene, const RenDirLightDesc *descs,
                               size_t count, RenDirLight *lights) {
   assert(scene);
   assert(descs);
-  assert(count > 0);
   assert(lights);
   return lippincott([&] {
     // TODO: implement this loop as a scene method
@@ -370,7 +365,6 @@ void ren_DestroyDirLights(RenScene *scene, const RenDirLight *lights,
                           size_t count) {
   assert(scene);
   assert(lights);
-  assert(count > 0);
   // TODO: implement this loop as a scene method
   for (auto light : std::span(lights, count)) {
     scene->destroy_dir_light(light);
@@ -382,7 +376,6 @@ RenResult ren_ConfigDirLights(RenScene *scene, const RenDirLight *lights,
   assert(scene);
   assert(lights);
   assert(descs);
-  assert(count > 0);
   return lippincott([&] {
     // TODO: implement this loop as a scene method
     for (const auto &[light, desc] : ranges::views::zip(
@@ -400,7 +393,6 @@ RenResult ren_CreatePointLights(RenScene *scene, const RenPointLightDesc *descs,
                                 size_t count, RenPointLight *lights) {
   assert(scene);
   assert(descs);
-  assert(count > 0);
   assert(lights);
   return lippincott([&] { ren::todo("Point light are not implemented!"); });
 }
@@ -409,7 +401,6 @@ void ren_DestroyPointLights(RenScene *scene, const RenPointLight *lights,
                             size_t count) {
   assert(scene);
   assert(lights);
-  assert(count > 0);
   ren::todo("Point light are not implemented!");
 }
 
@@ -418,7 +409,6 @@ RenResult ren_ConfigPointLights(RenScene *scene, const RenPointLight *lights,
   assert(scene);
   assert(lights);
   assert(descs);
-  assert(count > 0);
   return lippincott([&] { ren::todo("Point light are not implemented!"); });
 }
 
@@ -426,7 +416,6 @@ RenResult ren_CreateSpotLights(RenScene *scene, const RenSpotLightDesc *descs,
                                size_t count, RenSpotLight *lights) {
   assert(scene);
   assert(descs);
-  assert(count > 0);
   assert(lights);
   return lippincott([&] { ren::todo("Spot light are not implemented!"); });
 }
@@ -435,7 +424,6 @@ void ren_DestroySpotLights(RenScene *scene, const RenSpotLight *lights,
                            size_t count) {
   assert(scene);
   assert(lights);
-  assert(count > 0);
   ren::todo("Spot light are not implemented!");
 }
 
@@ -444,7 +432,6 @@ RenResult ren_ConfigSpotLights(RenScene *scene, const RenSpotLight *lights,
   assert(scene);
   assert(lights);
   assert(descs);
-  assert(count > 0);
   return lippincott([&] { ren::todo("Spot light are not implemented!"); });
 }
 }

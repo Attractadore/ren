@@ -45,10 +45,12 @@ extern "C" {
 #endif
 
 // Define a bool type compatible with C and C++
-typedef enum {
+typedef int RenBool;
+
+enum {
   REN_TRUE = 0,
   REN_FALSE = 1,
-} RenBool;
+};
 
 typedef enum {
   REN_SUCCESS = 0,
@@ -61,7 +63,7 @@ typedef enum {
 typedef float RenVector2[2];
 typedef float RenVector3[3];
 typedef float RenVector4[4];
-typedef float RenMatrix4x4[4 * 4];
+typedef float RenMatrix4x4[4][4];
 
 typedef struct RenDevice RenDevice;
 typedef struct RenSwapchain RenSwapchain;
@@ -120,36 +122,38 @@ typedef enum {
 /// Scene camera.
 typedef struct RenCameraDesc {
   /// The type of projection to use.
-  RenProjection projection;
+  RenProjection projection REN_DEFAULT_VALUE(REN_PROJECTION_PERSPECTIVE);
   union {
     /// Perspective camera projection.
-    RenPerspectiveProjection perspective;
+    RenPerspectiveProjection perspective REN_DEFAULT_VALUE({
+        .hfov = 90.0f / M_PIf,
+    });
     /// Orthographic camera projection.
     RenOrthographicProjection orthographic;
   };
   /// Horizontal rendering resolution.
-  unsigned width;
+  unsigned width REN_DEFAULT_VALUE(1280);
   /// Vertical rendering resolution.
-  unsigned height;
+  unsigned height REN_DEFAULT_VALUE(720);
   /// Relative aperture in f-stops. Affects exposure when it's calculated based
   /// on camera parameters and depth of field.
-  float aperture;
+  float aperture REN_DEFAULT_VALUE(16.0f);
   /// Shutter time in seconds. Affects exposure when it's calculated based
   /// on camera parameters and motion blur.
-  float shutter_time;
+  float shutter_time REN_DEFAULT_VALUE(1.0f / 400.0f);
   /// Sensitivity in ISO. Ignored if exposure is not calculated based on camera
   /// parameters.
-  float iso;
+  float iso REN_DEFAULT_VALUE(400.0f);
   /// Exposure compensation in f-stops.
-  float exposure_compensation;
+  float exposure_compensation REN_DEFAULT_VALUE(0.0f);
   /// Exposure computation mode.
-  RenExposureMode exposure_mode;
+  RenExposureMode exposure_mode REN_DEFAULT_VALUE(REN_EXPOSURE_MODE_CAMERA);
   /// This camera's position in the world.
-  RenVector3 position;
+  RenVector3 position REN_DEFAULT_VALUE({0.0f, 0.0f, 0.0f});
   /// Where this camera is facing.
-  RenVector3 forward;
+  RenVector3 forward REN_DEFAULT_VALUE({1.0f, 0.0f, 0.0f});
   /// This camera's up vector.
-  RenVector3 up;
+  RenVector3 up REN_DEFAULT_VALUE({0.0f, 0.0f, 1.0f});
 
 #ifdef __cplusplus
 public:
@@ -297,46 +301,23 @@ typedef struct RenImageDesc {
   unsigned height;
   /// This image's data.
   const void *data;
-
-#ifdef __cplusplus
-public:
-  auto set_data(std::span<const std::byte> data) noexcept -> RenImageDesc & {
-    this->data = data.data();
-    return *this;
-  }
-
-  auto set_data(std::span<const char> data) noexcept -> RenImageDesc & {
-    this->data = data.data();
-    return *this;
-  }
-
-  auto set_data(std::span<const unsigned char> data) noexcept
-      -> RenImageDesc & {
-    this->data = data.data();
-    return *this;
-  }
-#endif
 } RenImageDesc;
 
 typedef enum {
-  REN_FILTER_NONE = 0,
   REN_FILTER_NEAREST,
   REN_FILTER_LINEAR,
-  REN_MIN_FILTER_NEAREST_MIPMAP_NEAREST,
-  REN_MIN_FILTER_LINEAR_MIPMAP_NEAREST,
-  REN_MIN_FILTER_NEAREST_MIPMAP_LINEAR,
-  REN_MIN_FILTER_LINEAR_MIPMAP_LINEAR,
 } RenFilter;
 
 typedef enum {
-  REN_WRAPPING_MODE_CLAMP_TO_EDGE,
-  REN_WRAPPING_MODE_MIRRORED_REPEAT,
   REN_WRAPPING_MODE_REPEAT,
+  REN_WRAPPING_MODE_MIRRORED_REPEAT,
+  REN_WRAPPING_MODE_CLAMP_TO_EDGE,
 } RenWrappingMode;
 
 typedef struct {
   RenFilter mag_filter;
   RenFilter min_filter;
+  RenFilter mipmap_filter;
   RenWrappingMode wrap_u;
   RenWrappingMode wrap_v;
 } RenSampler;
@@ -399,13 +380,13 @@ typedef struct RenMaterialDesc {
   /// Optional: emissive texture.
   RenTexture emissive_tex;
   /// Alpha mode.
-  RenAlphaMode alpha_mode;
+  RenAlphaMode alpha_mode REN_DEFAULT_VALUE(REN_ALPHA_MODE_OPAQUE);
   /// Optional: alpha value below which objects are not rendered when
   /// alpha mode is set to mask.
   float alpha_cutoff;
   /// Whether this material is thin and must be rendered from both sides at
   /// once.
-  RenBool double_sided;
+  RenBool double_sided REN_DEFAULT_VALUE(false);
 } RenMaterialDesc;
 
 /// The parameters of the mesh instance to be created.
