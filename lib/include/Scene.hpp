@@ -20,6 +20,11 @@ namespace ren {
 
 class Swapchain;
 
+using MeshMap = SlotMap<Mesh>;
+using MaterialMap = SlotMap<Material>;
+using MeshInstanceMap = SlotMap<Model>;
+using DirLightMap = SlotMap<hlsl::DirLight>;
+
 class Scene {
   Device *m_device;
 
@@ -35,10 +40,8 @@ class Scene {
 
   Camera m_camera;
 
-  using MeshMap = SlotMap<Mesh>;
   MeshMap m_meshes;
 
-  using MaterialMap = SlotMap<Material>;
   MaterialMap m_materials;
 
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -49,7 +52,6 @@ public:
   unsigned m_viewport_height = 720;
 
 private:
-  using MeshInstanceMap = SlotMap<Model>;
   MeshInstanceMap m_models;
 
   PipelineLayout m_pipeline_layout = {};
@@ -59,54 +61,9 @@ private:
 
   BufferRef m_materials_buffer = {};
 
-  using DirLightMap = SlotMap<hlsl::DirLight>;
   DirLightMap m_dir_lights;
 
 private:
-  static MeshMap::key_type get_mesh_key(RenMesh mesh) {
-    return std::bit_cast<MeshMap::key_type>(mesh - 1);
-  }
-
-  static RenMesh get_mesh_id(MeshMap::key_type mesh_key) {
-    return std::bit_cast<RenMesh>(std::bit_cast<RenMesh>(mesh_key) + 1);
-  }
-
-  auto get_mesh(RenMesh mesh) const -> const Mesh &;
-  auto get_mesh(RenMesh mesh) -> Mesh &;
-
-  static MaterialMap::key_type get_material_key(RenMaterial material) {
-    return std::bit_cast<MaterialMap::key_type>(material - 1);
-  }
-
-  static RenMaterial get_material_id(MaterialMap::key_type material_key) {
-    return std::bit_cast<RenMaterial>(std::bit_cast<RenMaterial>(material_key) +
-                                      1);
-  }
-
-  auto get_material(RenMaterial material) const -> const Material &;
-  auto get_material(RenMaterial material) -> Material &;
-
-  static MeshInstanceMap::key_type get_model_key(RenMeshInst model) {
-    return std::bit_cast<MeshInstanceMap::key_type>(model - 1);
-  }
-
-  static RenMeshInst get_model_id(MeshInstanceMap::key_type model_key) {
-    return std::bit_cast<RenMeshInst>(std::bit_cast<RenMeshInst>(model_key) +
-                                      1);
-  }
-
-  auto get_model(RenMeshInst model) const -> const Model &;
-  auto get_model(RenMeshInst model) -> Model &;
-
-  static DirLightMap::key_type get_dir_light_key(RenDirLight dir_light) {
-    return std::bit_cast<DirLightMap::key_type>(dir_light - 1);
-  }
-
-  static RenDirLight get_dir_light_id(DirLightMap::key_type dir_light_key) {
-    return std::bit_cast<RenDirLight>(
-        std::bit_cast<RenDirLight>(dir_light_key) + 1);
-  }
-
   DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
     return m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET];
   }
