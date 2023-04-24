@@ -109,8 +109,6 @@ Scene::Scene(Device &device)
 
       m_resource_uploader(*m_device),
 
-      m_material_allocator(*m_device),
-
       m_compiler(*m_device, &m_asset_loader),
 
       m_descriptor_set_allocator(*m_device),
@@ -233,7 +231,8 @@ RenMaterial Scene::create_material(const RenMaterialDesc &desc) {
 
   auto &&[key, material] = m_materials.emplace(Material{
       .pipeline = std::move(pipeline),
-      .index = m_material_allocator.allocate(desc, m_resource_uploader),
+      .index =
+          m_material_allocator.allocate(*m_device, desc, m_resource_uploader),
   });
 
   return get_material_id(key);
