@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use glam::{Mat4, Vec3, Vec3A, Vec4};
 use ren::{
-    CameraDesc, CameraProjection, DirectionalLightDesc, MaterialColor, MaterialDesc, MaterialKey,
-    MeshDesc, MeshInstanceDesc, MeshInstanceKey, MeshKey, Scene,
+    CameraDesc, CameraProjection, DirLightDesc, MaterialDesc, MaterialID, MeshDesc, MeshID,
+    MeshInstDesc, MeshInstID, Scene,
 };
 use std::{
     collections::HashMap,
@@ -17,16 +17,10 @@ use winit::event::{DeviceEvent, WindowEvent};
 
 mod utils;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct MaterialInfo {
-    index: Option<usize>,
-    mesh_info: MeshInfo,
-}
-
 struct SceneWalkContext<'a> {
     scene: &'a mut Scene,
     buffers: Vec<gltf::buffer::Data>,
-    materials: HashMap<MaterialInfo, MaterialKey>,
+    materials: HashMap<Option<usize>, MaterialID>,
 }
 
 impl<'a> SceneWalkContext<'a> {
@@ -142,15 +136,7 @@ fn get_accessor_data(accessor: &gltf::Accessor, ctx: &SceneWalkContext) -> Resul
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct MeshInfo {
-    colors: bool,
-}
-
-fn create_mesh(
-    primitive: &gltf::Primitive,
-    ctx: &mut SceneWalkContext,
-) -> Result<(MeshKey, MeshInfo)> {
+fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Result<MeshID> {
     let mode = primitive.mode();
     if !matches!(mode, gltf::mesh::Mode::Triangles) {
         bail!("Unsupported mesh mode {:?}", mode);
@@ -188,11 +174,11 @@ fn create_mesh(
         .transpose()?;
     let colors = colors
         .map(|colors| match colors {
-            Data::Float3(colors) => Ok(colors),
-            Data::Float4(colors) => {
-                eprintln!("Warn: converting colors from float4 to float3");
-                Ok(colors.into_iter().map(|vec4| vec4.truncate()).collect())
+            Data::Float3(colors) => {
+                eprintln!("Warn: converting colors from float3 to float4");
+                Ok(colors.into_iter().map(|vec3| vec3.extend(1.0)).collect())
             }
+            Data::Float4(colors) => Ok(colors),
             format => bail!("Unsupported mesh color format: {format}"),
         })
         .transpose()?;
@@ -219,27 +205,24 @@ fn create_mesh(
             slice::from_raw_parts(positions.as_ptr() as *const [f32; 3], positions.len())
         },
         normals: unsafe {
-            slice::from_raw_parts(normals.as_ptr() as *const [f32; 3], normals.len())
+            Some(slice::from_raw_parts(
+                normals.as_ptr() as *const [f32; 3],
+                normals.len(),
+            ))
         },
         colors: colors.as_ref().map(|colors| unsafe {
-            slice::from_raw_parts(colors.as_ptr() as *const [f32; 3], colors.len())
+            slice::from_raw_parts(colors.as_ptr() as *const [f32; 4], colors.len())
         }),
-        indices: &indices,
+        indices: Some(&indices),
+        ..Default::default()
     };
 
-    let key = ctx.scene.create_mesh(&desc)?;
-    let info = MeshInfo {
-        colors: colors.is_some(),
-    };
+    let mesh = ctx.scene.create_mesh(&desc)?;
 
-    Ok((key, info))
+    Ok(mesh)
 }
 
-fn create_material(
-    material: &gltf::Material,
-    info: &MaterialInfo,
-    ctx: &mut SceneWalkContext,
-) -> Result<MaterialKey> {
+fn create_material(material: &gltf::Material, ctx: &mut SceneWalkContext) -> Result<MaterialID> {
     let material_name = material.index().map_or_else(
         || "default material".to_string(),
         |index| format!("material #{index}"),
@@ -268,18 +251,6 @@ fn create_material(
         eprintln!("Warn: ignoring metallic / roughness texture for {material_name}",);
     }
 
-    let desc = MaterialDesc {
-        color: if info.mesh_info.colors {
-            MaterialColor::Vertex
-        } else {
-            MaterialColor::Const
-        },
-
-        base_color: pbr.base_color_factor(),
-        metallic: pbr.metallic_factor(),
-        roughness: pbr.roughness_factor(),
-    };
-
     if material.normal_texture().is_some() {
         eprintln!("Warn: ignoring normal texture for {material_name}",);
     }
@@ -297,32 +268,38 @@ fn create_material(
         eprintln!("Warn: ignoring emissive factor {emissive_factor:?} for {material_name}");
     }
 
-    let key = ctx.scene.create_material(&desc)?;
+    let desc = MaterialDesc {
+        base_color_factor: pbr.base_color_factor(),
+        metallic_factor: pbr.metallic_factor(),
+        roughness_factor: pbr.roughness_factor(),
+        ..Default::default()
+    };
 
-    Ok(key)
+    let material = ctx.scene.create_material(&desc)?;
+
+    Ok(material)
 }
 
 fn create_mesh_instance(
     primitive: &gltf::Primitive,
     ctx: &mut SceneWalkContext,
-) -> Result<MeshInstanceKey> {
-    let (mesh, mesh_info) = create_mesh(primitive, ctx)?;
+) -> Result<MeshInstID> {
+    let mesh = create_mesh(primitive, ctx)?;
     let material = primitive.material();
-    let material_info = MaterialInfo {
-        index: material.index(),
-        mesh_info,
-    };
-    let material = if let Some(material) = ctx.materials.get(&material_info) {
+    let index = material.index();
+    let material = if let Some(material) = ctx.materials.get(&index) {
         *material
     } else {
-        let material = create_material(&material, &material_info, ctx)?;
-        ctx.materials.insert(material_info, material);
+        let material = create_material(&material, ctx)?;
+        ctx.materials.insert(index, material);
         material
     };
-    let key = ctx
-        .scene
-        .create_mesh_instance(&MeshInstanceDesc { mesh, material })?;
-    Ok(key)
+    let mesh_inst = ctx.scene.create_mesh_inst(&MeshInstDesc {
+        mesh,
+        material,
+        casts_shadows: true,
+    })?;
+    Ok(mesh_inst)
 }
 
 fn visit_node(node: &gltf::Node, matrix: Mat4, ctx: &mut SceneWalkContext) -> Result<()> {
@@ -331,13 +308,12 @@ fn visit_node(node: &gltf::Node, matrix: Mat4, ctx: &mut SceneWalkContext) -> Re
         if mesh.weights().is_some() {
             eprintln!("Warn: ignoring mesh morph target weights");
         }
-        let matrix = matrix.to_cols_array();
+        let matrix = matrix.to_cols_array_2d();
         for primitive in mesh.primitives() {
             let mesh_instance = create_mesh_instance(&primitive, ctx);
             match mesh_instance {
-                Ok(mesh_instance) => {
-                    let mesh_instance = ctx.scene.get_mesh_instance_mut(mesh_instance).unwrap();
-                    mesh_instance.set_matrix(&matrix);
+                Ok(mesh_inst) => {
+                    ctx.scene.set_mesh_inst_matrix(mesh_inst, &matrix);
                 }
                 Err(err) => eprintln!(
                     "Error: failed to create mesh for primitive #{}: {err}",
@@ -374,7 +350,7 @@ impl ViewGLTFApp {
         for node in gltf_scene.nodes() {
             visit_node(&node, matrix, &mut ctx)?;
         }
-        scene.create_directional_light(&DirectionalLightDesc {
+        scene.create_dir_light(&DirLightDesc {
             color: [1.0, 1.0, 1.0],
             illuminance: 1.0,
             origin: [0.0, 0.0, 1.0],
@@ -411,7 +387,7 @@ impl App for ViewGLTFApp {
         Ok(())
     }
 
-    fn handle_frame(&mut self, scene: &mut Scene) -> Result<()> {
+    fn handle_frame(&mut self, scene: &mut Scene, width: u32, height: u32) -> Result<()> {
         let now = Instant::now();
         let dt = now - self.time;
         self.time = now;
@@ -421,10 +397,13 @@ impl App for ViewGLTFApp {
             projection: CameraProjection::Perspective {
                 hfov: 90f32.to_radians(),
             },
+            width,
+            height,
             position: self.controller.camera.position.to_array(),
             forward: self.controller.camera.get_forward_vector().to_array(),
             up: self.controller.camera.get_up_vector().to_array(),
-        });
+            ..Default::default()
+        })?;
         Ok(())
     }
 }

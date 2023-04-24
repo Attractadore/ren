@@ -5,7 +5,7 @@ use ash::{
 };
 use glam::{Quat, Vec3, Vec3A};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use ren::{Device, Scene, SceneKey, SwapchainKey};
+use ren::{CameraDesc, Device, Scene, SceneKey, SwapchainKey};
 use std::{ffi::CStr, mem};
 use winit::{
     dpi::PhysicalSize,
@@ -42,7 +42,12 @@ pub trait App {
         Ok(())
     }
 
-    fn handle_frame(&mut self, _scene: &mut Scene) -> Result<()> {
+    fn handle_frame(&mut self, scene: &mut Scene, width: u32, height: u32) -> Result<()> {
+        scene.set_camera(&CameraDesc {
+            width,
+            height,
+            ..Default::default()
+        })?;
         Ok(())
     }
 }
@@ -109,7 +114,11 @@ impl AppBase {
         device
             .get_scene_mut(scene)
             .unwrap()
-            .set_viewport(width, height)?;
+            .set_camera(&CameraDesc {
+                width,
+                height,
+                ..Default::default()
+            })?;
 
         Ok(Self {
             event_loop,
@@ -144,17 +153,22 @@ impl AppBase {
                                 .get_swapchain_mut(self.swapchain)
                                 .unwrap()
                                 .set_size(width, height);
-                            self.device
-                                .get_scene_mut(self.scene)
-                                .unwrap()
-                                .set_viewport(width, height)?;
                         }
                         _ => app.handle_window_event(&event)?,
                     },
                     Event::DeviceEvent { event, .. } => app.handle_device_event(&event)?,
                     Event::MainEventsCleared => {
-                        app.handle_frame(self.device.get_scene_mut(self.scene).unwrap())?;
-                        self.device.draw_scene(self.scene, self.swapchain)?;
+                        let (width, height) = self
+                            .device
+                            .get_swapchain(self.swapchain)
+                            .unwrap()
+                            .get_size();
+                        app.handle_frame(
+                            self.device.get_scene_mut(self.scene).unwrap(),
+                            width,
+                            height,
+                        )?;
+                        self.device.draw(self.scene, self.swapchain)?;
                     }
                     _ => (),
                 };

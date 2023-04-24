@@ -1,7 +1,6 @@
 use anyhow::Result;
 use ren::{
-    CameraDesc, CameraProjection, DirectionalLightDesc, MaterialColor, MaterialDesc, MeshDesc,
-    MeshInstanceDesc, Scene,
+    CameraDesc, CameraProjection, DirLightDesc, MaterialDesc, MeshDesc, MeshInstDesc, Scene,
 };
 use utils::{App, AppBase};
 
@@ -19,27 +18,29 @@ impl DrawTriangleApp {
 
         let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
 
-        let colors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-
         let indices = [0, 1, 2];
 
         let mesh = scene.create_mesh(&MeshDesc {
             positions: &positions,
-            normals: &normals,
-            colors: Some(&colors),
-            indices: &indices,
+            normals: Some(&normals),
+            indices: Some(&indices),
+            ..Default::default()
         })?;
 
         let material = scene.create_material(&MaterialDesc {
-            color: MaterialColor::Const,
-            base_color: [1.0, 0.0, 0.0, 1.0],
-            metallic: 0.0,
-            roughness: 1.0,
+            base_color_factor: [1.0, 0.0, 0.0, 1.0],
+            metallic_factor: 0.0,
+            roughness_factor: 1.0,
+            ..Default::default()
         })?;
 
-        scene.create_mesh_instance(&MeshInstanceDesc { mesh, material })?;
+        scene.create_mesh_inst(&MeshInstDesc {
+            mesh,
+            material,
+            casts_shadows: false,
+        })?;
 
-        scene.create_directional_light(&DirectionalLightDesc {
+        scene.create_dir_light(&DirLightDesc {
             color: [1.0, 1.0, 1.0],
             illuminance: 1.0,
             origin: [0.0, 0.0, 1.0],
@@ -54,13 +55,16 @@ impl App for DrawTriangleApp {
         "Draw Triangle"
     }
 
-    fn handle_frame(&mut self, scene: &mut Scene) -> Result<()> {
+    fn handle_frame(&mut self, scene: &mut Scene, width: u32, height: u32) -> Result<()> {
         scene.set_camera(&CameraDesc {
             projection: CameraProjection::Orthographic { width: 2.0 },
+            width,
+            height,
             position: [0.0, 0.0, 1.0],
             forward: [0.0, 0.0, -1.0],
             up: [0.0, 1.0, 0.0],
-        });
+            ..Default::default()
+        })?;
         Ok(())
     }
 }
