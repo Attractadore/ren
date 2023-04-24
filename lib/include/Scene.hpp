@@ -22,7 +22,7 @@ class Swapchain;
 
 using MeshMap = SlotMap<Mesh>;
 using MaterialMap = SlotMap<Material>;
-using MeshInstanceMap = SlotMap<Model>;
+using MeshInstanceMap = SlotMap<MeshInst>;
 using DirLightMap = SlotMap<hlsl::DirLight>;
 
 class Scene {
@@ -52,7 +52,7 @@ public:
   unsigned m_viewport_height = 720;
 
 private:
-  MeshInstanceMap m_models;
+  MeshInstanceMap m_mesh_insts;
 
   PipelineLayout m_pipeline_layout = {};
 

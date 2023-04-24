@@ -33,12 +33,13 @@ static RenMaterial get_material_id(MaterialMap::key_type material_key) {
                                     1);
 }
 
-static MeshInstanceMap::key_type get_model_key(RenMeshInst model) {
-  return std::bit_cast<MeshInstanceMap::key_type>(model - 1);
+static MeshInstanceMap::key_type get_mesh_inst_key(RenMeshInst mesh_inst) {
+  return std::bit_cast<MeshInstanceMap::key_type>(mesh_inst - 1);
 }
 
-static RenMeshInst get_model_id(MeshInstanceMap::key_type model_key) {
-  return std::bit_cast<RenMeshInst>(std::bit_cast<RenMeshInst>(model_key) + 1);
+static RenMeshInst get_mesh_inst_id(MeshInstanceMap::key_type mesh_inst_key) {
+  return std::bit_cast<RenMeshInst>(std::bit_cast<RenMeshInst>(mesh_inst_key) +
+                                    1);
 }
 
 static DirLightMap::key_type get_dir_light_key(RenDirLight dir_light) {
@@ -76,17 +77,18 @@ static auto get_material(MaterialMap &m_materials, RenMaterial material)
   return m_materials[key];
 }
 
-static auto get_model(const MeshInstanceMap &m_models, RenMeshInst model)
-    -> const Model & {
-  auto key = get_model_key(model);
-  assert(m_models.contains(key) && "Unknown model");
-  return m_models[key];
+static auto get_mesh_inst(const MeshInstanceMap &mesh_insts,
+                          RenMeshInst mesh_inst) -> const MeshInst & {
+  auto key = get_mesh_inst_key(mesh_inst);
+  assert(mesh_insts.contains(key) && "Unknown mesh instance");
+  return mesh_insts[key];
 }
 
-static auto get_model(MeshInstanceMap &m_models, RenMeshInst model) -> Model & {
-  auto key = get_model_key(model);
-  assert(m_models.contains(key) && "Unknown model");
-  return m_models[key];
+static auto get_mesh_inst(MeshInstanceMap &mesh_insts, RenMeshInst mesh_inst)
+    -> MeshInst & {
+  auto key = get_mesh_inst_key(mesh_inst);
+  assert(mesh_insts.contains(key) && "Unknown mesh instance");
+  return mesh_insts[key];
 }
 
 auto get_dir_light(const DirLightMap &m_dir_lights, RenDirLight light)
@@ -350,7 +352,7 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
 void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
   for (const auto &desc : descs) {
-    *(out++) = get_model_id(m_models.insert({
+    *(out++) = get_mesh_inst_id(m_mesh_insts.insert({
         .mesh = desc.mesh,
         .material = desc.material,
         .matrix = glm::mat4(1.0f),
@@ -361,14 +363,14 @@ void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
 void Scene::destroy_mesh_insts(
     std::span<const RenMeshInst> mesh_insts) noexcept {
   for (auto mesh_inst : mesh_insts)
-    m_models.erase(get_model_key(mesh_inst));
+    m_mesh_insts.erase(get_mesh_inst_key(mesh_inst));
 }
 
 void Scene::set_mesh_inst_matrices(
     std::span<const RenMeshInst> mesh_insts,
     std::span<const RenMatrix4x4> matrices) noexcept {
   for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices))
-    get_model(m_models, mesh_inst).matrix = glm::make_mat4(matrix[0]);
+    get_mesh_inst(m_mesh_insts, mesh_inst).matrix = glm::make_mat4(matrix[0]);
 }
 
 void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
@@ -415,7 +417,7 @@ struct ColorPassConfig {
 
   const SlotMap<Mesh> *meshes;
   const SlotMap<Material> *materials;
-  const SlotMap<Model> *models;
+  const SlotMap<MeshInst> *mesh_insts;
   const SlotMap<hlsl::DirLight> *dir_lights;
 
   VkDescriptorSet persistent_set;
@@ -447,7 +449,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
   [&] {
-    if (cfg.models->empty()) {
+    if (cfg.mesh_insts->empty()) {
       return;
     }
 
@@ -462,14 +464,14 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         rg.get_buffer(rcs.transform_matrix_buffer);
     auto *transform_matrices =
         transform_matrix_buffer.map<hlsl::model_matrix_t>();
-    ranges::transform(cfg.models->values(), transform_matrices,
-                      [](const auto &model) { return model.matrix; });
+    ranges::transform(cfg.mesh_insts->values(), transform_matrices,
+                      [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
     BufferRef normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
     auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
     ranges::transform(
-        cfg.models->values(), normal_matrices, [](const auto &model) {
-          return glm::transpose(glm::inverse(glm::mat3(model.matrix)));
+        cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
+          return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
         });
 
     BufferRef lights_buffer = rg.get_buffer(rcs.lights_buffer);
@@ -524,10 +526,10 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
                              cfg.pipeline_layout, 0, descriptor_sets);
 
-    for (const auto &&[i, model] :
-         ranges::views::enumerate(cfg.models->values())) {
-      const auto &mesh = get_mesh(*cfg.meshes, model.mesh);
-      const auto &material = get_material(*cfg.materials, model.material);
+    for (const auto &&[i, mesh_inst] :
+         ranges::views::enumerate(cfg.mesh_insts->values())) {
+      const auto &mesh = get_mesh(*cfg.meshes, mesh_inst.mesh);
+      const auto &material = get_material(*cfg.materials, mesh_inst.material);
 
       cmd.bind_graphics_pipeline(material.pipeline);
 
@@ -603,7 +605,8 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   rcs.transform_matrix_buffer = draw.add_output(
       RGBufferDesc{
           .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::model_matrix_t) * cfg.models->size()),
+          .size =
+              unsigned(sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size()),
       },
       VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
@@ -612,7 +615,8 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   rcs.normal_matrix_buffer = draw.add_output(
       RGBufferDesc{
           .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::normal_matrix_t) * cfg.models->size()),
+          .size =
+              unsigned(sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size()),
       },
       VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
@@ -676,7 +680,7 @@ void Scene::draw(Swapchain &swapchain) {
           .eye = m_camera.position,
           .meshes = &m_meshes,
           .materials = &m_materials,
-          .models = &m_models,
+          .mesh_insts = &m_mesh_insts,
           .dir_lights = &m_dir_lights,
           .persistent_set = m_persistent_descriptor_set,
           .scene_set = m_descriptor_set_allocator.allocate(

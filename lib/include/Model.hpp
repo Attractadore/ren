@@ -5,7 +5,7 @@
 
 namespace ren {
 
-struct Model {
+struct MeshInst {
   RenMesh mesh;
   RenMaterial material;
   glm::mat4 matrix;
