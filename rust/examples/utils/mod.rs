@@ -1,35 +1,13 @@
 use anyhow::{Context, Result};
-use ash::{
-    vk::{self, Handle},
-    Entry,
-};
 use glam::{Quat, Vec3, Vec3A};
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use ren::{CameraDesc, Device, Scene, SceneKey, SwapchainKey};
-use std::{ffi::CStr, mem};
+use std::mem;
 use winit::{
     dpi::PhysicalSize,
     event::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
-
-struct Instance(ash::Instance);
-
-impl Instance {
-    fn new(entry: &Entry) -> Result<Self> {
-        let create_info = vk::InstanceCreateInfo {
-            ..Default::default()
-        };
-        Ok(Self(unsafe { entry.create_instance(&create_info, None) }?))
-    }
-}
-
-impl Drop for Instance {
-    fn drop(&mut self) {
-        unsafe { self.0.destroy_instance(None) }
-    }
-}
 
 pub trait App {
     fn get_title(&self) -> &str;
@@ -54,8 +32,6 @@ pub trait App {
 
 pub struct AppBase {
     device: Device,
-    // Need to keep Vulkan DLL loaded as long as Device is alive
-    _vk: Entry,
     window: Window,
     event_loop: EventLoop<()>,
     swapchain: SwapchainKey,
@@ -70,44 +46,19 @@ impl AppBase {
             .with_inner_size(PhysicalSize::<u32>::from((1280, 720)))
             .build(&event_loop)?;
 
-        let vk = unsafe { Entry::load()? };
-
-        let instance = Instance::new(&vk)?;
-
-        let adapter = *unsafe { instance.0.enumerate_physical_devices()? }
-            .first()
+        let mut device = Device::builder(&window)?;
+        let adapter = device
+            .adapters()
+            .next()
             .context("Failed to find a Vulkan device")?;
-        let props = unsafe { instance.0.get_physical_device_properties(adapter) };
+        device.select_adapter(Some(adapter));
         println!(
             "Running on {}",
-            unsafe { CStr::from_ptr(props.device_name.as_ptr()) }.to_str()?
+            device.get_adapter(adapter).unwrap().get_name()
         );
+        let mut device = device.build()?;
 
-        let mut device = unsafe {
-            Device::new(&ren::DeviceDesc {
-                proc: mem::transmute(vk.static_fn().get_instance_proc_addr),
-                instance_extensions: ash_window::enumerate_required_extensions(
-                    event_loop.raw_display_handle(),
-                )?,
-                pipeline_cache_uuid: props.pipeline_cache_uuid,
-            })?
-        };
-
-        let swapchain = unsafe {
-            device.create_swapchain(|instance| {
-                let instance =
-                    ash::Instance::load(vk.static_fn(), vk::Instance::from_raw(instance as u64));
-                ash_window::create_surface(
-                    &vk,
-                    &instance,
-                    window.raw_display_handle(),
-                    window.raw_window_handle(),
-                    None,
-                )
-                .map(|surface| surface.as_raw() as ren::vk::SurfaceKHR)
-                .map_err(|result| ren::vk::Result(result.as_raw()))
-            })?
-        };
+        let swapchain = device.create_swapchain(&window)?;
 
         let scene = device.create_scene()?;
         let (width, height) = device.get_swapchain(swapchain).unwrap().get_size();
@@ -123,7 +74,6 @@ impl AppBase {
         Ok(Self {
             event_loop,
             window,
-            _vk: vk,
             device,
             swapchain,
             scene,

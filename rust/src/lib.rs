@@ -1,12 +1,17 @@
+use ash::vk::Handle;
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use slotmap::{new_key_type, SlotMap};
 use std::{
     cmp,
-    ffi::{c_char, c_void},
+    ffi::{c_char, c_void, CStr},
     mem, ptr,
 };
 use thiserror::Error;
 
 mod ffi;
+pub use ffi::VkPresentModeKHR;
 use ffi::{
     RenAlphaMode, RenCameraDesc, RenCameraDesc__bindgen_ty_1, RenDevice, RenDeviceDesc,
     RenDirLight, RenDirLightDesc, RenExposureMode, RenFilter, RenFormat, RenImage, RenImageDesc,
@@ -26,20 +31,9 @@ use ffi::{
     REN_WRAPPING_MODE_MIRRORED_REPEAT, REN_WRAPPING_MODE_REPEAT,
 };
 
+const UUID_SIZE: usize = 16;
+
 mod handle;
-
-pub mod vk {
-    use crate::ffi;
-
-    pub use ffi::PFN_vkGetInstanceProcAddr as GetInstanceProcAddr;
-    pub use ffi::VkInstance as Instance;
-    pub use ffi::VkPresentModeKHR as PresentModeKHR;
-    pub use ffi::VkResult as Result;
-    pub use ffi::VkSurfaceKHR as SurfaceKHR;
-    pub use ffi::VK_ERROR_UNKNOWN as ERROR_UNKNOWN;
-
-    pub const UUID_SIZE: usize = 16;
-}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -55,6 +49,24 @@ pub enum Error {
     Unknown,
 }
 
+impl From<ash::vk::Result> for Error {
+    fn from(_: ash::vk::Result) -> Self {
+        Self::Vulkan
+    }
+}
+
+impl From<ash::LoadingError> for Error {
+    fn from(_: ash::LoadingError) -> Self {
+        Self::System
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(_: std::str::Utf8Error) -> Self {
+        Self::System
+    }
+}
+
 impl Error {
     fn new(result: RenResult) -> Result<(), Self> {
         match result {
@@ -64,6 +76,90 @@ impl Error {
             REN_RUNTIME_ERROR => Err(Error::Runtime),
             _ => Err(Error::Unknown),
         }
+    }
+}
+
+new_key_type!(
+    pub struct AdapterKey;
+);
+
+pub struct Adapter {
+    name: String,
+    pipeline_cache_uuid: [u8; UUID_SIZE],
+}
+
+impl Adapter {
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+pub struct DeviceBuilder {
+    vk: ash::Entry,
+    display: RawDisplayHandle,
+    extensions: &'static [*const c_char],
+    adapters: SlotMap<AdapterKey, Adapter>,
+    adapter: Option<AdapterKey>,
+}
+
+struct Instance(ash::Instance);
+
+impl Instance {
+    fn new(entry: &ash::Entry) -> Result<Self, Error> {
+        let create_info = ash::vk::InstanceCreateInfo {
+            ..Default::default()
+        };
+        Ok(Self(unsafe { entry.create_instance(&create_info, None) }?))
+    }
+}
+
+impl Drop for Instance {
+    fn drop(&mut self) {
+        unsafe { self.0.destroy_instance(None) }
+    }
+}
+
+impl DeviceBuilder {
+    pub fn adapters(&self) -> impl Iterator<Item = AdapterKey> + '_ {
+        self.adapters.keys()
+    }
+
+    pub fn get_adapter(&self, key: AdapterKey) -> Option<&Adapter> {
+        self.adapters.get(key)
+    }
+
+    pub fn select_adapter(&mut self, adapter: Option<AdapterKey>) -> &mut Self {
+        self.adapter = adapter;
+        self
+    }
+
+    pub fn build(self) -> Result<Device, Error> {
+        let adapter = self
+            .adapter
+            .map_or_else(
+                || self.adapters.values().next(),
+                |adapter| self.adapters.get(adapter),
+            )
+            .unwrap();
+        Ok(Device {
+            handle: unsafe {
+                let mut device = ptr::null_mut();
+                Error::new(ffi::ren_vk_CreateDevice(
+                    &RenDeviceDesc {
+                        proc_: mem::transmute(self.vk.static_fn().get_instance_proc_addr),
+                        num_instance_extensions: self.extensions.len() as u32,
+                        instance_extensions: self.extensions.as_ptr(),
+                        pipeline_cache_uuid: adapter.pipeline_cache_uuid,
+                    },
+                    &mut device,
+                ))?;
+                HDevice::new(device)
+            },
+            swapchains: SlotMap::with_key(),
+            scenes: SlotMap::with_key(),
+            vk: self.vk,
+            display: self.display,
+        })
     }
 }
 
@@ -79,78 +175,91 @@ pub struct Device {
     swapchains: SlotMap<SwapchainKey, Swapchain>,
     scenes: SlotMap<SceneKey, Scene>,
     handle: HDevice,
-}
-
-#[derive(Clone, Copy)]
-pub struct DeviceDesc<'a> {
-    pub proc: vk::GetInstanceProcAddr,
-    pub instance_extensions: &'a [*const c_char],
-    pub pipeline_cache_uuid: [u8; vk::UUID_SIZE],
-}
-
-impl<'a> From<DeviceDesc<'a>> for RenDeviceDesc {
-    fn from(desc: DeviceDesc<'a>) -> Self {
-        RenDeviceDesc {
-            proc_: desc.proc,
-            num_instance_extensions: desc.instance_extensions.len() as u32,
-            instance_extensions: desc.instance_extensions.as_ptr(),
-            pipeline_cache_uuid: desc.pipeline_cache_uuid,
-        }
-    }
+    // Unload Vulkan after dropping device
+    vk: ash::Entry,
+    display: RawDisplayHandle,
 }
 
 impl Device {
-    /// # Safety
-    ///
-    /// Requires valid vkGetInstanceProcAddr, VkInstance and VkPhysicalDevice
-    pub unsafe fn new(desc: &DeviceDesc) -> Result<Self, Error> {
-        Ok(Self {
-            handle: {
-                assert_ne!(desc.proc, None);
-                let mut device = ptr::null_mut();
-                Error::new(ffi::ren_vk_CreateDevice(&(*desc).into(), &mut device))?;
-                HDevice::new(device)
-            },
-            swapchains: SlotMap::with_key(),
-            scenes: SlotMap::with_key(),
+    pub fn builder<Display>(display: &Display) -> Result<DeviceBuilder, Error>
+    where
+        Display: HasRawDisplayHandle,
+    {
+        let vk = unsafe { ash::Entry::load()? };
+        let display = display.raw_display_handle();
+        let extensions = ash_window::enumerate_required_extensions(display)?;
+
+        let instance = Instance::new(&vk)?;
+        let mut adapters = SlotMap::with_key();
+        for device in unsafe { instance.0.enumerate_physical_devices()? } {
+            let props = unsafe { instance.0.get_physical_device_properties(device) };
+            let name = unsafe { CStr::from_ptr(props.device_name.as_ptr()) }
+                .to_str()?
+                .to_string();
+            adapters.insert(Adapter {
+                name,
+                pipeline_cache_uuid: props.pipeline_cache_uuid,
+            });
+        }
+        if adapters.is_empty() {
+            return Err(Error::System);
+        }
+
+        Ok(DeviceBuilder {
+            vk,
+            display,
+            extensions,
+            adapters,
+            adapter: None,
         })
     }
 
-    /// # Safety
-    ///
-    /// Requires valid VkSurfaceKHR
-    pub unsafe fn create_swapchain<F>(&mut self, create_surface: F) -> Result<SwapchainKey, Error>
+    pub fn create_swapchain<Window>(&mut self, window: &Window) -> Result<SwapchainKey, Error>
     where
-        F: FnOnce(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
+        Window: HasRawDisplayHandle + HasRawWindowHandle,
     {
-        unsafe extern "C" fn helper<F>(
-            instance: vk::Instance,
+        struct Data<'a> {
+            vk: &'a ash::Entry,
+            display: RawDisplayHandle,
+            window: RawWindowHandle,
+        }
+
+        unsafe extern "C" fn create_surface(
+            instance: ffi::VkInstance,
             usrptr: *mut c_void,
-            p_surface: *mut vk::SurfaceKHR,
-        ) -> vk::Result
-        where
-            F: FnOnce(vk::Instance) -> Result<vk::SurfaceKHR, vk::Result>,
-        {
-            let f = &mut *(usrptr as *mut Option<F>);
-            if let Some(f) = f.take() {
-                match f(instance) {
-                    Ok(surface) => {
-                        *p_surface = surface;
-                        ffi::VK_SUCCESS
-                    }
-                    Err(result) => result,
+            p_surface: *mut ffi::VkSurfaceKHR,
+        ) -> ffi::VkResult {
+            let Data {
+                vk,
+                display,
+                window,
+            } = &*(usrptr as *const Data);
+            let instance =
+                ash::Instance::load(vk.static_fn(), ash::vk::Instance::from_raw(instance as u64));
+            let surface = ash_window::create_surface(vk, &instance, *display, *window, None);
+            match surface {
+                Ok(surface) => {
+                    *p_surface = surface.as_raw() as ffi::VkSurfaceKHR;
+                    ffi::VK_SUCCESS
                 }
-            } else {
-                ffi::VK_ERROR_UNKNOWN
+                Err(result) => ffi::VkResult(result.as_raw()),
             }
         }
 
-        let mut create_surface = Some(create_surface);
-        Ok(self.swapchains.insert(Swapchain::new(
-            self.handle.get_mut(),
-            Some(helper::<F>),
-            &mut create_surface as *mut Option<F> as *mut c_void,
-        )?))
+        assert_eq!(self.display, window.raw_display_handle());
+        let mut data = Data {
+            vk: &self.vk,
+            display: self.display,
+            window: window.raw_window_handle(),
+        };
+
+        Ok(self.swapchains.insert(unsafe {
+            Swapchain::new(
+                self.handle.get_mut(),
+                Some(create_surface),
+                &mut data as *mut Data as *mut c_void,
+            )?
+        }))
     }
 
     pub fn destroy_swapchain(&mut self, key: SwapchainKey) {
@@ -242,15 +351,11 @@ impl Swapchain {
         unsafe { ffi::ren_SetSwapchainSize(self.handle.get_mut(), width, height) }
     }
 
-    pub fn get_surface(&self) -> vk::SurfaceKHR {
-        unsafe { ffi::ren_vk_GetSwapchainSurface(self.handle.get()) }
-    }
-
-    pub fn get_present_mode(&self) -> vk::PresentModeKHR {
+    pub fn get_present_mode(&self) -> VkPresentModeKHR {
         unsafe { ffi::ren_vk_GetSwapchainPresentMode(self.handle.get()) }
     }
 
-    pub fn set_present_mode(&mut self, present_mode: vk::PresentModeKHR) -> Result<(), Error> {
+    pub fn set_present_mode(&mut self, present_mode: VkPresentModeKHR) -> Result<(), Error> {
         unsafe {
             Error::new(ffi::ren_vk_SetSwapchainPresentMode(
                 self.handle.get_mut(),
