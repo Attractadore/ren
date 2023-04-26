@@ -126,7 +126,7 @@ typedef struct RenCameraDesc {
   union {
     /// Perspective camera projection.
     RenPerspectiveProjection perspective REN_DEFAULT_VALUE({
-        .hfov = 90.0f / M_PIf,
+        .hfov = 90.0f / 3.1415f,
     });
     /// Orthographic camera projection.
     RenOrthographicProjection orthographic;
@@ -286,9 +286,24 @@ public:
 } RenMeshDesc;
 
 typedef enum {
-  REN_FORMAT_UNKNOWN = 0,
-  REN_FORMAT_RGBA8_SRGB,
+  REN_FORMAT_R8_UNORM,
+  REN_FORMAT_R8_SRGB,
+  REN_FORMAT_RG8_UNORM,
+  REN_FORMAT_RG8_SRGB,
+  REN_FORMAT_RGB8_UNORM,
   REN_FORMAT_RGB8_SRGB,
+  REN_FORMAT_RGBA8_UNORM,
+  REN_FORMAT_RGBA8_SRGB,
+  REN_FORMAT_R16_UNORM,
+  REN_FORMAT_R16_SRGB,
+  REN_FORMAT_RG16_UNORM,
+  REN_FORMAT_RG16_SRGB,
+  REN_FORMAT_RGB16_UNORM,
+  REN_FORMAT_RGB16_SRGB,
+  REN_FORMAT_RGBA16_UNORM,
+  REN_FORMAT_RGBA16_SRGB,
+  REN_FORMAT_RGB32_SFLOAT,
+  REN_FORMAT_RGBA32_SFLOAT,
 } RenFormat;
 
 /// The parameters of the image to be created.
