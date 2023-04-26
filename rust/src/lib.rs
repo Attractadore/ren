@@ -6,7 +6,7 @@ use slotmap::{new_key_type, SlotMap};
 use std::{
     cmp,
     ffi::{c_char, c_void, CStr},
-    mem, ptr,
+    mem, ptr, str,
 };
 use thiserror::Error;
 
@@ -21,21 +21,25 @@ use ffi::{
     RenTextureChannelSwizzle, RenTonemappingACES, RenTonemappingDesc,
     RenTonemappingDesc__bindgen_ty_1, RenWrappingMode, REN_ALPHA_MODE_BLEND, REN_ALPHA_MODE_MASK,
     REN_ALPHA_MODE_OPAQUE, REN_EXPOSURE_MODE_AUTOMATIC, REN_EXPOSURE_MODE_CAMERA,
-    REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_RGB8_SRGB, REN_FORMAT_RGBA8_SRGB,
-    REN_NULL_DIR_LIGHT, REN_NULL_IMAGE, REN_NULL_MATERIAL, REN_NULL_MESH, REN_NULL_MESH_INST,
-    REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR, REN_SUCCESS,
-    REN_SYSTEM_ERROR, REN_TEXTURE_CHANNEL_A, REN_TEXTURE_CHANNEL_B, REN_TEXTURE_CHANNEL_G,
-    REN_TEXTURE_CHANNEL_IDENTITY, REN_TEXTURE_CHANNEL_ONE, REN_TEXTURE_CHANNEL_R,
-    REN_TEXTURE_CHANNEL_ZERO, REN_TONEMAPPING_OPERATOR_ACES, REN_TONEMAPPING_OPERATOR_NONE,
-    REN_TONEMAPPING_OPERATOR_REINHARD, REN_VULKAN_ERROR, REN_WRAPPING_MODE_CLAMP_TO_EDGE,
-    REN_WRAPPING_MODE_MIRRORED_REPEAT, REN_WRAPPING_MODE_REPEAT,
+    REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_R16_SRGB, REN_FORMAT_R16_UNORM,
+    REN_FORMAT_R8_SRGB, REN_FORMAT_R8_UNORM, REN_FORMAT_RG16_SRGB, REN_FORMAT_RG16_UNORM,
+    REN_FORMAT_RG8_SRGB, REN_FORMAT_RG8_UNORM, REN_FORMAT_RGB16_SRGB, REN_FORMAT_RGB16_UNORM,
+    REN_FORMAT_RGB32_SFLOAT, REN_FORMAT_RGB8_SRGB, REN_FORMAT_RGB8_UNORM, REN_FORMAT_RGBA16_SRGB,
+    REN_FORMAT_RGBA16_UNORM, REN_FORMAT_RGBA32_SFLOAT, REN_FORMAT_RGBA8_SRGB,
+    REN_FORMAT_RGBA8_UNORM, REN_NULL_DIR_LIGHT, REN_NULL_IMAGE, REN_NULL_MATERIAL, REN_NULL_MESH,
+    REN_NULL_MESH_INST, REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR,
+    REN_SUCCESS, REN_SYSTEM_ERROR, REN_TEXTURE_CHANNEL_A, REN_TEXTURE_CHANNEL_B,
+    REN_TEXTURE_CHANNEL_G, REN_TEXTURE_CHANNEL_IDENTITY, REN_TEXTURE_CHANNEL_ONE,
+    REN_TEXTURE_CHANNEL_R, REN_TEXTURE_CHANNEL_ZERO, REN_TONEMAPPING_OPERATOR_ACES,
+    REN_TONEMAPPING_OPERATOR_NONE, REN_TONEMAPPING_OPERATOR_REINHARD, REN_VULKAN_ERROR,
+    REN_WRAPPING_MODE_CLAMP_TO_EDGE, REN_WRAPPING_MODE_MIRRORED_REPEAT, REN_WRAPPING_MODE_REPEAT,
 };
 
 const UUID_SIZE: usize = 16;
 
 mod handle;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Error {
     #[error("Vulkan runtime error")]
     Vulkan,
@@ -61,8 +65,8 @@ impl From<ash::LoadingError> for Error {
     }
 }
 
-impl From<std::str::Utf8Error> for Error {
-    fn from(_: std::str::Utf8Error) -> Self {
+impl From<str::Utf8Error> for Error {
+    fn from(_: str::Utf8Error) -> Self {
         Self::System
     }
 }
@@ -365,10 +369,18 @@ impl Swapchain {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CameraProjection {
     Perspective { hfov: f32 },
     Orthographic { width: f32 },
+}
+
+impl Default for CameraProjection {
+    fn default() -> Self {
+        Self::Perspective {
+            hfov: 90.0f32.to_radians(),
+        }
+    }
 }
 
 impl From<CameraProjection> for RenProjection {
@@ -393,7 +405,7 @@ impl From<CameraProjection> for RenCameraDesc__bindgen_ty_1 {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExposureMode {
     Camera { iso: f32 },
     Automatic,
@@ -408,7 +420,7 @@ impl From<ExposureMode> for RenExposureMode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CameraDesc {
     pub projection: CameraProjection,
     pub width: u32,
@@ -426,9 +438,7 @@ impl Default for CameraDesc {
     fn default() -> Self {
         let iso = 400.0;
         Self {
-            projection: CameraProjection::Perspective {
-                hfov: 90.0f32.to_radians(),
-            },
+            projection: Default::default(),
             width: 1280,
             height: 720,
             aperture: 16.0,
@@ -464,7 +474,7 @@ impl From<CameraDesc> for RenCameraDesc {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TonemappingOperator {
     None,
     Reinhard,
@@ -491,10 +501,10 @@ impl From<TonemappingOperator> for RenTonemappingDesc {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MeshID(RenMesh);
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct MeshDesc<'a> {
     pub positions: &'a [[f32; 3]],
     pub colors: Option<&'a [[f32; 4]]>,
@@ -528,39 +538,167 @@ impl<'a> From<MeshDesc<'a>> for RenMeshDesc {
     }
 }
 
-mod detail {
-    #[derive(Clone, Copy)]
-    #[allow(non_camel_case_types)]
-    pub enum Format {
-        RGBA8_SRGB,
-        RGB8_SRGB,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ComponentFormat {
+    R8,
+    RG8,
+    RGB8,
+    RGBA8,
+    R16,
+    RG16,
+    RGB16,
+    RGBA16,
+    RGB32,
+    RGBA32,
+}
+
+impl ComponentFormat {
+    fn size(&self) -> usize {
+        match self {
+            ComponentFormat::R8 => 1 * 1,
+            ComponentFormat::RG8 => 1 * 2,
+            ComponentFormat::RGB8 => 1 * 3,
+            ComponentFormat::RGBA8 => 1 * 4,
+            ComponentFormat::R16 => 2,
+            ComponentFormat::RG16 => 2 * 2,
+            ComponentFormat::RGB16 => 2 * 3,
+            ComponentFormat::RGBA16 => 2 * 4,
+            ComponentFormat::RGB32 => 4 * 3,
+            ComponentFormat::RGBA32 => 4 * 4,
+        }
     }
 }
 
-pub use detail::Format;
+impl From<Format> for ComponentFormat {
+    fn from(format: Format) -> Self {
+        match format {
+            Format::R8_UNORM | Format::R8_SRGB => ComponentFormat::R8,
+            Format::RG8_UNORM | Format::RG8_SRGB => ComponentFormat::RG8,
+            Format::RGB8_UNORM | Format::RGB8_SRGB => ComponentFormat::RGB8,
+            Format::RGBA8_UNORM | Format::RGBA8_SRGB => ComponentFormat::RGBA8,
+            Format::R16_UNORM | Format::R16_SRGB => ComponentFormat::R16,
+            Format::RG16_UNORM | Format::RG16_SRGB => ComponentFormat::RG16,
+            Format::RGB16_UNORM | Format::RGB16_SRGB => ComponentFormat::RGB16,
+            Format::RGBA16_UNORM | Format::RGBA16_SRGB => ComponentFormat::RGBA16,
+            Format::RGB32_SFLOAT => ComponentFormat::RGB32,
+            Format::RGBA32_SFLOAT => ComponentFormat::RGBA32,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NumericFormat {
+    UNORM,
+    SRGB,
+    SFLOAT,
+}
+
+impl From<Format> for NumericFormat {
+    fn from(format: Format) -> Self {
+        match format {
+            Format::R8_UNORM
+            | Format::RG8_UNORM
+            | Format::RGB8_UNORM
+            | Format::RGBA8_UNORM
+            | Format::R16_UNORM
+            | Format::RG16_UNORM
+            | Format::RGB16_UNORM
+            | Format::RGBA16_UNORM => NumericFormat::UNORM,
+            Format::R8_SRGB
+            | Format::RG8_SRGB
+            | Format::RGB8_SRGB
+            | Format::RGBA8_SRGB
+            | Format::R16_SRGB
+            | Format::RG16_SRGB
+            | Format::RGB16_SRGB
+            | Format::RGBA16_SRGB => NumericFormat::SRGB,
+            Format::RGB32_SFLOAT | Format::RGBA32_SFLOAT => NumericFormat::SFLOAT,
+        }
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Format {
+    R8_UNORM,
+    R8_SRGB,
+    RG8_UNORM,
+    RG8_SRGB,
+    RGB8_UNORM,
+    RGB8_SRGB,
+    RGBA8_UNORM,
+    RGBA8_SRGB,
+    R16_UNORM,
+    R16_SRGB,
+    RG16_UNORM,
+    RG16_SRGB,
+    RGB16_UNORM,
+    RGB16_SRGB,
+    RGBA16_UNORM,
+    RGBA16_SRGB,
+    RGB32_SFLOAT,
+    RGBA32_SFLOAT,
+}
 
 impl Format {
-    pub fn size(&self) -> usize {
-        match self {
-            Format::RGBA8_SRGB => 4,
-            Format::RGB8_SRGB => 3,
+    pub fn new(component_format: ComponentFormat, numeric_format: NumericFormat) -> Option<Self> {
+        match (component_format, numeric_format) {
+            (ComponentFormat::R8, NumericFormat::UNORM) => Some(Format::R8_UNORM),
+            (ComponentFormat::R8, NumericFormat::SRGB) => Some(Format::R8_SRGB),
+            (ComponentFormat::RG8, NumericFormat::UNORM) => Some(Format::RG8_UNORM),
+            (ComponentFormat::RG8, NumericFormat::SRGB) => Some(Format::RG8_SRGB),
+            (ComponentFormat::RGB8, NumericFormat::UNORM) => Some(Format::RGB8_UNORM),
+            (ComponentFormat::RGB8, NumericFormat::SRGB) => Some(Format::RGB8_SRGB),
+            (ComponentFormat::RGBA8, NumericFormat::UNORM) => Some(Format::RGBA8_UNORM),
+            (ComponentFormat::RGBA8, NumericFormat::SRGB) => Some(Format::RGBA8_SRGB),
+            (ComponentFormat::R16, NumericFormat::UNORM) => Some(Format::R16_UNORM),
+            (ComponentFormat::R16, NumericFormat::SRGB) => Some(Format::R16_SRGB),
+            (ComponentFormat::RG16, NumericFormat::UNORM) => Some(Format::RG16_UNORM),
+            (ComponentFormat::RG16, NumericFormat::SRGB) => Some(Format::RG16_SRGB),
+            (ComponentFormat::RGB16, NumericFormat::UNORM) => Some(Format::RGB16_UNORM),
+            (ComponentFormat::RGB16, NumericFormat::SRGB) => Some(Format::RGB16_SRGB),
+            (ComponentFormat::RGBA16, NumericFormat::UNORM) => Some(Format::RGBA16_UNORM),
+            (ComponentFormat::RGBA16, NumericFormat::SRGB) => Some(Format::RGBA16_SRGB),
+            (ComponentFormat::RGB32, NumericFormat::SFLOAT) => Some(Format::RGB32_SFLOAT),
+            (ComponentFormat::RGBA32, NumericFormat::SFLOAT) => Some(Format::RGBA32_SFLOAT),
+            _ => None,
         }
+    }
+
+    pub fn size(&self) -> usize {
+        ComponentFormat::from(*self).size()
     }
 }
 
 impl From<Format> for RenFormat {
     fn from(format: Format) -> Self {
         match format {
-            Format::RGBA8_SRGB => REN_FORMAT_RGBA8_SRGB,
+            Format::R8_UNORM => REN_FORMAT_R8_UNORM,
+            Format::R8_SRGB => REN_FORMAT_R8_SRGB,
+            Format::RG8_UNORM => REN_FORMAT_RG8_UNORM,
+            Format::RG8_SRGB => REN_FORMAT_RG8_SRGB,
+            Format::RGB8_UNORM => REN_FORMAT_RGB8_UNORM,
             Format::RGB8_SRGB => REN_FORMAT_RGB8_SRGB,
+            Format::RGBA8_UNORM => REN_FORMAT_RGBA8_UNORM,
+            Format::RGBA8_SRGB => REN_FORMAT_RGBA8_SRGB,
+            Format::R16_UNORM => REN_FORMAT_R16_UNORM,
+            Format::R16_SRGB => REN_FORMAT_R16_SRGB,
+            Format::RG16_UNORM => REN_FORMAT_RG16_UNORM,
+            Format::RG16_SRGB => REN_FORMAT_RG16_SRGB,
+            Format::RGB16_UNORM => REN_FORMAT_RGB16_UNORM,
+            Format::RGB16_SRGB => REN_FORMAT_RGB16_SRGB,
+            Format::RGBA16_UNORM => REN_FORMAT_RGBA16_UNORM,
+            Format::RGBA16_SRGB => REN_FORMAT_RGBA16_SRGB,
+            Format::RGB32_SFLOAT => REN_FORMAT_RGB32_SFLOAT,
+            Format::RGBA32_SFLOAT => REN_FORMAT_RGBA32_SFLOAT,
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ImageID(RenImage);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ImageDesc<'a> {
     pub format: Format,
     pub width: u32,
@@ -579,9 +717,10 @@ impl<'a> From<ImageDesc<'a>> for RenImageDesc {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Filter {
     Nearest,
+    #[default]
     Linear,
 }
 
@@ -594,8 +733,9 @@ impl From<Filter> for RenFilter {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WrappingMode {
+    #[default]
     Repeat,
     MirroredRepeat,
     ClampToEdge,
@@ -611,7 +751,7 @@ impl From<WrappingMode> for RenWrappingMode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Sampler {
     pub mag_filter: Filter,
     pub min_filter: Filter,
@@ -632,8 +772,9 @@ impl From<Sampler> for RenSampler {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureChannel {
+    #[default]
     Identity,
     Zero,
     One,
@@ -641,12 +782,6 @@ pub enum TextureChannel {
     G,
     B,
     A,
-}
-
-impl Default for TextureChannel {
-    fn default() -> Self {
-        Self::Identity
-    }
 }
 
 impl From<TextureChannel> for RenTextureChannel {
@@ -663,7 +798,7 @@ impl From<TextureChannel> for RenTextureChannel {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextureChannelSwizzle {
     pub r: TextureChannel,
     pub g: TextureChannel,
@@ -682,7 +817,7 @@ impl From<TextureChannelSwizzle> for RenTextureChannelSwizzle {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Texture {
     pub image: ImageID,
     pub sampler: Sampler,
@@ -709,22 +844,25 @@ impl From<Option<Texture>> for RenTexture {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OcculusionTexture {
     pub strength: f32,
-    pub tex: Texture,
+    pub texture: Texture,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalTexture {
     pub scale: f32,
     pub tex: Texture,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub enum AlphaMode {
+    #[default]
     Opaque,
-    Mask { cutoff: f32 },
+    Mask {
+        cutoff: f32,
+    },
     Blend,
 }
 
@@ -738,20 +876,20 @@ impl From<AlphaMode> for RenAlphaMode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MaterialID(RenMaterial);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MaterialDesc {
     pub base_color_factor: [f32; 4],
-    pub color_tex: Option<Texture>,
+    pub base_color_texture: Option<Texture>,
     pub metallic_factor: f32,
     pub roughness_factor: f32,
-    pub metallic_roughness_tex: Option<Texture>,
-    pub occlusion_tex: Option<OcculusionTexture>,
-    pub normal_tex: Option<NormalTexture>,
+    pub metallic_roughness_texture: Option<Texture>,
+    pub occlusion_texture: Option<OcculusionTexture>,
+    pub normal_texture: Option<NormalTexture>,
     pub emissive_factor: [f32; 3],
-    pub emissive_tex: Option<Texture>,
+    pub emissive_texture: Option<Texture>,
     pub alpha_mode: AlphaMode,
     pub double_sided: bool,
 }
@@ -760,15 +898,15 @@ impl Default for MaterialDesc {
     fn default() -> Self {
         Self {
             base_color_factor: [1.0, 1.0, 1.0, 1.0],
-            color_tex: None,
+            base_color_texture: None,
             metallic_factor: 1.0,
             roughness_factor: 1.0,
-            metallic_roughness_tex: None,
-            occlusion_tex: None,
-            normal_tex: None,
+            metallic_roughness_texture: None,
+            occlusion_texture: None,
+            normal_texture: None,
             emissive_factor: [0.0; 3],
-            emissive_tex: None,
-            alpha_mode: AlphaMode::Opaque,
+            emissive_texture: None,
+            alpha_mode: Default::default(),
             double_sided: false,
         }
     }
@@ -778,21 +916,23 @@ impl From<MaterialDesc> for RenMaterialDesc {
     fn from(desc: MaterialDesc) -> Self {
         RenMaterialDesc {
             base_color_factor: desc.base_color_factor,
-            color_tex: desc.color_tex.into(),
+            color_tex: desc.base_color_texture.into(),
             metallic_factor: desc.metallic_factor,
             roughness_factor: desc.roughness_factor,
-            metallic_roughness_tex: desc.metallic_roughness_tex.into(),
+            metallic_roughness_tex: desc.metallic_roughness_texture.into(),
             occlusion_strength: desc
-                .occlusion_tex
+                .occlusion_texture
                 .map_or(0.0, |occlusion_tex| occlusion_tex.strength),
             occlusion_tex: desc
-                .occlusion_tex
-                .map(|occlusion_tex| occlusion_tex.tex)
+                .occlusion_texture
+                .map(|occlusion_tex| occlusion_tex.texture)
                 .into(),
-            normal_scale: desc.normal_tex.map_or(1.0, |normal_tex| normal_tex.scale),
-            normal_tex: desc.normal_tex.map(|normal_tex| normal_tex.tex).into(),
+            normal_scale: desc
+                .normal_texture
+                .map_or(1.0, |normal_tex| normal_tex.scale),
+            normal_tex: desc.normal_texture.map(|normal_tex| normal_tex.tex).into(),
             emissive_factor: desc.emissive_factor,
-            emissive_tex: desc.emissive_tex.into(),
+            emissive_tex: desc.emissive_texture.into(),
             alpha_mode: desc.alpha_mode.into(),
             alpha_cutoff: if let AlphaMode::Mask { cutoff } = desc.alpha_mode {
                 cutoff
@@ -804,10 +944,10 @@ impl From<MaterialDesc> for RenMaterialDesc {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MeshInstID(RenMeshInst);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MeshInstDesc {
     pub mesh: MeshID,
     pub material: MaterialID,
@@ -824,14 +964,24 @@ impl From<MeshInstDesc> for RenMeshInstDesc {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DirLightID(RenDirLight);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DirLightDesc {
     pub color: [f32; 3],
     pub illuminance: f32,
     pub origin: [f32; 3],
+}
+
+impl Default for DirLightDesc {
+    fn default() -> Self {
+        Self {
+            color: [1.0, 1.0, 1.0],
+            illuminance: 1.0,
+            origin: [0.0, 0.0, 1.0],
+        }
+    }
 }
 
 impl From<DirLightDesc> for RenDirLightDesc {
