@@ -2,8 +2,9 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use glam::{Mat4, Vec3, Vec3A, Vec4};
 use ren::{
-    CameraDesc, CameraProjection, DirLightDesc, MaterialDesc, MaterialID, MeshDesc, MeshID,
-    MeshInstDesc, MeshInstID, Scene,
+    CameraDesc, CameraProjection, ComponentFormat, DirLightDesc, Filter, ImageID, MaterialDesc,
+    MaterialID, MeshDesc, MeshID, MeshInstDesc, MeshInstID, NormalTexture, NumericFormat,
+    OcculusionTexture, Sampler, Scene, Texture, WrappingMode,
 };
 use std::{
     collections::HashMap,
@@ -20,15 +21,23 @@ mod utils;
 struct SceneWalkContext<'a> {
     scene: &'a mut Scene,
     buffers: Vec<gltf::buffer::Data>,
+    images: Vec<gltf::image::Data>,
     materials: HashMap<Option<usize>, MaterialID>,
+    textures: HashMap<(usize, NumericFormat), ImageID>,
 }
 
 impl<'a> SceneWalkContext<'a> {
-    fn new(scene: &'a mut Scene, buffers: Vec<gltf::buffer::Data>) -> Self {
+    fn new(
+        scene: &'a mut Scene,
+        buffers: Vec<gltf::buffer::Data>,
+        images: Vec<gltf::image::Data>,
+    ) -> Self {
         Self {
             scene,
             buffers,
+            images,
             materials: HashMap::new(),
+            textures: HashMap::new(),
         }
     }
 }
@@ -161,7 +170,7 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
     let normals = get_data(
         primitive
             .get(&gltf::Semantic::Normals)
-            .context("Mesh doesn't contain vertices")?,
+            .context("Mesh doesn't contain normals")?,
     )?;
     let normals = match normals {
         Data::Float3(normals) => normals,
@@ -222,6 +231,133 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
     Ok(mesh)
 }
 
+fn get_image(
+    index: usize,
+    numeric_format: NumericFormat,
+    ctx: &mut SceneWalkContext,
+) -> Result<ImageID> {
+    if let Some(tex) = ctx.textures.get(&(index, numeric_format)) {
+        Ok(*tex)
+    } else {
+        let image = &ctx.images[index];
+        let format = ren::Format::new(
+            match image.format {
+                gltf::image::Format::R8 => ComponentFormat::R8,
+                gltf::image::Format::R8G8 => ComponentFormat::RG8,
+                gltf::image::Format::R8G8B8 => ComponentFormat::RGB8,
+                gltf::image::Format::R8G8B8A8 => ComponentFormat::RGBA8,
+                gltf::image::Format::R16 => ComponentFormat::R16,
+                gltf::image::Format::R16G16 => ComponentFormat::RG16,
+                gltf::image::Format::R16G16B16 => ComponentFormat::RGB16,
+                gltf::image::Format::R16G16B16A16 => ComponentFormat::RGBA16,
+                gltf::image::Format::R32G32B32FLOAT => ComponentFormat::RGB32,
+                gltf::image::Format::R32G32B32A32FLOAT => ComponentFormat::RGBA32,
+            },
+            numeric_format,
+        )
+        .context("Unsupported image format")?;
+        let image = ctx.scene.create_image(&ren::ImageDesc {
+            format,
+            width: image.width,
+            height: image.height,
+            data: &image.pixels,
+        })?;
+        ctx.textures.insert((index, numeric_format), image);
+        Ok(image)
+    }
+}
+
+fn get_wrapping_mode(mode: gltf::texture::WrappingMode) -> WrappingMode {
+    match mode {
+        gltf::texture::WrappingMode::ClampToEdge => WrappingMode::ClampToEdge,
+        gltf::texture::WrappingMode::MirroredRepeat => WrappingMode::MirroredRepeat,
+        gltf::texture::WrappingMode::Repeat => WrappingMode::Repeat,
+    }
+}
+
+fn get_sampler(sampler: &gltf::texture::Sampler) -> Result<Sampler> {
+    let mag_filter = sampler
+        .mag_filter()
+        .map(|mag_filter| match mag_filter {
+            gltf::texture::MagFilter::Nearest => Filter::Nearest,
+            gltf::texture::MagFilter::Linear => Filter::Linear,
+        })
+        .unwrap_or_default();
+    let (min_filter, mipmap_filter) = sampler
+        .min_filter()
+        .map(|min_filter| {
+            Ok(match min_filter {
+                gltf::texture::MinFilter::Nearest | gltf::texture::MinFilter::Linear => {
+                    bail!("Samplers without mipmaping are not supported")
+                }
+                gltf::texture::MinFilter::NearestMipmapNearest => {
+                    (Filter::Nearest, Filter::Nearest)
+                }
+                gltf::texture::MinFilter::LinearMipmapNearest => (Filter::Linear, Filter::Nearest),
+                gltf::texture::MinFilter::NearestMipmapLinear => (Filter::Nearest, Filter::Nearest),
+                gltf::texture::MinFilter::LinearMipmapLinear => (Filter::Linear, Filter::Linear),
+            })
+        })
+        .transpose()?
+        .unwrap_or_default();
+    Ok(Sampler {
+        mag_filter,
+        min_filter,
+        mipmap_filter,
+        wrap_u: get_wrapping_mode(sampler.wrap_s()),
+        wrap_v: get_wrapping_mode(sampler.wrap_t()),
+    })
+}
+
+fn get_texture(
+    texture: &gltf::Texture,
+    numeric_format: NumericFormat,
+    ctx: &mut SceneWalkContext,
+) -> Result<Texture> {
+    Ok(Texture {
+        image: get_image(texture.source().index(), numeric_format, ctx)?,
+        sampler: get_sampler(&texture.sampler())?,
+        swizzle: Default::default(),
+    })
+}
+
+fn get_texture_from_info(
+    info: &gltf::texture::Info,
+    numeric_format: NumericFormat,
+    ctx: &mut SceneWalkContext,
+) -> Result<Texture> {
+    if info.tex_coord() != 0 {
+        bail!("Multiple uv sets are not supported")
+    }
+    get_texture(&info.texture(), numeric_format, ctx)
+}
+
+fn get_occlusion_texture_from_info(
+    info: &gltf::material::OcclusionTexture,
+    ctx: &mut SceneWalkContext,
+) -> Result<OcculusionTexture> {
+    if info.tex_coord() != 0 {
+        bail!("Multiple uv sets are not supported")
+    }
+    Ok(OcculusionTexture {
+        strength: info.strength(),
+        texture: get_texture(&info.texture(), NumericFormat::UNORM, ctx)?,
+    })
+}
+
+fn get_normal_texture_from_info(
+    info: &gltf::material::NormalTexture,
+    ctx: &mut SceneWalkContext,
+) -> Result<NormalTexture> {
+    if info.tex_coord() != 0 {
+        bail!("Multiple uv sets are not supported")
+    }
+    Ok(NormalTexture {
+        scale: info.scale(),
+        tex: get_texture(&info.texture(), NumericFormat::UNORM, ctx)?,
+    })
+}
+
 fn create_material(material: &gltf::Material, ctx: &mut SceneWalkContext) -> Result<MaterialID> {
     let material_name = material.index().map_or_else(
         || "default material".to_string(),
@@ -241,37 +377,37 @@ fn create_material(material: &gltf::Material, ctx: &mut SceneWalkContext) -> Res
         eprintln!("Warn: ignoring double sidedness for {material_name}");
     }
 
-    let pbr = material.pbr_metallic_roughness();
-
-    if pbr.base_color_texture().is_some() {
-        eprintln!("Warn: ignoring base color texture for {material_name}");
-    }
-
-    if pbr.metallic_roughness_texture().is_some() {
-        eprintln!("Warn: ignoring metallic / roughness texture for {material_name}",);
-    }
-
-    if material.normal_texture().is_some() {
-        eprintln!("Warn: ignoring normal texture for {material_name}",);
-    }
-
-    if material.occlusion_texture().is_some() {
-        eprintln!("Warn: ignoring occlusion texture for {material_name}");
-    }
-
-    if material.emissive_texture().is_some() {
-        eprintln!("Warn: ignoring emissive texture for {material_name}",);
-    }
-
     let emissive_factor = material.emissive_factor();
     if emissive_factor != [0.0, 0.0, 0.0] {
         eprintln!("Warn: ignoring emissive factor {emissive_factor:?} for {material_name}");
     }
 
+    let pbr = material.pbr_metallic_roughness();
+
     let desc = MaterialDesc {
         base_color_factor: pbr.base_color_factor(),
+        base_color_texture: pbr
+            .base_color_texture()
+            .map(|info| get_texture_from_info(&info, NumericFormat::SRGB, ctx))
+            .transpose()?,
         metallic_factor: pbr.metallic_factor(),
         roughness_factor: pbr.roughness_factor(),
+        metallic_roughness_texture: pbr
+            .metallic_roughness_texture()
+            .map(|info| get_texture_from_info(&info, NumericFormat::UNORM, ctx))
+            .transpose()?,
+        occlusion_texture: material
+            .occlusion_texture()
+            .map(|info| get_occlusion_texture_from_info(&info, ctx))
+            .transpose()?,
+        normal_texture: material
+            .normal_texture()
+            .map(|info| get_normal_texture_from_info(&info, ctx))
+            .transpose()?,
+        emissive_texture: material
+            .emissive_texture()
+            .map(|info| get_texture_from_info(&info, NumericFormat::SRGB, ctx))
+            .transpose()?,
         ..Default::default()
     };
 
@@ -332,7 +468,7 @@ struct Config {
     desc: String,
     doc: gltf::Document,
     buffers: Vec<gltf::buffer::Data>,
-    _images: Vec<gltf::image::Data>,
+    images: Vec<gltf::image::Data>,
     scene: usize,
 }
 
@@ -345,7 +481,7 @@ struct ViewGLTFApp {
 impl ViewGLTFApp {
     fn new(config: Config, scene: &mut Scene) -> Result<Self> {
         let gltf_scene = config.doc.scenes().nth(config.scene).unwrap();
-        let mut ctx = SceneWalkContext::new(scene, config.buffers);
+        let mut ctx = SceneWalkContext::new(scene, config.buffers, config.images);
         let matrix = Mat4::IDENTITY;
         for node in gltf_scene.nodes() {
             visit_node(&node, matrix, &mut ctx)?;
@@ -447,7 +583,7 @@ fn main() -> Result<()> {
             scene: scene.index(),
             doc,
             buffers,
-            _images: images,
+            images,
         },
         base.get_scene_mut(),
     )?;
