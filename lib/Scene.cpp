@@ -4,6 +4,7 @@
 #include "Descriptors.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
+#include "Formats.inl"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.inl"
 #include "Support/Array.hpp"
@@ -305,6 +306,26 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   return get_mesh_id(key);
 }
 
+auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
+  auto image = static_cast<RenImage>(m_images.size());
+  auto format = getVkFormat(desc.format);
+  m_images.push_back(m_device->create_texture({
+      .type = VK_IMAGE_TYPE_2D,
+      .format = format,
+      .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+               VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      .width = desc.width,
+      .height = desc.height,
+      .mip_levels = get_mip_level_count(desc.width, desc.height),
+  }));
+  auto &texture = m_images[image];
+  auto image_size = desc.width * desc.height * get_format_size(format);
+  m_resource_uploader.stage_data(
+      std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
+      texture);
+  return image;
+}
+
 void Scene::create_materials(std::span<const RenMaterialDesc> descs,
                              RenMaterial *out) {
   for (const auto &desc : descs) {
@@ -424,6 +445,8 @@ struct ColorPassConfig {
   VkDescriptorSet scene_set;
 
   PipelineLayoutRef pipeline_layout;
+
+  std::span<const TextureRef> uploaded_textures;
 };
 
 struct ColorPassResources {
@@ -442,6 +465,8 @@ struct ColorPassOutput {
 static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                            const ColorPassConfig &cfg,
                            const ColorPassResources &rcs) {
+  transition_textures_to_sampled(device, cmd, cfg.uploaded_textures);
+
   cmd.begin_rendering(rg.getTexture(rcs.rt), rg.getTexture(rcs.dst));
   cmd.set_viewport({.width = float(cfg.width),
                     .height = float(cfg.height),
@@ -640,7 +665,16 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 }
 
 void Scene::draw(Swapchain &swapchain) {
-  m_resource_uploader.upload_data(m_cmd_allocator);
+  Vector<TextureRef> staged_textures(m_resource_uploader.get_staged_textures());
+  auto upload_cmd = m_resource_uploader.upload_data(m_cmd_allocator);
+  if (upload_cmd) {
+    VkCommandBufferSubmitInfo cmd_submit = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = upload_cmd->get(),
+    };
+    Submit submit = {.command_buffers = {&cmd_submit, 1}};
+    m_device->graphicsQueueSubmit(asSpan(submit));
+  }
 
   bool update_persistent_descriptor_pool = false;
   if (const auto &materials_buffer = m_material_allocator.get_buffer();
@@ -686,6 +720,7 @@ void Scene::draw(Swapchain &swapchain) {
           .scene_set = m_descriptor_set_allocator.allocate(
               get_global_descriptor_set_layout()),
           .pipeline_layout = m_pipeline_layout,
+          .uploaded_textures = staged_textures,
       });
 
   // Post-process

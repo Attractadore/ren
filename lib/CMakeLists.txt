@@ -90,6 +90,7 @@ add_library(
   CommandBuffer.cpp
   DescriptorSetAllocator.cpp
   Device.cpp
+  Formats.cpp
   MaterialPipelineCompiler.cpp
   Pipeline.cpp
   Reflection.cpp
@@ -97,6 +98,7 @@ add_library(
   ResourceUploader.cpp
   Scene.cpp
   Swapchain.cpp
+  Texture.cpp
   VMA.cpp
   ${DISPATCH_TABLE_CPP})
 target_sources(

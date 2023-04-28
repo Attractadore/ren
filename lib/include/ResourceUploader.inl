@@ -2,6 +2,7 @@
 #include "ResourceUploader.hpp"
 
 namespace ren {
+
 template <ranges::sized_range R>
 void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
                                   unsigned offset) {
@@ -35,4 +36,5 @@ void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
     }
   }
 }
+
 } // namespace ren

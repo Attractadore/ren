@@ -109,6 +109,14 @@ void CommandBuffer::copy_buffer(const BufferRef &src, const BufferRef &dst,
                           regions.data());
 }
 
+void CommandBuffer::copy_buffer_to_image(
+    const BufferRef &src, const TextureRef &dst,
+    std::span<const VkBufferImageCopy> regions) {
+  m_device->CmdCopyBufferToImage(m_cmd_buffer, src.handle, dst.handle,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                 regions.size(), regions.data());
+}
+
 void CommandBuffer::blit(const TextureRef &src, const TextureRef &dst,
                          std::span<const VkImageBlit> regions,
                          VkFilter filter) {

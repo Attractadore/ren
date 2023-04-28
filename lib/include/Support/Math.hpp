@@ -9,4 +9,8 @@ auto ceilDiv(std::unsigned_integral auto x, std::unsigned_integral auto over) {
 auto pad(std::unsigned_integral auto x, std::unsigned_integral auto multiple) {
   return ceilDiv(x, multiple) * multiple;
 }
+
+template <std::unsigned_integral T> auto ilog2(T x) {
+  return std::numeric_limits<T>::digits - std::countl_zero(x) - 1;
+}
 } // namespace ren

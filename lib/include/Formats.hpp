@@ -1,5 +1,6 @@
 #pragma once
 #include "Support/Enum.hpp"
+#include "ren/ren.h"
 
 namespace ren {
 
@@ -22,5 +23,7 @@ struct FormatProperties {
     unsigned unused_bits;
   };
 };
+
+auto getVkFormat(RenFormat format) -> VkFormat;
 
 } // namespace ren

@@ -11,6 +11,14 @@ inline FormatProperties getFormatProperties(VkFormat format) {
   switch (format) {
   default:
     unreachable("Unknown VkFormat {}", int(format));
+  case VK_FORMAT_R8G8B8_SRGB: {
+    return {
+        .flags = Color | SRGB,
+        .red_bits = 8,
+        .green_bits = 8,
+        .blue_bits = 8,
+    };
+  }
   case VK_FORMAT_R8G8B8A8_UNORM:
   case VK_FORMAT_B8G8R8A8_UNORM: {
     return {

@@ -70,8 +70,23 @@ public:
   void copy_buffer(const BufferRef &src, const BufferRef &dst,
                    std::span<const VkBufferCopy> regions);
 
+  void copy_buffer_to_image(const BufferRef &src, const TextureRef &dst,
+                            std::span<const VkBufferImageCopy> regions);
+
+  void copy_buffer_to_image(const BufferRef &src, const TextureRef &dst,
+                            const VkBufferImageCopy &region) {
+    copy_buffer_to_image(src, dst, asSpan(region));
+  }
+
   void blit(const TextureRef &src, const TextureRef &dst,
-            std::span<const VkImageBlit> regions, VkFilter filter);
+            std::span<const VkImageBlit> regions,
+            VkFilter filter = VK_FILTER_LINEAR);
+
+  void blit(const TextureRef &src, const TextureRef &dst,
+            const VkImageBlit &region, VkFilter filter = VK_FILTER_LINEAR) {
+    blit(src, dst, asSpan(region), filter);
+  }
+
   void blit(const TextureRef &src, const TextureRef &dst) {
     VkImageBlit region = {
         .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,

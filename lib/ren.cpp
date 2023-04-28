@@ -296,7 +296,7 @@ RenResult ren_CreateImage(RenScene *scene, const RenImageDesc *desc,
   assert(scene);
   assert(desc);
   assert(p_image);
-  return lippincott([&] { ren::todo("Textures are not implemented!"); });
+  return lippincott([&] { *p_image = scene->create_image(*desc); });
 }
 
 RenResult ren_CreateMaterials(RenScene *scene, const RenMaterialDesc *descs,

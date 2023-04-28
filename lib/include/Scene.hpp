@@ -54,6 +54,8 @@ public:
 private:
   MeshInstanceMap m_mesh_insts;
 
+  Vector<Texture> m_images = {{}};
+
   PipelineLayout m_pipeline_layout = {};
 
   DescriptorPool m_persistent_descriptor_pool = {};
@@ -78,6 +80,8 @@ public:
   Scene(Device &device);
 
   RenMesh create_mesh(const RenMeshDesc &desc);
+
+  RenImage create_image(const RenImageDesc &desc);
 
   void create_materials(std::span<const RenMaterialDesc> descs,
                         RenMaterial *out);

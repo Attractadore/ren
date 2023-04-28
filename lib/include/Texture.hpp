@@ -79,4 +79,7 @@ struct TextureView {
   }
 };
 
+auto get_mip_level_count(unsigned width, unsigned height = 1,
+                         unsigned depth = 1) -> unsigned;
+
 } // namespace ren
