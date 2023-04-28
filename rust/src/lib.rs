@@ -21,10 +21,9 @@ use ffi::{
     RenTextureChannelSwizzle, RenTonemappingACES, RenTonemappingDesc,
     RenTonemappingDesc__bindgen_ty_1, RenWrappingMode, REN_ALPHA_MODE_BLEND, REN_ALPHA_MODE_MASK,
     REN_ALPHA_MODE_OPAQUE, REN_EXPOSURE_MODE_AUTOMATIC, REN_EXPOSURE_MODE_CAMERA,
-    REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_R16_SRGB, REN_FORMAT_R16_UNORM,
-    REN_FORMAT_R8_SRGB, REN_FORMAT_R8_UNORM, REN_FORMAT_RG16_SRGB, REN_FORMAT_RG16_UNORM,
-    REN_FORMAT_RG8_SRGB, REN_FORMAT_RG8_UNORM, REN_FORMAT_RGB16_SRGB, REN_FORMAT_RGB16_UNORM,
-    REN_FORMAT_RGB32_SFLOAT, REN_FORMAT_RGB8_SRGB, REN_FORMAT_RGB8_UNORM, REN_FORMAT_RGBA16_SRGB,
+    REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_R16_UNORM, REN_FORMAT_R8_SRGB,
+    REN_FORMAT_R8_UNORM, REN_FORMAT_RG16_UNORM, REN_FORMAT_RG8_SRGB, REN_FORMAT_RG8_UNORM,
+    REN_FORMAT_RGB16_UNORM, REN_FORMAT_RGB32_SFLOAT, REN_FORMAT_RGB8_SRGB, REN_FORMAT_RGB8_UNORM,
     REN_FORMAT_RGBA16_UNORM, REN_FORMAT_RGBA32_SFLOAT, REN_FORMAT_RGBA8_SRGB,
     REN_FORMAT_RGBA8_UNORM, REN_NULL_DIR_LIGHT, REN_NULL_IMAGE, REN_NULL_MATERIAL, REN_NULL_MESH,
     REN_NULL_MESH_INST, REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR,
@@ -576,10 +575,10 @@ impl From<Format> for ComponentFormat {
             Format::RG8_UNORM | Format::RG8_SRGB => ComponentFormat::RG8,
             Format::RGB8_UNORM | Format::RGB8_SRGB => ComponentFormat::RGB8,
             Format::RGBA8_UNORM | Format::RGBA8_SRGB => ComponentFormat::RGBA8,
-            Format::R16_UNORM | Format::R16_SRGB => ComponentFormat::R16,
-            Format::RG16_UNORM | Format::RG16_SRGB => ComponentFormat::RG16,
-            Format::RGB16_UNORM | Format::RGB16_SRGB => ComponentFormat::RGB16,
-            Format::RGBA16_UNORM | Format::RGBA16_SRGB => ComponentFormat::RGBA16,
+            Format::R16_UNORM => ComponentFormat::R16,
+            Format::RG16_UNORM => ComponentFormat::RG16,
+            Format::RGB16_UNORM => ComponentFormat::RGB16,
+            Format::RGBA16_UNORM => ComponentFormat::RGBA16,
             Format::RGB32_SFLOAT => ComponentFormat::RGB32,
             Format::RGBA32_SFLOAT => ComponentFormat::RGBA32,
         }
@@ -604,14 +603,9 @@ impl From<Format> for NumericFormat {
             | Format::RG16_UNORM
             | Format::RGB16_UNORM
             | Format::RGBA16_UNORM => NumericFormat::UNORM,
-            Format::R8_SRGB
-            | Format::RG8_SRGB
-            | Format::RGB8_SRGB
-            | Format::RGBA8_SRGB
-            | Format::R16_SRGB
-            | Format::RG16_SRGB
-            | Format::RGB16_SRGB
-            | Format::RGBA16_SRGB => NumericFormat::SRGB,
+            Format::R8_SRGB | Format::RG8_SRGB | Format::RGB8_SRGB | Format::RGBA8_SRGB => {
+                NumericFormat::SRGB
+            }
             Format::RGB32_SFLOAT | Format::RGBA32_SFLOAT => NumericFormat::SFLOAT,
         }
     }
@@ -629,13 +623,9 @@ pub enum Format {
     RGBA8_UNORM,
     RGBA8_SRGB,
     R16_UNORM,
-    R16_SRGB,
     RG16_UNORM,
-    RG16_SRGB,
     RGB16_UNORM,
-    RGB16_SRGB,
     RGBA16_UNORM,
-    RGBA16_SRGB,
     RGB32_SFLOAT,
     RGBA32_SFLOAT,
 }
@@ -652,13 +642,9 @@ impl Format {
             (ComponentFormat::RGBA8, NumericFormat::UNORM) => Some(Format::RGBA8_UNORM),
             (ComponentFormat::RGBA8, NumericFormat::SRGB) => Some(Format::RGBA8_SRGB),
             (ComponentFormat::R16, NumericFormat::UNORM) => Some(Format::R16_UNORM),
-            (ComponentFormat::R16, NumericFormat::SRGB) => Some(Format::R16_SRGB),
             (ComponentFormat::RG16, NumericFormat::UNORM) => Some(Format::RG16_UNORM),
-            (ComponentFormat::RG16, NumericFormat::SRGB) => Some(Format::RG16_SRGB),
             (ComponentFormat::RGB16, NumericFormat::UNORM) => Some(Format::RGB16_UNORM),
-            (ComponentFormat::RGB16, NumericFormat::SRGB) => Some(Format::RGB16_SRGB),
             (ComponentFormat::RGBA16, NumericFormat::UNORM) => Some(Format::RGBA16_UNORM),
-            (ComponentFormat::RGBA16, NumericFormat::SRGB) => Some(Format::RGBA16_SRGB),
             (ComponentFormat::RGB32, NumericFormat::SFLOAT) => Some(Format::RGB32_SFLOAT),
             (ComponentFormat::RGBA32, NumericFormat::SFLOAT) => Some(Format::RGBA32_SFLOAT),
             _ => None,
@@ -682,13 +668,9 @@ impl From<Format> for RenFormat {
             Format::RGBA8_UNORM => REN_FORMAT_RGBA8_UNORM,
             Format::RGBA8_SRGB => REN_FORMAT_RGBA8_SRGB,
             Format::R16_UNORM => REN_FORMAT_R16_UNORM,
-            Format::R16_SRGB => REN_FORMAT_R16_SRGB,
             Format::RG16_UNORM => REN_FORMAT_RG16_UNORM,
-            Format::RG16_SRGB => REN_FORMAT_RG16_SRGB,
             Format::RGB16_UNORM => REN_FORMAT_RGB16_UNORM,
-            Format::RGB16_SRGB => REN_FORMAT_RGB16_SRGB,
             Format::RGBA16_UNORM => REN_FORMAT_RGBA16_UNORM,
-            Format::RGBA16_SRGB => REN_FORMAT_RGBA16_SRGB,
             Format::RGB32_SFLOAT => REN_FORMAT_RGB32_SFLOAT,
             Format::RGBA32_SFLOAT => REN_FORMAT_RGBA32_SFLOAT,
         }
