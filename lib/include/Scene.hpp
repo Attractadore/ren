@@ -4,8 +4,6 @@
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
 #include "DescriptorSetAllocator.hpp"
-#include "Material.hpp"
-#include "MaterialAllocator.hpp"
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
@@ -20,7 +18,6 @@ namespace ren {
 class Swapchain;
 
 using MeshMap = SlotMap<Mesh>;
-using MaterialMap = SlotMap<Material>;
 using MeshInstanceMap = SlotMap<MeshInst>;
 using DirLightMap = SlotMap<hlsl::DirLight>;
 
@@ -34,7 +31,6 @@ class Scene {
   Vector<Buffer> m_staged_index_buffers;
   Vector<Texture> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
-  MaterialAllocator m_material_allocator;
   DescriptorSetAllocator m_descriptor_set_allocator;
   CommandAllocator m_cmd_allocator;
 
@@ -42,7 +38,8 @@ class Scene {
 
   MeshMap m_meshes;
 
-  MaterialMap m_materials;
+  Vector<hlsl::Material> m_materials = {{}};
+  Vector<GraphicsPipelineRef> m_material_pipelines = {{}};
 
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
   VkFormat m_depth_format = VK_FORMAT_D32_SFLOAT;

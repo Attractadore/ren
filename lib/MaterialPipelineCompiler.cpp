@@ -1,7 +1,6 @@
 #include "MaterialPipelineCompiler.hpp"
 #include "AssetLoader.hpp"
 #include "Device.hpp"
-#include "Material.hpp"
 
 #include <fmt/format.h>
 

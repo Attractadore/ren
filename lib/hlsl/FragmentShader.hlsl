@@ -2,7 +2,7 @@
 #include "lighting.hlsl"
 #include "material.hlsl"
 
-[[vk::binding(MATERIALS_SLOT, PERSISTENT_SET)]] StructuredBuffer<Material>
+[[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<Material>
     g_materials;
 
 [[vk::binding(GLOBAL_CB_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData> g_global;

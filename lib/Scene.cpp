@@ -11,6 +11,7 @@
 #include "Support/Views.hpp"
 #include "hlsl/encode.h"
 
+#include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
@@ -23,15 +24,6 @@ static MeshMap::key_type get_mesh_key(RenMesh mesh) {
 
 static RenMesh get_mesh_id(MeshMap::key_type mesh_key) {
   return std::bit_cast<RenMesh>(std::bit_cast<RenMesh>(mesh_key) + 1);
-}
-
-static MaterialMap::key_type get_material_key(RenMaterial material) {
-  return std::bit_cast<MaterialMap::key_type>(material - 1);
-}
-
-static RenMaterial get_material_id(MaterialMap::key_type material_key) {
-  return std::bit_cast<RenMaterial>(std::bit_cast<RenMaterial>(material_key) +
-                                    1);
 }
 
 static MeshInstanceMap::key_type get_mesh_inst_key(RenMeshInst mesh_inst) {
@@ -62,20 +54,6 @@ static auto get_mesh(MeshMap &m_meshes, RenMesh mesh) -> Mesh & {
   auto key = get_mesh_key(mesh);
   assert(m_meshes.contains(key) && "Unknown mesh");
   return m_meshes[key];
-}
-
-static auto get_material(const MaterialMap &m_materials, RenMaterial material)
-    -> const Material & {
-  auto key = get_material_key(material);
-  assert(m_materials.contains(key) && "Unknown material");
-  return m_materials[key];
-}
-
-static auto get_material(MaterialMap &m_materials, RenMaterial material)
-    -> Material & {
-  auto key = get_material_key(material);
-  assert(m_materials.contains(key) && "Unknown material");
-  return m_materials[key];
 }
 
 static auto get_mesh_inst(const MeshInstanceMap &mesh_insts,
@@ -345,13 +323,16 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
       });
     }();
 
-    auto &&[key, material] = m_materials.emplace(Material{
-        .pipeline = std::move(pipeline),
-        .index =
-            m_material_allocator.allocate(*m_device, desc, m_resource_uploader),
+    auto material = static_cast<RenMaterial>(m_materials.size());
+    m_materials.push_back(hlsl::Material{
+        .base_color = glm::make_vec4(desc.base_color_factor),
+        .metallic = desc.metallic_factor,
+        .roughness = desc.roughness_factor,
     });
+    m_material_pipelines.push_back(pipeline);
 
-    *(out++) = get_material_id(key);
+    *out = material;
+    ++out;
   }
 }
 
@@ -429,22 +410,193 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
   }
 }
 
+struct UploadDataPassConfig {
+  glm::mat4 proj;
+  glm::mat4 view;
+  glm::vec3 eye;
+
+  const SlotMap<MeshInst> *mesh_insts;
+  const SlotMap<hlsl::DirLight> *dir_lights;
+  std::span<const hlsl::Material> materials;
+
+  VkDescriptorSet scene_set;
+};
+
+struct UploadDataPassResources {
+  RGBufferID global_data_buffer;
+  RGBufferID transform_matrix_buffer;
+  RGBufferID normal_matrix_buffer;
+  RGBufferID lights_buffer;
+  RGBufferID materials_buffer;
+};
+
+struct UploadDataPassOutput {
+  RGBufferID global_data_buffer;
+  RGBufferID transform_matrix_buffer;
+  RGBufferID normal_matrix_buffer;
+  RGBufferID lights_buffer;
+  RGBufferID materials_buffer;
+};
+
+static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
+                                 RenderGraph &rg,
+                                 const UploadDataPassConfig &cfg,
+                                 const UploadDataPassResources &rcs) {
+  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
+  auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
+  *global_data = {
+      .proj_view = cfg.proj * cfg.view,
+      .eye = cfg.eye,
+  };
+
+  auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
+  auto *transform_matrices =
+      transform_matrix_buffer.map<hlsl::model_matrix_t>();
+  ranges::transform(cfg.mesh_insts->values(), transform_matrices,
+                    [](const auto &mesh_inst) { return mesh_inst.matrix; });
+
+  auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
+  auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
+  ranges::transform(
+      cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
+        return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
+      });
+
+  auto lights_buffer = rg.get_buffer(rcs.lights_buffer);
+  auto *lights = lights_buffer.map<hlsl::Lights>();
+  lights->num_dir_lights = cfg.dir_lights->size();
+  ranges::copy(cfg.dir_lights->values(), lights->dir_lights);
+
+  auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
+  auto *materials = materials_buffer.map<hlsl::Material>();
+  ranges::copy(cfg.materials, materials);
+
+  auto global_ubo_descriptor = global_data_buffer.get_descriptor();
+  auto transform_matrix_buffer_descriptor =
+      transform_matrix_buffer.get_descriptor();
+  auto normal_matrix_buffer_descriptor = normal_matrix_buffer.get_descriptor();
+  auto lights_buffer_descriptor = lights_buffer.get_descriptor();
+  auto materials_buffer_descriptor = materials_buffer.get_descriptor();
+
+  std::array write_configs = {
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = cfg.scene_set,
+          .dstBinding = hlsl::GLOBAL_CB_SLOT,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .pBufferInfo = &global_ubo_descriptor,
+      },
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = cfg.scene_set,
+          .dstBinding = hlsl::MODEL_MATRICES_SLOT,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+          .pBufferInfo = &transform_matrix_buffer_descriptor,
+      },
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = cfg.scene_set,
+          .dstBinding = hlsl::NORMAL_MATRICES_SLOT,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+          .pBufferInfo = &normal_matrix_buffer_descriptor,
+      },
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = cfg.scene_set,
+          .dstBinding = hlsl::LIGHTS_SLOT,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .pBufferInfo = &lights_buffer_descriptor,
+      },
+      VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = cfg.scene_set,
+          .dstBinding = hlsl::MATERIALS_SLOT,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+          .pBufferInfo = &materials_buffer_descriptor,
+      },
+  };
+  device.write_descriptor_sets(write_configs);
+}
+
+static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
+                                   const UploadDataPassConfig &cfg)
+    -> UploadDataPassOutput {
+  auto pass = rgb.create_pass();
+  pass.set_desc("Upload data pass");
+
+  UploadDataPassResources rcs = {};
+
+  rcs.global_data_buffer = pass.create_buffer(
+      {
+          .heap = BufferHeap::Upload,
+          .size = unsigned(sizeof(hlsl::GlobalData)),
+      },
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rgb.set_desc(rcs.global_data_buffer, "Global data UBO");
+
+  rcs.transform_matrix_buffer = pass.create_buffer(
+      {
+          .heap = BufferHeap::Upload,
+          .size =
+              unsigned(sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size()),
+      },
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rgb.set_desc(rcs.transform_matrix_buffer, "Transform matrix buffer");
+
+  rcs.normal_matrix_buffer = pass.create_buffer(
+      {
+          .heap = BufferHeap::Upload,
+          .size =
+              unsigned(sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size()),
+      },
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rgb.set_desc(rcs.normal_matrix_buffer, "Normal matrix buffer");
+
+  rcs.lights_buffer = pass.create_buffer(
+      {
+          .heap = BufferHeap::Upload,
+          .size = unsigned(sizeof(hlsl::Lights)),
+      },
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rgb.set_desc(rcs.lights_buffer, "Lights buffer");
+
+  rcs.materials_buffer = pass.create_buffer(
+
+      {
+          .heap = BufferHeap::Upload,
+          .size = unsigned(cfg.materials.size_bytes()),
+      },
+      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rgb.set_desc(rcs.materials_buffer, "Materials buffer");
+
+  pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
+    run_upload_data_pass(device, cmd, rg, cfg, rcs);
+  });
+
+  return {
+      .global_data_buffer = rcs.global_data_buffer,
+      .transform_matrix_buffer = rcs.transform_matrix_buffer,
+      .normal_matrix_buffer = rcs.normal_matrix_buffer,
+      .lights_buffer = rcs.lights_buffer,
+      .materials_buffer = rcs.materials_buffer,
+  };
+}
+
 struct ColorPassConfig {
   VkFormat color_format;
   VkFormat depth_format;
   unsigned width;
   unsigned height;
 
-  glm::mat4 proj;
-  glm::mat4 view;
-  glm::vec3 eye;
-
   const SlotMap<Mesh> *meshes;
-  const SlotMap<Material> *materials;
+  std::span<const GraphicsPipelineRef> material_pipelines;
   const SlotMap<MeshInst> *mesh_insts;
-  const SlotMap<hlsl::DirLight> *dir_lights;
 
-  VkDescriptorSet persistent_set;
   VkDescriptorSet scene_set;
 
   PipelineLayoutRef pipeline_layout;
@@ -452,16 +604,17 @@ struct ColorPassConfig {
   std::span<const RGBufferID> uploaded_vertex_buffers;
   std::span<const RGBufferID> uploaded_index_buffers;
   std::span<const RGTextureID> uploaded_textures;
+
+  RGBufferID global_data_buffer;
+  RGBufferID transform_matrix_buffer;
+  RGBufferID normal_matrix_buffer;
+  RGBufferID lights_buffer;
   RGBufferID materials_buffer;
 };
 
 struct ColorPassResources {
   RGTextureID rt;
   RGTextureID dst;
-  RGBufferID global_data_buffer;
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  RGBufferID lights_buffer;
 };
 
 struct ColorPassOutput {
@@ -482,85 +635,15 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       return;
     }
 
-    BufferRef global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-    auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
-    *global_data = {
-        .proj_view = cfg.proj * cfg.view,
-        .eye = cfg.eye,
-    };
-
-    BufferRef transform_matrix_buffer =
-        rg.get_buffer(rcs.transform_matrix_buffer);
-    auto *transform_matrices =
-        transform_matrix_buffer.map<hlsl::model_matrix_t>();
-    ranges::transform(cfg.mesh_insts->values(), transform_matrices,
-                      [](const auto &mesh_inst) { return mesh_inst.matrix; });
-
-    BufferRef normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
-    auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
-    ranges::transform(
-        cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
-          return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
-        });
-
-    BufferRef lights_buffer = rg.get_buffer(rcs.lights_buffer);
-    auto *lights = lights_buffer.map<hlsl::Lights>();
-    lights->num_dir_lights = cfg.dir_lights->size();
-    ranges::copy(cfg.dir_lights->values(), lights->dir_lights);
-
-    auto global_ubo_descriptor = global_data_buffer.get_descriptor();
-    auto transform_matrix_buffer_descriptor =
-        transform_matrix_buffer.get_descriptor();
-    auto normal_matrix_buffer_descriptor =
-        normal_matrix_buffer.get_descriptor();
-    auto lights_buffer_descriptor = lights_buffer.get_descriptor();
-
-    std::array write_configs = {
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = cfg.scene_set,
-            .dstBinding = hlsl::GLOBAL_CB_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &global_ubo_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = cfg.scene_set,
-            .dstBinding = hlsl::MODEL_MATRICES_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &transform_matrix_buffer_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = cfg.scene_set,
-            .dstBinding = hlsl::NORMAL_MATRICES_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &normal_matrix_buffer_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = cfg.scene_set,
-            .dstBinding = hlsl::LIGHTS_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &lights_buffer_descriptor,
-        },
-    };
-    device.write_descriptor_sets(write_configs);
-
-    std::array descriptor_sets = {cfg.persistent_set, cfg.scene_set};
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                             cfg.pipeline_layout, 0, descriptor_sets);
+                             cfg.pipeline_layout, 1, {&cfg.scene_set, 1});
 
     for (const auto &&[i, mesh_inst] :
          ranges::views::enumerate(cfg.mesh_insts->values())) {
       const auto &mesh = get_mesh(*cfg.meshes, mesh_inst.mesh);
-      const auto &material = get_material(*cfg.materials, mesh_inst.material);
+      auto material = mesh_inst.material;
 
-      cmd.bind_graphics_pipeline(material.pipeline);
+      cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
       const auto &buffer = mesh.vertex_buffer;
       auto address = buffer.desc.address;
@@ -577,7 +660,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                                 ? address + colors_offset
                                 : 0,
               },
-          .fragment = {.material_index = material.index},
+          .fragment = {.material_index = material},
       };
       cmd.set_push_constants(cfg.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
                              pcs.vertex, offsetof(decltype(pcs), vertex));
@@ -594,31 +677,46 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
 static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                              const ColorPassConfig &cfg) -> ColorPassOutput {
-  auto draw = rgb.create_pass();
-  draw.set_desc("Color pass");
+  auto pass = rgb.create_pass();
+  pass.set_desc("Color pass");
 
   ColorPassResources rcs = {};
 
   for (auto buffer : cfg.uploaded_vertex_buffers) {
-    draw.read_buffer(buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    pass.read_buffer(buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
   }
 
   for (auto buffer : cfg.uploaded_index_buffers) {
-    draw.read_buffer(buffer, VK_ACCESS_2_INDEX_READ_BIT,
+    pass.read_buffer(buffer, VK_ACCESS_2_INDEX_READ_BIT,
                      VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT);
   }
 
   for (auto texture : cfg.uploaded_textures) {
-    draw.read_texture(texture, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+    pass.read_texture(texture, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   }
 
-  draw.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+  pass.read_buffer(cfg.global_data_buffer, VK_ACCESS_2_UNIFORM_READ_BIT,
+                   VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+
+  pass.read_buffer(cfg.transform_matrix_buffer,
+                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                   VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+
+  pass.read_buffer(cfg.normal_matrix_buffer,
+                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                   VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+
+  pass.read_buffer(cfg.lights_buffer, VK_ACCESS_2_UNIFORM_READ_BIT,
                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
-  rcs.rt = draw.create_texture(
+  pass.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                   VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+
+  rcs.rt = pass.create_texture(
       {
           .format = cfg.color_format,
           .width = cfg.width,
@@ -629,7 +727,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
   rgb.set_desc(rcs.rt, "Color buffer");
 
-  rcs.dst = draw.create_texture(
+  rcs.dst = pass.create_texture(
       {
           .format = cfg.depth_format,
           .width = cfg.width,
@@ -642,45 +740,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
   rgb.set_desc(rcs.dst, "Depth buffer");
 
-  rcs.global_data_buffer = draw.create_buffer(
-      {
-          .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::GlobalData)),
-      },
-      VK_ACCESS_2_UNIFORM_READ_BIT,
-      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
-  rgb.set_desc(rcs.global_data_buffer, "Global data UBO");
-
-  rcs.transform_matrix_buffer = draw.create_buffer(
-      {
-          .heap = BufferHeap::Upload,
-          .size =
-              unsigned(sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size()),
-      },
-      VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-  rgb.set_desc(rcs.transform_matrix_buffer, "Transform matrix buffer");
-
-  rcs.normal_matrix_buffer = draw.create_buffer(
-      {
-          .heap = BufferHeap::Upload,
-          .size =
-              unsigned(sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size()),
-      },
-      VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-  rgb.set_desc(rcs.normal_matrix_buffer, "Normal matrix buffer");
-
-  rcs.lights_buffer = draw.create_buffer(
-      {
-          .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::Lights)),
-      },
-      VK_ACCESS_2_UNIFORM_READ_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
-  rgb.set_desc(rcs.lights_buffer, "Lights buffer");
-
-  draw.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
+  pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
     run_color_pass(device, cmd, rg, cfg, rcs);
   });
 
@@ -729,48 +789,43 @@ void Scene::draw(Swapchain &swapchain) {
     m_device->graphicsQueueSubmit(asSpan(submit));
   }
 
-  {
-    auto [new_pool, new_set] = m_device->allocate_descriptor_set(
-        get_persistent_descriptor_set_layout());
-    m_persistent_descriptor_pool = std::move(new_pool);
-    m_persistent_descriptor_set = std::move(new_set);
-    auto descriptor = m_material_allocator.get_buffer().get_descriptor();
-    m_device->write_descriptor_set({
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = m_persistent_descriptor_set,
-        .dstBinding = hlsl::MATERIALS_SLOT,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .pBufferInfo = &descriptor,
-    });
-  }
+  auto scene_set =
+      m_descriptor_set_allocator.allocate(get_global_descriptor_set_layout());
 
-  // Draw scene
-  auto [rt] = setup_color_pass(
+  auto frame_resources = setup_upload_data_pass(
       *m_device, rgb,
-      {
-          .color_format = m_rt_format,
-          .depth_format = m_depth_format,
-          .width = m_viewport_width,
-          .height = m_viewport_height,
+      UploadDataPassConfig{
           .proj = get_projection_matrix(m_camera, float(m_viewport_width) /
                                                       float(m_viewport_height)),
           .view = get_view_matrix(m_camera),
           .eye = m_camera.position,
-          .meshes = &m_meshes,
-          .materials = &m_materials,
           .mesh_insts = &m_mesh_insts,
           .dir_lights = &m_dir_lights,
-          .persistent_set = m_persistent_descriptor_set,
-          .scene_set = m_descriptor_set_allocator.allocate(
-              get_global_descriptor_set_layout()),
+          .materials = m_materials,
+          .scene_set = scene_set,
+      });
+
+  // Draw scene
+  auto [rt] = setup_color_pass(
+      *m_device, rgb,
+      ColorPassConfig{
+          .color_format = m_rt_format,
+          .depth_format = m_depth_format,
+          .width = m_viewport_width,
+          .height = m_viewport_height,
+          .meshes = &m_meshes,
+          .material_pipelines = m_material_pipelines,
+          .mesh_insts = &m_mesh_insts,
+          .scene_set = scene_set,
           .pipeline_layout = m_pipeline_layout,
           .uploaded_vertex_buffers = uploaded_vertex_buffers,
           .uploaded_index_buffers = uploaded_index_buffers,
           .uploaded_textures = uploaded_textures,
-          .materials_buffer = rgb.import_buffer(
-              m_material_allocator.get_buffer(), VK_ACCESS_2_TRANSFER_WRITE_BIT,
-              VK_PIPELINE_STAGE_2_COPY_BIT),
+          .global_data_buffer = frame_resources.global_data_buffer,
+          .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
+          .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
+          .lights_buffer = frame_resources.lights_buffer,
+          .materials_buffer = frame_resources.materials_buffer,
       });
 
   // Post-process

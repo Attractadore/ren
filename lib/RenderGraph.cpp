@@ -650,10 +650,12 @@ auto RenderGraph::Builder::build(Device &device) -> RenderGraph {
 }
 
 auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
+  assert(texture);
   return m_textures[static_cast<size_t>(texture)];
 }
 
 auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferRef {
+  assert(buffer);
   return m_buffers[static_cast<size_t>(buffer)];
 }
 
