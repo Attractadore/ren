@@ -1,7 +1,6 @@
 #pragma once
 #include "Device.hpp"
 #include "ResourceUploader.hpp"
-#include "Support/FreeListAllocator.hpp"
 #include "Support/Span.hpp"
 #include "hlsl/material.hpp"
 #include "ren/ren.h"
@@ -14,7 +13,7 @@ class MaterialAllocator {
   Buffer m_buffer;
   // Sentinel value in the front so MaterialID = 0 can correspond to null
   // material
-  std::vector<hlsl::Material> m_materials = {{}};
+  Vector<hlsl::Material> m_materials = {{}};
 
 public:
   unsigned allocate(Device &device, const RenMaterialDesc &desc,
@@ -36,10 +35,10 @@ public:
           .heap = BufferHeap::Device,
           .size = new_gpu_size,
       });
-      uploader.stage_data(m_materials, m_buffer);
+      uploader.stage_buffer(device, m_materials, m_buffer);
     } else {
-      uploader.stage_data(asSpan(m_materials[index]), m_buffer,
-                          index * sizeof(hlsl::Material));
+      uploader.stage_buffer(device, asSpan(m_materials[index]), m_buffer,
+                            index * sizeof(hlsl::Material));
     }
 
     return index;

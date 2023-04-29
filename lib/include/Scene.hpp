@@ -1,6 +1,5 @@
 #pragma once
 #include "AssetLoader.hpp"
-#include "BufferPool.hpp"
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
@@ -30,9 +29,10 @@ class Scene {
 
   AssetLoader m_asset_loader;
 
-  BufferPool m_vertex_buffer_pool;
-  BufferPool m_index_buffer_pool;
   ResourceUploader m_resource_uploader;
+  Vector<Buffer> m_staged_vertex_buffers;
+  Vector<Buffer> m_staged_index_buffers;
+  Vector<Texture> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
   MaterialAllocator m_material_allocator;
   DescriptorSetAllocator m_descriptor_set_allocator;
@@ -60,8 +60,6 @@ private:
 
   DescriptorPool m_persistent_descriptor_pool = {};
   VkDescriptorSet m_persistent_descriptor_set = {};
-
-  BufferRef m_materials_buffer = {};
 
   DirLightMap m_dir_lights;
 

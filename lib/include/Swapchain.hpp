@@ -1,4 +1,5 @@
 #pragma once
+#include "Semaphore.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
 
@@ -41,8 +42,9 @@ public:
 
   VkSurfaceKHR get_surface() const noexcept { return m_create_info.surface; }
 
-  void acquireImage(VkSemaphore signal_semaphore);
-  void presentImage(VkSemaphore wait_semaphore);
+  void acquireImage(SemaphoreRef signal_semaphore);
+  void presentImage(SemaphoreRef wait_semaphore);
+
   const Texture &getTexture() {
     assert(m_image_index < m_textures.size());
     return m_textures[m_image_index];

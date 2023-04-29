@@ -1,40 +1,31 @@
 #pragma once
+#include "Device.hpp"
 #include "ResourceUploader.hpp"
+#include "Support/Views.hpp"
 
 namespace ren {
 
 template <ranges::sized_range R>
-void ResourceUploader::stage_data(R &&data, const BufferRef &buffer,
-                                  unsigned offset) {
+void ResourceUploader::stage_buffer(Device &device, R &&data,
+                                    const BufferRef &buffer, unsigned offset) {
   using T = ranges::range_value_t<R>;
 
-  if (auto *out = buffer.map<T>(offset)) {
-    ranges::copy(data, out);
+  if (auto *ptr = buffer.map<T>(offset)) {
+    ranges::copy(data, ptr);
     return;
   }
 
-  if (!m_ring_buffer) {
-    m_ring_buffer = create_ring_buffer(1 << 20);
-  }
+  auto staging_buffer = device.create_buffer({
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      .heap = BufferHeap::Upload,
+      .size = unsigned(size_bytes(data)),
+  });
 
-  unsigned count = 0;
-  while (count < ranges::size(data)) {
-    auto [src_offset, num_written] =
-        m_ring_buffer->write(ranges::views::drop(data, count));
-    if (num_written == 0) {
-      m_ring_buffer = create_ring_buffer(2 * m_ring_buffer->size());
-    } else {
-      m_buffer_copies.push_back(
-          {.src = m_ring_buffer->get_buffer(),
-           .dst = buffer,
-           .region = {
-               .srcOffset = src_offset,
-               .dstOffset = buffer.desc.offset + offset + count * sizeof(T),
-               .size = num_written * sizeof(T),
-           }});
-      count += num_written;
-    }
-  }
+  auto *ptr = staging_buffer.map<T>();
+  ranges::copy(data, ptr);
+
+  m_buffer_srcs.push_back(staging_buffer);
+  m_buffer_dsts.push_back(buffer.subbuffer(offset));
 }
 
 } // namespace ren

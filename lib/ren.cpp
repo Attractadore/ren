@@ -1,5 +1,6 @@
 #include "ren/ren.h"
 #include "Device.hpp"
+#include "Errors.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
 #include "ren/ren-vk.h"

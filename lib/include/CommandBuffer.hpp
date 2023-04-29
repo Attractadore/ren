@@ -70,6 +70,11 @@ public:
   void copy_buffer(const BufferRef &src, const BufferRef &dst,
                    std::span<const VkBufferCopy> regions);
 
+  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+                   const VkBufferCopy &region) {
+    copy_buffer(src, dst, asSpan(region));
+  }
+
   void copy_buffer_to_image(const BufferRef &src, const TextureRef &dst,
                             std::span<const VkBufferImageCopy> regions);
 
@@ -128,6 +133,18 @@ public:
                     unsigned first_instance = 0);
 
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
+
+  void pipeline_barrier(std::span<const VkMemoryBarrier2> barriers,
+                        std::span<const VkImageMemoryBarrier2> image_barriers) {
+    VkDependencyInfo dependency = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .memoryBarrierCount = unsigned(barriers.size()),
+        .pMemoryBarriers = barriers.data(),
+        .imageMemoryBarrierCount = unsigned(image_barriers.size()),
+        .pImageMemoryBarriers = image_barriers.data(),
+    };
+    pipeline_barrier(dependency);
+  }
 };
 
 } // namespace ren

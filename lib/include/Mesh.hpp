@@ -15,8 +15,8 @@ enum MeshAttribute {
 };
 
 struct Mesh {
-  BufferRef vertex_allocation;
-  BufferRef index_allocation;
+  Buffer vertex_buffer;
+  Buffer index_buffer;
   unsigned num_vertices;
   unsigned num_indices;
   VkIndexType index_format;
