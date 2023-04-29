@@ -2,11 +2,12 @@
 #include "lighting.hlsl"
 #include "material.hlsl"
 
+[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData>
+    g_global;
 [[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<Material>
     g_materials;
-
-[[vk::binding(GLOBAL_CB_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData> g_global;
-[[vk::binding(LIGHTS_SLOT, GLOBAL_SET)]] ConstantBuffer<Lights> g_lights;
+[[vk::binding(DIR_LIGHTS_SLOT, GLOBAL_SET)]] StructuredBuffer<DirLight>
+    g_dir_lights;
 
 #if REFLECTION
 
@@ -29,9 +30,9 @@ float4 main(FS_IN fs_in) : SV_Target {
 
   float4 result = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
-  uint num_dir_lights = g_lights.num_dir_lights;
+  uint num_dir_lights = g_global.num_dir_lights;
   for (int i = 0; i < num_dir_lights; ++i) {
-    DirLight dir_light = g_lights.dir_lights[i];
+    DirLight dir_light = g_dir_lights[i];
     float3 light_dir = dir_light.origin;
     float3 light_color = dir_light.color;
     float illuminance = dir_light.illuminance;

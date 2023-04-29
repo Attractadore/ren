@@ -10,11 +10,4 @@ struct DirLight {
   float3 origin;
 };
 
-constexpr uint MAX_DIRECTIONAL_LIGHTS = 8;
-
-struct Lights {
-  uint num_dir_lights;
-  DirLight dir_lights[MAX_DIRECTIONAL_LIGHTS];
-};
-
 REN_NAMESPACE_END

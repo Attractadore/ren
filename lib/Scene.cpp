@@ -380,14 +380,14 @@ void Scene::set_mesh_inst_matrices(
 
 void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
                               RenDirLight *out) {
-  assert(m_dir_lights.size() < hlsl::MAX_DIRECTIONAL_LIGHTS);
   for (const auto &desc : descs) {
     auto key = m_dir_lights.insert(hlsl::DirLight{
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
     });
-    *(out++) = get_dir_light_id(key);
+    *out = get_dir_light_id(key);
+    ++out;
   }
 };
 
@@ -426,7 +426,7 @@ struct UploadDataPassResources {
   RGBufferID global_data_buffer;
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID lights_buffer;
+  RGBufferID dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
@@ -434,7 +434,7 @@ struct UploadDataPassOutput {
   RGBufferID global_data_buffer;
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID lights_buffer;
+  RGBufferID dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
@@ -447,6 +447,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
+      .num_dir_lights = unsigned(cfg.dir_lights->size()),
   };
 
   auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
@@ -462,30 +463,29 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
       });
 
-  auto lights_buffer = rg.get_buffer(rcs.lights_buffer);
-  auto *lights = lights_buffer.map<hlsl::Lights>();
-  lights->num_dir_lights = cfg.dir_lights->size();
-  ranges::copy(cfg.dir_lights->values(), lights->dir_lights);
+  auto dir_lights_buffer = rg.get_buffer(rcs.dir_lights_buffer);
+  auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>();
+  ranges::copy(cfg.dir_lights->values(), dir_lights);
 
   auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
   auto *materials = materials_buffer.map<hlsl::Material>();
   ranges::copy(cfg.materials, materials);
 
-  auto global_ubo_descriptor = global_data_buffer.get_descriptor();
+  auto global_data_descriptor = global_data_buffer.get_descriptor();
   auto transform_matrix_buffer_descriptor =
       transform_matrix_buffer.get_descriptor();
   auto normal_matrix_buffer_descriptor = normal_matrix_buffer.get_descriptor();
-  auto lights_buffer_descriptor = lights_buffer.get_descriptor();
+  auto dir_lights_buffer_descriptor = dir_lights_buffer.get_descriptor();
   auto materials_buffer_descriptor = materials_buffer.get_descriptor();
 
   std::array write_configs = {
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
           .dstSet = cfg.scene_set,
-          .dstBinding = hlsl::GLOBAL_CB_SLOT,
+          .dstBinding = hlsl::GLOBAL_DATA_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-          .pBufferInfo = &global_ubo_descriptor,
+          .pBufferInfo = &global_data_descriptor,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -506,10 +506,10 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
           .dstSet = cfg.scene_set,
-          .dstBinding = hlsl::LIGHTS_SLOT,
+          .dstBinding = hlsl::DIR_LIGHTS_SLOT,
           .descriptorCount = 1,
-          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-          .pBufferInfo = &lights_buffer_descriptor,
+          .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+          .pBufferInfo = &dir_lights_buffer_descriptor,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -557,13 +557,13 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
   rgb.set_desc(rcs.normal_matrix_buffer, "Normal matrix buffer");
 
-  rcs.lights_buffer = pass.create_buffer(
+  rcs.dir_lights_buffer = pass.create_buffer(
       {
           .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::Lights)),
+          .size = unsigned(sizeof(hlsl::DirLight) * cfg.dir_lights->size()),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
-  rgb.set_desc(rcs.lights_buffer, "Lights buffer");
+  rgb.set_desc(rcs.dir_lights_buffer, "Dir lights buffer");
 
   rcs.materials_buffer = pass.create_buffer(
 
@@ -582,7 +582,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
       .global_data_buffer = rcs.global_data_buffer,
       .transform_matrix_buffer = rcs.transform_matrix_buffer,
       .normal_matrix_buffer = rcs.normal_matrix_buffer,
-      .lights_buffer = rcs.lights_buffer,
+      .dir_lights_buffer = rcs.dir_lights_buffer,
       .materials_buffer = rcs.materials_buffer,
   };
 }
@@ -608,7 +608,7 @@ struct ColorPassConfig {
   RGBufferID global_data_buffer;
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID lights_buffer;
+  RGBufferID dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
@@ -710,7 +710,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
 
-  pass.read_buffer(cfg.lights_buffer, VK_ACCESS_2_UNIFORM_READ_BIT,
+  pass.read_buffer(cfg.dir_lights_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
   pass.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
@@ -824,7 +824,7 @@ void Scene::draw(Swapchain &swapchain) {
           .global_data_buffer = frame_resources.global_data_buffer,
           .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
           .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
-          .lights_buffer = frame_resources.lights_buffer,
+          .dir_lights_buffer = frame_resources.dir_lights_buffer,
           .materials_buffer = frame_resources.materials_buffer,
       });
 

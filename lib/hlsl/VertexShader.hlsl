@@ -1,7 +1,8 @@
 #include "encode.h"
 #include "interface.hlsl"
 
-[[vk::binding(GLOBAL_CB_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData> g_global;
+[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData>
+    g_global;
 [[vk::binding(MODEL_MATRICES_SLOT,
               GLOBAL_SET)]] StructuredBuffer<model_matrix_t>
     g_model_matrices;
