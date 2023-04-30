@@ -2,6 +2,11 @@
 #include "lighting.hlsl"
 #include "material.hlsl"
 
+[[vk::binding(SAMPLERS_SLOT,
+              PERSISTENT_SET)]] SamplerState g_samplers[NUM_SAMPLERS];
+[[vk::binding(TEXTURES_SLOT, PERSISTENT_SET)]] Texture2D<float4>
+    g_textures[NUM_TEXTURES];
+
 [[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData>
     g_global;
 [[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<Material>
@@ -22,8 +27,14 @@ float4 main(FS_IN fs_in) : SV_Target {
 
   float3 normal = normalize(fs_in.normal);
   float3 view_dir = normalize(g_global.eye - fs_in.world_position);
+  float2 uv = fs_in.uv;
 
   float4 color = material.base_color * fs_in.color;
+  if (material.base_color_texture) {
+    Texture2D<float4> tex = g_textures[material.base_color_texture];
+    SamplerState samp = g_samplers[material.base_color_sampler];
+    color *= tex.Sample(samp, uv);
+  }
 
   float metallic = material.metallic;
   float roughness = material.roughness;

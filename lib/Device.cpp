@@ -72,6 +72,8 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   VkPhysicalDeviceVulkan12Features vulkan12_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &vulkan11_features,
+      .descriptorBindingSampledImageUpdateAfterBind = true,
+      .descriptorBindingPartiallyBound = true,
       .scalarBlockLayout = true,
       .timelineSemaphore = true,
       .bufferDeviceAddress = true,
@@ -151,6 +153,7 @@ define_queue_deleter(VkDescriptorSetLayout, DestroyDescriptorSetLayout);
 define_queue_deleter(VkImage, DestroyImage);
 define_queue_deleter(VkPipeline, DestroyPipeline);
 define_queue_deleter(VkPipelineLayout, DestroyPipelineLayout);
+define_queue_deleter(VkSampler, DestroySampler);
 define_queue_deleter(VkSemaphore, DestroySemaphore);
 define_queue_deleter(VkSurfaceKHR, DestroySurfaceKHR);
 define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
@@ -426,13 +429,7 @@ VkImageView Device::getVkImageView(const TextureView &view) {
         .image = view.texture,
         .viewType = view.desc.type,
         .format = view.desc.format,
-        .components =
-            {
-                .r = view.desc.components.r,
-                .g = view.desc.components.g,
-                .b = view.desc.components.b,
-                .a = view.desc.components.a,
-            },
+        .components = view.desc.swizzle,
         .subresourceRange =
             {
                 .aspectMask = view.desc.aspects,
@@ -446,6 +443,28 @@ VkImageView Device::getVkImageView(const TextureView &view) {
                   "Vulkan: Failed to create image view");
   }
   return image_view;
+}
+
+auto Device::create_sampler(const SamplerDesc &desc) -> Sampler {
+  VkSamplerCreateInfo sampler_info = {
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .magFilter = desc.mag_filter,
+      .minFilter = desc.min_filter,
+      .mipmapMode = desc.mipmap_mode,
+      .addressModeU = desc.address_Mode_u,
+      .addressModeV = desc.address_Mode_v,
+      .maxLod = VK_LOD_CLAMP_NONE,
+  };
+
+  VkSampler sampler;
+  throwIfFailed(CreateSampler(&sampler_info, &sampler),
+                "Vulkan: Failed to create sampler");
+
+  return {
+      .desc = desc,
+      .handle = {sampler,
+                 [this](VkSampler sampler) { push_to_delete_queue(sampler); }},
+  };
 }
 
 auto Device::createBinarySemaphore() -> Semaphore {

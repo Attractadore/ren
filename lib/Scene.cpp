@@ -126,10 +126,17 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
   Vector<DescriptorSetLayoutDesc> set_layout_descs;
   reflect_descriptor_set_layouts(vs, fs, set_layout_descs);
   assert(set_layout_descs.size() == 2);
-  set_layout_descs[hlsl::PERSISTENT_SET].flags |=
-      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
-  PipelineLayoutDesc layout_desc = {
+  auto &persistent_set = set_layout_descs[hlsl::PERSISTENT_SET];
+  persistent_set.flags |=
+      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+  for (auto slot : {hlsl::SAMPLERS_SLOT, hlsl::TEXTURES_SLOT}) {
+    persistent_set.bindings[slot].flags |=
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+  }
+
+  return device.create_pipeline_layout(PipelineLayoutDesc{
       .set_layouts = set_layout_descs |
                      map([&](const DescriptorSetLayoutDesc &desc) {
                        return device.create_descriptor_set_layout(desc);
@@ -144,9 +151,7 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
                .offset = offsetof(hlsl::PushConstants, fragment),
                .size = sizeof(hlsl::PushConstants::fragment)},
           },
-  };
-
-  return device.create_pipeline_layout(std::move(layout_desc));
+  });
 }
 
 } // namespace
@@ -164,10 +169,16 @@ Scene::Scene(Device &device)
 
       m_descriptor_set_allocator(*m_device),
 
-      m_cmd_allocator(*m_device),
+      m_cmd_allocator(*m_device)
 
-      m_pipeline_layout(
-          reflect_material_pipeline_layout(*m_device, m_asset_loader)) {}
+{
+  m_pipeline_layout =
+      reflect_material_pipeline_layout(*m_device, m_asset_loader);
+
+  std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
+      m_device->allocate_descriptor_set(
+          m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]);
+}
 
 void Scene::next_frame() {
   m_device->next_frame();
@@ -178,18 +189,30 @@ void Scene::next_frame() {
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
       upload_attributes;
+
   upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
       std::as_bytes(std::span(desc.positions, desc.num_vertices));
-  upload_attributes[MESH_ATTRIBUTE_COLORS] = std::as_bytes(
-      std::span(desc.colors, desc.colors ? desc.num_vertices : 0));
+
+  if (desc.colors) {
+    upload_attributes[MESH_ATTRIBUTE_COLORS] =
+        std::as_bytes(std::span(desc.colors, desc.num_vertices));
+  }
+
   if (!desc.normals) {
-    todo("Normal generation not implemented!");
+    todo("Normals generation not implemented!");
   }
   upload_attributes[MESH_ATTRIBUTE_NORMALS] =
       std::as_bytes(std::span(desc.normals, desc.num_vertices));
+
   if (desc.tangents) {
     todo("Normal mapping not implemented!");
   }
+
+  if (desc.uvs) {
+    upload_attributes[MESH_ATTRIBUTE_UVS] =
+        std::as_bytes(std::span(desc.uvs, desc.num_vertices));
+  }
+
   if (!desc.indices) {
     todo("Index buffer generation not implemented!");
   }
@@ -213,6 +236,8 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       return sizeof(hlsl::normal_t);
     case MESH_ATTRIBUTE_COLORS:
       return sizeof(hlsl::color_t);
+    case MESH_ATTRIBUTE_UVS:
+      return sizeof(glm::vec2);
     }
   };
 
@@ -268,6 +293,12 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
                                        offset);
       offset += size_bytes(colors);
     } break;
+    case MESH_ATTRIBUTE_UVS: {
+      auto uvs = reinterpret_span<const glm::vec2>(data);
+      m_resource_uploader.stage_buffer(*m_device, uvs, mesh.vertex_buffer,
+                                       offset);
+      offset += size_bytes(uvs);
+    } break;
     }
   }
 
@@ -283,6 +314,69 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   }
 
   return get_mesh_id(key);
+}
+
+auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
+  SamplerDesc desc = {
+      .mag_filter = getVkFilter(texture.sampler.mag_filter),
+      .min_filter = getVkFilter(texture.sampler.min_filter),
+      .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
+      .address_Mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
+      .address_Mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
+  };
+
+  unsigned index = ranges::distance(m_sampler_descs.begin(),
+                                    ranges::find(m_sampler_descs, desc));
+
+  if (index == m_sampler_descs.size()) {
+    auto sampler = m_device->create_sampler(desc);
+
+    auto descriptor = sampler.get_descriptor();
+    m_device->write_descriptor_set(VkWriteDescriptorSet{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = m_persistent_descriptor_set,
+        .dstBinding = hlsl::SAMPLERS_SLOT,
+        .dstArrayElement = index,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+        .pImageInfo = &descriptor,
+    });
+
+    m_sampler_descs.push_back(desc);
+    m_samplers.push_back(std::move(sampler));
+  }
+
+  return SamplerID{index};
+}
+
+auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
+  auto texture_view =
+      TextureView::create(m_images[texture.image],
+                          TextureViewDesc{
+                              .swizzle = getVkComponentMapping(texture.swizzle),
+                              .aspects = VK_IMAGE_ASPECT_COLOR_BIT,
+                              .mip_levels = ALL_MIP_LEVELS,
+                              .array_layers = ALL_ARRAY_LAYERS,
+                          });
+
+  unsigned index = m_num_textures++;
+
+  VkDescriptorImageInfo descriptor = {
+      .imageView = m_device->getVkImageView(texture_view),
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+
+  m_device->write_descriptor_set(VkWriteDescriptorSet{
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = m_persistent_descriptor_set,
+      .dstBinding = hlsl::TEXTURES_SLOT,
+      .dstArrayElement = index,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+      .pImageInfo = &descriptor,
+  });
+
+  return TextureID{index};
 }
 
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
@@ -323,15 +417,23 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
       });
     }();
 
-    auto material = static_cast<RenMaterial>(m_materials.size());
-    m_materials.push_back(hlsl::Material{
+    hlsl::Material material = {
         .base_color = glm::make_vec4(desc.base_color_factor),
         .metallic = desc.metallic_factor,
         .roughness = desc.roughness_factor,
-    });
+    };
+
+    const auto &base_color_texture = desc.color_tex;
+    if (base_color_texture.image) {
+      material.base_color_texture = get_or_create_texture(base_color_texture);
+      material.base_color_sampler = get_or_create_sampler(base_color_texture);
+    }
+
+    auto index = static_cast<RenMaterial>(m_materials.size());
+    m_materials.push_back(material);
     m_material_pipelines.push_back(pipeline);
 
-    *out = material;
+    *out = index;
     ++out;
   }
 }
@@ -419,7 +521,7 @@ struct UploadDataPassConfig {
   const SlotMap<hlsl::DirLight> *dir_lights;
   std::span<const hlsl::Material> materials;
 
-  VkDescriptorSet scene_set;
+  VkDescriptorSet global_set;
 };
 
 struct UploadDataPassResources {
@@ -481,7 +583,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
   std::array write_configs = {
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .dstSet = cfg.scene_set,
+          .dstSet = cfg.global_set,
           .dstBinding = hlsl::GLOBAL_DATA_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -489,7 +591,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .dstSet = cfg.scene_set,
+          .dstSet = cfg.global_set,
           .dstBinding = hlsl::MODEL_MATRICES_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -497,7 +599,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .dstSet = cfg.scene_set,
+          .dstSet = cfg.global_set,
           .dstBinding = hlsl::NORMAL_MATRICES_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -505,7 +607,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .dstSet = cfg.scene_set,
+          .dstSet = cfg.global_set,
           .dstBinding = hlsl::DIR_LIGHTS_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -513,7 +615,7 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       },
       VkWriteDescriptorSet{
           .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-          .dstSet = cfg.scene_set,
+          .dstSet = cfg.global_set,
           .dstBinding = hlsl::MATERIALS_SLOT,
           .descriptorCount = 1,
           .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -566,7 +668,6 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
   rgb.set_desc(rcs.dir_lights_buffer, "Dir lights buffer");
 
   rcs.materials_buffer = pass.create_buffer(
-
       {
           .heap = BufferHeap::Upload,
           .size = unsigned(cfg.materials.size_bytes()),
@@ -597,7 +698,8 @@ struct ColorPassConfig {
   std::span<const GraphicsPipelineRef> material_pipelines;
   const SlotMap<MeshInst> *mesh_insts;
 
-  VkDescriptorSet scene_set;
+  VkDescriptorSet persistent_set;
+  VkDescriptorSet global_set;
 
   PipelineLayoutRef pipeline_layout;
 
@@ -635,8 +737,9 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       return;
     }
 
+    std::array descriptor_sets = {cfg.persistent_set, cfg.global_set};
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                             cfg.pipeline_layout, 1, {&cfg.scene_set, 1});
+                             cfg.pipeline_layout, 0, descriptor_sets);
 
     for (const auto &&[i, mesh_inst] :
          ranges::views::enumerate(cfg.mesh_insts->values())) {
@@ -650,6 +753,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
       auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
       auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
+      auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
       hlsl::PushConstants pcs = {
           .vertex =
               {
@@ -659,6 +763,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                   .colors = (colors_offset != ATTRIBUTE_UNUSED)
                                 ? address + colors_offset
                                 : 0,
+                  .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset
+                                                          : 0,
               },
           .fragment = {.material_index = material},
       };
@@ -789,8 +895,8 @@ void Scene::draw(Swapchain &swapchain) {
     m_device->graphicsQueueSubmit(asSpan(submit));
   }
 
-  auto scene_set =
-      m_descriptor_set_allocator.allocate(get_global_descriptor_set_layout());
+  auto global_set = m_descriptor_set_allocator.allocate(
+      m_pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
 
   auto frame_resources = setup_upload_data_pass(
       *m_device, rgb,
@@ -802,7 +908,7 @@ void Scene::draw(Swapchain &swapchain) {
           .mesh_insts = &m_mesh_insts,
           .dir_lights = &m_dir_lights,
           .materials = m_materials,
-          .scene_set = scene_set,
+          .global_set = global_set,
       });
 
   // Draw scene
@@ -816,7 +922,8 @@ void Scene::draw(Swapchain &swapchain) {
           .meshes = &m_meshes,
           .material_pipelines = m_material_pipelines,
           .mesh_insts = &m_mesh_insts,
-          .scene_set = scene_set,
+          .persistent_set = m_persistent_descriptor_set,
+          .global_set = global_set,
           .pipeline_layout = m_pipeline_layout,
           .uploaded_vertex_buffers = uploaded_vertex_buffers,
           .uploaded_index_buffers = uploaded_index_buffers,

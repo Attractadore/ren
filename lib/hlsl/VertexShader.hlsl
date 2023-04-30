@@ -29,6 +29,7 @@ VS_OUT main(VS_IN vs_in) {
   uint64_t positions_ptr = g_pcs.vertex.positions;
   uint64_t colors_ptr = g_pcs.vertex.colors;
   uint64_t normals_ptr = g_pcs.vertex.normals;
+  uint64_t uvs_ptr = g_pcs.vertex.uvs;
 
   float3 local_position = ptr_load<float3>(positions_ptr, vs_in.index);
   float3 world_position = mul(model_mat, float4(local_position, 1.0f));
@@ -38,7 +39,7 @@ VS_OUT main(VS_IN vs_in) {
   vs_out.position = position;
 
   float4 color = 1.0f;
-  if (colors_ptr != 0) {
+  if (colors_ptr) {
     color.xyz = decode_color(ptr_load<color_t>(colors_ptr, vs_in.index));
   }
   vs_out.color = color;
@@ -46,6 +47,12 @@ VS_OUT main(VS_IN vs_in) {
   float3 normal = decode_normal(ptr_load<normal_t>(normals_ptr, vs_in.index));
   normal = mul(normal_mat, normal);
   vs_out.normal = normal;
+
+  float2 uv = 0.0f;
+  if (uvs_ptr) {
+    uv = ptr_load<float2>(uvs_ptr, vs_in.index);
+  }
+  vs_out.uv = uv;
 
   return vs_out;
 }

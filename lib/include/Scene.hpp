@@ -21,6 +21,18 @@ using MeshMap = SlotMap<Mesh>;
 using MeshInstanceMap = SlotMap<MeshInst>;
 using DirLightMap = SlotMap<hlsl::DirLight>;
 
+struct SamplerID {
+  unsigned value;
+
+  operator unsigned() const noexcept { return value; }
+};
+
+struct TextureID {
+  unsigned value;
+
+  operator unsigned() const noexcept { return value; }
+};
+
 class Scene {
   Device *m_device;
 
@@ -37,6 +49,11 @@ class Scene {
   Camera m_camera;
 
   MeshMap m_meshes;
+
+  Vector<SamplerDesc> m_sampler_descs;
+  Vector<Sampler> m_samplers;
+
+  unsigned m_num_textures = 1;
 
   Vector<hlsl::Material> m_materials = {{}};
   Vector<GraphicsPipelineRef> m_material_pipelines = {{}};
@@ -61,14 +78,6 @@ private:
   DirLightMap m_dir_lights;
 
 private:
-  DescriptorSetLayoutRef get_persistent_descriptor_set_layout() const {
-    return m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET];
-  }
-
-  DescriptorSetLayoutRef get_global_descriptor_set_layout() const {
-    return m_pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET];
-  }
-
   void next_frame();
 
 public:
@@ -76,6 +85,14 @@ public:
 
   RenMesh create_mesh(const RenMeshDesc &desc);
 
+private:
+  [[nodiscard]] auto get_or_create_sampler(const RenTexture &texture)
+      -> SamplerID;
+
+  [[nodiscard]] auto get_or_create_texture(const RenTexture &texture)
+      -> TextureID;
+
+public:
   RenImage create_image(const RenImageDesc &desc);
 
   void create_materials(std::span<const RenMaterialDesc> descs,

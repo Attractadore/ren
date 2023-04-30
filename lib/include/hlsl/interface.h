@@ -14,6 +14,7 @@ struct VertexData {
   uint64_t positions;
   uint64_t normals;
   uint64_t colors;
+  uint64_t uvs;
 };
 
 struct FragmentData {
@@ -30,10 +31,17 @@ static_assert(sizeof(PushConstants) <= 128);
 typedef float3x4 model_matrix_t;
 typedef float3x3 normal_matrix_t;
 
+constexpr uint NUM_SAMPLERS = 8;
+constexpr uint NUM_TEXTURES = 1024;
+
 constexpr uint PERSISTENT_SET = 0;
+constexpr uint FIRST_PERSISTENT_SLOT = -1;
+constexpr uint SAMPLERS_SLOT = FIRST_PERSISTENT_SLOT + 1;
+constexpr uint TEXTURES_SLOT = SAMPLERS_SLOT + 1;
 
 constexpr uint GLOBAL_SET = 1;
-constexpr uint GLOBAL_DATA_SLOT = 0;
+constexpr uint FIRST_GLOBAL_SLOT = -1;
+constexpr uint GLOBAL_DATA_SLOT = FIRST_GLOBAL_SLOT + 1;
 constexpr uint MODEL_MATRICES_SLOT = GLOBAL_DATA_SLOT + 1;
 constexpr uint NORMAL_MATRICES_SLOT = MODEL_MATRICES_SLOT + 1;
 constexpr uint MATERIALS_SLOT = NORMAL_MATRICES_SLOT + 1;

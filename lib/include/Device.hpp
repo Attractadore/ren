@@ -132,7 +132,8 @@ struct ImageViews {
 
 using DeleteQueue = detail::DeleteQueueImpl<
     QueueCustomDeleter, ImageViews, VkBuffer, VkDescriptorPool,
-    VkDescriptorSetLayout, VkImage, VkPipeline, VkPipelineLayout, VkSemaphore,
+    VkDescriptorSetLayout, VkImage, VkPipeline, VkPipelineLayout, VkSampler,
+    VkSemaphore,
     VkSwapchainKHR, // Swapchain must be destroyed before surface
     VkSurfaceKHR, VmaAllocation>;
 
@@ -225,6 +226,8 @@ public:
   [[nodiscard]] auto create_texture(TextureDesc desc) -> Texture;
   void destroy_image_views(VkImage image);
   VkImageView getVkImageView(const TextureView &view);
+
+  [[nodiscard]] auto create_sampler(const SamplerDesc &desc) -> Sampler;
 
   [[nodiscard]] auto create_pipeline_layout(PipelineLayoutDesc desc)
       -> PipelineLayout;
