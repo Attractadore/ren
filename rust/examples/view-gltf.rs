@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use glam::{Mat4, Vec3, Vec3A, Vec4};
+use glam::{Mat4, Vec2, Vec3, Vec3A, Vec4};
 use ren::{
     CameraDesc, CameraProjection, ComponentFormat, DirLightDesc, Filter, ImageID, MaterialDesc,
     MaterialID, MeshDesc, MeshID, MeshInstDesc, MeshInstID, NormalTexture, NumericFormat,
@@ -46,6 +46,7 @@ impl<'a> SceneWalkContext<'a> {
 enum Data {
     UShort(Vec<u16>),
     UInt(Vec<u32>),
+    Float2(Vec<Vec2>),
     Float3(Vec<Vec3>),
     Float4(Vec<Vec4>),
 }
@@ -58,6 +59,7 @@ impl Display for Data {
             match self {
                 Data::UShort(_) => "ushort",
                 Data::UInt(_) => "uint",
+                Data::Float2(_) => "float2",
                 Data::Float3(_) => "float3",
                 Data::Float4(_) => "float4",
             }
@@ -74,6 +76,12 @@ impl From<Vec<u16>> for Data {
 impl From<Vec<u32>> for Data {
     fn from(value: Vec<u32>) -> Self {
         Data::UInt(value)
+    }
+}
+
+impl From<Vec<Vec2>> for Data {
+    fn from(value: Vec<Vec2>) -> Self {
+        Data::Float2(value)
     }
 }
 
@@ -131,6 +139,9 @@ fn get_accessor_data(accessor: &gltf::Accessor, ctx: &SceneWalkContext) -> Resul
         (gltf::accessor::DataType::U32, gltf::accessor::Dimensions::Scalar) => {
             get_accessor_formatted_data::<u32>(accessor, ctx)
         }
+        (gltf::accessor::DataType::F32, gltf::accessor::Dimensions::Vec2) => {
+            get_accessor_formatted_data::<Vec2>(accessor, ctx)
+        }
         (gltf::accessor::DataType::F32, gltf::accessor::Dimensions::Vec3) => {
             get_accessor_formatted_data::<Vec3>(accessor, ctx)
         }
@@ -167,16 +178,6 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
         format => bail!("Unsupported mesh position format: {format}"),
     };
 
-    let normals = get_data(
-        primitive
-            .get(&gltf::Semantic::Normals)
-            .context("Mesh doesn't contain normals")?,
-    )?;
-    let normals = match normals {
-        Data::Float3(normals) => normals,
-        format => bail!("Unsupported mesh position format: {format}"),
-    };
-
     let colors = primitive
         .get(&gltf::Semantic::Colors(0))
         .map(get_data)
@@ -189,6 +190,27 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
             }
             Data::Float4(colors) => Ok(colors),
             format => bail!("Unsupported mesh color format: {format}"),
+        })
+        .transpose()?;
+
+    let normals = get_data(
+        primitive
+            .get(&gltf::Semantic::Normals)
+            .context("Mesh doesn't contain normals")?,
+    )?;
+    let normals = match normals {
+        Data::Float3(normals) => normals,
+        format => bail!("Unsupported mesh position format: {format}"),
+    };
+
+    let uvs = primitive
+        .get(&gltf::Semantic::TexCoords(0))
+        .map(get_data)
+        .transpose()?;
+    let uvs = uvs
+        .map(|uvs| match uvs {
+            Data::Float2(uvs) => Ok(uvs),
+            format => bail!("Unsupported mesh UV format: {format}"),
         })
         .transpose()?;
 
@@ -221,6 +243,9 @@ fn create_mesh(primitive: &gltf::Primitive, ctx: &mut SceneWalkContext) -> Resul
         },
         colors: colors.as_ref().map(|colors| unsafe {
             slice::from_raw_parts(colors.as_ptr() as *const [f32; 4], colors.len())
+        }),
+        uvs: uvs.as_ref().map(|uvs| unsafe {
+            slice::from_raw_parts(uvs.as_ptr() as *const [f32; 2], uvs.len())
         }),
         indices: Some(&indices),
         ..Default::default()
