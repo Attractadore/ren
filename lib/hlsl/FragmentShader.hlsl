@@ -23,7 +23,7 @@ float4 main() : SV_Target { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
 [[vk::push_constant]] PushConstants g_pcs;
 
 float4 main(FS_IN fs_in) : SV_Target {
-  Material material = g_materials[g_pcs.fragment.material_index];
+  Material material = g_materials[g_pcs.material_index];
 
   float3 normal = normalize(fs_in.normal);
   float3 view_dir = normalize(g_global.eye - fs_in.world_position);

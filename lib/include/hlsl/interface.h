@@ -9,21 +9,13 @@ struct GlobalData {
   uint num_dir_lights;
 };
 
-struct VertexData {
+struct PushConstants {
   uint matrix_index;
+  uint material_index;
   uint64_t positions;
   uint64_t normals;
   uint64_t colors;
   uint64_t uvs;
-};
-
-struct FragmentData {
-  uint material_index;
-};
-
-struct PushConstants {
-  VertexData vertex;
-  FragmentData fragment;
 };
 
 static_assert(sizeof(PushConstants) <= 128);

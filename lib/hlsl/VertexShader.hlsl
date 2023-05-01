@@ -21,15 +21,15 @@ float4 main() : SV_Position { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
 VS_OUT main(VS_IN vs_in) {
   VS_OUT vs_out;
 
-  uint matrix_index = g_pcs.vertex.matrix_index;
+  uint matrix_index = g_pcs.matrix_index;
 
   float3x4 model_mat = g_model_matrices[matrix_index];
   float3x3 normal_mat = g_normal_matrices[matrix_index];
   float4x4 proj_view_mat = g_global.proj_view;
-  uint64_t positions_ptr = g_pcs.vertex.positions;
-  uint64_t colors_ptr = g_pcs.vertex.colors;
-  uint64_t normals_ptr = g_pcs.vertex.normals;
-  uint64_t uvs_ptr = g_pcs.vertex.uvs;
+  uint64_t positions_ptr = g_pcs.positions;
+  uint64_t colors_ptr = g_pcs.colors;
+  uint64_t normals_ptr = g_pcs.normals;
+  uint64_t uvs_ptr = g_pcs.uvs;
 
   float3 local_position = ptr_load<float3>(positions_ptr, vs_in.index);
   float3 world_position = mul(model_mat, float4(local_position, 1.0f));

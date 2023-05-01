@@ -144,12 +144,11 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
                      ranges::to<Vector>,
       .push_constants =
           {
-              {.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-               .offset = offsetof(hlsl::PushConstants, vertex),
-               .size = sizeof(hlsl::PushConstants::vertex)},
-              {.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-               .offset = offsetof(hlsl::PushConstants, fragment),
-               .size = sizeof(hlsl::PushConstants::fragment)},
+              {
+                  .stageFlags =
+                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                  .size = sizeof(hlsl::PushConstants),
+              },
           },
   });
 }
@@ -749,23 +748,17 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
       auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
       hlsl::PushConstants pcs = {
-          .vertex =
-              {
-                  .matrix_index = unsigned(i),
-                  .positions = address + positions_offset,
-                  .normals = address + normals_offset,
-                  .colors = (colors_offset != ATTRIBUTE_UNUSED)
-                                ? address + colors_offset
-                                : 0,
-                  .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset
-                                                          : 0,
-              },
-          .fragment = {.material_index = material},
+          .matrix_index = unsigned(i),
+          .material_index = material,
+          .positions = address + positions_offset,
+          .normals = address + normals_offset,
+          .colors =
+              (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
+          .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
       };
-      cmd.set_push_constants(cfg.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
-                             pcs.vertex, offsetof(decltype(pcs), vertex));
-      cmd.set_push_constants(cfg.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT,
-                             pcs.fragment, offsetof(decltype(pcs), fragment));
+      cmd.set_push_constants(
+          cfg.pipeline_layout,
+          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
 
       cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);
