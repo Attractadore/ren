@@ -7,26 +7,14 @@ namespace ren {
 class Device;
 
 class DescriptorSetAllocator {
-  Device *m_device;
-
-  struct FrameDescriptorSetAllocator {
-    Vector<DescriptorPool> pools;
-    unsigned num_used;
-  };
-
   unsigned m_frame_index = 0;
-  std::array<FrameDescriptorSetAllocator, c_pipeline_depth> m_frame_pools;
-
-  auto get_frame_allocator() -> FrameDescriptorSetAllocator & {
-    return m_frame_pools[m_frame_index];
-  }
+  std::array<Vector<DescriptorPool>, c_pipeline_depth> m_frame_pools;
+  std::array<unsigned, c_pipeline_depth> m_frame_pool_indices = {};
 
 public:
-  DescriptorSetAllocator(Device &device);
+  void next_frame(Device &device);
 
-  void next_frame();
-
-  VkDescriptorSet allocate(const DescriptorSetLayoutRef &layout);
+  VkDescriptorSet allocate(Device &device, DescriptorSetLayoutRef layout);
 };
 
 } // namespace ren

@@ -1,6 +1,7 @@
 #include "RenderGraph.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
+#include "DescriptorSetAllocator.hpp"
 #include "Device.hpp"
 #include "Formats.inl"
 #include "Support/FlatSet.hpp"
@@ -649,17 +650,26 @@ auto RenderGraph::Builder::build(Device &device) -> RenderGraph {
   }};
 }
 
+auto RenderGraph::allocate_descriptor_set(DescriptorSetLayoutRef layout)
+    -> VkDescriptorSet {
+  return m_set_allocator->allocate(*m_device, layout);
+}
+
 auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
   assert(texture);
-  return m_textures[static_cast<size_t>(texture)];
+  return m_textures[texture];
 }
 
 auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferRef {
   assert(buffer);
-  return m_buffers[static_cast<size_t>(buffer)];
+  return m_buffers[buffer];
 }
 
-void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
+void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
+                          CommandAllocator &cmd_allocator) {
+  m_device = &device;
+  m_set_allocator = &set_allocator;
+
   SmallVector<Submit, 16> submits;
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
   SmallVector<unsigned, 16> cmd_buffer_counts;

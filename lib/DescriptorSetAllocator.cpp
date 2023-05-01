@@ -4,37 +4,33 @@
 
 namespace ren {
 
-DescriptorSetAllocator::DescriptorSetAllocator(Device &device)
-    : m_device(&device) {}
-
-void DescriptorSetAllocator::next_frame() {
+void DescriptorSetAllocator::next_frame(Device &device) {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
-  auto &alloc = get_frame_allocator();
-  for (auto &pool : alloc.pools) {
-    m_device->reset_descriptor_pool(pool);
+  for (auto &pool : m_frame_pools[m_frame_index]) {
+    device.reset_descriptor_pool(pool);
   }
-  alloc.num_used = 0;
+  m_frame_pool_indices[m_frame_index] = 0;
 }
 
-auto DescriptorSetAllocator::allocate(const DescriptorSetLayoutRef &layout)
+auto DescriptorSetAllocator::allocate(Device &device,
+                                      DescriptorSetLayoutRef layout)
     -> VkDescriptorSet {
-  auto &alloc = get_frame_allocator();
+  auto &pool_index = m_frame_pool_indices[m_frame_index];
+  auto &pools = m_frame_pools[m_frame_index];
 
-  while (alloc.num_used < alloc.pools.size()) {
-    auto &pool = alloc.pools[alloc.num_used];
-    auto set = m_device->allocate_descriptor_set(pool, layout);
+  while (pool_index < pools.size()) {
+    auto set = device.allocate_descriptor_set(pools[pool_index], layout);
     if (set) {
-      return std::move(*set);
+      return *set;
     }
-    alloc.num_used++;
+    pool_index++;
   }
 
   DescriptorPoolDesc pool_desc = {.set_count = 16};
   pool_desc.pool_sizes.fill(16);
-  auto &pool =
-      alloc.pools.emplace_back(m_device->create_descriptor_pool(pool_desc));
+  auto &pool = pools.emplace_back(device.create_descriptor_pool(pool_desc));
 
-  auto set = m_device->allocate_descriptor_set(pool, layout);
+  auto set = device.allocate_descriptor_set(pool, layout);
   if (!set) {
     throw std::runtime_error{"Failed to allocate descriptor set"};
   }

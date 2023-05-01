@@ -1,5 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
+#include "Descriptors.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/Optional.hpp"
@@ -12,6 +13,7 @@ namespace ren {
 
 class CommandAllocator;
 class CommandBuffer;
+class DescriptorSetAllocator;
 class Device;
 class RenderGraph;
 class Swapchain;
@@ -47,13 +49,16 @@ class RenderGraph {
     Vector<RGCallback> pass_cbs;
   };
 
+  Device *m_device = nullptr;
+  DescriptorSetAllocator *m_set_allocator = nullptr;
+
   Vector<Batch> m_batches;
 
   Vector<Texture> m_textures;
   Vector<Buffer> m_buffers;
   Vector<Semaphore> m_semaphores;
 
-  Swapchain *m_swapchain;
+  Swapchain *m_swapchain = nullptr;
   SemaphoreRef m_present_semaphore;
 
 private:
@@ -76,11 +81,15 @@ private:
 public:
   class Builder;
 
+  auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
+      -> VkDescriptorSet;
+
   auto get_texture(RGTextureID tex) const -> TextureRef;
 
   auto get_buffer(RGBufferID buffer) const -> BufferRef;
 
-  void execute(Device &device, CommandAllocator &cmd_allocator);
+  void execute(Device &device, DescriptorSetAllocator &set_allocator,
+               CommandAllocator &cmd_allocator);
 };
 
 class RenderGraph::Builder {
