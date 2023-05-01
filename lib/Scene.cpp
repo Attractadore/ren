@@ -154,20 +154,9 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
 
 } // namespace
 
-Scene::Scene(Device &device)
-    : m_device(&device),
+Scene::Scene(Device &device) : m_device(&device), m_cmd_allocator(*m_device) {
+  m_asset_loader.add_search_directory(c_assets_directory);
 
-      m_asset_loader([&] {
-        AssetLoader asset_loader;
-        asset_loader.add_search_directory(c_assets_directory);
-        return asset_loader;
-      }()),
-
-      m_compiler(*m_device, &m_asset_loader),
-
-      m_cmd_allocator(*m_device)
-
-{
   m_pipeline_layout =
       reflect_material_pipeline_layout(*m_device, m_asset_loader);
 
@@ -390,12 +379,14 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
       if (pipeline) {
         return *pipeline;
       }
-      return m_compiler.compile_material_pipeline({
-          .material = desc,
-          .layout = m_pipeline_layout,
-          .rt_format = m_rt_format,
-          .depth_format = m_depth_format,
-      });
+      return m_compiler.compile_material_pipeline(
+          *m_device, m_asset_loader,
+          MaterialPipelineConfig{
+              .material = desc,
+              .layout = m_pipeline_layout,
+              .rt_format = m_rt_format,
+              .depth_format = m_depth_format,
+          });
     }();
 
     hlsl::Material material = {

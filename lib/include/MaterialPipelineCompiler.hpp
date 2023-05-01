@@ -33,17 +33,14 @@ template <> struct std::hash<ren::MaterialConfig> {
 namespace ren {
 
 class MaterialPipelineCompiler {
-  Device *m_device;
   HashMap<MaterialConfig, GraphicsPipeline> m_pipelines;
-  const AssetLoader *m_asset_loader;
 
 public:
-  MaterialPipelineCompiler(Device &device, const AssetLoader *asset_loader);
-
   auto get_material_pipeline(const MaterialConfig &config) const
       -> Optional<GraphicsPipelineRef>;
 
-  auto compile_material_pipeline(const MaterialPipelineConfig &config)
+  auto compile_material_pipeline(Device &device, const AssetLoader &loader,
+                                 const MaterialPipelineConfig &config)
       -> GraphicsPipelineRef;
 };
 
