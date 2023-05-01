@@ -887,12 +887,10 @@ void Scene::draw(Swapchain &swapchain) {
 
   auto upload_cmd = m_resource_uploader.record_upload(m_cmd_allocator);
   if (upload_cmd) {
-    VkCommandBufferSubmitInfo cmd_submit = {
+    m_device->graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = upload_cmd->get(),
-    };
-    Submit submit = {.command_buffers = {&cmd_submit, 1}};
-    m_device->graphicsQueueSubmit(asSpan(submit));
+    }));
   }
 
   auto frame_resources = setup_upload_data_pass(*m_device, rgb,

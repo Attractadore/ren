@@ -161,8 +161,8 @@ define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
 #undef define_queue_deleter
 
 Device::~Device() {
+  m_graphics_queue_semaphore = {};
   flush();
-  DestroySemaphore(m_graphics_queue_semaphore);
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
   DestroyInstance();
@@ -174,9 +174,10 @@ void Device::flush() {
 }
 
 void Device::next_frame() {
-  m_frame_end_times[m_frame_index].graphics_queue_time = getGraphicsQueueTime();
+  m_frame_end_times[m_frame_index] = m_graphics_queue_time;
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
-  waitForGraphicsQueue(m_frame_end_times[m_frame_index].graphics_queue_time);
+  waitForSemaphore(m_graphics_queue_semaphore,
+                   m_frame_end_times[m_frame_index]);
   m_delete_queue.next_frame(*this);
 }
 
@@ -479,7 +480,7 @@ auto Device::createBinarySemaphore() -> Semaphore {
                      }}};
 }
 
-auto Device::createTimelineSemaphore(uint64_t initial_value) -> VkSemaphore {
+auto Device::createTimelineSemaphore(uint64_t initial_value) -> Semaphore {
   VkSemaphoreTypeCreateInfo semaphore_type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
@@ -492,70 +493,59 @@ auto Device::createTimelineSemaphore(uint64_t initial_value) -> VkSemaphore {
   VkSemaphore semaphore;
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
                 "Vulkan: Failed to create timeline semaphore");
-  return semaphore;
+  return {.handle = {semaphore, [this](VkSemaphore semaphore) {
+                       push_to_delete_queue(semaphore);
+                     }}};
 }
 
-SemaphoreWaitResult
-Device::waitForSemaphore(VkSemaphore sem, uint64_t value,
-                         std::chrono::nanoseconds timeout) const {
+auto Device::waitForSemaphore(SemaphoreRef semaphore, uint64_t value,
+                              std::chrono::nanoseconds timeout) const
+    -> VkResult {
   VkSemaphoreWaitInfo wait_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
       .semaphoreCount = 1,
-      .pSemaphores = &sem,
+      .pSemaphores = &semaphore.handle,
       .pValues = &value,
   };
-  auto r = WaitSemaphores(&wait_info, timeout.count());
-  switch (r) {
-    using enum SemaphoreWaitResult;
+  auto result = WaitSemaphores(&wait_info, timeout.count());
+  switch (result) {
   case VK_SUCCESS:
-    return Ready;
   case VK_TIMEOUT:
-    return Timeout;
+    return result;
   default:
     throw std::runtime_error{"Vulkan: Failed to wait for semaphore"};
   };
 }
 
-auto Device::getSemaphoreValue(VkSemaphore semaphore) const -> uint64_t {
-  uint64_t value;
-  throwIfFailed(GetSemaphoreCounterValue(semaphore, &value),
-                "Vulkan: Failed to get semaphore value");
-  return value;
+void Device::waitForSemaphore(SemaphoreRef semaphore, uint64_t value) const {
+  auto result =
+      waitForSemaphore(semaphore, value, std::chrono::nanoseconds(UINT64_MAX));
+  assert(result == VK_SUCCESS);
 }
 
-void Device::queueSubmitAndSignal(VkQueue queue,
-                                  std::span<const Submit> submits,
-                                  VkSemaphore semaphore, uint64_t value) {
-  auto submit_infos =
-      submits | map([](const Submit &submit) {
-        return VkSubmitInfo2{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-            .waitSemaphoreInfoCount = uint32_t(submit.wait_semaphores.size()),
-            .pWaitSemaphoreInfos = submit.wait_semaphores.data(),
-            .commandBufferInfoCount = uint32_t(submit.command_buffers.size()),
-            .pCommandBufferInfos = submit.command_buffers.data(),
-            .signalSemaphoreInfoCount =
-                uint32_t(submit.signal_semaphores.size()),
-            .pSignalSemaphoreInfos = submit.signal_semaphores.data(),
-        };
-      }) |
-      ranges::to<SmallVector<VkSubmitInfo2, 8>>;
+void Device::queueSubmit(
+    VkQueue queue, std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
+    std::span<const VkSemaphoreSubmitInfo> wait_semaphores,
+    std::span<const VkSemaphoreSubmitInfo> input_signal_semaphores) {
+  SmallVector<VkSemaphoreSubmitInfo, 8> signal_semaphores(
+      input_signal_semaphores);
+  signal_semaphores.push_back({
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+      .semaphore = m_graphics_queue_semaphore.handle.get(),
+      .value = ++m_graphics_queue_time,
+  });
 
-  auto final_signal_semaphores =
-      concat(submits.back().signal_semaphores,
-             once(VkSemaphoreSubmitInfo{
-                 .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-                 .semaphore = semaphore,
-                 .value = value,
-             })) |
-      ranges::to<SmallVector<VkSemaphoreSubmitInfo, 8>>;
+  VkSubmitInfo2 submit_info = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+      .waitSemaphoreInfoCount = uint32_t(wait_semaphores.size()),
+      .pWaitSemaphoreInfos = wait_semaphores.data(),
+      .commandBufferInfoCount = uint32_t(cmd_buffers.size()),
+      .pCommandBufferInfos = cmd_buffers.data(),
+      .signalSemaphoreInfoCount = uint32_t(signal_semaphores.size()),
+      .pSignalSemaphoreInfos = signal_semaphores.data(),
+  };
 
-  auto &final_submit_info = submit_infos.back();
-  final_submit_info.signalSemaphoreInfoCount = final_signal_semaphores.size();
-  final_submit_info.pSignalSemaphoreInfos = final_signal_semaphores.data();
-
-  throwIfFailed(QueueSubmit2(queue, submit_infos.size(), submit_infos.data(),
-                             VK_NULL_HANDLE),
+  throwIfFailed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
                 "Vulkan: Failed to submit work to queue");
 }
 
@@ -668,18 +658,7 @@ auto Device::queuePresent(const VkPresentInfoKHR &present_info) -> VkResult {
   case VK_ERROR_SURFACE_LOST_KHR:
   case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT: {
 #if 1
-    VkSemaphoreSubmitInfo semaphore_info = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-        .semaphore = getGraphicsQueueSemaphore(),
-        .value = ++m_graphics_queue_time,
-    };
-    VkSubmitInfo2 submit_info = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-        .signalSemaphoreInfoCount = 1,
-        .pSignalSemaphoreInfos = &semaphore_info,
-    };
-    throwIfFailed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
-                  "Vulkan: Failed to submit semaphore signal operation");
+    queueSubmit(queue, {});
 #else
     // NOTE: bad stuff (like a dead lock) will happen if someones tries to
     // wait for this value before signaling the graphics queue with a higher

@@ -670,11 +670,11 @@ void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
   m_device = &device;
   m_set_allocator = &set_allocator;
 
-  SmallVector<Submit, 16> submits;
-  SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffer_infos;
-  SmallVector<unsigned, 16> cmd_buffer_counts;
+  SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;
 
   for (auto &batch : m_batches) {
+    cmd_buffers.clear();
+
     for (auto &&[barrier_cb, pass_cb] :
          ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
       auto cmd = cmd_allocator.allocate();
@@ -686,25 +686,14 @@ void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
         pass_cb(cmd, *this);
       }
       cmd.end();
-      cmd_buffer_infos.push_back(
+      cmd_buffers.push_back(
           {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
            .commandBuffer = cmd.get()});
     }
 
-    submits.push_back({.wait_semaphores = batch.wait_semaphores,
-                       .signal_semaphores = batch.signal_semaphores});
-
-    cmd_buffer_counts.push_back(batch.pass_cbs.size());
+    device.graphicsQueueSubmit(cmd_buffers, batch.wait_semaphores,
+                               batch.signal_semaphores);
   }
-
-  auto *p_cmd_buffer_infos = cmd_buffer_infos.data();
-  for (size_t i = 0; i < submits.size(); ++i) {
-    auto cmd_cnt = cmd_buffer_counts[i];
-    submits[i].command_buffers = {p_cmd_buffer_infos, cmd_cnt};
-    p_cmd_buffer_infos += cmd_cnt;
-  }
-
-  device.graphicsQueueSubmit(submits);
 
   m_swapchain->presentImage(m_present_semaphore);
 }

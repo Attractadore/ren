@@ -17,27 +17,6 @@
 
 namespace ren {
 
-enum class QueueType {
-  Graphics,
-  Compute,
-  Transfer,
-};
-
-enum class SemaphoreWaitResult {
-  Ready,
-  Timeout,
-};
-
-struct Submit {
-  std::span<const VkSemaphoreSubmitInfo> wait_semaphores;
-  std::span<const VkCommandBufferSubmitInfo> command_buffers;
-  std::span<const VkSemaphoreSubmitInfo> signal_semaphores;
-};
-
-struct DeviceTime {
-  uint64_t graphics_queue_time;
-};
-
 class Device;
 
 namespace detail {
@@ -148,20 +127,16 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   unsigned m_graphics_queue_family = -1;
   VkQueue m_graphics_queue;
-  VkSemaphore m_graphics_queue_semaphore;
+  Semaphore m_graphics_queue_semaphore;
   uint64_t m_graphics_queue_time = 0;
 
   unsigned m_frame_index = 0;
-  std::array<DeviceTime, c_pipeline_depth> m_frame_end_times = {};
+  std::array<uint64_t, c_pipeline_depth> m_frame_end_times = {};
 
   HashMap<VkImage, SmallLinearMap<TextureViewDesc, VkImageView, 3>>
       m_image_views;
 
   DeleteQueue m_delete_queue;
-
-private:
-  void queueSubmitAndSignal(VkQueue queue, std::span<const Submit> submits,
-                            VkSemaphore semaphore, uint64_t value);
 
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
@@ -239,17 +214,13 @@ public:
 
   [[nodiscard]] auto createBinarySemaphore() -> Semaphore;
   [[nodiscard]] auto createTimelineSemaphore(uint64_t initial_value = 0)
-      -> VkSemaphore;
+      -> Semaphore;
 
-  [[nodiscard]] auto waitForSemaphore(VkSemaphore sem, uint64_t value,
+  [[nodiscard]] auto waitForSemaphore(SemaphoreRef semaphore, uint64_t value,
                                       std::chrono::nanoseconds timeout) const
-      -> SemaphoreWaitResult;
-  void waitForSemaphore(VkSemaphore sem, uint64_t value) const {
-    auto r = waitForSemaphore(sem, value, std::chrono::nanoseconds::max());
-    assert(r == SemaphoreWaitResult::Ready);
-  }
+      -> VkResult;
 
-  auto getSemaphoreValue(VkSemaphore semaphore) const -> uint64_t;
+  void waitForSemaphore(SemaphoreRef semaphore, uint64_t value) const;
 
   auto getGraphicsQueue() const -> VkQueue { return m_graphics_queue; }
 
@@ -257,26 +228,19 @@ public:
     return m_graphics_queue_family;
   }
 
-  auto getGraphicsQueueSemaphore() const -> VkSemaphore {
-    return m_graphics_queue_semaphore;
+  void graphicsQueueSubmit(
+      std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
+      std::span<const VkSemaphoreSubmitInfo> wait_semaphores = {},
+      std::span<const VkSemaphoreSubmitInfo> signal_semaphores = {}) {
+    queueSubmit(getGraphicsQueue(), cmd_buffers, wait_semaphores,
+                signal_semaphores);
   }
 
-  auto getGraphicsQueueTime() const -> uint64_t {
-    return m_graphics_queue_time;
-  }
-
-  auto getGraphicsQueueCompletedTime() const -> uint64_t {
-    return getSemaphoreValue(getGraphicsQueueSemaphore());
-  }
-
-  void graphicsQueueSubmit(std::span<const Submit> submits) {
-    queueSubmitAndSignal(getGraphicsQueue(), submits,
-                         getGraphicsQueueSemaphore(), ++m_graphics_queue_time);
-  }
-
-  void waitForGraphicsQueue(uint64_t time) const {
-    waitForSemaphore(getGraphicsQueueSemaphore(), time);
-  }
+  void
+  queueSubmit(VkQueue queue,
+              std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
+              std::span<const VkSemaphoreSubmitInfo> wait_semaphores = {},
+              std::span<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
   [[nodiscard]] auto queuePresent(const VkPresentInfoKHR &present_info)
       -> VkResult;

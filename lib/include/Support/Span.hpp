@@ -4,6 +4,10 @@
 
 namespace ren {
 
+template <typename T> std::span<const T> asSpan(const T &value) {
+  return {&value, 1};
+}
+
 template <typename T> std::span<T> asSpan(T &value) { return {&value, 1}; }
 
 template <typename T, typename U>
