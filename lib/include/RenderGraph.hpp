@@ -3,6 +3,7 @@
 #include "Descriptors.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
+#include "Support/NewType.hpp"
 #include "Support/Optional.hpp"
 #include "Support/SlotMap.hpp"
 #include "Texture.hpp"
@@ -18,9 +19,9 @@ class Device;
 class RenderGraph;
 class Swapchain;
 
-enum RGPassID {};
-enum RGTextureID {};
-enum RGBufferID {};
+REN_NEW_TYPE(RGPassID, unsigned);
+REN_NEW_TYPE(RGTextureID, unsigned);
+REN_NEW_TYPE(RGBufferID, unsigned);
 
 struct RGTextureDesc {
   VkImageType type = VK_IMAGE_TYPE_2D;

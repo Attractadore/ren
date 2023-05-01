@@ -8,6 +8,7 @@
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
+#include "Support/NewType.hpp"
 #include "Support/SlotMap.hpp"
 #include "hlsl/interface.hpp"
 #include "hlsl/lighting.hpp"
@@ -21,17 +22,8 @@ using MeshMap = SlotMap<Mesh>;
 using MeshInstanceMap = SlotMap<MeshInst>;
 using DirLightMap = SlotMap<hlsl::DirLight>;
 
-struct SamplerID {
-  unsigned value;
-
-  operator unsigned() const noexcept { return value; }
-};
-
-struct TextureID {
-  unsigned value;
-
-  operator unsigned() const noexcept { return value; }
-};
+REN_NEW_TYPE(SamplerID, unsigned);
+REN_NEW_TYPE(TextureID, unsigned);
 
 class Scene {
   Device *m_device;
