@@ -81,8 +81,8 @@ private:
 public:
   class Builder;
 
-  auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
-      -> VkDescriptorSet;
+  [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
+      -> DescriptorSetWriter;
 
   auto get_texture(RGTextureID tex) const -> TextureRef;
 

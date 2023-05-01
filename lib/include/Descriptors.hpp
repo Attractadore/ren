@@ -59,4 +59,40 @@ struct DescriptorSetLayout {
   }
 };
 
+class Device;
+
+class DescriptorSetWriter {
+  Device *m_device;
+  DescriptorSetLayoutRef m_layout;
+  VkDescriptorSet m_set;
+  SmallVector<VkDescriptorBufferInfo, MAX_DESCIPTOR_BINDINGS> m_buffers;
+  SmallVector<VkDescriptorImageInfo, MAX_DESCIPTOR_BINDINGS> m_images;
+  SmallVector<VkWriteDescriptorSet, MAX_DESCIPTOR_BINDINGS> m_data;
+
+public:
+  DescriptorSetWriter(Device &device, VkDescriptorSet set,
+                      DescriptorSetLayoutRef layout);
+
+  auto add_buffer(unsigned slot, const BufferRef &buffer, unsigned offset = 0)
+      -> DescriptorSetWriter &;
+
+private:
+  auto add_texture_and_sampler(unsigned slot, VkImageView view,
+                               VkSampler sampler, unsigned offset)
+      -> DescriptorSetWriter &;
+
+public:
+  auto add_texture(unsigned slot, const TextureView &view, unsigned offset = 0)
+      -> DescriptorSetWriter &;
+
+  auto add_sampler(unsigned slot, const SamplerRef &sampler,
+                   unsigned offset = 0) -> DescriptorSetWriter &;
+
+  auto add_texture_and_sampler(unsigned slot, const TextureView &view,
+                               const SamplerRef &sampler, unsigned offset = 0)
+      -> DescriptorSetWriter &;
+
+  auto write() -> VkDescriptorSet;
+};
+
 } // namespace ren

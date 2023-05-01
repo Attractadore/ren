@@ -323,30 +323,27 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
 
   unsigned index = ranges::distance(m_sampler_descs.begin(),
                                     ranges::find(m_sampler_descs, desc));
+  assert(index < hlsl::NUM_SAMPLERS);
 
   if (index == m_sampler_descs.size()) {
-    auto sampler = m_device->create_sampler(desc);
-
-    auto descriptor = sampler.get_descriptor();
-    m_device->write_descriptor_set(VkWriteDescriptorSet{
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = m_persistent_descriptor_set,
-        .dstBinding = hlsl::SAMPLERS_SLOT,
-        .dstArrayElement = index,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-        .pImageInfo = &descriptor,
-    });
-
     m_sampler_descs.push_back(desc);
-    m_samplers.push_back(std::move(sampler));
+    m_samplers.push_back(m_device->create_sampler(desc));
+
+    DescriptorSetWriter(
+        *m_device, m_persistent_descriptor_set,
+        m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
+        .add_sampler(hlsl::SAMPLERS_SLOT, m_samplers.back(), index)
+        .write();
   }
 
   return SamplerID{index};
 }
 
 auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
-  auto texture_view =
+  unsigned index = m_num_textures++;
+  assert(index < hlsl::NUM_TEXTURES);
+
+  auto view =
       TextureView::create(m_images[texture.image],
                           TextureViewDesc{
                               .swizzle = getVkComponentMapping(texture.swizzle),
@@ -355,22 +352,10 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
                               .array_layers = ALL_ARRAY_LAYERS,
                           });
 
-  unsigned index = m_num_textures++;
-
-  VkDescriptorImageInfo descriptor = {
-      .imageView = m_device->getVkImageView(texture_view),
-      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-  };
-
-  m_device->write_descriptor_set(VkWriteDescriptorSet{
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = m_persistent_descriptor_set,
-      .dstBinding = hlsl::TEXTURES_SLOT,
-      .dstArrayElement = index,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-      .pImageInfo = &descriptor,
-  });
+  DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
+                      m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
+      .add_texture(hlsl::TEXTURES_SLOT, view, index)
+      .write();
 
   return TextureID{index};
 }
@@ -676,59 +661,15 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
     auto dir_lights_buffer = rg.get_buffer(cfg.dir_lights_buffer);
     auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
 
-    auto global_data_descriptor = global_data_buffer.get_descriptor();
-    auto transform_matrix_buffer_descriptor =
-        transform_matrix_buffer.get_descriptor();
-    auto normal_matrix_buffer_descriptor =
-        normal_matrix_buffer.get_descriptor();
-    auto dir_lights_buffer_descriptor = dir_lights_buffer.get_descriptor();
-    auto materials_buffer_descriptor = materials_buffer.get_descriptor();
-
-    auto global_set = rg.allocate_descriptor_set(
-        cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
-    std::array write_configs = {
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = hlsl::GLOBAL_DATA_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &global_data_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = hlsl::MODEL_MATRICES_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &transform_matrix_buffer_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = hlsl::NORMAL_MATRICES_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &normal_matrix_buffer_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = hlsl::DIR_LIGHTS_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &dir_lights_buffer_descriptor,
-        },
-        VkWriteDescriptorSet{
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = global_set,
-            .dstBinding = hlsl::MATERIALS_SLOT,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .pBufferInfo = &materials_buffer_descriptor,
-        },
-    };
-    device.write_descriptor_sets(write_configs);
+    auto global_set =
+        rg.allocate_descriptor_set(
+              cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET])
+            .add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
+            .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
+            .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
+            .add_buffer(hlsl::DIR_LIGHTS_SLOT, dir_lights_buffer)
+            .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer)
+            .write();
 
     std::array descriptor_sets = {cfg.persistent_set, global_set};
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,

@@ -651,8 +651,8 @@ auto RenderGraph::Builder::build(Device &device) -> RenderGraph {
 }
 
 auto RenderGraph::allocate_descriptor_set(DescriptorSetLayoutRef layout)
-    -> VkDescriptorSet {
-  return m_set_allocator->allocate(*m_device, layout);
+    -> DescriptorSetWriter {
+  return {*m_device, m_set_allocator->allocate(*m_device, layout), layout};
 }
 
 auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
