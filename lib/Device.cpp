@@ -219,22 +219,36 @@ void Device::reset_descriptor_pool(const DescriptorPoolRef &pool) {
   ResetDescriptorPool(pool.handle, 0);
 }
 
-auto Device::create_descriptor_set_layout(DescriptorSetLayoutDesc desc)
+auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
     -> DescriptorSetLayout {
   auto binding_flags =
       desc.bindings |
-      map([](const DescriptorBinding &binding) { return binding.flags; }) |
-      ranges::to<Vector>;
+      filter_map([](const DescriptorBinding &binding)
+                     -> Optional<VkDescriptorBindingFlags> {
+        if (binding.count == 0) {
+          return None;
+        }
+        return binding.flags;
+      }) |
+      ranges::to<
+          StaticVector<VkDescriptorBindingFlags, MAX_DESCIPTOR_BINDINGS>>;
 
-  auto bindings = desc.bindings | map([](const DescriptorBinding &binding) {
-                    return VkDescriptorSetLayoutBinding{
-                        .binding = binding.binding,
-                        .descriptorType = binding.type,
-                        .descriptorCount = binding.count,
-                        .stageFlags = binding.stages,
-                    };
-                  }) |
-                  ranges::to<Vector>;
+  auto bindings =
+      enumerate(desc.bindings) |
+      filter_map([](const auto &p) -> Optional<VkDescriptorSetLayoutBinding> {
+        const auto &[index, binding] = p;
+        if (binding.count == 0) {
+          return None;
+        }
+        return VkDescriptorSetLayoutBinding{
+            .binding = unsigned(index),
+            .descriptorType = binding.type,
+            .descriptorCount = binding.count,
+            .stageFlags = binding.stages,
+        };
+      }) |
+      ranges::to<
+          StaticVector<VkDescriptorSetLayoutBinding, MAX_DESCIPTOR_BINDINGS>>;
 
   VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
       .sType =
@@ -623,24 +637,25 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
 }
 
 auto Device::create_pipeline_layout(PipelineLayoutDesc desc) -> PipelineLayout {
-  auto set_layouts =
-      desc.set_layouts |
-      map([](const auto &layout) { return layout.handle.get(); }) |
-      ranges::to<SmallVector<VkDescriptorSetLayout, 4>>;
+  auto layouts =
+      desc.set_layouts | map([](const DescriptorSetLayout &layout) {
+        return layout.handle.get();
+      }) |
+      ranges::to<StaticVector<VkDescriptorSetLayout, MAX_DESCIPTOR_SETS>>;
 
   VkPipelineLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = unsigned(set_layouts.size()),
-      .pSetLayouts = set_layouts.data(),
-      .pushConstantRangeCount = unsigned(desc.push_constants.size()),
-      .pPushConstantRanges = desc.push_constants.data(),
+      .setLayoutCount = unsigned(layouts.size()),
+      .pSetLayouts = layouts.data(),
+      .pushConstantRangeCount = 1,
+      .pPushConstantRanges = &desc.push_constants,
   };
 
   VkPipelineLayout layout;
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
 
-  return {.desc = std::make_unique<PipelineLayoutDesc>(std::move(desc)),
+  return {.desc = std::make_shared<PipelineLayoutDesc>(std::move(desc)),
           .handle = {layout, [this](VkPipelineLayout layout) {
                        push_to_delete_queue(layout);
                      }}};

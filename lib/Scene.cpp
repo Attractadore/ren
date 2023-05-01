@@ -86,46 +86,42 @@ auto get_dir_light(DirLightMap &m_dir_lights, RenDirLight light)
 
 namespace {
 
-void reflect_descriptor_set_layouts(const ReflectionModule &vs,
-                                    const ReflectionModule &fs,
-                                    Vector<DescriptorSetLayoutDesc> &sets) {
-  Vector<DescriptorBindingReflection> shader_bindings;
-  for (const auto *shader : {&vs, &fs}) {
-    shader->get_bindings(shader_bindings);
-    for (const auto &[set, shader_binding] : shader_bindings) {
-      if (set >= sets.size()) {
-        sets.resize(set + 1);
-      }
-      auto &set_bindings = sets[set].bindings;
-      auto it = ranges::find_if(set_bindings,
-                                [binding = shader_binding.binding](
-                                    const DescriptorBinding &set_binding) {
-                                  return set_binding.binding == binding;
-                                });
-      if (it != set_bindings.end()) {
-        auto &set_binding = *it;
-        set_binding.stages |= shader->get_shader_stage();
-        assert(set_binding.binding == shader_binding.binding);
-        assert(set_binding.type == shader_binding.type);
-        assert(set_binding.count == shader_binding.count);
-      } else {
-        set_bindings.push_back(shader_binding);
-      }
+auto merge_set_layout_descs(const DescriptorSetLayoutDesc &lhs,
+                            const DescriptorSetLayoutDesc &rhs)
+    -> DescriptorSetLayoutDesc {
+  DescriptorSetLayoutDesc result = {};
+  result.flags = lhs.flags | rhs.flags;
+  for (auto &&[result, lhs, rhs] :
+       zip(result.bindings, lhs.bindings, rhs.bindings)) {
+    if (lhs.stages) {
+      result = lhs;
+    } else {
+      result = rhs;
     }
+    result.stages |= lhs.stages | rhs.stages;
   }
+  return result;
 }
 
-auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
-    -> PipelineLayout {
+auto reflect_descriptor_set_layouts(const AssetLoader &loader)
+    -> StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> {
   Vector<std::byte> buffer;
-  loader.load_file("ReflectionVertexShader.spv", buffer);
-  ReflectionModule vs(buffer);
-  loader.load_file("ReflectionFragmentShader.spv", buffer);
-  ReflectionModule fs(buffer);
+  std::array shaders = {
+      "ReflectionVertexShader.spv",
+      "ReflectionFragmentShader.spv",
+  };
 
-  Vector<DescriptorSetLayoutDesc> set_layout_descs;
-  reflect_descriptor_set_layouts(vs, fs, set_layout_descs);
-  assert(set_layout_descs.size() == 2);
+  StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> set_layout_descs;
+  for (auto shader : shaders) {
+    loader.load_file(shader, buffer);
+    auto shader_set_layout_descs = get_set_layout_descs(buffer);
+    for (auto &&[layout, shader_layout] :
+         zip(set_layout_descs, shader_set_layout_descs)) {
+      layout = merge_set_layout_descs(layout, shader_layout);
+    }
+    set_layout_descs.append(shader_set_layout_descs |
+                            ranges::views::drop(set_layout_descs.size()));
+  }
 
   auto &persistent_set = set_layout_descs[hlsl::PERSISTENT_SET];
   persistent_set.flags |=
@@ -136,21 +132,24 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
   }
 
-  return device.create_pipeline_layout(PipelineLayoutDesc{
-      .set_layouts = set_layout_descs |
-                     map([&](const DescriptorSetLayoutDesc &desc) {
-                       return device.create_descriptor_set_layout(desc);
-                     }) |
-                     ranges::to<Vector>,
-      .push_constants =
-          {
-              {
-                  .stageFlags =
-                      VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                  .size = sizeof(hlsl::PushConstants),
-              },
-          },
-  });
+  return set_layout_descs;
+}
+
+auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
+    -> PipelineLayout {
+  auto set_layout_descs = reflect_descriptor_set_layouts(loader);
+
+  PipelineLayoutDesc desc = {};
+  for (const DescriptorSetLayoutDesc &set_layout_desc : set_layout_descs) {
+    desc.set_layouts.push_back(
+        device.create_descriptor_set_layout(set_layout_desc));
+  }
+  desc.push_constants = {
+      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+      .size = sizeof(hlsl::PushConstants),
+  };
+
+  return device.create_pipeline_layout(std::move(desc));
 }
 
 } // namespace

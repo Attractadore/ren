@@ -29,9 +29,10 @@ struct DescriptorPool {
   }
 };
 
+constexpr size_t MAX_DESCIPTOR_BINDINGS = 16;
+
 struct DescriptorBinding {
   VkDescriptorBindingFlags flags;
-  unsigned binding;
   VkDescriptorType type;
   unsigned count;
   VkShaderStageFlags stages;
@@ -39,13 +40,15 @@ struct DescriptorBinding {
 
 struct DescriptorSetLayoutDesc {
   VkDescriptorSetLayoutCreateFlags flags;
-  Vector<DescriptorBinding> bindings;
+  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
 };
 
 struct DescriptorSetLayoutRef {
   DescriptorSetLayoutDesc *desc;
   VkDescriptorSetLayout handle;
 };
+
+constexpr size_t MAX_DESCIPTOR_SETS = 4;
 
 struct DescriptorSetLayout {
   std::shared_ptr<DescriptorSetLayoutDesc> desc;

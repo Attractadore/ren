@@ -174,7 +174,8 @@ public:
     m_delete_queue.push(std::move(value));
   }
 
-  [[nodiscard]] auto create_descriptor_set_layout(DescriptorSetLayoutDesc desc)
+  [[nodiscard]] auto
+  create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
       -> DescriptorSetLayout;
 
   [[nodiscard]] auto create_descriptor_pool(const DescriptorPoolDesc &desc)
