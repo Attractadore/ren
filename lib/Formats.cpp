@@ -1,4 +1,5 @@
 #include "Formats.hpp"
+#include "Errors.hpp"
 
 namespace ren {
 auto getVkFormat(RenFormat format) -> VkFormat {
@@ -32,5 +33,6 @@ auto getVkFormat(RenFormat format) -> VkFormat {
   case REN_FORMAT_RGBA32_SFLOAT:
     return VK_FORMAT_R32G32B32_SFLOAT;
   }
+  unreachable("Unknown format {}", int(format));
 }
 } // namespace ren

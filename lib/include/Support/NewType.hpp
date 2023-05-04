@@ -12,7 +12,7 @@
   };                                                                           \
                                                                                \
   template <> struct Hash<Name> {                                              \
-    constexpr std::size_t operator()(const Name &value) const noexcept {       \
+    auto operator()(const Name &value) const noexcept -> std::size_t {         \
       return Hash<Type>()(value);                                              \
     }                                                                          \
   }

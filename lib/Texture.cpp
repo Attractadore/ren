@@ -1,4 +1,5 @@
 #include "Texture.hpp"
+#include "Errors.hpp"
 #include "Support/Math.hpp"
 
 namespace ren {
@@ -26,6 +27,7 @@ auto getVkComponentSwizzle(RenTextureChannel channel) -> VkComponentSwizzle {
   case REN_TEXTURE_CHANNEL_A:
     return VK_COMPONENT_SWIZZLE_A;
   }
+  unreachable("Unknown texture channel {}", int(channel));
 }
 
 auto getVkComponentMapping(const RenTextureChannelSwizzle &swizzle)
@@ -45,6 +47,7 @@ auto getVkFilter(RenFilter filter) -> VkFilter {
   case REN_FILTER_LINEAR:
     return VK_FILTER_LINEAR;
   }
+  unreachable("Unknown filter {}", int(filter));
 }
 
 auto getVkSamplerMipmapMode(RenFilter filter) -> VkSamplerMipmapMode {
@@ -54,6 +57,7 @@ auto getVkSamplerMipmapMode(RenFilter filter) -> VkSamplerMipmapMode {
   case REN_FILTER_LINEAR:
     return VK_SAMPLER_MIPMAP_MODE_LINEAR;
   }
+  unreachable("Unknown filter {}", int(filter));
 }
 
 auto getVkSamplerAddressMode(RenWrappingMode wrap) -> VkSamplerAddressMode {
@@ -65,6 +69,7 @@ auto getVkSamplerAddressMode(RenWrappingMode wrap) -> VkSamplerAddressMode {
   case REN_WRAPPING_MODE_CLAMP_TO_EDGE:
     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
   }
+  unreachable("Unknown wrapping mode {}", int(wrap));
 }
 
 } // namespace ren
