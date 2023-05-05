@@ -16,14 +16,17 @@ option(REN_INSTALL "Generate the install target" ${REN_MASTER_PROJECT})
 option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
-set(EXTERNAL_DIR ${PROJECT_SOURCE_DIR}/external)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 set(REN_ASSETS_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/assets)
 
 set(REN_TARGETS ${PROJECT_NAME}-targets)
 
-add_subdirectory(external)
+include(CTest)
+if(BUILD_TESTING AND NOT DEFINED REN_BUILD_TESTS)
+  set(REN_BUILD_TESTS ON)
+endif()
+
 add_subdirectory(lib)
 
 if(REN_BUILD_EXAMPLES)

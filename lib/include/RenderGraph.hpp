@@ -5,7 +5,6 @@
 #include "Support/HashMap.hpp"
 #include "Support/NewType.hpp"
 #include "Support/Optional.hpp"
-#include "Support/SlotMap.hpp"
 #include "Texture.hpp"
 
 #include <functional>

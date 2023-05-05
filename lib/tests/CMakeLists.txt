@@ -6,3 +6,5 @@ function(ren_add_test target)
   target_link_libraries(${target} GTest::gtest_main Support)
   gtest_discover_tests(${target} DISCOVERY_TIMEOUT 20)
 endfunction()
+
+ren_add_test(TestDenseSlotMap)

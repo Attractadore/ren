@@ -231,7 +231,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       ranges::accumulate(used_attributes | map(get_mesh_attribute_size), 0);
   unsigned index_buffer_size = desc.num_indices * sizeof(unsigned);
 
-  auto &&[key, mesh] = m_meshes.emplace(Mesh{
+  Mesh mesh = {
       .vertex_buffer = m_device->create_buffer({
           .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -247,7 +247,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
       .index_format = VK_INDEX_TYPE_UINT32,
-  });
+  };
 
   mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
 
@@ -297,6 +297,8 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   if (!mesh.index_buffer.desc.ptr) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
+
+  auto key = m_meshes.emplace(std::move(mesh));
 
   return get_mesh_id(key);
 }
@@ -422,6 +424,7 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
         case REN_PROJECTION_ORTHOGRAPHIC:
           return desc.orthographic;
         }
+        unreachable("Unknown projection {}", int(desc.projection));
       }(),
   };
   m_viewport_width = desc.width;
@@ -485,8 +488,8 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 }
 
 struct UploadDataPassConfig {
-  const SlotMap<MeshInst> *mesh_insts;
-  const SlotMap<hlsl::DirLight> *dir_lights;
+  const DenseSlotMap<MeshInst> *mesh_insts;
+  const DenseSlotMap<hlsl::DirLight> *dir_lights;
   std::span<const hlsl::Material> materials;
 };
 
@@ -596,9 +599,9 @@ struct ColorPassConfig {
 
   unsigned num_dir_lights;
 
-  const SlotMap<Mesh> *meshes;
+  const DenseSlotMap<Mesh> *meshes;
   std::span<const GraphicsPipelineRef> material_pipelines;
-  const SlotMap<MeshInst> *mesh_insts;
+  const DenseSlotMap<MeshInst> *mesh_insts;
 
   VkDescriptorSet persistent_set;
 

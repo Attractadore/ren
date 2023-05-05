@@ -26,8 +26,8 @@ find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
-target_link_libraries(Support INTERFACE Boost::boost Boost::container SlotMap
-                                        fmt::fmt range-v3::range-v3)
+target_link_libraries(Support INTERFACE Boost::boost Boost::container fmt::fmt
+                                        range-v3::range-v3)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
@@ -150,7 +150,7 @@ add_library(ren::ren-hpp ALIAS ren-hpp)
 add_subdirectory(hlsl)
 
 if(REN_BUILD_TESTS)
-  enable_testing()
+  message(STATUS "Build tests")
   add_subdirectory(tests)
 endif()
 

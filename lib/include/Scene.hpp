@@ -8,8 +8,8 @@
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "ResourceUploader.hpp"
+#include "Support/DenseSlotMap.hpp"
 #include "Support/NewType.hpp"
-#include "Support/SlotMap.hpp"
 #include "hlsl/interface.hpp"
 #include "hlsl/lighting.hpp"
 #include "ren/ren.h"
@@ -18,9 +18,9 @@ namespace ren {
 
 class Swapchain;
 
-using MeshMap = SlotMap<Mesh>;
-using MeshInstanceMap = SlotMap<MeshInst>;
-using DirLightMap = SlotMap<hlsl::DirLight>;
+using MeshMap = DenseSlotMap<Mesh>;
+using MeshInstanceMap = DenseSlotMap<MeshInst>;
+using DirLightMap = DenseSlotMap<hlsl::DirLight>;
 
 REN_NEW_TYPE(SamplerID, unsigned);
 REN_NEW_TYPE(TextureID, unsigned);
