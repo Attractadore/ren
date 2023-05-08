@@ -655,75 +655,69 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                     .maxDepth = 1.0f});
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
-  [&] {
-    if (cfg.mesh_insts->empty()) {
-      return;
-    }
+  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer).get(device);
+  auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
+  *global_data = {
+      .proj_view = cfg.proj * cfg.view,
+      .eye = cfg.eye,
+      .num_dir_lights = cfg.num_dir_lights,
+  };
 
-    auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer).get(device);
-    auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
-    *global_data = {
-        .proj_view = cfg.proj * cfg.view,
-        .eye = cfg.eye,
-        .num_dir_lights = cfg.num_dir_lights,
-    };
+  auto transform_matrix_buffer =
+      rg.get_buffer(cfg.transform_matrix_buffer).get(device);
+  auto normal_matrix_buffer =
+      rg.get_buffer(cfg.normal_matrix_buffer).get(device);
+  auto dir_lights_buffer = cfg.dir_lights_buffer.map(
+      [&](RGBufferID buffer) { return rg.get_buffer(buffer).get(device); });
+  auto materials_buffer = rg.get_buffer(cfg.materials_buffer).get(device);
 
-    auto transform_matrix_buffer =
-        rg.get_buffer(cfg.transform_matrix_buffer).get(device);
-    auto normal_matrix_buffer =
-        rg.get_buffer(cfg.normal_matrix_buffer).get(device);
-    auto dir_lights_buffer = cfg.dir_lights_buffer.map(
-        [&](RGBufferID buffer) { return rg.get_buffer(buffer).get(device); });
-    auto materials_buffer = rg.get_buffer(cfg.materials_buffer).get(device);
+  auto global_set = [&] {
+    auto set = rg.allocate_descriptor_set(
+        cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
+    set.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
+        .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
+        .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
+        .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
 
-    auto global_set = [&] {
-      auto set = rg.allocate_descriptor_set(
-          cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
-      set.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
-          .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
-          .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
-          .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
+    dir_lights_buffer.map([&](const Buffer &buffer) {
+      set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
+    });
 
-      dir_lights_buffer.map([&](const Buffer &buffer) {
-        set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
-      });
-
-      return set.write();
-    }();
-
-    std::array descriptor_sets = {cfg.persistent_set, global_set};
-    cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                             cfg.pipeline_layout, 0, descriptor_sets);
-
-    for (const auto &&[i, mesh_inst] : enumerate(cfg.mesh_insts->values())) {
-      const auto &mesh = get_mesh(*cfg.meshes, mesh_inst.mesh);
-      auto material = mesh_inst.material;
-
-      cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
-
-      auto buffer = mesh.vertex_buffer.get(device);
-      auto address = buffer->address;
-      auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
-      auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
-      auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
-      auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-      hlsl::PushConstants pcs = {
-          .matrix_index = unsigned(i),
-          .material_index = material,
-          .positions = address + positions_offset,
-          .normals = address + normals_offset,
-          .colors =
-              (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
-          .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
-      };
-      cmd.set_push_constants(
-          cfg.pipeline_layout,
-          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
-
-      cmd.bind_index_buffer(mesh.index_buffer.get(device), mesh.index_format);
-      cmd.draw_indexed(mesh.num_indices);
-    }
+    return set.write();
   }();
+
+  std::array descriptor_sets = {cfg.persistent_set, global_set};
+  cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, cfg.pipeline_layout,
+                           0, descriptor_sets);
+
+  for (const auto &&[i, mesh_inst] : enumerate(cfg.mesh_insts->values())) {
+    const auto &mesh = get_mesh(*cfg.meshes, mesh_inst.mesh);
+    auto material = mesh_inst.material;
+
+    cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
+
+    auto buffer = mesh.vertex_buffer.get(device);
+    auto address = buffer->address;
+    auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
+    auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
+    auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
+    auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
+    hlsl::PushConstants pcs = {
+        .matrix_index = unsigned(i),
+        .material_index = material,
+        .positions = address + positions_offset,
+        .normals = address + normals_offset,
+        .colors =
+            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
+        .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
+    };
+    cmd.set_push_constants(
+        cfg.pipeline_layout,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
+
+    cmd.bind_index_buffer(mesh.index_buffer.get(device), mesh.index_format);
+    cmd.draw_indexed(mesh.num_indices);
+  }
 
   cmd.end_rendering();
 }
@@ -838,66 +832,68 @@ void Scene::draw(Swapchain &swapchain) {
       ranges::to<Vector>();
   m_staged_textures.clear();
 
-  auto upload_cmd =
-      m_resource_uploader.record_upload(*m_device, m_cmd_allocator);
-  if (upload_cmd) {
-    m_device->graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-        .commandBuffer = upload_cmd->get(),
-    }));
-  }
-
-  auto frame_resources = setup_upload_data_pass(*m_device, rgb,
-                                                UploadDataPassConfig{
-                                                    .mesh_insts = &m_mesh_insts,
-                                                    .dir_lights = &m_dir_lights,
-                                                    .materials = m_materials,
-                                                });
-
-  // Draw scene
-  auto [rt] = setup_color_pass(
-      *m_device, rgb,
-      ColorPassConfig{
-          .color_format = m_rt_format,
-          .depth_format = m_depth_format,
-          .width = m_viewport_width,
-          .height = m_viewport_height,
-          .proj = get_projection_matrix(m_camera, float(m_viewport_width) /
-                                                      float(m_viewport_height)),
-          .view = get_view_matrix(m_camera),
-          .eye = m_camera.position,
-          .num_dir_lights = unsigned(m_dir_lights.size()),
-          .meshes = &m_meshes,
-          .material_pipelines = m_material_pipelines,
-          .mesh_insts = &m_mesh_insts,
-          .persistent_set = m_persistent_descriptor_set,
-          .pipeline_layout = m_pipeline_layout,
-          .uploaded_vertex_buffers = uploaded_vertex_buffers,
-          .uploaded_index_buffers = uploaded_index_buffers,
-          .uploaded_textures = uploaded_textures,
-          .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
-          .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
-          .dir_lights_buffer = frame_resources.dir_lights_buffer,
-          .materials_buffer = frame_resources.materials_buffer,
+  m_resource_uploader.record_upload(*m_device, m_cmd_allocator)
+      .map([&](CommandBuffer cmd) {
+        m_device->graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = cmd.get(),
+        }));
       });
 
-  // Post-process
-  auto pp = rgb.create_pass();
-  pp.set_desc("Post-process pass");
-  auto pprt = pp.write_texture(rt,
-                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                               VK_IMAGE_LAYOUT_GENERAL);
-  rgb.set_desc(pprt, "Post-processed color buffer");
-  pp.set_callback([](CommandBuffer &cmd, RenderGraph &rg) {});
+  if (!m_mesh_insts.empty()) {
+    auto frame_resources =
+        setup_upload_data_pass(*m_device, rgb,
+                               UploadDataPassConfig{
+                                   .mesh_insts = &m_mesh_insts,
+                                   .dir_lights = &m_dir_lights,
+                                   .materials = m_materials,
+                               });
 
-  rgb.present(swapchain, pprt, m_device->createBinarySemaphore(),
-              m_device->createBinarySemaphore());
+    // Draw scene
+    auto [rt] = setup_color_pass(
+        *m_device, rgb,
+        ColorPassConfig{
+            .color_format = m_rt_format,
+            .depth_format = m_depth_format,
+            .width = m_viewport_width,
+            .height = m_viewport_height,
+            .proj = get_projection_matrix(
+                m_camera, float(m_viewport_width) / float(m_viewport_height)),
+            .view = get_view_matrix(m_camera),
+            .eye = m_camera.position,
+            .num_dir_lights = unsigned(m_dir_lights.size()),
+            .meshes = &m_meshes,
+            .material_pipelines = m_material_pipelines,
+            .mesh_insts = &m_mesh_insts,
+            .persistent_set = m_persistent_descriptor_set,
+            .pipeline_layout = m_pipeline_layout,
+            .uploaded_vertex_buffers = uploaded_vertex_buffers,
+            .uploaded_index_buffers = uploaded_index_buffers,
+            .uploaded_textures = uploaded_textures,
+            .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
+            .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
+            .dir_lights_buffer = frame_resources.dir_lights_buffer,
+            .materials_buffer = frame_resources.materials_buffer,
+        });
 
-  auto rg = rgb.build(*m_device, m_frame_arena);
+    // Post-process
+    auto pp = rgb.create_pass();
+    pp.set_desc("Post-process pass");
+    auto pprt = pp.write_texture(rt,
+                                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                                 VK_IMAGE_LAYOUT_GENERAL);
+    rgb.set_desc(pprt, "Post-processed color buffer");
+    pp.set_callback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
-  rg.execute(*m_device, m_descriptor_set_allocator, m_cmd_allocator);
+    rgb.present(swapchain, pprt, m_device->createBinarySemaphore(),
+                m_device->createBinarySemaphore());
+
+    auto rg = rgb.build(*m_device, m_frame_arena);
+
+    rg.execute(*m_device, m_descriptor_set_allocator, m_cmd_allocator);
+  }
 
   next_frame();
 }
