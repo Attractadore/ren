@@ -657,9 +657,15 @@ auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
   return m_textures[texture];
 }
 
-auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferHandleView {
+auto RenderGraph::get_buffer_handle(RGBufferID buffer) const
+    -> BufferHandleView {
   assert(buffer);
   return m_buffers[buffer];
+}
+
+auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
+  assert(buffer);
+  return get_buffer_handle(buffer).get(*m_device);
 }
 
 void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,

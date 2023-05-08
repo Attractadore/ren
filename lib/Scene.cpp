@@ -525,14 +525,14 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
                                  const UploadDataPassConfig &cfg,
                                  const UploadDataPassResources &rcs) {
   auto transform_matrix_buffer =
-      rg.get_buffer(rcs.transform_matrix_buffer).get(device);
+      rg.get_buffer(rcs.transform_matrix_buffer);
   auto *transform_matrices =
       transform_matrix_buffer.map<hlsl::model_matrix_t>();
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
   auto normal_matrix_buffer =
-      rg.get_buffer(rcs.normal_matrix_buffer).get(device);
+      rg.get_buffer(rcs.normal_matrix_buffer);
   auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
@@ -540,12 +540,12 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
       });
 
   rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
-    auto dir_lights_buffer = rg.get_buffer(buffer).get(device);
+    auto dir_lights_buffer = rg.get_buffer(buffer);
     auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>();
     ranges::copy(cfg.dir_lights->values(), dir_lights);
   });
 
-  auto materials_buffer = rg.get_buffer(rcs.materials_buffer).get(device);
+  auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
   auto *materials = materials_buffer.map<hlsl::Material>();
   ranges::copy(cfg.materials, materials);
 }
@@ -655,7 +655,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                     .maxDepth = 1.0f});
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
-  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer).get(device);
+  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
   auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
@@ -664,12 +664,12 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
   };
 
   auto transform_matrix_buffer =
-      rg.get_buffer(cfg.transform_matrix_buffer).get(device);
+      rg.get_buffer(cfg.transform_matrix_buffer);
   auto normal_matrix_buffer =
-      rg.get_buffer(cfg.normal_matrix_buffer).get(device);
+      rg.get_buffer(cfg.normal_matrix_buffer);
   auto dir_lights_buffer = cfg.dir_lights_buffer.map(
-      [&](RGBufferID buffer) { return rg.get_buffer(buffer).get(device); });
-  auto materials_buffer = rg.get_buffer(cfg.materials_buffer).get(device);
+      [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
+  auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
 
   auto global_set = [&] {
     auto set = rg.allocate_descriptor_set(

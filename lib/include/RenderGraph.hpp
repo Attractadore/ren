@@ -88,7 +88,9 @@ public:
 
   auto get_texture(RGTextureID tex) const -> TextureRef;
 
-  auto get_buffer(RGBufferID buffer) const -> BufferHandleView;
+  auto get_buffer_handle(RGBufferID buffer) const -> BufferHandleView;
+
+  auto get_buffer(RGBufferID buffer) const -> BufferView;
 
   void execute(Device &device, DescriptorSetAllocator &set_allocator,
                CommandAllocator &cmd_allocator);
