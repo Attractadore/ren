@@ -34,10 +34,20 @@ public:
   using key_types = std::tuple<Ks...>;
   using value_type = V;
 
-  template <typename K> value_type &get() { return m_values[key_index<K>]; }
-
-  template <typename K> const value_type &get() const {
+  template <typename K> constexpr value_type &get() {
     return m_values[key_index<K>];
+  }
+
+  template <typename K> constexpr const value_type &get() const {
+    return m_values[key_index<K>];
+  }
+
+  template <typename K> constexpr void set(const value_type &value) {
+    m_values[key_index<K>] = value;
+  }
+
+  template <typename K> constexpr void set(value_type &&value) noexcept {
+    m_values[key_index<K>] = std::move(value);
   }
 };
 } // namespace ren

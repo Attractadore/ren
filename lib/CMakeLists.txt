@@ -86,6 +86,7 @@ add_library(
   ren
   ren.cpp
   AssetLoader.cpp
+  Buffer.cpp
   CommandAllocator.cpp
   CommandBuffer.cpp
   DescriptorSetAllocator.cpp

@@ -103,14 +103,14 @@ void CommandBuffer::begin_rendering(
 
 void CommandBuffer::end_rendering() { m_device->CmdEndRendering(m_cmd_buffer); }
 
-void CommandBuffer::copy_buffer(const BufferRef &src, const BufferRef &dst,
+void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
                                 std::span<const VkBufferCopy> regions) {
   m_device->CmdCopyBuffer(m_cmd_buffer, src.handle, dst.handle, regions.size(),
                           regions.data());
 }
 
 void CommandBuffer::copy_buffer_to_image(
-    const BufferRef &src, const TextureRef &dst,
+    const Buffer &src, const TextureRef &dst,
     std::span<const VkBufferImageCopy> regions) {
   m_device->CmdCopyBufferToImage(m_cmd_buffer, src.handle, dst.handle,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -163,10 +163,8 @@ void CommandBuffer::set_push_constants(PipelineLayoutRef layout,
                              data.size(), data.data());
 }
 
-void CommandBuffer::bind_index_buffer(const BufferRef &buffer,
-                                      VkIndexType format) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer, buffer.handle, buffer.desc.offset,
-                               format);
+void CommandBuffer::bind_index_buffer(BufferView view, VkIndexType format) {
+  m_device->CmdBindIndexBuffer(m_cmd_buffer, view->handle, view.offset, format);
 }
 
 void CommandBuffer::draw_indexed(unsigned num_indices, unsigned num_instances,

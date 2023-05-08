@@ -165,7 +165,13 @@ Scene::Scene(Device &device) : m_device(&device), m_cmd_allocator(*m_device) {
           m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]);
 }
 
+Scene::~Scene() {
+  m_frame_arena.clear(*m_device);
+  m_persistent_arena.clear(*m_device);
+}
+
 void Scene::next_frame() {
+  m_frame_arena.clear(*m_device);
   m_device->next_frame();
   m_cmd_allocator.next_frame();
   m_descriptor_set_allocator.next_frame(*m_device);
@@ -226,24 +232,30 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     }
   };
 
-  unsigned vertex_buffer_size =
+  auto vertex_buffer_size =
       desc.num_vertices *
       ranges::accumulate(used_attributes | map(get_mesh_attribute_size), 0);
-  unsigned index_buffer_size = desc.num_indices * sizeof(unsigned);
+  auto index_buffer_size = desc.num_indices * sizeof(unsigned);
 
   Mesh mesh = {
-      .vertex_buffer = m_device->create_buffer({
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          .heap = BufferHeap::Device,
-          .size = vertex_buffer_size,
-      }),
-      .index_buffer = m_device->create_buffer({
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-          .heap = BufferHeap::Device,
-          .size = index_buffer_size,
-      }),
+      .vertex_buffer = m_persistent_arena.create_buffer(
+          {
+              REN_SET_DEBUG_NAME("Vertex buffer"),
+              .heap = BufferHeap::Device,
+              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+              .size = vertex_buffer_size,
+          },
+          *m_device),
+      .index_buffer = m_persistent_arena.create_buffer(
+          {
+              REN_SET_DEBUG_NAME("Index buffer"),
+              .heap = BufferHeap::Device,
+              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+              .size = index_buffer_size,
+          },
+          *m_device),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
       .index_format = VK_INDEX_TYPE_UINT32,
@@ -251,7 +263,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
 
-  unsigned offset = 0;
+  size_t offset = 0;
   for (auto mesh_attribute : used_attributes) {
     mesh.attribute_offsets[mesh_attribute] = offset;
     auto data = upload_attributes[mesh_attribute];
@@ -260,41 +272,42 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
       auto positions = reinterpret_span<const glm::vec3>(data);
-      m_resource_uploader.stage_buffer(*m_device, positions, mesh.vertex_buffer,
-                                       offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
+                                       mesh.vertex_buffer, offset);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
           reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_normal);
-      m_resource_uploader.stage_buffer(*m_device, normals, mesh.vertex_buffer,
-                                       offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals,
+                                       mesh.vertex_buffer, offset);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
           reinterpret_span<const glm::vec4>(data) | map(hlsl::encode_color);
-      m_resource_uploader.stage_buffer(*m_device, colors, mesh.vertex_buffer,
-                                       offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors,
+                                       mesh.vertex_buffer, offset);
       offset += size_bytes(colors);
     } break;
     case MESH_ATTRIBUTE_UVS: {
       auto uvs = reinterpret_span<const glm::vec2>(data);
-      m_resource_uploader.stage_buffer(*m_device, uvs, mesh.vertex_buffer,
-                                       offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs,
+                                       mesh.vertex_buffer, offset);
       offset += size_bytes(uvs);
     } break;
     }
   }
 
   auto indices = std::span(desc.indices, desc.num_indices);
-  m_resource_uploader.stage_buffer(*m_device, indices, mesh.index_buffer);
+  m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
+                                   mesh.index_buffer);
 
-  if (!mesh.vertex_buffer.desc.ptr) {
+  if (!mesh.vertex_buffer.get(*m_device)->ptr) {
     m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
   }
 
-  if (!mesh.index_buffer.desc.ptr) {
+  if (!mesh.index_buffer.get(*m_device)->ptr) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
 
@@ -366,7 +379,7 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   auto &texture = m_images[image];
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
-      *m_device,
+      *m_device, m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
       texture);
   m_staged_textures.push_back(texture);
@@ -496,14 +509,14 @@ struct UploadDataPassConfig {
 struct UploadDataPassResources {
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID dir_lights_buffer;
+  Optional<RGBufferID> dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
 struct UploadDataPassOutput {
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID dir_lights_buffer;
+  Optional<RGBufferID> dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
@@ -511,24 +524,28 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
                                  RenderGraph &rg,
                                  const UploadDataPassConfig &cfg,
                                  const UploadDataPassResources &rcs) {
-  auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
+  auto transform_matrix_buffer =
+      rg.get_buffer(rcs.transform_matrix_buffer).get(device);
   auto *transform_matrices =
       transform_matrix_buffer.map<hlsl::model_matrix_t>();
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
-  auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
+  auto normal_matrix_buffer =
+      rg.get_buffer(rcs.normal_matrix_buffer).get(device);
   auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
       });
 
-  auto dir_lights_buffer = rg.get_buffer(rcs.dir_lights_buffer);
-  auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>();
-  ranges::copy(cfg.dir_lights->values(), dir_lights);
+  rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
+    auto dir_lights_buffer = rg.get_buffer(buffer).get(device);
+    auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>();
+    ranges::copy(cfg.dir_lights->values(), dir_lights);
+  });
 
-  auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
+  auto materials_buffer = rg.get_buffer(rcs.materials_buffer).get(device);
   auto *materials = materials_buffer.map<hlsl::Material>();
   ranges::copy(cfg.materials, materials);
 }
@@ -543,37 +560,38 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
 
   rcs.transform_matrix_buffer = pass.create_buffer(
       {
+          REN_SET_DEBUG_NAME("Transform matrix buffer"),
           .heap = BufferHeap::Upload,
-          .size =
-              unsigned(sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size()),
+          .size = sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size(),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
-  rgb.set_desc(rcs.transform_matrix_buffer, "Transform matrix buffer");
 
   rcs.normal_matrix_buffer = pass.create_buffer(
       {
+          REN_SET_DEBUG_NAME("Normal matrix buffer"),
           .heap = BufferHeap::Upload,
-          .size =
-              unsigned(sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size()),
+          .size = sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size(),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
-  rgb.set_desc(rcs.normal_matrix_buffer, "Normal matrix buffer");
 
-  rcs.dir_lights_buffer = pass.create_buffer(
-      {
-          .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::DirLight) * cfg.dir_lights->size()),
-      },
-      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
-  rgb.set_desc(rcs.dir_lights_buffer, "Dir lights buffer");
+  auto num_dir_lights = cfg.dir_lights->size();
+  if (num_dir_lights > 0) {
+    rcs.dir_lights_buffer = pass.create_buffer(
+        {
+            REN_SET_DEBUG_NAME("Dir lights buffer"),
+            .heap = BufferHeap::Upload,
+            .size = sizeof(hlsl::DirLight) * num_dir_lights,
+        },
+        VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  }
 
   rcs.materials_buffer = pass.create_buffer(
       {
+          REN_SET_DEBUG_NAME("Materials buffer"),
           .heap = BufferHeap::Upload,
-          .size = unsigned(cfg.materials.size_bytes()),
+          .size = cfg.materials.size_bytes(),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
-  rgb.set_desc(rcs.materials_buffer, "Materials buffer");
 
   pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
     run_upload_data_pass(device, cmd, rg, cfg, rcs);
@@ -613,7 +631,7 @@ struct ColorPassConfig {
 
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
-  RGBufferID dir_lights_buffer;
+  Optional<RGBufferID> dir_lights_buffer;
   RGBufferID materials_buffer;
 };
 
@@ -642,7 +660,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       return;
     }
 
-    auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
+    auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer).get(device);
     auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
     *global_data = {
         .proj_view = cfg.proj * cfg.view,
@@ -650,20 +668,28 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         .num_dir_lights = cfg.num_dir_lights,
     };
 
-    auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
-    auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
-    auto dir_lights_buffer = rg.get_buffer(cfg.dir_lights_buffer);
-    auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
+    auto transform_matrix_buffer =
+        rg.get_buffer(cfg.transform_matrix_buffer).get(device);
+    auto normal_matrix_buffer =
+        rg.get_buffer(cfg.normal_matrix_buffer).get(device);
+    auto dir_lights_buffer = cfg.dir_lights_buffer.map(
+        [&](RGBufferID buffer) { return rg.get_buffer(buffer).get(device); });
+    auto materials_buffer = rg.get_buffer(cfg.materials_buffer).get(device);
 
-    auto global_set =
-        rg.allocate_descriptor_set(
-              cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET])
-            .add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
-            .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
-            .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
-            .add_buffer(hlsl::DIR_LIGHTS_SLOT, dir_lights_buffer)
-            .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer)
-            .write();
+    auto global_set = [&] {
+      auto set = rg.allocate_descriptor_set(
+          cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
+      set.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
+          .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
+          .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
+          .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
+
+      dir_lights_buffer.map([&](const Buffer &buffer) {
+        set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
+      });
+
+      return set.write();
+    }();
 
     std::array descriptor_sets = {cfg.persistent_set, global_set};
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -675,8 +701,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
       cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
-      const auto &buffer = mesh.vertex_buffer;
-      auto address = buffer.desc.address;
+      auto buffer = mesh.vertex_buffer.get(device);
+      auto address = buffer->address;
       auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
       auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
       auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
@@ -694,7 +720,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
           cfg.pipeline_layout,
           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
 
-      cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
+      cmd.bind_index_buffer(mesh.index_buffer.get(device), mesh.index_format);
       cmd.draw_indexed(mesh.num_indices);
     }
   }();
@@ -733,21 +759,23 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
 
-  pass.read_buffer(cfg.dir_lights_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                   VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  cfg.dir_lights_buffer.map([&](RGBufferID buffer) {
+    pass.read_buffer(buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+                     VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  });
 
   pass.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
   rcs.global_data_buffer = pass.create_buffer(
       {
+          REN_SET_DEBUG_NAME("Global data UBO"),
           .heap = BufferHeap::Upload,
-          .size = unsigned(sizeof(hlsl::GlobalData)),
+          .size = sizeof(hlsl::GlobalData),
       },
       VK_ACCESS_2_UNIFORM_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
-  rgb.set_desc(rcs.global_data_buffer, "Global data UBO");
 
   rcs.rt = pass.create_texture(
       {
@@ -786,18 +814,16 @@ void Scene::draw(Swapchain &swapchain) {
   RenderGraph::Builder rgb;
 
   auto uploaded_vertex_buffers =
-      m_staged_vertex_buffers | map([&](Buffer &buffer) {
-        return rgb.import_buffer(std::move(buffer),
-                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
+      m_staged_vertex_buffers | map([&](BufferHandleView buffer) {
+        return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
       ranges::to<Vector>();
   m_staged_vertex_buffers.clear();
 
   auto uploaded_index_buffers =
-      m_staged_index_buffers | map([&](Buffer &buffer) {
-        return rgb.import_buffer(std::move(buffer),
-                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
+      m_staged_index_buffers | map([&](BufferHandleView buffer) {
+        return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
       ranges::to<Vector>();
@@ -812,7 +838,8 @@ void Scene::draw(Swapchain &swapchain) {
       ranges::to<Vector>();
   m_staged_textures.clear();
 
-  auto upload_cmd = m_resource_uploader.record_upload(m_cmd_allocator);
+  auto upload_cmd =
+      m_resource_uploader.record_upload(*m_device, m_cmd_allocator);
   if (upload_cmd) {
     m_device->graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
@@ -868,7 +895,7 @@ void Scene::draw(Swapchain &swapchain) {
   rgb.present(swapchain, pprt, m_device->createBinarySemaphore(),
               m_device->createBinarySemaphore());
 
-  auto rg = rgb.build(*m_device);
+  auto rg = rgb.build(*m_device, m_frame_arena);
 
   rg.execute(*m_device, m_descriptor_set_allocator, m_cmd_allocator);
 

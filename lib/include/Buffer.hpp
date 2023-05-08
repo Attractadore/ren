@@ -1,9 +1,13 @@
 #pragma once
-#include "Support/Handle.hpp"
+#include "DebugNames.hpp"
+#include "Handle.hpp"
+#include "Support/Optional.hpp"
 
 #include <vulkan/vulkan.h>
 
 namespace ren {
+
+class Device;
 
 enum class BufferHeap {
   Device,
@@ -11,84 +15,63 @@ enum class BufferHeap {
   Readback,
 };
 
-struct BufferDesc {
-  VkBufferUsageFlags usage = 0;
+struct BufferCreateInfo {
+  REN_DEBUG_NAME_FIELD("Buffer");
   BufferHeap heap = BufferHeap::Device;
-  unsigned offset = 0;
-  unsigned size;
-  std::byte *ptr = nullptr;
-  uint64_t address = 0;
-
-  bool operator==(const BufferDesc &other) const = default;
+  VkBufferUsageFlags usage = 0;
+  size_t size;
 };
 
-namespace detail {
-template <typename B> class BufferMixin {
-  const B &impl() const { return *static_cast<const B *>(this); }
-  B &impl() { return *static_cast<B *>(this); }
+struct BufferView;
+
+struct Buffer {
+  VkBuffer handle;
+  VmaAllocation allocation;
+  std::byte *ptr;
+  uint64_t address;
+  size_t size;
+  BufferHeap heap;
+  VkBufferUsageFlags usage;
 
 public:
-  template <typename T = std::byte> T *map(unsigned offset = 0) const {
-    return reinterpret_cast<T *>(impl().desc.ptr + offset);
-  }
+  operator BufferView() const &;
+};
+
+struct BufferView {
+  std::reference_wrapper<const Buffer> buffer;
+  size_t offset = 0;
+  size_t size = 0;
+
+public:
+  operator const Buffer &() const;
+
+  auto operator->() const -> const Buffer *;
+
+  auto get_descriptor() const -> VkDescriptorBufferInfo;
 
   template <typename T = std::byte>
-  B subbuffer(unsigned offset, unsigned count) const {
-    auto sb = impl();
-    auto size = count * sizeof(T);
-    assert(offset + size <= sb.desc.size);
-    sb.desc.offset += offset;
-    sb.desc.size = size;
-    if (sb.desc.ptr) {
-      sb.desc.ptr += offset;
-    }
-    if (sb.desc.address) {
-      sb.desc.address += offset;
-    }
-    return sb;
+  auto map(size_t map_offset = 0) const -> T * {
+    const auto &buffer = this->buffer.get();
+    assert(buffer.ptr);
+    return (T *)(buffer.ptr + offset + map_offset);
   }
-
-  B subbuffer(unsigned offset) const {
-    const auto &desc = impl().desc;
-    assert(offset <= desc.size);
-    return subbuffer(offset, desc.size - offset);
-  }
-
-  VkDescriptorBufferInfo get_descriptor() const {
-    return {
-        .buffer = impl().get(),
-        .offset = impl().desc.offset,
-        .range = impl().desc.size,
-    };
-  }
-
-  bool operator==(const BufferMixin &other) const {
-    const auto &lhs = impl();
-    const auto &rhs = other.impl();
-    return lhs.get() == rhs.get() and lhs.desc == rhs.desc;
-  };
-};
-} // namespace detail
-
-struct BufferRef : detail::BufferMixin<BufferRef> {
-  BufferDesc desc;
-  VkBuffer handle;
-
-  VkBuffer get() const { return handle; }
 };
 
-struct Buffer : detail::BufferMixin<Buffer> {
-  BufferDesc desc;
-  SharedHandle<VkBuffer> handle;
+struct BufferHandleView {
+  Handle<Buffer> buffer;
+  size_t offset = 0;
+  size_t size = 0;
 
-  operator BufferRef() const {
-    return {
-        .desc = desc,
-        .handle = handle.get(),
-    };
-  }
+public:
+  auto try_get(const Device &device) const -> Optional<BufferView>;
 
-  VkBuffer get() const { return handle.get(); }
+  auto get(const Device &device) const -> BufferView;
+
+  operator Handle<Buffer>() const;
+
+  auto subbuffer(size_t offset, size_t size) const -> BufferHandleView;
+
+  auto subbuffer(size_t offset) const -> BufferHandleView;
 };
 
 } // namespace ren

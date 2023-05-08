@@ -6,6 +6,31 @@
 
 namespace ren {
 
+#if REN_DEBUG_NAMES
+
+#define ren_set_debug_name(object, name)                                       \
+  {                                                                            \
+    VkDebugUtilsObjectNameInfoEXT name_info = {                                \
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,           \
+        .objectType = [&]() consteval {using T = decltype(object);             \
+    if constexpr (std::same_as<T, VkBuffer>) {                                 \
+      return VK_OBJECT_TYPE_BUFFER;                                            \
+    }                                                                          \
+    throw("Unknown debug object type");                                        \
+  }                                                                            \
+  (), .objectHandle = (uint64_t)object, .pObjectName = name,                   \
+  }                                                                            \
+  ;                                                                            \
+  throwIfFailed(SetDebugUtilsObjectNameEXT(&name_info),                        \
+                "Vulkan: Failed to set object name");                          \
+  }
+
+#else
+
+#define ren_set_debug_name(object, name)
+
+#endif
+
 std::span<const char *const> Device::getRequiredLayers() noexcept {
   static constexpr auto layers = makeArray<const char *>(
 #if REN_VULKAN_VALIDATION
@@ -15,8 +40,12 @@ std::span<const char *const> Device::getRequiredLayers() noexcept {
   return layers;
 }
 
-std::span<const char *const> Device::getRequiredExtensions() noexcept {
-  static constexpr auto extensions = makeArray<const char *>();
+std::span<const char *const> Device::getInstanceExtensions() noexcept {
+  static constexpr auto extensions = makeArray<const char *>(
+#if REN_DEBUG_NAMES
+      VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+#endif
+  );
   return extensions;
 }
 
@@ -340,17 +369,14 @@ void Device::write_descriptor_set(const VkWriteDescriptorSet &config) {
   write_descriptor_sets({&config, 1});
 }
 
-auto Device::create_buffer(BufferDesc desc) -> Buffer {
-  assert(desc.offset == 0);
-  assert(!desc.ptr);
-  if (desc.size == 0) {
-    return {.desc = desc};
-  }
+auto Device::create_buffer(const BufferCreateInfo &&create_info)
+    -> BufferHandleView {
+  assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = desc.size,
-      .usage = desc.usage,
+      .size = create_info.size,
+      .usage = create_info.usage,
   };
 
   VmaAllocationCreateInfo alloc_info = {
@@ -358,7 +384,7 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
       .usage = VMA_MEMORY_USAGE_AUTO,
   };
 
-  switch (desc.heap) {
+  switch (create_info.heap) {
     using enum BufferHeap;
   case Device:
     alloc_info.flags |=
@@ -380,20 +406,50 @@ auto Device::create_buffer(BufferDesc desc) -> Buffer {
   throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
                                 &allocation, &map_info),
                 "VMA: Failed to create buffer");
-  desc.ptr = reinterpret_cast<std::byte *>(map_info.pMappedData);
-  if (desc.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+  ren_set_debug_name(buffer, create_info.debug_name.c_str());
+
+  uint64_t address = 0;
+  if (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
     VkBufferDeviceAddressInfo buffer_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .buffer = buffer,
     };
-    desc.address = GetBufferDeviceAddress(&buffer_info);
+    address = GetBufferDeviceAddress(&buffer_info);
   }
 
-  return {.desc = desc, .handle = {buffer, [this, allocation](VkBuffer buffer) {
-                                     push_to_delete_queue(buffer);
-                                     push_to_delete_queue(allocation);
-                                   }}};
+  auto handle = m_buffers.emplace(Buffer{
+      .handle = buffer,
+      .allocation = allocation,
+      .ptr = (std::byte *)map_info.pMappedData,
+      .address = address,
+      .size = create_info.size,
+      .heap = create_info.heap,
+      .usage = create_info.usage,
+  });
+
+  return {
+      .buffer = handle,
+      .size = create_info.size,
+  };
 }
+
+void Device::destroy_buffer(Handle<Buffer> buffer) {
+  auto it = m_buffers.find(buffer);
+  if (it != m_buffers.end()) {
+    auto &&[_, buffer] = *it;
+    push_to_delete_queue(buffer.handle);
+    push_to_delete_queue(buffer.allocation);
+  }
+}
+
+auto Device::try_get_buffer(Handle<Buffer> buffer) const
+    -> Optional<const Buffer &> {
+  return m_buffers.get(buffer);
+};
+
+auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
+  return m_buffers[buffer];
+};
 
 Texture Device::create_texture(TextureDesc desc) {
   VkImageCreateInfo image_info = {

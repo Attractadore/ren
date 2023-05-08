@@ -266,14 +266,20 @@ public:
     return end();
   }
 
-  constexpr const value_type *get(key_type key) const noexcept {
+  constexpr Optional<const value_type &> get(key_type key) const noexcept {
     auto it = find(key);
-    return it != end() ? &std::get<1>(*it) : nullptr;
+    if (it != end()) {
+      return std::get<1>(*it);
+    }
+    return None;
   }
 
-  constexpr value_type *get(key_type key) noexcept {
+  constexpr Optional<value_type &> get(key_type key) noexcept {
     auto it = find(key);
-    return it != end() ? &std::get<1>(*it) : nullptr;
+    if (it != end()) {
+      return std::get<1>(*it);
+    }
+    return None;
   }
 
   constexpr const value_type &operator[](key_type k) const noexcept {

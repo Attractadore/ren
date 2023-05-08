@@ -1,7 +1,9 @@
 #pragma once
+#include "Buffer.hpp"
 #include "Config.hpp"
 #include "Descriptors.hpp"
 #include "DispatchTable.hpp"
+#include "HandleMap.hpp"
 #include "Pipeline.hpp"
 #include "Reflection.hpp"
 #include "Semaphore.hpp"
@@ -138,6 +140,8 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   DeleteQueue m_delete_queue;
 
+  HandleMap<Buffer> m_buffers;
+
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
          VkPhysicalDevice adapter);
@@ -156,7 +160,7 @@ public:
   }
 
   static auto getRequiredLayers() noexcept -> std::span<const char *const>;
-  static auto getRequiredExtensions() noexcept -> std::span<const char *const>;
+  static auto getInstanceExtensions() noexcept -> std::span<const char *const>;
 
   auto getDispatchTable() const -> const DispatchTable & { return m_vk; }
 
@@ -197,7 +201,14 @@ public:
   void write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs);
   void write_descriptor_set(const VkWriteDescriptorSet &config);
 
-  [[nodiscard]] auto create_buffer(BufferDesc desc) -> Buffer;
+  [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
+      -> BufferHandleView;
+
+  void destroy_buffer(Handle<Buffer> buffer);
+
+  auto try_get_buffer(Handle<Buffer> buffer) const -> Optional<const Buffer &>;
+
+  auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
 
   [[nodiscard]] auto create_texture(TextureDesc desc) -> Texture;
   void destroy_image_views(VkImage image);

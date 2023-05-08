@@ -16,6 +16,7 @@ class CommandBuffer;
 class DescriptorSetAllocator;
 class Device;
 class RenderGraph;
+class ResourceArena;
 class Swapchain;
 
 REN_NEW_TYPE(RGPassID, unsigned);
@@ -34,9 +35,10 @@ struct RGTextureDesc {
   unsigned short mip_levels = 1;
 };
 
-struct RGBufferDesc {
+struct RGBufferCreateInfo {
+  REN_DEBUG_NAME_FIELD("RenderGraph Buffer");
   BufferHeap heap;
-  unsigned size;
+  size_t size;
 };
 
 using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
@@ -55,7 +57,7 @@ class RenderGraph {
   Vector<Batch> m_batches;
 
   Vector<Texture> m_textures;
-  Vector<Buffer> m_buffers;
+  Vector<BufferHandleView> m_buffers;
   Vector<Semaphore> m_semaphores;
 
   Swapchain *m_swapchain = nullptr;
@@ -65,7 +67,7 @@ private:
   struct Config {
     Vector<Batch> batches;
     Vector<Texture> textures;
-    Vector<Buffer> buffers;
+    Vector<BufferHandleView> buffers;
     Vector<Semaphore> semaphores;
     Swapchain *swapchain;
     SemaphoreRef present_semaphore;
@@ -86,7 +88,7 @@ public:
 
   auto get_texture(RGTextureID tex) const -> TextureRef;
 
-  auto get_buffer(RGBufferID buffer) const -> BufferRef;
+  auto get_buffer(RGBufferID buffer) const -> BufferHandleView;
 
   void execute(Device &device, DescriptorSetAllocator &set_allocator,
                CommandAllocator &cmd_allocator);
@@ -139,12 +141,12 @@ class RenderGraph::Builder {
     VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   };
 
-  Vector<Buffer> m_buffers = {{}};
+  Vector<BufferHandleView> m_buffers = {{}};
   Vector<BufferState> m_buffer_states = {{}};
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
   Vector<unsigned> m_physical_buffers = {{}};
-  HashMap<RGBufferID, RGBufferDesc> m_buffer_descs;
+  HashMap<RGBufferID, RGBufferCreateInfo> m_buffer_create_infos;
   Vector<VkBufferUsageFlags> m_buffer_usage_flags = {{}};
 
   Vector<Semaphore> m_semaphores;
@@ -203,12 +205,14 @@ private:
                                       VkPipelineStageFlags2 stages)
       -> RGBufferID;
 
-  [[nodiscard]] auto create_buffer(RGPassID pass, const RGBufferDesc &desc,
+  [[nodiscard]] auto create_buffer(RGPassID pass,
+                                   RGBufferCreateInfo &&create_info,
                                    VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 public:
-  [[nodiscard]] auto import_buffer(Buffer buffer, VkAccessFlags2 accesses,
+  [[nodiscard]] auto import_buffer(BufferHandleView buffer,
+                                   VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 private:
@@ -225,7 +229,7 @@ private:
 private:
   void create_textures(Device &device);
 
-  void create_buffers(Device &device);
+  void create_buffers(Device &device, ResourceArena &arena);
 
   void schedule_passes();
 
@@ -243,10 +247,7 @@ public:
   void set_desc(RGTextureID, std::string desc);
   auto get_desc(RGTextureID tex) const -> std::string_view;
 
-  void set_desc(RGBufferID buffer, std::string desc);
-  auto get_desc(RGBufferID buffer) const -> std::string_view;
-
-  [[nodiscard]] RenderGraph build(Device &device);
+  [[nodiscard]] RenderGraph build(Device &device, ResourceArena &arena);
 };
 
 class RenderGraph::Builder::PassBuilder {
@@ -289,10 +290,11 @@ public:
     return m_builder->add_write_buffer(m_pass, buffer, accesses, stages);
   }
 
-  [[nodiscard]] auto create_buffer(const RGBufferDesc &desc,
+  [[nodiscard]] auto create_buffer(RGBufferCreateInfo &&create_info,
                                    VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID {
-    return m_builder->create_buffer(m_pass, desc, accesses, stages);
+    return m_builder->create_buffer(m_pass, std::move(create_info), accesses,
+                                    stages);
   }
 
   void wait_semaphore(Semaphore semaphore, uint64_t value,

@@ -184,7 +184,9 @@ def format_mixin_command(
     return "\n".join((
         f"   {cmd.ret} {name}({args}) const {{",
         f"      auto {impl} = static_cast<const {Derived}*>(this);",
-        f"      return {impl}->{get_table}().{name}({call_args});",
+        f"      auto* func = {impl}->{get_table}().{name};",
+        f"      assert(func && \"vk{name} not loaded!\");",
+        f"      return func({call_args});",
         "   }",
     ))
 
@@ -255,6 +257,8 @@ def main():
         h.write("\n".join((
             "#pragma once",
             "#include <vulkan/vulkan.h>",
+            "",
+            "#include <assert.h>",
             "",
             "#ifdef __cplusplus",
             "extern \"C\" {",

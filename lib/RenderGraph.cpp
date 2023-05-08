@@ -4,6 +4,7 @@
 #include "DescriptorSetAllocator.hpp"
 #include "Device.hpp"
 #include "Formats.inl"
+#include "ResourceArena.hpp"
 #include "Support/FlatSet.hpp"
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
@@ -288,12 +289,15 @@ auto RenderGraph::Builder::add_write_buffer(RGPassID pass, RGBufferID buffer,
 }
 
 auto RenderGraph::Builder::create_buffer(RGPassID pass,
-                                         const RGBufferDesc &desc,
+                                         RGBufferCreateInfo &&create_info,
                                          VkAccessFlags2 accesses,
                                          VkPipelineStageFlags2 stages)
     -> RGBufferID {
+  assert(create_info.size > 0);
   auto new_buffer = init_new_buffer(pass, None);
-  m_buffer_descs[new_buffer] = desc;
+  auto [_, inserted] =
+      m_buffer_create_infos.emplace(new_buffer, std::move(create_info));
+  assert(inserted);
   m_passes[pass].write_buffers.push_back({
       .buffer = new_buffer,
       .accesses = accesses,
@@ -304,11 +308,12 @@ auto RenderGraph::Builder::create_buffer(RGPassID pass,
   return new_buffer;
 }
 
-auto RenderGraph::Builder::import_buffer(Buffer buffer, VkAccessFlags2 accesses,
+auto RenderGraph::Builder::import_buffer(BufferHandleView buffer,
+                                         VkAccessFlags2 accesses,
                                          VkPipelineStageFlags2 stages)
     -> RGBufferID {
   auto new_buffer = init_new_buffer(None, None);
-  m_buffers[new_buffer] = std::move(buffer);
+  m_buffers[new_buffer] = buffer;
   m_buffer_states[new_buffer] = {
       .accesses = accesses,
       .stages = stages,
@@ -339,19 +344,6 @@ void RenderGraph::Builder::set_desc(RGTextureID tex, std::string name) {
 auto RenderGraph::Builder::get_desc(RGTextureID tex) const -> std::string_view {
   auto it = m_tex_text_descs.find(tex);
   if (it != m_tex_text_descs.end()) {
-    return it->second;
-  }
-  return "";
-}
-
-void RenderGraph::Builder::set_desc(RGBufferID buffer, std::string name) {
-  m_buffer_text_descs.insert_or_assign(buffer, std::move(name));
-}
-
-auto RenderGraph::Builder::get_desc(RGBufferID buffer) const
-    -> std::string_view {
-  auto it = m_buffer_text_descs.find(buffer);
-  if (it != m_buffer_text_descs.end()) {
     return it->second;
   }
   return "";
@@ -533,13 +525,17 @@ void RenderGraph::Builder::create_textures(Device &device) {
   }
 }
 
-void RenderGraph::Builder::create_buffers(Device &device) {
-  for (const auto &[buffer, desc] : m_buffer_descs) {
-    m_buffers[buffer] = device.create_buffer({
-        .usage = m_buffer_usage_flags[buffer],
-        .heap = desc.heap,
-        .size = desc.size,
-    });
+void RenderGraph::Builder::create_buffers(Device &device,
+                                          ResourceArena &arena) {
+  for (const auto &[buffer, desc] : m_buffer_create_infos) {
+    m_buffers[buffer] = arena.create_buffer(
+        {
+            REN_SET_DEBUG_NAME(std::move(desc.debug_name)),
+            .heap = desc.heap,
+            .usage = m_buffer_usage_flags[buffer],
+            .size = desc.size,
+        },
+        device);
   }
   for (auto [buffer, physical_buffer] : enumerate(m_physical_buffers)) {
     m_buffers[buffer] = m_buffers[physical_buffer];
@@ -634,9 +630,10 @@ void RenderGraph::Builder::batch_passes() {
   }
 }
 
-auto RenderGraph::Builder::build(Device &device) -> RenderGraph {
+auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
+    -> RenderGraph {
   create_textures(device);
-  create_buffers(device);
+  create_buffers(device, arena);
   schedule_passes();
   insert_barriers();
   batch_passes();
@@ -660,7 +657,7 @@ auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
   return m_textures[texture];
 }
 
-auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferRef {
+auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferHandleView {
   assert(buffer);
   return m_buffers[buffer];
 }

@@ -8,7 +8,7 @@ DescriptorSetWriter::DescriptorSetWriter(Device &device, VkDescriptorSet set,
                                          DescriptorSetLayoutRef layout)
     : m_device(&device), m_set(set), m_layout(std::move(layout)) {}
 
-auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferRef &buffer,
+auto DescriptorSetWriter::add_buffer(unsigned slot, BufferView buffer,
                                      unsigned offset) -> DescriptorSetWriter & {
   auto index = m_buffers.size();
   m_buffers.push_back(buffer.get_descriptor());

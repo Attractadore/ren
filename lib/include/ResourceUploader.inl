@@ -1,31 +1,35 @@
 #pragma once
-#include "Device.hpp"
+#include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/Views.hpp"
 
 namespace ren {
 
 template <ranges::sized_range R>
-void ResourceUploader::stage_buffer(Device &device, R &&data,
-                                    const BufferRef &buffer, unsigned offset) {
+void ResourceUploader::stage_buffer(Device &device, ResourceArena &arena,
+                                    R &&data, BufferHandleView buffer,
+                                    size_t offset) {
   using T = ranges::range_value_t<R>;
 
-  if (auto *ptr = buffer.map<T>(offset)) {
+  if (auto *ptr = buffer.get(device).map<T>(offset)) {
     ranges::copy(data, ptr);
     return;
   }
 
-  auto staging_buffer = device.create_buffer({
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-      .heap = BufferHeap::Upload,
-      .size = unsigned(size_bytes(data)),
-  });
+  auto staging_buffer = arena.create_buffer(
+      {
+          REN_SET_DEBUG_NAME("Staging buffer"),
+          .heap = BufferHeap::Upload,
+          .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          .size = size_bytes(data),
+      },
+      device);
 
-  auto *ptr = staging_buffer.map<T>();
+  auto *ptr = staging_buffer.get(device).template map<T>();
   ranges::copy(data, ptr);
 
   m_buffer_srcs.push_back(staging_buffer);
-  m_buffer_dsts.push_back(buffer.subbuffer(offset));
+  m_buffer_dsts.push_back(buffer.subbuffer(offset, staging_buffer.size));
 }
 
 } // namespace ren

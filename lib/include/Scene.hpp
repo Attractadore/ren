@@ -7,6 +7,7 @@
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
+#include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
 #include "Support/NewType.hpp"
@@ -31,8 +32,8 @@ class Scene {
   AssetLoader m_asset_loader;
 
   ResourceUploader m_resource_uploader;
-  Vector<Buffer> m_staged_vertex_buffers;
-  Vector<Buffer> m_staged_index_buffers;
+  Vector<BufferHandleView> m_staged_vertex_buffers;
+  Vector<BufferHandleView> m_staged_index_buffers;
   Vector<Texture> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
   DescriptorSetAllocator m_descriptor_set_allocator;
@@ -69,11 +70,15 @@ private:
 
   DirLightMap m_dir_lights;
 
+  ResourceArena m_persistent_arena;
+  ResourceArena m_frame_arena;
+
 private:
   void next_frame();
 
 public:
   Scene(Device &device);
+  ~Scene();
 
   RenMesh create_mesh(const RenMeshDesc &desc);
 

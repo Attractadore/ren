@@ -67,18 +67,18 @@ public:
 
   void end_rendering();
 
-  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+  void copy_buffer(const Buffer &src, const Buffer &dst,
                    std::span<const VkBufferCopy> regions);
 
-  void copy_buffer(const BufferRef &src, const BufferRef &dst,
+  void copy_buffer(const Buffer &src, const Buffer &dst,
                    const VkBufferCopy &region) {
     copy_buffer(src, dst, asSpan(region));
   }
 
-  void copy_buffer_to_image(const BufferRef &src, const TextureRef &dst,
+  void copy_buffer_to_image(const Buffer &src, const TextureRef &dst,
                             std::span<const VkBufferImageCopy> regions);
 
-  void copy_buffer_to_image(const BufferRef &src, const TextureRef &dst,
+  void copy_buffer_to_image(const Buffer &src, const TextureRef &dst,
                             const VkBufferImageCopy &region) {
     copy_buffer_to_image(src, dst, asSpan(region));
   }
@@ -126,7 +126,7 @@ public:
     set_push_constants(layout, stages, std::as_bytes(asSpan(data)), offset);
   }
 
-  void bind_index_buffer(const BufferRef &buffer, VkIndexType format);
+  void bind_index_buffer(BufferView buffer, VkIndexType format);
 
   void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
                     unsigned first_index = 0, int vertex_offset = 0,

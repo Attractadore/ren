@@ -52,11 +52,11 @@ const char *const *ren_vk_GetRequiredLayers() {
 }
 
 size_t ren_vk_GetRequiredExtensionCount() {
-  return ren::Device::getRequiredExtensions().size();
+  return ren::Device::getInstanceExtensions().size();
 }
 
 const char *const *ren_vk_GetRequiredExtensions() {
-  return ren::Device::getRequiredExtensions().data();
+  return ren::Device::getInstanceExtensions().data();
 }
 
 namespace ren {
@@ -79,7 +79,7 @@ VkInstance create_instance(PFN_vkGetInstanceProcAddr proc,
   auto layers = Device::getRequiredLayers();
 
   SmallVector<const char *> extensions(external_extensions);
-  extensions.append(Device::getRequiredExtensions());
+  extensions.append(Device::getInstanceExtensions());
 
   VkInstanceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,

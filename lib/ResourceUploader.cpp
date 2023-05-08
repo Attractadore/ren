@@ -2,6 +2,7 @@
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
+#include "ResourceArena.hpp"
 #include "Support/Views.hpp"
 
 namespace ren {
@@ -58,7 +59,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const TextureRef &texture) {
   }
 }
 
-static void upload_texture(CommandBuffer &cmd, const BufferRef &src,
+static void upload_texture(CommandBuffer &cmd, BufferView src,
                            const TextureRef &dst) {
   {
     VkImageMemoryBarrier2 barrier = {
@@ -78,6 +79,7 @@ static void upload_texture(CommandBuffer &cmd, const BufferRef &src,
   }
 
   VkBufferImageCopy region = {
+      .bufferOffset = src.offset,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -110,23 +112,27 @@ static void upload_texture(CommandBuffer &cmd, const BufferRef &src,
   generate_mipmaps(cmd, dst);
 }
 
-void ResourceUploader::stage_texture(Device &device,
+void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
                                      const TextureRef &texture) {
-  auto staging_buffer = device.create_buffer({
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-      .heap = BufferHeap::Upload,
-      .size = unsigned(data.size_bytes()),
-  });
+  auto staging_buffer = arena.create_buffer(
+      {
+          REN_SET_DEBUG_NAME("Staging buffer"),
+          .heap = BufferHeap::Upload,
+          .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          .size = data.size_bytes(),
+      },
+      device);
 
-  auto *ptr = staging_buffer.map<std::byte>();
+  auto *ptr = staging_buffer.get(device).map();
   ranges::copy(data, ptr);
 
   m_texture_srcs.push_back(staging_buffer);
   m_texture_dsts.push_back(texture);
 }
 
-auto ResourceUploader::record_upload(CommandAllocator &cmd_allocator)
+auto ResourceUploader::record_upload(const Device &device,
+                                     CommandAllocator &cmd_allocator)
     -> Optional<CommandBuffer> {
   if (m_buffer_srcs.empty() and m_texture_srcs.empty()) {
     return None;
@@ -137,18 +143,18 @@ auto ResourceUploader::record_upload(CommandAllocator &cmd_allocator)
 
   for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
     VkBufferCopy region = {
-        .srcOffset = src.desc.offset,
-        .dstOffset = dst.desc.offset,
-        .size = src.desc.size,
+        .srcOffset = src.offset,
+        .dstOffset = dst.offset,
+        .size = src.size,
     };
-    cmd.copy_buffer(src, dst, region);
+    cmd.copy_buffer(src.get(device), dst.get(device), region);
   }
 
   m_buffer_srcs.clear();
   m_buffer_dsts.clear();
 
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(cmd, src, dst);
+    upload_texture(cmd, src.get(device), dst);
   }
 
   m_texture_srcs.clear();

@@ -6,6 +6,7 @@
 #include <cstddef>
 
 namespace ren {
+
 std::ostream &operator<<(std::ostream &os, SlotMapKey key) {
   struct Hack {
     uint32_t index : 24;
@@ -17,7 +18,8 @@ std::ostream &operator<<(std::ostream &os, SlotMapKey key) {
 }
 } // namespace ren
 
-using ren::DenseSlotMap;
+using namespace ren;
+
 template class ren::DenseSlotMap<int>;
 
 using TestIterator = DenseSlotMap<int>::iterator;
@@ -302,9 +304,8 @@ TEST(TestGet, GetPresent) {
   DenseSlotMap<int> s;
   auto val = 0xffdead;
   auto k = s.insert(val);
-  auto *ptr = s.get(k);
-  EXPECT_NE(ptr, nullptr);
-  EXPECT_EQ(*ptr, val);
+  auto opt = s.get(k);
+  EXPECT_EQ(opt, val);
 }
 
 TEST(TestGet, GetNotPresent) {
@@ -312,8 +313,8 @@ TEST(TestGet, GetNotPresent) {
   auto val = 0xffdead;
   auto k = s.insert(val);
   s.erase(k);
-  auto *ptr = s.get(k);
-  EXPECT_EQ(ptr, nullptr);
+  auto opt = s.get(k);
+  EXPECT_EQ(opt, None);
 }
 
 TEST(TestAccess, Access) {
@@ -421,7 +422,7 @@ TEST(TestTryPop, TryPop) {
   auto key = s.insert(val);
 
   EXPECT_EQ(s.try_pop(key), val);
-  EXPECT_EQ(s.try_pop(key), std::nullopt);
+  EXPECT_EQ(s.try_pop(key), None);
 }
 
 TEST(TestKeysValues, KeysValues) {

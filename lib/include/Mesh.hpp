@@ -16,8 +16,8 @@ enum MeshAttribute {
 };
 
 struct Mesh {
-  Buffer vertex_buffer;
-  Buffer index_buffer;
+  BufferHandleView vertex_buffer;
+  BufferHandleView index_buffer;
   unsigned num_vertices;
   unsigned num_indices;
   VkIndexType index_format;
