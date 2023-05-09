@@ -58,7 +58,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
   }
 }
 
-static void upload_texture(CommandBuffer &cmd, BufferView src,
+static void upload_texture(CommandBuffer &cmd, const Buffer &src,
                            const Texture &dst) {
   {
     VkImageMemoryBarrier2 barrier = {
@@ -78,7 +78,6 @@ static void upload_texture(CommandBuffer &cmd, BufferView src,
   }
 
   VkBufferImageCopy region = {
-      .bufferOffset = src.offset,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -123,7 +122,7 @@ void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
       },
       device);
 
-  auto *ptr = staging_buffer.get(device).map();
+  auto *ptr = device.get_buffer(staging_buffer).map();
   ranges::copy(data, ptr);
 
   m_texture_srcs.push_back(staging_buffer);
@@ -140,20 +139,22 @@ auto ResourceUploader::record_upload(const Device &device,
   auto cmd = cmd_allocator.allocate();
   cmd.begin();
 
-  for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
+  for (auto &&[src_handle, dst_handle, offset] :
+       zip(m_buffer_srcs, m_buffer_dsts, m_buffer_dst_offsets)) {
+    const auto &src = device.get_buffer(src_handle);
+    const auto &dst = device.get_buffer(dst_handle);
     VkBufferCopy region = {
-        .srcOffset = src.offset,
-        .dstOffset = dst.offset,
+        .dstOffset = offset,
         .size = src.size,
     };
-    cmd.copy_buffer(src.get(device), dst.get(device), region);
+    cmd.copy_buffer(src, dst, region);
   }
 
   m_buffer_srcs.clear();
   m_buffer_dsts.clear();
 
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(cmd, src.get(device), device.get_texture(dst));
+    upload_texture(cmd, device.get_buffer(src), device.get_texture(dst));
   }
 
   m_texture_srcs.clear();

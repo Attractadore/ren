@@ -58,7 +58,7 @@ class RenderGraph {
   Vector<Batch> m_batches;
 
   Vector<Handle<Texture>> m_textures;
-  Vector<BufferHandleView> m_buffers;
+  Vector<Handle<Buffer>> m_buffers;
   Vector<Semaphore> m_semaphores;
 
   Swapchain *m_swapchain = nullptr;
@@ -68,7 +68,7 @@ private:
   struct Config {
     Vector<Batch> batches;
     Vector<Handle<Texture>> textures;
-    Vector<BufferHandleView> buffers;
+    Vector<Handle<Buffer>> buffers;
     Vector<Semaphore> semaphores;
     Swapchain *swapchain;
     SemaphoreRef present_semaphore;
@@ -91,9 +91,9 @@ public:
 
   auto get_texture(RGTextureID texture) const -> const Texture &;
 
-  auto get_buffer_handle(RGBufferID buffer) const -> BufferHandleView;
+  auto get_buffer_handle(RGBufferID buffer) const -> Handle<Buffer>;
 
-  auto get_buffer(RGBufferID buffer) const -> BufferView;
+  auto get_buffer(RGBufferID buffer) const -> const Buffer &;
 
   void execute(Device &device, DescriptorSetAllocator &set_allocator,
                CommandAllocator &cmd_allocator);
@@ -146,7 +146,7 @@ class RenderGraph::Builder {
     VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   };
 
-  Vector<BufferHandleView> m_buffers = {{}};
+  Vector<Handle<Buffer>> m_buffers = {{}};
   Vector<BufferState> m_buffer_states = {{}};
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
@@ -216,7 +216,7 @@ private:
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 public:
-  [[nodiscard]] auto import_buffer(BufferHandleView buffer,
+  [[nodiscard]] auto import_buffer(Handle<Buffer> buffer,
                                    VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 

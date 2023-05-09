@@ -7,11 +7,11 @@ namespace ren {
 
 template <ranges::sized_range R>
 void ResourceUploader::stage_buffer(Device &device, ResourceArena &arena,
-                                    R &&data, BufferHandleView buffer,
+                                    R &&data, Handle<Buffer> buffer,
                                     size_t offset) {
   using T = ranges::range_value_t<R>;
 
-  if (auto *ptr = buffer.get(device).map<T>(offset)) {
+  if (auto *ptr = device.get_buffer(buffer).map<T>(offset)) {
     ranges::copy(data, ptr);
     return;
   }
@@ -25,11 +25,12 @@ void ResourceUploader::stage_buffer(Device &device, ResourceArena &arena,
       },
       device);
 
-  auto *ptr = staging_buffer.get(device).template map<T>();
+  auto *ptr = device.get_buffer(staging_buffer).template map<T>();
   ranges::copy(data, ptr);
 
   m_buffer_srcs.push_back(staging_buffer);
-  m_buffer_dsts.push_back(buffer.subbuffer(offset, staging_buffer.size));
+  m_buffer_dsts.push_back(buffer);
+  m_buffer_dst_offsets.push_back(offset);
 }
 
 } // namespace ren

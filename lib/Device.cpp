@@ -368,7 +368,7 @@ void Device::write_descriptor_set(const VkWriteDescriptorSet &config) {
 }
 
 auto Device::create_buffer(const BufferCreateInfo &&create_info)
-    -> BufferHandleView {
+    -> Handle<Buffer> {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -415,7 +415,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
     address = GetBufferDeviceAddress(&buffer_info);
   }
 
-  auto handle = m_buffers.emplace(Buffer{
+  return m_buffers.emplace(Buffer{
       .handle = buffer,
       .allocation = allocation,
       .ptr = (std::byte *)map_info.pMappedData,
@@ -424,11 +424,6 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
       .heap = create_info.heap,
       .usage = create_info.usage,
   });
-
-  return {
-      .buffer = handle,
-      .size = create_info.size,
-  };
 }
 
 void Device::destroy_buffer(Handle<Buffer> buffer) {

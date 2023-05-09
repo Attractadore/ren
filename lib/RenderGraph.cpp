@@ -308,7 +308,7 @@ auto RenderGraph::Builder::create_buffer(RGPassID pass,
   return new_buffer;
 }
 
-auto RenderGraph::Builder::import_buffer(BufferHandleView buffer,
+auto RenderGraph::Builder::import_buffer(Handle<Buffer> buffer,
                                          VkAccessFlags2 accesses,
                                          VkPipelineStageFlags2 stages)
     -> RGBufferID {
@@ -656,15 +656,14 @@ auto RenderGraph::get_texture(RGTextureID texture) const -> const Texture & {
   return m_device->get_texture(m_textures[texture]);
 }
 
-auto RenderGraph::get_buffer_handle(RGBufferID buffer) const
-    -> BufferHandleView {
+auto RenderGraph::get_buffer_handle(RGBufferID buffer) const -> Handle<Buffer> {
   assert(buffer);
   return m_buffers[buffer];
 }
 
-auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
+auto RenderGraph::get_buffer(RGBufferID buffer) const -> const Buffer & {
   assert(buffer);
-  return get_buffer_handle(buffer).get(*m_device);
+  return m_device->get_buffer(m_buffers[buffer]);
 }
 
 void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,

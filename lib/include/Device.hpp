@@ -199,7 +199,7 @@ public:
   void write_descriptor_set(const VkWriteDescriptorSet &config);
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
-      -> BufferHandleView;
+      -> Handle<Buffer>;
 
   void destroy_buffer(Handle<Buffer> buffer);
 

@@ -116,11 +116,23 @@ public:
     set_push_constants(layout, stages, std::as_bytes(asSpan(data)), offset);
   }
 
-  void bind_index_buffer(BufferView buffer, VkIndexType format);
+  struct BindIndexBufferInfo {
+    const Buffer &buffer;
+    size_t offset = 0;
+    VkIndexType type;
+  };
 
-  void draw_indexed(unsigned num_indices, unsigned num_instances = 1,
-                    unsigned first_index = 0, int vertex_offset = 0,
-                    unsigned first_instance = 0);
+  void bind_index_buffer(const BindIndexBufferInfo &&bind_info);
+
+  struct DrawIndexedInfo {
+    unsigned num_indices;
+    unsigned num_instances = 1;
+    unsigned first_index = 0;
+    int vertex_offset = 0;
+    unsigned first_instance = 0;
+  };
+
+  void draw_indexed(const DrawIndexedInfo &&draw_info);
 
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 

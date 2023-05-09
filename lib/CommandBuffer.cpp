@@ -211,15 +211,15 @@ void CommandBuffer::set_push_constants(PipelineLayoutRef layout,
                              data.size(), data.data());
 }
 
-void CommandBuffer::bind_index_buffer(BufferView view, VkIndexType format) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer, view->handle, view.offset, format);
+void CommandBuffer::bind_index_buffer(const BindIndexBufferInfo &&bind_info) {
+  m_device->CmdBindIndexBuffer(m_cmd_buffer, bind_info.buffer.handle,
+                               bind_info.offset, bind_info.type);
 }
 
-void CommandBuffer::draw_indexed(unsigned num_indices, unsigned num_instances,
-                                 unsigned first_index, int vertex_offset,
-                                 unsigned first_instance) {
-  m_device->CmdDrawIndexed(m_cmd_buffer, num_indices, num_instances,
-                           first_index, vertex_offset, first_instance);
+void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
+  m_device->CmdDrawIndexed(m_cmd_buffer, draw_info.num_indices,
+                           draw_info.num_instances, draw_info.first_index,
+                           draw_info.vertex_offset, draw_info.first_instance);
 }
 
 void CommandBuffer::pipeline_barrier(const VkDependencyInfo &dependency_info) {

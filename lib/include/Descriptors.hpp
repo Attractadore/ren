@@ -73,7 +73,10 @@ public:
   DescriptorSetWriter(Device &device, VkDescriptorSet set,
                       DescriptorSetLayoutRef layout);
 
-  auto add_buffer(unsigned slot, BufferView buffer, unsigned offset = 0)
+  auto add_buffer(unsigned slot, const BufferHandleView &buffer,
+                  unsigned offset = 0) -> DescriptorSetWriter &;
+
+  auto add_buffer(unsigned slot, Handle<Buffer> buffer, unsigned offset = 0)
       -> DescriptorSetWriter &;
 
 private:

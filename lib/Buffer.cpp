@@ -3,41 +3,20 @@
 
 namespace ren {
 
-Buffer::operator BufferView() const & {
-  return BufferView{
-      .buffer = *this,
-      .size = size,
+auto BufferHandleView::from_buffer(const Device &device, Handle<Buffer> buffer)
+    -> BufferHandleView {
+  return {
+      .buffer = buffer,
+      .size = device.get_buffer(buffer).size,
   };
 }
 
-BufferView::operator const Buffer &() const { return buffer; }
-
-auto BufferView::operator->() const -> const Buffer * { return &buffer.get(); }
-
-auto BufferView::get_descriptor() const -> VkDescriptorBufferInfo {
+auto BufferHandleView::get_descriptor(const Device &device) const
+    -> VkDescriptorBufferInfo {
   return {
-      .buffer = buffer.get().handle,
+      .buffer = device.get_buffer(buffer).handle,
       .offset = offset,
       .range = size,
-  };
-}
-
-auto BufferHandleView::try_get(const Device &device) const
-    -> Optional<BufferView> {
-  return device.try_get_buffer(buffer).map([&](const Buffer &buffer) {
-    return BufferView{
-        .buffer = buffer,
-        .offset = offset,
-        .size = size,
-    };
-  });
-}
-
-auto BufferHandleView::get(const Device &device) const -> BufferView {
-  return {
-      .buffer = device.get_buffer(buffer),
-      .offset = offset,
-      .size = size,
   };
 }
 

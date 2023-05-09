@@ -9,16 +9,17 @@ class CommandAllocator;
 class ResourceArena;
 
 class ResourceUploader {
-  Vector<BufferHandleView> m_buffer_srcs;
-  Vector<BufferHandleView> m_buffer_dsts;
+  Vector<Handle<Buffer>> m_buffer_srcs;
+  Vector<Handle<Buffer>> m_buffer_dsts;
+  Vector<size_t> m_buffer_dst_offsets;
 
-  Vector<BufferHandleView> m_texture_srcs;
+  Vector<Handle<Buffer>> m_texture_srcs;
   Vector<Handle<Texture>> m_texture_dsts;
 
 public:
   template <ranges::sized_range R>
   void stage_buffer(Device &device, ResourceArena &alloc, R &&data,
-                    BufferHandleView buffer, size_t offset = 0);
+                    Handle<Buffer> buffer, size_t offset = 0);
 
   void stage_texture(Device &device, ResourceArena &alloc,
                      std::span<const std::byte> data, Handle<Texture> texture);

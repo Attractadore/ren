@@ -303,11 +303,11 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
-  if (!mesh.vertex_buffer.get(*m_device)->ptr) {
+  if (!m_device->get_buffer(mesh.vertex_buffer).ptr) {
     m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
   }
 
-  if (!mesh.index_buffer.get(*m_device)->ptr) {
+  if (!m_device->get_buffer(mesh.index_buffer).ptr) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
 
@@ -652,19 +652,21 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                     .maxDepth = 1.0f});
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
-  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-  auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
+  auto global_data_buffer = rg.get_buffer_handle(rcs.global_data_buffer);
+  auto *global_data =
+      device.get_buffer(global_data_buffer).map<hlsl::GlobalData>();
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
       .num_dir_lights = cfg.num_dir_lights,
   };
 
-  auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
-  auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
+  auto transform_matrix_buffer =
+      rg.get_buffer_handle(cfg.transform_matrix_buffer);
+  auto normal_matrix_buffer = rg.get_buffer_handle(cfg.normal_matrix_buffer);
   auto dir_lights_buffer = cfg.dir_lights_buffer.map(
-      [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
-  auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
+      [&](RGBufferID buffer) { return rg.get_buffer_handle(buffer); });
+  auto materials_buffer = rg.get_buffer_handle(cfg.materials_buffer);
 
   auto global_set = [&] {
     auto set = rg.allocate_descriptor_set(
@@ -674,7 +676,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
         .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
 
-    dir_lights_buffer.map([&](const Buffer &buffer) {
+    dir_lights_buffer.map([&](Handle<Buffer> buffer) {
       set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 
@@ -691,8 +693,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
     cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
-    auto buffer = mesh.vertex_buffer.get(device);
-    auto address = buffer->address;
+    const auto &buffer = device.get_buffer(mesh.vertex_buffer);
+    auto address = buffer.address;
     auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
@@ -710,8 +712,13 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         cfg.pipeline_layout,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
 
-    cmd.bind_index_buffer(mesh.index_buffer.get(device), mesh.index_format);
-    cmd.draw_indexed(mesh.num_indices);
+    cmd.bind_index_buffer({
+        .buffer = device.get_buffer(mesh.index_buffer),
+        .type = mesh.index_format,
+    });
+    cmd.draw_indexed({
+        .num_indices = mesh.num_indices,
+    });
   }
 
   cmd.end_rendering();
@@ -803,7 +810,7 @@ void Scene::draw(Swapchain &swapchain) {
   RenderGraph::Builder rgb;
 
   auto uploaded_vertex_buffers =
-      m_staged_vertex_buffers | map([&](BufferHandleView buffer) {
+      m_staged_vertex_buffers | map([&](Handle<Buffer> buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
@@ -811,7 +818,7 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_vertex_buffers.clear();
 
   auto uploaded_index_buffers =
-      m_staged_index_buffers | map([&](BufferHandleView buffer) {
+      m_staged_index_buffers | map([&](Handle<Buffer> buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
