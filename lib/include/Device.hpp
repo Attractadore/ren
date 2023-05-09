@@ -136,8 +136,7 @@ class Device : public InstanceFunctionsMixin<Device>,
   HandleMap<Buffer> m_buffers;
 
   HandleMap<Texture> m_textures;
-  HashMap<VkImage, SmallLinearMap<TextureHandleView, VkImageView, 3>>
-      m_image_views;
+  HashMap<VkImage, SmallLinearMap<TextureView, VkImageView, 3>> m_image_views;
 
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
@@ -221,7 +220,7 @@ public:
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto getVkImageView(const TextureHandleView &view) -> VkImageView;
+  auto getVkImageView(const TextureView &view) -> VkImageView;
 
   [[nodiscard]] auto create_sampler(const SamplerDesc &desc) -> Sampler;
 

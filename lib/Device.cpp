@@ -525,7 +525,7 @@ auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-auto Device::getVkImageView(const TextureHandleView &view) -> VkImageView {
+auto Device::getVkImageView(const TextureView &view) -> VkImageView {
   auto image = get_texture(view.texture).image;
 
   auto [it, inserted] = m_image_views[image].insert(view, VK_NULL_HANDLE);

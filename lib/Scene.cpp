@@ -347,8 +347,7 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   unsigned index = m_num_textures++;
   assert(index < hlsl::NUM_TEXTURES);
 
-  auto view =
-      TextureHandleView::from_texture(*m_device, m_images[texture.image]);
+  auto view = TextureView::from_texture(*m_device, m_images[texture.image]);
   view.swizzle = getVkComponentMapping(texture.swizzle);
 
   DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
@@ -652,21 +651,19 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                     .maxDepth = 1.0f});
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
-  auto global_data_buffer = rg.get_buffer_handle(rcs.global_data_buffer);
-  auto *global_data =
-      device.get_buffer(global_data_buffer).map<hlsl::GlobalData>();
+  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
+  auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
       .num_dir_lights = cfg.num_dir_lights,
   };
 
-  auto transform_matrix_buffer =
-      rg.get_buffer_handle(cfg.transform_matrix_buffer);
-  auto normal_matrix_buffer = rg.get_buffer_handle(cfg.normal_matrix_buffer);
+  auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
+  auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
   auto dir_lights_buffer = cfg.dir_lights_buffer.map(
-      [&](RGBufferID buffer) { return rg.get_buffer_handle(buffer); });
-  auto materials_buffer = rg.get_buffer_handle(cfg.materials_buffer);
+      [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
+  auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
 
   auto global_set = [&] {
     auto set = rg.allocate_descriptor_set(
@@ -676,7 +673,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
         .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
 
-    dir_lights_buffer.map([&](Handle<Buffer> buffer) {
+    dir_lights_buffer.map([&](const Buffer &buffer) {
       set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 

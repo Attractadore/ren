@@ -73,10 +73,15 @@ public:
   DescriptorSetWriter(Device &device, VkDescriptorSet set,
                       DescriptorSetLayoutRef layout);
 
-  auto add_buffer(unsigned slot, const BufferHandleView &buffer,
+private:
+  auto add_buffer(unsigned slot, VkDescriptorBufferInfo descriptor,
                   unsigned offset = 0) -> DescriptorSetWriter &;
 
-  auto add_buffer(unsigned slot, Handle<Buffer> buffer, unsigned offset = 0)
+public:
+  auto add_buffer(unsigned slot, const Buffer &buffer, unsigned offset = 0)
+      -> DescriptorSetWriter &;
+
+  auto add_buffer(unsigned slot, const BufferView &buffer, unsigned offset = 0)
       -> DescriptorSetWriter &;
 
 private:
@@ -85,13 +90,13 @@ private:
       -> DescriptorSetWriter &;
 
 public:
-  auto add_texture(unsigned slot, const TextureHandleView &view,
-                   unsigned offset = 0) -> DescriptorSetWriter &;
+  auto add_texture(unsigned slot, const TextureView &view, unsigned offset = 0)
+      -> DescriptorSetWriter &;
 
   auto add_sampler(unsigned slot, const SamplerRef &sampler,
                    unsigned offset = 0) -> DescriptorSetWriter &;
 
-  auto add_texture_and_sampler(unsigned slot, const TextureHandleView &view,
+  auto add_texture_and_sampler(unsigned slot, const TextureView &view,
                                const SamplerRef &sampler, unsigned offset = 0)
       -> DescriptorSetWriter &;
 

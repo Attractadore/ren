@@ -32,9 +32,8 @@ static auto get_texture_view_type(const Texture &texture) -> VkImageViewType {
               int(texture.type), texture.array_layers);
 }
 
-auto TextureHandleView::from_texture(const Device &device,
-                                     Handle<Texture> handle)
-    -> TextureHandleView {
+auto TextureView::from_texture(const Device &device, Handle<Texture> handle)
+    -> TextureView {
   const auto &texture = device.get_texture(handle);
 
   auto view_type = get_texture_view_type(texture);
@@ -52,9 +51,9 @@ auto TextureHandleView::from_texture(const Device &device,
   };
 }
 
-TextureHandleView::operator Handle<Texture>() const { return texture; }
+TextureView::operator Handle<Texture>() const { return texture; }
 
-bool TextureHandleView::operator==(const TextureHandleView &other) const {
+bool TextureView::operator==(const TextureView &other) const {
   static_assert(sizeof(other) == sizeof(texture) + sizeof(type) +
                                      sizeof(format) + sizeof(swizzle) +
                                      sizeof(subresource));

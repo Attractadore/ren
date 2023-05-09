@@ -107,7 +107,7 @@ void CommandBuffer::begin_rendering(
 }
 
 void CommandBuffer::begin_rendering(Handle<Texture> color_target) {
-  auto color_view = TextureHandleView::from_texture(*m_device, color_target);
+  auto color_view = TextureView::from_texture(*m_device, color_target);
   color_view.subresource.levelCount = 1;
   color_view.subresource.layerCount = 1;
 
@@ -120,14 +120,14 @@ void CommandBuffer::begin_rendering(Handle<Texture> color_target) {
 
 void CommandBuffer::begin_rendering(Handle<Texture> color_target,
                                     Handle<Texture> depth_target) {
-  auto color_view = TextureHandleView::from_texture(*m_device, color_target);
+  auto color_view = TextureView::from_texture(*m_device, color_target);
   color_view.subresource.levelCount = 1;
   color_view.subresource.layerCount = 1;
 
   ColorAttachment color_attachment = {.texture = color_view};
   std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
 
-  auto depth_view = TextureHandleView::from_texture(*m_device, depth_target);
+  auto depth_view = TextureView::from_texture(*m_device, depth_target);
   depth_view.subresource.levelCount = 1;
   depth_view.subresource.layerCount = 1;
 

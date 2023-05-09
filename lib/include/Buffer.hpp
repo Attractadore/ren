@@ -32,28 +32,32 @@ struct Buffer {
   VkBufferUsageFlags usage;
 
 public:
+  auto get_descriptor() const -> VkDescriptorBufferInfo;
+
   template <typename T = std::byte> auto map(size_t offset = 0) const -> T * {
-    assert(ptr);
-    return (T *)(ptr + offset);
+    if (ptr) {
+      return (T *)(ptr + offset);
+    }
+    return nullptr;
   }
 };
 
-struct BufferHandleView {
+struct BufferView {
   Handle<Buffer> buffer;
   size_t offset = 0;
   size_t size = 0;
 
 public:
   static auto from_buffer(const Device &device, Handle<Buffer> buffer)
-      -> BufferHandleView;
+      -> BufferView;
 
   operator Handle<Buffer>() const;
 
   auto get_descriptor(const Device &device) const -> VkDescriptorBufferInfo;
 
-  auto subbuffer(size_t offset, size_t size) const -> BufferHandleView;
+  auto subbuffer(size_t offset, size_t size) const -> BufferView;
 
-  auto subbuffer(size_t offset) const -> BufferHandleView;
+  auto subbuffer(size_t offset) const -> BufferView;
 };
 
 } // namespace ren

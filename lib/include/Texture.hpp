@@ -35,7 +35,7 @@ struct Texture {
   unsigned array_layers;
 };
 
-struct TextureHandleView {
+struct TextureView {
   Handle<Texture> texture;
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
@@ -55,11 +55,11 @@ struct TextureHandleView {
 
 public:
   static auto from_texture(const Device &device, Handle<Texture> texture)
-      -> TextureHandleView;
+      -> TextureView;
 
   operator Handle<Texture>() const;
 
-  bool operator==(const TextureHandleView &other) const;
+  bool operator==(const TextureView &other) const;
 };
 
 auto get_mip_level_count(unsigned width, unsigned height = 1,

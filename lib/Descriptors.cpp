@@ -9,10 +9,10 @@ DescriptorSetWriter::DescriptorSetWriter(Device &device, VkDescriptorSet set,
     : m_device(&device), m_set(set), m_layout(std::move(layout)) {}
 
 auto DescriptorSetWriter::add_buffer(unsigned slot,
-                                     const BufferHandleView &view,
+                                     VkDescriptorBufferInfo descriptor,
                                      unsigned offset) -> DescriptorSetWriter & {
   auto index = m_buffers.size();
-  m_buffers.push_back(view.get_descriptor(*m_device));
+  m_buffers.push_back(descriptor);
   m_data.push_back(VkWriteDescriptorSet{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
@@ -25,10 +25,14 @@ auto DescriptorSetWriter::add_buffer(unsigned slot,
   return *this;
 }
 
-auto DescriptorSetWriter::add_buffer(unsigned slot, Handle<Buffer> buffer,
+auto DescriptorSetWriter::add_buffer(unsigned slot, const Buffer &buffer,
                                      unsigned offset) -> DescriptorSetWriter & {
-  return add_buffer(slot, BufferHandleView::from_buffer(*m_device, buffer),
-                    offset);
+  return add_buffer(slot, buffer.get_descriptor(), offset);
+}
+
+auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferView &view,
+                                     unsigned offset) -> DescriptorSetWriter & {
+  return add_buffer(slot, view.get_descriptor(*m_device), offset);
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
@@ -68,8 +72,7 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
   return *this;
 }
 
-auto DescriptorSetWriter::add_texture(unsigned slot,
-                                      const TextureHandleView &view,
+auto DescriptorSetWriter::add_texture(unsigned slot, const TextureView &view,
                                       unsigned offset)
     -> DescriptorSetWriter & {
   return add_texture_and_sampler(slot, m_device->getVkImageView(view), nullptr,
@@ -83,7 +86,7 @@ auto DescriptorSetWriter::add_sampler(unsigned slot, const SamplerRef &sampler,
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
-                                                  const TextureHandleView &view,
+                                                  const TextureView &view,
                                                   const SamplerRef &sampler,
                                                   unsigned offset)
     -> DescriptorSetWriter & {

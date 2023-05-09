@@ -9,7 +9,7 @@ namespace ren {
 class Device;
 
 struct ColorAttachment {
-  TextureHandleView texture;
+  TextureView texture;
   VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
   VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE;
   glm::vec4 clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -28,7 +28,7 @@ struct DepthStencilAttachment {
     uint8_t clear_stencil = 0;
   };
 
-  TextureHandleView texture;
+  TextureView texture;
   Optional<Depth> depth;
   Optional<Stencil> stencil;
 };
