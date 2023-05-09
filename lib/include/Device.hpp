@@ -20,6 +20,7 @@
 namespace ren {
 
 class Device;
+class SwapchainTextureCreateInfo;
 
 namespace detail {
 template <typename T, size_t Idx, typename... Ts>
@@ -107,14 +108,9 @@ public:
 };
 } // namespace detail
 
-struct ImageViews {
-  VkImage image;
-};
-
 using DeleteQueue = detail::DeleteQueueImpl<
-    QueueCustomDeleter, ImageViews, VkBuffer, VkDescriptorPool,
-    VkDescriptorSetLayout, VkImage, VkPipeline, VkPipelineLayout, VkSampler,
-    VkSemaphore,
+    QueueCustomDeleter, VkBuffer, VkDescriptorPool, VkDescriptorSetLayout,
+    VkImageView, VkImage, VkPipeline, VkPipelineLayout, VkSampler, VkSemaphore,
     VkSwapchainKHR, // Swapchain must be destroyed before surface
     VkSurfaceKHR, VmaAllocation>;
 
@@ -135,12 +131,13 @@ class Device : public InstanceFunctionsMixin<Device>,
   unsigned m_frame_index = 0;
   std::array<uint64_t, c_pipeline_depth> m_frame_end_times = {};
 
-  HashMap<VkImage, SmallLinearMap<TextureViewDesc, VkImageView, 3>>
-      m_image_views;
-
   DeleteQueue m_delete_queue;
 
   HandleMap<Buffer> m_buffers;
+
+  HandleMap<Texture> m_textures;
+  HashMap<VkImage, SmallLinearMap<TextureHandleView, VkImageView, 3>>
+      m_image_views;
 
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
@@ -210,9 +207,21 @@ public:
 
   auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
 
-  [[nodiscard]] auto create_texture(TextureDesc desc) -> Texture;
-  void destroy_image_views(VkImage image);
-  VkImageView getVkImageView(const TextureView &view);
+  [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
+      -> Handle<Texture>;
+
+  [[nodiscard]] auto
+  create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
+      -> Handle<Texture>;
+
+  void destroy_texture(Handle<Texture> texture);
+
+  auto try_get_texture(Handle<Texture> texture) const
+      -> Optional<const Texture &>;
+
+  auto get_texture(Handle<Texture> texture) const -> const Texture &;
+
+  auto getVkImageView(const TextureHandleView &view) -> VkImageView;
 
   [[nodiscard]] auto create_sampler(const SamplerDesc &desc) -> Sampler;
 

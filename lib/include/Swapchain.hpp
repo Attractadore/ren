@@ -9,10 +9,19 @@ namespace ren {
 
 class Device;
 
+struct SwapchainTextureCreateInfo {
+  VkImage image = nullptr;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  VkImageUsageFlags usage = 0;
+  unsigned width = 0;
+  unsigned height = 0;
+  unsigned array_layers = 0;
+};
+
 class Swapchain {
   Device *m_device;
   VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
-  SmallVector<Texture, 3> m_textures;
+  SmallVector<Handle<Texture>, 3> m_textures;
   unsigned m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info;
 
@@ -45,10 +54,7 @@ public:
   void acquireImage(SemaphoreRef signal_semaphore);
   void presentImage(SemaphoreRef wait_semaphore);
 
-  const Texture &getTexture() {
-    assert(m_image_index < m_textures.size());
-    return m_textures[m_image_index];
-  }
+  auto getTexture() const -> Handle<Texture>;
 };
 
 } // namespace ren

@@ -18,6 +18,10 @@ private:
     device.destroy_buffer(handle);
   }
 
+  void destroy(Device &device, Handle<Texture> handle) {
+    device.destroy_texture(handle);
+  }
+
   template <typename T> void clear(Device &device, Vector<Handle<T>> &handles) {
     for (auto handle : handles) {
       destroy(device, handle);
@@ -43,10 +47,21 @@ public:
     destroy(device, buffer);
   }
 
+  auto create_texture(const TextureCreateInfo &&create_info, Device &device)
+      -> Handle<Texture> {
+    auto texture = device.create_texture(std::move(create_info));
+    get_type_arena<Texture>().push_back(texture);
+    return texture;
+  }
+
+  void destroy_texture(Device &device, Handle<Texture> texture) {
+    destroy(device, texture);
+  }
+
   void clear(Device &device) { (clear(device, get_type_arena<Ts>()), ...); }
 };
 
-using ResourceArenaBase = ResourceArenaImpl<Buffer>;
+using ResourceArenaBase = ResourceArenaImpl<Buffer, Texture>;
 
 } // namespace detail
 

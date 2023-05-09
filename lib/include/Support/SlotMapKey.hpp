@@ -43,7 +43,7 @@ class DenseSlotMap;
                                                                                \
     constexpr bool is_null() const noexcept { return *this == Key(); }         \
     constexpr explicit operator bool() const noexcept { return !is_null(); }   \
-  }
+  };
 
 REN_DEFINE_SLOTMAP_KEY(SlotMapKey);
 

@@ -13,7 +13,7 @@ class ResourceUploader {
   Vector<BufferHandleView> m_buffer_dsts;
 
   Vector<BufferHandleView> m_texture_srcs;
-  Vector<TextureRef> m_texture_dsts;
+  Vector<Handle<Texture>> m_texture_dsts;
 
 public:
   template <ranges::sized_range R>
@@ -21,8 +21,7 @@ public:
                     BufferHandleView buffer, size_t offset = 0);
 
   void stage_texture(Device &device, ResourceArena &alloc,
-                     std::span<const std::byte> data,
-                     const TextureRef &texture);
+                     std::span<const std::byte> data, Handle<Texture> texture);
 
   [[nodiscard]] auto record_upload(const Device &device,
                                    CommandAllocator &cmd_allocator)

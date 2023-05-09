@@ -7,12 +7,11 @@
 
 namespace ren {
 
-static void generate_mipmaps(CommandBuffer &cmd, const TextureRef &texture) {
-  int src_width = texture.desc.width;
-  int src_height = texture.desc.height;
-  int src_depth = texture.desc.depth;
-  for (unsigned dst_level = 1; dst_level < texture.desc.mip_levels;
-       ++dst_level) {
+static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
+  int src_width = texture.width;
+  int src_height = texture.height;
+  int src_depth = texture.depth;
+  for (unsigned dst_level = 1; dst_level < texture.mip_levels; ++dst_level) {
     auto src_level = dst_level - 1;
     auto dst_width = std::max(src_width / 2, 1);
     auto dst_height = std::max(src_height / 2, 1);
@@ -46,13 +45,13 @@ static void generate_mipmaps(CommandBuffer &cmd, const TextureRef &texture) {
         .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = texture.handle,
+        .image = texture.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = dst_level,
                 .levelCount = 1,
-                .layerCount = texture.desc.array_layers,
+                .layerCount = texture.array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
@@ -60,19 +59,19 @@ static void generate_mipmaps(CommandBuffer &cmd, const TextureRef &texture) {
 }
 
 static void upload_texture(CommandBuffer &cmd, BufferView src,
-                           const TextureRef &dst) {
+                           const Texture &dst) {
   {
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = dst.handle,
+        .image = dst.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = dst.desc.mip_levels,
-                .layerCount = dst.desc.array_layers,
+                .levelCount = dst.mip_levels,
+                .layerCount = dst.array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
@@ -83,9 +82,9 @@ static void upload_texture(CommandBuffer &cmd, BufferView src,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .layerCount = dst.desc.array_layers,
+              .layerCount = dst.array_layers,
           },
-      .imageExtent = {dst.desc.width, dst.desc.height, 1},
+      .imageExtent = {dst.width, dst.height, 1},
   };
   cmd.copy_buffer_to_image(src, dst, region);
 
@@ -98,12 +97,12 @@ static void upload_texture(CommandBuffer &cmd, BufferView src,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = dst.handle,
+        .image = dst.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .levelCount = 1,
-                .layerCount = dst.desc.array_layers,
+                .layerCount = dst.array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
@@ -114,7 +113,7 @@ static void upload_texture(CommandBuffer &cmd, BufferView src,
 
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
-                                     const TextureRef &texture) {
+                                     Handle<Texture> texture) {
   auto staging_buffer = arena.create_buffer(
       {
           REN_SET_DEBUG_NAME("Staging buffer"),
@@ -154,7 +153,7 @@ auto ResourceUploader::record_upload(const Device &device,
   m_buffer_dsts.clear();
 
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(cmd, src.get(device), dst);
+    upload_texture(cmd, src.get(device), device.get_texture(dst));
   }
 
   m_texture_srcs.clear();

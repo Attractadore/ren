@@ -34,7 +34,7 @@ class Scene {
   ResourceUploader m_resource_uploader;
   Vector<BufferHandleView> m_staged_vertex_buffers;
   Vector<BufferHandleView> m_staged_index_buffers;
-  Vector<Texture> m_staged_textures;
+  Vector<Handle<Texture>> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
   DescriptorSetAllocator m_descriptor_set_allocator;
   CommandAllocator m_cmd_allocator;
@@ -61,7 +61,7 @@ public:
 private:
   MeshInstanceMap m_mesh_insts;
 
-  Vector<Texture> m_images = {{}};
+  Vector<Handle<Texture>> m_images = {{}};
 
   PipelineLayout m_pipeline_layout = {};
 

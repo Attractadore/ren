@@ -61,7 +61,8 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
   return *this;
 }
 
-auto DescriptorSetWriter::add_texture(unsigned slot, const TextureView &view,
+auto DescriptorSetWriter::add_texture(unsigned slot,
+                                      const TextureHandleView &view,
                                       unsigned offset)
     -> DescriptorSetWriter & {
   return add_texture_and_sampler(slot, m_device->getVkImageView(view), nullptr,
@@ -75,7 +76,7 @@ auto DescriptorSetWriter::add_sampler(unsigned slot, const SamplerRef &sampler,
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
-                                                  const TextureView &view,
+                                                  const TextureHandleView &view,
                                                   const SamplerRef &sampler,
                                                   unsigned offset)
     -> DescriptorSetWriter & {

@@ -191,12 +191,12 @@ auto RenderGraph::Builder::add_write_texture(RGPassID pass, RGTextureID texture,
 }
 
 auto RenderGraph::Builder::create_texture(RGPassID pass,
-                                          const RGTextureDesc &desc,
+                                          RGTextureCreateInfo &&create_info,
                                           VkAccessFlags2 accesses,
                                           VkPipelineStageFlags2 stages,
                                           VkImageLayout layout) -> RGTextureID {
   auto new_texture = init_new_texture(pass, None);
-  m_texture_descs[new_texture] = desc;
+  m_texture_create_infos[new_texture] = std::move(create_info);
   m_passes[pass].write_textures.push_back({
       .texture = new_texture,
       .accesses = accesses,
@@ -208,12 +208,12 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
   return new_texture;
 }
 
-auto RenderGraph::Builder::import_texture(Texture texture,
+auto RenderGraph::Builder::import_texture(Handle<Texture> texture,
                                           VkAccessFlags2 accesses,
                                           VkPipelineStageFlags2 stages,
                                           VkImageLayout layout) -> RGTextureID {
   auto new_texture = init_new_texture(None, None);
-  m_textures[new_texture] = std::move(texture);
+  m_textures[new_texture] = texture;
   m_texture_states[new_texture] = {
       .accesses = accesses,
       .stages = stages,
@@ -337,18 +337,6 @@ auto RenderGraph::Builder::get_desc(RGPassID pass) const -> std::string_view {
   return "";
 }
 
-void RenderGraph::Builder::set_desc(RGTextureID tex, std::string name) {
-  m_tex_text_descs.insert_or_assign(tex, std::move(name));
-}
-
-auto RenderGraph::Builder::get_desc(RGTextureID tex) const -> std::string_view {
-  auto it = m_tex_text_descs.find(tex);
-  if (it != m_tex_text_descs.end()) {
-    return it->second;
-  }
-  return "";
-}
-
 void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
                                    Semaphore present_semaphore,
                                    Semaphore acquire_semaphore) {
@@ -360,7 +348,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
   auto swapchain_image =
       import_texture(m_swapchain->getTexture(), VK_ACCESS_2_NONE,
                      VK_PIPELINE_STAGE_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED);
-  set_desc(swapchain_image, "Vulkan: swapchain image");
+  // set_desc(swapchain_image, "Vulkan: swapchain image");
 
   auto blit = create_pass();
   blit.set_desc("Vulkan: Blit final image to swapchain");
@@ -372,7 +360,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
   auto blitted_swapchain_image = blit.write_texture(
       swapchain_image, VK_ACCESS_2_TRANSFER_WRITE_BIT,
       VK_PIPELINE_STAGE_2_BLIT_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-  set_desc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
+  // set_desc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
 
   blit.wait_semaphore(std::move(acquire_semaphore),
                       VK_PIPELINE_STAGE_2_BLIT_BIT);
@@ -389,7 +377,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
         .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .image = swapchain_image.handle,
+        .image = swapchain_image.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -508,17 +496,21 @@ void RenderGraph::Builder::schedule_passes() {
              ranges::to<Vector>;
 }
 
-void RenderGraph::Builder::create_textures(Device &device) {
-  for (const auto &[texture, desc] : m_texture_descs) {
-    m_textures[texture] = device.create_texture({
-        .type = desc.type,
-        .format = desc.format,
-        .usage = m_texture_usage_flags[texture],
-        .width = desc.width,
-        .height = desc.height,
-        .array_layers = desc.array_layers,
-        .mip_levels = desc.mip_levels,
-    });
+void RenderGraph::Builder::create_textures(Device &device,
+                                           ResourceArena &arena) {
+  for (const auto &[texture, create_info] : m_texture_create_infos) {
+    m_textures[texture] = arena.create_texture(
+        {
+            REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+            .type = create_info.type,
+            .format = create_info.format,
+            .usage = m_texture_usage_flags[texture],
+            .width = create_info.width,
+            .height = create_info.height,
+            .array_layers = create_info.array_layers,
+            .mip_levels = create_info.mip_levels,
+        },
+        device);
   }
   for (auto [texture, physical_texture] : enumerate(m_physical_textures)) {
     m_textures[texture] = m_textures[physical_texture];
@@ -527,13 +519,13 @@ void RenderGraph::Builder::create_textures(Device &device) {
 
 void RenderGraph::Builder::create_buffers(Device &device,
                                           ResourceArena &arena) {
-  for (const auto &[buffer, desc] : m_buffer_create_infos) {
+  for (const auto &[buffer, create_info] : m_buffer_create_infos) {
     m_buffers[buffer] = arena.create_buffer(
         {
-            REN_SET_DEBUG_NAME(std::move(desc.debug_name)),
-            .heap = desc.heap,
+            REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+            .heap = create_info.heap,
             .usage = m_buffer_usage_flags[buffer],
-            .size = desc.size,
+            .size = create_info.size,
         },
         device);
   }
@@ -542,7 +534,7 @@ void RenderGraph::Builder::create_buffers(Device &device,
   }
 }
 
-void RenderGraph::Builder::insert_barriers() {
+void RenderGraph::Builder::insert_barriers(const Device &device) {
   for (auto &pass : m_passes) {
     auto memory_barriers = concat(pass.read_buffers, pass.write_buffers) |
                            map([&](const BufferAccess &buffer_access) {
@@ -572,7 +564,8 @@ void RenderGraph::Builder::insert_barriers() {
         map([&](const TextureAccess &texture_access) {
           auto physical_texture = m_physical_textures[texture_access.texture];
           auto &state = m_texture_states[physical_texture];
-          const auto &texture = m_textures[physical_texture];
+          const auto &texture =
+              device.get_texture(m_textures[physical_texture]);
 
           VkImageMemoryBarrier2 barrier = {
               .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -582,12 +575,12 @@ void RenderGraph::Builder::insert_barriers() {
               .dstAccessMask = texture_access.accesses,
               .oldLayout = state.layout,
               .newLayout = texture_access.layout,
-              .image = texture.handle.get(),
+              .image = texture.image,
               .subresourceRange =
                   {
-                      .aspectMask = getVkImageAspectFlags(texture.desc.format),
-                      .levelCount = texture.desc.mip_levels,
-                      .layerCount = texture.desc.array_layers,
+                      .aspectMask = getVkImageAspectFlags(texture.format),
+                      .levelCount = texture.mip_levels,
+                      .layerCount = texture.array_layers,
                   },
           };
 
@@ -632,10 +625,10 @@ void RenderGraph::Builder::batch_passes() {
 
 auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
     -> RenderGraph {
-  create_textures(device);
+  create_textures(device, arena);
   create_buffers(device, arena);
   schedule_passes();
-  insert_barriers();
+  insert_barriers(device);
   batch_passes();
   return {{
       .batches = std::move(m_batches),
@@ -652,9 +645,15 @@ auto RenderGraph::allocate_descriptor_set(DescriptorSetLayoutRef layout)
   return {*m_device, m_set_allocator->allocate(*m_device, layout), layout};
 }
 
-auto RenderGraph::get_texture(RGTextureID texture) const -> TextureRef {
+auto RenderGraph::get_texture_handle(RGTextureID texture) const
+    -> Handle<Texture> {
   assert(texture);
   return m_textures[texture];
+}
+
+auto RenderGraph::get_texture(RGTextureID texture) const -> const Texture & {
+  assert(texture);
+  return m_device->get_texture(m_textures[texture]);
 }
 
 auto RenderGraph::get_buffer_handle(RGBufferID buffer) const

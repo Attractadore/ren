@@ -23,9 +23,10 @@ REN_NEW_TYPE(RGPassID, unsigned);
 REN_NEW_TYPE(RGTextureID, unsigned);
 REN_NEW_TYPE(RGBufferID, unsigned);
 
-struct RGTextureDesc {
+struct RGTextureCreateInfo {
+  REN_DEBUG_NAME_FIELD("RenderGraph Texture");
   VkImageType type = VK_IMAGE_TYPE_2D;
-  VkFormat format;
+  VkFormat format = VK_FORMAT_UNDEFINED;
   unsigned width = 1;
   unsigned height = 1;
   union {
@@ -37,8 +38,8 @@ struct RGTextureDesc {
 
 struct RGBufferCreateInfo {
   REN_DEBUG_NAME_FIELD("RenderGraph Buffer");
-  BufferHeap heap;
-  size_t size;
+  BufferHeap heap = BufferHeap::Upload;
+  size_t size = 0;
 };
 
 using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
@@ -56,7 +57,7 @@ class RenderGraph {
 
   Vector<Batch> m_batches;
 
-  Vector<Texture> m_textures;
+  Vector<Handle<Texture>> m_textures;
   Vector<BufferHandleView> m_buffers;
   Vector<Semaphore> m_semaphores;
 
@@ -66,7 +67,7 @@ class RenderGraph {
 private:
   struct Config {
     Vector<Batch> batches;
-    Vector<Texture> textures;
+    Vector<Handle<Texture>> textures;
     Vector<BufferHandleView> buffers;
     Vector<Semaphore> semaphores;
     Swapchain *swapchain;
@@ -86,7 +87,9 @@ public:
   [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
       -> DescriptorSetWriter;
 
-  auto get_texture(RGTextureID tex) const -> TextureRef;
+  auto get_texture_handle(RGTextureID texture) const -> Handle<Texture>;
+
+  auto get_texture(RGTextureID texture) const -> const Texture &;
 
   auto get_buffer_handle(RGBufferID buffer) const -> BufferHandleView;
 
@@ -130,12 +133,12 @@ class RenderGraph::Builder {
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
   };
 
-  Vector<Texture> m_textures = {{}};
+  Vector<Handle<Texture>> m_textures = {{}};
   Vector<TextureState> m_texture_states = {{}};
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
   Vector<unsigned> m_physical_textures = {{}};
-  HashMap<RGTextureID, RGTextureDesc> m_texture_descs;
+  HashMap<RGTextureID, RGTextureCreateInfo> m_texture_create_infos;
   Vector<VkImageUsageFlags> m_texture_usage_flags = {{}};
 
   struct BufferState {
@@ -157,8 +160,6 @@ class RenderGraph::Builder {
   SemaphoreRef m_present_semaphore;
 
   HashMap<RGPassID, std::string> m_pass_text_descs;
-  HashMap<RGTextureID, std::string> m_tex_text_descs;
-  HashMap<RGBufferID, std::string> m_buffer_text_descs;
 
 private:
   [[nodiscard]] auto init_new_pass() -> RGPassID;
@@ -181,13 +182,15 @@ private:
                                        VkPipelineStageFlags2 stages,
                                        VkImageLayout layout) -> RGTextureID;
 
-  [[nodiscard]] auto create_texture(RGPassID pass, const RGTextureDesc &desc,
+  [[nodiscard]] auto create_texture(RGPassID pass,
+                                    RGTextureCreateInfo &&create_info,
                                     VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;
 
 public:
-  [[nodiscard]] auto import_texture(Texture texture, VkAccessFlags2 accesses,
+  [[nodiscard]] auto import_texture(Handle<Texture> texture,
+                                    VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;
 
@@ -229,13 +232,13 @@ private:
   auto get_desc(RGPassID pass) const -> std::string_view;
 
 private:
-  void create_textures(Device &device);
+  void create_textures(Device &device, ResourceArena &arena);
 
   void create_buffers(Device &device, ResourceArena &arena);
 
   void schedule_passes();
 
-  void insert_barriers();
+  void insert_barriers(const Device &device);
 
   void batch_passes();
 
@@ -245,9 +248,6 @@ public:
 
   void present(Swapchain &swapchain, RGTextureID texture,
                Semaphore present_semaphore, Semaphore acquire_semaphore);
-
-  void set_desc(RGTextureID, std::string desc);
-  auto get_desc(RGTextureID tex) const -> std::string_view;
 
   [[nodiscard]] RenderGraph build(Device &device, ResourceArena &arena);
 };
@@ -273,11 +273,12 @@ public:
                                         layout);
   }
 
-  [[nodiscard]] RGTextureID create_texture(const RGTextureDesc &desc,
+  [[nodiscard]] RGTextureID create_texture(RGTextureCreateInfo &&create_info,
                                            VkAccessFlags2 accesses,
                                            VkPipelineStageFlags2 stages,
                                            VkImageLayout layout) {
-    return m_builder->create_texture(m_pass, desc, accesses, stages, layout);
+    return m_builder->create_texture(m_pass, std::move(create_info), accesses,
+                                     stages, layout);
   }
 
   void read_buffer(RGBufferID buffer, VkAccessFlags2 accesses,

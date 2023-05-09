@@ -29,64 +29,69 @@ void CommandBuffer::end() {
 
 void CommandBuffer::begin_rendering(
     int x, int y, unsigned width, unsigned height,
-    std::span<const RenderTargetConfig> render_targets,
-    const DepthStencilTargetConfig *depth_stencil_target) {
-  auto attachment_is_used = [](VkAttachmentLoadOp load_op,
-                               VkAttachmentStoreOp store_op) {
-    return not(load_op == VK_ATTACHMENT_LOAD_OP_DONT_CARE and
-               (store_op == VK_ATTACHMENT_STORE_OP_DONT_CARE or
-                store_op == VK_ATTACHMENT_STORE_OP_NONE));
-  };
-
+    std::span<const Optional<ColorAttachment>> render_targets,
+    Optional<const DepthStencilAttachment &> depth_stencil_target) {
   auto color_attachments =
-      render_targets | map([&](const RenderTargetConfig &rt) {
-        const auto &cc = rt.clear_color;
-        return VkRenderingAttachmentInfo{
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = attachment_is_used(rt.load_op, rt.store_op)
-                             ? m_device->getVkImageView(rt.rtv)
-                             : VK_NULL_HANDLE,
-            .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-            .loadOp = rt.load_op,
-            .storeOp = rt.store_op,
-            .clearValue = {.color = {.float32 = {cc[0], cc[1], cc[2], cc[3]}}},
-        };
+      render_targets |
+      map([&](const Optional<ColorAttachment> &color_attachment) {
+        return color_attachment.map_or(
+            [&](const ColorAttachment &color_attachment) {
+              VkRenderingAttachmentInfo info = {
+                  .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                  .imageView =
+                      m_device->getVkImageView(color_attachment.texture),
+                  .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+                  .loadOp = color_attachment.load_op,
+                  .storeOp = color_attachment.store_op,
+              };
+              static_assert(sizeof(info.clearValue.color.float32) ==
+                            sizeof(color_attachment.clear_color));
+              std::memcpy(info.clearValue.color.float32,
+                          &color_attachment.clear_color,
+                          sizeof(color_attachment.clear_color));
+              return info;
+            },
+            VkRenderingAttachmentInfo{
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            });
       }) |
       ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>;
 
   VkRenderingAttachmentInfo depth_attachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+
   VkRenderingAttachmentInfo stencil_attachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
 
-  if (depth_stencil_target) {
-    const auto &dst = *depth_stencil_target;
-    depth_attachment = {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-        .loadOp = dst.depth_load_op,
-        .storeOp = dst.depth_store_op,
-        .clearValue = {.depthStencil = {.depth = dst.clear_depth}},
-    };
-    VkImageView view = VK_NULL_HANDLE;
-    if (attachment_is_used(dst.depth_load_op, dst.depth_store_op)) {
-      view = m_device->getVkImageView(dst.dsv);
-      depth_attachment.imageView = view;
-    }
-    stencil_attachment = {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-        .loadOp = dst.stencil_load_op,
-        .storeOp = dst.stencil_store_op,
-        .clearValue = {.depthStencil = {.stencil = dst.clear_stencil}},
-    };
-    if (attachment_is_used(dst.stencil_load_op, dst.stencil_store_op)) {
+  depth_stencil_target.map([&](const DepthStencilAttachment &dst) {
+    VkImageView view = nullptr;
+
+    dst.depth.map([&](const DepthStencilAttachment::Depth &depth) {
+      view = m_device->getVkImageView(dst.texture);
+      depth_attachment = {
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+          .imageView = view,
+          .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+          .loadOp = depth.load_op,
+          .storeOp = depth.store_op,
+          .clearValue = {.depthStencil = {.depth = depth.clear_depth}},
+      };
+    });
+
+    dst.stencil.map([&](const DepthStencilAttachment::Stencil &stencil) {
       if (!view) {
-        view = m_device->getVkImageView(dst.dsv);
+        view = m_device->getVkImageView(dst.texture);
       }
-      stencil_attachment.imageView = view;
-    }
-  }
+      stencil_attachment = {
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+          .imageView = view,
+          .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+          .loadOp = stencil.load_op,
+          .storeOp = stencil.store_op,
+          .clearValue = {.depthStencil = {.stencil = stencil.clear_stencil}},
+      };
+    });
+  });
 
   VkRenderingInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -101,6 +106,49 @@ void CommandBuffer::begin_rendering(
   m_device->CmdBeginRendering(m_cmd_buffer, &rendering_info);
 }
 
+void CommandBuffer::begin_rendering(Handle<Texture> color_target) {
+  auto color_view = TextureHandleView::from_texture(*m_device, color_target);
+  color_view.subresource.levelCount = 1;
+  color_view.subresource.layerCount = 1;
+
+  ColorAttachment color_attachment = {.texture = color_view};
+  std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
+
+  const auto &texture = m_device->get_texture(color_target);
+  begin_rendering(0, 0, texture.width, texture.height, color_attachments);
+}
+
+void CommandBuffer::begin_rendering(Handle<Texture> color_target,
+                                    Handle<Texture> depth_target) {
+  auto color_view = TextureHandleView::from_texture(*m_device, color_target);
+  color_view.subresource.levelCount = 1;
+  color_view.subresource.layerCount = 1;
+
+  ColorAttachment color_attachment = {.texture = color_view};
+  std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
+
+  auto depth_view = TextureHandleView::from_texture(*m_device, depth_target);
+  depth_view.subresource.levelCount = 1;
+  depth_view.subresource.layerCount = 1;
+
+  DepthStencilAttachment depth_attachment = {
+      .texture = depth_view,
+      .depth = DepthStencilAttachment::Depth{},
+  };
+
+  const auto &color_texture = m_device->get_texture(color_target);
+#ifndef NDEBUG
+  {
+    const auto &depth_texture = m_device->get_texture(depth_target);
+    assert(depth_texture.width == color_texture.width);
+    assert(depth_texture.height == color_texture.height);
+  }
+#endif
+
+  begin_rendering(0, 0, color_texture.width, color_texture.height,
+                  color_attachments, depth_attachment);
+}
+
 void CommandBuffer::end_rendering() { m_device->CmdEndRendering(m_cmd_buffer); }
 
 void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
@@ -110,18 +158,18 @@ void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
 }
 
 void CommandBuffer::copy_buffer_to_image(
-    const Buffer &src, const TextureRef &dst,
+    const Buffer &src, const Texture &dst,
     std::span<const VkBufferImageCopy> regions) {
-  m_device->CmdCopyBufferToImage(m_cmd_buffer, src.handle, dst.handle,
+  m_device->CmdCopyBufferToImage(m_cmd_buffer, src.handle, dst.image,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                  regions.size(), regions.data());
 }
 
-void CommandBuffer::blit(const TextureRef &src, const TextureRef &dst,
+void CommandBuffer::blit(const Texture &src, const Texture &dst,
                          std::span<const VkImageBlit> regions,
                          VkFilter filter) {
-  m_device->CmdBlitImage(m_cmd_buffer, src.handle,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.handle,
+  m_device->CmdBlitImage(m_cmd_buffer, src.image,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
 }

@@ -135,6 +135,11 @@ public:
     m_keys.push_back(std::move(key));
     return m_values.emplace_back();
   }
+
+  constexpr void clear() noexcept {
+    m_keys.clear();
+    m_values.clear();
+  }
 };
 } // namespace detail
 

@@ -3,6 +3,7 @@
 #include "Formats.inl"
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
+#include "Swapchain.hpp"
 
 namespace ren {
 
@@ -15,6 +16,8 @@ namespace ren {
         .objectType = [&]() consteval {using T = decltype(object);             \
     if constexpr (std::same_as<T, VkBuffer>) {                                 \
       return VK_OBJECT_TYPE_BUFFER;                                            \
+    } else if constexpr (std::same_as<T, VkImage>) {                           \
+      return VK_OBJECT_TYPE_IMAGE;                                             \
     }                                                                          \
     throw("Unknown debug object type");                                        \
   }                                                                            \
@@ -164,22 +167,11 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
     }                                                                          \
   }
 
-template <> struct QueueDeleter<ImageViews> {
-  void operator()(Device &device, ImageViews views) const noexcept {
-    device.destroy_image_views(views.image);
-  }
-};
-
-template <> struct QueueDeleter<VmaAllocation> {
-  void operator()(Device &device, VmaAllocation allocation) const noexcept {
-    vmaFreeMemory(device.getVMAAllocator(), allocation);
-  }
-};
-
 define_queue_deleter(VkBuffer, DestroyBuffer);
 define_queue_deleter(VkDescriptorPool, DestroyDescriptorPool);
 define_queue_deleter(VkDescriptorSetLayout, DestroyDescriptorSetLayout);
 define_queue_deleter(VkImage, DestroyImage);
+define_queue_deleter(VkImageView, DestroyImageView);
 define_queue_deleter(VkPipeline, DestroyPipeline);
 define_queue_deleter(VkPipelineLayout, DestroyPipelineLayout);
 define_queue_deleter(VkSampler, DestroySampler);
@@ -188,6 +180,12 @@ define_queue_deleter(VkSurfaceKHR, DestroySurfaceKHR);
 define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
 
 #undef define_queue_deleter
+
+template <> struct QueueDeleter<VmaAllocation> {
+  void operator()(Device &device, VmaAllocation allocation) const noexcept {
+    vmaFreeMemory(device.getVMAAllocator(), allocation);
+  }
+};
 
 Device::~Device() {
   m_graphics_queue_semaphore = {};
@@ -451,17 +449,26 @@ auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
   return m_buffers[buffer];
 };
 
-Texture Device::create_texture(TextureDesc desc) {
+auto Device::create_texture(const TextureCreateInfo &&create_info)
+    -> Handle<Texture> {
+  unsigned depth = 1;
+  unsigned array_layers = 1;
+  if (create_info.type == VK_IMAGE_TYPE_3D) {
+    depth = create_info.depth;
+  } else {
+    array_layers = create_info.array_layers;
+  }
+
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = desc.type,
-      .format = desc.format,
-      .extent = {desc.width, desc.height, desc.depth},
-      .mipLevels = desc.mip_levels,
-      .arrayLayers = desc.array_layers,
+      .imageType = create_info.type,
+      .format = create_info.format,
+      .extent = {create_info.width, create_info.height, depth},
+      .mipLevels = create_info.mip_levels,
+      .arrayLayers = array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
-      .usage = desc.usage,
+      .usage = create_info.usage,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
 
@@ -472,47 +479,75 @@ Texture Device::create_texture(TextureDesc desc) {
   throwIfFailed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
                                &allocation, nullptr),
                 "VMA: Failed to create image");
+  ren_set_debug_name(image, create_info.debug_name.c_str());
 
-  return {.desc = desc, .handle = {image, [this, allocation](VkImage image) {
-                                     push_to_delete_queue(ImageViews{image});
-                                     push_to_delete_queue(image);
-                                     push_to_delete_queue(allocation);
-                                   }}};
+  return m_textures.emplace(Texture{
+      .image = image,
+      .allocation = allocation,
+      .type = create_info.type,
+      .format = create_info.format,
+      .usage = create_info.usage,
+      .width = create_info.width,
+      .height = create_info.height,
+      .depth = depth,
+      .mip_levels = create_info.mip_levels,
+      .array_layers = create_info.array_layers,
+  });
 }
 
-void Device::destroy_image_views(VkImage image) {
-  for (auto &&[_, view] : m_image_views[image]) {
-    DestroyImageView(view);
-  }
-  m_image_views.erase(image);
+auto Device::create_swapchain_texture(
+    const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
+  ren_set_debug_name(create_info.image, "Swapchain image");
+
+  return m_textures.emplace(Texture{
+      .image = create_info.image,
+      .type = VK_IMAGE_TYPE_2D,
+      .format = create_info.format,
+      .usage = create_info.usage,
+      .width = create_info.width,
+      .height = create_info.height,
+      .depth = 1,
+      .mip_levels = 1,
+      .array_layers = create_info.array_layers,
+  });
 }
 
-VkImageView Device::getVkImageView(const TextureView &view) {
-  auto image = view.texture;
-  if (!image) {
-    return VK_NULL_HANDLE;
-  }
-  auto [it, inserted] = m_image_views[image].insert(view.desc, VK_NULL_HANDLE);
+void Device::destroy_texture(Handle<Texture> texture) {
+  m_textures.try_pop(texture).map([&](const Texture &texture) {
+    if (texture.allocation) {
+      push_to_delete_queue(texture.image);
+      push_to_delete_queue(texture.allocation);
+    }
+    for (const auto &[_, view] : m_image_views[texture.image]) {
+      push_to_delete_queue(view);
+    }
+    m_image_views[texture.image].clear();
+  });
+}
+
+auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
+  assert(m_textures.contains(texture));
+  return m_textures[texture];
+}
+
+auto Device::getVkImageView(const TextureHandleView &view) -> VkImageView {
+  auto image = get_texture(view.texture).image;
+
+  auto [it, inserted] = m_image_views[image].insert(view, VK_NULL_HANDLE);
   auto &image_view = std::get<1>(*it);
   if (inserted) {
     VkImageViewCreateInfo view_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = view.texture,
-        .viewType = view.desc.type,
-        .format = view.desc.format,
-        .components = view.desc.swizzle,
-        .subresourceRange =
-            {
-                .aspectMask = view.desc.aspects,
-                .baseMipLevel = view.desc.first_mip_level,
-                .levelCount = view.desc.mip_levels,
-                .baseArrayLayer = view.desc.first_array_layer,
-                .layerCount = view.desc.array_layers,
-            },
+        .image = image,
+        .viewType = view.type,
+        .format = view.format,
+        .components = view.swizzle,
+        .subresourceRange = view.subresource,
     };
     throwIfFailed(CreateImageView(&view_info, &image_view),
                   "Vulkan: Failed to create image view");
   }
+
   return image_view;
 }
 

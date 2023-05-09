@@ -143,27 +143,25 @@ void Swapchain::create() {
       m_device->GetSwapchainImagesKHR(m_swapchain, &image_count, images.data()),
       "Vulkan: Failed to get swapchain images");
 
-  TextureDesc tex_desc = {
-      .format = m_create_info.imageFormat,
-      .usage = m_create_info.imageUsage,
-      .width = m_create_info.imageExtent.width,
-      .height = m_create_info.imageExtent.height,
-  };
-
   m_textures.resize(image_count);
   for (size_t i = 0; i < image_count; ++i) {
-    m_textures[i] = {
-        .desc = tex_desc,
-        .handle = {images[i], [](VkImage image) {}},
-    };
+    m_textures[i] = m_device->create_swapchain_texture({
+        .image = images[i],
+        .format = m_create_info.imageFormat,
+        .usage = m_create_info.imageUsage,
+        .width = m_create_info.imageExtent.width,
+        .height = m_create_info.imageExtent.height,
+        .array_layers = m_create_info.imageArrayLayers,
+    });
   }
 }
 
 void Swapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
-    m_device->push_to_delete_queue(ImageViews{texture.handle.get()});
+    m_device->destroy_texture(texture);
   }
+  m_textures.clear();
 }
 
 void Swapchain::set_size(unsigned width, unsigned height) noexcept {
@@ -213,5 +211,9 @@ void Swapchain::presentImage(SemaphoreRef wait_semaphore) {
   default:
     throw std::runtime_error{"Vulkan: Failed to present image"};
   }
+}
+
+auto Swapchain::getTexture() const -> Handle<Texture> {
+  return m_textures[m_image_index];
 }
 } // namespace ren

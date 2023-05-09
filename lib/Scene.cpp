@@ -348,13 +348,8 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   assert(index < hlsl::NUM_TEXTURES);
 
   auto view =
-      TextureView::create(m_images[texture.image],
-                          TextureViewDesc{
-                              .swizzle = getVkComponentMapping(texture.swizzle),
-                              .aspects = VK_IMAGE_ASPECT_COLOR_BIT,
-                              .mip_levels = ALL_MIP_LEVELS,
-                              .array_layers = ALL_ARRAY_LAYERS,
-                          });
+      TextureHandleView::from_texture(*m_device, m_images[texture.image]);
+  view.swizzle = getVkComponentMapping(texture.swizzle);
 
   DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
                       m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
@@ -367,16 +362,19 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   auto image = static_cast<RenImage>(m_images.size());
   auto format = getVkFormat(desc.format);
-  m_images.push_back(m_device->create_texture({
-      .type = VK_IMAGE_TYPE_2D,
-      .format = format,
-      .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-               VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-      .width = desc.width,
-      .height = desc.height,
-      .mip_levels = get_mip_level_count(desc.width, desc.height),
-  }));
-  auto &texture = m_images[image];
+  auto texture = m_persistent_arena.create_texture(
+      {
+          .type = VK_IMAGE_TYPE_2D,
+          .format = format,
+          .usage = VK_IMAGE_USAGE_SAMPLED_BIT |
+                   VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+          .width = desc.width,
+          .height = desc.height,
+          .mip_levels = get_mip_level_count(desc.width, desc.height),
+      },
+      *m_device);
+  m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
       *m_device, m_frame_arena,
@@ -524,15 +522,13 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
                                  RenderGraph &rg,
                                  const UploadDataPassConfig &cfg,
                                  const UploadDataPassResources &rcs) {
-  auto transform_matrix_buffer =
-      rg.get_buffer(rcs.transform_matrix_buffer);
+  auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
   auto *transform_matrices =
       transform_matrix_buffer.map<hlsl::model_matrix_t>();
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
-  auto normal_matrix_buffer =
-      rg.get_buffer(rcs.normal_matrix_buffer);
+  auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
   auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
@@ -649,7 +645,8 @@ struct ColorPassOutput {
 static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                            const ColorPassConfig &cfg,
                            const ColorPassResources &rcs) {
-  cmd.begin_rendering(rg.get_texture(rcs.rt), rg.get_texture(rcs.dst));
+  cmd.begin_rendering(rg.get_texture_handle(rcs.rt),
+                      rg.get_texture_handle(rcs.dst));
   cmd.set_viewport({.width = float(cfg.width),
                     .height = float(cfg.height),
                     .maxDepth = 1.0f});
@@ -663,10 +660,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       .num_dir_lights = cfg.num_dir_lights,
   };
 
-  auto transform_matrix_buffer =
-      rg.get_buffer(cfg.transform_matrix_buffer);
-  auto normal_matrix_buffer =
-      rg.get_buffer(cfg.normal_matrix_buffer);
+  auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
+  auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
   auto dir_lights_buffer = cfg.dir_lights_buffer.map(
       [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
   auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
@@ -773,6 +768,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   rcs.rt = pass.create_texture(
       {
+          REN_SET_DEBUG_NAME("Color buffer"),
           .format = cfg.color_format,
           .width = cfg.width,
           .height = cfg.height,
@@ -780,10 +776,10 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
-  rgb.set_desc(rcs.rt, "Color buffer");
 
   rcs.dst = pass.create_texture(
       {
+          REN_SET_DEBUG_NAME("Depth buffer"),
           .format = cfg.depth_format,
           .width = cfg.width,
           .height = cfg.height,
@@ -793,7 +789,6 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
-  rgb.set_desc(rcs.dst, "Depth buffer");
 
   pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
     run_color_pass(device, cmd, rg, cfg, rcs);
@@ -824,10 +819,10 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_index_buffers.clear();
 
   auto uploaded_textures =
-      m_staged_textures | map([&](Texture &texture) {
-        return rgb.import_texture(
-            std::move(texture), VK_ACCESS_2_TRANSFER_READ_BIT,
-            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+      m_staged_textures | map([&](Handle<Texture> texture) {
+        return rgb.import_texture(texture, VK_ACCESS_2_TRANSFER_READ_BIT,
+                                  VK_PIPELINE_STAGE_2_BLIT_BIT,
+                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
       }) |
       ranges::to<Vector>();
   m_staged_textures.clear();
@@ -884,7 +879,7 @@ void Scene::draw(Swapchain &swapchain) {
                                      VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                  VK_IMAGE_LAYOUT_GENERAL);
-    rgb.set_desc(pprt, "Post-processed color buffer");
+    // rgb.set_desc(pprt, "Post-processed color buffer");
     pp.set_callback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
     rgb.present(swapchain, pprt, m_device->createBinarySemaphore(),

@@ -82,13 +82,13 @@ private:
       -> DescriptorSetWriter &;
 
 public:
-  auto add_texture(unsigned slot, const TextureView &view, unsigned offset = 0)
-      -> DescriptorSetWriter &;
+  auto add_texture(unsigned slot, const TextureHandleView &view,
+                   unsigned offset = 0) -> DescriptorSetWriter &;
 
   auto add_sampler(unsigned slot, const SamplerRef &sampler,
                    unsigned offset = 0) -> DescriptorSetWriter &;
 
-  auto add_texture_and_sampler(unsigned slot, const TextureView &view,
+  auto add_texture_and_sampler(unsigned slot, const TextureHandleView &view,
                                const SamplerRef &sampler, unsigned offset = 0)
       -> DescriptorSetWriter &;
 

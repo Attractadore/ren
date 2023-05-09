@@ -1,8 +1,65 @@
 #include "Texture.hpp"
+#include "Device.hpp"
 #include "Errors.hpp"
+#include "Formats.inl"
 #include "Support/Math.hpp"
 
 namespace ren {
+
+static auto get_texture_view_type(const Texture &texture) -> VkImageViewType {
+  if (texture.array_layers > 1) {
+    switch (texture.type) {
+    default:
+      break;
+    case VK_IMAGE_TYPE_1D:
+      return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+    case VK_IMAGE_TYPE_2D:
+      return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    }
+  } else {
+    switch (texture.type) {
+    default:
+      break;
+    case VK_IMAGE_TYPE_1D:
+      return VK_IMAGE_VIEW_TYPE_1D;
+    case VK_IMAGE_TYPE_2D:
+      return VK_IMAGE_VIEW_TYPE_2D;
+    case VK_IMAGE_TYPE_3D:
+      return VK_IMAGE_VIEW_TYPE_3D;
+    }
+  }
+  unreachable("Invalid VkImageType/array_layers combination:",
+              int(texture.type), texture.array_layers);
+}
+
+auto TextureHandleView::from_texture(const Device &device,
+                                     Handle<Texture> handle)
+    -> TextureHandleView {
+  const auto &texture = device.get_texture(handle);
+
+  auto view_type = get_texture_view_type(texture);
+
+  return {
+      .texture = handle,
+      .type = view_type,
+      .format = texture.format,
+      .subresource =
+          {
+              .aspectMask = getVkImageAspectFlags(texture.format),
+              .levelCount = texture.mip_levels,
+              .layerCount = texture.array_layers,
+          },
+  };
+}
+
+TextureHandleView::operator Handle<Texture>() const { return texture; }
+
+bool TextureHandleView::operator==(const TextureHandleView &other) const {
+  static_assert(sizeof(other) == sizeof(texture) + sizeof(type) +
+                                     sizeof(format) + sizeof(swizzle) +
+                                     sizeof(subresource));
+  return std::memcmp(this, &other, sizeof(other)) == 0;
+}
 
 auto get_mip_level_count(unsigned width, unsigned height, unsigned depth)
     -> unsigned {

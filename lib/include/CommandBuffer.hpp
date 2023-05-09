@@ -8,21 +8,29 @@ namespace ren {
 
 class Device;
 
-struct RenderTargetConfig {
-  TextureView rtv;
+struct ColorAttachment {
+  TextureHandleView texture;
   VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
   VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE;
-  std::array<float, 4> clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+  glm::vec4 clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
-struct DepthStencilTargetConfig {
-  TextureView dsv;
-  VkAttachmentLoadOp depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
-  VkAttachmentStoreOp depth_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-  VkAttachmentLoadOp stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-  VkAttachmentStoreOp stencil_store_op = VK_ATTACHMENT_STORE_OP_NONE;
-  float clear_depth = 0.0f;
-  uint8_t clear_stencil = 0;
+struct DepthStencilAttachment {
+  struct Depth {
+    VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    float clear_depth = 0.0f;
+  };
+
+  struct Stencil {
+    VkAttachmentLoadOp load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
+    VkAttachmentStoreOp store_op = VK_ATTACHMENT_STORE_OP_STORE;
+    uint8_t clear_stencil = 0;
+  };
+
+  TextureHandleView texture;
+  Optional<Depth> depth;
+  Optional<Stencil> stencil;
 };
 
 class CommandBuffer {
@@ -39,31 +47,13 @@ public:
 
   void begin_rendering(
       int x, int y, unsigned width, unsigned height,
-      std::span<const RenderTargetConfig> render_targets,
-      const DepthStencilTargetConfig *depth_stencil_target = nullptr);
+      std::span<const Optional<ColorAttachment>> color_attachments,
+      Optional<const DepthStencilAttachment &> depth_stencil_attachment = None);
 
-  void begin_rendering(const TextureRef &color_buffer) {
-    RenderTargetConfig rt_cfg = {
-        .rtv = TextureView::create(color_buffer,
-                                   {.aspects = VK_IMAGE_ASPECT_COLOR_BIT})};
-    begin_rendering(0, 0, color_buffer.desc.width, color_buffer.desc.height,
-                    {&rt_cfg, 1});
-  }
+  void begin_rendering(Handle<Texture> color_attachment);
 
-  void begin_rendering(const TextureRef &color_buffer,
-                       const TextureRef &depth_buffer) {
-    assert(color_buffer.desc.width == depth_buffer.desc.width);
-    assert(color_buffer.desc.height == depth_buffer.desc.height);
-    RenderTargetConfig rt = {
-        .rtv = TextureView::create(color_buffer,
-                                   {.aspects = VK_IMAGE_ASPECT_COLOR_BIT})};
-    DepthStencilTargetConfig dst = {
-        .dsv = TextureView::create(depth_buffer,
-                                   {.aspects = VK_IMAGE_ASPECT_DEPTH_BIT}),
-    };
-    begin_rendering(0, 0, color_buffer.desc.width, color_buffer.desc.height,
-                    {&rt, 1}, &dst);
-  }
+  void begin_rendering(Handle<Texture> color_attachment,
+                       Handle<Texture> depth_attachment);
 
   void end_rendering();
 
@@ -75,31 +65,31 @@ public:
     copy_buffer(src, dst, asSpan(region));
   }
 
-  void copy_buffer_to_image(const Buffer &src, const TextureRef &dst,
+  void copy_buffer_to_image(const Buffer &src, const Texture &dst,
                             std::span<const VkBufferImageCopy> regions);
 
-  void copy_buffer_to_image(const Buffer &src, const TextureRef &dst,
+  void copy_buffer_to_image(const Buffer &src, const Texture &dst,
                             const VkBufferImageCopy &region) {
     copy_buffer_to_image(src, dst, asSpan(region));
   }
 
-  void blit(const TextureRef &src, const TextureRef &dst,
+  void blit(const Texture &src, const Texture &dst,
             std::span<const VkImageBlit> regions,
             VkFilter filter = VK_FILTER_LINEAR);
 
-  void blit(const TextureRef &src, const TextureRef &dst,
-            const VkImageBlit &region, VkFilter filter = VK_FILTER_LINEAR) {
+  void blit(const Texture &src, const Texture &dst, const VkImageBlit &region,
+            VkFilter filter = VK_FILTER_LINEAR) {
     blit(src, dst, asSpan(region), filter);
   }
 
-  void blit(const TextureRef &src, const TextureRef &dst) {
+  void blit(const Texture &src, const Texture &dst) {
     VkImageBlit region = {
         .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                            .layerCount = 1},
-        .srcOffsets = {{}, {int(src.desc.width), int(src.desc.height), 1}},
+        .srcOffsets = {{}, {int(src.width), int(src.height), 1}},
         .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                            .layerCount = 1},
-        .dstOffsets = {{}, {int(dst.desc.width), int(dst.desc.height), 1}},
+        .dstOffsets = {{}, {int(dst.width), int(dst.height), 1}},
     };
     blit(src, dst, {&region, 1}, VK_FILTER_LINEAR);
   }
