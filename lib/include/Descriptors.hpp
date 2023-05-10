@@ -93,11 +93,11 @@ public:
   auto add_texture(unsigned slot, const TextureView &view, unsigned offset = 0)
       -> DescriptorSetWriter &;
 
-  auto add_sampler(unsigned slot, const SamplerRef &sampler,
-                   unsigned offset = 0) -> DescriptorSetWriter &;
+  auto add_sampler(unsigned slot, const Sampler &sampler, unsigned offset = 0)
+      -> DescriptorSetWriter &;
 
   auto add_texture_and_sampler(unsigned slot, const TextureView &view,
-                               const SamplerRef &sampler, unsigned offset = 0)
+                               const Sampler &sampler, unsigned offset = 0)
       -> DescriptorSetWriter &;
 
   auto write() -> VkDescriptorSet;

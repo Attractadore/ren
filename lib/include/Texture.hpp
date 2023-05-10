@@ -65,58 +65,25 @@ public:
 auto get_mip_level_count(unsigned width, unsigned height = 1,
                          unsigned depth = 1) -> unsigned;
 
-struct SamplerDesc {
+struct SamplerCreateInfo {
+  REN_DEBUG_NAME_FIELD("Sampler");
   VkFilter mag_filter;
   VkFilter min_filter;
   VkSamplerMipmapMode mipmap_mode;
-  VkSamplerAddressMode address_Mode_u;
-  VkSamplerAddressMode address_Mode_v;
-
-public:
-  constexpr auto operator<=>(const SamplerDesc &) const = default;
+  VkSamplerAddressMode address_mode_u;
+  VkSamplerAddressMode address_mode_v;
 };
 
-namespace detail {
-
-template <typename S> class SamplerMixin {
-  const S &impl() const { return *static_cast<const S *>(this); }
-  S &impl() { return *static_cast<S *>(this); }
-
-public:
-  auto get_descriptor() const -> VkDescriptorImageInfo {
-    return {.sampler = impl().get()};
-  }
-
-  bool operator==(const SamplerMixin &other) const {
-    const auto &lhs = impl();
-    const auto &rhs = other.impl();
-    return lhs.get() == rhs.get();
-  };
-};
-
-} // namespace detail
-
-struct SamplerRef : detail::SamplerMixin<SamplerRef> {
-  SamplerDesc desc;
+struct Sampler {
   VkSampler handle;
+  VkFilter mag_filter;
+  VkFilter min_filter;
+  VkSamplerMipmapMode mipmap_mode;
+  VkSamplerAddressMode address_mode_u;
+  VkSamplerAddressMode address_mode_v;
 
 public:
-  auto get() const -> VkSampler { return handle; }
-};
-
-struct Sampler : detail::SamplerMixin<Sampler> {
-  SamplerDesc desc;
-  SharedHandle<VkSampler> handle;
-
-public:
-  auto get() const -> VkSampler { return handle.get(); }
-
-  operator SamplerRef() const {
-    return {
-        .desc = desc,
-        .handle = handle.get(),
-    };
-  }
+  auto get_descriptor() const -> VkDescriptorImageInfo;
 };
 
 auto getVkComponentSwizzle(RenTextureChannel channel) -> VkComponentSwizzle;

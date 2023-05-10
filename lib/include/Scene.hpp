@@ -43,8 +43,8 @@ class Scene {
 
   MeshMap m_meshes;
 
-  Vector<SamplerDesc> m_sampler_descs;
-  Vector<Sampler> m_samplers;
+  Vector<RenSampler> m_sampler_descs;
+  Vector<Handle<Sampler>> m_samplers;
 
   unsigned m_num_textures = 1;
 

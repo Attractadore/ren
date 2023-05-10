@@ -317,26 +317,32 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 }
 
 auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
-  SamplerDesc desc = {
-      .mag_filter = getVkFilter(texture.sampler.mag_filter),
-      .min_filter = getVkFilter(texture.sampler.min_filter),
-      .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
-      .address_Mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
-      .address_Mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
-  };
-
-  unsigned index = ranges::distance(m_sampler_descs.begin(),
-                                    ranges::find(m_sampler_descs, desc));
+  unsigned index = ranges::distance(
+      m_sampler_descs.begin(),
+      ranges::find_if(m_sampler_descs, [&](const RenSampler &sampler) {
+        return std::memcmp(&sampler, &texture.sampler, sizeof(sampler)) == 0;
+      }));
   assert(index < hlsl::NUM_SAMPLERS);
 
   if (index == m_sampler_descs.size()) {
-    m_sampler_descs.push_back(desc);
-    m_samplers.push_back(m_device->create_sampler(desc));
+    m_sampler_descs.push_back(texture.sampler);
+
+    auto sampler = m_persistent_arena.create_sampler(
+        {
+            .mag_filter = getVkFilter(texture.sampler.mag_filter),
+            .min_filter = getVkFilter(texture.sampler.min_filter),
+            .mipmap_mode =
+                getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
+            .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
+            .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
+        },
+        *m_device);
+    m_samplers.push_back(sampler);
 
     DescriptorSetWriter(
         *m_device, m_persistent_descriptor_set,
         m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
-        .add_sampler(hlsl::SAMPLERS_SLOT, m_samplers.back(), index)
+        .add_sampler(hlsl::SAMPLERS_SLOT, m_device->get_sampler(sampler), index)
         .write();
   }
 

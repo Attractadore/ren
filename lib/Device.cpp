@@ -18,6 +18,8 @@ namespace ren {
       return VK_OBJECT_TYPE_BUFFER;                                            \
     } else if constexpr (std::same_as<T, VkImage>) {                           \
       return VK_OBJECT_TYPE_IMAGE;                                             \
+    } else if constexpr (std::same_as<T, VkSampler>) {                         \
+      return VK_OBJECT_TYPE_SAMPLER;                                           \
     }                                                                          \
     throw("Unknown debug object type");                                        \
   }                                                                            \
@@ -546,26 +548,41 @@ auto Device::getVkImageView(const TextureView &view) -> VkImageView {
   return image_view;
 }
 
-auto Device::create_sampler(const SamplerDesc &desc) -> Sampler {
+auto Device::create_sampler(const SamplerCreateInfo &&create_info)
+    -> Handle<Sampler> {
   VkSamplerCreateInfo sampler_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-      .magFilter = desc.mag_filter,
-      .minFilter = desc.min_filter,
-      .mipmapMode = desc.mipmap_mode,
-      .addressModeU = desc.address_Mode_u,
-      .addressModeV = desc.address_Mode_v,
+      .magFilter = create_info.mag_filter,
+      .minFilter = create_info.min_filter,
+      .mipmapMode = create_info.mipmap_mode,
+      .addressModeU = create_info.address_mode_u,
+      .addressModeV = create_info.address_mode_v,
       .maxLod = VK_LOD_CLAMP_NONE,
   };
 
   VkSampler sampler;
   throwIfFailed(CreateSampler(&sampler_info, &sampler),
                 "Vulkan: Failed to create sampler");
+  ren_set_debug_name(sampler, create_info.debug_name.c_str());
 
-  return {
-      .desc = desc,
-      .handle = {sampler,
-                 [this](VkSampler sampler) { push_to_delete_queue(sampler); }},
-  };
+  return m_samplers.emplace(Sampler{
+      .handle = sampler,
+      .mag_filter = create_info.mag_filter,
+      .min_filter = create_info.min_filter,
+      .mipmap_mode = create_info.mipmap_mode,
+      .address_mode_u = create_info.address_mode_u,
+      .address_mode_v = create_info.address_mode_v,
+  });
+}
+
+void Device::destroy_sampler(Handle<Sampler> sampler) {
+  m_samplers.try_pop(sampler).map(
+      [&](const Sampler &sampler) { push_to_delete_queue(sampler.handle); });
+}
+
+auto Device::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
+  assert(m_samplers.contains(sampler));
+  return m_samplers[sampler];
 }
 
 auto Device::createBinarySemaphore() -> Semaphore {
