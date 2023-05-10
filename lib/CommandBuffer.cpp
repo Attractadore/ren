@@ -157,6 +157,21 @@ void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
                           regions.data());
 }
 
+void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
+                                const VkBufferCopy &region) {
+  copy_buffer(src, dst, asSpan(region));
+}
+
+void CommandBuffer::copy_buffer(const BufferView &src, const BufferView &dst) {
+  assert(src.size <= dst.size);
+  copy_buffer(src.buffer, dst.buffer,
+              {
+                  .srcOffset = src.offset,
+                  .dstOffset = dst.offset,
+                  .size = src.size,
+              });
+}
+
 void CommandBuffer::copy_buffer_to_image(
     const Buffer &src, const Texture &dst,
     std::span<const VkBufferImageCopy> regions) {
@@ -211,12 +226,15 @@ void CommandBuffer::set_push_constants(PipelineLayoutRef layout,
                              data.size(), data.data());
 }
 
-void CommandBuffer::bind_index_buffer(const BindIndexBufferInfo &&bind_info) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer, bind_info.buffer.handle,
-                               bind_info.offset, bind_info.type);
+void CommandBuffer::bind_index_buffer(const BufferView &buffer,
+                                      VkIndexType type) {
+  m_device->CmdBindIndexBuffer(m_cmd_buffer, buffer->handle, buffer.offset,
+                               type);
 }
 
 void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
+  assert(draw_info.num_indices > 0);
+  assert(draw_info.num_instances > 0);
   m_device->CmdDrawIndexed(m_cmd_buffer, draw_info.num_indices,
                            draw_info.num_instances, draw_info.first_index,
                            draw_info.vertex_offset, draw_info.first_instance);

@@ -32,8 +32,8 @@ class Scene {
   AssetLoader m_asset_loader;
 
   ResourceUploader m_resource_uploader;
-  Vector<Handle<Buffer>> m_staged_vertex_buffers;
-  Vector<Handle<Buffer>> m_staged_index_buffers;
+  Vector<BufferHandleView> m_staged_vertex_buffers;
+  Vector<BufferHandleView> m_staged_index_buffers;
   Vector<Handle<Texture>> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
   DescriptorSetAllocator m_descriptor_set_allocator;

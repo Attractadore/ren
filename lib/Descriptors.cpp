@@ -8,11 +8,10 @@ DescriptorSetWriter::DescriptorSetWriter(Device &device, VkDescriptorSet set,
                                          DescriptorSetLayoutRef layout)
     : m_device(&device), m_set(set), m_layout(std::move(layout)) {}
 
-auto DescriptorSetWriter::add_buffer(unsigned slot,
-                                     VkDescriptorBufferInfo descriptor,
+auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferView &view,
                                      unsigned offset) -> DescriptorSetWriter & {
   auto index = m_buffers.size();
-  m_buffers.push_back(descriptor);
+  m_buffers.push_back(view.get_descriptor());
   m_data.push_back(VkWriteDescriptorSet{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
@@ -23,16 +22,6 @@ auto DescriptorSetWriter::add_buffer(unsigned slot,
       .pBufferInfo = (VkDescriptorBufferInfo *)(index + 1),
   });
   return *this;
-}
-
-auto DescriptorSetWriter::add_buffer(unsigned slot, const Buffer &buffer,
-                                     unsigned offset) -> DescriptorSetWriter & {
-  return add_buffer(slot, buffer.get_descriptor(), offset);
-}
-
-auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferView &view,
-                                     unsigned offset) -> DescriptorSetWriter & {
-  return add_buffer(slot, view.get_descriptor(*m_device), offset);
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,

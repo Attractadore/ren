@@ -61,9 +61,9 @@ public:
                    std::span<const VkBufferCopy> regions);
 
   void copy_buffer(const Buffer &src, const Buffer &dst,
-                   const VkBufferCopy &region) {
-    copy_buffer(src, dst, asSpan(region));
-  }
+                   const VkBufferCopy &region);
+
+  void copy_buffer(const BufferView &src, const BufferView &dst);
 
   void copy_buffer_to_image(const Buffer &src, const Texture &dst,
                             std::span<const VkBufferImageCopy> regions);
@@ -116,16 +116,10 @@ public:
     set_push_constants(layout, stages, std::as_bytes(asSpan(data)), offset);
   }
 
-  struct BindIndexBufferInfo {
-    const Buffer &buffer;
-    size_t offset = 0;
-    VkIndexType type;
-  };
-
-  void bind_index_buffer(const BindIndexBufferInfo &&bind_info);
+  void bind_index_buffer(const BufferView &buffer, VkIndexType type);
 
   struct DrawIndexedInfo {
-    unsigned num_indices;
+    unsigned num_indices = 0;
     unsigned num_instances = 1;
     unsigned first_index = 0;
     int vertex_offset = 0;

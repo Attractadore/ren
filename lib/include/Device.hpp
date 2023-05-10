@@ -200,13 +200,18 @@ public:
   void write_descriptor_set(const VkWriteDescriptorSet &config);
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
-      -> Handle<Buffer>;
+      -> BufferHandleView;
 
   void destroy_buffer(Handle<Buffer> buffer);
 
   auto try_get_buffer(Handle<Buffer> buffer) const -> Optional<const Buffer &>;
 
   auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
+
+  auto try_get_buffer_view(const BufferHandleView &view) const
+      -> Optional<BufferView>;
+
+  auto get_buffer_view(const BufferHandleView &view) const -> BufferView;
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
       -> Handle<Texture>;

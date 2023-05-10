@@ -22,6 +22,8 @@ struct BufferCreateInfo {
   size_t size;
 };
 
+struct BufferView;
+
 struct Buffer {
   VkBuffer handle;
   VmaAllocation allocation;
@@ -32,32 +34,44 @@ struct Buffer {
   VkBufferUsageFlags usage;
 
 public:
-  auto get_descriptor() const -> VkDescriptorBufferInfo;
-
-  template <typename T = std::byte> auto map(size_t offset = 0) const -> T * {
-    if (ptr) {
-      return (T *)(ptr + offset);
-    }
-    return nullptr;
-  }
+  operator BufferView() const;
 };
 
 struct BufferView {
-  Handle<Buffer> buffer;
+  std::reference_wrapper<const Buffer> buffer;
   size_t offset = 0;
   size_t size = 0;
 
 public:
-  static auto from_buffer(const Device &device, Handle<Buffer> buffer)
-      -> BufferView;
+  auto operator->() const -> const Buffer *;
 
-  operator Handle<Buffer>() const;
+  auto get_descriptor() const -> VkDescriptorBufferInfo;
 
-  auto get_descriptor(const Device &device) const -> VkDescriptorBufferInfo;
+  template <typename T = std::byte>
+  auto map(size_t map_offset = 0) const -> T * {
+    const auto &buffer = this->buffer.get();
+    if (buffer.ptr) {
+      return (T *)(buffer.ptr + offset + map_offset);
+    }
+    return nullptr;
+  }
 
   auto subbuffer(size_t offset, size_t size) const -> BufferView;
 
   auto subbuffer(size_t offset) const -> BufferView;
 };
+
+#if 1
+struct BufferHandleView {
+  Handle<Buffer> buffer;
+  size_t offset = 0;
+  size_t size = 0;
+
+public:
+  auto subbuffer(size_t offset, size_t size) const -> BufferHandleView;
+
+  auto subbuffer(size_t offset) const -> BufferHandleView;
+};
+#endif
 
 } // namespace ren

@@ -46,9 +46,9 @@ public:
   ResourceArenaImpl &operator=(ResourceArenaImpl &&);
 
   auto create_buffer(const BufferCreateInfo &&create_info, Device &device)
-      -> Handle<Buffer> {
+      -> BufferHandleView {
     auto buffer = device.create_buffer(std::move(create_info));
-    push_back(buffer);
+    push_back(buffer.buffer);
     return buffer;
   }
 

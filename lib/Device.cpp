@@ -370,7 +370,7 @@ void Device::write_descriptor_set(const VkWriteDescriptorSet &config) {
 }
 
 auto Device::create_buffer(const BufferCreateInfo &&create_info)
-    -> Handle<Buffer> {
+    -> BufferHandleView {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -417,7 +417,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
     address = GetBufferDeviceAddress(&buffer_info);
   }
 
-  return m_buffers.emplace(Buffer{
+  auto handle = m_buffers.emplace(Buffer{
       .handle = buffer,
       .allocation = allocation,
       .ptr = (std::byte *)map_info.pMappedData,
@@ -426,6 +426,11 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
       .heap = create_info.heap,
       .usage = create_info.usage,
   });
+
+  return {
+      .buffer = handle,
+      .size = create_info.size,
+  };
 }
 
 void Device::destroy_buffer(Handle<Buffer> buffer) {
@@ -444,6 +449,26 @@ auto Device::try_get_buffer(Handle<Buffer> buffer) const
 
 auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
   return m_buffers[buffer];
+};
+
+auto Device::try_get_buffer_view(const BufferHandleView &view) const
+    -> Optional<BufferView> {
+  return m_buffers.get(view.buffer).map([&](const Buffer &buffer) {
+    return BufferView{
+        .buffer = buffer,
+        .offset = view.offset,
+        .size = view.size,
+    };
+  });
+};
+
+auto Device::get_buffer_view(const BufferHandleView &view) const -> BufferView {
+  assert(m_buffers.contains(view.buffer));
+  return {
+      .buffer = m_buffers[view.buffer],
+      .offset = view.offset,
+      .size = view.size,
+  };
 };
 
 auto Device::create_texture(const TextureCreateInfo &&create_info)

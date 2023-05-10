@@ -267,33 +267,31 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   for (auto mesh_attribute : used_attributes) {
     mesh.attribute_offsets[mesh_attribute] = offset;
     auto data = upload_attributes[mesh_attribute];
+    auto dst = mesh.vertex_buffer.subbuffer(offset);
     switch (mesh_attribute) {
     default:
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
       auto positions = reinterpret_span<const glm::vec3>(data);
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
-                                       mesh.vertex_buffer, offset);
+                                       dst);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
           reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_normal);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals,
-                                       mesh.vertex_buffer, offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
           reinterpret_span<const glm::vec4>(data) | map(hlsl::encode_color);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors,
-                                       mesh.vertex_buffer, offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
       offset += size_bytes(colors);
     } break;
     case MESH_ATTRIBUTE_UVS: {
       auto uvs = reinterpret_span<const glm::vec2>(data);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs,
-                                       mesh.vertex_buffer, offset);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs, dst);
       offset += size_bytes(uvs);
     } break;
     }
@@ -303,11 +301,11 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
-  if (!m_device->get_buffer(mesh.vertex_buffer).ptr) {
+  if (!m_device->get_buffer_view(mesh.vertex_buffer).map()) {
     m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
   }
 
-  if (!m_device->get_buffer(mesh.index_buffer).ptr) {
+  if (!m_device->get_buffer_view(mesh.index_buffer).map()) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
 
@@ -679,7 +677,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
         .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
 
-    dir_lights_buffer.map([&](const Buffer &buffer) {
+    dir_lights_buffer.map([&](const BufferView &buffer) {
       set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 
@@ -696,8 +694,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
     cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
-    const auto &buffer = device.get_buffer(mesh.vertex_buffer);
-    auto address = buffer.address;
+    auto buffer = device.get_buffer_view(mesh.vertex_buffer);
+    auto address = buffer->address;
     auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
@@ -715,10 +713,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         cfg.pipeline_layout,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
 
-    cmd.bind_index_buffer({
-        .buffer = device.get_buffer(mesh.index_buffer),
-        .type = mesh.index_format,
-    });
+    cmd.bind_index_buffer(device.get_buffer_view(mesh.index_buffer),
+                          mesh.index_format);
     cmd.draw_indexed({
         .num_indices = mesh.num_indices,
     });
@@ -813,7 +809,7 @@ void Scene::draw(Swapchain &swapchain) {
   RenderGraph::Builder rgb;
 
   auto uploaded_vertex_buffers =
-      m_staged_vertex_buffers | map([&](Handle<Buffer> buffer) {
+      m_staged_vertex_buffers | map([&](const BufferHandleView &buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
@@ -821,7 +817,7 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_vertex_buffers.clear();
 
   auto uploaded_index_buffers =
-      m_staged_index_buffers | map([&](Handle<Buffer> buffer) {
+      m_staged_index_buffers | map([&](const BufferHandleView &buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |

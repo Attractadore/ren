@@ -58,7 +58,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
   }
 }
 
-static void upload_texture(CommandBuffer &cmd, const Buffer &src,
+static void upload_texture(CommandBuffer &cmd, const BufferView &src,
                            const Texture &dst) {
   {
     VkImageMemoryBarrier2 barrier = {
@@ -78,6 +78,7 @@ static void upload_texture(CommandBuffer &cmd, const Buffer &src,
   }
 
   VkBufferImageCopy region = {
+      .bufferOffset = src.offset,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -85,7 +86,7 @@ static void upload_texture(CommandBuffer &cmd, const Buffer &src,
           },
       .imageExtent = {dst.width, dst.height, 1},
   };
-  cmd.copy_buffer_to_image(src, dst, region);
+  cmd.copy_buffer_to_image(src.buffer, dst, region);
 
   {
     VkImageMemoryBarrier2 barrier = {
@@ -122,7 +123,7 @@ void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
       },
       device);
 
-  auto *ptr = device.get_buffer(staging_buffer).map();
+  auto *ptr = device.get_buffer_view(staging_buffer).map();
   ranges::copy(data, ptr);
 
   m_texture_srcs.push_back(staging_buffer);
@@ -139,22 +140,15 @@ auto ResourceUploader::record_upload(const Device &device,
   auto cmd = cmd_allocator.allocate();
   cmd.begin();
 
-  for (auto &&[src_handle, dst_handle, offset] :
-       zip(m_buffer_srcs, m_buffer_dsts, m_buffer_dst_offsets)) {
-    const auto &src = device.get_buffer(src_handle);
-    const auto &dst = device.get_buffer(dst_handle);
-    VkBufferCopy region = {
-        .dstOffset = offset,
-        .size = src.size,
-    };
-    cmd.copy_buffer(src, dst, region);
+  for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
+    cmd.copy_buffer(device.get_buffer_view(src), device.get_buffer_view(dst));
   }
 
   m_buffer_srcs.clear();
   m_buffer_dsts.clear();
 
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(cmd, device.get_buffer(src), device.get_texture(dst));
+    upload_texture(cmd, device.get_buffer_view(src), device.get_texture(dst));
   }
 
   m_texture_srcs.clear();
