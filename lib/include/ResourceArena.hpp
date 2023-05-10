@@ -57,9 +57,9 @@ public:
   }
 
   auto create_texture(const TextureCreateInfo &&create_info, Device &device)
-      -> Handle<Texture> {
+      -> TextureHandleView {
     auto texture = device.create_texture(std::move(create_info));
-    push_back(texture);
+    push_back(texture.texture);
     return texture;
   }
 

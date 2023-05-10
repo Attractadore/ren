@@ -4,9 +4,9 @@
 
 namespace ren {
 
-DescriptorSetWriter::DescriptorSetWriter(Device &device, VkDescriptorSet set,
+DescriptorSetWriter::DescriptorSetWriter(VkDescriptorSet set,
                                          DescriptorSetLayoutRef layout)
-    : m_device(&device), m_set(set), m_layout(std::move(layout)) {}
+    : m_set(set), m_layout(std::move(layout)) {}
 
 auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferView &view,
                                      unsigned offset) -> DescriptorSetWriter & {
@@ -35,11 +35,13 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
     default:
       unreachable("Invalid image/sampler descriptor type {}", int(type));
     case VK_DESCRIPTOR_TYPE_SAMPLER:
+      assert(view == nullptr);
       return VK_IMAGE_LAYOUT_UNDEFINED;
     case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+      assert(sampler == nullptr);
       return VK_IMAGE_LAYOUT_GENERAL;
     }
   }();
@@ -61,11 +63,10 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
   return *this;
 }
 
-auto DescriptorSetWriter::add_texture(unsigned slot, const TextureView &view,
+auto DescriptorSetWriter::add_texture(unsigned slot, VkImageView view,
                                       unsigned offset)
     -> DescriptorSetWriter & {
-  return add_texture_and_sampler(slot, m_device->getVkImageView(view), nullptr,
-                                 offset);
+  return add_texture_and_sampler(slot, view, nullptr, offset);
 }
 
 auto DescriptorSetWriter::add_sampler(unsigned slot, const Sampler &sampler,
@@ -75,15 +76,14 @@ auto DescriptorSetWriter::add_sampler(unsigned slot, const Sampler &sampler,
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
-                                                  const TextureView &view,
+                                                  VkImageView view,
                                                   const Sampler &sampler,
                                                   unsigned offset)
     -> DescriptorSetWriter & {
-  return add_texture_and_sampler(slot, m_device->getVkImageView(view),
-                                 sampler.handle, offset);
+  return add_texture_and_sampler(slot, view, sampler.handle, offset);
 }
 
-auto DescriptorSetWriter::write() -> VkDescriptorSet {
+auto DescriptorSetWriter::write(Device &device) -> VkDescriptorSet {
   for (auto &write : m_data) {
     if (write.pBufferInfo) {
       write.pBufferInfo = &m_buffers[(size_t)write.pBufferInfo - 1];
@@ -92,7 +92,7 @@ auto DescriptorSetWriter::write() -> VkDescriptorSet {
       write.pImageInfo = &m_images[(size_t)write.pImageInfo - 1];
     }
   }
-  m_device->write_descriptor_sets(m_data);
+  device.write_descriptor_sets(m_data);
   return m_set;
 }
 

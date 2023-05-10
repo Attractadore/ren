@@ -208,7 +208,7 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
   return new_texture;
 }
 
-auto RenderGraph::Builder::import_texture(Handle<Texture> texture,
+auto RenderGraph::Builder::import_texture(TextureHandleView texture,
                                           VkAccessFlags2 accesses,
                                           VkPipelineStageFlags2 stages,
                                           VkImageLayout layout) -> RGTextureID {
@@ -369,7 +369,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
     auto texture = rg.get_texture(src);
     auto swapchain_image = rg.get_texture(dst);
 
-    cmd.blit(texture, swapchain_image);
+    cmd.blit(texture.texture, swapchain_image.texture);
 
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -377,7 +377,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
         .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .image = swapchain_image.image,
+        .image = swapchain_image->image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -564,8 +564,7 @@ void RenderGraph::Builder::insert_barriers(const Device &device) {
         map([&](const TextureAccess &texture_access) {
           auto physical_texture = m_physical_textures[texture_access.texture];
           auto &state = m_texture_states[physical_texture];
-          const auto &texture =
-              device.get_texture(m_textures[physical_texture]);
+          auto view = device.get_texture_view(m_textures[physical_texture]);
 
           VkImageMemoryBarrier2 barrier = {
               .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -575,12 +574,14 @@ void RenderGraph::Builder::insert_barriers(const Device &device) {
               .dstAccessMask = texture_access.accesses,
               .oldLayout = state.layout,
               .newLayout = texture_access.layout,
-              .image = texture.image,
+              .image = view->image,
               .subresourceRange =
                   {
-                      .aspectMask = getVkImageAspectFlags(texture.format),
-                      .levelCount = texture.mip_levels,
-                      .layerCount = texture.array_layers,
+                      .aspectMask = getVkImageAspectFlags(view.format),
+                      .baseMipLevel = view.first_mip_level,
+                      .levelCount = view.num_mip_levels,
+                      .baseArrayLayer = view.first_array_layer,
+                      .layerCount = view.num_array_layers,
                   },
           };
 
@@ -642,18 +643,18 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
 
 auto RenderGraph::allocate_descriptor_set(DescriptorSetLayoutRef layout)
     -> DescriptorSetWriter {
-  return {*m_device, m_set_allocator->allocate(*m_device, layout), layout};
+  return {m_set_allocator->allocate(*m_device, layout), layout};
 }
 
 auto RenderGraph::get_texture_handle(RGTextureID texture) const
-    -> Handle<Texture> {
+    -> TextureHandleView {
   assert(texture);
   return m_textures[texture];
 }
 
-auto RenderGraph::get_texture(RGTextureID texture) const -> const Texture & {
+auto RenderGraph::get_texture(RGTextureID texture) const -> TextureView {
   assert(texture);
-  return m_device->get_texture(m_textures[texture]);
+  return m_device->get_texture_view(m_textures[texture]);
 }
 
 auto RenderGraph::get_buffer_handle(RGBufferID buffer) const

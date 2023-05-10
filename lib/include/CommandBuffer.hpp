@@ -50,10 +50,10 @@ public:
       std::span<const Optional<ColorAttachment>> color_attachments,
       Optional<const DepthStencilAttachment &> depth_stencil_attachment = None);
 
-  void begin_rendering(Handle<Texture> color_attachment);
+  void begin_rendering(TextureView color_attachment);
 
-  void begin_rendering(Handle<Texture> color_attachment,
-                       Handle<Texture> depth_attachment);
+  void begin_rendering(TextureView color_attachment,
+                       TextureView depth_attachment);
 
   void end_rendering();
 
@@ -78,21 +78,9 @@ public:
             VkFilter filter = VK_FILTER_LINEAR);
 
   void blit(const Texture &src, const Texture &dst, const VkImageBlit &region,
-            VkFilter filter = VK_FILTER_LINEAR) {
-    blit(src, dst, asSpan(region), filter);
-  }
+            VkFilter filter = VK_FILTER_LINEAR);
 
-  void blit(const Texture &src, const Texture &dst) {
-    VkImageBlit region = {
-        .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                           .layerCount = 1},
-        .srcOffsets = {{}, {int(src.width), int(src.height), 1}},
-        .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                           .layerCount = 1},
-        .dstOffsets = {{}, {int(dst.width), int(dst.height), 1}},
-    };
-    blit(src, dst, {&region, 1}, VK_FILTER_LINEAR);
-  }
+  void blit(const Texture &src, const Texture &dst);
 
   void set_viewports(std::span<const VkViewport> viewports);
   void set_viewport(const VkViewport &viewport) {

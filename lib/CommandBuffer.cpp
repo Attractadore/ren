@@ -106,46 +106,37 @@ void CommandBuffer::begin_rendering(
   m_device->CmdBeginRendering(m_cmd_buffer, &rendering_info);
 }
 
-void CommandBuffer::begin_rendering(Handle<Texture> color_target) {
-  auto color_view = TextureView::from_texture(*m_device, color_target);
-  color_view.subresource.levelCount = 1;
-  color_view.subresource.layerCount = 1;
+void CommandBuffer::begin_rendering(TextureView color_target) {
+  color_target.num_mip_levels = 1;
+  color_target.num_array_layers = 1;
 
-  ColorAttachment color_attachment = {.texture = color_view};
+  ColorAttachment color_attachment = {.texture = color_target};
   std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
 
-  const auto &texture = m_device->get_texture(color_target);
-  begin_rendering(0, 0, texture.width, texture.height, color_attachments);
+  begin_rendering(0, 0, color_target->size.x, color_target->size.y,
+                  color_attachments);
 }
 
-void CommandBuffer::begin_rendering(Handle<Texture> color_target,
-                                    Handle<Texture> depth_target) {
-  auto color_view = TextureView::from_texture(*m_device, color_target);
-  color_view.subresource.levelCount = 1;
-  color_view.subresource.layerCount = 1;
+void CommandBuffer::begin_rendering(TextureView color_target,
+                                    TextureView depth_target) {
+  assert(depth_target->size.x >= color_target->size.x);
+  assert(depth_target->size.y >= color_target->size.y);
 
-  ColorAttachment color_attachment = {.texture = color_view};
+  color_target.num_mip_levels = 1;
+  color_target.num_array_layers = 1;
+
+  depth_target.num_mip_levels = 1;
+  depth_target.num_array_layers = 1;
+
+  ColorAttachment color_attachment = {.texture = color_target};
   std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
 
-  auto depth_view = TextureView::from_texture(*m_device, depth_target);
-  depth_view.subresource.levelCount = 1;
-  depth_view.subresource.layerCount = 1;
-
   DepthStencilAttachment depth_attachment = {
-      .texture = depth_view,
+      .texture = depth_target,
       .depth = DepthStencilAttachment::Depth{},
   };
 
-  const auto &color_texture = m_device->get_texture(color_target);
-#ifndef NDEBUG
-  {
-    const auto &depth_texture = m_device->get_texture(depth_target);
-    assert(depth_texture.width == color_texture.width);
-    assert(depth_texture.height == color_texture.height);
-  }
-#endif
-
-  begin_rendering(0, 0, color_texture.width, color_texture.height,
+  begin_rendering(0, 0, color_target->size.x, color_target->size.y,
                   color_attachments, depth_attachment);
 }
 
@@ -187,6 +178,23 @@ void CommandBuffer::blit(const Texture &src, const Texture &dst,
                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
+}
+
+void CommandBuffer::blit(const Texture &src, const Texture &dst,
+                         const VkImageBlit &region, VkFilter filter) {
+  blit(src, dst, asSpan(region), filter);
+}
+
+void CommandBuffer::blit(const Texture &src, const Texture &dst) {
+  VkImageBlit region = {
+      .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                         .layerCount = 1},
+      .srcOffsets = {{}, {int(src.size.x), int(src.size.y), 1}},
+      .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                         .layerCount = 1},
+      .dstOffsets = {{}, {int(dst.size.x), int(dst.size.y), 1}},
+  };
+  blit(src, dst, {&region, 1}, VK_FILTER_LINEAR);
 }
 
 void CommandBuffer::set_viewports(std::span<const VkViewport> in_viewports) {

@@ -151,7 +151,7 @@ void Swapchain::create() {
         .usage = m_create_info.imageUsage,
         .width = m_create_info.imageExtent.width,
         .height = m_create_info.imageExtent.height,
-        .array_layers = m_create_info.imageArrayLayers,
+        .array_layers = u16(m_create_info.imageArrayLayers),
     });
   }
 }
@@ -159,7 +159,7 @@ void Swapchain::create() {
 void Swapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
   for (const auto &texture : m_textures) {
-    m_device->destroy_texture(texture);
+    m_device->destroy_texture(texture.texture);
   }
   m_textures.clear();
 }
@@ -213,7 +213,7 @@ void Swapchain::presentImage(SemaphoreRef wait_semaphore) {
   }
 }
 
-auto Swapchain::getTexture() const -> Handle<Texture> {
+auto Swapchain::getTexture() const -> TextureHandleView {
   return m_textures[m_image_index];
 }
 } // namespace ren

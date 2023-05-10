@@ -8,34 +8,29 @@
 namespace ren {
 
 static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
-  int src_width = texture.width;
-  int src_height = texture.height;
-  int src_depth = texture.depth;
-  for (unsigned dst_level = 1; dst_level < texture.mip_levels; ++dst_level) {
+  auto src_size = texture.size;
+  for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
+       ++dst_level) {
     auto src_level = dst_level - 1;
-    auto dst_width = std::max(src_width / 2, 1);
-    auto dst_height = std::max(src_height / 2, 1);
-    auto dst_depth = std::max(src_depth / 2, 1);
+    auto dst_size = glm::max(src_size / 2u, glm::uvec3(1));
     VkImageBlit region = {
         .srcSubresource =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .mipLevel = src_level,
-                .layerCount = 1,
+                .layerCount = texture.num_array_layers,
             },
-        .srcOffsets = {{}, {src_width, src_height, src_depth}},
         .dstSubresource =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .mipLevel = dst_level,
-                .layerCount = 1,
+                .layerCount = texture.num_array_layers,
             },
-        .dstOffsets = {{}, {dst_width, dst_height, dst_depth}},
     };
+    std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
+    std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(texture, texture, region);
-    src_width = dst_width;
-    src_height = dst_height;
-    src_depth = dst_depth;
+    src_size = dst_size;
 
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -51,7 +46,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = dst_level,
                 .levelCount = 1,
-                .layerCount = texture.array_layers,
+                .layerCount = texture.num_array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
@@ -70,8 +65,8 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = dst.mip_levels,
-                .layerCount = dst.array_layers,
+                .levelCount = dst.num_mip_levels,
+                .layerCount = dst.num_array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
@@ -82,10 +77,10 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .layerCount = dst.array_layers,
+              .layerCount = dst.num_array_layers,
           },
-      .imageExtent = {dst.width, dst.height, 1},
   };
+  std::memcpy(&region.imageExtent, &dst.size, sizeof(dst.size));
   cmd.copy_buffer_to_image(src.buffer, dst, region);
 
   {
@@ -102,7 +97,7 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .levelCount = 1,
-                .layerCount = dst.array_layers,
+                .layerCount = dst.num_array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));

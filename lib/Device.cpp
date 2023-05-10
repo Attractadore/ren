@@ -472,7 +472,7 @@ auto Device::get_buffer_view(const BufferHandleView &view) const -> BufferView {
 };
 
 auto Device::create_texture(const TextureCreateInfo &&create_info)
-    -> Handle<Texture> {
+    -> TextureHandleView {
   unsigned depth = 1;
   unsigned array_layers = 1;
   if (create_info.type == VK_IMAGE_TYPE_3D) {
@@ -503,35 +503,48 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
                 "VMA: Failed to create image");
   ren_set_debug_name(image, create_info.debug_name.c_str());
 
-  return m_textures.emplace(Texture{
+  auto handle = m_textures.emplace(Texture{
       .image = image,
       .allocation = allocation,
       .type = create_info.type,
       .format = create_info.format,
       .usage = create_info.usage,
-      .width = create_info.width,
-      .height = create_info.height,
-      .depth = depth,
-      .mip_levels = create_info.mip_levels,
-      .array_layers = create_info.array_layers,
+      .size = {create_info.width, create_info.height, depth},
+      .num_mip_levels = create_info.mip_levels,
+      .num_array_layers = create_info.array_layers,
   });
+
+  return {
+      .texture = handle,
+      .type = get_texture_default_view_type(create_info.type, array_layers),
+      .format = create_info.format,
+      .num_mip_levels = create_info.mip_levels,
+      .num_array_layers = create_info.array_layers,
+  };
 }
 
 auto Device::create_swapchain_texture(
-    const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
+    const SwapchainTextureCreateInfo &&create_info) -> TextureHandleView {
   ren_set_debug_name(create_info.image, "Swapchain image");
 
-  return m_textures.emplace(Texture{
+  auto handle = m_textures.emplace(Texture{
       .image = create_info.image,
       .type = VK_IMAGE_TYPE_2D,
       .format = create_info.format,
       .usage = create_info.usage,
-      .width = create_info.width,
-      .height = create_info.height,
-      .depth = 1,
-      .mip_levels = 1,
-      .array_layers = create_info.array_layers,
+      .size = {create_info.width, create_info.height, 1u},
+      .num_mip_levels = 1,
+      .num_array_layers = create_info.array_layers,
   });
+
+  return {
+      .texture = handle,
+      .type = get_texture_default_view_type(VK_IMAGE_TYPE_2D,
+                                            create_info.array_layers),
+      .format = create_info.format,
+      .num_mip_levels = 1,
+      .num_array_layers = create_info.array_layers,
+  };
 }
 
 void Device::destroy_texture(Handle<Texture> texture) {
@@ -547,24 +560,81 @@ void Device::destroy_texture(Handle<Texture> texture) {
   });
 }
 
+auto Device::try_get_texture(Handle<Texture> texture) const
+    -> Optional<const Texture &> {
+  return m_textures.get(texture);
+}
+
 auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
   assert(m_textures.contains(texture));
   return m_textures[texture];
 }
 
-auto Device::getVkImageView(const TextureView &view) -> VkImageView {
-  auto image = get_texture(view.texture).image;
+auto Device::try_get_texture_view(const TextureHandleView &view) const
+    -> Optional<TextureView> {
+  return m_textures.get(view.texture).map([&](const Texture &texture) {
+    return TextureView{
+        .texture = texture,
+        .type = view.type,
+        .format = view.format,
+        .swizzle = view.swizzle,
+        .first_mip_level = view.first_mip_level,
+        .num_mip_levels = view.num_mip_levels,
+        .first_array_layer = view.first_array_layer,
+        .num_array_layers = view.num_array_layers,
+    };
+  });
+}
 
-  auto [it, inserted] = m_image_views[image].insert(view, VK_NULL_HANDLE);
+auto Device::get_texture_view(const TextureHandleView &view) const
+    -> TextureView {
+  assert(m_textures.contains(view.texture));
+  return {
+      .texture = m_textures[view.texture],
+      .type = view.type,
+      .format = view.format,
+      .swizzle = view.swizzle,
+      .first_mip_level = view.first_mip_level,
+      .num_mip_levels = view.num_mip_levels,
+      .first_array_layer = view.first_array_layer,
+      .num_array_layers = view.num_array_layers,
+  };
+}
+
+auto Device::getVkImageView(const TextureView &view) -> VkImageView {
+  TextureViewDesc view_desc = {
+      .type = view.type,
+      .format = view.format,
+      .swizzle = view.swizzle,
+      .first_mip_level = view.first_mip_level,
+      .num_mip_levels = view.num_mip_levels,
+      .first_array_layer = view.first_array_layer,
+      .num_array_layers = view.num_mip_levels,
+  };
+
+  auto [it, inserted] = m_image_views[view->image].insert(view_desc, nullptr);
   auto &image_view = std::get<1>(*it);
   if (inserted) {
     VkImageViewCreateInfo view_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = image,
+        .image = view->image,
         .viewType = view.type,
         .format = view.format,
-        .components = view.swizzle,
-        .subresourceRange = view.subresource,
+        .components =
+            {
+                .r = view.swizzle.r,
+                .g = view.swizzle.g,
+                .b = view.swizzle.b,
+                .a = view.swizzle.a,
+            },
+        .subresourceRange =
+            {
+                .aspectMask = getVkImageAspectFlags(view.format),
+                .baseMipLevel = view.first_mip_level,
+                .levelCount = view.num_mip_levels,
+                .baseArrayLayer = view.first_array_layer,
+                .layerCount = view.num_array_layers,
+            },
     };
     throwIfFailed(CreateImageView(&view_info, &image_view),
                   "Vulkan: Failed to create image view");

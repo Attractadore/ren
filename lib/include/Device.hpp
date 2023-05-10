@@ -136,7 +136,22 @@ class Device : public InstanceFunctionsMixin<Device>,
   HandleMap<Buffer> m_buffers;
 
   HandleMap<Texture> m_textures;
-  HashMap<VkImage, SmallLinearMap<TextureView, VkImageView, 3>> m_image_views;
+
+  struct TextureViewDesc {
+    VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    TextureSwizzle swizzle;
+    u16 first_mip_level = 0;
+    u16 num_mip_levels = 0;
+    u16 first_array_layer = 0;
+    u16 num_array_layers = 0;
+
+  public:
+    bool operator==(const TextureViewDesc &) const = default;
+  };
+
+  HashMap<VkImage, SmallLinearMap<TextureViewDesc, VkImageView, 3>>
+      m_image_views;
 
   HandleMap<Sampler> m_samplers;
 
@@ -214,11 +229,11 @@ public:
   auto get_buffer_view(const BufferHandleView &view) const -> BufferView;
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+      -> TextureHandleView;
 
   [[nodiscard]] auto
   create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+      -> TextureHandleView;
 
   void destroy_texture(Handle<Texture> texture);
 
@@ -226,6 +241,11 @@ public:
       -> Optional<const Texture &>;
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
+
+  auto try_get_texture_view(const TextureHandleView &view) const
+      -> Optional<TextureView>;
+
+  auto get_texture_view(const TextureHandleView &view) const -> TextureView;
 
   auto getVkImageView(const TextureView &view) -> VkImageView;
 

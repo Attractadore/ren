@@ -6,9 +6,20 @@
 
 namespace ren {
 
-static auto get_texture_view_type(const Texture &texture) -> VkImageViewType {
-  if (texture.array_layers > 1) {
-    switch (texture.type) {
+Texture::operator TextureView() const {
+  return {
+      .texture = *this,
+      .type = get_texture_default_view_type(type, num_array_layers),
+      .format = format,
+      .num_mip_levels = num_mip_levels,
+      .num_array_layers = num_array_layers,
+  };
+}
+
+auto get_texture_default_view_type(VkImageType type, u32 num_array_layers)
+    -> VkImageViewType {
+  if (num_array_layers > 1) {
+    switch (type) {
     default:
       break;
     case VK_IMAGE_TYPE_1D:
@@ -17,7 +28,7 @@ static auto get_texture_view_type(const Texture &texture) -> VkImageViewType {
       return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     }
   } else {
-    switch (texture.type) {
+    switch (type) {
     default:
       break;
     case VK_IMAGE_TYPE_1D:
@@ -28,40 +39,16 @@ static auto get_texture_view_type(const Texture &texture) -> VkImageViewType {
       return VK_IMAGE_VIEW_TYPE_3D;
     }
   }
-  unreachable("Invalid VkImageType/array_layers combination:",
-              int(texture.type), texture.array_layers);
+  unreachable("Invalid VkImageType/array_layers combination:", int(type),
+              num_array_layers);
 }
 
-auto TextureView::from_texture(const Device &device, Handle<Texture> handle)
-    -> TextureView {
-  const auto &texture = device.get_texture(handle);
-
-  auto view_type = get_texture_view_type(texture);
-
-  return {
-      .texture = handle,
-      .type = view_type,
-      .format = texture.format,
-      .subresource =
-          {
-              .aspectMask = getVkImageAspectFlags(texture.format),
-              .levelCount = texture.mip_levels,
-              .layerCount = texture.array_layers,
-          },
-  };
-}
-
-TextureView::operator Handle<Texture>() const { return texture; }
-
-bool TextureView::operator==(const TextureView &other) const {
-  static_assert(sizeof(other) == sizeof(texture) + sizeof(type) +
-                                     sizeof(format) + sizeof(swizzle) +
-                                     sizeof(subresource));
-  return std::memcmp(this, &other, sizeof(other)) == 0;
-}
+auto TextureView::operator->() const -> const Texture * {
+  return &texture.get();
+};
 
 auto get_mip_level_count(unsigned width, unsigned height, unsigned depth)
-    -> unsigned {
+    -> u16 {
   auto size = std::max({width, height, depth});
   return ilog2(size) + 1;
 }
@@ -86,8 +73,8 @@ auto getVkComponentSwizzle(RenTextureChannel channel) -> VkComponentSwizzle {
   unreachable("Unknown texture channel {}", int(channel));
 }
 
-auto getVkComponentMapping(const RenTextureChannelSwizzle &swizzle)
-    -> VkComponentMapping {
+auto getTextureSwizzle(const RenTextureChannelSwizzle &swizzle)
+    -> TextureSwizzle {
   return {
       .r = getVkComponentSwizzle(swizzle.r),
       .g = getVkComponentSwizzle(swizzle.g),

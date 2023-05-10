@@ -57,7 +57,7 @@ class RenderGraph {
 
   Vector<Batch> m_batches;
 
-  Vector<Handle<Texture>> m_textures;
+  Vector<TextureHandleView> m_textures;
   Vector<BufferHandleView> m_buffers;
   Vector<Semaphore> m_semaphores;
 
@@ -67,7 +67,7 @@ class RenderGraph {
 private:
   struct Config {
     Vector<Batch> batches;
-    Vector<Handle<Texture>> textures;
+    Vector<TextureHandleView> textures;
     Vector<BufferHandleView> buffers;
     Vector<Semaphore> semaphores;
     Swapchain *swapchain;
@@ -87,9 +87,9 @@ public:
   [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
       -> DescriptorSetWriter;
 
-  auto get_texture_handle(RGTextureID texture) const -> Handle<Texture>;
+  auto get_texture_handle(RGTextureID texture) const -> TextureHandleView;
 
-  auto get_texture(RGTextureID texture) const -> const Texture &;
+  auto get_texture(RGTextureID texture) const -> TextureView;
 
   auto get_buffer_handle(RGBufferID buffer) const -> BufferHandleView;
 
@@ -133,7 +133,7 @@ class RenderGraph::Builder {
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
   };
 
-  Vector<Handle<Texture>> m_textures = {{}};
+  Vector<TextureHandleView> m_textures = {{}};
   Vector<TextureState> m_texture_states = {{}};
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
@@ -189,7 +189,7 @@ private:
                                     VkImageLayout layout) -> RGTextureID;
 
 public:
-  [[nodiscard]] auto import_texture(Handle<Texture> texture,
+  [[nodiscard]] auto import_texture(TextureHandleView texture,
                                     VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;

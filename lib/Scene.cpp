@@ -338,10 +338,10 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
     m_samplers.push_back(sampler);
 
     DescriptorSetWriter(
-        *m_device, m_persistent_descriptor_set,
+        m_persistent_descriptor_set,
         m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
         .add_sampler(hlsl::SAMPLERS_SLOT, m_device->get_sampler(sampler), index)
-        .write();
+        .write(*m_device);
   }
 
   return SamplerID{index};
@@ -351,13 +351,13 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   unsigned index = m_num_textures++;
   assert(index < hlsl::NUM_TEXTURES);
 
-  auto view = TextureView::from_texture(*m_device, m_images[texture.image]);
-  view.swizzle = getVkComponentMapping(texture.swizzle);
+  TextureView view = m_device->get_texture(m_images[texture.image]);
+  view.swizzle = getTextureSwizzle(texture.swizzle);
 
-  DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
+  DescriptorSetWriter(m_persistent_descriptor_set,
                       m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
-      .add_texture(hlsl::TEXTURES_SLOT, view, index)
-      .write();
+      .add_texture(hlsl::TEXTURES_SLOT, m_device->getVkImageView(view), index)
+      .write(*m_device);
 
   return TextureID{index};
 }
@@ -377,12 +377,12 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
           .mip_levels = get_mip_level_count(desc.width, desc.height),
       },
       *m_device);
-  m_images.push_back(texture);
+  m_images.push_back(texture.texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
       *m_device, m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
-      texture);
+      texture.texture);
   m_staged_textures.push_back(texture);
   return image;
 }
@@ -648,8 +648,7 @@ struct ColorPassOutput {
 static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
                            const ColorPassConfig &cfg,
                            const ColorPassResources &rcs) {
-  cmd.begin_rendering(rg.get_texture_handle(rcs.rt),
-                      rg.get_texture_handle(rcs.dst));
+  cmd.begin_rendering(rg.get_texture(rcs.rt), rg.get_texture(rcs.dst));
   cmd.set_viewport({.width = float(cfg.width),
                     .height = float(cfg.height),
                     .maxDepth = 1.0f});
@@ -681,7 +680,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 
-    return set.write();
+    return set.write(device);
   }();
 
   std::array descriptor_sets = {cfg.persistent_set, global_set};
@@ -825,7 +824,7 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_index_buffers.clear();
 
   auto uploaded_textures =
-      m_staged_textures | map([&](Handle<Texture> texture) {
+      m_staged_textures | map([&](const TextureHandleView &texture) {
         return rgb.import_texture(texture, VK_ACCESS_2_TRANSFER_READ_BIT,
                                   VK_PIPELINE_STAGE_2_BLIT_BIT,
                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
