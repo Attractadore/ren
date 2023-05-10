@@ -92,28 +92,26 @@ auto RenderGraph::Builder::getPassID(const Pass &pass) const -> RGPassID {
   return static_cast<RGPassID>(&pass - m_passes.data());
 }
 
-void RenderGraph::Builder::wait_semaphore(RGPassID pass, Semaphore semaphore,
-                                          uint64_t value,
+void RenderGraph::Builder::wait_semaphore(RGPassID pass,
+                                          Handle<Semaphore> semaphore,
+                                          u64 value,
                                           VkPipelineStageFlags2 stages) {
   m_passes[pass].wait_semaphores.push_back({
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = semaphore.handle.get(),
+      .semaphore = semaphore,
       .value = value,
-      .stageMask = stages,
+      .stages = stages,
   });
-  m_semaphores.push_back(std::move(semaphore));
 }
 
-void RenderGraph::Builder::signal_semaphore(RGPassID pass, Semaphore semaphore,
-                                            uint64_t value,
+void RenderGraph::Builder::signal_semaphore(RGPassID pass,
+                                            Handle<Semaphore> semaphore,
+                                            u64 value,
                                             VkPipelineStageFlags2 stages) {
   m_passes[pass].signal_semaphores.push_back({
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = semaphore.handle.get(),
+      .semaphore = semaphore,
       .value = value,
-      .stageMask = stages,
+      .stages = stages,
   });
-  m_semaphores.push_back(std::move(semaphore));
 }
 
 auto RenderGraph::Builder::create_pass() -> PassBuilder {
@@ -338,8 +336,8 @@ auto RenderGraph::Builder::get_desc(RGPassID pass) const -> std::string_view {
 }
 
 void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
-                                   Semaphore present_semaphore,
-                                   Semaphore acquire_semaphore) {
+                                   Handle<Semaphore> acquire_semaphore,
+                                   Handle<Semaphore> present_semaphore) {
   m_swapchain = &swapchain;
   m_present_semaphore = present_semaphore;
 
@@ -362,8 +360,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
       VK_PIPELINE_STAGE_2_BLIT_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
   // set_desc(blitted_swapchain_image, "Vulkan: blitted swapchain image");
 
-  blit.wait_semaphore(std::move(acquire_semaphore),
-                      VK_PIPELINE_STAGE_2_BLIT_BIT);
+  blit.wait_semaphore(acquire_semaphore, VK_PIPELINE_STAGE_2_BLIT_BIT);
   blit.set_callback([=, src = texture, dst = swapchain_image](
                         CommandBuffer &cmd, RenderGraph &rg) {
     auto src_texture = rg.get_texture(src);
@@ -388,8 +385,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
   present.read_texture(blitted_swapchain_image, 0, 0,
                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-  present.signal_semaphore(std::move(present_semaphore),
-                           VK_PIPELINE_STAGE_2_NONE);
+  present.signal_semaphore(present_semaphore, VK_PIPELINE_STAGE_2_NONE);
 }
 
 void RenderGraph::Builder::schedule_passes() {
@@ -636,7 +632,6 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
       .batches = std::move(m_batches),
       .textures = std::move(m_textures),
       .buffers = std::move(m_buffers),
-      .semaphores = std::move(m_semaphores),
       .swapchain = m_swapchain,
       .present_semaphore = m_present_semaphore,
   }};
@@ -675,6 +670,8 @@ void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
   m_set_allocator = &set_allocator;
 
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;
+  SmallVector<VkSemaphoreSubmitInfo> wait_semaphores;
+  SmallVector<VkSemaphoreSubmitInfo> signal_semaphores;
 
   for (auto &batch : m_batches) {
     cmd_buffers.clear();
@@ -695,8 +692,22 @@ void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
            .commandBuffer = cmd.get()});
     }
 
-    device.graphicsQueueSubmit(cmd_buffers, batch.wait_semaphores,
-                               batch.signal_semaphores);
+    auto get_semaphore_submit_info = [&](const SemaphoreSignal &signal) {
+      return VkSemaphoreSubmitInfo{
+          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+          .semaphore = device.get_semaphore(signal.semaphore).handle,
+          .value = signal.value,
+          .stageMask = signal.stages,
+      };
+    };
+
+    wait_semaphores.assign(batch.wait_semaphores |
+                           map(get_semaphore_submit_info));
+
+    signal_semaphores.assign(batch.signal_semaphores |
+                             map(get_semaphore_submit_info));
+
+    device.graphicsQueueSubmit(cmd_buffers, wait_semaphores, signal_semaphores);
   }
 
   m_swapchain->presentImage(m_present_semaphore);

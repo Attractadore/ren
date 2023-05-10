@@ -172,11 +172,12 @@ void Swapchain::set_size(unsigned width, unsigned height) noexcept {
 
 void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
-void Swapchain::acquireImage(SemaphoreRef signal_semaphore) {
+void Swapchain::acquireImage(Handle<Semaphore> signal_semaphore) {
   while (true) {
-    auto r = m_device->AcquireNextImageKHR(m_swapchain, UINT64_MAX,
-                                           signal_semaphore.handle, nullptr,
-                                           &m_image_index);
+    auto r = m_device->AcquireNextImageKHR(
+        m_swapchain, UINT64_MAX,
+        m_device->get_semaphore(signal_semaphore).handle, nullptr,
+        &m_image_index);
     switch (r) {
     case VK_SUCCESS:
     case VK_SUBOPTIMAL_KHR:
@@ -190,11 +191,11 @@ void Swapchain::acquireImage(SemaphoreRef signal_semaphore) {
   }
 }
 
-void Swapchain::presentImage(SemaphoreRef wait_semaphore) {
+void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &wait_semaphore.handle,
+      .pWaitSemaphores = &m_device->get_semaphore(wait_semaphore).handle,
       .swapchainCount = 1,
       .pSwapchains = &m_swapchain,
       .pImageIndices = &m_image_index,

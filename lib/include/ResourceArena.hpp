@@ -30,6 +30,10 @@ private:
     destroy_sampler(device, sampler);
   }
 
+  void destroy(Device &device, Handle<Semaphore> semaphore) {
+    destroy_semaphore(device, semaphore);
+  }
+
   template <typename T> void clear(Device &device) {
     auto &handles = get_type_arena<T>();
     for (auto handle : handles) {
@@ -78,10 +82,22 @@ public:
     device.destroy_sampler(sampler);
   }
 
+  auto create_semaphore(const SemaphoreCreateInfo &&create_info, Device &device)
+      -> Handle<Semaphore> {
+    auto semaphore = device.create_semaphore(std::move(create_info));
+    push_back(semaphore);
+    return semaphore;
+  }
+
+  auto destroy_semaphore(Device &device, Handle<Semaphore> semaphore) {
+    device.destroy_semaphore(semaphore);
+  }
+
   void clear(Device &device) { (clear<Ts>(device), ...); }
 };
 
-using ResourceArenaBase = ResourceArenaImpl<Buffer, Sampler, Texture>;
+using ResourceArenaBase =
+    ResourceArenaImpl<Buffer, Sampler, Semaphore, Texture>;
 
 } // namespace detail
 

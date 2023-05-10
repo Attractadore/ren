@@ -1,18 +1,20 @@
 #pragma once
-#include "Support/Handle.hpp"
+#include "DebugNames.hpp"
+#include "Handle.hpp"
+#include "Support/Optional.hpp"
+#include "Support/StdDef.hpp"
 
 #include <vulkan/vulkan.h>
 
 namespace ren {
 
-struct SemaphoreRef {
-  VkSemaphore handle;
+struct SemaphoreCreateInfo {
+  REN_DEBUG_NAME_FIELD("Semaphore");
+  Optional<u64> initial_value;
 };
 
 struct Semaphore {
-  SharedHandle<VkSemaphore> handle;
-
-  operator SemaphoreRef() const noexcept { return {.handle = handle.get()}; }
+  VkSemaphore handle;
 };
 
 }; // namespace ren

@@ -887,8 +887,11 @@ void Scene::draw(Swapchain &swapchain) {
     // rgb.set_desc(pprt, "Post-processed color buffer");
     pp.set_callback([](CommandBuffer &cmd, RenderGraph &rg) {});
 
-    rgb.present(swapchain, pprt, m_device->createBinarySemaphore(),
-                m_device->createBinarySemaphore());
+    rgb.present(swapchain, pprt,
+                m_frame_arena.create_semaphore(
+                    {REN_SET_DEBUG_NAME("Acquire semaphore")}, *m_device),
+                m_frame_arena.create_semaphore(
+                    {REN_SET_DEBUG_NAME("Present semaphore")}, *m_device));
 
     auto rg = rgb.build(*m_device, m_frame_arena);
 

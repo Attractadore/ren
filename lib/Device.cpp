@@ -20,6 +20,8 @@ namespace ren {
       return VK_OBJECT_TYPE_IMAGE;                                             \
     } else if constexpr (std::same_as<T, VkSampler>) {                         \
       return VK_OBJECT_TYPE_SAMPLER;                                           \
+    } else if constexpr (std::same_as<T, VkSemaphore>) {                       \
+      return VK_OBJECT_TYPE_SEMAPHORE;                                         \
     }                                                                          \
     throw("Unknown debug object type");                                        \
   }                                                                            \
@@ -141,7 +143,10 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   loadDeviceFunctions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
 
   GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
-  m_graphics_queue_semaphore = createTimelineSemaphore();
+  m_graphics_queue_semaphore = create_semaphore({
+      REN_SET_DEBUG_NAME("Device time semaphore"),
+      .initial_value = 0,
+  });
 
   VmaVulkanFunctions vma_vulkan_functions = {
       .vkGetInstanceProcAddr = m_vk.GetInstanceProcAddr,
@@ -190,7 +195,7 @@ template <> struct QueueDeleter<VmaAllocation> {
 };
 
 Device::~Device() {
-  m_graphics_queue_semaphore = {};
+  destroy_semaphore(m_graphics_queue_semaphore);
   flush();
   vmaDestroyAllocator(m_allocator);
   DestroyDevice();
@@ -205,8 +210,8 @@ void Device::flush() {
 void Device::next_frame() {
   m_frame_end_times[m_frame_index] = m_graphics_queue_time;
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
-  waitForSemaphore(m_graphics_queue_semaphore,
-                   m_frame_end_times[m_frame_index]);
+  wait_for_semaphore(get_semaphore(m_graphics_queue_semaphore),
+                     m_frame_end_times[m_frame_index]);
   m_delete_queue.next_frame(*this);
 }
 
@@ -679,38 +684,35 @@ auto Device::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
   return m_samplers[sampler];
 }
 
-auto Device::createBinarySemaphore() -> Semaphore {
-  VkSemaphoreCreateInfo semaphore_info = {
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-  };
-  VkSemaphore semaphore;
-  throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
-                "Vulkan: Failed to create binary semaphore");
-  return {.handle = {semaphore, [this](VkSemaphore semaphore) {
-                       push_to_delete_queue(semaphore);
-                     }}};
-}
-
-auto Device::createTimelineSemaphore(uint64_t initial_value) -> Semaphore {
+auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
+    -> Handle<Semaphore> {
   VkSemaphoreTypeCreateInfo semaphore_type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-      .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
-      .initialValue = initial_value,
   };
+  create_info.initial_value.map([&](u64 initial_value) {
+    semaphore_type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+    semaphore_type_info.initialValue = initial_value;
+  });
   VkSemaphoreCreateInfo semaphore_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
       .pNext = &semaphore_type_info,
   };
+
   VkSemaphore semaphore;
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
-                "Vulkan: Failed to create timeline semaphore");
-  return {.handle = {semaphore, [this](VkSemaphore semaphore) {
-                       push_to_delete_queue(semaphore);
-                     }}};
+                "Vulkan: Failed to binary semaphore");
+  ren_set_debug_name(semaphore, create_info.debug_name.c_str());
+
+  return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
-auto Device::waitForSemaphore(SemaphoreRef semaphore, uint64_t value,
-                              std::chrono::nanoseconds timeout) const
+void Device::destroy_semaphore(Handle<Semaphore> semaphore) {
+  m_semaphores.try_pop(semaphore).map(
+      [&](Semaphore semaphore) { push_to_delete_queue(semaphore.handle); });
+}
+
+auto Device::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
+                                std::chrono::nanoseconds timeout) const
     -> VkResult {
   VkSemaphoreWaitInfo wait_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
@@ -728,10 +730,22 @@ auto Device::waitForSemaphore(SemaphoreRef semaphore, uint64_t value,
   };
 }
 
-void Device::waitForSemaphore(SemaphoreRef semaphore, uint64_t value) const {
-  auto result =
-      waitForSemaphore(semaphore, value, std::chrono::nanoseconds(UINT64_MAX));
+void Device::wait_for_semaphore(const Semaphore &semaphore,
+                                uint64_t value) const {
+  auto result = wait_for_semaphore(semaphore, value,
+                                   std::chrono::nanoseconds(UINT64_MAX));
   assert(result == VK_SUCCESS);
+}
+
+auto Device::try_get_semaphore(Handle<Semaphore> semaphore) const
+    -> Optional<const Semaphore &> {
+  return m_semaphores.get(semaphore);
+}
+
+auto Device::get_semaphore(Handle<Semaphore> semaphore) const
+    -> const Semaphore & {
+  assert(m_semaphores.contains(semaphore));
+  return m_semaphores[semaphore];
 }
 
 void Device::queueSubmit(
@@ -742,7 +756,7 @@ void Device::queueSubmit(
       input_signal_semaphores);
   signal_semaphores.push_back({
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = m_graphics_queue_semaphore.handle.get(),
+      .semaphore = get_semaphore(m_graphics_queue_semaphore).handle,
       .value = ++m_graphics_queue_time,
   });
 

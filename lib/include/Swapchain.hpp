@@ -50,8 +50,8 @@ public:
 
   VkSurfaceKHR get_surface() const noexcept { return m_create_info.surface; }
 
-  void acquireImage(SemaphoreRef signal_semaphore);
-  void presentImage(SemaphoreRef wait_semaphore);
+  void acquireImage(Handle<Semaphore> signal_semaphore);
+  void presentImage(Handle<Semaphore> wait_semaphore);
 
   auto getTexture() const -> TextureHandleView;
 };

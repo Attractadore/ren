@@ -125,7 +125,7 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   unsigned m_graphics_queue_family = -1;
   VkQueue m_graphics_queue;
-  Semaphore m_graphics_queue_semaphore;
+  Handle<Semaphore> m_graphics_queue_semaphore;
   uint64_t m_graphics_queue_time = 0;
 
   unsigned m_frame_index = 0;
@@ -154,6 +154,8 @@ class Device : public InstanceFunctionsMixin<Device>,
       m_image_views;
 
   HandleMap<Sampler> m_samplers;
+
+  HandleMap<Semaphore> m_semaphores;
 
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
@@ -267,15 +269,22 @@ public:
   [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
       -> GraphicsPipeline;
 
-  [[nodiscard]] auto createBinarySemaphore() -> Semaphore;
-  [[nodiscard]] auto createTimelineSemaphore(uint64_t initial_value = 0)
-      -> Semaphore;
+  [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
+      -> Handle<Semaphore>;
 
-  [[nodiscard]] auto waitForSemaphore(SemaphoreRef semaphore, uint64_t value,
-                                      std::chrono::nanoseconds timeout) const
+  void destroy_semaphore(Handle<Semaphore> semaphore);
+
+  auto try_get_semaphore(Handle<Semaphore> semaphore) const
+      -> Optional<const Semaphore &>;
+
+  auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
+
+  [[nodiscard]] auto wait_for_semaphore(const Semaphore &semaphore,
+                                        uint64_t value,
+                                        std::chrono::nanoseconds timeout) const
       -> VkResult;
 
-  void waitForSemaphore(SemaphoreRef semaphore, uint64_t value) const;
+  void wait_for_semaphore(const Semaphore &semaphore, uint64_t value) const;
 
   auto getGraphicsQueue() const -> VkQueue { return m_graphics_queue; }
 

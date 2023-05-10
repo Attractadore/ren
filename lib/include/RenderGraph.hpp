@@ -45,9 +45,15 @@ struct RGBufferCreateInfo {
 using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
 
 class RenderGraph {
+  struct SemaphoreSignal {
+    Handle<Semaphore> semaphore;
+    u64 value;
+    VkPipelineStageFlags2 stages;
+  };
+
   struct Batch {
-    Vector<VkSemaphoreSubmitInfo> wait_semaphores;
-    Vector<VkSemaphoreSubmitInfo> signal_semaphores;
+    SmallVector<SemaphoreSignal> wait_semaphores;
+    SmallVector<SemaphoreSignal> signal_semaphores;
     Vector<RGCallback> barrier_cbs;
     Vector<RGCallback> pass_cbs;
   };
@@ -59,25 +65,22 @@ class RenderGraph {
 
   Vector<TextureHandleView> m_textures;
   Vector<BufferHandleView> m_buffers;
-  Vector<Semaphore> m_semaphores;
 
   Swapchain *m_swapchain = nullptr;
-  SemaphoreRef m_present_semaphore;
+  Handle<Semaphore> m_present_semaphore;
 
 private:
   struct Config {
     Vector<Batch> batches;
     Vector<TextureHandleView> textures;
     Vector<BufferHandleView> buffers;
-    Vector<Semaphore> semaphores;
     Swapchain *swapchain;
-    SemaphoreRef present_semaphore;
+    Handle<Semaphore> present_semaphore;
   };
 
   RenderGraph(Config config)
       : m_batches(std::move(config.batches)),
         m_textures(std::move(config.textures)),
-        m_semaphores(std::move(config.semaphores)),
         m_buffers(std::move(config.buffers)), m_swapchain(config.swapchain),
         m_present_semaphore(config.present_semaphore) {}
 
@@ -118,8 +121,8 @@ class RenderGraph::Builder {
     SmallVector<TextureAccess> write_textures;
     SmallVector<BufferAccess> read_buffers;
     SmallVector<BufferAccess> write_buffers;
-    SmallVector<VkSemaphoreSubmitInfo> wait_semaphores;
-    SmallVector<VkSemaphoreSubmitInfo> signal_semaphores;
+    SmallVector<SemaphoreSignal> wait_semaphores;
+    SmallVector<SemaphoreSignal> signal_semaphores;
     RGCallback barrier_cb;
     RGCallback pass_cb;
   };
@@ -154,10 +157,8 @@ class RenderGraph::Builder {
   HashMap<RGBufferID, RGBufferCreateInfo> m_buffer_create_infos;
   Vector<VkBufferUsageFlags> m_buffer_usage_flags = {{}};
 
-  Vector<Semaphore> m_semaphores;
-
   Swapchain *m_swapchain = nullptr;
-  SemaphoreRef m_present_semaphore;
+  Handle<Semaphore> m_present_semaphore;
 
   HashMap<RGPassID, std::string> m_pass_text_descs;
 
@@ -221,10 +222,10 @@ public:
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 private:
-  void wait_semaphore(RGPassID pass, Semaphore semaphore, uint64_t value,
-                      VkPipelineStageFlags2 stages);
-  void signal_semaphore(RGPassID pass, Semaphore semaphore, uint64_t value,
-                        VkPipelineStageFlags2 stages);
+  void wait_semaphore(RGPassID pass, Handle<Semaphore> semaphore,
+                      uint64_t value, VkPipelineStageFlags2 stages);
+  void signal_semaphore(RGPassID pass, Handle<Semaphore> semaphore,
+                        uint64_t value, VkPipelineStageFlags2 stages);
 
   void set_callback(RGPassID pass, RGCallback cb);
 
@@ -247,7 +248,8 @@ public:
   [[nodiscard]] PassBuilder create_pass();
 
   void present(Swapchain &swapchain, RGTextureID texture,
-               Semaphore present_semaphore, Semaphore acquire_semaphore);
+               Handle<Semaphore> acquire_semaphore,
+               Handle<Semaphore> present_semaphore);
 
   [[nodiscard]] RenderGraph build(Device &device, ResourceArena &arena);
 };
@@ -300,22 +302,24 @@ public:
                                     stages);
   }
 
-  void wait_semaphore(Semaphore semaphore, uint64_t value,
+  void wait_semaphore(Handle<Semaphore> semaphore, uint64_t value,
                       VkPipelineStageFlags2 stages) {
-    m_builder->wait_semaphore(m_pass, std::move(semaphore), value, stages);
+    m_builder->wait_semaphore(m_pass, semaphore, value, stages);
   }
 
-  void wait_semaphore(Semaphore semaphore, VkPipelineStageFlags2 stages) {
-    m_builder->wait_semaphore(m_pass, std::move(semaphore), 0, stages);
+  void wait_semaphore(Handle<Semaphore> semaphore,
+                      VkPipelineStageFlags2 stages) {
+    m_builder->wait_semaphore(m_pass, semaphore, 0, stages);
   }
 
-  void signal_semaphore(Semaphore semaphore, uint64_t value,
+  void signal_semaphore(Handle<Semaphore> semaphore, uint64_t value,
                         VkPipelineStageFlags2 stages) {
-    m_builder->signal_semaphore(m_pass, std::move(semaphore), value, stages);
+    m_builder->signal_semaphore(m_pass, semaphore, value, stages);
   }
 
-  void signal_semaphore(Semaphore semaphore, VkPipelineStageFlags2 stages) {
-    m_builder->signal_semaphore(m_pass, std::move(semaphore), 0, stages);
+  void signal_semaphore(Handle<Semaphore> semaphore,
+                        VkPipelineStageFlags2 stages) {
+    m_builder->signal_semaphore(m_pass, semaphore, 0, stages);
   }
 
   void set_callback(RGCallback cb) {
