@@ -151,7 +151,6 @@ void Swapchain::create() {
         .usage = m_create_info.imageUsage,
         .width = m_create_info.imageExtent.width,
         .height = m_create_info.imageExtent.height,
-        .array_layers = u16(m_create_info.imageArrayLayers),
     });
   }
 }

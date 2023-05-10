@@ -185,18 +185,6 @@ void CommandBuffer::blit(const Texture &src, const Texture &dst,
   blit(src, dst, asSpan(region), filter);
 }
 
-void CommandBuffer::blit(const Texture &src, const Texture &dst) {
-  VkImageBlit region = {
-      .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                         .layerCount = 1},
-      .srcOffsets = {{}, {int(src.size.x), int(src.size.y), 1}},
-      .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                         .layerCount = 1},
-      .dstOffsets = {{}, {int(dst.size.x), int(dst.size.y), 1}},
-  };
-  blit(src, dst, {&region, 1}, VK_FILTER_LINEAR);
-}
-
 void CommandBuffer::set_viewports(std::span<const VkViewport> in_viewports) {
   SmallVector<VkViewport, 8> viewports(in_viewports.begin(),
                                        in_viewports.end());

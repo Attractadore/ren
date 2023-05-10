@@ -534,16 +534,15 @@ auto Device::create_swapchain_texture(
       .usage = create_info.usage,
       .size = {create_info.width, create_info.height, 1u},
       .num_mip_levels = 1,
-      .num_array_layers = create_info.array_layers,
+      .num_array_layers = 1,
   });
 
   return {
       .texture = handle,
-      .type = get_texture_default_view_type(VK_IMAGE_TYPE_2D,
-                                            create_info.array_layers),
+      .type = VK_IMAGE_VIEW_TYPE_2D,
       .format = create_info.format,
       .num_mip_levels = 1,
-      .num_array_layers = create_info.array_layers,
+      .num_array_layers = 1,
   };
 }
 

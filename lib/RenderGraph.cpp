@@ -366,29 +366,30 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
                       VK_PIPELINE_STAGE_2_BLIT_BIT);
   blit.set_callback([=, src = texture, dst = swapchain_image](
                         CommandBuffer &cmd, RenderGraph &rg) {
-    auto texture = rg.get_texture(src);
-    auto swapchain_image = rg.get_texture(dst);
-
-    cmd.blit(texture.texture, swapchain_image.texture);
-
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .image = swapchain_image->image,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = 1,
-                .layerCount = 1,
-            },
+    auto src_texture = rg.get_texture(src);
+    auto swapchain_texture = rg.get_texture(dst);
+    VkImageBlit region = {
+        .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
+        .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .layerCount = 1},
     };
-    cmd.pipeline_barrier({}, asSpan(barrier));
+    std::memcpy(&region.srcOffsets[1], &src_texture->size,
+                sizeof(src_texture->size));
+    std::memcpy(&region.dstOffsets[1], &swapchain_texture->size,
+                sizeof(swapchain_texture->size));
+    cmd.blit(src_texture.texture, swapchain_texture.texture, region,
+             VK_FILTER_LINEAR);
   });
 
-  blit.signal_semaphore(std::move(present_semaphore), VK_PIPELINE_STAGE_2_NONE);
+  auto present = create_pass();
+  present.set_desc("Vulkan: Present final image to swapchain");
+
+  present.read_texture(blitted_swapchain_image, 0, 0,
+                       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
+  present.signal_semaphore(std::move(present_semaphore),
+                           VK_PIPELINE_STAGE_2_NONE);
 }
 
 void RenderGraph::Builder::schedule_passes() {

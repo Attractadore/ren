@@ -74,13 +74,10 @@ public:
   }
 
   void blit(const Texture &src, const Texture &dst,
-            std::span<const VkImageBlit> regions,
-            VkFilter filter = VK_FILTER_LINEAR);
+            std::span<const VkImageBlit> regions, VkFilter filter);
 
   void blit(const Texture &src, const Texture &dst, const VkImageBlit &region,
-            VkFilter filter = VK_FILTER_LINEAR);
-
-  void blit(const Texture &src, const Texture &dst);
+            VkFilter filter);
 
   void set_viewports(std::span<const VkViewport> viewports);
   void set_viewport(const VkViewport &viewport) {

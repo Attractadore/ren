@@ -15,7 +15,6 @@ struct SwapchainTextureCreateInfo {
   VkImageUsageFlags usage = 0;
   u32 width = 1;
   u32 height = 1;
-  u16 array_layers = 1;
 };
 
 class Swapchain {

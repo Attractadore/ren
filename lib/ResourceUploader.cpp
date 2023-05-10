@@ -29,7 +29,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
     };
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
-    cmd.blit(texture, texture, region);
+    cmd.blit(texture, texture, region, VK_FILTER_LINEAR);
     src_size = dst_size;
 
     VkImageMemoryBarrier2 barrier = {
