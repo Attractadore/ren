@@ -34,6 +34,14 @@ private:
     destroy_semaphore(device, semaphore);
   }
 
+  void destroy(Device &device, Handle<DescriptorPool> pool) {
+    destroy_descriptor_pool(device, pool);
+  }
+
+  void destroy(Device &device, Handle<DescriptorSetLayout> layout) {
+    destroy_descriptor_set_layout(device, layout);
+  }
+
   template <typename T> void clear(Device &device) {
     auto &handles = get_type_arena<T>();
     for (auto handle : handles) {
@@ -78,7 +86,7 @@ public:
     return sampler;
   }
 
-  auto destroy_sampler(Device &device, Handle<Sampler> sampler) {
+  void destroy_sampler(Device &device, Handle<Sampler> sampler) {
     device.destroy_sampler(sampler);
   }
 
@@ -89,15 +97,39 @@ public:
     return semaphore;
   }
 
-  auto destroy_semaphore(Device &device, Handle<Semaphore> semaphore) {
+  void destroy_semaphore(Device &device, Handle<Semaphore> semaphore) {
     device.destroy_semaphore(semaphore);
+  }
+
+  auto create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info,
+                              Device &device) {
+    auto pool = device.create_descriptor_pool(std::move(create_info));
+    push_back(pool);
+    return pool;
+  }
+
+  auto create_descriptor_set_layout(
+      const DescriptorSetLayoutCreateInfo &&create_info, Device &device) {
+    auto layout = device.create_descriptor_set_layout(std::move(create_info));
+    push_back(layout);
+    return layout;
+  }
+
+  void destroy_descriptor_pool(Device &device, Handle<DescriptorPool> pool) {
+    device.destroy_descriptor_pool(pool);
+  }
+
+  void destroy_descriptor_set_layout(Device &device,
+                                     Handle<DescriptorSetLayout> layout) {
+    device.destroy_descriptor_set_layout(layout);
   }
 
   void clear(Device &device) { (clear<Ts>(device), ...); }
 };
 
 using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, Sampler, Semaphore, Texture>;
+    ResourceArenaImpl<Buffer, DescriptorPool, DescriptorSetLayout, Sampler,
+                      Semaphore, Texture>;
 
 } // namespace detail
 

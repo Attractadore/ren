@@ -65,8 +65,8 @@ private:
 
   PipelineLayout m_pipeline_layout = {};
 
-  DescriptorPool m_persistent_descriptor_pool = {};
-  VkDescriptorSet m_persistent_descriptor_set = {};
+  Handle<DescriptorPool> m_persistent_descriptor_pool;
+  VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
   DirLightMap m_dir_lights;
 

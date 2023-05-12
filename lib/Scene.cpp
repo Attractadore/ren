@@ -86,13 +86,12 @@ auto get_dir_light(DirLightMap &m_dir_lights, RenDirLight light)
 
 namespace {
 
-auto merge_set_layout_descs(const DescriptorSetLayoutDesc &lhs,
-                            const DescriptorSetLayoutDesc &rhs)
-    -> DescriptorSetLayoutDesc {
-  DescriptorSetLayoutDesc result = {};
-  result.flags = lhs.flags | rhs.flags;
-  for (auto &&[result, lhs, rhs] :
-       zip(result.bindings, lhs.bindings, rhs.bindings)) {
+auto merge_set_layout_bindings(
+    std::span<const DescriptorBinding, MAX_DESCIPTOR_BINDINGS> lhs,
+    std::span<const DescriptorBinding, MAX_DESCIPTOR_BINDINGS> rhs)
+    -> std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> {
+  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> result = {};
+  for (auto &&[result, lhs, rhs] : zip(result, lhs, rhs)) {
     if (lhs.stages) {
       result = lhs;
     } else {
@@ -103,53 +102,64 @@ auto merge_set_layout_descs(const DescriptorSetLayoutDesc &lhs,
   return result;
 }
 
-auto reflect_descriptor_set_layouts(const AssetLoader &loader)
-    -> StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> {
+auto reflect_descriptor_set_layouts(Device &device, ResourceArena &arena,
+                                    const AssetLoader &loader)
+    -> StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> {
   Vector<std::byte> buffer;
   std::array shaders = {
       "ReflectionVertexShader.spv",
       "ReflectionFragmentShader.spv",
   };
 
-  StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> set_layout_descs;
+  StaticVector<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
+               MAX_DESCRIPTOR_SETS>
+      set_layout_bindings;
   for (auto shader : shaders) {
     loader.load_file(shader, buffer);
-    auto shader_set_layout_descs = get_set_layout_descs(buffer);
-    for (auto &&[layout, shader_layout] :
-         zip(set_layout_descs, shader_set_layout_descs)) {
-      layout = merge_set_layout_descs(layout, shader_layout);
+    auto shader_set_layout_bindings = get_set_layout_bindings(buffer);
+    for (auto &&[bindings, shader_bindings] :
+         zip(set_layout_bindings, shader_set_layout_bindings)) {
+      bindings = merge_set_layout_bindings(bindings, shader_bindings);
     }
-    set_layout_descs.append(shader_set_layout_descs |
-                            ranges::views::drop(set_layout_descs.size()));
+    set_layout_bindings.append(shader_set_layout_bindings |
+                               ranges::views::drop(set_layout_bindings.size()));
   }
 
-  auto &persistent_set = set_layout_descs[hlsl::PERSISTENT_SET];
-  persistent_set.flags |=
-      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-  for (auto slot : {hlsl::SAMPLERS_SLOT, hlsl::TEXTURES_SLOT}) {
-    persistent_set.bindings[slot].flags |=
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-  }
-
-  return set_layout_descs;
+  return enumerate(set_layout_bindings) | map([&](auto &&p) {
+           auto &[index, bindings] = p;
+           VkDescriptorSetLayoutCreateFlags flags = 0;
+           if (index == hlsl::PERSISTENT_SET) {
+             flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+             bindings[hlsl::SAMPLERS_SLOT].flags |=
+                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+             bindings[hlsl::TEXTURES_SLOT].flags |=
+                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+           }
+           return arena.create_descriptor_set_layout(
+               {
+                   .flags = flags,
+                   .bindings = bindings,
+               },
+               device);
+         }) |
+         ranges::to<
+             StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS>>();
 }
 
-auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
+auto reflect_material_pipeline_layout(Device &device, ResourceArena &arena,
+                                      const AssetLoader &loader)
     -> PipelineLayout {
-  auto set_layout_descs = reflect_descriptor_set_layouts(loader);
-
-  PipelineLayoutDesc desc = {};
-  for (const DescriptorSetLayoutDesc &set_layout_desc : set_layout_descs) {
-    desc.set_layouts.push_back(
-        device.create_descriptor_set_layout(set_layout_desc));
-  }
-  desc.push_constants = {
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-      .size = sizeof(hlsl::PushConstants),
-  };
-
-  return device.create_pipeline_layout(std::move(desc));
+  return device.create_pipeline_layout({
+      .set_layouts = reflect_descriptor_set_layouts(device, arena, loader),
+      .push_constants =
+          {
+              .stageFlags =
+                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+              .size = sizeof(hlsl::PushConstants),
+          },
+  });
 }
 
 } // namespace
@@ -157,11 +167,12 @@ auto reflect_material_pipeline_layout(Device &device, const AssetLoader &loader)
 Scene::Scene(Device &device) : m_device(&device), m_cmd_allocator(*m_device) {
   m_asset_loader.add_search_directory(c_assets_directory);
 
-  m_pipeline_layout =
-      reflect_material_pipeline_layout(*m_device, m_asset_loader);
+  m_pipeline_layout = reflect_material_pipeline_layout(
+      *m_device, m_persistent_arena, m_asset_loader);
 
   std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
-      m_device->allocate_descriptor_set(
+      allocate_descriptor_pool_and_set(
+          *m_device, m_persistent_arena,
           m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]);
 }
 
@@ -339,7 +350,8 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
 
     DescriptorSetWriter(
         m_persistent_descriptor_set,
-        m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
+        m_device->get_descriptor_set_layout(
+            m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]))
         .add_sampler(hlsl::SAMPLERS_SLOT, m_device->get_sampler(sampler), index)
         .write(*m_device);
   }
@@ -354,8 +366,10 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   TextureView view = m_device->get_texture(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
 
-  DescriptorSetWriter(m_persistent_descriptor_set,
-                      m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET])
+  DescriptorSetWriter(
+      m_persistent_descriptor_set,
+      m_device->get_descriptor_set_layout(
+          m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]))
       .add_texture(hlsl::TEXTURES_SLOT, m_device->getVkImageView(view), index)
       .write(*m_device);
 
@@ -895,7 +909,8 @@ void Scene::draw(Swapchain &swapchain) {
 
     auto rg = rgb.build(*m_device, m_frame_arena);
 
-    rg.execute(*m_device, m_descriptor_set_allocator, m_cmd_allocator);
+    rg.execute(*m_device, m_persistent_arena, m_descriptor_set_allocator,
+               m_cmd_allocator);
   }
 
   next_frame();

@@ -1,19 +1,20 @@
 #include "DescriptorSetAllocator.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
+#include "ResourceArena.hpp"
 
 namespace ren {
 
 void DescriptorSetAllocator::next_frame(Device &device) {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
-  for (auto &pool : m_frame_pools[m_frame_index]) {
+  for (auto pool : m_frame_pools[m_frame_index]) {
     device.reset_descriptor_pool(pool);
   }
   m_frame_pool_indices[m_frame_index] = 0;
 }
 
-auto DescriptorSetAllocator::allocate(Device &device,
-                                      DescriptorSetLayoutRef layout)
+auto DescriptorSetAllocator::allocate(Device &device, ResourceArena &arena,
+                                      Handle<DescriptorSetLayout> layout)
     -> VkDescriptorSet {
   auto &pool_index = m_frame_pool_indices[m_frame_index];
   auto &pools = m_frame_pools[m_frame_index];
@@ -26,16 +27,23 @@ auto DescriptorSetAllocator::allocate(Device &device,
     pool_index++;
   }
 
-  DescriptorPoolDesc pool_desc = {.set_count = 16};
-  pool_desc.pool_sizes.fill(16);
-  auto &pool = pools.emplace_back(device.create_descriptor_pool(pool_desc));
+  std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
+  pool_sizes.fill(16);
+
+  auto pool = arena.create_descriptor_pool(
+      {
+          .set_count = 16,
+          .pool_sizes = pool_sizes,
+      },
+      device);
+  pools.push_back(pool);
 
   auto set = device.allocate_descriptor_set(pool, layout);
   if (!set) {
     throw std::runtime_error{"Failed to allocate descriptor set"};
   }
 
-  return std::move(*set);
+  return *set;
 }
 
 } // namespace ren

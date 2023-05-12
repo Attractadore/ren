@@ -22,6 +22,10 @@ namespace ren {
       return VK_OBJECT_TYPE_SAMPLER;                                           \
     } else if constexpr (std::same_as<T, VkSemaphore>) {                       \
       return VK_OBJECT_TYPE_SEMAPHORE;                                         \
+    } else if constexpr (std::same_as<T, VkDescriptorPool>) {                  \
+      return VK_OBJECT_TYPE_DESCRIPTOR_POOL;                                   \
+    } else if constexpr (std::same_as<T, VkDescriptorSetLayout>) {             \
+      return VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;                             \
     }                                                                          \
     throw("Unknown debug object type");                                        \
   }                                                                            \
@@ -215,15 +219,13 @@ void Device::next_frame() {
   m_delete_queue.next_frame(*this);
 }
 
-auto Device::create_descriptor_pool(const DescriptorPoolDesc &desc)
-    -> DescriptorPool {
-  StaticVector<VkDescriptorPoolSize,
-               std::tuple_size_v<decltype(DescriptorPoolDesc::pool_sizes)>>
-      pool_sizes;
+auto Device::create_descriptor_pool(
+    const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool> {
+  StaticVector<VkDescriptorPoolSize, MAX_DESCIPTOR_BINDINGS> pool_sizes;
 
   for (int i = 0; i < DESCRIPTOR_TYPE_COUNT; ++i) {
     auto type = static_cast<VkDescriptorType>(i);
-    auto count = desc.pool_sizes[type];
+    auto count = create_info.pool_sizes[type];
     if (count > 0) {
       pool_sizes.push_back({
           .type = type,
@@ -234,8 +236,8 @@ auto Device::create_descriptor_pool(const DescriptorPoolDesc &desc)
 
   VkDescriptorPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .flags = desc.flags,
-      .maxSets = desc.set_count,
+      .flags = create_info.flags,
+      .maxSets = create_info.set_count,
       .poolSizeCount = unsigned(pool_sizes.size()),
       .pPoolSizes = pool_sizes.data(),
   };
@@ -243,20 +245,41 @@ auto Device::create_descriptor_pool(const DescriptorPoolDesc &desc)
   VkDescriptorPool pool;
   throwIfFailed(CreateDescriptorPool(&pool_info, &pool),
                 "Vulkan: Failed to create descriptor pool");
+  ren_set_debug_name(pool, create_info.debug_name.c_str());
 
-  return {.desc = desc, .handle = {pool, [this](VkDescriptorPool pool) {
-                                     push_to_delete_queue(pool);
-                                   }}};
+  return m_descriptor_pools.emplace(DescriptorPool{
+      .handle = pool,
+      .flags = create_info.flags,
+      .set_count = create_info.set_count,
+      .pool_sizes = create_info.pool_sizes,
+  });
 }
 
-void Device::reset_descriptor_pool(const DescriptorPoolRef &pool) {
-  ResetDescriptorPool(pool.handle, 0);
+void Device::destroy_descriptor_pool(Handle<DescriptorPool> pool) {
+  m_descriptor_pools.try_pop(pool).map(
+      [&](const DescriptorPool &pool) { push_to_delete_queue(pool.handle); });
 }
 
-auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
-    -> DescriptorSetLayout {
+auto Device::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
+    -> Optional<const DescriptorPool &> {
+  return m_descriptor_pools.get(pool);
+}
+
+auto Device::get_descriptor_pool(Handle<DescriptorPool> pool) const
+    -> const DescriptorPool & {
+  assert(m_descriptor_pools.contains(pool));
+  return m_descriptor_pools[pool];
+}
+
+void Device::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
+  ResetDescriptorPool(get_descriptor_pool(pool).handle, 0);
+}
+
+auto Device::create_descriptor_set_layout(
+    const DescriptorSetLayoutCreateInfo &&create_info)
+    -> Handle<DescriptorSetLayout> {
   auto binding_flags =
-      desc.bindings |
+      create_info.bindings |
       filter_map([](const DescriptorBinding &binding)
                      -> Optional<VkDescriptorBindingFlags> {
         if (binding.count == 0) {
@@ -268,7 +291,7 @@ auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
           StaticVector<VkDescriptorBindingFlags, MAX_DESCIPTOR_BINDINGS>>;
 
   auto bindings =
-      enumerate(desc.bindings) |
+      enumerate(create_info.bindings) |
       filter_map([](const auto &p) -> Optional<VkDescriptorSetLayoutBinding> {
         const auto &[index, binding] = p;
         if (binding.count == 0) {
@@ -294,32 +317,53 @@ auto Device::create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
   VkDescriptorSetLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .pNext = &binding_flags_info,
-      .flags = desc.flags,
+      .flags = create_info.flags,
       .bindingCount = unsigned(bindings.size()),
       .pBindings = bindings.data(),
   };
 
   VkDescriptorSetLayout layout;
   throwIfFailed(CreateDescriptorSetLayout(&layout_info, &layout),
-                "Vulkan: Failed to create descriptor set layout");
+                "Vulkann: Failed to create descriptor set layout");
+  ren_set_debug_name(layout, create_info.debug_name.c_str());
 
-  return {.desc = std::make_shared<DescriptorSetLayoutDesc>(std::move(desc)),
-          .handle = {layout, [this](VkDescriptorSetLayout layout) {
-                       push_to_delete_queue(layout);
-                     }}};
+  return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
+      .handle = layout,
+      .flags = create_info.flags,
+      .bindings = create_info.bindings,
+  });
+}
+
+void Device::destroy_descriptor_set_layout(Handle<DescriptorSetLayout> layout) {
+  m_descriptor_set_layouts.try_pop(layout).map(
+      [&](const DescriptorSetLayout &layout) {
+        push_to_delete_queue(layout.handle);
+      });
+}
+
+auto Device::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
+    const -> Optional<const DescriptorSetLayout &> {
+  return m_descriptor_set_layouts.get(layout);
+}
+
+auto Device::get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
+    -> const DescriptorSetLayout & {
+  assert(m_descriptor_set_layouts.contains(layout));
+  return m_descriptor_set_layouts[layout];
 }
 
 auto Device::allocate_descriptor_sets(
-    const DescriptorPoolRef &pool,
-    std::span<const DescriptorSetLayoutRef> layouts, VkDescriptorSet *sets)
-    -> bool {
-  auto vk_layouts = layouts |
-                    map([](const auto &layout) { return layout.handle; }) |
+    Handle<DescriptorPool> pool,
+    std::span<const Handle<DescriptorSetLayout>> layouts,
+    VkDescriptorSet *sets) const -> bool {
+  auto vk_layouts = layouts | map([&](Handle<DescriptorSetLayout> layout) {
+                      return get_descriptor_set_layout(layout).handle;
+                    }) |
                     ranges::to<SmallVector<VkDescriptorSetLayout>>;
 
   VkDescriptorSetAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .descriptorPool = pool.handle,
+      .descriptorPool = get_descriptor_pool(pool).handle,
       .descriptorSetCount = unsigned(vk_layouts.size()),
       .pSetLayouts = vk_layouts.data(),
   };
@@ -339,8 +383,8 @@ auto Device::allocate_descriptor_sets(
   }
 }
 
-auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
-                                     DescriptorSetLayoutRef layout)
+auto Device::allocate_descriptor_set(Handle<DescriptorPool> pool,
+                                     Handle<DescriptorSetLayout> layout) const
     -> Optional<VkDescriptorSet> {
   VkDescriptorSet set;
   if (allocate_descriptor_sets(pool, {&layout, 1}, &set)) {
@@ -349,28 +393,12 @@ auto Device::allocate_descriptor_set(const DescriptorPoolRef &pool,
   return None;
 }
 
-auto Device::allocate_descriptor_set(DescriptorSetLayoutRef layout)
-    -> std::pair<DescriptorPool, VkDescriptorSet> {
-  DescriptorPoolDesc pool_desc = {.set_count = 1};
-  if (layout.desc->flags &
-      VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT) {
-    pool_desc.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-  }
-  for (const auto &binding : layout.desc->bindings) {
-    pool_desc.pool_sizes[binding.type] += binding.count;
-  }
-  auto pool = create_descriptor_pool(pool_desc);
-  auto set = allocate_descriptor_set(pool, layout);
-  assert(set);
-  return {std::move(pool), *set};
-}
-
 void Device::write_descriptor_sets(
-    std::span<const VkWriteDescriptorSet> configs) {
+    std::span<const VkWriteDescriptorSet> configs) const {
   UpdateDescriptorSets(configs.size(), configs.data(), 0, nullptr);
 }
 
-void Device::write_descriptor_set(const VkWriteDescriptorSet &config) {
+void Device::write_descriptor_set(const VkWriteDescriptorSet &config) const {
   write_descriptor_sets({&config, 1});
 }
 
@@ -847,12 +875,13 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
   };
 }
 
-auto Device::create_pipeline_layout(PipelineLayoutDesc desc) -> PipelineLayout {
+auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
+    -> PipelineLayout {
   auto layouts =
-      desc.set_layouts | map([](const DescriptorSetLayout &layout) {
-        return layout.handle.get();
+      desc.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
+        return get_descriptor_set_layout(layout).handle;
       }) |
-      ranges::to<StaticVector<VkDescriptorSetLayout, MAX_DESCIPTOR_SETS>>;
+      ranges::to<StaticVector<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS>>;
 
   VkPipelineLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -866,7 +895,7 @@ auto Device::create_pipeline_layout(PipelineLayoutDesc desc) -> PipelineLayout {
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
 
-  return {.desc = std::make_shared<PipelineLayoutDesc>(std::move(desc)),
+  return {.desc = std::make_shared<PipelineLayoutDesc>(desc),
           .handle = {layout, [this](VkPipelineLayout layout) {
                        push_to_delete_queue(layout);
                      }}};

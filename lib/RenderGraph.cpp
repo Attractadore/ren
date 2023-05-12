@@ -637,9 +637,10 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
   }};
 }
 
-auto RenderGraph::allocate_descriptor_set(DescriptorSetLayoutRef layout)
+auto RenderGraph::allocate_descriptor_set(Handle<DescriptorSetLayout> layout)
     -> DescriptorSetWriter {
-  return {m_set_allocator->allocate(*m_device, layout), layout};
+  return {m_set_allocator->allocate(*m_device, *m_persistent_arena, layout),
+          m_device->get_descriptor_set_layout(layout)};
 }
 
 auto RenderGraph::get_texture_handle(RGTextureID texture) const
@@ -664,9 +665,11 @@ auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
   return m_device->get_buffer_view(m_buffers[buffer]);
 }
 
-void RenderGraph::execute(Device &device, DescriptorSetAllocator &set_allocator,
+void RenderGraph::execute(Device &device, ResourceArena &persistent_arena,
+                          DescriptorSetAllocator &set_allocator,
                           CommandAllocator &cmd_allocator) {
   m_device = &device;
+  m_persistent_arena = &persistent_arena;
   m_set_allocator = &set_allocator;
 
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;

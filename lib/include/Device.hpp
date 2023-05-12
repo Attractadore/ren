@@ -157,6 +157,10 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   HandleMap<Semaphore> m_semaphores;
 
+  HandleMap<DescriptorPool> m_descriptor_pools;
+
+  HandleMap<DescriptorSetLayout> m_descriptor_set_layouts;
+
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
          VkPhysicalDevice adapter);
@@ -193,28 +197,44 @@ public:
     m_delete_queue.push(std::move(value));
   }
 
+  [[nodiscard]] auto create_descriptor_set_layout(
+      const DescriptorSetLayoutCreateInfo &&create_info)
+      -> Handle<DescriptorSetLayout>;
+
+  void destroy_descriptor_set_layout(Handle<DescriptorSetLayout> layout);
+
+  auto try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
+      -> Optional<const DescriptorSetLayout &>;
+
+  auto get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
+      -> const DescriptorSetLayout &;
+
   [[nodiscard]] auto
-  create_descriptor_set_layout(const DescriptorSetLayoutDesc &desc)
-      -> DescriptorSetLayout;
+  create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
+      -> Handle<DescriptorPool>;
 
-  [[nodiscard]] auto create_descriptor_pool(const DescriptorPoolDesc &desc)
-      -> DescriptorPool;
+  void destroy_descriptor_pool(Handle<DescriptorPool>);
 
-  void reset_descriptor_pool(const DescriptorPoolRef &pool);
+  auto try_get_descriptor_pool(Handle<DescriptorPool> layout) const
+      -> Optional<const DescriptorPool &>;
+
+  auto get_descriptor_pool(Handle<DescriptorPool> layout) const
+      -> const DescriptorPool &;
+
+  void reset_descriptor_pool(Handle<DescriptorPool> pool) const;
 
   [[nodiscard]] auto
-  allocate_descriptor_sets(const DescriptorPoolRef &pool,
-                           std::span<const DescriptorSetLayoutRef> layouts,
-                           VkDescriptorSet *sets) -> bool;
-  [[nodiscard]] auto allocate_descriptor_set(const DescriptorPoolRef &pool,
-                                             DescriptorSetLayoutRef layout)
+  allocate_descriptor_sets(Handle<DescriptorPool> pool,
+                           std::span<const Handle<DescriptorSetLayout>> layouts,
+                           VkDescriptorSet *sets) const -> bool;
+  [[nodiscard]] auto
+  allocate_descriptor_set(Handle<DescriptorPool> pool,
+                          Handle<DescriptorSetLayout> layout) const
       -> Optional<VkDescriptorSet>;
 
-  [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
-      -> std::pair<DescriptorPool, VkDescriptorSet>;
-
-  void write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs);
-  void write_descriptor_set(const VkWriteDescriptorSet &config);
+  void
+  write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) const;
+  void write_descriptor_set(const VkWriteDescriptorSet &config) const;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> BufferHandleView;
@@ -261,7 +281,7 @@ public:
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
 
-  [[nodiscard]] auto create_pipeline_layout(PipelineLayoutDesc desc)
+  [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
       -> PipelineLayout;
 
   [[nodiscard]] auto create_shader_module(std::span<const std::byte> code)

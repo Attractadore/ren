@@ -59,6 +59,7 @@ class RenderGraph {
   };
 
   Device *m_device = nullptr;
+  ResourceArena *m_persistent_arena = nullptr;
   DescriptorSetAllocator *m_set_allocator = nullptr;
 
   Vector<Batch> m_batches;
@@ -87,7 +88,7 @@ private:
 public:
   class Builder;
 
-  [[nodiscard]] auto allocate_descriptor_set(DescriptorSetLayoutRef layout)
+  [[nodiscard]] auto allocate_descriptor_set(Handle<DescriptorSetLayout> layout)
       -> DescriptorSetWriter;
 
   auto get_texture_handle(RGTextureID texture) const -> TextureHandleView;
@@ -98,7 +99,8 @@ public:
 
   auto get_buffer(RGBufferID buffer) const -> BufferView;
 
-  void execute(Device &device, DescriptorSetAllocator &set_allocator,
+  void execute(Device &device, ResourceArena &persistent_arena,
+               DescriptorSetAllocator &set_allocator,
                CommandAllocator &cmd_allocator);
 };
 

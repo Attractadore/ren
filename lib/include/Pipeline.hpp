@@ -9,7 +9,7 @@ namespace ren {
 class Device;
 
 struct PipelineLayoutDesc {
-  StaticVector<DescriptorSetLayout, MAX_DESCIPTOR_SETS> set_layouts;
+  StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> set_layouts;
   VkPushConstantRange push_constants;
 };
 

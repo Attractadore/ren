@@ -7,26 +7,22 @@
 
 namespace ren {
 
+class ResourceArena;
+
 constexpr auto DESCRIPTOR_TYPE_COUNT = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1;
 
-struct DescriptorPoolDesc {
+struct DescriptorPoolCreateInfo {
+  REN_DEBUG_NAME_FIELD("Descriptor pool");
   VkDescriptorPoolCreateFlags flags;
   unsigned set_count;
   std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
 };
 
-struct DescriptorPoolRef {
-  DescriptorPoolDesc desc;
-  VkDescriptorPool handle;
-};
-
 struct DescriptorPool {
-  DescriptorPoolDesc desc;
-  SharedHandle<VkDescriptorPool> handle;
-
-  operator DescriptorPoolRef() const {
-    return {.desc = desc, .handle = handle.get()};
-  }
+  VkDescriptorPool handle;
+  VkDescriptorPoolCreateFlags flags;
+  unsigned set_count;
+  std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
 };
 
 constexpr size_t MAX_DESCIPTOR_BINDINGS = 16;
@@ -38,38 +34,31 @@ struct DescriptorBinding {
   VkShaderStageFlags stages;
 };
 
-struct DescriptorSetLayoutDesc {
+struct DescriptorSetLayoutCreateInfo {
+  REN_DEBUG_NAME_FIELD("Descriptor set layout");
   VkDescriptorSetLayoutCreateFlags flags;
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
 };
 
-struct DescriptorSetLayoutRef {
-  DescriptorSetLayoutDesc *desc;
-  VkDescriptorSetLayout handle;
-};
-
-constexpr size_t MAX_DESCIPTOR_SETS = 4;
-
 struct DescriptorSetLayout {
-  std::shared_ptr<DescriptorSetLayoutDesc> desc;
-  SharedHandle<VkDescriptorSetLayout> handle;
-
-  operator DescriptorSetLayoutRef() const {
-    return {.desc = desc.get(), .handle = handle.get()};
-  }
+  VkDescriptorSetLayout handle;
+  VkDescriptorSetLayoutCreateFlags flags;
+  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
 };
+
+constexpr size_t MAX_DESCRIPTOR_SETS = 4;
 
 class Device;
 
 class DescriptorSetWriter {
-  DescriptorSetLayoutRef m_layout;
+  const DescriptorSetLayout *m_layout = nullptr;
   VkDescriptorSet m_set;
   SmallVector<VkDescriptorBufferInfo, MAX_DESCIPTOR_BINDINGS> m_buffers;
   SmallVector<VkDescriptorImageInfo, MAX_DESCIPTOR_BINDINGS> m_images;
   SmallVector<VkWriteDescriptorSet, MAX_DESCIPTOR_BINDINGS> m_data;
 
 public:
-  DescriptorSetWriter(VkDescriptorSet set, DescriptorSetLayoutRef layout);
+  DescriptorSetWriter(VkDescriptorSet set, const DescriptorSetLayout &layout);
 
 public:
   auto add_buffer(unsigned slot, const BufferView &buffer, unsigned offset = 0)
@@ -93,5 +82,10 @@ public:
 
   auto write(Device &device) -> VkDescriptorSet;
 };
+
+[[nodiscard]] auto
+allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
+                                 Handle<DescriptorSetLayout> layout)
+    -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet>;
 
 } // namespace ren

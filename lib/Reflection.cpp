@@ -6,8 +6,9 @@
 
 namespace ren {
 
-auto get_set_layout_descs(std::span<const std::byte> code)
-    -> StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> {
+auto get_set_layout_bindings(std::span<const std::byte> code)
+    -> StaticVector<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
+                    MAX_DESCRIPTOR_SETS> {
   spv_reflect::ShaderModule shader_module(code.size_bytes(), code.data());
   throwIfFailed(shader_module.GetResult(),
                 "SPIRV-Reflect: Failed to create shader module");
@@ -22,12 +23,14 @@ auto get_set_layout_descs(std::span<const std::byte> code)
   auto stage =
       static_cast<VkShaderStageFlagBits>(shader_module.GetShaderStage());
 
-  StaticVector<DescriptorSetLayoutDesc, MAX_DESCIPTOR_SETS> set_layouts;
+  StaticVector<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
+               MAX_DESCRIPTOR_SETS>
+      set_layout_bindings;
   for (const auto *set : sets) {
-    if (set->set >= set_layouts.size()) {
-      set_layouts.resize(set->set + 1);
+    if (set->set >= set_layout_bindings.size()) {
+      set_layout_bindings.resize(set->set + 1);
     }
-    auto &layout = set_layouts[set->set];
+    auto &bindings = set_layout_bindings[set->set];
 
     for (const auto *binding : std::span(set->bindings, set->binding_count)) {
       assert(binding);
@@ -36,7 +39,7 @@ auto get_set_layout_descs(std::span<const std::byte> code)
         throw std::runtime_error(
             "Shader module uses more bindings than is supported");
       }
-      layout.bindings[index] = {
+      bindings[index] = {
           .type = static_cast<VkDescriptorType>(binding->descriptor_type),
           .count = binding->count,
           .stages = stage,
@@ -44,7 +47,7 @@ auto get_set_layout_descs(std::span<const std::byte> code)
     }
   }
 
-  return set_layouts;
+  return set_layout_bindings;
 }
 
 } // namespace ren
