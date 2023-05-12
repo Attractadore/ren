@@ -78,7 +78,6 @@ private:
 
 public:
   Scene(Device &device);
-  ~Scene();
 
   RenMesh create_mesh(const RenMeshDesc &desc);
 

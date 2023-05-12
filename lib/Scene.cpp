@@ -137,12 +137,10 @@ auto reflect_descriptor_set_layouts(Device &device, ResourceArena &arena,
                  VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                  VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
            }
-           return arena.create_descriptor_set_layout(
-               {
-                   .flags = flags,
-                   .bindings = bindings,
-               },
-               device);
+           return arena.create_descriptor_set_layout({
+               .flags = flags,
+               .bindings = bindings,
+           });
          }) |
          ranges::to<
              StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS>>();
@@ -164,7 +162,9 @@ auto reflect_material_pipeline_layout(Device &device, ResourceArena &arena,
 
 } // namespace
 
-Scene::Scene(Device &device) : m_device(&device), m_cmd_allocator(*m_device) {
+Scene::Scene(Device &device)
+    : m_device(&device), m_persistent_arena(device), m_frame_arena(device),
+      m_cmd_allocator(*m_device) {
   m_asset_loader.add_search_directory(c_assets_directory);
 
   m_pipeline_layout = reflect_material_pipeline_layout(
@@ -176,13 +176,8 @@ Scene::Scene(Device &device) : m_device(&device), m_cmd_allocator(*m_device) {
           m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]);
 }
 
-Scene::~Scene() {
-  m_frame_arena.clear(*m_device);
-  m_persistent_arena.clear(*m_device);
-}
-
 void Scene::next_frame() {
-  m_frame_arena.clear(*m_device);
+  m_frame_arena.clear();
   m_device->next_frame();
   m_cmd_allocator.next_frame();
   m_descriptor_set_allocator.next_frame(*m_device);
@@ -249,24 +244,20 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   auto index_buffer_size = desc.num_indices * sizeof(unsigned);
 
   Mesh mesh = {
-      .vertex_buffer = m_persistent_arena.create_buffer(
-          {
-              REN_SET_DEBUG_NAME("Vertex buffer"),
-              .heap = BufferHeap::Device,
-              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-              .size = vertex_buffer_size,
-          },
-          *m_device),
-      .index_buffer = m_persistent_arena.create_buffer(
-          {
-              REN_SET_DEBUG_NAME("Index buffer"),
-              .heap = BufferHeap::Device,
-              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-              .size = index_buffer_size,
-          },
-          *m_device),
+      .vertex_buffer = m_persistent_arena.create_buffer({
+          REN_SET_DEBUG_NAME("Vertex buffer"),
+          .heap = BufferHeap::Device,
+          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                   VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+          .size = vertex_buffer_size,
+      }),
+      .index_buffer = m_persistent_arena.create_buffer({
+          REN_SET_DEBUG_NAME("Index buffer"),
+          .heap = BufferHeap::Device,
+          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+          .size = index_buffer_size,
+      }),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
       .index_format = VK_INDEX_TYPE_UINT32,
@@ -336,16 +327,13 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
   if (index == m_sampler_descs.size()) {
     m_sampler_descs.push_back(texture.sampler);
 
-    auto sampler = m_persistent_arena.create_sampler(
-        {
-            .mag_filter = getVkFilter(texture.sampler.mag_filter),
-            .min_filter = getVkFilter(texture.sampler.min_filter),
-            .mipmap_mode =
-                getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
-            .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
-            .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
-        },
-        *m_device);
+    auto sampler = m_persistent_arena.create_sampler({
+        .mag_filter = getVkFilter(texture.sampler.mag_filter),
+        .min_filter = getVkFilter(texture.sampler.min_filter),
+        .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
+        .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
+        .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
+    });
     m_samplers.push_back(sampler);
 
     DescriptorSetWriter(
@@ -379,18 +367,15 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   auto image = static_cast<RenImage>(m_images.size());
   auto format = getVkFormat(desc.format);
-  auto texture = m_persistent_arena.create_texture(
-      {
-          .type = VK_IMAGE_TYPE_2D,
-          .format = format,
-          .usage = VK_IMAGE_USAGE_SAMPLED_BIT |
-                   VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-          .width = desc.width,
-          .height = desc.height,
-          .mip_levels = get_mip_level_count(desc.width, desc.height),
-      },
-      *m_device);
+  auto texture = m_persistent_arena.create_texture({
+      .type = VK_IMAGE_TYPE_2D,
+      .format = format,
+      .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+               VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      .width = desc.width,
+      .height = desc.height,
+      .mip_levels = get_mip_level_count(desc.width, desc.height),
+  });
   m_images.push_back(texture.texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
@@ -903,9 +888,9 @@ void Scene::draw(Swapchain &swapchain) {
 
     rgb.present(swapchain, pprt,
                 m_frame_arena.create_semaphore(
-                    {REN_SET_DEBUG_NAME("Acquire semaphore")}, *m_device),
+                    {REN_SET_DEBUG_NAME("Acquire semaphore")}),
                 m_frame_arena.create_semaphore(
-                    {REN_SET_DEBUG_NAME("Present semaphore")}, *m_device));
+                    {REN_SET_DEBUG_NAME("Present semaphore")}));
 
     auto rg = rgb.build(*m_device, m_frame_arena);
 

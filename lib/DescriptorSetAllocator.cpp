@@ -30,12 +30,10 @@ auto DescriptorSetAllocator::allocate(Device &device, ResourceArena &arena,
   std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
   pool_sizes.fill(16);
 
-  auto pool = arena.create_descriptor_pool(
-      {
-          .set_count = 16,
-          .pool_sizes = pool_sizes,
-      },
-      device);
+  auto pool = arena.create_descriptor_pool({
+      .set_count = 16,
+      .pool_sizes = pool_sizes,
+  });
   pools.push_back(pool);
 
   auto set = device.allocate_descriptor_set(pool, layout);

@@ -113,13 +113,11 @@ auto allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
     pool_sizes[binding.type] += binding.count;
   }
 
-  auto pool = arena.create_descriptor_pool(
-      {
-          .flags = flags,
-          .set_count = 1,
-          .pool_sizes = pool_sizes,
-      },
-      device);
+  auto pool = arena.create_descriptor_pool({
+      .flags = flags,
+      .set_count = 1,
+      .pool_sizes = pool_sizes,
+  });
 
   auto set = device.allocate_descriptor_set(pool, layout_handle);
   assert(set);

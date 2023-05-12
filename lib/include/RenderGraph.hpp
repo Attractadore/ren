@@ -235,9 +235,9 @@ private:
   auto get_desc(RGPassID pass) const -> std::string_view;
 
 private:
-  void create_textures(Device &device, ResourceArena &arena);
+  void create_textures(ResourceArena &arena);
 
-  void create_buffers(Device &device, ResourceArena &arena);
+  void create_buffers(ResourceArena &arena);
 
   void schedule_passes();
 

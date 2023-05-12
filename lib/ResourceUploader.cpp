@@ -109,14 +109,12 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
                                      Handle<Texture> texture) {
-  auto staging_buffer = arena.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Staging buffer"),
-          .heap = BufferHeap::Upload,
-          .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-          .size = data.size_bytes(),
-      },
-      device);
+  auto staging_buffer = arena.create_buffer({
+      REN_SET_DEBUG_NAME("Staging buffer"),
+      .heap = BufferHeap::Upload,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      .size = data.size_bytes(),
+  });
 
   auto *ptr = device.get_buffer_view(staging_buffer).map();
   ranges::copy(data, ptr);

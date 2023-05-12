@@ -7,7 +7,7 @@ namespace ren {
 
 template <ranges::sized_range R>
 void ResourceUploader::stage_buffer(Device &device, ResourceArena &arena,
-                                    R &&data, BufferHandleView buffer) {
+                                    R &&data, const BufferHandleView &buffer) {
   using T = ranges::range_value_t<R>;
 
   if (auto *ptr = device.get_buffer_view(buffer).map<T>()) {
@@ -17,14 +17,12 @@ void ResourceUploader::stage_buffer(Device &device, ResourceArena &arena,
 
   auto size = size_bytes(data);
 
-  BufferHandleView staging_buffer = arena.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Staging buffer"),
-          .heap = BufferHeap::Upload,
-          .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-          .size = size,
-      },
-      device);
+  BufferHandleView staging_buffer = arena.create_buffer({
+      REN_SET_DEBUG_NAME("Staging buffer"),
+      .heap = BufferHeap::Upload,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      .size = size,
+  });
 
   auto *ptr = device.get_buffer_view(staging_buffer).map<T>();
   ranges::copy(data, ptr);

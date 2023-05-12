@@ -18,7 +18,7 @@ class ResourceUploader {
 public:
   template <ranges::sized_range R>
   void stage_buffer(Device &device, ResourceArena &alloc, R &&data,
-                    BufferHandleView buffer);
+                    const BufferHandleView &buffer);
 
   void stage_texture(Device &device, ResourceArena &alloc,
                      std::span<const std::byte> data, Handle<Texture> texture);

@@ -493,38 +493,32 @@ void RenderGraph::Builder::schedule_passes() {
              ranges::to<Vector>;
 }
 
-void RenderGraph::Builder::create_textures(Device &device,
-                                           ResourceArena &arena) {
+void RenderGraph::Builder::create_textures(ResourceArena &arena) {
   for (const auto &[texture, create_info] : m_texture_create_infos) {
-    m_textures[texture] = arena.create_texture(
-        {
-            REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-            .type = create_info.type,
-            .format = create_info.format,
-            .usage = m_texture_usage_flags[texture],
-            .width = create_info.width,
-            .height = create_info.height,
-            .array_layers = create_info.array_layers,
-            .mip_levels = create_info.mip_levels,
-        },
-        device);
+    m_textures[texture] = arena.create_texture({
+        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+        .type = create_info.type,
+        .format = create_info.format,
+        .usage = m_texture_usage_flags[texture],
+        .width = create_info.width,
+        .height = create_info.height,
+        .array_layers = create_info.array_layers,
+        .mip_levels = create_info.mip_levels,
+    });
   }
   for (auto [texture, physical_texture] : enumerate(m_physical_textures)) {
     m_textures[texture] = m_textures[physical_texture];
   }
 }
 
-void RenderGraph::Builder::create_buffers(Device &device,
-                                          ResourceArena &arena) {
+void RenderGraph::Builder::create_buffers(ResourceArena &arena) {
   for (const auto &[buffer, create_info] : m_buffer_create_infos) {
-    m_buffers[buffer] = arena.create_buffer(
-        {
-            REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-            .heap = create_info.heap,
-            .usage = m_buffer_usage_flags[buffer],
-            .size = create_info.size,
-        },
-        device);
+    m_buffers[buffer] = arena.create_buffer({
+        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+        .heap = create_info.heap,
+        .usage = m_buffer_usage_flags[buffer],
+        .size = create_info.size,
+    });
   }
   for (auto [buffer, physical_buffer] : enumerate(m_physical_buffers)) {
     m_buffers[buffer] = m_buffers[physical_buffer];
@@ -623,8 +617,8 @@ void RenderGraph::Builder::batch_passes() {
 
 auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
     -> RenderGraph {
-  create_textures(device, arena);
-  create_buffers(device, arena);
+  create_textures(arena);
+  create_buffers(arena);
   schedule_passes();
   insert_barriers(device);
   batch_passes();
