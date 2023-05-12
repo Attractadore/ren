@@ -87,7 +87,7 @@ public:
   void set_scissor_rects(std::span<const VkRect2D> rects);
   void set_scissor_rect(const VkRect2D &rect) { set_scissor_rects({&rect, 1}); }
 
-  void bind_graphics_pipeline(GraphicsPipelineRef pipeline);
+  void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
   void bind_descriptor_sets(VkPipelineBindPoint bind_point,
                             Handle<PipelineLayout> layout, unsigned first_set,

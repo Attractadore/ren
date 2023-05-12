@@ -163,6 +163,8 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   HandleMap<PipelineLayout> m_pipeline_layouts;
 
+  HandleMap<GraphicsPipeline> m_graphics_pipelines;
+
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
          VkPhysicalDevice adapter);
@@ -295,10 +297,17 @@ public:
   auto get_pipeline_layout(Handle<PipelineLayout> layout) const
       -> const PipelineLayout &;
 
-  [[nodiscard]] auto create_shader_module(std::span<const std::byte> code)
-      -> SharedHandle<VkShaderModule>;
-  [[nodiscard]] auto create_graphics_pipeline(GraphicsPipelineConfig config)
-      -> GraphicsPipeline;
+  [[nodiscard]] auto
+  create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
+      -> Handle<GraphicsPipeline>;
+
+  void destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
+
+  auto try_get_graphics_pipeline(Handle<GraphicsPipeline> layout) const
+      -> Optional<const GraphicsPipeline &>;
+
+  auto get_graphics_pipeline(Handle<GraphicsPipeline> layout) const
+      -> const GraphicsPipeline &;
 
   [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
       -> Handle<Semaphore>;

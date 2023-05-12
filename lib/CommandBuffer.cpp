@@ -200,9 +200,9 @@ void CommandBuffer::set_scissor_rects(std::span<const VkRect2D> rects) {
   m_device->CmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
 }
 
-void CommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
+void CommandBuffer::bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
   m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipeline.handle);
+                            m_device->get_graphics_pipeline(pipeline).handle);
 }
 
 void CommandBuffer::bind_descriptor_sets(

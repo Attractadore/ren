@@ -398,7 +398,7 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
         return *pipeline;
       }
       return m_compiler.compile_material_pipeline(
-          *m_device, m_asset_loader,
+          m_persistent_arena, m_asset_loader,
           MaterialPipelineConfig{
               .material = desc,
               .layout = m_pipeline_layout,
@@ -619,7 +619,7 @@ struct ColorPassConfig {
   unsigned num_dir_lights;
 
   const DenseSlotMap<Mesh> *meshes;
-  std::span<const GraphicsPipelineRef> material_pipelines;
+  std::span<const Handle<GraphicsPipeline>> material_pipelines;
   const DenseSlotMap<MeshInst> *mesh_insts;
 
   VkDescriptorSet persistent_set;
