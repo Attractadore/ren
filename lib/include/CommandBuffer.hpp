@@ -57,26 +57,26 @@ public:
 
   void end_rendering();
 
-  void copy_buffer(const Buffer &src, const Buffer &dst,
+  void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                    std::span<const VkBufferCopy> regions);
 
-  void copy_buffer(const Buffer &src, const Buffer &dst,
+  void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                    const VkBufferCopy &region);
 
   void copy_buffer(const BufferView &src, const BufferView &dst);
 
-  void copy_buffer_to_image(const Buffer &src, const Texture &dst,
+  void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
                             std::span<const VkBufferImageCopy> regions);
 
-  void copy_buffer_to_image(const Buffer &src, const Texture &dst,
+  void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
                             const VkBufferImageCopy &region) {
     copy_buffer_to_image(src, dst, asSpan(region));
   }
 
-  void blit(const Texture &src, const Texture &dst,
+  void blit(Handle<Texture> src, Handle<Texture> dst,
             std::span<const VkImageBlit> regions, VkFilter filter);
 
-  void blit(const Texture &src, const Texture &dst, const VkImageBlit &region,
+  void blit(Handle<Texture> src, Handle<Texture> dst, const VkImageBlit &region,
             VkFilter filter);
 
   void set_viewports(std::span<const VkViewport> viewports);
@@ -118,16 +118,7 @@ public:
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 
   void pipeline_barrier(std::span<const VkMemoryBarrier2> barriers,
-                        std::span<const VkImageMemoryBarrier2> image_barriers) {
-    VkDependencyInfo dependency = {
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .memoryBarrierCount = unsigned(barriers.size()),
-        .pMemoryBarriers = barriers.data(),
-        .imageMemoryBarrierCount = unsigned(image_barriers.size()),
-        .pImageMemoryBarriers = image_barriers.data(),
-    };
-    pipeline_barrier(dependency);
-  }
+                        std::span<const VkImageMemoryBarrier2> image_barriers);
 };
 
 } // namespace ren

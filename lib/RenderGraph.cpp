@@ -206,7 +206,7 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
   return new_texture;
 }
 
-auto RenderGraph::Builder::import_texture(TextureHandleView texture,
+auto RenderGraph::Builder::import_texture(TextureView texture,
                                           VkAccessFlags2 accesses,
                                           VkPipelineStageFlags2 stages,
                                           VkImageLayout layout) -> RGTextureID {
@@ -306,7 +306,7 @@ auto RenderGraph::Builder::create_buffer(RGPassID pass,
   return new_buffer;
 }
 
-auto RenderGraph::Builder::import_buffer(BufferHandleView buffer,
+auto RenderGraph::Builder::import_buffer(BufferView buffer,
                                          VkAccessFlags2 accesses,
                                          VkPipelineStageFlags2 stages)
     -> RGBufferID {
@@ -362,19 +362,24 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
 
   blit.wait_semaphore(acquire_semaphore, VK_PIPELINE_STAGE_2_BLIT_BIT);
   blit.set_callback([=, src = texture, dst = swapchain_image](
-                        CommandBuffer &cmd, RenderGraph &rg) {
+                        Device &device, RenderGraph &rg, CommandBuffer &cmd) {
     auto src_texture = rg.get_texture(src);
     auto swapchain_texture = rg.get_texture(dst);
     VkImageBlit region = {
         .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .mipLevel = src_texture.first_mip_level,
+                           .baseArrayLayer = src_texture.first_array_layer,
                            .layerCount = 1},
         .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .mipLevel = swapchain_texture.first_mip_level,
+                           .baseArrayLayer =
+                               swapchain_texture.first_array_layer,
                            .layerCount = 1},
     };
-    std::memcpy(&region.srcOffsets[1], &src_texture->size,
-                sizeof(src_texture->size));
-    std::memcpy(&region.dstOffsets[1], &swapchain_texture->size,
-                sizeof(swapchain_texture->size));
+    auto src_size = src_texture.get_size(device);
+    std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
+    auto dst_size = swapchain_texture.get_size(device);
+    std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(src_texture.texture, swapchain_texture.texture, region,
              VK_FILTER_LINEAR);
   });
@@ -493,39 +498,43 @@ void RenderGraph::Builder::schedule_passes() {
              ranges::to<Vector>;
 }
 
-void RenderGraph::Builder::create_textures(ResourceArena &arena) {
+void RenderGraph::Builder::create_textures(const Device &device,
+                                           ResourceArena &arena) {
   for (const auto &[texture, create_info] : m_texture_create_infos) {
-    m_textures[texture] = arena.create_texture({
-        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-        .type = create_info.type,
-        .format = create_info.format,
-        .usage = m_texture_usage_flags[texture],
-        .width = create_info.width,
-        .height = create_info.height,
-        .array_layers = create_info.array_layers,
-        .mip_levels = create_info.mip_levels,
-    });
+    m_textures[texture] = TextureView::from_texture(
+        device, arena.create_texture({
+                    REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+                    .type = create_info.type,
+                    .format = create_info.format,
+                    .usage = m_texture_usage_flags[texture],
+                    .width = create_info.width,
+                    .height = create_info.height,
+                    .array_layers = create_info.array_layers,
+                    .mip_levels = create_info.mip_levels,
+                }));
   }
   for (auto [texture, physical_texture] : enumerate(m_physical_textures)) {
     m_textures[texture] = m_textures[physical_texture];
   }
 }
 
-void RenderGraph::Builder::create_buffers(ResourceArena &arena) {
+void RenderGraph::Builder::create_buffers(const Device &device,
+                                          ResourceArena &arena) {
   for (const auto &[buffer, create_info] : m_buffer_create_infos) {
-    m_buffers[buffer] = arena.create_buffer({
-        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-        .heap = create_info.heap,
-        .usage = m_buffer_usage_flags[buffer],
-        .size = create_info.size,
-    });
+    m_buffers[buffer] = BufferView::from_buffer(
+        device, arena.create_buffer({
+                    REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+                    .heap = create_info.heap,
+                    .usage = m_buffer_usage_flags[buffer],
+                    .size = create_info.size,
+                }));
   }
   for (auto [buffer, physical_buffer] : enumerate(m_physical_buffers)) {
     m_buffers[buffer] = m_buffers[physical_buffer];
   }
 }
 
-void RenderGraph::Builder::insert_barriers(const Device &device) {
+void RenderGraph::Builder::insert_barriers(Device &device) {
   for (auto &pass : m_passes) {
     auto memory_barriers = concat(pass.read_buffers, pass.write_buffers) |
                            map([&](const BufferAccess &buffer_access) {
@@ -555,7 +564,7 @@ void RenderGraph::Builder::insert_barriers(const Device &device) {
         map([&](const TextureAccess &texture_access) {
           auto physical_texture = m_physical_textures[texture_access.texture];
           auto &state = m_texture_states[physical_texture];
-          auto view = device.get_texture_view(m_textures[physical_texture]);
+          const auto &view = m_textures[physical_texture];
 
           VkImageMemoryBarrier2 barrier = {
               .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -565,7 +574,7 @@ void RenderGraph::Builder::insert_barriers(const Device &device) {
               .dstAccessMask = texture_access.accesses,
               .oldLayout = state.layout,
               .newLayout = texture_access.layout,
-              .image = view->image,
+              .image = device.get_texture(view.texture).image,
               .subresourceRange =
                   {
                       .aspectMask = getVkImageAspectFlags(view.format),
@@ -588,7 +597,7 @@ void RenderGraph::Builder::insert_barriers(const Device &device) {
 
     pass.barrier_cb = [memory_barriers = std::move(memory_barriers),
                        image_barriers = std::move(image_barriers)](
-                          CommandBuffer &cmd, RenderGraph &rg) {
+                          Device &device, RenderGraph &rg, CommandBuffer &cmd) {
       cmd.pipeline_barrier(memory_barriers, image_barriers);
     };
   }
@@ -617,8 +626,8 @@ void RenderGraph::Builder::batch_passes() {
 
 auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
     -> RenderGraph {
-  create_textures(arena);
-  create_buffers(arena);
+  create_textures(device, arena);
+  create_buffers(device, arena);
   schedule_passes();
   insert_barriers(device);
   batch_passes();
@@ -633,30 +642,19 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
 
 auto RenderGraph::allocate_descriptor_set(Handle<DescriptorSetLayout> layout)
     -> DescriptorSetWriter {
-  return {m_set_allocator->allocate(*m_device, *m_persistent_arena, layout),
-          m_device->get_descriptor_set_layout(layout)};
-}
-
-auto RenderGraph::get_texture_handle(RGTextureID texture) const
-    -> TextureHandleView {
-  assert(texture);
-  return m_textures[texture];
+  return {*m_device,
+          m_set_allocator->allocate(*m_device, *m_persistent_arena, layout),
+          layout};
 }
 
 auto RenderGraph::get_texture(RGTextureID texture) const -> TextureView {
   assert(texture);
-  return m_device->get_texture_view(m_textures[texture]);
-}
-
-auto RenderGraph::get_buffer_handle(RGBufferID buffer) const
-    -> BufferHandleView {
-  assert(buffer);
-  return m_buffers[buffer];
+  return m_textures[texture];
 }
 
 auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
   assert(buffer);
-  return m_device->get_buffer_view(m_buffers[buffer]);
+  return m_buffers[buffer];
 }
 
 void RenderGraph::execute(Device &device, ResourceArena &persistent_arena,
@@ -678,10 +676,10 @@ void RenderGraph::execute(Device &device, ResourceArena &persistent_arena,
       auto cmd = cmd_allocator.allocate();
       cmd.begin();
       if (barrier_cb) {
-        barrier_cb(cmd, *this);
+        barrier_cb(device, *this, cmd);
       }
       if (pass_cb) {
-        pass_cb(cmd, *this);
+        pass_cb(device, *this, cmd);
       }
       cmd.end();
       cmd_buffers.push_back(

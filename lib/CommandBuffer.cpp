@@ -113,14 +113,12 @@ void CommandBuffer::begin_rendering(TextureView color_target) {
   ColorAttachment color_attachment = {.texture = color_target};
   std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
 
-  begin_rendering(0, 0, color_target->size.x, color_target->size.y,
-                  color_attachments);
+  auto size = color_target.get_size(*m_device);
+  begin_rendering(0, 0, size.x, size.y, color_attachments);
 }
 
 void CommandBuffer::begin_rendering(TextureView color_target,
                                     TextureView depth_target) {
-  assert(depth_target->size.x >= color_target->size.x);
-  assert(depth_target->size.y >= color_target->size.y);
 
   color_target.num_mip_levels = 1;
   color_target.num_array_layers = 1;
@@ -136,19 +134,22 @@ void CommandBuffer::begin_rendering(TextureView color_target,
       .depth = DepthStencilAttachment::Depth{},
   };
 
-  begin_rendering(0, 0, color_target->size.x, color_target->size.y,
-                  color_attachments, depth_attachment);
+  auto size = color_target.get_size(*m_device);
+  assert(
+      glm::all(glm::greaterThanEqual(depth_target.get_size(*m_device), size)));
+  begin_rendering(0, 0, size.x, size.y, color_attachments, depth_attachment);
 }
 
 void CommandBuffer::end_rendering() { m_device->CmdEndRendering(m_cmd_buffer); }
 
-void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
+void CommandBuffer::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                                 std::span<const VkBufferCopy> regions) {
-  m_device->CmdCopyBuffer(m_cmd_buffer, src.handle, dst.handle, regions.size(),
+  m_device->CmdCopyBuffer(m_cmd_buffer, m_device->get_buffer(src).handle,
+                          m_device->get_buffer(dst).handle, regions.size(),
                           regions.data());
 }
 
-void CommandBuffer::copy_buffer(const Buffer &src, const Buffer &dst,
+void CommandBuffer::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                                 const VkBufferCopy &region) {
   copy_buffer(src, dst, asSpan(region));
 }
@@ -164,23 +165,25 @@ void CommandBuffer::copy_buffer(const BufferView &src, const BufferView &dst) {
 }
 
 void CommandBuffer::copy_buffer_to_image(
-    const Buffer &src, const Texture &dst,
+    Handle<Buffer> src, Handle<Texture> dst,
     std::span<const VkBufferImageCopy> regions) {
-  m_device->CmdCopyBufferToImage(m_cmd_buffer, src.handle, dst.image,
+  m_device->CmdCopyBufferToImage(m_cmd_buffer, m_device->get_buffer(src).handle,
+                                 m_device->get_texture(dst).image,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                  regions.size(), regions.data());
 }
 
-void CommandBuffer::blit(const Texture &src, const Texture &dst,
+void CommandBuffer::blit(Handle<Texture> src, Handle<Texture> dst,
                          std::span<const VkImageBlit> regions,
                          VkFilter filter) {
-  m_device->CmdBlitImage(m_cmd_buffer, src.image,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image,
+  m_device->CmdBlitImage(m_cmd_buffer, m_device->get_texture(src).image,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         m_device->get_texture(dst).image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
 }
 
-void CommandBuffer::blit(const Texture &src, const Texture &dst,
+void CommandBuffer::blit(Handle<Texture> src, Handle<Texture> dst,
                          const VkImageBlit &region, VkFilter filter) {
   blit(src, dst, asSpan(region), filter);
 }
@@ -223,10 +226,11 @@ void CommandBuffer::set_push_constants(Handle<PipelineLayout> layout,
                              stages, offset, data.size(), data.data());
 }
 
-void CommandBuffer::bind_index_buffer(const BufferView &buffer,
+void CommandBuffer::bind_index_buffer(const BufferView &view,
                                       VkIndexType type) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer, buffer->handle, buffer.offset,
-                               type);
+  m_device->CmdBindIndexBuffer(m_cmd_buffer,
+                               m_device->get_buffer(view.buffer).handle,
+                               view.offset, type);
 }
 
 void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
@@ -239,6 +243,19 @@ void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
 
 void CommandBuffer::pipeline_barrier(const VkDependencyInfo &dependency_info) {
   m_device->CmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
+}
+
+void CommandBuffer::pipeline_barrier(
+    std::span<const VkMemoryBarrier2> barriers,
+    std::span<const VkImageMemoryBarrier2> image_barriers) {
+  VkDependencyInfo dependency = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = unsigned(barriers.size()),
+      .pMemoryBarriers = barriers.data(),
+      .imageMemoryBarrierCount = unsigned(image_barriers.size()),
+      .pImageMemoryBarriers = image_barriers.data(),
+  };
+  pipeline_barrier(dependency);
 }
 
 } // namespace ren

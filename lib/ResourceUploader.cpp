@@ -1,4 +1,5 @@
 #include "ResourceUploader.hpp"
+#include "Buffer.inl"
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
@@ -7,7 +8,9 @@
 
 namespace ren {
 
-static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
+static void generate_mipmaps(const Device &device, CommandBuffer &cmd,
+                             Handle<Texture> handle) {
+  const auto &texture = device.get_texture(handle);
   auto src_size = texture.size;
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
@@ -29,7 +32,7 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
     };
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
-    cmd.blit(texture, texture, region, VK_FILTER_LINEAR);
+    cmd.blit(handle, handle, region, VK_FILTER_LINEAR);
     src_size = dst_size;
 
     VkImageMemoryBarrier2 barrier = {
@@ -53,8 +56,9 @@ static void generate_mipmaps(CommandBuffer &cmd, const Texture &texture) {
   }
 }
 
-static void upload_texture(CommandBuffer &cmd, const BufferView &src,
-                           const Texture &dst) {
+static void upload_texture(const Device &device, CommandBuffer &cmd,
+                           const BufferView &src, Handle<Texture> dst_handle) {
+  const auto &dst = device.get_texture(dst_handle);
   {
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -81,7 +85,7 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
           },
   };
   std::memcpy(&region.imageExtent, &dst.size, sizeof(dst.size));
-  cmd.copy_buffer_to_image(src.buffer, dst, region);
+  cmd.copy_buffer_to_image(src.buffer, dst_handle, region);
 
   {
     VkImageMemoryBarrier2 barrier = {
@@ -103,20 +107,21 @@ static void upload_texture(CommandBuffer &cmd, const BufferView &src,
     cmd.pipeline_barrier({}, asSpan(barrier));
   }
 
-  generate_mipmaps(cmd, dst);
+  generate_mipmaps(device, cmd, dst_handle);
 }
 
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
                                      Handle<Texture> texture) {
-  auto staging_buffer = arena.create_buffer({
-      REN_SET_DEBUG_NAME("Staging buffer"),
-      .heap = BufferHeap::Upload,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-      .size = data.size_bytes(),
-  });
+  auto staging_buffer = BufferView::from_buffer(
+      device, arena.create_buffer({
+                  REN_SET_DEBUG_NAME("Staging buffer"),
+                  .heap = BufferHeap::Upload,
+                  .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  .size = data.size_bytes(),
+              }));
 
-  auto *ptr = device.get_buffer_view(staging_buffer).map();
+  auto *ptr = staging_buffer.map(device);
   ranges::copy(data, ptr);
 
   m_texture_srcs.push_back(staging_buffer);
@@ -134,14 +139,14 @@ auto ResourceUploader::record_upload(const Device &device,
   cmd.begin();
 
   for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
-    cmd.copy_buffer(device.get_buffer_view(src), device.get_buffer_view(dst));
+    cmd.copy_buffer(src, dst);
   }
 
   m_buffer_srcs.clear();
   m_buffer_dsts.clear();
 
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(cmd, device.get_buffer_view(src), device.get_texture(dst));
+    upload_texture(device, cmd, src, dst);
   }
 
   m_texture_srcs.clear();

@@ -1,4 +1,5 @@
 #include "Scene.hpp"
+#include "Buffer.inl"
 #include "Camera.inl"
 #include "CommandAllocator.hpp"
 #include "Descriptors.hpp"
@@ -247,20 +248,22 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   auto index_buffer_size = desc.num_indices * sizeof(unsigned);
 
   Mesh mesh = {
-      .vertex_buffer = m_persistent_arena.create_buffer({
-          REN_SET_DEBUG_NAME("Vertex buffer"),
-          .heap = BufferHeap::Device,
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          .size = vertex_buffer_size,
-      }),
-      .index_buffer = m_persistent_arena.create_buffer({
-          REN_SET_DEBUG_NAME("Index buffer"),
-          .heap = BufferHeap::Device,
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-          .size = index_buffer_size,
-      }),
+      .vertex_buffer = BufferView::from_buffer(
+          *m_device, m_persistent_arena.create_buffer({
+                         REN_SET_DEBUG_NAME("Vertex buffer"),
+                         .heap = BufferHeap::Device,
+                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                         .size = vertex_buffer_size,
+                     })),
+      .index_buffer = BufferView::from_buffer(
+          *m_device, m_persistent_arena.create_buffer({
+                         REN_SET_DEBUG_NAME("Index buffer"),
+                         .heap = BufferHeap::Device,
+                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                         .size = index_buffer_size,
+                     })),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
       .index_format = VK_INDEX_TYPE_UINT32,
@@ -306,11 +309,11 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
-  if (!m_device->get_buffer_view(mesh.vertex_buffer).map()) {
+  if (!mesh.vertex_buffer.map(*m_device)) {
     m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
   }
 
-  if (!m_device->get_buffer_view(mesh.index_buffer).map()) {
+  if (!mesh.index_buffer.map(*m_device)) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
 
@@ -339,12 +342,11 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
     });
     m_samplers.push_back(sampler);
 
-    DescriptorSetWriter(m_persistent_descriptor_set,
-                        m_device->get_descriptor_set_layout(
-                            m_device->get_pipeline_layout(m_pipeline_layout)
-                                .set_layouts[hlsl::PERSISTENT_SET]))
-        .add_sampler(hlsl::SAMPLERS_SLOT, m_device->get_sampler(sampler), index)
-        .write(*m_device);
+    DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
+                        m_device->get_pipeline_layout(m_pipeline_layout)
+                            .set_layouts[hlsl::PERSISTENT_SET])
+        .add_sampler(hlsl::SAMPLERS_SLOT, sampler, index)
+        .write();
   }
 
   return SamplerID{index};
@@ -354,15 +356,14 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   unsigned index = m_num_textures++;
   assert(index < hlsl::NUM_TEXTURES);
 
-  TextureView view = m_device->get_texture(m_images[texture.image]);
+  auto view = TextureView::from_texture(*m_device, m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
 
-  DescriptorSetWriter(m_persistent_descriptor_set,
-                      m_device->get_descriptor_set_layout(
-                          m_device->get_pipeline_layout(m_pipeline_layout)
-                              .set_layouts[hlsl::PERSISTENT_SET]))
-      .add_texture(hlsl::TEXTURES_SLOT, m_device->getVkImageView(view), index)
-      .write(*m_device);
+  DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
+                      m_device->get_pipeline_layout(m_pipeline_layout)
+                          .set_layouts[hlsl::PERSISTENT_SET])
+      .add_texture(hlsl::TEXTURES_SLOT, view, index)
+      .write();
 
   return TextureID{index};
 }
@@ -379,12 +380,12 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
       .height = desc.height,
       .mip_levels = get_mip_level_count(desc.width, desc.height),
   });
-  m_images.push_back(texture.texture);
+  m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
       *m_device, m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
-      texture.texture);
+      texture);
   m_staged_textures.push_back(texture);
   return image;
 }
@@ -523,18 +524,19 @@ struct UploadDataPassOutput {
   RGBufferID materials_buffer;
 };
 
-static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
-                                 RenderGraph &rg,
+static void run_upload_data_pass(Device &device, RenderGraph &rg,
+                                 CommandBuffer &cmd,
                                  const UploadDataPassConfig &cfg,
                                  const UploadDataPassResources &rcs) {
   auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
   auto *transform_matrices =
-      transform_matrix_buffer.map<hlsl::model_matrix_t>();
+      transform_matrix_buffer.map<hlsl::model_matrix_t>(device);
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
   auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
-  auto *normal_matrices = normal_matrix_buffer.map<hlsl::normal_matrix_t>();
+  auto *normal_matrices =
+      normal_matrix_buffer.map<hlsl::normal_matrix_t>(device);
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
@@ -542,12 +544,12 @@ static void run_upload_data_pass(Device &device, CommandBuffer &cmd,
 
   rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
     auto dir_lights_buffer = rg.get_buffer(buffer);
-    auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>();
+    auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>(device);
     ranges::copy(cfg.dir_lights->values(), dir_lights);
   });
 
   auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
-  auto *materials = materials_buffer.map<hlsl::Material>();
+  auto *materials = materials_buffer.map<hlsl::Material>(device);
   ranges::copy(cfg.materials, materials);
 }
 
@@ -594,9 +596,10 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
-  pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
-    run_upload_data_pass(device, cmd, rg, cfg, rcs);
-  });
+  pass.set_callback(
+      [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+        run_upload_data_pass(device, rg, cmd, cfg, rcs);
+      });
 
   return {
       .transform_matrix_buffer = rcs.transform_matrix_buffer,
@@ -647,7 +650,7 @@ struct ColorPassOutput {
   RGTextureID rt;
 };
 
-static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
+static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
                            const ColorPassConfig &cfg,
                            const ColorPassResources &rcs) {
   cmd.begin_rendering(rg.get_texture(rcs.rt), rg.get_texture(rcs.dst));
@@ -657,7 +660,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
   auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-  auto *global_data = global_data_buffer.map<hlsl::GlobalData>();
+  auto *global_data = global_data_buffer.map<hlsl::GlobalData>(device);
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
@@ -683,7 +686,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
       set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 
-    return set.write(device);
+    return set.write();
   }();
 
   std::array descriptor_sets = {cfg.persistent_set, global_set};
@@ -696,8 +699,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
     cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
-    auto buffer = device.get_buffer_view(mesh.vertex_buffer);
-    auto address = buffer->address;
+    auto address = mesh.vertex_buffer.get_address(device);
     auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
@@ -715,8 +717,7 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
         cfg.pipeline_layout,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
 
-    cmd.bind_index_buffer(device.get_buffer_view(mesh.index_buffer),
-                          mesh.index_format);
+    cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
     cmd.draw_indexed({
         .num_indices = mesh.num_indices,
     });
@@ -798,9 +799,10 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 
-  pass.set_callback([&device, cfg, rcs](CommandBuffer &cmd, RenderGraph &rg) {
-    run_color_pass(device, cmd, rg, cfg, rcs);
-  });
+  pass.set_callback(
+      [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+        run_color_pass(device, rg, cmd, cfg, rcs);
+      });
 
   return {
       .rt = rcs.rt,
@@ -811,7 +813,7 @@ void Scene::draw(Swapchain &swapchain) {
   RenderGraph::Builder rgb;
 
   auto uploaded_vertex_buffers =
-      m_staged_vertex_buffers | map([&](const BufferHandleView &buffer) {
+      m_staged_vertex_buffers | map([&](const BufferView &buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
@@ -819,7 +821,7 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_vertex_buffers.clear();
 
   auto uploaded_index_buffers =
-      m_staged_index_buffers | map([&](const BufferHandleView &buffer) {
+      m_staged_index_buffers | map([&](const BufferView &buffer) {
         return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
@@ -827,8 +829,9 @@ void Scene::draw(Swapchain &swapchain) {
   m_staged_index_buffers.clear();
 
   auto uploaded_textures =
-      m_staged_textures | map([&](const TextureHandleView &texture) {
-        return rgb.import_texture(texture, VK_ACCESS_2_TRANSFER_READ_BIT,
+      m_staged_textures | map([&](Handle<Texture> texture) {
+        return rgb.import_texture(TextureView::from_texture(*m_device, texture),
+                                  VK_ACCESS_2_TRANSFER_READ_BIT,
                                   VK_PIPELINE_STAGE_2_BLIT_BIT,
                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
       }) |
@@ -888,7 +891,7 @@ void Scene::draw(Swapchain &swapchain) {
                                  VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                  VK_IMAGE_LAYOUT_GENERAL);
     // rgb.set_desc(pprt, "Post-processed color buffer");
-    pp.set_callback([](CommandBuffer &cmd, RenderGraph &rg) {});
+    pp.set_callback([](Device &device, RenderGraph &rg, CommandBuffer &cmd) {});
 
     rgb.present(swapchain, pprt,
                 m_frame_arena.create_semaphore(

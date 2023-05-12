@@ -407,7 +407,7 @@ void Device::write_descriptor_set(const VkWriteDescriptorSet &config) const {
 }
 
 auto Device::create_buffer(const BufferCreateInfo &&create_info)
-    -> BufferHandleView {
+    -> Handle<Buffer> {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -454,7 +454,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
     address = GetBufferDeviceAddress(&buffer_info);
   }
 
-  auto handle = m_buffers.emplace(Buffer{
+  return m_buffers.emplace(Buffer{
       .handle = buffer,
       .allocation = allocation,
       .ptr = (std::byte *)map_info.pMappedData,
@@ -463,20 +463,13 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
       .heap = create_info.heap,
       .usage = create_info.usage,
   });
-
-  return {
-      .buffer = handle,
-      .size = create_info.size,
-  };
 }
 
-void Device::destroy_buffer(Handle<Buffer> buffer) {
-  auto it = m_buffers.find(buffer);
-  if (it != m_buffers.end()) {
-    auto &&[_, buffer] = *it;
+void Device::destroy_buffer(Handle<Buffer> handle) {
+  m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
     push_to_delete_queue(buffer.handle);
     push_to_delete_queue(buffer.allocation);
-  }
+  });
 }
 
 auto Device::try_get_buffer(Handle<Buffer> buffer) const
@@ -488,28 +481,8 @@ auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
   return m_buffers[buffer];
 };
 
-auto Device::try_get_buffer_view(const BufferHandleView &view) const
-    -> Optional<BufferView> {
-  return m_buffers.get(view.buffer).map([&](const Buffer &buffer) {
-    return BufferView{
-        .buffer = buffer,
-        .offset = view.offset,
-        .size = view.size,
-    };
-  });
-};
-
-auto Device::get_buffer_view(const BufferHandleView &view) const -> BufferView {
-  assert(m_buffers.contains(view.buffer));
-  return {
-      .buffer = m_buffers[view.buffer],
-      .offset = view.offset,
-      .size = view.size,
-  };
-};
-
 auto Device::create_texture(const TextureCreateInfo &&create_info)
-    -> TextureHandleView {
+    -> Handle<Texture> {
   unsigned depth = 1;
   unsigned array_layers = 1;
   if (create_info.type == VK_IMAGE_TYPE_3D) {
@@ -540,7 +513,7 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
                 "VMA: Failed to create image");
   ren_set_debug_name(image, create_info.debug_name.c_str());
 
-  auto handle = m_textures.emplace(Texture{
+  return m_textures.emplace(Texture{
       .image = image,
       .allocation = allocation,
       .type = create_info.type,
@@ -550,21 +523,13 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
       .num_mip_levels = create_info.mip_levels,
       .num_array_layers = create_info.array_layers,
   });
-
-  return {
-      .texture = handle,
-      .type = get_texture_default_view_type(create_info.type, array_layers),
-      .format = create_info.format,
-      .num_mip_levels = create_info.mip_levels,
-      .num_array_layers = create_info.array_layers,
-  };
 }
 
 auto Device::create_swapchain_texture(
-    const SwapchainTextureCreateInfo &&create_info) -> TextureHandleView {
+    const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
   ren_set_debug_name(create_info.image, "Swapchain image");
 
-  auto handle = m_textures.emplace(Texture{
+  return m_textures.emplace(Texture{
       .image = create_info.image,
       .type = VK_IMAGE_TYPE_2D,
       .format = create_info.format,
@@ -573,26 +538,18 @@ auto Device::create_swapchain_texture(
       .num_mip_levels = 1,
       .num_array_layers = 1,
   });
-
-  return {
-      .texture = handle,
-      .type = VK_IMAGE_VIEW_TYPE_2D,
-      .format = create_info.format,
-      .num_mip_levels = 1,
-      .num_array_layers = 1,
-  };
 }
 
-void Device::destroy_texture(Handle<Texture> texture) {
-  m_textures.try_pop(texture).map([&](const Texture &texture) {
+void Device::destroy_texture(Handle<Texture> handle) {
+  m_textures.try_pop(handle).map([&](const Texture &texture) {
     if (texture.allocation) {
       push_to_delete_queue(texture.image);
       push_to_delete_queue(texture.allocation);
     }
-    for (const auto &[_, view] : m_image_views[texture.image]) {
+    for (const auto &[_, view] : m_image_views[handle]) {
       push_to_delete_queue(view);
     }
-    m_image_views[texture.image].clear();
+    m_image_views.erase(handle);
   });
 }
 
@@ -606,54 +563,13 @@ auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-auto Device::try_get_texture_view(const TextureHandleView &view) const
-    -> Optional<TextureView> {
-  return m_textures.get(view.texture).map([&](const Texture &texture) {
-    return TextureView{
-        .texture = texture,
-        .type = view.type,
-        .format = view.format,
-        .swizzle = view.swizzle,
-        .first_mip_level = view.first_mip_level,
-        .num_mip_levels = view.num_mip_levels,
-        .first_array_layer = view.first_array_layer,
-        .num_array_layers = view.num_array_layers,
-    };
-  });
-}
-
-auto Device::get_texture_view(const TextureHandleView &view) const
-    -> TextureView {
-  assert(m_textures.contains(view.texture));
-  return {
-      .texture = m_textures[view.texture],
-      .type = view.type,
-      .format = view.format,
-      .swizzle = view.swizzle,
-      .first_mip_level = view.first_mip_level,
-      .num_mip_levels = view.num_mip_levels,
-      .first_array_layer = view.first_array_layer,
-      .num_array_layers = view.num_array_layers,
-  };
-}
-
 auto Device::getVkImageView(const TextureView &view) -> VkImageView {
-  TextureViewDesc view_desc = {
-      .type = view.type,
-      .format = view.format,
-      .swizzle = view.swizzle,
-      .first_mip_level = view.first_mip_level,
-      .num_mip_levels = view.num_mip_levels,
-      .first_array_layer = view.first_array_layer,
-      .num_array_layers = view.num_mip_levels,
-  };
-
-  auto [it, inserted] = m_image_views[view->image].insert(view_desc, nullptr);
+  auto [it, inserted] = m_image_views[view.texture].insert(view, nullptr);
   auto &image_view = std::get<1>(*it);
   if (inserted) {
     VkImageViewCreateInfo view_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = view->image,
+        .image = get_texture(view.texture).image,
         .viewType = view.type,
         .format = view.format,
         .components =
@@ -675,7 +591,6 @@ auto Device::getVkImageView(const TextureView &view) -> VkImageView {
     throwIfFailed(CreateImageView(&view_info, &image_view),
                   "Vulkan: Failed to create image view");
   }
-
   return image_view;
 }
 

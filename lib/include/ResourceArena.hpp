@@ -61,9 +61,9 @@ public:
     return *this;
   }
 
-  auto create_buffer(const BufferCreateInfo &&create_info) -> BufferHandleView {
+  auto create_buffer(const BufferCreateInfo &&create_info) -> Handle<Buffer> {
     auto buffer = m_device->create_buffer(std::move(create_info));
-    push_back(buffer.buffer);
+    push_back(buffer);
     return buffer;
   }
 
@@ -72,9 +72,9 @@ public:
   }
 
   auto create_texture(const TextureCreateInfo &&create_info)
-      -> TextureHandleView {
+      -> Handle<Texture> {
     auto texture = m_device->create_texture(std::move(create_info));
-    push_back(texture.texture);
+    push_back(texture);
     return texture;
   }
 

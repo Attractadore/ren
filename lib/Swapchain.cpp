@@ -6,6 +6,7 @@
 #include <range/v3/algorithm.hpp>
 
 namespace ren {
+
 namespace {
 VkSurfaceCapabilitiesKHR getSurfaceCapabilities(Device &device,
                                                 VkSurfaceKHR surface) {
@@ -144,21 +145,21 @@ void Swapchain::create() {
       "Vulkan: Failed to get swapchain images");
 
   m_textures.resize(image_count);
-  for (size_t i = 0; i < image_count; ++i) {
-    m_textures[i] = m_device->create_swapchain_texture({
-        .image = images[i],
+  ranges::transform(images, m_textures.begin(), [&](VkImage image) {
+    return m_device->create_swapchain_texture({
+        .image = image,
         .format = m_create_info.imageFormat,
         .usage = m_create_info.imageUsage,
         .width = m_create_info.imageExtent.width,
         .height = m_create_info.imageExtent.height,
     });
-  }
+  });
 }
 
 void Swapchain::destroy() {
   m_device->push_to_delete_queue(m_swapchain);
-  for (const auto &texture : m_textures) {
-    m_device->destroy_texture(texture.texture);
+  for (auto texture : m_textures) {
+    m_device->destroy_texture(texture);
   }
   m_textures.clear();
 }
@@ -213,7 +214,8 @@ void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
   }
 }
 
-auto Swapchain::getTexture() const -> TextureHandleView {
-  return m_textures[m_image_index];
+auto Swapchain::getTexture() const -> TextureView {
+  return TextureView::from_texture(*m_device, m_textures[m_image_index]);
 }
+
 } // namespace ren

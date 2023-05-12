@@ -42,7 +42,8 @@ struct RGBufferCreateInfo {
   size_t size = 0;
 };
 
-using RGCallback = std::function<void(CommandBuffer &cmd, RenderGraph &rg)>;
+using RGCallback =
+    std::function<void(Device &device, RenderGraph &rg, CommandBuffer &cmd)>;
 
 class RenderGraph {
   struct SemaphoreSignal {
@@ -64,8 +65,8 @@ class RenderGraph {
 
   Vector<Batch> m_batches;
 
-  Vector<TextureHandleView> m_textures;
-  Vector<BufferHandleView> m_buffers;
+  Vector<TextureView> m_textures;
+  Vector<BufferView> m_buffers;
 
   Swapchain *m_swapchain = nullptr;
   Handle<Semaphore> m_present_semaphore;
@@ -73,8 +74,8 @@ class RenderGraph {
 private:
   struct Config {
     Vector<Batch> batches;
-    Vector<TextureHandleView> textures;
-    Vector<BufferHandleView> buffers;
+    Vector<TextureView> textures;
+    Vector<BufferView> buffers;
     Swapchain *swapchain;
     Handle<Semaphore> present_semaphore;
   };
@@ -91,11 +92,7 @@ public:
   [[nodiscard]] auto allocate_descriptor_set(Handle<DescriptorSetLayout> layout)
       -> DescriptorSetWriter;
 
-  auto get_texture_handle(RGTextureID texture) const -> TextureHandleView;
-
   auto get_texture(RGTextureID texture) const -> TextureView;
-
-  auto get_buffer_handle(RGBufferID buffer) const -> BufferHandleView;
 
   auto get_buffer(RGBufferID buffer) const -> BufferView;
 
@@ -138,7 +135,7 @@ class RenderGraph::Builder {
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
   };
 
-  Vector<TextureHandleView> m_textures = {{}};
+  Vector<TextureView> m_textures = {{}};
   Vector<TextureState> m_texture_states = {{}};
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
@@ -151,7 +148,7 @@ class RenderGraph::Builder {
     VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   };
 
-  Vector<BufferHandleView> m_buffers = {{}};
+  Vector<BufferView> m_buffers = {{}};
   Vector<BufferState> m_buffer_states = {{}};
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
@@ -192,7 +189,7 @@ private:
                                     VkImageLayout layout) -> RGTextureID;
 
 public:
-  [[nodiscard]] auto import_texture(TextureHandleView texture,
+  [[nodiscard]] auto import_texture(TextureView texture,
                                     VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;
@@ -219,8 +216,7 @@ private:
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 public:
-  [[nodiscard]] auto import_buffer(BufferHandleView buffer,
-                                   VkAccessFlags2 accesses,
+  [[nodiscard]] auto import_buffer(BufferView buffer, VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 private:
@@ -235,13 +231,13 @@ private:
   auto get_desc(RGPassID pass) const -> std::string_view;
 
 private:
-  void create_textures(ResourceArena &arena);
+  void create_textures(const Device &device, ResourceArena &arena);
 
-  void create_buffers(ResourceArena &arena);
+  void create_buffers(const Device &device, ResourceArena &arena);
 
   void schedule_passes();
 
-  void insert_barriers(const Device &device);
+  void insert_barriers(Device &device);
 
   void batch_passes();
 

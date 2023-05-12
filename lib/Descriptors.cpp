@@ -5,21 +5,26 @@
 
 namespace ren {
 
-DescriptorSetWriter::DescriptorSetWriter(VkDescriptorSet set,
-                                         const DescriptorSetLayout &layout)
-    : m_set(set), m_layout(&layout) {}
+DescriptorSetWriter::DescriptorSetWriter(Device &device, VkDescriptorSet set,
+                                         Handle<DescriptorSetLayout> layout)
+    : m_device(&device), m_set(set), m_layout(layout) {}
 
 auto DescriptorSetWriter::add_buffer(unsigned slot, const BufferView &view,
                                      unsigned offset) -> DescriptorSetWriter & {
   auto index = m_buffers.size();
-  m_buffers.push_back(view.get_descriptor());
+  m_buffers.push_back({
+      .buffer = m_device->get_buffer(view.buffer).handle,
+      .offset = view.offset,
+      .range = view.size,
+  });
   m_data.push_back(VkWriteDescriptorSet{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
       .dstBinding = slot,
       .dstArrayElement = offset,
       .descriptorCount = 1,
-      .descriptorType = m_layout->bindings[slot].type,
+      .descriptorType =
+          m_device->get_descriptor_set_layout(m_layout).bindings[slot].type,
       .pBufferInfo = (VkDescriptorBufferInfo *)(index + 1),
   });
   return *this;
@@ -30,7 +35,7 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
                                                   VkSampler sampler,
                                                   unsigned offset)
     -> DescriptorSetWriter & {
-  auto type = m_layout->bindings[slot].type;
+  auto type = m_device->get_descriptor_set_layout(m_layout).bindings[slot].type;
   auto layout = [&] {
     switch (type) {
     default:
@@ -64,27 +69,30 @@ auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
   return *this;
 }
 
-auto DescriptorSetWriter::add_texture(unsigned slot, VkImageView view,
+auto DescriptorSetWriter::add_texture(unsigned slot, const TextureView &view,
                                       unsigned offset)
     -> DescriptorSetWriter & {
-  return add_texture_and_sampler(slot, view, nullptr, offset);
+  return add_texture_and_sampler(slot, m_device->getVkImageView(view), nullptr,
+                                 offset);
 }
 
-auto DescriptorSetWriter::add_sampler(unsigned slot, const Sampler &sampler,
+auto DescriptorSetWriter::add_sampler(unsigned slot, Handle<Sampler> sampler,
                                       unsigned offset)
     -> DescriptorSetWriter & {
-  return add_texture_and_sampler(slot, nullptr, sampler.handle, offset);
+  return add_texture_and_sampler(slot, nullptr,
+                                 m_device->get_sampler(sampler).handle, offset);
 }
 
 auto DescriptorSetWriter::add_texture_and_sampler(unsigned slot,
-                                                  VkImageView view,
-                                                  const Sampler &sampler,
+                                                  const TextureView &view,
+                                                  Handle<Sampler> sampler,
                                                   unsigned offset)
     -> DescriptorSetWriter & {
-  return add_texture_and_sampler(slot, view, sampler.handle, offset);
+  return add_texture_and_sampler(slot, m_device->getVkImageView(view),
+                                 m_device->get_sampler(sampler).handle, offset);
 }
 
-auto DescriptorSetWriter::write(Device &device) -> VkDescriptorSet {
+auto DescriptorSetWriter::write() -> VkDescriptorSet {
   for (auto &write : m_data) {
     if (write.pBufferInfo) {
       write.pBufferInfo = &m_buffers[(size_t)write.pBufferInfo - 1];
@@ -93,7 +101,7 @@ auto DescriptorSetWriter::write(Device &device) -> VkDescriptorSet {
       write.pImageInfo = &m_images[(size_t)write.pImageInfo - 1];
     }
   }
-  device.write_descriptor_sets(m_data);
+  m_device->write_descriptor_sets(m_data);
   return m_set;
 }
 

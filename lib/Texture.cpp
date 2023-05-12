@@ -6,17 +6,8 @@
 
 namespace ren {
 
-Texture::operator TextureView() const {
-  return {
-      .texture = *this,
-      .type = get_texture_default_view_type(type, num_array_layers),
-      .format = format,
-      .num_mip_levels = num_mip_levels,
-      .num_array_layers = num_array_layers,
-  };
-}
-
-auto get_texture_default_view_type(VkImageType type, u32 num_array_layers)
+static auto get_texture_default_view_type(VkImageType type,
+                                          u32 num_array_layers)
     -> VkImageViewType {
   if (num_array_layers > 1) {
     switch (type) {
@@ -43,14 +34,49 @@ auto get_texture_default_view_type(VkImageType type, u32 num_array_layers)
               num_array_layers);
 }
 
-auto TextureView::operator->() const -> const Texture * {
-  return &texture.get();
-};
+auto TextureView::try_from_texture(const Device &device, Handle<Texture> handle)
+    -> Optional<TextureView> {
+  return device.try_get_texture(handle).map([&](const Texture &texture) {
+    return TextureView{
+        .texture = handle,
+        .type = get_texture_default_view_type(texture.type,
+                                              texture.num_array_layers),
+        .format = texture.format,
+        .num_mip_levels = texture.num_mip_levels,
+        .num_array_layers = texture.num_array_layers,
+    };
+  });
+}
+
+auto TextureView::from_texture(const Device &device, Handle<Texture> handle)
+    -> TextureView {
+  const auto &texture = device.get_texture(handle);
+  return {
+      .texture = handle,
+      .type =
+          get_texture_default_view_type(texture.type, texture.num_array_layers),
+      .format = texture.format,
+      .num_mip_levels = texture.num_mip_levels,
+      .num_array_layers = texture.num_array_layers,
+  };
+}
+
+auto TextureView::get_size(const Device &device, u16 mip_level_offset)
+    -> glm::uvec3 {
+  assert(first_mip_level + mip_level_offset <= num_mip_levels);
+  return get_size_at_mip_level(device.get_texture(texture).size,
+                               first_mip_level + mip_level_offset);
+}
 
 auto get_mip_level_count(unsigned width, unsigned height, unsigned depth)
     -> u16 {
   auto size = std::max({width, height, depth});
   return ilog2(size) + 1;
+}
+
+auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level)
+    -> glm::uvec3 {
+  return glm::max(size >> glm::uvec3(mip_level), 1u);
 }
 
 auto getVkComponentSwizzle(RenTextureChannel channel) -> VkComponentSwizzle {

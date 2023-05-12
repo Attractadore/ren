@@ -20,7 +20,7 @@ struct SwapchainTextureCreateInfo {
 class Swapchain {
   Device *m_device;
   VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
-  SmallVector<TextureHandleView, 3> m_textures;
+  SmallVector<Handle<Texture>, 3> m_textures;
   unsigned m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info;
 
@@ -53,7 +53,7 @@ public:
   void acquireImage(Handle<Semaphore> signal_semaphore);
   void presentImage(Handle<Semaphore> wait_semaphore);
 
-  auto getTexture() const -> TextureHandleView;
+  auto getTexture() const -> TextureView;
 };
 
 } // namespace ren

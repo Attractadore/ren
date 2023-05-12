@@ -2,6 +2,7 @@
 #include "DebugNames.hpp"
 #include "Handle.hpp"
 #include "Support/Optional.hpp"
+#include "Support/StdDef.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -19,59 +20,39 @@ struct BufferCreateInfo {
   REN_DEBUG_NAME_FIELD("Buffer");
   BufferHeap heap = BufferHeap::Device;
   VkBufferUsageFlags usage = 0;
-  size_t size;
+  usize size;
 };
-
-struct BufferView;
 
 struct Buffer {
   VkBuffer handle;
   VmaAllocation allocation;
   std::byte *ptr;
-  uint64_t address;
-  size_t size;
+  u64 address;
+  usize size;
   BufferHeap heap;
   VkBufferUsageFlags usage;
-
-public:
-  operator BufferView() const;
 };
 
 struct BufferView {
-  std::reference_wrapper<const Buffer> buffer;
-  size_t offset = 0;
-  size_t size = 0;
+  Handle<Buffer> buffer;
+  usize offset = 0;
+  usize size = 0;
 
 public:
-  auto operator->() const -> const Buffer *;
+  static auto try_from_buffer(const Device &device, Handle<Buffer> buffer)
+      -> Optional<BufferView>;
 
-  auto get_descriptor() const -> VkDescriptorBufferInfo;
+  static auto from_buffer(const Device &device, Handle<Buffer> buffer)
+      -> BufferView;
 
   template <typename T = std::byte>
-  auto map(size_t map_offset = 0) const -> T * {
-    const auto &buffer = this->buffer.get();
-    if (buffer.ptr) {
-      return (T *)(buffer.ptr + offset + map_offset);
-    }
-    return nullptr;
-  }
+  auto map(const Device &device, usize map_offset = 0) const -> T *;
 
-  auto subbuffer(size_t offset, size_t size) const -> BufferView;
+  auto get_address(const Device &device, u64 map_offset = 0) const -> u64;
 
-  auto subbuffer(size_t offset) const -> BufferView;
+  auto subbuffer(usize offset, usize size) const -> BufferView;
+
+  auto subbuffer(usize offset) const -> BufferView;
 };
-
-#if 1
-struct BufferHandleView {
-  Handle<Buffer> buffer;
-  size_t offset = 0;
-  size_t size = 0;
-
-public:
-  auto subbuffer(size_t offset, size_t size) const -> BufferHandleView;
-
-  auto subbuffer(size_t offset) const -> BufferHandleView;
-};
-#endif
 
 } // namespace ren
