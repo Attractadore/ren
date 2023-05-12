@@ -63,7 +63,7 @@ private:
 
   Vector<Handle<Texture>> m_images = {{}};
 
-  PipelineLayout m_pipeline_layout = {};
+  Handle<PipelineLayout> m_pipeline_layout;
 
   Handle<DescriptorPool> m_persistent_descriptor_pool;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;

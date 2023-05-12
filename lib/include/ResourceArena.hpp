@@ -33,6 +33,10 @@ private:
     destroy_descriptor_set_layout(layout);
   }
 
+  void destroy(Handle<PipelineLayout> layout) {
+    destroy_pipeline_layout(layout);
+  }
+
   template <typename T> void clear() {
     auto &handles = get_type_arena<T>();
     for (auto handle : handles) {
@@ -102,6 +106,10 @@ public:
     return pool;
   }
 
+  void destroy_descriptor_pool(Handle<DescriptorPool> pool) {
+    m_device->destroy_descriptor_pool(pool);
+  }
+
   auto create_descriptor_set_layout(
       const DescriptorSetLayoutCreateInfo &&create_info) {
     auto layout =
@@ -110,20 +118,27 @@ public:
     return layout;
   }
 
-  void destroy_descriptor_pool(Handle<DescriptorPool> pool) {
-    m_device->destroy_descriptor_pool(pool);
-  }
-
   void destroy_descriptor_set_layout(Handle<DescriptorSetLayout> layout) {
     m_device->destroy_descriptor_set_layout(layout);
+  }
+
+  auto create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
+      -> Handle<PipelineLayout> {
+    auto layout = m_device->create_pipeline_layout(std::move(create_info));
+    push_back(layout);
+    return layout;
+  }
+
+  void destroy_pipeline_layout(Handle<PipelineLayout> layout) {
+    m_device->destroy_pipeline_layout(layout);
   }
 
   void clear() { (clear<Ts>(), ...); }
 };
 
 using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, DescriptorPool, DescriptorSetLayout, Sampler,
-                      Semaphore, Texture>;
+    ResourceArenaImpl<Buffer, DescriptorPool, DescriptorSetLayout,
+                      PipelineLayout, Sampler, Semaphore, Texture>;
 
 } // namespace detail
 

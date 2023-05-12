@@ -1,6 +1,7 @@
 #pragma once
 #include "Descriptors.hpp"
 #include "Formats.hpp"
+#include "Support/Handle.hpp"
 
 #include <span>
 
@@ -8,23 +9,16 @@ namespace ren {
 
 class Device;
 
-struct PipelineLayoutDesc {
-  StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> set_layouts;
+struct PipelineLayoutCreateInfo {
+  REN_DEBUG_NAME_FIELD("Pipeline layout");
+  std::span<const Handle<DescriptorSetLayout>> set_layouts;
   VkPushConstantRange push_constants;
 };
 
-struct PipelineLayoutRef {
-  PipelineLayoutDesc *desc;
-  VkPipelineLayout handle;
-};
-
 struct PipelineLayout {
-  std::shared_ptr<PipelineLayoutDesc> desc;
-  SharedHandle<VkPipelineLayout> handle;
-
-  operator PipelineLayoutRef() const {
-    return {.desc = desc.get(), .handle = handle.get()};
-  }
+  VkPipelineLayout handle;
+  StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> set_layouts;
+  VkPushConstantRange push_constants;
 };
 
 struct GraphicsPipelineDesc {
@@ -83,7 +77,7 @@ struct GraphicsPipeline {
 };
 
 struct GraphicsPipelineConfig {
-  PipelineLayoutRef layout;
+  Handle<PipelineLayout> layout;
   StaticVector<std::string, 2> entry_points;
   StaticVector<VkPipelineShaderStageCreateInfo, 2> shaders;
   GraphicsPipelineDesc desc;
@@ -96,7 +90,7 @@ class GraphicsPipelineBuilder {
 public:
   explicit GraphicsPipelineBuilder(Device &device) : m_device(&device) {}
 
-  auto set_layout(PipelineLayoutRef layout) -> GraphicsPipelineBuilder & {
+  auto set_layout(Handle<PipelineLayout> layout) -> GraphicsPipelineBuilder & {
     m_config.layout = layout;
     return *this;
   }

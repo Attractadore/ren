@@ -206,20 +206,21 @@ void CommandBuffer::bind_graphics_pipeline(GraphicsPipelineRef pipeline) {
 }
 
 void CommandBuffer::bind_descriptor_sets(
-    VkPipelineBindPoint bind_point, PipelineLayoutRef layout,
+    VkPipelineBindPoint bind_point, Handle<PipelineLayout> layout,
     unsigned first_set, std::span<const VkDescriptorSet> sets) {
-  m_device->CmdBindDescriptorSets(m_cmd_buffer, bind_point, layout.handle,
-                                  first_set, sets.size(), sets.data(), 0,
-                                  nullptr);
+  m_device->CmdBindDescriptorSets(
+      m_cmd_buffer, bind_point, m_device->get_pipeline_layout(layout).handle,
+      first_set, sets.size(), sets.data(), 0, nullptr);
 }
 
-void CommandBuffer::set_push_constants(PipelineLayoutRef layout,
+void CommandBuffer::set_push_constants(Handle<PipelineLayout> layout,
                                        VkShaderStageFlags stages,
                                        std::span<const std::byte> data,
                                        unsigned offset) {
   assert(not(stages & VK_SHADER_STAGE_COMPUTE_BIT));
-  m_device->CmdPushConstants(m_cmd_buffer, layout.handle, stages, offset,
-                             data.size(), data.data());
+  m_device->CmdPushConstants(m_cmd_buffer,
+                             m_device->get_pipeline_layout(layout).handle,
+                             stages, offset, data.size(), data.data());
 }
 
 void CommandBuffer::bind_index_buffer(const BufferView &buffer,

@@ -102,7 +102,7 @@ auto merge_set_layout_bindings(
   return result;
 }
 
-auto reflect_descriptor_set_layouts(Device &device, ResourceArena &arena,
+auto reflect_descriptor_set_layouts(ResourceArena &arena,
                                     const AssetLoader &loader)
     -> StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> {
   Vector<std::byte> buffer;
@@ -146,11 +146,13 @@ auto reflect_descriptor_set_layouts(Device &device, ResourceArena &arena,
              StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS>>();
 }
 
-auto reflect_material_pipeline_layout(Device &device, ResourceArena &arena,
+auto reflect_material_pipeline_layout(ResourceArena &arena,
                                       const AssetLoader &loader)
-    -> PipelineLayout {
-  return device.create_pipeline_layout({
-      .set_layouts = reflect_descriptor_set_layouts(device, arena, loader),
+    -> Handle<PipelineLayout> {
+  auto set_layouts = reflect_descriptor_set_layouts(arena, loader);
+  return arena.create_pipeline_layout({
+      REN_SET_DEBUG_NAME("Material pipeline layout"),
+      .set_layouts = set_layouts,
       .push_constants =
           {
               .stageFlags =
@@ -167,13 +169,14 @@ Scene::Scene(Device &device)
       m_cmd_allocator(*m_device) {
   m_asset_loader.add_search_directory(c_assets_directory);
 
-  m_pipeline_layout = reflect_material_pipeline_layout(
-      *m_device, m_persistent_arena, m_asset_loader);
+  m_pipeline_layout =
+      reflect_material_pipeline_layout(m_persistent_arena, m_asset_loader);
 
   std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
       allocate_descriptor_pool_and_set(
           *m_device, m_persistent_arena,
-          m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]);
+          m_device->get_pipeline_layout(m_pipeline_layout)
+              .set_layouts[hlsl::PERSISTENT_SET]);
 }
 
 void Scene::next_frame() {
@@ -336,10 +339,10 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
     });
     m_samplers.push_back(sampler);
 
-    DescriptorSetWriter(
-        m_persistent_descriptor_set,
-        m_device->get_descriptor_set_layout(
-            m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]))
+    DescriptorSetWriter(m_persistent_descriptor_set,
+                        m_device->get_descriptor_set_layout(
+                            m_device->get_pipeline_layout(m_pipeline_layout)
+                                .set_layouts[hlsl::PERSISTENT_SET]))
         .add_sampler(hlsl::SAMPLERS_SLOT, m_device->get_sampler(sampler), index)
         .write(*m_device);
   }
@@ -354,10 +357,10 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   TextureView view = m_device->get_texture(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
 
-  DescriptorSetWriter(
-      m_persistent_descriptor_set,
-      m_device->get_descriptor_set_layout(
-          m_pipeline_layout.desc->set_layouts[hlsl::PERSISTENT_SET]))
+  DescriptorSetWriter(m_persistent_descriptor_set,
+                      m_device->get_descriptor_set_layout(
+                          m_device->get_pipeline_layout(m_pipeline_layout)
+                              .set_layouts[hlsl::PERSISTENT_SET]))
       .add_texture(hlsl::TEXTURES_SLOT, m_device->getVkImageView(view), index)
       .write(*m_device);
 
@@ -621,7 +624,7 @@ struct ColorPassConfig {
 
   VkDescriptorSet persistent_set;
 
-  PipelineLayoutRef pipeline_layout;
+  Handle<PipelineLayout> pipeline_layout;
 
   std::span<const RGBufferID> uploaded_vertex_buffers;
   std::span<const RGBufferID> uploaded_index_buffers;
@@ -669,7 +672,8 @@ static void run_color_pass(Device &device, CommandBuffer &cmd, RenderGraph &rg,
 
   auto global_set = [&] {
     auto set = rg.allocate_descriptor_set(
-        cfg.pipeline_layout.desc->set_layouts[hlsl::GLOBAL_SET]);
+        device.get_pipeline_layout(cfg.pipeline_layout)
+            .set_layouts[hlsl::GLOBAL_SET]);
     set.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
         .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
         .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)

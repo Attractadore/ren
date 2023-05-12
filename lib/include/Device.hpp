@@ -161,6 +161,8 @@ class Device : public InstanceFunctionsMixin<Device>,
 
   HandleMap<DescriptorSetLayout> m_descriptor_set_layouts;
 
+  HandleMap<PipelineLayout> m_pipeline_layouts;
+
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
          VkPhysicalDevice adapter);
@@ -281,8 +283,17 @@ public:
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
 
-  [[nodiscard]] auto create_pipeline_layout(const PipelineLayoutDesc &desc)
-      -> PipelineLayout;
+  [[nodiscard]] auto
+  create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
+      -> Handle<PipelineLayout>;
+
+  void destroy_pipeline_layout(Handle<PipelineLayout> layout);
+
+  auto try_get_pipeline_layout(Handle<PipelineLayout> layout) const
+      -> Optional<const PipelineLayout &>;
+
+  auto get_pipeline_layout(Handle<PipelineLayout> layout) const
+      -> const PipelineLayout &;
 
   [[nodiscard]] auto create_shader_module(std::span<const std::byte> code)
       -> SharedHandle<VkShaderModule>;

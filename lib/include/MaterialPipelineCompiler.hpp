@@ -19,7 +19,7 @@ public:
 
 struct MaterialPipelineConfig {
   MaterialConfig material;
-  PipelineLayoutRef layout;
+  Handle<PipelineLayout> layout;
   VkFormat rt_format;
   VkFormat depth_format;
 };

@@ -90,14 +90,16 @@ public:
   void bind_graphics_pipeline(GraphicsPipelineRef pipeline);
 
   void bind_descriptor_sets(VkPipelineBindPoint bind_point,
-                            PipelineLayoutRef layout, unsigned first_set,
+                            Handle<PipelineLayout> layout, unsigned first_set,
                             std::span<const VkDescriptorSet> sets);
 
-  void set_push_constants(PipelineLayoutRef layout, VkShaderStageFlags stages,
+  void set_push_constants(Handle<PipelineLayout> layout,
+                          VkShaderStageFlags stages,
                           std::span<const std::byte> data, unsigned offset = 0);
 
-  void set_push_constants(PipelineLayoutRef layout, VkShaderStageFlags stages,
-                          const auto &data, unsigned offset = 0) {
+  void set_push_constants(Handle<PipelineLayout> layout,
+                          VkShaderStageFlags stages, const auto &data,
+                          unsigned offset = 0) {
     set_push_constants(layout, stages, std::as_bytes(asSpan(data)), offset);
   }
 

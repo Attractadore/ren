@@ -26,6 +26,8 @@ namespace ren {
       return VK_OBJECT_TYPE_DESCRIPTOR_POOL;                                   \
     } else if constexpr (std::same_as<T, VkDescriptorSetLayout>) {             \
       return VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;                             \
+    } else if constexpr (std::same_as<T, VkPipelineLayout>) {                  \
+      return VK_OBJECT_TYPE_PIPELINE_LAYOUT;                                   \
     }                                                                          \
     throw("Unknown debug object type");                                        \
   }                                                                            \
@@ -728,7 +730,7 @@ auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
 
   VkSemaphore semaphore;
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
-                "Vulkan: Failed to binary semaphore");
+                "Vulkan: Failed to create semaphore");
   ren_set_debug_name(semaphore, create_info.debug_name.c_str());
 
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
@@ -859,7 +861,7 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
       .pDepthStencilState = &config.desc.depth_stencil_info,
       .pColorBlendState = &config.desc.blend_info,
       .pDynamicState = &config.desc.dynamic_state_info,
-      .layout = config.layout.handle,
+      .layout = get_pipeline_layout(config.layout).handle,
   };
 
   VkPipeline pipeline;
@@ -875,10 +877,10 @@ auto Device::create_graphics_pipeline(GraphicsPipelineConfig config)
   };
 }
 
-auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
-    -> PipelineLayout {
+auto Device::create_pipeline_layout(
+    const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout> {
   auto layouts =
-      desc.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
+      create_info.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
         return get_descriptor_set_layout(layout).handle;
       }) |
       ranges::to<StaticVector<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS>>;
@@ -888,17 +890,36 @@ auto Device::create_pipeline_layout(const PipelineLayoutDesc &desc)
       .setLayoutCount = unsigned(layouts.size()),
       .pSetLayouts = layouts.data(),
       .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &desc.push_constants,
+      .pPushConstantRanges = &create_info.push_constants,
   };
 
   VkPipelineLayout layout;
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
+  ren_set_debug_name(layout, create_info.debug_name.c_str());
 
-  return {.desc = std::make_shared<PipelineLayoutDesc>(desc),
-          .handle = {layout, [this](VkPipelineLayout layout) {
-                       push_to_delete_queue(layout);
-                     }}};
+  return m_pipeline_layouts.emplace(PipelineLayout{
+      .handle = layout,
+      .set_layouts{create_info.set_layouts},
+      .push_constants = create_info.push_constants,
+  });
+}
+
+void Device::destroy_pipeline_layout(Handle<PipelineLayout> layout) {
+  m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
+    push_to_delete_queue(layout.handle);
+  });
+}
+
+auto Device::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
+    -> Optional<const PipelineLayout &> {
+  return m_pipeline_layouts.get(layout);
+}
+
+auto Device::get_pipeline_layout(Handle<PipelineLayout> layout) const
+    -> const PipelineLayout & {
+  assert(m_pipeline_layouts.contains(layout));
+  return m_pipeline_layouts[layout];
 }
 
 auto Device::queuePresent(const VkPresentInfoKHR &present_info) -> VkResult {
