@@ -19,70 +19,13 @@
 
 namespace ren {
 
-static MeshMap::key_type get_mesh_key(RenMesh mesh) {
-  return std::bit_cast<MeshMap::key_type>(mesh - 1);
+template <typename T, typename H> static auto get_id(Handle<H> handle) {
+  return std::bit_cast<T>(std::bit_cast<unsigned>(handle) -
+                          std::bit_cast<unsigned>(Handle<H>()));
 }
 
-static RenMesh get_mesh_id(MeshMap::key_type mesh_key) {
-  return std::bit_cast<RenMesh>(std::bit_cast<RenMesh>(mesh_key) + 1);
-}
-
-static MeshInstanceMap::key_type get_mesh_inst_key(RenMeshInst mesh_inst) {
-  return std::bit_cast<MeshInstanceMap::key_type>(mesh_inst - 1);
-}
-
-static RenMeshInst get_mesh_inst_id(MeshInstanceMap::key_type mesh_inst_key) {
-  return std::bit_cast<RenMeshInst>(std::bit_cast<RenMeshInst>(mesh_inst_key) +
-                                    1);
-}
-
-static DirLightMap::key_type get_dir_light_key(RenDirLight dir_light) {
-  return std::bit_cast<DirLightMap::key_type>(dir_light - 1);
-}
-
-static RenDirLight get_dir_light_id(DirLightMap::key_type dir_light_key) {
-  return std::bit_cast<RenDirLight>(std::bit_cast<RenDirLight>(dir_light_key) +
-                                    1);
-}
-
-static auto get_mesh(const MeshMap &m_meshes, RenMesh mesh) -> const Mesh & {
-  auto key = get_mesh_key(mesh);
-  assert(m_meshes.contains(key) && "Unknown mesh");
-  return m_meshes[key];
-}
-
-static auto get_mesh(MeshMap &m_meshes, RenMesh mesh) -> Mesh & {
-  auto key = get_mesh_key(mesh);
-  assert(m_meshes.contains(key) && "Unknown mesh");
-  return m_meshes[key];
-}
-
-static auto get_mesh_inst(const MeshInstanceMap &mesh_insts,
-                          RenMeshInst mesh_inst) -> const MeshInst & {
-  auto key = get_mesh_inst_key(mesh_inst);
-  assert(mesh_insts.contains(key) && "Unknown mesh instance");
-  return mesh_insts[key];
-}
-
-static auto get_mesh_inst(MeshInstanceMap &mesh_insts, RenMeshInst mesh_inst)
-    -> MeshInst & {
-  auto key = get_mesh_inst_key(mesh_inst);
-  assert(mesh_insts.contains(key) && "Unknown mesh instance");
-  return mesh_insts[key];
-}
-
-auto get_dir_light(const DirLightMap &m_dir_lights, RenDirLight light)
-    -> const hlsl::DirLight & {
-  auto key = get_dir_light_key(light);
-  assert(m_dir_lights.contains(key) && "Unknown light");
-  return m_dir_lights[key];
-}
-
-auto get_dir_light(DirLightMap &m_dir_lights, RenDirLight light)
-    -> hlsl::DirLight & {
-  auto key = get_dir_light_key(light);
-  assert(m_dir_lights.contains(key) && "Unknown light");
-  return m_dir_lights[key];
+template <typename H, typename T> static auto get_handle(T id) {
+  return std::bit_cast<Handle<H>>(id + std::bit_cast<T>(Handle<H>()));
 }
 
 namespace {
@@ -319,7 +262,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   auto key = m_meshes.emplace(std::move(mesh));
 
-  return get_mesh_id(key);
+  return get_id<RenMesh>(key);
 }
 
 auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
@@ -451,52 +394,55 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
 void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
   for (const auto &desc : descs) {
-    *(out++) = get_mesh_inst_id(m_mesh_insts.insert({
-        .mesh = desc.mesh,
+    auto mesh_inst = m_mesh_insts.insert({
+        .mesh = get_handle<Mesh>(desc.mesh),
         .material = desc.material,
         .matrix = glm::mat4(1.0f),
-    }));
+    });
+    *out = get_id<RenMeshInst>(mesh_inst);
+    ++out;
   }
 }
 
 void Scene::destroy_mesh_insts(
     std::span<const RenMeshInst> mesh_insts) noexcept {
-  for (auto mesh_inst : mesh_insts)
-    m_mesh_insts.erase(get_mesh_inst_key(mesh_inst));
+  for (auto mesh_inst : mesh_insts) {
+    m_mesh_insts.erase(get_handle<MeshInst>(mesh_inst));
+  }
 }
 
 void Scene::set_mesh_inst_matrices(
     std::span<const RenMeshInst> mesh_insts,
     std::span<const RenMatrix4x4> matrices) noexcept {
-  for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices))
-    get_mesh_inst(m_mesh_insts, mesh_inst).matrix = glm::make_mat4(matrix[0]);
+  for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices)) {
+    m_mesh_insts[get_handle<MeshInst>(mesh_inst)].matrix =
+        glm::make_mat4(matrix[0]);
+  }
 }
 
 void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
                               RenDirLight *out) {
   for (const auto &desc : descs) {
-    auto key = m_dir_lights.insert(hlsl::DirLight{
+    auto light = m_dir_lights.insert(hlsl::DirLight{
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
     });
-    *out = get_dir_light_id(key);
+    *out = get_id<RenDirLight>(light);
     ++out;
   }
 };
 
 void Scene::destroy_dir_lights(std::span<const RenDirLight> lights) noexcept {
   for (auto light : lights) {
-    auto key = get_dir_light_key(light);
-    assert(m_dir_lights.contains(key) && "Unknown light");
-    m_dir_lights.erase(key);
+    m_dir_lights.erase(get_handle<hlsl::DirLight>(light));
   }
 }
 
 void Scene::config_dir_lights(std::span<const RenDirLight> lights,
                               std::span<const RenDirLightDesc> descs) {
   for (const auto &[light, desc] : zip(lights, descs)) {
-    get_dir_light(m_dir_lights, light) = {
+    m_dir_lights[get_handle<hlsl::DirLight>(light)] = {
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
@@ -505,8 +451,8 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 }
 
 struct UploadDataPassConfig {
-  const DenseSlotMap<MeshInst> *mesh_insts;
-  const DenseSlotMap<hlsl::DirLight> *dir_lights;
+  const DenseHandleMap<MeshInst> *mesh_insts;
+  const DenseHandleMap<hlsl::DirLight> *dir_lights;
   std::span<const hlsl::Material> materials;
 };
 
@@ -621,9 +567,9 @@ struct ColorPassConfig {
 
   unsigned num_dir_lights;
 
-  const DenseSlotMap<Mesh> *meshes;
+  const HandleMap<Mesh> *meshes;
   std::span<const Handle<GraphicsPipeline>> material_pipelines;
-  const DenseSlotMap<MeshInst> *mesh_insts;
+  const DenseHandleMap<MeshInst> *mesh_insts;
 
   VkDescriptorSet persistent_set;
 
@@ -694,7 +640,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
                            0, descriptor_sets);
 
   for (const auto &&[i, mesh_inst] : enumerate(cfg.mesh_insts->values())) {
-    const auto &mesh = get_mesh(*cfg.meshes, mesh_inst.mesh);
+    const auto &mesh = (*cfg.meshes)[mesh_inst.mesh];
     auto material = mesh_inst.material;
 
     cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);

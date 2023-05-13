@@ -1,13 +1,13 @@
 #pragma once
-#include "ren/ren.h"
+#include "Mesh.hpp"
 
 #include <glm/glm.hpp>
 
 namespace ren {
 
 struct MeshInst {
-  RenMesh mesh;
-  RenMaterial material;
+  Handle<Mesh> mesh;
+  unsigned material;
   glm::mat4 matrix;
 };
 

@@ -3,6 +3,7 @@
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
+#include "DenseHandleMap.hpp"
 #include "DescriptorSetAllocator.hpp"
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
@@ -18,10 +19,6 @@
 namespace ren {
 
 class Swapchain;
-
-using MeshMap = DenseSlotMap<Mesh>;
-using MeshInstanceMap = DenseSlotMap<MeshInst>;
-using DirLightMap = DenseSlotMap<hlsl::DirLight>;
 
 REN_NEW_TYPE(SamplerID, unsigned);
 REN_NEW_TYPE(TextureID, unsigned);
@@ -41,7 +38,7 @@ class Scene {
 
   Camera m_camera;
 
-  MeshMap m_meshes;
+  HandleMap<Mesh> m_meshes;
 
   Vector<RenSampler> m_sampler_descs;
   Vector<Handle<Sampler>> m_samplers;
@@ -59,7 +56,7 @@ public:
   unsigned m_viewport_height = 720;
 
 private:
-  MeshInstanceMap m_mesh_insts;
+  DenseHandleMap<MeshInst> m_mesh_insts;
 
   Vector<Handle<Texture>> m_images = {{}};
 
@@ -68,7 +65,7 @@ private:
   Handle<DescriptorPool> m_persistent_descriptor_pool;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
-  DirLightMap m_dir_lights;
+  DenseHandleMap<hlsl::DirLight> m_dir_lights;
 
   ResourceArena m_persistent_arena;
   ResourceArena m_frame_arena;
