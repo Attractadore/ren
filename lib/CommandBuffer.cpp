@@ -113,7 +113,7 @@ void CommandBuffer::begin_rendering(TextureView color_target) {
   ColorAttachment color_attachment = {.texture = color_target};
   std::array color_attachments = {Optional<ColorAttachment>(color_attachment)};
 
-  auto size = color_target.get_size(*m_device);
+  auto size = m_device->get_texture_view_size(color_target);
   begin_rendering(0, 0, size.x, size.y, color_attachments);
 }
 
@@ -134,9 +134,9 @@ void CommandBuffer::begin_rendering(TextureView color_target,
       .depth = DepthStencilAttachment::Depth{},
   };
 
-  auto size = color_target.get_size(*m_device);
-  assert(
-      glm::all(glm::greaterThanEqual(depth_target.get_size(*m_device), size)));
+  auto size = m_device->get_texture_view_size(color_target);
+  assert(glm::all(glm::greaterThanEqual(
+      m_device->get_texture_view_size(depth_target), size)));
   begin_rendering(0, 0, size.x, size.y, color_attachments, depth_attachment);
 }
 

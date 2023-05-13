@@ -215,7 +215,7 @@ void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
 }
 
 auto Swapchain::getTexture() const -> TextureView {
-  return TextureView::from_texture(*m_device, m_textures[m_image_index]);
+  return m_device->get_texture_view(m_textures[m_image_index]);
 }
 
 } // namespace ren

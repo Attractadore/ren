@@ -55,14 +55,6 @@ struct TextureView {
   u16 num_array_layers = 0;
 
 public:
-  static auto try_from_texture(const Device &device, Handle<Texture> texture)
-      -> Optional<TextureView>;
-
-  static auto from_texture(const Device &device, Handle<Texture> texture)
-      -> TextureView;
-
-  auto get_size(const Device &device, u16 mip_level_offset = 0) -> glm::uvec3;
-
   bool operator==(const TextureView &) const = default;
 };
 

@@ -299,7 +299,7 @@ auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
   unsigned index = m_num_textures++;
   assert(index < hlsl::NUM_TEXTURES);
 
-  auto view = TextureView::from_texture(*m_device, m_images[texture.image]);
+  auto view = m_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
 
   DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
@@ -776,10 +776,9 @@ void Scene::draw(Swapchain &swapchain) {
 
   auto uploaded_textures =
       m_staged_textures | map([&](Handle<Texture> texture) {
-        return rgb.import_texture(TextureView::from_texture(*m_device, texture),
-                                  VK_ACCESS_2_TRANSFER_READ_BIT,
-                                  VK_PIPELINE_STAGE_2_BLIT_BIT,
-                                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        return rgb.import_texture(
+            m_device->get_texture_view(texture), VK_ACCESS_2_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
       }) |
       ranges::to<Vector>();
   m_staged_textures.clear();

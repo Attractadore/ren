@@ -250,6 +250,14 @@ public:
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
+  auto try_get_texture_view(Handle<Texture> texture) const
+      -> Optional<TextureView>;
+
+  auto get_texture_view(Handle<Texture> texture) const -> TextureView;
+
+  auto get_texture_view_size(const TextureView &view,
+                             u16 mip_level_offset = 0) const -> glm::uvec3;
+
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
   [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)

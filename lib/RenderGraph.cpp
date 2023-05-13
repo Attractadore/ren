@@ -376,9 +376,9 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
                                swapchain_texture.first_array_layer,
                            .layerCount = 1},
     };
-    auto src_size = src_texture.get_size(device);
+    auto src_size = device.get_texture_view_size(src_texture);
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-    auto dst_size = swapchain_texture.get_size(device);
+    auto dst_size = device.get_texture_view_size(swapchain_texture);
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(src_texture.texture, swapchain_texture.texture, region,
              VK_FILTER_LINEAR);
@@ -501,17 +501,16 @@ void RenderGraph::Builder::schedule_passes() {
 void RenderGraph::Builder::create_textures(const Device &device,
                                            ResourceArena &arena) {
   for (const auto &[texture, create_info] : m_texture_create_infos) {
-    m_textures[texture] = TextureView::from_texture(
-        device, arena.create_texture({
-                    REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-                    .type = create_info.type,
-                    .format = create_info.format,
-                    .usage = m_texture_usage_flags[texture],
-                    .width = create_info.width,
-                    .height = create_info.height,
-                    .array_layers = create_info.array_layers,
-                    .mip_levels = create_info.mip_levels,
-                }));
+    m_textures[texture] = device.get_texture_view(arena.create_texture({
+        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+        .type = create_info.type,
+        .format = create_info.format,
+        .usage = m_texture_usage_flags[texture],
+        .width = create_info.width,
+        .height = create_info.height,
+        .array_layers = create_info.array_layers,
+        .mip_levels = create_info.mip_levels,
+    }));
   }
   for (auto [texture, physical_texture] : enumerate(m_physical_textures)) {
     m_textures[texture] = m_textures[physical_texture];

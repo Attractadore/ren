@@ -563,6 +563,67 @@ auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
+static auto get_texture_default_view_type(VkImageType type,
+                                          u16 num_array_layers)
+    -> VkImageViewType {
+  if (num_array_layers > 1) {
+    switch (type) {
+    default:
+      break;
+    case VK_IMAGE_TYPE_1D:
+      return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+    case VK_IMAGE_TYPE_2D:
+      return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    }
+  } else {
+    switch (type) {
+    default:
+      break;
+    case VK_IMAGE_TYPE_1D:
+      return VK_IMAGE_VIEW_TYPE_1D;
+    case VK_IMAGE_TYPE_2D:
+      return VK_IMAGE_VIEW_TYPE_2D;
+    case VK_IMAGE_TYPE_3D:
+      return VK_IMAGE_VIEW_TYPE_3D;
+    }
+  }
+  unreachable("Invalid VkImageType/array_layers combination:", int(type),
+              num_array_layers);
+}
+
+auto Device::try_get_texture_view(Handle<Texture> handle) const
+    -> Optional<TextureView> {
+  return try_get_texture(handle).map([&](const Texture &texture) {
+    return TextureView{
+        .texture = handle,
+        .type = get_texture_default_view_type(texture.type,
+                                              texture.num_array_layers),
+        .format = texture.format,
+        .num_mip_levels = texture.num_mip_levels,
+        .num_array_layers = texture.num_array_layers,
+    };
+  });
+}
+
+auto Device::get_texture_view(Handle<Texture> handle) const -> TextureView {
+  const auto &texture = get_texture(handle);
+  return {
+      .texture = handle,
+      .type =
+          get_texture_default_view_type(texture.type, texture.num_array_layers),
+      .format = texture.format,
+      .num_mip_levels = texture.num_mip_levels,
+      .num_array_layers = texture.num_array_layers,
+  };
+}
+
+auto Device::get_texture_view_size(const TextureView &view,
+                                   u16 mip_level_offset) const -> glm::uvec3 {
+  assert(view.first_mip_level + mip_level_offset <= view.num_mip_levels);
+  return get_size_at_mip_level(get_texture(view.texture).size,
+                               view.first_mip_level + mip_level_offset);
+}
+
 auto Device::getVkImageView(const TextureView &view) -> VkImageView {
   auto [it, inserted] = m_image_views[view.texture].insert(view, nullptr);
   auto &image_view = std::get<1>(*it);
