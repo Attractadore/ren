@@ -1,5 +1,4 @@
 #include "ResourceUploader.hpp"
-#include "Buffer.inl"
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
@@ -113,15 +112,14 @@ static void upload_texture(const Device &device, CommandBuffer &cmd,
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
                                      Handle<Texture> texture) {
-  auto staging_buffer = BufferView::from_buffer(
-      device, arena.create_buffer({
-                  REN_SET_DEBUG_NAME("Staging buffer"),
-                  .heap = BufferHeap::Upload,
-                  .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                  .size = data.size_bytes(),
-              }));
+  auto staging_buffer = device.get_buffer_view(arena.create_buffer({
+      REN_SET_DEBUG_NAME("Staging buffer"),
+      .heap = BufferHeap::Upload,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      .size = data.size_bytes(),
+  }));
 
-  auto *ptr = staging_buffer.map(device);
+  auto *ptr = device.map_buffer(staging_buffer);
   ranges::copy(data, ptr);
 
   m_texture_srcs.push_back(staging_buffer);

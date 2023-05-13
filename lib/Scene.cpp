@@ -1,5 +1,4 @@
 #include "Scene.hpp"
-#include "Buffer.inl"
 #include "Camera.inl"
 #include "CommandAllocator.hpp"
 #include "Descriptors.hpp"
@@ -7,7 +6,6 @@
 #include "Errors.hpp"
 #include "Formats.inl"
 #include "RenderGraph.hpp"
-#include "ResourceUploader.inl"
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
 #include "hlsl/encode.h"
@@ -191,22 +189,22 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   auto index_buffer_size = desc.num_indices * sizeof(unsigned);
 
   Mesh mesh = {
-      .vertex_buffer = BufferView::from_buffer(
-          *m_device, m_persistent_arena.create_buffer({
-                         REN_SET_DEBUG_NAME("Vertex buffer"),
-                         .heap = BufferHeap::Device,
-                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                         .size = vertex_buffer_size,
-                     })),
-      .index_buffer = BufferView::from_buffer(
-          *m_device, m_persistent_arena.create_buffer({
-                         REN_SET_DEBUG_NAME("Index buffer"),
-                         .heap = BufferHeap::Device,
-                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                         .size = index_buffer_size,
-                     })),
+      .vertex_buffer =
+          m_device->get_buffer_view(m_persistent_arena.create_buffer({
+              REN_SET_DEBUG_NAME("Vertex buffer"),
+              .heap = BufferHeap::Device,
+              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+              .size = vertex_buffer_size,
+          })),
+      .index_buffer =
+          m_device->get_buffer_view(m_persistent_arena.create_buffer({
+              REN_SET_DEBUG_NAME("Index buffer"),
+              .heap = BufferHeap::Device,
+              .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                       VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+              .size = index_buffer_size,
+          })),
       .num_vertices = desc.num_vertices,
       .num_indices = desc.num_indices,
       .index_format = VK_INDEX_TYPE_UINT32,
@@ -252,11 +250,11 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
-  if (!mesh.vertex_buffer.map(*m_device)) {
+  if (!m_device->map_buffer(mesh.vertex_buffer)) {
     m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
   }
 
-  if (!mesh.index_buffer.map(*m_device)) {
+  if (!m_device->map_buffer(mesh.index_buffer)) {
     m_staged_index_buffers.push_back(mesh.index_buffer);
   }
 
@@ -476,13 +474,13 @@ static void run_upload_data_pass(Device &device, RenderGraph &rg,
                                  const UploadDataPassResources &rcs) {
   auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
   auto *transform_matrices =
-      transform_matrix_buffer.map<hlsl::model_matrix_t>(device);
+      device.map_buffer<hlsl::model_matrix_t>(transform_matrix_buffer);
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
   auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
   auto *normal_matrices =
-      normal_matrix_buffer.map<hlsl::normal_matrix_t>(device);
+      device.map_buffer<hlsl::normal_matrix_t>(normal_matrix_buffer);
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
@@ -490,12 +488,12 @@ static void run_upload_data_pass(Device &device, RenderGraph &rg,
 
   rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
     auto dir_lights_buffer = rg.get_buffer(buffer);
-    auto *dir_lights = dir_lights_buffer.map<hlsl::DirLight>(device);
+    auto *dir_lights = device.map_buffer<hlsl::DirLight>(dir_lights_buffer);
     ranges::copy(cfg.dir_lights->values(), dir_lights);
   });
 
   auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
-  auto *materials = materials_buffer.map<hlsl::Material>(device);
+  auto *materials = device.map_buffer<hlsl::Material>(materials_buffer);
   ranges::copy(cfg.materials, materials);
 }
 
@@ -606,7 +604,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
   auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-  auto *global_data = global_data_buffer.map<hlsl::GlobalData>(device);
+  auto *global_data = device.map_buffer<hlsl::GlobalData>(global_data_buffer);
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
@@ -645,7 +643,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
     cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
 
-    auto address = mesh.vertex_buffer.get_address(device);
+    auto address = device.get_buffer_device_address(mesh.vertex_buffer);
     auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];

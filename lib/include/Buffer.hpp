@@ -39,17 +39,6 @@ struct BufferView {
   usize size = 0;
 
 public:
-  static auto try_from_buffer(const Device &device, Handle<Buffer> buffer)
-      -> Optional<BufferView>;
-
-  static auto from_buffer(const Device &device, Handle<Buffer> buffer)
-      -> BufferView;
-
-  template <typename T = std::byte>
-  auto map(const Device &device, usize map_offset = 0) const -> T *;
-
-  auto get_address(const Device &device, u64 map_offset = 0) const -> u64;
-
   auto subbuffer(usize offset, usize size) const -> BufferView;
 
   auto subbuffer(usize offset) const -> BufferView;

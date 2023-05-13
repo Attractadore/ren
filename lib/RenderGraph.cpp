@@ -520,13 +520,12 @@ void RenderGraph::Builder::create_textures(const Device &device,
 void RenderGraph::Builder::create_buffers(const Device &device,
                                           ResourceArena &arena) {
   for (const auto &[buffer, create_info] : m_buffer_create_infos) {
-    m_buffers[buffer] = BufferView::from_buffer(
-        device, arena.create_buffer({
-                    REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-                    .heap = create_info.heap,
-                    .usage = m_buffer_usage_flags[buffer],
-                    .size = create_info.size,
-                }));
+    m_buffers[buffer] = device.get_buffer_view(arena.create_buffer({
+        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+        .heap = create_info.heap,
+        .usage = m_buffer_usage_flags[buffer],
+        .size = create_info.size,
+    }));
   }
   for (auto [buffer, physical_buffer] : enumerate(m_physical_buffers)) {
     m_buffers[buffer] = m_buffers[physical_buffer];

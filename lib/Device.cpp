@@ -478,8 +478,35 @@ auto Device::try_get_buffer(Handle<Buffer> buffer) const
 };
 
 auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
+  assert(m_buffers.contains(buffer));
   return m_buffers[buffer];
 };
+
+auto Device::try_get_buffer_view(Handle<Buffer> handle) const
+    -> Optional<BufferView> {
+  return try_get_buffer(handle).map([&](const Buffer &buffer) {
+    return BufferView{
+        .buffer = handle,
+        .size = buffer.size,
+    };
+  });
+};
+
+auto Device::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
+  const auto &buffer = get_buffer(handle);
+  return {
+      .buffer = handle,
+      .size = buffer.size,
+  };
+};
+
+auto Device::get_buffer_device_address(const BufferView &view,
+                                       u64 map_offset) const -> u64 {
+  auto addr = get_buffer(view.buffer).address;
+  if (!addr)
+    return 0;
+  return addr + view.offset + map_offset;
+}
 
 auto Device::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {

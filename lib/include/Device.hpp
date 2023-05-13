@@ -236,6 +236,26 @@ public:
 
   auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
 
+  auto try_get_buffer_view(Handle<Buffer> buffer) const -> Optional<BufferView>;
+
+  auto get_buffer_view(Handle<Buffer> buffer) const -> BufferView;
+
+  template <typename T = std::byte>
+  auto map_buffer(Handle<Buffer> buffer, usize map_offset = 0) const -> T * {
+    auto *ptr = get_buffer(buffer).ptr;
+    if (!ptr)
+      return nullptr;
+    return (T *)(ptr + map_offset);
+  }
+
+  template <typename T = std::byte>
+  auto map_buffer(const BufferView &view, usize map_offset = 0) const -> T * {
+    return map_buffer<T>(view.buffer, view.offset + map_offset);
+  }
+
+  auto get_buffer_device_address(const BufferView &view,
+                                 u64 map_offset = 0) const -> u64;
+
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
       -> Handle<Texture>;
 
