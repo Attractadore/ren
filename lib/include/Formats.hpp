@@ -2,6 +2,8 @@
 #include "Support/Enum.hpp"
 #include "ren/ren.h"
 
+#include <vulkan/vulkan.h>
+
 namespace ren {
 
 #define REN_FORMAT_PROPERTIES (Color)(SRGB)(Depth)(Stencil)

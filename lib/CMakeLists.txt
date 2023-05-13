@@ -21,13 +21,14 @@ find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-expected REQUIRED)
+find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
 target_link_libraries(Support INTERFACE Boost::boost Boost::container fmt::fmt
-                                        range-v3::range-v3)
+                                        range-v3::range-v3 tl::optional)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
@@ -39,23 +40,29 @@ target_precompile_headers(
   Support-PCH
   INTERFACE
   <array>
+  <chrono>
+  <deque>
   <functional>
   <memory>
   <optional>
+  <iostream>
   <queue>
   <span>
   <tuple>
   <unordered_map>
+  <unordered_set>
   <variant>
   <vector>
+  <boost/container/flat_map.hpp>
+  <boost/container/flat_set.hpp>
   <boost/container/small_vector.hpp>
   <boost/container/static_vector.hpp>
   <fmt/format.h>
-  <glm/glm.hpp>
   <range/v3/action.hpp>
   <range/v3/algorithm.hpp>
   <range/v3/range.hpp>
-  <range/v3/view.hpp>)
+  <range/v3/view.hpp>
+  <tl/optional.hpp>)
 
 file(
   CONFIGURE
@@ -120,6 +127,9 @@ target_link_libraries(
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>
                           <vk_mem_alloc.h> <vulkan/vulkan.h>)
+target_compile_definitions(
+  ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=1
+              VMA_STATS_STRING_ENABLED=0)
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)

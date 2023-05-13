@@ -12,7 +12,6 @@
 #include "Support/Optional.hpp"
 #include "Support/Queue.hpp"
 #include "Support/TypeMap.hpp"
-#include "VMA.hpp"
 
 #include <chrono>
 #include <functional>

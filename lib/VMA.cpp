@@ -1,2 +1,2 @@
 #define VMA_IMPLEMENTATION
-#include "VMA.hpp"
+#include <vk_mem_alloc.h>

@@ -5,6 +5,9 @@
 #include "Support/StdDef.hpp"
 #include "ren/ren.h"
 
+#include <glm/glm.hpp>
+#include <vk_mem_alloc.h>
+
 namespace ren {
 
 class Device;
