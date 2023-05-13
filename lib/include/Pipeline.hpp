@@ -33,6 +33,7 @@ struct MultisampleInfo {
 
 struct DepthTestInfo {
   VkFormat format = VK_FORMAT_UNDEFINED;
+  bool write_depth = true;
   VkCompareOp compare_op = VK_COMPARE_OP_GREATER;
 };
 

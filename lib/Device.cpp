@@ -797,6 +797,8 @@ auto Device::create_graphics_pipeline(
 
   create_info.depth_test.map([&](const DepthTestInfo &depth_test) {
     rendering_info.depthAttachmentFormat = depth_test.format;
+    depth_stencil_info.depthTestEnable = true;
+    depth_stencil_info.depthWriteEnable = depth_test.write_depth;
     depth_stencil_info.depthCompareOp = depth_test.compare_op;
   });
 
