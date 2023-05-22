@@ -513,7 +513,7 @@ impl ViewGLTFApp {
         }
         scene.create_dir_light(&DirLightDesc {
             color: [1.0, 1.0, 1.0],
-            illuminance: 1.0,
+            illuminance: 25_000.0,
             origin: [0.0, 0.0, 1.0],
         })?;
         let mut camera = Camera::new();
@@ -554,12 +554,17 @@ impl App for ViewGLTFApp {
         self.time = now;
         self.controller.consume_movement_input(dt.as_secs_f32());
         self.controller.consume_rotation_input();
+        let aperture = 8.0;
+        let iso = 400.0;
         scene.set_camera(&CameraDesc {
             projection: CameraProjection::Perspective {
                 hfov: 90f32.to_radians(),
             },
             width,
             height,
+            aperture,
+            shutter_time: 1.0 / iso,
+            exposure_mode: ren::ExposureMode::Camera { iso },
             position: self.controller.camera.position.to_array(),
             forward: self.controller.camera.get_forward_vector().to_array(),
             up: self.controller.camera.get_up_vector().to_array(),

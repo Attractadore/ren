@@ -18,20 +18,20 @@ use ffi::{
     RenMaterial, RenMaterialDesc, RenMesh, RenMeshDesc, RenMeshInst, RenMeshInstDesc,
     RenOrthographicProjection, RenPFNCreateSurface, RenPerspectiveProjection, RenProjection,
     RenResult, RenSampler, RenScene, RenSwapchain, RenTexture, RenTextureChannel,
-    RenTextureChannelSwizzle, RenTonemappingACES, RenTonemappingDesc,
-    RenTonemappingDesc__bindgen_ty_1, RenWrappingMode, REN_ALPHA_MODE_BLEND, REN_ALPHA_MODE_MASK,
-    REN_ALPHA_MODE_OPAQUE, REN_EXPOSURE_MODE_AUTOMATIC, REN_EXPOSURE_MODE_CAMERA,
-    REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_R16_UNORM, REN_FORMAT_R8_SRGB,
-    REN_FORMAT_R8_UNORM, REN_FORMAT_RG16_UNORM, REN_FORMAT_RG8_SRGB, REN_FORMAT_RG8_UNORM,
-    REN_FORMAT_RGB16_UNORM, REN_FORMAT_RGB32_SFLOAT, REN_FORMAT_RGB8_SRGB, REN_FORMAT_RGB8_UNORM,
-    REN_FORMAT_RGBA16_UNORM, REN_FORMAT_RGBA32_SFLOAT, REN_FORMAT_RGBA8_SRGB,
-    REN_FORMAT_RGBA8_UNORM, REN_NULL_DIR_LIGHT, REN_NULL_IMAGE, REN_NULL_MATERIAL, REN_NULL_MESH,
-    REN_NULL_MESH_INST, REN_PROJECTION_ORTHOGRAPHIC, REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR,
-    REN_SUCCESS, REN_SYSTEM_ERROR, REN_TEXTURE_CHANNEL_A, REN_TEXTURE_CHANNEL_B,
-    REN_TEXTURE_CHANNEL_G, REN_TEXTURE_CHANNEL_IDENTITY, REN_TEXTURE_CHANNEL_ONE,
-    REN_TEXTURE_CHANNEL_R, REN_TEXTURE_CHANNEL_ZERO, REN_TONEMAPPING_OPERATOR_ACES,
-    REN_TONEMAPPING_OPERATOR_NONE, REN_TONEMAPPING_OPERATOR_REINHARD, REN_VULKAN_ERROR,
-    REN_WRAPPING_MODE_CLAMP_TO_EDGE, REN_WRAPPING_MODE_MIRRORED_REPEAT, REN_WRAPPING_MODE_REPEAT,
+    RenTextureChannelSwizzle, RenTonemappingOperator, RenWrappingMode, REN_ALPHA_MODE_BLEND,
+    REN_ALPHA_MODE_MASK, REN_ALPHA_MODE_OPAQUE, REN_EXPOSURE_MODE_AUTOMATIC,
+    REN_EXPOSURE_MODE_CAMERA, REN_FILTER_LINEAR, REN_FILTER_NEAREST, REN_FORMAT_R16_UNORM,
+    REN_FORMAT_R8_SRGB, REN_FORMAT_R8_UNORM, REN_FORMAT_RG16_UNORM, REN_FORMAT_RG8_SRGB,
+    REN_FORMAT_RG8_UNORM, REN_FORMAT_RGB16_UNORM, REN_FORMAT_RGB32_SFLOAT, REN_FORMAT_RGB8_SRGB,
+    REN_FORMAT_RGB8_UNORM, REN_FORMAT_RGBA16_UNORM, REN_FORMAT_RGBA32_SFLOAT,
+    REN_FORMAT_RGBA8_SRGB, REN_FORMAT_RGBA8_UNORM, REN_NULL_DIR_LIGHT, REN_NULL_IMAGE,
+    REN_NULL_MATERIAL, REN_NULL_MESH, REN_NULL_MESH_INST, REN_PROJECTION_ORTHOGRAPHIC,
+    REN_PROJECTION_PERSPECTIVE, REN_RUNTIME_ERROR, REN_SUCCESS, REN_SYSTEM_ERROR,
+    REN_TEXTURE_CHANNEL_A, REN_TEXTURE_CHANNEL_B, REN_TEXTURE_CHANNEL_G,
+    REN_TEXTURE_CHANNEL_IDENTITY, REN_TEXTURE_CHANNEL_ONE, REN_TEXTURE_CHANNEL_R,
+    REN_TEXTURE_CHANNEL_ZERO, REN_TONEMAPPING_OPERATOR_ACES, REN_TONEMAPPING_OPERATOR_REINHARD,
+    REN_VULKAN_ERROR, REN_WRAPPING_MODE_CLAMP_TO_EDGE, REN_WRAPPING_MODE_MIRRORED_REPEAT,
+    REN_WRAPPING_MODE_REPEAT,
 };
 
 const UUID_SIZE: usize = 16;
@@ -475,27 +475,15 @@ impl From<CameraDesc> for RenCameraDesc {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TonemappingOperator {
-    None,
     Reinhard,
     ACES,
 }
 
-impl From<TonemappingOperator> for RenTonemappingDesc {
+impl From<TonemappingOperator> for RenTonemappingOperator {
     fn from(operator: TonemappingOperator) -> Self {
-        RenTonemappingDesc {
-            oper: match operator {
-                TonemappingOperator::None => REN_TONEMAPPING_OPERATOR_NONE,
-                TonemappingOperator::Reinhard => REN_TONEMAPPING_OPERATOR_REINHARD,
-                TonemappingOperator::ACES => REN_TONEMAPPING_OPERATOR_ACES,
-            },
-            __bindgen_anon_1: match operator {
-                TonemappingOperator::None | TonemappingOperator::Reinhard => unsafe {
-                    mem::zeroed()
-                },
-                TonemappingOperator::ACES => RenTonemappingDesc__bindgen_ty_1 {
-                    aces: RenTonemappingACES { unused: 0 },
-                },
-            },
+        match operator {
+            TonemappingOperator::Reinhard => REN_TONEMAPPING_OPERATOR_REINHARD,
+            TonemappingOperator::ACES => REN_TONEMAPPING_OPERATOR_ACES,
         }
     }
 }
@@ -1019,11 +1007,11 @@ impl Scene {
         }
     }
 
-    pub fn set_tonemapping(&mut self, operator: &TonemappingOperator) -> Result<(), Error> {
+    pub fn set_tonemapping(&mut self, operator: TonemappingOperator) -> Result<(), Error> {
         unsafe {
             Error::new(ffi::ren_SetSceneTonemapping(
                 self.handle.get_mut(),
-                &(*operator).into(),
+                operator.into(),
             ))
         }
     }
