@@ -64,17 +64,6 @@ target_precompile_headers(
   <range/v3/view.hpp>
   <tl/optional.hpp>)
 
-file(
-  CONFIGURE
-  OUTPUT
-  GeneratedConfig.hpp
-  CONTENT
-  "#pragma once
-namespace ren {
-constexpr const char* c_assets_directory = \"${REN_ASSETS_OUTPUT_DIRECTORY}\";
-}
-")
-
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
 set(VULKAN_SPEC_XML
     $<TARGET_PROPERTY:Vulkan::Registry,INTERFACE_INCLUDE_DIRECTORIES>/vk.xml)
@@ -92,7 +81,6 @@ add_custom_command(
 add_library(
   ren
   ren.cpp
-  AssetLoader.cpp
   Buffer.cpp
   CommandAllocator.cpp
   CommandBuffer.cpp
@@ -100,14 +88,17 @@ add_library(
   Descriptors.cpp
   Device.cpp
   Formats.cpp
+  FreeListAllocator.cpp
   MaterialPipelineCompiler.cpp
   Pipeline.cpp
-  Reflection.cpp
+  PipelineLoading.cpp
+  PostprocessPasses.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
+  TextureIDAllocator.cpp
   VMA.cpp
   ${DISPATCH_TABLE_CPP})
 target_sources(
@@ -123,7 +114,16 @@ target_link_libraries(
   ren
   PRIVATE Support Support-PCH glm::glm Vulkan::Headers
           unofficial::spirv-reflect::spirv-reflect
-          unofficial::vulkan-memory-allocator::vulkan-memory-allocator)
+          unofficial::vulkan-memory-allocator::vulkan-memory-allocator
+
+          ReflectionFragmentShader
+          ReflectionVertexShader
+
+          FragmentShader
+          VertexShader
+
+          ReinhardTonemapShader
+          )
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>
                           <vk_mem_alloc.h> <vulkan/vulkan.h>)

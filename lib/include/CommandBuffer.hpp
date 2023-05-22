@@ -91,6 +91,8 @@ public:
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
+  void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
+
   void bind_descriptor_sets(VkPipelineBindPoint bind_point,
                             Handle<PipelineLayout> layout, unsigned first_set,
                             std::span<const VkDescriptorSet> sets);
@@ -116,6 +118,11 @@ public:
   };
 
   void draw_indexed(const DrawIndexedInfo &&draw_info);
+
+  void dispatch(unsigned num_groups_x, unsigned num_groups_y = 1,
+                unsigned num_groups_z = 1);
+  void dispatch(glm::uvec2 num_groups);
+  void dispatch(glm::uvec3 num_groups);
 
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 

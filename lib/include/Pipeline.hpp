@@ -66,4 +66,15 @@ struct GraphicsPipeline {
   StaticVector<ColorAttachmentInfo, MAX_COLOR_ATTACHMENTS> color_attachments;
 };
 
+struct ComputePipelineCreateInfo {
+  REN_DEBUG_NAME_FIELD("Compute pipeline");
+  Handle<PipelineLayout> layout;
+  ShaderInfo shader;
+};
+
+struct ComputePipeline {
+  VkPipeline handle;
+  Handle<PipelineLayout> layout;
+};
+
 } // namespace ren

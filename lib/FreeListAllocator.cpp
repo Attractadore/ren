@@ -1,0 +1,25 @@
+#include "FreeListAllocator.hpp"
+
+namespace ren {
+
+auto FreeListAllocator::allocate() -> unsigned {
+  if (!m_free_list.empty()) {
+    auto idx = m_free_list.back();
+    m_free_list.pop_back();
+    return idx;
+  }
+  return m_top++;
+}
+
+void FreeListAllocator::free(unsigned idx) {
+  assert(idx);
+  m_frame_freed[m_frame_index].push_back(idx);
+}
+
+void FreeListAllocator::next_frame() {
+  m_frame_index = (m_frame_index + 1) % c_pipeline_depth;
+  m_free_list.append(m_frame_freed[m_frame_index]);
+  m_frame_freed[m_frame_index].clear();
+}
+
+} // namespace ren

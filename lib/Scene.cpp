@@ -5,10 +5,14 @@
 #include "Device.hpp"
 #include "Errors.hpp"
 #include "Formats.inl"
+#include "PipelineLoading.hpp"
+#include "PostprocessPasses.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
+#include "hlsl/color_interface.hpp"
 #include "hlsl/encode.h"
+#include "hlsl/interface.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>
@@ -26,99 +30,38 @@ template <typename H, typename T> static auto get_handle(T id) {
   return std::bit_cast<Handle<H>>(id + std::bit_cast<T>(Handle<H>()));
 }
 
-namespace {
-
-auto merge_set_layout_bindings(
-    std::span<const DescriptorBinding, MAX_DESCIPTOR_BINDINGS> lhs,
-    std::span<const DescriptorBinding, MAX_DESCIPTOR_BINDINGS> rhs)
-    -> std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> {
-  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> result = {};
-  for (auto &&[result, lhs, rhs] : zip(result, lhs, rhs)) {
-    if (lhs.stages) {
-      result = lhs;
-    } else {
-      result = rhs;
-    }
-    result.stages |= lhs.stages | rhs.stages;
-  }
-  return result;
-}
-
-auto reflect_descriptor_set_layouts(ResourceArena &arena,
-                                    const AssetLoader &loader)
-    -> StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> {
-  Vector<std::byte> buffer;
-  std::array shaders = {
-      "ReflectionVertexShader.spv",
-      "ReflectionFragmentShader.spv",
-  };
-
-  StaticVector<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
-               MAX_DESCRIPTOR_SETS>
-      set_layout_bindings;
-  for (auto shader : shaders) {
-    loader.load_file(shader, buffer);
-    auto shader_set_layout_bindings = get_set_layout_bindings(buffer);
-    for (auto &&[bindings, shader_bindings] :
-         zip(set_layout_bindings, shader_set_layout_bindings)) {
-      bindings = merge_set_layout_bindings(bindings, shader_bindings);
-    }
-    set_layout_bindings.append(shader_set_layout_bindings |
-                               ranges::views::drop(set_layout_bindings.size()));
-  }
-
-  return enumerate(set_layout_bindings) | map([&](auto &&p) {
-           auto &[index, bindings] = p;
-           VkDescriptorSetLayoutCreateFlags flags = 0;
-           if (index == hlsl::PERSISTENT_SET) {
-             flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-             bindings[hlsl::SAMPLERS_SLOT].flags |=
-                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-             bindings[hlsl::TEXTURES_SLOT].flags |=
-                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-           }
-           return arena.create_descriptor_set_layout({
-               .flags = flags,
-               .bindings = bindings,
-           });
-         }) |
-         ranges::to<
-             StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS>>();
-}
-
-auto reflect_material_pipeline_layout(ResourceArena &arena,
-                                      const AssetLoader &loader)
-    -> Handle<PipelineLayout> {
-  auto set_layouts = reflect_descriptor_set_layouts(arena, loader);
-  return arena.create_pipeline_layout({
-      REN_SET_DEBUG_NAME("Material pipeline layout"),
-      .set_layouts = set_layouts,
-      .push_constants =
-          {
-              .stageFlags =
-                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-              .size = sizeof(hlsl::PushConstants),
-          },
-  });
-}
-
-} // namespace
-
 Scene::Scene(Device &device)
-    : m_device(&device), m_persistent_arena(device), m_frame_arena(device),
-      m_cmd_allocator(*m_device) {
-  m_asset_loader.add_search_directory(c_assets_directory);
+    : Scene([&device] {
+        ResourceArena persistent_arena(device);
 
-  m_pipeline_layout =
-      reflect_material_pipeline_layout(m_persistent_arena, m_asset_loader);
+        auto persistent_descriptor_set_layout =
+            create_persistent_descriptor_set_layout(persistent_arena);
+        auto [persistent_descriptor_pool, persistent_descriptor_set] =
+            allocate_descriptor_pool_and_set(device, persistent_arena,
+                                             persistent_descriptor_set_layout);
 
-  std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
-      allocate_descriptor_pool_and_set(
-          *m_device, m_persistent_arena,
-          m_device->get_pipeline_layout(m_pipeline_layout)
-              .set_layouts[hlsl::PERSISTENT_SET]);
+        return Scene(device, std::move(persistent_arena),
+                     persistent_descriptor_set_layout,
+                     persistent_descriptor_pool, persistent_descriptor_set,
+                     TextureIDAllocator(device, persistent_descriptor_set,
+                                        persistent_descriptor_set_layout));
+      }()) {}
+
+Scene::Scene(Device &device, ResourceArena persistent_arena,
+             Handle<DescriptorSetLayout> persistent_descriptor_set_layout,
+             Handle<DescriptorPool> persistent_descriptor_pool,
+             VkDescriptorSet persistent_descriptor_set,
+             TextureIDAllocator tex_alloc)
+    : m_device(&device), m_persistent_arena(std::move(persistent_arena)),
+      m_frame_arena(device),
+      m_persistent_descriptor_set_layout(persistent_descriptor_set_layout),
+      m_persistent_descriptor_pool(persistent_descriptor_pool),
+      m_persistent_descriptor_set(persistent_descriptor_set),
+      m_texture_allocator(std::move(tex_alloc)), m_cmd_allocator(device) {
+  m_pipeline_layout = create_color_pass_pipeline_layout(
+      m_persistent_arena, m_persistent_descriptor_set_layout);
+  m_pp_pipelines = load_postprocessing_pipelines(
+      m_persistent_arena, m_persistent_descriptor_set_layout);
 }
 
 void Scene::next_frame() {
@@ -126,6 +69,7 @@ void Scene::next_frame() {
   m_device->next_frame();
   m_cmd_allocator.next_frame();
   m_descriptor_set_allocator.next_frame(*m_device);
+  m_texture_allocator.next_frame();
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
@@ -269,44 +213,31 @@ auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
       ranges::find_if(m_sampler_descs, [&](const RenSampler &sampler) {
         return std::memcmp(&sampler, &texture.sampler, sizeof(sampler)) == 0;
       }));
-  assert(index < hlsl::NUM_SAMPLERS);
 
-  if (index == m_sampler_descs.size()) {
-    m_sampler_descs.push_back(texture.sampler);
-
-    auto sampler = m_persistent_arena.create_sampler({
-        .mag_filter = getVkFilter(texture.sampler.mag_filter),
-        .min_filter = getVkFilter(texture.sampler.min_filter),
-        .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
-        .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
-        .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
-    });
-    m_samplers.push_back(sampler);
-
-    DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
-                        m_device->get_pipeline_layout(m_pipeline_layout)
-                            .set_layouts[hlsl::PERSISTENT_SET])
-        .add_sampler(hlsl::SAMPLERS_SLOT, sampler, index)
-        .write();
+  if (index != m_sampler_descs.size()) {
+    return SamplerID(index);
   }
 
-  return SamplerID{index};
+  m_sampler_descs.push_back(texture.sampler);
+
+  auto sampler = m_persistent_arena.create_sampler({
+      .mag_filter = getVkFilter(texture.sampler.mag_filter),
+      .min_filter = getVkFilter(texture.sampler.min_filter),
+      .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
+      .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
+      .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
+  });
+  m_samplers.push_back(sampler);
+
+  return m_texture_allocator.allocate_sampler(sampler);
 }
 
-auto Scene::get_or_create_texture(const RenTexture &texture) -> TextureID {
-  unsigned index = m_num_textures++;
-  assert(index < hlsl::NUM_TEXTURES);
-
+auto Scene::get_or_create_texture(const RenTexture &texture)
+    -> SampledTextureID {
   auto view = m_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
 
-  DescriptorSetWriter(*m_device, m_persistent_descriptor_set,
-                      m_device->get_pipeline_layout(m_pipeline_layout)
-                          .set_layouts[hlsl::PERSISTENT_SET])
-      .add_texture(hlsl::TEXTURES_SLOT, view, index)
-      .write();
-
-  return TextureID{index};
+  return m_texture_allocator.allocate_sampled_texture(view);
 }
 
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
@@ -340,13 +271,12 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
         return *pipeline;
       }
       return m_compiler.compile_material_pipeline(
-          m_persistent_arena, m_asset_loader,
-          MaterialPipelineConfig{
-              .material = desc,
-              .layout = m_pipeline_layout,
-              .rt_format = m_rt_format,
-              .depth_format = m_depth_format,
-          });
+          m_persistent_arena, MaterialPipelineConfig{
+                                  .material = desc,
+                                  .layout = m_pipeline_layout,
+                                  .rt_format = m_rt_format,
+                                  .depth_format = m_depth_format,
+                              });
     }();
 
     hlsl::Material material = {
@@ -382,12 +312,38 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
         case REN_PROJECTION_ORTHOGRAPHIC:
           return desc.orthographic;
         }
-        unreachable("Unknown projection {}", int(desc.projection));
+        unreachable("Unknown projection");
       }(),
   };
+
+  m_pp_opts.camera = {
+      .aperture = desc.aperture,
+      .shutter_time = desc.shutter_time,
+      .iso = desc.iso,
+  };
+
+  m_pp_opts.exposure = {
+      .compensation = desc.exposure_compensation,
+      .mode = [&]() -> PostprocessingOptions::Exposure::Mode {
+        switch (desc.exposure_mode) {
+        case REN_EXPOSURE_MODE_CAMERA:
+          return PostprocessingOptions::Exposure::Camera{};
+        case REN_EXPOSURE_MODE_AUTOMATIC:
+          return PostprocessingOptions::Exposure::Automatic{};
+        }
+        unreachable("Unknown exposure mode");
+      }(),
+  };
+
   m_viewport_width = desc.width;
   m_viewport_height = desc.height;
 }
+
+void Scene::set_tonemapping(RenTonemappingOperator oper) noexcept {
+  m_pp_opts.tonemapping = {
+      .oper = oper,
+  };
+};
 
 void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
@@ -569,7 +525,10 @@ struct ColorPassConfig {
   std::span<const Handle<GraphicsPipeline>> material_pipelines;
   const DenseHandleMap<MeshInst> *mesh_insts;
 
+  ResourceArena *arena;
+
   VkDescriptorSet persistent_set;
+  DescriptorSetAllocator *set_allocator;
 
   Handle<PipelineLayout> pipeline_layout;
 
@@ -618,19 +577,21 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
   auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
 
   auto global_set = [&] {
-    auto set = rg.allocate_descriptor_set(
-        device.get_pipeline_layout(cfg.pipeline_layout)
-            .set_layouts[hlsl::GLOBAL_SET]);
-    set.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
+    auto layout = device.get_pipeline_layout(cfg.pipeline_layout)
+                      .set_layouts[hlsl::GLOBAL_SET];
+    auto set = cfg.set_allocator->allocate(device, *cfg.arena, layout);
+
+    DescriptorSetWriter writer(device, set, layout);
+    writer.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
         .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
         .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
         .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
 
     dir_lights_buffer.map([&](const BufferView &buffer) {
-      set.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
+      writer.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
     });
 
-    return set.write();
+    return writer.write();
   }();
 
   std::array descriptor_sets = {cfg.persistent_set, global_set};
@@ -648,7 +609,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
     auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-    hlsl::PushConstants pcs = {
+    hlsl::ColorPushConstants pcs = {
         .matrix_index = unsigned(i),
         .material_index = material,
         .positions = address + positions_offset,
@@ -814,7 +775,9 @@ void Scene::draw(Swapchain &swapchain) {
             .meshes = &m_meshes,
             .material_pipelines = m_material_pipelines,
             .mesh_insts = &m_mesh_insts,
+            .arena = &m_persistent_arena,
             .persistent_set = m_persistent_descriptor_set,
+            .set_allocator = &m_descriptor_set_allocator,
             .pipeline_layout = m_pipeline_layout,
             .uploaded_vertex_buffers = uploaded_vertex_buffers,
             .uploaded_index_buffers = uploaded_index_buffers,
@@ -825,16 +788,14 @@ void Scene::draw(Swapchain &swapchain) {
             .materials_buffer = frame_resources.materials_buffer,
         });
 
-    // Post-process
-    auto pp = rgb.create_pass();
-    pp.set_desc("Post-process pass");
-    auto pprt = pp.write_texture(rt,
-                                 VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                     VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                                 VK_IMAGE_LAYOUT_GENERAL);
-    // rgb.set_desc(pprt, "Post-processed color buffer");
-    pp.set_callback([](Device &device, RenderGraph &rg, CommandBuffer &cmd) {});
+    auto [pprt] =
+        setup_postprocess_passes(*m_device, rgb,
+                                 PostprocessPassesConfig{
+                                     .texture = rt,
+                                     .options = m_pp_opts,
+                                     .texture_allocator = &m_texture_allocator,
+                                     .pipelines = m_pp_pipelines,
+                                 });
 
     rgb.present(swapchain, pprt,
                 m_frame_arena.create_semaphore(
@@ -844,8 +805,7 @@ void Scene::draw(Swapchain &swapchain) {
 
     auto rg = rgb.build(*m_device, m_frame_arena);
 
-    rg.execute(*m_device, m_persistent_arena, m_descriptor_set_allocator,
-               m_cmd_allocator);
+    rg.execute(*m_device, m_cmd_allocator);
   }
 
   next_frame();

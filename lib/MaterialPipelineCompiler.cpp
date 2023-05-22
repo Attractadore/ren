@@ -1,7 +1,9 @@
 #include "MaterialPipelineCompiler.hpp"
-#include "AssetLoader.hpp"
 #include "Device.hpp"
 #include "ResourceArena.hpp"
+
+#include "FragmentShader.h"
+#include "VertexShader.h"
 
 #include <fmt/format.h>
 
@@ -22,20 +24,21 @@ auto MaterialPipelineCompiler::get_material_pipeline(
 };
 
 auto MaterialPipelineCompiler::compile_material_pipeline(
-    ResourceArena &arena, const AssetLoader &loader,
-    const MaterialPipelineConfig &config) -> Handle<GraphicsPipeline> {
-  Vector<std::byte> vs, fs;
-  loader.load_file("VertexShader.spv", vs);
-  loader.load_file("FragmentShader.spv", fs);
-
+    ResourceArena &arena, const MaterialPipelineConfig &config)
+    -> Handle<GraphicsPipeline> {
   std::array color_attachments = {ColorAttachmentInfo{
       .format = config.rt_format,
   }};
-
   return m_pipelines[config.material] = arena.create_graphics_pipeline({
              .layout = config.layout,
-             .vertex_shader = {.code = vs},
-             .fragment_shader = ShaderInfo{.code = fs},
+             .vertex_shader =
+                 {
+                     .code = std::as_bytes(std::span(VertexShader)),
+                 },
+             .fragment_shader =
+                 ShaderInfo{
+                     .code = std::as_bytes(std::span(FragmentShader)),
+                 },
              .depth_test =
                  DepthTestInfo{
                      .format = config.depth_format,

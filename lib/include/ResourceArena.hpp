@@ -41,6 +41,10 @@ private:
     destroy_graphics_pipeline(pipeline);
   }
 
+  void destroy(Handle<ComputePipeline> pipeline) {
+    destroy_compute_pipeline(pipeline);
+  }
+
   template <typename T> void clear() {
     auto &handles = get_type_arena<T>();
     for (auto handle : handles) {
@@ -148,13 +152,24 @@ public:
     m_device->destroy_graphics_pipeline(pipeline);
   }
 
+  auto create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
+      -> Handle<ComputePipeline> {
+    auto pipeline = m_device->create_compute_pipeline(std::move(create_info));
+    push_back(pipeline);
+    return pipeline;
+  }
+
+  void destroy_compute_pipeline(Handle<ComputePipeline> pipeline) {
+    m_device->destroy_compute_pipeline(pipeline);
+  }
+
   void clear() { (clear<Ts>(), ...); }
 };
 
 using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, DescriptorPool, DescriptorSetLayout,
-                      GraphicsPipeline, PipelineLayout, Sampler, Semaphore,
-                      Texture>;
+    ResourceArenaImpl<Buffer, ComputePipeline, DescriptorPool,
+                      DescriptorSetLayout, GraphicsPipeline, PipelineLayout,
+                      Sampler, Semaphore, Texture>;
 
 } // namespace detail
 

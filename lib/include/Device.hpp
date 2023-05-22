@@ -5,7 +5,6 @@
 #include "DispatchTable.hpp"
 #include "HandleMap.hpp"
 #include "Pipeline.hpp"
-#include "Reflection.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
@@ -150,6 +149,7 @@ class Device : public InstanceFunctionsMixin<Device>,
   HandleMap<PipelineLayout> m_pipeline_layouts;
 
   HandleMap<GraphicsPipeline> m_graphics_pipelines;
+  HandleMap<ComputePipeline> m_compute_pipelines;
 
 public:
   Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
@@ -307,11 +307,23 @@ public:
 
   void destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
-  auto try_get_graphics_pipeline(Handle<GraphicsPipeline> layout) const
+  auto try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> Optional<const GraphicsPipeline &>;
 
-  auto get_graphics_pipeline(Handle<GraphicsPipeline> layout) const
+  auto get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> const GraphicsPipeline &;
+
+  [[nodiscard]] auto
+  create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
+      -> Handle<ComputePipeline>;
+
+  void destroy_compute_pipeline(Handle<ComputePipeline> pipeline);
+
+  auto try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+      -> Optional<const ComputePipeline &>;
+
+  auto get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+      -> const ComputePipeline &;
 
   [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
       -> Handle<Semaphore>;

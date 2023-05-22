@@ -273,15 +273,9 @@ RenResult ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
 }
 
 RenResult ren_SetSceneTonemapping(RenScene *scene,
-                                  const RenTonemappingDesc *desc) {
+                                  RenTonemappingOperator oper) {
   assert(scene);
-  assert(desc);
-  return lippincott([&] {
-    if (desc->oper != REN_TONEMAPPING_OPERATOR_NONE) {
-      ren::todo(fmt::format("{} tonemapping operator is not implemented!",
-                            desc->oper));
-    }
-  });
+  return lippincott([&] { scene->set_tonemapping(oper); });
 }
 
 RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,

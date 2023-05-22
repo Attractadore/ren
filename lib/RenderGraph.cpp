@@ -68,7 +68,8 @@ static auto get_buffer_usage_flags(VkAccessFlags2 accesses)
   }
   if (accesses & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
-    flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
   }
   if (accesses & VK_ACCESS_2_INDEX_READ_BIT) {
     flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
@@ -535,10 +536,16 @@ void RenderGraph::Builder::create_buffers(const Device &device,
 void RenderGraph::Builder::insert_barriers(Device &device) {
   for (auto &pass : m_passes) {
     auto memory_barriers = concat(pass.read_buffers, pass.write_buffers) |
-                           map([&](const BufferAccess &buffer_access) {
+                           filter_map([&](const BufferAccess &buffer_access)
+                                          -> Optional<VkMemoryBarrier2> {
                              auto physical_buffer =
                                  m_physical_buffers[buffer_access.buffer];
                              auto &state = m_buffer_states[physical_buffer];
+
+                             if (state.accesses == VK_ACCESS_2_NONE or
+                                 buffer_access.accesses == VK_ACCESS_2_NONE) {
+                               return None;
+                             }
 
                              VkMemoryBarrier2 barrier = {
                                  .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -638,13 +645,6 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
   }};
 }
 
-auto RenderGraph::allocate_descriptor_set(Handle<DescriptorSetLayout> layout)
-    -> DescriptorSetWriter {
-  return {*m_device,
-          m_set_allocator->allocate(*m_device, *m_persistent_arena, layout),
-          layout};
-}
-
 auto RenderGraph::get_texture(RGTextureID texture) const -> TextureView {
   assert(texture);
   return m_textures[texture];
@@ -655,13 +655,7 @@ auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
   return m_buffers[buffer];
 }
 
-void RenderGraph::execute(Device &device, ResourceArena &persistent_arena,
-                          DescriptorSetAllocator &set_allocator,
-                          CommandAllocator &cmd_allocator) {
-  m_device = &device;
-  m_persistent_arena = &persistent_arena;
-  m_set_allocator = &set_allocator;
-
+void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;
   SmallVector<VkSemaphoreSubmitInfo> wait_semaphores;
   SmallVector<VkSemaphoreSubmitInfo> signal_semaphores;

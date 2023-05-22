@@ -8,10 +8,13 @@
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
+#include "PipelineLoading.hpp"
+#include "Postprocessing.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
 #include "Support/NewType.hpp"
+#include "TextureIDAllocator.hpp"
 #include "hlsl/interface.hpp"
 #include "hlsl/lighting.hpp"
 #include "ren/ren.h"
@@ -20,13 +23,8 @@ namespace ren {
 
 class Swapchain;
 
-REN_NEW_TYPE(SamplerID, unsigned);
-REN_NEW_TYPE(TextureID, unsigned);
-
 class Scene {
   Device *m_device;
-
-  AssetLoader m_asset_loader;
 
   ResourceUploader m_resource_uploader;
   Vector<BufferView> m_staged_vertex_buffers;
@@ -37,13 +35,14 @@ class Scene {
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;
+  PostprocessingOptions m_pp_opts;
 
   HandleMap<Mesh> m_meshes;
 
   Vector<RenSampler> m_sampler_descs;
   Vector<Handle<Sampler>> m_samplers;
 
-  unsigned m_num_textures = 1;
+  TextureIDAllocator m_texture_allocator;
 
   Vector<hlsl::Material> m_materials = {{}};
   Vector<Handle<GraphicsPipeline>> m_material_pipelines = {{}};
@@ -63,6 +62,7 @@ private:
   Handle<PipelineLayout> m_pipeline_layout;
 
   Handle<DescriptorPool> m_persistent_descriptor_pool;
+  Handle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
   DenseHandleMap<hlsl::DirLight> m_dir_lights;
@@ -70,8 +70,17 @@ private:
   ResourceArena m_persistent_arena;
   ResourceArena m_frame_arena;
 
+  PostprocessingPipelines m_pp_pipelines;
+
 private:
   void next_frame();
+
+private:
+  Scene(Device &device, ResourceArena persistent_arena,
+        Handle<DescriptorSetLayout> persistent_descriptor_set_layout,
+        Handle<DescriptorPool> persistent_descriptor_pool,
+        VkDescriptorSet persistent_descriptor_set,
+        TextureIDAllocator tex_alloc);
 
 public:
   Scene(Device &device);
@@ -83,7 +92,7 @@ private:
       -> SamplerID;
 
   [[nodiscard]] auto get_or_create_texture(const RenTexture &texture)
-      -> TextureID;
+      -> SampledTextureID;
 
 public:
   RenImage create_image(const RenImageDesc &desc);
@@ -92,6 +101,8 @@ public:
                         RenMaterial *out);
 
   void set_camera(const RenCameraDesc &desc) noexcept;
+
+  void set_tonemapping(RenTonemappingOperator oper) noexcept;
 
   void create_mesh_insts(std::span<const RenMeshInstDesc> desc,
                          RenMeshInst *out);

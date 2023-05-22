@@ -1,26 +1,22 @@
+#include "color_interface.hlsl"
 #include "interface.hlsl"
 #include "lighting.hlsl"
 #include "material.hlsl"
 
-[[vk::binding(SAMPLERS_SLOT,
-              PERSISTENT_SET)]] SamplerState g_samplers[NUM_SAMPLERS];
-[[vk::binding(TEXTURES_SLOT, PERSISTENT_SET)]] Texture2D<float4>
-    g_textures[NUM_TEXTURES];
+[[vk::binding(SAMPLERS_SLOT, PERSISTENT_SET)]] SamplerState g_samplers[NUM_SAMPLERS];
+[[vk::binding(SAMPLED_TEXTURES_SLOT, PERSISTENT_SET)]] Texture2D<float4> g_textures[NUM_SAMPLED_TEXTURES];
 
-[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData>
-    g_global;
-[[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<Material>
-    g_materials;
-[[vk::binding(DIR_LIGHTS_SLOT, GLOBAL_SET)]] StructuredBuffer<DirLight>
-    g_dir_lights;
+[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData> g_global;
+[[vk::binding(MATERIALS_SLOT, GLOBAL_SET)]] StructuredBuffer<Material> g_materials;
+[[vk::binding(DIR_LIGHTS_SLOT, GLOBAL_SET)]] StructuredBuffer<DirLight> g_dir_lights;
+
+[[vk::push_constant]] ColorPushConstants g_pcs;
 
 #if REFLECTION
 
 float4 main() : SV_Target { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
 
 #else
-
-[[vk::push_constant]] PushConstants g_pcs;
 
 float4 main(FS_IN fs_in) : SV_Target {
   Material material = g_materials[g_pcs.material_index];
@@ -50,9 +46,6 @@ float4 main(FS_IN fs_in) : SV_Target {
     result.xyz += lighting(normal, light_dir, view_dir, color.xyz, metallic,
                            roughness, light_color * illuminance);
   }
-
-  // FIXME: placeholder Reinhard tonemapping
-  result.xyz /= (1.0f + result.xyz);
 
   return result;
 }

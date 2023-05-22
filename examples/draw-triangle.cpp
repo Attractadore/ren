@@ -47,7 +47,12 @@ public:
 
     m_mesh = scene.create_mesh(mesh_desc).value();
 
-    m_material = scene.create_material({.metallic_factor = 0.0f}).value();
+    m_material = scene
+                     .create_material({
+                         .metallic_factor = 1.0f,
+                         .roughness_factor = 0.5f,
+                     })
+                     .value();
 
     m_model = scene
                   .create_mesh_inst({
@@ -56,10 +61,11 @@ public:
                   })
                   .value();
 
+    // Ambient day light
     m_light = scene
                   .create_dir_light({
                       .color = {1.0f, 1.0f, 1.0f},
-                      .illuminance = 1.0f,
+                      .illuminance = 25'000.0f,
                       .origin = {0.0f, 0.0f, 1.0f},
                   })
                   .value();
@@ -68,9 +74,14 @@ public:
 protected:
   void iterate(unsigned width, unsigned height) override {
     auto &scene = get_scene();
+    // Expose for ambient day light
+    float iso = 400.0f;
     ren::CameraDesc desc = {
         .width = width,
         .height = height,
+        .aperture = 8.0f,
+        .shutter_time = 1.0f / iso,
+        .iso = iso,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},

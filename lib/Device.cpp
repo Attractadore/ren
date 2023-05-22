@@ -117,6 +117,7 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &vulkan11_features,
       .descriptorBindingSampledImageUpdateAfterBind = true,
+      .descriptorBindingStorageImageUpdateAfterBind = true,
       .descriptorBindingPartiallyBound = true,
       .scalarBlockLayout = true,
       .timelineSemaphore = true,
@@ -809,6 +810,20 @@ void Device::queueSubmit(
                 "Vulkan: Failed to submit work to queue");
 }
 
+static auto create_shader_module(Device &device,
+                                 std::span<const std::byte> code) {
+  assert(code.size() % sizeof(u32) == 0);
+  VkShaderModuleCreateInfo module_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = code.size(),
+      .pCode = reinterpret_cast<const u32 *>(code.data()),
+  };
+  VkShaderModule module;
+  throwIfFailed(device.CreateShaderModule(&module_info, &module),
+                "Vulkan: Failed to create shader module");
+  return module;
+}
+
 auto Device::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
     -> Handle<GraphicsPipeline> {
@@ -819,15 +834,7 @@ auto Device::create_graphics_pipeline(
   StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
 
   auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
-    assert(shader.code.size() % sizeof(u32) == 0);
-    VkShaderModuleCreateInfo module_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = shader.code.size(),
-        .pCode = reinterpret_cast<const u32 *>(shader.code.data()),
-    };
-    VkShaderModule module;
-    throwIfFailed(CreateShaderModule(&module_info, &module),
-                  "Vulkan: Failed to create shader module");
+    auto module = create_shader_module(*this, shader.code);
     shaders.push_back(VkPipelineShaderStageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage,
@@ -967,6 +974,52 @@ auto Device::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
     -> const GraphicsPipeline & {
   assert(m_graphics_pipelines.contains(pipeline));
   return m_graphics_pipelines[pipeline];
+}
+
+auto Device::create_compute_pipeline(
+    const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
+  auto module = create_shader_module(*this, create_info.shader.code);
+
+  VkComputePipelineCreateInfo pipeline_info = {
+      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+      .stage =
+          {
+              .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+              .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+              .module = module,
+              .pName = create_info.shader.entry_point,
+          },
+      .layout = get_pipeline_layout(create_info.layout).handle,
+  };
+
+  VkPipeline pipeline;
+  throwIfFailed(CreateComputePipelines(nullptr, 1, &pipeline_info, &pipeline),
+                "Vulkan: Failed to create compute pipeline");
+  ren_set_debug_name(pipeline, create_info.debug_name.c_str());
+  DestroyShaderModule(module);
+
+  return m_compute_pipelines.emplace(ComputePipeline{
+      .handle = pipeline,
+      .layout = create_info.layout,
+  });
+}
+
+void Device::destroy_compute_pipeline(Handle<ComputePipeline> pipeline) {
+  m_compute_pipelines.try_pop(pipeline).map(
+      [&](const ComputePipeline &pipeline) {
+        push_to_delete_queue(pipeline.handle);
+      });
+}
+
+auto Device::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+    -> Optional<const ComputePipeline &> {
+  return m_compute_pipelines.get(pipeline);
+}
+
+auto Device::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+    -> const ComputePipeline & {
+  assert(m_compute_pipelines.contains(pipeline));
+  return m_compute_pipelines[pipeline];
 }
 
 auto Device::create_pipeline_layout(

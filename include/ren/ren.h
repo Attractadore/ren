@@ -174,44 +174,9 @@ public:
 } RenCameraDesc;
 
 typedef enum {
-  REN_TONEMAPPING_OPERATOR_NONE = 0,
-  REN_TONEMAPPING_OPERATOR_REINHARD,
+  REN_TONEMAPPING_OPERATOR_REINHARD = 0,
   REN_TONEMAPPING_OPERATOR_ACES,
 } RenTonemappingOperator;
-
-typedef struct {
-  char unused;
-} RenTonemappingACES;
-
-/// Tone mapping parameters.
-typedef struct RenTonemappingDesc {
-  /// Operator to use.
-  RenTonemappingOperator oper;
-  union {
-    /// ACES parameters.
-    RenTonemappingACES aces;
-  };
-
-#ifdef __cplusplus
-public:
-  auto set_none() noexcept -> RenTonemappingDesc & {
-    oper = REN_TONEMAPPING_OPERATOR_NONE;
-    return *this;
-  }
-
-  auto set_reinhard() noexcept -> RenTonemappingDesc & {
-    oper = REN_TONEMAPPING_OPERATOR_REINHARD;
-    return *this;
-  }
-
-  auto set_aces(const RenTonemappingACES &aces) noexcept
-      -> RenTonemappingDesc & {
-    this->oper = REN_TONEMAPPING_OPERATOR_ACES;
-    this->aces = aces;
-    return *this;
-  }
-#endif
-} RenTonemappingDesc;
 
 /// The parameters of the mesh to be created.
 typedef struct RenMeshDesc {
@@ -476,7 +441,7 @@ REN_NODISCARD RenResult ren_SetSceneCamera(RenScene *scene,
                                            const RenCameraDesc *desc);
 
 REN_NODISCARD RenResult ren_SetSceneTonemapping(RenScene *scene,
-                                                const RenTonemappingDesc *desc);
+                                                RenTonemappingOperator oper);
 
 REN_NODISCARD RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,
                                        RenMesh *p_mesh);

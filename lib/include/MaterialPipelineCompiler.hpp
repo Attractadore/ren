@@ -8,8 +8,6 @@
 
 namespace ren {
 
-class AssetLoader;
-
 struct MaterialConfig {
 public:
   MaterialConfig(const RenMaterialDesc &desc) {}
@@ -40,7 +38,6 @@ public:
       -> Optional<Handle<GraphicsPipeline>>;
 
   auto compile_material_pipeline(ResourceArena &arena,
-                                 const AssetLoader &loader,
                                  const MaterialPipelineConfig &config)
       -> Handle<GraphicsPipeline>;
 };

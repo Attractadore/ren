@@ -1,22 +1,18 @@
+#include "color_interface.hlsl"
 #include "encode.h"
-#include "interface.hlsl"
+#include "memory.hlsl"
 
-[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData>
-    g_global;
-[[vk::binding(MODEL_MATRICES_SLOT,
-              GLOBAL_SET)]] StructuredBuffer<model_matrix_t>
-    g_model_matrices;
-[[vk::binding(NORMAL_MATRICES_SLOT,
-              GLOBAL_SET)]] StructuredBuffer<normal_matrix_t>
-    g_normal_matrices;
+[[vk::binding(GLOBAL_DATA_SLOT, GLOBAL_SET)]] ConstantBuffer<GlobalData> g_global;
+[[vk::binding(MODEL_MATRICES_SLOT,GLOBAL_SET)]] StructuredBuffer<model_matrix_t> g_model_matrices;
+[[vk::binding(NORMAL_MATRICES_SLOT, GLOBAL_SET)]] StructuredBuffer<normal_matrix_t> g_normal_matrices;
+
+[[vk::push_constant]] ColorPushConstants g_pcs;
 
 #if REFLECTION
 
 float4 main() : SV_Position { return float4(0.0f, 0.0f, 0.0f, 1.0f); }
 
 #else
-
-[[vk::push_constant]] PushConstants g_pcs;
 
 VS_OUT main(VS_IN vs_in) {
   VS_OUT vs_out;

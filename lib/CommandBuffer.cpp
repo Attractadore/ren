@@ -208,6 +208,11 @@ void CommandBuffer::bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
                             m_device->get_graphics_pipeline(pipeline).handle);
 }
 
+void CommandBuffer::bind_compute_pipeline(Handle<ComputePipeline> pipeline) {
+  m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            m_device->get_compute_pipeline(pipeline).handle);
+}
+
 void CommandBuffer::bind_descriptor_sets(
     VkPipelineBindPoint bind_point, Handle<PipelineLayout> layout,
     unsigned first_set, std::span<const VkDescriptorSet> sets) {
@@ -220,7 +225,6 @@ void CommandBuffer::set_push_constants(Handle<PipelineLayout> layout,
                                        VkShaderStageFlags stages,
                                        std::span<const std::byte> data,
                                        unsigned offset) {
-  assert(not(stages & VK_SHADER_STAGE_COMPUTE_BIT));
   m_device->CmdPushConstants(m_cmd_buffer,
                              m_device->get_pipeline_layout(layout).handle,
                              stages, offset, data.size(), data.data());
@@ -241,7 +245,25 @@ void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
                            draw_info.vertex_offset, draw_info.first_instance);
 }
 
+void CommandBuffer::dispatch(unsigned num_groups_x, unsigned num_groups_y,
+                             unsigned num_groups_z) {
+  m_device->CmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
+}
+
+void CommandBuffer::dispatch(glm::uvec2 num_groups) {
+  dispatch(num_groups.x, num_groups.y);
+}
+
+void CommandBuffer::dispatch(glm::uvec3 num_groups) {
+  dispatch(num_groups.x, num_groups.y, num_groups.z);
+}
+
 void CommandBuffer::pipeline_barrier(const VkDependencyInfo &dependency_info) {
+  if (!dependency_info.memoryBarrierCount and
+      !dependency_info.bufferMemoryBarrierCount and
+      !dependency_info.imageMemoryBarrierCount) {
+    return;
+  }
   m_device->CmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
 }
 
