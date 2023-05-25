@@ -4,6 +4,7 @@
   "dependencies": [
     "boost-container",
     "boost-preprocessor",
+    "boost-functional",
     "fmt",
     "glm",
     "range-v3",

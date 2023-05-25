@@ -21,6 +21,17 @@
 
 namespace ren {
 
+auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
+    -> usize {
+  usize seed = 0;
+  seed = hash_combine(seed, sampler.mag_filter);
+  seed = hash_combine(seed, sampler.min_filter);
+  seed = hash_combine(seed, sampler.mipmap_filter);
+  seed = hash_combine(seed, sampler.wrap_u);
+  seed = hash_combine(seed, sampler.wrap_v);
+  return seed;
+}
+
 template <typename T, typename H> static auto get_id(Handle<H> handle) {
   return std::bit_cast<T>(std::bit_cast<unsigned>(handle) -
                           std::bit_cast<unsigned>(Handle<H>()));
@@ -207,37 +218,27 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   return get_id<RenMesh>(key);
 }
 
-auto Scene::get_or_create_sampler(const RenTexture &texture) -> SamplerID {
-  unsigned index = ranges::distance(
-      m_sampler_descs.begin(),
-      ranges::find_if(m_sampler_descs, [&](const RenSampler &sampler) {
-        return std::memcmp(&sampler, &texture.sampler, sizeof(sampler)) == 0;
-      }));
-
-  if (index != m_sampler_descs.size()) {
-    return SamplerID(index);
+auto Scene::get_or_create_sampler(const RenSampler &sampler)
+    -> Handle<Sampler> {
+  auto &handle = m_samplers[sampler];
+  if (!handle) {
+    handle = m_persistent_arena.create_sampler({
+        .mag_filter = getVkFilter(sampler.mag_filter),
+        .min_filter = getVkFilter(sampler.min_filter),
+        .mipmap_mode = getVkSamplerMipmapMode(sampler.mipmap_filter),
+        .address_mode_u = getVkSamplerAddressMode(sampler.wrap_u),
+        .address_mode_v = getVkSamplerAddressMode(sampler.wrap_v),
+    });
   }
-
-  m_sampler_descs.push_back(texture.sampler);
-
-  auto sampler = m_persistent_arena.create_sampler({
-      .mag_filter = getVkFilter(texture.sampler.mag_filter),
-      .min_filter = getVkFilter(texture.sampler.min_filter),
-      .mipmap_mode = getVkSamplerMipmapMode(texture.sampler.mipmap_filter),
-      .address_mode_u = getVkSamplerAddressMode(texture.sampler.wrap_u),
-      .address_mode_v = getVkSamplerAddressMode(texture.sampler.wrap_v),
-  });
-  m_samplers.push_back(sampler);
-
-  return m_texture_allocator.allocate_sampler(sampler);
+  return handle;
 }
 
 auto Scene::get_or_create_texture(const RenTexture &texture)
     -> SampledTextureID {
   auto view = m_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
-
-  return m_texture_allocator.allocate_sampled_texture(view);
+  auto sampler = get_or_create_sampler(texture.sampler);
+  return m_texture_allocator.allocate_sampled_texture(view, sampler);
 }
 
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
@@ -281,15 +282,15 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
 
     glsl::Material material = {
         .base_color = glm::make_vec4(desc.base_color_factor),
+        .base_color_texture = [&]() -> unsigned {
+          if (desc.color_tex.image) {
+            return get_or_create_texture(desc.color_tex);
+          }
+          return 0;
+        }(),
         .metallic = desc.metallic_factor,
         .roughness = desc.roughness_factor,
     };
-
-    const auto &base_color_texture = desc.color_tex;
-    if (base_color_texture.image) {
-      material.base_color_texture = get_or_create_texture(base_color_texture);
-      material.base_color_sampler = get_or_create_sampler(base_color_texture);
-    }
 
     auto index = static_cast<RenMaterial>(m_materials.size());
     m_materials.push_back(material);

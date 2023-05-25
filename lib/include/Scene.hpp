@@ -21,6 +21,10 @@
 
 namespace ren {
 
+template <> struct Hash<RenSampler> {
+  auto operator()(const RenSampler &sampler) const noexcept -> usize;
+};
+
 class Swapchain;
 
 class Scene {
@@ -39,8 +43,7 @@ class Scene {
 
   HandleMap<Mesh> m_meshes;
 
-  Vector<RenSampler> m_sampler_descs;
-  Vector<Handle<Sampler>> m_samplers;
+  HashMap<RenSampler, Handle<Sampler>> m_samplers;
 
   TextureIDAllocator m_texture_allocator;
 
@@ -88,8 +91,8 @@ public:
   RenMesh create_mesh(const RenMeshDesc &desc);
 
 private:
-  [[nodiscard]] auto get_or_create_sampler(const RenTexture &texture)
-      -> SamplerID;
+  [[nodiscard]] auto get_or_create_sampler(const RenSampler &sampler)
+      -> Handle<Sampler>;
 
   [[nodiscard]] auto get_or_create_texture(const RenTexture &texture)
       -> SampledTextureID;

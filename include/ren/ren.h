@@ -290,12 +290,17 @@ typedef enum {
   REN_WRAPPING_MODE_CLAMP_TO_EDGE,
 } RenWrappingMode;
 
-typedef struct {
+typedef struct RenSampler {
   RenFilter mag_filter;
   RenFilter min_filter;
   RenFilter mipmap_filter;
   RenWrappingMode wrap_u;
   RenWrappingMode wrap_v;
+
+#ifdef __cplusplus
+public:
+  constexpr auto operator<=>(const RenSampler &other) const = default;
+#endif
 } RenSampler;
 
 typedef enum {

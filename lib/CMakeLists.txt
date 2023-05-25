@@ -59,6 +59,7 @@ target_precompile_headers(
   <boost/container/flat_set.hpp>
   <boost/container/small_vector.hpp>
   <boost/container/static_vector.hpp>
+  <boost/functional/hash.hpp>
   <fmt/format.h>
   <range/v3/action.hpp>
   <range/v3/algorithm.hpp>

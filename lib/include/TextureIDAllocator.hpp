@@ -23,11 +23,11 @@ public:
 
   auto get_set() const -> VkDescriptorSet;
 
-  auto allocate_sampler(Handle<Sampler> sampler) -> SamplerID;
+  auto allocate_sampled_texture(const TextureView &view,
+                                Handle<Sampler> sampler) -> SampledTextureID;
 
-  auto allocate_sampled_texture(const TextureView &view) -> SampledTextureID;
-
-  auto allocate_frame_sampled_texture(const TextureView &view)
+  auto allocate_frame_sampled_texture(const TextureView &view,
+                                      Handle<Sampler> sampler)
       -> SampledTextureID;
 
   auto allocate_storage_texture(const TextureView &view) -> StorageTextureID;
