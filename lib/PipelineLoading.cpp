@@ -2,7 +2,7 @@
 #include "Errors.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Array.hpp"
-#include "hlsl/interface.hpp"
+#include "glsl/interface.hpp"
 
 #include "ReflectionFragmentShader.h"
 #include "ReflectionVertexShader.h"
@@ -15,25 +15,25 @@ namespace ren {
 auto create_persistent_descriptor_set_layout(ResourceArena &arena)
     -> Handle<DescriptorSetLayout> {
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings = {};
-  bindings[hlsl::SAMPLERS_SLOT] = {
+  bindings[glsl::SAMPLERS_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
       .type = VK_DESCRIPTOR_TYPE_SAMPLER,
-      .count = hlsl::NUM_SAMPLERS,
+      .count = glsl::NUM_SAMPLERS,
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
   };
-  bindings[hlsl::SAMPLED_TEXTURES_SLOT] = {
+  bindings[glsl::SAMPLED_TEXTURES_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
       .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-      .count = hlsl::NUM_SAMPLED_TEXTURES,
+      .count = glsl::NUM_SAMPLED_TEXTURES,
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
   };
-  bindings[hlsl::STORAGE_TEXTURES_SLOT] = {
+  bindings[glsl::STORAGE_TEXTURES_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
       .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-      .count = hlsl::NUM_STORAGE_TEXTURES,
+      .count = glsl::NUM_STORAGE_TEXTURES,
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
   return arena.create_descriptor_set_layout({
@@ -119,8 +119,10 @@ auto create_color_pass_pipeline_layout(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<PipelineLayout> {
   auto shaders = makeArray<std::span<const std::byte>>(
-      std::as_bytes(std::span(ReflectionVertexShader)),
-      std::as_bytes(std::span(ReflectionFragmentShader)));
+      std::as_bytes(
+          std::span(ReflectionVertexShader, ReflectionVertexShader_count)),
+      std::as_bytes(
+          std::span(ReflectionFragmentShader, ReflectionFragmentShader_count)));
   return create_pipeline_layout(arena, persistent_set_layout, shaders,
                                 "Color pass");
 }
@@ -145,9 +147,11 @@ auto load_compute_pipeline(ResourceArena &arena,
 auto load_reinhard_tonemap_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline> {
-  return load_compute_pipeline(arena, persistent_set_layout,
-                               std::as_bytes(std::span(ReinhardTonemapShader)),
-                               "Reinhard tonemap");
+  return load_compute_pipeline(
+      arena, persistent_set_layout,
+      std::as_bytes(
+          std::span(ReinhardTonemapShader, ReinhardTonemapShader_count)),
+      "Reinhard tonemap");
 }
 
 auto load_postprocessing_pipelines(

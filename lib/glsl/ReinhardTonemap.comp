@@ -1,0 +1,26 @@
+#include "interface.glsl"
+#include "postprocess.glsl"
+#include "postprocess_interface.glsl"
+
+IMAGE2D(PERSISTENT_SET, STORAGE_TEXTURES_SLOT, restrict) g_textures[NUM_STORAGE_TEXTURES];
+
+PUSH_CONSTANTS { ReinhardPushConstants g_pcs; };
+
+NUM_THREADS(REINHARD_THREADS_X, REINHARD_THREADS_Y, 1);
+void main() {
+  ivec2 idx = ivec2(gl_GlobalInvocationID.xy);
+
+  ivec2 size = imageSize(g_textures[g_pcs.tex]);
+  if (any(greaterThanEqual(idx, size))) {
+    return;
+  }
+
+  vec4 color = imageLoad(g_textures[g_pcs.tex], idx);
+  float exposure = g_pcs.exposure_ptr.exposure;
+
+  color.rgb *= exposure;
+  float luminance = get_luminance(color.rgb);
+  color.rgb *= luminance / (1.0f + luminance);
+
+  imageStore(g_textures[g_pcs.tex], idx, color);
+}

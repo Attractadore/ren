@@ -1,10 +1,12 @@
-#pragma once
-#include "cpp.h"
+#ifndef REN_GLSL_MATERIAL_H
+#define REN_GLSL_MATERIAL_H
+
+#include "common.h"
 
 REN_NAMESPACE_BEGIN
 
 struct Material {
-  float4 base_color;
+  vec4 base_color;
   uint base_color_texture;
   uint base_color_sampler;
   float metallic;
@@ -12,3 +14,5 @@ struct Material {
 };
 
 REN_NAMESPACE_END
+
+#endif // REN_GLSL_MATERIAL_H

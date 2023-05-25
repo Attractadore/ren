@@ -10,9 +10,9 @@
 #include "RenderGraph.hpp"
 #include "Support/Array.hpp"
 #include "Support/Views.hpp"
-#include "hlsl/color_interface.hpp"
-#include "hlsl/encode.h"
-#include "hlsl/interface.hpp"
+#include "glsl/color_interface.hpp"
+#include "glsl/encode.h"
+#include "glsl/interface.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>
@@ -119,9 +119,9 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     case MESH_ATTRIBUTE_POSITIONS:
       return sizeof(glm::vec3);
     case MESH_ATTRIBUTE_NORMALS:
-      return sizeof(hlsl::normal_t);
+      return sizeof(glsl::normal_t);
     case MESH_ATTRIBUTE_COLORS:
-      return sizeof(hlsl::color_t);
+      return sizeof(glsl::color_t);
     case MESH_ATTRIBUTE_UVS:
       return sizeof(glm::vec2);
     }
@@ -172,13 +172,13 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
-          reinterpret_span<const glm::vec3>(data) | map(hlsl::encode_normal);
+          reinterpret_span<const glm::vec3>(data) | map(glsl::encode_normal);
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
-          reinterpret_span<const glm::vec4>(data) | map(hlsl::encode_color);
+          reinterpret_span<const glm::vec4>(data) | map(glsl::encode_color);
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
       offset += size_bytes(colors);
     } break;
@@ -279,7 +279,7 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
                               });
     }();
 
-    hlsl::Material material = {
+    glsl::Material material = {
         .base_color = glm::make_vec4(desc.base_color_factor),
         .metallic = desc.metallic_factor,
         .roughness = desc.roughness_factor,
@@ -377,7 +377,7 @@ void Scene::set_mesh_inst_matrices(
 void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
                               RenDirLight *out) {
   for (const auto &desc : descs) {
-    auto light = m_dir_lights.insert(hlsl::DirLight{
+    auto light = m_dir_lights.insert(glsl::DirLight{
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
@@ -389,14 +389,14 @@ void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
 
 void Scene::destroy_dir_lights(std::span<const RenDirLight> lights) noexcept {
   for (auto light : lights) {
-    m_dir_lights.erase(get_handle<hlsl::DirLight>(light));
+    m_dir_lights.erase(get_handle<glsl::DirLight>(light));
   }
 }
 
 void Scene::config_dir_lights(std::span<const RenDirLight> lights,
                               std::span<const RenDirLightDesc> descs) {
   for (const auto &[light, desc] : zip(lights, descs)) {
-    m_dir_lights[get_handle<hlsl::DirLight>(light)] = {
+    m_dir_lights[get_handle<glsl::DirLight>(light)] = {
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
@@ -406,8 +406,8 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 
 struct UploadDataPassConfig {
   const DenseHandleMap<MeshInst> *mesh_insts;
-  const DenseHandleMap<hlsl::DirLight> *dir_lights;
-  std::span<const hlsl::Material> materials;
+  const DenseHandleMap<glsl::DirLight> *dir_lights;
+  std::span<const glsl::Material> materials;
 };
 
 struct UploadDataPassResources {
@@ -430,13 +430,12 @@ static void run_upload_data_pass(Device &device, RenderGraph &rg,
                                  const UploadDataPassResources &rcs) {
   auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
   auto *transform_matrices =
-      device.map_buffer<hlsl::model_matrix_t>(transform_matrix_buffer);
+      device.map_buffer<glm::mat4x3>(transform_matrix_buffer);
   ranges::transform(cfg.mesh_insts->values(), transform_matrices,
                     [](const auto &mesh_inst) { return mesh_inst.matrix; });
 
   auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
-  auto *normal_matrices =
-      device.map_buffer<hlsl::normal_matrix_t>(normal_matrix_buffer);
+  auto *normal_matrices = device.map_buffer<glm::mat3>(normal_matrix_buffer);
   ranges::transform(
       cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
@@ -444,12 +443,12 @@ static void run_upload_data_pass(Device &device, RenderGraph &rg,
 
   rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
     auto dir_lights_buffer = rg.get_buffer(buffer);
-    auto *dir_lights = device.map_buffer<hlsl::DirLight>(dir_lights_buffer);
+    auto *dir_lights = device.map_buffer<glsl::DirLight>(dir_lights_buffer);
     ranges::copy(cfg.dir_lights->values(), dir_lights);
   });
 
   auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
-  auto *materials = device.map_buffer<hlsl::Material>(materials_buffer);
+  auto *materials = device.map_buffer<glsl::Material>(materials_buffer);
   ranges::copy(cfg.materials, materials);
 }
 
@@ -465,7 +464,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
       {
           REN_SET_DEBUG_NAME("Transform matrix buffer"),
           .heap = BufferHeap::Upload,
-          .size = sizeof(hlsl::model_matrix_t) * cfg.mesh_insts->size(),
+          .size = sizeof(glm::mat4x3) * cfg.mesh_insts->size(),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
@@ -473,7 +472,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
       {
           REN_SET_DEBUG_NAME("Normal matrix buffer"),
           .heap = BufferHeap::Upload,
-          .size = sizeof(hlsl::normal_matrix_t) * cfg.mesh_insts->size(),
+          .size = sizeof(glm::mat3) * cfg.mesh_insts->size(),
       },
       VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
@@ -483,7 +482,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
         {
             REN_SET_DEBUG_NAME("Dir lights buffer"),
             .heap = BufferHeap::Upload,
-            .size = sizeof(hlsl::DirLight) * num_dir_lights,
+            .size = sizeof(glsl::DirLight) * num_dir_lights,
         },
         VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
   }
@@ -563,7 +562,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
   auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-  auto *global_data = device.map_buffer<hlsl::GlobalData>(global_data_buffer);
+  auto *global_data = device.map_buffer<glsl::GlobalData>(global_data_buffer);
   *global_data = {
       .proj_view = cfg.proj * cfg.view,
       .eye = cfg.eye,
@@ -578,17 +577,17 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
   auto global_set = [&] {
     auto layout = device.get_pipeline_layout(cfg.pipeline_layout)
-                      .set_layouts[hlsl::GLOBAL_SET];
+                      .set_layouts[glsl::GLOBAL_SET];
     auto set = cfg.set_allocator->allocate(device, *cfg.arena, layout);
 
     DescriptorSetWriter writer(device, set, layout);
-    writer.add_buffer(hlsl::GLOBAL_DATA_SLOT, global_data_buffer)
-        .add_buffer(hlsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
-        .add_buffer(hlsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
-        .add_buffer(hlsl::MATERIALS_SLOT, materials_buffer);
+    writer.add_buffer(glsl::GLOBAL_DATA_SLOT, global_data_buffer)
+        .add_buffer(glsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
+        .add_buffer(glsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
+        .add_buffer(glsl::MATERIALS_SLOT, materials_buffer);
 
     dir_lights_buffer.map([&](const BufferView &buffer) {
-      writer.add_buffer(hlsl::DIR_LIGHTS_SLOT, buffer);
+      writer.add_buffer(glsl::DIR_LIGHTS_SLOT, buffer);
     });
 
     return writer.write();
@@ -609,14 +608,14 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
     auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-    hlsl::ColorPushConstants pcs = {
+    glsl::ColorPushConstants pcs = {
+        .positions_ptr = address + positions_offset,
+        .colors_ptr =
+            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
+        .normals_ptr = address + normals_offset,
+        .uvs_ptr = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
         .matrix_index = unsigned(i),
         .material_index = material,
-        .positions = address + positions_offset,
-        .normals = address + normals_offset,
-        .colors =
-            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
-        .uvs = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
     };
     cmd.set_push_constants(
         cfg.pipeline_layout,
@@ -674,7 +673,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       {
           REN_SET_DEBUG_NAME("Global data UBO"),
           .heap = BufferHeap::Upload,
-          .size = sizeof(hlsl::GlobalData),
+          .size = sizeof(glsl::GlobalData),
       },
       VK_ACCESS_2_UNIFORM_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |

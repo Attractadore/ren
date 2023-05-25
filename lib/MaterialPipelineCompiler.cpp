@@ -33,11 +33,13 @@ auto MaterialPipelineCompiler::compile_material_pipeline(
              .layout = config.layout,
              .vertex_shader =
                  {
-                     .code = std::as_bytes(std::span(VertexShader)),
+                     .code = std::as_bytes(
+                         std::span(VertexShader, VertexShader_count)),
                  },
              .fragment_shader =
                  ShaderInfo{
-                     .code = std::as_bytes(std::span(FragmentShader)),
+                     .code = std::as_bytes(
+                         std::span(FragmentShader, FragmentShader_count)),
                  },
              .depth_test =
                  DepthTestInfo{

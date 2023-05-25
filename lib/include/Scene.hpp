@@ -15,8 +15,8 @@
 #include "Support/DenseSlotMap.hpp"
 #include "Support/NewType.hpp"
 #include "TextureIDAllocator.hpp"
-#include "hlsl/interface.hpp"
-#include "hlsl/lighting.hpp"
+#include "glsl/interface.hpp"
+#include "glsl/lighting.hpp"
 #include "ren/ren.h"
 
 namespace ren {
@@ -44,7 +44,7 @@ class Scene {
 
   TextureIDAllocator m_texture_allocator;
 
-  Vector<hlsl::Material> m_materials = {{}};
+  Vector<glsl::Material> m_materials = {{}};
   Vector<Handle<GraphicsPipeline>> m_material_pipelines = {{}};
 
   VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -65,7 +65,7 @@ private:
   Handle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
-  DenseHandleMap<hlsl::DirLight> m_dir_lights;
+  DenseHandleMap<glsl::DirLight> m_dir_lights;
 
   ResourceArena m_persistent_arena;
   ResourceArena m_frame_arena;

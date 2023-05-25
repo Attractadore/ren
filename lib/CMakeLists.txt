@@ -25,6 +25,8 @@ find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
+add_subdirectory(glsl)
+
 add_library(Support INTERFACE)
 target_include_directories(Support INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
 target_link_libraries(Support INTERFACE Boost::boost Boost::container fmt::fmt
@@ -118,10 +120,8 @@ target_link_libraries(
 
           ReflectionFragmentShader
           ReflectionVertexShader
-
           FragmentShader
           VertexShader
-
           ReinhardTonemapShader
           )
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
@@ -157,8 +157,6 @@ target_sources(
 target_link_libraries(ren-hpp INTERFACE ren::ren tl::expected)
 target_compile_features(ren-hpp INTERFACE cxx_std_20)
 add_library(ren::ren-hpp ALIAS ren-hpp)
-
-add_subdirectory(hlsl)
 
 if(REN_BUILD_TESTS)
   message(STATUS "Build tests")

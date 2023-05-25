@@ -4,8 +4,8 @@
 #include "Errors.hpp"
 #include "Support/Variant.hpp"
 #include "TextureIDAllocator.hpp"
-#include "hlsl/interface.hpp"
-#include "hlsl/postprocess_interface.hpp"
+#include "glsl/interface.hpp"
+#include "glsl/postprocess_interface.hpp"
 
 namespace ren {
 
@@ -103,14 +103,14 @@ void run_reinhard_tonemap_pass(Device &device, RenderGraph &rg,
   std::array sets = {rcs.texture_allocator->get_set()};
   cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, sets);
 
-  hlsl::ReinhardPushConstants pcs = {
+  glsl::ReinhardPushConstants pcs = {
       .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
       .tex = index,
   };
   cmd.set_push_constants(layout, VK_SHADER_STAGE_COMPUTE_BIT, pcs);
 
   glm::uvec2 size = device.get_texture_view_size(texture);
-  glm::uvec2 dims = {hlsl::REINHARD_THREADS_X, hlsl::REINHARD_THREADS_Y};
+  glm::uvec2 dims = {glsl::REINHARD_THREADS_X, glsl::REINHARD_THREADS_Y};
   auto num_groups =
       size / dims + glm::uvec2(glm::greaterThan(size % dims, glm::uvec2(0)));
   cmd.dispatch(num_groups);

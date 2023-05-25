@@ -1,0 +1,19 @@
+#ifndef REN_GLSL_INTERFACE_H
+#define REN_GLSL_INTERFACE_H
+
+#include "common.h"
+
+REN_NAMESPACE_BEGIN
+
+const uint NUM_SAMPLERS = 8;
+const uint NUM_SAMPLED_TEXTURES = 1024;
+const uint NUM_STORAGE_TEXTURES = 1024;
+
+const uint PERSISTENT_SET = 0;
+const uint SAMPLERS_SLOT = 0;
+const uint SAMPLED_TEXTURES_SLOT = 1;
+const uint STORAGE_TEXTURES_SLOT = 2;
+
+REN_NAMESPACE_END
+
+#endif // REN_GLSL_INTERFACE_H

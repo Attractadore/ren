@@ -1,5 +1,5 @@
 #include "TextureIDAllocator.hpp"
-#include "hlsl/interface.hpp"
+#include "glsl/interface.hpp"
 
 namespace ren {
 
@@ -10,9 +10,9 @@ TextureIDAllocator::TextureIDAllocator(Device &device, VkDescriptorSet set,
 auto TextureIDAllocator::allocate_sampler(Handle<Sampler> sampler)
     -> SamplerID {
   auto index = m_sampler_allocator.allocate();
-  assert(index < hlsl::NUM_SAMPLERS);
+  assert(index < glsl::NUM_SAMPLERS);
   DescriptorSetWriter(*m_device, m_set, m_layout)
-      .add_sampler(hlsl::SAMPLERS_SLOT, sampler, index)
+      .add_sampler(glsl::SAMPLERS_SLOT, sampler, index)
       .write();
   return SamplerID(index);
 };
@@ -22,9 +22,9 @@ auto TextureIDAllocator::get_set() const -> VkDescriptorSet { return m_set; }
 auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view)
     -> SampledTextureID {
   auto index = m_sampled_texture_allocator.allocate();
-  assert(index < hlsl::NUM_SAMPLED_TEXTURES);
+  assert(index < glsl::NUM_SAMPLED_TEXTURES);
   DescriptorSetWriter(*m_device, m_set, m_layout)
-      .add_texture(hlsl::SAMPLED_TEXTURES_SLOT, view, index)
+      .add_texture(glsl::SAMPLED_TEXTURES_SLOT, view, index)
       .write();
   return SampledTextureID(index);
 };
@@ -39,9 +39,9 @@ auto TextureIDAllocator::allocate_frame_sampled_texture(const TextureView &view)
 auto TextureIDAllocator::allocate_storage_texture(const TextureView &view)
     -> StorageTextureID {
   auto index = m_storage_texture_allocator.allocate();
-  assert(index < hlsl::NUM_STORAGE_TEXTURES);
+  assert(index < glsl::NUM_STORAGE_TEXTURES);
   DescriptorSetWriter(*m_device, m_set, m_layout)
-      .add_texture(hlsl::STORAGE_TEXTURES_SLOT, view, index)
+      .add_texture(glsl::STORAGE_TEXTURES_SLOT, view, index)
       .write();
   return StorageTextureID(index);
 };

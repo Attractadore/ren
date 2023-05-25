@@ -129,6 +129,7 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .pNext = &vulkan12_features,
       .synchronization2 = true,
       .dynamicRendering = true,
+      .maintenance4 = true,
   };
 
   std::array extensions = {
