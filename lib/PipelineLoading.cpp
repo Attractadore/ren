@@ -4,9 +4,9 @@
 #include "Support/Array.hpp"
 #include "glsl/interface.hpp"
 
-#include "ReflectionFragmentShader.h"
-#include "ReflectionVertexShader.h"
+#include "FragmentShader.h"
 #include "ReinhardTonemapShader.h"
+#include "VertexShader.h"
 
 #include "spirv_reflect.h"
 
@@ -119,10 +119,8 @@ auto create_color_pass_pipeline_layout(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<PipelineLayout> {
   auto shaders = makeArray<std::span<const std::byte>>(
-      std::as_bytes(
-          std::span(ReflectionVertexShader, ReflectionVertexShader_count)),
-      std::as_bytes(
-          std::span(ReflectionFragmentShader, ReflectionFragmentShader_count)));
+      std::as_bytes(std::span(VertexShader, VertexShader_count)),
+      std::as_bytes(std::span(FragmentShader, FragmentShader_count)));
   return create_pipeline_layout(arena, persistent_set_layout, shaders,
                                 "Color pass");
 }
