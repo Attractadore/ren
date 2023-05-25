@@ -3,7 +3,7 @@
 #include "lighting.glsl"
 #include "material.glsl"
 
-SAMPLER2D(PERSISTENT_SET, SAMPLED_TEXTURES_SLOT) g_textures[NUM_SAMPLED_TEXTURES];
+TEXTURES;
 
 UBO(GLOBAL_SET, GLOBAL_DATA_SLOT) {
   GlobalData g_global;
@@ -38,7 +38,7 @@ void main() {
 
   color *= material.base_color;
   if (material.base_color_texture != 0) {
-    color *= texture(g_textures[material.base_color_texture], uv);
+    color *= texture(g_textures2d[material.base_color_texture], uv);
   }
 
   float metallic = material.metallic;
