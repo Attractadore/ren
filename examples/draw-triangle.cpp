@@ -74,14 +74,11 @@ public:
 protected:
   void iterate(unsigned width, unsigned height) override {
     auto &scene = get_scene();
-    // Expose for ambient day light
-    float iso = 400.0f;
     ren::CameraDesc desc = {
         .width = width,
         .height = height,
-        .aperture = 8.0f,
-        .shutter_time = 1.0f / iso,
-        .iso = iso,
+        .exposure_compensation = -18.5f,
+        .exposure_mode = REN_EXPOSURE_MODE_AUTOMATIC,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},

@@ -35,6 +35,14 @@ struct DepthStencilAttachment {
   Optional<Stencil> stencil;
 };
 
+auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32;
+
+auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
+    -> glm::uvec2;
+
+auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
+    -> glm::uvec3;
+
 class CommandBuffer {
   Device *m_device;
   VkCommandBuffer m_cmd_buffer;
@@ -73,6 +81,14 @@ public:
   void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
                             const VkBufferImageCopy &region) {
     copy_buffer_to_image(src, dst, asSpan(region));
+  }
+
+  void fill_buffer(const BufferView &buffer, u32 value);
+
+  template <typename T>
+    requires(sizeof(T) == sizeof(u32))
+  void fill_buffer(const BufferView &buffer, T value) {
+    fill_buffer(buffer, std::bit_cast<u32>(value));
   }
 
   void blit(Handle<Texture> src, Handle<Texture> dst,
@@ -119,10 +135,14 @@ public:
 
   void draw_indexed(const DrawIndexedInfo &&draw_info);
 
-  void dispatch(unsigned num_groups_x, unsigned num_groups_y = 1,
-                unsigned num_groups_z = 1);
-  void dispatch(glm::uvec2 num_groups);
-  void dispatch(glm::uvec3 num_groups);
+  void dispatch_groups(u32 num_groups_x, u32 num_groups_y = 1,
+                       u32 num_groups_z = 1);
+  void dispatch_groups(glm::uvec2 num_groups);
+  void dispatch_groups(glm::uvec3 num_groups);
+
+  void dispatch_threads(u32 size, u32 group_size);
+  void dispatch_threads(glm::uvec2 size, glm::uvec2 group_size);
+  void dispatch_threads(glm::uvec3 size, glm::uvec3 group_size);
 
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 

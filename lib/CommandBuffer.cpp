@@ -173,6 +173,14 @@ void CommandBuffer::copy_buffer_to_image(
                                  regions.size(), regions.data());
 }
 
+void CommandBuffer::fill_buffer(const BufferView &view, u32 value) {
+  assert(view.offset % sizeof(u32) == 0);
+  assert(view.size % sizeof(u32) == 0);
+  m_device->CmdFillBuffer(m_cmd_buffer,
+                          m_device->get_buffer(view.buffer).handle, view.offset,
+                          view.size, value);
+};
+
 void CommandBuffer::blit(Handle<Texture> src, Handle<Texture> dst,
                          std::span<const VkImageBlit> regions,
                          VkFilter filter) {
@@ -245,17 +253,48 @@ void CommandBuffer::draw_indexed(const DrawIndexedInfo &&draw_info) {
                            draw_info.vertex_offset, draw_info.first_instance);
 }
 
-void CommandBuffer::dispatch(unsigned num_groups_x, unsigned num_groups_y,
-                             unsigned num_groups_z) {
+auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32 {
+  auto num_groups = size / group_size + ((size % group_size) != 0);
+  return num_groups;
+}
+
+auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
+    -> glm::uvec2 {
+  auto num_groups = size / group_size +
+                    glm::uvec2(glm::notEqual(size % group_size, glm::uvec2(0)));
+  return num_groups;
+}
+
+auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
+    -> glm::uvec3 {
+  auto num_groups = size / group_size +
+                    glm::uvec3(glm::notEqual(size % group_size, glm::uvec3(0)));
+  return num_groups;
+}
+
+void CommandBuffer::dispatch_groups(u32 num_groups_x, u32 num_groups_y,
+                                    u32 num_groups_z) {
   m_device->CmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
 }
 
-void CommandBuffer::dispatch(glm::uvec2 num_groups) {
-  dispatch(num_groups.x, num_groups.y);
+void CommandBuffer::dispatch_groups(glm::uvec2 num_groups) {
+  dispatch_groups(num_groups.x, num_groups.y);
 }
 
-void CommandBuffer::dispatch(glm::uvec3 num_groups) {
-  dispatch(num_groups.x, num_groups.y, num_groups.z);
+void CommandBuffer::dispatch_groups(glm::uvec3 num_groups) {
+  dispatch_groups(num_groups.x, num_groups.y, num_groups.z);
+}
+
+void CommandBuffer::dispatch_threads(u32 size, u32 group_size) {
+  dispatch_groups(get_num_dispatch_groups(size, group_size));
+}
+
+void CommandBuffer::dispatch_threads(glm::uvec2 size, glm::uvec2 group_size) {
+  dispatch_groups(get_num_dispatch_groups(size, group_size));
+}
+
+void CommandBuffer::dispatch_threads(glm::uvec3 size, glm::uvec3 group_size) {
+  dispatch_groups(get_num_dispatch_groups(size, group_size));
 }
 
 void CommandBuffer::pipeline_barrier(const VkDependencyInfo &dependency_info) {

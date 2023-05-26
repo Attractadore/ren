@@ -1,0 +1,31 @@
+#include "interface.glsl"
+#include "postprocess.glsl"
+#include "postprocess_interface.glsl"
+
+TEXTURES;
+
+PUSH_CONSTANTS { BuildLuminanceHistogramConstants g_pcs; };
+
+shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+
+NUM_THREADS(BUILD_LUMINANCE_HISTOGRAM_THREADS_X, BUILD_LUMINANCE_HISTOGRAM_THREADS_Y, 1);
+void main() {
+  uint index = gl_LocalInvocationIndex;
+  uint tex = g_pcs.tex;
+  ivec2 size = imageSize(g_rimages2d[tex]);
+  ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+
+  histogram[index] = 0;
+  barrier();
+
+  if (all(lessThan(pos, size))) {
+    float luminance = get_luminance(imageLoad(g_rimages2d[tex], pos).rgb);
+    luminance = max(luminance, MIN_LUMINANCE);
+    float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
+    uint bin = uint(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
+    atomicAdd(histogram[bin], 1);
+  }
+  barrier();
+
+  atomicAdd(g_pcs.histogram_ptr.bins[index], histogram[index]);
+}

@@ -277,10 +277,8 @@ public:
     m_builder->add_read_buffer(m_pass, buffer, accesses, stages);
   }
 
-  [[nodiscard]] auto add_write_buffer(RGBufferID buffer,
-                                      VkAccessFlags2 accesses,
-                                      VkPipelineStageFlags2 stages)
-      -> RGBufferID {
+  [[nodiscard]] auto write_buffer(RGBufferID buffer, VkAccessFlags2 accesses,
+                                  VkPipelineStageFlags2 stages) -> RGBufferID {
     return m_builder->add_write_buffer(m_pass, buffer, accesses, stages);
   }
 

@@ -11,16 +11,25 @@ auto create_color_pass_pipeline_layout(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<PipelineLayout>;
 
-auto load_reinhard_tonemap_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline>;
-
 struct PostprocessingPipelines {
+  Handle<ComputePipeline> build_luminance_histogram_pipeline;
+  Handle<ComputePipeline> reduce_luminance_histogram_pipeline;
   Handle<ComputePipeline> reinhard_tonemap;
 };
 
 auto load_postprocessing_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> PostprocessingPipelines;
+
+auto load_reinhard_tonemap_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
+    -> Handle<ComputePipeline>;
+
+auto load_build_luminance_histogram_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
+    -> Handle<ComputePipeline>;
+
+auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
+    -> Handle<ComputePipeline>;
 
 } // namespace ren

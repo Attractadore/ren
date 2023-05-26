@@ -4,7 +4,9 @@
 #include "Support/Array.hpp"
 #include "glsl/interface.hpp"
 
+#include "BuildLuminanceHistogramShader.h"
 #include "FragmentShader.h"
+#include "ReduceLuminanceHistogramShader.h"
 #include "ReinhardTonemapShader.h"
 #include "VertexShader.h"
 
@@ -52,7 +54,7 @@ auto create_pipeline_layout(ResourceArena &arena,
   std::array<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
              MAX_DESCRIPTOR_SETS>
       set_bindings = {};
-  unsigned max_set = 0;
+  unsigned num_pipeline_sets = 0;
 
   VkPushConstantRange push_constants = {};
 
@@ -64,15 +66,15 @@ auto create_pipeline_layout(ResourceArena &arena,
 
     auto stage = static_cast<VkShaderStageFlagBits>(shader.GetShaderStage());
 
-    uint32_t num_sets = 0;
-    throwIfFailed(shader.EnumerateDescriptorSets(&num_sets, nullptr),
+    uint32_t num_shader_sets = 0;
+    throwIfFailed(shader.EnumerateDescriptorSets(&num_shader_sets, nullptr),
                   "SPIRV-Reflect: Failed to enumerate shader descriptor sets");
-    SmallVector<SpvReflectDescriptorSet *> sets(num_sets);
-    throwIfFailed(shader.EnumerateDescriptorSets(&num_sets, sets.data()),
+    SmallVector<SpvReflectDescriptorSet *> sets(num_shader_sets);
+    throwIfFailed(shader.EnumerateDescriptorSets(&num_shader_sets, sets.data()),
                   "SPIRV-Reflect: Failed to enumerate shader descriptor sets");
 
     for (const auto *set : sets) {
-      max_set = std::max(max_set, set->set);
+      num_pipeline_sets = std::max(num_pipeline_sets, set->set + 1);
       for (const auto *binding : std::span(set->bindings, set->binding_count)) {
         if (binding->binding >= MAX_DESCIPTOR_BINDINGS) {
           throw std::runtime_error(
@@ -101,13 +103,17 @@ auto create_pipeline_layout(ResourceArena &arena,
     }
   }
 
-  StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> layouts = {
-      persistent_set_layout};
-  for (const auto &bindings :
-       std::span(&set_bindings[1], &set_bindings[max_set + 1])) {
-    layouts.push_back(arena.create_descriptor_set_layout({
-        .bindings = bindings,
-    }));
+  SmallVector<Handle<DescriptorSetLayout>> layouts;
+  if (persistent_set_layout) {
+    layouts.push_back(persistent_set_layout);
+    for (const auto &bindings :
+         std::span(&set_bindings[1], &set_bindings[num_pipeline_sets])) {
+      layouts.push_back(arena.create_descriptor_set_layout({
+          .bindings = bindings,
+      }));
+    }
+  } else {
+    assert(num_pipeline_sets == 0);
   }
 
   return arena.create_pipeline_layout({
@@ -144,6 +150,38 @@ auto load_compute_pipeline(ResourceArena &arena,
   });
 }
 
+auto load_postprocessing_pipelines(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
+    -> PostprocessingPipelines {
+  return {
+      .build_luminance_histogram_pipeline =
+          load_build_luminance_histogram_pipeline(arena, persistent_set_layout),
+      .reduce_luminance_histogram_pipeline =
+          load_reduce_luminance_histogram_pipeline(arena),
+      .reinhard_tonemap =
+          load_reinhard_tonemap_pipeline(arena, persistent_set_layout),
+  };
+}
+
+auto load_build_luminance_histogram_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
+    -> Handle<ComputePipeline> {
+  return load_compute_pipeline(
+      arena, persistent_set_layout,
+      std::as_bytes(std::span(BuildLuminanceHistogramShader,
+                              BuildLuminanceHistogramShader_count)),
+      "Build luminance histogram");
+}
+
+auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
+    -> Handle<ComputePipeline> {
+  return load_compute_pipeline(
+      arena, Handle<DescriptorSetLayout>(),
+      std::as_bytes(std::span(ReduceLuminanceHistogramShader,
+                              ReduceLuminanceHistogramShader_count)),
+      "Reduce luminance histogram");
+}
+
 auto load_reinhard_tonemap_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline> {
@@ -152,15 +190,6 @@ auto load_reinhard_tonemap_pipeline(
       std::as_bytes(
           std::span(ReinhardTonemapShader, ReinhardTonemapShader_count)),
       "Reinhard tonemap");
-}
-
-auto load_postprocessing_pipelines(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> PostprocessingPipelines {
-  return {
-      .reinhard_tonemap =
-          load_reinhard_tonemap_pipeline(arena, persistent_set_layout),
-  };
 }
 
 } // namespace ren

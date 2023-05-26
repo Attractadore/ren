@@ -115,16 +115,13 @@ target_sources(
          ${REN_INCLUDE}/ren/ren-vk.h)
 target_link_libraries(
   ren
-  PRIVATE Support Support-PCH glm::glm Vulkan::Headers
+  PRIVATE Support
+          Support-PCH
+          glm::glm
+          Vulkan::Headers
           unofficial::spirv-reflect::spirv-reflect
           unofficial::vulkan-memory-allocator::vulkan-memory-allocator
-
-          ReflectionFragmentShader
-          ReflectionVertexShader
-          FragmentShader
-          VertexShader
-          ReinhardTonemapShader
-          )
+          EmbeddedShaders)
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>
                           <vk_mem_alloc.h> <vulkan/vulkan.h>)

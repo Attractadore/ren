@@ -1,0 +1,38 @@
+#include "postprocess_interface.glsl"
+
+PUSH_CONSTANTS { ReduceLuminanceHistogramConstants g_pcs; };
+
+shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS]; 
+
+NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X, 1, 1);
+void main() {
+  uint index = gl_LocalInvocationIndex;
+
+  histogram[index] = g_pcs.histogram_ptr.bins[index];
+  barrier();
+
+  if (index != 0) {
+    return;
+  }
+
+  // Find the position of the median in the histogram
+  uint half_sum = g_pcs.histogram_half_sum;
+  uint sum = 0;
+  int i = 0;
+  for (; i < NUM_LUMINANCE_HISTOGRAM_BINS - 1; ++i) {
+      uint count = histogram[i];
+      if (sum + count >= half_sum) {
+        break;
+      }
+      sum += count;
+  }
+
+  float fraci = float(i) + float(half_sum - sum) / float(histogram[i]);
+
+  float log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, fraci / NUM_LUMINANCE_HISTOGRAM_BINS);
+  float luminance = exp2(log_luminance - g_pcs.exposure_correction);
+  float max_luminance = 9.6f * luminance;
+  float exposure = 1.0f / max_luminance;
+
+  g_pcs.exposure_ptr.exposure = exposure;
+}
