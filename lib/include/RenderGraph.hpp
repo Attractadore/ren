@@ -45,21 +45,22 @@ struct RGBufferCreateInfo {
 using RGCallback =
     std::function<void(Device &device, RenderGraph &rg, CommandBuffer &cmd)>;
 
+struct RGSemaphoreSignal {
+  Handle<Semaphore> semaphore;
+  u64 value;
+  VkPipelineStageFlags2 stages;
+};
+
+struct RGBatch {
+  SmallVector<RGSemaphoreSignal> wait_semaphores;
+  SmallVector<RGSemaphoreSignal> signal_semaphores;
+  Vector<RGCallback> barrier_cbs;
+  Vector<RGCallback> pass_cbs;
+};
+
 class RenderGraph {
-  struct SemaphoreSignal {
-    Handle<Semaphore> semaphore;
-    u64 value;
-    VkPipelineStageFlags2 stages;
-  };
 
-  struct Batch {
-    SmallVector<SemaphoreSignal> wait_semaphores;
-    SmallVector<SemaphoreSignal> signal_semaphores;
-    Vector<RGCallback> barrier_cbs;
-    Vector<RGCallback> pass_cbs;
-  };
-
-  Vector<Batch> m_batches;
+  Vector<RGBatch> m_batches;
 
   Vector<TextureView> m_textures;
   Vector<BufferView> m_buffers;
@@ -69,7 +70,7 @@ class RenderGraph {
 
 private:
   struct Config {
-    Vector<Batch> batches;
+    Vector<RGBatch> batches;
     Vector<TextureView> textures;
     Vector<BufferView> buffers;
     Swapchain *swapchain;
@@ -92,33 +93,33 @@ public:
   void execute(Device &device, CommandAllocator &cmd_allocator);
 };
 
+struct RGTextureAccess {
+  RGTextureID texture;
+  VkAccessFlags2 accesses;
+  VkPipelineStageFlags2 stages;
+  VkImageLayout layout;
+};
+
+struct RGBufferAccess {
+  RGBufferID buffer;
+  VkAccessFlags2 accesses;
+  VkPipelineStageFlags2 stages;
+};
+
+struct RGPass {
+  SmallVector<RGTextureAccess> read_textures;
+  SmallVector<RGTextureAccess> write_textures;
+  SmallVector<RGBufferAccess> read_buffers;
+  SmallVector<RGBufferAccess> write_buffers;
+  SmallVector<RGSemaphoreSignal> wait_semaphores;
+  SmallVector<RGSemaphoreSignal> signal_semaphores;
+  RGCallback barrier_cb;
+  RGCallback pass_cb;
+};
+
 class RenderGraph::Builder {
-  struct TextureAccess {
-    RGTextureID texture;
-    VkAccessFlags2 accesses;
-    VkPipelineStageFlags2 stages;
-    VkImageLayout layout;
-  };
-
-  struct BufferAccess {
-    RGBufferID buffer;
-    VkAccessFlags2 accesses;
-    VkPipelineStageFlags2 stages;
-  };
-
-  struct Pass {
-    SmallVector<TextureAccess> read_textures;
-    SmallVector<TextureAccess> write_textures;
-    SmallVector<BufferAccess> read_buffers;
-    SmallVector<BufferAccess> write_buffers;
-    SmallVector<SemaphoreSignal> wait_semaphores;
-    SmallVector<SemaphoreSignal> signal_semaphores;
-    RGCallback barrier_cb;
-    RGCallback pass_cb;
-  };
-
-  Vector<Pass> m_passes = {{}};
-  Vector<Batch> m_batches;
+  Vector<RGPass> m_passes = {{}};
+  Vector<std::string> m_pass_names = {{}};
 
   struct TextureState {
     VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
@@ -127,10 +128,12 @@ class RenderGraph::Builder {
   };
 
   Vector<TextureView> m_textures = {{}};
+  Vector<std::string> m_texture_names = {{}};
   Vector<TextureState> m_texture_states = {{}};
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
   Vector<unsigned> m_physical_textures = {{}};
+  HashMap<RGTextureID, RGTextureID> m_texture_parents;
   HashMap<RGTextureID, RGTextureCreateInfo> m_texture_create_infos;
   Vector<VkImageUsageFlags> m_texture_usage_flags = {{}};
 
@@ -140,74 +143,73 @@ class RenderGraph::Builder {
   };
 
   Vector<BufferView> m_buffers = {{}};
+  Vector<std::string> m_buffer_names = {{}};
   Vector<BufferState> m_buffer_states = {{}};
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
   Vector<unsigned> m_physical_buffers = {{}};
+  HashMap<RGBufferID, RGBufferID> m_buffer_parents;
   HashMap<RGBufferID, RGBufferCreateInfo> m_buffer_create_infos;
   Vector<VkBufferUsageFlags> m_buffer_usage_flags = {{}};
 
   Swapchain *m_swapchain = nullptr;
   Handle<Semaphore> m_present_semaphore;
 
-  HashMap<RGPassID, std::string> m_pass_text_descs;
-
 private:
-  [[nodiscard]] auto init_new_pass() -> RGPassID;
-  RGPassID getPassID(const Pass &pass) const;
+  [[nodiscard]] auto init_new_pass(std::string name) -> RGPassID;
+  RGPassID getPassID(const RGPass &pass) const;
 
 private:
   [[nodiscard]] auto init_new_texture(Optional<RGPassID> pass,
-                                      Optional<RGTextureID> from_texture)
-      -> RGTextureID;
+                                      Optional<RGTextureID> from_texture,
+                                      std::string name) -> RGTextureID;
 
   auto get_texture_def(RGTextureID tex) const -> Optional<RGPassID>;
   auto get_texture_kill(RGTextureID tex) const -> Optional<RGPassID>;
 
-  void add_read_texture(RGPassID pass, RGTextureID texture,
-                        VkAccessFlags2 accesses, VkPipelineStageFlags2 stages,
-                        VkImageLayout layout);
+  void read_texture(RGPassID pass, RGTextureID texture, VkAccessFlags2 accesses,
+                    VkPipelineStageFlags2 stages, VkImageLayout layout);
 
-  [[nodiscard]] auto add_write_texture(RGPassID pass, RGTextureID texture,
-                                       VkAccessFlags2 accesses,
-                                       VkPipelineStageFlags2 stages,
-                                       VkImageLayout layout) -> RGTextureID;
+  [[nodiscard]] auto write_texture(RGPassID pass, RGTextureID texture,
+                                   std::string name, VkAccessFlags2 accesses,
+                                   VkPipelineStageFlags2 stages,
+                                   VkImageLayout layout) -> RGTextureID;
 
   [[nodiscard]] auto create_texture(RGPassID pass,
                                     RGTextureCreateInfo &&create_info,
-                                    VkAccessFlags2 accesses,
+                                    std::string name, VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;
 
 public:
-  [[nodiscard]] auto import_texture(TextureView texture,
-                                    VkAccessFlags2 accesses,
+  [[nodiscard]] auto import_texture(const TextureView &texture,
+                                    std::string name, VkAccessFlags2 accesses,
                                     VkPipelineStageFlags2 stages,
                                     VkImageLayout layout) -> RGTextureID;
 
 private:
   [[nodiscard]] auto init_new_buffer(Optional<RGPassID> pass,
-                                     Optional<RGBufferID> from_buffer)
-      -> RGBufferID;
+                                     Optional<RGBufferID> from_buffer,
+                                     std::string name) -> RGBufferID;
 
   auto get_buffer_def(RGBufferID tex) const -> Optional<RGPassID>;
   auto get_buffer_kill(RGBufferID tex) const -> Optional<RGPassID>;
 
-  void add_read_buffer(RGPassID pass, RGBufferID buffer,
-                       VkAccessFlags2 accesses, VkPipelineStageFlags2 stages);
+  void read_buffer(RGPassID pass, RGBufferID buffer, VkAccessFlags2 accesses,
+                   VkPipelineStageFlags2 stages);
 
-  [[nodiscard]] auto add_write_buffer(RGPassID pass, RGBufferID buffer,
-                                      VkAccessFlags2 accesses,
-                                      VkPipelineStageFlags2 stages)
-      -> RGBufferID;
+  [[nodiscard]] auto write_buffer(RGPassID pass, RGBufferID buffer,
+                                  std::string name, VkAccessFlags2 accesses,
+                                  VkPipelineStageFlags2 stages) -> RGBufferID;
 
   [[nodiscard]] auto create_buffer(RGPassID pass,
                                    RGBufferCreateInfo &&create_info,
-                                   VkAccessFlags2 accesses,
+                                   std::string name, VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 public:
-  [[nodiscard]] auto import_buffer(BufferView buffer, VkAccessFlags2 accesses,
+  [[nodiscard]] auto import_buffer(const BufferView &buffer, std::string name,
+                                   VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID;
 
 private:
@@ -218,23 +220,22 @@ private:
 
   void set_callback(RGPassID pass, RGCallback cb);
 
-  void set_desc(RGPassID pass, std::string desc);
-  auto get_desc(RGPassID pass) const -> std::string_view;
-
 private:
   void create_textures(const Device &device, ResourceArena &arena);
 
   void create_buffers(const Device &device, ResourceArena &arena);
 
-  void schedule_passes();
+  void print_resources() const;
+
+  auto schedule_passes() -> Vector<RGPassID>;
+
+  void print_passes(std::span<const RGPassID> passes) const;
 
   void insert_barriers(Device &device);
 
-  void batch_passes();
-
 public:
   class PassBuilder;
-  [[nodiscard]] PassBuilder create_pass();
+  [[nodiscard]] PassBuilder create_pass(std::string name);
 
   void present(Swapchain &swapchain, RGTextureID texture,
                Handle<Semaphore> acquire_semaphore,
@@ -253,40 +254,43 @@ public:
 
   void read_texture(RGTextureID texture, VkAccessFlags2 accesses,
                     VkPipelineStageFlags2 stages, VkImageLayout layout) {
-    m_builder->add_read_texture(m_pass, texture, accesses, stages, layout);
+    m_builder->read_texture(m_pass, texture, accesses, stages, layout);
   }
 
-  [[nodiscard]] RGTextureID write_texture(RGTextureID texture,
+  [[nodiscard]] RGTextureID write_texture(RGTextureID texture, std::string name,
                                           VkAccessFlags2 accesses,
                                           VkPipelineStageFlags2 stages,
                                           VkImageLayout layout) {
-    return m_builder->add_write_texture(m_pass, texture, accesses, stages,
-                                        layout);
+    return m_builder->write_texture(m_pass, texture, std::move(name), accesses,
+                                    stages, layout);
   }
 
   [[nodiscard]] RGTextureID create_texture(RGTextureCreateInfo &&create_info,
+                                           std::string name,
                                            VkAccessFlags2 accesses,
                                            VkPipelineStageFlags2 stages,
                                            VkImageLayout layout) {
-    return m_builder->create_texture(m_pass, std::move(create_info), accesses,
-                                     stages, layout);
+    return m_builder->create_texture(m_pass, std::move(create_info),
+                                     std::move(name), accesses, stages, layout);
   }
 
   void read_buffer(RGBufferID buffer, VkAccessFlags2 accesses,
                    VkPipelineStageFlags2 stages) {
-    m_builder->add_read_buffer(m_pass, buffer, accesses, stages);
+    m_builder->read_buffer(m_pass, buffer, accesses, stages);
   }
 
-  [[nodiscard]] auto write_buffer(RGBufferID buffer, VkAccessFlags2 accesses,
+  [[nodiscard]] auto write_buffer(RGBufferID buffer, std::string name,
+                                  VkAccessFlags2 accesses,
                                   VkPipelineStageFlags2 stages) -> RGBufferID {
-    return m_builder->add_write_buffer(m_pass, buffer, accesses, stages);
+    return m_builder->write_buffer(m_pass, buffer, std::move(name), accesses,
+                                   stages);
   }
 
   [[nodiscard]] auto create_buffer(RGBufferCreateInfo &&create_info,
-                                   VkAccessFlags2 accesses,
+                                   std::string name, VkAccessFlags2 accesses,
                                    VkPipelineStageFlags2 stages) -> RGBufferID {
-    return m_builder->create_buffer(m_pass, std::move(create_info), accesses,
-                                    stages);
+    return m_builder->create_buffer(m_pass, std::move(create_info),
+                                    std::move(name), accesses, stages);
   }
 
   void wait_semaphore(Handle<Semaphore> semaphore, uint64_t value,
@@ -311,10 +315,6 @@ public:
 
   void set_callback(RGCallback cb) {
     return m_builder->set_callback(m_pass, std::move(cb));
-  }
-
-  void set_desc(std::string desc) {
-    return m_builder->set_desc(m_pass, std::move(desc));
   }
 };
 

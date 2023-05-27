@@ -35,13 +35,13 @@ auto get_camera_exposure(const PostprocessingOptions::Camera &camera,
 auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
                                 const ExposurePassConfig &cfg, float exposure)
     -> ExposurePassOutput {
-  auto pass = rgb.create_pass();
+  auto pass = rgb.create_pass("Write exposure");
   auto exposure_buffer = pass.create_buffer(
       {
           REN_SET_DEBUG_NAME("Exposure buffer"),
           .size = sizeof(float),
       },
-      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+      "Exposure buffer", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
   pass.set_callback([exposure_buffer, exposure](Device &device, RenderGraph &rg,
                                                 CommandBuffer &cmd) {
@@ -56,28 +56,29 @@ auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
 auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
                                    const ExposurePassConfig &cfg)
     -> ExposurePassOutput {
-  auto init_pass = rgb.create_pass();
+  auto init_pass = rgb.create_pass("Zero luminance histogram");
 
   auto histogram_buffer = init_pass.create_buffer(
       {
           REN_SET_DEBUG_NAME("Luminance histogram"),
           .size = sizeof(glsl::LuminanceHistogram),
       },
-      VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_CLEAR_BIT);
+      "Empty luminance histogram", VK_ACCESS_2_TRANSFER_WRITE_BIT,
+      VK_PIPELINE_STAGE_2_CLEAR_BIT);
 
   init_pass.set_callback(
       [histogram_buffer](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
         cmd.fill_buffer(rg.get_buffer(histogram_buffer), 0);
       });
 
-  auto build_pass = rgb.create_pass();
+  auto build_pass = rgb.create_pass("Build luminance histogram");
 
   build_pass.read_texture(cfg.rt, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                           VK_IMAGE_LAYOUT_GENERAL);
 
   histogram_buffer =
-      build_pass.write_buffer(histogram_buffer,
+      build_pass.write_buffer(histogram_buffer, "Luminance histogram",
                               VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
                               VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
@@ -119,7 +120,7 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
     cmd.dispatch_threads(size, group_size);
   });
 
-  auto reduce_pass = rgb.create_pass();
+  auto reduce_pass = rgb.create_pass("Reduce luminance histogram");
 
   reduce_pass.read_buffer(histogram_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
@@ -129,7 +130,7 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
           REN_SET_DEBUG_NAME("Automatic exposure buffer"),
           .size = sizeof(glsl::Exposure),
       },
-      VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+      "Automatic exposure buffer", VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
 
   struct ReduceLuminanceHistogramPassResources {
@@ -238,11 +239,11 @@ void run_reinhard_tonemap_pass(Device &device, RenderGraph &rg,
 
 auto setup_tonemap_pass(Device &device, RenderGraph::Builder &rgb,
                         const TonemapPassConfig &cfg) -> TonemapPassOutput {
-  auto pass = rgb.create_pass();
+  auto pass = rgb.create_pass("Reinhard tone mapping");
   pass.read_buffer(cfg.exposure_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
   auto rt = pass.write_texture(
-      cfg.texture,
+      cfg.texture, "Color buffer after Reinhard tone mapping",
       VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_IMAGE_LAYOUT_GENERAL);
 

@@ -5,6 +5,7 @@
 namespace ren {
 enum class LogCategory {
   general,
+  rendergraph,
   vk,
 };
 
@@ -35,6 +36,7 @@ template <LogCategory> std::string_view category_name = "";
 
 DEFINE_CATEGORY_NAME(general);
 DEFINE_CATEGORY_NAME(vk);
+DEFINE_CATEGORY_NAME(rendergraph);
 
 #undef CATEGORY_NAME
 
@@ -120,6 +122,7 @@ void log(LogCategory category, LogSeverity severity,
   }
   switch (category) {
     LOG_CATEGORY(general);
+    LOG_CATEGORY(rendergraph);
     LOG_CATEGORY(vk);
   }
 #undef LOG_CATEGORY
@@ -163,6 +166,8 @@ DEFINE_LOG_INFO(log, general);
 DEFINE_LOG_DEBUG(debug, general);
 
 DEFINE_ALL_LOGS(vk);
+
+DEFINE_ALL_LOGS(rendergraph);
 
 #undef DEFINE_LOG
 #undef DEFINE_LOG_SEVERITY

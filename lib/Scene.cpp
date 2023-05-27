@@ -456,8 +456,7 @@ static void run_upload_data_pass(Device &device, RenderGraph &rg,
 static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
                                    const UploadDataPassConfig &cfg)
     -> UploadDataPassOutput {
-  auto pass = rgb.create_pass();
-  pass.set_desc("Upload data pass");
+  auto pass = rgb.create_pass("Upload data");
 
   UploadDataPassResources rcs = {};
 
@@ -467,7 +466,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
           .heap = BufferHeap::Upload,
           .size = sizeof(glm::mat4x3) * cfg.mesh_insts->size(),
       },
-      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+      "Transform matrices", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
   rcs.normal_matrix_buffer = pass.create_buffer(
       {
@@ -475,7 +474,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
           .heap = BufferHeap::Upload,
           .size = sizeof(glm::mat3) * cfg.mesh_insts->size(),
       },
-      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+      "Normal matrices", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
   auto num_dir_lights = cfg.dir_lights->size();
   if (num_dir_lights > 0) {
@@ -485,7 +484,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
             .heap = BufferHeap::Upload,
             .size = sizeof(glsl::DirLight) * num_dir_lights,
         },
-        VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+        "Directional lights", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
   }
 
   rcs.materials_buffer = pass.create_buffer(
@@ -494,7 +493,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
           .heap = BufferHeap::Upload,
           .size = cfg.materials.size_bytes(),
       },
-      VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+      "Materials", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
 
   pass.set_callback(
       [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
@@ -633,8 +632,7 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
 static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                              const ColorPassConfig &cfg) -> ColorPassOutput {
-  auto pass = rgb.create_pass();
-  pass.set_desc("Color pass");
+  auto pass = rgb.create_pass("Color");
 
   ColorPassResources rcs = {};
 
@@ -676,7 +674,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
           .heap = BufferHeap::Upload,
           .size = sizeof(glsl::GlobalData),
       },
-      VK_ACCESS_2_UNIFORM_READ_BIT,
+      "Global data UBO", VK_ACCESS_2_UNIFORM_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
@@ -687,7 +685,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
           .width = cfg.width,
           .height = cfg.height,
       },
-      VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      "Color buffer", VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
       VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
 
@@ -698,6 +696,7 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
           .width = cfg.width,
           .height = cfg.height,
       },
+      "Depth buffer",
       VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
       VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
@@ -719,7 +718,8 @@ void Scene::draw(Swapchain &swapchain) {
 
   auto uploaded_vertex_buffers =
       m_staged_vertex_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        return rgb.import_buffer(buffer, "Uploaded mesh vertex buffer",
+                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
       ranges::to<Vector>();
@@ -727,7 +727,8 @@ void Scene::draw(Swapchain &swapchain) {
 
   auto uploaded_index_buffers =
       m_staged_index_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer(buffer, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        return rgb.import_buffer(buffer, "Uploaded mesh index buffer",
+                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_PIPELINE_STAGE_2_COPY_BIT);
       }) |
       ranges::to<Vector>();
@@ -736,8 +737,9 @@ void Scene::draw(Swapchain &swapchain) {
   auto uploaded_textures =
       m_staged_textures | map([&](Handle<Texture> texture) {
         return rgb.import_texture(
-            m_device->get_texture_view(texture), VK_ACCESS_2_TRANSFER_READ_BIT,
-            VK_PIPELINE_STAGE_2_BLIT_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            m_device->get_texture_view(texture), "Uploaded material texture",
+            VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_BLIT_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
       }) |
       ranges::to<Vector>();
   m_staged_textures.clear();

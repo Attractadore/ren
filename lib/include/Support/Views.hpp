@@ -21,7 +21,9 @@ template <ranges::sized_range R> size_t size_bytes(R &&r) {
   return ranges::size(r) * sizeof(ranges::range_value_t<R>);
 }
 
-template <std::integral I> auto range(I end) {
-  return ranges::views::iota(I(0), end);
+template <std::integral I> auto range(I begin, I end) {
+  return ranges::views::iota(begin, end);
 }
+
+template <std::integral I> auto range(I end) { return range(I(0), end); }
 } // namespace ren
