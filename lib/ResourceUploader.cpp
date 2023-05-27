@@ -136,16 +136,20 @@ auto ResourceUploader::record_upload(const Device &device,
   auto cmd = cmd_allocator.allocate();
   cmd.begin();
 
+  cmd.begin_debug_region("Upload buffers");
   for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
     cmd.copy_buffer(src, dst);
   }
+  cmd.end_debug_region();
 
   m_buffer_srcs.clear();
   m_buffer_dsts.clear();
 
+  cmd.begin_debug_region("Upload textures");
   for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
     upload_texture(device, cmd, src, dst);
   }
+  cmd.end_debug_region();
 
   m_texture_srcs.clear();
   m_texture_dsts.clear();

@@ -148,6 +148,10 @@ public:
 
   void pipeline_barrier(std::span<const VkMemoryBarrier2> barriers,
                         std::span<const VkImageMemoryBarrier2> image_barriers);
+
+  void begin_debug_region(const char *label);
+
+  void end_debug_region();
 };
 
 } // namespace ren

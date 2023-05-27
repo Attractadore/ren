@@ -319,4 +319,17 @@ void CommandBuffer::pipeline_barrier(
   pipeline_barrier(dependency);
 }
 
+void CommandBuffer::begin_debug_region(const char *label) {
+  assert(label);
+  VkDebugUtilsLabelEXT label_info = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pLabelName = label,
+  };
+  m_device->CmdBeginDebugUtilsLabelEXT(m_cmd_buffer, &label_info);
+}
+
+void CommandBuffer::end_debug_region() {
+  m_device->CmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+}
+
 } // namespace ren

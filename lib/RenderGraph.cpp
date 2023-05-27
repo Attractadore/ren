@@ -713,10 +713,13 @@ void RenderGraph::Builder::insert_barriers(Device &device) {
   }
 }
 
-static auto batch_passes(std::span<const RGPass> passes) -> Vector<RGBatch> {
+auto RenderGraph::Builder::batch_passes(std::span<const RGPassID> schedule)
+    -> Vector<RGBatch> {
   Vector<RGBatch> batches;
   bool begin_new_batch = true;
-  for (const auto &pass : passes) {
+  for (auto passid : schedule) {
+    auto &pass = m_passes[passid];
+    auto &name = m_pass_names[passid];
     if (!pass.wait_semaphores.empty()) {
       begin_new_batch = true;
     }
@@ -728,6 +731,7 @@ static auto batch_passes(std::span<const RGPass> passes) -> Vector<RGBatch> {
     auto &batch = batches.back();
     batch.barrier_cbs.push_back(std::move(pass.barrier_cb));
     batch.pass_cbs.push_back(std::move(pass.pass_cb));
+    batch.pass_names.push_back(std::move(name));
     if (!pass.signal_semaphores.empty()) {
       batch.signal_semaphores = std::move(pass.signal_semaphores);
       begin_new_batch = true;
@@ -751,11 +755,8 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
 
   rendergraphDebug("Schedule passes");
   rendergraphDebug("");
-  auto passes = schedule_passes();
-  print_passes(passes);
-  m_passes = passes |
-             map([&](RGPassID pass) { return std::move(m_passes[pass]); }) |
-             ranges::to<Vector>;
+  auto schedule = schedule_passes();
+  print_passes(schedule);
 
   rendergraphDebug("Insert barriers");
   rendergraphDebug("");
@@ -763,7 +764,7 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
 
   rendergraphDebug("Batch passes");
   rendergraphDebug("");
-  auto batches = batch_passes(m_passes);
+  auto batches = batch_passes(schedule);
 
   rendergraphDebug("### Build done ###");
   rendergraphDebug("");
@@ -794,15 +795,17 @@ void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
   for (auto &batch : m_batches) {
     cmd_buffers.clear();
 
-    for (auto &&[barrier_cb, pass_cb] :
-         ranges::views::zip(batch.barrier_cbs, batch.pass_cbs)) {
+    for (auto &&[barrier_cb, pass_cb, pass_name] :
+         zip(batch.barrier_cbs, batch.pass_cbs, batch.pass_names)) {
       auto cmd = cmd_allocator.allocate();
       cmd.begin();
       if (barrier_cb) {
         barrier_cb(device, *this, cmd);
       }
       if (pass_cb) {
+        cmd.begin_debug_region(pass_name.c_str());
         pass_cb(device, *this, cmd);
+        cmd.end_debug_region();
       }
       cmd.end();
       cmd_buffers.push_back(

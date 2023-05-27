@@ -56,6 +56,7 @@ struct RGBatch {
   SmallVector<RGSemaphoreSignal> signal_semaphores;
   Vector<RGCallback> barrier_cbs;
   Vector<RGCallback> pass_cbs;
+  Vector<std::string> pass_names;
 };
 
 class RenderGraph {
@@ -232,6 +233,8 @@ private:
   void print_passes(std::span<const RGPassID> passes) const;
 
   void insert_barriers(Device &device);
+
+  auto batch_passes(std::span<const RGPassID> schedule) -> Vector<RGBatch>;
 
 public:
   class PassBuilder;
