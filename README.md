@@ -6,6 +6,7 @@
 
 - [ ] Manual exposure
 - [x] Camera-based exposure
-- [ ] Automatic exposure
+- [x] Automatic exposure
+    - [ ] Automatic exposure compensation
 - [ ] Temporal adaptation
 - [ ] Pre-exposure in fragment shaders

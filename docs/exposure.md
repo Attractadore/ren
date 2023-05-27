@@ -85,14 +85,26 @@ Once $L_{avg}$ is know, $L_{max}$ can be found:
 $$ L_{max} = \frac{78}{q} \frac{L_{avg}}{K} 2^{-EC} = 9.6 L_{avg} 2^{-EC} $$
 
 #### Implementation
-**TODO**: Automatic exposure is currently not implemented.
 
 However, it's not possible to use a light meter with a rendered scene.
-Instead, compute shaders can be used to calculate its average luminance.
-First, a histogram of the log luminance values is built.
-Then a reduction is ran on the histogram.
+Instead, two compute shaders passes are run.
 
-#### Adapting to different brightness levels
+In the first pass, a histogram of the log of the luminance values is built.
+
+In the second pass, the average of the histogram is computed.
+Bin number 0 is ignored, since it mostly contains samples whose luminance is 0.
+Taking them into account skews the average luminance too much towards 0, which causes everything to be overexposed.
+The average of the log of the luminance is used instead of its median since it's a smooth function.
+If there are "holes" with 0 samples in the histogram,
+a small change in the scene's lighting can cause the median to move from one side of a "hole" to another,
+which leads to large shifts in exposure.
+However, the median is a better match if you want the expose for the dominant lighting condition.
+So this part could definitely use some more tweaking.
+
+#### Automatic exposure compensation
+
+**TODO**
+
 One disadvantage of automatic exposure is that the scene will look the same no matter how much a scene's light source's intensity changes.
 To fix this, an exposure compensation curve can be fitted.
 
