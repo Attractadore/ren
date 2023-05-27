@@ -5,7 +5,7 @@
 
 REN_NAMESPACE_BEGIN
 
-const float MIN_LUMINANCE = 1.0f / 256.0f;
+const float MIN_LUMINANCE = 1.0f / 65536.0f;
 const float MIN_LOG_LUMINANCE = log2(MIN_LUMINANCE);
 const float MAX_LOG_LUMINANCE = 16.0f;
 const uint NUM_LUMINANCE_HISTOGRAM_BINS = 64;
@@ -30,8 +30,7 @@ REN_BUFFER_REFERENCE(4) Exposure { float exposure; };
 struct ReduceLuminanceHistogramConstants {
   REN_REFERENCE(LuminanceHistogram) histogram_ptr;
   REN_REFERENCE(Exposure) exposure_ptr;
-  uint histogram_half_sum;
-  float exposure_correction;
+  float exposure_compensation;
 };
 
 const uint REDUCE_LUMINANCE_HISTOGRAM_THREADS_X = NUM_LUMINANCE_HISTOGRAM_BINS;

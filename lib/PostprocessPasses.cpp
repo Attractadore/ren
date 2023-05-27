@@ -137,13 +137,13 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
     RGBufferID histogram_buffer;
     RGBufferID exposure_buffer;
     Handle<ComputePipeline> pipeline;
-    float exposure_correction;
+    float exposure_compensation;
   } reduce_rcs = {
       .rt = cfg.rt,
       .histogram_buffer = histogram_buffer,
       .exposure_buffer = exposure_buffer,
       .pipeline = cfg.reduce_luminance_histogram_pipeline,
-      .exposure_correction = cfg.options.compensation,
+      .exposure_compensation = cfg.options.compensation,
   };
 
   reduce_pass.set_callback(
@@ -160,8 +160,7 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
         glsl::ReduceLuminanceHistogramConstants constants = {
             .histogram_ptr = device.get_buffer_device_address(histogram_buffer),
             .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
-            .histogram_half_sum = half_sum,
-            .exposure_correction = rcs.exposure_correction,
+            .exposure_compensation = rcs.exposure_compensation,
         };
         cmd.set_push_constants(layout, VK_SHADER_STAGE_COMPUTE_BIT, constants);
 

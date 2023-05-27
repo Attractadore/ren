@@ -15,22 +15,16 @@ void main() {
     return;
   }
 
-  // Find the position of the median in the histogram
-  uint half_sum = g_pcs.histogram_half_sum;
-  uint sum = 0;
-  int i = 0;
-  for (; i < NUM_LUMINANCE_HISTOGRAM_BINS - 1; ++i) {
-      uint count = histogram[i];
-      if (sum + count >= half_sum) {
-        break;
-      }
-      sum += count;
+  uint num_samples = 0;
+  float log_luminance = 0.0f;
+  for (int i = 1; i < NUM_LUMINANCE_HISTOGRAM_BINS; ++i) {
+    float bin_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, (i + 0.5f) / NUM_LUMINANCE_HISTOGRAM_BINS);
+    uint bin_count = histogram[i];
+    log_luminance += bin_luminance * bin_count;
+    num_samples += bin_count;
   }
-
-  float fraci = float(i) + float(half_sum - sum) / float(histogram[i]);
-
-  float log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, fraci / NUM_LUMINANCE_HISTOGRAM_BINS);
-  float luminance = exp2(log_luminance - g_pcs.exposure_correction);
+  log_luminance /= num_samples;
+  float luminance = exp2(log_luminance - g_pcs.exposure_compensation);
   float max_luminance = 9.6f * luminance;
   float exposure = 1.0f / max_luminance;
 

@@ -77,7 +77,7 @@ protected:
     ren::CameraDesc desc = {
         .width = width,
         .height = height,
-        .exposure_compensation = -18.5f,
+        .exposure_compensation = 3.0f,
         .exposure_mode = REN_EXPOSURE_MODE_AUTOMATIC,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
