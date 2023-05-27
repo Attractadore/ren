@@ -117,7 +117,9 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
     auto size = device.get_texture_view_size(texture);
     glm::uvec2 group_size = {glsl::BUILD_LUMINANCE_HISTOGRAM_THREADS_X,
                              glsl::BUILD_LUMINANCE_HISTOGRAM_THREADS_Y};
-    cmd.dispatch_threads(size, group_size);
+    glm::uvec2 work_size = {glsl::BUILD_LUMINANCE_HISTOGRAM_ITEMS_X,
+                            glsl::BUILD_LUMINANCE_HISTOGRAM_ITEMS_Y};
+    cmd.dispatch_threads(size, group_size * work_size);
   });
 
   auto reduce_pass = rgb.create_pass("Reduce luminance histogram");

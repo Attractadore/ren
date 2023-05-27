@@ -12,20 +12,32 @@ NUM_THREADS(BUILD_LUMINANCE_HISTOGRAM_THREADS_X, BUILD_LUMINANCE_HISTOGRAM_THREA
 void main() {
   uint index = gl_LocalInvocationIndex;
   uint tex = g_pcs.tex;
-  ivec2 size = imageSize(g_rimages2d[tex]);
-  ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
 
   histogram[index] = 0;
   barrier();
 
-  if (all(lessThan(pos, size))) {
-    float luminance = get_luminance(imageLoad(g_rimages2d[tex], pos).rgb);
-    luminance = max(luminance, MIN_LUMINANCE);
-    float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
-    uint bin = uint(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
-    atomicAdd(histogram[bin], 1);
+  ivec2 base_pos = ivec2(gl_GlobalInvocationID.xy) *
+                   ivec2(BUILD_LUMINANCE_HISTOGRAM_ITEMS_X,
+                         BUILD_LUMINANCE_HISTOGRAM_ITEMS_X);
+  ivec2 max_pos = imageSize(g_rimages2d[tex]) - ivec2(1);
+  for (uint x = 0; x < BUILD_LUMINANCE_HISTOGRAM_ITEMS_X; ++x) {
+    for (uint y = 0; y < BUILD_LUMINANCE_HISTOGRAM_ITEMS_Y; ++y) {
+      ivec2 pos = min(base_pos + ivec2(x, y), max_pos);
+      float luminance = get_luminance(imageLoad(g_rimages2d[tex], pos).rgb);
+      luminance = max(luminance, MIN_LUMINANCE);
+      float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) /
+                    (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
+      int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
+      // Ignore bin 0
+      if (bin > 0) {
+        atomicAdd(histogram[bin], 1);
+      }
+    }
   }
   barrier();
 
-  atomicAdd(g_pcs.histogram_ptr.bins[index], histogram[index]);
+  // Ignore bin 0 and zero-valued bins
+  if (index > 0 && histogram[index] > 0) {
+    atomicAdd(g_pcs.histogram_ptr.bins[index], histogram[index]);
+  }
 }
