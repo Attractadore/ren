@@ -41,7 +41,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
   return arena.create_descriptor_set_layout({
-      REN_SET_DEBUG_NAME("Persistent descriptor set"),
+      REN_SET_DEBUG_NAME("Textures descriptor set"),
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
       .bindings = bindings,
   });
@@ -51,11 +51,6 @@ auto create_pipeline_layout(ResourceArena &arena,
                             Handle<DescriptorSetLayout> persistent_set_layout,
                             std::span<const std::span<const std::byte>> shaders,
                             std::string_view name) -> Handle<PipelineLayout> {
-  std::array<std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS>,
-             MAX_DESCRIPTOR_SETS>
-      set_bindings = {};
-  unsigned num_pipeline_sets = 0;
-
   VkPushConstantRange push_constants = {};
 
   for (auto code : shaders) {
@@ -65,28 +60,6 @@ auto create_pipeline_layout(ResourceArena &arena,
                   "SPIRV-Reflect: Failed to create shader module");
 
     auto stage = static_cast<VkShaderStageFlagBits>(shader.GetShaderStage());
-
-    uint32_t num_shader_sets = 0;
-    throwIfFailed(shader.EnumerateDescriptorSets(&num_shader_sets, nullptr),
-                  "SPIRV-Reflect: Failed to enumerate shader descriptor sets");
-    SmallVector<SpvReflectDescriptorSet *> sets(num_shader_sets);
-    throwIfFailed(shader.EnumerateDescriptorSets(&num_shader_sets, sets.data()),
-                  "SPIRV-Reflect: Failed to enumerate shader descriptor sets");
-
-    for (const auto *set : sets) {
-      num_pipeline_sets = std::max(num_pipeline_sets, set->set + 1);
-      for (const auto *binding : std::span(set->bindings, set->binding_count)) {
-        if (binding->binding >= MAX_DESCIPTOR_BINDINGS) {
-          throw std::runtime_error(
-              "Shader module uses more bindings than is supported");
-        }
-        auto &set_binding = set_bindings[set->set][binding->binding];
-        set_binding.type =
-            static_cast<VkDescriptorType>(binding->descriptor_type);
-        set_binding.count = binding->count;
-        set_binding.stages |= stage;
-      }
-    }
 
     uint32_t num_push_constants = 0;
     throwIfFailed(
@@ -106,14 +79,6 @@ auto create_pipeline_layout(ResourceArena &arena,
   SmallVector<Handle<DescriptorSetLayout>> layouts;
   if (persistent_set_layout) {
     layouts.push_back(persistent_set_layout);
-    for (const auto &bindings :
-         std::span(&set_bindings[1], &set_bindings[num_pipeline_sets])) {
-      layouts.push_back(arena.create_descriptor_set_layout({
-          .bindings = bindings,
-      }));
-    }
-  } else {
-    assert(num_pipeline_sets == 0);
   }
 
   return arena.create_pipeline_layout({

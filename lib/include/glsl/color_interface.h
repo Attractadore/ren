@@ -3,21 +3,36 @@
 
 #include "common.h"
 #include "encode.h"
+#include "lighting.h"
+#include "material.h"
 
 REN_NAMESPACE_BEGIN
 
-struct GlobalData {
+REN_BUFFER_REFERENCE(4) TransformMatrices { mat4x3 matrix; };
+
+REN_BUFFER_REFERENCE(4) NormalMatrices { mat3 matrix; };
+
+REN_BUFFER_REFERENCE(4) Materials { Material material; };
+
+REN_BUFFER_REFERENCE(4) DirectionalLights { DirLight light; };
+
+REN_BUFFER_REFERENCE(4) ColorUB {
+  REN_REFERENCE(TransformMatrices) transform_matrices_ptr;
+  REN_REFERENCE(NormalMatrices) normal_matrices_ptr;
+  REN_REFERENCE(Materials) materials_ptr;
+  REN_REFERENCE(DirectionalLights) directional_lights_ptr;
   mat4 proj_view;
   vec3 eye;
   uint num_dir_lights;
 };
 
-REN_BUFFER_REFERENCE(4) Positions { vec3 positions[1]; };
-REN_BUFFER_REFERENCE(4) Colors { color_t colors[1]; };
-REN_BUFFER_REFERENCE(4) Normals { normal_t normals[1]; };
-REN_BUFFER_REFERENCE(4) UVs { vec2 uvs[1]; };
+REN_BUFFER_REFERENCE(4) Positions { vec3 position; };
+REN_BUFFER_REFERENCE(4) Colors { color_t color; };
+REN_BUFFER_REFERENCE(4) Normals { normal_t normal; };
+REN_BUFFER_REFERENCE(4) UVs { vec2 uv; };
 
-struct ColorPushConstants {
+struct ColorConstants {
+  REN_REFERENCE(ColorUB) ub_ptr;
   REN_REFERENCE(Positions) positions_ptr;
   REN_REFERENCE(Colors) colors_ptr;
   REN_REFERENCE(Normals) normals_ptr;
@@ -26,14 +41,7 @@ struct ColorPushConstants {
   uint material_index;
 };
 
-static_assert(sizeof(ColorPushConstants) <= 128);
-
-const uint GLOBAL_SET = 1;
-const uint GLOBAL_DATA_SLOT = 0;
-const uint MODEL_MATRICES_SLOT = GLOBAL_DATA_SLOT + 1;
-const uint NORMAL_MATRICES_SLOT = MODEL_MATRICES_SLOT + 1;
-const uint MATERIALS_SLOT = NORMAL_MATRICES_SLOT + 1;
-const uint DIR_LIGHTS_SLOT = MATERIALS_SLOT + 1;
+static_assert(sizeof(ColorConstants) <= 128);
 
 REN_NAMESPACE_END
 

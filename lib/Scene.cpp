@@ -79,7 +79,6 @@ void Scene::next_frame() {
   m_frame_arena.clear();
   m_device->next_frame();
   m_cmd_allocator.next_frame();
-  m_descriptor_set_allocator.next_frame(*m_device);
   m_texture_allocator.next_frame();
 }
 
@@ -527,7 +526,6 @@ struct ColorPassConfig {
   ResourceArena *arena;
 
   VkDescriptorSet persistent_set;
-  DescriptorSetAllocator *set_allocator;
 
   Handle<PipelineLayout> pipeline_layout;
 
@@ -544,7 +542,7 @@ struct ColorPassConfig {
 struct ColorPassResources {
   RGTextureID rt;
   RGTextureID dst;
-  RGBufferID global_data_buffer;
+  RGBufferID uniform_buffer;
   VkDescriptorSet global_set;
 };
 
@@ -561,42 +559,35 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
                     .maxDepth = 1.0f});
   cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
 
-  auto global_data_buffer = rg.get_buffer(rcs.global_data_buffer);
-  auto *global_data = device.map_buffer<glsl::GlobalData>(global_data_buffer);
-  *global_data = {
-      .proj_view = cfg.proj * cfg.view,
-      .eye = cfg.eye,
-      .num_dir_lights = cfg.num_dir_lights,
-  };
-
   auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
   auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
   auto dir_lights_buffer = cfg.dir_lights_buffer.map(
       [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
   auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
 
-  auto global_set = [&] {
-    auto layout = device.get_pipeline_layout(cfg.pipeline_layout)
-                      .set_layouts[glsl::GLOBAL_SET];
-    auto set = cfg.set_allocator->allocate(device, *cfg.arena, layout);
+  auto uniform_buffer = rg.get_buffer(rcs.uniform_buffer);
+  auto *uniforms = device.map_buffer<glsl::ColorUB>(uniform_buffer);
+  *uniforms = {
+      .transform_matrices_ptr =
+          device.get_buffer_device_address(transform_matrix_buffer),
+      .normal_matrices_ptr =
+          device.get_buffer_device_address(normal_matrix_buffer),
+      .materials_ptr = device.get_buffer_device_address(materials_buffer),
+      .directional_lights_ptr = dir_lights_buffer.map_or(
+          [&](const BufferView &view) {
+            return device.get_buffer_device_address(view);
+          },
+          u64(0)),
+      .proj_view = cfg.proj * cfg.view,
+      .eye = cfg.eye,
+      .num_dir_lights = cfg.num_dir_lights,
+  };
 
-    DescriptorSetWriter writer(device, set, layout);
-    writer.add_buffer(glsl::GLOBAL_DATA_SLOT, global_data_buffer)
-        .add_buffer(glsl::MODEL_MATRICES_SLOT, transform_matrix_buffer)
-        .add_buffer(glsl::NORMAL_MATRICES_SLOT, normal_matrix_buffer)
-        .add_buffer(glsl::MATERIALS_SLOT, materials_buffer);
-
-    dir_lights_buffer.map([&](const BufferView &buffer) {
-      writer.add_buffer(glsl::DIR_LIGHTS_SLOT, buffer);
-    });
-
-    return writer.write();
-  }();
-
-  std::array descriptor_sets = {cfg.persistent_set, global_set};
+  std::array descriptor_sets = {cfg.persistent_set};
   cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, cfg.pipeline_layout,
                            0, descriptor_sets);
 
+  auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
   for (const auto &&[i, mesh_inst] : enumerate(cfg.mesh_insts->values())) {
     const auto &mesh = (*cfg.meshes)[mesh_inst.mesh];
     auto material = mesh_inst.material;
@@ -608,7 +599,8 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
     auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-    glsl::ColorPushConstants pcs = {
+    glsl::ColorConstants pcs = {
+        .ub_ptr = ub_ptr,
         .positions_ptr = address + positions_offset,
         .colors_ptr =
             (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
@@ -668,13 +660,13 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   pass.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
-  rcs.global_data_buffer = pass.create_buffer(
+  rcs.uniform_buffer = pass.create_buffer(
       {
-          REN_SET_DEBUG_NAME("Global data UBO"),
+          REN_SET_DEBUG_NAME("Color pass uniform buffer"),
           .heap = BufferHeap::Upload,
-          .size = sizeof(glsl::GlobalData),
+          .size = sizeof(glsl::ColorUB),
       },
-      "Global data UBO", VK_ACCESS_2_UNIFORM_READ_BIT,
+      "Global data UBO", VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 
@@ -779,7 +771,6 @@ void Scene::draw(Swapchain &swapchain) {
             .mesh_insts = &m_mesh_insts,
             .arena = &m_persistent_arena,
             .persistent_set = m_persistent_descriptor_set,
-            .set_allocator = &m_descriptor_set_allocator,
             .pipeline_layout = m_pipeline_layout,
             .uploaded_vertex_buffers = uploaded_vertex_buffers,
             .uploaded_index_buffers = uploaded_index_buffers,

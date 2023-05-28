@@ -1,4 +1,5 @@
 #include "TextureIDAllocator.hpp"
+#include "Device.hpp"
 #include "Errors.hpp"
 #include "glsl/interface.hpp"
 
@@ -15,10 +16,23 @@ auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view,
     -> SampledTextureID {
   auto index = m_sampled_texture_allocator.allocate();
   assert(index < glsl::NUM_SAMPLED_TEXTURES);
-  DescriptorSetWriter(*m_device, m_set, m_layout)
-      .add_texture_and_sampler(glsl::SAMPLED_TEXTURES_SLOT, view, sampler,
-                               index)
-      .write();
+
+  VkDescriptorImageInfo image = {
+      .sampler = m_device->get_sampler(sampler).handle,
+      .imageView = m_device->getVkImageView(view),
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+  VkWriteDescriptorSet config = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = m_set,
+      .dstBinding = glsl::SAMPLED_TEXTURES_SLOT,
+      .dstArrayElement = index,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .pImageInfo = &image,
+  };
+  m_device->write_descriptor_set(config);
+
   return SampledTextureID(index);
 };
 
@@ -34,9 +48,22 @@ auto TextureIDAllocator::allocate_storage_texture(const TextureView &view)
     -> StorageTextureID {
   auto index = m_storage_texture_allocator.allocate();
   assert(index < glsl::NUM_STORAGE_TEXTURES);
-  DescriptorSetWriter(*m_device, m_set, m_layout)
-      .add_texture(glsl::STORAGE_TEXTURES_SLOT, view, index)
-      .write();
+
+  VkDescriptorImageInfo image = {
+      .imageView = m_device->getVkImageView(view),
+      .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+  };
+  VkWriteDescriptorSet config = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = m_set,
+      .dstBinding = glsl::STORAGE_TEXTURES_SLOT,
+      .dstArrayElement = index,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+      .pImageInfo = &image,
+  };
+  m_device->write_descriptor_set(config);
+
   return StorageTextureID(index);
 };
 

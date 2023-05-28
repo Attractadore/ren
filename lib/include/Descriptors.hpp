@@ -49,41 +49,6 @@ struct DescriptorSetLayout {
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
 };
 
-class DescriptorSetWriter {
-  Device *m_device = nullptr;
-  VkDescriptorSet m_set = nullptr;
-  Handle<DescriptorSetLayout> m_layout;
-  SmallVector<VkDescriptorBufferInfo, MAX_DESCIPTOR_BINDINGS> m_buffers;
-  SmallVector<VkDescriptorImageInfo, MAX_DESCIPTOR_BINDINGS> m_images;
-  SmallVector<VkWriteDescriptorSet, MAX_DESCIPTOR_BINDINGS> m_data;
-
-public:
-  DescriptorSetWriter(Device &device, VkDescriptorSet set,
-                      Handle<DescriptorSetLayout> layout);
-
-public:
-  auto add_buffer(unsigned slot, const BufferView &buffer, unsigned offset = 0)
-      -> DescriptorSetWriter &;
-
-private:
-  auto add_texture_and_sampler(unsigned slot, VkImageView view,
-                               VkSampler sampler, unsigned offset)
-      -> DescriptorSetWriter &;
-
-public:
-  auto add_texture(unsigned slot, const TextureView &view, unsigned offset = 0)
-      -> DescriptorSetWriter &;
-
-  auto add_sampler(unsigned slot, Handle<Sampler> sampler, unsigned offset = 0)
-      -> DescriptorSetWriter &;
-
-  auto add_texture_and_sampler(unsigned slot, const TextureView &view,
-                               Handle<Sampler> sampler, unsigned offset = 0)
-      -> DescriptorSetWriter &;
-
-  auto write() -> VkDescriptorSet;
-};
-
 [[nodiscard]] auto
 allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
                                  Handle<DescriptorSetLayout> layout)

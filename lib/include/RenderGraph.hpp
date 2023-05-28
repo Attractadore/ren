@@ -13,7 +13,6 @@ namespace ren {
 
 class CommandAllocator;
 class CommandBuffer;
-class DescriptorSetAllocator;
 class Device;
 class RenderGraph;
 class ResourceArena;

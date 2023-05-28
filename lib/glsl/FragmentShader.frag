@@ -5,19 +5,7 @@
 
 TEXTURES;
 
-UBO(GLOBAL_SET, GLOBAL_DATA_SLOT) {
-  GlobalData g_global;
-};
-
-SSBO(GLOBAL_SET, MATERIALS_SLOT, restrict readonly) {
-  Material g_materials[];
-};
-
-SSBO(GLOBAL_SET, DIR_LIGHTS_SLOT, restrict readonly) {
-  DirLight g_dir_lights[];
-};
-
-PUSH_CONSTANTS { ColorPushConstants g_pcs; };
+PUSH_CONSTANTS { ColorConstants g_pcs; };
 
 IN(POSITION_LOCATION) vec3 in_position;
 IN(COLOR_LOCATION) vec4 in_color;
@@ -32,9 +20,11 @@ void main() {
   vec3 normal = normalize(in_normal);
   vec2 uv = in_uv;
 
-  Material material = g_materials[g_pcs.material_index];
+  ColorUB ub = g_pcs.ub_ptr;
 
-  vec3 view_dir = normalize(g_global.eye - position);
+  Material material = ub.materials_ptr[g_pcs.material_index].material;
+
+  vec3 view_dir = normalize(ub.eye - position);
 
   color *= material.base_color;
   if (material.base_color_texture != 0) {
@@ -46,12 +36,12 @@ void main() {
 
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-  uint num_dir_lights = g_global.num_dir_lights;
+  uint num_dir_lights = ub.num_dir_lights;
   for (int i = 0; i < num_dir_lights; ++i) {
-    DirLight dir_light = g_dir_lights[i];
-    vec3 light_dir = dir_light.origin;
-    vec3 light_color = dir_light.color;
-    float illuminance = dir_light.illuminance;
+    DirLight light = ub.directional_lights_ptr[i].light;
+    vec3 light_dir = light.origin;
+    vec3 light_color = light.color;
+    float illuminance = light.illuminance;
     result.xyz += lighting(normal, light_dir, view_dir, color.xyz, metallic,
                            roughness, light_color * illuminance);
   }

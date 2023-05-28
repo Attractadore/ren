@@ -8,29 +8,12 @@
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_image_load_formatted : require
 
-#define CAT_IMPL(A, B) A##B
-#define CAT(A, B) CAT_IMPL(A, B)
-
-#define UBO(S, B)                                                              \
-  layout(set = S, binding = B, scalar) uniform CAT(UBO, __LINE__)
-
-#define SSBO(S, B, qual)                                                       \
-  layout(set = S, binding = B, scalar) qual buffer CAT(SSBO, __LINE__)
-
-#define PUSH_CONSTANTS layout(push_constant, scalar) uniform PC
-
-#define SAMPLER_STATE(S, B) layout(set = S, binding = B) uniform sampler
-
-#define SAMPLER2D(S, B) layout(set = S, binding = B) uniform sampler2D
-
-#define TEXTURE2D(S, B) layout(set = S, binding = B) uniform texture2D
-
-#define IMAGE2D(S, B, qual) layout(set = S, binding = B) qual uniform image2D
-
 #define REN_BUFFER_REFERENCE(alignment)                                        \
   layout(buffer_reference, scalar, buffer_reference_align = alignment) buffer
 
 #define REN_REFERENCE(type) type
+
+#define PUSH_CONSTANTS layout(push_constant, scalar) uniform PC
 
 #define IS_NULL(ref) (uint64_t(ref) == 0)
 

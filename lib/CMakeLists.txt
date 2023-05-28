@@ -87,7 +87,6 @@ add_library(
   Buffer.cpp
   CommandAllocator.cpp
   CommandBuffer.cpp
-  DescriptorSetAllocator.cpp
   Descriptors.cpp
   Device.cpp
   Formats.cpp

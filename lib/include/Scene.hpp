@@ -4,7 +4,6 @@
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
 #include "DenseHandleMap.hpp"
-#include "DescriptorSetAllocator.hpp"
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
@@ -35,7 +34,6 @@ class Scene {
   Vector<BufferView> m_staged_index_buffers;
   Vector<Handle<Texture>> m_staged_textures;
   MaterialPipelineCompiler m_compiler;
-  DescriptorSetAllocator m_descriptor_set_allocator;
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;
