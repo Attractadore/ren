@@ -105,7 +105,7 @@ public:
 
   void set_camera(const RenCameraDesc &desc) noexcept;
 
-  void set_tonemapping(RenTonemappingOperator oper) noexcept;
+  void set_tone_mapping(RenToneMappingOperator oper) noexcept;
 
   void create_mesh_insts(std::span<const RenMeshInstDesc> desc,
                          RenMeshInst *out);

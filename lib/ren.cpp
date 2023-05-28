@@ -272,10 +272,10 @@ RenResult ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {
   return lippincott([&] { scene->set_camera(*desc); });
 }
 
-RenResult ren_SetSceneTonemapping(RenScene *scene,
-                                  RenTonemappingOperator oper) {
+RenResult ren_SetSceneToneMapping(RenScene *scene,
+                                  RenToneMappingOperator oper) {
   assert(scene);
-  return lippincott([&] { scene->set_tonemapping(oper); });
+  return lippincott([&] { scene->set_tone_mapping(oper); });
 }
 
 RenResult ren_CreateMesh(RenScene *scene, const RenMeshDesc *desc,

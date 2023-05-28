@@ -25,9 +25,9 @@ struct PostprocessingOptions {
     Mode mode = Camera{};
   } exposure;
 
-  struct Tonemapping {
-    RenTonemappingOperator oper = REN_TONEMAPPING_OPERATOR_REINHARD;
-  } tonemapping;
+  struct ToneMapping {
+    RenToneMappingOperator oper = REN_TONE_MAPPING_OPERATOR_REINHARD;
+  } tone_mapping;
 };
 
 } // namespace ren

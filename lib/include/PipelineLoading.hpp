@@ -14,14 +14,14 @@ auto create_color_pass_pipeline_layout(
 struct PostprocessingPipelines {
   Handle<ComputePipeline> build_luminance_histogram_pipeline;
   Handle<ComputePipeline> reduce_luminance_histogram_pipeline;
-  Handle<ComputePipeline> reinhard_tonemap;
+  Handle<ComputePipeline> reinhard_tone_mapping;
 };
 
 auto load_postprocessing_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> PostprocessingPipelines;
 
-auto load_reinhard_tonemap_pipeline(
+auto load_reinhard_tone_mapping_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline>;
 

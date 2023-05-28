@@ -89,7 +89,7 @@ using PerspectiveProjection = RenPerspectiveProjection;
 using OrthographicProjection = RenOrthographicProjection;
 using CameraDesc = RenCameraDesc;
 
-using TonemappingOperator = RenTonemappingOperator;
+using ToneMappingOperator = RenToneMappingOperator;
 
 using MeshDesc = RenMeshDesc;
 
@@ -167,9 +167,9 @@ struct Scene : RenScene {
     return expected(ren_SetSceneCamera(this, &desc));
   }
 
-  [[nodiscard]] auto set_tonemapping(TonemappingOperator oper)
+  [[nodiscard]] auto set_tone_mapping(ToneMappingOperator oper)
       -> expected<void> {
-    return expected(ren_SetSceneTonemapping(this, oper));
+    return expected(ren_SetSceneToneMapping(this, oper));
   }
 
   [[nodiscard]] auto draw(Swapchain &swapchain) -> expected<void> {

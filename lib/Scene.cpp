@@ -340,8 +340,8 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
   m_viewport_height = desc.height;
 }
 
-void Scene::set_tonemapping(RenTonemappingOperator oper) noexcept {
-  m_pp_opts.tonemapping = {
+void Scene::set_tone_mapping(RenToneMappingOperator oper) noexcept {
+  m_pp_opts.tone_mapping = {
       .oper = oper,
   };
 };

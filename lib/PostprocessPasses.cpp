@@ -196,28 +196,28 @@ auto setup_exposure_pass(Device &device, RenderGraph::Builder &rgb,
       cfg.options.mode);
 }
 
-struct TonemapPassConfig {
+struct ToneMappingPassConfig {
   RGTextureID texture;
   RGBufferID exposure_buffer;
-  PostprocessingOptions::Tonemapping options;
-  Handle<ComputePipeline> reinhard_tonemap_pipeline;
+  PostprocessingOptions::ToneMapping options;
+  Handle<ComputePipeline> reinhard_tone_mapping_pipeline;
   TextureIDAllocator *texture_allocator;
 };
 
-struct TonemapPassOutput {
+struct ToneMappingPassOutput {
   RGTextureID texture;
 };
 
-struct ReinhardTonemapPassResources {
+struct ReinhardToneMappingPassResources {
   RGTextureID texture;
   RGBufferID exposure_buffer;
   Handle<ComputePipeline> pipeline;
   TextureIDAllocator *texture_allocator;
 };
 
-void run_reinhard_tonemap_pass(Device &device, RenderGraph &rg,
-                               CommandBuffer &cmd,
-                               const ReinhardTonemapPassResources &rcs) {
+void run_reinhard_tone_mapping_pass(
+    Device &device, RenderGraph &rg, CommandBuffer &cmd,
+    const ReinhardToneMappingPassResources &rcs) {
   auto texture = rg.get_texture(rcs.texture);
   auto exposure_buffer = rg.get_buffer(rcs.exposure_buffer);
   auto layout = device.get_compute_pipeline(rcs.pipeline).layout;
@@ -239,8 +239,9 @@ void run_reinhard_tonemap_pass(Device &device, RenderGraph &rg,
   cmd.dispatch_threads(size, group_size);
 }
 
-auto setup_tonemap_pass(Device &device, RenderGraph::Builder &rgb,
-                        const TonemapPassConfig &cfg) -> TonemapPassOutput {
+auto setup_tone_mapping_pass(Device &device, RenderGraph::Builder &rgb,
+                             const ToneMappingPassConfig &cfg)
+    -> ToneMappingPassOutput {
   auto pass = rgb.create_pass("Reinhard tone mapping");
   pass.read_buffer(cfg.exposure_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
                    VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
@@ -250,20 +251,20 @@ auto setup_tonemap_pass(Device &device, RenderGraph::Builder &rgb,
       VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_IMAGE_LAYOUT_GENERAL);
 
   switch (cfg.options.oper) {
-  case REN_TONEMAPPING_OPERATOR_REINHARD: {
-    ReinhardTonemapPassResources rcs = {
+  case REN_TONE_MAPPING_OPERATOR_REINHARD: {
+    ReinhardToneMappingPassResources rcs = {
         .texture = rt,
         .exposure_buffer = cfg.exposure_buffer,
-        .pipeline = cfg.reinhard_tonemap_pipeline,
+        .pipeline = cfg.reinhard_tone_mapping_pipeline,
         .texture_allocator = cfg.texture_allocator,
     };
     pass.set_callback(
         [rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
-          run_reinhard_tonemap_pass(device, rg, cmd, rcs);
+          run_reinhard_tone_mapping_pass(device, rg, cmd, rcs);
         });
   } break;
-  case REN_TONEMAPPING_OPERATOR_ACES: {
-    todo("ACES tonemapping not implemented");
+  case REN_TONE_MAPPING_OPERATOR_ACES: {
+    todo("ACES tone mapping is not implemented");
   } break;
   }
 
@@ -292,16 +293,16 @@ auto setup_postprocess_passes(Device &device, RenderGraph::Builder &rgb,
               cfg.pipelines.reduce_luminance_histogram_pipeline,
       });
 
-  auto tonemap = setup_tonemap_pass(
+  auto tone_mapping = setup_tone_mapping_pass(
       device, rgb,
-      TonemapPassConfig{
+      ToneMappingPassConfig{
           .texture = texture,
           .exposure_buffer = exposure.exposure_buffer,
-          .options = cfg.options.tonemapping,
-          .reinhard_tonemap_pipeline = cfg.pipelines.reinhard_tonemap,
+          .options = cfg.options.tone_mapping,
+          .reinhard_tone_mapping_pipeline = cfg.pipelines.reinhard_tone_mapping,
           .texture_allocator = cfg.texture_allocator,
       });
-  texture = tonemap.texture;
+  texture = tone_mapping.texture;
 
   return {
       .texture = texture,

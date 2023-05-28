@@ -7,7 +7,7 @@
 #include "BuildLuminanceHistogramShader.h"
 #include "FragmentShader.h"
 #include "ReduceLuminanceHistogramShader.h"
-#include "ReinhardTonemapShader.h"
+#include "ReinhardToneMappingShader.h"
 #include "VertexShader.h"
 
 #include "spirv_reflect.h"
@@ -158,8 +158,8 @@ auto load_postprocessing_pipelines(
           load_build_luminance_histogram_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram_pipeline =
           load_reduce_luminance_histogram_pipeline(arena),
-      .reinhard_tonemap =
-          load_reinhard_tonemap_pipeline(arena, persistent_set_layout),
+      .reinhard_tone_mapping =
+          load_reinhard_tone_mapping_pipeline(arena, persistent_set_layout),
   };
 }
 
@@ -182,14 +182,14 @@ auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
       "Reduce luminance histogram");
 }
 
-auto load_reinhard_tonemap_pipeline(
+auto load_reinhard_tone_mapping_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      std::as_bytes(
-          std::span(ReinhardTonemapShader, ReinhardTonemapShader_count)),
-      "Reinhard tonemap");
+      std::as_bytes(std::span(ReinhardToneMappingShader,
+                              ReinhardToneMappingShader_count)),
+      "Reinhard tone mapping");
 }
 
 } // namespace ren

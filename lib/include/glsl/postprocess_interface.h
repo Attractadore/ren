@@ -42,8 +42,8 @@ struct ReinhardPushConstants {
   uint tex;
 };
 
-const uint REINHARD_THREADS_X = 8;
-const uint REINHARD_THREADS_Y = 8;
+const uint REINHARD_THREADS_X = 16;
+const uint REINHARD_THREADS_Y = 16;
 
 REN_NAMESPACE_END
 
