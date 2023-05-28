@@ -99,7 +99,7 @@ Swapchain::Swapchain(Device &device, VkSurfaceKHR surface)
             .imageUsage = image_usage,
             .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
             .compositeAlpha = composite_alpha,
-            .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+            .presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR,
             .clipped = true,
         };
       }()) {
