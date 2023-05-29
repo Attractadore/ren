@@ -419,25 +419,24 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
   };
 
   VmaAllocationCreateInfo alloc_info = {
-      .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+      .flags = [&]() -> VmaAllocationCreateFlags {
+        switch (create_info.heap) {
+          using enum BufferHeap;
+        case Device:
+          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
+        case Upload:
+          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        case Readback:
+          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                 VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        }
+        unreachable("Unknown BufferHeap");
+      }(),
       .usage = VMA_MEMORY_USAGE_AUTO,
   };
-
-  switch (create_info.heap) {
-    using enum BufferHeap;
-  case Device:
-    alloc_info.flags |=
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
-    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-    break;
-  case Upload:
-    alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-    break;
-  case Readback:
-    alloc_info.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-    break;
-  }
 
   VkBuffer buffer;
   VmaAllocation allocation;
@@ -486,8 +485,8 @@ auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
 
 auto Device::try_get_buffer_view(Handle<Buffer> handle) const
     -> Optional<BufferView> {
-  return try_get_buffer(handle).map([&](const Buffer &buffer) {
-    return BufferView{
+  return try_get_buffer(handle).map([&](const Buffer &buffer) -> BufferView {
+    return {
         .buffer = handle,
         .size = buffer.size,
     };
@@ -513,11 +512,11 @@ auto Device::get_buffer_device_address(const BufferView &view,
 auto Device::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
   unsigned depth = 1;
-  unsigned array_layers = 1;
+  unsigned num_array_layers = 1;
   if (create_info.type == VK_IMAGE_TYPE_3D) {
     depth = create_info.depth;
   } else {
-    array_layers = create_info.array_layers;
+    num_array_layers = create_info.num_array_layers;
   }
 
   VkImageCreateInfo image_info = {
@@ -525,8 +524,8 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
       .imageType = create_info.type,
       .format = create_info.format,
       .extent = {create_info.width, create_info.height, depth},
-      .mipLevels = create_info.mip_levels,
-      .arrayLayers = array_layers,
+      .mipLevels = create_info.num_mip_levels,
+      .arrayLayers = num_array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = create_info.usage,
@@ -549,8 +548,8 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
       .format = create_info.format,
       .usage = create_info.usage,
       .size = {create_info.width, create_info.height, depth},
-      .num_mip_levels = create_info.mip_levels,
-      .num_array_layers = create_info.array_layers,
+      .num_mip_levels = create_info.num_mip_levels,
+      .num_array_layers = num_array_layers,
   });
 }
 
@@ -616,22 +615,23 @@ static auto get_texture_default_view_type(VkImageType type,
       return VK_IMAGE_VIEW_TYPE_3D;
     }
   }
-  unreachable("Invalid VkImageType/array_layers combination:", int(type),
+  unreachable("Invalid VkImageType/num_array_layers combination:", int(type),
               num_array_layers);
 }
 
 auto Device::try_get_texture_view(Handle<Texture> handle) const
     -> Optional<TextureView> {
-  return try_get_texture(handle).map([&](const Texture &texture) {
-    return TextureView{
-        .texture = handle,
-        .type = get_texture_default_view_type(texture.type,
-                                              texture.num_array_layers),
-        .format = texture.format,
-        .num_mip_levels = texture.num_mip_levels,
-        .num_array_layers = texture.num_array_layers,
-    };
-  });
+  return try_get_texture(handle).map(
+      [&](const Texture &texture) -> TextureView {
+        return {
+            .texture = handle,
+            .type = get_texture_default_view_type(texture.type,
+                                                  texture.num_array_layers),
+            .format = texture.format,
+            .num_mip_levels = texture.num_mip_levels,
+            .num_array_layers = texture.num_array_layers,
+        };
+      });
 }
 
 auto Device::get_texture_view(Handle<Texture> handle) const -> TextureView {

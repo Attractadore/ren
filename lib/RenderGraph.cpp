@@ -95,25 +95,13 @@ auto RenderGraph::Builder::getPassID(const RGPass &pass) const -> RGPassID {
 }
 
 void RenderGraph::Builder::wait_semaphore(RGPassID pass,
-                                          Handle<Semaphore> semaphore,
-                                          u64 value,
-                                          VkPipelineStageFlags2 stages) {
-  m_passes[pass].wait_semaphores.push_back({
-      .semaphore = semaphore,
-      .value = value,
-      .stages = stages,
-  });
+                                          RGSemaphoreSignalInfo &&signal_info) {
+  m_passes[pass].wait_semaphores.push_back(std::move(signal_info));
 }
 
-void RenderGraph::Builder::signal_semaphore(RGPassID pass,
-                                            Handle<Semaphore> semaphore,
-                                            u64 value,
-                                            VkPipelineStageFlags2 stages) {
-  m_passes[pass].signal_semaphores.push_back({
-      .semaphore = semaphore,
-      .value = value,
-      .stages = stages,
-  });
+void RenderGraph::Builder::signal_semaphore(
+    RGPassID pass, RGSemaphoreSignalInfo &&signal_info) {
+  m_passes[pass].signal_semaphores.push_back(std::move(signal_info));
 }
 
 auto RenderGraph::Builder::create_pass(std::string name) -> PassBuilder {
@@ -125,22 +113,23 @@ auto RenderGraph::Builder::init_new_texture(Optional<RGPassID> pass,
                                             Optional<RGTextureID> from_texture,
                                             std::string name) -> RGTextureID {
   auto texture = static_cast<RGTextureID>(m_textures.size());
-  m_textures.emplace_back();
-  m_texture_names.push_back(std::move(name));
-  m_texture_states.emplace_back();
+  from_texture.map_or_else(
+      [&](RGTextureID from_texture) {
+        m_textures.push_back(m_textures[from_texture]);
+      },
+      [&] {
+        m_textures.push_back(m_physical_textures.size());
+        m_physical_textures.emplace_back();
+        m_texture_states.emplace_back();
+      });
   pass.map([&](RGPassID pass) {
     m_texture_defs[texture] = pass;
     from_texture.map([&](RGTextureID from_texture) {
-      m_texture_parents[texture] = from_texture;
       m_texture_kills[from_texture] = pass;
+      m_texture_parents[texture] = from_texture;
     });
   });
-  from_texture.map_or_else(
-      [&](RGTextureID from_texture) {
-        m_physical_textures.push_back(from_texture);
-      },
-      [&] { m_physical_textures.push_back(texture); });
-  m_texture_usage_flags.emplace_back();
+  m_texture_names.push_back(std::move(name));
   return texture;
 }
 
@@ -162,68 +151,59 @@ auto RenderGraph::Builder::get_texture_kill(RGTextureID texture) const
   return None;
 }
 
-void RenderGraph::Builder::read_texture(RGPassID pass, RGTextureID texture,
-                                        VkAccessFlags2 accesses,
-                                        VkPipelineStageFlags2 stages,
-                                        VkImageLayout layout) {
+void RenderGraph::Builder::read_texture(RGPassID pass,
+                                        RGTextureReadInfo &&read_info) {
   m_passes[pass].read_textures.push_back({
-      .texture = texture,
-      .accesses = accesses,
-      .stages = stages,
-      .layout = layout,
+      .texture = read_info.texture,
+      .state = read_info.state,
   });
-  m_texture_usage_flags[m_physical_textures[texture]] |=
-      get_texture_usage_flags(accesses);
+  auto it = m_texture_create_infos.find(m_textures[read_info.texture]);
+  if (it != m_texture_create_infos.end()) {
+    it->second.usage |= get_texture_usage_flags(read_info.state.accesses);
+  }
 }
 
-auto RenderGraph::Builder::write_texture(RGPassID pass, RGTextureID texture,
-                                         std::string name,
-                                         VkAccessFlags2 accesses,
-                                         VkPipelineStageFlags2 stages,
-                                         VkImageLayout layout) -> RGTextureID {
-  auto new_texture = init_new_texture(pass, texture, std::move(name));
+auto RenderGraph::Builder::write_texture(RGPassID pass,
+                                         RGTextureWriteInfo &&write_info)
+    -> RGTextureID {
+  auto new_texture =
+      init_new_texture(pass, write_info.texture, std::move(write_info.name));
   m_passes[pass].write_textures.push_back({
       .texture = new_texture,
-      .accesses = accesses,
-      .stages = stages,
-      .layout = layout,
+      .state = write_info.state,
   });
-  m_texture_usage_flags[m_physical_textures[new_texture]] |=
-      get_texture_usage_flags(accesses);
+  auto it = m_texture_create_infos.find(m_textures[write_info.texture]);
+  if (it != m_texture_create_infos.end()) {
+    it->second.usage |= get_texture_usage_flags(write_info.state.accesses);
+  }
   return new_texture;
 }
 
 auto RenderGraph::Builder::create_texture(RGPassID pass,
-                                          RGTextureCreateInfo &&create_info,
-                                          std::string name,
-                                          VkAccessFlags2 accesses,
-                                          VkPipelineStageFlags2 stages,
-                                          VkImageLayout layout) -> RGTextureID {
-  auto new_texture = init_new_texture(pass, None, std::move(name));
-  m_texture_create_infos[new_texture] = std::move(create_info);
+                                          RGTextureCreateInfo &&create_info)
+    -> RGTextureID {
+  auto new_texture = init_new_texture(pass, None, std::move(create_info.name));
+  m_texture_create_infos[m_textures[new_texture]] = {
+      REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+      .type = create_info.type,
+      .format = create_info.format,
+      .usage = get_texture_usage_flags(create_info.state.accesses),
+      .size = create_info.size,
+      .num_mip_levels = create_info.num_mip_levels,
+  };
   m_passes[pass].write_textures.push_back({
       .texture = new_texture,
-      .accesses = accesses,
-      .stages = stages,
-      .layout = layout,
+      .state = create_info.state,
   });
-  m_texture_usage_flags[m_physical_textures[new_texture]] |=
-      get_texture_usage_flags(accesses);
   return new_texture;
-}
+} // namespace ren
 
-auto RenderGraph::Builder::import_texture(const TextureView &texture,
-                                          std::string name,
-                                          VkAccessFlags2 accesses,
-                                          VkPipelineStageFlags2 stages,
-                                          VkImageLayout layout) -> RGTextureID {
-  auto new_texture = init_new_texture(None, None, std::move(name));
-  m_textures[new_texture] = texture;
-  m_texture_states[new_texture] = {
-      .accesses = accesses,
-      .stages = stages,
-      .layout = layout,
-  };
+auto RenderGraph::Builder::import_texture(RGTextureImportInfo &&import_info)
+    -> RGTextureID {
+  auto new_texture = init_new_texture(None, None, std::move(import_info.name));
+  auto physical_texture = m_textures[new_texture];
+  m_physical_textures[physical_texture] = import_info.texture;
+  m_texture_states[physical_texture] = import_info.state;
   return new_texture;
 }
 
@@ -231,22 +211,23 @@ auto RenderGraph::Builder::init_new_buffer(Optional<RGPassID> pass,
                                            Optional<RGBufferID> from_buffer,
                                            std::string name) -> RGBufferID {
   auto buffer = static_cast<RGBufferID>(m_buffers.size());
-  m_buffers.emplace_back();
-  m_buffer_names.push_back(std::move(name));
-  m_buffer_states.emplace_back();
+  from_buffer.map_or_else(
+      [&](RGBufferID from_buffer) {
+        m_buffers.push_back(m_buffers[from_buffer]);
+      },
+      [&] {
+        m_buffers.push_back(m_physical_buffers.size());
+        m_physical_buffers.emplace_back();
+        m_buffer_states.emplace_back();
+      });
   pass.map([&](RGPassID pass) {
     m_buffer_defs[buffer] = pass;
     from_buffer.map([&](RGBufferID from_buffer) {
-      m_buffer_parents[buffer] = from_buffer;
       m_buffer_kills[from_buffer] = pass;
+      m_buffer_parents[buffer] = from_buffer;
     });
   });
-  from_buffer.map_or_else(
-      [&](RGBufferID from_buffer) {
-        m_physical_buffers.push_back(from_buffer);
-      },
-      [&] { m_physical_buffers.push_back(buffer); });
-  m_buffer_usage_flags.emplace_back();
+  m_buffer_names.push_back(std::move(name));
   return buffer;
 }
 
@@ -268,63 +249,58 @@ auto RenderGraph::Builder::get_buffer_kill(RGBufferID buffer) const
   return None;
 }
 
-void RenderGraph::Builder::read_buffer(RGPassID pass, RGBufferID buffer,
-                                       VkAccessFlags2 accesses,
-                                       VkPipelineStageFlags2 stages) {
+void RenderGraph::Builder::read_buffer(RGPassID pass,
+                                       RGBufferReadInfo &&read_info) {
   m_passes[pass].read_buffers.push_back({
-      .buffer = buffer,
-      .accesses = accesses,
-      .stages = stages,
+      .buffer = read_info.buffer,
+      .state = read_info.state,
   });
-  m_buffer_usage_flags[m_physical_buffers[buffer]] |=
-      get_buffer_usage_flags(accesses);
+  auto it = m_buffer_create_infos.find(m_buffers[read_info.buffer]);
+  if (it != m_buffer_create_infos.end()) {
+    it->second.usage |= get_buffer_usage_flags(read_info.state.accesses);
+  }
 }
 
-auto RenderGraph::Builder::write_buffer(RGPassID pass, RGBufferID buffer,
-                                        std::string name,
-                                        VkAccessFlags2 accesses,
-                                        VkPipelineStageFlags2 stages)
+auto RenderGraph::Builder::write_buffer(RGPassID pass,
+                                        RGBufferWriteInfo &&write_info)
     -> RGBufferID {
-  auto new_buffer = init_new_buffer(pass, buffer, std::move(name));
+  auto new_buffer =
+      init_new_buffer(pass, write_info.buffer, std::move(write_info.name));
   m_passes[pass].write_buffers.push_back({
       .buffer = new_buffer,
-      .accesses = accesses,
-      .stages = stages,
+      .state = write_info.state,
   });
-  m_buffer_usage_flags[m_physical_buffers[new_buffer]] |=
-      get_buffer_usage_flags(accesses);
+  auto it = m_buffer_create_infos.find(m_buffers[write_info.buffer]);
+  if (it != m_buffer_create_infos.end()) {
+    it->second.usage |= get_buffer_usage_flags(write_info.state.accesses);
+  }
   return new_buffer;
 }
 
-auto RenderGraph::Builder::create_buffer(
-    RGPassID pass, RGBufferCreateInfo &&create_info, std::string name,
-    VkAccessFlags2 accesses, VkPipelineStageFlags2 stages) -> RGBufferID {
+auto RenderGraph::Builder::create_buffer(RGPassID pass,
+                                         RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
   assert(create_info.size > 0);
-  auto new_buffer = init_new_buffer(pass, None, std::move(name));
-  auto [_, inserted] =
-      m_buffer_create_infos.emplace(new_buffer, std::move(create_info));
-  assert(inserted);
+  auto new_buffer = init_new_buffer(pass, None, std::move(create_info.name));
+  m_buffer_create_infos[m_buffers[new_buffer]] = {
+      REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
+      .heap = create_info.heap,
+      .usage = get_buffer_usage_flags(create_info.state.accesses),
+      .size = create_info.size,
+  };
   m_passes[pass].write_buffers.push_back({
       .buffer = new_buffer,
-      .accesses = accesses,
-      .stages = stages,
+      .state = create_info.state,
   });
-  m_buffer_usage_flags[m_physical_buffers[new_buffer]] |=
-      get_buffer_usage_flags(accesses);
   return new_buffer;
 }
 
-auto RenderGraph::Builder::import_buffer(const BufferView &buffer,
-                                         std::string name,
-                                         VkAccessFlags2 accesses,
-                                         VkPipelineStageFlags2 stages)
+auto RenderGraph::Builder::import_buffer(RGBufferImportInfo &&import_info)
     -> RGBufferID {
-  auto new_buffer = init_new_buffer(None, None, std::move(name));
-  m_buffers[new_buffer] = buffer;
-  m_buffer_states[new_buffer] = {
-      .accesses = accesses,
-      .stages = stages,
-  };
+  auto new_buffer = init_new_buffer(None, None, std::move(import_info.name));
+  auto physical_buffer = m_buffers[new_buffer];
+  m_physical_buffers[physical_buffer] = import_info.buffer;
+  m_buffer_states[physical_buffer] = import_info.state;
   return new_buffer;
 }
 
@@ -340,22 +316,38 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
 
   swapchain.acquireImage(acquire_semaphore);
 
-  auto swapchain_image = import_texture(
-      m_swapchain->getTexture(), "Swapchain texture", VK_ACCESS_2_NONE,
-      VK_PIPELINE_STAGE_2_NONE, VK_IMAGE_LAYOUT_UNDEFINED);
+  auto swapchain_image = import_texture({
+      .name = "Swapchain image",
+      .texture = m_swapchain->getTexture(),
+  });
 
   auto blit = create_pass("Blit to swapchain");
 
-  blit.read_texture(texture, VK_ACCESS_2_TRANSFER_READ_BIT,
-                    VK_PIPELINE_STAGE_2_BLIT_BIT,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  blit.read_texture({
+      .texture = texture,
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_BLIT_BIT,
+              .accesses = VK_ACCESS_2_TRANSFER_READ_BIT,
+              .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+          },
+  });
 
-  auto blitted_swapchain_image = blit.write_texture(
-      swapchain_image, "Swapchain texture after blit",
-      VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_BLIT_BIT,
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  auto blitted_swapchain_image = blit.write_texture({
+      .name = "Swapchain image after blit",
+      .texture = swapchain_image,
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_BLIT_BIT,
+              .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+              .layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          },
+  });
 
-  blit.wait_semaphore(acquire_semaphore, VK_PIPELINE_STAGE_2_BLIT_BIT);
+  blit.wait_semaphore({
+      .semaphore = acquire_semaphore,
+      .stages = VK_PIPELINE_STAGE_2_BLIT_BIT,
+  });
   blit.set_callback([=, src = texture, dst = swapchain_image](
                         Device &device, RenderGraph &rg, CommandBuffer &cmd) {
     auto src_texture = rg.get_texture(src);
@@ -381,10 +373,15 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
 
   auto present = create_pass("Present");
 
-  present.read_texture(blitted_swapchain_image, 0, 0,
-                       VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  present.read_texture({
+      .texture = blitted_swapchain_image,
+      .state =
+          {
+              .layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+          },
+  });
 
-  present.signal_semaphore(present_semaphore, VK_PIPELINE_STAGE_2_NONE);
+  present.signal_semaphore({.semaphore = present_semaphore});
 }
 
 auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
@@ -458,7 +455,8 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
     }
 
     if (predecessors.empty()) {
-      // This is a pass with no dependencies and it can be scheduled right away
+      // This is a pass with no dependencies and it can be scheduled right
+      // away
       unscheduled_passes.push({-1, id});
     }
   }
@@ -500,7 +498,7 @@ void RenderGraph::Builder::print_resources() const {
     rendergraphDebug("");
   }
 
-  auto textures = range<unsigned>(1, m_textures.size());
+  auto textures = range<unsigned>(1, m_physical_textures.size());
   if (not textures.empty()) {
     rendergraphDebug("Textures:");
     for (auto texture : textures) {
@@ -603,86 +601,65 @@ void RenderGraph::Builder::print_passes(
   }
 }
 
-void RenderGraph::Builder::create_textures(const Device &device,
-                                           ResourceArena &arena) {
-  for (const auto &[texture, create_info] : m_texture_create_infos) {
-    m_textures[texture] = device.get_texture_view(arena.create_texture({
-        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-        .type = create_info.type,
-        .format = create_info.format,
-        .usage = m_texture_usage_flags[texture],
-        .width = create_info.width,
-        .height = create_info.height,
-        .array_layers = create_info.array_layers,
-        .mip_levels = create_info.mip_levels,
-    }));
-  }
-  for (auto [texture, physical_texture] : enumerate(m_physical_textures)) {
-    m_textures[texture] = m_textures[physical_texture];
-  }
-}
-
 void RenderGraph::Builder::create_buffers(const Device &device,
                                           ResourceArena &arena) {
   for (const auto &[buffer, create_info] : m_buffer_create_infos) {
-    m_buffers[buffer] = device.get_buffer_view(arena.create_buffer({
-        REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
-        .heap = create_info.heap,
-        .usage = m_buffer_usage_flags[buffer],
-        .size = create_info.size,
-    }));
+    m_physical_buffers[buffer] =
+        device.get_buffer_view(arena.create_buffer(std::move(create_info)));
   }
-  for (auto [buffer, physical_buffer] : enumerate(m_physical_buffers)) {
-    m_buffers[buffer] = m_buffers[physical_buffer];
+}
+
+void RenderGraph::Builder::create_textures(const Device &device,
+                                           ResourceArena &arena) {
+  for (const auto &[texture, create_info] : m_texture_create_infos) {
+    m_physical_textures[texture] =
+        device.get_texture_view(arena.create_texture(std::move(create_info)));
   }
 }
 
 void RenderGraph::Builder::insert_barriers(Device &device) {
   for (auto &pass : m_passes) {
-    auto memory_barriers = concat(pass.read_buffers, pass.write_buffers) |
-                           filter_map([&](const RGBufferAccess &buffer_access)
-                                          -> Optional<VkMemoryBarrier2> {
-                             auto physical_buffer =
-                                 m_physical_buffers[buffer_access.buffer];
-                             auto &state = m_buffer_states[physical_buffer];
+    auto memory_barriers =
+        concat(pass.read_buffers, pass.write_buffers) |
+        filter_map([&](const RGBufferAccess &buffer_access)
+                       -> Optional<VkMemoryBarrier2> {
+          auto physical_buffer = m_buffers[buffer_access.buffer];
+          auto &state = m_buffer_states[physical_buffer];
 
-                             if (state.accesses == VK_ACCESS_2_NONE or
-                                 buffer_access.accesses == VK_ACCESS_2_NONE) {
-                               return None;
-                             }
+          if (state.accesses == VK_ACCESS_2_NONE or
+              buffer_access.state.accesses == VK_ACCESS_2_NONE) {
+            return None;
+          }
 
-                             VkMemoryBarrier2 barrier = {
-                                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                                 .srcStageMask = state.stages,
-                                 .srcAccessMask = state.accesses,
-                                 .dstStageMask = buffer_access.stages,
-                                 .dstAccessMask = buffer_access.accesses,
-                             };
+          VkMemoryBarrier2 barrier = {
+              .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+              .srcStageMask = state.stages,
+              .srcAccessMask = state.accesses,
+              .dstStageMask = buffer_access.state.stages,
+              .dstAccessMask = buffer_access.state.accesses,
+          };
 
-                             state = {
-                                 .accesses = buffer_access.accesses,
-                                 .stages = buffer_access.stages,
-                             };
+          state = buffer_access.state;
 
-                             return barrier;
-                           }) |
-                           ranges::to<Vector>();
+          return barrier;
+        }) |
+        ranges::to<Vector>();
 
     auto image_barriers =
         concat(pass.read_textures, pass.write_textures) |
         map([&](const RGTextureAccess &texture_access) {
-          auto physical_texture = m_physical_textures[texture_access.texture];
+          auto physical_texture = m_textures[texture_access.texture];
           auto &state = m_texture_states[physical_texture];
-          const auto &view = m_textures[physical_texture];
+          const auto &view = m_physical_textures[physical_texture];
 
           VkImageMemoryBarrier2 barrier = {
               .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
               .srcStageMask = state.stages,
               .srcAccessMask = state.accesses,
-              .dstStageMask = texture_access.stages,
-              .dstAccessMask = texture_access.accesses,
+              .dstStageMask = texture_access.state.stages,
+              .dstAccessMask = texture_access.state.accesses,
               .oldLayout = state.layout,
-              .newLayout = texture_access.layout,
+              .newLayout = texture_access.state.layout,
               .image = device.get_texture(view.texture).image,
               .subresourceRange =
                   {
@@ -694,11 +671,7 @@ void RenderGraph::Builder::insert_barriers(Device &device) {
                   },
           };
 
-          state = {
-              .accesses = texture_access.accesses,
-              .stages = texture_access.stages,
-              .layout = texture_access.layout,
-          };
+          state = texture_access.state;
 
           return barrier;
         }) |
@@ -767,24 +740,49 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
 
   rendergraphDebug("### Build done ###");
   rendergraphDebug("");
+
   return {{
       .batches = std::move(batches),
-      .textures = std::move(m_textures),
       .buffers = std::move(m_buffers),
+      .physical_buffers = std::move(m_physical_buffers),
+      .buffer_states = std::move(m_buffer_states),
+      .textures = std::move(m_textures),
+      .physical_textures = std::move(m_physical_textures),
+      .texture_states = std::move(m_texture_states),
       .swapchain = m_swapchain,
       .present_semaphore = m_present_semaphore,
   }};
 }
 
-auto RenderGraph::get_texture(RGTextureID texture) const -> TextureView {
-  assert(texture);
-  return m_textures[texture];
+auto RenderGraph::get_buffer(RGBufferID buffer) const -> const BufferView & {
+  assert(buffer);
+  return m_physical_buffers[m_buffers[buffer]];
 }
 
-auto RenderGraph::get_buffer(RGBufferID buffer) const -> BufferView {
-  assert(buffer);
-  return m_buffers[buffer];
+auto RenderGraph::get_texture(RGTextureID texture) const
+    -> const TextureView & {
+  assert(texture);
+  return m_physical_textures[m_textures[texture]];
 }
+
+auto RenderGraph::export_buffer(RGBufferID buffer) const -> RGBufferExportInfo {
+  assert(buffer);
+  auto physical_buffer = m_buffers[buffer];
+  return {
+      .buffer = m_physical_buffers[physical_buffer],
+      .state = m_buffer_states[physical_buffer],
+  };
+};
+
+auto RenderGraph::export_texture(RGTextureID texture) const
+    -> RGTextureExportInfo {
+  assert(texture);
+  auto physical_texture = m_textures[texture];
+  return {
+      .texture = m_physical_textures[physical_texture],
+      .state = m_texture_states[physical_texture],
+  };
+};
 
 void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;
@@ -812,7 +810,7 @@ void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
            .commandBuffer = cmd.get()});
     }
 
-    auto get_semaphore_submit_info = [&](const RGSemaphoreSignal &signal) {
+    auto get_semaphore_submit_info = [&](const RGSemaphoreSignalInfo &signal) {
       return VkSemaphoreSubmitInfo{
           .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
           .semaphore = device.get_semaphore(signal.semaphore).handle,

@@ -17,13 +17,18 @@ struct TextureCreateInfo {
   VkImageType type = VK_IMAGE_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageUsageFlags usage = 0;
-  u32 width = 1;
-  u32 height = 1;
   union {
-    u16 depth = 1;
-    u16 array_layers;
+    struct {
+      u32 width;
+      u32 height;
+      union {
+        u32 depth;
+        u32 num_array_layers;
+      };
+    };
+    glm::uvec3 size = {1, 1, 1};
   };
-  u16 mip_levels = 1;
+  u32 num_mip_levels = 1;
 };
 
 struct Texture {
@@ -33,15 +38,15 @@ struct Texture {
   VkFormat format;
   VkImageUsageFlags usage;
   glm::uvec3 size;
-  u16 num_mip_levels;
-  u16 num_array_layers;
+  u32 num_mip_levels;
+  u32 num_array_layers;
 };
 
 struct TextureSwizzle {
-  VkComponentSwizzle r : 8 = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle g : 8 = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle b : 8 = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle a : 8 = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle r = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle g = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle b = VK_COMPONENT_SWIZZLE_IDENTITY;
+  VkComponentSwizzle a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
 public:
   bool operator==(const TextureSwizzle &) const = default;
@@ -52,10 +57,10 @@ struct TextureView {
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
   TextureSwizzle swizzle;
-  u16 first_mip_level = 0;
-  u16 num_mip_levels = 0;
-  u16 first_array_layer = 0;
-  u16 num_array_layers = 0;
+  u32 first_mip_level = 0;
+  u32 num_mip_levels = 0;
+  u32 first_array_layer = 0;
+  u32 num_array_layers = 0;
 
 public:
   bool operator==(const TextureView &) const = default;

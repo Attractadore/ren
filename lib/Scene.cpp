@@ -248,9 +248,8 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
       .format = format,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-      .width = desc.width,
-      .height = desc.height,
-      .mip_levels = get_mip_level_count(desc.width, desc.height),
+      .size = {desc.width, desc.height, 1},
+      .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
@@ -459,40 +458,36 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
 
   UploadDataPassResources rcs = {};
 
-  rcs.transform_matrix_buffer = pass.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Transform matrix buffer"),
-          .heap = BufferHeap::Upload,
-          .size = sizeof(glm::mat4x3) * cfg.mesh_insts->size(),
-      },
-      "Transform matrices", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rcs.transform_matrix_buffer = pass.create_buffer({
+      .name = "Transform matrices",
+      REN_SET_DEBUG_NAME("Transform matrix buffer"),
+      .heap = BufferHeap::Upload,
+      .size = sizeof(glm::mat4x3) * cfg.mesh_insts->size(),
+  });
 
-  rcs.normal_matrix_buffer = pass.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Normal matrix buffer"),
-          .heap = BufferHeap::Upload,
-          .size = sizeof(glm::mat3) * cfg.mesh_insts->size(),
-      },
-      "Normal matrices", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rcs.normal_matrix_buffer = pass.create_buffer({
+      .name = "Normal matrices",
+      REN_SET_DEBUG_NAME("Normal matrix buffer"),
+      .heap = BufferHeap::Upload,
+      .size = sizeof(glm::mat3) * cfg.mesh_insts->size(),
+  });
 
   auto num_dir_lights = cfg.dir_lights->size();
   if (num_dir_lights > 0) {
-    rcs.dir_lights_buffer = pass.create_buffer(
-        {
-            REN_SET_DEBUG_NAME("Dir lights buffer"),
-            .heap = BufferHeap::Upload,
-            .size = sizeof(glsl::DirLight) * num_dir_lights,
-        },
-        "Directional lights", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+    rcs.dir_lights_buffer = pass.create_buffer({
+        .name = "Directional lights",
+        REN_SET_DEBUG_NAME("Directional lights buffer"),
+        .heap = BufferHeap::Upload,
+        .size = sizeof(glsl::DirLight) * num_dir_lights,
+    });
   }
 
-  rcs.materials_buffer = pass.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Materials buffer"),
-          .heap = BufferHeap::Upload,
-          .size = cfg.materials.size_bytes(),
-      },
-      "Materials", VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_NONE);
+  rcs.materials_buffer = pass.create_buffer({
+      .name = "Materials",
+      REN_SET_DEBUG_NAME("Materials buffer"),
+      .heap = BufferHeap::Upload,
+      .size = cfg.materials.size_bytes(),
+  });
 
   pass.set_callback(
       [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
@@ -510,8 +505,7 @@ static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
 struct ColorPassConfig {
   VkFormat color_format;
   VkFormat depth_format;
-  unsigned width;
-  unsigned height;
+  glm::uvec2 size;
 
   glm::mat4 proj;
   glm::mat4 view;
@@ -554,10 +548,10 @@ static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
                            const ColorPassConfig &cfg,
                            const ColorPassResources &rcs) {
   cmd.begin_rendering(rg.get_texture(rcs.rt), rg.get_texture(rcs.dst));
-  cmd.set_viewport({.width = float(cfg.width),
-                    .height = float(cfg.height),
+  cmd.set_viewport({.width = float(cfg.size.x),
+                    .height = float(cfg.size.y),
                     .maxDepth = 1.0f});
-  cmd.set_scissor_rect({.extent = {cfg.width, cfg.height}});
+  cmd.set_scissor_rect({.extent = {cfg.size.x, cfg.size.y}});
 
   auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
   auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
@@ -629,71 +623,118 @@ static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   ColorPassResources rcs = {};
 
   for (auto buffer : cfg.uploaded_vertex_buffers) {
-    pass.read_buffer(buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                     VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+    pass.read_buffer({
+        .buffer = buffer,
+        .state =
+            {
+                .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+            },
+    });
   }
 
   for (auto buffer : cfg.uploaded_index_buffers) {
-    pass.read_buffer(buffer, VK_ACCESS_2_INDEX_READ_BIT,
-                     VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT);
+    pass.read_buffer({
+        .buffer = buffer,
+        .state =
+            {
+                .stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+                .accesses = VK_ACCESS_2_INDEX_READ_BIT,
+            },
+    });
   }
 
   for (auto texture : cfg.uploaded_textures) {
-    pass.read_texture(texture, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                      VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    pass.read_texture({
+        .texture = texture,
+        .state =
+            {
+                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                .accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            },
+    });
   }
 
-  pass.read_buffer(cfg.transform_matrix_buffer,
-                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                   VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-
-  pass.read_buffer(cfg.normal_matrix_buffer,
-                   VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                   VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-
-  cfg.dir_lights_buffer.map([&](RGBufferID buffer) {
-    pass.read_buffer(buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                     VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  pass.read_buffer({
+      .buffer = cfg.transform_matrix_buffer,
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+          },
   });
 
-  pass.read_buffer(cfg.materials_buffer, VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                   VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  pass.read_buffer({
+      .buffer = cfg.normal_matrix_buffer,
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+          },
+  });
 
-  rcs.uniform_buffer = pass.create_buffer(
-      {
-          REN_SET_DEBUG_NAME("Color pass uniform buffer"),
-          .heap = BufferHeap::Upload,
-          .size = sizeof(glsl::ColorUB),
-      },
-      "Global data UBO", VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  cfg.dir_lights_buffer.map([&](RGBufferID buffer) {
+    pass.read_buffer({
+        .buffer = buffer,
+        .state =
+            {
+                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+            },
+    });
+  });
 
-  rcs.rt = pass.create_texture(
-      {
-          REN_SET_DEBUG_NAME("Color buffer"),
-          .format = cfg.color_format,
-          .width = cfg.width,
-          .height = cfg.height,
-      },
-      "Color buffer", VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+  pass.read_buffer({
+      .buffer = cfg.materials_buffer,
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+          },
+  });
 
-  rcs.dst = pass.create_texture(
-      {
-          REN_SET_DEBUG_NAME("Depth buffer"),
-          .format = cfg.depth_format,
-          .width = cfg.width,
-          .height = cfg.height,
-      },
-      "Depth buffer",
-      VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-      VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
+  rcs.uniform_buffer = pass.create_buffer({
+      .name = "Color pass uniforms",
+      REN_SET_DEBUG_NAME("Color pass uniform buffer"),
+      .heap = BufferHeap::Upload,
+      .size = sizeof(glsl::ColorUB),
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+          },
+  });
+
+  rcs.rt = pass.create_texture({
+      .name = "Color buffer after color pass",
+      REN_SET_DEBUG_NAME("Color buffer"),
+      .format = cfg.color_format,
+      .size = {cfg.size, 1},
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+              .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+          },
+  });
+
+  rcs.dst = pass.create_texture({
+      .name = "Depth buffer after color pass",
+      REN_SET_DEBUG_NAME("Depth buffer"),
+      .format = cfg.depth_format,
+      .size = {cfg.size, 1},
+      .state =
+          {
+              .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+              .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+
+          },
+  });
 
   pass.set_callback(
       [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
@@ -710,28 +751,46 @@ void Scene::draw(Swapchain &swapchain) {
 
   auto uploaded_vertex_buffers =
       m_staged_vertex_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer(buffer, "Uploaded mesh vertex buffer",
-                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                 VK_PIPELINE_STAGE_2_COPY_BIT);
+        return rgb.import_buffer({
+            .name = "Uploaded mesh vertices",
+            .buffer = buffer,
+            .state =
+                {
+                    .stages = VK_PIPELINE_STAGE_2_COPY_BIT,
+                    .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                },
+        });
       }) |
       ranges::to<Vector>();
   m_staged_vertex_buffers.clear();
 
   auto uploaded_index_buffers =
       m_staged_index_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer(buffer, "Uploaded mesh index buffer",
-                                 VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                 VK_PIPELINE_STAGE_2_COPY_BIT);
+        return rgb.import_buffer({
+            .name = "Uploaded mesh indices",
+            .buffer = buffer,
+            .state =
+                {
+                    .stages = VK_PIPELINE_STAGE_2_COPY_BIT,
+                    .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                },
+        });
       }) |
       ranges::to<Vector>();
   m_staged_index_buffers.clear();
 
   auto uploaded_textures =
       m_staged_textures | map([&](Handle<Texture> texture) {
-        return rgb.import_texture(
-            m_device->get_texture_view(texture), "Uploaded material texture",
-            VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_BLIT_BIT,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        return rgb.import_texture({
+            .name = "Uploaded material texture",
+            .texture = m_device->get_texture_view(texture),
+            .state =
+                {
+                    .stages = VK_PIPELINE_STAGE_2_BLIT_BIT,
+                    .accesses = VK_ACCESS_2_TRANSFER_READ_BIT,
+                    .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                },
+        });
       }) |
       ranges::to<Vector>();
   m_staged_textures.clear();
@@ -759,8 +818,7 @@ void Scene::draw(Swapchain &swapchain) {
         ColorPassConfig{
             .color_format = m_rt_format,
             .depth_format = m_depth_format,
-            .width = m_viewport_width,
-            .height = m_viewport_height,
+            .size = {m_viewport_width, m_viewport_height},
             .proj = get_projection_matrix(
                 m_camera, float(m_viewport_width) / float(m_viewport_height)),
             .view = get_view_matrix(m_camera),
