@@ -1,4 +1,5 @@
 #pragma once
+#include "Hash.hpp"
 #include "Vector.hpp"
 
 namespace ren {
@@ -46,5 +47,11 @@ class DenseSlotMap;
   };
 
 REN_DEFINE_SLOTMAP_KEY(SlotMapKey);
+
+template <CSlotMapKey K> struct Hash<K> {
+  auto operator()(K key) const -> u64 {
+    return Hash<u32>()(std::bit_cast<u32>(key));
+  }
+};
 
 } // namespace ren
