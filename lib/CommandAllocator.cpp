@@ -1,8 +1,7 @@
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
-
-#include <range/v3/view.hpp>
+#include "Support/Views.hpp"
 
 namespace ren {
 
@@ -76,10 +75,9 @@ void CommandPool::reset() {
 
 CommandAllocator::CommandAllocator(Device &device) {
   m_device = &device;
-  m_frame_pools =
-      ranges::views::generate([&] { return CommandPool(*m_device); }) |
-      ranges::views::take(m_frame_pools.max_size()) |
-      ranges::to<decltype(m_frame_pools)>;
+  for (auto _ : range(m_frame_pools.max_size())) {
+    m_frame_pools.emplace_back(*m_device);
+  }
 }
 
 CommandBuffer CommandAllocator::allocate() {
