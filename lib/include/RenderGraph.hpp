@@ -3,6 +3,7 @@
 #include "Descriptors.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
+#include "Support/HashSet.hpp"
 #include "Support/NewType.hpp"
 #include "Support/Optional.hpp"
 #include "Texture.hpp"
@@ -44,6 +45,7 @@ struct RGBufferCreateInfo {
   BufferHeap heap = BufferHeap::Upload;
   size_t size = 0;
   RGBufferState state;
+  bool preserve = false;
 };
 
 struct RGBufferImportInfo {
@@ -92,6 +94,7 @@ struct RGTextureCreateInfo {
   };
   u32 num_mip_levels = 1;
   RGTextureState state;
+  bool preserve = false;
 };
 
 struct RGTextureImportInfo {
@@ -203,6 +206,7 @@ class RenderGraph::Builder {
   Vector<BufferView> m_physical_buffers;
   Vector<RGBufferState> m_buffer_states;
   HashMap<unsigned, BufferCreateInfo> m_buffer_create_infos;
+  HashSet<unsigned> m_preserved_buffers;
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
 
@@ -213,6 +217,7 @@ class RenderGraph::Builder {
   Vector<TextureView> m_physical_textures;
   Vector<RGTextureState> m_texture_states;
   HashMap<unsigned, TextureCreateInfo> m_texture_create_infos;
+  HashSet<unsigned> m_preserved_textures;
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
 
@@ -276,9 +281,11 @@ private:
   void set_callback(RGPassID pass, RGCallback cb);
 
 private:
-  void create_buffers(const Device &device, ResourceArena &arena);
+  void create_buffers(const Device &device, ResourceArena &frame_arena,
+                      ResourceArena &next_frame_arena);
 
-  void create_textures(const Device &device, ResourceArena &arena);
+  void create_textures(const Device &device, ResourceArena &frame_arena,
+                       ResourceArena &next_frame_arena);
 
   void print_resources() const;
 
@@ -298,7 +305,8 @@ public:
                Handle<Semaphore> acquire_semaphore,
                Handle<Semaphore> present_semaphore);
 
-  [[nodiscard]] RenderGraph build(Device &device, ResourceArena &arena);
+  [[nodiscard]] RenderGraph build(Device &device, ResourceArena &frame_arena,
+                                  ResourceArena &next_frame_arena);
 };
 
 class RenderGraph::Builder::PassBuilder {

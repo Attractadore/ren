@@ -183,7 +183,11 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
                                           RGTextureCreateInfo &&create_info)
     -> RGTextureID {
   auto new_texture = init_new_texture(pass, None, std::move(create_info.name));
-  m_texture_create_infos[m_textures[new_texture]] = {
+  auto physical_texture = m_textures[new_texture];
+  if (create_info.preserve) {
+    m_preserved_textures.insert(physical_texture);
+  }
+  m_texture_create_infos[physical_texture] = {
       REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
       .type = create_info.type,
       .format = create_info.format,
@@ -282,7 +286,11 @@ auto RenderGraph::Builder::create_buffer(RGPassID pass,
     -> RGBufferID {
   assert(create_info.size > 0);
   auto new_buffer = init_new_buffer(pass, None, std::move(create_info.name));
-  m_buffer_create_infos[m_buffers[new_buffer]] = {
+  auto physical_buffer = m_buffers[new_buffer];
+  if (create_info.preserve) {
+    m_preserved_buffers.insert(physical_buffer);
+  }
+  m_buffer_create_infos[physical_buffer] = {
       REN_SET_DEBUG_NAME(std::move(create_info.debug_name)),
       .heap = create_info.heap,
       .usage = get_buffer_usage_flags(create_info.state.accesses),
@@ -602,18 +610,24 @@ void RenderGraph::Builder::print_passes(
 }
 
 void RenderGraph::Builder::create_buffers(const Device &device,
-                                          ResourceArena &arena) {
+                                          ResourceArena &frame_arena,
+                                          ResourceArena &next_frame_arena) {
   for (const auto &[buffer, create_info] : m_buffer_create_infos) {
+    auto &arena =
+        m_preserved_buffers.contains(buffer) ? next_frame_arena : frame_arena;
     m_physical_buffers[buffer] =
         device.get_buffer_view(arena.create_buffer(std::move(create_info)));
   }
 }
 
 void RenderGraph::Builder::create_textures(const Device &device,
-                                           ResourceArena &arena) {
+                                           ResourceArena &frame_arena,
+                                           ResourceArena &next_frame_arena) {
   for (const auto &[texture, create_info] : m_texture_create_infos) {
-    m_physical_textures[texture] =
-        device.get_texture_view(arena.create_texture(std::move(create_info)));
+    auto &arena =
+        m_preserved_textures.contains(texture) ? next_frame_arena : frame_arena;
+    m_physical_textures[texture] = device.get_texture_view(
+        frame_arena.create_texture(std::move(create_info)));
   }
 }
 
@@ -712,17 +726,18 @@ auto RenderGraph::Builder::batch_passes(std::span<const RGPassID> schedule)
   return batches;
 }
 
-auto RenderGraph::Builder::build(Device &device, ResourceArena &arena)
+auto RenderGraph::Builder::build(Device &device, ResourceArena &frame_arena,
+                                 ResourceArena &next_frame_arena)
     -> RenderGraph {
   rendergraphDebug("### Build RenderGraph ###");
   rendergraphDebug("");
 
   rendergraphDebug("Create buffers");
   rendergraphDebug("");
-  create_buffers(device, arena);
+  create_buffers(device, frame_arena, next_frame_arena);
   rendergraphDebug("Create textures");
   rendergraphDebug("");
-  create_textures(device, arena);
+  create_textures(device, frame_arena, next_frame_arena);
   print_resources();
 
   rendergraphDebug("Schedule passes");

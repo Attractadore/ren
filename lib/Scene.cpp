@@ -64,7 +64,7 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
              VkDescriptorSet persistent_descriptor_set,
              TextureIDAllocator tex_alloc)
     : m_device(&device), m_persistent_arena(std::move(persistent_arena)),
-      m_frame_arena(device),
+      m_frame_arenas{ResourceArena(device), ResourceArena(device)},
       m_persistent_descriptor_set_layout(persistent_descriptor_set_layout),
       m_persistent_descriptor_pool(persistent_descriptor_pool),
       m_persistent_descriptor_set(persistent_descriptor_set),
@@ -76,10 +76,19 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
 }
 
 void Scene::next_frame() {
-  m_frame_arena.clear();
+  get_frame_arena().clear();
+  std::swap(m_frame_arena_index, m_next_frame_arena_index);
   m_device->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator.next_frame();
+}
+
+auto Scene::get_frame_arena() -> ResourceArena & {
+  return m_frame_arenas[m_frame_arena_index];
+}
+
+auto Scene::get_next_frame_arena() -> ResourceArena & {
+  return m_frame_arenas[m_next_frame_arena_index];
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
@@ -166,6 +175,8 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
 
+  auto &frame_arena = get_frame_arena();
+
   size_t offset = 0;
   for (auto mesh_attribute : used_attributes) {
     mesh.attribute_offsets[mesh_attribute] = offset;
@@ -176,32 +187,31 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
       auto positions = reinterpret_span<const glm::vec3>(data);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
-                                       dst);
+      m_resource_uploader.stage_buffer(*m_device, frame_arena, positions, dst);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
           reinterpret_span<const glm::vec3>(data) | map(glsl::encode_normal);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
+      m_resource_uploader.stage_buffer(*m_device, frame_arena, normals, dst);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
           reinterpret_span<const glm::vec4>(data) | map(glsl::encode_color);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
+      m_resource_uploader.stage_buffer(*m_device, frame_arena, colors, dst);
       offset += size_bytes(colors);
     } break;
     case MESH_ATTRIBUTE_UVS: {
       auto uvs = reinterpret_span<const glm::vec2>(data);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs, dst);
+      m_resource_uploader.stage_buffer(*m_device, frame_arena, uvs, dst);
       offset += size_bytes(uvs);
     } break;
     }
   }
 
   auto indices = std::span(desc.indices, desc.num_indices);
-  m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
+  m_resource_uploader.stage_buffer(*m_device, frame_arena, indices,
                                    mesh.index_buffer);
 
   if (!m_device->map_buffer(mesh.vertex_buffer)) {
@@ -254,7 +264,7 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
-      *m_device, m_frame_arena,
+      *m_device, get_frame_arena(),
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
       texture);
   m_staged_textures.push_back(texture);
@@ -848,13 +858,16 @@ void Scene::draw(Swapchain &swapchain) {
                                      .pipelines = m_pp_pipelines,
                                  });
 
-    rgb.present(swapchain, pprt,
-                m_frame_arena.create_semaphore(
-                    {REN_SET_DEBUG_NAME("Acquire semaphore")}),
-                m_frame_arena.create_semaphore(
-                    {REN_SET_DEBUG_NAME("Present semaphore")}));
+    auto &frame_arena = get_frame_arena();
+    auto &next_frame_arena = get_next_frame_arena();
 
-    auto rg = rgb.build(*m_device, m_frame_arena);
+    rgb.present(
+        swapchain, pprt,
+        frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Acquire semaphore")}),
+        frame_arena.create_semaphore(
+            {REN_SET_DEBUG_NAME("Present semaphore")}));
+
+    auto rg = rgb.build(*m_device, frame_arena, next_frame_arena);
 
     rg.execute(*m_device, m_cmd_allocator);
   }
