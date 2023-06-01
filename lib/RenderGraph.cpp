@@ -506,7 +506,7 @@ void RenderGraph::Builder::print_resources() const {
     rendergraphDebug("");
   }
 
-  auto textures = range<unsigned>(1, m_physical_textures.size());
+  auto textures = range<unsigned>(1, m_textures.size());
   if (not textures.empty()) {
     rendergraphDebug("Textures:");
     for (auto texture : textures) {
