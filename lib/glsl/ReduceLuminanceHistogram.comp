@@ -28,5 +28,5 @@ void main() {
   float max_luminance = 9.6f * luminance;
   float exposure = 1.0f / max_luminance;
 
-  g_pcs.exposure_ptr.exposure = exposure;
+  g_pcs.exposure_ptr.exposure = exposure * g_pcs.previous_exposure_ptr.exposure;
 }

@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "encode.h"
+#include "exposure.h"
 #include "lighting.h"
 #include "material.h"
 
@@ -21,6 +22,7 @@ REN_BUFFER_REFERENCE(4) ColorUB {
   REN_REFERENCE(NormalMatrices) normal_matrices_ptr;
   REN_REFERENCE(Materials) materials_ptr;
   REN_REFERENCE(DirectionalLights) directional_lights_ptr;
+  REN_REFERENCE(Exposure) exposure_ptr;
   mat4 proj_view;
   vec3 eye;
   uint num_dir_lights;

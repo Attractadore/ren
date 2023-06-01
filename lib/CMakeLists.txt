@@ -94,7 +94,6 @@ add_library(
   MaterialPipelineCompiler.cpp
   Pipeline.cpp
   PipelineLoading.cpp
-  PostprocessPasses.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
   Scene.cpp
@@ -131,6 +130,8 @@ if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)
 endif()
+
+add_subdirectory(Passes)
 
 if(BUILD_SHARED_LIBS)
   add_library(ren::ren ALIAS ren)

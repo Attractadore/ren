@@ -1,18 +1,14 @@
 #include "Scene.hpp"
 #include "Camera.inl"
-#include "CommandAllocator.hpp"
-#include "Descriptors.hpp"
-#include "Device.hpp"
+#include "CommandBuffer.hpp"
 #include "Errors.hpp"
 #include "Formats.inl"
-#include "PipelineLoading.hpp"
-#include "PostprocessPasses.hpp"
-#include "RenderGraph.hpp"
-#include "Support/Array.hpp"
-#include "Support/Views.hpp"
-#include "glsl/color_interface.hpp"
-#include "glsl/encode.h"
-#include "glsl/interface.hpp"
+#include "Passes/AutomaticExposure.hpp"
+#include "Passes/Color.hpp"
+#include "Passes/Exposure.hpp"
+#include "Passes/Postprocessing.hpp"
+#include "Passes/Upload.hpp"
+#include "glsl/encode.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>
@@ -71,7 +67,7 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
       m_texture_allocator(std::move(tex_alloc)), m_cmd_allocator(device) {
   m_pipeline_layout = create_color_pass_pipeline_layout(
       m_persistent_arena, m_persistent_descriptor_set_layout);
-  m_pp_pipelines = load_postprocessing_pipelines(
+  m_pipelines = load_postprocessing_pipelines(
       m_persistent_arena, m_persistent_descriptor_set_layout);
 }
 
@@ -325,20 +321,26 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
       }(),
   };
 
-  m_pp_opts.camera = {
-      .aperture = desc.aperture,
-      .shutter_time = desc.shutter_time,
-      .iso = desc.iso,
-  };
-
-  m_pp_opts.exposure = {
-      .compensation = desc.exposure_compensation,
-      .mode = [&]() -> PostprocessingOptions::Exposure::Mode {
+  m_exposure_opts = {
+      .mode = [&]() -> ExposureOptions::Mode {
         switch (desc.exposure_mode) {
         case REN_EXPOSURE_MODE_CAMERA:
-          return PostprocessingOptions::Exposure::Camera{};
+          return ExposureOptions::Camera{
+              .aperture = desc.aperture,
+              .shutter_time = desc.shutter_time,
+              .iso = desc.iso,
+              .exposure_compensation = desc.exposure_compensation,
+          };
         case REN_EXPOSURE_MODE_AUTOMATIC:
-          return PostprocessingOptions::Exposure::Automatic{};
+          return ExposureOptions::Automatic{
+              .previous_exposure_buffer =
+                  m_exposure_opts.mode.get<ExposureOptions::Automatic>()
+                      .and_then(
+                          [](const ExposureOptions::Automatic &automatic) {
+                            return automatic.previous_exposure_buffer;
+                          }),
+              .exposure_compensation = desc.exposure_compensation,
+          };
         }
         unreachable("Unknown exposure mode");
       }(),
@@ -413,349 +415,6 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
   }
 }
 
-struct UploadDataPassConfig {
-  const DenseHandleMap<MeshInst> *mesh_insts;
-  const DenseHandleMap<glsl::DirLight> *dir_lights;
-  std::span<const glsl::Material> materials;
-};
-
-struct UploadDataPassResources {
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  Optional<RGBufferID> dir_lights_buffer;
-  RGBufferID materials_buffer;
-};
-
-struct UploadDataPassOutput {
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  Optional<RGBufferID> dir_lights_buffer;
-  RGBufferID materials_buffer;
-};
-
-static void run_upload_data_pass(Device &device, RenderGraph &rg,
-                                 CommandBuffer &cmd,
-                                 const UploadDataPassConfig &cfg,
-                                 const UploadDataPassResources &rcs) {
-  auto transform_matrix_buffer = rg.get_buffer(rcs.transform_matrix_buffer);
-  auto *transform_matrices =
-      device.map_buffer<glm::mat4x3>(transform_matrix_buffer);
-  ranges::transform(cfg.mesh_insts->values(), transform_matrices,
-                    [](const auto &mesh_inst) { return mesh_inst.matrix; });
-
-  auto normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
-  auto *normal_matrices = device.map_buffer<glm::mat3>(normal_matrix_buffer);
-  ranges::transform(
-      cfg.mesh_insts->values(), normal_matrices, [](const auto &mesh_inst) {
-        return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
-      });
-
-  rcs.dir_lights_buffer.map([&](RGBufferID buffer) {
-    auto dir_lights_buffer = rg.get_buffer(buffer);
-    auto *dir_lights = device.map_buffer<glsl::DirLight>(dir_lights_buffer);
-    ranges::copy(cfg.dir_lights->values(), dir_lights);
-  });
-
-  auto materials_buffer = rg.get_buffer(rcs.materials_buffer);
-  auto *materials = device.map_buffer<glsl::Material>(materials_buffer);
-  ranges::copy(cfg.materials, materials);
-}
-
-static auto setup_upload_data_pass(Device &device, RenderGraph::Builder &rgb,
-                                   const UploadDataPassConfig &cfg)
-    -> UploadDataPassOutput {
-  auto pass = rgb.create_pass("Upload data");
-
-  UploadDataPassResources rcs = {};
-
-  rcs.transform_matrix_buffer = pass.create_buffer({
-      .name = "Transform matrices",
-      REN_SET_DEBUG_NAME("Transform matrix buffer"),
-      .heap = BufferHeap::Upload,
-      .size = sizeof(glm::mat4x3) * cfg.mesh_insts->size(),
-  });
-
-  rcs.normal_matrix_buffer = pass.create_buffer({
-      .name = "Normal matrices",
-      REN_SET_DEBUG_NAME("Normal matrix buffer"),
-      .heap = BufferHeap::Upload,
-      .size = sizeof(glm::mat3) * cfg.mesh_insts->size(),
-  });
-
-  auto num_dir_lights = cfg.dir_lights->size();
-  if (num_dir_lights > 0) {
-    rcs.dir_lights_buffer = pass.create_buffer({
-        .name = "Directional lights",
-        REN_SET_DEBUG_NAME("Directional lights buffer"),
-        .heap = BufferHeap::Upload,
-        .size = sizeof(glsl::DirLight) * num_dir_lights,
-    });
-  }
-
-  rcs.materials_buffer = pass.create_buffer({
-      .name = "Materials",
-      REN_SET_DEBUG_NAME("Materials buffer"),
-      .heap = BufferHeap::Upload,
-      .size = cfg.materials.size_bytes(),
-  });
-
-  pass.set_callback(
-      [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
-        run_upload_data_pass(device, rg, cmd, cfg, rcs);
-      });
-
-  return {
-      .transform_matrix_buffer = rcs.transform_matrix_buffer,
-      .normal_matrix_buffer = rcs.normal_matrix_buffer,
-      .dir_lights_buffer = rcs.dir_lights_buffer,
-      .materials_buffer = rcs.materials_buffer,
-  };
-}
-
-struct ColorPassConfig {
-  VkFormat color_format;
-  VkFormat depth_format;
-  glm::uvec2 size;
-
-  glm::mat4 proj;
-  glm::mat4 view;
-  glm::vec3 eye;
-
-  unsigned num_dir_lights;
-
-  const HandleMap<Mesh> *meshes;
-  std::span<const Handle<GraphicsPipeline>> material_pipelines;
-  const DenseHandleMap<MeshInst> *mesh_insts;
-
-  ResourceArena *arena;
-
-  VkDescriptorSet persistent_set;
-
-  Handle<PipelineLayout> pipeline_layout;
-
-  std::span<const RGBufferID> uploaded_vertex_buffers;
-  std::span<const RGBufferID> uploaded_index_buffers;
-  std::span<const RGTextureID> uploaded_textures;
-
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  Optional<RGBufferID> dir_lights_buffer;
-  RGBufferID materials_buffer;
-};
-
-struct ColorPassResources {
-  RGTextureID rt;
-  RGTextureID dst;
-  RGBufferID uniform_buffer;
-  VkDescriptorSet global_set;
-};
-
-struct ColorPassOutput {
-  RGTextureID rt;
-};
-
-static void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
-                           const ColorPassConfig &cfg,
-                           const ColorPassResources &rcs) {
-  cmd.begin_rendering(rg.get_texture(rcs.rt), rg.get_texture(rcs.dst));
-  cmd.set_viewport({.width = float(cfg.size.x),
-                    .height = float(cfg.size.y),
-                    .maxDepth = 1.0f});
-  cmd.set_scissor_rect({.extent = {cfg.size.x, cfg.size.y}});
-
-  auto transform_matrix_buffer = rg.get_buffer(cfg.transform_matrix_buffer);
-  auto normal_matrix_buffer = rg.get_buffer(cfg.normal_matrix_buffer);
-  auto dir_lights_buffer = cfg.dir_lights_buffer.map(
-      [&](RGBufferID buffer) { return rg.get_buffer(buffer); });
-  auto materials_buffer = rg.get_buffer(cfg.materials_buffer);
-
-  auto uniform_buffer = rg.get_buffer(rcs.uniform_buffer);
-  auto *uniforms = device.map_buffer<glsl::ColorUB>(uniform_buffer);
-  *uniforms = {
-      .transform_matrices_ptr =
-          device.get_buffer_device_address(transform_matrix_buffer),
-      .normal_matrices_ptr =
-          device.get_buffer_device_address(normal_matrix_buffer),
-      .materials_ptr = device.get_buffer_device_address(materials_buffer),
-      .directional_lights_ptr = dir_lights_buffer.map_or(
-          [&](const BufferView &view) {
-            return device.get_buffer_device_address(view);
-          },
-          u64(0)),
-      .proj_view = cfg.proj * cfg.view,
-      .eye = cfg.eye,
-      .num_dir_lights = cfg.num_dir_lights,
-  };
-
-  std::array descriptor_sets = {cfg.persistent_set};
-  cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, cfg.pipeline_layout,
-                           0, descriptor_sets);
-
-  auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
-  for (const auto &&[i, mesh_inst] : enumerate(cfg.mesh_insts->values())) {
-    const auto &mesh = (*cfg.meshes)[mesh_inst.mesh];
-    auto material = mesh_inst.material;
-
-    cmd.bind_graphics_pipeline(cfg.material_pipelines[material]);
-
-    auto address = device.get_buffer_device_address(mesh.vertex_buffer);
-    auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
-    auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
-    auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
-    auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-    glsl::ColorConstants pcs = {
-        .ub_ptr = ub_ptr,
-        .positions_ptr = address + positions_offset,
-        .colors_ptr =
-            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
-        .normals_ptr = address + normals_offset,
-        .uvs_ptr = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
-        .matrix_index = unsigned(i),
-        .material_index = material,
-    };
-    cmd.set_push_constants(
-        cfg.pipeline_layout,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
-
-    cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
-    cmd.draw_indexed({
-        .num_indices = mesh.num_indices,
-    });
-  }
-
-  cmd.end_rendering();
-}
-
-static auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
-                             const ColorPassConfig &cfg) -> ColorPassOutput {
-  auto pass = rgb.create_pass("Color");
-
-  ColorPassResources rcs = {};
-
-  for (auto buffer : cfg.uploaded_vertex_buffers) {
-    pass.read_buffer({
-        .buffer = buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
-    });
-  }
-
-  for (auto buffer : cfg.uploaded_index_buffers) {
-    pass.read_buffer({
-        .buffer = buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-                .accesses = VK_ACCESS_2_INDEX_READ_BIT,
-            },
-    });
-  }
-
-  for (auto texture : cfg.uploaded_textures) {
-    pass.read_texture({
-        .texture = texture,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            },
-    });
-  }
-
-  pass.read_buffer({
-      .buffer = cfg.transform_matrix_buffer,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
-  });
-
-  pass.read_buffer({
-      .buffer = cfg.normal_matrix_buffer,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
-  });
-
-  cfg.dir_lights_buffer.map([&](RGBufferID buffer) {
-    pass.read_buffer({
-        .buffer = buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
-    });
-  });
-
-  pass.read_buffer({
-      .buffer = cfg.materials_buffer,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
-  });
-
-  rcs.uniform_buffer = pass.create_buffer({
-      .name = "Color pass uniforms",
-      REN_SET_DEBUG_NAME("Color pass uniform buffer"),
-      .heap = BufferHeap::Upload,
-      .size = sizeof(glsl::ColorUB),
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
-  });
-
-  rcs.rt = pass.create_texture({
-      .name = "Color buffer after color pass",
-      REN_SET_DEBUG_NAME("Color buffer"),
-      .format = cfg.color_format,
-      .size = {cfg.size, 1},
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-              .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-          },
-  });
-
-  rcs.dst = pass.create_texture({
-      .name = "Depth buffer after color pass",
-      REN_SET_DEBUG_NAME("Depth buffer"),
-      .format = cfg.depth_format,
-      .size = {cfg.size, 1},
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-              .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-
-          },
-  });
-
-  pass.set_callback(
-      [cfg, rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
-        run_color_pass(device, rg, cmd, cfg, rcs);
-      });
-
-  return {
-      .rt = rcs.rt,
-  };
-}
-
 void Scene::draw(Swapchain &swapchain) {
   RenderGraph::Builder rgb;
 
@@ -813,64 +472,89 @@ void Scene::draw(Swapchain &swapchain) {
         }));
       });
 
-  if (!m_mesh_insts.empty()) {
-    auto frame_resources =
-        setup_upload_data_pass(*m_device, rgb,
-                               UploadDataPassConfig{
-                                   .mesh_insts = &m_mesh_insts,
-                                   .dir_lights = &m_dir_lights,
-                                   .materials = m_materials,
-                               });
+  auto frame_resources =
+      setup_upload_pass(*m_device, rgb,
+                        {
+                            .mesh_insts = m_mesh_insts.values(),
+                            .directional_lights = m_dir_lights.values(),
+                            .materials = m_materials,
+                        });
 
-    // Draw scene
-    auto [rt] = setup_color_pass(
-        *m_device, rgb,
-        ColorPassConfig{
-            .color_format = m_rt_format,
-            .depth_format = m_depth_format,
-            .size = {m_viewport_width, m_viewport_height},
-            .proj = get_projection_matrix(
-                m_camera, float(m_viewport_width) / float(m_viewport_height)),
-            .view = get_view_matrix(m_camera),
-            .eye = m_camera.position,
-            .num_dir_lights = unsigned(m_dir_lights.size()),
-            .meshes = &m_meshes,
-            .material_pipelines = m_material_pipelines,
-            .mesh_insts = &m_mesh_insts,
-            .arena = &m_persistent_arena,
-            .persistent_set = m_persistent_descriptor_set,
-            .pipeline_layout = m_pipeline_layout,
-            .uploaded_vertex_buffers = uploaded_vertex_buffers,
-            .uploaded_index_buffers = uploaded_index_buffers,
-            .uploaded_textures = uploaded_textures,
-            .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
-            .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
-            .dir_lights_buffer = frame_resources.dir_lights_buffer,
-            .materials_buffer = frame_resources.materials_buffer,
-        });
+  auto [exposure_buffer] = setup_exposure_pass(*m_device, rgb,
+                                               {
+                                                   .options = m_exposure_opts,
+                                               });
 
-    auto [pprt] =
-        setup_postprocess_passes(*m_device, rgb,
-                                 PostprocessPassesConfig{
-                                     .texture = rt,
-                                     .options = m_pp_opts,
-                                     .texture_allocator = &m_texture_allocator,
-                                     .pipelines = m_pp_pipelines,
-                                 });
+  // Draw scene
+  auto [texture] = setup_color_pass(
+      *m_device, rgb,
+      {
+          .meshes = &m_meshes,
+          .material_pipelines = m_material_pipelines,
+          .mesh_insts = m_mesh_insts.values(),
+          .uploaded_vertex_buffers = uploaded_vertex_buffers,
+          .uploaded_index_buffers = uploaded_index_buffers,
+          .uploaded_textures = uploaded_textures,
+          .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
+          .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
+          .directional_lights_buffer = frame_resources.dir_lights_buffer,
+          .materials_buffer = frame_resources.materials_buffer,
+          .exposure_buffer = exposure_buffer,
+          .pipeline_layout = m_pipeline_layout,
+          .persistent_set = m_persistent_descriptor_set,
+          .color_format = m_rt_format,
+          .depth_format = m_depth_format,
+          .size = {m_viewport_width, m_viewport_height},
+          .proj = get_projection_matrix(m_camera, float(m_viewport_width) /
+                                                      float(m_viewport_height)),
+          .view = get_view_matrix(m_camera),
+          .eye = m_camera.position,
+          .num_dir_lights = unsigned(m_dir_lights.size()),
+      });
 
-    auto &frame_arena = get_frame_arena();
-    auto &next_frame_arena = get_next_frame_arena();
+  auto automatic_exposure_buffer =
+      m_exposure_opts.mode.get<ExposureOptions::Automatic>().map(
+          [&](const ExposureOptions::Automatic &automatic) {
+            return setup_automatic_exposure_calculation_pass(
+                       *m_device, rgb,
+                       {
+                           .texture = texture,
+                           .previous_exposure_buffer = exposure_buffer,
+                           .texture_allocator = &m_texture_allocator,
+                           .pipelines = &m_pipelines,
+                           .exposure_compensation =
+                               automatic.exposure_compensation,
+                       })
+                .exposure_buffer;
+          });
 
-    rgb.present(
-        swapchain, pprt,
-        frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Acquire semaphore")}),
-        frame_arena.create_semaphore(
-            {REN_SET_DEBUG_NAME("Present semaphore")}));
+  texture =
+      setup_postprocessing_passes(*m_device, rgb,
+                                  PostprocessingPassesConfig{
+                                      .texture = texture,
+                                      .options = m_pp_opts,
+                                      .texture_allocator = &m_texture_allocator,
+                                      .pipelines = &m_pipelines,
+                                  })
+          .texture;
 
-    auto rg = rgb.build(*m_device, frame_arena, next_frame_arena);
+  auto &frame_arena = get_frame_arena();
+  auto &next_frame_arena = get_next_frame_arena();
 
-    rg.execute(*m_device, m_cmd_allocator);
-  }
+  rgb.present(
+      swapchain, texture,
+      frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Acquire semaphore")}),
+      frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Present semaphore")}));
+
+  auto rg = rgb.build(*m_device, frame_arena, next_frame_arena);
+
+  rg.execute(*m_device, m_cmd_allocator);
+
+  automatic_exposure_buffer.map([&](RGBufferID buffer) {
+    auto automatic = m_exposure_opts.mode.get<ExposureOptions::Automatic>();
+    assert(automatic);
+    automatic->previous_exposure_buffer = rg.export_buffer(buffer);
+  });
 
   next_frame();
 }

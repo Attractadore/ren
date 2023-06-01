@@ -2,21 +2,18 @@
 #include "AssetLoader.hpp"
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
-#include "CommandBuffer.hpp"
 #include "DenseHandleMap.hpp"
+#include "ExposureOptions.hpp"
 #include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "PipelineLoading.hpp"
-#include "Postprocessing.hpp"
+#include "PostprocessingOptions.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
-#include "Support/NewType.hpp"
 #include "TextureIDAllocator.hpp"
-#include "glsl/interface.hpp"
 #include "glsl/lighting.hpp"
-#include "ren/ren.h"
 
 namespace ren {
 
@@ -37,6 +34,7 @@ class Scene {
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;
+  ExposureOptions m_exposure_opts;
   PostprocessingOptions m_pp_opts;
 
   HandleMap<Mesh> m_meshes;
@@ -73,7 +71,7 @@ private:
   u32 m_frame_arena_index = 0;
   u32 m_next_frame_arena_index = 1;
 
-  PostprocessingPipelines m_pp_pipelines;
+  Pipelines m_pipelines;
 
 private:
   void next_frame();

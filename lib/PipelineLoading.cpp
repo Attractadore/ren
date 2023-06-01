@@ -117,11 +117,11 @@ auto load_compute_pipeline(ResourceArena &arena,
 
 auto load_postprocessing_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> PostprocessingPipelines {
+    -> Pipelines {
   return {
-      .build_luminance_histogram_pipeline =
+      .build_luminance_histogram =
           load_build_luminance_histogram_pipeline(arena, persistent_set_layout),
-      .reduce_luminance_histogram_pipeline =
+      .reduce_luminance_histogram =
           load_reduce_luminance_histogram_pipeline(arena),
       .reinhard_tone_mapping =
           load_reinhard_tone_mapping_pipeline(arena, persistent_set_layout),

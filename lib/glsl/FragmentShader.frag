@@ -46,5 +46,5 @@ void main() {
                            roughness, light_color * illuminance);
   }
 
-  out_color = result;
+  out_color = result * ub.exposure_ptr.exposure;
 }

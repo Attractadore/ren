@@ -2,6 +2,7 @@
 #define REN_GLSL_POSTPROCESS_INTERFACE_H
 
 #include "common.h"
+#include "exposure.h"
 
 REN_NAMESPACE_BEGIN
 
@@ -27,18 +28,16 @@ static_assert(NUM_LUMINANCE_HISTOGRAM_BINS ==
               BUILD_LUMINANCE_HISTOGRAM_THREADS_X *
                   BUILD_LUMINANCE_HISTOGRAM_THREADS_Y);
 
-REN_BUFFER_REFERENCE(4) Exposure { float exposure; };
-
 struct ReduceLuminanceHistogramConstants {
   REN_REFERENCE(LuminanceHistogram) histogram_ptr;
+  REN_REFERENCE(Exposure) previous_exposure_ptr;
   REN_REFERENCE(Exposure) exposure_ptr;
   float exposure_compensation;
 };
 
 const uint REDUCE_LUMINANCE_HISTOGRAM_THREADS_X = NUM_LUMINANCE_HISTOGRAM_BINS;
 
-struct ReinhardPushConstants {
-  REN_REFERENCE(Exposure) exposure_ptr;
+struct ReinhardConstants {
   uint tex;
 };
 

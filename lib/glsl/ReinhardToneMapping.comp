@@ -4,7 +4,7 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS { ReinhardPushConstants g_pcs; };
+PUSH_CONSTANTS { ReinhardConstants g_pcs; };
 
 NUM_THREADS(REINHARD_THREADS_X, REINHARD_THREADS_Y, 1);
 void main() {
@@ -16,9 +16,7 @@ void main() {
   }
 
   vec4 color = imageLoad(g_rwimages2d[g_pcs.tex], idx);
-  float exposure = g_pcs.exposure_ptr.exposure;
 
-  color.rgb *= exposure;
   float luminance = get_luminance(color.rgb);
   color.rgb *= luminance / (1.0f + luminance);
 

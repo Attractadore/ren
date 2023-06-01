@@ -169,7 +169,7 @@ auto RenderGraph::Builder::write_texture(RGPassID pass,
   auto new_texture =
       init_new_texture(pass, write_info.texture, std::move(write_info.name));
   m_passes[pass].write_textures.push_back({
-      .texture = new_texture,
+      .texture = write_info.texture,
       .state = write_info.state,
   });
   auto it = m_texture_create_infos.find(m_textures[write_info.texture]);
@@ -200,7 +200,7 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
       .state = create_info.state,
   });
   return new_texture;
-} // namespace ren
+}
 
 auto RenderGraph::Builder::import_texture(RGTextureImportInfo &&import_info)
     -> RGTextureID {
@@ -271,7 +271,7 @@ auto RenderGraph::Builder::write_buffer(RGPassID pass,
   auto new_buffer =
       init_new_buffer(pass, write_info.buffer, std::move(write_info.name));
   m_passes[pass].write_buffers.push_back({
-      .buffer = new_buffer,
+      .buffer = write_info.buffer,
       .state = write_info.state,
   });
   auto it = m_buffer_create_infos.find(m_buffers[write_info.buffer]);
@@ -417,7 +417,7 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
   };
 
   SmallVector<RGPassID> dependents;
-  auto get_dependants = [&](const RGPass &pass) -> const auto & {
+  auto get_dependants = [&](const RGPass &pass) -> std::span<const RGPassID> {
     // Reads must happen before writes
     dependents.assign(concat(pass.read_textures | filter_map(get_texture_kill),
                              pass.read_buffers | filter_map(get_buffer_kill)));
@@ -425,25 +425,17 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
   };
 
   SmallVector<RGPassID> dependencies;
-  auto get_dependencies = [&](const RGPass &pass) -> const auto & {
-    auto is_not_create = [&](RGPassID def) { return def != getPassID(pass); };
+  auto get_dependencies = [&](const RGPass &pass) -> std::span<const RGPassID> {
     dependencies.assign(concat(
         // Reads must happen after creation
         pass.read_textures | filter_map(get_texture_def),
         pass.read_buffers | filter_map(get_buffer_def),
         // Writes must happen after creation
-        pass.write_textures | filter_map(get_texture_def) |
-            filter(is_not_create),
-        pass.write_buffers | filter_map(get_buffer_def) |
-            filter(is_not_create)));
+        pass.write_textures | filter_map(get_texture_def),
+        pass.write_buffers | filter_map(get_buffer_def)));
+    ranges::actions::unstable_remove_if(
+        dependencies, [&](RGPassID dep) { return dep == getPassID(pass); });
     return dependencies;
-  };
-
-  SmallVector<RGPassID> outputs;
-  auto get_outputs = [&](const RGPass &pass) -> const auto & {
-    outputs.assign(concat(pass.write_textures | filter_map(get_texture_def),
-                          pass.write_buffers | filter_map(get_buffer_def)));
-    return outputs;
   };
 
   // Schedule passes whose dependencies were scheduled the longest time ago
@@ -452,13 +444,15 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
 
   // Build DAG
   for (const auto &pass : m_passes | ranges::views::drop(1)) {
-    const auto &predecessors = get_dependencies(pass);
-
     auto id = getPassID(pass);
+    auto predecessors = get_dependencies(pass);
+    auto successors = get_dependants(pass);
+
     for (auto p : predecessors) {
       add_edge(p, id);
     }
-    for (auto s : get_dependants(pass)) {
+
+    for (auto s : successors) {
       add_edge(id, s);
     }
 
