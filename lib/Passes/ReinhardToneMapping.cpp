@@ -50,7 +50,9 @@ auto setup_reinhard_tone_mapping_pass(Device &device, RenderGraph::Builder &rgb,
   assert(cfg.texture_allocator);
   assert(cfg.pipelines);
 
-  auto pass = rgb.create_pass("Reinhard tone mapping");
+  auto pass = rgb.create_pass({
+      .name = "Reinhard tone mapping",
+  });
 
   auto texture = pass.write_texture({
       .name = "Color buffer after Reinhard tone mapping",

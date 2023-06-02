@@ -20,12 +20,12 @@ auto setup_initialize_luminance_histogram_pass(
     Device &device, RenderGraph::Builder &rgb,
     const InitializeLuminanceHistogramPassConfig &cfg)
     -> InitializeLuminanceHistogramPassOutput {
-  auto pass =
-      rgb.create_pass("Automatic exposure: initialize luminance histogram");
+  auto pass = rgb.create_pass({
+      .name = "Automatic exposure: initialize luminance histogram",
+  });
 
   auto histogram = pass.create_buffer({
       .name = "Empty luminance histogram",
-      REN_SET_DEBUG_NAME("Luminance histogram"),
       .heap = BufferHeap::Device,
       .size = sizeof(glsl::LuminanceHistogram),
       .state =
@@ -105,7 +105,9 @@ auto setup_build_luminance_histogram_pass(
   assert(cfg.texture_allocator);
   assert(cfg.pipeline);
 
-  auto pass = rgb.create_pass("Automatic exposure: build luminance histogram");
+  auto pass = rgb.create_pass({
+      .name = "Automatic exposure: build luminance histogram",
+  });
 
   pass.read_texture({
       .texture = cfg.texture,
@@ -199,8 +201,9 @@ auto setup_reduce_luminance_histogram_pass(
   assert(cfg.previous_exposure_buffer);
   assert(cfg.pipeline);
 
-  auto reduce_pass =
-      rgb.create_pass("Automatic exposure: reduce luminance histogram");
+  auto reduce_pass = rgb.create_pass({
+      .name = "Automatic exposure: reduce luminance histogram",
+  });
 
   reduce_pass.read_buffer({
       .buffer = cfg.histogram_buffer,
@@ -223,7 +226,6 @@ auto setup_reduce_luminance_histogram_pass(
 
   auto exposure = reduce_pass.create_buffer({
       .name = "Automatic exposure",
-      REN_SET_DEBUG_NAME("Automatic exposure buffer"),
       .heap = BufferHeap::Device,
       .size = sizeof(glsl::Exposure),
       .state =
@@ -270,10 +272,12 @@ auto setup_automatic_exposure_setup_pass(
         };
       },
       [&]() -> ExposurePassOutput {
-        auto pass = rgb.create_pass("Automatic exposure: set initial exposure");
+        auto pass = rgb.create_pass({
+            .name = "Automatic exposure: set initial exposure",
+        });
+
         auto exposure_buffer = pass.create_buffer({
             .name = "Initial automatic exposure",
-            REN_SET_DEBUG_NAME("Initial automatic exposure buffer"),
             .heap = BufferHeap::Upload,
             .size = sizeof(glsl::Exposure),
         });

@@ -2,7 +2,6 @@
 #include "Device.hpp"
 
 namespace ren {
-
 namespace {
 
 struct UploadPassResources {
@@ -54,7 +53,9 @@ void run_upload_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
 auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
                        const UploadPassConfig &cfg) -> UploadPassOutput {
-  auto pass = rgb.create_pass("Upload");
+  auto pass = rgb.create_pass({
+      .name = "Upload",
+  });
 
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
@@ -63,13 +64,11 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
   if (num_mesh_insts > 0) {
     transform_matrix_buffer = pass.create_buffer({
         .name = "Transform matrices",
-        REN_SET_DEBUG_NAME("Transform matrix buffer"),
         .heap = BufferHeap::Upload,
         .size = sizeof(glm::mat4x3) * num_mesh_insts,
     });
     normal_matrix_buffer = pass.create_buffer({
         .name = "Normal matrices",
-        REN_SET_DEBUG_NAME("Normal matrix buffer"),
         .heap = BufferHeap::Upload,
         .size = sizeof(glm::mat3) * num_mesh_insts,
     });
@@ -79,7 +78,6 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
   if (not cfg.directional_lights.empty()) {
     directional_lights_buffer = pass.create_buffer({
         .name = "Directional lights",
-        REN_SET_DEBUG_NAME("Directional lights buffer"),
         .heap = BufferHeap::Upload,
         .size = cfg.directional_lights.size_bytes(),
     });
@@ -89,7 +87,6 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
   if (not cfg.materials.empty()) {
     materials_buffer = pass.create_buffer({
         .name = "Materials",
-        REN_SET_DEBUG_NAME("Materials buffer"),
         .heap = BufferHeap::Upload,
         .size = cfg.materials.size_bytes(),
     });

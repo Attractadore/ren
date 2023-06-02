@@ -138,7 +138,9 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   assert(cfg.depth_format);
   assert(glm::all(glm::greaterThan(cfg.size, glm::uvec2(0))));
 
-  auto pass = rgb.create_pass("Color");
+  auto pass = rgb.create_pass({
+      .name = "Color",
+  });
 
   for (auto buffer : cfg.uploaded_vertex_buffers) {
     pass.read_buffer({
@@ -227,7 +229,6 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto uniform_buffer = pass.create_buffer({
       .name = "Color pass uniforms",
-      REN_SET_DEBUG_NAME("Color pass uniform buffer"),
       .heap = BufferHeap::Upload,
       .size = sizeof(glsl::ColorUB),
       .state =
@@ -240,7 +241,6 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto texture = pass.create_texture({
       .name = "Color buffer after color pass",
-      REN_SET_DEBUG_NAME("Color buffer"),
       .format = cfg.color_format,
       .size = {cfg.size, 1},
       .state =
@@ -253,7 +253,6 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto depth_texture = pass.create_texture({
       .name = "Depth buffer after color pass",
-      REN_SET_DEBUG_NAME("Depth buffer"),
       .format = cfg.depth_format,
       .size = {cfg.size, 1},
       .state =

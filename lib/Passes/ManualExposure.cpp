@@ -9,10 +9,12 @@ auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
     -> ExposurePassOutput {
   assert(cfg.options.exposure > 0.0f);
 
-  auto pass = rgb.create_pass("Manual exposure");
+  auto pass = rgb.create_pass({
+      .name = "Manual exposure",
+  });
+
   auto exposure_buffer = pass.create_buffer({
       .name = "Manual exposure",
-      REN_SET_DEBUG_NAME("Manual exposure buffer"),
       .heap = BufferHeap::Upload,
       .size = sizeof(glsl::Exposure),
   });
