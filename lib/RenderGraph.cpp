@@ -193,8 +193,7 @@ auto RenderGraph::Builder::create_texture(RGPassID pass,
     m_preserved_textures.insert(physical_texture);
   }
   m_texture_create_infos[physical_texture] = {
-      REN_SET_DEBUG_NAME(
-          fmt::format("RenderGraph Texture {}", physical_texture)),
+      .name = fmt::format("RenderGraph Texture {}", physical_texture),
       .type = create_info.type,
       .format = create_info.format,
       .usage = get_texture_usage_flags(create_info.state.accesses),
@@ -297,7 +296,7 @@ auto RenderGraph::Builder::create_buffer(RGPassID pass,
     m_preserved_buffers.insert(physical_buffer);
   }
   m_buffer_create_infos[physical_buffer] = {
-      REN_SET_DEBUG_NAME(fmt::format("RenderGraph Buffer {}", physical_buffer)),
+      .name = fmt::format("RenderGraph Buffer {}", physical_buffer),
       .heap = create_info.heap,
       .usage = get_buffer_usage_flags(create_info.state.accesses),
       .size = create_info.size,

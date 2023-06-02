@@ -150,7 +150,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   Mesh mesh = {
       .vertex_buffer =
           m_device->get_buffer_view(m_persistent_arena.create_buffer({
-              REN_SET_DEBUG_NAME("Vertex buffer"),
+              .name = "Vertex buffer",
               .heap = BufferHeap::Device,
               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -158,7 +158,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
           })),
       .index_buffer =
           m_device->get_buffer_view(m_persistent_arena.create_buffer({
-              REN_SET_DEBUG_NAME("Index buffer"),
+              .name = "Index buffer",
               .heap = BufferHeap::Device,
               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                        VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -541,10 +541,13 @@ void Scene::draw(Swapchain &swapchain) {
   auto &frame_arena = get_frame_arena();
   auto &next_frame_arena = get_next_frame_arena();
 
-  rgb.present(
-      swapchain, texture,
-      frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Acquire semaphore")}),
-      frame_arena.create_semaphore({REN_SET_DEBUG_NAME("Present semaphore")}));
+  rgb.present(swapchain, texture,
+              frame_arena.create_semaphore({
+                  .name = "Acquire semaphore",
+              }),
+              frame_arena.create_semaphore({
+                  .name = "Present semaphore",
+              }));
 
   auto rg = rgb.build(*m_device, frame_arena, next_frame_arena);
 

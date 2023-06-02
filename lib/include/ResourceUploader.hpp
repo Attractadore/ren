@@ -31,7 +31,7 @@ public:
     auto size = size_bytes(data);
 
     auto staging_buffer = device.get_buffer_view(arena.create_buffer({
-        REN_SET_DEBUG_NAME("Staging buffer"),
+        .name = "Staging buffer",
         .heap = BufferHeap::Upload,
         .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         .size = size,

@@ -1,31 +1,28 @@
 #pragma once
-#define REN_DEBUG_NAMES 1
 
 #ifndef REN_DEBUG_NAMES
 #define REN_DEBUG_NAMES 0
 #endif
 
+namespace ren {
+
 #if REN_DEBUG_NAMES
 
-#include <fmt/format.h>
+using DebugName = std::string;
 
-#include <cstdint>
-#include <source_location>
-
-#define REN_DEFAULT_DEBUG_NAME(Type)                                           \
-  [](std::source_location sl = std::source_location::current()) {              \
-    return fmt::format(Type " created at {}:{}", sl.file_name(), sl.line());   \
-  }()
-
-#define REN_DEBUG_NAME_FIELD(Type)                                             \
-  std::string debug_name = REN_DEFAULT_DEBUG_NAME(Type)
-#define REN_SET_DEBUG_NAME(name) .debug_name = name
+#define REN_DEBUG_NAME_FIELD(default_name) DebugName name = default_name
 
 #else
 
-#define REN_DEFAULT_DEBUG_NAME(Type) ""
-#define REN_DEBUG_NAME_FIELD(Type)
-#define REN_SET_DEBUG_NAME(name)
-#define REN_SET_NUMBERED_DEBUG_NAME(name)
+struct DebugName {
+  DebugName() = default;
+  DebugName(const char *) {}
+  DebugName(const std::string &) {}
+  DebugName(std::string_view) {}
+};
+
+#define REN_DEBUG_NAME_FIELD(default_name) [[no_unique_address]] DebugName name
 
 #endif
+
+} // namespace ren

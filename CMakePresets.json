@@ -19,6 +19,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
         "REN_VULKAN_VALIDATION": "ON",
+        "REN_VULKAN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG_NAMES": "ON"
       }
     },

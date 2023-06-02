@@ -6,6 +6,7 @@ set(REN_LOG_SEVERITY
 )
 option(REN_BUILD_TESTS "Build tests" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
+option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
 option(REN_RENDER_GRAPH_DEBUG_NAMES "Enable RenderGraph object debug names" OFF)
 
 find_package(
@@ -130,6 +131,10 @@ target_compile_definitions(
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)
+endif()
+if(REN_VULKAN_DEBUG_NAMES)
+  message(STATUS "Enable Vulkan object debug names")
+  target_compile_definitions(ren PRIVATE REN_DEBUG_NAMES)
 endif()
 if(REN_RENDER_GRAPH_DEBUG_NAMES)
   message(STATUS "Enable RenderGraph object debug names")

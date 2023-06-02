@@ -41,7 +41,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
   return arena.create_descriptor_set_layout({
-      REN_SET_DEBUG_NAME("Textures descriptor set"),
+      .name = "Textures descriptor set layout",
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
       .bindings = bindings,
   });
@@ -82,7 +82,7 @@ auto create_pipeline_layout(ResourceArena &arena,
   }
 
   return arena.create_pipeline_layout({
-      REN_SET_DEBUG_NAME(fmt::format("{} pipeline layout", name)),
+      .name = fmt::format("{} pipeline layout", name),
       .set_layouts = layouts,
       .push_constants = push_constants,
   });
@@ -106,7 +106,7 @@ auto load_compute_pipeline(ResourceArena &arena,
   auto layout =
       create_pipeline_layout(arena, persistent_set_layout, shaders, name);
   return arena.create_compute_pipeline({
-      REN_SET_DEBUG_NAME(fmt::format("{} pipeline", name)),
+      .name = fmt::format("{} pipeline", name),
       .layout = layout,
       .shader =
           {

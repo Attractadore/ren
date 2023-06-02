@@ -6,45 +6,38 @@
 #include "Swapchain.hpp"
 
 namespace ren {
+namespace {
 
+template <typename T>
+constexpr VkObjectType ObjectType = VK_OBJECT_TYPE_UNKNOWN;
+#define define_object_type(T, type)                                            \
+  template <> inline constexpr VkObjectType ObjectType<T> = type
+define_object_type(VkBuffer, VK_OBJECT_TYPE_BUFFER);
+define_object_type(VkDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL);
+define_object_type(VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT);
+define_object_type(VkImage, VK_OBJECT_TYPE_IMAGE);
+define_object_type(VkPipeline, VK_OBJECT_TYPE_PIPELINE);
+define_object_type(VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT);
+define_object_type(VkSampler, VK_OBJECT_TYPE_SAMPLER);
+define_object_type(VkSemaphore, VK_OBJECT_TYPE_SEMAPHORE);
+#undef define_object_type
+
+template <typename T>
+void set_debug_name(Device &device, T object, const DebugName &name) {
 #if REN_DEBUG_NAMES
-
-#define ren_set_debug_name(object, name)                                       \
-  {                                                                            \
-    VkDebugUtilsObjectNameInfoEXT name_info = {                                \
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,           \
-        .objectType = [&]() consteval {using T = decltype(object);             \
-    if constexpr (std::same_as<T, VkBuffer>) {                                 \
-      return VK_OBJECT_TYPE_BUFFER;                                            \
-    } else if constexpr (std::same_as<T, VkImage>) {                           \
-      return VK_OBJECT_TYPE_IMAGE;                                             \
-    } else if constexpr (std::same_as<T, VkSampler>) {                         \
-      return VK_OBJECT_TYPE_SAMPLER;                                           \
-    } else if constexpr (std::same_as<T, VkSemaphore>) {                       \
-      return VK_OBJECT_TYPE_SEMAPHORE;                                         \
-    } else if constexpr (std::same_as<T, VkDescriptorPool>) {                  \
-      return VK_OBJECT_TYPE_DESCRIPTOR_POOL;                                   \
-    } else if constexpr (std::same_as<T, VkDescriptorSetLayout>) {             \
-      return VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;                             \
-    } else if constexpr (std::same_as<T, VkPipelineLayout>) {                  \
-      return VK_OBJECT_TYPE_PIPELINE_LAYOUT;                                   \
-    } else if constexpr (std::same_as<T, VkPipeline>) {                        \
-      return VK_OBJECT_TYPE_PIPELINE;                                          \
-    }                                                                          \
-    throw("Unknown debug object type");                                        \
-  }                                                                            \
-  (), .objectHandle = (uint64_t)object, .pObjectName = name,                   \
-  }                                                                            \
-  ;                                                                            \
-  throwIfFailed(SetDebugUtilsObjectNameEXT(&name_info),                        \
-                "Vulkan: Failed to set object name");                          \
-  }
-
-#else
-
-#define ren_set_debug_name(object, name)
-
+  static_assert(ObjectType<T>);
+  VkDebugUtilsObjectNameInfoEXT name_info = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+      .objectType = ObjectType<T>,
+      .objectHandle = (uint64_t)object,
+      .pObjectName = name.c_str(),
+  };
+  throwIfFailed(device.SetDebugUtilsObjectNameEXT(&name_info),
+                "Vulkan: Failed to set object debug name");
 #endif
+}
+
+} // namespace
 
 std::span<const char *const> Device::getRequiredLayers() noexcept {
   static constexpr auto layers = makeArray<const char *>(
@@ -154,7 +147,7 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
 
   GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
   m_graphics_queue_semaphore = create_semaphore({
-      REN_SET_DEBUG_NAME("Device time semaphore"),
+      .name = "Device time semaphore",
       .initial_value = 0,
   });
 
@@ -251,7 +244,7 @@ auto Device::create_descriptor_pool(
   VkDescriptorPool pool;
   throwIfFailed(CreateDescriptorPool(&pool_info, &pool),
                 "Vulkan: Failed to create descriptor pool");
-  ren_set_debug_name(pool, create_info.debug_name.c_str());
+  set_debug_name(*this, pool, create_info.name);
 
   return m_descriptor_pools.emplace(DescriptorPool{
       .handle = pool,
@@ -331,7 +324,7 @@ auto Device::create_descriptor_set_layout(
   VkDescriptorSetLayout layout;
   throwIfFailed(CreateDescriptorSetLayout(&layout_info, &layout),
                 "Vulkann: Failed to create descriptor set layout");
-  ren_set_debug_name(layout, create_info.debug_name.c_str());
+  set_debug_name(*this, layout, create_info.name);
 
   return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
       .handle = layout,
@@ -444,7 +437,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
   throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
                                 &allocation, &map_info),
                 "VMA: Failed to create buffer");
-  ren_set_debug_name(buffer, create_info.debug_name.c_str());
+  set_debug_name(*this, buffer, create_info.name);
 
   uint64_t address = 0;
   if (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
@@ -539,7 +532,7 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
   throwIfFailed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
                                &allocation, nullptr),
                 "VMA: Failed to create image");
-  ren_set_debug_name(image, create_info.debug_name.c_str());
+  set_debug_name(*this, image, create_info.name);
 
   return m_textures.emplace(Texture{
       .image = image,
@@ -555,7 +548,7 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
 
 auto Device::create_swapchain_texture(
     const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
-  ren_set_debug_name(create_info.image, "Swapchain image");
+  set_debug_name(*this, create_info.image, "Swapchain image");
 
   return m_textures.emplace(Texture{
       .image = create_info.image,
@@ -699,7 +692,7 @@ auto Device::create_sampler(const SamplerCreateInfo &&create_info)
   VkSampler sampler;
   throwIfFailed(CreateSampler(&sampler_info, &sampler),
                 "Vulkan: Failed to create sampler");
-  ren_set_debug_name(sampler, create_info.debug_name.c_str());
+  set_debug_name(*this, sampler, create_info.name);
 
   return m_samplers.emplace(Sampler{
       .handle = sampler,
@@ -738,7 +731,7 @@ auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
   VkSemaphore semaphore;
   throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
                 "Vulkan: Failed to create semaphore");
-  ren_set_debug_name(semaphore, create_info.debug_name.c_str());
+  set_debug_name(*this, semaphore, create_info.name);
 
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
@@ -944,7 +937,7 @@ auto Device::create_graphics_pipeline(
   VkPipeline pipeline;
   throwIfFailed(CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
                 "Vulkan: Failed to create graphics pipeline");
-  ren_set_debug_name(pipeline, create_info.debug_name.c_str());
+  set_debug_name(*this, pipeline, create_info.name);
   for (auto module : shader_modules) {
     DestroyShaderModule(module);
   }
@@ -996,7 +989,7 @@ auto Device::create_compute_pipeline(
   VkPipeline pipeline;
   throwIfFailed(CreateComputePipelines(nullptr, 1, &pipeline_info, &pipeline),
                 "Vulkan: Failed to create compute pipeline");
-  ren_set_debug_name(pipeline, create_info.debug_name.c_str());
+  set_debug_name(*this, pipeline, create_info.name);
   DestroyShaderModule(module);
 
   return m_compute_pipelines.emplace(ComputePipeline{
@@ -1042,7 +1035,7 @@ auto Device::create_pipeline_layout(
   VkPipelineLayout layout;
   throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
                 "Vulkan: Failed to create pipeline layout");
-  ren_set_debug_name(layout, create_info.debug_name.c_str());
+  set_debug_name(*this, layout, create_info.name);
 
   return m_pipeline_layouts.emplace(PipelineLayout{
       .handle = layout,
