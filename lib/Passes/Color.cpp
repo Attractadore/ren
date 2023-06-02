@@ -11,7 +11,6 @@ namespace {
 struct ColorPassResources {
   const HandleMap<Mesh> *meshes = nullptr;
   std::span<const MeshInst> mesh_insts;
-  std::span<const Handle<GraphicsPipeline>> material_pipelines;
   RGTextureID texture;
   RGTextureID depth_texture;
   RGBufferID uniform_buffer;
@@ -20,7 +19,7 @@ struct ColorPassResources {
   RGBufferID directional_lights_buffer;
   RGBufferID materials_buffer;
   RGBufferID exposure_buffer;
-  Handle<PipelineLayout> pipeline_layout;
+  Handle<GraphicsPipeline> pipeline;
   VkDescriptorSet persistent_set = nullptr;
   glm::mat4 proj;
   glm::mat4 view;
@@ -44,14 +43,13 @@ void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
   if (not rcs.mesh_insts.empty()) {
     assert(rcs.meshes);
-    assert(not rcs.material_pipelines.empty());
     assert(rcs.persistent_set);
     assert(rcs.uniform_buffer);
     assert(rcs.transform_matrix_buffer);
     assert(rcs.normal_matrix_buffer);
     assert(rcs.materials_buffer);
     assert(rcs.exposure_buffer);
-    assert(rcs.pipeline_layout);
+    assert(rcs.pipeline);
 
     const auto &transform_matrix_buffer =
         rg.get_buffer(rcs.transform_matrix_buffer);
@@ -84,16 +82,18 @@ void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
         .num_dir_lights = rcs.num_dir_lights,
     };
 
+    auto layout = device.get_graphics_pipeline(rcs.pipeline).layout;
+
     std::array descriptor_sets = {rcs.persistent_set};
-    cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS,
-                             rcs.pipeline_layout, 0, descriptor_sets);
+    cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0,
+                             descriptor_sets);
+
+    cmd.bind_graphics_pipeline(rcs.pipeline);
 
     auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
     for (const auto &&[i, mesh_inst] : enumerate(rcs.mesh_insts)) {
       const auto &mesh = (*rcs.meshes)[mesh_inst.mesh];
       auto material = mesh_inst.material;
-
-      cmd.bind_graphics_pipeline(rcs.material_pipelines[material]);
 
       auto address = device.get_buffer_device_address(mesh.vertex_buffer);
       auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
@@ -112,8 +112,8 @@ void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
           .material_index = material,
       };
       cmd.set_push_constants(
-          rcs.pipeline_layout,
-          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, pcs);
+          layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+          pcs);
 
       cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
       cmd.draw_indexed({
@@ -130,12 +130,10 @@ void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                       const ColorPassConfig &cfg) -> ColorPassOutput {
   assert(cfg.meshes);
+  assert(cfg.pipeline);
   assert(cfg.persistent_set);
-  assert(cfg.pipeline_layout);
   assert(cfg.exposure_buffer);
   assert(cfg.persistent_set);
-  assert(cfg.color_format);
-  assert(cfg.depth_format);
   assert(glm::all(glm::greaterThan(cfg.size, glm::uvec2(0))));
 
   auto pass = rgb.create_pass({
@@ -241,7 +239,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto texture = pass.create_texture({
       .name = "Color buffer after color pass",
-      .format = cfg.color_format,
+      .format = COLOR_FORMAT,
       .size = {cfg.size, 1},
       .state =
           {
@@ -253,7 +251,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto depth_texture = pass.create_texture({
       .name = "Depth buffer after color pass",
-      .format = cfg.depth_format,
+      .format = DEPTH_FORMAT,
       .size = {cfg.size, 1},
       .state =
           {
@@ -269,7 +267,6 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
   ColorPassResources rcs = {
       .meshes = cfg.meshes,
       .mesh_insts = cfg.mesh_insts,
-      .material_pipelines = cfg.material_pipelines,
       .texture = texture,
       .depth_texture = depth_texture,
       .uniform_buffer = uniform_buffer,
@@ -278,7 +275,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .directional_lights_buffer = cfg.directional_lights_buffer,
       .materials_buffer = cfg.materials_buffer,
       .exposure_buffer = cfg.exposure_buffer,
-      .pipeline_layout = cfg.pipeline_layout,
+      .pipeline = cfg.pipeline,
       .persistent_set = cfg.persistent_set,
       .proj = cfg.proj,
       .view = cfg.view,

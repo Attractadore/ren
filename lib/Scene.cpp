@@ -65,10 +65,8 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
       m_persistent_descriptor_pool(persistent_descriptor_pool),
       m_persistent_descriptor_set(persistent_descriptor_set),
       m_texture_allocator(std::move(tex_alloc)), m_cmd_allocator(device) {
-  m_pipeline_layout = create_color_pass_pipeline_layout(
-      m_persistent_arena, m_persistent_descriptor_set_layout);
-  m_pipelines = load_postprocessing_pipelines(
-      m_persistent_arena, m_persistent_descriptor_set_layout);
+  m_pipelines =
+      load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
 }
 
 void Scene::next_frame() {
@@ -270,20 +268,6 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
 void Scene::create_materials(std::span<const RenMaterialDesc> descs,
                              RenMaterial *out) {
   for (const auto &desc : descs) {
-    auto pipeline = [&] {
-      auto pipeline = m_compiler.get_material_pipeline(desc);
-      if (pipeline) {
-        return *pipeline;
-      }
-      return m_compiler.compile_material_pipeline(
-          m_persistent_arena, MaterialPipelineConfig{
-                                  .material = desc,
-                                  .layout = m_pipeline_layout,
-                                  .rt_format = m_rt_format,
-                                  .depth_format = m_depth_format,
-                              });
-    }();
-
     glsl::Material material = {
         .base_color = glm::make_vec4(desc.base_color_factor),
         .base_color_texture = [&]() -> unsigned {
@@ -298,7 +282,6 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
 
     auto index = static_cast<RenMaterial>(m_materials.size());
     m_materials.push_back(material);
-    m_material_pipelines.push_back(pipeline);
 
     *out = index;
     ++out;
@@ -490,7 +473,6 @@ void Scene::draw(Swapchain &swapchain) {
       *m_device, rgb,
       {
           .meshes = &m_meshes,
-          .material_pipelines = m_material_pipelines,
           .mesh_insts = m_mesh_insts.values(),
           .uploaded_vertex_buffers = uploaded_vertex_buffers,
           .uploaded_index_buffers = uploaded_index_buffers,
@@ -500,10 +482,8 @@ void Scene::draw(Swapchain &swapchain) {
           .directional_lights_buffer = frame_resources.dir_lights_buffer,
           .materials_buffer = frame_resources.materials_buffer,
           .exposure_buffer = exposure_buffer,
-          .pipeline_layout = m_pipeline_layout,
+          .pipeline = m_pipelines.color_pass,
           .persistent_set = m_persistent_descriptor_set,
-          .color_format = m_rt_format,
-          .depth_format = m_depth_format,
           .size = {m_viewport_width, m_viewport_height},
           .proj = get_projection_matrix(m_camera, float(m_viewport_width) /
                                                       float(m_viewport_height)),

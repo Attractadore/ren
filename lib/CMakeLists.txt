@@ -93,7 +93,6 @@ add_library(
   Device.cpp
   Formats.cpp
   FreeListAllocator.cpp
-  MaterialPipelineCompiler.cpp
   Pipeline.cpp
   PipelineLoading.cpp
   RenderGraph.cpp

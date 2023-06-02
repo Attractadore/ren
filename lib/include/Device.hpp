@@ -56,7 +56,7 @@ template <typename... Ts> class DeleteQueueImpl {
   };
 
   std::tuple<Queue<Ts>...> m_queues;
-  std::array<FrameData, c_pipeline_depth> m_frame_data;
+  std::array<FrameData, PIPELINE_DEPTH> m_frame_data;
   unsigned m_frame_idx = 0;
 
 private:
@@ -83,7 +83,7 @@ private:
 
 public:
   void next_frame(Device &device) {
-    m_frame_idx = (m_frame_idx + 1) % c_pipeline_depth;
+    m_frame_idx = (m_frame_idx + 1) % PIPELINE_DEPTH;
     (pop<Ts>(device, get_frame_pushed_item_count<Ts>()), ...);
     m_frame_data[m_frame_idx] = {};
   }
@@ -127,7 +127,7 @@ class Device : public InstanceFunctionsMixin<Device>,
   uint64_t m_graphics_queue_time = 0;
 
   unsigned m_frame_index = 0;
-  std::array<uint64_t, c_pipeline_depth> m_frame_end_times = {};
+  std::array<uint64_t, PIPELINE_DEPTH> m_frame_end_times = {};
 
   DeleteQueue m_delete_queue;
 

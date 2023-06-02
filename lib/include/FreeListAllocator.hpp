@@ -8,7 +8,7 @@ class FreeListAllocator {
   unsigned m_top = 1;
   unsigned m_frame_index = 0;
   Vector<unsigned> m_free_list;
-  std::array<Vector<unsigned>, c_pipeline_depth> m_frame_freed;
+  std::array<Vector<unsigned>, PIPELINE_DEPTH> m_frame_freed;
 
 public:
   auto allocate() -> unsigned;

@@ -17,7 +17,7 @@ void FreeListAllocator::free(unsigned idx) {
 }
 
 void FreeListAllocator::next_frame() {
-  m_frame_index = (m_frame_index + 1) % c_pipeline_depth;
+  m_frame_index = (m_frame_index + 1) % PIPELINE_DEPTH;
   m_free_list.append(m_frame_freed[m_frame_index]);
   m_frame_freed[m_frame_index].clear();
 }

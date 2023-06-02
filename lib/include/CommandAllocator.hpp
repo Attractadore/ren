@@ -30,7 +30,7 @@ public:
 
 class CommandAllocator {
   Device *m_device;
-  StaticVector<CommandPool, c_pipeline_depth> m_frame_pools;
+  StaticVector<CommandPool, PIPELINE_DEPTH> m_frame_pools;
   unsigned m_frame_index = 0;
 
 public:

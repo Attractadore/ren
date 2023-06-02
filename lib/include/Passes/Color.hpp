@@ -10,7 +10,6 @@ namespace ren {
 
 struct ColorPassConfig {
   const HandleMap<Mesh> *meshes = nullptr;
-  std::span<const Handle<GraphicsPipeline>> material_pipelines;
   std::span<const MeshInst> mesh_insts;
   std::span<const RGBufferID> uploaded_vertex_buffers;
   std::span<const RGBufferID> uploaded_index_buffers;
@@ -20,10 +19,8 @@ struct ColorPassConfig {
   RGBufferID directional_lights_buffer;
   RGBufferID materials_buffer;
   RGBufferID exposure_buffer;
-  Handle<PipelineLayout> pipeline_layout;
+  Handle<GraphicsPipeline> pipeline;
   VkDescriptorSet persistent_set = nullptr;
-  VkFormat color_format;
-  VkFormat depth_format;
   glm::uvec2 size;
   glm::mat4 proj;
   glm::mat4 view;

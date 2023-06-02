@@ -88,16 +88,6 @@ auto create_pipeline_layout(ResourceArena &arena,
   });
 }
 
-auto create_color_pass_pipeline_layout(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<PipelineLayout> {
-  auto shaders = makeArray<std::span<const std::byte>>(
-      std::as_bytes(std::span(VertexShader, VertexShader_count)),
-      std::as_bytes(std::span(FragmentShader, FragmentShader_count)));
-  return create_pipeline_layout(arena, persistent_set_layout, shaders,
-                                "Color pass");
-}
-
 auto load_compute_pipeline(ResourceArena &arena,
                            Handle<DescriptorSetLayout> persistent_set_layout,
                            std::span<const std::byte> shader,
@@ -106,7 +96,7 @@ auto load_compute_pipeline(ResourceArena &arena,
   auto layout =
       create_pipeline_layout(arena, persistent_set_layout, shaders, name);
   return arena.create_compute_pipeline({
-      .name = fmt::format("{} pipeline", name),
+      .name = fmt::format("{} compute pipeline", name),
       .layout = layout,
       .shader =
           {
@@ -115,10 +105,11 @@ auto load_compute_pipeline(ResourceArena &arena,
   });
 }
 
-auto load_postprocessing_pipelines(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
+auto load_pipelines(ResourceArena &arena,
+                    Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
+      .color_pass = load_color_pass_pipeline(arena, persistent_set_layout),
       .build_luminance_histogram =
           load_build_luminance_histogram_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram =
@@ -126,6 +117,36 @@ auto load_postprocessing_pipelines(
       .reinhard_tone_mapping =
           load_reinhard_tone_mapping_pipeline(arena, persistent_set_layout),
   };
+}
+
+auto load_color_pass_pipeline(ResourceArena &arena,
+                              Handle<DescriptorSetLayout> persistent_set_layout)
+    -> Handle<GraphicsPipeline> {
+  auto vs_code = std::as_bytes(std::span(VertexShader, VertexShader_count));
+  auto fs_code = std::as_bytes(std::span(FragmentShader, FragmentShader_count));
+  std::array shaders = {vs_code, fs_code};
+  auto layout = create_pipeline_layout(arena, persistent_set_layout, shaders,
+                                       "Color pass");
+  std::array color_attachments = {ColorAttachmentInfo{
+      .format = COLOR_FORMAT,
+  }};
+  return arena.create_graphics_pipeline({
+      .name = "Color pass graphics pipeline",
+      .layout = layout,
+      .vertex_shader =
+          {
+              .code = vs_code,
+          },
+      .fragment_shader =
+          ShaderInfo{
+              .code = fs_code,
+          },
+      .depth_test =
+          DepthTestInfo{
+              .format = DEPTH_FORMAT,
+          },
+      .color_attachments = color_attachments,
+  });
 }
 
 auto load_build_luminance_histogram_pipeline(

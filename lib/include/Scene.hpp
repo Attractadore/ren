@@ -4,7 +4,6 @@
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
 #include "ExposureOptions.hpp"
-#include "MaterialPipelineCompiler.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "PipelineLoading.hpp"
@@ -30,7 +29,6 @@ class Scene {
   Vector<BufferView> m_staged_vertex_buffers;
   Vector<BufferView> m_staged_index_buffers;
   Vector<Handle<Texture>> m_staged_textures;
-  MaterialPipelineCompiler m_compiler;
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;
@@ -44,10 +42,6 @@ class Scene {
   TextureIDAllocator m_texture_allocator;
 
   Vector<glsl::Material> m_materials = {{}};
-  Vector<Handle<GraphicsPipeline>> m_material_pipelines = {{}};
-
-  VkFormat m_rt_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-  VkFormat m_depth_format = VK_FORMAT_D32_SFLOAT;
 
 public:
   unsigned m_viewport_width = 1280;
@@ -57,8 +51,6 @@ private:
   DenseHandleMap<MeshInst> m_mesh_insts;
 
   Vector<Handle<Texture>> m_images = {{}};
-
-  Handle<PipelineLayout> m_pipeline_layout;
 
   Handle<DescriptorPool> m_persistent_descriptor_pool;
   Handle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
