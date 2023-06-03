@@ -9,7 +9,6 @@ REN_NAMESPACE_BEGIN
 
 struct ReduceLuminanceHistogramConstants {
   REN_REFERENCE(LuminanceHistogram) histogram_ptr;
-  REN_REFERENCE(Exposure) previous_exposure_ptr;
   REN_REFERENCE(Exposure) exposure_ptr;
   float exposure_compensation;
 };

@@ -23,10 +23,14 @@ void main() {
     log_luminance += bin_luminance * bin_count;
     num_samples += bin_count;
   }
-  log_luminance /= num_samples;
-  float luminance = exp2(log_luminance - g_pcs.exposure_compensation);
-  float max_luminance = 9.6f * luminance;
-  float exposure = 1.0f / max_luminance;
 
-  g_pcs.exposure_ptr.exposure = exposure * g_pcs.previous_exposure_ptr.exposure;
+  float exposure = 1.0f / MIN_LUMINANCE;
+  if (num_samples > 0) {
+    log_luminance /= num_samples;
+    float luminance = exp2(log_luminance - g_pcs.exposure_compensation);
+    float max_luminance = 9.6f * luminance;
+    exposure = 1.0f / max_luminance;
+  }
+
+  g_pcs.exposure_ptr.exposure = exposure;
 }

@@ -19,9 +19,11 @@ vec4[WORK_SIZE_X][WORK_SIZE_Y] build_luminance_histogram_pass(vec4 colors[WORK_S
   histogram[index] = 0;
   barrier();
 
+  float exposure = g_pcs.previous_exposure_ptr.exposure;
+
   for (int x = 0; x < WORK_SIZE_X; ++x) {
     for (int y = 0; y < WORK_SIZE_Y; ++y) {
-      float luminance = get_luminance(colors[x][y].rgb);
+      float luminance = get_luminance(colors[x][y].rgb / exposure);
       luminance = max(luminance, MIN_LUMINANCE);
       float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
       int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
@@ -60,8 +62,6 @@ void main() {
   const ivec2 size = imageSize(g_rwimages2d[tex]);
   const ivec2 start_pos = ivec2(gl_GlobalInvocationID.xy) * ivec2(WORK_SIZE_X, WORK_SIZE_Y);
   const ivec2 end_pos = min(start_pos + ivec2(WORK_SIZE_X, WORK_SIZE_Y), size);
-  const ivec2 max_pos = size - ivec2(1, 1);
-  const ivec2 end_offset = end_pos - start_pos;
 
   vec4 colors[WORK_SIZE_X][WORK_SIZE_Y];
   for (int x = 0; x < WORK_SIZE_X; ++x) {
@@ -70,32 +70,12 @@ void main() {
     }
   }
 
-#if 0
-  for (int x = 0; x < WORK_SIZE_X; ++x) {
-    for (int y = 0; y < WORK_SIZE_Y; ++y) {
-      ivec2 pos = min(start_pos + ivec2(x, y), max_pos);
-      colors[x][y] = imageLoad(g_rwimages2d[tex], pos);
-    }
-  }
-#else
-
-#if 1
   for (int x = start_pos.x; x < end_pos.x; ++x) {
     for (int y = start_pos.y; y < end_pos.y; ++y) {
       ivec2 pos = ivec2(x, y);
-      colors[x - start_pos.x][y -start_pos.y] = imageLoad(g_rwimages2d[tex], pos);
+      colors[x - start_pos.x][y - start_pos.y] = imageLoad(g_rwimages2d[tex], pos);
     }
   }
-#else
-  for (int x = 0; x < end_offset.x; ++x) {
-    for (int y = 0; y < end_offset.y; ++y) {
-      ivec2 pos = start_pos + ivec2(x, y);
-      colors[x][y] = imageLoad(g_rwimages2d[tex], pos);
-    }
-  }
-#endif
-
-#endif
 
   if (!IS_NULL(g_pcs.histogram_ptr)) {
     colors = build_luminance_histogram_pass(colors);
@@ -103,19 +83,10 @@ void main() {
 
   colors = tone_mapping_pass(colors);
 
-#if 1
   for (int x = start_pos.x; x < end_pos.x; ++x) {
     for (int y = start_pos.y; y < end_pos.y; ++y) {
       ivec2 pos = ivec2(x, y);
       imageStore(g_rwimages2d[tex], pos, colors[x - start_pos.x][y - start_pos.y]);
     }
   }
-#else
-  for (int x = 0; x < end_offset.x; ++x) {
-    for (int y = 0; y < end_offset.y; ++y) {
-      ivec2 pos = start_pos + ivec2(x, y);
-      imageStore(g_rwimages2d[tex], pos, colors[x][y]);
-    }
-  }
-#endif
 }

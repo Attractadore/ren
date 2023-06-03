@@ -9,6 +9,7 @@ REN_NAMESPACE_BEGIN
 
 struct PostProcessingConstants {
   REN_REFERENCE(LuminanceHistogram) histogram_ptr;
+  REN_REFERENCE(Exposure) previous_exposure_ptr;
   uint tex;
 };
 

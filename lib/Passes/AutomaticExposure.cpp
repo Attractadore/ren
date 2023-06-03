@@ -4,6 +4,7 @@
 #include "PipelineLoading.hpp"
 #include "TextureIDAllocator.hpp"
 #include "glsl/exposure.hpp"
+#include "glsl/luminance_histogram.hpp"
 
 namespace ren {
 
@@ -38,7 +39,7 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
           auto *exposure_ptr =
               device.map_buffer<glsl::Exposure>(rg.get_buffer(exposure_buffer));
           *exposure_ptr = {
-              .exposure = 0.00005f,
+              .exposure = 1.0f / glsl::MIN_LUMINANCE,
           };
         });
 
