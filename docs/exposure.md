@@ -101,6 +101,25 @@ which leads to large shifts in exposure.
 However, the median is a better match if you want the expose for the dominant lighting condition.
 So this part could definitely use some more tweaking.
 
+#### Results
+
+Here's how manual camera-based exposure set according to the sunny 16 rule compares with automatic exposure.
+The scene is illuminated by an overhead directional light with an intensity of 100 000 lux.
+The material's metallic factor is 1.0, and it's roughness is 0.5. Tone mapping has been disabled.
+
+<table>
+  <tr>
+    <td width="32%">Camera-based exposure</td>
+    <td width="32%">Automatic exposure</td>
+    <td width="32%">Automatic exposure with 3.0 compensation applied</td>
+  </tr>
+  <tr>
+    <td><img src="images/camera_exposure.png" alt="Camera-based exposure" title="Camera-based exposure"/></td>
+    <td><img src="images/automatic_exposure.png" alt="Automatic exposure" title="Automatic exposure"/></td>
+    <td><img src="images/automatic_exposure_with_compensation.png" alt="Automatic exposure with with 3.0 compensation" title="Automatic exposure with 3.0 compensation"/></td>
+  </tr>
+</table>
+
 #### Automatic exposure compensation
 
 **TODO**
@@ -114,7 +133,13 @@ To fix this, an exposure compensation curve can be fitted.
 
 ## Pre-exposure in fragment shaders
 
-**TODO**
+When using render target formats that are less precise than 32-bit floats,
+higher luminance values might be out of the format's range of representable values.
+This can be fixed if the image is exposed in the fragment shader instead of during post-processing.
+The stored value can then be divided by the exposure if it's required to know the luminance.
+
+With camera-based and manual exposure, the current frame's exposure can be used.
+With automatic exposure, the previous frame's exposure has to be used instead.
 
 ## Sources
 

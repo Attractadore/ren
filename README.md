@@ -1,6 +1,6 @@
 # Renderer2
 
-## Postprocessing
+## Post-processing
 
 ### [Exposure](docs/exposure.md)
 
@@ -9,4 +9,4 @@
 - [x] Automatic exposure
     - [ ] Automatic exposure compensation
 - [ ] Temporal adaptation
-- [ ] Pre-exposure in fragment shaders
+- [x] Pre-exposure in fragment shaders
