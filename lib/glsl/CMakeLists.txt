@@ -1,6 +1,11 @@
 include(GLSLCShader)
 
-set(GLSL_FLAGS -g -fpreserve-bindings -Os)
+option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
+set(GLSL_FLAGS -Os)
+if (REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
+  message(STATUS "Enable source-level debug info for shaders")
+  set(GLSL_FLAGS "${GLSL_FLAGS} -g")
+endif()
 
 add_library(EmbeddedShaders INTERFACE)
 
@@ -19,6 +24,5 @@ endmacro()
 
 add_embedded_shader(VertexShader.vert VertexShader)
 add_embedded_shader(FragmentShader.frag FragmentShader)
-add_embedded_shader(BuildLuminanceHistogram.comp BuildLuminanceHistogramShader)
+add_embedded_shader(PostProcessingUberShader.comp PostProcessingUberShader)
 add_embedded_shader(ReduceLuminanceHistogram.comp ReduceLuminanceHistogramShader)
-add_embedded_shader(ReinhardToneMapping.comp ReinhardToneMappingShader)

@@ -5,7 +5,5 @@ target_sources(
           ManualExposure.cpp
           CameraExposure.cpp
           Exposure.cpp
-          Postprocessing.cpp
-          ReinhardToneMapping.cpp
-          ToneMapping.cpp
+          PostProcessing.cpp
           Upload.cpp)

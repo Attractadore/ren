@@ -6,7 +6,7 @@
 #include "Passes/AutomaticExposure.hpp"
 #include "Passes/Color.hpp"
 #include "Passes/Exposure.hpp"
-#include "Passes/Postprocessing.hpp"
+#include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
 #include "glsl/encode.hpp"
 
@@ -304,7 +304,7 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
       }(),
   };
 
-  m_exposure_opts = {
+  m_pp_opts.exposure = {
       .mode = [&]() -> ExposureOptions::Mode {
         switch (desc.exposure_mode) {
         case REN_EXPOSURE_MODE_CAMERA:
@@ -317,7 +317,7 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
         case REN_EXPOSURE_MODE_AUTOMATIC:
           return ExposureOptions::Automatic{
               .previous_exposure_buffer =
-                  m_exposure_opts.mode.get<ExposureOptions::Automatic>()
+                  m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>()
                       .and_then(
                           [](const ExposureOptions::Automatic &automatic) {
                             return automatic.previous_exposure_buffer;
@@ -463,10 +463,8 @@ void Scene::draw(Swapchain &swapchain) {
                             .materials = m_materials,
                         });
 
-  auto [exposure_buffer] = setup_exposure_pass(*m_device, rgb,
-                                               {
-                                                   .options = m_exposure_opts,
-                                               });
+  auto [exposure_buffer] =
+      setup_exposure_pass(*m_device, rgb, {.options = m_pp_opts.exposure});
 
   // Draw scene
   auto [texture] = setup_color_pass(
@@ -492,31 +490,17 @@ void Scene::draw(Swapchain &swapchain) {
           .num_dir_lights = unsigned(m_dir_lights.size()),
       });
 
-  auto automatic_exposure_buffer =
-      m_exposure_opts.mode.get<ExposureOptions::Automatic>().map(
-          [&](const ExposureOptions::Automatic &automatic) {
-            return setup_automatic_exposure_calculation_pass(
-                       *m_device, rgb,
-                       {
-                           .texture = texture,
-                           .previous_exposure_buffer = exposure_buffer,
-                           .texture_allocator = &m_texture_allocator,
-                           .pipelines = &m_pipelines,
-                           .exposure_compensation =
-                               automatic.exposure_compensation,
-                       })
-                .exposure_buffer;
+  auto [texture_after_pp, automatic_exposure_buffer] =
+      setup_post_processing_passes(
+          *m_device, rgb,
+          {
+              .texture = texture,
+              .previous_exposure_buffer = exposure_buffer,
+              .options = m_pp_opts,
+              .texture_allocator = &m_texture_allocator,
+              .pipelines = &m_pipelines,
           });
-
-  texture =
-      setup_postprocessing_passes(*m_device, rgb,
-                                  PostprocessingPassesConfig{
-                                      .texture = texture,
-                                      .options = m_pp_opts,
-                                      .texture_allocator = &m_texture_allocator,
-                                      .pipelines = &m_pipelines,
-                                  })
-          .texture;
+  texture = texture_after_pp;
 
   auto &frame_arena = get_frame_arena();
   auto &next_frame_arena = get_next_frame_arena();
@@ -533,11 +517,11 @@ void Scene::draw(Swapchain &swapchain) {
 
   rg.execute(*m_device, m_cmd_allocator);
 
-  automatic_exposure_buffer.map([&](RGBufferID buffer) {
-    auto automatic = m_exposure_opts.mode.get<ExposureOptions::Automatic>();
-    assert(automatic);
-    automatic->previous_exposure_buffer = rg.export_buffer(buffer);
-  });
+  m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>().map(
+      [&](ExposureOptions::Automatic &automatic) {
+        automatic.previous_exposure_buffer =
+            rg.export_buffer(automatic_exposure_buffer);
+      });
 
   next_frame();
 }

@@ -1,9 +1,12 @@
 #pragma once
+#include "ExposureOptions.hpp"
+#include "Support/Optional.hpp"
 #include "ToneMappingOptions.hpp"
 
 namespace ren {
 
-struct PostprocessingOptions {
+struct PostProcessingOptions {
+  ExposureOptions exposure;
   ToneMappingOptions tone_mapping;
 };
 

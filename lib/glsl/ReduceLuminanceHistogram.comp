@@ -1,4 +1,4 @@
-#include "postprocess_interface.glsl"
+#include "reduce_luminance_histogram_pass.glsl"
 
 PUSH_CONSTANTS { ReduceLuminanceHistogramConstants g_pcs; };
 

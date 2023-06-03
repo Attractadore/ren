@@ -3,11 +3,10 @@
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
-#include "ExposureOptions.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
 #include "PipelineLoading.hpp"
-#include "PostprocessingOptions.hpp"
+#include "PostProcessingOptions.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
@@ -32,8 +31,7 @@ class Scene {
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;
-  ExposureOptions m_exposure_opts;
-  PostprocessingOptions m_pp_opts;
+  PostProcessingOptions m_pp_opts;
 
   HandleMap<Mesh> m_meshes;
 

@@ -2,7 +2,7 @@
 
 #define REN_NEW_TYPE(Name, Type)                                               \
   class Name {                                                                 \
-    Type value;                                                                \
+    Type value = {};                                                           \
                                                                                \
   public:                                                                      \
     Name() = default;                                                          \

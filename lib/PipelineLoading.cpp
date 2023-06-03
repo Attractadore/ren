@@ -4,10 +4,9 @@
 #include "Support/Array.hpp"
 #include "glsl/interface.hpp"
 
-#include "BuildLuminanceHistogramShader.h"
 #include "FragmentShader.h"
+#include "PostProcessingUberShader.h"
 #include "ReduceLuminanceHistogramShader.h"
-#include "ReinhardToneMappingShader.h"
 #include "VertexShader.h"
 
 #include "spirv_reflect.h"
@@ -110,12 +109,10 @@ auto load_pipelines(ResourceArena &arena,
     -> Pipelines {
   return {
       .color_pass = load_color_pass_pipeline(arena, persistent_set_layout),
-      .build_luminance_histogram =
-          load_build_luminance_histogram_pipeline(arena, persistent_set_layout),
+      .post_processing =
+          load_post_processing_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram =
           load_reduce_luminance_histogram_pipeline(arena),
-      .reinhard_tone_mapping =
-          load_reinhard_tone_mapping_pipeline(arena, persistent_set_layout),
   };
 }
 
@@ -149,16 +146,6 @@ auto load_color_pass_pipeline(ResourceArena &arena,
   });
 }
 
-auto load_build_luminance_histogram_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline> {
-  return load_compute_pipeline(
-      arena, persistent_set_layout,
-      std::as_bytes(std::span(BuildLuminanceHistogramShader,
-                              BuildLuminanceHistogramShader_count)),
-      "Build luminance histogram");
-}
-
 auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
@@ -168,14 +155,14 @@ auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
       "Reduce luminance histogram");
 }
 
-auto load_reinhard_tone_mapping_pipeline(
+auto load_post_processing_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      std::as_bytes(std::span(ReinhardToneMappingShader,
-                              ReinhardToneMappingShader_count)),
-      "Reinhard tone mapping");
+      std::as_bytes(
+          std::span(PostProcessingUberShader, PostProcessingUberShader_count)),
+      "Post-processing");
 }
 
 } // namespace ren
