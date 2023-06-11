@@ -9,9 +9,7 @@ auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
     -> ExposurePassOutput {
   assert(cfg.options.exposure > 0.0f);
 
-  auto pass = rgb.create_pass({
-      .name = "Manual exposure",
-  });
+  auto pass = rgb.create_pass({.name = "Manual exposure"});
 
   auto exposure_buffer = pass.create_buffer({
       .name = "Manual exposure",

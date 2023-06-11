@@ -138,39 +138,30 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto pass = rgb.create_pass({
       .name = "Color",
+      .type = RGPassType::Graphics,
   });
 
   for (auto buffer : cfg.uploaded_vertex_buffers) {
     pass.read_buffer({
         .buffer = buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
   }
 
   for (auto buffer : cfg.uploaded_index_buffers) {
     pass.read_buffer({
         .buffer = buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-                .accesses = VK_ACCESS_2_INDEX_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+        .accesses = VK_ACCESS_2_INDEX_READ_BIT,
     });
   }
 
   for (auto texture : cfg.uploaded_textures) {
     pass.read_texture({
         .texture = texture,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            },
+        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
     });
   }
 
@@ -178,90 +169,63 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
     assert(cfg.normal_matrix_buffer);
     pass.read_buffer({
         .buffer = cfg.transform_matrix_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
     pass.read_buffer({
         .buffer = cfg.normal_matrix_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
   }
 
   if (cfg.directional_lights_buffer) {
     pass.read_buffer({
         .buffer = cfg.directional_lights_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
   };
 
   if (cfg.materials_buffer) {
     pass.read_buffer({
         .buffer = cfg.materials_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
   }
 
   pass.read_buffer({
       .buffer = cfg.exposure_buffer,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
+      .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
   });
 
   auto uniform_buffer = pass.create_buffer({
       .name = "Color pass uniforms",
       .heap = BufferHeap::Upload,
       .size = sizeof(glsl::ColorUB),
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
+      .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
   });
 
   auto texture = pass.create_texture({
       .name = "Color buffer after color pass",
       .format = COLOR_FORMAT,
       .size = {cfg.size, 1},
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-              .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-          },
+      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
   });
 
   auto depth_texture = pass.create_texture({
       .name = "Depth buffer after color pass",
       .format = DEPTH_FORMAT,
       .size = {cfg.size, 1},
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-              .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-              .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-
-          },
+      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
   });
 
   ColorPassResources rcs = {

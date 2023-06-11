@@ -53,9 +53,7 @@ void run_upload_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
 
 auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
                        const UploadPassConfig &cfg) -> UploadPassOutput {
-  auto pass = rgb.create_pass({
-      .name = "Upload",
-  });
+  auto pass = rgb.create_pass({.name = "Upload"});
 
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;

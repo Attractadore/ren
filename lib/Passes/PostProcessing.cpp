@@ -22,17 +22,14 @@ auto setup_initialize_luminance_histogram_pass(
     -> InitializeLuminanceHistogramPassOutput {
   auto pass = rgb.create_pass({
       .name = "Automatic exposure: initialize luminance histogram",
+      .type = RGPassType::Transfer,
   });
 
   auto histogram = pass.create_buffer({
       .name = "Empty luminance histogram",
       .heap = BufferHeap::Device,
       .size = sizeof(glsl::LuminanceHistogram),
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_CLEAR_BIT,
-              .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-          },
+      .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
   });
 
   pass.set_callback(
@@ -116,18 +113,14 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto pass = rgb.create_pass({
       .name = "Post-processing",
+      .type = RGPassType::Compute,
   });
 
   auto texture = pass.write_texture({
       .name = "Color buffer after post-processing",
       .texture = cfg.texture,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                          VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-              .layout = VK_IMAGE_LAYOUT_GENERAL,
-          },
+      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
   });
 
   RGBufferID histogram_buffer;
@@ -136,20 +129,12 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
     histogram_buffer = pass.write_buffer({
         .name = "Luminance histogram",
         .buffer = cfg.histogram_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-            },
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
     });
     pass.read_buffer({
         .buffer = cfg.previous_exposure_buffer,
-        .state =
-            {
-                .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-            },
+        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
     });
   }
 
@@ -220,26 +205,19 @@ auto setup_reduce_luminance_histogram_pass(
 
   auto pass = rgb.create_pass({
       .name = "Automatic exposure: reduce luminance histogram",
+      .type = RGPassType::Compute,
   });
 
   pass.read_buffer({
       .buffer = cfg.histogram_buffer,
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-          },
+      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
   });
 
   auto exposure_buffer = pass.create_buffer({
       .name = "Automatic exposure",
       .heap = BufferHeap::Device,
       .size = sizeof(glsl::Exposure),
-      .state =
-          {
-              .stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-              .accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-          },
+      .accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
       .preserve = true,
   });
 

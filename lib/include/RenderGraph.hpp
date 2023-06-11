@@ -46,8 +46,16 @@ REN_NEW_TYPE(RGPassID, unsigned);
 REN_NEW_TYPE(RGTextureID, unsigned);
 REN_NEW_TYPE(RGBufferID, unsigned);
 
+enum class RGPassType {
+  None,
+  Graphics,
+  Compute,
+  Transfer,
+};
+
 struct RGPassCreateInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
+  RGPassType type = RGPassType::None;
 };
 
 struct RGBufferState {
@@ -57,20 +65,23 @@ struct RGBufferState {
 
 struct RGBufferReadInfo {
   RGBufferID buffer;
-  RGBufferState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
 };
 
 struct RGBufferWriteInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   RGBufferID buffer;
-  RGBufferState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
 };
 
 struct RGBufferCreateInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   BufferHeap heap = BufferHeap::Upload;
   size_t size = 0;
-  RGBufferState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
   bool preserve = false;
 };
 
@@ -93,13 +104,17 @@ struct RGTextureState {
 
 struct RGTextureReadInfo {
   RGTextureID texture;
-  RGTextureState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
+  VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
 struct RGTextureWriteInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   RGTextureID texture;
-  RGTextureState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
+  VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
 struct RGTextureCreateInfo {
@@ -118,7 +133,9 @@ struct RGTextureCreateInfo {
     glm::uvec3 size = {1, 1, 1};
   };
   u32 num_mip_levels = 1;
-  RGTextureState state;
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
+  VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
   bool preserve = false;
 };
 
@@ -215,6 +232,7 @@ struct RGBufferAccess {
 };
 
 struct RGPass {
+  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   SmallVector<RGTextureAccess> read_textures;
   SmallVector<RGTextureAccess> write_textures;
   SmallVector<RGBufferAccess> read_buffers;
@@ -254,7 +272,8 @@ class RenderGraph::Builder {
 #endif
 
 private:
-  [[nodiscard]] auto init_new_pass(RGDebugName name) -> RGPassID;
+  [[nodiscard]] auto init_new_pass(RGPassType type, RGDebugName name)
+      -> RGPassID;
   RGPassID getPassID(const RGPass &pass) const;
 
 private:
