@@ -33,7 +33,7 @@ auto setup_initialize_luminance_histogram_pass(
   });
 
   pass.set_callback(
-      [histogram](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+      [histogram](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
         cmd.fill_buffer(rg.get_buffer(histogram), 0);
       });
 
@@ -50,7 +50,7 @@ struct PostProcessingUberPassResources {
   Handle<ComputePipeline> pipeline;
 };
 
-void run_post_processing_uber_pass(Device &device, RenderGraph &rg,
+void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
                                    CommandBuffer &cmd,
                                    const PostProcessingUberPassResources &rcs) {
   assert(rcs.texture);
@@ -146,7 +146,7 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
       .pipeline = cfg.pipeline,
   };
 
-  pass.set_callback([rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
     run_post_processing_uber_pass(device, rg, cmd, rcs);
   });
 
@@ -164,7 +164,7 @@ struct ReduceLuminanceHistogramPassResources {
 };
 
 void run_reduce_luminance_histogram_pass(
-    Device &device, RenderGraph &rg, CommandBuffer &cmd,
+    Device &device, RGRuntime &rg, CommandBuffer &cmd,
     const ReduceLuminanceHistogramPassResources &rcs) {
   assert(rcs.histogram_buffer);
   assert(rcs.exposure_buffer);
@@ -228,7 +228,7 @@ auto setup_reduce_luminance_histogram_pass(
       .exposure_compensation = cfg.exposure_compensation,
   };
 
-  pass.set_callback([rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
     run_reduce_luminance_histogram_pass(device, rg, cmd, rcs);
   });
 

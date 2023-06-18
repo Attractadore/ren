@@ -14,7 +14,7 @@ struct UploadPassResources {
   RGBufferID materials_buffer;
 };
 
-void run_upload_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
+void run_upload_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
                      const UploadPassResources &rcs) {
   if (rcs.transform_matrix_buffer) {
     assert(not rcs.mesh_insts.empty());
@@ -100,7 +100,7 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
       .materials_buffer = materials_buffer,
   };
 
-  pass.set_callback([rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
     run_upload_pass(device, rg, cmd, rcs);
   });
 

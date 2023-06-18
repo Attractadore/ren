@@ -27,7 +27,7 @@ struct ColorPassResources {
   u32 num_dir_lights = 0;
 };
 
-void run_color_pass(Device &device, RenderGraph &rg, CommandBuffer &cmd,
+void run_color_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
                     const ColorPassResources &rcs) {
   assert(rcs.texture);
   assert(rcs.depth_texture);
@@ -247,7 +247,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .num_dir_lights = cfg.num_dir_lights,
   };
 
-  pass.set_callback([rcs](Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
     run_color_pass(device, rg, cmd, rcs);
   });
 

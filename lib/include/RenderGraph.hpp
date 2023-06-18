@@ -156,28 +156,53 @@ struct RGSemaphoreSignalInfo {
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
 };
 
-using RGCallback =
-    std::function<void(Device &device, RenderGraph &rg, CommandBuffer &cmd)>;
-
-struct RGBatch {
-  SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
-  SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
-  Vector<RGCallback> barrier_cbs;
-  Vector<RGCallback> pass_cbs;
-#if REN_RENDER_GRAPH_DEBUG_NAMES
-  Vector<std::string> pass_names;
-#endif
-};
-
-class RenderGraph {
-  Vector<RGBatch> m_batches;
-
+class RGRuntime {
   Vector<unsigned> m_buffers;
   Vector<BufferView> m_physical_buffers;
-  Vector<RGBufferState> m_buffer_states;
-
   Vector<unsigned> m_textures;
   Vector<TextureView> m_physical_textures;
+
+private:
+  friend class RenderGraph;
+
+  struct Config {
+    Vector<unsigned> buffers;
+    Vector<BufferView> physical_buffers;
+    Vector<unsigned> textures;
+    Vector<TextureView> physical_textures;
+  };
+
+  RGRuntime(Config config)
+      : m_buffers(std::move(config.buffers)),
+        m_physical_buffers(std::move(config.physical_buffers)),
+        m_textures(std::move(config.textures)),
+        m_physical_textures(std::move(config.physical_textures)) {}
+
+public:
+  auto get_buffer(RGBufferID buffer) const -> const BufferView &;
+
+  auto get_texture(RGTextureID texture) const -> const TextureView &;
+};
+
+using RGCallback =
+    std::function<void(Device &device, RGRuntime &rg, CommandBuffer &cmd)>;
+
+class RenderGraph {
+  struct RGBatch {
+    SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
+    SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
+    Vector<RGCallback> barrier_cbs;
+    Vector<RGCallback> pass_cbs;
+#if REN_RENDER_GRAPH_DEBUG_NAMES
+    Vector<std::string> pass_names;
+#endif
+  };
+
+  Vector<RGBatch> m_batches;
+
+  RGRuntime m_runtime;
+
+  Vector<RGBufferState> m_buffer_states;
   Vector<RGTextureState> m_texture_states;
 
   Swapchain *m_swapchain = nullptr;
@@ -198,21 +223,19 @@ private:
 
   RenderGraph(Config config)
       : m_batches(std::move(config.batches)),
-        m_buffers(std::move(config.buffers)),
-        m_physical_buffers(std::move(config.physical_buffers)),
+        m_runtime({
+            .buffers = std::move(config.buffers),
+            .physical_buffers = std::move(config.physical_buffers),
+            .textures = std::move(config.textures),
+            .physical_textures = std::move(config.physical_textures),
+        }),
         m_buffer_states(std::move(config.buffer_states)),
-        m_textures(std::move(config.textures)),
-        m_physical_textures(std::move(config.physical_textures)),
         m_texture_states(std::move(config.texture_states)),
         m_swapchain(config.swapchain),
         m_present_semaphore(config.present_semaphore) {}
 
 public:
   class Builder;
-
-  auto get_buffer(RGBufferID buffer) const -> const BufferView &;
-
-  auto get_texture(RGTextureID texture) const -> const TextureView &;
 
   auto export_buffer(RGBufferID buffer) const -> RGBufferExportInfo;
 
@@ -231,19 +254,19 @@ struct RGBufferAccess {
   RGBufferState state;
 };
 
-struct RGPass {
-  VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
-  SmallVector<RGTextureAccess> read_textures;
-  SmallVector<RGTextureAccess> write_textures;
-  SmallVector<RGBufferAccess> read_buffers;
-  SmallVector<RGBufferAccess> write_buffers;
-  SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
-  SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
-  RGCallback barrier_cb;
-  RGCallback pass_cb;
-};
-
 class RenderGraph::Builder {
+  struct RGPass {
+    VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
+    SmallVector<RGTextureAccess> read_textures;
+    SmallVector<RGTextureAccess> write_textures;
+    SmallVector<RGBufferAccess> read_buffers;
+    SmallVector<RGBufferAccess> write_buffers;
+    SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
+    SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
+    RGCallback barrier_cb;
+    RGCallback pass_cb;
+  };
+
   Vector<RGPass> m_passes = {{}};
 
   Vector<unsigned> m_buffers = {{}};
@@ -345,23 +368,24 @@ private:
 
 public:
   class PassBuilder;
-  [[nodiscard]] PassBuilder create_pass(RGPassCreateInfo &&create_info);
+  [[nodiscard]] auto create_pass(RGPassCreateInfo &&create_info) -> PassBuilder;
 
   void present(Swapchain &swapchain, RGTextureID texture,
                Handle<Semaphore> acquire_semaphore,
                Handle<Semaphore> present_semaphore);
 
-  [[nodiscard]] RenderGraph build(Device &device, ResourceArena &frame_arena,
-                                  ResourceArena &next_frame_arena);
+  [[nodiscard]] auto build(Device &device, ResourceArena &frame_arena,
+                           ResourceArena &next_frame_arena) -> RenderGraph;
 };
+using RGBuilder = RenderGraph::Builder;
 
 class RenderGraph::Builder::PassBuilder {
   RGPassID m_pass;
   Builder *m_builder;
 
 public:
-  PassBuilder(RGPassID pass, Builder *builder)
-      : m_pass(pass), m_builder(builder) {}
+  PassBuilder(RGPassID pass, Builder &builder)
+      : m_pass(pass), m_builder(&builder) {}
 
   void read_buffer(RGBufferReadInfo &&read_info) {
     m_builder->read_buffer(m_pass, std::move(read_info));
@@ -401,5 +425,6 @@ public:
     return m_builder->set_callback(m_pass, std::move(cb));
   }
 };
+using RGPassBuilder = RenderGraph::Builder::PassBuilder;
 
 } // namespace ren

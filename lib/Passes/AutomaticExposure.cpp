@@ -34,7 +34,7 @@ auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
             .size = sizeof(glsl::Exposure),
         });
 
-        pass.set_callback([exposure_buffer](Device &device, RenderGraph &rg,
+        pass.set_callback([exposure_buffer](Device &device, RGRuntime &rg,
                                             CommandBuffer &cmd) {
           auto *exposure_ptr =
               device.map_buffer<glsl::Exposure>(rg.get_buffer(exposure_buffer));

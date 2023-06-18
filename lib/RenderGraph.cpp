@@ -188,7 +188,7 @@ void RenderGraph::Builder::signal_semaphore(
 auto RenderGraph::Builder::create_pass(RGPassCreateInfo &&create_info)
     -> PassBuilder {
   auto pass = init_new_pass(create_info.type, std::move(create_info.name));
-  return {pass, this};
+  return {pass, *this};
 }
 
 auto RenderGraph::Builder::init_new_texture(Optional<RGPassID> pass,
@@ -443,7 +443,7 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
 
   blit.wait_semaphore({.semaphore = acquire_semaphore});
   blit.set_callback([=, src = texture, dst = swapchain_image](
-                        Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+                        Device &device, RGRuntime &rg, CommandBuffer &cmd) {
     auto src_texture = rg.get_texture(src);
     auto swapchain_texture = rg.get_texture(dst);
     VkImageBlit region = {
@@ -784,7 +784,7 @@ void RenderGraph::Builder::insert_barriers(Device &device) {
 
     pass.barrier_cb = [memory_barriers = std::move(memory_barriers),
                        image_barriers = std::move(image_barriers)](
-                          Device &device, RenderGraph &rg, CommandBuffer &cmd) {
+                          Device &device, RGRuntime &rg, CommandBuffer &cmd) {
       cmd.pipeline_barrier(memory_barriers, image_barriers);
     };
   }
@@ -862,22 +862,21 @@ auto RenderGraph::Builder::build(Device &device, ResourceArena &frame_arena,
   }};
 }
 
-auto RenderGraph::get_buffer(RGBufferID buffer) const -> const BufferView & {
+auto RGRuntime::get_buffer(RGBufferID buffer) const -> const BufferView & {
   assert(buffer);
   return m_physical_buffers[m_buffers[buffer]];
 }
 
-auto RenderGraph::get_texture(RGTextureID texture) const
-    -> const TextureView & {
+auto RGRuntime::get_texture(RGTextureID texture) const -> const TextureView & {
   assert(texture);
   return m_physical_textures[m_textures[texture]];
 }
 
 auto RenderGraph::export_buffer(RGBufferID buffer) const -> RGBufferExportInfo {
   assert(buffer);
-  auto physical_buffer = m_buffers[buffer];
+  auto physical_buffer = m_runtime.m_buffers[buffer];
   return {
-      .buffer = m_physical_buffers[physical_buffer],
+      .buffer = m_runtime.m_physical_buffers[physical_buffer],
       .state = m_buffer_states[physical_buffer],
   };
 };
@@ -885,9 +884,9 @@ auto RenderGraph::export_buffer(RGBufferID buffer) const -> RGBufferExportInfo {
 auto RenderGraph::export_texture(RGTextureID texture) const
     -> RGTextureExportInfo {
   assert(texture);
-  auto physical_texture = m_textures[texture];
+  auto physical_texture = m_runtime.m_textures[texture];
   return {
-      .texture = m_physical_textures[physical_texture],
+      .texture = m_runtime.m_physical_textures[physical_texture],
       .state = m_texture_states[physical_texture],
   };
 };
@@ -907,23 +906,24 @@ void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
       auto cmd = cmd_allocator.allocate();
       cmd.begin();
       if (barrier_cb) {
-        barrier_cb(device, *this, cmd);
+        barrier_cb(device, m_runtime, cmd);
       }
       if (pass_cb) {
 #if REN_RENDER_GRAPH_DEBUG_NAMES
         auto pass_name = batch.pass_names[index].c_str();
         cmd.begin_debug_region(pass_name);
 #endif
-        pass_cb(device, *this, cmd);
+        pass_cb(device, m_runtime, cmd);
 #if REN_RENDER_GRAPH_DEBUG_NAMES
         cmd.end_debug_region();
 #endif
       }
       cmd.end();
 
-      cmd_buffers.push_back(
-          {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-           .commandBuffer = cmd.get()});
+      cmd_buffers.push_back({
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+          .commandBuffer = cmd.get(),
+      });
     }
 
     auto get_semaphore_submit_info = [&](const RGSemaphoreSignalInfo &signal) {
