@@ -171,10 +171,6 @@ auto RenderGraph::Builder::init_new_pass(RGPassType type, RGDebugName name)
   return static_cast<RGPassID>(passid);
 }
 
-auto RenderGraph::Builder::getPassID(const RGPass &pass) const -> RGPassID {
-  return static_cast<RGPassID>(&pass - m_passes.data());
-}
-
 void RenderGraph::Builder::wait_semaphore(RGPassID pass,
                                           RGSemaphoreSignalInfo &&signal_info) {
   m_passes[pass].wait_semaphores.push_back(std::move(signal_info));
@@ -498,7 +494,8 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
   };
 
   SmallVector<RGPassID> dependents;
-  auto get_dependants = [&](const RGPass &pass) -> std::span<const RGPassID> {
+  auto get_dependants = [&](RGPassID id) -> std::span<const RGPassID> {
+    const auto &pass = m_passes[id];
     // Reads must happen before writes
     dependents.assign(concat(pass.read_textures | filter_map(get_texture_kill),
                              pass.read_buffers | filter_map(get_buffer_kill)));
@@ -506,7 +503,8 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
   };
 
   SmallVector<RGPassID> dependencies;
-  auto get_dependencies = [&](const RGPass &pass) -> std::span<const RGPassID> {
+  auto get_dependencies = [&](RGPassID id) -> std::span<const RGPassID> {
+    const auto &pass = m_passes[id];
     dependencies.assign(concat(
         // Reads must happen after creation
         pass.read_textures | filter_map(get_texture_def),
@@ -515,7 +513,7 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
         pass.write_textures | filter_map(get_texture_def),
         pass.write_buffers | filter_map(get_buffer_def)));
     ranges::actions::unstable_remove_if(
-        dependencies, [&](RGPassID dep) { return dep == getPassID(pass); });
+        dependencies, [&](RGPassID dep) { return dep == id; });
     return dependencies;
   };
 
@@ -524,10 +522,10 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
   MinQueue<std::tuple<int, RGPassID>> unscheduled_passes;
 
   // Build DAG
-  for (const auto &pass : m_passes | ranges::views::drop(1)) {
-    auto id = getPassID(pass);
-    auto predecessors = get_dependencies(pass);
-    auto successors = get_dependants(pass);
+  for (auto idx : range<size_t>(1, m_passes.size())) {
+    RGPassID id(idx);
+    auto predecessors = get_dependencies(id);
+    auto successors = get_dependants(id);
 
     for (auto p : predecessors) {
       add_edge(p, id);
@@ -538,8 +536,7 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
     }
 
     if (predecessors.empty()) {
-      // This is a pass with no dependencies and it can be scheduled right
-      // away
+      // This is a pass with no dependencies and can be scheduled right away
       unscheduled_passes.push({-1, id});
     }
   }
@@ -559,10 +556,10 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
 
     for (auto s : successors[pass]) {
       if (--predecessor_counts[s] == 0) {
-        int max_dependency_time = ranges::max(concat(
-            once(-1), get_dependencies(m_passes[s]) | map([&](RGPassID d) {
-                        return pass_schedule_times[d];
-                      })));
+        int max_dependency_time = ranges::max(
+            concat(once(-1), get_dependencies(s) | map([&](RGPassID d) {
+                               return pass_schedule_times[d];
+                             })));
         unscheduled_passes.push({max_dependency_time, s});
       }
     }

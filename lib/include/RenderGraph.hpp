@@ -297,7 +297,6 @@ class RenderGraph::Builder {
 private:
   [[nodiscard]] auto init_new_pass(RGPassType type, RGDebugName name)
       -> RGPassID;
-  RGPassID getPassID(const RGPass &pass) const;
 
 private:
   [[nodiscard]] auto init_new_texture(Optional<RGPassID> pass,
