@@ -18,7 +18,7 @@ namespace {
 
 auto get_pass_stages(RGPassType type) -> VkPipelineStageFlags2 {
   switch (type) {
-  case RGPassType::None:
+  case RGPassType::Host:
     return VK_PIPELINE_STAGE_2_NONE;
   case RGPassType::Graphics:
     return VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |

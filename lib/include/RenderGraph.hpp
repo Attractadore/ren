@@ -47,7 +47,7 @@ REN_NEW_TYPE(RGTextureID, unsigned);
 REN_NEW_TYPE(RGBufferID, unsigned);
 
 enum class RGPassType {
-  None,
+  Host,
   Graphics,
   Compute,
   Transfer,
@@ -55,7 +55,7 @@ enum class RGPassType {
 
 struct RGPassCreateInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
-  RGPassType type = RGPassType::None;
+  RGPassType type = RGPassType::Host;
 };
 
 struct RGBufferState {
@@ -244,17 +244,17 @@ public:
   void execute(Device &device, CommandAllocator &cmd_allocator);
 };
 
-struct RGTextureAccess {
-  RGTextureID texture;
-  RGTextureState state;
-};
-
-struct RGBufferAccess {
-  RGBufferID buffer;
-  RGBufferState state;
-};
-
 class RenderGraph::Builder {
+  struct RGTextureAccess {
+    RGTextureID texture;
+    RGTextureState state;
+  };
+
+  struct RGBufferAccess {
+    RGBufferID buffer;
+    RGBufferState state;
+  };
+
   struct RGPass {
     VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
     SmallVector<RGTextureAccess> read_textures;
