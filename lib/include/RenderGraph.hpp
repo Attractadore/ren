@@ -1,11 +1,13 @@
 #pragma once
 #include "Buffer.hpp"
 #include "Descriptors.hpp"
+#include "ResourceArena.hpp"
 #include "Semaphore.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/HashSet.hpp"
 #include "Support/NewType.hpp"
 #include "Support/Optional.hpp"
+#include "Support/SecondaryMap.hpp"
 #include "Texture.hpp"
 
 #include <functional>
@@ -43,8 +45,8 @@ class ResourceArena;
 class Swapchain;
 
 REN_NEW_TYPE(RGPassID, unsigned);
-REN_NEW_TYPE(RGTextureID, unsigned);
-REN_NEW_TYPE(RGBufferID, unsigned);
+REN_DEFINE_SLOTMAP_KEY(RGBufferID);
+REN_DEFINE_SLOTMAP_KEY(RGTextureID);
 
 enum class RGPassType {
   Host,
@@ -74,6 +76,7 @@ struct RGBufferWriteInfo {
   RGBufferID buffer;
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
+  bool temporal = false;
 };
 
 struct RGBufferCreateInfo {
@@ -82,16 +85,11 @@ struct RGBufferCreateInfo {
   size_t size = 0;
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
-  bool preserve = false;
+  bool temporal = false;
 };
 
 struct RGBufferImportInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
-  BufferView buffer;
-  RGBufferState state;
-};
-
-struct RGBufferExportInfo {
   BufferView buffer;
   RGBufferState state;
 };
@@ -115,6 +113,7 @@ struct RGTextureWriteInfo {
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  bool temporal = false;
 };
 
 struct RGTextureCreateInfo {
@@ -136,16 +135,11 @@ struct RGTextureCreateInfo {
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-  bool preserve = false;
+  bool temporal = false;
 };
 
 struct RGTextureImportInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
-  TextureView texture;
-  RGTextureState state;
-};
-
-struct RGTextureExportInfo {
   TextureView texture;
   RGTextureState state;
 };
@@ -157,26 +151,14 @@ struct RGSemaphoreSignalInfo {
 };
 
 class RGRuntime {
-  Vector<unsigned> m_buffers;
+  SlotMap<unsigned, RGBufferID> m_buffers;
   Vector<BufferView> m_physical_buffers;
-  Vector<unsigned> m_textures;
+
+  SlotMap<unsigned, RGTextureID> m_textures;
   Vector<TextureView> m_physical_textures;
 
 private:
   friend class RenderGraph;
-
-  struct Config {
-    Vector<unsigned> buffers;
-    Vector<BufferView> physical_buffers;
-    Vector<unsigned> textures;
-    Vector<TextureView> physical_textures;
-  };
-
-  RGRuntime(Config config)
-      : m_buffers(std::move(config.buffers)),
-        m_physical_buffers(std::move(config.physical_buffers)),
-        m_textures(std::move(config.textures)),
-        m_physical_textures(std::move(config.physical_textures)) {}
 
 public:
   auto get_buffer(RGBufferID buffer) const -> const BufferView &;
@@ -198,48 +180,36 @@ class RenderGraph {
 #endif
   };
 
+  ResourceArena m_arena;
+
   Vector<RGBatch> m_batches;
-
-  RGRuntime m_runtime;
-
-  Vector<RGBufferState> m_buffer_states;
-  Vector<RGTextureState> m_texture_states;
 
   Swapchain *m_swapchain = nullptr;
   Handle<Semaphore> m_present_semaphore;
 
-private:
-  struct Config {
-    Vector<RGBatch> batches;
-    Vector<unsigned> buffers;
-    Vector<BufferView> physical_buffers;
-    Vector<RGBufferState> buffer_states;
-    Vector<unsigned> textures;
-    Vector<TextureView> physical_textures;
-    Vector<RGTextureState> texture_states;
-    Swapchain *swapchain;
-    Handle<Semaphore> present_semaphore;
-  };
+  RGRuntime m_runtime;
 
-  RenderGraph(Config config)
-      : m_batches(std::move(config.batches)),
-        m_runtime({
-            .buffers = std::move(config.buffers),
-            .physical_buffers = std::move(config.physical_buffers),
-            .textures = std::move(config.textures),
-            .physical_textures = std::move(config.physical_textures),
-        }),
-        m_buffer_states(std::move(config.buffer_states)),
-        m_texture_states(std::move(config.texture_states)),
-        m_swapchain(config.swapchain),
-        m_present_semaphore(config.present_semaphore) {}
+#if REN_RENDER_GRAPH_DEBUG_NAMES
+  SecondaryMap<std::string, RGBufferID> m_buffer_names;
+  SecondaryMap<std::string, RGTextureID> m_texture_names;
+#endif
+
+  Vector<RGBufferState> m_buffer_states;
+  Vector<RGTextureState> m_texture_states;
+
+  HashSet<unsigned> m_temporal_buffers;
+  HashSet<unsigned> m_temporal_textures;
+
+  HashSet<unsigned> m_external_buffers;
+  HashSet<unsigned> m_external_textures;
+
+private:
+  void retain_temporal_resources();
 
 public:
+  RenderGraph(Device &device);
+
   class Builder;
-
-  auto export_buffer(RGBufferID buffer) const -> RGBufferExportInfo;
-
-  auto export_texture(RGTextureID texture) const -> RGTextureExportInfo;
 
   void execute(Device &device, CommandAllocator &cmd_allocator);
 };
@@ -267,38 +237,26 @@ class RenderGraph::Builder {
     RGCallback pass_cb;
   };
 
+  RenderGraph *m_rg = nullptr;
+
   Vector<RGPass> m_passes = {{}};
 
-  Vector<unsigned> m_buffers = {{}};
-  Vector<BufferView> m_physical_buffers;
-  Vector<RGBufferState> m_buffer_states;
   HashMap<unsigned, BufferCreateInfo> m_buffer_create_infos;
-  HashSet<unsigned> m_preserved_buffers;
   HashMap<RGBufferID, RGPassID> m_buffer_defs;
   HashMap<RGBufferID, RGPassID> m_buffer_kills;
 
-  Vector<unsigned> m_textures = {{}};
-  Vector<TextureView> m_physical_textures;
-  Vector<RGTextureState> m_texture_states;
   HashMap<unsigned, TextureCreateInfo> m_texture_create_infos;
-  HashSet<unsigned> m_preserved_textures;
   HashMap<RGTextureID, RGPassID> m_texture_defs;
   HashMap<RGTextureID, RGPassID> m_texture_kills;
 
-  Swapchain *m_swapchain = nullptr;
-  Handle<Semaphore> m_present_semaphore;
-
 #if REN_RENDER_GRAPH_DEBUG_NAMES
   Vector<std::string> m_pass_names = {{}};
-  Vector<std::string> m_buffer_names = {{}};
-  Vector<std::string> m_texture_names = {{}};
 #endif
 
 private:
   [[nodiscard]] auto init_new_pass(RGPassType type, RGDebugName name)
       -> RGPassID;
 
-private:
   [[nodiscard]] auto init_new_texture(Optional<RGPassID> pass,
                                       Optional<RGTextureID> from_texture,
                                       RGDebugName name) -> RGTextureID;
@@ -316,11 +274,6 @@ private:
                                     RGTextureCreateInfo &&create_info)
       -> RGTextureID;
 
-public:
-  [[nodiscard]] auto import_texture(RGTextureImportInfo &&import_info)
-      -> RGTextureID;
-
-private:
   [[nodiscard]] auto init_new_buffer(Optional<RGPassID> pass,
                                      Optional<RGBufferID> from_buffer,
                                      RGDebugName name) -> RGBufferID;
@@ -337,22 +290,14 @@ private:
                                    RGBufferCreateInfo &&create_info)
       -> RGBufferID;
 
-public:
-  [[nodiscard]] auto import_buffer(RGBufferImportInfo &&import_info)
-      -> RGBufferID;
-
-private:
   void wait_semaphore(RGPassID pass, RGSemaphoreSignalInfo &&signal_info);
   void signal_semaphore(RGPassID pass, RGSemaphoreSignalInfo &&signal_info);
 
   void set_callback(RGPassID pass, RGCallback cb);
 
-private:
-  void create_buffers(const Device &device, ResourceArena &frame_arena,
-                      ResourceArena &next_frame_arena);
+  void create_buffers(const Device &device);
 
-  void create_textures(const Device &device, ResourceArena &frame_arena,
-                       ResourceArena &next_frame_arena);
+  void create_textures(const Device &device);
 
   auto schedule_passes() -> Vector<RGPassID>;
 
@@ -360,21 +305,27 @@ private:
 
   auto batch_passes(std::span<const RGPassID> schedule) -> Vector<RGBatch>;
 
-private:
   void print_resources() const;
 
   void print_passes(std::span<const RGPassID> passes) const;
 
 public:
+  Builder(RenderGraph &rg);
+
   class PassBuilder;
   [[nodiscard]] auto create_pass(RGPassCreateInfo &&create_info) -> PassBuilder;
+
+  [[nodiscard]] auto import_buffer(RGBufferImportInfo &&import_info)
+      -> RGBufferID;
+
+  [[nodiscard]] auto import_texture(RGTextureImportInfo &&import_info)
+      -> RGTextureID;
 
   void present(Swapchain &swapchain, RGTextureID texture,
                Handle<Semaphore> acquire_semaphore,
                Handle<Semaphore> present_semaphore);
 
-  [[nodiscard]] auto build(Device &device, ResourceArena &frame_arena,
-                           ResourceArena &next_frame_arena) -> RenderGraph;
+  void build(Device &device);
 };
 using RGBuilder = RenderGraph::Builder;
 

@@ -60,7 +60,7 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
              VkDescriptorSet persistent_descriptor_set,
              TextureIDAllocator tex_alloc)
     : m_device(&device), m_persistent_arena(std::move(persistent_arena)),
-      m_frame_arenas{ResourceArena(device), ResourceArena(device)},
+      m_frame_arena(device), m_render_graph(device),
       m_persistent_descriptor_set_layout(persistent_descriptor_set_layout),
       m_persistent_descriptor_pool(persistent_descriptor_pool),
       m_persistent_descriptor_set(persistent_descriptor_set),
@@ -70,19 +70,10 @@ Scene::Scene(Device &device, ResourceArena persistent_arena,
 }
 
 void Scene::next_frame() {
-  get_frame_arena().clear();
-  std::swap(m_frame_arena_index, m_next_frame_arena_index);
+  m_frame_arena.clear();
   m_device->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator.next_frame();
-}
-
-auto Scene::get_frame_arena() -> ResourceArena & {
-  return m_frame_arenas[m_frame_arena_index];
-}
-
-auto Scene::get_next_frame_arena() -> ResourceArena & {
-  return m_frame_arenas[m_next_frame_arena_index];
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
@@ -169,8 +160,6 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
 
-  auto &frame_arena = get_frame_arena();
-
   size_t offset = 0;
   for (auto mesh_attribute : used_attributes) {
     mesh.attribute_offsets[mesh_attribute] = offset;
@@ -181,31 +170,32 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
       auto positions = reinterpret_span<const glm::vec3>(data);
-      m_resource_uploader.stage_buffer(*m_device, frame_arena, positions, dst);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
+                                       dst);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
           reinterpret_span<const glm::vec3>(data) | map(glsl::encode_normal);
-      m_resource_uploader.stage_buffer(*m_device, frame_arena, normals, dst);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
           reinterpret_span<const glm::vec4>(data) | map(glsl::encode_color);
-      m_resource_uploader.stage_buffer(*m_device, frame_arena, colors, dst);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
       offset += size_bytes(colors);
     } break;
     case MESH_ATTRIBUTE_UVS: {
       auto uvs = reinterpret_span<const glm::vec2>(data);
-      m_resource_uploader.stage_buffer(*m_device, frame_arena, uvs, dst);
+      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs, dst);
       offset += size_bytes(uvs);
     } break;
     }
   }
 
   auto indices = std::span(desc.indices, desc.num_indices);
-  m_resource_uploader.stage_buffer(*m_device, frame_arena, indices,
+  m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
   if (!m_device->map_buffer(mesh.vertex_buffer)) {
@@ -258,7 +248,7 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
-      *m_device, get_frame_arena(),
+      *m_device, m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
       texture);
   m_staged_textures.push_back(texture);
@@ -318,10 +308,11 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
           return ExposureOptions::Automatic{
               .previous_exposure_buffer =
                   m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>()
-                      .and_then(
+                      .map_or(
                           [](const ExposureOptions::Automatic &automatic) {
                             return automatic.previous_exposure_buffer;
-                          }),
+                          },
+                          RGBufferID()),
               .exposure_compensation = desc.exposure_compensation,
           };
         }
@@ -399,7 +390,7 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 }
 
 void Scene::draw(Swapchain &swapchain) {
-  RenderGraph::Builder rgb;
+  RGBuilder rgb(m_render_graph);
 
   auto uploaded_vertex_buffers =
       m_staged_vertex_buffers | map([&](const BufferView &buffer) {
@@ -502,25 +493,21 @@ void Scene::draw(Swapchain &swapchain) {
           });
   texture = texture_after_pp;
 
-  auto &frame_arena = get_frame_arena();
-  auto &next_frame_arena = get_next_frame_arena();
-
   rgb.present(swapchain, texture,
-              frame_arena.create_semaphore({
+              m_frame_arena.create_semaphore({
                   .name = "Acquire semaphore",
               }),
-              frame_arena.create_semaphore({
+              m_frame_arena.create_semaphore({
                   .name = "Present semaphore",
               }));
 
-  auto rg = rgb.build(*m_device, frame_arena, next_frame_arena);
+  rgb.build(*m_device);
 
-  rg.execute(*m_device, m_cmd_allocator);
+  m_render_graph.execute(*m_device, m_cmd_allocator);
 
   m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>().map(
       [&](ExposureOptions::Automatic &automatic) {
-        automatic.previous_exposure_buffer =
-            rg.export_buffer(automatic_exposure_buffer);
+        automatic.previous_exposure_buffer = automatic_exposure_buffer;
       });
 
   next_frame();

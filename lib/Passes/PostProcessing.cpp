@@ -218,7 +218,7 @@ auto setup_reduce_luminance_histogram_pass(
       .heap = BufferHeap::Device,
       .size = sizeof(glsl::Exposure),
       .accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-      .preserve = true,
+      .temporal = true,
   });
 
   ReduceLuminanceHistogramPassResources rcs = {

@@ -57,17 +57,14 @@ private:
   DenseHandleMap<glsl::DirLight> m_dir_lights;
 
   ResourceArena m_persistent_arena;
-  std::array<ResourceArena, 2> m_frame_arenas;
-  u32 m_frame_arena_index = 0;
-  u32 m_next_frame_arena_index = 1;
+  ResourceArena m_frame_arena;
+
+  RenderGraph m_render_graph;
 
   Pipelines m_pipelines;
 
 private:
   void next_frame();
-
-  auto get_frame_arena() -> ResourceArena &;
-  auto get_next_frame_arena() -> ResourceArena &;
 
 private:
   Scene(Device &device, ResourceArena persistent_arena,
