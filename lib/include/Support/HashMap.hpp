@@ -6,15 +6,16 @@
 
 namespace ren {
 
-template <typename K, typename V>
-struct HashMap : std::unordered_map<K, V, Hash<K>> {
-  using Base = std::unordered_map<K, V, Hash<K>>;
+template <typename K, typename V, typename KeyHash = Hash<K>,
+          typename KeyEqual = std::equal_to<K>>
+struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
+  using Base = std::unordered_map<K, V, KeyHash, KeyEqual>;
   using Base::Base;
 
   using Base::insert;
   auto insert(K key, V value) -> Optional<V &> {
     auto [it, inserted] = insert(std::pair(std::move(key), std::move(value)));
-    if (inserted) {
+    if (!inserted) {
       return it->second;
     }
     return None;

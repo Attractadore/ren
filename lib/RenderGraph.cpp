@@ -604,20 +604,22 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
 
 void RenderGraph::Builder::print_resources() const {
 #if REN_RENDER_GRAPH_DEBUG_NAMES
-  if (not m_rg->m_buffer_names.empty()) {
+  const auto &buffers = m_rg->m_runtime.m_buffers;
+  if (not buffers.empty()) {
     rendergraphDebug("Buffers:");
-    for (const auto &[buffer, name] : m_rg->m_buffer_names) {
+    for (auto buffer : buffers.keys()) {
       rendergraphDebug("  * Buffer {:#x} ({})", std::bit_cast<u32>(buffer),
-                       name);
+                       m_rg->m_buffer_names[buffer]);
     }
     rendergraphDebug("");
   }
 
-  if (not m_rg->m_texture_names.empty()) {
+  const auto &textures = m_rg->m_runtime.m_textures;
+  if (not textures.empty()) {
     rendergraphDebug("Textures:");
-    for (const auto &[texture, name] : m_rg->m_texture_names) {
+    for (auto texture : textures.keys()) {
       rendergraphDebug("  * Texture {:#x} ({})", std::bit_cast<u32>(texture),
-                       name);
+                       m_rg->m_texture_names[texture]);
     }
     rendergraphDebug("");
   }
@@ -987,14 +989,6 @@ void RenderGraph::retain_temporal_resources() {
   for (auto &buffer : buffers.values()) {
     buffer = m_buffer_remap_table[buffer];
   }
-#if REN_RENDER_GRAPH_DEBUG_NAMES
-  m_buffer_names.erase_if([&](RGBufferID buffer, const std::string &) {
-    return not buffers.contains(buffer);
-  });
-  for (auto &[_, name] : m_buffer_names) {
-    name = fmt::format("{} (from previous frame)", name);
-  }
-#endif
 
   m_temporal_buffers.clear();
   m_external_buffers.clear();
@@ -1024,10 +1018,11 @@ void RenderGraph::retain_temporal_resources() {
   for (auto &texture : textures.values()) {
     texture = m_texture_remap_table[texture];
   }
+
 #if REN_RENDER_GRAPH_DEBUG_NAMES
-  m_texture_names.erase_if([&](RGTextureID texture, const std::string &) {
-    return not textures.contains(texture);
-  });
+  for (auto &[_, name] : m_buffer_names) {
+    name = fmt::format("{} (from previous frame)", name);
+  }
   for (auto &[_, name] : m_texture_names) {
     name = fmt::format("{} (from previous frame)", name);
   }

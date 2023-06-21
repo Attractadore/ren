@@ -21,7 +21,12 @@ template <typename T, CSlotMapKey K = SlotMapKey,
           template <typename> typename C = Vector>
 class DenseSlotMap;
 
-#define REN_IMPL_SLOTMAP_KEY(Key)
+namespace detail {
+
+struct IndexEqualTo;
+struct HashIndex;
+
+}; // namespace detail
 
 #define REN_DEFINE_SLOTMAP_KEY(Key)                                            \
   class Key : ::ren::detail::SlotMapKeyTag {                                   \
@@ -31,6 +36,8 @@ class DenseSlotMap;
     static constexpr size_t index_bits = 24;                                   \
     static constexpr size_t version_bits = 8;                                  \
     static_assert(index_bits + version_bits == 32);                            \
+    friend detail::HashIndex;                                                  \
+    friend detail::IndexEqualTo;                                               \
                                                                                \
     uint32_t slot : index_bits = (1 << index_bits) - 1;                        \
     uint32_t version : version_bits = (1 << version_bits) - 1;                 \
