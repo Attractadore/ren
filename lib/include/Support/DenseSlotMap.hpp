@@ -294,6 +294,21 @@ public:
     return find(k) != end();
   };
 
+  constexpr auto erase_if(const std::predicate<const K &, const T &> auto &pred)
+      -> usize {
+    // TODO: this can probably done more efficiently if all keys and values are
+    // first filtered out and then all slots are updated
+    auto old_size = size();
+    for (usize idx = 0; idx < size();) {
+      if (pred(m_keys[idx], m_values[idx])) {
+        erase(idx);
+      } else {
+        idx++;
+      }
+    }
+    return old_size - size();
+  }
+
   constexpr bool operator==(const DenseSlotMap &other) const noexcept {
     return this->m_keys == other.m_keys and this->m_values == other.m_values;
   }

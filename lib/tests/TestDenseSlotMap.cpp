@@ -1,4 +1,5 @@
 #include "Support/DenseSlotMap.hpp"
+#include "Support/Views.hpp"
 
 #include <gtest/gtest.h>
 
@@ -434,4 +435,23 @@ TEST(TestKeysValues, KeysValues) {
   }
   EXPECT_TRUE(std::ranges::is_permutation(s.keys(), keys));
   EXPECT_TRUE(std::ranges::is_permutation(s.values(), values));
+}
+
+TEST(TestEraseIf, EraseIf) {
+  DenseSlotMap<int> s;
+  std::vector values = {0, 1, 2, 3, 4};
+  std::vector<SlotMapKey> keys;
+  for (auto value : values) {
+    keys.push_back(s.insert(value));
+  }
+  auto pred = [](SlotMapKey _, int value) { return value % 2; };
+  s.erase_if(pred);
+  for (auto [k, v] : zip(keys, values)) {
+    if (pred(k, v)) {
+      EXPECT_FALSE(s.contains(k));
+    } else {
+      EXPECT_TRUE(s.contains(k));
+      EXPECT_EQ(s[k], v);
+    }
+  }
 }
