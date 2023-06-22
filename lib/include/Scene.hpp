@@ -5,6 +5,7 @@
 #include "DenseHandleMap.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
+#include "Passes.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "ResourceArena.hpp"
@@ -60,6 +61,7 @@ private:
   ResourceArena m_frame_arena;
 
   RenderGraph m_render_graph;
+  TemporalResources m_temporal_resources;
 
   Pipelines m_pipelines;
 

@@ -2,6 +2,8 @@
 #include "CommandBuffer.hpp"
 #include "Device.hpp"
 #include "Errors.hpp"
+#include "PipelineLoading.hpp"
+#include "PostProcessingOptions.hpp"
 #include "TextureIDAllocator.hpp"
 #include "glsl/post_processing_pass.hpp"
 #include "glsl/reduce_luminance_histogram_pass.hpp"
@@ -243,11 +245,12 @@ auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
                                   const PostProcessingPassesConfig &cfg)
     -> PostProcessingPassesOutput {
   assert(cfg.texture);
-  assert(cfg.texture_allocator);
   assert(cfg.pipelines);
+  assert(cfg.texture_allocator);
+  assert(cfg.options);
 
   auto automatic_exposure =
-      cfg.options.exposure.mode.get<ExposureOptions::Automatic>();
+      cfg.options->exposure.mode.get<ExposureOptions::Automatic>();
 
   RGBufferID histogram_buffer;
   if (automatic_exposure) {
@@ -256,7 +259,7 @@ auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
             .histogram_buffer;
   }
 
-  switch (cfg.options.tone_mapping.oper) {
+  switch (cfg.options->tone_mapping.oper) {
   case REN_TONE_MAPPING_OPERATOR_REINHARD: {
   } break;
   case REN_TONE_MAPPING_OPERATOR_ACES: {
@@ -292,7 +295,7 @@ auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
 
   return {
       .texture = texture,
-      .automatic_exposure_buffer = automatic_exposure_buffer,
+      .exposure_buffer = automatic_exposure_buffer,
   };
 }
 

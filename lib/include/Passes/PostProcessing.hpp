@@ -1,24 +1,23 @@
 #pragma once
-#include "PipelineLoading.hpp"
-#include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
 
 namespace ren {
 
-class Device;
 class TextureIDAllocator;
+struct Pipelines;
+struct PostProcessingOptions;
 
 struct PostProcessingPassesConfig {
   RGTextureID texture;
   RGBufferID previous_exposure_buffer;
-  PostProcessingOptions options;
-  TextureIDAllocator *texture_allocator = nullptr;
   const Pipelines *pipelines = nullptr;
+  TextureIDAllocator *texture_allocator = nullptr;
+  const PostProcessingOptions *options = nullptr;
 };
 
 struct PostProcessingPassesOutput {
   RGTextureID texture;
-  RGBufferID automatic_exposure_buffer;
+  RGBufferID exposure_buffer;
 };
 
 auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,

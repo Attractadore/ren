@@ -8,6 +8,8 @@
 
 namespace ren {
 
+struct TextureIDAllocator;
+
 struct ColorPassConfig {
   const HandleMap<Mesh> *meshes = nullptr;
   std::span<const MeshInst> mesh_insts;
@@ -20,7 +22,7 @@ struct ColorPassConfig {
   RGBufferID materials_buffer;
   RGBufferID exposure_buffer;
   Handle<GraphicsPipeline> pipeline;
-  VkDescriptorSet persistent_set = nullptr;
+  TextureIDAllocator *texture_allocator = nullptr;
   glm::uvec2 size;
   glm::mat4 proj;
   glm::mat4 view;

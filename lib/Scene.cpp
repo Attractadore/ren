@@ -306,13 +306,6 @@ void Scene::set_camera(const RenCameraDesc &desc) noexcept {
           };
         case REN_EXPOSURE_MODE_AUTOMATIC:
           return ExposureOptions::Automatic{
-              .previous_exposure_buffer =
-                  m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>()
-                      .map_or(
-                          [](const ExposureOptions::Automatic &automatic) {
-                            return automatic.previous_exposure_buffer;
-                          },
-                          RGBufferID()),
               .exposure_compensation = desc.exposure_compensation,
           };
         }
@@ -446,52 +439,24 @@ void Scene::draw(Swapchain &swapchain) {
         }));
       });
 
-  auto frame_resources =
-      setup_upload_pass(*m_device, rgb,
-                        {
-                            .mesh_insts = m_mesh_insts.values(),
-                            .directional_lights = m_dir_lights.values(),
-                            .materials = m_materials,
-                        });
-
-  auto [exposure_buffer] =
-      setup_exposure_pass(*m_device, rgb, {.options = m_pp_opts.exposure});
-
-  // Draw scene
-  auto [texture] = setup_color_pass(
+  RGTextureID texture;
+  std::tie(texture, m_temporal_resources) = setup_all_passes(
       *m_device, rgb,
       {
-          .meshes = &m_meshes,
-          .mesh_insts = m_mesh_insts.values(),
+          .temporal_resources = &m_temporal_resources,
+          .pipelines = &m_pipelines,
+          .texture_allocator = &m_texture_allocator,
           .uploaded_vertex_buffers = uploaded_vertex_buffers,
           .uploaded_index_buffers = uploaded_index_buffers,
           .uploaded_textures = uploaded_textures,
-          .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
-          .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
-          .directional_lights_buffer = frame_resources.dir_lights_buffer,
-          .materials_buffer = frame_resources.materials_buffer,
-          .exposure_buffer = exposure_buffer,
-          .pipeline = m_pipelines.color_pass,
-          .persistent_set = m_persistent_descriptor_set,
-          .size = {m_viewport_width, m_viewport_height},
-          .proj = get_projection_matrix(m_camera, float(m_viewport_width) /
-                                                      float(m_viewport_height)),
-          .view = get_view_matrix(m_camera),
-          .eye = m_camera.position,
-          .num_dir_lights = unsigned(m_dir_lights.size()),
+          .viewport_size = {m_viewport_width, m_viewport_height},
+          .camera = &m_camera,
+          .meshes = &m_meshes,
+          .mesh_insts = m_mesh_insts.values(),
+          .directional_lights = m_dir_lights.values(),
+          .materials = m_materials,
+          .pp_opts = &m_pp_opts,
       });
-
-  auto [texture_after_pp, automatic_exposure_buffer] =
-      setup_post_processing_passes(
-          *m_device, rgb,
-          {
-              .texture = texture,
-              .previous_exposure_buffer = exposure_buffer,
-              .options = m_pp_opts,
-              .texture_allocator = &m_texture_allocator,
-              .pipelines = &m_pipelines,
-          });
-  texture = texture_after_pp;
 
   rgb.present(swapchain, texture,
               m_frame_arena.create_semaphore({
@@ -504,11 +469,6 @@ void Scene::draw(Swapchain &swapchain) {
   rgb.build(*m_device);
 
   m_render_graph.execute(*m_device, m_cmd_allocator);
-
-  m_pp_opts.exposure.mode.get<ExposureOptions::Automatic>().map(
-      [&](ExposureOptions::Automatic &automatic) {
-        automatic.previous_exposure_buffer = automatic_exposure_buffer;
-      });
 
   next_frame();
 }

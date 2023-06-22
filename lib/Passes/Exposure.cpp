@@ -18,7 +18,7 @@ auto setup_exposure_pass(Device &device, RenderGraph::Builder &rgb,
         return setup_automatic_exposure_pass(
             device, rgb,
             {
-                .previous_exposure_buffer = automatic.previous_exposure_buffer,
+                .previous_exposure_buffer = cfg.previous_exposure_buffer,
             });
       });
 }

@@ -5,6 +5,7 @@
 namespace ren {
 
 struct ExposurePassConfig {
+  RGBufferID previous_exposure_buffer;
   ExposureOptions options;
 };
 

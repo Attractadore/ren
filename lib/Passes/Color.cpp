@@ -2,6 +2,7 @@
 #include "CommandBuffer.hpp"
 #include "Device.hpp"
 #include "Support/Views.hpp"
+#include "TextureIDAllocator.hpp"
 #include "glsl/color_interface.hpp"
 
 namespace ren {
@@ -20,7 +21,7 @@ struct ColorPassResources {
   RGBufferID materials_buffer;
   RGBufferID exposure_buffer;
   Handle<GraphicsPipeline> pipeline;
-  VkDescriptorSet persistent_set = nullptr;
+  TextureIDAllocator *texture_allocator = nullptr;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;
@@ -43,7 +44,7 @@ void run_color_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
 
   if (not rcs.mesh_insts.empty()) {
     assert(rcs.meshes);
-    assert(rcs.persistent_set);
+    assert(rcs.texture_allocator);
     assert(rcs.uniform_buffer);
     assert(rcs.transform_matrix_buffer);
     assert(rcs.normal_matrix_buffer);
@@ -84,7 +85,7 @@ void run_color_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
 
     auto layout = device.get_graphics_pipeline(rcs.pipeline).layout;
 
-    std::array descriptor_sets = {rcs.persistent_set};
+    std::array descriptor_sets = {rcs.texture_allocator->get_set()};
     cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0,
                              descriptor_sets);
 
@@ -131,9 +132,8 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
                       const ColorPassConfig &cfg) -> ColorPassOutput {
   assert(cfg.meshes);
   assert(cfg.pipeline);
-  assert(cfg.persistent_set);
+  assert(cfg.texture_allocator);
   assert(cfg.exposure_buffer);
-  assert(cfg.persistent_set);
   assert(glm::all(glm::greaterThan(cfg.size, glm::uvec2(0))));
 
   auto pass = rgb.create_pass({
@@ -240,7 +240,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .materials_buffer = cfg.materials_buffer,
       .exposure_buffer = cfg.exposure_buffer,
       .pipeline = cfg.pipeline,
-      .persistent_set = cfg.persistent_set,
+      .texture_allocator = cfg.texture_allocator,
       .proj = cfg.proj,
       .view = cfg.view,
       .eye = cfg.eye,

@@ -17,7 +17,6 @@ struct ExposureOptions {
   };
 
   struct Automatic {
-    RGBufferID previous_exposure_buffer;
     float exposure_compensation = 0.0f;
   };
 
