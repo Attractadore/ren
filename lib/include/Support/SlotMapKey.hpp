@@ -39,16 +39,14 @@ struct HashIndex;
     friend detail::HashIndex;                                                  \
     friend detail::IndexEqualTo;                                               \
                                                                                \
-    uint32_t slot : index_bits = (1 << index_bits) - 1;                        \
-    uint32_t version : version_bits = (1 << version_bits) - 1;                 \
+    uint32_t slot : index_bits = 0;                                            \
+    uint32_t version : version_bits = 0;                                       \
                                                                                \
-    explicit Key(uint32_t index, uint32_t version = 0)                         \
-        : slot(index), version(version) {}                                     \
+    Key(uint32_t index, uint32_t version) : slot(index), version(version) {}   \
                                                                                \
   public:                                                                      \
-    Key() = default;                                                           \
+    constexpr Key() = default;                                                 \
     constexpr auto operator<=>(const Key &other) const = default;              \
-                                                                               \
     constexpr bool is_null() const noexcept { return *this == Key(); }         \
     constexpr explicit operator bool() const noexcept { return !is_null(); }   \
   };

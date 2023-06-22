@@ -28,15 +28,6 @@ auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
   return seed;
 }
 
-template <typename T, typename H> static auto get_id(Handle<H> handle) {
-  return std::bit_cast<T>(std::bit_cast<unsigned>(handle) -
-                          std::bit_cast<unsigned>(Handle<H>()));
-}
-
-template <typename H, typename T> static auto get_handle(T id) {
-  return std::bit_cast<Handle<H>>(id + std::bit_cast<T>(Handle<H>()));
-}
-
 Scene::Scene(Device &device)
     : Scene([&device] {
         ResourceArena persistent_arena(device);
@@ -52,7 +43,15 @@ Scene::Scene(Device &device)
                      persistent_descriptor_pool, persistent_descriptor_set,
                      TextureIDAllocator(device, persistent_descriptor_set,
                                         persistent_descriptor_set_layout));
-      }()) {}
+      }()) {
+
+#if !__clang__
+  static_assert(std::bit_cast<u32>(SlotMapKey()) == 0,
+                "C handles can't be directly converted to SlotMap keys");
+#else
+  assert(std::bit_cast<u32>(SlotMapKey()) == 0);
+#endif
+}
 
 Scene::Scene(Device &device, ResourceArena persistent_arena,
              Handle<DescriptorSetLayout> persistent_descriptor_set_layout,
@@ -208,7 +207,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   auto key = m_meshes.emplace(std::move(mesh));
 
-  return get_id<RenMesh>(key);
+  return std::bit_cast<RenMesh>(key);
 }
 
 auto Scene::get_or_create_sampler(const RenSampler &sampler)
@@ -327,11 +326,11 @@ void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
   for (const auto &desc : descs) {
     auto mesh_inst = m_mesh_insts.insert({
-        .mesh = get_handle<Mesh>(desc.mesh),
+        .mesh = std::bit_cast<Handle<Mesh>>(desc.mesh),
         .material = desc.material,
         .matrix = glm::mat4(1.0f),
     });
-    *out = get_id<RenMeshInst>(mesh_inst);
+    *out = std::bit_cast<RenMeshInst>(mesh_inst);
     ++out;
   }
 }
@@ -339,7 +338,7 @@ void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
 void Scene::destroy_mesh_insts(
     std::span<const RenMeshInst> mesh_insts) noexcept {
   for (auto mesh_inst : mesh_insts) {
-    m_mesh_insts.erase(get_handle<MeshInst>(mesh_inst));
+    m_mesh_insts.erase(std::bit_cast<Handle<MeshInst>>(mesh_inst));
   }
 }
 
@@ -347,7 +346,7 @@ void Scene::set_mesh_inst_matrices(
     std::span<const RenMeshInst> mesh_insts,
     std::span<const RenMatrix4x4> matrices) noexcept {
   for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices)) {
-    m_mesh_insts[get_handle<MeshInst>(mesh_inst)].matrix =
+    m_mesh_insts[std::bit_cast<Handle<MeshInst>>(mesh_inst)].matrix =
         glm::make_mat4(matrix[0]);
   }
 }
@@ -360,21 +359,21 @@ void Scene::create_dir_lights(std::span<const RenDirLightDesc> descs,
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
     });
-    *out = get_id<RenDirLight>(light);
+    *out = std::bit_cast<RenDirLight>(light);
     ++out;
   }
 };
 
 void Scene::destroy_dir_lights(std::span<const RenDirLight> lights) noexcept {
   for (auto light : lights) {
-    m_dir_lights.erase(get_handle<glsl::DirLight>(light));
+    m_dir_lights.erase(std::bit_cast<Handle<glsl::DirLight>>(light));
   }
 }
 
 void Scene::config_dir_lights(std::span<const RenDirLight> lights,
                               std::span<const RenDirLightDesc> descs) {
   for (const auto &[light, desc] : zip(lights, descs)) {
-    m_dir_lights[get_handle<glsl::DirLight>(light)] = {
+    m_dir_lights[std::bit_cast<Handle<glsl::DirLight>>(light)] = {
         .color = glm::make_vec3(desc.color),
         .illuminance = desc.illuminance,
         .origin = glm::make_vec3(desc.origin),
