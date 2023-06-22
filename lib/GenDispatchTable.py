@@ -75,7 +75,7 @@ def parse_all(root):
         cmd_name = proto.find("name").text
         ret_type = parse_type(proto)
         args = [Argument(parse_type(e), e.find("name").text)
-                for e in filter(lambda p: p.tag == "param", cmd)]
+                for e in filter(lambda p: p.tag == "param" and p.attrib.get("api", "vulkan") == "vulkan", cmd)]
 
         cmds[cmd_name] = Function(cmd_name, ret_type, args)
 
@@ -183,11 +183,11 @@ def format_mixin_command(
     call_args = ', '.join(call_args)
     return "\n".join((
         f"   {cmd.ret} {name}({args}) const {{",
-        f"      auto {impl} = static_cast<const {Derived}*>(this);",
+        f"      const auto* {impl} = static_cast<const {Derived}*>(this);",
         f"      auto* func = {impl}->{get_table}().{name};",
         f"      assert(func && \"vk{name} not loaded!\");",
         f"      return func({call_args});",
-        "   }",
+        f"   }}",
     ))
 
 
@@ -252,24 +252,32 @@ def main():
     device_cmds = {cmd_name: cmd for cmd_name,
                    cmd in cmds.items() if is_device_cmd(cmd)}
 
+    extern_c_begin = "\n".join((
+        "#ifdef __cplusplus",
+        "extern \"C\" {",
+        "#endif // __cplusplus",
+    ))
+
+    extern_c_end = "\n".join((
+        "#ifdef __cplusplus",
+        "}",
+        "#endif // __cplusplus",
+    ))
+
     h_out.parent.mkdir(exist_ok=True, parents=True)
     with open(h_out, "w") as h:
         h.write("\n".join((
             "#pragma once",
             "#include <vulkan/vulkan.h>",
             "",
-            "#include <assert.h>",
+            extern_c_begin,
             "",
-            "#ifdef __cplusplus",
-            "extern \"C\" {",
-            "#endif // __cplusplus",
             generate_table(cmds, table_name, req_funcs),
             "",
             generate_load_instance_table_proto(table_name, load_instance_f),
             generate_load_device_table_proto(table_name, load_device_f),
-            "#ifdef __cplusplus",
-            "}",
-            "#endif // __cplusplus",
+            "",
+            extern_c_end,
         )))
 
     c_out.parent.mkdir(exist_ok=True, parents=True)
@@ -277,11 +285,15 @@ def main():
         c.write("\n".join((
             f"#include \"{header}\"",
             "",
+            extern_c_begin,
+            "",
             generate_load_instance_table(
                 instance_cmds, table_name, load_instance_f, req_funcs),
             "",
             generate_load_device_table(
                 device_cmds, table_name, load_device_f, req_funcs),
+            "",
+            extern_c_end,
         )))
 
     physical_device_cmds = {cmd_name: cmd for cmd_name,
@@ -296,6 +308,8 @@ def main():
         hpp.write("\n".join((
             "#pragma once",
             f"#include \"{header}\"",
+            "",
+            "#include <cassert>",
             "",
             generate_instance_mixin(instance_cmds, instance_mixin, req_funcs),
             "",

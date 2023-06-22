@@ -140,6 +140,16 @@ auto ResourceUploader::record_upload(const Device &device,
   for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
     cmd.copy_buffer(src, dst);
   }
+  VkMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+      .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+      .dstAccessMask =
+          VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+  };
+  cmd.pipeline_barrier(asSpan(barrier), {});
   cmd.end_debug_region();
 
   m_buffer_srcs.clear();
