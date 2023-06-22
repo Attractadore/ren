@@ -253,16 +253,18 @@ void RenderGraph::Builder::read_texture(RGPassID passid,
 auto RenderGraph::Builder::write_texture(RGPassID passid,
                                          RGTextureWriteInfo &&write_info)
     -> RGTextureID {
-  auto &textures = m_rg->m_runtime.m_textures;
+  const auto &textures = m_rg->m_runtime.m_textures;
   auto new_texture =
       init_new_texture(passid, write_info.texture, std::move(write_info.name));
   auto physical_texture = textures[new_texture];
   // Temporal textures should not be overwritten
-  assert(not m_rg->m_temporal_textures.contains(physical_texture));
+  assert(ranges::none_of(m_rg->m_temporal_textures, [&](RGTextureID texture) {
+    return textures[texture] == physical_texture;
+  }));
   if (write_info.temporal) {
     // External textures can't be marked as temporal
     assert(not m_rg->m_external_textures.contains(physical_texture));
-    m_rg->m_temporal_textures.insert(physical_texture);
+    m_rg->m_temporal_textures.insert(new_texture);
   }
   auto &pass = m_passes[passid];
   pass.write_textures.push_back({
@@ -280,14 +282,16 @@ auto RenderGraph::Builder::write_texture(RGPassID passid,
 auto RenderGraph::Builder::create_texture(RGPassID passid,
                                           RGTextureCreateInfo &&create_info)
     -> RGTextureID {
-  auto &textures = m_rg->m_runtime.m_textures;
+  assert(glm::all(glm::greaterThan(create_info.size, glm::uvec3(0))));
+  const auto &textures = m_rg->m_runtime.m_textures;
   auto new_texture =
       init_new_texture(passid, None, std::move(create_info.name));
-  auto physical_texture = textures[new_texture];
   if (create_info.temporal) {
-    m_rg->m_temporal_textures.insert(physical_texture);
+    m_rg->m_temporal_textures.insert(new_texture);
   }
+  auto physical_texture = textures[new_texture];
   m_texture_create_infos[physical_texture] = {
+      // FIXME: name will be incorrect during next frame for temporal textures
       .name = fmt::format("RenderGraph Texture {}", physical_texture),
       .type = create_info.type,
       .format = create_info.format,
@@ -378,16 +382,18 @@ void RenderGraph::Builder::read_buffer(RGPassID passid,
 auto RenderGraph::Builder::write_buffer(RGPassID passid,
                                         RGBufferWriteInfo &&write_info)
     -> RGBufferID {
-  auto &buffers = m_rg->m_runtime.m_buffers;
+  const auto &buffers = m_rg->m_runtime.m_buffers;
   auto new_buffer =
       init_new_buffer(passid, write_info.buffer, std::move(write_info.name));
   auto physical_buffer = buffers[new_buffer];
   // Buffers that have been marked as temporal can't be written
-  assert(not m_rg->m_temporal_buffers.contains(physical_buffer));
+  assert(ranges::none_of(m_rg->m_temporal_buffers, [&](RGBufferID buffer) {
+    return buffers[buffer] == physical_buffer;
+  }));
   if (write_info.temporal) {
     // External buffers can't be marked as temporal
     assert(not m_rg->m_external_buffers.contains(physical_buffer));
-    m_rg->m_temporal_buffers.insert(physical_buffer);
+    m_rg->m_temporal_buffers.insert(new_buffer);
   }
   auto &pass = m_passes[passid];
   pass.write_buffers.push_back({
@@ -406,13 +412,14 @@ auto RenderGraph::Builder::create_buffer(RGPassID passid,
                                          RGBufferCreateInfo &&create_info)
     -> RGBufferID {
   assert(create_info.size > 0);
-  auto &buffers = m_rg->m_runtime.m_buffers;
+  const auto &buffers = m_rg->m_runtime.m_buffers;
   auto new_buffer = init_new_buffer(passid, None, std::move(create_info.name));
-  auto physical_buffer = buffers[new_buffer];
   if (create_info.temporal) {
-    m_rg->m_temporal_buffers.insert(physical_buffer);
+    m_rg->m_temporal_buffers.insert(new_buffer);
   }
+  auto physical_buffer = buffers[new_buffer];
   m_buffer_create_infos[physical_buffer] = {
+      // FIXME: name will be incorrect during next frame for temporal buffers
       .name = fmt::format("RenderGraph Buffer {}", physical_buffer),
       .heap = create_info.heap,
       .usage = get_buffer_usage_flags(create_info.accesses),
@@ -964,60 +971,60 @@ void RenderGraph::retain_temporal_resources() {
   m_swapchain = nullptr;
   m_present_semaphore = {};
 
-  // Retain physical buffers that will be used in the next frame
-  auto &physical_buffers = m_runtime.m_physical_buffers;
-  Vector<unsigned> m_buffer_remap_table(physical_buffers.size());
-  usize num_retained_buffers = 0;
-  for (unsigned buffer : range(physical_buffers.size())) {
-    m_buffer_remap_table[buffer] = num_retained_buffers;
-    if (m_temporal_buffers.contains(buffer)) {
-      physical_buffers[num_retained_buffers] = physical_buffers[buffer];
-      m_buffer_states[num_retained_buffers] = m_buffer_states[buffer];
-      num_retained_buffers++;
-    } else if (not m_external_buffers.contains(buffer)) {
-      m_arena.destroy_buffer(physical_buffers[buffer].buffer);
-    }
-  }
-  physical_buffers.resize(num_retained_buffers);
-  m_buffer_states.resize(num_retained_buffers);
-
-  // Rename virtual buffer physical buffers
   auto &buffers = m_runtime.m_buffers;
-  buffers.erase_if([&](RGBufferID, unsigned buffer) {
+  buffers.erase_if([&](RGBufferID buffer, unsigned) {
     return not m_temporal_buffers.contains(buffer);
   });
-  for (auto &buffer : buffers.values()) {
-    buffer = m_buffer_remap_table[buffer];
+
+  auto &physical_buffers = m_runtime.m_physical_buffers;
+  auto old_physical_buffers = std::move(physical_buffers);
+  auto old_buffer_states = std::move(m_buffer_states);
+  physical_buffers.resize(m_temporal_buffers.size());
+  m_buffer_states.resize(m_temporal_buffers.size());
+  for (auto &&[idx, b] : buffers | enumerate) {
+    auto &[buffer, physical_buffer] = b;
+    auto &view = old_physical_buffers[physical_buffer];
+    physical_buffers[idx] = std::exchange(view, BufferView());
+    m_buffer_states[idx] = old_buffer_states[physical_buffer];
+    physical_buffer = idx;
+  }
+
+  for (const auto &[physical_buffer, view] : old_physical_buffers | enumerate) {
+    if (not m_external_buffers.contains(physical_buffer)) {
+      m_arena.destroy_buffer(view.buffer);
+    }
   }
 
   m_temporal_buffers.clear();
   m_external_buffers.clear();
 
-  // Retain physical textures that will be used in the next frame
-  auto &physical_textures = m_runtime.m_physical_textures;
-  Vector<unsigned> m_texture_remap_table(physical_textures.size());
-  usize num_retained_textures = 0;
-  for (unsigned texture : range(physical_textures.size())) {
-    m_texture_remap_table[texture] = num_retained_textures;
-    if (m_temporal_textures.contains(texture)) {
-      physical_textures[num_retained_textures] = physical_textures[texture];
-      m_texture_states[num_retained_textures] = m_texture_states[texture];
-      num_retained_textures++;
-    } else if (not m_external_textures.contains(texture)) {
-      m_arena.destroy_texture(physical_textures[texture].texture);
-    }
-  }
-  physical_textures.resize(num_retained_textures);
-  m_texture_states.resize(num_retained_textures);
-
-  // Rename virtual texture physical textures
   auto &textures = m_runtime.m_textures;
-  textures.erase_if([&](RGTextureID, unsigned texture) {
+  textures.erase_if([&](RGTextureID texture, unsigned) {
     return not m_temporal_textures.contains(texture);
   });
-  for (auto &texture : textures.values()) {
-    texture = m_texture_remap_table[texture];
+
+  auto &physical_textures = m_runtime.m_physical_textures;
+  auto old_physical_textures = std::move(physical_textures);
+  auto old_texture_states = std::move(m_texture_states);
+  physical_textures.resize(m_temporal_textures.size());
+  m_texture_states.resize(m_temporal_textures.size());
+  for (auto &&[idx, b] : textures | enumerate) {
+    auto &[texture, physical_texture] = b;
+    auto &view = old_physical_textures[physical_texture];
+    physical_textures[idx] = std::exchange(view, TextureView());
+    m_texture_states[idx] = old_texture_states[physical_texture];
+    physical_texture = idx;
   }
+
+  for (const auto &[physical_texture, view] :
+       old_physical_textures | enumerate) {
+    if (not m_external_textures.contains(physical_texture)) {
+      m_arena.destroy_texture(view.texture);
+    }
+  }
+
+  m_temporal_textures.clear();
+  m_external_textures.clear();
 
 #if REN_RENDER_GRAPH_DEBUG_NAMES
   for (auto &[_, name] : m_buffer_names) {
@@ -1027,9 +1034,6 @@ void RenderGraph::retain_temporal_resources() {
     name = fmt::format("{} (from previous frame)", name);
   }
 #endif
-
-  m_temporal_textures.clear();
-  m_external_textures.clear();
 }
 
 } // namespace ren

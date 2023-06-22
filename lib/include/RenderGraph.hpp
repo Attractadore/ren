@@ -197,8 +197,8 @@ class RenderGraph {
   Vector<RGBufferState> m_buffer_states;
   Vector<RGTextureState> m_texture_states;
 
-  HashSet<unsigned> m_temporal_buffers;
-  HashSet<unsigned> m_temporal_textures;
+  HashSet<RGBufferID> m_temporal_buffers;
+  HashSet<RGTextureID> m_temporal_textures;
 
   HashSet<unsigned> m_external_buffers;
   HashSet<unsigned> m_external_textures;
