@@ -157,12 +157,20 @@ public:
     m_slots.shrink_to_fit();
   }
 
+  constexpr void free_slot(K key) noexcept {
+    auto &erase_slot = m_slots[key.slot];
+    erase_slot.version = key.version + 1;
+    // Kill slot once version overflows
+    if (erase_slot.version) {
+      erase_slot.next_free = m_free_head;
+      m_free_head = key.slot;
+    }
+  }
+
   constexpr void clear() noexcept {
     // Push all objects into free list to preserve version info
-    for (auto [slot, version] : m_keys) {
-      m_slots[slot].next_free = m_free_head;
-      m_free_head = slot;
-      m_slots[slot].version = version + 1;
+    for (auto key : m_keys) {
+      free_slot(key);
     }
     m_keys.clear();
     m_values.clear();
@@ -183,22 +191,22 @@ public:
   template <typename... Args>
     requires std::constructible_from<value_type, Args &&...>
   [[nodiscard]] constexpr key_type emplace(Args &&...args) {
-    uint32_t index = m_keys.size();
-    auto key = [&] {
+    auto slot_index = [&]() -> uint32_t {
       if (m_free_head == NULL_SLOT) {
-        assert(m_keys.size() == m_slots.size());
-        auto slot_index = index;
+        auto slot_index = m_slots.size();
         auto &slot = m_slots.emplace_back();
-        slot.index = index;
-        return key_type(slot_index);
+        slot.version = 1;
+        return slot_index;
       } else {
         auto slot_index = m_free_head;
         auto &slot = m_slots[slot_index];
         m_free_head = slot.next_free;
-        slot.index = index;
-        return key_type(slot_index, slot.version);
+        return slot_index;
       }
     }();
+    auto &slot = m_slots[slot_index];
+    slot.index = m_keys.size();
+    K key(slot_index, slot.version);
     m_keys.push_back(key);
     m_values.emplace_back(std::forward<Args>(args)...);
     return key;
@@ -335,11 +343,8 @@ private:
     m_keys.pop_back();
     // Order important for back_key = erase_key
     auto &back_slot = m_slots[back_key.slot];
-    auto &erase_slot = m_slots[erase_key.slot];
     back_slot.index = index;
-    erase_slot.next_free = m_free_head;
-    m_free_head = erase_key.slot;
-    erase_slot.version = erase_key.version + 1;
+    free_slot(erase_key);
   }
 };
 
