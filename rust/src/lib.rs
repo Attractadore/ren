@@ -443,7 +443,7 @@ impl Default for CameraDesc {
             aperture: 16.0,
             shutter_time: 1.0 / iso,
             exposure_compensation: 0.0,
-            exposure_mode: ExposureMode::Camera { iso },
+            exposure_mode: ExposureMode::Automatic,
             position: [0.0; 3],
             forward: [1.0, 0.0, 0.0],
             up: [0.0, 0.0, 1.0],

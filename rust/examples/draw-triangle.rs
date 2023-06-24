@@ -16,21 +16,27 @@ impl DrawTriangleApp {
             [3.0f32.sqrt() / 4.0, -0.25, 0.0],
         ];
 
+        let colors = [
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+        ];
+
         let normals = [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
 
         let indices = [0, 1, 2];
 
         let mesh = scene.create_mesh(&MeshDesc {
             positions: &positions,
+            colors: Some(&colors),
             normals: Some(&normals),
             indices: Some(&indices),
             ..Default::default()
         })?;
 
         let material = scene.create_material(&MaterialDesc {
-            base_color_factor: [1.0, 0.0, 0.0, 1.0],
-            metallic_factor: 0.0,
-            roughness_factor: 1.0,
+            metallic_factor: 1.0,
+            roughness_factor: 0.5,
             ..Default::default()
         })?;
 
@@ -42,7 +48,7 @@ impl DrawTriangleApp {
 
         scene.create_dir_light(&DirLightDesc {
             color: [1.0, 1.0, 1.0],
-            illuminance: 1.0,
+            illuminance: 25_000.0,
             origin: [0.0, 0.0, 1.0],
         })?;
 
@@ -63,6 +69,7 @@ impl App for DrawTriangleApp {
             position: [0.0, 0.0, 1.0],
             forward: [0.0, 0.0, -1.0],
             up: [0.0, 1.0, 0.0],
+            exposure_compensation: 3.0,
             ..Default::default()
         })?;
         Ok(())
