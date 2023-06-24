@@ -20,16 +20,16 @@ public:
         {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
     }};
 
-    std::array<glm::vec3, 3> normals = {{
-        {0.0f, 0.0f, 1.0f},
-        {0.0f, 0.0f, 1.0f},
-        {0.0f, 0.0f, 1.0f},
-    }};
-
     std::array<glm::vec4, 3> colors = {{
         {1.0f, 0.0f, 0.0f, 1.0f},
         {0.0f, 1.0f, 0.0f, 1.0f},
         {0.0f, 0.0f, 1.0f, 1.0f},
+    }};
+
+    std::array<glm::vec3, 3> normals = {{
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f},
     }};
 
     std::array<unsigned, 3> indices = {0, 1, 2};
