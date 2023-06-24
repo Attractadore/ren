@@ -28,10 +28,6 @@ struct PassesConfig {
   const Pipelines *pipelines = nullptr;
   TextureIDAllocator *texture_allocator = nullptr;
 
-  std::span<const RGBufferID> uploaded_vertex_buffers;
-  std::span<const RGBufferID> uploaded_index_buffers;
-  std::span<const RGTextureID> uploaded_textures;
-
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
 

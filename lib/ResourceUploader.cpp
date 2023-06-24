@@ -7,13 +7,35 @@
 
 namespace ren {
 
-static void generate_mipmaps(const Device &device, CommandBuffer &cmd,
-                             Handle<Texture> handle) {
+namespace {
+
+void generate_mipmaps(const Device &device, CommandBuffer &cmd,
+                      Handle<Texture> handle) {
   const auto &texture = device.get_texture(handle);
   auto src_size = texture.size;
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
     auto src_level = dst_level - 1;
+
+    VkImageMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .image = texture.image,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = src_level,
+                .levelCount = 1,
+                .layerCount = texture.num_array_layers,
+            },
+    };
+    cmd.pipeline_barrier({}, asSpan(barrier));
+
     auto dst_size = glm::max(src_size / 2u, glm::uvec3(1));
     VkImageBlit region = {
         .srcSubresource =
@@ -33,81 +55,88 @@ static void generate_mipmaps(const Device &device, CommandBuffer &cmd,
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(handle, handle, region, VK_FILTER_LINEAR);
     src_size = dst_size;
-
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = texture.image,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = dst_level,
-                .levelCount = 1,
-                .layerCount = texture.num_array_layers,
-            },
-    };
-    cmd.pipeline_barrier({}, asSpan(barrier));
   }
 }
 
-static void upload_texture(const Device &device, CommandBuffer &cmd,
-                           const BufferView &src, Handle<Texture> dst_handle) {
-  const auto &dst = device.get_texture(dst_handle);
+void upload_texture(const Device &device, CommandBuffer &cmd,
+                    const BufferView &src, Handle<Texture> dst) {
+  const auto &texture = device.get_texture(dst);
+
   {
+    // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = dst.image,
+        .image = texture.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = dst.num_mip_levels,
-                .layerCount = dst.num_array_layers,
+                .levelCount = texture.num_mip_levels,
+                .layerCount = texture.num_array_layers,
             },
     };
     cmd.pipeline_barrier({}, asSpan(barrier));
   }
 
+  // Copy data to first mip level
   VkBufferImageCopy region = {
       .bufferOffset = src.offset,
       .imageSubresource =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .layerCount = dst.num_array_layers,
+              .layerCount = texture.num_array_layers,
           },
   };
-  std::memcpy(&region.imageExtent, &dst.size, sizeof(dst.size));
-  cmd.copy_buffer_to_image(src.buffer, dst_handle, region);
+  std::memcpy(&region.imageExtent, &texture.size, sizeof(texture.size));
+  cmd.copy_buffer_to_image(src.buffer, dst, region);
 
-  {
-    VkImageMemoryBarrier2 barrier = {
+  generate_mipmaps(device, cmd, dst);
+
+  // Transfer last mip level from TRANSFER_DST to READ_ONLY after copy or mipmap
+  // generation
+  StaticVector<VkImageMemoryBarrier2, 2> barriers = {{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+      .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+      .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+      .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+      .image = texture.image,
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = texture.num_mip_levels - 1,
+              .levelCount = 1,
+              .layerCount = texture.num_array_layers,
+          },
+  }};
+  if (texture.num_mip_levels > 1) {
+    // Transfer every mip level except the last one from TRANSFER_SRC to
+    // READ_ONLY after mipmap generation
+    barriers.push_back({
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = dst.image,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+        .image = texture.image,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = 1,
-                .layerCount = dst.num_array_layers,
+                .levelCount = texture.num_mip_levels - 1,
+                .layerCount = texture.num_array_layers,
             },
-    };
-    cmd.pipeline_barrier({}, asSpan(barrier));
+    });
   }
-
-  generate_mipmaps(device, cmd, dst_handle);
+  cmd.pipeline_barrier({}, barriers);
 }
+
+} // namespace
 
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      std::span<const std::byte> data,
@@ -122,51 +151,55 @@ void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
   auto *ptr = device.map_buffer(staging_buffer);
   ranges::copy(data, ptr);
 
-  m_texture_srcs.push_back(staging_buffer);
-  m_texture_dsts.push_back(texture);
+  m_texture_copies.push_back(TextureCopy{
+      .src = staging_buffer,
+      .dst = texture,
+  });
 }
 
-auto ResourceUploader::record_upload(const Device &device,
-                                     CommandAllocator &cmd_allocator)
-    -> Optional<CommandBuffer> {
-  if (m_buffer_srcs.empty() and m_texture_srcs.empty()) {
-    return None;
+void ResourceUploader::upload(Device &device, CommandAllocator &cmd_allocator) {
+  if (m_buffer_copies.empty() and m_texture_copies.empty()) {
+    return;
   }
 
   auto cmd = cmd_allocator.allocate();
   cmd.begin();
 
-  cmd.begin_debug_region("Upload buffers");
-  for (auto &&[src, dst] : zip(m_buffer_srcs, m_buffer_dsts)) {
-    cmd.copy_buffer(src, dst);
+  if (not m_buffer_copies.empty()) {
+    cmd.begin_debug_region("Upload buffers");
+    for (const auto &[src, dst] : m_buffer_copies) {
+      cmd.copy_buffer(src, dst);
+    }
+    VkMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        .dstAccessMask =
+            VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    };
+    cmd.pipeline_barrier(asSpan(barrier), {});
+    cmd.end_debug_region();
+    m_buffer_copies.clear();
   }
-  VkMemoryBarrier2 barrier = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-      .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-                      VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-      .dstAccessMask =
-          VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-  };
-  cmd.pipeline_barrier(asSpan(barrier), {});
-  cmd.end_debug_region();
 
-  m_buffer_srcs.clear();
-  m_buffer_dsts.clear();
-
-  cmd.begin_debug_region("Upload textures");
-  for (auto &&[src, dst] : zip(m_texture_srcs, m_texture_dsts)) {
-    upload_texture(device, cmd, src, dst);
+  if (not m_texture_copies.empty()) {
+    cmd.begin_debug_region("Upload textures");
+    for (const auto &[src, dst] : m_texture_copies) {
+      upload_texture(device, cmd, src, dst);
+    }
+    cmd.end_debug_region();
+    m_texture_copies.clear();
   }
-  cmd.end_debug_region();
-
-  m_texture_srcs.clear();
-  m_texture_dsts.clear();
 
   cmd.end();
 
-  return cmd;
+  device.graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = cmd.get(),
+  }));
 }
 
 } // namespace ren

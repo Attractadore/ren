@@ -199,14 +199,6 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
                                    mesh.index_buffer);
 
-  if (!m_device->map_buffer(mesh.vertex_buffer)) {
-    m_staged_vertex_buffers.push_back(mesh.vertex_buffer);
-  }
-
-  if (!m_device->map_buffer(mesh.index_buffer)) {
-    m_staged_index_buffers.push_back(mesh.index_buffer);
-  }
-
   auto key = m_meshes.emplace(std::move(mesh));
 
   return std::bit_cast<RenMesh>(key);
@@ -252,7 +244,6 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
       *m_device, m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
       texture);
-  m_staged_textures.push_back(texture);
   return image;
 }
 
@@ -384,61 +375,9 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 }
 
 void Scene::draw(Swapchain &swapchain) {
+  m_resource_uploader.upload(*m_device, m_cmd_allocator);
+
   RGBuilder rgb(m_render_graph);
-
-  auto uploaded_vertex_buffers =
-      m_staged_vertex_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer({
-            .name = "Uploaded mesh vertices",
-            .buffer = buffer,
-            .state =
-                {
-                    .stages = VK_PIPELINE_STAGE_2_COPY_BIT,
-                    .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                },
-        });
-      }) |
-      ranges::to<Vector>();
-  m_staged_vertex_buffers.clear();
-
-  auto uploaded_index_buffers =
-      m_staged_index_buffers | map([&](const BufferView &buffer) {
-        return rgb.import_buffer({
-            .name = "Uploaded mesh indices",
-            .buffer = buffer,
-            .state =
-                {
-                    .stages = VK_PIPELINE_STAGE_2_COPY_BIT,
-                    .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                },
-        });
-      }) |
-      ranges::to<Vector>();
-  m_staged_index_buffers.clear();
-
-  auto uploaded_textures =
-      m_staged_textures | map([&](Handle<Texture> texture) {
-        return rgb.import_texture({
-            .name = "Uploaded material texture",
-            .texture = m_device->get_texture_view(texture),
-            .state =
-                {
-                    .stages = VK_PIPELINE_STAGE_2_BLIT_BIT,
-                    .accesses = VK_ACCESS_2_TRANSFER_READ_BIT,
-                    .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                },
-        });
-      }) |
-      ranges::to<Vector>();
-  m_staged_textures.clear();
-
-  m_resource_uploader.record_upload(*m_device, m_cmd_allocator)
-      .map([&](CommandBuffer cmd) {
-        m_device->graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = cmd.get(),
-        }));
-      });
 
   RGTextureID texture;
   std::tie(texture, m_temporal_resources) = setup_all_passes(
@@ -447,9 +386,6 @@ void Scene::draw(Swapchain &swapchain) {
           .temporal_resources = &m_temporal_resources,
           .pipelines = &m_pipelines,
           .texture_allocator = &m_texture_allocator,
-          .uploaded_vertex_buffers = uploaded_vertex_buffers,
-          .uploaded_index_buffers = uploaded_index_buffers,
-          .uploaded_textures = uploaded_textures,
           .viewport_size = {m_viewport_width, m_viewport_height},
           .camera = &m_camera,
           .meshes = &m_meshes,

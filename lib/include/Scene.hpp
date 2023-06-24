@@ -26,9 +26,6 @@ class Scene {
   Device *m_device;
 
   ResourceUploader m_resource_uploader;
-  Vector<BufferView> m_staged_vertex_buffers;
-  Vector<BufferView> m_staged_index_buffers;
-  Vector<Handle<Texture>> m_staged_textures;
   CommandAllocator m_cmd_allocator;
 
   Camera m_camera;

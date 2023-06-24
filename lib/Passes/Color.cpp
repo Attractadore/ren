@@ -141,30 +141,6 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .type = RGPassType::Graphics,
   });
 
-  for (auto buffer : cfg.uploaded_vertex_buffers) {
-    pass.read_buffer({
-        .buffer = buffer,
-        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
-  }
-
-  for (auto buffer : cfg.uploaded_index_buffers) {
-    pass.read_buffer({
-        .buffer = buffer,
-        .stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-        .accesses = VK_ACCESS_2_INDEX_READ_BIT,
-    });
-  }
-
-  for (auto texture : cfg.uploaded_textures) {
-    pass.read_texture({
-        .texture = texture,
-        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-    });
-  }
-
   if (cfg.transform_matrix_buffer) {
     assert(cfg.normal_matrix_buffer);
     pass.read_buffer({

@@ -20,7 +20,7 @@ auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view,
   VkDescriptorImageInfo image = {
       .sampler = m_device->get_sampler(sampler).handle,
       .imageView = m_device->getVkImageView(view),
-      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
   };
   VkWriteDescriptorSet config = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

@@ -13,9 +13,6 @@ struct TextureIDAllocator;
 struct ColorPassConfig {
   const HandleMap<Mesh> *meshes = nullptr;
   std::span<const MeshInst> mesh_insts;
-  std::span<const RGBufferID> uploaded_vertex_buffers;
-  std::span<const RGBufferID> uploaded_index_buffers;
-  std::span<const RGTextureID> uploaded_textures;
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
   RGBufferID directional_lights_buffer;

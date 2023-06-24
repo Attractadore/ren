@@ -11,11 +11,17 @@ namespace ren {
 class CommandAllocator;
 
 class ResourceUploader {
-  Vector<BufferView> m_buffer_srcs;
-  Vector<BufferView> m_buffer_dsts;
+  struct BufferCopy {
+    BufferView src;
+    BufferView dst;
+  };
+  Vector<BufferCopy> m_buffer_copies;
 
-  Vector<BufferView> m_texture_srcs;
-  Vector<Handle<Texture>> m_texture_dsts;
+  struct TextureCopy {
+    BufferView src;
+    Handle<Texture> dst;
+  };
+  Vector<TextureCopy> m_texture_copies;
 
 public:
   template <ranges::sized_range R>
@@ -40,16 +46,16 @@ public:
     auto *ptr = device.map_buffer<T>(staging_buffer);
     ranges::copy(data, ptr);
 
-    m_buffer_srcs.push_back(staging_buffer);
-    m_buffer_dsts.push_back(buffer.subbuffer(0, size));
+    m_buffer_copies.push_back(BufferCopy{
+        .src = staging_buffer,
+        .dst = buffer,
+    });
   }
 
   void stage_texture(Device &device, ResourceArena &alloc,
                      std::span<const std::byte> data, Handle<Texture> texture);
 
-  [[nodiscard]] auto record_upload(const Device &device,
-                                   CommandAllocator &cmd_allocator)
-      -> Optional<CommandBuffer>;
+  void upload(Device &device, CommandAllocator &cmd_allocator);
 };
 
 } // namespace ren
