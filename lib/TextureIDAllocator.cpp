@@ -1,6 +1,6 @@
 #include "TextureIDAllocator.hpp"
 #include "Device.hpp"
-#include "Errors.hpp"
+#include "Support/Errors.hpp"
 #include "glsl/interface.hpp"
 
 namespace ren {

@@ -185,7 +185,7 @@ def format_mixin_command(
         f"   {cmd.ret} {name}({args}) const {{",
         f"      const auto* {impl} = static_cast<const {Derived}*>(this);",
         f"      auto* func = {impl}->{get_table}().{name};",
-        f"      assert(func && \"vk{name} not loaded!\");",
+        f"      ren_assert(func, \"vk{name} not loaded!\");",
         f"      return func({call_args});",
         f"   }}",
     ))
@@ -229,14 +229,12 @@ def generate_device_mixin(device_cmds, mixin_name, req_funcs):
 
 def main():
     vk_xml = Path(argv[1])
-    h_out = Path(argv[2])
-    hpp_out = Path(argv[3])
-    c_out = Path(argv[4])
-    header = h_out.name
+    hpp_out = Path(argv[2])
+    cpp_out = Path(argv[3])
 
     table_name = "DispatchTable"
-    load_instance_f = "loadInstanceFunctions"
-    load_device_f = "loadDeviceFunctions"
+    load_instance_f = "load_instance_functions"
+    load_device_f = "load_device_functions"
     instance_mixin = "InstanceFunctionsMixin"
     device_mixin = "DeviceFunctionsMixin"
     physical_device_mixin = "PhysicalDeviceFunctionsMixin"
@@ -247,69 +245,31 @@ def main():
     root = tree.getroot()
 
     cmds, req_funcs = parse_all(root)
-    instance_cmds = {cmd_name: cmd for cmd_name, cmd in cmds.items(
-    ) if is_instance_cmd(cmd) or is_physical_device_cmd(cmd)}
+
+    instance_cmds = {cmd_name: cmd for cmd_name,
+                     cmd in cmds.items() if is_instance_cmd(cmd)}
+
+    physical_device_cmds = {cmd_name: cmd for cmd_name,
+                            cmd in cmds.items()
+                            if is_physical_device_cmd(cmd)}
+
     device_cmds = {cmd_name: cmd for cmd_name,
                    cmd in cmds.items() if is_device_cmd(cmd)}
 
-    extern_c_begin = "\n".join((
-        "#ifdef __cplusplus",
-        "extern \"C\" {",
-        "#endif // __cplusplus",
-    ))
-
-    extern_c_end = "\n".join((
-        "#ifdef __cplusplus",
-        "}",
-        "#endif // __cplusplus",
-    ))
-
-    h_out.parent.mkdir(exist_ok=True, parents=True)
-    with open(h_out, "w") as h:
+    hpp_out.parent.mkdir(exist_ok=True, parents=True)
+    with open(hpp_out, "w") as h:
         h.write("\n".join((
             "#pragma once",
             "#include <vulkan/vulkan.h>",
             "",
-            extern_c_begin,
+            "#include \"Support/Errors.hpp\"",
+            "",
+            "namespace ren {",
             "",
             generate_table(cmds, table_name, req_funcs),
             "",
             generate_load_instance_table_proto(table_name, load_instance_f),
             generate_load_device_table_proto(table_name, load_device_f),
-            "",
-            extern_c_end,
-        )))
-
-    c_out.parent.mkdir(exist_ok=True, parents=True)
-    with open(c_out, "w") as c:
-        c.write("\n".join((
-            f"#include \"{header}\"",
-            "",
-            extern_c_begin,
-            "",
-            generate_load_instance_table(
-                instance_cmds, table_name, load_instance_f, req_funcs),
-            "",
-            generate_load_device_table(
-                device_cmds, table_name, load_device_f, req_funcs),
-            "",
-            extern_c_end,
-        )))
-
-    physical_device_cmds = {cmd_name: cmd for cmd_name,
-                            cmd in instance_cmds.items()
-                            if is_physical_device_cmd(cmd)}
-    instance_cmds = {
-        cmd_name: cmd for cmd_name, cmd in instance_cmds.items()
-        if is_instance_cmd(cmd)}
-
-    hpp_out.parent.mkdir(exist_ok=True, parents=True)
-    with open(hpp_out, "w") as hpp:
-        hpp.write("\n".join((
-            "#pragma once",
-            f"#include \"{header}\"",
-            "",
-            "#include <cassert>",
             "",
             generate_instance_mixin(instance_cmds, instance_mixin, req_funcs),
             "",
@@ -317,6 +277,25 @@ def main():
                 physical_device_cmds, physical_device_mixin, req_funcs),
             "",
             generate_device_mixin(device_cmds, device_mixin, req_funcs),
+            "",
+            "} // namespace ren",
+        )))
+
+    header = hpp_out.name
+    cpp_out.parent.mkdir(exist_ok=True, parents=True)
+    with open(cpp_out, "w") as c:
+        c.write("\n".join((
+            f"#include \"{header}\"",
+            "",
+            "namespace ren {",
+            "",
+            generate_load_instance_table(
+                instance_cmds | physical_device_cmds, table_name, load_instance_f, req_funcs),
+            "",
+            generate_load_device_table(
+                device_cmds, table_name, load_device_f, req_funcs),
+            "",
+            "} // namespace ren",
         )))
 
 

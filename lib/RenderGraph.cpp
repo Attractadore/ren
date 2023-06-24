@@ -2,7 +2,7 @@
 #include "CommandAllocator.hpp"
 #include "CommandBuffer.hpp"
 #include "Device.hpp"
-#include "Formats.inl"
+#include "Formats.hpp"
 #include "ResourceArena.hpp"
 #include "Support/FlatSet.hpp"
 #include "Support/Log.hpp"

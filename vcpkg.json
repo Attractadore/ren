@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "dependencies": [
     "boost-container",
-    "boost-preprocessor",
     "boost-functional",
+    "boost-predef",
+    "boost-preprocessor",
     "fmt",
     "glm",
     "range-v3",

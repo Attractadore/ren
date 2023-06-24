@@ -1,5 +1,6 @@
 #pragma once
 #include "Support/Enum.hpp"
+#include "Support/StdDef.hpp"
 #include "ren/ren.h"
 
 #include <vulkan/vulkan.h>
@@ -27,5 +28,18 @@ struct FormatProperties {
 };
 
 auto getVkFormat(RenFormat format) -> VkFormat;
+
+auto getFormatProperties(VkFormat format) -> FormatProperties;
+
+auto isSRGBFormat(VkFormat format) -> bool;
+auto isColorFormat(VkFormat format) -> bool;
+auto isDepthFormat(VkFormat format) -> bool;
+auto isStencilFormat(VkFormat format) -> bool;
+
+auto getSRGBFormat(VkFormat format) -> VkFormat;
+
+auto get_format_size(VkFormat format) -> u32;
+
+auto getVkImageAspectFlags(VkFormat format) -> VkImageAspectFlags;
 
 } // namespace ren

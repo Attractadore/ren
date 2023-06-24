@@ -7,12 +7,15 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 project(ren VERSION 0.1.0)
 
+include(CTest)
+
 set(REN_MASTER_PROJECT OFF)
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(REN_MASTER_PROJECT ON)
 endif()
 
 option(REN_INSTALL "Generate the install target" ${REN_MASTER_PROJECT})
+option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
 option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
@@ -22,12 +25,12 @@ set(REN_ASSETS_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/assets)
 
 set(REN_TARGETS ${PROJECT_NAME}-targets)
 
-include(CTest)
-if(BUILD_TESTING AND NOT DEFINED REN_BUILD_TESTS)
-  set(REN_BUILD_TESTS ON)
-endif()
-
 add_subdirectory(lib)
+
+if(REN_BUILD_TESTS)
+  message(STATUS "Build tests")
+  add_subdirectory(tests)
+endif()
 
 if(REN_BUILD_EXAMPLES)
   message(STATUS "Build examples")

@@ -1,7 +1,7 @@
 #include "Swapchain.hpp"
 #include "Device.hpp"
-#include "Errors.hpp"
-#include "Formats.inl"
+#include "Formats.hpp"
+#include "Support/Errors.hpp"
 
 #include <range/v3/algorithm.hpp>
 
@@ -11,7 +11,7 @@ namespace {
 VkSurfaceCapabilitiesKHR getSurfaceCapabilities(Device &device,
                                                 VkSurfaceKHR surface) {
   VkSurfaceCapabilitiesKHR capabilities;
-  throwIfFailed(
+  throw_if_failed(
       device.GetPhysicalDeviceSurfaceCapabilitiesKHR(surface, &capabilities),
       "Vulkan: Failed to get surface capabilities");
   return capabilities;
@@ -19,13 +19,13 @@ VkSurfaceCapabilitiesKHR getSurfaceCapabilities(Device &device,
 
 auto getSurfaceFormats(Device &device, VkSurfaceKHR surface) {
   unsigned format_count = 0;
-  throwIfFailed(device.GetPhysicalDeviceSurfaceFormatsKHR(
-                    surface, &format_count, nullptr),
-                "Vulkan: Failed to get surface formats");
+  throw_if_failed(device.GetPhysicalDeviceSurfaceFormatsKHR(
+                      surface, &format_count, nullptr),
+                  "Vulkan: Failed to get surface formats");
   SmallVector<VkSurfaceFormatKHR, 8> formats(format_count);
-  throwIfFailed(device.GetPhysicalDeviceSurfaceFormatsKHR(
-                    surface, &format_count, formats.data()),
-                "Vulkan: Failed to get surface formats");
+  throw_if_failed(device.GetPhysicalDeviceSurfaceFormatsKHR(
+                      surface, &format_count, formats.data()),
+                  "Vulkan: Failed to get surface formats");
   formats.resize(format_count);
   return formats;
 }
@@ -130,17 +130,17 @@ void Swapchain::create() {
   m_create_info.oldSwapchain = m_swapchain;
 
   VkSwapchainKHR new_swapchain;
-  throwIfFailed(m_device->CreateSwapchainKHR(&m_create_info, &new_swapchain),
-                "Vulkan: Failed to create swapchain");
+  throw_if_failed(m_device->CreateSwapchainKHR(&m_create_info, &new_swapchain),
+                  "Vulkan: Failed to create swapchain");
   destroy();
   m_swapchain = new_swapchain;
 
   unsigned image_count = 0;
-  throwIfFailed(
+  throw_if_failed(
       m_device->GetSwapchainImagesKHR(m_swapchain, &image_count, nullptr),
       "Vulkan: Failed to get swapchain image count");
   SmallVector<VkImage, 3> images(image_count);
-  throwIfFailed(
+  throw_if_failed(
       m_device->GetSwapchainImagesKHR(m_swapchain, &image_count, images.data()),
       "Vulkan: Failed to get swapchain images");
 

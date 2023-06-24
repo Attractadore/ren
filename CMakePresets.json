@@ -13,11 +13,13 @@
     {
       "name": "debug",
       "displayName": "Debug Config",
-      "description": "Debug build with assertions and validation",
+      "description": "Debug build with debug options",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "REN_BUILD_TESTS": "OFF",
         "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
+        "REN_ASSERTIONS": "ON",
         "REN_VULKAN_VALIDATION": "ON",
         "REN_VULKAN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG_NAMES": "ON",
@@ -27,9 +29,10 @@
     {
       "name": "devel",
       "displayName": "Development Config",
-      "description": "Debug build with tests and examples",
+      "description": "Development build with debug options, optimizations, tests and examples",
       "inherits": "debug",
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
@@ -42,7 +45,8 @@
       "description": "Release build with optimizations",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "REN_BUILD_TESTS": "OFF"
       }
     },
     {

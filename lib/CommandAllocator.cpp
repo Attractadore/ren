@@ -1,6 +1,6 @@
 #include "CommandAllocator.hpp"
 #include "Device.hpp"
-#include "Errors.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 
 namespace ren {
@@ -12,8 +12,8 @@ CommandPool::CommandPool(Device &device) {
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
       .queueFamilyIndex = m_device->getGraphicsQueueFamily(),
   };
-  throwIfFailed(m_device->CreateCommandPool(&pool_info, &m_pool),
-                "Vulkan: Failed to create command pool");
+  throw_if_failed(m_device->CreateCommandPool(&pool_info, &m_pool),
+                  "Vulkan: Failed to create command pool");
 }
 
 CommandPool::CommandPool(CommandPool &&other)
@@ -61,9 +61,9 @@ VkCommandBuffer CommandPool::allocate() {
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = alloc_count,
     };
-    throwIfFailed(m_device->AllocateCommandBuffers(
-                      &alloc_info, m_cmd_buffers.data() + old_capacity),
-                  "Vulkan: Failed to allocate command buffers");
+    throw_if_failed(m_device->AllocateCommandBuffers(
+                        &alloc_info, m_cmd_buffers.data() + old_capacity),
+                    "Vulkan: Failed to allocate command buffers");
   }
   return m_cmd_buffers[m_allocated_count++];
 }

@@ -1,7 +1,7 @@
 #include "PipelineLoading.hpp"
-#include "Errors.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Array.hpp"
+#include "Support/Errors.hpp"
 #include "glsl/interface.hpp"
 
 #include "FragmentShader.h"
@@ -55,19 +55,19 @@ auto create_pipeline_layout(ResourceArena &arena,
   for (auto code : shaders) {
     spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
                                      SPV_REFLECT_MODULE_FLAG_NO_COPY);
-    throwIfFailed(shader.GetResult(),
-                  "SPIRV-Reflect: Failed to create shader module");
+    throw_if_failed(shader.GetResult(),
+                    "SPIRV-Reflect: Failed to create shader module");
 
     auto stage = static_cast<VkShaderStageFlagBits>(shader.GetShaderStage());
 
     uint32_t num_push_constants = 0;
-    throwIfFailed(
+    throw_if_failed(
         shader.EnumeratePushConstantBlocks(&num_push_constants, nullptr),
         "SPIRV-Reflect: Failed to enumerate push constants");
     assert(num_push_constants <= 1);
     if (num_push_constants) {
       SpvReflectBlockVariable *block_var;
-      throwIfFailed(
+      throw_if_failed(
           shader.EnumeratePushConstantBlocks(&num_push_constants, &block_var),
           "SPIRV-Reflect: Failed to enumerate push constants");
       push_constants.stageFlags |= stage;

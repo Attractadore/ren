@@ -1,7 +1,6 @@
 #include "Device.hpp"
-#include "Errors.hpp"
-#include "Formats.inl"
 #include "Support/Array.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -32,8 +31,8 @@ void set_debug_name(Device &device, T object, const DebugName &name) {
       .objectHandle = (uint64_t)object,
       .pObjectName = name.c_str(),
   };
-  throwIfFailed(device.SetDebugUtilsObjectNameEXT(&name_info),
-                "Vulkan: Failed to set object debug name");
+  throw_if_failed(device.SetDebugUtilsObjectNameEXT(&name_info),
+                  "Vulkan: Failed to set object debug name");
 #endif
 }
 
@@ -83,7 +82,7 @@ int findGraphicsQueueFamily(Device *device) {
 Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
                VkPhysicalDevice m_adapter)
     : m_instance(instance), m_adapter(m_adapter) {
-  loadInstanceFunctions(proc, m_instance, &m_vk);
+  load_instance_functions(proc, m_instance, &m_vk);
 
   m_graphics_queue_family = findGraphicsQueueFamily(this);
 
@@ -140,10 +139,10 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .ppEnabledExtensionNames = extensions.data(),
   };
 
-  throwIfFailed(CreateDevice(&create_info, &m_device),
-                "Vulkan: Failed to create device");
+  throw_if_failed(CreateDevice(&create_info, &m_device),
+                  "Vulkan: Failed to create device");
 
-  loadDeviceFunctions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
+  load_device_functions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
 
   GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
   m_graphics_queue_semaphore = create_semaphore({
@@ -166,8 +165,8 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .vulkanApiVersion = getRequiredAPIVersion(),
   };
 
-  throwIfFailed(vmaCreateAllocator(&allocator_info, &m_allocator),
-                "VMA: Failed to create allocator");
+  throw_if_failed(vmaCreateAllocator(&allocator_info, &m_allocator),
+                  "VMA: Failed to create allocator");
 }
 
 #define define_queue_deleter(T, F)                                             \
@@ -242,8 +241,8 @@ auto Device::create_descriptor_pool(
   };
 
   VkDescriptorPool pool;
-  throwIfFailed(CreateDescriptorPool(&pool_info, &pool),
-                "Vulkan: Failed to create descriptor pool");
+  throw_if_failed(CreateDescriptorPool(&pool_info, &pool),
+                  "Vulkan: Failed to create descriptor pool");
   set_debug_name(*this, pool, create_info.name);
 
   return m_descriptor_pools.emplace(DescriptorPool{
@@ -322,8 +321,8 @@ auto Device::create_descriptor_set_layout(
   };
 
   VkDescriptorSetLayout layout;
-  throwIfFailed(CreateDescriptorSetLayout(&layout_info, &layout),
-                "Vulkann: Failed to create descriptor set layout");
+  throw_if_failed(CreateDescriptorSetLayout(&layout_info, &layout),
+                  "Vulkann: Failed to create descriptor set layout");
   set_debug_name(*this, layout, create_info.name);
 
   return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
@@ -370,7 +369,7 @@ auto Device::allocate_descriptor_sets(
   auto result = AllocateDescriptorSets(&alloc_info, sets);
   switch (result) {
   default: {
-    throwIfFailed(result, "Vulkan: Failed to allocate descriptor sets");
+    throw_if_failed(result, "Vulkan: Failed to allocate descriptor sets");
   }
   case VK_SUCCESS: {
     return true;
@@ -434,9 +433,9 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
   VkBuffer buffer;
   VmaAllocation allocation;
   VmaAllocationInfo map_info;
-  throwIfFailed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info, &buffer,
-                                &allocation, &map_info),
-                "VMA: Failed to create buffer");
+  throw_if_failed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info,
+                                  &buffer, &allocation, &map_info),
+                  "VMA: Failed to create buffer");
   set_debug_name(*this, buffer, create_info.name);
 
   uint64_t address = 0;
@@ -529,9 +528,9 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
 
   VkImage image;
   VmaAllocation allocation;
-  throwIfFailed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
-                               &allocation, nullptr),
-                "VMA: Failed to create image");
+  throw_if_failed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
+                                 &allocation, nullptr),
+                  "VMA: Failed to create image");
   set_debug_name(*this, image, create_info.name);
 
   return m_textures.emplace(Texture{
@@ -671,8 +670,8 @@ auto Device::getVkImageView(const TextureView &view) -> VkImageView {
                 .layerCount = view.num_array_layers,
             },
     };
-    throwIfFailed(CreateImageView(&view_info, &image_view),
-                  "Vulkan: Failed to create image view");
+    throw_if_failed(CreateImageView(&view_info, &image_view),
+                    "Vulkan: Failed to create image view");
   }
   return image_view;
 }
@@ -690,8 +689,8 @@ auto Device::create_sampler(const SamplerCreateInfo &&create_info)
   };
 
   VkSampler sampler;
-  throwIfFailed(CreateSampler(&sampler_info, &sampler),
-                "Vulkan: Failed to create sampler");
+  throw_if_failed(CreateSampler(&sampler_info, &sampler),
+                  "Vulkan: Failed to create sampler");
   set_debug_name(*this, sampler, create_info.name);
 
   return m_samplers.emplace(Sampler{
@@ -729,8 +728,8 @@ auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
   };
 
   VkSemaphore semaphore;
-  throwIfFailed(CreateSemaphore(&semaphore_info, &semaphore),
-                "Vulkan: Failed to create semaphore");
+  throw_if_failed(CreateSemaphore(&semaphore_info, &semaphore),
+                  "Vulkan: Failed to create semaphore");
   set_debug_name(*this, semaphore, create_info.name);
 
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
@@ -800,8 +799,8 @@ void Device::queueSubmit(
       .pSignalSemaphoreInfos = signal_semaphores.data(),
   };
 
-  throwIfFailed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
-                "Vulkan: Failed to submit work to queue");
+  throw_if_failed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
+                  "Vulkan: Failed to submit work to queue");
 }
 
 static auto create_shader_module(Device &device,
@@ -813,8 +812,8 @@ static auto create_shader_module(Device &device,
       .pCode = reinterpret_cast<const u32 *>(code.data()),
   };
   VkShaderModule module;
-  throwIfFailed(device.CreateShaderModule(&module_info, &module),
-                "Vulkan: Failed to create shader module");
+  throw_if_failed(device.CreateShaderModule(&module_info, &module),
+                  "Vulkan: Failed to create shader module");
   return module;
 }
 
@@ -935,8 +934,9 @@ auto Device::create_graphics_pipeline(
   };
 
   VkPipeline pipeline;
-  throwIfFailed(CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
-                "Vulkan: Failed to create graphics pipeline");
+  throw_if_failed(
+      CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
+      "Vulkan: Failed to create graphics pipeline");
   set_debug_name(*this, pipeline, create_info.name);
   for (auto module : shader_modules) {
     DestroyShaderModule(module);
@@ -987,8 +987,8 @@ auto Device::create_compute_pipeline(
   };
 
   VkPipeline pipeline;
-  throwIfFailed(CreateComputePipelines(nullptr, 1, &pipeline_info, &pipeline),
-                "Vulkan: Failed to create compute pipeline");
+  throw_if_failed(CreateComputePipelines(nullptr, 1, &pipeline_info, &pipeline),
+                  "Vulkan: Failed to create compute pipeline");
   set_debug_name(*this, pipeline, create_info.name);
   DestroyShaderModule(module);
 
@@ -1033,8 +1033,8 @@ auto Device::create_pipeline_layout(
   };
 
   VkPipelineLayout layout;
-  throwIfFailed(CreatePipelineLayout(&layout_info, &layout),
-                "Vulkan: Failed to create pipeline layout");
+  throw_if_failed(CreatePipelineLayout(&layout_info, &layout),
+                  "Vulkan: Failed to create pipeline layout");
   set_debug_name(*this, layout, create_info.name);
 
   return m_pipeline_layouts.emplace(PipelineLayout{

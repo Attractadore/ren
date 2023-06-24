@@ -1,13 +1,12 @@
 #include "Scene.hpp"
 #include "Camera.inl"
 #include "CommandBuffer.hpp"
-#include "Errors.hpp"
-#include "Formats.inl"
 #include "Passes/AutomaticExposure.hpp"
 #include "Passes/Color.hpp"
 #include "Passes/Exposure.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
+#include "Support/Errors.hpp"
 #include "glsl/encode.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -45,12 +44,15 @@ Scene::Scene(Device &device)
                                         persistent_descriptor_set_layout));
       }()) {
 
-#if !__clang__
-  static_assert(std::bit_cast<u32>(SlotMapKey()) == 0,
-                "C handles can't be directly converted to SlotMap keys");
+  // TODO: delete when Clang implements constexpr std::bit_cast for structs with
+  // bitfields
+#define error "C handles can't be directly converted to SlotMap keys"
+#if !BOOST_COMP_CLANG
+  static_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #else
-  assert(std::bit_cast<u32>(SlotMapKey()) == 0);
+  ren_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #endif
+#undef error
 }
 
 Scene::Scene(Device &device, ResourceArena persistent_arena,

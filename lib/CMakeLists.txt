@@ -4,7 +4,7 @@ set(REN_LOG_SEVERITY
       STRING
       "Enable logging for these severity levels (Available levels are: ERROR, WARN, INFO, DEBUG)"
 )
-option(REN_BUILD_TESTS "Build tests" OFF)
+option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
 option(REN_RENDER_GRAPH_DEBUG_NAMES "Enable RenderGraph object debug names" OFF)
@@ -37,6 +37,10 @@ foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
 endforeach()
+if (REN_ASSERTIONS)
+  message(STATUS "Enable assertions")
+  target_compile_definitions(Support INTERFACE REN_ASSERTIONS)
+endif()
 
 add_library(Support-PCH INTERFACE)
 target_link_libraries(Support-PCH INTERFACE Support)
@@ -71,15 +75,13 @@ target_precompile_headers(
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
 set(VK_XML ${VULKAN_HEADERS_REGISTRY_DIRECTORY}/vk.xml)
-set(DISPATCH_TABLE_H ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.h)
 set(DISPATCH_TABLE_HPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.hpp)
 set(DISPATCH_TABLE_CPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.cpp)
 
 add_custom_command(
-  OUTPUT ${DISPATCH_TABLE_H} ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
+  OUTPUT ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
   DEPENDS ${VK_XML} ${GEN_DISPATCH_TABLE_PY}
-  COMMAND Python3::Interpreter ARGS ${GEN_DISPATCH_TABLE_PY} ${VK_XML}
-          ${DISPATCH_TABLE_H} ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
+  COMMAND Python3::Interpreter ARGS ${GEN_DISPATCH_TABLE_PY} ${VK_XML} ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
   VERBATIM)
 
 add_library(
@@ -164,11 +166,6 @@ target_sources(
 target_link_libraries(ren-hpp INTERFACE ren::ren tl::expected)
 target_compile_features(ren-hpp INTERFACE cxx_std_20)
 add_library(ren::ren-hpp ALIAS ren-hpp)
-
-if(REN_BUILD_TESTS)
-  message(STATUS "Build tests")
-  add_subdirectory(tests)
-endif()
 
 if(REN_INSTALL)
   include(GNUInstallDirs)

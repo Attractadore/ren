@@ -1,6 +1,6 @@
 #include "CommandBuffer.hpp"
 #include "Device.hpp"
-#include "Errors.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 
 namespace ren {
@@ -18,13 +18,13 @@ void CommandBuffer::begin() {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
-  throwIfFailed(m_device->BeginCommandBuffer(m_cmd_buffer, &begin_info),
-                "Vulkan: Failed to begin command buffer");
+  throw_if_failed(m_device->BeginCommandBuffer(m_cmd_buffer, &begin_info),
+                  "Vulkan: Failed to begin command buffer");
 }
 
 void CommandBuffer::end() {
-  throwIfFailed(m_device->EndCommandBuffer(m_cmd_buffer),
-                "Vulkan: Failed to end command buffer");
+  throw_if_failed(m_device->EndCommandBuffer(m_cmd_buffer),
+                  "Vulkan: Failed to end command buffer");
 }
 
 void CommandBuffer::begin_rendering(

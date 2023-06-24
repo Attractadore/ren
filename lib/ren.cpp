@@ -1,7 +1,7 @@
 #include "ren/ren.h"
 #include "Device.hpp"
-#include "Errors.hpp"
 #include "Scene.hpp"
+#include "Support/Errors.hpp"
 #include "Swapchain.hpp"
 #include "ren/ren-vk.h"
 
@@ -94,8 +94,8 @@ VkInstance create_instance(PFN_vkGetInstanceProcAddr proc,
       load_vulkan_function(proc, VK_NULL_HANDLE, vkCreateInstance);
 
   VkInstance instance;
-  throwIfFailed(vk_create_instance(&create_info, nullptr, &instance),
-                "Vulkan: Failed to create VkInstance");
+  throw_if_failed(vk_create_instance(&create_info, nullptr, &instance),
+                  "Vulkan: Failed to create VkInstance");
 
   return instance;
 }
@@ -109,10 +109,11 @@ VkPhysicalDevice find_adapter(PFN_vkGetInstanceProcAddr proc,
       load_vulkan_function(proc, instance, vkGetPhysicalDeviceProperties);
 
   unsigned num_devices = 0;
-  throwIfFailed(vk_enumerate_physical_devices(instance, &num_devices, nullptr),
-                "Vulkan: Failed to enumerate physical device");
+  throw_if_failed(
+      vk_enumerate_physical_devices(instance, &num_devices, nullptr),
+      "Vulkan: Failed to enumerate physical device");
   SmallVector<VkPhysicalDevice> devices(num_devices);
-  throwIfFailed(
+  throw_if_failed(
       vk_enumerate_physical_devices(instance, &num_devices, devices.data()),
       "Vulkan: Failed to enumerate physical device");
   devices.resize(num_devices);
@@ -154,7 +155,7 @@ RenResult ren_vk_CreateDevice(const RenDeviceDesc *desc, RenDevice **p_device) {
   result = lippincott([&] {
     adapter =
         ren::find_adapter(desc->proc, instance, desc->pipeline_cache_uuid);
-    ren::throwIfFailed(adapter, "Vulkan: Failed to find physical device");
+    ren::throw_if_failed(adapter, "Vulkan: Failed to find physical device");
   });
   if (result) {
     goto clean;
@@ -193,8 +194,9 @@ RenResult ren_vk_CreateSwapchain(RenDevice *device,
   VkSurfaceKHR surface = VK_NULL_HANDLE;
 
   result = lippincott([&] {
-    ren::throwIfFailed(create_surface(device->getInstance(), usrptr, &surface),
-                       "Vulkan: Failed to create surface");
+    ren::throw_if_failed(
+        create_surface(device->getInstance(), usrptr, &surface),
+        "Vulkan: Failed to create surface");
   });
   if (result) {
     goto clean;

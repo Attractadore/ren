@@ -1,7 +1,7 @@
 #include "Texture.hpp"
 #include "Device.hpp"
-#include "Errors.hpp"
-#include "Formats.inl"
+#include "Formats.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Math.hpp"
 
 namespace ren {
