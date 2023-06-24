@@ -320,16 +320,20 @@ void CommandBuffer::pipeline_barrier(
 }
 
 void CommandBuffer::begin_debug_region(const char *label) {
+#if REN_DEBUG_NAMES
   assert(label);
   VkDebugUtilsLabelEXT label_info = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pLabelName = label,
   };
   m_device->CmdBeginDebugUtilsLabelEXT(m_cmd_buffer, &label_info);
+#endif
 }
 
 void CommandBuffer::end_debug_region() {
+#if REN_DEBUG_NAMES
   m_device->CmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+#endif
 }
 
 } // namespace ren
