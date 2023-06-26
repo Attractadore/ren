@@ -1,5 +1,4 @@
 #pragma once
-#include "CommandBuffer.hpp"
 #include "Device.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Optional.hpp"

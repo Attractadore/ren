@@ -23,14 +23,12 @@ auto setup_camera_exposure_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto pass = rgb.create_pass({.name = "Camera exposure"});
 
-  auto exposure_buffer = pass.create_buffer({
+  auto exposure_buffer = pass.create_upload_buffer({
       .name = "Camera exposure",
-      .heap = BufferHeap::Upload,
       .size = sizeof(glsl::Exposure),
   });
 
-  pass.set_callback([exposure_buffer, exposure](Device &device, RGRuntime &rg,
-                                                CommandBuffer &cmd) {
+  pass.set_host_callback([=](Device &device, RGRuntime &rg) {
     auto *exposure_ptr =
         device.map_buffer<glsl::Exposure>(rg.get_buffer(exposure_buffer));
     *exposure_ptr = {

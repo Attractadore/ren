@@ -74,20 +74,18 @@ void CommandPool::reset() {
 }
 
 CommandAllocator::CommandAllocator(Device &device) {
-  m_device = &device;
   for (auto _ : range(m_frame_pools.max_size())) {
-    m_frame_pools.emplace_back(*m_device);
+    m_frame_pools.emplace_back(device);
   }
-}
-
-CommandBuffer CommandAllocator::allocate() {
-  auto cmd_buffer = m_frame_pools[m_frame_index].allocate();
-  return {m_device, cmd_buffer};
 }
 
 void CommandAllocator::next_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_pools.size();
   m_frame_pools[m_frame_index].reset();
+}
+
+auto CommandAllocator::allocate() -> VkCommandBuffer {
+  return m_frame_pools[m_frame_index].allocate();
 }
 
 } // namespace ren

@@ -1,6 +1,6 @@
 #include "RenderGraph.hpp"
 #include "CommandAllocator.hpp"
-#include "CommandBuffer.hpp"
+#include "CommandRecorder.hpp"
 #include "Device.hpp"
 #include "Formats.hpp"
 #include "ResourceArena.hpp"
@@ -21,14 +21,16 @@ auto get_pass_stages(RGPassType type) -> VkPipelineStageFlags2 {
   case RGPassType::Host:
     return VK_PIPELINE_STAGE_2_NONE;
   case RGPassType::Graphics:
-    return VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+    return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
+           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
            VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
            VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
   case RGPassType::Compute:
-    return VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
+           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
   case RGPassType::Transfer:
     return VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT |
            VK_PIPELINE_STAGE_2_RESOLVE_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
@@ -120,9 +122,9 @@ auto get_texture_layout(VkAccessFlags2 accesses) -> VkImageLayout {
                           VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
   auto transfer_src_accesses = VK_ACCESS_2_TRANSFER_READ_BIT;
   auto transfer_dst_accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-  // TODO: read only also applies to read only attachments, but this requires
-  // support in begin_rendering
-  auto read_only_accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+  auto read_only_accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
   auto attachment_accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
                              VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
                              VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
@@ -445,8 +447,8 @@ auto RenderGraph::Builder::import_buffer(RGBufferImportInfo &&import_info)
   return new_buffer;
 }
 
-void RenderGraph::Builder::set_callback(RGPassID pass, RGCallback cb) {
-  m_passes[pass].pass_cb = std::move(cb);
+void RenderGraph::Builder::set_callback(RGPassID pass, RGPassCallback cb) {
+  m_passes[pass].cb = std::move(cb);
 }
 
 void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
@@ -467,40 +469,37 @@ void RenderGraph::Builder::present(Swapchain &swapchain, RGTextureID texture,
       .type = RGPassType::Transfer,
   });
 
-  blit.read_texture({
-      .texture = texture,
-      .accesses = VK_ACCESS_2_TRANSFER_READ_BIT,
-  });
+  blit.read_transfer_texture({.texture = texture});
 
-  auto blitted_swapchain_image = blit.write_texture({
+  auto blitted_swapchain_image = blit.write_transfer_texture({
       .name = "Swapchain image after blit",
       .texture = swapchain_image,
-      .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
   });
 
   blit.wait_semaphore({.semaphore = acquire_semaphore});
-  blit.set_callback([=, src = texture, dst = swapchain_image](
-                        Device &device, RGRuntime &rg, CommandBuffer &cmd) {
-    auto src_texture = rg.get_texture(src);
-    auto swapchain_texture = rg.get_texture(dst);
-    VkImageBlit region = {
-        .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                           .mipLevel = src_texture.first_mip_level,
-                           .baseArrayLayer = src_texture.first_array_layer,
-                           .layerCount = 1},
-        .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                           .mipLevel = swapchain_texture.first_mip_level,
-                           .baseArrayLayer =
-                               swapchain_texture.first_array_layer,
-                           .layerCount = 1},
-    };
-    auto src_size = device.get_texture_view_size(src_texture);
-    std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-    auto dst_size = device.get_texture_view_size(swapchain_texture);
-    std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
-    cmd.blit(src_texture.texture, swapchain_texture.texture, region,
-             VK_FILTER_LINEAR);
-  });
+  blit.set_transfer_callback(
+      [=, src = texture, dst = swapchain_image](Device &device, RGRuntime &rg,
+                                                CommandRecorder &cmd) {
+        auto src_texture = rg.get_texture(src);
+        auto swapchain_texture = rg.get_texture(dst);
+        VkImageBlit region = {
+            .srcSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                               .mipLevel = src_texture.first_mip_level,
+                               .baseArrayLayer = src_texture.first_array_layer,
+                               .layerCount = 1},
+            .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                               .mipLevel = swapchain_texture.first_mip_level,
+                               .baseArrayLayer =
+                                   swapchain_texture.first_array_layer,
+                               .layerCount = 1},
+        };
+        auto src_size = device.get_texture_view_size(src_texture);
+        std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
+        auto dst_size = device.get_texture_view_size(swapchain_texture);
+        std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
+        cmd.blit(src_texture.texture, swapchain_texture.texture, region,
+                 VK_FILTER_LINEAR);
+      });
 
   auto present = create_pass({.name = "Present"});
   present.read_texture({
@@ -829,10 +828,14 @@ void RenderGraph::Builder::insert_barriers(Device &device) {
         }) |
         ranges::to<Vector>();
 
-    pass.barrier_cb = [memory_barriers = std::move(memory_barriers),
-                       image_barriers = std::move(image_barriers)](
-                          Device &device, RGRuntime &rg, CommandBuffer &cmd) {
+    pass.cb = [memory_barriers = std::move(memory_barriers),
+               image_barriers = std::move(image_barriers),
+               cb = std::move(pass.cb)](Device &device, RGRuntime &rg,
+                                        CommandRecorder &cmd) {
       cmd.pipeline_barrier(memory_barriers, image_barriers);
+      if (cb) {
+        cb(device, rg, cmd);
+      }
     };
   }
 }
@@ -852,8 +855,7 @@ auto RenderGraph::Builder::batch_passes(std::span<const RGPassID> schedule)
       begin_new_batch = false;
     }
     auto &batch = batches.back();
-    batch.barrier_cbs.push_back(std::move(pass.barrier_cb));
-    batch.pass_cbs.push_back(std::move(pass.pass_cb));
+    batch.pass_cbs.push_back(std::move(pass.cb));
 #if REN_RENDER_GRAPH_DEBUG_NAMES
     auto &name = m_pass_names[passid];
     batch.pass_names.push_back(std::move(name));
@@ -916,29 +918,23 @@ void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
     cmd_buffers.clear();
 
     for (auto index : range(batch.pass_cbs.size())) {
-      const auto &barrier_cb = batch.barrier_cbs[index];
       const auto &pass_cb = batch.pass_cbs[index];
 
-      auto cmd = cmd_allocator.allocate();
-      cmd.begin();
-      if (barrier_cb) {
-        barrier_cb(device, m_runtime, cmd);
-      }
-      if (pass_cb) {
+      auto cmd_buffer = cmd_allocator.allocate();
+      {
+        CommandRecorder cmd(device, cmd_buffer);
+        if (pass_cb) {
 #if REN_RENDER_GRAPH_DEBUG_NAMES
-        auto pass_name = batch.pass_names[index].c_str();
-        cmd.begin_debug_region(pass_name);
+          const auto &pass_name = batch.pass_names[index];
+          auto _ = cmd.debug_region(pass_name.c_str());
 #endif
-        pass_cb(device, m_runtime, cmd);
-#if REN_RENDER_GRAPH_DEBUG_NAMES
-        cmd.end_debug_region();
-#endif
+          pass_cb(device, m_runtime, cmd);
+        }
       }
-      cmd.end();
 
       cmd_buffers.push_back({
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-          .commandBuffer = cmd.get(),
+          .commandBuffer = cmd_buffer,
       });
     }
 
@@ -1034,6 +1030,397 @@ void RenderGraph::retain_temporal_resources() {
     name = fmt::format("{} (from previous frame)", name);
   }
 #endif
+}
+
+RGPassBuilder::PassBuilder(RGPassID pass, Builder &builder)
+    : m_pass(pass), m_builder(&builder) {}
+
+void RGPassBuilder::read_buffer(RGBufferReadInfo &&read_info) {
+  m_builder->read_buffer(m_pass, std::move(read_info));
+}
+
+auto RGPassBuilder::write_buffer(RGBufferWriteInfo &&write_info) -> RGBufferID {
+  return m_builder->write_buffer(m_pass, std::move(write_info));
+}
+
+auto RGPassBuilder::create_buffer(RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
+  return m_builder->create_buffer(m_pass, std::move(create_info));
+}
+
+void RGPassBuilder::read_indirect_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+  read_info.accesses = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+void RGPassBuilder::read_index_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+  read_info.accesses = VK_ACCESS_2_INDEX_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+void RGPassBuilder::read_vertex_shader_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+  read_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+void RGPassBuilder::read_fragment_shader_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+  read_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+auto RGPassBuilder::create_uniform_buffer(RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
+  create_info.heap = BufferHeap::Upload;
+  create_info.stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                       VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+  create_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+  return create_buffer(std::move(create_info));
+}
+
+void RGPassBuilder::read_compute_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  read_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+auto RGPassBuilder::write_compute_buffer(RGBufferWriteInfo &&write_info)
+    -> RGBufferID {
+  write_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  write_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+  return write_buffer(std::move(write_info));
+}
+
+auto RGPassBuilder::create_compute_buffer(RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
+  create_info.heap = BufferHeap::Device;
+  create_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  create_info.accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+  return create_buffer(std::move(create_info));
+}
+
+void RGPassBuilder::read_transfer_buffer(RGBufferReadInfo &&read_info) {
+  read_info.stages = 0;
+  read_info.accesses = VK_ACCESS_2_TRANSFER_READ_BIT;
+  read_buffer(std::move(read_info));
+}
+
+[[nodiscard]] auto
+RGPassBuilder::write_transfer_buffer(RGBufferWriteInfo &&write_info)
+    -> RGBufferID {
+  write_info.stages = 0;
+  write_info.accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+  return write_buffer(std::move(write_info));
+}
+
+auto RGPassBuilder::create_transfer_buffer(RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
+  create_info.heap = BufferHeap::Device;
+  create_info.stages = 0;
+  create_info.accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+  return create_buffer(std::move(create_info));
+}
+
+auto RGPassBuilder::create_upload_buffer(RGBufferCreateInfo &&create_info)
+    -> RGBufferID {
+  create_info.heap = BufferHeap::Upload;
+  create_info.stages = 0;
+  create_info.accesses = 0;
+  return create_buffer(std::move(create_info));
+}
+
+void RGPassBuilder::set_color_attachment(RGColorAttachment attachment,
+                                         u32 index) {
+  auto &attachments = m_render_pass.color_attachments;
+  if (attachments.size() <= index) {
+    attachments.resize(index + 1);
+  }
+  attachments[index] = std::move(attachment);
+}
+
+auto RGPassBuilder::write_color_attachment(
+    RGColorAttachmentWriteInfo &&write_info) -> RGTextureID {
+  auto texture = write_texture({
+      .name = std::move(write_info.name),
+      .texture = write_info.texture,
+      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+      .temporal = write_info.temporal,
+  });
+  set_color_attachment(
+      {
+          .texture = texture,
+          .ops =
+              {
+                  .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                  .store = VK_ATTACHMENT_STORE_OP_STORE,
+              },
+      },
+      write_info.index);
+  return texture;
+}
+
+auto RGPassBuilder::create_color_attachment(
+    RGColorAttachmentCreateInfo &&create_info) -> RGTextureID {
+  auto texture = create_texture({
+      .name = std::move(create_info.name),
+      .type = VK_IMAGE_TYPE_2D,
+      .format = create_info.format,
+      .size = create_info.size,
+      .num_mip_levels = create_info.num_mip_levels,
+      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+      .temporal = create_info.temporal,
+  });
+  set_color_attachment(
+      {
+          .texture = texture,
+          .ops =
+              {
+                  .load = create_info.clear_color
+                              ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                              : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                  .store = VK_ATTACHMENT_STORE_OP_STORE,
+                  .clear_color =
+                      create_info.clear_color.value_or(glm::vec4(0.0f)),
+              },
+      },
+      create_info.index);
+  return texture;
+}
+
+void RGPassBuilder::read_depth_stencil_attachment(
+    RGDepthStencilAttachmentReadInfo &&read_info) {
+  read_texture({
+      .texture = read_info.texture,
+      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+      .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+  });
+  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+      .texture = read_info.texture,
+      .depth_ops =
+          read_info.read_depth
+              ? Optional<DepthAttachmentOperations>(DepthAttachmentOperations{
+                    .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                    .store = VK_ATTACHMENT_STORE_OP_NONE,
+                })
+              : None,
+      .stencil_ops = read_info.read_stencil
+                         ? Optional<StencilAttachmentOperations>(
+                               StencilAttachmentOperations{
+                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                   .store = VK_ATTACHMENT_STORE_OP_NONE,
+                               })
+                         : None,
+  };
+}
+
+auto RGPassBuilder::write_depth_stencil_attachment(
+    RGDepthStencilAttachmentWriteInfo &&write_info) -> RGTextureID {
+  ren_assert(write_info.depth_ops or write_info.stencil_ops,
+             "At least one attachment aspect must be used");
+  auto clear_depth = write_info.depth_ops.and_then(
+      [](const RGDepthAttachmentWriteOperations &ops) {
+        return ops.clear_depth;
+      });
+  auto clear_stencil = write_info.stencil_ops.and_then(
+      [](const RGStencilAttachmentWriteOperations &ops) {
+        return ops.clear_stencil;
+      });
+  ren_assert(not(clear_depth and clear_stencil),
+             "Create a new attachment when clearing both depth and stencil");
+  auto texture = write_texture({
+      .name = std::move(write_info.name),
+      .texture = write_info.texture,
+      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+  });
+  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+      .texture = texture,
+      .depth_ops = write_info.depth_ops.map(
+          [](const RGDepthAttachmentWriteOperations &ops)
+              -> DepthAttachmentOperations {
+            return {
+                .load = ops.clear_depth ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                                        : VK_ATTACHMENT_LOAD_OP_LOAD,
+                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                .clear_depth = ops.clear_depth.value_or(0.0f),
+            };
+          }),
+      .stencil_ops = write_info.stencil_ops.map(
+          [](const RGStencilAttachmentWriteOperations &ops)
+              -> StencilAttachmentOperations {
+            return {
+                .load = ops.clear_stencil ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                                          : VK_ATTACHMENT_LOAD_OP_LOAD,
+                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                .clear_stencil = ops.clear_stencil.value_or(0),
+
+            };
+          }),
+  };
+  return texture;
+}
+
+auto RGPassBuilder::create_depth_stencil_attachment(
+    RGDepthStencilAttachmentCreateInfo &&create_info) -> RGTextureID {
+  ren_assert(create_info.clear_depth or create_info.clear_stencil,
+             "At least one attachment aspect must be used");
+  auto texture = create_texture({
+      .name = std::move(create_info.name),
+      .type = VK_IMAGE_TYPE_2D,
+      .format = create_info.format,
+      .size = create_info.size,
+      .num_mip_levels = create_info.num_mip_levels,
+      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+  });
+  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+      .texture = texture,
+      .depth_ops = create_info.clear_depth.map(
+          [](float clear_depth) -> DepthAttachmentOperations {
+            return {
+                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                .clear_depth = clear_depth,
+            };
+          }),
+      .stencil_ops = create_info.clear_stencil.map(
+          [](u8 clear_stencil) -> StencilAttachmentOperations {
+            return {
+                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                .clear_stencil = clear_stencil,
+            };
+          }),
+  };
+  return texture;
+}
+
+void RGPassBuilder::read_storage_texture(RGTextureReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  read_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+  read_info.layout = VK_IMAGE_LAYOUT_GENERAL;
+  read_texture(std::move(read_info));
+}
+
+auto RGPassBuilder::write_storage_texture(RGTextureWriteInfo &&write_info)
+    -> RGTextureID {
+  write_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  write_info.accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+  write_info.layout = VK_IMAGE_LAYOUT_GENERAL;
+  return write_texture(std::move(write_info));
+}
+
+auto RGPassBuilder::create_storage_texture(RGTextureCreateInfo &&create_info)
+    -> RGTextureID {
+  create_info.stages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+  create_info.accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+  create_info.layout = VK_IMAGE_LAYOUT_GENERAL;
+  return create_texture(std::move(create_info));
+}
+
+void RGPassBuilder::read_sampled_texture(RGTextureReadInfo &&read_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+  read_info.accesses = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+  read_info.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+  read_texture(std::move(read_info));
+}
+
+void RGPassBuilder::read_transfer_texture(RGTextureReadInfo &&read_info) {
+  read_info.stages = 0;
+  read_info.accesses = VK_ACCESS_2_TRANSFER_READ_BIT;
+  read_info.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+  read_texture(std::move(read_info));
+}
+
+auto RGPassBuilder::write_transfer_texture(RGTextureWriteInfo &&write_info)
+    -> RGTextureID {
+  write_info.stages = 0;
+  write_info.accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+  write_info.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  return write_texture(std::move(write_info));
+}
+
+auto RGPassBuilder::create_transfer_texture(RGTextureCreateInfo &&create_info)
+    -> RGTextureID {
+  create_info.stages = 0;
+  create_info.accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+  create_info.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  return create_texture(std::move(create_info));
+}
+
+void RGPassBuilder::set_host_callback(RGHostPassCallback cb) {
+  assert(cb);
+  m_builder->set_callback(
+      m_pass, [cb = std::move(cb)](Device &device, RGRuntime &rg,
+                                   CommandRecorder &) { cb(device, rg); });
+}
+
+void RGPassBuilder::set_graphics_callback(RGGraphicsPassCallback cb) {
+  assert(cb);
+  m_builder->set_callback(
+      m_pass, [cb = std::move(cb), begin_info = std::move(m_render_pass)](
+                  Device &device, RGRuntime &rg, CommandRecorder &cmd) {
+        auto color_attachments =
+            begin_info.color_attachments |
+            map([&](const Optional<RGColorAttachment> &attachment)
+                    -> Optional<ColorAttachment> {
+              return attachment.map(
+                  [&](const RGColorAttachment &attachment) -> ColorAttachment {
+                    return {
+                        .texture = rg.get_texture(attachment.texture),
+                        .ops = attachment.ops,
+                    };
+                  });
+            }) |
+            ranges::to<
+                StaticVector<Optional<ColorAttachment>, MAX_COLOR_ATTACHMENTS>>;
+        auto render_pass = cmd.render_pass({
+            .color_attachments = color_attachments,
+            .depth_stencil_attachment = begin_info.depth_stencil_attachment.map(
+                [&](const RGDepthStencilAttachment &attachment)
+                    -> DepthStencilAttachment {
+                  return {
+                      .texture = rg.get_texture(attachment.texture),
+                      .depth_ops = attachment.depth_ops,
+                      .stencil_ops = attachment.stencil_ops,
+                  };
+                }),
+        });
+        cb(device, rg, render_pass);
+      });
+}
+
+void RGPassBuilder::set_compute_callback(RGComputePassCallback cb) {
+  assert(cb);
+  m_builder->set_callback(m_pass,
+                          [cb = std::move(cb)](Device &device, RGRuntime &rg,
+                                               CommandRecorder &cmd) {
+                            auto pass = cmd.compute_pass();
+                            cb(device, rg, pass);
+                          });
+}
+
+void RGPassBuilder::set_transfer_callback(RGTransferPassCallback cb) {
+  assert(cb);
+  m_builder->set_callback(m_pass, std::move(cb));
 }
 
 } // namespace ren

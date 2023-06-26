@@ -1,4 +1,5 @@
 #pragma once
+#include "Config.hpp"
 #include "Descriptors.hpp"
 #include "Formats.hpp"
 
@@ -37,8 +38,6 @@ struct DepthTestInfo {
   VkCompareOp compare_op = VK_COMPARE_OP_GREATER;
 };
 
-constexpr usize MAX_COLOR_ATTACHMENTS = 8;
-
 struct ColorAttachmentInfo {
   VkFormat format;
   VkColorComponentFlags write_mask =
@@ -60,6 +59,7 @@ struct GraphicsPipelineCreateInfo {
 struct GraphicsPipeline {
   VkPipeline handle;
   Handle<PipelineLayout> layout;
+  VkShaderStageFlags stages = 0;
   InputAssemblyInfo input_assembly;
   MultisampleInfo multisample;
   Optional<DepthTestInfo> depth_test;

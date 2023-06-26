@@ -1,5 +1,5 @@
 #include "Passes/Color.hpp"
-#include "CommandBuffer.hpp"
+#include "CommandRecorder.hpp"
 #include "Device.hpp"
 #include "Support/Views.hpp"
 #include "TextureIDAllocator.hpp"
@@ -12,8 +12,6 @@ namespace {
 struct ColorPassResources {
   const HandleMap<Mesh> *meshes = nullptr;
   std::span<const MeshInst> mesh_insts;
-  RGTextureID texture;
-  RGTextureID depth_texture;
   RGBufferID uniform_buffer;
   RGBufferID transform_matrix_buffer;
   RGBufferID normal_matrix_buffer;
@@ -22,108 +20,91 @@ struct ColorPassResources {
   RGBufferID exposure_buffer;
   Handle<GraphicsPipeline> pipeline;
   TextureIDAllocator *texture_allocator = nullptr;
+  glm::uvec2 size;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;
   u32 num_dir_lights = 0;
 };
 
-void run_color_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
+void run_color_pass(Device &device, RGRuntime &rg, RenderPass &render_pass,
                     const ColorPassResources &rcs) {
-  assert(rcs.texture);
-  assert(rcs.depth_texture);
+  assert(glm::all(glm::greaterThan(cfg.size, glm::uvec2(0))));
 
-  const auto &texture = rg.get_texture(rcs.texture);
-  cmd.begin_rendering(rg.get_texture(rcs.texture),
-                      rg.get_texture(rcs.depth_texture));
-
-  auto size = device.get_texture_view_size(texture);
-  cmd.set_viewport(
+  auto size = rcs.size;
+  render_pass.set_viewport(
       {.width = float(size.x), .height = float(size.y), .maxDepth = 1.0f});
-  cmd.set_scissor_rect({.extent = {size.x, size.y}});
+  render_pass.set_scissor_rect({.extent = {size.x, size.y}});
 
-  if (not rcs.mesh_insts.empty()) {
-    assert(rcs.meshes);
-    assert(rcs.texture_allocator);
-    assert(rcs.uniform_buffer);
-    assert(rcs.transform_matrix_buffer);
-    assert(rcs.normal_matrix_buffer);
-    assert(rcs.materials_buffer);
-    assert(rcs.exposure_buffer);
-    assert(rcs.pipeline);
-
-    const auto &transform_matrix_buffer =
-        rg.get_buffer(rcs.transform_matrix_buffer);
-    const auto &normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
-    Optional<const BufferView &> directional_lights_buffer;
-    if (rcs.directional_lights_buffer) {
-      directional_lights_buffer = rg.get_buffer(rcs.directional_lights_buffer);
-    } else {
-      assert(rcs.num_dir_lights == 0);
-    }
-    const auto &materials_buffer = rg.get_buffer(rcs.materials_buffer);
-    const auto &exposure_buffer = rg.get_buffer(rcs.exposure_buffer);
-
-    const auto &uniform_buffer = rg.get_buffer(rcs.uniform_buffer);
-    auto *uniforms = device.map_buffer<glsl::ColorUB>(uniform_buffer);
-    *uniforms = {
-        .transform_matrices_ptr =
-            device.get_buffer_device_address(transform_matrix_buffer),
-        .normal_matrices_ptr =
-            device.get_buffer_device_address(normal_matrix_buffer),
-        .materials_ptr = device.get_buffer_device_address(materials_buffer),
-        .directional_lights_ptr = directional_lights_buffer.map_or(
-            [&](const BufferView &view) {
-              return device.get_buffer_device_address(view);
-            },
-            u64(0)),
-        .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
-        .proj_view = rcs.proj * rcs.view,
-        .eye = rcs.eye,
-        .num_dir_lights = rcs.num_dir_lights,
-    };
-
-    auto layout = device.get_graphics_pipeline(rcs.pipeline).layout;
-
-    std::array descriptor_sets = {rcs.texture_allocator->get_set()};
-    cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0,
-                             descriptor_sets);
-
-    cmd.bind_graphics_pipeline(rcs.pipeline);
-
-    auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
-    for (const auto &&[i, mesh_inst] : enumerate(rcs.mesh_insts)) {
-      const auto &mesh = (*rcs.meshes)[mesh_inst.mesh];
-      auto material = mesh_inst.material;
-
-      auto address = device.get_buffer_device_address(mesh.vertex_buffer);
-      auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
-      auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
-      auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
-      auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
-      glsl::ColorConstants pcs = {
-          .ub_ptr = ub_ptr,
-          .positions_ptr = address + positions_offset,
-          .colors_ptr =
-              (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
-          .normals_ptr = address + normals_offset,
-          .uvs_ptr =
-              (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
-          .matrix_index = unsigned(i),
-          .material_index = material,
-      };
-      cmd.set_push_constants(
-          layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-          pcs);
-
-      cmd.bind_index_buffer(mesh.index_buffer, mesh.index_format);
-      cmd.draw_indexed({
-          .num_indices = mesh.num_indices,
-      });
-    }
+  if (rcs.mesh_insts.empty()) {
+    return;
   }
 
-  cmd.end_rendering();
+  assert(rcs.meshes);
+  assert(rcs.texture_allocator);
+
+  const auto &transform_matrix_buffer =
+      rg.get_buffer(rcs.transform_matrix_buffer);
+  const auto &normal_matrix_buffer = rg.get_buffer(rcs.normal_matrix_buffer);
+  Optional<const BufferView &> directional_lights_buffer;
+  if (rcs.directional_lights_buffer) {
+    directional_lights_buffer = rg.get_buffer(rcs.directional_lights_buffer);
+  } else {
+    assert(rcs.num_dir_lights == 0);
+  }
+  const auto &materials_buffer = rg.get_buffer(rcs.materials_buffer);
+  const auto &exposure_buffer = rg.get_buffer(rcs.exposure_buffer);
+
+  const auto &uniform_buffer = rg.get_buffer(rcs.uniform_buffer);
+  auto *uniforms = device.map_buffer<glsl::ColorUB>(uniform_buffer);
+  *uniforms = {
+      .transform_matrices_ptr =
+          device.get_buffer_device_address(transform_matrix_buffer),
+      .normal_matrices_ptr =
+          device.get_buffer_device_address(normal_matrix_buffer),
+      .materials_ptr = device.get_buffer_device_address(materials_buffer),
+      .directional_lights_ptr = directional_lights_buffer.map_or(
+          [&](const BufferView &view) {
+            return device.get_buffer_device_address(view);
+          },
+          u64(0)),
+      .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
+      .proj_view = rcs.proj * rcs.view,
+      .eye = rcs.eye,
+      .num_dir_lights = rcs.num_dir_lights,
+  };
+
+  render_pass.bind_graphics_pipeline(rcs.pipeline);
+
+  render_pass.bind_descriptor_set(rcs.texture_allocator->get_set());
+
+  auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
+  for (const auto &&[i, mesh_inst] : enumerate(rcs.mesh_insts)) {
+    const auto &mesh = (*rcs.meshes)[mesh_inst.mesh];
+    auto material = mesh_inst.material;
+
+    auto address = device.get_buffer_device_address(mesh.vertex_buffer);
+    auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
+    auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
+    auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
+    auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
+
+    render_pass.set_push_constants(glsl::ColorConstants{
+        .ub_ptr = ub_ptr,
+        .positions_ptr = address + positions_offset,
+        .colors_ptr =
+            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
+        .normals_ptr = address + normals_offset,
+        .uvs_ptr = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
+        .matrix_index = unsigned(i),
+        .material_index = material,
+    });
+
+    render_pass.bind_index_buffer(mesh.index_buffer, mesh.index_format);
+    render_pass.draw_indexed({
+        .num_indices = mesh.num_indices,
+    });
+  }
 }
 
 } // namespace
@@ -143,72 +124,40 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
 
   if (cfg.transform_matrix_buffer) {
     assert(cfg.normal_matrix_buffer);
-    pass.read_buffer({
-        .buffer = cfg.transform_matrix_buffer,
-        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
-    pass.read_buffer({
-        .buffer = cfg.normal_matrix_buffer,
-        .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
+    pass.read_vertex_shader_buffer({.buffer = cfg.transform_matrix_buffer});
+    pass.read_vertex_shader_buffer({.buffer = cfg.normal_matrix_buffer});
   }
 
   if (cfg.directional_lights_buffer) {
-    pass.read_buffer({
-        .buffer = cfg.directional_lights_buffer,
-        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
+    pass.read_fragment_shader_buffer({.buffer = cfg.directional_lights_buffer});
   };
 
   if (cfg.materials_buffer) {
-    pass.read_buffer({
-        .buffer = cfg.materials_buffer,
-        .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
+    pass.read_fragment_shader_buffer({.buffer = cfg.materials_buffer});
   }
 
-  pass.read_buffer({
-      .buffer = cfg.exposure_buffer,
-      .stages = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-  });
+  pass.read_fragment_shader_buffer({.buffer = cfg.exposure_buffer});
 
-  auto uniform_buffer = pass.create_buffer({
+  auto uniform_buffer = pass.create_uniform_buffer({
       .name = "Color pass uniforms",
-      .heap = BufferHeap::Upload,
       .size = sizeof(glsl::ColorUB),
-      .stages = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
   });
 
-  auto texture = pass.create_texture({
+  auto texture = pass.create_color_attachment({
       .name = "Color buffer after color pass",
       .format = COLOR_FORMAT,
       .size = {cfg.size, 1},
-      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
   });
 
-  auto depth_texture = pass.create_texture({
+  auto depth_texture = pass.create_depth_stencil_attachment({
       .name = "Depth buffer after color pass",
       .format = DEPTH_FORMAT,
       .size = {cfg.size, 1},
-      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
   });
 
   ColorPassResources rcs = {
       .meshes = cfg.meshes,
       .mesh_insts = cfg.mesh_insts,
-      .texture = texture,
-      .depth_texture = depth_texture,
       .uniform_buffer = uniform_buffer,
       .transform_matrix_buffer = cfg.transform_matrix_buffer,
       .normal_matrix_buffer = cfg.normal_matrix_buffer,
@@ -217,15 +166,17 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .exposure_buffer = cfg.exposure_buffer,
       .pipeline = cfg.pipeline,
       .texture_allocator = cfg.texture_allocator,
+      .size = cfg.size,
       .proj = cfg.proj,
       .view = cfg.view,
       .eye = cfg.eye,
       .num_dir_lights = cfg.num_dir_lights,
   };
 
-  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
-    run_color_pass(device, rg, cmd, rcs);
-  });
+  pass.set_graphics_callback(
+      [rcs](Device &device, RGRuntime &rg, RenderPass &render_pass) {
+        run_color_pass(device, rg, render_pass, rcs);
+      });
 
   return {
       .texture = texture,

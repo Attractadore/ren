@@ -1,12 +1,12 @@
 #include "Scene.hpp"
 #include "Camera.inl"
-#include "CommandBuffer.hpp"
 #include "Passes/AutomaticExposure.hpp"
 #include "Passes/Color.hpp"
 #include "Passes/Exposure.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
 #include "Support/Errors.hpp"
+#include "Support/Span.hpp"
 #include "glsl/encode.hpp"
 
 #include <glm/gtc/type_ptr.hpp>

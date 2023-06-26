@@ -1,7 +1,8 @@
 #pragma once
-#include "CommandBuffer.hpp"
 #include "Config.hpp"
-#include "Support/StableVector.hpp"
+#include "Support/Vector.hpp"
+
+#include <vulkan/vulkan.h>
 
 namespace ren {
 
@@ -29,7 +30,6 @@ public:
 };
 
 class CommandAllocator {
-  Device *m_device;
   StaticVector<CommandPool, PIPELINE_DEPTH> m_frame_pools;
   unsigned m_frame_index = 0;
 
@@ -38,7 +38,7 @@ public:
 
   void next_frame();
 
-  CommandBuffer allocate();
+  auto allocate() -> VkCommandBuffer;
 };
 
 } // namespace ren

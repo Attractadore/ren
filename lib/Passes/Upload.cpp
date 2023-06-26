@@ -14,7 +14,7 @@ struct UploadPassResources {
   RGBufferID materials_buffer;
 };
 
-void run_upload_pass(Device &device, RGRuntime &rg, CommandBuffer &cmd,
+void run_upload_pass(Device &device, RGRuntime &rg,
                      const UploadPassResources &rcs) {
   if (rcs.transform_matrix_buffer) {
     assert(not rcs.mesh_insts.empty());
@@ -60,32 +60,28 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
 
   auto num_mesh_insts = cfg.mesh_insts.size();
   if (num_mesh_insts > 0) {
-    transform_matrix_buffer = pass.create_buffer({
+    transform_matrix_buffer = pass.create_upload_buffer({
         .name = "Transform matrices",
-        .heap = BufferHeap::Upload,
         .size = sizeof(glm::mat4x3) * num_mesh_insts,
     });
-    normal_matrix_buffer = pass.create_buffer({
+    normal_matrix_buffer = pass.create_upload_buffer({
         .name = "Normal matrices",
-        .heap = BufferHeap::Upload,
         .size = sizeof(glm::mat3) * num_mesh_insts,
     });
   }
 
   RGBufferID directional_lights_buffer;
   if (not cfg.directional_lights.empty()) {
-    directional_lights_buffer = pass.create_buffer({
+    directional_lights_buffer = pass.create_upload_buffer({
         .name = "Directional lights",
-        .heap = BufferHeap::Upload,
         .size = cfg.directional_lights.size_bytes(),
     });
   }
 
   RGBufferID materials_buffer;
   if (not cfg.materials.empty()) {
-    materials_buffer = pass.create_buffer({
+    materials_buffer = pass.create_upload_buffer({
         .name = "Materials",
-        .heap = BufferHeap::Upload,
         .size = cfg.materials.size_bytes(),
     });
   }
@@ -100,8 +96,8 @@ auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
       .materials_buffer = materials_buffer,
   };
 
-  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
-    run_upload_pass(device, rg, cmd, rcs);
+  pass.set_host_callback([rcs](Device &device, RGRuntime &rg) {
+    run_upload_pass(device, rg, rcs);
   });
 
   return {

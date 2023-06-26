@@ -1,5 +1,6 @@
 #include "ResourceUploader.hpp"
 #include "CommandAllocator.hpp"
+#include "CommandRecorder.hpp"
 #include "Device.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Errors.hpp"
@@ -9,7 +10,7 @@ namespace ren {
 
 namespace {
 
-void generate_mipmaps(const Device &device, CommandBuffer &cmd,
+void generate_mipmaps(const Device &device, CommandRecorder &cmd,
                       Handle<Texture> handle) {
   const auto &texture = device.get_texture(handle);
   auto src_size = texture.size;
@@ -58,7 +59,7 @@ void generate_mipmaps(const Device &device, CommandBuffer &cmd,
   }
 }
 
-void upload_texture(const Device &device, CommandBuffer &cmd,
+void upload_texture(const Device &device, CommandRecorder &cmd,
                     const BufferView &src, Handle<Texture> dst) {
   const auto &texture = device.get_texture(dst);
 
@@ -162,43 +163,41 @@ void ResourceUploader::upload(Device &device, CommandAllocator &cmd_allocator) {
     return;
   }
 
-  auto cmd = cmd_allocator.allocate();
-  cmd.begin();
+  auto cmd_buffer = cmd_allocator.allocate();
+  {
+    CommandRecorder cmd(device, cmd_buffer);
 
-  if (not m_buffer_copies.empty()) {
-    cmd.begin_debug_region("Upload buffers");
-    for (const auto &[src, dst] : m_buffer_copies) {
-      cmd.copy_buffer(src, dst);
+    if (not m_buffer_copies.empty()) {
+      auto _ = cmd.debug_region("Upload buffers");
+      for (const auto &[src, dst] : m_buffer_copies) {
+        cmd.copy_buffer(src, dst);
+      }
+      VkMemoryBarrier2 barrier = {
+          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+          .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                          VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                          VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+          .dstAccessMask =
+              VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+      };
+      cmd.pipeline_barrier(asSpan(barrier), {});
+      m_buffer_copies.clear();
     }
-    VkMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-                        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-        .dstAccessMask =
-            VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    };
-    cmd.pipeline_barrier(asSpan(barrier), {});
-    cmd.end_debug_region();
-    m_buffer_copies.clear();
-  }
 
-  if (not m_texture_copies.empty()) {
-    cmd.begin_debug_region("Upload textures");
-    for (const auto &[src, dst] : m_texture_copies) {
-      upload_texture(device, cmd, src, dst);
+    if (not m_texture_copies.empty()) {
+      auto _ = cmd.debug_region("Upload textures");
+      for (const auto &[src, dst] : m_texture_copies) {
+        upload_texture(device, cmd, src, dst);
+      }
+      m_texture_copies.clear();
     }
-    cmd.end_debug_region();
-    m_texture_copies.clear();
   }
-
-  cmd.end();
 
   device.graphicsQueueSubmit(asSpan(VkCommandBufferSubmitInfo{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd.get(),
+      .commandBuffer = cmd_buffer,
   }));
 }
 

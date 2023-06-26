@@ -826,6 +826,8 @@ auto Device::create_graphics_pipeline(
       shaders;
   StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
 
+  VkShaderStageFlags stages = 0;
+
   auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
     auto module = create_shader_module(*this, shader.code);
     shaders.push_back(VkPipelineShaderStageCreateInfo{
@@ -835,6 +837,7 @@ auto Device::create_graphics_pipeline(
         .pName = shader.entry_point,
     });
     shader_modules.push_back(module);
+    stages |= stage;
   };
 
   add_shader(VK_SHADER_STAGE_VERTEX_BIT, create_info.vertex_shader);
@@ -945,6 +948,7 @@ auto Device::create_graphics_pipeline(
   return m_graphics_pipelines.emplace(GraphicsPipeline{
       .handle = pipeline,
       .layout = create_info.layout,
+      .stages = stages,
       .input_assembly = create_info.input_assembly,
       .multisample = create_info.multisample,
       .depth_test = create_info.depth_test,

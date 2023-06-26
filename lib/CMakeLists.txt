@@ -72,6 +72,9 @@ target_precompile_headers(
   <range/v3/range.hpp>
   <range/v3/view.hpp>
   <tl/optional.hpp>)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(Support-PCH INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
+endif()
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
 set(VK_XML ${VULKAN_HEADERS_REGISTRY_DIRECTORY}/vk.xml)
@@ -89,7 +92,7 @@ add_library(
   ren.cpp
   Buffer.cpp
   CommandAllocator.cpp
-  CommandBuffer.cpp
+  CommandRecorder.cpp
   Descriptors.cpp
   Device.cpp
   Formats.cpp

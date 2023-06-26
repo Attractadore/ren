@@ -1,5 +1,5 @@
 #include "Passes/PostProcessing.hpp"
-#include "CommandBuffer.hpp"
+#include "CommandRecorder.hpp"
 #include "Device.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
@@ -27,15 +27,13 @@ auto setup_initialize_luminance_histogram_pass(
       .type = RGPassType::Transfer,
   });
 
-  auto histogram = pass.create_buffer({
+  auto histogram = pass.create_transfer_buffer({
       .name = "Empty luminance histogram",
-      .heap = BufferHeap::Device,
       .size = sizeof(glsl::LuminanceHistogram),
-      .accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT,
   });
 
-  pass.set_callback(
-      [histogram](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
+  pass.set_transfer_callback(
+      [=](Device &device, RGRuntime &rg, CommandRecorder &cmd) {
         cmd.fill_buffer(rg.get_buffer(histogram), 0);
       });
 
@@ -53,21 +51,17 @@ struct PostProcessingUberPassResources {
 };
 
 void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
-                                   CommandBuffer &cmd,
+                                   ComputePass &pass,
                                    const PostProcessingUberPassResources &rcs) {
-  assert(rcs.texture);
   assert(rcs.texture_allocator);
-  assert(rcs.pipeline);
 
-  auto layout = device.get_compute_pipeline(rcs.pipeline).layout;
-  auto texture = rg.get_texture(rcs.texture);
+  const auto &texture = rg.get_texture(rcs.texture);
   auto texture_index =
       rcs.texture_allocator->allocate_frame_storage_texture(texture);
 
-  cmd.bind_compute_pipeline(rcs.pipeline);
+  pass.bind_compute_pipeline(rcs.pipeline);
 
-  std::array sets = {rcs.texture_allocator->get_set()};
-  cmd.bind_descriptor_sets(VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, sets);
+  pass.bind_descriptor_set(rcs.texture_allocator->get_set());
 
   u64 histogram_ptr = 0;
   u64 previous_exposure_ptr = 0;
@@ -78,19 +72,18 @@ void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
     previous_exposure_ptr = device.get_buffer_device_address(
         rg.get_buffer(rcs.previous_exposure_buffer));
   }
-  glsl::PostProcessingConstants constants = {
+  pass.set_push_constants(glsl::PostProcessingConstants{
       .histogram_ptr = histogram_ptr,
       .previous_exposure_ptr = previous_exposure_ptr,
       .tex = texture_index,
-  };
-  cmd.set_push_constants(layout, VK_SHADER_STAGE_COMPUTE_BIT, constants);
+  });
 
   auto size = device.get_texture_view_size(texture);
   glm::uvec2 group_size = {glsl::POST_PROCESSING_THREADS_X,
                            glsl::POST_PROCESSING_THREADS_Y};
   glm::uvec2 work_size = {glsl::POST_PROCESSING_WORK_SIZE_X,
                           glsl::POST_PROCESSING_WORK_SIZE_Y};
-  cmd.dispatch_threads(size, group_size * work_size);
+  pass.dispatch_threads(size, group_size * work_size);
 }
 
 struct PostProcessingUberPassConfig {
@@ -118,26 +111,19 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
       .type = RGPassType::Compute,
   });
 
-  auto texture = pass.write_texture({
+  auto texture = pass.write_storage_texture({
       .name = "Color buffer after post-processing",
       .texture = cfg.texture,
-      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                  VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
   });
 
   RGBufferID histogram_buffer;
   if (cfg.histogram_buffer) {
     assert(cfg.previous_exposure_buffer);
-    histogram_buffer = pass.write_buffer({
+    histogram_buffer = pass.write_compute_buffer({
         .name = "Luminance histogram",
         .buffer = cfg.histogram_buffer,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
     });
-    pass.read_buffer({
-        .buffer = cfg.previous_exposure_buffer,
-        .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    });
+    pass.read_compute_buffer({.buffer = cfg.previous_exposure_buffer});
   }
 
   PostProcessingUberPassResources rcs = {
@@ -148,9 +134,10 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
       .pipeline = cfg.pipeline,
   };
 
-  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
-    run_post_processing_uber_pass(device, rg, cmd, rcs);
-  });
+  pass.set_compute_callback(
+      [rcs](Device &device, RGRuntime &rg, ComputePass &pass) {
+        run_post_processing_uber_pass(device, rg, pass, rcs);
+      });
 
   return {
       .texture = texture,
@@ -166,26 +153,20 @@ struct ReduceLuminanceHistogramPassResources {
 };
 
 void run_reduce_luminance_histogram_pass(
-    Device &device, RGRuntime &rg, CommandBuffer &cmd,
+    Device &device, RGRuntime &rg, ComputePass &pass,
     const ReduceLuminanceHistogramPassResources &rcs) {
-  assert(rcs.histogram_buffer);
-  assert(rcs.exposure_buffer);
-  assert(rcs.pipeline);
-
-  auto layout = device.get_compute_pipeline(rcs.pipeline).layout;
   const auto &histogram_buffer = rg.get_buffer(rcs.histogram_buffer);
   const auto &exposure_buffer = rg.get_buffer(rcs.exposure_buffer);
 
-  cmd.bind_compute_pipeline(rcs.pipeline);
+  pass.bind_compute_pipeline(rcs.pipeline);
 
-  glsl::ReduceLuminanceHistogramConstants constants = {
+  pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
       .histogram_ptr = device.get_buffer_device_address(histogram_buffer),
       .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
       .exposure_compensation = rcs.exposure_compensation,
-  };
-  cmd.set_push_constants(layout, VK_SHADER_STAGE_COMPUTE_BIT, constants);
+  });
 
-  cmd.dispatch_groups(1);
+  pass.dispatch_groups(1);
 }
 
 struct ReduceLuminanceHistogramPassConfig {
@@ -210,16 +191,11 @@ auto setup_reduce_luminance_histogram_pass(
       .type = RGPassType::Compute,
   });
 
-  pass.read_buffer({
-      .buffer = cfg.histogram_buffer,
-      .accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-  });
+  pass.read_compute_buffer({.buffer = cfg.histogram_buffer});
 
-  auto exposure_buffer = pass.create_buffer({
+  auto exposure_buffer = pass.create_compute_buffer({
       .name = "Automatic exposure",
-      .heap = BufferHeap::Device,
       .size = sizeof(glsl::Exposure),
-      .accesses = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
       .temporal = true,
   });
 
@@ -230,9 +206,10 @@ auto setup_reduce_luminance_histogram_pass(
       .exposure_compensation = cfg.exposure_compensation,
   };
 
-  pass.set_callback([rcs](Device &device, RGRuntime &rg, CommandBuffer &cmd) {
-    run_reduce_luminance_histogram_pass(device, rg, cmd, rcs);
-  });
+  pass.set_compute_callback(
+      [rcs](Device &device, RGRuntime &rg, ComputePass &pass) {
+        run_reduce_luminance_histogram_pass(device, rg, pass, rcs);
+      });
 
   return {
       .exposure_buffer = exposure_buffer,

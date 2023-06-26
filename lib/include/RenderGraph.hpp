@@ -1,5 +1,7 @@
 #pragma once
+#include "Attachments.hpp"
 #include "Buffer.hpp"
+#include "Config.hpp"
 #include "Descriptors.hpp"
 #include "ResourceArena.hpp"
 #include "Semaphore.hpp"
@@ -8,6 +10,7 @@
 #include "Support/NewType.hpp"
 #include "Support/Optional.hpp"
 #include "Support/SecondaryMap.hpp"
+#include "Support/Variant.hpp"
 #include "Texture.hpp"
 
 #include <functional>
@@ -38,10 +41,11 @@ struct RGDebugName {
 #endif
 
 class CommandAllocator;
-class CommandBuffer;
+class CommandRecorder;
+class ComputePass;
 class Device;
 class RenderGraph;
-class ResourceArena;
+class RenderPass;
 class Swapchain;
 
 REN_NEW_TYPE(RGPassID, unsigned);
@@ -122,19 +126,83 @@ struct RGTextureCreateInfo {
   VkFormat format = VK_FORMAT_UNDEFINED;
   union {
     struct {
-      u32 width;
-      u32 height;
+      u32 width = 1;
+      u32 height = 1;
       union {
         u32 depth;
-        u32 num_array_layers;
+        u32 num_array_layers = 1;
       };
     };
-    glm::uvec3 size = {1, 1, 1};
+    glm::uvec3 size;
   };
   u32 num_mip_levels = 1;
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  bool temporal = false;
+};
+
+struct RGColorAttachmentWriteInfo {
+  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
+  u32 index = 0;
+  RGTextureID texture;
+  bool temporal = false;
+};
+
+struct RGColorAttachmentCreateInfo {
+  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
+  u32 index = 0;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  union {
+    struct {
+      u32 width = 1;
+      u32 height = 1;
+      u32 num_array_layers = 1;
+    };
+    glm::uvec3 size;
+  };
+  u32 num_mip_levels = 1;
+  Optional<glm::vec4> clear_color = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+  bool temporal = false;
+};
+
+struct RGDepthStencilAttachmentReadInfo {
+  RGTextureID texture;
+  bool read_depth = true;
+  bool read_stencil = false;
+};
+
+struct RGDepthAttachmentWriteOperations {
+  Optional<float> clear_depth = 0.0f;
+};
+
+struct RGStencilAttachmentWriteOperations {
+  Optional<u8> clear_stencil;
+};
+
+struct RGDepthStencilAttachmentWriteInfo {
+  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
+  RGTextureID texture;
+  Optional<RGDepthAttachmentWriteOperations> depth_ops =
+      RGDepthAttachmentWriteOperations();
+  Optional<RGStencilAttachmentWriteOperations> stencil_ops;
+  bool temporal = false;
+};
+
+struct RGDepthStencilAttachmentCreateInfo {
+  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  union {
+    struct {
+      u32 width = 1;
+      u32 height = 1;
+      u32 num_array_layers = 1;
+    };
+    glm::uvec3 size;
+  };
+  u32 num_mip_levels = 1;
+  Optional<float> clear_depth = 0.0f;
+  Optional<u8> clear_stencil;
   bool temporal = false;
 };
 
@@ -166,15 +234,25 @@ public:
   auto get_texture(RGTextureID texture) const -> const TextureView &;
 };
 
-using RGCallback =
-    std::function<void(Device &device, RGRuntime &rg, CommandBuffer &cmd)>;
+using RGHostPassCallback = std::function<void(Device &device, RGRuntime &rg)>;
+
+using RGGraphicsPassCallback =
+    std::function<void(Device &device, RGRuntime &rg, RenderPass &render_pass)>;
+
+using RGComputePassCallback =
+    std::function<void(Device &device, RGRuntime &rg, ComputePass &pass)>;
+
+using RGTransferPassCallback =
+    std::function<void(Device &device, RGRuntime &rg, CommandRecorder &cmd)>;
+
+using RGPassCallback =
+    std::function<void(Device &device, RGRuntime &rg, CommandRecorder &cmd)>;
 
 class RenderGraph {
   struct RGBatch {
     SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
     SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
-    Vector<RGCallback> barrier_cbs;
-    Vector<RGCallback> pass_cbs;
+    Vector<RGPassCallback> pass_cbs;
 #if REN_RENDER_GRAPH_DEBUG_NAMES
     Vector<std::string> pass_names;
 #endif
@@ -233,8 +311,7 @@ class RenderGraph::Builder {
     SmallVector<RGBufferAccess> write_buffers;
     SmallVector<RGSemaphoreSignalInfo> wait_semaphores;
     SmallVector<RGSemaphoreSignalInfo> signal_semaphores;
-    RGCallback barrier_cb;
-    RGCallback pass_cb;
+    RGPassCallback cb;
   };
 
   RenderGraph *m_rg = nullptr;
@@ -293,7 +370,7 @@ private:
   void wait_semaphore(RGPassID pass, RGSemaphoreSignalInfo &&signal_info);
   void signal_semaphore(RGPassID pass, RGSemaphoreSignalInfo &&signal_info);
 
-  void set_callback(RGPassID pass, RGCallback cb);
+  void set_callback(RGPassID pass, RGPassCallback cb);
 
   void create_buffers(const Device &device);
 
@@ -333,23 +410,66 @@ class RenderGraph::Builder::PassBuilder {
   RGPassID m_pass;
   Builder *m_builder;
 
+  struct RGColorAttachment {
+    RGTextureID texture;
+    ColorAttachmentOperations ops;
+  };
+
+  struct RGDepthStencilAttachment {
+    RGTextureID texture;
+    Optional<DepthAttachmentOperations> depth_ops;
+    Optional<StencilAttachmentOperations> stencil_ops;
+  };
+
+  struct RGRenderPassBeginInfo {
+    StaticVector<Optional<RGColorAttachment>, MAX_COLOR_ATTACHMENTS>
+        color_attachments;
+    Optional<RGDepthStencilAttachment> depth_stencil_attachment;
+  };
+
+  RGRenderPassBeginInfo m_render_pass;
+
+  void set_color_attachment(RGColorAttachment, u32 index);
+
 public:
-  PassBuilder(RGPassID pass, Builder &builder)
-      : m_pass(pass), m_builder(&builder) {}
+  PassBuilder(RGPassID pass, Builder &builder);
 
-  void read_buffer(RGBufferReadInfo &&read_info) {
-    m_builder->read_buffer(m_pass, std::move(read_info));
-  }
+  void read_buffer(RGBufferReadInfo &&read_info);
 
-  [[nodiscard]] auto write_buffer(RGBufferWriteInfo &&write_info)
-      -> RGBufferID {
-    return m_builder->write_buffer(m_pass, std::move(write_info));
-  }
+  [[nodiscard]] auto write_buffer(RGBufferWriteInfo &&write_info) -> RGBufferID;
 
   [[nodiscard]] auto create_buffer(RGBufferCreateInfo &&create_info)
-      -> RGBufferID {
-    return m_builder->create_buffer(m_pass, std::move(create_info));
-  }
+      -> RGBufferID;
+
+  void read_indirect_buffer(RGBufferReadInfo &&read_info);
+
+  void read_index_buffer(RGBufferReadInfo &&read_info);
+
+  void read_vertex_shader_buffer(RGBufferReadInfo &&read_info);
+
+  void read_fragment_shader_buffer(RGBufferReadInfo &&read_info);
+
+  [[nodiscard]] auto create_uniform_buffer(RGBufferCreateInfo &&create_info)
+      -> RGBufferID;
+
+  void read_compute_buffer(RGBufferReadInfo &&read_info);
+
+  [[nodiscard]] auto write_compute_buffer(RGBufferWriteInfo &&write_info)
+      -> RGBufferID;
+
+  [[nodiscard]] auto create_compute_buffer(RGBufferCreateInfo &&create_info)
+      -> RGBufferID;
+
+  void read_transfer_buffer(RGBufferReadInfo &&read_info);
+
+  [[nodiscard]] auto write_transfer_buffer(RGBufferWriteInfo &&write_info)
+      -> RGBufferID;
+
+  [[nodiscard]] auto create_transfer_buffer(RGBufferCreateInfo &&create_info)
+      -> RGBufferID;
+
+  [[nodiscard]] auto create_upload_buffer(RGBufferCreateInfo &&create_info)
+      -> RGBufferID;
 
   void read_texture(RGTextureReadInfo &&read_info) {
     m_builder->read_texture(m_pass, std::move(read_info));
@@ -363,6 +483,50 @@ public:
     return m_builder->create_texture(m_pass, std::move(create_info));
   }
 
+  /// Access color attachment with LOAD_OP_LOAD and STORE_OP_STORE
+  [[nodiscard]] auto
+  write_color_attachment(RGColorAttachmentWriteInfo &&write_info)
+      -> RGTextureID;
+
+  /// Create and access color attachment with LOAD_OP_CLEAR or LOAD_OP_DONT_CARE
+  /// and STORE_OP_STORE
+  [[nodiscard]] auto
+  create_color_attachment(RGColorAttachmentCreateInfo &&create_info)
+      -> RGTextureID;
+
+  /// Access depth-stencil attachment with LOAD_OP_LOAD and STORE_OP_NONE
+  void
+  read_depth_stencil_attachment(RGDepthStencilAttachmentReadInfo &&read_info);
+
+  /// Access depth-stencil attachment with LOAD_OP_LOAD or LOAD_OP_CLEAR and
+  /// STORE_OP_STORE
+  [[nodiscard]] auto
+  write_depth_stencil_attachment(RGDepthStencilAttachmentWriteInfo &&write_info)
+      -> RGTextureID;
+
+  /// Create and access depth-stencil attachment with LOAD_OP_CLEAR and
+  /// STORE_OP_STORE
+  [[nodiscard]] auto create_depth_stencil_attachment(
+      RGDepthStencilAttachmentCreateInfo &&create_info) -> RGTextureID;
+
+  void read_storage_texture(RGTextureReadInfo &&read_info);
+
+  [[nodiscard]] auto write_storage_texture(RGTextureWriteInfo &&write_info)
+      -> RGTextureID;
+
+  [[nodiscard]] auto create_storage_texture(RGTextureCreateInfo &&create_info)
+      -> RGTextureID;
+
+  void read_sampled_texture(RGTextureReadInfo &&read_info);
+
+  void read_transfer_texture(RGTextureReadInfo &&read_info);
+
+  [[nodiscard]] auto write_transfer_texture(RGTextureWriteInfo &&write_info)
+      -> RGTextureID;
+
+  [[nodiscard]] auto create_transfer_texture(RGTextureCreateInfo &&create_info)
+      -> RGTextureID;
+
   void wait_semaphore(RGSemaphoreSignalInfo &&signal_info) {
     m_builder->wait_semaphore(m_pass, std::move(signal_info));
   }
@@ -371,9 +535,13 @@ public:
     m_builder->signal_semaphore(m_pass, std::move(signal_info));
   }
 
-  void set_callback(RGCallback cb) {
-    return m_builder->set_callback(m_pass, std::move(cb));
-  }
+  void set_host_callback(RGHostPassCallback cb);
+
+  void set_graphics_callback(RGGraphicsPassCallback cb);
+
+  void set_compute_callback(RGComputePassCallback cb);
+
+  void set_transfer_callback(RGTransferPassCallback cb);
 };
 using RGPassBuilder = RenderGraph::Builder::PassBuilder;
 

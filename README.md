@@ -1,5 +1,7 @@
 # Renderer2
 
+## [Render Graph](docs/render_graph.md)
+
 ## Post-processing
 
 ### [Exposure](docs/exposure.md)
