@@ -1,5 +1,4 @@
 #pragma once
-#include "AssetLoader.hpp"
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
