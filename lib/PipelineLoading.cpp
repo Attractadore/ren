@@ -48,7 +48,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
 
 auto create_pipeline_layout(ResourceArena &arena,
                             Handle<DescriptorSetLayout> persistent_set_layout,
-                            std::span<const std::span<const std::byte>> shaders,
+                            TempSpan<const Span<const std::byte>> shaders,
                             std::string_view name) -> Handle<PipelineLayout> {
   VkPushConstantRange push_constants = {};
 
@@ -89,11 +89,10 @@ auto create_pipeline_layout(ResourceArena &arena,
 
 auto load_compute_pipeline(ResourceArena &arena,
                            Handle<DescriptorSetLayout> persistent_set_layout,
-                           std::span<const std::byte> shader,
-                           std::string_view name) -> Handle<ComputePipeline> {
-  std::array shaders = {shader};
+                           Span<const std::byte> shader, std::string_view name)
+    -> Handle<ComputePipeline> {
   auto layout =
-      create_pipeline_layout(arena, persistent_set_layout, shaders, name);
+      create_pipeline_layout(arena, persistent_set_layout, {shader}, name);
   return arena.create_compute_pipeline({
       .name = fmt::format("{} compute pipeline", name),
       .layout = layout,
@@ -119,10 +118,9 @@ auto load_pipelines(ResourceArena &arena,
 auto load_color_pass_pipeline(ResourceArena &arena,
                               Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<GraphicsPipeline> {
-  auto vs_code = std::as_bytes(std::span(VertexShader, VertexShader_count));
-  auto fs_code = std::as_bytes(std::span(FragmentShader, FragmentShader_count));
-  std::array shaders = {vs_code, fs_code};
-  auto layout = create_pipeline_layout(arena, persistent_set_layout, shaders,
+  auto vs = Span(VertexShader, VertexShader_count).as_bytes();
+  auto fs = Span(FragmentShader, FragmentShader_count).as_bytes();
+  auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
                                        "Color pass");
   std::array color_attachments = {ColorAttachmentInfo{
       .format = COLOR_FORMAT,
@@ -132,11 +130,11 @@ auto load_color_pass_pipeline(ResourceArena &arena,
       .layout = layout,
       .vertex_shader =
           {
-              .code = vs_code,
+              .code = vs,
           },
       .fragment_shader =
           ShaderInfo{
-              .code = fs_code,
+              .code = fs,
           },
       .depth_test =
           DepthTestInfo{
@@ -150,8 +148,8 @@ auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, Handle<DescriptorSetLayout>(),
-      std::as_bytes(std::span(ReduceLuminanceHistogramShader,
-                              ReduceLuminanceHistogramShader_count)),
+      Span(ReduceLuminanceHistogramShader, ReduceLuminanceHistogramShader_count)
+          .as_bytes(),
       "Reduce luminance histogram");
 }
 
@@ -160,8 +158,7 @@ auto load_post_processing_pipeline(
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      std::as_bytes(
-          std::span(PostProcessingUberShader, PostProcessingUberShader_count)),
+      Span(PostProcessingUberShader, PostProcessingUberShader_count).as_bytes(),
       "Post-processing");
 }
 

@@ -2,14 +2,13 @@
 #include "Config.hpp"
 #include "Descriptors.hpp"
 #include "Formats.hpp"
-
-#include <span>
+#include "Support/Span.hpp"
 
 namespace ren {
 
 struct PipelineLayoutCreateInfo {
   REN_DEBUG_NAME_FIELD("Pipeline layout");
-  std::span<const Handle<DescriptorSetLayout>> set_layouts;
+  TempSpan<const Handle<DescriptorSetLayout>> set_layouts;
   VkPushConstantRange push_constants;
 };
 
@@ -20,7 +19,7 @@ struct PipelineLayout {
 };
 
 struct ShaderInfo {
-  std::span<const std::byte> code;
+  Span<const std::byte> code;
   const char *entry_point = "main";
 };
 
@@ -53,7 +52,7 @@ struct GraphicsPipelineCreateInfo {
   InputAssemblyInfo input_assembly;
   MultisampleInfo multisample;
   Optional<DepthTestInfo> depth_test;
-  std::span<const ColorAttachmentInfo> color_attachments;
+  TempSpan<const ColorAttachmentInfo> color_attachments;
 };
 
 struct GraphicsPipeline {

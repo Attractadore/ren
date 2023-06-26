@@ -38,7 +38,7 @@ void set_debug_name(Device &device, T object, const DebugName &name) {
 
 } // namespace
 
-std::span<const char *const> Device::getRequiredLayers() noexcept {
+auto Device::getRequiredLayers() noexcept -> Span<const char *const> {
   static constexpr auto layers = makeArray<const char *>(
 #if REN_VULKAN_VALIDATION
       "VK_LAYER_KHRONOS_validation"
@@ -47,7 +47,7 @@ std::span<const char *const> Device::getRequiredLayers() noexcept {
   return layers;
 }
 
-std::span<const char *const> Device::getInstanceExtensions() noexcept {
+auto Device::getInstanceExtensions() noexcept -> Span<const char *const> {
   static constexpr auto extensions = makeArray<const char *>(
 #if REN_DEBUG_NAMES
       VK_EXT_DEBUG_UTILS_EXTENSION_NAME
@@ -352,7 +352,7 @@ auto Device::get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
 
 auto Device::allocate_descriptor_sets(
     Handle<DescriptorPool> pool,
-    std::span<const Handle<DescriptorSetLayout>> layouts,
+    TempSpan<const Handle<DescriptorSetLayout>> layouts,
     VkDescriptorSet *sets) const -> bool {
   auto vk_layouts = layouts | map([&](Handle<DescriptorSetLayout> layout) {
                       return get_descriptor_set_layout(layout).handle;
@@ -392,12 +392,8 @@ auto Device::allocate_descriptor_set(Handle<DescriptorPool> pool,
 }
 
 void Device::write_descriptor_sets(
-    std::span<const VkWriteDescriptorSet> configs) const {
+    TempSpan<const VkWriteDescriptorSet> configs) const {
   UpdateDescriptorSets(configs.size(), configs.data(), 0, nullptr);
-}
-
-void Device::write_descriptor_set(const VkWriteDescriptorSet &config) const {
-  write_descriptor_sets({&config, 1});
 }
 
 auto Device::create_buffer(const BufferCreateInfo &&create_info)
@@ -778,9 +774,9 @@ auto Device::get_semaphore(Handle<Semaphore> semaphore) const
 }
 
 void Device::queueSubmit(
-    VkQueue queue, std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
-    std::span<const VkSemaphoreSubmitInfo> wait_semaphores,
-    std::span<const VkSemaphoreSubmitInfo> input_signal_semaphores) {
+    VkQueue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
+    TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
+    TempSpan<const VkSemaphoreSubmitInfo> input_signal_semaphores) {
   SmallVector<VkSemaphoreSubmitInfo, 8> signal_semaphores(
       input_signal_semaphores);
   signal_semaphores.push_back({

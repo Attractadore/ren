@@ -10,6 +10,7 @@
 #include "Support/LinearMap.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Queue.hpp"
+#include "Support/Span.hpp"
 #include "Support/TypeMap.hpp"
 
 #include <chrono>
@@ -168,8 +169,8 @@ public:
     return VK_API_VERSION_1_3;
   }
 
-  static auto getRequiredLayers() noexcept -> std::span<const char *const>;
-  static auto getInstanceExtensions() noexcept -> std::span<const char *const>;
+  static auto getRequiredLayers() noexcept -> Span<const char *const>;
+  static auto getInstanceExtensions() noexcept -> Span<const char *const>;
 
   auto getDispatchTable() const -> const DispatchTable & { return m_vk; }
 
@@ -215,7 +216,7 @@ public:
 
   [[nodiscard]] auto
   allocate_descriptor_sets(Handle<DescriptorPool> pool,
-                           std::span<const Handle<DescriptorSetLayout>> layouts,
+                           TempSpan<const Handle<DescriptorSetLayout>> layouts,
                            VkDescriptorSet *sets) const -> bool;
   [[nodiscard]] auto
   allocate_descriptor_set(Handle<DescriptorPool> pool,
@@ -223,8 +224,7 @@ public:
       -> Optional<VkDescriptorSet>;
 
   void
-  write_descriptor_sets(std::span<const VkWriteDescriptorSet> configs) const;
-  void write_descriptor_set(const VkWriteDescriptorSet &config) const;
+  write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> Handle<Buffer>;
@@ -349,18 +349,18 @@ public:
   }
 
   void graphicsQueueSubmit(
-      std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
-      std::span<const VkSemaphoreSubmitInfo> wait_semaphores = {},
-      std::span<const VkSemaphoreSubmitInfo> signal_semaphores = {}) {
+      TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
+      TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
+      TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {}) {
     queueSubmit(getGraphicsQueue(), cmd_buffers, wait_semaphores,
                 signal_semaphores);
   }
 
   void
   queueSubmit(VkQueue queue,
-              std::span<const VkCommandBufferSubmitInfo> cmd_buffers,
-              std::span<const VkSemaphoreSubmitInfo> wait_semaphores = {},
-              std::span<const VkSemaphoreSubmitInfo> signal_semaphores = {});
+              TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
+              TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
+              TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
   [[nodiscard]] auto queuePresent(const VkPresentInfoKHR &present_info)
       -> VkResult;

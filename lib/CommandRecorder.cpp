@@ -7,27 +7,10 @@ namespace ren {
 
 namespace {
 
-auto is_readonly_load_op(VkAttachmentLoadOp op) -> bool {
-  switch (op) {
-  default:
-    return false;
-  case VK_ATTACHMENT_LOAD_OP_LOAD:
-    return true;
-  }
-}
-
-auto is_readonly_store_op(VkAttachmentStoreOp op) -> bool {
-  switch (op) {
-  default:
-    return false;
-  case VK_ATTACHMENT_STORE_OP_NONE:
-    return true;
-  }
-}
-
 auto get_layout_for_attachment_ops(VkAttachmentLoadOp load,
                                    VkAttachmentStoreOp store) -> VkImageLayout {
-  if (is_readonly_load_op(load) and is_readonly_store_op(store)) {
+  if (load == VK_ATTACHMENT_LOAD_OP_LOAD and
+      store == VK_ATTACHMENT_STORE_OP_NONE) {
     return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
   }
   return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
@@ -72,41 +55,30 @@ CommandRecorder::~CommandRecorder() {
 }
 
 void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                                  std::span<const VkBufferCopy> regions) {
+                                  TempSpan<const VkBufferCopy> regions) {
   m_device->CmdCopyBuffer(m_cmd_buffer, m_device->get_buffer(src).handle,
                           m_device->get_buffer(dst).handle, regions.size(),
                           regions.data());
-}
-
-void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                                  const VkBufferCopy &region) {
-  copy_buffer(src, dst, asSpan(region));
 }
 
 void CommandRecorder::copy_buffer(const BufferView &src,
                                   const BufferView &dst) {
   assert(src.size <= dst.size);
   copy_buffer(src.buffer, dst.buffer,
-              {
+              {{
                   .srcOffset = src.offset,
                   .dstOffset = dst.offset,
                   .size = src.size,
-              });
+              }});
 }
 
 void CommandRecorder::copy_buffer_to_image(
     Handle<Buffer> src, Handle<Texture> dst,
-    std::span<const VkBufferImageCopy> regions) {
+    TempSpan<const VkBufferImageCopy> regions) {
   m_device->CmdCopyBufferToImage(m_cmd_buffer, m_device->get_buffer(src).handle,
                                  m_device->get_texture(dst).image,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                  regions.size(), regions.data());
-}
-
-void CommandRecorder::copy_buffer_to_image(Handle<Buffer> src,
-                                           Handle<Texture> dst,
-                                           const VkBufferImageCopy &region) {
-  copy_buffer_to_image(src, dst, asSpan(region));
 }
 
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
@@ -118,18 +90,13 @@ void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
 };
 
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
-                           std::span<const VkImageBlit> regions,
+                           TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {
   m_device->CmdBlitImage(m_cmd_buffer, m_device->get_texture(src).image,
                          VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                          m_device->get_texture(dst).image,
                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                          regions.data(), filter);
-}
-
-void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
-                           const VkImageBlit &region, VkFilter filter) {
-  blit(src, dst, asSpan(region), filter);
 }
 
 void CommandRecorder::pipeline_barrier(
@@ -143,8 +110,8 @@ void CommandRecorder::pipeline_barrier(
 }
 
 void CommandRecorder::pipeline_barrier(
-    std::span<const VkMemoryBarrier2> barriers,
-    std::span<const VkImageMemoryBarrier2> image_barriers) {
+    TempSpan<const VkMemoryBarrier2> barriers,
+    TempSpan<const VkImageMemoryBarrier2> image_barriers) {
   VkDependencyInfo dependency = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
       .memoryBarrierCount = unsigned(barriers.size()),
@@ -263,9 +230,8 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
 
 RenderPass::~RenderPass() { m_device->CmdEndRendering(m_cmd_buffer); }
 
-void RenderPass::set_viewports(std::span<const VkViewport> in_viewports) {
-  SmallVector<VkViewport, 8> viewports(in_viewports.begin(),
-                                       in_viewports.end());
+void RenderPass::set_viewports(
+    StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports) {
   for (auto &viewport : viewports) {
     viewport.y += viewport.height;
     viewport.height = -viewport.height;
@@ -274,16 +240,8 @@ void RenderPass::set_viewports(std::span<const VkViewport> in_viewports) {
                                     viewports.data());
 }
 
-void RenderPass::set_viewport(const VkViewport &viewport) {
-  set_viewports(asSpan(viewport));
-}
-
-void RenderPass::set_scissor_rects(std::span<const VkRect2D> rects) {
+void RenderPass::set_scissor_rects(TempSpan<const VkRect2D> rects) {
   m_device->CmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
-}
-
-void RenderPass::set_scissor_rect(const VkRect2D &rect) {
-  set_scissor_rects(asSpan(rect));
 }
 
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
@@ -295,7 +253,7 @@ void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
 }
 
 void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
-                                      std::span<const VkDescriptorSet> sets,
+                                      TempSpan<const VkDescriptorSet> sets,
                                       unsigned first_set) {
   m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                   m_device->get_pipeline_layout(layout).handle,
@@ -303,14 +261,9 @@ void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                   nullptr);
 }
 
-void RenderPass::bind_descriptor_set(Handle<PipelineLayout> layout,
-                                     VkDescriptorSet set, unsigned offset) {
-  bind_descriptor_sets(layout, asSpan(set), offset);
-}
-
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                                     VkShaderStageFlags stages,
-                                    std::span<const std::byte> data,
+                                    Span<const std::byte> data,
                                     unsigned offset) {
   ren_assert((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
              "Only graphics shader stages must be used");
@@ -319,18 +272,13 @@ void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                              stages, offset, data.size(), data.data());
 }
 
-void RenderPass::bind_descriptor_sets(std::span<const VkDescriptorSet> sets,
+void RenderPass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
                                       unsigned first_set) {
   ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
   bind_descriptor_sets(m_pipeline_layout, sets, first_set);
 }
 
-void RenderPass::bind_descriptor_set(VkDescriptorSet set, unsigned offset) {
-  ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
-  bind_descriptor_sets(m_pipeline_layout, asSpan(set), offset);
-}
-
-void RenderPass::set_push_constants(std::span<const std::byte> data,
+void RenderPass::set_push_constants(Span<const std::byte> data,
                                     unsigned offset) {
   ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
   set_push_constants(m_pipeline_layout, m_shader_stages, data, offset);
@@ -365,7 +313,7 @@ void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
 }
 
 void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
-                                       std::span<const VkDescriptorSet> sets,
+                                       TempSpan<const VkDescriptorSet> sets,
                                        unsigned first_set) {
   m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                                   m_device->get_pipeline_layout(layout).handle,
@@ -373,31 +321,21 @@ void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                   nullptr);
 }
 
-void ComputePass::bind_descriptor_sets(std::span<const VkDescriptorSet> sets,
+void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
                                        unsigned first_set) {
   ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
   bind_descriptor_sets(m_pipeline_layout, sets, first_set);
 }
 
-void ComputePass::bind_descriptor_set(Handle<PipelineLayout> layout,
-                                      VkDescriptorSet set, unsigned offset) {
-  bind_descriptor_sets(layout, asSpan(set), offset);
-}
-
-void ComputePass::bind_descriptor_set(VkDescriptorSet set, unsigned offset) {
-  ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
-  bind_descriptor_sets(m_pipeline_layout, asSpan(set), offset);
-}
-
 void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
-                                     std::span<const std::byte> data,
+                                     Span<const std::byte> data,
                                      unsigned offset) {
   m_device->CmdPushConstants(
       m_cmd_buffer, m_device->get_pipeline_layout(layout).handle,
       VK_SHADER_STAGE_COMPUTE_BIT, offset, data.size(), data.data());
 }
 
-void ComputePass::set_push_constants(std::span<const std::byte> data,
+void ComputePass::set_push_constants(Span<const std::byte> data,
                                      unsigned offset) {
   ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
   set_push_constants(m_pipeline_layout, data, offset);

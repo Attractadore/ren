@@ -61,7 +61,7 @@ void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
 
   pass.bind_compute_pipeline(rcs.pipeline);
 
-  pass.bind_descriptor_set(rcs.texture_allocator->get_set());
+  pass.bind_descriptor_sets(rcs.texture_allocator->get_set());
 
   u64 histogram_ptr = 0;
   u64 previous_exposure_ptr = 0;

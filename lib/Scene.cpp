@@ -78,22 +78,21 @@ void Scene::next_frame() {
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
-  std::array<std::span<const std::byte>, MESH_ATTRIBUTE_COUNT>
-      upload_attributes;
+  std::array<Span<const std::byte>, MESH_ATTRIBUTE_COUNT> upload_attributes;
 
   upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
-      std::as_bytes(std::span(desc.positions, desc.num_vertices));
+      Span(desc.positions, desc.num_vertices).as_bytes();
 
   if (desc.colors) {
     upload_attributes[MESH_ATTRIBUTE_COLORS] =
-        std::as_bytes(std::span(desc.colors, desc.num_vertices));
+        Span(desc.colors, desc.num_vertices).as_bytes();
   }
 
   if (!desc.normals) {
     todo("Normals generation not implemented!");
   }
   upload_attributes[MESH_ATTRIBUTE_NORMALS] =
-      std::as_bytes(std::span(desc.normals, desc.num_vertices));
+      Span(desc.normals, desc.num_vertices).as_bytes();
 
   if (desc.tangents) {
     todo("Normal mapping not implemented!");
@@ -101,7 +100,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   if (desc.uvs) {
     upload_attributes[MESH_ATTRIBUTE_UVS] =
-        std::as_bytes(std::span(desc.uvs, desc.num_vertices));
+        Span(desc.uvs, desc.num_vertices).as_bytes();
   }
 
   if (!desc.indices) {
@@ -170,25 +169,25 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     default:
       assert(!"Unknown mesh attribute");
     case MESH_ATTRIBUTE_POSITIONS: {
-      auto positions = reinterpret_span<const glm::vec3>(data);
+      auto positions = data.reinterpret<const glm::vec3>();
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
                                        dst);
       offset += size_bytes(positions);
     } break;
     case MESH_ATTRIBUTE_NORMALS: {
       auto normals =
-          reinterpret_span<const glm::vec3>(data) | map(glsl::encode_normal);
+          data.reinterpret<const glm::vec3>() | map(glsl::encode_normal);
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
       offset += size_bytes(normals);
     } break;
     case MESH_ATTRIBUTE_COLORS: {
       auto colors =
-          reinterpret_span<const glm::vec4>(data) | map(glsl::encode_color);
+          data.reinterpret<const glm::vec4>() | map(glsl::encode_color);
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
       offset += size_bytes(colors);
     } break;
     case MESH_ATTRIBUTE_UVS: {
-      auto uvs = reinterpret_span<const glm::vec2>(data);
+      auto uvs = data.reinterpret<const glm::vec2>();
       m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs, dst);
       offset += size_bytes(uvs);
     } break;

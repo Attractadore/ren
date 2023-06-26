@@ -32,7 +32,7 @@ struct DepthStencilAttachment {
 };
 
 struct RenderPassBeginInfo {
-  std::span<const Optional<ColorAttachment>> color_attachments;
+  TempSpan<const Optional<ColorAttachment>> color_attachments;
   Optional<DepthStencilAttachment> depth_stencil_attachment;
 };
 
@@ -68,18 +68,12 @@ public:
   auto compute_pass() -> ComputePass;
 
   void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                   std::span<const VkBufferCopy> regions);
-
-  void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                   const VkBufferCopy &region);
+                   TempSpan<const VkBufferCopy> regions);
 
   void copy_buffer(const BufferView &src, const BufferView &dst);
 
   void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
-                            std::span<const VkBufferImageCopy> regions);
-
-  void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
-                            const VkBufferImageCopy &region);
+                            TempSpan<const VkBufferImageCopy> regions);
 
   void fill_buffer(const BufferView &buffer, u32 value);
 
@@ -90,15 +84,12 @@ public:
   }
 
   void blit(Handle<Texture> src, Handle<Texture> dst,
-            std::span<const VkImageBlit> regions, VkFilter filter);
-
-  void blit(Handle<Texture> src, Handle<Texture> dst, const VkImageBlit &region,
-            VkFilter filter);
+            TempSpan<const VkImageBlit> regions, VkFilter filter);
 
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 
-  void pipeline_barrier(std::span<const VkMemoryBarrier2> barriers,
-                        std::span<const VkImageMemoryBarrier2> image_barriers);
+  void pipeline_barrier(TempSpan<const VkMemoryBarrier2> barriers,
+                        TempSpan<const VkImageMemoryBarrier2> image_barriers);
 
   auto debug_region(const char *label) -> DebugRegion;
 };
@@ -121,42 +112,35 @@ public:
   RenderPass &operator=(const RenderPass &) = delete;
   RenderPass &operator=(RenderPass &&) = delete;
 
-  void set_viewports(std::span<const VkViewport> viewports);
-  void set_viewport(const VkViewport &viewport);
+  void set_viewports(StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports);
 
-  void set_scissor_rects(std::span<const VkRect2D> rects);
-  void set_scissor_rect(const VkRect2D &rect);
+  void set_scissor_rects(TempSpan<const VkRect2D> rects);
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
   void bind_descriptor_sets(Handle<PipelineLayout> layout,
-                            std::span<const VkDescriptorSet> sets,
+                            TempSpan<const VkDescriptorSet> sets,
                             unsigned first_set = 0);
 
-  void bind_descriptor_set(Handle<PipelineLayout> layout, VkDescriptorSet set,
-                           unsigned offset = 0);
+  void bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
+                            unsigned first_set = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
-                          VkShaderStageFlags stages,
-                          std::span<const std::byte> data, unsigned offset = 0);
+                          VkShaderStageFlags stages, Span<const std::byte> data,
+                          unsigned offset = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
                           VkShaderStageFlags stages, const auto &data,
                           unsigned offset = 0) {
-    set_push_constants(layout, stages, std::as_bytes(asSpan(data), offset));
+    set_push_constants(layout, stages, Span(data).as_bytes(), offset);
   }
 
-  void bind_descriptor_sets(std::span<const VkDescriptorSet> sets,
-                            unsigned first_set = 0);
-
-  void bind_descriptor_set(VkDescriptorSet set, unsigned offset = 0);
-
-  void set_push_constants(std::span<const std::byte> data, unsigned offset = 0);
+  void set_push_constants(Span<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
     ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, m_shader_stages,
-                       std::as_bytes(asSpan(data)), offset);
+                       Span(data).as_bytes(), offset);
   }
 
   void bind_index_buffer(const BufferView &buffer, VkIndexType type);
@@ -183,30 +167,25 @@ public:
   void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
 
   void bind_descriptor_sets(Handle<PipelineLayout> layout,
-                            std::span<const VkDescriptorSet> sets,
+                            TempSpan<const VkDescriptorSet> sets,
                             unsigned first_set = 0);
 
-  void bind_descriptor_sets(std::span<const VkDescriptorSet> sets,
+  void bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
                             unsigned first_set = 0);
-
-  void bind_descriptor_set(Handle<PipelineLayout> layout, VkDescriptorSet set,
-                           unsigned offset = 0);
-
-  void bind_descriptor_set(VkDescriptorSet set, unsigned offset = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
-                          std::span<const std::byte> data, unsigned offset = 0);
+                          Span<const std::byte> data, unsigned offset = 0);
 
-  void set_push_constants(std::span<const std::byte> data, unsigned offset = 0);
+  void set_push_constants(Span<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout, const auto &data,
                           unsigned offset = 0) {
-    set_push_constants(layout, std::as_bytes(asSpan(data)), offset);
+    set_push_constants(layout, Span(data).as_bytes(), offset);
   }
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
     ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
-    set_push_constants(m_pipeline_layout, std::as_bytes(asSpan(data)), offset);
+    set_push_constants(m_pipeline_layout, Span(data).as_bytes(), offset);
   }
 
   void dispatch_groups(u32 num_groups_x, u32 num_groups_y = 1,

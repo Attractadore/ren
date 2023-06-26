@@ -22,7 +22,7 @@ auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view,
       .imageView = m_device->getVkImageView(view),
       .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
   };
-  VkWriteDescriptorSet config = {
+  m_device->write_descriptor_sets({{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
       .dstBinding = glsl::SAMPLED_TEXTURES_SLOT,
@@ -30,8 +30,7 @@ auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view,
       .descriptorCount = 1,
       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
       .pImageInfo = &image,
-  };
-  m_device->write_descriptor_set(config);
+  }});
 
   return SampledTextureID(index);
 };
@@ -53,7 +52,7 @@ auto TextureIDAllocator::allocate_storage_texture(const TextureView &view)
       .imageView = m_device->getVkImageView(view),
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
   };
-  VkWriteDescriptorSet config = {
+  m_device->write_descriptor_sets({{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
       .dstBinding = glsl::STORAGE_TEXTURES_SLOT,
@@ -61,8 +60,7 @@ auto TextureIDAllocator::allocate_storage_texture(const TextureView &view)
       .descriptorCount = 1,
       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
       .pImageInfo = &image,
-  };
-  m_device->write_descriptor_set(config);
+  }});
 
   return StorageTextureID(index);
 };

@@ -29,12 +29,12 @@ struct ColorPassResources {
 
 void run_color_pass(Device &device, RGRuntime &rg, RenderPass &render_pass,
                     const ColorPassResources &rcs) {
-  assert(glm::all(glm::greaterThan(cfg.size, glm::uvec2(0))));
+  assert(glm::all(glm::greaterThan(rcs.size, glm::uvec2(0))));
 
   auto size = rcs.size;
-  render_pass.set_viewport(
-      {.width = float(size.x), .height = float(size.y), .maxDepth = 1.0f});
-  render_pass.set_scissor_rect({.extent = {size.x, size.y}});
+  render_pass.set_viewports(
+      {{.width = float(size.x), .height = float(size.y), .maxDepth = 1.0f}});
+  render_pass.set_scissor_rects({{.extent = {size.x, size.y}}});
 
   if (rcs.mesh_insts.empty()) {
     return;
@@ -76,7 +76,7 @@ void run_color_pass(Device &device, RGRuntime &rg, RenderPass &render_pass,
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
 
-  render_pass.bind_descriptor_set(rcs.texture_allocator->get_set());
+  render_pass.bind_descriptor_sets(rcs.texture_allocator->get_set());
 
   auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
   for (const auto &&[i, mesh_inst] : enumerate(rcs.mesh_insts)) {
