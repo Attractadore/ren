@@ -499,21 +499,16 @@ auto Device::get_buffer_device_address(const BufferView &view,
 
 auto Device::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
-  unsigned depth = 1;
-  unsigned num_array_layers = 1;
-  if (create_info.type == VK_IMAGE_TYPE_3D) {
-    depth = create_info.depth;
-  } else {
-    num_array_layers = create_info.num_array_layers;
-  }
+  auto size = create_info.size;
+  assert(glm::all(glm::greaterThan(size, glm::uvec3(0))));
 
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = create_info.type,
       .format = create_info.format,
-      .extent = {create_info.width, create_info.height, depth},
+      .extent = {size.x, size.y, size.z},
       .mipLevels = create_info.num_mip_levels,
-      .arrayLayers = num_array_layers,
+      .arrayLayers = create_info.num_array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = create_info.usage,
@@ -535,9 +530,9 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
       .type = create_info.type,
       .format = create_info.format,
       .usage = create_info.usage,
-      .size = {create_info.width, create_info.height, depth},
+      .size = {size.x, size.y, size.z},
       .num_mip_levels = create_info.num_mip_levels,
-      .num_array_layers = num_array_layers,
+      .num_array_layers = create_info.num_array_layers,
   });
 }
 
@@ -550,7 +545,7 @@ auto Device::create_swapchain_texture(
       .type = VK_IMAGE_TYPE_2D,
       .format = create_info.format,
       .usage = create_info.usage,
-      .size = {create_info.width, create_info.height, 1u},
+      .size = {create_info.size, 1},
       .num_mip_levels = 1,
       .num_array_layers = 1,
   });

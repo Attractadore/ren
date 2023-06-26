@@ -13,8 +13,7 @@ struct SwapchainTextureCreateInfo {
   VkImage image = nullptr;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageUsageFlags usage = 0;
-  u32 width = 1;
-  u32 height = 1;
+  glm::uvec2 size = {0, 0};
 };
 
 class Swapchain {

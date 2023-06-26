@@ -150,8 +150,8 @@ void Swapchain::create() {
         .image = image,
         .format = m_create_info.imageFormat,
         .usage = m_create_info.imageUsage,
-        .width = m_create_info.imageExtent.width,
-        .height = m_create_info.imageExtent.height,
+        .size = {m_create_info.imageExtent.width,
+                 m_create_info.imageExtent.height},
     });
   });
 }

@@ -124,18 +124,9 @@ struct RGTextureCreateInfo {
   REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   VkImageType type = VK_IMAGE_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
-  union {
-    struct {
-      u32 width = 1;
-      u32 height = 1;
-      union {
-        u32 depth;
-        u32 num_array_layers = 1;
-      };
-    };
-    glm::uvec3 size;
-  };
+  glm::uvec3 size = {0, 0, 0};
   u32 num_mip_levels = 1;
+  u32 num_array_layers = 1;
   VkPipelineStageFlags2 stages = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 accesses = VK_ACCESS_2_NONE;
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
