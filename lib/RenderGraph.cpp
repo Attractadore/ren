@@ -1143,16 +1143,13 @@ void RGPassBuilder::set_color_attachment(RGColorAttachment attachment,
 }
 
 auto RGPassBuilder::write_color_attachment(
-    RGColorAttachmentWriteInfo &&write_info) -> RGTextureID {
-  auto texture = write_texture({
-      .name = std::move(write_info.name),
-      .texture = write_info.texture,
-      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-      .temporal = write_info.temporal,
-  });
+    RGTextureWriteInfo &&write_info,
+    RGColorAttachmentWriteInfo &&attachment_info) -> RGTextureID {
+  write_info.stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+  write_info.accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+  write_info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+  auto texture = write_texture(std::move(write_info));
   set_color_attachment(
       {
           .texture = texture,
@@ -1162,152 +1159,90 @@ auto RGPassBuilder::write_color_attachment(
                   .store = VK_ATTACHMENT_STORE_OP_STORE,
               },
       },
-      write_info.index);
+      attachment_info.index);
   return texture;
 }
 
 auto RGPassBuilder::create_color_attachment(
-    RGColorAttachmentCreateInfo &&create_info) -> RGTextureID {
-  auto texture = create_texture({
-      .name = std::move(create_info.name),
-      .type = VK_IMAGE_TYPE_2D,
-      .format = create_info.format,
-      .size = create_info.size,
-      .num_mip_levels = create_info.num_mip_levels,
-      .stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-      .temporal = create_info.temporal,
-  });
+    RGTextureCreateInfo &&create_info,
+    RGColorAttachmentCreateInfo &&attachment_info) -> RGTextureID {
+  create_info.stages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+  create_info.accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+  create_info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+  auto texture = create_texture(std::move(create_info));
+  auto clear_color = attachment_info.ops.get<RGAttachmentClearColor>().map(
+      [](const RGAttachmentClearColor &clear) { return clear.color; });
   set_color_attachment(
       {
           .texture = texture,
           .ops =
               {
-                  .load = create_info.clear_color
-                              ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                              : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                  .load = clear_color ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                                      : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                   .store = VK_ATTACHMENT_STORE_OP_STORE,
-                  .clear_color =
-                      create_info.clear_color.value_or(glm::vec4(0.0f)),
+                  .clear_color = clear_color.value_or(glm::vec4(0.0f)),
               },
       },
-      create_info.index);
+      attachment_info.index);
   return texture;
 }
 
-void RGPassBuilder::read_depth_stencil_attachment(
-    RGDepthStencilAttachmentReadInfo &&read_info) {
-  read_texture({
-      .texture = read_info.texture,
-      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
-      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-      .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-  });
-  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+void RGPassBuilder::read_depth_attachment(
+    RGTextureReadInfo &&read_info,
+    RGDepthAttachmentReadInfo &&attachment_info) {
+  read_info.stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+  read_info.accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+  read_info.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+  read_texture(std::move(read_info));
+  m_render_pass.depth_attachment = RGDepthAttachment{
       .texture = read_info.texture,
       .depth_ops =
-          read_info.read_depth
-              ? Optional<DepthAttachmentOperations>(DepthAttachmentOperations{
-                    .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                    .store = VK_ATTACHMENT_STORE_OP_NONE,
-                })
-              : None,
-      .stencil_ops = read_info.read_stencil
-                         ? Optional<StencilAttachmentOperations>(
-                               StencilAttachmentOperations{
-                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                   .store = VK_ATTACHMENT_STORE_OP_NONE,
-                               })
-                         : None,
+          DepthAttachmentOperations{
+              .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+              .store = VK_ATTACHMENT_STORE_OP_NONE,
+          },
   };
 }
 
-auto RGPassBuilder::write_depth_stencil_attachment(
-    RGDepthStencilAttachmentWriteInfo &&write_info) -> RGTextureID {
-  ren_assert(write_info.depth_ops or write_info.stencil_ops,
-             "At least one attachment aspect must be used");
-  auto clear_depth = write_info.depth_ops.and_then(
-      [](const RGDepthAttachmentWriteOperations &ops) {
-        return ops.clear_depth;
-      });
-  auto clear_stencil = write_info.stencil_ops.and_then(
-      [](const RGStencilAttachmentWriteOperations &ops) {
-        return ops.clear_stencil;
-      });
-  ren_assert(not(clear_depth and clear_stencil),
-             "Create a new attachment when clearing both depth and stencil");
-  auto texture = write_texture({
-      .name = std::move(write_info.name),
-      .texture = write_info.texture,
-      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-  });
-  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+auto RGPassBuilder::write_depth_attachment(
+    RGTextureWriteInfo &&write_info,
+    RGDepthAttachmentWriteInfo &&attachment_info) -> RGTextureID {
+  write_info.stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                      VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+  write_info.accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+  write_info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+  auto texture = write_texture(std::move(write_info));
+  m_render_pass.depth_attachment = RGDepthAttachment{
       .texture = texture,
-      .depth_ops = write_info.depth_ops.map(
-          [](const RGDepthAttachmentWriteOperations &ops)
-              -> DepthAttachmentOperations {
-            return {
-                .load = ops.clear_depth ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                                        : VK_ATTACHMENT_LOAD_OP_LOAD,
-                .store = VK_ATTACHMENT_STORE_OP_STORE,
-                .clear_depth = ops.clear_depth.value_or(0.0f),
-            };
-          }),
-      .stencil_ops = write_info.stencil_ops.map(
-          [](const RGStencilAttachmentWriteOperations &ops)
-              -> StencilAttachmentOperations {
-            return {
-                .load = ops.clear_stencil ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                                          : VK_ATTACHMENT_LOAD_OP_LOAD,
-                .store = VK_ATTACHMENT_STORE_OP_STORE,
-                .clear_stencil = ops.clear_stencil.value_or(0),
-
-            };
-          }),
+      .depth_ops =
+          DepthAttachmentOperations{
+              .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+              .store = VK_ATTACHMENT_STORE_OP_STORE,
+          },
   };
   return texture;
 }
 
-auto RGPassBuilder::create_depth_stencil_attachment(
-    RGDepthStencilAttachmentCreateInfo &&create_info) -> RGTextureID {
-  ren_assert(create_info.clear_depth or create_info.clear_stencil,
-             "At least one attachment aspect must be used");
-  auto texture = create_texture({
-      .name = std::move(create_info.name),
-      .type = VK_IMAGE_TYPE_2D,
-      .format = create_info.format,
-      .size = create_info.size,
-      .num_mip_levels = create_info.num_mip_levels,
-      .stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-      .accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                  VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-      .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-  });
-  m_render_pass.depth_stencil_attachment = RGDepthStencilAttachment{
+auto RGPassBuilder::create_depth_attachment(
+    RGTextureCreateInfo &&create_info,
+    RGDepthAttachmentCreateInfo &&attachment_info) -> RGTextureID {
+  create_info.type = VK_IMAGE_TYPE_2D;
+  create_info.stages = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                       VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+  create_info.accesses = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                         VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+  create_info.layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+  auto texture = create_texture(std::move(create_info));
+  m_render_pass.depth_attachment = RGDepthAttachment{
       .texture = texture,
-      .depth_ops = create_info.clear_depth.map(
-          [](float clear_depth) -> DepthAttachmentOperations {
-            return {
-                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .store = VK_ATTACHMENT_STORE_OP_STORE,
-                .clear_depth = clear_depth,
-            };
-          }),
-      .stencil_ops = create_info.clear_stencil.map(
-          [](u8 clear_stencil) -> StencilAttachmentOperations {
-            return {
-                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                .store = VK_ATTACHMENT_STORE_OP_STORE,
-                .clear_stencil = clear_stencil,
-            };
-          }),
+      .depth_ops =
+          DepthAttachmentOperations{
+              .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+              .store = VK_ATTACHMENT_STORE_OP_STORE,
+              .clear_depth = attachment_info.depth_ops.depth,
+          },
   };
   return texture;
 }
@@ -1375,37 +1310,36 @@ void RGPassBuilder::set_host_callback(RGHostPassCallback cb) {
 
 void RGPassBuilder::set_graphics_callback(RGGraphicsPassCallback cb) {
   assert(cb);
-  m_builder->set_callback(
-      m_pass, [cb = std::move(cb), begin_info = std::move(m_render_pass)](
-                  Device &device, RGRuntime &rg, CommandRecorder &cmd) {
-        auto color_attachments =
-            begin_info.color_attachments |
-            map([&](const Optional<RGColorAttachment> &attachment)
-                    -> Optional<ColorAttachment> {
-              return attachment.map(
-                  [&](const RGColorAttachment &attachment) -> ColorAttachment {
-                    return {
-                        .texture = rg.get_texture(attachment.texture),
-                        .ops = attachment.ops,
-                    };
-                  });
-            }) |
-            ranges::to<
-                StaticVector<Optional<ColorAttachment>, MAX_COLOR_ATTACHMENTS>>;
-        auto render_pass = cmd.render_pass({
-            .color_attachments = color_attachments,
-            .depth_stencil_attachment = begin_info.depth_stencil_attachment.map(
-                [&](const RGDepthStencilAttachment &attachment)
-                    -> DepthStencilAttachment {
-                  return {
-                      .texture = rg.get_texture(attachment.texture),
-                      .depth_ops = attachment.depth_ops,
-                      .stencil_ops = attachment.stencil_ops,
-                  };
-                }),
-        });
-        cb(device, rg, render_pass);
-      });
+  m_builder->set_callback(m_pass, [cb = std::move(cb),
+                                   begin_info = std::move(m_render_pass)](
+                                      Device &device, RGRuntime &rg,
+                                      CommandRecorder &cmd) {
+    auto color_attachments =
+        begin_info.color_attachments |
+        map([&](const Optional<RGColorAttachment> &attachment)
+                -> Optional<ColorAttachment> {
+          return attachment.map(
+              [&](const RGColorAttachment &attachment) -> ColorAttachment {
+                return {
+                    .texture = rg.get_texture(attachment.texture),
+                    .ops = attachment.ops,
+                };
+              });
+        }) |
+        ranges::to<
+            StaticVector<Optional<ColorAttachment>, MAX_COLOR_ATTACHMENTS>>;
+    auto render_pass = cmd.render_pass({
+        .color_attachments = color_attachments,
+        .depth_stencil_attachment = begin_info.depth_attachment.map(
+            [&](const RGDepthAttachment &attachment) -> DepthStencilAttachment {
+              return {
+                  .texture = rg.get_texture(attachment.texture),
+                  .depth_ops = attachment.depth_ops,
+              };
+            }),
+    });
+    cb(device, rg, render_pass);
+  });
 }
 
 void RGPassBuilder::set_compute_callback(RGComputePassCallback cb) {

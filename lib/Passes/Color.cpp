@@ -149,7 +149,7 @@ auto setup_color_pass(Device &device, RenderGraph::Builder &rgb,
       .size = {cfg.size, 1},
   });
 
-  auto depth_texture = pass.create_depth_stencil_attachment({
+  auto depth_texture = pass.create_depth_attachment({
       .name = "Depth buffer after color pass",
       .format = DEPTH_FORMAT,
       .size = {cfg.size, 1},

@@ -142,68 +142,46 @@ struct RGTextureCreateInfo {
   bool temporal = false;
 };
 
+struct RGAttachmentClearColor {
+  glm::vec4 color = {0.0f, 0.0f, 0.0f, 1.0f};
+};
+
+struct RGAttachmentClearDepth {
+  float depth = 0.0f;
+};
+
+struct RGAttachmentLoad {};
+
+struct RGAttachmentOverwrite {};
+
+using RGColorAttachmentWriteOperations = RGAttachmentLoad;
+using RGColorAttachmentCreateOperations =
+    Variant<RGAttachmentClearColor, RGAttachmentOverwrite>;
+
 struct RGColorAttachmentWriteInfo {
-  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   u32 index = 0;
-  RGTextureID texture;
-  bool temporal = false;
+  RGColorAttachmentWriteOperations ops = RGAttachmentLoad();
 };
 
 struct RGColorAttachmentCreateInfo {
-  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
   u32 index = 0;
-  VkFormat format = VK_FORMAT_UNDEFINED;
-  union {
-    struct {
-      u32 width = 1;
-      u32 height = 1;
-      u32 num_array_layers = 1;
-    };
-    glm::uvec3 size;
-  };
-  u32 num_mip_levels = 1;
-  Optional<glm::vec4> clear_color = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-  bool temporal = false;
+  RGColorAttachmentCreateOperations ops = RGAttachmentClearColor();
 };
 
-struct RGDepthStencilAttachmentReadInfo {
-  RGTextureID texture;
-  bool read_depth = true;
-  bool read_stencil = false;
+using RGDepthAttachmentReadOperations = RGAttachmentLoad;
+using RGDepthAttachmentWriteOperations = RGAttachmentLoad;
+using RGDepthAttachmentCreateOperations = RGAttachmentClearDepth;
+
+struct RGDepthAttachmentReadInfo {
+  RGDepthAttachmentReadOperations depth_ops = RGAttachmentLoad();
 };
 
-struct RGDepthAttachmentWriteOperations {
-  Optional<float> clear_depth = 0.0f;
+struct RGDepthAttachmentWriteInfo {
+  RGDepthAttachmentWriteOperations depth_ops = RGAttachmentLoad();
 };
 
-struct RGStencilAttachmentWriteOperations {
-  Optional<u8> clear_stencil;
-};
-
-struct RGDepthStencilAttachmentWriteInfo {
-  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
-  RGTextureID texture;
-  Optional<RGDepthAttachmentWriteOperations> depth_ops =
-      RGDepthAttachmentWriteOperations();
-  Optional<RGStencilAttachmentWriteOperations> stencil_ops;
-  bool temporal = false;
-};
-
-struct RGDepthStencilAttachmentCreateInfo {
-  REN_RENDER_GRAPH_DEBUG_NAME_FIELD;
-  VkFormat format = VK_FORMAT_UNDEFINED;
-  union {
-    struct {
-      u32 width = 1;
-      u32 height = 1;
-      u32 num_array_layers = 1;
-    };
-    glm::uvec3 size;
-  };
-  u32 num_mip_levels = 1;
-  Optional<float> clear_depth = 0.0f;
-  Optional<u8> clear_stencil;
-  bool temporal = false;
+struct RGDepthAttachmentCreateInfo {
+  RGDepthAttachmentCreateOperations depth_ops = RGAttachmentClearDepth();
 };
 
 struct RGTextureImportInfo {
@@ -415,16 +393,15 @@ class RenderGraph::Builder::PassBuilder {
     ColorAttachmentOperations ops;
   };
 
-  struct RGDepthStencilAttachment {
+  struct RGDepthAttachment {
     RGTextureID texture;
-    Optional<DepthAttachmentOperations> depth_ops;
-    Optional<StencilAttachmentOperations> stencil_ops;
+    DepthAttachmentOperations depth_ops;
   };
 
   struct RGRenderPassBeginInfo {
     StaticVector<Optional<RGColorAttachment>, MAX_COLOR_ATTACHMENTS>
         color_attachments;
-    Optional<RGDepthStencilAttachment> depth_stencil_attachment;
+    Optional<RGDepthAttachment> depth_attachment;
   };
 
   RGRenderPassBeginInfo m_render_pass;
@@ -483,31 +460,34 @@ public:
     return m_builder->create_texture(m_pass, std::move(create_info));
   }
 
-  /// Access color attachment with LOAD_OP_LOAD and STORE_OP_STORE
+  /// Write color attachment with LOAD_OP_LOAD and STORE_OP_STORE
   [[nodiscard]] auto
-  write_color_attachment(RGColorAttachmentWriteInfo &&write_info)
+  write_color_attachment(RGTextureWriteInfo &&write_info,
+                         RGColorAttachmentWriteInfo &&attachment_info = {})
       -> RGTextureID;
 
-  /// Create and access color attachment with LOAD_OP_CLEAR or LOAD_OP_DONT_CARE
-  /// and STORE_OP_STORE
-  [[nodiscard]] auto
-  create_color_attachment(RGColorAttachmentCreateInfo &&create_info)
-      -> RGTextureID;
-
-  /// Access depth-stencil attachment with LOAD_OP_LOAD and STORE_OP_NONE
-  void
-  read_depth_stencil_attachment(RGDepthStencilAttachmentReadInfo &&read_info);
-
-  /// Access depth-stencil attachment with LOAD_OP_LOAD or LOAD_OP_CLEAR and
+  /// Create color attachment with LOAD_OP_CLEAR or LOAD_OP_DONT_CARE and
   /// STORE_OP_STORE
   [[nodiscard]] auto
-  write_depth_stencil_attachment(RGDepthStencilAttachmentWriteInfo &&write_info)
+  create_color_attachment(RGTextureCreateInfo &&create_info,
+                          RGColorAttachmentCreateInfo &&attachment_info = {})
       -> RGTextureID;
 
-  /// Create and access depth-stencil attachment with LOAD_OP_CLEAR and
-  /// STORE_OP_STORE
-  [[nodiscard]] auto create_depth_stencil_attachment(
-      RGDepthStencilAttachmentCreateInfo &&create_info) -> RGTextureID;
+  /// Read depth attachment with LOAD_OP_LOAD and STORE_OP_NONE
+  void read_depth_attachment(RGTextureReadInfo &&read_info,
+                             RGDepthAttachmentReadInfo &&attachment_info = {});
+
+  /// Write depth attachment with LOAD_OP_LOAD and STORE_OP_STORE
+  [[nodiscard]] auto
+  write_depth_attachment(RGTextureWriteInfo &&write_info,
+                         RGDepthAttachmentWriteInfo &&attachment_info = {})
+      -> RGTextureID;
+
+  /// Create depth attachment with LOAD_OP_CLEAR and STORE_OP_STORE
+  [[nodiscard]] auto
+  create_depth_attachment(RGTextureCreateInfo &&create_info,
+                          RGDepthAttachmentCreateInfo &&attachment_info = {})
+      -> RGTextureID;
 
   void read_storage_texture(RGTextureReadInfo &&read_info);
 
