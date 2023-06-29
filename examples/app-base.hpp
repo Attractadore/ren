@@ -10,7 +10,6 @@ class AppBase {
     }
   };
 
-  std::string m_app_name;
   struct SDL {
     SDL() { SDL_Init(SDL_INIT_EVERYTHING); }
     ~SDL() { SDL_Quit(); }
@@ -23,7 +22,7 @@ class AppBase {
   unsigned m_window_width = 1280, m_window_height = 720;
 
 public:
-  AppBase(std::string app_name);
+  AppBase(const char *app_name);
 
   void run();
 

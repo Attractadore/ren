@@ -85,8 +85,8 @@ ren::UniqueSwapchain create_swapchain(SDL_Window *window, ren::Device &device) {
 
 } // namespace
 
-AppBase::AppBase(std::string app_name) : m_app_name(std::move(app_name)) {
-  m_window.reset(SDL_CreateWindow(m_app_name.c_str(), SDL_WINDOWPOS_UNDEFINED,
+AppBase::AppBase(const char *app_name) {
+  m_window.reset(SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
                                   SDL_WINDOWPOS_UNDEFINED, m_window_width,
                                   m_window_height,
                                   SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN));
