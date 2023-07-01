@@ -7,6 +7,7 @@
 #include <cassert>
 #include <charconv>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -16,27 +17,33 @@ std::string env(const char *var) {
   return val ? val : "";
 }
 
-VkInstance createInstance() {
+using Instance = std::unique_ptr<std::remove_pointer_t<VkInstance>,
+                                 decltype([](VkInstance instance) {
+                                   vkDestroyInstance(instance, nullptr);
+                                 })>;
+
+auto create_instance() -> Result<Instance> {
   VkInstanceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
   };
 
   VkInstance instance = VK_NULL_HANDLE;
   if (vkCreateInstance(&create_info, nullptr, &instance)) {
-    throw std::runtime_error{"Vulkan: Failed to create VkInstance"};
+    return Err("Vulkan: Failed to create VkInstance");
   }
 
-  return instance;
+  return Instance(instance);
 }
 
-VkPhysicalDevice selectAdapter(VkInstance instance, unsigned idx = 0) {
+auto select_adapter(VkInstance instance, unsigned idx = 0)
+    -> Result<VkPhysicalDevice> {
   unsigned dev_cnt = 0;
   if (vkEnumeratePhysicalDevices(instance, &dev_cnt, nullptr)) {
-    throw std::runtime_error{"Vulkan: Failed to enumerate devices"};
+    return Err("Vulkan: Failed to enumerate devices");
   }
   std::vector<VkPhysicalDevice> devs(dev_cnt);
   if (vkEnumeratePhysicalDevices(instance, &dev_cnt, devs.data())) {
-    throw std::runtime_error{"Vulkan: Failed to enumerate devices"};
+    return Err("Vulkan: Failed to enumerate devices");
   }
   devs.resize(dev_cnt);
   if (idx < dev_cnt) {
@@ -45,19 +52,19 @@ VkPhysicalDevice selectAdapter(VkInstance instance, unsigned idx = 0) {
   return VK_NULL_HANDLE;
 }
 
-ren::UniqueDevice create_device(VkPhysicalDevice adapter) {
+auto create_device(VkPhysicalDevice adapter) -> Result<ren::UniqueDevice> {
   VkPhysicalDeviceProperties props;
   vkGetPhysicalDeviceProperties(adapter, &props);
   fmt::print("Running on {}\n", props.deviceName);
 
   unsigned num_extensions = 0;
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions, nullptr)) {
-    throw std::runtime_error("SDL_Vulkan: Failed to query instance extensions");
+    return Err("SDL_Vulkan: Failed to query instance extensions");
   }
   std::vector<const char *> extensions(num_extensions);
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
                                         extensions.data())) {
-    throw std::runtime_error("SDL_Vulkan: Failed to query instance extensions");
+    return Err("SDL_Vulkan: Failed to query instance extensions");
   }
   extensions.resize(num_extensions);
 
@@ -68,10 +75,11 @@ ren::UniqueDevice create_device(VkPhysicalDevice adapter) {
   std::memcpy(desc.pipeline_cache_uuid, props.pipelineCacheUUID,
               sizeof(props.pipelineCacheUUID));
 
-  return ren::vk::Device::create(desc).value();
+  return ren::vk::Device::create(desc).transform_error(get_error_string);
 }
 
-ren::UniqueSwapchain create_swapchain(SDL_Window *window, ren::Device &device) {
+auto create_swapchain(SDL_Window *window, ren::Device &device)
+    -> Result<ren::UniqueSwapchain> {
   auto &vk_device = static_cast<ren::vk::Device &>(device);
   return vk_device
       .create_swapchain([=](VkInstance instance, VkSurfaceKHR *p_surface) {
@@ -80,44 +88,69 @@ ren::UniqueSwapchain create_swapchain(SDL_Window *window, ren::Device &device) {
         }
         return VK_SUCCESS;
       })
-      .value();
+      .transform_error(get_error_string);
 }
 
 } // namespace
 
-AppBase::AppBase(const char *app_name) {
-  m_window.reset(SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
-                                  SDL_WINDOWPOS_UNDEFINED, m_window_width,
-                                  m_window_height,
-                                  SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN));
+auto get_error_string_impl(std::string err) -> std::string { return err; }
 
-  std::unique_ptr<std::remove_pointer_t<VkInstance>,
-                  decltype([](VkInstance instance) {
-                    vkDestroyInstance(instance, nullptr);
-                  })>
-      instance(createInstance());
-
-  std::string ren_adapter = env("REN_ADAPTER");
-  unsigned adapter_idx = 0;
-  auto [end, ec] = std::from_chars(
-      ren_adapter.data(), ren_adapter.data() + ren_adapter.size(), adapter_idx);
-  if (end != ren_adapter.data() + ren_adapter.size() or
-      ec != std::error_code()) {
-    adapter_idx = 0;
-  };
-  auto adapter = selectAdapter(instance.get(), adapter_idx);
-  if (!adapter) {
-    throw std::runtime_error{"Failed to find adapter"};
+auto get_error_string_impl(ren::Error err) -> std::string {
+  switch (err) {
+  case ren::Error::Vulkan:
+    return "ren: Vulkan error";
+  case ren::Error::System:
+    return "ren: System error";
+  case ren::Error::Runtime:
+    return "ren: Runtime error";
+  case ren::Error::Unknown:
+    return "ren: Unknown error";
   }
-
-  m_device = create_device(adapter);
-
-  m_swapchain = create_swapchain(m_window.get(), *m_device);
-
-  m_scene = m_device->create_scene().value();
+  std::unreachable();
 }
 
-void AppBase::run() {
+auto throw_error(std::string err) -> std::string {
+  throw std::runtime_error(std::move(err));
+}
+
+AppBase::AppBase(const char *app_name) {
+  [&]() -> Result<void> {
+    m_window.reset(SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
+                                    SDL_WINDOWPOS_UNDEFINED, m_window_width,
+                                    m_window_height,
+                                    SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN));
+    if (!m_window) {
+      return Err(SDL_GetError());
+    }
+
+    OK(auto instance, create_instance());
+
+    std::string ren_adapter = env("REN_ADAPTER");
+    unsigned adapter_idx = 0;
+    auto [end, ec] =
+        std::from_chars(ren_adapter.data(),
+                        ren_adapter.data() + ren_adapter.size(), adapter_idx);
+    if (end != ren_adapter.data() + ren_adapter.size() or
+        ec != std::error_code()) {
+      adapter_idx = 0;
+    };
+    OK(auto adapter, select_adapter(instance.get(), adapter_idx));
+    if (!adapter) {
+      return Err("Failed to find adapter");
+    }
+
+    OK(m_device, create_device(adapter));
+
+    OK(m_swapchain, create_swapchain(m_window.get(), *m_device));
+
+    OK(m_scene, m_device->create_scene());
+
+    return {};
+  }()
+               .transform_error(throw_error);
+}
+
+auto AppBase::loop() -> Result<void> {
   bool quit = false;
   while (!quit) {
     SDL_Event e;
@@ -125,29 +158,36 @@ void AppBase::run() {
       if (e.type == SDL_QUIT) {
         quit = true;
       }
-      process_event(e);
+      TRY_TO(process_event(e));
     }
 
     {
       int w, h;
-      SDL_GetWindowSize(m_window.get(), &w, &h);
+      SDL_Vulkan_GetDrawableSize(m_window.get(), &w, &h);
       m_window_width = w;
       m_window_height = h;
+      m_swapchain->set_size(m_window_width, m_window_height);
     }
-    m_swapchain->set_size(m_window_width, m_window_height);
 
-    iterate(m_window_width, m_window_height);
-
-    m_scene->draw(*m_swapchain).value();
+    TRY_TO(iterate(m_window_width, m_window_height));
+    TRY_TO(m_scene->draw(*m_swapchain));
   }
+
+  return {};
 }
 
-void AppBase::iterate(unsigned width, unsigned height) {
+auto AppBase::get_scene() const -> const ren::Scene & { return *m_scene; }
+auto AppBase::get_scene() -> ren::Scene & { return *m_scene; }
+
+auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
+
+auto AppBase::iterate(unsigned width, unsigned height) -> Result<void> {
   auto &scene = get_scene();
-  scene
-      .set_camera({
-          .width = width,
-          .height = height,
-      })
-      .value();
+
+  TRY_TO(scene.set_camera({
+      .width = width,
+      .height = height,
+  }));
+
+  return {};
 }

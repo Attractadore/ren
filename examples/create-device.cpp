@@ -5,13 +5,10 @@
 class CreateDeviceApp : public AppBase {
 public:
   CreateDeviceApp() : AppBase("Create Device") {}
+
+  [[nodiscard]] static auto run() -> int {
+    return AppBase::run<CreateDeviceApp>();
+  }
 };
 
-int main() {
-  try {
-    CreateDeviceApp().run();
-  } catch (const std::exception &e) {
-    fmt::print(stderr, "{}\n", e.what());
-    return -1;
-  }
-}
+int main() { return CreateDeviceApp::run(); }
