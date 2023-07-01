@@ -22,7 +22,6 @@ target_compile_definitions(Vulkan::Headers INTERFACE VK_NO_PROTOTYPE)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
-find_package(tl-expected REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(unofficial-vulkan-memory-allocator REQUIRED)
@@ -166,8 +165,8 @@ target_sources(
          FILES
          ${REN_INCLUDE}/ren/ren.hpp
          ${REN_INCLUDE}/ren/ren-vk.hpp)
-target_link_libraries(ren-hpp INTERFACE ren::ren tl::expected)
-target_compile_features(ren-hpp INTERFACE cxx_std_20)
+target_link_libraries(ren-hpp INTERFACE ren::ren)
+target_compile_features(ren-hpp INTERFACE cxx_std_23)
 add_library(ren::ren-hpp ALIAS ren-hpp)
 
 if(REN_INSTALL)

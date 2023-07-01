@@ -2,6 +2,7 @@
 #include "ren-vk.h"
 #include "ren.hpp"
 
+#include <functional>
 #include <span>
 
 namespace ren::vk {
@@ -46,17 +47,16 @@ struct Device : ::ren::Device {
     std::memcpy(c_desc.pipeline_cache_uuid, desc.pipeline_cache_uuid,
                 sizeof(desc.pipeline_cache_uuid));
     RenDevice *device;
-    return expected(ren_vk_CreateDevice(&c_desc, &device)).map([&] {
-      return UniqueDevice(static_cast<Device *>(device));
-    });
+    return detail::make_expected(ren_vk_CreateDevice(&c_desc, &device))
+        .transform([&] { return UniqueDevice(static_cast<Device *>(device)); });
   }
 
   auto create_swapchain(PFN_CreateSurface create_surface, void *usrptr)
       -> expected<UniqueSwapchain> {
     RenSwapchain *swapchain;
-    return expected(
+    return detail::make_expected(
                ren_vk_CreateSwapchain(this, create_surface, usrptr, &swapchain))
-        .map([&] {
+        .transform([&] {
           return UniqueSwapchain(static_cast<Swapchain *>(swapchain));
         });
   }
