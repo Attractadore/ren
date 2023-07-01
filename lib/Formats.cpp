@@ -21,6 +21,10 @@ auto getVkFormat(RenFormat format) -> VkFormat {
     return VK_FORMAT_R8G8B8A8_UNORM;
   case REN_FORMAT_RGBA8_SRGB:
     return VK_FORMAT_R8G8B8A8_SRGB;
+  case REN_FORMAT_BGRA8_UNORM:
+    return VK_FORMAT_B8G8R8A8_UNORM;
+  case REN_FORMAT_BGRA8_SRGB:
+    return VK_FORMAT_B8G8R8A8_SRGB;
   case REN_FORMAT_R16_UNORM:
     return VK_FORMAT_R16_UNORM;
   case REN_FORMAT_RG16_UNORM:
@@ -33,6 +37,7 @@ auto getVkFormat(RenFormat format) -> VkFormat {
     return VK_FORMAT_R32G32B32_SFLOAT;
   case REN_FORMAT_RGBA32_SFLOAT:
     return VK_FORMAT_R32G32B32_SFLOAT;
+    break;
   }
   unreachable("Unknown format {}", int(format));
 }
