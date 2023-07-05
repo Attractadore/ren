@@ -17,7 +17,7 @@ REN_BUFFER_REFERENCE(4) Materials { Material material; };
 
 REN_BUFFER_REFERENCE(4) DirectionalLights { DirLight light; };
 
-REN_BUFFER_REFERENCE(4) ColorUB {
+REN_BUFFER_REFERENCE(8) ColorUB {
   REN_REFERENCE(TransformMatrices) transform_matrices_ptr;
   REN_REFERENCE(NormalMatrices) normal_matrices_ptr;
   REN_REFERENCE(Materials) materials_ptr;

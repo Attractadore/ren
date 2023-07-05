@@ -1,5 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
+#include "BufferReference.hpp"
 #include "Config.hpp"
 #include "Descriptors.hpp"
 #include "DispatchTable.hpp"
@@ -252,8 +253,15 @@ public:
     return map_buffer<T>(view.buffer, view.offset + map_offset);
   }
 
+  template <typename T>
   auto get_buffer_device_address(const BufferView &view,
-                                 u64 map_offset = 0) const -> u64;
+                                 u64 map_offset = 0) const
+      -> BufferReference<T> {
+    auto addr = get_buffer(view.buffer).address;
+    if (!addr)
+      return {};
+    return BufferReference<T>(addr + view.offset + map_offset);
+  }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
       -> Handle<Texture>;

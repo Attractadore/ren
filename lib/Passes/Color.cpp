@@ -59,16 +59,21 @@ void run_color_pass(Device &device, RGRuntime &rg, RenderPass &render_pass,
   auto *uniforms = device.map_buffer<glsl::ColorUB>(uniform_buffer);
   *uniforms = {
       .transform_matrices_ptr =
-          device.get_buffer_device_address(transform_matrix_buffer),
+          device.get_buffer_device_address<glsl::TransformMatrices>(
+              transform_matrix_buffer),
       .normal_matrices_ptr =
-          device.get_buffer_device_address(normal_matrix_buffer),
-      .materials_ptr = device.get_buffer_device_address(materials_buffer),
+          device.get_buffer_device_address<glsl::NormalMatrices>(
+              normal_matrix_buffer),
+      .materials_ptr =
+          device.get_buffer_device_address<glsl::Materials>(materials_buffer),
       .directional_lights_ptr = directional_lights_buffer.map_or(
           [&](const BufferView &view) {
-            return device.get_buffer_device_address(view);
+            return device.get_buffer_device_address<glsl::DirectionalLights>(
+                view);
           },
-          u64(0)),
-      .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
+          BufferReference<glsl::DirectionalLights>()),
+      .exposure_ptr =
+          device.get_buffer_device_address<glsl::Exposure>(exposure_buffer),
       .proj_view = rcs.proj * rcs.view,
       .eye = rcs.eye,
       .num_dir_lights = rcs.num_dir_lights,
@@ -78,24 +83,30 @@ void run_color_pass(Device &device, RGRuntime &rg, RenderPass &render_pass,
 
   render_pass.bind_descriptor_sets(rcs.texture_allocator->get_set());
 
-  auto ub_ptr = device.get_buffer_device_address(uniform_buffer);
+  auto ub_ptr = device.get_buffer_device_address<glsl::ColorUB>(uniform_buffer);
   for (const auto &&[i, mesh_inst] : enumerate(rcs.mesh_insts)) {
     const auto &mesh = (*rcs.meshes)[mesh_inst.mesh];
     auto material = mesh_inst.material;
 
-    auto address = device.get_buffer_device_address(mesh.vertex_buffer);
     auto positions_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_POSITIONS];
     auto normals_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_NORMALS];
     auto colors_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_COLORS];
     auto uvs_offset = mesh.attribute_offsets[MESH_ATTRIBUTE_UVS];
 
-    render_pass.set_push_constants(glsl::ColorConstants{
+    render_pass.set_push_constants<glsl::ColorConstants>({
         .ub_ptr = ub_ptr,
-        .positions_ptr = address + positions_offset,
-        .colors_ptr =
-            (colors_offset != ATTRIBUTE_UNUSED) ? address + colors_offset : 0,
-        .normals_ptr = address + normals_offset,
-        .uvs_ptr = (uvs_offset != ATTRIBUTE_UNUSED) ? address + uvs_offset : 0,
+        .positions_ptr = device.get_buffer_device_address<glsl::Positions>(
+            mesh.vertex_buffer, positions_offset),
+        .colors_ptr = (colors_offset != ATTRIBUTE_UNUSED)
+                          ? device.get_buffer_device_address<glsl::Colors>(
+                                mesh.vertex_buffer, colors_offset)
+                          : nullptr,
+        .normals_ptr = device.get_buffer_device_address<glsl::Normals>(
+            mesh.vertex_buffer, normals_offset),
+        .uvs_ptr = (uvs_offset != ATTRIBUTE_UNUSED)
+                       ? device.get_buffer_device_address<glsl::UVs>(
+                             mesh.vertex_buffer, uvs_offset)
+                       : nullptr,
         .matrix_index = unsigned(i),
         .material_index = material,
     });

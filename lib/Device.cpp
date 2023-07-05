@@ -489,14 +489,6 @@ auto Device::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   };
 };
 
-auto Device::get_buffer_device_address(const BufferView &view,
-                                       u64 map_offset) const -> u64 {
-  auto addr = get_buffer(view.buffer).address;
-  if (!addr)
-    return 0;
-  return addr + view.offset + map_offset;
-}
-
 auto Device::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
   auto size = create_info.size;

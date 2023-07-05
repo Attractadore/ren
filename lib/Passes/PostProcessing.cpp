@@ -63,18 +63,18 @@ void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
 
   pass.bind_descriptor_sets(rcs.texture_allocator->get_set());
 
-  u64 histogram_ptr = 0;
-  u64 previous_exposure_ptr = 0;
-  if (rcs.histogram_buffer) {
-    assert(rcs.previous_exposure_buffer);
-    histogram_ptr =
-        device.get_buffer_device_address(rg.get_buffer(rcs.histogram_buffer));
-    previous_exposure_ptr = device.get_buffer_device_address(
-        rg.get_buffer(rcs.previous_exposure_buffer));
-  }
-  pass.set_push_constants(glsl::PostProcessingConstants{
-      .histogram_ptr = histogram_ptr,
-      .previous_exposure_ptr = previous_exposure_ptr,
+  assert(!rcs.histogram_buffer == !rcs.previous_exposure_buffer);
+  pass.set_push_constants<glsl::PostProcessingConstants>({
+      .histogram_ptr =
+          rcs.histogram_buffer
+              ? device.get_buffer_device_address<glsl::LuminanceHistogram>(
+                    rg.get_buffer(rcs.histogram_buffer))
+              : nullptr,
+      .previous_exposure_ptr =
+          rcs.previous_exposure_buffer
+              ? device.get_buffer_device_address<glsl::Exposure>(
+                    rg.get_buffer(rcs.previous_exposure_buffer))
+              : nullptr,
       .tex = texture_index,
   });
 
@@ -160,9 +160,12 @@ void run_reduce_luminance_histogram_pass(
 
   pass.bind_compute_pipeline(rcs.pipeline);
 
-  pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
-      .histogram_ptr = device.get_buffer_device_address(histogram_buffer),
-      .exposure_ptr = device.get_buffer_device_address(exposure_buffer),
+  pass.set_push_constants<glsl::ReduceLuminanceHistogramConstants>({
+      .histogram_ptr =
+          device.get_buffer_device_address<glsl::LuminanceHistogram>(
+              histogram_buffer),
+      .exposure_ptr =
+          device.get_buffer_device_address<glsl::Exposure>(exposure_buffer),
       .exposure_compensation = rcs.exposure_compensation,
   });
 
