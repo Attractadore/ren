@@ -16,4 +16,6 @@ public:
   }
 };
 
+constexpr usize DEFAULT_BUFFER_REFERENCE_ALIGNMENT = 16;
+
 } // namespace ren
