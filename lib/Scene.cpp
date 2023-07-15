@@ -1,13 +1,8 @@
 #include "Scene.hpp"
 #include "Camera.inl"
-#include "Passes/AutomaticExposure.hpp"
-#include "Passes/Color.hpp"
-#include "Passes/Exposure.hpp"
-#include "Passes/PostProcessing.hpp"
-#include "Passes/Upload.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Span.hpp"
-#include "glsl/encode.hpp"
+#include "glsl/Encode.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>

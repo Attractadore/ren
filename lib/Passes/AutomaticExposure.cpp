@@ -3,8 +3,8 @@
 #include "Device.hpp"
 #include "PipelineLoading.hpp"
 #include "TextureIDAllocator.hpp"
-#include "glsl/exposure.hpp"
-#include "glsl/luminance_histogram.hpp"
+#include "glsl/Exposure.hpp"
+#include "glsl/LuminanceHistogram.hpp"
 
 namespace ren {
 

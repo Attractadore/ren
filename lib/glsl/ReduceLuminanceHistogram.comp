@@ -1,8 +1,8 @@
-#include "reduce_luminance_histogram_pass.glsl"
+#include "ReduceLuminanceHistogramPass.glsl"
 
 PUSH_CONSTANTS { ReduceLuminanceHistogramConstants g_pcs; };
 
-shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS]; 
+shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
 NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X, 1, 1);
 void main() {
@@ -18,7 +18,8 @@ void main() {
   uint num_samples = 0;
   float log_luminance = 0.0f;
   for (int i = 1; i < NUM_LUMINANCE_HISTOGRAM_BINS; ++i) {
-    float bin_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, (i + 0.5f) / NUM_LUMINANCE_HISTOGRAM_BINS);
+    float bin_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE,
+                              (i + 0.5f) / NUM_LUMINANCE_HISTOGRAM_BINS);
     uint bin_count = histogram[i];
     log_luminance += bin_luminance * bin_count;
     num_samples += bin_count;

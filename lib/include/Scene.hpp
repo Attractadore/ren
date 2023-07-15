@@ -11,7 +11,8 @@
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
 #include "TextureIDAllocator.hpp"
-#include "glsl/lighting.hpp"
+#include "glsl/Lighting.hpp"
+#include "glsl/Material.hpp"
 
 namespace ren {
 

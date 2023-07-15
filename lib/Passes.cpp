@@ -1,7 +1,7 @@
 #include "Passes.hpp"
 #include "Camera.inl"
-#include "Passes/Color.hpp"
 #include "Passes/Exposure.hpp"
+#include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
 #include "PipelineLoading.hpp"
@@ -37,7 +37,7 @@ auto setup_all_passes(Device &device, RGBuilder &rgb,
       });
 
   // Draw scene
-  auto [texture] = setup_color_pass(
+  auto [texture] = setup_opaque_pass(
       device, rgb,
       {
           .meshes = config.meshes,
@@ -47,7 +47,7 @@ auto setup_all_passes(Device &device, RGBuilder &rgb,
           .directional_lights_buffer = frame_resources.dir_lights_buffer,
           .materials_buffer = frame_resources.materials_buffer,
           .exposure_buffer = exposure_buffer,
-          .pipeline = config.pipelines->color_pass,
+          .pipeline = config.pipelines->opaque_pass,
           .texture_allocator = config.texture_allocator,
           .size = config.viewport_size,
           .proj = get_projection_matrix(*config.camera,

@@ -5,12 +5,16 @@
 
 #include <cstdint>
 
-#define REN_NAMESPACE_BEGIN namespace ren::glsl {
-#define REN_NAMESPACE_END }
+#define GLSL_NAMESPACE_BEGIN namespace ren::glsl {
+#define GLSL_NAMESPACE_END }
 
-REN_NAMESPACE_BEGIN
+GLSL_NAMESPACE_BEGIN
 using namespace glm;
-REN_NAMESPACE_END
+GLSL_NAMESPACE_END
 
-#define REN_BUFFER_REFERENCE(alignment) struct alignas(alignment)
-#define REN_REFERENCE(type) ren::BufferReference<type>
+#define GLSL_BUFFER(alignment) struct alignas(alignment)
+
+#define GLSL_BUFFER_REFERENCE(type) ren::BufferReference<type>
+
+#define GLSL_RESTRICT
+#define GLSL_READONLY

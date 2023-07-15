@@ -3,6 +3,7 @@
 
 #if GL_core_profile
 #include "common.glsl"
+#include "stddef.glsl"
 #elif __cplusplus
 #include "common.hpp"
 #endif

@@ -1,6 +1,6 @@
 #include "Passes/CameraExposure.hpp"
 #include "Device.hpp"
-#include "glsl/exposure.hpp"
+#include "glsl/Exposure.hpp"
 
 namespace ren {
 namespace {

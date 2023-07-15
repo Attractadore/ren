@@ -2,7 +2,8 @@
 #include "DenseHandleMap.hpp"
 #include "Model.hpp"
 #include "RenderGraph.hpp"
-#include "glsl/lighting.hpp"
+#include "glsl/Lighting.hpp"
+#include "glsl/Material.hpp"
 
 #include <span>
 

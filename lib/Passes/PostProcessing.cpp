@@ -5,8 +5,8 @@
 #include "PostProcessingOptions.hpp"
 #include "Support/Errors.hpp"
 #include "TextureIDAllocator.hpp"
-#include "glsl/post_processing_pass.hpp"
-#include "glsl/reduce_luminance_histogram_pass.hpp"
+#include "glsl/PostProcessingPass.hpp"
+#include "glsl/ReduceLuminanceHistogramPass.hpp"
 
 namespace ren {
 
@@ -42,7 +42,7 @@ auto setup_initialize_luminance_histogram_pass(
   };
 };
 
-struct PostProcessingUberPassResources {
+struct PostProcessingPassResources {
   RGTextureID texture;
   RGBufferID histogram_buffer;
   RGBufferID previous_exposure_buffer;
@@ -52,7 +52,7 @@ struct PostProcessingUberPassResources {
 
 void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
                                    ComputePass &pass,
-                                   const PostProcessingUberPassResources &rcs) {
+                                   const PostProcessingPassResources &rcs) {
   assert(rcs.texture_allocator);
 
   const auto &texture = rg.get_texture(rcs.texture);
@@ -86,7 +86,7 @@ void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
   pass.dispatch_threads(size, group_size * work_size);
 }
 
-struct PostProcessingUberPassConfig {
+struct PostProcessingPassConfig {
   RGTextureID texture;
   RGBufferID histogram_buffer;
   RGBufferID previous_exposure_buffer;
@@ -94,14 +94,14 @@ struct PostProcessingUberPassConfig {
   Handle<ComputePipeline> pipeline;
 };
 
-struct PostProcessingUberPassOutput {
+struct PostProcessingPassOutput {
   RGTextureID texture;
   RGBufferID histogram_buffer;
 };
 
 auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
-                                     const PostProcessingUberPassConfig &cfg)
-    -> PostProcessingUberPassOutput {
+                                     const PostProcessingPassConfig &cfg)
+    -> PostProcessingPassOutput {
   assert(cfg.texture);
   assert(cfg.texture_allocator);
   assert(cfg.pipeline);
@@ -126,7 +126,7 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
     pass.read_compute_buffer({.buffer = cfg.previous_exposure_buffer});
   }
 
-  PostProcessingUberPassResources rcs = {
+  PostProcessingPassResources rcs = {
       .texture = cfg.texture,
       .histogram_buffer = histogram_buffer,
       .previous_exposure_buffer = cfg.previous_exposure_buffer,

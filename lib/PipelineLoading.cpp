@@ -2,12 +2,12 @@
 #include "ResourceArena.hpp"
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
-#include "glsl/interface.hpp"
+#include "glsl/Textures.hpp"
 
-#include "FragmentShader.h"
-#include "PostProcessingUberShader.h"
+#include "OpaquePassFragmentShader.h"
+#include "OpaquePassVertexShader.h"
+#include "PostProcessingShader.h"
 #include "ReduceLuminanceHistogramShader.h"
-#include "VertexShader.h"
 
 #include "spirv_reflect.h"
 
@@ -107,7 +107,7 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
-      .color_pass = load_color_pass_pipeline(arena, persistent_set_layout),
+      .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
       .post_processing =
           load_post_processing_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram =
@@ -115,18 +115,20 @@ auto load_pipelines(ResourceArena &arena,
   };
 }
 
-auto load_color_pass_pipeline(ResourceArena &arena,
-                              Handle<DescriptorSetLayout> persistent_set_layout)
+auto load_opaque_pass_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<GraphicsPipeline> {
-  auto vs = Span(VertexShader, VertexShader_count).as_bytes();
-  auto fs = Span(FragmentShader, FragmentShader_count).as_bytes();
+  auto vs =
+      Span(OpaquePassVertexShader, OpaquePassVertexShader_count).as_bytes();
+  auto fs =
+      Span(OpaquePassFragmentShader, OpaquePassFragmentShader_count).as_bytes();
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
-                                       "Color pass");
+                                       "Opaque pass");
   std::array color_attachments = {ColorAttachmentInfo{
       .format = COLOR_FORMAT,
   }};
   return arena.create_graphics_pipeline({
-      .name = "Color pass graphics pipeline",
+      .name = "Opaque pass graphics pipeline",
       .layout = layout,
       .vertex_shader =
           {
@@ -158,7 +160,7 @@ auto load_post_processing_pipeline(
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      Span(PostProcessingUberShader, PostProcessingUberShader_count).as_bytes(),
+      Span(PostProcessingShader, PostProcessingShader_count).as_bytes(),
       "Post-processing");
 }
 
