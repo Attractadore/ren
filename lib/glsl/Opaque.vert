@@ -1,17 +1,14 @@
 #include "OpaquePass.glsl"
 
-PUSH_CONSTANTS { OpaqueConstants g_pcs; };
+PUSH_CONSTANTS GLSL_OPAQUE_CONSTANTS g_pcs;
 
 OUT_BLOCK VS_OUT g_out;
 
 void main() {
   uint index = gl_VertexIndex;
-  uint matrix_index = g_pcs.matrix;
 
-  restrict readonly OpaqueUniformBuffer ub = g_pcs.ub;
-
-  mat4x3 transform_matrix = ub.transform_matrices[matrix_index].matrix;
-  mat3 normal_matrix = ub.normal_matrices[matrix_index].matrix;
+  mat4x3 transform_matrix = g_pcs.ub.transform_matrices[g_pcs.matrix].matrix;
+  mat3 normal_matrix = g_pcs.ub.normal_matrices[g_pcs.matrix].matrix;
 
   vec3 position = g_pcs.positions[index].position;
   position = transform_matrix * vec4(position, 1.0f);
@@ -29,7 +26,7 @@ void main() {
     uv = g_pcs.uvs[index].uv;
   }
 
-  gl_Position = ub.pv * vec4(position, 1.0f);
+  gl_Position = g_pcs.ub.pv * vec4(position, 1.0f);
   g_out.position = position;
   g_out.color = color;
   g_out.normal = normal;

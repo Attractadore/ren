@@ -7,11 +7,13 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct ReduceLuminanceHistogramConstants {
-  GLSL_BUFFER_REFERENCE(LuminanceHistogram) histogram_ptr;
-  GLSL_BUFFER_REFERENCE(Exposure) exposure_ptr;
-  float exposure_compensation;
-};
+#define GLSL_REDUCE_LUMINANCE_HISTOGRAM_CONSTANTS                              \
+  {                                                                            \
+    GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(LuminanceHistogram)      \
+        histogram;                                                             \
+    GLSL_RESTRICT GLSL_WRITEONLY GLSL_BUFFER_REFERENCE(Exposure) exposure;     \
+    float exposure_compensation;                                               \
+  }
 
 const uint REDUCE_LUMINANCE_HISTOGRAM_THREADS_X = NUM_LUMINANCE_HISTOGRAM_BINS;
 

@@ -1,6 +1,6 @@
 #include "ReduceLuminanceHistogramPass.glsl"
 
-PUSH_CONSTANTS { ReduceLuminanceHistogramConstants g_pcs; };
+PUSH_CONSTANTS GLSL_REDUCE_LUMINANCE_HISTOGRAM_CONSTANTS g_pcs;
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
@@ -8,7 +8,7 @@ NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X, 1, 1);
 void main() {
   uint index = gl_LocalInvocationIndex;
 
-  histogram[index] = g_pcs.histogram_ptr.bins[index];
+  histogram[index] = g_pcs.histogram.bins[index];
   barrier();
 
   if (index != 0) {
@@ -33,5 +33,5 @@ void main() {
     exposure = 1.0f / max_luminance;
   }
 
-  g_pcs.exposure_ptr.exposure = exposure;
+  g_pcs.exposure.exposure = exposure;
 }

@@ -5,7 +5,7 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS { OpaqueConstants g_pcs; };
+PUSH_CONSTANTS GLSL_OPAQUE_CONSTANTS g_pcs;
 
 IN_BLOCK FS_IN g_in;
 
@@ -17,11 +17,9 @@ void main() {
   vec3 normal = normalize(g_in.normal);
   vec2 uv = g_in.uv;
 
-  restrict readonly OpaqueUniformBuffer ub = g_pcs.ub;
+  Material material = g_pcs.ub.materials[g_pcs.material].material;
 
-  Material material = ub.materials[g_pcs.material].material;
-
-  vec3 view_dir = normalize(ub.eye - position);
+  vec3 view_dir = normalize(g_pcs.ub.eye - position);
 
   color *= material.base_color;
   if (material.base_color_texture != 0) {
@@ -33,9 +31,9 @@ void main() {
 
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-  uint num_dir_lights = ub.num_directional_lights;
+  uint num_dir_lights = g_pcs.ub.num_directional_lights;
   for (int i = 0; i < num_dir_lights; ++i) {
-    DirLight light = ub.directional_lights[i].light;
+    DirLight light = g_pcs.ub.directional_lights[i].light;
     vec3 light_dir = light.origin;
     vec3 light_color = light.color;
     float illuminance = light.illuminance;
@@ -43,8 +41,7 @@ void main() {
                            roughness, light_color * illuminance);
   }
 
-  restrict readonly Exposure exposure = ub.exposure;
-  result *= exposure.exposure;
+  result *= g_pcs.ub.exposure.exposure;
 
   g_color = result;
 }

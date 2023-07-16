@@ -6,6 +6,7 @@
 #include "stddef.glsl"
 #elif __cplusplus
 #include "common.hpp"
+#include "stddef.hpp"
 #endif
 
 #endif // REN_GLSL_COMMON_H

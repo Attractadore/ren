@@ -7,11 +7,13 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct PostProcessingConstants {
-  GLSL_BUFFER_REFERENCE(LuminanceHistogram) histogram_ptr;
-  GLSL_BUFFER_REFERENCE(Exposure) previous_exposure_ptr;
-  uint tex;
-};
+#define GLSL_POST_PROCESSING_CONSTANTS                                         \
+  {                                                                            \
+    GLSL_RESTRICT GLSL_BUFFER_REFERENCE(LuminanceHistogram) histogram;         \
+    GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(Exposure)                \
+        previous_exposure;                                                     \
+    uint tex;                                                                  \
+  }
 
 const uint POST_PROCESSING_THREADS_X = 8;
 const uint POST_PROCESSING_THREADS_Y = 8;

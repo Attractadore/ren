@@ -18,6 +18,7 @@
 
 #define GLSL_RESTRICT restrict
 #define GLSL_READONLY readonly
+#define GLSL_WRITEONLY writeonly
 
 #define assert(expr)
 #define static_assert(expr)

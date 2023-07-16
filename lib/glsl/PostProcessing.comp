@@ -4,7 +4,7 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS { PostProcessingConstants g_pcs; };
+PUSH_CONSTANTS GLSL_POST_PROCESSING_CONSTANTS g_pcs;
 
 const uint THREADS_X = POST_PROCESSING_THREADS_X;
 const uint THREADS_Y = POST_PROCESSING_THREADS_Y;
@@ -20,7 +20,7 @@ vec4[WORK_SIZE_X][WORK_SIZE_Y] build_luminance_histogram_pass(
   histogram[index] = 0;
   barrier();
 
-  float exposure = g_pcs.previous_exposure_ptr.exposure;
+  float exposure = g_pcs.previous_exposure.exposure;
 
   for (int x = 0; x < WORK_SIZE_X; ++x) {
     for (int y = 0; y < WORK_SIZE_Y; ++y) {
@@ -40,7 +40,7 @@ vec4[WORK_SIZE_X][WORK_SIZE_Y] build_luminance_histogram_pass(
 
   // Ignore bin 0 and zero-valued bins
   if (index > 0 && histogram[index] > 0) {
-    atomicAdd(g_pcs.histogram_ptr.bins[index], histogram[index]);
+    atomicAdd(g_pcs.histogram.bins[index], histogram[index]);
   }
 
   return colors;
@@ -82,7 +82,7 @@ void main() {
     }
   }
 
-  if (!IS_NULL(g_pcs.histogram_ptr)) {
+  if (!IS_NULL(g_pcs.histogram)) {
     colors = build_luminance_histogram_pass(colors);
   }
 

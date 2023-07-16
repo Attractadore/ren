@@ -1,2 +1,8 @@
 #pragma once
 #include "OpaquePass.h"
+
+GLSL_NAMESPACE_BEGIN
+
+GLSL_PUSH_CONSTANTS(GLSL_OPAQUE_CONSTANTS, OpaqueConstants);
+
+GLSL_NAMESPACE_END
