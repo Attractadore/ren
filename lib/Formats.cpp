@@ -73,21 +73,6 @@ FormatProperties getFormatProperties(VkFormat format) {
         .alpha_bits = 8,
     };
   }
-  case VK_FORMAT_R16G16B16A16_SFLOAT:
-    return {
-        .flags = Color,
-        .red_bits = 16,
-        .green_bits = 16,
-        .blue_bits = 16,
-        .alpha_bits = 16,
-    };
-  case VK_FORMAT_R32G32B32_SFLOAT:
-    return {
-        .flags = Color,
-        .red_bits = 32,
-        .green_bits = 32,
-        .blue_bits = 32,
-    };
   case VK_FORMAT_R8G8B8A8_SRGB:
   case VK_FORMAT_B8G8R8A8_SRGB:
     return {
@@ -96,6 +81,66 @@ FormatProperties getFormatProperties(VkFormat format) {
         .green_bits = 8,
         .blue_bits = 8,
         .alpha_bits = 8,
+    };
+  case VK_FORMAT_B10G11R11_UFLOAT_PACK32: {
+    return {
+        .flags = Color,
+        .red_bits = 11,
+        .green_bits = 11,
+        .blue_bits = 10,
+    };
+  }
+  case VK_FORMAT_R16_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 16,
+    };
+  case VK_FORMAT_R16G16_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 16,
+        .green_bits = 16,
+    };
+  case VK_FORMAT_R16G16B16_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 16,
+        .green_bits = 16,
+        .blue_bits = 16,
+    };
+  case VK_FORMAT_R16G16B16A16_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 16,
+        .green_bits = 16,
+        .blue_bits = 16,
+        .alpha_bits = 16,
+    };
+  case VK_FORMAT_R32_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 32,
+    };
+  case VK_FORMAT_R32G32_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 32,
+        .green_bits = 32,
+    };
+  case VK_FORMAT_R32G32B32_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 32,
+        .green_bits = 32,
+        .blue_bits = 32,
+    };
+  case VK_FORMAT_R32G32B32A32_SFLOAT:
+    return {
+        .flags = Color,
+        .red_bits = 32,
+        .green_bits = 32,
+        .blue_bits = 32,
+        .alpha_bits = 32,
     };
   case VK_FORMAT_D32_SFLOAT: {
     return {
@@ -125,8 +170,10 @@ bool isStencilFormat(VkFormat format) {
 VkFormat getSRGBFormat(VkFormat format) {
   using enum VkFormat;
   switch (format) {
-  default:
+  default: {
+    assert(not getFormatProperties(format).flags.isSet(FormatProperty::SRGB));
     unreachable("VkFormat {} doesn't have an SRGB counterpart", int(format));
+  }
   case VK_FORMAT_R8G8B8A8_UNORM:
     return VK_FORMAT_R8G8B8A8_SRGB;
   case VK_FORMAT_B8G8R8A8_UNORM:
