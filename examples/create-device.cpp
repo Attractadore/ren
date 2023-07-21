@@ -1,7 +1,5 @@
 #include "app-base.hpp"
 
-#include <fmt/format.h>
-
 class CreateDeviceApp : public AppBase {
 public:
   CreateDeviceApp() : AppBase("Create Device") {}

@@ -1,7 +1,5 @@
 #include "app-base.hpp"
-#include "ren/ren.hpp"
 
-#include <fmt/format.h>
 #include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {

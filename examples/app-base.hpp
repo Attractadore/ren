@@ -1,8 +1,8 @@
 #pragma once
-#include "fmt/format.h"
 #include "ren/ren.hpp"
 
 #include <SDL2/SDL.h>
+#include <fmt/format.h>
 
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
