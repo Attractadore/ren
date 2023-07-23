@@ -79,15 +79,25 @@ struct SecondaryMap : HashMap<K, V, detail::HashIndex, detail::IndexEqualTo> {
   auto contains(K key) const -> bool { return this->find(key) != this->end(); }
 
   auto operator[](K key) const -> const V & {
-    auto it = this->find(key);
-    assert(it != this->end());
-    return it->second;
+    return const_cast<SecondaryMap *>(this)->find(key);
   }
 
   auto operator[](K key) -> V & {
     auto it = this->find(key);
     assert(it != this->end());
     return it->second;
+  }
+
+  auto get(K key) const -> Optional<const V &> {
+    return const_cast<SecondaryMap *>(this)->get(key);
+  }
+
+  auto get(K key) -> Optional<V &> {
+    auto it = this->find(key);
+    if (it != this->end()) {
+      return it->second;
+    }
+    return None;
   }
 };
 
