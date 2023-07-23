@@ -24,7 +24,6 @@ find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
-find_package(unofficial-vulkan-memory-allocator REQUIRED)
 
 add_subdirectory(glsl)
 
@@ -36,7 +35,7 @@ foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
   target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
 endforeach()
-if (REN_ASSERTIONS)
+if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
   target_compile_definitions(Support INTERFACE REN_ASSERTIONS)
 endif()
@@ -72,7 +71,9 @@ target_precompile_headers(
   <range/v3/view.hpp>
   <tl/optional.hpp>)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(Support-PCH INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
+  target_compile_options(
+    Support-PCH
+    INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
 endif()
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
@@ -83,7 +84,8 @@ set(DISPATCH_TABLE_CPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.cpp)
 add_custom_command(
   OUTPUT ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
   DEPENDS ${VK_XML} ${GEN_DISPATCH_TABLE_PY}
-  COMMAND Python3::Interpreter ARGS ${GEN_DISPATCH_TABLE_PY} ${VK_XML} ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
+  COMMAND Python3::Interpreter ARGS ${GEN_DISPATCH_TABLE_PY} ${VK_XML}
+          ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
   VERBATIM)
 
 add_library(
@@ -123,7 +125,7 @@ target_link_libraries(
           glm::glm
           Vulkan::Headers
           unofficial::spirv-reflect::spirv-reflect
-          unofficial::vulkan-memory-allocator::vulkan-memory-allocator
+          GPUOpen::VulkanMemoryAllocator
           EmbeddedShaders)
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>

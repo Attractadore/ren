@@ -25,6 +25,7 @@ set(REN_ASSETS_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/assets)
 
 set(REN_TARGETS ${PROJECT_NAME}-targets)
 
+add_subdirectory(external)
 add_subdirectory(lib)
 
 if(REN_BUILD_TESTS)
