@@ -12,69 +12,50 @@ namespace ren {
 
 namespace {
 
-struct InitializeLuminanceHistogramPassConfig {};
-
-struct InitializeLuminanceHistogramPassOutput {
-  RGBufferID histogram_buffer;
-};
-
-auto setup_initialize_luminance_histogram_pass(
-    Device &device, RenderGraph::Builder &rgb,
-    const InitializeLuminanceHistogramPassConfig &cfg)
-    -> InitializeLuminanceHistogramPassOutput {
+auto setup_initialize_luminance_histogram_pass(Device &device, RgBuilder &rgb)
+    -> RgBuffer {
   auto pass = rgb.create_pass({
       .name = "Automatic exposure: initialize luminance histogram",
-      .type = RGPassType::Transfer,
+      .type = RgPassType::Transfer,
   });
 
-  auto histogram = pass.create_transfer_buffer({
+  auto [histogram, rt_histogram] = pass.create_transfer_buffer({
       .name = "Empty luminance histogram",
       .size = sizeof(glsl::LuminanceHistogram),
   });
 
-  pass.set_transfer_callback(
-      [=](Device &device, RGRuntime &rg, CommandRecorder &cmd) {
-        cmd.fill_buffer(rg.get_buffer(histogram), 0);
-      });
+  pass.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
+    cmd.fill_buffer(rg.get_buffer(rt_histogram), 0);
+  });
 
-  return {
-      .histogram_buffer = histogram,
-  };
+  return histogram;
 };
 
 struct PostProcessingPassResources {
-  RGTextureID texture;
-  RGBufferID histogram_buffer;
-  RGBufferID previous_exposure_buffer;
-  TextureIDAllocator *texture_allocator = nullptr;
   Handle<ComputePipeline> pipeline;
+  RgRtTexture texture;
+  RgRtBuffer histogram;
+  RgRtBuffer exposure;
 };
 
-void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
+void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
                                    ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
-  assert(rcs.texture_allocator);
-
-  const auto &texture = rg.get_texture(rcs.texture);
-  auto texture_index =
-      rcs.texture_allocator->allocate_frame_storage_texture(texture);
+  const auto &[texture, texture_index] = rg.get_storage_texture(rcs.texture);
 
   pass.bind_compute_pipeline(rcs.pipeline);
 
-  pass.bind_descriptor_sets(rcs.texture_allocator->get_set());
-
-  assert(!rcs.histogram_buffer == !rcs.previous_exposure_buffer);
+  assert(!rcs.histogram == !rcs.exposure);
   pass.set_push_constants(glsl::PostProcessingConstants{
       .histogram =
-          rcs.histogram_buffer
+          rcs.histogram
               ? device.get_buffer_device_address<glsl::LuminanceHistogram>(
-                    rg.get_buffer(rcs.histogram_buffer))
+                    rg.get_buffer(rcs.histogram))
               : nullptr,
       .previous_exposure =
-          rcs.previous_exposure_buffer
-              ? device.get_buffer_device_address<glsl::Exposure>(
-                    rg.get_buffer(rcs.previous_exposure_buffer))
-              : nullptr,
+          rcs.exposure ? device.get_buffer_device_address<glsl::Exposure>(
+                             rg.get_buffer(rcs.exposure))
+                       : nullptr,
       .tex = texture_index,
   });
 
@@ -87,155 +68,148 @@ void run_post_processing_uber_pass(Device &device, RGRuntime &rg,
 }
 
 struct PostProcessingPassConfig {
-  RGTextureID texture;
-  RGBufferID histogram_buffer;
-  RGBufferID previous_exposure_buffer;
-  TextureIDAllocator *texture_allocator = nullptr;
   Handle<ComputePipeline> pipeline;
+  RgTexture texture;
+  RgBuffer histogram;
+  RgBuffer exposure;
 };
 
 struct PostProcessingPassOutput {
-  RGTextureID texture;
-  RGBufferID histogram_buffer;
+  RgTexture texture;
+  RgBuffer histogram;
 };
 
 auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
                                      const PostProcessingPassConfig &cfg)
     -> PostProcessingPassOutput {
-  assert(cfg.texture);
-  assert(cfg.texture_allocator);
   assert(cfg.pipeline);
+  assert(cfg.texture);
 
   auto pass = rgb.create_pass({
       .name = "Post-processing",
-      .type = RGPassType::Compute,
+      .type = RgPassType::Compute,
   });
 
-  auto texture = pass.write_storage_texture({
+  auto [texture, rt_texture] = pass.write_storage_texture({
       .name = "Color buffer after post-processing",
       .texture = cfg.texture,
   });
 
-  RGBufferID histogram_buffer;
-  if (cfg.histogram_buffer) {
-    assert(cfg.previous_exposure_buffer);
-    histogram_buffer = pass.write_compute_buffer({
+  RgBuffer histogram;
+  RgRtBuffer rt_histogram;
+  RgRtBuffer rt_exposure;
+  if (cfg.histogram) {
+    assert(cfg.exposure);
+    std::tie(histogram, rt_histogram) = pass.write_compute_buffer({
         .name = "Luminance histogram",
-        .buffer = cfg.histogram_buffer,
+        .buffer = cfg.histogram,
     });
-    pass.read_compute_buffer({.buffer = cfg.previous_exposure_buffer});
+    rt_exposure = pass.read_compute_buffer({
+        .buffer = cfg.exposure,
+        .temporal_offset = 1,
+    });
   }
 
   PostProcessingPassResources rcs = {
-      .texture = cfg.texture,
-      .histogram_buffer = histogram_buffer,
-      .previous_exposure_buffer = cfg.previous_exposure_buffer,
-      .texture_allocator = cfg.texture_allocator,
       .pipeline = cfg.pipeline,
+      .texture = rt_texture,
+      .histogram = rt_histogram,
+      .exposure = rt_exposure,
   };
 
-  pass.set_compute_callback(
-      [rcs](Device &device, RGRuntime &rg, ComputePass &pass) {
-        run_post_processing_uber_pass(device, rg, pass, rcs);
-      });
+  pass.set_compute_callback(ren_rg_compute_callback(RgNoPassData) {
+    run_post_processing_uber_pass(device, rg, pass, rcs);
+  });
 
   return {
       .texture = texture,
-      .histogram_buffer = histogram_buffer,
+      .histogram = histogram,
   };
 }
 
 struct ReduceLuminanceHistogramPassResources {
-  RGBufferID histogram_buffer;
-  RGBufferID exposure_buffer;
   Handle<ComputePipeline> pipeline;
-  float exposure_compensation = 0.0f;
+  RgRtBuffer histogram;
+  RgRtBuffer exposure;
+};
+
+struct ReduceLuminanceHistogramPassData {
+  float exposure_compensation;
 };
 
 void run_reduce_luminance_histogram_pass(
-    Device &device, RGRuntime &rg, ComputePass &pass,
-    const ReduceLuminanceHistogramPassResources &rcs) {
-  const auto &histogram_buffer = rg.get_buffer(rcs.histogram_buffer);
-  const auto &exposure_buffer = rg.get_buffer(rcs.exposure_buffer);
-
+    Device &device, const RgRuntime &rg, ComputePass &pass,
+    const ReduceLuminanceHistogramPassResources &rcs,
+    const ReduceLuminanceHistogramPassData &data) {
   pass.bind_compute_pipeline(rcs.pipeline);
-
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
       .histogram = device.get_buffer_device_address<glsl::LuminanceHistogram>(
-          histogram_buffer),
-      .exposure =
-          device.get_buffer_device_address<glsl::Exposure>(exposure_buffer),
-      .exposure_compensation = rcs.exposure_compensation,
+          rg.get_buffer(rcs.histogram)),
+      .exposure = device.get_buffer_device_address<glsl::Exposure>(
+          rg.get_buffer(rcs.exposure)),
+      .exposure_compensation = data.exposure_compensation,
   });
-
   pass.dispatch_groups(1);
 }
 
 struct ReduceLuminanceHistogramPassConfig {
-  RGBufferID histogram_buffer;
   Handle<ComputePipeline> pipeline;
-  float exposure_compensation = 0.0f;
-};
-
-struct ReduceLuminanceHistogramPassOutput {
-  RGBufferID exposure_buffer;
+  RgBuffer histogram;
+  RgBuffer exposure;
 };
 
 auto setup_reduce_luminance_histogram_pass(
     Device &device, RenderGraph::Builder &rgb,
-    const ReduceLuminanceHistogramPassConfig &cfg)
-    -> ReduceLuminanceHistogramPassOutput {
-  assert(cfg.histogram_buffer);
+    const ReduceLuminanceHistogramPassConfig &cfg) -> RgPass {
   assert(cfg.pipeline);
+  assert(cfg.histogram);
 
   auto pass = rgb.create_pass({
       .name = "Automatic exposure: reduce luminance histogram",
-      .type = RGPassType::Compute,
+      .type = RgPassType::Compute,
   });
 
-  pass.read_compute_buffer({.buffer = cfg.histogram_buffer});
+  auto rt_histogram = pass.read_compute_buffer({.buffer = cfg.histogram});
 
-  auto exposure_buffer = pass.create_compute_buffer({
+  auto [exposure, rt_exposure] = pass.create_compute_buffer({
       .name = "Automatic exposure",
+      .target = cfg.exposure,
       .size = sizeof(glsl::Exposure),
-      .temporal = true,
+      .temporal_count = 1,
+      .temporal_init = TempSpan(float(1.0f / glsl::MIN_LUMINANCE)).as_bytes(),
   });
 
   ReduceLuminanceHistogramPassResources rcs = {
-      .histogram_buffer = cfg.histogram_buffer,
-      .exposure_buffer = exposure_buffer,
       .pipeline = cfg.pipeline,
-      .exposure_compensation = cfg.exposure_compensation,
+      .histogram = rt_histogram,
+      .exposure = rt_exposure,
   };
 
   pass.set_compute_callback(
-      [rcs](Device &device, RGRuntime &rg, ComputePass &pass) {
-        run_reduce_luminance_histogram_pass(device, rg, pass, rcs);
+      ren_rg_compute_callback(ReduceLuminanceHistogramPassData) {
+        run_reduce_luminance_histogram_pass(device, rg, pass, rcs, data);
       });
 
-  return {
-      .exposure_buffer = exposure_buffer,
-  };
+  return pass;
 }
 
 } // namespace
 
-auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
+auto setup_post_processing_passes(Device &device, RgBuilder &rgb,
                                   const PostProcessingPassesConfig &cfg)
     -> PostProcessingPassesOutput {
-  assert(cfg.texture);
   assert(cfg.pipelines);
-  assert(cfg.texture_allocator);
   assert(cfg.options);
+  assert(cfg.texture);
+
+  PostProcessingPasses passes;
 
   auto automatic_exposure =
       cfg.options->exposure.mode.get<ExposureOptions::Automatic>();
 
-  RGBufferID histogram_buffer;
+  RgBuffer histogram;
   if (automatic_exposure) {
-    histogram_buffer =
-        setup_initialize_luminance_histogram_pass(device, rgb, {})
-            .histogram_buffer;
+    histogram = setup_initialize_luminance_histogram_pass(device, rgb);
   }
 
   switch (cfg.options->tone_mapping.oper) {
@@ -246,36 +220,56 @@ auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
   } break;
   }
 
-  auto [texture, histogram_buffer_after_build] =
-      setup_post_processing_uber_pass(
-          device, rgb,
-          {
-              .texture = cfg.texture,
-              .histogram_buffer = histogram_buffer,
-              .previous_exposure_buffer = cfg.previous_exposure_buffer,
-              .texture_allocator = cfg.texture_allocator,
-              .pipeline = cfg.pipelines->post_processing,
-          });
-  histogram_buffer = histogram_buffer_after_build;
+  RgBuffer exposure;
+  if (cfg.exposure.passes.automatic) {
+    exposure = cfg.exposure.exposure;
+  }
 
-  RGBufferID automatic_exposure_buffer;
+  auto [texture, histogram_after_build] = setup_post_processing_uber_pass(
+      device, rgb,
+      {
+          .pipeline = cfg.pipelines->post_processing,
+          .texture = cfg.texture,
+          .histogram = histogram,
+          .exposure = exposure,
+      });
+  histogram = histogram_after_build;
+
   if (automatic_exposure) {
-    automatic_exposure_buffer =
-        setup_reduce_luminance_histogram_pass(
-            device, rgb,
-            {
-                .histogram_buffer = histogram_buffer,
-                .pipeline = cfg.pipelines->reduce_luminance_histogram,
-                .exposure_compensation =
-                    automatic_exposure->exposure_compensation,
-            })
-            .exposure_buffer;
+    passes.reduce_luminance_histogram = setup_reduce_luminance_histogram_pass(
+        device, rgb,
+        {
+            .pipeline = cfg.pipelines->reduce_luminance_histogram,
+            .histogram = histogram,
+            .exposure = exposure,
+        });
   }
 
   return {
+      .passes = passes,
       .texture = texture,
-      .exposure_buffer = automatic_exposure_buffer,
   };
+}
+
+auto set_post_processing_passes_data(RenderGraph &rg,
+                                     const PostProcessingPasses &passes,
+                                     const PostProcessingPassesData &data)
+    -> bool {
+  auto automatic_exposure =
+      data.options->exposure.mode.get<ExposureOptions::Automatic>();
+
+  if (automatic_exposure) {
+    if (passes.reduce_luminance_histogram) {
+      rg.set_pass_data(passes.reduce_luminance_histogram,
+                       ReduceLuminanceHistogramPassData{
+                           .exposure_compensation =
+                               automatic_exposure->exposure_compensation});
+      return true;
+    }
+    return false;
+  }
+
+  return true;
 }
 
 } // namespace ren

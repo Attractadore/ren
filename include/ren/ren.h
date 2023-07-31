@@ -438,11 +438,13 @@ void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *p_width,
 void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height);
 
-REN_NODISCARD RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene);
+REN_NODISCARD RenResult ren_CreateScene(RenDevice *device,
+                                        RenSwapchain *swapchain,
+                                        RenScene **p_scene);
 
 void ren_DestroyScene(RenScene *scene);
 
-REN_NODISCARD RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain);
+REN_NODISCARD RenResult ren_DrawScene(RenScene *scene);
 
 REN_NODISCARD RenResult ren_SetSceneCamera(RenScene *scene,
                                            const RenCameraDesc *desc);

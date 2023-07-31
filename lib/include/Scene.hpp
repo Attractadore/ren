@@ -35,7 +35,7 @@ class Scene {
 
   HashMap<RenSampler, Handle<Sampler>> m_samplers;
 
-  TextureIDAllocator m_texture_allocator;
+  std::unique_ptr<TextureIDAllocator> m_texture_allocator;
 
   Vector<glsl::Material> m_materials = {{}};
 
@@ -57,23 +57,16 @@ private:
   ResourceArena m_persistent_arena;
   ResourceArena m_frame_arena;
 
-  RenderGraph m_render_graph;
-  TemporalResources m_temporal_resources;
+  std::unique_ptr<RenderGraph> m_render_graph;
+  Passes m_passes;
 
   Pipelines m_pipelines;
 
 private:
   void next_frame();
 
-private:
-  Scene(Device &device, ResourceArena persistent_arena,
-        Handle<DescriptorSetLayout> persistent_descriptor_set_layout,
-        Handle<DescriptorPool> persistent_descriptor_pool,
-        VkDescriptorSet persistent_descriptor_set,
-        TextureIDAllocator tex_alloc);
-
 public:
-  Scene(Device &device);
+  Scene(Device &device, Swapchain &swapchain);
 
   RenMesh create_mesh(const RenMeshDesc &desc);
 
@@ -108,7 +101,7 @@ public:
   void config_dir_lights(std::span<const RenDirLight> lights,
                          std::span<const RenDirLightDesc> descs);
 
-  void draw(Swapchain &swapchain);
+  void draw();
 };
 } // namespace ren
 

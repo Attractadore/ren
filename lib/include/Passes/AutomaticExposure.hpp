@@ -3,12 +3,6 @@
 
 namespace ren {
 
-struct AutomaticExposurePassConfig {
-  RGBufferID previous_exposure_buffer;
-};
-
-auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
-                                   const AutomaticExposurePassConfig &cfg)
-    -> ExposurePassOutput;
+auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput;
 
 } // namespace ren

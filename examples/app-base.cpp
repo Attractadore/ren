@@ -80,14 +80,14 @@ auto create_device(VkPhysicalDevice adapter) -> Result<ren::UniqueDevice> {
 
 auto create_swapchain(SDL_Window *window, ren::Device &device)
     -> Result<ren::UniqueSwapchain> {
-  auto &vk_device = static_cast<ren::vk::Device &>(device);
-  return vk_device
-      .create_swapchain([=](VkInstance instance, VkSurfaceKHR *p_surface) {
-        if (!SDL_Vulkan_CreateSurface(window, instance, p_surface)) {
-          return VK_ERROR_UNKNOWN;
-        }
-        return VK_SUCCESS;
-      })
+  return ren::vk::Swapchain::create(
+             device,
+             [=](VkInstance instance, VkSurfaceKHR *p_surface) {
+               if (!SDL_Vulkan_CreateSurface(window, instance, p_surface)) {
+                 return VK_ERROR_UNKNOWN;
+               }
+               return VK_SUCCESS;
+             })
       .transform_error(get_error_string);
 }
 
@@ -143,7 +143,7 @@ AppBase::AppBase(const char *app_name) {
 
     OK(m_swapchain, create_swapchain(m_window.get(), *m_device));
 
-    OK(m_scene, m_device->create_scene());
+    OK(m_scene, ren::Scene::create(*m_device, *m_swapchain));
 
     return {};
   }()
@@ -170,7 +170,7 @@ auto AppBase::loop() -> Result<void> {
     }
 
     TRY_TO(iterate(m_window_width, m_window_height));
-    TRY_TO(m_scene->draw(*m_swapchain));
+    TRY_TO(m_scene->draw());
   }
 
   return {};

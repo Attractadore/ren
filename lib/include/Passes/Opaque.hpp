@@ -8,30 +8,32 @@
 
 namespace ren {
 
-struct TextureIDAllocator;
-
 struct OpaquePassConfig {
-  const HandleMap<Mesh> *meshes = nullptr;
-  std::span<const MeshInst> mesh_insts;
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  RGBufferID directional_lights_buffer;
-  RGBufferID materials_buffer;
-  RGBufferID exposure_buffer;
   Handle<GraphicsPipeline> pipeline;
-  TextureIDAllocator *texture_allocator = nullptr;
+  RgBuffer transform_matrices;
+  RgBuffer normal_matrices;
+  RgBuffer directional_lights;
+  RgBuffer materials;
+  RgBuffer exposure;
+  unsigned exposure_temporal_offset = 0;
+};
+
+struct OpaquePassOutput {
+  RgPass pass;
+  RgTexture texture;
+};
+
+struct OpaquePassData {
+  const HandleMap<Mesh> *meshes = nullptr;
+  Span<const MeshInst> mesh_insts;
   glm::uvec2 size;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;
-  unsigned num_dir_lights;
+  u32 num_dir_lights = 0;
 };
 
-struct OpaquePassOutput {
-  RGTextureID texture;
-};
-
-auto setup_opaque_pass(Device &device, RenderGraph::Builder &rgb,
-                       const OpaquePassConfig &cfg) -> OpaquePassOutput;
+auto setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg)
+    -> OpaquePassOutput;
 
 } // namespace ren

@@ -1,27 +1,39 @@
 #pragma once
+#include "Passes/Exposure.hpp"
 #include "RenderGraph.hpp"
 
 namespace ren {
 
-class TextureIDAllocator;
 struct Pipelines;
 struct PostProcessingOptions;
 
 struct PostProcessingPassesConfig {
-  RGTextureID texture;
-  RGBufferID previous_exposure_buffer;
   const Pipelines *pipelines = nullptr;
-  TextureIDAllocator *texture_allocator = nullptr;
   const PostProcessingOptions *options = nullptr;
+  RgTexture texture;
+  ExposurePassOutput exposure;
+};
+
+struct PostProcessingPasses {
+  RgPass reduce_luminance_histogram;
 };
 
 struct PostProcessingPassesOutput {
-  RGTextureID texture;
-  RGBufferID exposure_buffer;
+  PostProcessingPasses passes;
+  RgTexture texture;
 };
 
-auto setup_post_processing_passes(Device &device, RenderGraph::Builder &rgb,
+auto setup_post_processing_passes(RgBuilder &rgb,
                                   const PostProcessingPassesConfig &cfg)
     -> PostProcessingPassesOutput;
+
+struct PostProcessingPassesData {
+  const PostProcessingOptions *options = nullptr;
+};
+
+auto set_post_processing_passes_data(RenderGraph &rg,
+                                     const PostProcessingPasses &passes,
+                                     const PostProcessingPassesData &data)
+    -> bool;
 
 } // namespace ren

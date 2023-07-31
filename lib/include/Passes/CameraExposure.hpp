@@ -1,14 +1,12 @@
 #pragma once
-#include "Exposure.hpp"
+#include "Passes/Exposure.hpp"
 
 namespace ren {
 
-struct CameraExposurePassConfig {
+struct CameraExposurePassData {
   ExposureOptions::Camera options;
 };
 
-auto setup_camera_exposure_pass(Device &device, RenderGraph::Builder &rgb,
-                                const CameraExposurePassConfig &cfg)
-    -> ExposurePassOutput;
+auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput;
 
 } // namespace ren

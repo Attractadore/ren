@@ -9,68 +9,108 @@
 
 namespace ren {
 
-auto setup_all_passes(Device &device, RGBuilder &rgb,
-                      const PassesConfig &config)
-    -> std::tuple<RGTextureID, TemporalResources> {
-  assert(config.temporal_resources);
-  assert(config.meshes);
-  assert(config.camera);
-  assert(config.pipelines);
-  assert(config.texture_allocator);
-  assert(config.pp_opts);
+namespace {
 
-  auto temporal_resources = *config.temporal_resources;
+auto setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) -> Passes {
+  assert(cfg.pipelines);
+  assert(cfg.pp_opts);
 
-  auto frame_resources =
-      setup_upload_pass(device, rgb,
-                        {
-                            .mesh_insts = config.mesh_insts,
-                            .directional_lights = config.directional_lights,
-                            .materials = config.materials,
-                        });
+  Passes passes;
 
-  auto [exposure_buffer] = setup_exposure_pass(
-      device, rgb,
-      {
-          .previous_exposure_buffer = temporal_resources.exposure_buffer,
-          .options = config.pp_opts->exposure,
-      });
+  auto upload = setup_upload_pass(rgb);
+  passes.upload = upload.pass;
 
-  // Draw scene
-  auto [texture] = setup_opaque_pass(
-      device, rgb,
-      {
-          .meshes = config.meshes,
-          .mesh_insts = config.mesh_insts,
-          .transform_matrix_buffer = frame_resources.transform_matrix_buffer,
-          .normal_matrix_buffer = frame_resources.normal_matrix_buffer,
-          .directional_lights_buffer = frame_resources.dir_lights_buffer,
-          .materials_buffer = frame_resources.materials_buffer,
-          .exposure_buffer = exposure_buffer,
-          .pipeline = config.pipelines->opaque_pass,
-          .texture_allocator = config.texture_allocator,
-          .size = config.viewport_size,
-          .proj = get_projection_matrix(*config.camera,
-                                        float(config.viewport_size.x) /
-                                            float(config.viewport_size.y)),
-          .view = get_view_matrix(*config.camera),
-          .eye = config.camera->position,
-          .num_dir_lights = u32(config.directional_lights.size()),
-      });
+  auto exposure = setup_exposure_pass(
+      rgb, ExposurePassConfig{.options = &cfg.pp_opts->exposure});
+  passes.exposure = exposure.passes;
 
-  auto pp = setup_post_processing_passes(
-      device, rgb,
-      {
-          .texture = texture,
-          .previous_exposure_buffer = exposure_buffer,
-          .pipelines = config.pipelines,
-          .texture_allocator = config.texture_allocator,
-          .options = config.pp_opts,
-      });
-  texture = pp.texture;
-  temporal_resources.exposure_buffer = pp.exposure_buffer;
+  auto opaque = setup_opaque_pass(
+      rgb, OpaquePassConfig{
+               .pipeline = cfg.pipelines->opaque_pass,
+               .transform_matrices = upload.transform_matrices,
+               .normal_matrices = upload.normal_matrices,
+               .directional_lights = upload.directional_lights,
+               .materials = upload.materials,
+               .exposure = exposure.exposure,
+               .exposure_temporal_offset = exposure.temporal_offset,
+           });
+  passes.opaque = opaque.pass;
 
-  return {texture, temporal_resources};
+  auto pp = setup_post_processing_passes(rgb, PostProcessingPassesConfig{
+                                                  .pipelines = cfg.pipelines,
+                                                  .options = cfg.pp_opts,
+                                                  .texture = opaque.texture,
+                                                  .exposure = exposure,
+                                              });
+  passes.pp = pp.passes;
+
+  rgb.present(pp.texture);
+
+  return passes;
+}
+
+auto set_all_passes_data(RenderGraph &rg, const Passes &passes,
+                         const PassesData &data) -> bool {
+  assert(data.camera);
+  assert(data.pp_opts);
+
+  bool valid = true;
+
+  ren_assert(passes.upload, "Upload pass not registered");
+  rg.set_pass_data(passes.upload,
+                   UploadPassData{
+                       .mesh_insts = data.mesh_insts,
+                       .directional_lights = data.directional_lights,
+                       .materials = data.materials,
+                   });
+
+  valid = set_exposure_pass_data(
+      rg, passes.exposure,
+      ExposurePassData{.options = &data.pp_opts->exposure});
+  if (!valid) {
+    return false;
+  }
+
+  ren_assert(passes.opaque, "Opaque pass not registered");
+  const auto &camera = *data.camera;
+  auto size = data.viewport_size;
+  auto ar = float(size.x) / float(size.y);
+  auto proj = get_projection_matrix(camera, ar);
+  auto view =
+      glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
+  rg.set_pass_data(passes.opaque,
+                   OpaquePassData{
+                       .meshes = data.meshes,
+                       .mesh_insts = data.mesh_insts,
+                       .size = size,
+                       .proj = proj,
+                       .view = view,
+                       .eye = camera.position,
+                       .num_dir_lights = u32(data.directional_lights.size()),
+                   });
+
+  valid = set_post_processing_passes_data(
+      rg, passes.pp, PostProcessingPassesData{.options = data.pp_opts});
+  if (!valid) {
+    return false;
+  }
+
+  return true;
+}
+
+} // namespace
+
+auto update_rg_passes(RenderGraph &rg, Passes passes, const PassesConfig &cfg,
+                      const PassesData &data) -> Passes {
+  bool valid = set_all_passes_data(rg, passes, data);
+  if (!valid) {
+    RgBuilder rgb(rg);
+    passes = setup_all_passes(rgb, cfg);
+    rgb.build();
+    valid = set_all_passes_data(rg, passes, data);
+    ren_assert(valid, "Render graph pass data update failed after rebuild");
+  }
+  return passes;
 }
 
 } // namespace ren

@@ -254,18 +254,19 @@ RenResult ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
   return lippincott([&] { swapchain->set_present_mode(present_mode); });
 }
 
-RenResult ren_CreateScene(RenDevice *device, RenScene **p_scene) {
+RenResult ren_CreateScene(RenDevice *device, RenSwapchain *swapchain,
+                          RenScene **p_scene) {
   assert(device);
+  assert(swapchain);
   assert(p_scene);
-  return lippincott([&] { *p_scene = new RenScene(*device); });
+  return lippincott([&] { *p_scene = new RenScene(*device, *swapchain); });
 }
 
 void ren_DestroyScene(RenScene *scene) { delete scene; }
 
-RenResult ren_DrawScene(RenScene *scene, RenSwapchain *swapchain) {
+RenResult ren_DrawScene(RenScene *scene) {
   assert(scene);
-  assert(swapchain);
-  return lippincott([&] { scene->draw(*swapchain); });
+  return lippincott([&] { scene->draw(); });
 }
 
 RenResult ren_SetSceneCamera(RenScene *scene, const RenCameraDesc *desc) {

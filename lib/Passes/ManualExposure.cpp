@@ -4,29 +4,25 @@
 
 namespace ren {
 
-auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
-                                const ManualExposurePassConfig &cfg)
-    -> ExposurePassOutput {
-  assert(cfg.options.exposure > 0.0f);
-
+auto setup_manual_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
   auto pass = rgb.create_pass({.name = "Manual exposure"});
 
-  auto exposure_buffer = pass.create_upload_buffer({
+  auto [exposure_buffer, rt_exposure_buffer] = pass.create_upload_buffer({
       .name = "Manual exposure",
       .size = sizeof(glsl::Exposure),
   });
 
-  pass.set_host_callback(
-      [=, exposure = cfg.options.exposure](Device &device, RGRuntime &rg) {
-        auto *exposure_ptr =
-            device.map_buffer<glsl::Exposure>(rg.get_buffer(exposure_buffer));
-        *exposure_ptr = {
-            .exposure = exposure,
-        };
-      });
+  pass.set_host_callback(ren_rg_host_callback(ManualExposurePassData) {
+    float exposure = data.options.exposure;
+    assert(exposure > 0.0f);
+    auto *exposure_ptr =
+        device.map_buffer<glsl::Exposure>(rg.get_buffer(rt_exposure_buffer));
+    *exposure_ptr = {.exposure = exposure};
+  });
 
   return {
-      .exposure_buffer = exposure_buffer,
+      .passes = {.manual = pass},
+      .exposure = exposure_buffer,
   };
 };
 

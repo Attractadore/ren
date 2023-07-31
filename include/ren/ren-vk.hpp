@@ -8,7 +8,33 @@
 namespace ren::vk {
 inline namespace v0 {
 
+using PFN_CreateSurface = RenPFNCreateSurface;
+using CreateSurfaceFunction =
+    std::function<VkResult(VkInstance, VkSurfaceKHR *)>;
+
 struct Swapchain : ::ren::Swapchain {
+  static auto create(Device &device, PFN_CreateSurface create_surface,
+                     void *usrptr) -> expected<UniqueSwapchain> {
+    RenSwapchain *swapchain;
+    return detail::make_expected(ren_vk_CreateSwapchain(&device, create_surface,
+                                                        usrptr, &swapchain))
+        .transform([&] {
+          return UniqueSwapchain(static_cast<Swapchain *>(swapchain));
+        });
+  }
+
+  static auto create(Device &device, CreateSurfaceFunction create_surface)
+      -> expected<UniqueSwapchain> {
+    struct Helper {
+      static VkResult call_function(VkInstance instance, void *f,
+                                    VkSurfaceKHR *p_surface) {
+        return (*reinterpret_cast<CreateSurfaceFunction *>(f))(instance,
+                                                               p_surface);
+      }
+    };
+    return create(device, Helper::call_function, &create_surface);
+  }
+
   auto get_surface() const -> VkSurfaceKHR {
     return ren_vk_GetSwapchainSurface(this);
   }
@@ -32,10 +58,6 @@ struct DeviceDesc {
   uint8_t pipeline_cache_uuid[VK_UUID_SIZE];
 };
 
-using PFN_CreateSurface = RenPFNCreateSurface;
-using CreateSurfaceFunction =
-    std::function<VkResult(VkInstance, VkSurfaceKHR *)>;
-
 struct Device : ::ren::Device {
   static auto create(const DeviceDesc &desc) -> expected<UniqueDevice> {
     assert(desc.proc);
@@ -49,28 +71,6 @@ struct Device : ::ren::Device {
     RenDevice *device;
     return detail::make_expected(ren_vk_CreateDevice(&c_desc, &device))
         .transform([&] { return UniqueDevice(static_cast<Device *>(device)); });
-  }
-
-  auto create_swapchain(PFN_CreateSurface create_surface, void *usrptr)
-      -> expected<UniqueSwapchain> {
-    RenSwapchain *swapchain;
-    return detail::make_expected(
-               ren_vk_CreateSwapchain(this, create_surface, usrptr, &swapchain))
-        .transform([&] {
-          return UniqueSwapchain(static_cast<Swapchain *>(swapchain));
-        });
-  }
-
-  auto create_swapchain(CreateSurfaceFunction create_surface)
-      -> expected<UniqueSwapchain> {
-    struct Helper {
-      static VkResult call_function(VkInstance instance, void *function,
-                                    VkSurfaceKHR *p_surface) {
-        return (*reinterpret_cast<CreateSurfaceFunction *>(function))(
-            instance, p_surface);
-      }
-    };
-    return create_swapchain(Helper::call_function, &create_surface);
   }
 };
 

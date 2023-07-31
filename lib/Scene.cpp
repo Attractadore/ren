@@ -22,25 +22,28 @@ auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
   return seed;
 }
 
-Scene::Scene(Device &device)
-    : Scene([&device] {
-        ResourceArena persistent_arena(device);
+Scene::Scene(Device &device, Swapchain &swapchain)
+    : m_persistent_arena(device), m_frame_arena(device),
+      m_cmd_allocator(device) {
+  m_device = &device;
 
-        auto persistent_descriptor_set_layout =
-            create_persistent_descriptor_set_layout(persistent_arena);
-        auto [persistent_descriptor_pool, persistent_descriptor_set] =
-            allocate_descriptor_pool_and_set(device, persistent_arena,
-                                             persistent_descriptor_set_layout);
+  m_persistent_descriptor_set_layout =
+      create_persistent_descriptor_set_layout(m_persistent_arena);
+  std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
+      allocate_descriptor_pool_and_set(device, m_persistent_arena,
+                                       m_persistent_descriptor_set_layout);
 
-        return Scene(device, std::move(persistent_arena),
-                     persistent_descriptor_set_layout,
-                     persistent_descriptor_pool, persistent_descriptor_set,
-                     TextureIDAllocator(device, persistent_descriptor_set,
-                                        persistent_descriptor_set_layout));
-      }()) {
+  m_texture_allocator = std::make_unique<TextureIDAllocator>(
+      device, m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
 
-  // TODO: delete when Clang implements constexpr std::bit_cast for structs with
-  // bitfields
+  m_render_graph =
+      std::make_unique<RenderGraph>(device, swapchain, *m_texture_allocator);
+
+  m_pipelines =
+      load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
+
+  // TODO: delete when Clang implements constexpr std::bit_cast for structs
+  // with bitfields
 #define error "C handles can't be directly converted to SlotMap keys"
 #if !BOOST_COMP_CLANG
   static_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
@@ -50,26 +53,11 @@ Scene::Scene(Device &device)
 #undef error
 }
 
-Scene::Scene(Device &device, ResourceArena persistent_arena,
-             Handle<DescriptorSetLayout> persistent_descriptor_set_layout,
-             Handle<DescriptorPool> persistent_descriptor_pool,
-             VkDescriptorSet persistent_descriptor_set,
-             TextureIDAllocator tex_alloc)
-    : m_device(&device), m_persistent_arena(std::move(persistent_arena)),
-      m_frame_arena(device), m_render_graph(device),
-      m_persistent_descriptor_set_layout(persistent_descriptor_set_layout),
-      m_persistent_descriptor_pool(persistent_descriptor_pool),
-      m_persistent_descriptor_set(persistent_descriptor_set),
-      m_texture_allocator(std::move(tex_alloc)), m_cmd_allocator(device) {
-  m_pipelines =
-      load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
-}
-
 void Scene::next_frame() {
   m_frame_arena.clear();
   m_device->next_frame();
   m_cmd_allocator.next_frame();
-  m_texture_allocator.next_frame();
+  m_texture_allocator->next_frame();
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
@@ -218,7 +206,7 @@ auto Scene::get_or_create_texture(const RenTexture &texture)
   auto view = m_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
   auto sampler = get_or_create_sampler(texture.sampler);
-  return m_texture_allocator.allocate_sampled_texture(view, sampler);
+  return m_texture_allocator->allocate_sampled_texture(view, sampler);
 }
 
 auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
@@ -368,18 +356,16 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
   }
 }
 
-void Scene::draw(Swapchain &swapchain) {
+void Scene::draw() {
   m_resource_uploader.upload(*m_device, m_cmd_allocator);
 
-  RGBuilder rgb(m_render_graph);
-
-  RGTextureID texture;
-  std::tie(texture, m_temporal_resources) = setup_all_passes(
-      *m_device, rgb,
-      {
-          .temporal_resources = &m_temporal_resources,
+  m_passes = update_rg_passes(
+      *m_render_graph, m_passes,
+      PassesConfig{
           .pipelines = &m_pipelines,
-          .texture_allocator = &m_texture_allocator,
+          .pp_opts = &m_pp_opts,
+      },
+      PassesData{
           .viewport_size = {m_viewport_width, m_viewport_height},
           .camera = &m_camera,
           .meshes = &m_meshes,
@@ -389,17 +375,7 @@ void Scene::draw(Swapchain &swapchain) {
           .pp_opts = &m_pp_opts,
       });
 
-  rgb.present(swapchain, texture,
-              m_frame_arena.create_semaphore({
-                  .name = "Acquire semaphore",
-              }),
-              m_frame_arena.create_semaphore({
-                  .name = "Present semaphore",
-              }));
-
-  rgb.build(*m_device);
-
-  m_render_graph.execute(*m_device, m_cmd_allocator);
+  m_render_graph->execute(*m_device, m_cmd_allocator);
 
   next_frame();
 }

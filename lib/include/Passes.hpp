@@ -1,10 +1,11 @@
 #pragma once
 #include "DenseHandleMap.hpp"
+#include "Passes/Exposure.hpp"
+#include "Passes/PostProcessing.hpp"
 #include "RenderGraph.hpp"
 
 namespace ren {
 
-class TextureIDAllocator;
 struct Mesh;
 struct MeshInst;
 struct Pipelines;
@@ -18,31 +19,35 @@ struct Material;
 
 } // namespace glsl
 
-struct TemporalResources {
-  RGBufferID exposure_buffer;
+struct Passes {
+  RgPass upload;
+  ExposurePasses exposure;
+  RgPass opaque;
+  PostProcessingPasses pp;
 };
 
 struct PassesConfig {
-  const TemporalResources *temporal_resources = nullptr;
-
   const Pipelines *pipelines = nullptr;
-  TextureIDAllocator *texture_allocator = nullptr;
+  const PostProcessingOptions *pp_opts = nullptr;
+};
+
+struct PassesData {
+  Swapchain *swapchain = nullptr;
 
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
 
   const DenseHandleMap<Mesh> *meshes = nullptr;
-  std::span<const MeshInst> mesh_insts;
+  Span<const MeshInst> mesh_insts;
 
-  std::span<const glsl::DirLight> directional_lights;
+  Span<const glsl::DirLight> directional_lights;
 
-  std::span<const glsl::Material> materials;
+  Span<const glsl::Material> materials;
 
   const PostProcessingOptions *pp_opts;
 };
 
-auto setup_all_passes(Device &device, RGBuilder &rgb,
-                      const PassesConfig &config)
-    -> std::tuple<RGTextureID, TemporalResources>;
+auto update_rg_passes(RenderGraph &rg, Passes passes, const PassesConfig &cfg,
+                      const PassesData &data) -> Passes;
 
 } // namespace ren

@@ -1,41 +1,12 @@
 #include "Passes/AutomaticExposure.hpp"
-#include "CommandRecorder.hpp"
-#include "Device.hpp"
-#include "PipelineLoading.hpp"
-#include "TextureIDAllocator.hpp"
-#include "glsl/Exposure.hpp"
-#include "glsl/LuminanceHistogram.hpp"
 
 namespace ren {
 
-auto setup_automatic_exposure_pass(Device &device, RenderGraph::Builder &rgb,
-                                   const AutomaticExposurePassConfig &cfg)
-    -> ExposurePassOutput {
-  if (cfg.previous_exposure_buffer) {
-    return {
-        .exposure_buffer = cfg.previous_exposure_buffer,
-    };
-  }
-
-  auto pass = rgb.create_pass({
-      .name = "Automatic exposure: set initial exposure",
-  });
-
-  auto exposure_buffer = pass.create_upload_buffer({
-      .name = "Initial automatic exposure",
-      .size = sizeof(glsl::Exposure),
-  });
-
-  pass.set_host_callback([=](Device &device, RGRuntime &rg) {
-    auto *exposure_ptr =
-        device.map_buffer<glsl::Exposure>(rg.get_buffer(exposure_buffer));
-    *exposure_ptr = {
-        .exposure = 1.0f / glsl::MIN_LUMINANCE,
-    };
-  });
-
+auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
   return {
-      .exposure_buffer = exposure_buffer,
+      .passes = {.automatic = true},
+      .exposure = rgb.declare_buffer(),
+      .temporal_offset = 1,
   };
 }
 

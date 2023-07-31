@@ -1,28 +1,25 @@
 #pragma once
-#include "DenseHandleMap.hpp"
 #include "Model.hpp"
 #include "RenderGraph.hpp"
 #include "glsl/Lighting.hpp"
 #include "glsl/Material.hpp"
 
-#include <span>
-
 namespace ren {
 
-struct UploadPassConfig {
-  std::span<const MeshInst> mesh_insts;
-  std::span<const glsl::DirLight> directional_lights;
-  std::span<const glsl::Material> materials;
-};
-
 struct UploadPassOutput {
-  RGBufferID transform_matrix_buffer;
-  RGBufferID normal_matrix_buffer;
-  RGBufferID dir_lights_buffer;
-  RGBufferID materials_buffer;
+  RgPass pass;
+  RgBuffer transform_matrices;
+  RgBuffer normal_matrices;
+  RgBuffer directional_lights;
+  RgBuffer materials;
 };
 
-auto setup_upload_pass(Device &device, RenderGraph::Builder &rgb,
-                       const UploadPassConfig &cfg) -> UploadPassOutput;
+auto setup_upload_pass(RgBuilder &rgb) -> UploadPassOutput;
+
+struct UploadPassData {
+  Span<const MeshInst> mesh_insts;
+  Span<const glsl::DirLight> directional_lights;
+  Span<const glsl::Material> materials;
+};
 
 } // namespace ren

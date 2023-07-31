@@ -127,14 +127,7 @@ struct SceneDeleter {
 using UniqueScene = std::unique_ptr<Scene, SceneDeleter>;
 using SharedScene = std::shared_ptr<Scene>;
 
-struct Device : RenDevice {
-  [[nodiscard]] auto create_scene() -> expected<UniqueScene> {
-    RenScene *scene;
-    return detail::make_expected(ren_CreateScene(this, &scene)).transform([&] {
-      return UniqueScene(reinterpret_cast<Scene *>(scene));
-    });
-  }
-};
+struct Device : RenDevice {};
 
 struct Swapchain : RenSwapchain {
   void set_size(unsigned width, unsigned height) {
@@ -149,6 +142,14 @@ struct Swapchain : RenSwapchain {
 };
 
 struct Scene : RenScene {
+  [[nodiscard]] static auto create(Device &device, Swapchain &swapchain)
+      -> expected<UniqueScene> {
+    RenScene *scene;
+    return detail::make_expected(ren_CreateScene(&device, &swapchain, &scene))
+        .transform(
+            [&] { return UniqueScene(reinterpret_cast<Scene *>(scene)); });
+  }
+
   [[nodiscard]] auto set_camera(const CameraDesc &desc) -> expected<void> {
     return detail::make_expected(ren_SetSceneCamera(this, &desc));
   }
@@ -158,8 +159,8 @@ struct Scene : RenScene {
     return detail::make_expected(ren_SetSceneToneMapping(this, oper));
   }
 
-  [[nodiscard]] auto draw(Swapchain &swapchain) -> expected<void> {
-    return detail::make_expected(ren_DrawScene(this, &swapchain));
+  [[nodiscard]] auto draw() -> expected<void> {
+    return detail::make_expected(ren_DrawScene(this));
   }
 
   [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {

@@ -1,14 +1,12 @@
 #pragma once
-#include "Exposure.hpp"
+#include "Passes/Exposure.hpp"
 
 namespace ren {
 
-struct ManualExposurePassConfig {
+struct ManualExposurePassData {
   ExposureOptions::Manual options;
 };
 
-auto setup_manual_exposure_pass(Device &device, RenderGraph::Builder &rgb,
-                                const ManualExposurePassConfig &cfg)
-    -> ExposurePassOutput;
+auto setup_manual_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput;
 
 } // namespace ren
