@@ -285,11 +285,10 @@ private:
                                     const RgTextureAccess &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
-  auto read_texture(RgPass pass, RgTextureResizeInfo &&read_info,
+  auto read_texture(RgPass pass, RgTextureReadInfo &&read_info,
                     const RgTextureAccess &access) -> RgRtTexture;
 
-  [[nodiscard]] auto write_texture(RgPass pass,
-                                   RgTextureResizeInfo &&write_info,
+  [[nodiscard]] auto write_texture(RgPass pass, RgTextureWriteInfo &&write_info,
                                    const RgTextureAccess &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
