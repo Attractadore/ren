@@ -189,7 +189,7 @@ auto RenderGraph::Builder::init_new_pass(RGPassType type, RGDebugName name)
   auto passid = m_passes.size();
   auto &pass = m_passes.emplace_back();
   pass.stages = get_pass_stages(type);
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   m_pass_names.push_back(std::move(name));
 #endif
   return static_cast<RGPassID>(passid);
@@ -233,7 +233,7 @@ auto RenderGraph::Builder::init_new_texture(Optional<RGPassID> pass,
       m_texture_kills[from_texture] = pass;
     });
   });
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   m_rg->m_texture_names.insert(texture, std::move(name));
 #endif
   return texture;
@@ -362,7 +362,7 @@ auto RenderGraph::Builder::init_new_buffer(Optional<RGPassID> pass,
     from_buffer.map(
         [&](RGBufferID from_buffer) { m_buffer_kills[from_buffer] = pass; });
   });
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   m_rg->m_buffer_names.insert(buffer, std::move(name));
 #endif
   return buffer;
@@ -629,7 +629,7 @@ auto RenderGraph::Builder::schedule_passes() -> Vector<RGPassID> {
 }
 
 void RenderGraph::Builder::print_resources() const {
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   const auto &buffers = m_rg->m_runtime.m_buffers;
   if (not buffers.empty()) {
     rendergraphDebug("Buffers:");
@@ -654,7 +654,7 @@ void RenderGraph::Builder::print_resources() const {
 
 void RenderGraph::Builder::print_passes(
     std::span<const RGPassID> passes) const {
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   const auto &buffers = m_rg->m_runtime.m_buffers;
   const auto &textures = m_rg->m_runtime.m_textures;
 
@@ -876,7 +876,7 @@ auto RenderGraph::Builder::batch_passes(std::span<const RGPassID> schedule)
     }
     auto &batch = batches.back();
     batch.pass_cbs.push_back(std::move(pass.cb));
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
     auto &name = m_pass_names[passid];
     batch.pass_names.push_back(std::move(name));
 #endif
@@ -942,7 +942,7 @@ void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
       {
         CommandRecorder cmd(device, cmd_buffer);
         if (pass_cb) {
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
           const auto &pass_name = batch.pass_names[index];
           auto _ = cmd.debug_region(pass_name.c_str());
 #endif
@@ -1040,7 +1040,7 @@ void RenderGraph::retain_temporal_resources() {
   m_temporal_textures.clear();
   m_external_textures.clear();
 
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
   for (auto &[_, name] : m_buffer_names) {
     name = fmt::format("{} (from previous frame)", name);
   }

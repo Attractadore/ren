@@ -22,7 +22,7 @@
         "REN_ASSERTIONS": "ON",
         "REN_VULKAN_VALIDATION": "ON",
         "REN_VULKAN_DEBUG_NAMES": "ON",
-        "REN_RENDER_GRAPH_DEBUG_NAMES": "ON",
+        "REN_RG_DEBUG_NAMES": "ON",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON"
       }
     },

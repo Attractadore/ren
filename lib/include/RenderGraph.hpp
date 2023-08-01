@@ -12,13 +12,13 @@
 
 #include <functional>
 
-#ifndef REN_RENDER_GRAPH_DEBUG_NAMES
-#define REN_RENDER_GRAPH_DEBUG_NAMES 0
+#ifndef REN_RG_DEBUG_NAMES
+#define REN_RG_DEBUG_NAMES 0
 #endif
 
 namespace ren {
 
-#if REN_RENDER_GRAPH_DEBUG_NAMES
+#if REN_RG_DEBUG_NAMES
 
 using RgDebugName = std::string;
 

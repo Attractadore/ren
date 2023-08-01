@@ -7,7 +7,7 @@ set(REN_LOG_SEVERITY
 option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
-option(REN_RENDER_GRAPH_DEBUG_NAMES "Enable RenderGraph object debug names" OFF)
+option(REN_RG_DEBUG_NAMES "Enable render graph object debug names" OFF)
 
 find_package(
   Boost
@@ -141,9 +141,9 @@ if(REN_VULKAN_DEBUG_NAMES)
   message(STATUS "Enable Vulkan object debug names")
   target_compile_definitions(ren PRIVATE REN_DEBUG_NAMES)
 endif()
-if(REN_RENDER_GRAPH_DEBUG_NAMES)
-  message(STATUS "Enable RenderGraph object debug names")
-  target_compile_definitions(ren PRIVATE REN_RENDER_GRAPH_DEBUG_NAMES)
+if(REN_RG_DEBUG_NAMES)
+  message(STATUS "Enable render graph object debug names")
+  target_compile_definitions(ren PRIVATE REN_RG_DEBUG_NAMES)
 endif()
 
 add_subdirectory(Passes)
