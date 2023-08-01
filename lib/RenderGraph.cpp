@@ -180,9 +180,9 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
   m_tex_alloc = &tex_alloc;
 }
 
-#if 0
-
 RenderGraph::Builder::Builder(RenderGraph &rg) : m_rg(&rg) {}
+
+#if 0
 
 auto RenderGraph::Builder::init_new_pass(RGPassType type, RGDebugName name)
     -> RGPassID {

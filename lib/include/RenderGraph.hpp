@@ -267,6 +267,8 @@ public:
 };
 
 class RenderGraph::Builder {
+  RenderGraph *m_rg = nullptr;
+
 private:
   [[nodiscard]] auto create_buffer(RgPass pass,
                                    RgBufferCreateInfo &&create_info,
