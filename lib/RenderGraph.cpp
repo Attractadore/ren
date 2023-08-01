@@ -1,4 +1,5 @@
 #include "RenderGraph.hpp"
+#include "Support/Views.hpp"
 
 namespace ren {
 
@@ -154,6 +155,30 @@ auto get_texture_access(VkPipelineStageFlags2 pass_stage_mask,
 }
 
 } // namespace
+
+RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
+                         TextureIDAllocator &tex_alloc)
+    : m_arena(device) {
+  m_device = &device;
+
+  m_swapchain = &swapchain;
+
+  for (auto &&[index, semaphore] : enumerate(m_acquire_semaphores)) {
+    semaphore = m_arena.create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain acquire semaphore {}", index),
+    });
+  }
+
+  for (auto &&[index, semaphore] : enumerate(m_present_semaphores)) {
+    semaphore = m_arena.create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain present semaphore {}", index),
+    });
+  }
+
+  m_tex_alloc = &tex_alloc;
+}
 
 #if 0
 

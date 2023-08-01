@@ -2,6 +2,8 @@
 #include "Attachments.hpp"
 #include "Buffer.hpp"
 #include "Config.hpp"
+#include "ResourceArena.hpp"
+#include "Semaphore.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
 #include "Support/Variant.hpp"
@@ -238,6 +240,16 @@ public:
 };
 
 class RenderGraph {
+  using RgArena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
+  RgArena m_arena;
+
+  Device *m_device = nullptr;
+
+  Swapchain *m_swapchain = nullptr;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
+  TextureIDAllocator *m_tex_alloc = nullptr;
+
   RgRuntime m_runtime;
 
 public:
