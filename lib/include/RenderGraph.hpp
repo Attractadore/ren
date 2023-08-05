@@ -5,6 +5,7 @@
 #include "ResourceArena.hpp"
 #include "Semaphore.hpp"
 #include "Support/Optional.hpp"
+#include "Support/SecondaryMap.hpp"
 #include "Support/Span.hpp"
 #include "Support/Variant.hpp"
 #include "Texture.hpp"
@@ -100,15 +101,19 @@ class RgRtBuffer {
 private:
   friend class RgRuntime;
   friend class RenderGraph;
-  RgBuffer buffer;
+  RgBuffer m_buffer;
+
+  RgRtBuffer(RgBuffer buffer) : m_buffer(buffer) {}
 
 public:
-  operator RgBuffer() const { return buffer; }
+  RgRtBuffer() = default;
 
-  explicit operator bool() const { return not buffer.is_null(); }
+  operator RgBuffer() const { return m_buffer; }
+
+  explicit operator bool() const { return not m_buffer.is_null(); }
 };
 
-struct RgBufferAccess {
+struct RgBufferAccessDesc {
   /// Pipeline stages in which this buffer is accessed
   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   /// Memory accesses performed on this buffer
@@ -169,7 +174,7 @@ private:
   RgTexture texture;
 };
 
-struct RgTextureAccess {
+struct RgTextureAccessDesc {
   /// Pipeline stages in which the texture is accessed
   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   /// Types of accesses performed on the texture
@@ -269,29 +274,102 @@ public:
 class RenderGraph::Builder {
   RenderGraph *m_rg = nullptr;
 
+  REN_DEFINE_SLOTMAP_KEY(RgBufferAccess);
+
+  struct RgBufferAccessInfo {
+    RgBuffer buffer;
+    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkPipelineStageFlags2 access_mask = VK_ACCESS_2_NONE;
+  };
+
+  SlotMap<RgBufferAccessInfo, RgBufferAccess> m_pass_buffer_accesses;
+
+  REN_DEFINE_SLOTMAP_KEY(RgTextureAccess);
+
+  struct RgTextureAccessInfo {
+    RgTexture texture;
+    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkPipelineStageFlags2 access_mask = VK_ACCESS_2_NONE;
+    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  };
+
+  SlotMap<RgTextureAccessInfo, RgTextureAccess> m_pass_texture_accesses;
+
+  struct RgPassInfo {
+    SmallVector<RgBufferAccess, 10> read_buffers;
+    SmallVector<RgBufferAccess, 10> write_buffers;
+    SmallVector<RgTextureAccess, 10> read_textures;
+    SmallVector<RgTextureAccess, 8> write_textures;
+    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  };
+
+  SlotMap<RgPassInfo, RgPass> m_passes;
+#if REN_RG_DEBUG_NAMES
+  SecondaryMap<RgDebugName, RgPass> m_pass_names;
+#endif
+
+  REN_DEFINE_SLOTMAP_KEY(RgPhysicalBuffer);
+
+  struct RgPhysicalBufferInfo {
+    usize size = 0;
+    BufferHeap heap = BufferHeap::Upload;
+  };
+
+  struct RgTemporalBufferInfo {
+    VkBufferUsageFlags usage = 0;
+    u32 count = 0;
+  };
+
+  struct RgTemporalBufferInitInfo {
+    usize offset = 0;
+  };
+
+  SlotMap<RgPhysicalBuffer, RgBuffer> m_buffers;
+#if REN_RG_DEBUG_NAMES
+  SecondaryMap<RgDebugName, RgBuffer> m_buffer_names;
+#endif
+  SecondaryMap<RgPass, RgBuffer> m_buffer_defs;
+  SecondaryMap<RgPass, RgBuffer> m_buffer_kills;
+
+  SlotMap<RgPhysicalBufferInfo, RgPhysicalBuffer> m_physical_buffers;
+
+  SecondaryMap<RgTemporalBufferInfo, RgPhysicalBuffer> m_temporal_buffers_info;
+  SecondaryMap<RgTemporalBufferInitInfo, RgPhysicalBuffer>
+      m_temporal_buffers_init_info;
+  Vector<std::byte> m_temporal_buffers_init_data;
+
+  SmallLinearMap<BufferHeap, VkBufferUsageFlags, 3> m_buffer_heap_usage_info;
+
+  struct RgTextureInfo {};
+
+  SlotMap<RgTextureInfo, RgTexture> m_textures;
+#if REN_RG_DEBUG_NAMES
+  SecondaryMap<RgDebugName, RgTexture> m_texture_names;
+#endif
+
 private:
   [[nodiscard]] auto create_buffer(RgPass pass,
                                    RgBufferCreateInfo &&create_info,
-                                   const RgBufferAccess &access)
+                                   const RgBufferAccessDesc &access)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   auto read_buffer(RgPass pass, RgBufferReadInfo &&read_info,
-                   const RgBufferAccess &access) -> RgRtBuffer;
+                   const RgBufferAccessDesc &access) -> RgRtBuffer;
 
   [[nodiscard]] auto write_buffer(RgPass pass, RgBufferWriteInfo &&write_info,
-                                  const RgBufferAccess &access)
+                                  const RgBufferAccessDesc &access)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto create_texture(RgPass pass,
                                     RgTextureCreateInfo &&create_info,
-                                    const RgTextureAccess &access)
+                                    const RgTextureAccessDesc &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
   auto read_texture(RgPass pass, RgTextureReadInfo &&read_info,
-                    const RgTextureAccess &access) -> RgRtTexture;
+                    const RgTextureAccessDesc &access) -> RgRtTexture;
 
   [[nodiscard]] auto write_texture(RgPass pass, RgTextureWriteInfo &&write_info,
-                                   const RgTextureAccess &access)
+                                   const RgTextureAccessDesc &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
 public:
@@ -320,7 +398,7 @@ public:
   PassBuilder(RgPass pass, RgBuilder &builder);
 
   [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info,
-                                   const RgBufferAccess &access)
+                                   const RgBufferAccessDesc &access)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto create_compute_buffer(RgBufferCreateInfo &&create_info)
@@ -336,7 +414,8 @@ public:
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto read_buffer(RgBufferReadInfo &&read_info,
-                                 const RgBufferAccess &access) -> RgRtBuffer;
+                                 const RgBufferAccessDesc &access)
+      -> RgRtBuffer;
 
   [[nodiscard]] auto read_indirect_buffer(RgBufferReadInfo &&read_info)
       -> RgRtBuffer;
@@ -357,7 +436,7 @@ public:
       -> RgRtBuffer;
 
   [[nodiscard]] auto write_buffer(RgBufferWriteInfo &&write_info,
-                                  const RgBufferAccess &access)
+                                  const RgBufferAccessDesc &access)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto write_compute_buffer(RgBufferWriteInfo &&write_info)
@@ -367,7 +446,7 @@ public:
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info,
-                                    const RgTextureAccess &access)
+                                    const RgTextureAccessDesc &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
   /// Create color attachment with LOAD_OP_CLEAR or LOAD_OP_DONT_CARE and
@@ -388,7 +467,8 @@ public:
       -> std::tuple<RgTexture, RgRtTexture>;
 
   [[nodiscard]] auto read_texture(RgTextureReadInfo &&read_info,
-                                  const RgTextureAccess &access) -> RgRtTexture;
+                                  const RgTextureAccessDesc &access)
+      -> RgRtTexture;
 
   /// Read depth attachment with LOAD_OP_LOAD and STORE_OP_NONE
   [[nodiscard]] auto read_depth_attachment(RgTextureReadInfo &&read_info,
@@ -405,7 +485,7 @@ public:
       -> RgRtTexture;
 
   [[nodiscard]] auto write_texture(RgTextureWriteInfo &&write_info,
-                                   const RgTextureAccess &access)
+                                   const RgTextureAccessDesc &access)
       -> std::tuple<RgTexture, RgRtTexture>;
 
   /// Write color attachment with LOAD_OP_LOAD and STORE_OP_STORE

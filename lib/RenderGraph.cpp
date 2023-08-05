@@ -5,7 +5,7 @@ namespace ren {
 
 namespace {
 
-auto get_pass_stages(RgPassType type) -> VkPipelineStageFlags2 {
+auto get_pass_stage_mask(RgPassType type) -> VkPipelineStageFlags2 {
   switch (type) {
   case RgPassType::Host:
     return VK_PIPELINE_STAGE_2_NONE;
@@ -93,19 +93,16 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
   return flags;
 }
 
-auto get_buffer_access(VkPipelineStageFlags2 pass_stage_mask,
-                       VkPipelineStageFlags2 stage_mask,
-                       VkAccessFlags2 access_mask) -> RgBufferAccess {
-  if (!stage_mask) {
-    stage_mask = pass_stage_mask;
+auto adjust_buffer_access_desc(RgBufferAccessDesc access,
+                               VkPipelineStageFlags2 pass_stage_mask)
+    -> RgBufferAccessDesc {
+  if (!access.stage_mask) {
+    access.stage_mask = pass_stage_mask;
   }
   ren_assert(
-      (stage_mask & pass_stage_mask) == stage_mask,
+      (access.stage_mask & pass_stage_mask) == access.stage_mask,
       "Buffer access pipeline stage mask must be a subset of pass stage mask");
-  return {
-      .stage_mask = stage_mask,
-      .access_mask = access_mask,
-  };
+  return access;
 }
 
 auto get_texture_layout(VkAccessFlags2 accesses) -> VkImageLayout {
@@ -137,7 +134,7 @@ auto get_texture_layout(VkAccessFlags2 accesses) -> VkImageLayout {
 auto get_texture_access(VkPipelineStageFlags2 pass_stage_mask,
                         VkPipelineStageFlags2 stage_mask,
                         VkAccessFlags2 access_mask, VkImageLayout layout)
-    -> RgTextureAccess {
+    -> RgTextureAccessDesc {
   if (!stage_mask) {
     stage_mask = pass_stage_mask;
   }
@@ -182,18 +179,97 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
 
 RenderGraph::Builder::Builder(RenderGraph &rg) : m_rg(&rg) {}
 
-#if 0
-
-auto RenderGraph::Builder::init_new_pass(RGPassType type, RGDebugName name)
-    -> RGPassID {
-  auto passid = m_passes.size();
-  auto &pass = m_passes.emplace_back();
-  pass.stages = get_pass_stages(type);
+auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
+  auto pass = m_passes.emplace(RgPassInfo{
+      .stage_mask = get_pass_stage_mask(create_info.type),
+  });
 #if REN_RG_DEBUG_NAMES
-  m_pass_names.push_back(std::move(name));
+  m_pass_names.insert(pass, std::move(create_info.name));
 #endif
-  return static_cast<RGPassID>(passid);
+  return {pass, *this};
 }
+
+auto RgBuilder::declare_buffer() -> RgBuffer { return m_buffers.emplace(); }
+
+auto RgBuilder::create_buffer(RgPass pass, RgBufferCreateInfo &&create_info,
+                              const RgBufferAccessDesc &access)
+    -> std::tuple<RgBuffer, RgRtBuffer> {
+  RgPhysicalBuffer physical_buffer =
+      m_physical_buffers.insert(RgPhysicalBufferInfo{
+          .size = create_info.size,
+          .heap = create_info.heap,
+      });
+
+  // Create a virtual predecessor buffer.
+  // This simplifies pass scheduling by making it possible to treat buffer
+  // creation as a write to a virtual predecessor buffer
+  RgBuffer predecessor = m_buffers.insert(physical_buffer);
+  m_buffer_kills.insert(predecessor, pass);
+
+  return write_buffer(pass,
+                      RgBufferWriteInfo{
+                          .name = std::move(create_info.name),
+                          .target = create_info.target,
+                          .buffer = predecessor,
+                          .temporal_count = create_info.temporal_count,
+                          .temporal_init = create_info.temporal_init,
+                      },
+                      access);
+}
+
+auto RgBuilder::write_buffer(RgPass pass, RgBufferWriteInfo &&write_info,
+                             const RgBufferAccessDesc &in_access)
+    -> std::tuple<RgBuffer, RgRtBuffer> {
+  assert(write_info.buffer);
+
+  RgPhysicalBuffer physical_buffer = m_buffers[write_info.buffer];
+
+  RgBuffer buffer = write_info.target;
+  if (buffer) {
+    m_buffers[buffer] = physical_buffer;
+  } else {
+    buffer = m_buffers.insert(physical_buffer);
+  }
+  m_buffer_defs.insert(buffer, pass);
+
+  RgPassInfo &pass_info = m_passes[pass];
+
+  RgBufferAccessDesc access =
+      adjust_buffer_access_desc(in_access, pass_info.stage_mask);
+
+  pass_info.write_buffers.push_back(
+      m_pass_buffer_accesses.insert(RgBufferAccessInfo{
+          .buffer = write_info.buffer,
+          .stage_mask = access.stage_mask,
+          .access_mask = access.access_mask,
+      }));
+
+  VkBufferUsageFlags usage = get_buffer_usage_flags(access.access_mask);
+
+  if (write_info.temporal_count > 0) {
+    m_temporal_buffers_info.insert(physical_buffer,
+                                   RgTemporalBufferInfo{
+                                       .usage = usage,
+                                       .count = write_info.temporal_count + 1,
+                                   });
+    usize offset = m_temporal_buffers_init_data.size();
+    m_temporal_buffers_init_data.append(write_info.temporal_init);
+    m_temporal_buffers_init_info.insert(
+        physical_buffer, RgTemporalBufferInitInfo{.offset = offset});
+  } else {
+    m_buffer_heap_usage_info[m_physical_buffers[physical_buffer].heap] |= usage;
+  }
+
+#if REN_RG_DEBUG_NAMES
+  m_buffer_names.insert(buffer, std::move(write_info.name));
+#endif
+
+  return {buffer, buffer};
+}
+
+auto RgBuilder::declare_texture() -> RgTexture { return m_textures.emplace(); }
+
+#if 0
 
 void RenderGraph::Builder::wait_semaphore(RGPassID pass,
                                           RGSemaphoreSignalInfo &&signal_info) {
@@ -203,12 +279,6 @@ void RenderGraph::Builder::wait_semaphore(RGPassID pass,
 void RenderGraph::Builder::signal_semaphore(
     RGPassID pass, RGSemaphoreSignalInfo &&signal_info) {
   m_passes[pass].signal_semaphores.push_back(std::move(signal_info));
-}
-
-auto RenderGraph::Builder::create_pass(RGPassCreateInfo &&create_info)
-    -> PassBuilder {
-  auto pass = init_new_pass(create_info.type, std::move(create_info.name));
-  return {pass, *this};
 }
 
 auto RenderGraph::Builder::init_new_texture(Optional<RGPassID> pass,
@@ -1056,18 +1126,19 @@ RgPassBuilder::PassBuilder(RgPass pass, Builder &builder)
     : m_pass(pass), m_builder(&builder) {}
 
 auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
-                                  const RgBufferAccess &access)
+                                  const RgBufferAccessDesc &access)
     -> std::tuple<RgBuffer, RgRtBuffer> {
   return m_builder->create_buffer(m_pass, std::move(create_info), access);
 }
 
 auto RgPassBuilder::read_buffer(RgBufferReadInfo &&read_info,
-                                const RgBufferAccess &access) -> RgRtBuffer {
+                                const RgBufferAccessDesc &access)
+    -> RgRtBuffer {
   return m_builder->read_buffer(m_pass, std::move(read_info), access);
 }
 
 auto RgPassBuilder::write_buffer(RgBufferWriteInfo &&write_info,
-                                 const RgBufferAccess &access)
+                                 const RgBufferAccessDesc &access)
     -> std::tuple<RgBuffer, RgRtBuffer> {
   return m_builder->write_buffer(m_pass, std::move(write_info), access);
 }
@@ -1197,18 +1268,19 @@ auto RgPassBuilder::write_transfer_buffer(RgBufferWriteInfo &&write_info)
 }
 
 auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info,
-                                   const RgTextureAccess &access)
+                                   const RgTextureAccessDesc &access)
     -> std::tuple<RgTexture, RgRtTexture> {
   return m_builder->create_texture(m_pass, std::move(create_info), access);
 }
 
 auto RgPassBuilder::read_texture(RgTextureReadInfo &&read_info,
-                                 const RgTextureAccess &access) -> RgRtTexture {
+                                 const RgTextureAccessDesc &access)
+    -> RgRtTexture {
   return m_builder->read_texture(m_pass, std::move(read_info), access);
 }
 
 auto RgPassBuilder::write_texture(RgTextureWriteInfo &&write_info,
-                                  const RgTextureAccess &access)
+                                  const RgTextureAccessDesc &access)
     -> std::tuple<RgTexture, RgRtTexture> {
   return m_builder->write_texture(m_pass, std::move(write_info), access);
 }
