@@ -103,6 +103,8 @@ add_library(
   PipelineLoading.cpp
   RenderGraph.cpp
   ResourceUploader.cpp
+  RgBuilder.cpp
+  RgPassBuilder.cpp
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
