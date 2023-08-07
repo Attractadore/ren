@@ -27,17 +27,36 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
   m_tex_alloc = &tex_alloc;
 }
 
+void RenderGraph::resize_buffer(RgBuffer buffer, usize size,
+                                TempSpan<const std::byte> init) {
+  todo();
+}
+
+void RenderGraph::resize_texture(
+    RgTexture texture, glm::uvec3 size,
+    Optional<Variant<glm::vec4, ClearDepthStencil>> init) {
+  todo();
+}
+
+auto RgRuntime::get_buffer(RgRtBuffer buffer) const -> const BufferView & {
+  todo();
+}
+
+auto RgRuntime::get_texture(RgRtTexture texture) const -> const TextureView & {
+  todo();
+}
+
+auto RgRuntime::get_sampled_texture_descriptor(RgRtTexture texture) const
+    -> SampledTextureID {
+  todo();
+}
+
+auto RgRuntime::get_storage_texture_descriptor(RgRtTexture texture) const
+    -> StorageTextureID {
+  todo();
+}
+
 #if 0
-
-auto RGRuntime::get_buffer(RGBufferID buffer) const -> const BufferView & {
-  assert(buffer);
-  return m_physical_buffers[m_buffers[buffer]];
-}
-
-auto RGRuntime::get_texture(RGTextureID texture) const -> const TextureView & {
-  assert(texture);
-  return m_physical_textures[m_textures[texture]];
-}
 
 void RenderGraph::execute(Device &device, CommandAllocator &cmd_allocator) {
   SmallVector<VkCommandBufferSubmitInfo, 16> cmd_buffers;

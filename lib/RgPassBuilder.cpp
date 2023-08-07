@@ -5,226 +5,35 @@ namespace ren {
 RgPassBuilder::PassBuilder(RgPass pass, Builder &builder)
     : m_pass(pass), m_builder(&builder) {}
 
-auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
-                                  const RgBufferAccessDesc &access)
+auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info)
     -> std::tuple<RgBuffer, RgRtBuffer> {
-  return m_builder->create_buffer(m_pass, std::move(create_info), access);
+  return m_builder->create_buffer(m_pass, std::move(create_info));
 }
 
-auto RgPassBuilder::read_buffer(RgBufferReadInfo &&read_info,
-                                const RgBufferAccessDesc &access)
-    -> RgRtBuffer {
-  return m_builder->read_buffer(m_pass, std::move(read_info), access);
+auto RgPassBuilder::read_buffer(RgBuffer buffer, const RgBufferUsage &access,
+                                u32 temporal_index) -> RgRtBuffer {
+  return m_builder->read_buffer(m_pass, buffer, access, temporal_index);
 }
 
-auto RgPassBuilder::write_buffer(RgBufferWriteInfo &&write_info,
-                                 const RgBufferAccessDesc &access)
+auto RgPassBuilder::write_buffer(RgBufferWriteInfo &&write_info)
     -> std::tuple<RgBuffer, RgRtBuffer> {
-  return m_builder->write_buffer(m_pass, std::move(write_info), access);
+  return m_builder->write_buffer(m_pass, std::move(write_info));
 }
 
-auto RgPassBuilder::create_uniform_buffer(RgBufferCreateInfo &&create_info)
-    -> RgRtBuffer {
-  create_info.heap = BufferHeap::Upload;
-  return std::get<1>(
-      create_buffer(std::move(create_info),
-                    {
-                        .stage_mask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                                      VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                        .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                    }));
-}
-
-auto RgPassBuilder::create_compute_buffer(RgBufferCreateInfo &&create_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  create_info.heap = BufferHeap::Device;
-  return create_buffer(std::move(create_info),
-                       {
-                           .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                           .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                       });
-}
-
-auto RgPassBuilder::create_transfer_buffer(RgBufferCreateInfo &&create_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  create_info.heap = BufferHeap::Device;
-  return create_buffer(std::move(create_info),
-                       {
-                           .stage_mask = 0,
-                           .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                       });
-}
-
-auto RgPassBuilder::create_upload_buffer(RgBufferCreateInfo &&create_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  create_info.heap = BufferHeap::Upload;
-  return create_buffer(std::move(create_info), {
-                                                   .stage_mask = 0,
-                                                   .access_mask = 0,
-                                               });
-}
-
-auto RgPassBuilder::read_indirect_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                         .access_mask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_index_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-                         .access_mask = VK_ACCESS_2_INDEX_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_vertex_shader_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-                         .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_fragment_shader_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                         .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_compute_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                         .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_transfer_buffer(RgBufferReadInfo &&read_info)
-    -> RgRtBuffer {
-  return read_buffer(std::move(read_info),
-                     {
-                         .stage_mask = 0,
-                         .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
-                     });
-}
-
-auto RgPassBuilder::read_storage_texture(RgTextureReadInfo &&read_info)
-    -> RgRtTexture {
-  return read_texture(std::move(read_info),
-                      {
-                          .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                          .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-                          .layout = VK_IMAGE_LAYOUT_GENERAL,
-                      });
-}
-
-auto RgPassBuilder::write_compute_buffer(RgBufferWriteInfo &&write_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  return write_buffer(std::move(write_info),
-                      {
-                          .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                          .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                      });
-}
-
-auto RgPassBuilder::write_transfer_buffer(RgBufferWriteInfo &&write_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  return write_buffer(std::move(write_info),
-                      {
-                          .stage_mask = 0,
-                          .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                      });
-}
-
-auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info,
-                                   const RgTextureAccessDesc &access)
+auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info)
     -> std::tuple<RgTexture, RgRtTexture> {
-  return m_builder->create_texture(m_pass, std::move(create_info), access);
+  return m_builder->create_texture(m_pass, std::move(create_info));
 }
 
-auto RgPassBuilder::read_texture(RgTextureReadInfo &&read_info,
-                                 const RgTextureAccessDesc &access)
-    -> RgRtTexture {
-  return m_builder->read_texture(m_pass, std::move(read_info), access);
+auto RgPassBuilder::read_texture(RgTexture texture,
+                                 const RgTextureUsage &access,
+                                 u32 temporal_index) -> RgRtTexture {
+  return m_builder->read_texture(m_pass, texture, access, temporal_index);
 }
 
-auto RgPassBuilder::write_texture(RgTextureWriteInfo &&write_info,
-                                  const RgTextureAccessDesc &access)
+auto RgPassBuilder::write_texture(RgTextureWriteInfo &&write_info)
     -> std::tuple<RgTexture, RgRtTexture> {
-  return m_builder->write_texture(m_pass, std::move(write_info), access);
-}
-
-auto RgPassBuilder::create_storage_texture(RgTextureCreateInfo &&create_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return create_texture(
-      std::move(create_info),
-      {
-          .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-          .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-          .layout = VK_IMAGE_LAYOUT_GENERAL,
-      });
-}
-
-auto RgPassBuilder::create_transfer_texture(RgTextureCreateInfo &&create_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return create_texture(std::move(create_info),
-                        {
-                            .stage_mask = 0,
-                            .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                            .layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                        });
-}
-
-auto RgPassBuilder::read_sampled_texture(RgTextureReadInfo &&read_info)
-    -> RgRtTexture {
-  return read_texture(std::move(read_info),
-                      {
-                          .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                          .access_mask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-                          .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-                      });
-}
-
-auto RgPassBuilder::read_transfer_texture(RgTextureReadInfo &&read_info)
-    -> RgRtTexture {
-  return read_texture(std::move(read_info),
-                      {
-                          .stage_mask = 0,
-                          .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
-                          .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                      });
-}
-
-auto RgPassBuilder::write_storage_texture(RgTextureWriteInfo &&write_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return write_texture(std::move(write_info),
-                       {
-                           .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                           .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                          VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-                           .layout = VK_IMAGE_LAYOUT_GENERAL,
-                       });
-}
-
-auto RgPassBuilder::write_transfer_texture(RgTextureWriteInfo &&write_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return write_texture(std::move(write_info),
-                       {
-                           .stage_mask = 0,
-                           .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                           .layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                       });
+  return m_builder->write_texture(m_pass, std::move(write_info));
 }
 
 #if 0

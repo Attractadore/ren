@@ -56,7 +56,7 @@ class RgRuntime;
 class RenderGraph;
 
 template <typename F, typename T>
-concept CRgBudgetCallback = std::invocable<F, RenderGraph &, const T &>;
+concept CRgSizeCallback = std::invocable<F, RenderGraph &, const T &>;
 
 template <typename F, typename T>
 concept CRgHostCallback =
@@ -113,12 +113,55 @@ public:
   explicit operator bool() const { return not m_buffer.is_null(); }
 };
 
-struct RgBufferAccessDesc {
+struct RgBufferUsage {
   /// Pipeline stages in which this buffer is accessed
   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   /// Memory accesses performed on this buffer
   VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
 };
+
+constexpr auto operator|(const RgBufferUsage &lhs, const RgBufferUsage &rhs)
+    -> RgBufferUsage {
+  return {
+      .stage_mask = lhs.stage_mask | rhs.stage_mask,
+      .access_mask = lhs.access_mask | rhs.access_mask,
+  };
+};
+
+constexpr RgBufferUsage RG_HOST_WRITE_BUFFER = {};
+
+constexpr RgBufferUsage RG_VS_READ_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+};
+
+constexpr RgBufferUsage RG_FS_READ_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+};
+
+constexpr RgBufferUsage RG_TRANSFER_SRC_BUFFER = {
+    .stage_mask = 0,
+    .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
+};
+
+constexpr RgBufferUsage RG_TRANSFER_DST_BUFFER = {
+    .stage_mask = 0,
+    .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+};
+
+constexpr RgBufferUsage RG_CS_READ_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+};
+
+constexpr RgBufferUsage RG_CS_WRITE_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+};
+
+constexpr RgBufferUsage RG_CS_READ_WRITE_BUFFER =
+    RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER;
 
 struct RgBufferCreateInfo {
   /// Buffer debug name
@@ -129,17 +172,12 @@ struct RgBufferCreateInfo {
   usize size = 0;
   /// Memory heap from which to allocate buffer
   BufferHeap heap = BufferHeap::Upload;
+  /// Buffer usage during current pass
+  RgBufferUsage usage;
   /// How many previous frames' instances to keep
   u32 temporal_count = 0;
   /// Initial data for previous frames' instances
   TempSpan<const std::byte> temporal_init;
-};
-
-struct RgBufferReadInfo {
-  /// Buffer to read
-  RgBuffer buffer;
-  /// Which previous frame's instance to read
-  u32 temporal_offset = 0;
 };
 
 struct RgBufferWriteInfo {
@@ -149,17 +187,10 @@ struct RgBufferWriteInfo {
   RgBuffer target;
   /// Buffer to modify
   RgBuffer buffer;
+  /// Buffer usage during current pass
+  RgBufferUsage usage;
   /// How many previous frames' instances to keep
   u32 temporal_count = 0;
-  /// Initial data for previous frames' instances
-  TempSpan<const std::byte> temporal_init;
-};
-
-struct RgBufferResizeInfo {
-  /// Buffer to resize
-  RgBuffer buffer;
-  /// New size for this buffer
-  usize size = 0;
   /// Initial data for previous frames' instances
   TempSpan<const std::byte> temporal_init;
 };
@@ -174,13 +205,32 @@ private:
   RgTexture texture;
 };
 
-struct RgTextureAccessDesc {
+struct RgTextureUsage {
   /// Pipeline stages in which the texture is accessed
   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   /// Types of accesses performed on the texture
   VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
   /// Layout of the texture
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+};
+
+constexpr RgTextureUsage RG_CS_READ_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr RgTextureUsage RG_CS_WRITE_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr RgTextureUsage RG_CS_READ_WRITE_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
 };
 
 struct RgTextureCreateInfo {
@@ -196,17 +246,12 @@ struct RgTextureCreateInfo {
   glm::uvec3 size = {0, 0, 0};
   /// Number of mip levels
   u32 num_mip_levels = 1;
+  /// Texture usage during current pass
+  RgTextureUsage usage;
   /// How many previous frames' instances to keep
   u32 temporal_count = 0;
   /// Initial color or depth-stencil for previous frames' instances
   Optional<Variant<glm::vec4, ClearDepthStencil>> temporal_init;
-};
-
-struct RgTextureReadInfo {
-  /// Texture to read
-  RgTexture texture;
-  /// Which previous frame's instance to read
-  u32 temporal_offset = 0;
 };
 
 struct RgTextureWriteInfo {
@@ -216,17 +261,10 @@ struct RgTextureWriteInfo {
   RgTexture target;
   /// Texture to modify
   RgTexture texture;
+  /// Texture usage during current pass
+  RgTextureUsage usage;
   /// How many previous frames' instances to keep
   u32 temporal_count = 0;
-  /// Initial color or depth and stencil for previous frames' instances
-  Optional<Variant<glm::vec4, ClearDepthStencil>> temporal_init;
-};
-
-struct RgTextureResizeInfo {
-  /// Texture to resize
-  RgTexture texture;
-  /// New texture size
-  glm::uvec3 size = {0, 0, 0};
   /// Initial color or depth and stencil for previous frames' instances
   Optional<Variant<glm::vec4, ClearDepthStencil>> temporal_init;
 };
@@ -235,13 +273,17 @@ class RgRuntime {
 public:
   auto get_buffer(RgRtBuffer buffer) const -> const BufferView &;
 
+  template <typename T> auto map_buffer(RgRtBuffer buffer) const -> T * {
+    todo();
+  }
+
   auto get_texture(RgRtTexture texture) const -> const TextureView &;
 
-  auto get_sampled_texture(RgRtTexture texture) const
-      -> std::tuple<const TextureView &, SampledTextureID>;
+  auto get_sampled_texture_descriptor(RgRtTexture texture) const
+      -> SampledTextureID;
 
-  auto get_storage_texture(RgRtTexture texture) const
-      -> std::tuple<const TextureView &, StorageTextureID>;
+  auto get_storage_texture_descriptor(RgRtTexture texture) const
+      -> StorageTextureID;
 };
 
 class RenderGraph {
@@ -263,12 +305,15 @@ public:
 
   class Builder;
 
-  void resize_buffer(RgBufferResizeInfo &&resize_info);
-  void resize_texture(RgTextureResizeInfo &&resize_info);
+  void resize_buffer(RgBuffer buffer, usize size,
+                     TempSpan<const std::byte> init = {});
+  void
+  resize_texture(RgTexture texture, glm::uvec3 size,
+                 Optional<Variant<glm::vec4, ClearDepthStencil>> init = None);
 
   template <typename T> void set_pass_data(RgPass pass, T data) { todo(); }
 
-  void execute(Device &device, CommandAllocator &cmd_alloc);
+  void execute(CommandAllocator &cmd_alloc);
 };
 
 class RenderGraph::Builder {
@@ -349,27 +394,23 @@ class RenderGraph::Builder {
 
 private:
   [[nodiscard]] auto create_buffer(RgPass pass,
-                                   RgBufferCreateInfo &&create_info,
-                                   const RgBufferAccessDesc &access)
+                                   RgBufferCreateInfo &&create_info)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
-  auto read_buffer(RgPass pass, RgBufferReadInfo &&read_info,
-                   const RgBufferAccessDesc &access) -> RgRtBuffer;
+  auto read_buffer(RgPass pass, RgBuffer buffer, const RgBufferUsage &usage,
+                   u32 temporal_index) -> RgRtBuffer;
 
-  [[nodiscard]] auto write_buffer(RgPass pass, RgBufferWriteInfo &&write_info,
-                                  const RgBufferAccessDesc &access)
+  [[nodiscard]] auto write_buffer(RgPass pass, RgBufferWriteInfo &&write_info)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
   [[nodiscard]] auto create_texture(RgPass pass,
-                                    RgTextureCreateInfo &&create_info,
-                                    const RgTextureAccessDesc &access)
+                                    RgTextureCreateInfo &&create_info)
       -> std::tuple<RgTexture, RgRtTexture>;
 
-  auto read_texture(RgPass pass, RgTextureReadInfo &&read_info,
-                    const RgTextureAccessDesc &access) -> RgRtTexture;
+  auto read_texture(RgPass pass, RgTexture texture, const RgTextureUsage &usage,
+                    u32 temporal_index) -> RgRtTexture;
 
-  [[nodiscard]] auto write_texture(RgPass pass, RgTextureWriteInfo &&write_info,
-                                   const RgTextureAccessDesc &access)
+  [[nodiscard]] auto write_texture(RgPass pass, RgTextureWriteInfo &&write_info)
       -> std::tuple<RgTexture, RgRtTexture>;
 
 public:
@@ -397,56 +438,16 @@ class RgBuilder::PassBuilder {
 public:
   PassBuilder(RgPass pass, RgBuilder &builder);
 
-  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info,
-                                   const RgBufferAccessDesc &access)
+  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
-  [[nodiscard]] auto create_compute_buffer(RgBufferCreateInfo &&create_info)
+  [[nodiscard]] auto read_buffer(RgBuffer buffer, const RgBufferUsage &usage,
+                                 u32 temporal_index = 0) -> RgRtBuffer;
+
+  [[nodiscard]] auto write_buffer(RgBufferWriteInfo &&write_info)
       -> std::tuple<RgBuffer, RgRtBuffer>;
 
-  [[nodiscard]] auto create_uniform_buffer(RgBufferCreateInfo &&create_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto create_transfer_buffer(RgBufferCreateInfo &&create_info)
-      -> std::tuple<RgBuffer, RgRtBuffer>;
-
-  [[nodiscard]] auto create_upload_buffer(RgBufferCreateInfo &&create_info)
-      -> std::tuple<RgBuffer, RgRtBuffer>;
-
-  [[nodiscard]] auto read_buffer(RgBufferReadInfo &&read_info,
-                                 const RgBufferAccessDesc &access)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_indirect_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_index_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_vertex_shader_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_fragment_shader_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_compute_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto read_transfer_buffer(RgBufferReadInfo &&read_info)
-      -> RgRtBuffer;
-
-  [[nodiscard]] auto write_buffer(RgBufferWriteInfo &&write_info,
-                                  const RgBufferAccessDesc &access)
-      -> std::tuple<RgBuffer, RgRtBuffer>;
-
-  [[nodiscard]] auto write_compute_buffer(RgBufferWriteInfo &&write_info)
-      -> std::tuple<RgBuffer, RgRtBuffer>;
-
-  [[nodiscard]] auto write_transfer_buffer(RgBufferWriteInfo &&write_info)
-      -> std::tuple<RgBuffer, RgRtBuffer>;
-
-  [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info,
-                                    const RgTextureAccessDesc &access)
+  [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
       -> std::tuple<RgTexture, RgRtTexture>;
 
   /// Create color attachment with LOAD_OP_CLEAR or LOAD_OP_DONT_CARE and
@@ -460,32 +461,17 @@ public:
   create_depth_attachment(RgTextureCreateInfo &&create_info,
                           const DepthAttachmentOperations &ops) -> RgTexture;
 
-  [[nodiscard]] auto create_storage_texture(RgTextureCreateInfo &&create_info)
-      -> std::tuple<RgTexture, RgRtTexture>;
-
-  [[nodiscard]] auto create_transfer_texture(RgTextureCreateInfo &&create_info)
-      -> std::tuple<RgTexture, RgRtTexture>;
-
-  [[nodiscard]] auto read_texture(RgTextureReadInfo &&read_info,
-                                  const RgTextureAccessDesc &access)
-      -> RgRtTexture;
+  [[nodiscard]] auto read_texture(RgTexture texture,
+                                  const RgTextureUsage &usage,
+                                  u32 temporal_index = 0) -> RgRtTexture;
 
   /// Read depth attachment with LOAD_OP_LOAD and STORE_OP_NONE
-  [[nodiscard]] auto read_depth_attachment(RgTextureReadInfo &&read_info,
-                                           const DepthAttachmentOperations &ops)
+  [[nodiscard]] auto read_depth_attachment(RgTexture texture,
+                                           const DepthAttachmentOperations &ops,
+                                           u32 temporal_index = 0)
       -> RgRtTexture;
 
-  [[nodiscard]] auto read_storage_texture(RgTextureReadInfo &&read_info)
-      -> RgRtTexture;
-
-  [[nodiscard]] auto read_sampled_texture(RgTextureReadInfo &&read_info)
-      -> RgRtTexture;
-
-  [[nodiscard]] auto read_transfer_texture(RgTextureReadInfo &&read_info)
-      -> RgRtTexture;
-
-  [[nodiscard]] auto write_texture(RgTextureWriteInfo &&write_info,
-                                   const RgTextureAccessDesc &access)
+  [[nodiscard]] auto write_texture(RgTextureWriteInfo &&write_info)
       -> std::tuple<RgTexture, RgRtTexture>;
 
   /// Write color attachment with LOAD_OP_LOAD and STORE_OP_STORE
@@ -500,18 +486,12 @@ public:
                          const DepthAttachmentOperations &ops)
       -> std::tuple<RgTexture, RgRtTexture>;
 
-  [[nodiscard]] auto write_storage_texture(RgTextureWriteInfo &&write_info)
-      -> std::tuple<RgTexture, RgRtTexture>;
-
-  [[nodiscard]] auto write_transfer_texture(RgTextureWriteInfo &&write_info)
-      -> std::tuple<RgTexture, RgRtTexture>;
-
-  template <typename T> void set_size_callback(CRgBudgetCallback<T> auto cb) {
+  template <typename T> void set_size_callback(CRgSizeCallback<T> auto cb) {
     todo();
   }
 
   template <typename T>
-  void set_size_callback(detail::CallbackTag<T>, CRgBudgetCallback<T> auto cb) {
+  void set_size_callback(detail::CallbackTag<T>, CRgSizeCallback<T> auto cb) {
     set_size_callback<T>(std::move(cb));
   }
 

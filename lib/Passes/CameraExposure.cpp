@@ -17,18 +17,22 @@ auto get_camera_exposure(const ExposureOptions::Camera &camera) -> float {
 } // namespace
 
 auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
-  auto pass = rgb.create_pass({.name = "Camera exposure"});
+  auto pass = rgb.create_pass({
+      .name = "Camera exposure",
+      .type = RgPassType::Host,
+  });
 
-  auto [exposure_buffer, rt_exposure_buffer] = pass.create_upload_buffer({
+  auto [exposure_buffer, rt_exposure_buffer] = pass.create_buffer({
       .name = "Camera exposure",
       .size = sizeof(glsl::Exposure),
+      .heap = BufferHeap::Upload,
+      .usage = RG_HOST_WRITE_BUFFER,
   });
 
   pass.set_host_callback(ren_rg_host_callback(CameraExposurePassData) {
     auto exposure = get_camera_exposure(data.options);
     assert(exposure > 0.0f);
-    auto *exposure_ptr =
-        device.map_buffer<glsl::Exposure>(rg.get_buffer(rt_exposure_buffer));
+    auto *exposure_ptr = rg.map_buffer<glsl::Exposure>(rt_exposure_buffer);
     *exposure_ptr = {.exposure = exposure};
   });
 

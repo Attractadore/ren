@@ -2,6 +2,7 @@
 #include "Device.hpp"
 
 namespace ren {
+
 namespace {
 
 struct UploadPassResources {
@@ -19,65 +20,63 @@ void run_upload_pass(Device &device, const RgRuntime &rg,
   assert(rcs.directional_lights);
   assert(rcs.materials);
 
-  auto *transform_matrices =
-      device.map_buffer<glm::mat4x3>(rg.get_buffer(rcs.transform_matrices));
+  auto *transform_matrices = rg.map_buffer<glm::mat4x3>(rcs.transform_matrices);
   ranges::transform(data.mesh_insts, transform_matrices,
                     [](const MeshInst &mesh_inst) { return mesh_inst.matrix; });
 
-  auto *normal_matrices =
-      device.map_buffer<glm::mat3>(rg.get_buffer(rcs.normal_matrices));
+  auto *normal_matrices = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
   ranges::transform(
       data.mesh_insts, normal_matrices, [](const MeshInst &mesh_inst) {
         return glm::transpose(glm::inverse(glm::mat3(mesh_inst.matrix)));
       });
 
   auto *directional_lights =
-      device.map_buffer<glsl::DirLight>(rg.get_buffer(rcs.directional_lights));
+      rg.map_buffer<glsl::DirLight>(rcs.directional_lights);
   ranges::copy(data.directional_lights, directional_lights);
 
-  auto *materials =
-      device.map_buffer<glsl::Material>(rg.get_buffer(rcs.materials));
+  auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
   ranges::copy(data.materials, materials);
 }
 
 } // namespace
 
 auto setup_upload_pass(RenderGraph::Builder &rgb) -> UploadPassOutput {
-  auto pass = rgb.create_pass({.name = "Upload"});
+  auto pass = rgb.create_pass({
+      .name = "Upload",
+      .type = RgPassType::Host,
+  });
 
-  auto [transform_matrices, rt_transform_matrices] = pass.create_upload_buffer({
+  auto [transform_matrices, rt_transform_matrices] = pass.create_buffer({
       .name = "Transform matrices",
+      .heap = BufferHeap::Upload,
+      .usage = RG_HOST_WRITE_BUFFER,
   });
 
-  auto [normal_matrices, rt_normal_matrices] = pass.create_upload_buffer({
+  auto [normal_matrices, rt_normal_matrices] = pass.create_buffer({
       .name = "Normal matrices",
+      .heap = BufferHeap::Upload,
+      .usage = RG_HOST_WRITE_BUFFER,
   });
 
-  auto [directional_lights, rt_directional_lights] = pass.create_upload_buffer({
+  auto [directional_lights, rt_directional_lights] = pass.create_buffer({
       .name = "Directional lights",
+      .heap = BufferHeap::Upload,
+      .usage = RG_HOST_WRITE_BUFFER,
   });
 
-  auto [materials, rt_materials] = pass.create_upload_buffer({
+  auto [materials, rt_materials] = pass.create_buffer({
       .name = "Materials",
+      .heap = BufferHeap::Upload,
+      .usage = RG_HOST_WRITE_BUFFER,
   });
 
   pass.set_size_callback(ren_rg_size_callback(UploadPassData) {
-    rg.resize_buffer({
-        .buffer = transform_matrices,
-        .size = sizeof(glm::mat4x3) * data.mesh_insts.size(),
-    });
-    rg.resize_buffer({
-        .buffer = normal_matrices,
-        .size = sizeof(glm::mat3) * data.mesh_insts.size(),
-    });
-    rg.resize_buffer({
-        .buffer = directional_lights,
-        .size = data.directional_lights.size_bytes(),
-    });
-    rg.resize_buffer({
-        .buffer = materials,
-        .size = data.materials.size_bytes(),
-    });
+    rg.resize_buffer(transform_matrices,
+                     sizeof(glm::mat4x3) * data.mesh_insts.size());
+    rg.resize_buffer(normal_matrices,
+                     sizeof(glm::mat3) * data.mesh_insts.size());
+    rg.resize_buffer(directional_lights, data.directional_lights.size_bytes());
+    rg.resize_buffer(materials, data.materials.size_bytes());
   });
 
   UploadPassResources rcs = {

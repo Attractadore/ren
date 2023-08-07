@@ -92,9 +92,9 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
   return flags;
 }
 
-auto adjust_buffer_access_desc(RgBufferAccessDesc access,
+auto adjust_buffer_access_desc(RgBufferUsage access,
                                VkPipelineStageFlags2 pass_stage_mask)
-    -> RgBufferAccessDesc {
+    -> RgBufferUsage {
   if (!access.stage_mask) {
     access.stage_mask = pass_stage_mask;
   }
@@ -133,7 +133,7 @@ auto get_texture_layout(VkAccessFlags2 accesses) -> VkImageLayout {
 auto get_texture_access(VkPipelineStageFlags2 pass_stage_mask,
                         VkPipelineStageFlags2 stage_mask,
                         VkAccessFlags2 access_mask, VkImageLayout layout)
-    -> RgTextureAccessDesc {
+    -> RgTextureUsage {
   if (!stage_mask) {
     stage_mask = pass_stage_mask;
   }
@@ -166,8 +166,7 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
 
 auto RgBuilder::declare_buffer() -> RgBuffer { return m_buffers.emplace(); }
 
-auto RgBuilder::create_buffer(RgPass pass, RgBufferCreateInfo &&create_info,
-                              const RgBufferAccessDesc &access)
+auto RgBuilder::create_buffer(RgPass pass, RgBufferCreateInfo &&create_info)
     -> std::tuple<RgBuffer, RgRtBuffer> {
   RgPhysicalBuffer physical_buffer =
       m_physical_buffers.insert(RgPhysicalBufferInfo{
@@ -181,19 +180,17 @@ auto RgBuilder::create_buffer(RgPass pass, RgBufferCreateInfo &&create_info,
   RgBuffer predecessor = m_buffers.insert(physical_buffer);
   m_buffer_kills.insert(predecessor, pass);
 
-  return write_buffer(pass,
-                      RgBufferWriteInfo{
-                          .name = std::move(create_info.name),
-                          .target = create_info.target,
-                          .buffer = predecessor,
-                          .temporal_count = create_info.temporal_count,
-                          .temporal_init = create_info.temporal_init,
-                      },
-                      access);
+  return write_buffer(pass, RgBufferWriteInfo{
+                                .name = std::move(create_info.name),
+                                .target = create_info.target,
+                                .buffer = predecessor,
+                                .usage = create_info.usage,
+                                .temporal_count = create_info.temporal_count,
+                                .temporal_init = create_info.temporal_init,
+                            });
 }
 
-auto RgBuilder::write_buffer(RgPass pass, RgBufferWriteInfo &&write_info,
-                             const RgBufferAccessDesc &in_access)
+auto RgBuilder::write_buffer(RgPass pass, RgBufferWriteInfo &&write_info)
     -> std::tuple<RgBuffer, RgRtBuffer> {
   assert(write_info.buffer);
 
@@ -209,8 +206,8 @@ auto RgBuilder::write_buffer(RgPass pass, RgBufferWriteInfo &&write_info,
 
   RgPassInfo &pass_info = m_passes[pass];
 
-  RgBufferAccessDesc access =
-      adjust_buffer_access_desc(in_access, pass_info.stage_mask);
+  RgBufferUsage access =
+      adjust_buffer_access_desc(write_info.usage, pass_info.stage_mask);
 
   pass_info.write_buffers.push_back(
       m_pass_buffer_accesses.insert(RgBufferAccessInfo{

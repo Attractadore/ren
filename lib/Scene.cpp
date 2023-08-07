@@ -375,7 +375,7 @@ void Scene::draw() {
           .pp_opts = &m_pp_opts,
       });
 
-  m_render_graph->execute(*m_device, m_cmd_allocator);
+  m_render_graph->execute(m_cmd_allocator);
 
   next_frame();
 }

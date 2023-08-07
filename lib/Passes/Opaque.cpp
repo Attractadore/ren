@@ -114,24 +114,23 @@ auto setup_opaque_pass(Device &device, RenderGraph::Builder &rgb,
   });
 
   rcs.transform_matrices =
-      pass.read_vertex_shader_buffer({.buffer = cfg.transform_matrices});
+      pass.read_buffer(cfg.transform_matrices, RG_VS_READ_BUFFER);
   rcs.normal_matrices =
-      pass.read_vertex_shader_buffer({.buffer = cfg.normal_matrices});
+      pass.read_buffer(cfg.normal_matrices, RG_VS_READ_BUFFER);
 
   rcs.directional_lights_buffer =
-      pass.read_fragment_shader_buffer({.buffer = cfg.directional_lights});
+      pass.read_buffer(cfg.directional_lights, RG_FS_READ_BUFFER);
 
-  rcs.materials_buffer =
-      pass.read_fragment_shader_buffer({.buffer = cfg.materials});
+  rcs.materials_buffer = pass.read_buffer(cfg.materials, RG_FS_READ_BUFFER);
 
-  rcs.exposure_buffer = pass.read_fragment_shader_buffer({
-      .buffer = cfg.exposure,
-      .temporal_offset = cfg.exposure_temporal_offset,
-  });
+  rcs.exposure_buffer = pass.read_buffer(cfg.exposure, RG_FS_READ_BUFFER,
+                                         cfg.exposure_temporal_offset);
 
-  rcs.uniform_buffer = pass.create_uniform_buffer({
+  RgBuffer uniform_buffer;
+  std::tie(uniform_buffer, rcs.uniform_buffer) = pass.create_buffer({
       .name = "Opaque pass uniforms",
       .size = sizeof(glsl::OpaqueUniformBuffer),
+      .usage = RG_VS_READ_BUFFER | RG_FS_READ_BUFFER,
   });
 
   auto texture = pass.create_color_attachment(
@@ -157,14 +156,8 @@ auto setup_opaque_pass(Device &device, RenderGraph::Builder &rgb,
       });
 
   pass.set_size_callback(ren_rg_size_callback(OpaquePassData) {
-    rg.resize_texture({
-        .texture = texture,
-        .size = {data.size, 1},
-    });
-    rg.resize_texture({
-        .texture = depth_texture,
-        .size = {data.size, 1},
-    });
+    rg.resize_texture(texture, {data.size, 1});
+    rg.resize_texture(depth_texture, {data.size, 1});
   });
 
   pass.set_graphics_callback(ren_rg_graphics_callback(OpaquePassData) {

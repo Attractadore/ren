@@ -19,9 +19,10 @@ auto setup_initialize_luminance_histogram_pass(Device &device, RgBuilder &rgb)
       .type = RgPassType::Transfer,
   });
 
-  auto [histogram, rt_histogram] = pass.create_transfer_buffer({
+  auto [histogram, rt_histogram] = pass.create_buffer({
       .name = "Empty luminance histogram",
       .size = sizeof(glsl::LuminanceHistogram),
+      .usage = RG_TRANSFER_DST_BUFFER,
   });
 
   pass.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
@@ -41,7 +42,8 @@ struct PostProcessingPassResources {
 void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
                                    ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
-  const auto &[texture, texture_index] = rg.get_storage_texture(rcs.texture);
+  const TextureView &texture = rg.get_texture(rcs.texture);
+  u32 texture_index = rg.get_storage_texture_descriptor(rcs.texture);
 
   pass.bind_compute_pipeline(rcs.pipeline);
 
@@ -90,9 +92,10 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
       .type = RgPassType::Compute,
   });
 
-  auto [texture, rt_texture] = pass.write_storage_texture({
+  auto [texture, rt_texture] = pass.write_texture({
       .name = "Color buffer after post-processing",
       .texture = cfg.texture,
+      .usage = RG_CS_READ_WRITE_TEXTURE,
   });
 
   RgBuffer histogram;
@@ -100,14 +103,12 @@ auto setup_post_processing_uber_pass(Device &device, RenderGraph::Builder &rgb,
   RgRtBuffer rt_exposure;
   if (cfg.histogram) {
     assert(cfg.exposure);
-    std::tie(histogram, rt_histogram) = pass.write_compute_buffer({
+    std::tie(histogram, rt_histogram) = pass.write_buffer({
         .name = "Luminance histogram",
         .buffer = cfg.histogram,
+        .usage = RG_CS_READ_WRITE_BUFFER,
     });
-    rt_exposure = pass.read_compute_buffer({
-        .buffer = cfg.exposure,
-        .temporal_offset = 1,
-    });
+    rt_exposure = pass.read_buffer(cfg.exposure, RG_CS_READ_BUFFER, 1);
   }
 
   PostProcessingPassResources rcs = {
@@ -169,12 +170,13 @@ auto setup_reduce_luminance_histogram_pass(
       .type = RgPassType::Compute,
   });
 
-  auto rt_histogram = pass.read_compute_buffer({.buffer = cfg.histogram});
+  auto rt_histogram = pass.read_buffer(cfg.histogram, RG_CS_READ_BUFFER);
 
-  auto [exposure, rt_exposure] = pass.create_compute_buffer({
+  auto [exposure, rt_exposure] = pass.create_buffer({
       .name = "Automatic exposure",
       .target = cfg.exposure,
       .size = sizeof(glsl::Exposure),
+      .usage = RG_CS_WRITE_BUFFER,
       .temporal_count = 1,
       .temporal_init = TempSpan(float(1.0f / glsl::MIN_LUMINANCE)).as_bytes(),
   });
