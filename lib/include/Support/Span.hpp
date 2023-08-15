@@ -20,10 +20,6 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
             std::ranges::contiguous_range<R>
   Span(R &&r) : Span(ranges::data(r), ranges::size(r)) {}
 
-  Span(T &value)
-    requires(not ranges::input_range<T &>)
-      : Span(&value, 1) {}
-
   auto as_bytes() -> Span<const std::byte> const {
     return {reinterpret_cast<const std::byte *>(this->data()),
             this->size_bytes()};
@@ -50,15 +46,18 @@ template <typename T> struct TempSpan : Span<T> {
   TempSpan(std::initializer_list<T> ilist)
       : TempSpan(&*ilist.begin(), &*ilist.end()) {}
 
-  TempSpan(T &&value)
-    requires(not ranges::input_range<T &>)
-      : TempSpan(&value, 1) {}
-
   auto as_bytes() -> TempSpan<const std::byte> const {
     return {reinterpret_cast<const std::byte *>(this->data()),
             this->size_bytes()};
   }
 };
+
+template <ranges::contiguous_range R>
+TempSpan(R &&r) -> TempSpan<ranges::range_value_t<R>>;
+
+template <std::contiguous_iterator Iter>
+TempSpan(Iter first, usize count)
+    -> TempSpan<std::remove_reference_t<std::iter_reference_t<Iter>>>;
 
 } // namespace ren
 

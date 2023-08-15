@@ -1,5 +1,4 @@
 #pragma once
-#include "RenderGraph.hpp"
 #include "Support/Variant.hpp"
 
 namespace ren {

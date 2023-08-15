@@ -1,33 +1,20 @@
 #pragma once
-#include "ExposureOptions.hpp"
-#include "RenderGraph.hpp"
+#include "Support/StdDef.hpp"
 
 namespace ren {
 
-struct ExposurePasses {
-  RgPass manual;
-  RgPass camera;
-  bool automatic;
-};
-
-struct ExposurePassConfig {
-  const ExposureOptions *options = nullptr;
-};
+class RenderGraph;
+class RgBuilder;
+struct ExposureOptions;
 
 struct ExposurePassOutput {
-  ExposurePasses passes;
-  RgBuffer exposure;
-  u32 temporal_offset = 0;
+  u32 temporal_layer = 0;
 };
 
-auto setup_exposure_pass(RgBuilder &rgb, const ExposurePassConfig &cfg)
+auto setup_exposure_pass(RgBuilder &rgb, const ExposureOptions &opts)
     -> ExposurePassOutput;
 
-struct ExposurePassData {
-  const ExposureOptions *options = nullptr;
-};
-
-auto set_exposure_pass_data(RenderGraph &rg, const ExposurePasses &passes,
-                            const ExposurePassData &data) -> bool;
+auto set_exposure_pass_data(RenderGraph &rg, const ExposureOptions &opts)
+    -> bool;
 
 } // namespace ren

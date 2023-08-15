@@ -1,5 +1,5 @@
 #include "Passes/CameraExposure.hpp"
-#include "Device.hpp"
+#include "RenderGraph.hpp"
 #include "glsl/Exposure.hpp"
 
 namespace ren {
@@ -17,29 +17,25 @@ auto get_camera_exposure(const ExposureOptions::Camera &camera) -> float {
 } // namespace
 
 auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
-  auto pass = rgb.create_pass({
-      .name = "Camera exposure",
-      .type = RgPassType::Host,
+  auto pass = rgb.create_pass("camera-exposure");
+
+  rgb.create_buffer({
+      .name = "camera-exposure-init",
+      .heap = BufferHeap::Upload,
+      .size = sizeof(glsl::Exposure),
   });
 
-  auto [exposure_buffer, rt_exposure_buffer] = pass.create_buffer({
-      .name = "Camera exposure",
-      .size = sizeof(glsl::Exposure),
-      .heap = BufferHeap::Upload,
-      .usage = RG_HOST_WRITE_BUFFER,
-  });
+  auto exposure_buffer = pass.write_buffer("exposure", "camera-exposure-init",
+                                           RG_HOST_WRITE_BUFFER);
 
   pass.set_host_callback(ren_rg_host_callback(CameraExposurePassData) {
     auto exposure = get_camera_exposure(data.options);
     assert(exposure > 0.0f);
-    auto *exposure_ptr = rg.map_buffer<glsl::Exposure>(rt_exposure_buffer);
+    auto *exposure_ptr = rg.map_buffer<glsl::Exposure>(exposure_buffer);
     *exposure_ptr = {.exposure = exposure};
   });
 
-  return {
-      .passes = {.camera = pass},
-      .exposure = exposure_buffer,
-  };
+  return {.temporal_layer = 0};
 }
 
 } // namespace ren

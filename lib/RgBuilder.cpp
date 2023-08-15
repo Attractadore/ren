@@ -4,28 +4,6 @@ namespace ren {
 
 namespace {
 
-auto get_pass_stage_mask(RgPassType type) -> VkPipelineStageFlags2 {
-  switch (type) {
-  case RgPassType::Host:
-    return VK_PIPELINE_STAGE_2_NONE;
-  case RgPassType::Graphics:
-    return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
-           VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-           VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-           VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-           VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT |
-           VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-  case RgPassType::Compute:
-    return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
-           VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-  case RgPassType::Transfer:
-    return VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT |
-           VK_PIPELINE_STAGE_2_RESOLVE_BIT | VK_PIPELINE_STAGE_2_CLEAR_BIT;
-  }
-  unreachable("Unknown pass type {}", static_cast<int>(type));
-}
-
 auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   assert((accesses & VK_ACCESS_2_MEMORY_READ_BIT) == 0);
   assert((accesses & VK_ACCESS_2_MEMORY_WRITE_BIT) == 0);
@@ -92,154 +70,50 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
   return flags;
 }
 
-auto adjust_buffer_access_desc(RgBufferUsage access,
-                               VkPipelineStageFlags2 pass_stage_mask)
-    -> RgBufferUsage {
-  if (!access.stage_mask) {
-    access.stage_mask = pass_stage_mask;
-  }
-  ren_assert(
-      (access.stage_mask & pass_stage_mask) == access.stage_mask,
-      "Buffer access pipeline stage mask must be a subset of pass stage mask");
-  return access;
-}
-
-auto get_texture_layout(VkAccessFlags2 accesses) -> VkImageLayout {
-  auto general_accesses = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                          VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-  auto transfer_src_accesses = VK_ACCESS_2_TRANSFER_READ_BIT;
-  auto transfer_dst_accesses = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-  auto read_only_accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-                            VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-  auto attachment_accesses = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-                             VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
-                             VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                             VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-  if ((accesses & general_accesses) == accesses) {
-    return VK_IMAGE_LAYOUT_GENERAL;
-  } else if ((accesses & transfer_src_accesses) == accesses) {
-    return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-  } else if ((accesses & transfer_dst_accesses) == accesses) {
-    return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-  } else if ((accesses & read_only_accesses) == accesses) {
-    return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-  } else {
-    assert((accesses & attachment_accesses) == accesses);
-    return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-  }
-}
-
-auto get_texture_access(VkPipelineStageFlags2 pass_stage_mask,
-                        VkPipelineStageFlags2 stage_mask,
-                        VkAccessFlags2 access_mask, VkImageLayout layout)
-    -> RgTextureUsage {
-  if (!stage_mask) {
-    stage_mask = pass_stage_mask;
-  }
-  ren_assert(
-      (stage_mask & pass_stage_mask) == stage_mask,
-      "Texture access pipeline stage mask must be a subset of pass stage mask");
-  if (!layout) {
-    layout = get_texture_layout(access_mask);
-  }
-  return {
-      .stage_mask = stage_mask,
-      .access_mask = access_mask,
-      .layout = layout,
-  };
-}
-
 } // namespace
 
-RgBuilder::Builder(RenderGraph &rg) : m_rg(&rg) {}
-
-auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
-  auto pass = m_passes.emplace(RgPassInfo{
-      .stage_mask = get_pass_stage_mask(create_info.type),
-  });
-#if REN_RG_DEBUG_NAMES
-  m_pass_names.insert(pass, std::move(create_info.name));
-#endif
-  return {pass, *this};
+RgBuilder::RgBuilder(RenderGraph &rg) {
+  m_rg = &rg;
+  todo();
 }
 
-auto RgBuilder::declare_buffer() -> RgBuffer { return m_buffers.emplace(); }
+auto RgBuilder::create_pass(String name) -> RgPassBuilder { todo(); }
 
-auto RgBuilder::create_buffer(RgPass pass, RgBufferCreateInfo &&create_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  RgPhysicalBuffer physical_buffer =
-      m_physical_buffers.insert(RgPhysicalBufferInfo{
-          .size = create_info.size,
-          .heap = create_info.heap,
-      });
+void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) { todo(); }
 
-  // Create a virtual predecessor buffer.
-  // This simplifies pass scheduling by making it possible to treat buffer
-  // creation as a write to a virtual predecessor buffer
-  RgBuffer predecessor = m_buffers.insert(physical_buffer);
-  m_buffer_kills.insert(predecessor, pass);
-
-  return write_buffer(pass, RgBufferWriteInfo{
-                                .name = std::move(create_info.name),
-                                .target = create_info.target,
-                                .buffer = predecessor,
-                                .usage = create_info.usage,
-                                .temporal_count = create_info.temporal_count,
-                                .temporal_init = create_info.temporal_init,
-                            });
+auto RgBuilder::read_buffer(StringView pass, StringView buffer,
+                            const RgBufferUsage &usage, u32 temporal_layer)
+    -> RgRtBuffer {
+  todo();
 }
 
-auto RgBuilder::write_buffer(RgPass pass, RgBufferWriteInfo &&write_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  assert(write_info.buffer);
-
-  RgPhysicalBuffer physical_buffer = m_buffers[write_info.buffer];
-
-  RgBuffer buffer = write_info.target;
-  if (buffer) {
-    m_buffers[buffer] = physical_buffer;
-  } else {
-    buffer = m_buffers.insert(physical_buffer);
-  }
-  m_buffer_defs.insert(buffer, pass);
-
-  RgPassInfo &pass_info = m_passes[pass];
-
-  RgBufferUsage access =
-      adjust_buffer_access_desc(write_info.usage, pass_info.stage_mask);
-
-  pass_info.write_buffers.push_back(
-      m_pass_buffer_accesses.insert(RgBufferAccessInfo{
-          .buffer = write_info.buffer,
-          .stage_mask = access.stage_mask,
-          .access_mask = access.access_mask,
-      }));
-
-  VkBufferUsageFlags usage = get_buffer_usage_flags(access.access_mask);
-
-  if (write_info.temporal_count > 0) {
-    m_temporal_buffers_info.insert(physical_buffer,
-                                   RgTemporalBufferInfo{
-                                       .usage = usage,
-                                       .count = write_info.temporal_count + 1,
-                                   });
-    usize offset = m_temporal_buffers_init_data.size();
-    m_temporal_buffers_init_data.append(write_info.temporal_init);
-    m_temporal_buffers_init_info.insert(
-        physical_buffer, RgTemporalBufferInitInfo{.offset = offset});
-  } else {
-    m_buffer_heap_usage_info[m_physical_buffers[physical_buffer].heap] |= usage;
-  }
-
-#if REN_RG_DEBUG_NAMES
-  m_buffer_names.insert(buffer, std::move(write_info.name));
-#endif
-
-  return {buffer, buffer};
+auto RgBuilder::write_buffer(StringView pass, String dst_buffer,
+                             StringView src_buffer, const RgBufferUsage &usage)
+    -> RgRtBuffer {
+  todo();
 }
 
-auto RgBuilder::declare_texture() -> RgTexture { return m_textures.emplace(); }
+auto RgBuilder::is_buffer_valid(StringView buffer) const -> bool { todo(); }
+
+void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) { todo(); }
+
+auto RgBuilder::read_texture(StringView pass, StringView texture,
+                             const RgTextureUsage &usage, u32 temporal_layer)
+    -> RgRtTexture {
+  todo();
+}
+
+auto RgBuilder::write_texture(StringView pass, String dst_texture,
+                              StringView src_texture,
+                              const RgTextureUsage &usage) -> RgRtTexture {
+  todo();
+}
+
+auto RgBuilder::is_texture_valid(StringView texture) const -> bool { todo(); }
+
+void RgBuilder::present(StringView texture) { todo(); }
+
+void RgBuilder::build() { todo(); }
 
 #if 0
 

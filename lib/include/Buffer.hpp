@@ -11,10 +11,11 @@ namespace ren {
 class Device;
 
 enum class BufferHeap {
-  Device,
+  Device = 0,
   Upload,
   Readback,
 };
+constexpr usize NUM_BUFFER_HEAPS = 3;
 
 struct BufferCreateInfo {
   REN_DEBUG_NAME_FIELD("Buffer");

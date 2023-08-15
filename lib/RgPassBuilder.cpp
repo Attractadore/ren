@@ -2,38 +2,66 @@
 
 namespace ren {
 
-RgPassBuilder::PassBuilder(RgPass pass, Builder &builder)
-    : m_pass(pass), m_builder(&builder) {}
-
-auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  return m_builder->create_buffer(m_pass, std::move(create_info));
+auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
+                                  const RgBufferUsage &usage) -> RgRtBuffer {
+  String name = std::move(create_info.name);
+  String init_name = fmt::format("rg-init-{}", name);
+  create_info.name = init_name;
+  m_builder->create_buffer(std::move(create_info));
+  return write_buffer(std::move(name), init_name, usage);
 }
 
-auto RgPassBuilder::read_buffer(RgBuffer buffer, const RgBufferUsage &access,
-                                u32 temporal_index) -> RgRtBuffer {
-  return m_builder->read_buffer(m_pass, buffer, access, temporal_index);
+auto RgPassBuilder::read_buffer(StringView buffer, const RgBufferUsage &usage,
+                                u32 temporal_layer) -> RgRtBuffer {
+  return m_builder->read_buffer(m_pass, buffer, usage, temporal_layer);
 }
 
-auto RgPassBuilder::write_buffer(RgBufferWriteInfo &&write_info)
-    -> std::tuple<RgBuffer, RgRtBuffer> {
-  return m_builder->write_buffer(m_pass, std::move(write_info));
+auto RgPassBuilder::write_buffer(String dst_buffer, StringView src_buffer,
+                                 const RgBufferUsage &usage) -> RgRtBuffer {
+  return m_builder->write_buffer(m_pass, std::move(dst_buffer), src_buffer,
+                                 usage);
 }
 
-auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return m_builder->create_texture(m_pass, std::move(create_info));
+auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info,
+                                   const RgTextureUsage &usage) -> RgRtTexture {
+  todo();
+};
+
+auto RgPassBuilder::read_texture(StringView texture,
+                                 const RgTextureUsage &usage,
+                                 u32 temporal_layer) -> RgRtTexture {
+  todo();
 }
 
-auto RgPassBuilder::read_texture(RgTexture texture,
-                                 const RgTextureUsage &access,
-                                 u32 temporal_index) -> RgRtTexture {
-  return m_builder->read_texture(m_pass, texture, access, temporal_index);
+auto RgPassBuilder::write_texture(String dst_texture, StringView src_texture,
+                                  const RgTextureUsage &usage) -> RgRtTexture {
+  todo();
 }
 
-auto RgPassBuilder::write_texture(RgTextureWriteInfo &&write_info)
-    -> std::tuple<RgTexture, RgRtTexture> {
-  return m_builder->write_texture(m_pass, std::move(write_info));
+auto RgPassBuilder::create_color_attachment(
+    RgTextureCreateInfo &&create_info, const ColorAttachmentOperations &ops)
+    -> RgRtTexture {
+  todo();
+}
+
+auto RgPassBuilder::create_depth_attachment(
+    RgTextureCreateInfo &&create_info, const DepthAttachmentOperations &ops)
+    -> RgRtTexture {
+  todo();
+}
+
+auto RgPassBuilder::write_color_attachment(StringView dst_texture,
+                                           StringView src_texture,
+                                           const ColorAttachmentOperations &ops)
+    -> RgRtTexture {
+  todo();
+}
+
+auto RgPassBuilder::write_depth_attachment(StringView dst_texture,
+                                           StringView src_texture,
+                                           const DepthAttachmentOperations &ops)
+    -> RgRtTexture {
+  todo();
 }
 
 #if 0

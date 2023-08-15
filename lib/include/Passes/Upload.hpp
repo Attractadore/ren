@@ -1,20 +1,17 @@
 #pragma once
-#include "Model.hpp"
-#include "RenderGraph.hpp"
-#include "glsl/Lighting.hpp"
-#include "glsl/Material.hpp"
+#include "Support/Span.hpp"
 
 namespace ren {
 
-struct UploadPassOutput {
-  RgPass pass;
-  RgBuffer transform_matrices;
-  RgBuffer normal_matrices;
-  RgBuffer directional_lights;
-  RgBuffer materials;
-};
+class RgBuilder;
+struct MeshInst;
 
-auto setup_upload_pass(RgBuilder &rgb) -> UploadPassOutput;
+namespace glsl {
+struct DirLight;
+struct Material;
+} // namespace glsl
+
+void setup_upload_pass(RgBuilder &rgb);
 
 struct UploadPassData {
   Span<const MeshInst> mesh_insts;

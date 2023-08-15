@@ -43,6 +43,10 @@ auto TextureIDAllocator::allocate_frame_sampled_texture(const TextureView &view,
   return index;
 };
 
+void TextureIDAllocator::free_sampled_texture(SampledTextureID texture) {
+  m_sampled_texture_allocator.free(texture);
+}
+
 auto TextureIDAllocator::allocate_storage_texture(const TextureView &view)
     -> StorageTextureID {
   auto index = m_storage_texture_allocator.allocate();
@@ -71,6 +75,10 @@ auto TextureIDAllocator::allocate_frame_storage_texture(const TextureView &view)
   m_storage_texture_allocator.free(index);
   return index;
 };
+
+void TextureIDAllocator::free_storage_texture(StorageTextureID texture) {
+  m_storage_texture_allocator.free(texture);
+}
 
 void TextureIDAllocator::next_frame() {
   m_sampler_allocator.next_frame();

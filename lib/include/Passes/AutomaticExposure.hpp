@@ -1,5 +1,5 @@
 #pragma once
-#include "Exposure.hpp"
+#include "Passes/Exposure.hpp"
 
 namespace ren {
 

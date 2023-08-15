@@ -1,5 +1,6 @@
 #include "Scene.hpp"
 #include "Camera.inl"
+#include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Span.hpp"
 #include "glsl/Encode.hpp"
@@ -359,21 +360,20 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 void Scene::draw() {
   m_resource_uploader.upload(*m_device, m_cmd_allocator);
 
-  m_passes = update_rg_passes(
-      *m_render_graph, m_passes,
-      PassesConfig{
-          .pipelines = &m_pipelines,
-          .pp_opts = &m_pp_opts,
-      },
-      PassesData{
-          .viewport_size = {m_viewport_width, m_viewport_height},
-          .camera = &m_camera,
-          .meshes = &m_meshes,
-          .mesh_insts = m_mesh_insts.values(),
-          .directional_lights = m_dir_lights.values(),
-          .materials = m_materials,
-          .pp_opts = &m_pp_opts,
-      });
+  update_rg_passes(*m_render_graph,
+                   PassesConfig{
+                       .pipelines = &m_pipelines,
+                       .pp_opts = &m_pp_opts,
+                   },
+                   PassesData{
+                       .viewport_size = {m_viewport_width, m_viewport_height},
+                       .camera = &m_camera,
+                       .meshes = &m_meshes,
+                       .mesh_insts = m_mesh_insts.values(),
+                       .directional_lights = m_dir_lights.values(),
+                       .materials = m_materials,
+                       .pp_opts = &m_pp_opts,
+                   });
 
   m_render_graph->execute(m_cmd_allocator);
 

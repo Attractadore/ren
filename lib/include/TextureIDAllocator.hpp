@@ -30,10 +30,14 @@ public:
                                       Handle<Sampler> sampler)
       -> SampledTextureID;
 
+  void free_sampled_texture(SampledTextureID texture);
+
   auto allocate_storage_texture(const TextureView &view) -> StorageTextureID;
 
   auto allocate_frame_storage_texture(const TextureView &view)
       -> StorageTextureID;
+
+  void free_storage_texture(StorageTextureID texture);
 
   void next_frame();
 };

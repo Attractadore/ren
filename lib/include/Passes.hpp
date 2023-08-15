@@ -1,16 +1,15 @@
 #pragma once
 #include "DenseHandleMap.hpp"
-#include "Passes/Exposure.hpp"
-#include "Passes/PostProcessing.hpp"
-#include "RenderGraph.hpp"
+#include "Support/Span.hpp"
 
 namespace ren {
 
+class RenderGraph;
+struct Camera;
 struct Mesh;
 struct MeshInst;
 struct Pipelines;
 struct PostProcessingOptions;
-struct Camera;
 
 namespace glsl {
 
@@ -19,21 +18,12 @@ struct Material;
 
 } // namespace glsl
 
-struct Passes {
-  RgPass upload;
-  ExposurePasses exposure;
-  RgPass opaque;
-  PostProcessingPasses pp;
-};
-
 struct PassesConfig {
   const Pipelines *pipelines = nullptr;
   const PostProcessingOptions *pp_opts = nullptr;
 };
 
 struct PassesData {
-  Swapchain *swapchain = nullptr;
-
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
 
@@ -47,7 +37,7 @@ struct PassesData {
   const PostProcessingOptions *pp_opts;
 };
 
-auto update_rg_passes(RenderGraph &rg, Passes passes, const PassesConfig &cfg,
-                      const PassesData &data) -> Passes;
+void update_rg_passes(RenderGraph &rg, const PassesConfig &cfg,
+                      const PassesData &data);
 
 } // namespace ren

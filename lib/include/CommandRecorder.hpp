@@ -83,6 +83,21 @@ public:
     fill_buffer(buffer, std::bit_cast<u32>(value));
   }
 
+  template <typename T>
+  void update_buffer(const BufferView &buffer, TempSpan<const T> data) {
+    update_buffer(buffer, data.as_bytes());
+  }
+
+  template <>
+  void update_buffer<std::byte>(const BufferView &buffer,
+                                TempSpan<const std::byte> data);
+
+  template <typename T>
+    requires(sizeof(T) % 4 == 0)
+  void update_buffer(const BufferView &buffer, const T &data) {
+    update_buffer<T>(buffer, TempSpan(&data, 1));
+  }
+
   void blit(Handle<Texture> src, Handle<Texture> dst,
             TempSpan<const VkImageBlit> regions, VkFilter filter);
 
@@ -126,21 +141,21 @@ public:
                             unsigned first_set = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
-                          VkShaderStageFlags stages, Span<const std::byte> data,
-                          unsigned offset = 0);
+                          VkShaderStageFlags stages,
+                          TempSpan<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
                           VkShaderStageFlags stages, const auto &data,
                           unsigned offset = 0) {
-    set_push_constants(layout, stages, Span(data).as_bytes(), offset);
+    set_push_constants(layout, stages, TempSpan(&data, 1).as_bytes(), offset);
   }
 
-  void set_push_constants(Span<const std::byte> data, unsigned offset = 0);
+  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
     ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, m_shader_stages,
-                       Span(data).as_bytes(), offset);
+                       TempSpan(&data, 1).as_bytes(), offset);
   }
 
   void bind_index_buffer(const BufferView &buffer, VkIndexType type);
@@ -174,18 +189,19 @@ public:
                             unsigned first_set = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout,
-                          Span<const std::byte> data, unsigned offset = 0);
+                          TempSpan<const std::byte> data, unsigned offset = 0);
 
-  void set_push_constants(Span<const std::byte> data, unsigned offset = 0);
+  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(Handle<PipelineLayout> layout, const auto &data,
                           unsigned offset = 0) {
-    set_push_constants(layout, Span(data).as_bytes(), offset);
+    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
   }
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
     ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
-    set_push_constants(m_pipeline_layout, Span(data).as_bytes(), offset);
+    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
+                       offset);
   }
 
   void dispatch_groups(u32 num_groups_x, u32 num_groups_y = 1,

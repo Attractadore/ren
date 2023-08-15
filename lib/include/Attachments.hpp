@@ -1,12 +1,10 @@
 #pragma once
 #include "Support/StdDef.hpp"
 
-namespace ren {
+#include <glm/vec4.hpp>
+#include <vulkan/vulkan.h>
 
-struct ClearDepthStencil {
-  float depth = 0.0f;
-  u32 stencil = 0;
-};
+namespace ren {
 
 struct ColorAttachmentOperations {
   VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_CLEAR;

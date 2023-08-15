@@ -89,6 +89,16 @@ void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
                           view.size, value);
 };
 
+template <>
+void CommandRecorder::update_buffer<std::byte>(const BufferView &view,
+                                               TempSpan<const std::byte> data) {
+  assert(view.size >= data.size());
+  assert(data.size() % 4 == 0);
+  m_device->CmdUpdateBuffer(m_cmd_buffer,
+                            m_device->get_buffer(view.buffer).handle,
+                            view.offset, view.size, data.data());
+}
+
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                            TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {
@@ -263,7 +273,7 @@ void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
 
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                                     VkShaderStageFlags stages,
-                                    Span<const std::byte> data,
+                                    TempSpan<const std::byte> data,
                                     unsigned offset) {
   ren_assert((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
              "Only graphics shader stages must be used");
@@ -278,7 +288,7 @@ void RenderPass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
   bind_descriptor_sets(m_pipeline_layout, sets, first_set);
 }
 
-void RenderPass::set_push_constants(Span<const std::byte> data,
+void RenderPass::set_push_constants(TempSpan<const std::byte> data,
                                     unsigned offset) {
   ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
   set_push_constants(m_pipeline_layout, m_shader_stages, data, offset);
@@ -328,14 +338,14 @@ void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
 }
 
 void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
-                                     Span<const std::byte> data,
+                                     TempSpan<const std::byte> data,
                                      unsigned offset) {
   m_device->CmdPushConstants(
       m_cmd_buffer, m_device->get_pipeline_layout(layout).handle,
       VK_SHADER_STAGE_COMPUTE_BIT, offset, data.size(), data.data());
 }
 
-void ComputePass::set_push_constants(Span<const std::byte> data,
+void ComputePass::set_push_constants(TempSpan<const std::byte> data,
                                      unsigned offset) {
   ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
   set_push_constants(m_pipeline_layout, data, offset);

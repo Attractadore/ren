@@ -27,34 +27,25 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
   m_tex_alloc = &tex_alloc;
 }
 
-void RenderGraph::resize_buffer(RgBuffer buffer, usize size,
-                                TempSpan<const std::byte> init) {
-  todo();
-}
-
-void RenderGraph::resize_texture(
-    RgTexture texture, glm::uvec3 size,
-    Optional<Variant<glm::vec4, ClearDepthStencil>> init) {
-  todo();
-}
-
 auto RgRuntime::get_buffer(RgRtBuffer buffer) const -> const BufferView & {
+  assert(buffer);
   todo();
 }
 
-auto RgRuntime::get_texture(RgRtTexture texture) const -> const TextureView & {
-  todo();
-}
-
-auto RgRuntime::get_sampled_texture_descriptor(RgRtTexture texture) const
-    -> SampledTextureID {
+auto RgRuntime::get_texture(RgRtTexture texture) const -> Handle<Texture> {
+  assert(texture);
   todo();
 }
 
 auto RgRuntime::get_storage_texture_descriptor(RgRtTexture texture) const
     -> StorageTextureID {
+  assert(texture);
   todo();
 }
+
+auto RenderGraph::is_pass_valid(StringView pass) -> bool { todo(); }
+
+void RenderGraph::execute(CommandAllocator &cmd_alloc) { todo(); }
 
 #if 0
 

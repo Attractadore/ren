@@ -4,9 +4,9 @@
 #include "DenseHandleMap.hpp"
 #include "Mesh.hpp"
 #include "Model.hpp"
-#include "Passes.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
+#include "RenderGraph.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
@@ -58,7 +58,6 @@ private:
   ResourceArena m_frame_arena;
 
   std::unique_ptr<RenderGraph> m_render_graph;
-  Passes m_passes;
 
   Pipelines m_pipelines;
 

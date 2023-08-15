@@ -35,7 +35,7 @@ void generate_mipmaps(const Device &device, CommandRecorder &cmd,
                 .layerCount = texture.num_array_layers,
             },
     };
-    cmd.pipeline_barrier({}, barrier);
+    cmd.pipeline_barrier({}, {barrier});
 
     auto dst_size = glm::max(src_size / 2u, glm::uvec3(1));
     VkImageBlit region = {
@@ -54,7 +54,7 @@ void generate_mipmaps(const Device &device, CommandRecorder &cmd,
     };
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
-    cmd.blit(handle, handle, region, VK_FILTER_LINEAR);
+    cmd.blit(handle, handle, {region}, VK_FILTER_LINEAR);
     src_size = dst_size;
   }
 }
@@ -78,7 +78,7 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
                 .layerCount = texture.num_array_layers,
             },
     };
-    cmd.pipeline_barrier({}, barrier);
+    cmd.pipeline_barrier({}, {barrier});
   }
 
   // Copy data to first mip level
@@ -91,7 +91,7 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
           },
   };
   std::memcpy(&region.imageExtent, &texture.size, sizeof(texture.size));
-  cmd.copy_buffer_to_image(src.buffer, dst, region);
+  cmd.copy_buffer_to_image(src.buffer, dst, {region});
 
   generate_mipmaps(device, cmd, dst);
 
@@ -182,7 +182,7 @@ void ResourceUploader::upload(Device &device, CommandAllocator &cmd_allocator) {
           .dstAccessMask =
               VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
       };
-      cmd.pipeline_barrier(barrier, {});
+      cmd.pipeline_barrier({barrier}, {});
       m_buffer_copies.clear();
     }
 
