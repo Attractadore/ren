@@ -4,9 +4,9 @@
 #include "Config.hpp"
 #include "ResourceArena.hpp"
 #include "Semaphore.hpp"
+#include "Support/Any.hpp"
 #include "Support/NewType.hpp"
 #include "Support/String.hpp"
-#include "Support/StringView.hpp"
 #include "Texture.hpp"
 #include "TextureIDAllocator.hpp"
 
@@ -229,12 +229,19 @@ class RenderGraph {
 
   RgRuntime m_runtime;
 
+  HashMap<String, Any> m_pass_data;
+
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
               TextureIDAllocator &tex_alloc);
 
   template <typename T> auto set_pass_data(StringView pass, T data) -> bool {
-    todo();
+    auto it = m_pass_data.find(pass);
+    if (it != m_pass_data.end()) {
+      it->second = std::move(data);
+      return true;
+    }
+    return false;
   }
 
   auto is_pass_valid(StringView pass) -> bool;
