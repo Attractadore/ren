@@ -7,7 +7,7 @@
 namespace ren {
 
 template <typename K, typename V, typename KeyHash = Hash<K>,
-          typename KeyEqual = std::equal_to<K>>
+          typename KeyEqual = std::equal_to<>>
 struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
   using Base = std::unordered_map<K, V, KeyHash, KeyEqual>;
   using Base::Base;
