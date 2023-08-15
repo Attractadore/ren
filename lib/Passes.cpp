@@ -36,20 +36,22 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
   assert(data.camera);
   assert(data.pp_opts);
 
-  bool valid = true;
+#define TRY_SET(...)                                                           \
+  do {                                                                         \
+    bool valid = __VA_ARGS__;                                                  \
+    if (!valid) {                                                              \
+      return false;                                                            \
+    }                                                                          \
+  } while (0)
 
-  valid = rg.set_pass_data("upload",
+  TRY_SET(rg.set_pass_data("upload",
                            UploadPassData{
                                .mesh_insts = data.mesh_insts,
                                .directional_lights = data.directional_lights,
                                .materials = data.materials,
-                           });
-  ren_assert(valid, "Upload pass is must be valid");
+                           }));
 
-  valid = set_exposure_pass_data(rg, data.pp_opts->exposure);
-  if (!valid) {
-    return false;
-  }
+  TRY_SET(set_exposure_pass_data(rg, data.pp_opts->exposure));
 
   const auto &camera = *data.camera;
   auto size = data.viewport_size;
@@ -57,7 +59,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
   auto proj = get_projection_matrix(camera, ar);
   auto view =
       glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
-  valid = rg.set_pass_data(
+  TRY_SET(rg.set_pass_data(
       "opaque", OpaquePassData{
                     .meshes = data.meshes,
                     .mesh_insts = data.mesh_insts,
@@ -66,13 +68,11 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
                     .view = view,
                     .eye = camera.position,
                     .num_dir_lights = u32(data.directional_lights.size()),
-                });
-  ren_assert(valid, "Opaque pass is must be valid");
+                }));
 
-  valid = set_post_processing_passes_data(rg, *data.pp_opts);
-  if (!valid) {
-    return false;
-  }
+  TRY_SET(set_post_processing_passes_data(rg, *data.pp_opts));
+
+#undef TRY_SET
 
   return true;
 }
