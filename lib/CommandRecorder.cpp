@@ -390,9 +390,16 @@ DebugRegion::DebugRegion(Device &device, VkCommandBuffer cmd_buffer,
 #endif
 }
 
+DebugRegion::DebugRegion(DebugRegion &&other) {
+  m_device = std::exchange(other.m_device, nullptr);
+  m_cmd_buffer = std::exchange(other.m_cmd_buffer, nullptr);
+}
+
 DebugRegion::~DebugRegion() {
 #if REN_DEBUG_NAMES
-  m_device->CmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+  if (m_cmd_buffer) {
+    m_device->CmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+  }
 #endif
 }
 

@@ -223,7 +223,7 @@ class DebugRegion {
 
 public:
   DebugRegion(const DebugRegion &) = delete;
-  DebugRegion(DebugRegion &&) = delete;
+  DebugRegion(DebugRegion &&);
   ~DebugRegion();
 
   DebugRegion &operator=(const DebugRegion &) = delete;

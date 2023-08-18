@@ -31,6 +31,18 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
     assert(s.size_bytes() == this->size_bytes());
     return s;
   }
+
+  auto pop_front() -> T & {
+    T &f = this->front();
+    *this = this->subspan(1);
+    return f;
+  }
+
+  auto pop_front(usize count) -> Span {
+    Span f = this->first(count);
+    *this = this->subspan(count);
+    return f;
+  }
 };
 
 template <ranges::contiguous_range R>

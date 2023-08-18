@@ -7,6 +7,7 @@
 #include "Support/Any.hpp"
 #include "Support/NewType.hpp"
 #include "Support/String.hpp"
+#include "Support/Variant.hpp"
 #include "Texture.hpp"
 #include "TextureIDAllocator.hpp"
 
@@ -47,17 +48,29 @@ template <typename F, typename T>
 concept CRgHostCallback =
     std::invocable<F, Device &, const RgRuntime &, const T &>;
 
+using RgHostCallback =
+    std::function<void(Device &, const RgRuntime &, const Any &)>;
+
 template <typename F, typename T>
 concept CRgGraphicsCallback =
     std::invocable<F, Device &, const RgRuntime &, RenderPass &, const T &>;
+
+using RgGraphicsCallback =
+    std::function<void(Device &, const RgRuntime &, RenderPass &, const Any &)>;
 
 template <typename F, typename T>
 concept CRgComputeCallback =
     std::invocable<F, Device &, const RgRuntime &, ComputePass &, const T &>;
 
+using RgComputeCallback = std::function<void(Device &, const RgRuntime &,
+                                             ComputePass &, const Any &)>;
+
 template <typename F, typename T>
 concept CRgTransferCallback =
     std::invocable<F, Device &, const RgRuntime &, TransferPass &, const T &>;
+
+using RgTransferCallback = std::function<void(Device &, const RgRuntime &,
+                                              TransferPass &, const Any &)>;
 
 REN_NEW_TYPE(RgRtBuffer, u32);
 
@@ -175,6 +188,8 @@ struct RgTextureCreateInfo {
   u32 num_temporal_layers = 1;
 };
 
+REN_NEW_TYPE(RgRtSemaphore, u32);
+
 struct RgTextureSizeInfo {
   /// New texture width
   u32 width = 0;
@@ -196,6 +211,9 @@ public:
 
   auto resize_texture(RgRtTexture texture, const RgTextureSizeInfo &size_info)
       -> bool;
+
+private:
+  RenderGraph *m_rg = nullptr;
 };
 
 class RgRuntime {
@@ -204,33 +222,24 @@ public:
 
   template <typename T>
   auto map_buffer(RgRtBuffer buffer, usize offset = 0) const -> T * {
-    return (T *)map_buffer<void>(buffer);
+    return (T *)map_buffer<std::byte>(buffer);
   }
 
   template <>
-  auto map_buffer<void>(RgRtBuffer buffer, usize offset) const -> void *;
+  auto map_buffer<std::byte>(RgRtBuffer buffer, usize offset) const
+      -> std::byte *;
 
   auto get_texture(RgRtTexture texture) const -> Handle<Texture>;
 
   auto get_storage_texture_descriptor(RgRtTexture texture) const
       -> StorageTextureID;
+
+private:
+  friend RenderGraph;
+  RenderGraph *m_rg = nullptr;
 };
 
 class RenderGraph {
-  using RgArena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
-  RgArena m_arena;
-
-  Device *m_device = nullptr;
-
-  Swapchain *m_swapchain = nullptr;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
-  TextureIDAllocator *m_tex_alloc = nullptr;
-
-  RgRuntime m_runtime;
-
-  HashMap<String, Any> m_pass_data;
-
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
               TextureIDAllocator &tex_alloc);
@@ -249,7 +258,113 @@ public:
   void execute(CommandAllocator &cmd_alloc);
 
 private:
-  void allocate_buffers();
+  friend RgRuntime;
+  friend RgUpdate;
+
+  Device *m_device = nullptr;
+
+  using RgArena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
+  RgArena m_arena;
+
+  struct RgColorAttachment {
+    RgRtTexture texture;
+    ColorAttachmentOperations ops;
+  };
+
+  struct RgDepthStencilAttachment {
+    RgRtTexture texture;
+    Optional<DepthAttachmentOperations> depth_ops;
+    Optional<StencilAttachmentOperations> stencil_ops;
+  };
+
+  enum class RgPassType {
+    Host,
+    Graphics,
+    Compute,
+    Transfer,
+  };
+
+  struct RgHostPass {
+    RgHostCallback cb;
+  };
+
+  struct RgGraphicsPass {
+    glm::uvec2 viewport;
+    u32 num_color_attachments = 0;
+    bool has_depth_attachment = false;
+    RgGraphicsCallback cb;
+  };
+
+  struct RgComputePass {
+    RgComputeCallback cb;
+  };
+
+  struct RgTransferPass {
+    RgTransferCallback cb;
+  };
+
+  struct RgPassRuntimeInfo {
+    String name;
+    u32 num_memory_barriers;
+    u32 num_texture_barriers;
+    u32 num_wait_semaphores;
+    u32 num_signal_semaphores;
+    RgPassType type;
+  };
+
+  Vector<RgPassRuntimeInfo> m_passes;
+  Vector<RgHostPass> m_host_passes;
+  Vector<RgGraphicsPass> m_graphics_passes;
+  Vector<RgComputePass> m_compute_passes;
+  Vector<RgTransferPass> m_transfer_passes;
+
+  Vector<Optional<RgColorAttachment>> m_color_attachments;
+  Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
+
+  struct RgMemoryBarrier {
+    VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+    VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
+  };
+
+  struct RgTextureBarrier {
+    RgRtTexture texture;
+    VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+    VkImageLayout src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
+    VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  };
+
+  struct RgSemaphoreSignal {
+    RgRtSemaphore semaphore;
+    VkPipelineStageFlagBits2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    u64 value = 0;
+  };
+
+  Vector<RgMemoryBarrier> m_memory_barriers;
+  Vector<RgTextureBarrier> m_texture_barriers;
+  Vector<RgSemaphoreSignal> m_wait_semaphores;
+  Vector<RgSemaphoreSignal> m_signal_semaphores;
+
+  Vector<BufferView> m_buffers;
+
+  Vector<Handle<Texture>> m_textures;
+  TextureIDAllocator *m_tex_alloc = nullptr;
+  Vector<StorageTextureID> m_storage_texture_descriptors;
+
+  Vector<Handle<Semaphore>> m_semaphores;
+
+  HashMap<String, Any> m_pass_data;
+
+  Swapchain *m_swapchain = nullptr;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
+  RgRtSemaphore m_acquire_semaphore;
+  RgRtSemaphore m_present_semaphore;
+  RgRtTexture m_backbuffer;
 };
 
 class RgPassBuilder;
