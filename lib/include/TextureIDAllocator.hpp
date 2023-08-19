@@ -29,6 +29,8 @@ public:
 
   auto get_set() const -> VkDescriptorSet;
 
+  auto get_set_layout() const -> Handle<DescriptorSetLayout>;
+
   auto allocate_sampled_texture(const TextureView &view,
                                 Handle<Sampler> sampler) -> SampledTextureID;
 

@@ -1023,7 +1023,7 @@ auto Device::create_pipeline_layout(
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = unsigned(layouts.size()),
       .pSetLayouts = layouts.data(),
-      .pushConstantRangeCount = 1,
+      .pushConstantRangeCount = create_info.push_constants.size > 0 ? 1u : 0u,
       .pPushConstantRanges = &create_info.push_constants,
   };
 

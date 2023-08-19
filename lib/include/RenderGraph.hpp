@@ -287,8 +287,7 @@ private:
 
   Device *m_device = nullptr;
 
-  using RgArena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
-  RgArena m_arena;
+  ResourceArena m_arena;
 
   struct RgColorAttachment {
     RgRtTexture texture;

@@ -1,6 +1,7 @@
 #include "RenderGraph.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
+#include "PipelineLoading.hpp"
 #include "Support/Algorithm.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"
@@ -54,6 +55,9 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
   }
 
   m_tex_alloc = &tex_alloc;
+
+  m_pipeline_layout = create_pipeline_layout(
+      m_arena, m_tex_alloc->get_set_layout(), {}, "Render graph");
 }
 
 auto RenderGraph::is_pass_valid(StringView pass) -> bool { todo(); }

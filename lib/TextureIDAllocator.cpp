@@ -11,6 +11,10 @@ TextureIDAllocator::TextureIDAllocator(Device &device, VkDescriptorSet set,
 
 auto TextureIDAllocator::get_set() const -> VkDescriptorSet { return m_set; }
 
+auto TextureIDAllocator::get_set_layout() const -> Handle<DescriptorSetLayout> {
+  return m_layout;
+}
+
 auto TextureIDAllocator::allocate_sampled_texture(const TextureView &view,
                                                   Handle<Sampler> sampler)
     -> SampledTextureID {
