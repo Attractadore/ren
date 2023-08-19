@@ -218,7 +218,8 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
       .format = format,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-      .size = {desc.width, desc.height, 1},
+      .width = desc.width,
+      .height = desc.height,
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   m_images.push_back(texture);

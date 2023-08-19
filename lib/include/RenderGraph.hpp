@@ -37,6 +37,10 @@ template <typename F>
 concept CRgBufferInitCallback =
     std::invocable<F, Device &, const BufferView &, TransferPass &>;
 
+using RgBufferInitCallback =
+    std::function<void(Device &, const BufferView &, TransferPass &)>;
+static_assert(CRgBufferInitCallback<RgBufferInitCallback>);
+
 template <typename F>
 concept CRgTextureInitCallback =
     std::invocable<F, Device &, Handle<Texture>, TransferPass &>;
@@ -44,12 +48,16 @@ concept CRgTextureInitCallback =
 template <typename F, typename T>
 concept CRgUpdateCallback = std::invocable<F, RgUpdate &, const T &>;
 
+using RgUpdateCallback = std::function<void(RgUpdate &, const Any &)>;
+static_assert(CRgUpdateCallback<RgUpdateCallback, Any>);
+
 template <typename F, typename T>
 concept CRgHostCallback =
     std::invocable<F, Device &, const RgRuntime &, const T &>;
 
 using RgHostCallback =
     std::function<void(Device &, const RgRuntime &, const Any &)>;
+static_assert(CRgHostCallback<RgHostCallback, Any>);
 
 template <typename F, typename T>
 concept CRgGraphicsCallback =
@@ -57,6 +65,7 @@ concept CRgGraphicsCallback =
 
 using RgGraphicsCallback =
     std::function<void(Device &, const RgRuntime &, RenderPass &, const Any &)>;
+static_assert(CRgGraphicsCallback<RgGraphicsCallback, Any>);
 
 template <typename F, typename T>
 concept CRgComputeCallback =
@@ -64,6 +73,7 @@ concept CRgComputeCallback =
 
 using RgComputeCallback = std::function<void(Device &, const RgRuntime &,
                                              ComputePass &, const Any &)>;
+static_assert(CRgComputeCallback<RgComputeCallback, Any>);
 
 template <typename F, typename T>
 concept CRgTransferCallback =
@@ -71,6 +81,7 @@ concept CRgTransferCallback =
 
 using RgTransferCallback = std::function<void(Device &, const RgRuntime &,
                                               TransferPass &, const Any &)>;
+static_assert(CRgTransferCallback<RgTransferCallback, Any>);
 
 REN_NEW_TYPE(RgRtBuffer, u32);
 
@@ -213,6 +224,10 @@ public:
       -> bool;
 
 private:
+  friend RenderGraph;
+  RgUpdate(RenderGraph &rg);
+
+private:
   RenderGraph *m_rg = nullptr;
 };
 
@@ -256,6 +271,15 @@ public:
   auto is_pass_valid(StringView pass) -> bool;
 
   void execute(CommandAllocator &cmd_alloc);
+
+private:
+  void update();
+
+  void allocate_buffers();
+
+  void rotate_resources();
+
+  void init_dirty_buffers(CommandAllocator &cmd_alloc);
 
 private:
   friend RgRuntime;
@@ -326,6 +350,17 @@ private:
     VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
     VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
     VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
+
+  public:
+    operator VkMemoryBarrier2() const {
+      return {
+          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+          .srcStageMask = src_stage_mask,
+          .srcAccessMask = src_access_mask,
+          .dstStageMask = dst_stage_mask,
+          .dstAccessMask = dst_access_mask,
+      };
+    }
   };
 
   struct RgTextureBarrier {
@@ -349,15 +384,48 @@ private:
   Vector<RgSemaphoreSignal> m_wait_semaphores;
   Vector<RgSemaphoreSignal> m_signal_semaphores;
 
+  struct RgBufferDesc {
+    BufferHeap heap;
+    usize size = 0;
+    usize alignment = 0;
+  };
+
+  struct RgTemporalBufferDesc {
+    u32 num_temporal_layers = 0;
+  };
+
   Vector<BufferView> m_buffers;
+  HashMap<RgRtBuffer, RgBufferDesc> m_buffer_descs;
+  HashMap<RgRtBuffer, RgTemporalBufferDesc> m_temporal_buffer_descs;
+  std::array<std::array<Handle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
+      m_heap_buffers;
+
+  struct RgTextureDesc {
+    u32 width = 0;
+    u32 height = 0;
+    union {
+      u32 depth = 0;
+      u32 num_array_layers;
+    };
+    u32 num_mip_levels = 0;
+    u32 num_instances = 0;
+  };
 
   Vector<Handle<Texture>> m_textures;
+  HashMap<RgRtTexture, RgTextureDesc> m_texture_descs;
   TextureIDAllocator *m_tex_alloc = nullptr;
+  Handle<PipelineLayout> m_pipeline_layout;
   Vector<StorageTextureID> m_storage_texture_descriptors;
 
   Vector<Handle<Semaphore>> m_semaphores;
 
   HashMap<String, Any> m_pass_data;
+
+  HashMap<String, RgUpdateCallback> m_update_cbs;
+
+  HashSet<RgRtBuffer> m_dirty_temporal_buffers;
+  HashMap<RgRtBuffer, RgBufferInitCallback> m_buffer_init_cbs;
+  HashMap<RgRtBuffer, RgMemoryBarrier> m_buffer_init_barriers;
 
   Swapchain *m_swapchain = nullptr;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;

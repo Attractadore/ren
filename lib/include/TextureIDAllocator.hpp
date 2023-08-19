@@ -1,9 +1,15 @@
 #pragma once
-#include "Descriptors.hpp"
 #include "FreeListAllocator.hpp"
+#include "Handle.hpp"
 #include "Support/NewType.hpp"
 
 namespace ren {
+
+class Device;
+struct DescriptorSetLayout;
+struct PipelineLayout;
+struct Sampler;
+struct TextureView;
 
 REN_NEW_TYPE(SamplerID, unsigned);
 REN_NEW_TYPE(SampledTextureID, unsigned);

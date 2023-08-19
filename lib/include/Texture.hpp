@@ -17,7 +17,9 @@ struct TextureCreateInfo {
   VkImageType type = VK_IMAGE_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageUsageFlags usage = 0;
-  glm::uvec3 size = {0, 0, 0};
+  u32 width = 0;
+  u32 height = 1;
+  u32 depth = 1;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
 };
@@ -28,7 +30,14 @@ struct Texture {
   VkImageType type;
   VkFormat format;
   VkImageUsageFlags usage;
-  glm::uvec3 size;
+  union {
+    struct {
+      u32 width;
+      u32 height;
+      u32 depth;
+    };
+    glm::uvec3 size;
+  };
   u32 num_mip_levels;
   u32 num_array_layers;
 };

@@ -1,6 +1,9 @@
 #include "RenderGraph.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
+#include "Support/Algorithm.hpp"
+#include "Support/Errors.hpp"
+#include "Support/Math.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -55,14 +58,178 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
 
 auto RenderGraph::is_pass_valid(StringView pass) -> bool { todo(); }
 
-void RenderGraph::execute(CommandAllocator &cmd_alloc) {
-  todo();
+RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
 
-  RgRuntime rt;
-  rt.m_rg = this;
+auto RgUpdate::resize_buffer(RgRtBuffer buffer, usize size) -> bool {
+  auto it = m_rg->m_buffer_descs.find(buffer);
+  assert(it != m_rg->m_buffer_descs.end());
+  RenderGraph::RgBufferDesc &desc = it->second;
+  if (desc.size == size) {
+    return false;
+  }
+  desc.size = size;
+  return true;
+}
+
+auto RgUpdate::resize_texture(RgRtTexture texture_id,
+                              const RgTextureSizeInfo &size_info) -> bool {
+  auto it = m_rg->m_texture_descs.find(texture_id);
+  assert(it != m_rg->m_texture_descs.end());
+  RenderGraph::RgTextureDesc &desc = it->second;
+
+  if (desc.width == size_info.width and desc.height == size_info.height and
+      desc.depth == size_info.depth and
+      desc.num_mip_levels == size_info.num_mip_levels) {
+    return false;
+  }
+
+  desc.width = size_info.width;
+  desc.height = size_info.height;
+  desc.depth = size_info.depth;
+  desc.num_mip_levels = size_info.num_mip_levels;
+
+  for (int i : range(desc.num_instances)) {
+    RgRtTexture inst_tex_id(texture_id + i);
+    Handle<Texture> old_htexture = m_rg->m_textures[inst_tex_id];
+    const Texture &old_texture = m_rg->m_device->get_texture(old_htexture);
+    Handle<Texture> htexture = m_rg->m_arena.create_texture({
+        .name = fmt::format("Render graph texture {}", u32(inst_tex_id)),
+        .type = old_texture.type,
+        .format = old_texture.format,
+        .usage = old_texture.usage,
+        .width = desc.width,
+        .height = desc.height,
+        .depth = desc.depth,
+        .num_mip_levels = desc.num_mip_levels,
+    });
+    m_rg->m_arena.destroy_texture(old_htexture);
+    m_rg->m_textures[inst_tex_id] = htexture;
+
+    StorageTextureID &storage_descr =
+        m_rg->m_storage_texture_descriptors[inst_tex_id];
+    if (storage_descr) {
+      m_rg->m_tex_alloc->free_storage_texture(storage_descr);
+      storage_descr = m_rg->m_tex_alloc->allocate_storage_texture(
+          m_rg->m_device->get_texture_view(htexture));
+    }
+  }
+
+  return true;
+};
+
+void RenderGraph::update() {
+  RgUpdate upd(*this);
+  for (const auto &[pass, cb] : m_update_cbs) {
+    cb(upd, m_pass_data[pass]);
+  }
+}
+
+void RenderGraph::rotate_resources() {
+  for (const auto &[buffer, desc] : m_temporal_buffer_descs) {
+    rotate_left(Span(m_buffers).subspan(buffer, desc.num_temporal_layers));
+  }
+  rotate_left(m_heap_buffers);
+
+  rotate_left(Span(m_semaphores)
+                  .subspan(m_acquire_semaphore, m_acquire_semaphores.size()));
+  rotate_left(Span(m_semaphores)
+                  .subspan(m_present_semaphore, m_present_semaphores.size()));
+
+  for (const auto &[texture, desc] : m_texture_descs) {
+    rotate_left(Span(m_textures).subspan(texture, desc.num_instances));
+    rotate_left(Span(m_storage_texture_descriptors)
+                    .subspan(texture, desc.num_instances));
+  }
 
   m_swapchain->acquireImage(m_semaphores[m_acquire_semaphore]);
   m_textures[m_backbuffer] = m_swapchain->getTexture().texture;
+}
+
+void RenderGraph::allocate_buffers() {
+  // Calculate required size for each buffer heap
+  std::array<usize, NUM_BUFFER_HEAPS> required_heap_sizes = {};
+  for (const auto &[_, desc] : m_buffer_descs) {
+    auto heap = int(desc.heap);
+    usize heap_size = required_heap_sizes[heap];
+    heap_size = pad(heap_size, desc.alignment) + desc.size;
+    required_heap_sizes[heap] = heap_size;
+  }
+
+  // Resize each buffer heap if necessary
+  Span<Handle<Buffer>> heaps = m_heap_buffers.front();
+  for (int heap = 0; heap < heaps.size(); ++heap) {
+    usize required_heap_size = required_heap_sizes[heap];
+    const Buffer &heap_buffer = m_device->get_buffer(heaps[heap]);
+    if (heap_buffer.size < required_heap_size) {
+      Handle<Buffer> old_heap = heaps[heap];
+      heaps[heap] = m_arena.create_buffer(BufferCreateInfo{
+          .name = fmt::format("Render graph buffer for heap {}", heap),
+          .heap = heap_buffer.heap,
+          .usage = heap_buffer.usage,
+          .size = std::bit_ceil(required_heap_size),
+      });
+      m_arena.destroy_buffer(old_heap);
+    }
+  }
+
+  // Allocate non-temporal buffers
+  std::array<usize, NUM_BUFFER_HEAPS> stack_tops = {};
+  for (const auto &[buffer, desc] : m_buffer_descs) {
+    auto heap = int(desc.heap);
+    usize offset = pad(stack_tops[heap], desc.alignment);
+    usize size = desc.size;
+    assert(offset + size <= required_heap_size[heap]);
+    stack_tops[heap] = offset + size;
+    m_buffers[buffer] = {
+        .buffer = heaps[heap],
+        .offset = offset,
+        .size = size,
+    };
+  }
+}
+
+void RenderGraph::init_dirty_buffers(CommandAllocator &cmd_alloc) {
+  if (m_dirty_temporal_buffers.empty()) {
+    return;
+  }
+
+  VkCommandBufferSubmitInfo cmd_buffer = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = cmd_alloc.allocate(),
+  };
+  CommandRecorder rec(*m_device, cmd_buffer.commandBuffer);
+
+  Vector<VkMemoryBarrier2> vk_memory_barriers;
+  vk_memory_barriers.reserve(m_dirty_temporal_buffers.size());
+  for (RgRtBuffer buffer : m_dirty_temporal_buffers) {
+    const RgBufferInitCallback &cb = m_buffer_init_cbs[buffer];
+    if (cb) {
+      i32 num_temporal_layers =
+          m_temporal_buffer_descs[buffer].num_temporal_layers;
+      for (i32 layer = 1; layer < num_temporal_layers; ++layer) {
+        cb(*m_device, m_buffers[buffer + layer], rec);
+      }
+      vk_memory_barriers.push_back(m_buffer_init_barriers[buffer]);
+    }
+  }
+  if (not vk_memory_barriers.empty()) {
+    rec.pipeline_barrier(vk_memory_barriers, {});
+  }
+
+  m_device->graphicsQueueSubmit({cmd_buffer});
+}
+
+void RenderGraph::execute(CommandAllocator &cmd_alloc) {
+  update();
+
+  rotate_resources();
+
+  allocate_buffers();
+
+  init_dirty_buffers(cmd_alloc);
+
+  RgRuntime rt;
+  rt.m_rg = this;
 
   Vector<VkCommandBufferSubmitInfo> batch_cmd_buffers;
   Vector<VkSemaphoreSubmitInfo> batch_wait_semaphores;
@@ -150,8 +317,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
     };
 
     vk_memory_barriers.assign(
-        rg_memory_barriers.pop_front(pass.num_memory_barriers) |
-        map(get_vk_memory_barrier));
+        rg_memory_barriers.pop_front(pass.num_memory_barriers));
 
     vk_image_barriers.assign(
         rg_texture_barriers.pop_front(pass.num_texture_barriers) |
@@ -216,12 +382,15 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       render_pass.set_scissor_rects({{
           .extent = {graphics_pass.viewport.x, graphics_pass.viewport.y},
       }});
+      render_pass.bind_descriptor_sets(m_pipeline_layout,
+                                       {m_tex_alloc->get_set()});
       graphics_pass.cb(*m_device, rt, render_pass, m_pass_data[pass.name]);
     } break;
     case RgPassType::Compute: {
       RgComputePass &compute_pass = rg_compute_passes.pop_front();
       if (compute_pass.cb) {
         ComputePass comp = get_command_recorder().compute_pass();
+        comp.bind_descriptor_sets(m_pipeline_layout, {m_tex_alloc->get_set()});
         compute_pass.cb(*m_device, rt, comp, m_pass_data[pass.name]);
       }
     } break;

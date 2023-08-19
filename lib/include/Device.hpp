@@ -283,7 +283,7 @@ public:
   auto get_texture_view(Handle<Texture> texture) const -> TextureView;
 
   auto get_texture_view_size(const TextureView &view,
-                             u16 mip_level_offset = 0) const -> glm::uvec3;
+                             u32 mip_level_offset = 0) const -> glm::uvec3;
 
   auto getVkImageView(const TextureView &view) -> VkImageView;
 

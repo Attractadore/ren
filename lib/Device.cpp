@@ -491,14 +491,17 @@ auto Device::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
 
 auto Device::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
-  auto size = create_info.size;
-  assert(glm::all(glm::greaterThan(size, glm::uvec3(0))));
+  assert(create_info.width > 0);
+  assert(create_info.height > 0);
+  assert(create_info.depth > 0);
+  assert(create_info.num_mip_levels > 0);
+  assert(create_info.num_array_layers > 0);
 
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = create_info.type,
       .format = create_info.format,
-      .extent = {size.x, size.y, size.z},
+      .extent = {create_info.width, create_info.height, create_info.depth},
       .mipLevels = create_info.num_mip_levels,
       .arrayLayers = create_info.num_array_layers,
       .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -522,7 +525,9 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
       .type = create_info.type,
       .format = create_info.format,
       .usage = create_info.usage,
-      .size = {size.x, size.y, size.z},
+      .width = create_info.width,
+      .height = create_info.height,
+      .depth = create_info.depth,
       .num_mip_levels = create_info.num_mip_levels,
       .num_array_layers = create_info.num_array_layers,
   });
@@ -537,7 +542,9 @@ auto Device::create_swapchain_texture(
       .type = VK_IMAGE_TYPE_2D,
       .format = create_info.format,
       .usage = create_info.usage,
-      .size = {create_info.size, 1},
+      .width = create_info.width,
+      .height = create_info.height,
+      .depth = 1,
       .num_mip_levels = 1,
       .num_array_layers = 1,
   });
@@ -622,9 +629,10 @@ auto Device::get_texture_view(Handle<Texture> handle) const -> TextureView {
 }
 
 auto Device::get_texture_view_size(const TextureView &view,
-                                   u16 mip_level_offset) const -> glm::uvec3 {
-  assert(view.first_mip_level + mip_level_offset <= view.num_mip_levels);
-  return get_size_at_mip_level(get_texture(view.texture).size,
+                                   u32 mip_level_offset) const -> glm::uvec3 {
+  const Texture &texture = get_texture(view.texture);
+  assert(view.first_mip_level + mip_level_offset < texture.num_mip_levels);
+  return get_size_at_mip_level(texture.size,
                                view.first_mip_level + mip_level_offset);
 }
 
