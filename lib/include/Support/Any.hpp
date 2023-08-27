@@ -9,11 +9,15 @@ struct Any : std::any {
   using std::any::any;
 
   template <typename T> auto get() const noexcept -> Optional<const T &> {
-    return get<T>(const_cast<Any *>(this));
+    const T *value = std::any_cast<T>(this);
+    if (value) {
+      return *value;
+    }
+    return None;
   }
 
   template <typename T> auto get() noexcept -> Optional<T &> {
-    const T *value = std::any_cast<T>(this);
+    T *value = std::any_cast<T>(this);
     if (value) {
       return *value;
     }
