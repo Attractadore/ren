@@ -10,6 +10,7 @@ constexpr auto filter = ranges::views::filter;
 constexpr auto map = ranges::views::transform;
 constexpr auto once = ranges::views::single;
 constexpr auto zip = ranges::views::zip;
+constexpr auto drop = ranges::views::drop;
 
 auto filter_map(auto transform_fn) {
   return map(std::move(transform_fn)) |
