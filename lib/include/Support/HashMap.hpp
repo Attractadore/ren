@@ -1,4 +1,5 @@
 #pragma once
+#include "Errors.hpp"
 #include "Hash.hpp"
 #include "Optional.hpp"
 
@@ -6,23 +7,56 @@
 
 namespace ren {
 
+namespace detail {
+
+template <typename U, typename K, typename KeyHash, typename KeyEqual>
+concept CHeterogenousKeyImpl =
+    std::invocable<KeyHash, const U &> and
+    std::invocable<KeyEqual, const K &, const U &> and
+    requires { typename KeyHash::is_transparent; };
+}
+
 template <typename K, typename V, typename KeyHash = Hash<K>,
           typename KeyEqual = std::equal_to<>>
 struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
   using Base = std::unordered_map<K, V, KeyHash, KeyEqual>;
   using Base::Base;
 
+#define CHeterogenousKey(U)                                                    \
+  (not std::same_as<K, U> and                                                  \
+   detail::CHeterogenousKeyImpl<U, K, KeyHash, KeyEqual>)
+
+#define CHeterogenousKeyOrKey(U)                                               \
+  (std::same_as<K, U> or detail::CHeterogenousKeyImpl<U, K, KeyHash, KeyEqual>)
+
   using Base::insert;
-  auto insert(K key, V value) -> Optional<V &> {
-    auto [it, inserted] = insert(std::pair(std::move(key), std::move(value)));
-    if (!inserted) {
-      return it->second;
-    }
-    return None;
+  void insert(K key, V value) {
+    auto [_, inserted] = insert(std::pair(std::move(key), std::move(value)));
+    assert(inserted);
+  }
+
+  void insert(Base::const_iterator hint, K key, V value) {
+#if REN_ASSERTIONS
+    auto [_, inserted] = insert(std::pair(std::move(key), std::move(value)));
+    assert(inserted);
+#else
+    insert(hint, std::pair(std::move(key), std::move(value)));
+#endif
   }
 
   using Base::operator[];
-  auto operator[](const K &key) const -> const V & {
+
+  template <typename U>
+    requires CHeterogenousKeyOrKey(U)
+  auto operator[](const U &key) const -> const V & {
+    auto it = this->find(key);
+    assert(it != this->end());
+    return it->second;
+  }
+
+  template <typename U>
+    requires CHeterogenousKey(U)
+  auto operator[](const U &key) -> V & {
     auto it = this->find(key);
     assert(it != this->end());
     return it->second;
@@ -34,6 +68,9 @@ struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
       return pred(kv.first, kv.second);
     });
   }
+
+#undef CHeterogenousKey
+#undef CHeterogenousKeyOrKey
 };
 
 } // namespace ren
