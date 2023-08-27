@@ -10,27 +10,41 @@
 
 namespace ren {
 
-auto RgRuntime::get_buffer(RgRtBuffer buffer) const -> const BufferView & {
-  assert(buffer);
-  return m_rg->m_buffers[buffer];
+auto RenderGraph::get_physical_buffer(RgBufferId buffer) const
+    -> RgPhysicalBufferId {
+  RgBufferId parent = m_buffer_parents[buffer];
+  assert(m_buffer_parents[parent] == parent);
+  return RgPhysicalBufferId(parent);
 }
 
-template <>
-auto RgRuntime::map_buffer<std::byte>(RgRtBuffer buffer, usize offset) const
+auto RgRuntime::get_buffer(RgBufferId buffer) const -> const BufferView & {
+  assert(buffer);
+  return m_rg->m_buffers[m_rg->get_physical_buffer(buffer)];
+}
+
+auto RgRuntime::map_buffer_impl(RgBufferId buffer, usize offset) const
     -> std::byte * {
   const BufferView &view = get_buffer(buffer);
   return m_rg->m_device->map_buffer<std::byte>(view, offset);
 }
 
-auto RgRuntime::get_texture(RgRtTexture texture) const -> Handle<Texture> {
-  assert(texture);
-  return m_rg->m_textures[texture];
+auto RenderGraph::get_physical_texture(RgTextureId texture) const
+    -> RgPhysicalTextureId {
+  RgTextureId parent = m_texture_parents[texture];
+  assert(m_texture_parents[parent] == parent);
+  return RgPhysicalTextureId(parent);
 }
 
-auto RgRuntime::get_storage_texture_descriptor(RgRtTexture texture) const
+auto RgRuntime::get_texture(RgTextureId texture) const -> Handle<Texture> {
+  assert(texture);
+  return m_rg->m_textures[m_rg->get_physical_texture(texture)];
+}
+
+auto RgRuntime::get_storage_texture_descriptor(RgTextureId texture) const
     -> StorageTextureID {
   assert(texture);
-  return m_rg->m_storage_texture_descriptors[texture];
+  return m_rg
+      ->m_storage_texture_descriptors[m_rg->get_physical_texture(texture)];
 }
 
 RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
@@ -60,12 +74,14 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
       m_arena, m_tex_alloc->get_set_layout(), {}, "Render graph");
 }
 
-auto RenderGraph::is_pass_valid(StringView pass) -> bool { todo(); }
+auto RenderGraph::is_pass_valid(StringView pass) -> bool {
+  return m_pass_ids.contains(pass);
+}
 
 RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
 
-auto RgUpdate::resize_buffer(RgRtBuffer buffer, usize size) -> bool {
-  auto it = m_rg->m_buffer_descs.find(buffer);
+auto RgUpdate::resize_buffer(RgBufferId buffer, usize size) -> bool {
+  auto it = m_rg->m_buffer_descs.find(m_rg->get_physical_buffer(buffer));
   assert(it != m_rg->m_buffer_descs.end());
   RenderGraph::RgBufferDesc &desc = it->second;
   if (desc.size == size) {
@@ -75,15 +91,17 @@ auto RgUpdate::resize_buffer(RgRtBuffer buffer, usize size) -> bool {
   return true;
 }
 
-auto RgUpdate::resize_texture(RgRtTexture texture_id,
+auto RgUpdate::resize_texture(RgTextureId vtexture,
                               const RgTextureSizeInfo &size_info) -> bool {
-  auto it = m_rg->m_texture_descs.find(texture_id);
+  RgPhysicalTextureId ptexture = m_rg->get_physical_texture(vtexture);
+  auto it = m_rg->m_texture_descs.find(ptexture);
   assert(it != m_rg->m_texture_descs.end());
   RenderGraph::RgTextureDesc &desc = it->second;
 
   if (desc.width == size_info.width and desc.height == size_info.height and
       desc.depth == size_info.depth and
-      desc.num_mip_levels == size_info.num_mip_levels) {
+      desc.num_mip_levels == size_info.num_mip_levels and
+      desc.num_array_layers == size_info.num_array_layers) {
     return false;
   }
 
@@ -91,13 +109,14 @@ auto RgUpdate::resize_texture(RgRtTexture texture_id,
   desc.height = size_info.height;
   desc.depth = size_info.depth;
   desc.num_mip_levels = size_info.num_mip_levels;
+  desc.num_array_layers = size_info.num_array_layers;
 
   for (int i : range(desc.num_instances)) {
-    RgRtTexture inst_tex_id(texture_id + i);
-    Handle<Texture> old_htexture = m_rg->m_textures[inst_tex_id];
+    RgPhysicalTextureId cur_ptexture(ptexture + i);
+    Handle<Texture> old_htexture = m_rg->m_textures[cur_ptexture];
     const Texture &old_texture = m_rg->m_device->get_texture(old_htexture);
     Handle<Texture> htexture = m_rg->m_arena.create_texture({
-        .name = fmt::format("Render graph texture {}", u32(inst_tex_id)),
+        .name = fmt::format("Render graph texture {}", u32(cur_ptexture)),
         .type = old_texture.type,
         .format = old_texture.format,
         .usage = old_texture.usage,
@@ -105,12 +124,13 @@ auto RgUpdate::resize_texture(RgRtTexture texture_id,
         .height = desc.height,
         .depth = desc.depth,
         .num_mip_levels = desc.num_mip_levels,
+        .num_array_layers = desc.num_array_layers,
     });
     m_rg->m_arena.destroy_texture(old_htexture);
-    m_rg->m_textures[inst_tex_id] = htexture;
+    m_rg->m_textures[cur_ptexture] = htexture;
 
     StorageTextureID &storage_descr =
-        m_rg->m_storage_texture_descriptors[inst_tex_id];
+        m_rg->m_storage_texture_descriptors[cur_ptexture];
     if (storage_descr) {
       m_rg->m_tex_alloc->free_storage_texture(storage_descr);
       storage_descr = m_rg->m_tex_alloc->allocate_storage_texture(
@@ -123,8 +143,10 @@ auto RgUpdate::resize_texture(RgRtTexture texture_id,
 
 void RenderGraph::update() {
   RgUpdate upd(*this);
-  for (const auto &[pass, cb] : m_update_cbs) {
-    cb(upd, m_pass_data[pass]);
+  for (const auto &[data, cb] : zip(m_pass_datas, m_pass_update_cbs)) {
+    if (cb) {
+      cb(upd, data);
+    }
   }
 }
 
@@ -182,7 +204,7 @@ void RenderGraph::allocate_buffers() {
     auto heap = int(desc.heap);
     usize offset = pad(stack_tops[heap], desc.alignment);
     usize size = desc.size;
-    assert(offset + size <= required_heap_size[heap]);
+    assert(offset + size <= required_heap_sizes[heap]);
     stack_tops[heap] = offset + size;
     m_buffers[buffer] = {
         .buffer = heaps[heap],
@@ -205,7 +227,7 @@ void RenderGraph::init_dirty_buffers(CommandAllocator &cmd_alloc) {
 
   Vector<VkMemoryBarrier2> vk_memory_barriers;
   vk_memory_barriers.reserve(m_dirty_temporal_buffers.size());
-  for (RgRtBuffer buffer : m_dirty_temporal_buffers) {
+  for (RgPhysicalBufferId buffer : m_dirty_temporal_buffers) {
     const RgBufferInitCallback &cb = m_buffer_init_cbs[buffer];
     if (cb) {
       i32 num_temporal_layers =
@@ -259,16 +281,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   Span<RgSemaphoreSignal> rg_wait_semaphores = m_wait_semaphores;
   Span<RgSemaphoreSignal> rg_signal_semaphores = m_signal_semaphores;
 
-  Span<RgHostPass> rg_host_passes = m_host_passes;
-
-  Span<RgGraphicsPass> rg_graphics_passes = m_graphics_passes;
   Span<Optional<RgColorAttachment>> rg_color_attachments = m_color_attachments;
   Span<RgDepthStencilAttachment> rg_depth_stencil_attachments =
       m_depth_stencil_attachments;
-
-  Span<RgComputePass> rg_compute_passes = m_compute_passes;
-
-  Span<RgTransferPass> rg_transfer_passes = m_transfer_passes;
 
   for (const RgPassRuntimeInfo &pass : m_passes) {
     if (pass.num_wait_semaphores > 0) {
@@ -282,7 +297,10 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       if (!cmd_recorder) {
         cmd_buffer = cmd_alloc.allocate();
         cmd_recorder.emplace(*m_device, cmd_buffer);
-        debug_region.emplace(cmd_recorder->debug_region(pass.name.c_str()));
+#if REN_RG_DEBUG
+        debug_region.emplace(
+            cmd_recorder->debug_region(m_pass_names[pass.pass].c_str()));
+#endif
       }
       return *cmd_recorder;
     };
@@ -332,80 +350,81 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       rec.pipeline_barrier(vk_memory_barriers, vk_image_barriers);
     }
 
-    switch (pass.type) {
-    case RgPassType::Host: {
-      RgHostPass &host_pass = rg_host_passes.pop_front();
-      if (host_pass.cb) {
-        host_pass.cb(*m_device, rt, m_pass_data[pass.name]);
-      }
-    } break;
-    case RgPassType::Graphics: {
-      RgGraphicsPass &graphics_pass = rg_graphics_passes.pop_front();
-      if (!graphics_pass.cb) {
-        break;
-      }
+    pass.type.visit(OverloadSet{
+        [&](const RgHostPass &host_pass) {
+          if (host_pass.cb) {
+            host_pass.cb(*m_device, rt, m_pass_datas[pass.pass]);
+          }
+        },
+        [&](const RgGraphicsPass &graphics_pass) {
+          if (!graphics_pass.cb) {
+            return;
+          }
 
-      CommandRecorder &rec = get_command_recorder();
+          glm::uvec2 viewport = {-1, -1};
 
-      auto color_attachments =
-          rg_color_attachments.pop_front(graphics_pass.num_color_attachments) |
-          map([&](const Optional<RgColorAttachment> &att)
-                  -> Optional<ColorAttachment> {
-            return att.map(
-                [&](const RgColorAttachment &att) -> ColorAttachment {
-                  return {
-                      .texture =
-                          m_device->get_texture_view(m_textures[att.texture]),
-                      .ops = att.ops,
-                  };
-                });
-          }) |
-          ranges::to<
-              StaticVector<Optional<ColorAttachment>, MAX_COLOR_ATTACHMENTS>>;
+          auto color_attachments =
+              rg_color_attachments.pop_front(
+                  graphics_pass.num_color_attachments) |
+              map([&](const Optional<RgColorAttachment> &att)
+                      -> Optional<ColorAttachment> {
+                return att.map(
+                    [&](const RgColorAttachment &att) -> ColorAttachment {
+                      TextureView view =
+                          m_device->get_texture_view(m_textures[att.texture]);
+                      viewport = m_device->get_texture_view_size(view);
+                      return {
+                          .texture = view,
+                          .ops = att.ops,
+                      };
+                    });
+              }) |
+              ranges::to<StaticVector<Optional<ColorAttachment>,
+                                      MAX_COLOR_ATTACHMENTS>>;
 
-      Optional<DepthStencilAttachment> depth_stencil_attachment;
-      if (graphics_pass.has_depth_attachment) {
-        const RgDepthStencilAttachment &att =
-            rg_depth_stencil_attachments.pop_front();
-        depth_stencil_attachment = {
-            .texture = m_device->get_texture_view(m_textures[att.texture]),
-            .depth_ops = att.depth_ops,
-            .stencil_ops = att.stencil_ops,
-        };
-      }
+          Optional<DepthStencilAttachment> depth_stencil_attachment;
+          if (graphics_pass.has_depth_attachment) {
+            const RgDepthStencilAttachment &att =
+                rg_depth_stencil_attachments.pop_front();
+            TextureView view =
+                m_device->get_texture_view(m_textures[att.texture]);
+            viewport = m_device->get_texture_view_size(view);
+            depth_stencil_attachment = {
+                .texture = view,
+                .depth_ops = att.depth_ops,
+                .stencil_ops = att.stencil_ops,
+            };
+          }
 
-      RenderPass render_pass = rec.render_pass({
-          .color_attachments = color_attachments,
-          .depth_stencil_attachment = depth_stencil_attachment,
-      });
-      render_pass.set_viewports({{
-          .width = float(graphics_pass.viewport.x),
-          .height = float(graphics_pass.viewport.y),
-          .maxDepth = 1.0f,
-      }});
-      render_pass.set_scissor_rects({{
-          .extent = {graphics_pass.viewport.x, graphics_pass.viewport.y},
-      }});
-      render_pass.bind_descriptor_sets(m_pipeline_layout,
-                                       {m_tex_alloc->get_set()});
-      graphics_pass.cb(*m_device, rt, render_pass, m_pass_data[pass.name]);
-    } break;
-    case RgPassType::Compute: {
-      RgComputePass &compute_pass = rg_compute_passes.pop_front();
-      if (compute_pass.cb) {
-        ComputePass comp = get_command_recorder().compute_pass();
-        comp.bind_descriptor_sets(m_pipeline_layout, {m_tex_alloc->get_set()});
-        compute_pass.cb(*m_device, rt, comp, m_pass_data[pass.name]);
-      }
-    } break;
-    case RgPassType::Transfer: {
-      RgTransferPass &transfer_pass = rg_transfer_passes.pop_front();
-      if (transfer_pass.cb) {
-        transfer_pass.cb(*m_device, rt, get_command_recorder(),
-                         m_pass_data[pass.name]);
-      }
-    } break;
-    }
+          RenderPass render_pass = get_command_recorder().render_pass({
+              .color_attachments = color_attachments,
+              .depth_stencil_attachment = depth_stencil_attachment,
+          });
+          render_pass.set_viewports({{
+              .width = float(viewport.x),
+              .height = float(viewport.y),
+          }});
+          render_pass.set_scissor_rects({{.extent = {viewport.x, viewport.y}}});
+          render_pass.bind_descriptor_sets(m_pipeline_layout,
+                                           {m_tex_alloc->get_set()});
+
+          graphics_pass.cb(*m_device, rt, render_pass, m_pass_datas[pass.pass]);
+        },
+        [&](const RgComputePass &compute_pass) {
+          if (compute_pass.cb) {
+            ComputePass comp = get_command_recorder().compute_pass();
+            comp.bind_descriptor_sets(m_pipeline_layout,
+                                      {m_tex_alloc->get_set()});
+            compute_pass.cb(*m_device, rt, comp, m_pass_datas[pass.pass]);
+          }
+        },
+        [&](const RgTransferPass &transfer_pass) {
+          if (transfer_pass.cb) {
+            transfer_pass.cb(*m_device, rt, get_command_recorder(),
+                             m_pass_datas[pass.pass]);
+          }
+        },
+    });
 
     auto get_vk_semaphore =
         [&](const RgSemaphoreSignal &signal) -> VkSemaphoreSubmitInfo {

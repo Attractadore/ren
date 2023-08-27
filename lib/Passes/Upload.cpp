@@ -9,10 +9,10 @@ namespace ren {
 namespace {
 
 struct UploadPassResources {
-  RgRtBuffer transform_matrices;
-  RgRtBuffer normal_matrices;
-  RgRtBuffer directional_lights;
-  RgRtBuffer materials;
+  RgBufferId transform_matrices;
+  RgBufferId normal_matrices;
+  RgBufferId directional_lights;
+  RgBufferId materials;
 };
 
 void run_upload_pass(Device &device, const RgRuntime &rg,

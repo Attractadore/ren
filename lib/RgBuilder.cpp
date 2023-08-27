@@ -1,4 +1,11 @@
+#include "CommandRecorder.hpp"
 #include "RenderGraph.hpp"
+#include "Support/FlatSet.hpp"
+#include "Support/Math.hpp"
+#include "Support/PriorityQueue.hpp"
+#include "Support/Views.hpp"
+
+#include <range/v3/action.hpp>
 
 namespace ren {
 
@@ -74,46 +81,495 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 
 RgBuilder::RgBuilder(RenderGraph &rg) {
   m_rg = &rg;
-  todo();
+  m_rg->m_pass_datas = {{}};
+  m_rg->m_pass_update_cbs = {{}};
+  m_rg->m_pass_names = {{}};
 }
 
-auto RgBuilder::create_pass(String name) -> RgPassBuilder { todo(); }
+auto RgBuilder::create_pass(String name) -> RgPassBuilder {
+  RgPassId id(m_passes.size());
+  m_passes.emplace_back();
+  m_rg->m_pass_datas.emplace_back();
+  m_rg->m_pass_update_cbs.emplace_back();
+#if REN_RG_DEBUG
+  m_rg->m_pass_names.push_back(name);
+#endif
+  m_rg->m_pass_ids.insert(std::move(name), id);
+  return RgPassBuilder(id, *this);
+}
 
-void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) { todo(); }
+auto RgBuilder::add_buffer_use(RgBufferId buffer, const RgBufferUsage &usage)
+    -> RgBufferUseId {
+  RgBufferUseId id(m_buffer_uses.size());
+  m_buffer_uses.push_back({
+      .buffer = buffer,
+      .usage = usage,
+  });
+  return id;
+};
 
-auto RgBuilder::read_buffer(StringView pass, StringView buffer,
+auto RgBuilder::get_buffer_def(RgBufferId buffer) const -> RgPassId {
+  return m_buffer_defs[buffer];
+}
+
+auto RgBuilder::get_buffer_kill(RgBufferId buffer) const -> RgPassId {
+  return m_buffer_kills[buffer];
+}
+
+auto RgBuilder::get_or_alloc_buffer(StringView name, u32 temporal_layer)
+    -> RgBufferId {
+  RgBufferId id;
+  auto it = m_buffer_ids.find(name);
+  if (it != m_buffer_ids.end()) {
+    id = RgBufferId(it->second + temporal_layer);
+  } else {
+    id = RgBufferId(m_rg->m_buffer_parents.size());
+    usize num_buffers = id + RG_MAX_TEMPORAL_LAYERS;
+    m_rg->m_buffer_parents.resize(num_buffers);
+    m_buffer_ids.insert(it, String(name), id);
+    m_buffer_defs.resize(num_buffers);
+    m_buffer_kills.resize(num_buffers);
+#if REN_RG_DEBUG
+    m_buffer_children.resize(num_buffers);
+#endif
+    id = RgBufferId(id + temporal_layer);
+  }
+#if REN_RG_DEBUG
+  {
+    auto it = m_buffer_names.find(id);
+    if (it == m_buffer_names.end()) {
+      if (temporal_layer > 0) {
+        m_buffer_names.insert(it, id,
+                              fmt::format("{}#{}", name, temporal_layer));
+      } else {
+        m_buffer_names.insert(it, id, String(name));
+      }
+    }
+  }
+#endif
+  return id;
+}
+
+void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) {
+  assert(create_info.num_temporal_layers > 0);
+  RgBufferId id = get_or_alloc_buffer(std::move(create_info.name));
+  for (int i : range(create_info.num_temporal_layers)) {
+    m_rg->m_buffer_parents[id + i] = RgBufferId(id + i);
+  }
+  m_buffer_descs.insert(
+      RgPhysicalBufferId(id),
+      {
+          .num_temporal_layers = create_info.num_temporal_layers,
+          .heap = create_info.heap,
+          .size = create_info.size,
+          .alignment = create_info.alignment,
+      });
+}
+
+auto RgBuilder::read_buffer(RgPassId pass, StringView buffer,
                             const RgBufferUsage &usage, u32 temporal_layer)
-    -> RgRtBuffer {
-  todo();
+    -> RgBufferId {
+  RgBufferId id = get_or_alloc_buffer(buffer, temporal_layer);
+  m_passes[pass].read_buffers.push_back(add_buffer_use(id, usage));
+  return id;
 }
 
-auto RgBuilder::write_buffer(StringView pass, String dst_buffer,
+auto RgBuilder::write_buffer(RgPassId pass, StringView dst_buffer,
                              StringView src_buffer, const RgBufferUsage &usage)
-    -> RgRtBuffer {
-  todo();
+    -> RgBufferId {
+  RgBufferId src_id = get_or_alloc_buffer(src_buffer);
+  RgBufferId dst_id = get_or_alloc_buffer(dst_buffer);
+  m_buffer_kills[src_id] = pass;
+#if REN_RG_DEBUG
+  m_buffer_children[src_id] = dst_id;
+#endif
+  m_buffer_defs[dst_id] = pass;
+  for (int i : range(RG_MAX_TEMPORAL_LAYERS)) {
+    ren_assert(!m_rg->m_buffer_parents[dst_id + i],
+               "Render graph buffers must be written only once");
+    m_rg->m_buffer_parents[dst_id + i] = RgBufferId(src_id + i);
+  }
+  m_passes[pass].write_buffers.push_back(add_buffer_use(src_id, usage));
+  return dst_id;
 }
 
-auto RgBuilder::is_buffer_valid(StringView buffer) const -> bool { todo(); }
+auto RgBuilder::is_buffer_valid(StringView buffer) const -> bool {
+  return m_buffer_ids.contains(buffer);
+}
 
-void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) { todo(); }
+auto RgBuilder::add_texture_use(RgTextureId texture,
+                                const RgTextureUsage &usage) -> RgTextureUseId {
+  RgTextureUseId id(m_texture_uses.size());
+  m_texture_uses.push_back({
+      .texture = texture,
+      .usage = usage,
+  });
+  return id;
+}
 
-auto RgBuilder::read_texture(StringView pass, StringView texture,
+auto RgBuilder::get_texture_def(RgTextureId texture) const -> RgPassId {
+  return m_texture_defs[texture];
+}
+
+auto RgBuilder::get_texture_kill(RgTextureId texture) const -> RgPassId {
+  return m_texture_kills[texture];
+}
+
+auto RgBuilder::get_or_alloc_texture(StringView name, u32 temporal_layer)
+    -> RgTextureId {
+  RgTextureId id;
+  auto it = m_texture_ids.find(name);
+  if (it != m_texture_ids.end()) {
+    id = RgTextureId(it->second + temporal_layer);
+  } else {
+    id = RgTextureId(m_rg->m_texture_parents.size());
+    usize num_textures = id + RG_MAX_TEMPORAL_LAYERS;
+    m_rg->m_texture_parents.resize(num_textures);
+    m_texture_ids.insert(it, String(name), id);
+    m_texture_defs.resize(num_textures);
+    m_texture_kills.resize(num_textures);
+#if REN_RG_DEBUG
+    m_texture_children.resize(num_textures);
+#endif
+    id = RgTextureId(id + temporal_layer);
+  }
+#if REN_RG_DEBUG
+  {
+    auto it = m_texture_names.find(id);
+    if (it == m_texture_names.end()) {
+      if (temporal_layer > 0) {
+        m_texture_names.insert(it, id,
+                               fmt::format("{}#{}", name, temporal_layer));
+      } else {
+        m_texture_names.insert(it, id, String(name));
+      }
+    }
+  }
+#endif
+  return id;
+}
+
+void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) {
+  assert(create_info.num_temporal_layers > 0);
+  RgTextureId id = get_or_alloc_texture(std::move(create_info.name));
+  for (int i : range(create_info.num_temporal_layers)) {
+    m_rg->m_texture_parents[id + i] = RgTextureId(id + i);
+  }
+  m_texture_descs.insert(
+      RgPhysicalTextureId(id),
+      {
+          .type = create_info.type,
+          .format = create_info.format,
+          .width = create_info.width,
+          .height = create_info.height,
+          .depth = create_info.depth,
+          .num_mip_levels = create_info.num_mip_levels,
+          .num_array_layers = create_info.num_array_layers,
+          .num_temporal_layers = create_info.num_temporal_layers,
+      });
+}
+
+auto RgBuilder::read_texture(RgPassId pass, StringView texture,
                              const RgTextureUsage &usage, u32 temporal_layer)
-    -> RgRtTexture {
-  todo();
+    -> RgTextureId {
+  RgTextureId id = get_or_alloc_texture(texture, temporal_layer);
+  m_passes[pass].read_textures.push_back(add_texture_use(id, usage));
+  return id;
 }
 
-auto RgBuilder::write_texture(StringView pass, String dst_texture,
+auto RgBuilder::write_texture(RgPassId pass, StringView dst_texture,
                               StringView src_texture,
-                              const RgTextureUsage &usage) -> RgRtTexture {
-  todo();
+                              const RgTextureUsage &usage) -> RgTextureId {
+  RgTextureId src_id = get_or_alloc_texture(src_texture);
+  RgTextureId dst_id = get_or_alloc_texture(dst_texture);
+  m_texture_kills[src_id] = pass;
+#if REN_RG_DEBUG
+  m_texture_children[src_id] = dst_id;
+#endif
+  m_texture_defs[dst_id] = pass;
+  for (int i : range(RG_MAX_TEMPORAL_LAYERS)) {
+    ren_assert(!m_rg->m_texture_parents[dst_id + i],
+               "Render graph textures must be written only once");
+    m_rg->m_texture_parents[dst_id + i] = RgTextureId(src_id + i);
+  }
+  m_passes[pass].write_textures.push_back(add_texture_use(src_id, usage));
+  return dst_id;
 }
 
-auto RgBuilder::is_texture_valid(StringView texture) const -> bool { todo(); }
+auto RgBuilder::is_texture_valid(StringView texture) const -> bool {
+  return m_texture_ids.contains(texture);
+}
 
-void RgBuilder::present(StringView texture) { todo(); }
+auto RgBuilder::add_semaphore_signal(RgSemaphoreId semaphore,
+                                     VkPipelineStageFlags2 stage_mask,
+                                     u64 value) -> RgSemaphoreSignalId {
+  RgSemaphoreSignalId id(m_semaphore_signals.size());
+  m_semaphore_signals.push_back({
+      .semaphore = semaphore,
+      .stage_mask = stage_mask,
+      .value = value,
+  });
+  return id;
+}
 
-void RgBuilder::build() { todo(); }
+auto RgBuilder::alloc_semaphore(StringView name) -> RgSemaphoreId {
+  RgSemaphoreId id(m_semaphore_ids.size());
+  m_semaphore_ids.insert(String(name), id);
+#if REN_RG_DEBUG
+  m_semaphore_names.emplace_back(name);
+#endif
+  return id;
+}
+
+void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
+                               VkPipelineStageFlags2 stage_mask, u64 value) {
+  m_passes[pass].wait_semaphores.push_back(
+      add_semaphore_signal(semaphore, stage_mask, value));
+}
+
+void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
+                                 VkPipelineStageFlags2 stage_mask, u64 value) {
+  m_passes[pass].signal_semaphores.push_back(
+      add_semaphore_signal(semaphore, stage_mask, value));
+}
+
+void RgBuilder::present(StringView texture_name) {
+  m_rg->m_acquire_semaphore = alloc_semaphore("rg-acquire-semaphore");
+  m_rg->m_present_semaphore = alloc_semaphore("rg-present-semaphore");
+
+  auto blit = create_pass("rg-blit-to-swapchain");
+  blit.wait_semaphore(m_rg->m_acquire_semaphore);
+  RgTextureId texture =
+      blit.read_texture(texture_name, RG_TRANSFER_SRC_TEXTURE);
+  RgTextureId backbuffer = blit.write_texture(
+      "rg-blitted-backbuffer", "rg-backbuffer", RG_TRANSFER_DST_TEXTURE);
+
+  blit.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
+    Handle<Texture> src = rg.get_texture(texture);
+    Handle<Texture> dst = rg.get_texture(backbuffer);
+    VkImageBlit region = {
+        .srcSubresource =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+            },
+        .dstSubresource =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+            },
+    };
+    glm::uvec3 src_size = device.get_texture(src).size;
+    std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
+    glm::uvec3 dst_size = device.get_texture(dst).size;
+    std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
+    cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
+  });
+
+  auto present = create_pass("rg-present");
+  auto _ = present.write_texture("rg-final-backbuffer", "rg-blitted-backbuffer",
+                                 RG_PRESENT_TEXTURE);
+  present.signal_semaphore(m_rg->m_present_semaphore);
+}
+
+auto RgBuilder::get_buffer_parent(RgBufferId buffer) -> RgBufferId {
+  RgBufferId parent = m_rg->m_buffer_parents[buffer];
+  if (m_rg->m_buffer_parents[parent] == buffer) {
+    return parent;
+  }
+  parent = get_buffer_parent(parent);
+  m_rg->m_buffer_parents[buffer] = parent;
+  return parent;
+}
+
+void RgBuilder::build_buffer_disjoint_set() {
+  for (RgBufferId &parent : m_rg->m_buffer_parents) {
+    parent = get_buffer_parent(parent);
+  }
+}
+
+auto RgBuilder::get_texture_parent(RgTextureId texture) -> RgTextureId {
+  RgTextureId parent = m_rg->m_texture_parents[texture];
+  if (m_rg->m_texture_parents[parent] == texture) {
+    return parent;
+  }
+  parent = get_texture_parent(parent);
+  m_rg->m_texture_parents[texture] = parent;
+  return parent;
+}
+
+void RgBuilder::build_texture_disjoint_set() {
+  for (RgTextureId &parent : m_rg->m_texture_parents) {
+    parent = get_texture_parent(parent);
+  }
+}
+
+auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
+  Vector<SmallFlatSet<RgPassId>> successors(m_passes.size());
+  Vector<int> predecessor_counts(m_passes.size());
+
+  auto add_edge = [&](RgPassId from, RgPassId to) {
+    auto [it, inserted] = successors[from].insert(to);
+    if (inserted) {
+      ++predecessor_counts[to];
+    }
+  };
+
+  auto get_buffer_def = [&](RgBufferUseId use) {
+    return this->get_buffer_def(m_buffer_uses[use].buffer);
+  };
+
+  auto get_buffer_kill = [&](RgBufferUseId use) {
+    return this->get_buffer_kill(m_buffer_uses[use].buffer);
+  };
+
+  auto get_texture_def = [&](RgTextureUseId use) {
+    return this->get_texture_def(m_texture_uses[use].texture);
+  };
+
+  auto get_texture_kill = [&](RgTextureUseId use) {
+    return this->get_texture_kill(m_texture_uses[use].texture);
+  };
+
+  auto is_null_pass = [](RgPassId pass) -> bool { return !pass; };
+
+  SmallVector<RgPassId> dependents;
+  auto get_dependants = [&](RgPassId pass_id) -> Span<const RgPassId> {
+    const RgPassInfo &pass = m_passes[pass_id];
+    dependents.clear();
+    // Reads must happen before writes
+    dependents.append(pass.read_buffers | map(get_buffer_kill));
+    dependents.append(pass.read_textures | map(get_texture_kill));
+    ranges::actions::unstable_remove_if(dependents, is_null_pass);
+    return dependents;
+  };
+
+  SmallVector<RgPassId> dependencies;
+  auto get_dependencies = [&](RgPassId pass_id) -> Span<const RgPassId> {
+    const RgPassInfo &pass = m_passes[pass_id];
+    dependencies.clear();
+    // Reads must happen after creation
+    dependencies.append(pass.read_buffers | map(get_buffer_def));
+    dependencies.append(pass.read_textures | map(get_texture_def));
+    // Writes must happen after creation
+    dependencies.append(pass.write_buffers | map(get_buffer_def));
+    dependencies.append(pass.write_textures | map(get_texture_def));
+    ranges::actions::unstable_remove_if(dependencies, is_null_pass);
+    return dependencies;
+  };
+
+  // Schedule passes whose dependencies were scheduled the longest time ago
+  // first
+  MinQueue<std::tuple<int, RgPassId>> unscheduled_passes;
+
+  // Build DAG
+  for (int idx : range<int>(1, m_passes.size())) {
+    RgPassId pass(idx);
+
+    auto predecessors = get_dependencies(pass);
+    auto successors = get_dependants(pass);
+
+    for (RgPassId p : predecessors) {
+      add_edge(p, pass);
+    }
+
+    for (RgPassId s : successors) {
+      add_edge(pass, s);
+    }
+
+    if (predecessors.empty()) {
+      // This is a pass with no dependencies and can be scheduled right away
+      unscheduled_passes.push({-1, pass});
+    }
+  }
+
+  Vector<RgPassId> schedule;
+  schedule.reserve(m_passes.size());
+  auto &pass_schedule_times = predecessor_counts;
+
+  while (not unscheduled_passes.empty()) {
+    auto [dependency_time, pass] = unscheduled_passes.top();
+    unscheduled_passes.pop();
+
+    int time = schedule.size();
+    assert(dependency_time < time);
+    schedule.push_back(pass);
+    pass_schedule_times[pass] = time;
+
+    for (RgPassId s : successors[pass]) {
+      if (--predecessor_counts[s] == 0) {
+        int max_dependency_time = -1;
+        Span<const RgPassId> dependencies = get_dependencies(s);
+        if (not dependencies.empty()) {
+          max_dependency_time = ranges::max(dependencies | map([&](RgPassId d) {
+                                              return pass_schedule_times[d];
+                                            }));
+        }
+        unscheduled_passes.push({max_dependency_time, s});
+      }
+    }
+  }
+
+  return schedule;
+}
+
+void RgBuilder::dump_schedule(Span<const RgPassId> schedule) const {
+#if REN_RG_DEBUG
+  fmt::println(stderr, "Scheduled passes:");
+  for (RgPassId pass_id : schedule) {
+    const RgPassInfo &pass = m_passes[pass_id];
+    fmt::println("  * {}", m_rg->m_pass_names[pass_id]);
+    if (not pass.read_buffers.empty()) {
+      fmt::println(stderr, "    Reads buffers:");
+      for (RgBufferUseId use : pass.read_buffers) {
+        fmt::println(stderr, "      - {}",
+                     m_buffer_names[m_buffer_uses[use].buffer]);
+      }
+    }
+    if (not pass.write_buffers.empty()) {
+      fmt::println(stderr, "    Writes buffers:");
+      for (RgBufferUseId use : pass.write_buffers) {
+        RgBufferId src_buffer = m_buffer_uses[use].buffer;
+        RgBufferId dst_buffer = m_buffer_children[src_buffer];
+        fmt::println(stderr, "      - {} -> {}", m_buffer_names[src_buffer],
+                     m_buffer_names[dst_buffer]);
+      }
+    }
+    if (not pass.read_textures.empty()) {
+      fmt::println(stderr, "    Reads textures:");
+      for (RgTextureUseId use : pass.read_textures) {
+        fmt::println(stderr, "      - {}",
+                     m_texture_names[m_texture_uses[use].texture]);
+      }
+    }
+    if (not pass.write_textures.empty()) {
+      fmt::println(stderr, "    Writes textures:");
+      for (RgTextureUseId use : pass.write_textures) {
+        RgTextureId src_texture = m_texture_uses[use].texture;
+        RgTextureId dst_texture = m_texture_children[src_texture];
+        fmt::println(stderr, "      - {} -> {}", m_texture_names[src_texture],
+                     m_texture_names[dst_texture]);
+      }
+    }
+    fmt::println(stderr, "");
+  }
+#endif
+}
+
+void RgBuilder::build() {
+  build_buffer_disjoint_set();
+
+  RgTextureId backbuffer = m_texture_ids["rg-backbuffer"];
+  assert(backbuffer);
+  m_rg->m_texture_parents[backbuffer] = backbuffer;
+  m_rg->m_backbuffer = RgPhysicalTextureId(backbuffer);
+  build_texture_disjoint_set();
+
+  Vector<RgPassId> schedule = build_pass_schedule();
+  dump_schedule(schedule);
+
+  todo();
+}
 
 #if 0
 

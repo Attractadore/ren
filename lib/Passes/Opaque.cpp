@@ -10,12 +10,12 @@ namespace {
 
 struct OpaquePassResources {
   Handle<GraphicsPipeline> pipeline;
-  RgRtBuffer uniforms;
-  RgRtBuffer transform_matrices;
-  RgRtBuffer normal_matrices;
-  RgRtBuffer directional_lights;
-  RgRtBuffer materials;
-  RgRtBuffer exposure;
+  RgBufferId uniforms;
+  RgBufferId transform_matrices;
+  RgBufferId normal_matrices;
+  RgBufferId directional_lights;
+  RgBufferId materials;
+  RgBufferId exposure;
 };
 
 void run_opaque_pass(Device &device, const RgRuntime &rg,
@@ -152,8 +152,6 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
     RgTextureSizeInfo size = {
         .width = data.size.x,
         .height = data.size.y,
-        .num_array_layers = 1,
-        .num_mip_levels = 1,
     };
     rg.resize_texture(texture, size);
     rg.resize_texture(depth_texture, size);

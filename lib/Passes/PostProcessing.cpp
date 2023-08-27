@@ -27,9 +27,9 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
 
 struct PostProcessingPassResources {
   Handle<ComputePipeline> pipeline;
-  RgRtTexture texture;
-  RgRtBuffer histogram;
-  RgRtBuffer exposure;
+  RgTextureId texture;
+  RgBufferId histogram;
+  RgBufferId exposure;
 };
 
 void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
@@ -97,8 +97,8 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
 
 struct ReduceLuminanceHistogramPassResources {
   Handle<ComputePipeline> pipeline;
-  RgRtBuffer histogram;
-  RgRtBuffer exposure;
+  RgBufferId histogram;
+  RgBufferId exposure;
 };
 
 struct ReduceLuminanceHistogramPassData {
