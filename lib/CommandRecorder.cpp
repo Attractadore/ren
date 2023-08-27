@@ -89,9 +89,8 @@ void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
                           view.size, value);
 };
 
-template <>
-void CommandRecorder::update_buffer<std::byte>(const BufferView &view,
-                                               TempSpan<const std::byte> data) {
+void CommandRecorder::update_buffer(const BufferView &view,
+                                    TempSpan<const std::byte> data) {
   assert(view.size >= data.size());
   assert(data.size() % 4 == 0);
   m_device->CmdUpdateBuffer(m_cmd_buffer,

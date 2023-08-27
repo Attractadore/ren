@@ -88,9 +88,7 @@ public:
     update_buffer(buffer, data.as_bytes());
   }
 
-  template <>
-  void update_buffer<std::byte>(const BufferView &buffer,
-                                TempSpan<const std::byte> data);
+  void update_buffer(const BufferView &buffer, TempSpan<const std::byte> data);
 
   template <typename T>
     requires(sizeof(T) % 4 == 0)
