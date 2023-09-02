@@ -35,12 +35,14 @@ struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
     assert(inserted);
   }
 
-  void insert(Base::const_iterator hint, K key, V value) {
+  auto insert(Base::const_iterator hint, K key, V value) -> Base::iterator {
 #if REN_ASSERTIONS
-    auto [_, inserted] = insert(std::pair(std::move(key), std::move(value)));
+    auto [it, inserted] = insert(std::pair(std::move(key), std::move(value)));
     assert(inserted);
+    return it;
 #else
-    insert(hint, std::pair(std::move(key), std::move(value)));
+    auto it = insert(hint, std::pair(std::move(key), std::move(value)));
+    return it;
 #endif
   }
 
