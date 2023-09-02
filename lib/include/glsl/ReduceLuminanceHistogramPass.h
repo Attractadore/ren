@@ -1,7 +1,6 @@
 #ifndef REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_PASS_H
 #define REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_PASS_H
 
-#include "Exposure.h"
 #include "LuminanceHistogram.h"
 #include "common.h"
 
@@ -11,7 +10,7 @@ GLSL_NAMESPACE_BEGIN
   {                                                                            \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(LuminanceHistogram)      \
         histogram;                                                             \
-    GLSL_RESTRICT GLSL_WRITEONLY GLSL_BUFFER_REFERENCE(Exposure) exposure;     \
+    uint exposure_texture;                                                     \
     float exposure_compensation;                                               \
   }
 

@@ -30,7 +30,8 @@ auto load_post_processing_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline>;
 
-auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
+auto load_reduce_luminance_histogram_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline>;
 
 } // namespace ren

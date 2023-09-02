@@ -18,4 +18,6 @@ public:
 
 constexpr usize DEFAULT_BUFFER_REFERENCE_ALIGNMENT = 16;
 
+constexpr usize GPU_COALESCING_WIDTH = 128;
+
 } // namespace ren

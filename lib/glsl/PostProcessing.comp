@@ -20,7 +20,7 @@ vec4[WORK_SIZE_X][WORK_SIZE_Y] build_luminance_histogram_pass(
   histogram[index] = 0;
   barrier();
 
-  float exposure = g_pcs.previous_exposure.exposure;
+  float exposure = imageLoad(g_rimages2d[g_pcs.previous_exposure_texture], ivec2(0)).r;
 
   for (int x = 0; x < WORK_SIZE_X; ++x) {
     for (int y = 0; y < WORK_SIZE_Y; ++y) {

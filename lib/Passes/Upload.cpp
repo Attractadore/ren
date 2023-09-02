@@ -84,6 +84,7 @@ void setup_upload_pass(RgBuilder &rgb) {
     rg.resize_buffer(rcs.directional_lights,
                      data.directional_lights.size_bytes());
     rg.resize_buffer(rcs.materials, data.materials.size_bytes());
+    return true;
   });
 
   pass.set_host_callback(ren_rg_host_callback(UploadPassData) {

@@ -15,7 +15,7 @@ struct OpaquePassResources {
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
   RgBufferId materials;
-  RgBufferId exposure;
+  RgTextureId exposure;
 };
 
 void run_opaque_pass(Device &device, const RgRuntime &rg,
@@ -31,7 +31,8 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
   const auto &normal_matrix_buffer = rg.get_buffer(rcs.normal_matrices);
   const auto &directional_lights_buffer = rg.get_buffer(rcs.directional_lights);
   const auto &materials_buffer = rg.get_buffer(rcs.materials);
-  const auto &exposure_buffer = rg.get_buffer(rcs.exposure);
+  StorageTextureID exposure_texture =
+      rg.get_storage_texture_descriptor(rcs.exposure);
 
   auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBuffer>(rcs.uniforms);
   *uniforms = {
@@ -45,8 +46,7 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
       .directional_lights =
           device.get_buffer_device_address<glsl::DirectionalLights>(
               directional_lights_buffer),
-      .exposure =
-          device.get_buffer_device_address<glsl::Exposure>(exposure_buffer),
+      .exposure_texture = exposure_texture,
       .pv = data.proj * data.view,
       .eye = data.eye,
       .num_directional_lights = data.num_dir_lights,
@@ -116,8 +116,8 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
 
   rcs.materials = pass.read_buffer("materials", RG_FS_READ_BUFFER);
 
-  rcs.exposure = pass.read_buffer("exposure", RG_FS_READ_BUFFER,
-                                  cfg.exposure.temporal_layer);
+  rcs.exposure = pass.read_texture("exposure", RG_FS_READ_TEXTURE,
+                                   cfg.exposure.temporal_layer);
 
   rcs.uniforms = pass.create_buffer(
       {
@@ -149,12 +149,13 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
       });
 
   pass.set_update_callback(ren_rg_update_callback(OpaquePassData) {
-    RgTextureSizeInfo size = {
-        .width = data.size.x,
-        .height = data.size.y,
-    };
-    rg.resize_texture(texture, size);
-    rg.resize_texture(depth_texture, size);
+    if (glm::uvec2(rg.get_texture_desc(texture).size) != data.size) {
+      return false;
+    }
+    if (glm::uvec2(rg.get_texture_desc(depth_texture).size) != data.size) {
+      return false;
+    }
+    return true;
   });
 
   pass.set_graphics_callback(ren_rg_graphics_callback(OpaquePassData) {

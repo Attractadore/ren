@@ -38,22 +38,12 @@ class RgPassBuilder;
 class RgRuntime;
 class RgUpdate;
 
-template <typename F>
-concept CRgBufferInitCallback =
-    std::invocable<F, Device &, const BufferView &, TransferPass &>;
-
-using RgBufferInitCallback =
-    std::function<void(Device &, const BufferView &, TransferPass &)>;
-static_assert(CRgBufferInitCallback<RgBufferInitCallback>);
-
-template <typename F>
-concept CRgTextureInitCallback =
-    std::invocable<F, Device &, Handle<Texture>, TransferPass &>;
-
 template <typename F, typename T>
-concept CRgUpdateCallback = std::invocable<F, RgUpdate &, const T &>;
+concept CRgUpdateCallback =
+    std::invocable<F, RgUpdate &, const T &> and
+    std::same_as<std::invoke_result_t<F, RgUpdate &, const T &>, bool>;
 
-using RgUpdateCallback = std::function<void(RgUpdate &, const Any &)>;
+using RgUpdateCallback = std::function<bool(RgUpdate &, const Any &)>;
 static_assert(CRgUpdateCallback<RgUpdateCallback, Any>);
 
 template <typename F, typename T>
@@ -152,10 +142,6 @@ struct RgBufferCreateInfo {
   BufferHeap heap = BufferHeap::Upload;
   /// Initial buffer size
   usize size = 0;
-  /// Buffer alignment
-  usize alignment = DEFAULT_BUFFER_REFERENCE_ALIGNMENT;
-  /// Number of temporal layers
-  u32 num_temporal_layers = 1;
 };
 
 REN_NEW_TYPE(RgPhysicalTextureId, u32);
@@ -168,6 +154,12 @@ struct RgTextureUsage {
   VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
   /// Layout of the texture
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+};
+
+constexpr RgTextureUsage RG_FS_READ_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
 };
 
 constexpr RgTextureUsage RG_CS_READ_TEXTURE = {
@@ -226,34 +218,23 @@ struct RgTextureCreateInfo {
   VkImageType type = VK_IMAGE_TYPE_2D;
   /// Texture format
   VkFormat format = VK_FORMAT_UNDEFINED;
-  /// Initial texture width
+  /// Texture width
   u32 width = 0;
-  /// Initial texture height
+  /// Texture height
   u32 height = 1;
-  // Initial texture depth
+  /// Texture depth
   u32 depth = 1;
-  /// Initial number of texture mip levels
+  /// Number of mip levels
   u32 num_mip_levels = 1;
-  // Initial number of texture array layers
+  /// Number of array layers
   u32 num_array_layers = 1;
   /// Number of temporal layers
   u32 num_temporal_layers = 1;
+  /// Initial clear color or depth-stencil for temporal layers
+  Variant<Monostate, glm::vec4, VkClearDepthStencilValue> clear;
 };
 
 REN_NEW_TYPE(RgSemaphoreId, u32);
-
-struct RgTextureSizeInfo {
-  /// New texture width
-  u32 width = 0;
-  /// New texture height
-  u32 height = 1;
-  // New texture depth
-  u32 depth = 1;
-  /// New number of texture mip levels
-  u32 num_mip_levels = 1;
-  // New number of texture array layers
-  u32 num_array_layers = 1;
-};
 
 struct RgBufferUse {
   RgBufferId buffer;
@@ -269,21 +250,6 @@ struct RgSemaphoreSignal {
   RgSemaphoreId semaphore;
   VkPipelineStageFlagBits2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   u64 value = 0;
-};
-
-class RgUpdate {
-public:
-  auto resize_buffer(RgBufferId buffer, usize size) -> bool;
-
-  auto resize_texture(RgTextureId texture, const RgTextureSizeInfo &size_info)
-      -> bool;
-
-private:
-  friend RenderGraph;
-  RgUpdate(RenderGraph &rg);
-
-private:
-  RenderGraph *m_rg = nullptr;
 };
 
 struct RgHostPassInfo {
@@ -337,6 +303,35 @@ private:
   RenderGraph *m_rg = nullptr;
 };
 
+struct RgPublicTextureDesc {
+  VkImageType type;
+  VkFormat format;
+  union {
+    struct {
+      u32 width;
+      u32 height;
+      u32 depth;
+    };
+    glm::uvec3 size;
+  };
+  u32 num_mip_levels;
+  u32 num_array_layers;
+};
+
+class RgUpdate {
+public:
+  void resize_buffer(RgBufferId buffer, usize size);
+
+  auto get_texture_desc(RgTextureId texture) const -> RgPublicTextureDesc;
+
+private:
+  RgUpdate(RenderGraph &rg);
+
+private:
+  friend RenderGraph;
+  RenderGraph *m_rg = nullptr;
+};
+
 class RenderGraph {
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
@@ -347,26 +342,34 @@ public:
     if (it == m_pass_ids.end()) {
       return false;
     }
-    m_pass_datas[it->second] = std::move(data);
+    RgPassId pass_id = it->second;
+    const Any &pass_data = m_pass_datas[pass_id] = std::move(data);
+    const RgUpdateCallback &update_callback = m_pass_update_callbacks[pass_id];
+    if (update_callback) {
+      RgUpdate upd(*this);
+      return update_callback(upd, pass_data);
+    }
     return true;
   }
 
-  auto is_pass_valid(StringView pass) -> bool;
+  auto is_pass_valid(StringView pass) const -> bool;
+
+  auto is_buffer_valid(StringView buffer) const -> bool;
+
+  auto is_texture_valid(StringView texture) const -> bool;
 
   void execute(CommandAllocator &cmd_alloc);
 
 private:
+  auto physical_buffers() const;
+
   auto get_physical_buffer(RgBufferId buffer) const -> RgPhysicalBufferId;
 
   auto get_physical_texture(RgTextureId texture) const -> RgPhysicalTextureId;
 
-  void update();
-
   void allocate_buffers();
 
   void rotate_resources();
-
-  void init_dirty_buffers(CommandAllocator &cmd_alloc);
 
 private:
   friend RgBuilder;
@@ -412,7 +415,7 @@ private:
 
   HashMap<String, RgPassId> m_pass_ids;
   Vector<Any> m_pass_datas;
-  Vector<RgUpdateCallback> m_pass_update_cbs;
+  Vector<RgUpdateCallback> m_pass_update_callbacks;
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
@@ -453,22 +456,14 @@ private:
   struct RgBufferDesc {
     BufferHeap heap;
     usize size = 0;
-    usize alignment = 0;
   };
 
-  struct RgTemporalBufferDesc {
-    u32 num_temporal_layers = 0;
-  };
-
+  HashMap<String, RgBufferId> m_buffer_ids;
   Vector<RgBufferId> m_buffer_parents;
   Vector<BufferView> m_buffers;
-  HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
+  Vector<RgBufferDesc> m_buffer_descs;
   std::array<std::array<Handle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
       m_heap_buffers;
-  HashMap<RgPhysicalBufferId, RgTemporalBufferDesc> m_temporal_buffer_descs;
-  HashSet<RgPhysicalBufferId> m_dirty_temporal_buffers;
-  HashMap<RgPhysicalBufferId, RgBufferInitCallback> m_buffer_init_cbs;
-  HashMap<RgPhysicalBufferId, RgMemoryBarrier> m_buffer_init_barriers;
 
   struct RgTextureDesc {
     u32 width = 0;
@@ -479,6 +474,7 @@ private:
     u32 num_instances = 0;
   };
 
+  HashMap<String, RgTextureId> m_texture_ids;
   Vector<RgTextureId> m_texture_parents;
   Vector<Handle<Texture>> m_textures;
   HashMap<RgPhysicalTextureId, RgTextureDesc> m_texture_descs;
@@ -510,25 +506,9 @@ public:
 
   auto is_buffer_valid(StringView buffer) const -> bool;
 
-  void set_buffer_init_callback(StringView buffer,
-                                CRgBufferInitCallback auto cb) {
-    m_buffer_init_cbs.insert(get_or_alloc_buffer(buffer), std::move(cb));
-  }
-
-#define ren_rg_buffer_init_callback                                            \
-  [=](Device & device, const BufferView &buffer, TransferPass &cmd)
-
   void create_texture(RgTextureCreateInfo &&create_info);
 
   auto is_texture_valid(StringView texture) const -> bool;
-
-  void set_texture_init_callback(StringView buffer,
-                                 CRgTextureInitCallback auto cb) {
-    todo();
-  }
-
-#define ren_rg_texture_init_callback                                           \
-  [=](Device & device, Handle<Texture> texture, TransferPass & cmd)
 
   void present(StringView texture);
 
@@ -545,12 +525,10 @@ private:
                                     const RgBufferUsage &usage)
       -> RgBufferUseId;
 
-  [[nodiscard]] auto get_or_alloc_buffer(StringView name,
-                                         u32 temporal_layer = 0) -> RgBufferId;
+  [[nodiscard]] auto get_or_alloc_buffer(StringView name) -> RgBufferId;
 
   [[nodiscard]] auto read_buffer(RgPassId pass, StringView buffer,
-                                 const RgBufferUsage &usage,
-                                 u32 temporal_layer = 0) -> RgBufferId;
+                                 const RgBufferUsage &usage) -> RgBufferId;
 
   [[nodiscard]] auto write_buffer(RgPassId pass, StringView dst_buffer,
                                   StringView src_buffer,
@@ -590,9 +568,9 @@ private:
 
   template <typename T>
   void set_update_callback(RgPassId pass, CRgUpdateCallback<T> auto cb) {
-    m_rg->m_pass_update_cbs[pass] = [cb = std::move(cb)](RgUpdate &rg,
-                                                         const Any &data) {
-      cb(rg, *data.get<T>());
+    m_passes[pass].update_cb = [cb = std::move(cb)](RgUpdate &rg,
+                                                    const Any &data) {
+      return cb(rg, *data.get<T>());
     };
   }
 
@@ -662,6 +640,7 @@ private:
     Variant<Monostate, RgHostPassInfo, RgGraphicsPassInfo, RgComputePassInfo,
             RgTransferPassInfo>
         type;
+    RgUpdateCallback update_cb;
   };
 
   Vector<RgPassInfo> m_passes = {{}};
@@ -674,17 +653,13 @@ private:
     BufferHeap heap;
     VkBufferUsageFlags usage = 0;
     usize size = 0;
-    usize alignment = 0;
-    u32 num_temporal_layers = 0;
   };
 
-  HashMap<String, RgBufferId> m_buffer_ids;
   HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
 #if REN_RG_DEBUG
   HashMap<RgBufferId, String> m_buffer_names;
   Vector<RgBufferId> m_buffer_children = {{}};
 #endif
-  HashMap<RgBufferId, RgBufferInitCallback> m_buffer_init_cbs;
   Vector<RgPassId> m_buffer_defs = {{}};
   Vector<RgPassId> m_buffer_kills = {{}};
 
@@ -699,7 +674,6 @@ private:
     u32 num_temporal_layers = 1;
   };
 
-  HashMap<String, RgTextureId> m_texture_ids;
   HashMap<RgPhysicalTextureId, RgTextureDesc> m_texture_descs;
 #if REN_RG_DEBUG
   HashMap<RgTextureId, String> m_texture_names;
@@ -721,8 +695,8 @@ public:
   [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info,
                                    const RgBufferUsage &usage) -> RgBufferId;
 
-  [[nodiscard]] auto read_buffer(StringView buffer, const RgBufferUsage &usage,
-                                 u32 temporal_layer = 0) -> RgBufferId;
+  [[nodiscard]] auto read_buffer(StringView buffer, const RgBufferUsage &usage)
+      -> RgBufferId;
 
   [[nodiscard]] auto write_buffer(StringView dst_buffer, StringView src_buffer,
                                   const RgBufferUsage &usage) -> RgBufferId;

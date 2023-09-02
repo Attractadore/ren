@@ -110,8 +110,8 @@ auto load_pipelines(ResourceArena &arena,
       .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
       .post_processing =
           load_post_processing_pipeline(arena, persistent_set_layout),
-      .reduce_luminance_histogram =
-          load_reduce_luminance_histogram_pipeline(arena),
+      .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
+          arena, persistent_set_layout),
   };
 }
 
@@ -146,10 +146,11 @@ auto load_opaque_pass_pipeline(
   });
 }
 
-auto load_reduce_luminance_histogram_pipeline(ResourceArena &arena)
+auto load_reduce_luminance_histogram_pipeline(
+    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
-      arena, Handle<DescriptorSetLayout>(),
+      arena, persistent_set_layout,
       Span(ReduceLuminanceHistogramShader, ReduceLuminanceHistogramShader_count)
           .as_bytes(),
       "Reduce luminance histogram");

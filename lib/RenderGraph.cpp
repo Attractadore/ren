@@ -10,6 +10,11 @@
 
 namespace ren {
 
+auto RenderGraph::physical_buffers() const {
+  return range<int>(1, m_buffers.size()) |
+         map([](int idx) { return RgPhysicalBufferId(idx); });
+}
+
 auto RenderGraph::get_physical_buffer(RgBufferId buffer) const
     -> RgPhysicalBufferId {
   RgBufferId parent = m_buffer_parents[buffer];
@@ -47,6 +52,25 @@ auto RgRuntime::get_storage_texture_descriptor(RgTextureId texture) const
       ->m_storage_texture_descriptors[m_rg->get_physical_texture(texture)];
 }
 
+RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
+
+void RgUpdate::resize_buffer(RgBufferId buffer, usize size) {
+  m_rg->m_buffer_descs[m_rg->get_physical_buffer(buffer)].size = size;
+}
+
+auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
+    -> RgPublicTextureDesc {
+  const Texture &texture = m_rg->m_device->get_texture(
+      m_rg->m_textures[m_rg->get_physical_texture(texture_id)]);
+  return {
+      .type = texture.type,
+      .format = texture.format,
+      .size = texture.size,
+      .num_mip_levels = texture.num_mip_levels,
+      .num_array_layers = texture.num_array_layers,
+  };
+}
+
 RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
                          TextureIDAllocator &tex_alloc)
     : m_arena(device) {
@@ -74,86 +98,19 @@ RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
       m_arena, m_tex_alloc->get_set_layout(), {}, "Render graph");
 }
 
-auto RenderGraph::is_pass_valid(StringView pass) -> bool {
+auto RenderGraph::is_pass_valid(StringView pass) const -> bool {
   return m_pass_ids.contains(pass);
 }
 
-RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
-
-auto RgUpdate::resize_buffer(RgBufferId buffer, usize size) -> bool {
-  auto it = m_rg->m_buffer_descs.find(m_rg->get_physical_buffer(buffer));
-  assert(it != m_rg->m_buffer_descs.end());
-  RenderGraph::RgBufferDesc &desc = it->second;
-  if (desc.size == size) {
-    return false;
-  }
-  desc.size = size;
-  return true;
+auto RenderGraph::is_buffer_valid(StringView buffer) const -> bool {
+  return m_buffer_ids.contains(buffer);
 }
 
-auto RgUpdate::resize_texture(RgTextureId vtexture,
-                              const RgTextureSizeInfo &size_info) -> bool {
-  RgPhysicalTextureId ptexture = m_rg->get_physical_texture(vtexture);
-  auto it = m_rg->m_texture_descs.find(ptexture);
-  assert(it != m_rg->m_texture_descs.end());
-  RenderGraph::RgTextureDesc &desc = it->second;
-
-  if (desc.width == size_info.width and desc.height == size_info.height and
-      desc.depth == size_info.depth and
-      desc.num_mip_levels == size_info.num_mip_levels and
-      desc.num_array_layers == size_info.num_array_layers) {
-    return false;
-  }
-
-  desc.width = size_info.width;
-  desc.height = size_info.height;
-  desc.depth = size_info.depth;
-  desc.num_mip_levels = size_info.num_mip_levels;
-  desc.num_array_layers = size_info.num_array_layers;
-
-  for (int i : range(desc.num_instances)) {
-    RgPhysicalTextureId cur_ptexture(ptexture + i);
-    Handle<Texture> old_htexture = m_rg->m_textures[cur_ptexture];
-    const Texture &old_texture = m_rg->m_device->get_texture(old_htexture);
-    Handle<Texture> htexture = m_rg->m_arena.create_texture({
-        .name = fmt::format("Render graph texture {}", u32(cur_ptexture)),
-        .type = old_texture.type,
-        .format = old_texture.format,
-        .usage = old_texture.usage,
-        .width = desc.width,
-        .height = desc.height,
-        .depth = desc.depth,
-        .num_mip_levels = desc.num_mip_levels,
-        .num_array_layers = desc.num_array_layers,
-    });
-    m_rg->m_arena.destroy_texture(old_htexture);
-    m_rg->m_textures[cur_ptexture] = htexture;
-
-    StorageTextureID &storage_descr =
-        m_rg->m_storage_texture_descriptors[cur_ptexture];
-    if (storage_descr) {
-      m_rg->m_tex_alloc->free_storage_texture(storage_descr);
-      storage_descr = m_rg->m_tex_alloc->allocate_storage_texture(
-          m_rg->m_device->get_texture_view(htexture));
-    }
-  }
-
-  return true;
-};
-
-void RenderGraph::update() {
-  RgUpdate upd(*this);
-  for (const auto &[data, cb] : zip(m_pass_datas, m_pass_update_cbs)) {
-    if (cb) {
-      cb(upd, data);
-    }
-  }
+auto RenderGraph::is_texture_valid(StringView texture) const -> bool {
+  return m_texture_ids.contains(texture);
 }
 
 void RenderGraph::rotate_resources() {
-  for (const auto &[buffer, desc] : m_temporal_buffer_descs) {
-    rotate_left(Span(m_buffers).subspan(buffer, desc.num_temporal_layers));
-  }
   rotate_left(m_heap_buffers);
 
   rotate_left(Span(m_semaphores)
@@ -174,10 +131,11 @@ void RenderGraph::rotate_resources() {
 void RenderGraph::allocate_buffers() {
   // Calculate required size for each buffer heap
   std::array<usize, NUM_BUFFER_HEAPS> required_heap_sizes = {};
-  for (const auto &[_, desc] : m_buffer_descs) {
+  for (RgPhysicalBufferId buffer : physical_buffers()) {
+    const RgBufferDesc &desc = m_buffer_descs[buffer];
     auto heap = int(desc.heap);
     usize heap_size = required_heap_sizes[heap];
-    heap_size = pad(heap_size, desc.alignment) + desc.size;
+    heap_size = pad(heap_size, GPU_COALESCING_WIDTH) + desc.size;
     required_heap_sizes[heap] = heap_size;
   }
 
@@ -188,7 +146,7 @@ void RenderGraph::allocate_buffers() {
     const Buffer &heap_buffer = m_device->get_buffer(heaps[heap]);
     if (heap_buffer.size < required_heap_size) {
       Handle<Buffer> old_heap = heaps[heap];
-      heaps[heap] = m_arena.create_buffer(BufferCreateInfo{
+      heaps[heap] = m_arena.create_buffer({
           .name = fmt::format("Render graph buffer for heap {}", heap),
           .heap = heap_buffer.heap,
           .usage = heap_buffer.usage,
@@ -198,11 +156,12 @@ void RenderGraph::allocate_buffers() {
     }
   }
 
-  // Allocate non-temporal buffers
+  // Allocate buffers
   std::array<usize, NUM_BUFFER_HEAPS> stack_tops = {};
-  for (const auto &[buffer, desc] : m_buffer_descs) {
+  for (RgPhysicalBufferId buffer : physical_buffers()) {
+    const RgBufferDesc &desc = m_buffer_descs[buffer];
     auto heap = int(desc.heap);
-    usize offset = pad(stack_tops[heap], desc.alignment);
+    usize offset = pad(stack_tops[heap], GPU_COALESCING_WIDTH);
     usize size = desc.size;
     assert(offset + size <= required_heap_sizes[heap]);
     stack_tops[heap] = offset + size;
@@ -214,45 +173,10 @@ void RenderGraph::allocate_buffers() {
   }
 }
 
-void RenderGraph::init_dirty_buffers(CommandAllocator &cmd_alloc) {
-  if (m_dirty_temporal_buffers.empty()) {
-    return;
-  }
-
-  VkCommandBufferSubmitInfo cmd_buffer = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd_alloc.allocate(),
-  };
-  CommandRecorder rec(*m_device, cmd_buffer.commandBuffer);
-
-  Vector<VkMemoryBarrier2> vk_memory_barriers;
-  vk_memory_barriers.reserve(m_dirty_temporal_buffers.size());
-  for (RgPhysicalBufferId buffer : m_dirty_temporal_buffers) {
-    const RgBufferInitCallback &cb = m_buffer_init_cbs[buffer];
-    if (cb) {
-      i32 num_temporal_layers =
-          m_temporal_buffer_descs[buffer].num_temporal_layers;
-      for (i32 layer = 1; layer < num_temporal_layers; ++layer) {
-        cb(*m_device, m_buffers[buffer + layer], rec);
-      }
-      vk_memory_barriers.push_back(m_buffer_init_barriers[buffer]);
-    }
-  }
-  if (not vk_memory_barriers.empty()) {
-    rec.pipeline_barrier(vk_memory_barriers, {});
-  }
-
-  m_device->graphicsQueueSubmit({cmd_buffer});
-}
-
 void RenderGraph::execute(CommandAllocator &cmd_alloc) {
-  update();
-
   rotate_resources();
 
   allocate_buffers();
-
-  init_dirty_buffers(cmd_alloc);
 
   RgRuntime rt;
   rt.m_rg = this;

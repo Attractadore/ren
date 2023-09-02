@@ -1,4 +1,7 @@
 #include "ReduceLuminanceHistogramPass.glsl"
+#include "Textures.glsl"
+
+TEXTURES;
 
 PUSH_CONSTANTS GLSL_REDUCE_LUMINANCE_HISTOGRAM_CONSTANTS g_pcs;
 
@@ -33,5 +36,5 @@ void main() {
     exposure = 1.0f / max_luminance;
   }
 
-  g_pcs.exposure.exposure = exposure;
+  imageStore(g_rwimages2d[g_pcs.exposure_texture], ivec2(0), vec4(exposure));
 }

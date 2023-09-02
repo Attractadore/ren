@@ -6,6 +6,8 @@
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
+#include "glsl/Lighting.h"
+#include "glsl/Material.h"
 
 namespace ren {
 

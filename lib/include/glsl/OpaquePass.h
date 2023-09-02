@@ -2,7 +2,6 @@
 #define REN_GLSL_OPAQUE_PASS_H
 
 #include "Encode.h"
-#include "Exposure.h"
 #include "Lighting.h"
 #include "Material.h"
 #include "common.h"
@@ -25,7 +24,7 @@ GLSL_BUFFER(8) OpaqueUniformBuffer {
   GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(Materials) materials;
   GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(DirectionalLights)
       directional_lights;
-  GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(Exposure) exposure;
+  uint exposure_texture;
   mat4 pv;
   vec3 eye;
   uint num_directional_lights;

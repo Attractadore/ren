@@ -82,7 +82,6 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 RgBuilder::RgBuilder(RenderGraph &rg) {
   m_rg = &rg;
   m_rg->m_pass_datas = {{}};
-  m_rg->m_pass_update_cbs = {{}};
   m_rg->m_pass_names = {{}};
 }
 
@@ -90,7 +89,6 @@ auto RgBuilder::create_pass(String name) -> RgPassBuilder {
   RgPassId id(m_passes.size());
   m_passes.emplace_back();
   m_rg->m_pass_datas.emplace_back();
-  m_rg->m_pass_update_cbs.emplace_back();
 #if REN_RG_DEBUG
   m_rg->m_pass_names.push_back(name);
 #endif
@@ -116,34 +114,24 @@ auto RgBuilder::get_buffer_kill(RgBufferId buffer) const -> RgPassId {
   return m_buffer_kills[buffer];
 }
 
-auto RgBuilder::get_or_alloc_buffer(StringView name, u32 temporal_layer)
-    -> RgBufferId {
-  RgBufferId id;
-  auto it = m_buffer_ids.find(name);
-  if (it != m_buffer_ids.end()) {
-    id = RgBufferId(it->second + temporal_layer);
-  } else {
-    id = RgBufferId(m_rg->m_buffer_parents.size());
-    usize num_buffers = id + RG_MAX_TEMPORAL_LAYERS;
-    m_rg->m_buffer_parents.resize(num_buffers);
-    m_buffer_ids.insert(it, String(name), id);
-    m_buffer_defs.resize(num_buffers);
-    m_buffer_kills.resize(num_buffers);
+auto RgBuilder::get_or_alloc_buffer(StringView name) -> RgBufferId {
+  auto it = m_rg->m_buffer_ids.find(name);
+  if (it == m_rg->m_buffer_ids.end()) {
+    RgBufferId id(m_rg->m_buffer_parents.size());
+    m_rg->m_buffer_parents.emplace_back();
+    m_buffer_defs.emplace_back();
+    m_buffer_kills.emplace_back();
 #if REN_RG_DEBUG
-    m_buffer_children.resize(num_buffers);
+    m_buffer_children.emplace_back();
 #endif
-    id = RgBufferId(id + temporal_layer);
+    it = m_rg->m_buffer_ids.insert(it, String(name), id);
   }
+  RgBufferId id = it->second;
 #if REN_RG_DEBUG
   {
     auto it = m_buffer_names.find(id);
     if (it == m_buffer_names.end()) {
-      if (temporal_layer > 0) {
-        m_buffer_names.insert(it, id,
-                              fmt::format("{}#{}", name, temporal_layer));
-      } else {
-        m_buffer_names.insert(it, id, String(name));
-      }
+      m_buffer_names.insert(it, id, String(name));
     }
   }
 #endif
@@ -151,25 +139,17 @@ auto RgBuilder::get_or_alloc_buffer(StringView name, u32 temporal_layer)
 }
 
 void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) {
-  assert(create_info.num_temporal_layers > 0);
   RgBufferId id = get_or_alloc_buffer(std::move(create_info.name));
-  for (int i : range(create_info.num_temporal_layers)) {
-    m_rg->m_buffer_parents[id + i] = RgBufferId(id + i);
-  }
-  m_buffer_descs.insert(
-      RgPhysicalBufferId(id),
-      {
-          .num_temporal_layers = create_info.num_temporal_layers,
-          .heap = create_info.heap,
-          .size = create_info.size,
-          .alignment = create_info.alignment,
-      });
+  m_rg->m_buffer_parents[id] = id;
+  m_buffer_descs.insert(RgPhysicalBufferId(id), {
+                                                    .heap = create_info.heap,
+                                                    .size = create_info.size,
+                                                });
 }
 
 auto RgBuilder::read_buffer(RgPassId pass, StringView buffer,
-                            const RgBufferUsage &usage, u32 temporal_layer)
-    -> RgBufferId {
-  RgBufferId id = get_or_alloc_buffer(buffer, temporal_layer);
+                            const RgBufferUsage &usage) -> RgBufferId {
+  RgBufferId id = get_or_alloc_buffer(buffer);
   m_passes[pass].read_buffers.push_back(add_buffer_use(id, usage));
   return id;
 }
@@ -184,17 +164,15 @@ auto RgBuilder::write_buffer(RgPassId pass, StringView dst_buffer,
   m_buffer_children[src_id] = dst_id;
 #endif
   m_buffer_defs[dst_id] = pass;
-  for (int i : range(RG_MAX_TEMPORAL_LAYERS)) {
-    ren_assert(!m_rg->m_buffer_parents[dst_id + i],
-               "Render graph buffers must be written only once");
-    m_rg->m_buffer_parents[dst_id + i] = RgBufferId(src_id + i);
-  }
+  ren_assert(!m_rg->m_buffer_parents[dst_id],
+             "Render graph buffers must be written only once");
+  m_rg->m_buffer_parents[dst_id] = src_id;
   m_passes[pass].write_buffers.push_back(add_buffer_use(src_id, usage));
   return dst_id;
 }
 
 auto RgBuilder::is_buffer_valid(StringView buffer) const -> bool {
-  return m_buffer_ids.contains(buffer);
+  return m_rg->is_buffer_valid(buffer);
 }
 
 auto RgBuilder::add_texture_use(RgTextureId texture,
@@ -218,14 +196,14 @@ auto RgBuilder::get_texture_kill(RgTextureId texture) const -> RgPassId {
 auto RgBuilder::get_or_alloc_texture(StringView name, u32 temporal_layer)
     -> RgTextureId {
   RgTextureId id;
-  auto it = m_texture_ids.find(name);
-  if (it != m_texture_ids.end()) {
+  auto it = m_rg->m_texture_ids.find(name);
+  if (it != m_rg->m_texture_ids.end()) {
     id = RgTextureId(it->second + temporal_layer);
   } else {
     id = RgTextureId(m_rg->m_texture_parents.size());
     usize num_textures = id + RG_MAX_TEMPORAL_LAYERS;
     m_rg->m_texture_parents.resize(num_textures);
-    m_texture_ids.insert(it, String(name), id);
+    m_rg->m_texture_ids.insert(it, String(name), id);
     m_texture_defs.resize(num_textures);
     m_texture_kills.resize(num_textures);
 #if REN_RG_DEBUG
@@ -297,7 +275,7 @@ auto RgBuilder::write_texture(RgPassId pass, StringView dst_texture,
 }
 
 auto RgBuilder::is_texture_valid(StringView texture) const -> bool {
-  return m_texture_ids.contains(texture);
+  return m_rg->is_texture_valid(texture);
 }
 
 auto RgBuilder::add_semaphore_signal(RgSemaphoreId semaphore,
@@ -559,7 +537,7 @@ void RgBuilder::dump_schedule(Span<const RgPassId> schedule) const {
 void RgBuilder::build() {
   build_buffer_disjoint_set();
 
-  RgTextureId backbuffer = m_texture_ids["rg-backbuffer"];
+  RgTextureId backbuffer = m_rg->m_texture_ids["rg-backbuffer"];
   assert(backbuffer);
   m_rg->m_texture_parents[backbuffer] = backbuffer;
   m_rg->m_backbuffer = RgPhysicalTextureId(backbuffer);

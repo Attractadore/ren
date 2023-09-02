@@ -41,7 +41,8 @@ void main() {
                            roughness, light_color * illuminance);
   }
 
-  result *= g_pcs.ub.exposure.exposure;
+  float exposure = imageLoad(g_rimages2d[g_pcs.ub.exposure_texture], ivec2(0)).r;
+  result *= exposure;
 
   g_color = result;
 }

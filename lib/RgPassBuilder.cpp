@@ -16,9 +16,9 @@ auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
   return write_buffer(name, init_name, usage);
 }
 
-auto RgPassBuilder::read_buffer(StringView buffer, const RgBufferUsage &usage,
-                                u32 temporal_layer) -> RgBufferId {
-  return m_builder->read_buffer(m_pass, buffer, usage, temporal_layer);
+auto RgPassBuilder::read_buffer(StringView buffer, const RgBufferUsage &usage)
+    -> RgBufferId {
+  return m_builder->read_buffer(m_pass, buffer, usage);
 }
 
 auto RgPassBuilder::write_buffer(StringView dst_buffer, StringView src_buffer,
