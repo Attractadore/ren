@@ -72,13 +72,31 @@ void CommandRecorder::copy_buffer(const BufferView &src,
               }});
 }
 
-void CommandRecorder::copy_buffer_to_image(
+void CommandRecorder::copy_buffer_to_texture(
     Handle<Buffer> src, Handle<Texture> dst,
     TempSpan<const VkBufferImageCopy> regions) {
   m_device->CmdCopyBufferToImage(m_cmd_buffer, m_device->get_buffer(src).handle,
                                  m_device->get_texture(dst).image,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                  regions.size(), regions.data());
+}
+
+void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
+                                             Handle<Texture> dst, u32 level) {
+  const Texture &texture = m_device->get_texture(dst);
+  assert(level < texture.num_mip_levels);
+  copy_buffer_to_texture(
+      src.buffer, dst,
+      {{
+          .bufferOffset = src.offset,
+          .imageSubresource =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .mipLevel = level,
+                  .layerCount = texture.num_array_layers,
+              },
+          .imageExtent = {texture.size.x, texture.size.y, texture.size.z},
+      }});
 }
 
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {

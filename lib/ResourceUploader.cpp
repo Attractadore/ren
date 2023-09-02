@@ -81,17 +81,7 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
     cmd.pipeline_barrier({}, {barrier});
   }
 
-  // Copy data to first mip level
-  VkBufferImageCopy region = {
-      .bufferOffset = src.offset,
-      .imageSubresource =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .layerCount = texture.num_array_layers,
-          },
-  };
-  std::memcpy(&region.imageExtent, &texture.size, sizeof(texture.size));
-  cmd.copy_buffer_to_image(src.buffer, dst, {region});
+  cmd.copy_buffer_to_texture(src, dst);
 
   generate_mipmaps(device, cmd, dst);
 

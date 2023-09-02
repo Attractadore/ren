@@ -72,8 +72,11 @@ public:
 
   void copy_buffer(const BufferView &src, const BufferView &dst);
 
-  void copy_buffer_to_image(Handle<Buffer> src, Handle<Texture> dst,
-                            TempSpan<const VkBufferImageCopy> regions);
+  void copy_buffer_to_texture(Handle<Buffer> src, Handle<Texture> dst,
+                              TempSpan<const VkBufferImageCopy> regions);
+
+  void copy_buffer_to_texture(const BufferView &src, Handle<Texture> dst,
+                              u32 level = 0);
 
   void fill_buffer(const BufferView &buffer, u32 value);
 
