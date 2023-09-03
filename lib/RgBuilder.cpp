@@ -244,6 +244,7 @@ void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) {
           .num_mip_levels = create_info.num_mip_levels,
           .num_array_layers = create_info.num_array_layers,
           .num_temporal_layers = create_info.num_temporal_layers,
+          .clear = create_info.clear,
       });
 }
 
@@ -491,7 +492,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
   return schedule;
 }
 
-void RgBuilder::dump_schedule(Span<const RgPassId> schedule) const {
+void RgBuilder::dump_pass_schedule(Span<const RgPassId> schedule) const {
 #if REN_RG_DEBUG
   fmt::println(stderr, "Scheduled passes:");
   for (RgPassId pass_id : schedule) {
@@ -534,6 +535,74 @@ void RgBuilder::dump_schedule(Span<const RgPassId> schedule) const {
 #endif
 }
 
+auto RgBuilder::passes() const {
+  return range<int>(1, m_passes.size()) |
+         map([](int idx) { return RgPassId(idx); });
+}
+
+void RgBuilder::create_resources(Span<const RgPassId> schedule) {
+  m_rg->m_arena.clear();
+
+  std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> heap_usage_flags = {};
+
+  for (RgPassId pass_id : schedule) {
+    const RgPassInfo &pass = m_passes[pass_id];
+
+    auto update_buffer_heap_usage_flags = [&](RgBufferUseId use_id) {
+      const RgBufferUse &use = m_buffer_uses[use_id];
+      RgPhysicalBufferId physical_buffer_id(m_rg->m_buffer_parents[use.buffer]);
+      auto heap = i32(m_buffer_descs[physical_buffer_id].heap);
+      heap_usage_flags[heap] |= get_buffer_usage_flags(use.usage.access_mask);
+    };
+
+    ranges::for_each(pass.read_buffers, update_buffer_heap_usage_flags);
+    ranges::for_each(pass.write_buffers, update_buffer_heap_usage_flags);
+
+    auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
+      const RgTextureUse &use = m_texture_uses[use_id];
+      RgPhysicalTextureId physical_texture_id(
+          m_rg->m_texture_parents[use.texture]);
+      m_texture_descs.get(physical_texture_id).map([&](RgTextureDesc &desc) {
+        desc.usage |= get_texture_usage_flags(use.usage.access_mask);
+      });
+    };
+
+    ranges::for_each(pass.read_textures, update_texture_usage_flags);
+    ranges::for_each(pass.write_textures, update_texture_usage_flags);
+  }
+
+  m_rg->m_heap_buffer_usage_flags = heap_usage_flags;
+
+  m_rg->m_textures.resize(m_rg->m_texture_parents.size());
+  for (const auto &[base_texture_id, desc] : m_texture_descs) {
+    VkImageUsageFlags usage = desc.usage;
+    if (desc.num_temporal_layers > 1 and desc.clear) {
+      usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
+    auto num_instances =
+        std::max<u32>(desc.num_temporal_layers, PIPELINE_DEPTH);
+    for (i32 i = 0; i < num_instances; ++i) {
+      RgPhysicalTextureId texture_id(base_texture_id + i);
+      m_rg->m_textures[texture_id] = m_rg->m_arena.create_texture({
+          .name = fmt::format("Render graph texture {}", i32(texture_id)),
+          .type = desc.type,
+          .format = desc.format,
+          .usage = usage,
+          .width = desc.width,
+          .height = desc.height,
+          .depth = desc.depth,
+          .num_mip_levels = desc.num_mip_levels,
+          .num_array_layers = desc.num_array_layers,
+      });
+    }
+    m_rg->m_texture_instance_counts.insert(base_texture_id, num_instances);
+  }
+
+  for (const auto &[name, semaphore] : m_semaphore_ids) {
+    m_rg->m_arena.create_semaphore({.name = name});
+  }
+}
+
 void RgBuilder::build() {
   build_buffer_disjoint_set();
 
@@ -544,7 +613,9 @@ void RgBuilder::build() {
   build_texture_disjoint_set();
 
   Vector<RgPassId> schedule = build_pass_schedule();
-  dump_schedule(schedule);
+  dump_pass_schedule(schedule);
+
+  create_resources(schedule);
 
   todo();
 }

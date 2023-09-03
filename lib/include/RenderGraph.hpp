@@ -462,22 +462,15 @@ private:
   Vector<RgBufferId> m_buffer_parents;
   Vector<BufferView> m_buffers;
   Vector<RgBufferDesc> m_buffer_descs;
+  std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> m_heap_buffer_usage_flags =
+      {};
   std::array<std::array<Handle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
       m_heap_buffers;
-
-  struct RgTextureDesc {
-    u32 width = 0;
-    u32 height = 0;
-    u32 depth = 0;
-    u32 num_mip_levels = 0;
-    u32 num_array_layers = 0;
-    u32 num_instances = 0;
-  };
 
   HashMap<String, RgTextureId> m_texture_ids;
   Vector<RgTextureId> m_texture_parents;
   Vector<Handle<Texture>> m_textures;
-  HashMap<RgPhysicalTextureId, RgTextureDesc> m_texture_descs;
+  HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
   TextureIDAllocator *m_tex_alloc = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
   Vector<StorageTextureID> m_storage_texture_descriptors;
@@ -623,9 +616,13 @@ private:
 
   void build_texture_disjoint_set();
 
+  auto passes() const;
+
   auto build_pass_schedule() -> Vector<RgPassId>;
 
-  void dump_schedule(Span<const RgPassId> schedule) const;
+  void dump_pass_schedule(Span<const RgPassId> schedule) const;
+
+  void create_resources(Span<const RgPassId> schedule);
 
 private:
   RenderGraph *m_rg = nullptr;
@@ -666,12 +663,14 @@ private:
   struct RgTextureDesc {
     VkImageType type = VK_IMAGE_TYPE_2D;
     VkFormat format = VK_FORMAT_UNDEFINED;
+    VkImageUsageFlags usage = 0;
     u32 width = 0;
     u32 height = 1;
     u32 depth = 1;
     u32 num_mip_levels = 1;
     u32 num_array_layers = 1;
     u32 num_temporal_layers = 1;
+    Variant<Monostate, glm::vec4, VkClearDepthStencilValue> clear;
   };
 
   HashMap<RgPhysicalTextureId, RgTextureDesc> m_texture_descs;

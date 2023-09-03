@@ -12,12 +12,13 @@ class RgBuilder;
 struct OpaquePassConfig {
   Handle<GraphicsPipeline> pipeline;
   ExposurePassOutput exposure;
+  glm::uvec2 viewport_size;
 };
 
 struct OpaquePassData {
   const HandleMap<Mesh> *meshes = nullptr;
   Span<const MeshInst> mesh_insts;
-  glm::uvec2 size;
+  glm::uvec2 viewport_size;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;

@@ -118,10 +118,10 @@ void RenderGraph::rotate_resources() {
   rotate_left(Span(m_semaphores)
                   .subspan(m_present_semaphore, m_present_semaphores.size()));
 
-  for (const auto &[texture, desc] : m_texture_descs) {
-    rotate_left(Span(m_textures).subspan(texture, desc.num_instances));
-    rotate_left(Span(m_storage_texture_descriptors)
-                    .subspan(texture, desc.num_instances));
+  for (const auto &[texture, num_instances] : m_texture_instance_counts) {
+    rotate_left(Span(m_textures).subspan(texture, num_instances));
+    rotate_left(
+        Span(m_storage_texture_descriptors).subspan(texture, num_instances));
   }
 
   m_swapchain->acquireImage(m_semaphores[m_acquire_semaphore]);
@@ -140,16 +140,19 @@ void RenderGraph::allocate_buffers() {
   }
 
   // Resize each buffer heap if necessary
-  Span<Handle<Buffer>> heaps = m_heap_buffers.front();
-  for (int heap = 0; heap < heaps.size(); ++heap) {
-    usize required_heap_size = required_heap_sizes[heap];
-    const Buffer &heap_buffer = m_device->get_buffer(heaps[heap]);
-    if (heap_buffer.size < required_heap_size) {
-      Handle<Buffer> old_heap = heaps[heap];
-      heaps[heap] = m_arena.create_buffer({
+  Span<Handle<Buffer>> heap_buffers = m_heap_buffers.front();
+  for (int heap = 0; heap < heap_buffers.size(); ++heap) {
+    auto required_heap_size =
+        std::min<usize>(required_heap_sizes[heap], 1024 * 1024);
+    usize heap_size =
+        m_device->try_get_buffer(heap_buffers[heap])
+            .map_or([](const Buffer &buffer) { return buffer.size; }, 0);
+    if (heap_size < required_heap_size) {
+      Handle<Buffer> old_heap = heap_buffers[heap];
+      heap_buffers[heap] = m_arena.create_buffer({
           .name = fmt::format("Render graph buffer for heap {}", heap),
-          .heap = heap_buffer.heap,
-          .usage = heap_buffer.usage,
+          .heap = BufferHeap(heap),
+          .usage = m_heap_buffer_usage_flags[heap],
           .size = std::bit_ceil(required_heap_size),
       });
       m_arena.destroy_buffer(old_heap);
@@ -166,7 +169,7 @@ void RenderGraph::allocate_buffers() {
     assert(offset + size <= required_heap_sizes[heap]);
     stack_tops[heap] = offset + size;
     m_buffers[buffer] = {
-        .buffer = heaps[heap],
+        .buffer = heap_buffers[heap],
         .offset = offset,
         .size = size,
     };

@@ -24,6 +24,7 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   setup_opaque_pass(rgb, OpaquePassConfig{
                              .pipeline = cfg.pipelines->opaque_pass,
                              .exposure = exposure,
+                             .viewport_size = cfg.viewport_size,
                          });
 
   setup_post_processing_passes(rgb, PostProcessingPassesConfig{
@@ -65,7 +66,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
       "opaque", OpaquePassData{
                     .meshes = data.meshes,
                     .mesh_insts = data.mesh_insts,
-                    .size = size,
+                    .viewport_size = size,
                     .proj = proj,
                     .view = view,
                     .eye = camera.position,

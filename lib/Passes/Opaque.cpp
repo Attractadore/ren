@@ -126,10 +126,14 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
       },
       RG_VS_READ_BUFFER | RG_FS_READ_BUFFER);
 
+  glm::uvec2 viewport_size = cfg.viewport_size;
+
   auto texture = pass.create_color_attachment(
       {
           .name = "color-buffer",
           .format = COLOR_FORMAT,
+          .width = viewport_size.x,
+          .height = viewport_size.y,
       },
       {
           .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -141,6 +145,8 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
       {
           .name = "depth-buffer",
           .format = DEPTH_FORMAT,
+          .width = viewport_size.x,
+          .height = viewport_size.y,
       },
       {
           .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -149,13 +155,7 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
       });
 
   pass.set_update_callback(ren_rg_update_callback(OpaquePassData) {
-    if (glm::uvec2(rg.get_texture_desc(texture).size) != data.size) {
-      return false;
-    }
-    if (glm::uvec2(rg.get_texture_desc(depth_texture).size) != data.size) {
-      return false;
-    }
-    return true;
+    return viewport_size == data.viewport_size;
   });
 
   pass.set_graphics_callback(ren_rg_graphics_callback(OpaquePassData) {

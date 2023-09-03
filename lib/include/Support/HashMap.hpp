@@ -64,6 +64,26 @@ struct HashMap : std::unordered_map<K, V, KeyHash, KeyEqual> {
     return it->second;
   }
 
+  template <typename U>
+    requires CHeterogenousKeyOrKey(U)
+  auto get(const U &key) -> Optional<V &> {
+    auto it = this->find(key);
+    if (it != this->end()) {
+      return it->second;
+    }
+    return None;
+  }
+
+  template <typename U>
+    requires CHeterogenousKeyOrKey(U)
+  auto get(const U &key) const -> Optional<const V &> {
+    auto it = this->find(key);
+    if (it != this->end()) {
+      return it->second;
+    }
+    return None;
+  }
+
   auto erase_if(const std::predicate<const K &, const V &> auto &pred)
       -> usize {
     return std::erase_if(*this, [&](const std::pair<K, V> &kv) {

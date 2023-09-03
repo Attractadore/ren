@@ -365,6 +365,7 @@ void Scene::draw() {
                    PassesConfig{
                        .pipelines = &m_pipelines,
                        .pp_opts = &m_pp_opts,
+                       .viewport_size = {m_viewport_width, m_viewport_height},
                    },
                    PassesData{
                        .viewport_size = {m_viewport_width, m_viewport_height},
