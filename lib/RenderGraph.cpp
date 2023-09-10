@@ -111,16 +111,16 @@ auto RenderGraph::is_texture_valid(StringView texture) const -> bool {
 }
 
 void RenderGraph::rotate_resources() {
-  rotate_left(m_heap_buffers);
+  rotate_right(m_heap_buffers);
 
-  rotate_left(Span(m_semaphores)
-                  .subspan(m_acquire_semaphore, m_acquire_semaphores.size()));
-  rotate_left(Span(m_semaphores)
-                  .subspan(m_present_semaphore, m_present_semaphores.size()));
+  rotate_right(Span(m_semaphores)
+                   .subspan(m_acquire_semaphore, m_acquire_semaphores.size()));
+  rotate_right(Span(m_semaphores)
+                   .subspan(m_present_semaphore, m_present_semaphores.size()));
 
-  for (const auto &[texture, num_instances] : m_texture_instance_counts) {
-    rotate_left(Span(m_textures).subspan(texture, num_instances));
-    rotate_left(
+  for (auto [texture, num_instances] : m_texture_instance_counts) {
+    rotate_right(Span(m_textures).subspan(texture, num_instances));
+    rotate_right(
         Span(m_storage_texture_descriptors).subspan(texture, num_instances));
   }
 
