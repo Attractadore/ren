@@ -11,6 +11,20 @@ namespace ren {
 
 namespace {
 
+constexpr VkAccessFlags2 READ_ONLY_ACCESS_MASK =
+    VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT |
+    VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_UNIFORM_READ_BIT |
+    VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT |
+    VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+    VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+    VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+
+constexpr VkAccessFlags2 WRITE_ONLY_ACCESS_MASK =
+    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+    VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+    VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+
 auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   assert((accesses & VK_ACCESS_2_MEMORY_READ_BIT) == 0);
   assert((accesses & VK_ACCESS_2_MEMORY_WRITE_BIT) == 0);
@@ -603,6 +617,268 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   }
 }
 
+void RgBuilder::place_barriers_and_semaphores(Span<const RgPassId> schedule) {
+  HashMap<RgPhysicalBufferId, RgBufferUsage>
+      buffer_after_write_hazard_src_states;
+  HashMap<RgPhysicalBufferId, VkPipelineStageFlags2>
+      buffer_after_read_hazard_src_states;
+
+  struct TextureUsageWithoutLayout {
+    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
+  };
+
+  HashMap<RgPhysicalTextureId, TextureUsageWithoutLayout>
+      texture_after_write_hazard_src_states;
+  HashMap<RgPhysicalTextureId, VkPipelineStageFlags2>
+      texture_after_read_hazard_src_states;
+  HashMap<RgPhysicalTextureId, VkImageLayout> texture_layouts;
+  HashMap<RgPhysicalTextureId, usize> texture_deferred_barriers;
+
+  m_rg->m_memory_barriers.clear();
+  m_rg->m_texture_barriers.clear();
+
+  for (auto [idx, pass_id] : schedule | enumerate) {
+    const RgPassInfo &pass = m_passes[pass_id];
+
+    usize old_memory_barrier_count = m_rg->m_memory_barriers.size();
+    usize old_texture_barrier_count = m_rg->m_texture_barriers.size();
+
+    // TODO: merge separate barriers together if it doesn't change how
+    // synchronization happens
+    auto maybe_place_barrier_for_buffer = [&](RgBufferUseId use_id) {
+      const RgBufferUse &use = m_buffer_uses[use_id];
+      RgPhysicalBufferId physical_buffer(m_rg->m_buffer_parents[use.buffer]);
+
+      VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
+      VkAccessFlags2 dst_access_mask = use.usage.access_mask;
+
+      // Don't need a barrier for host-only accesses
+      bool is_host_only_access = dst_stage_mask == VK_PIPELINE_STAGE_2_NONE;
+      if (is_host_only_access) {
+        assert(dst_access_mask == VK_ACCESS_2_NONE);
+        return;
+      }
+
+      VkPipelineStageFlags2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+      VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+
+      if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
+        RgBufferUsage &after_write_state =
+            buffer_after_write_hazard_src_states[physical_buffer];
+        // Reset the source stage mask that the next WAR hazard will use
+        src_stage_mask =
+            std::exchange(buffer_after_read_hazard_src_states[physical_buffer],
+                          VK_PIPELINE_STAGE_2_NONE);
+        // If this is a WAR hazard, need to wait for all previous
+        // reads to finish. The previous write's memory has already been made
+        // available by previous RAW barriers, so it only needs to be made
+        // visible
+        // FIXME: According to the Vulkan spec, WAR hazards require only an
+        // execution barrier
+        if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+          // No reads were performed between this write and the previous one so
+          // this is a WAW hazard. Need to wait for the previous write to finish
+          // and make its memory available and visible
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+        }
+        // Update the source stage and access masks that further RAW and WAW
+        // hazards will use
+        after_write_state.stage_mask = dst_stage_mask;
+        // Read accesses are redundant for source access mask
+        after_write_state.access_mask =
+            dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+      } else {
+        // This is a RAW hazard. Need to wait for the previous write to finish
+        // and make it's memory available and visible
+        // TODO/FIXME: all RAW barriers should be merged, since if they are
+        // issued separately they might cause the cache to be flushed multiple
+        // times
+        const RgBufferUsage &after_write_state =
+            buffer_after_write_hazard_src_states[physical_buffer];
+        src_stage_mask = after_write_state.stage_mask;
+        src_access_mask = after_write_state.access_mask;
+        // Update the source stage mask that the next WAR hazard will use
+        buffer_after_read_hazard_src_states[physical_buffer] |= dst_stage_mask;
+      }
+
+      // First barrier isn't required and can be skipped
+      bool is_first_access = src_stage_mask == VK_PIPELINE_STAGE_2_NONE;
+      if (is_first_access) {
+        assert(src_access_mask == VK_PIPELINE_STAGE_2_NONE);
+        return;
+      }
+
+      m_rg->m_memory_barriers.push_back({
+          .src_stage_mask = src_stage_mask,
+          .src_access_mask = src_access_mask,
+          .dst_stage_mask = dst_stage_mask,
+          .dst_access_mask = dst_access_mask,
+      });
+    };
+
+    ranges::for_each(pass.read_buffers, maybe_place_barrier_for_buffer);
+    ranges::for_each(pass.write_buffers, maybe_place_barrier_for_buffer);
+
+    auto maybe_place_barrier_for_texture = [&](RgTextureUseId use_id) {
+      const RgTextureUse &use = m_texture_uses[use_id];
+      RgPhysicalTextureId physical_texture(
+          m_rg->m_texture_parents[use.texture]);
+
+      VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
+      VkAccessFlags2 dst_access_mask = use.usage.access_mask;
+      VkImageLayout dst_layout = use.usage.layout;
+      assert(dst_stage_mask);
+      assert(dst_access_mask);
+      assert(dst_layout);
+
+      VkImageLayout &src_layout = texture_layouts[physical_texture];
+
+      if (dst_layout != src_layout) {
+        // Only a memory barrier is required if layout doesn't change
+        // NOTE: this code is copy-pasted from above
+
+        VkPipelineStageFlags2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+        VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+
+        if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
+          TextureUsageWithoutLayout &after_write_state =
+              texture_after_write_hazard_src_states[physical_texture];
+          src_stage_mask = std::exchange(
+              texture_after_read_hazard_src_states[physical_texture],
+              VK_PIPELINE_STAGE_2_NONE);
+          if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+            src_stage_mask = after_write_state.stage_mask;
+            src_access_mask = after_write_state.access_mask;
+          }
+          after_write_state.stage_mask = dst_stage_mask;
+          after_write_state.access_mask =
+              dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+        } else {
+          const TextureUsageWithoutLayout &after_write_state =
+              texture_after_write_hazard_src_states[physical_texture];
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+          texture_after_read_hazard_src_states[physical_texture] |=
+              dst_stage_mask;
+        }
+
+        assert(src_stage_mask != VK_PIPELINE_STAGE_2_NONE);
+
+        m_rg->m_memory_barriers.push_back({
+            .src_stage_mask = src_stage_mask,
+            .src_access_mask = src_access_mask,
+            .dst_stage_mask = dst_stage_mask,
+            .dst_access_mask = dst_access_mask,
+        });
+      } else {
+        // Need an image barrier to change layout.
+        // Layout transitions are read-write operations, so only to take care of
+        // WAR and WAW hazards in this case
+
+        TextureUsageWithoutLayout &after_write_state =
+            texture_after_write_hazard_src_states[physical_texture];
+        // If this is a WAR hazard, must wait for all previous reads to finish
+        // and make the layout transition's memory available.
+        // Also reset the source stage mask that the next WAR barrier will use
+        VkPipelineStageFlags2 src_stage_mask = std::exchange(
+            texture_after_read_hazard_src_states[physical_texture],
+            VK_PIPELINE_STAGE_2_NONE);
+        VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+        if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+          // If there were no reads between this write and the previous one,
+          // need to wait for the previous write to finish and make it's memory
+          // available and the layout transition's memory visible
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+        }
+        // Update the source stage and access masks that further RAW and WAW
+        // barriers will use
+        after_write_state.stage_mask = dst_stage_mask;
+        after_write_state.access_mask =
+            dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+
+        // If this is the first access to this texture, need to patch stage and
+        // access masks after all barriers have been placed to account for
+        // resource reuse and/or temporal resources
+        bool is_first_access = src_layout == VK_IMAGE_LAYOUT_UNDEFINED;
+        if (is_first_access) {
+          assert(src_stage_mask == VK_PIPELINE_STAGE_2_NONE);
+          assert(src_access_mask == VK_ACCESS_2_NONE);
+          texture_deferred_barriers.insert(physical_texture,
+                                           m_rg->m_texture_barriers.size());
+        }
+
+        m_rg->m_texture_barriers.push_back({
+            .texture = physical_texture,
+            .src_stage_mask = src_stage_mask,
+            .src_access_mask = src_access_mask,
+            .src_layout = src_layout,
+            .dst_stage_mask = dst_stage_mask,
+            .dst_access_mask = dst_access_mask,
+            .dst_layout = dst_layout,
+        });
+
+        // Update current layout
+        src_layout = dst_layout;
+      }
+    };
+
+    ranges::for_each(pass.read_textures, maybe_place_barrier_for_texture);
+    ranges::for_each(pass.write_textures, maybe_place_barrier_for_texture);
+
+    usize new_memory_barrier_count = m_rg->m_memory_barriers.size();
+    usize new_texture_barrier_count = m_rg->m_texture_barriers.size();
+
+    m_rg->m_passes[idx].num_memory_barriers =
+        new_memory_barrier_count - old_memory_barrier_count;
+    m_rg->m_passes[idx].num_texture_barriers =
+        new_texture_barrier_count - old_texture_barrier_count;
+
+    auto get_semaphore_signal = [&](RgSemaphoreSignalId signal_id) {
+      return m_semaphore_signals[signal_id];
+    };
+
+    m_rg->m_wait_semaphores.append(pass.wait_semaphores |
+                                   map(get_semaphore_signal));
+    m_rg->m_passes[idx].num_wait_semaphores = pass.wait_semaphores.size();
+
+    m_rg->m_signal_semaphores.append(pass.signal_semaphores |
+                                     map(get_semaphore_signal));
+    m_rg->m_passes[idx].num_signal_semaphores = pass.signal_semaphores.size();
+  }
+
+  for (auto [base_physical_texture, num_instances] :
+       m_rg->m_texture_instance_counts) {
+    for (i32 i = 0; i < num_instances; ++i) {
+      RgPhysicalTextureId physical_texture(base_physical_texture + i);
+      // C++ % is rem and not mod
+      i32 prev_i = (i + num_instances - 1) % num_instances;
+      // Patch first barrier with transition from temporal slice that is 1 step
+      // into the future
+      RgPhysicalTextureId prev_physical_texture(base_physical_texture + prev_i);
+      // If this is a WAR hazard, only need to wait for previous reads to finish
+      // and make the layout transition's memory visible
+      VkPipelineStageFlags2 src_stage_mask =
+          texture_after_read_hazard_src_states[prev_physical_texture];
+      VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+      if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+        // If this is a WAW hazard, need to wait for previous write to finish,
+        // make its memory available and the layout transition's memory visible
+        const TextureUsageWithoutLayout &prev_after_write_state =
+            texture_after_write_hazard_src_states[prev_physical_texture];
+        src_stage_mask = prev_after_write_state.stage_mask;
+        src_access_mask = prev_after_write_state.access_mask;
+      }
+      usize barrier_idx = texture_deferred_barriers[physical_texture];
+      RgTextureBarrier &barrier = m_rg->m_texture_barriers[barrier_idx];
+      barrier.src_stage_mask = src_stage_mask;
+      barrier.src_access_mask = src_access_mask;
+    }
+  }
+}
+
 void RgBuilder::build() {
   build_buffer_disjoint_set();
 
@@ -616,6 +892,8 @@ void RgBuilder::build() {
   dump_pass_schedule(schedule);
 
   create_resources(schedule);
+
+  place_barriers_and_semaphores(schedule);
 
   todo();
 }

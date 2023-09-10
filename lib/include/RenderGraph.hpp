@@ -332,6 +332,34 @@ private:
   RenderGraph *m_rg = nullptr;
 };
 
+struct RgMemoryBarrier {
+  VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+  VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
+
+public:
+  operator VkMemoryBarrier2() const {
+    return {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = src_stage_mask,
+        .srcAccessMask = src_access_mask,
+        .dstStageMask = dst_stage_mask,
+        .dstAccessMask = dst_access_mask,
+    };
+  }
+};
+
+struct RgTextureBarrier {
+  RgPhysicalTextureId texture;
+  VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+  VkImageLayout src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
+  VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+};
+
 class RenderGraph {
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
@@ -419,34 +447,6 @@ private:
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
-
-  struct RgMemoryBarrier {
-    VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-    VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
-    VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-    VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
-
-  public:
-    operator VkMemoryBarrier2() const {
-      return {
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = src_stage_mask,
-          .srcAccessMask = src_access_mask,
-          .dstStageMask = dst_stage_mask,
-          .dstAccessMask = dst_access_mask,
-      };
-    }
-  };
-
-  struct RgTextureBarrier {
-    RgPhysicalTextureId texture;
-    VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-    VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
-    VkImageLayout src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-    VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
-    VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-  };
 
   Vector<RgMemoryBarrier> m_memory_barriers;
   Vector<RgTextureBarrier> m_texture_barriers;
@@ -623,6 +623,8 @@ private:
   void dump_pass_schedule(Span<const RgPassId> schedule) const;
 
   void create_resources(Span<const RgPassId> schedule);
+
+  void place_barriers_and_semaphores(Span<const RgPassId> schedule);
 
 private:
   RenderGraph *m_rg = nullptr;
