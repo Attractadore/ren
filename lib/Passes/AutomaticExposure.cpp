@@ -6,7 +6,8 @@
 namespace ren {
 
 auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
-  auto _ = rgb.create_pass("automatic-exposure");
+  auto pass = rgb.create_pass("automatic-exposure");
+  pass.set_host_callback(ren_rg_host_callback(RgNoPassData){});
   rgb.create_texture({
       .name = "automatic-exposure-init",
       .format = VK_FORMAT_R32_SFLOAT,

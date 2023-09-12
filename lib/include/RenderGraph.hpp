@@ -296,6 +296,8 @@ public:
   auto get_storage_texture_descriptor(RgTextureId texture) const
       -> StorageTextureID;
 
+  auto get_texture_set() const -> VkDescriptorSet;
+
 private:
   auto map_buffer_impl(RgBufferId buffer, usize offset) const -> std::byte *;
 
@@ -360,6 +362,24 @@ struct RgTextureBarrier {
   VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
+struct RgHostPass {
+  RgHostCallback cb;
+};
+
+struct RgGraphicsPass {
+  u32 num_color_attachments = 0;
+  bool has_depth_attachment = false;
+  RgGraphicsCallback cb;
+};
+
+struct RgComputePass {
+  RgComputeCallback cb;
+};
+
+struct RgTransferPass {
+  RgTransferCallback cb;
+};
+
 class RenderGraph {
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
@@ -408,24 +428,6 @@ private:
 
   ResourceArena m_arena;
 
-  struct RgHostPass {
-    RgHostCallback cb;
-  };
-
-  struct RgGraphicsPass {
-    u32 num_color_attachments = 0;
-    bool has_depth_attachment = false;
-    RgGraphicsCallback cb;
-  };
-
-  struct RgComputePass {
-    RgComputeCallback cb;
-  };
-
-  struct RgTransferPass {
-    RgTransferCallback cb;
-  };
-
   struct RgPassRuntimeInfo {
     RgPassId pass;
     u32 num_memory_barriers;
@@ -437,12 +439,13 @@ private:
 
   Vector<RgPassRuntimeInfo> m_passes;
 
+  HashMap<String, RgPassId> m_pass_ids;
+  Vector<Any> m_pass_datas;
+
 #if REN_RG_DEBUG
   Vector<String> m_pass_names;
 #endif
 
-  HashMap<String, RgPassId> m_pass_ids;
-  Vector<Any> m_pass_datas;
   Vector<RgUpdateCallback> m_pass_update_callbacks;
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
@@ -461,7 +464,7 @@ private:
   HashMap<String, RgBufferId> m_buffer_ids;
   Vector<RgBufferId> m_buffer_parents;
   Vector<BufferView> m_buffers;
-  Vector<RgBufferDesc> m_buffer_descs;
+  HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> m_heap_buffer_usage_flags =
       {};
   std::array<std::array<Handle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
@@ -472,7 +475,6 @@ private:
   Vector<Handle<Texture>> m_textures;
   HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
   TextureIDAllocator *m_tex_alloc = nullptr;
-  Handle<PipelineLayout> m_pipeline_layout;
   Vector<StorageTextureID> m_storage_texture_descriptors;
 
   Vector<Handle<Semaphore>> m_semaphores;
@@ -561,10 +563,10 @@ private:
 
   template <typename T>
   void set_update_callback(RgPassId pass, CRgUpdateCallback<T> auto cb) {
-    m_passes[pass].update_cb = [cb = std::move(cb)](RgUpdate &rg,
-                                                    const Any &data) {
-      return cb(rg, *data.get<T>());
-    };
+    m_rg->m_pass_update_callbacks[pass] =
+        [cb = std::move(cb)](RgUpdate &rg, const Any &data) {
+          return cb(rg, *data.get<T>());
+        };
   }
 
   template <typename T>
@@ -623,6 +625,8 @@ private:
   void dump_pass_schedule(Span<const RgPassId> schedule) const;
 
   void create_resources(Span<const RgPassId> schedule);
+
+  void fill_pass_runtime_info(Span<const RgPassId> schedule);
 
   void place_barriers_and_semaphores(Span<const RgPassId> schedule);
 

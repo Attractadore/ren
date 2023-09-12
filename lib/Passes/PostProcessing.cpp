@@ -39,6 +39,7 @@ void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
   assert(rcs.texture);
 
   pass.bind_compute_pipeline(rcs.pipeline);
+  pass.bind_descriptor_sets({rg.get_texture_set()});
 
   assert(!rcs.histogram == !rcs.exposure);
   BufferReference<glsl::LuminanceHistogram> histogram;
@@ -112,6 +113,7 @@ void run_reduce_luminance_histogram_pass(
   assert(rcs.histogram);
   assert(rcs.exposure);
   pass.bind_compute_pipeline(rcs.pipeline);
+  pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
       .histogram = device.get_buffer_device_address<glsl::LuminanceHistogram>(
           rg.get_buffer(rcs.histogram)),

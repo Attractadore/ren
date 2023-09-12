@@ -53,6 +53,7 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
   };
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
+  render_pass.bind_descriptor_sets({rg.get_texture_set()});
 
   auto ub = device.get_buffer_device_address<glsl::OpaqueUniformBuffer>(
       rg.get_buffer(rcs.uniforms));
