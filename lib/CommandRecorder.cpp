@@ -126,6 +126,62 @@ void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                          regions.data(), filter);
 }
 
+void CommandRecorder::clear_texture(
+    Handle<Texture> texture, TempSpan<const VkClearColorValue> clear_colors,
+    TempSpan<const VkImageSubresourceRange> clear_ranges) {
+  auto count = std::min<usize>(clear_colors.size(), clear_ranges.size());
+  m_device->CmdClearColorImage(m_cmd_buffer,
+                               m_device->get_texture(texture).image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               clear_colors.data(), count, clear_ranges.data());
+}
+
+void CommandRecorder::clear_texture(Handle<Texture> htexture,
+                                    const VkClearColorValue &clear_color) {
+  const Texture &texture = m_device->get_texture(htexture);
+  VkImageSubresourceRange clear_range = {
+      .aspectMask = getVkImageAspectFlags(texture.format),
+      .levelCount = texture.num_mip_levels,
+      .layerCount = texture.num_array_layers,
+  };
+  m_device->CmdClearColorImage(m_cmd_buffer, texture.image,
+                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               &clear_color, 1, &clear_range);
+}
+
+void CommandRecorder::clear_texture(Handle<Texture> texture,
+                                    const glm::vec4 &clear_color) {
+  clear_texture(texture,
+                VkClearColorValue{.float32 = {clear_color.r, clear_color.g,
+                                              clear_color.b, clear_color.a}});
+}
+
+void CommandRecorder::clear_texture(
+    Handle<Texture> texture,
+    TempSpan<const VkClearDepthStencilValue> clear_depth_stencils,
+    TempSpan<const VkImageSubresourceRange> clear_ranges) {
+  auto count =
+      std::min<usize>(clear_depth_stencils.size(), clear_ranges.size());
+  m_device->CmdClearDepthStencilImage(
+      m_cmd_buffer, m_device->get_texture(texture).image,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, clear_depth_stencils.data(), count,
+      clear_ranges.data());
+}
+
+void CommandRecorder::clear_texture(
+    Handle<Texture> htexture,
+    const VkClearDepthStencilValue &clear_depth_stencil) {
+  const Texture &texture = m_device->get_texture(htexture);
+  VkImageSubresourceRange clear_range = {
+      .aspectMask = getVkImageAspectFlags(texture.format),
+      .levelCount = texture.num_mip_levels,
+      .layerCount = texture.num_array_layers,
+  };
+  m_device->CmdClearDepthStencilImage(m_cmd_buffer, texture.image,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      &clear_depth_stencil, 1, &clear_range);
+}
+
 void CommandRecorder::pipeline_barrier(
     const VkDependencyInfo &dependency_info) {
   if (!dependency_info.memoryBarrierCount and

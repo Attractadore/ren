@@ -102,6 +102,23 @@ public:
   void blit(Handle<Texture> src, Handle<Texture> dst,
             TempSpan<const VkImageBlit> regions, VkFilter filter);
 
+  void clear_texture(Handle<Texture> texture,
+                     TempSpan<const VkClearColorValue> clear_colors,
+                     TempSpan<const VkImageSubresourceRange> clear_ranges);
+
+  void clear_texture(Handle<Texture> texture,
+                     const VkClearColorValue &clear_color);
+
+  void clear_texture(Handle<Texture> texture, const glm::vec4 &clear_color);
+
+  void
+  clear_texture(Handle<Texture> texture,
+                TempSpan<const VkClearDepthStencilValue> clear_depth_stencils,
+                TempSpan<const VkImageSubresourceRange> clear_ranges);
+
+  void clear_texture(Handle<Texture> texture,
+                     const VkClearDepthStencilValue &clear_depth_stencil);
+
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 
   void pipeline_barrier(TempSpan<const VkMemoryBarrier2> barriers,
