@@ -7,6 +7,7 @@ set(REN_LOG_SEVERITY
 option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
+option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
 
 find_package(
   Boost
@@ -77,7 +78,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
-get_target_property(VULKAN_HEADERS_INCLUDE_DIRECTORY Vulkan::Headers INTERFACE_INCLUDE_DIRECTORIES)
+get_target_property(VULKAN_HEADERS_INCLUDE_DIRECTORY Vulkan::Headers
+                    INTERFACE_INCLUDE_DIRECTORIES)
 set(VK_XML ${VULKAN_HEADERS_INCLUDE_DIRECTORY}/../share/vulkan/registry/vk.xml)
 set(DISPATCH_TABLE_HPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.hpp)
 set(DISPATCH_TABLE_CPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.cpp)
@@ -143,6 +145,10 @@ endif()
 if(REN_VULKAN_DEBUG_NAMES)
   message(STATUS "Enable Vulkan object debug names")
   target_compile_definitions(ren PRIVATE REN_DEBUG_NAMES)
+endif()
+if(REN_RENDER_GRAPH_DEBUG)
+  message(STATUS "Enable render graph debug features")
+  target_compile_definitions(ren PRIVATE REN_RG_DEBUG)
 endif()
 
 add_subdirectory(Passes)

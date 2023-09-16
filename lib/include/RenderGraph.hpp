@@ -14,7 +14,9 @@
 
 #include <functional>
 
-#define REN_RG_DEBUG 1
+#ifndef REN_RG_DEBUG
+#define REN_RG_DEBUG 0
+#endif
 
 namespace ren {
 
