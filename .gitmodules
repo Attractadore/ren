@@ -1,3 +1,0 @@
-[submodule "external/VulkanMemoryAllocator"]
-	path = external/VulkanMemoryAllocator
-	url = https://github.com/Attractadore/VulkanMemoryAllocator

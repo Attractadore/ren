@@ -23,6 +23,7 @@ find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
+find_package(VulkanMemoryAllocator REQUIRED)
 
 add_subdirectory(glsl)
 
@@ -76,7 +77,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
-set(VK_XML ${VULKAN_HEADERS_REGISTRY_DIRECTORY}/vk.xml)
+get_target_property(VULKAN_HEADERS_INCLUDE_DIRECTORY Vulkan::Headers INTERFACE_INCLUDE_DIRECTORIES)
+set(VK_XML ${VULKAN_HEADERS_INCLUDE_DIRECTORY}/../share/vulkan/registry/vk.xml)
 set(DISPATCH_TABLE_HPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.hpp)
 set(DISPATCH_TABLE_CPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.cpp)
 
