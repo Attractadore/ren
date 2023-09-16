@@ -43,7 +43,7 @@ void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
 
   assert(!rcs.histogram == !rcs.exposure);
   BufferReference<glsl::LuminanceHistogram> histogram;
-  StorageTextureID previous_exposure;
+  StorageTextureId previous_exposure;
   if (rcs.histogram) {
     histogram = device.get_buffer_device_address<glsl::LuminanceHistogram>(
         rg.get_buffer(rcs.histogram));

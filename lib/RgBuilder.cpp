@@ -609,6 +609,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   m_rg->m_heap_buffers = {};
 
   m_rg->m_textures.resize(m_rg->m_texture_parents.size());
+  m_rg->m_tex_alloc.clear();
   m_rg->m_storage_texture_descriptors.resize(m_rg->m_textures.size());
   m_rg->m_texture_instance_counts.clear();
   for (const auto &[base_texture_id, desc] : m_texture_descs) {
@@ -631,9 +632,9 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
           .num_array_layers = desc.num_array_layers,
       });
       m_rg->m_textures[texture_id] = htexture;
-      StorageTextureID storage_descriptor;
+      StorageTextureId storage_descriptor;
       if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-        storage_descriptor = m_rg->m_tex_alloc->allocate_storage_texture(
+        storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
             m_rg->m_device->get_texture_view(htexture));
       }
       m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;

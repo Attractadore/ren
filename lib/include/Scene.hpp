@@ -10,7 +10,7 @@
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/DenseSlotMap.hpp"
-#include "TextureIDAllocator.hpp"
+#include "TextureIdAllocator.hpp"
 #include "glsl/Lighting.hpp"
 #include "glsl/Material.hpp"
 
@@ -35,7 +35,7 @@ class Scene {
 
   HashMap<RenSampler, Handle<Sampler>> m_samplers;
 
-  std::unique_ptr<TextureIDAllocator> m_texture_allocator;
+  std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
   Vector<glsl::Material> m_materials = {{}};
 
@@ -74,7 +74,7 @@ private:
       -> Handle<Sampler>;
 
   [[nodiscard]] auto get_or_create_texture(const RenTexture &texture)
-      -> SampledTextureID;
+      -> SampledTextureId;
 
 public:
   RenImage create_image(const RenImageDesc &desc);

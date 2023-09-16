@@ -107,7 +107,7 @@ add_library(
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
-  TextureIDAllocator.cpp
+  TextureIdAllocator.cpp
   VMA.cpp
   ${DISPATCH_TABLE_CPP})
 target_sources(

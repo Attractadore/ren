@@ -45,14 +45,14 @@ auto RgRuntime::get_texture(RgTextureId texture) const -> Handle<Texture> {
 }
 
 auto RgRuntime::get_storage_texture_descriptor(RgTextureId texture) const
-    -> StorageTextureID {
+    -> StorageTextureId {
   assert(texture);
   return m_rg
       ->m_storage_texture_descriptors[m_rg->get_physical_texture(texture)];
 }
 
 auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
-  return m_rg->m_tex_alloc->get_set();
+  return m_rg->m_tex_alloc.get_set();
 }
 
 RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
@@ -75,11 +75,10 @@ auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
 }
 
 RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
-                         TextureIDAllocator &tex_alloc)
-    : m_arena(device) {
+                         TextureIdAllocator &tex_alloc)
+    : m_arena(device), m_tex_alloc(tex_alloc) {
   m_device = &device;
   m_swapchain = &swapchain;
-  m_tex_alloc = &tex_alloc;
 }
 
 auto RenderGraph::is_pass_valid(StringView pass) const -> bool {

@@ -31,7 +31,7 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
   const auto &normal_matrix_buffer = rg.get_buffer(rcs.normal_matrices);
   const auto &directional_lights_buffer = rg.get_buffer(rcs.directional_lights);
   const auto &materials_buffer = rg.get_buffer(rcs.materials);
-  StorageTextureID exposure_texture =
+  StorageTextureId exposure_texture =
       rg.get_storage_texture_descriptor(rcs.exposure);
 
   auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBuffer>(rcs.uniforms);

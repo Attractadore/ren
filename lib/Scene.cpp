@@ -34,7 +34,7 @@ Scene::Scene(Device &device, Swapchain &swapchain)
       allocate_descriptor_pool_and_set(device, m_persistent_arena,
                                        m_persistent_descriptor_set_layout);
 
-  m_texture_allocator = std::make_unique<TextureIDAllocator>(
+  m_texture_allocator = std::make_unique<TextureIdAllocator>(
       device, m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
 
   m_render_graph =
@@ -203,7 +203,7 @@ auto Scene::get_or_create_sampler(const RenSampler &sampler)
 }
 
 auto Scene::get_or_create_texture(const RenTexture &texture)
-    -> SampledTextureID {
+    -> SampledTextureId {
   auto view = m_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
   auto sampler = get_or_create_sampler(texture.sampler);

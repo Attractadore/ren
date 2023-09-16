@@ -10,7 +10,7 @@
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
 #include "Texture.hpp"
-#include "TextureIDAllocator.hpp"
+#include "TextureIdAllocator.hpp"
 
 #include <functional>
 
@@ -294,7 +294,7 @@ public:
   auto get_texture(RgTextureId texture) const -> Handle<Texture>;
 
   auto get_storage_texture_descriptor(RgTextureId texture) const
-      -> StorageTextureID;
+      -> StorageTextureId;
 
   auto get_texture_set() const -> VkDescriptorSet;
 
@@ -383,7 +383,7 @@ struct RgTransferPass {
 class RenderGraph {
 public:
   RenderGraph(Device &device, Swapchain &swapchain,
-              TextureIDAllocator &tex_alloc);
+              TextureIdAllocator &tex_alloc);
 
   template <typename T> auto set_pass_data(StringView pass, T data) -> bool {
     auto it = m_pass_ids.find(pass);
@@ -474,8 +474,8 @@ private:
   Vector<RgTextureId> m_texture_parents;
   Vector<Handle<Texture>> m_textures;
   HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
-  TextureIDAllocator *m_tex_alloc = nullptr;
-  Vector<StorageTextureID> m_storage_texture_descriptors;
+  TextureIdAllocatorScope m_tex_alloc;
+  Vector<StorageTextureId> m_storage_texture_descriptors;
 
   Vector<Handle<Semaphore>> m_semaphores;
 
