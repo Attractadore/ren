@@ -5,6 +5,7 @@
 namespace ren {
 
 class RenderGraph;
+class CommandAllocator;
 struct Camera;
 struct Mesh;
 struct MeshInst;
@@ -38,7 +39,7 @@ struct PassesData {
   const PostProcessingOptions *pp_opts;
 };
 
-void update_rg_passes(RenderGraph &rg, const PassesConfig &cfg,
-                      const PassesData &data);
+void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
+                      const PassesConfig &cfg, const PassesData &data);
 
 } // namespace ren

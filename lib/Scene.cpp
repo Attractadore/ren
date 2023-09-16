@@ -361,7 +361,7 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 void Scene::draw() {
   m_resource_uploader.upload(*m_device, m_cmd_allocator);
 
-  update_rg_passes(*m_render_graph,
+  update_rg_passes(*m_render_graph, m_cmd_allocator,
                    PassesConfig{
                        .pipelines = &m_pipelines,
                        .pp_opts = &m_pp_opts,

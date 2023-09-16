@@ -491,6 +491,16 @@ REN_NEW_TYPE(RgBufferUseId, u32);
 REN_NEW_TYPE(RgTextureUseId, u32);
 REN_NEW_TYPE(RgSemaphoreSignalId, u32);
 
+struct RgClearTexture {
+  Handle<Texture> texture;
+  VkPipelineStageFlags2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  union {
+    glm::vec4 color;
+    VkClearDepthStencilValue depth_stencil;
+  } clear;
+};
+
 class RgBuilder {
 public:
   RgBuilder(RenderGraph &rg);
@@ -507,7 +517,7 @@ public:
 
   void present(StringView texture);
 
-  void build();
+  void build(CommandAllocator &cmd_alloc);
 
 private:
   friend RgPassBuilder;
@@ -628,7 +638,11 @@ private:
 
   void fill_pass_runtime_info(Span<const RgPassId> schedule);
 
-  void place_barriers_and_semaphores(Span<const RgPassId> schedule);
+  void place_barriers_and_semaphores(Span<const RgPassId> schedule,
+                                     Vector<RgClearTexture> &clear_textures);
+
+  void clear_temporal_textures(CommandAllocator &cmd_alloc,
+                               Span<const RgClearTexture> clear_textures) const;
 
 private:
   RenderGraph *m_rg = nullptr;

@@ -82,13 +82,13 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
 
 } // namespace
 
-void update_rg_passes(RenderGraph &rg, const PassesConfig &cfg,
-                      const PassesData &data) {
+void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
+                      const PassesConfig &cfg, const PassesData &data) {
   bool valid = set_all_passes_data(rg, data);
   if (!valid) {
     RgBuilder rgb(rg);
     setup_all_passes(rgb, cfg);
-    rgb.build();
+    rgb.build(cmd_alloc);
     valid = set_all_passes_data(rg, data);
     ren_assert(valid, "Render graph pass data update failed after rebuild");
   }

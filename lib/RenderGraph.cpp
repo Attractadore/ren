@@ -315,6 +315,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             render_pass.set_viewports({{
                 .width = float(viewport.x),
                 .height = float(viewport.y),
+                .maxDepth = 1.0f,
             }});
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});

@@ -1,3 +1,4 @@
+#include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "RenderGraph.hpp"
 #include "Support/FlatSet.hpp"
@@ -701,7 +702,8 @@ void RgBuilder::fill_pass_runtime_info(Span<const RgPassId> schedule) {
   }
 }
 
-void RgBuilder::place_barriers_and_semaphores(Span<const RgPassId> schedule) {
+void RgBuilder::place_barriers_and_semaphores(
+    Span<const RgPassId> schedule, Vector<RgClearTexture> &clear_textures) {
   HashMap<RgPhysicalBufferId, RgBufferUsage>
       buffer_after_write_hazard_src_states;
   HashMap<RgPhysicalBufferId, VkPipelineStageFlags2>
@@ -989,6 +991,7 @@ void RgBuilder::place_barriers_and_semaphores(Span<const RgPassId> schedule) {
       VkPipelineStageFlags2 src_stage_mask =
           texture_after_read_hazard_src_states[prev_physical_texture];
       VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
+      VkImageLayout src_layout = texture_layouts[prev_physical_texture];
       if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
         // If this is a WAW hazard, need to wait for previous write to finish,
         // make its memory available and the layout transition's memory visible
@@ -1004,12 +1007,104 @@ void RgBuilder::place_barriers_and_semaphores(Span<const RgPassId> schedule) {
       barrier.src_stage_mask = src_stage_mask;
       barrier.src_access_mask = src_access_mask;
       assert(texture_layouts.contains(prev_physical_texture));
-      barrier.src_layout = texture_layouts[prev_physical_texture];
+      barrier.src_layout = src_layout;
+
+      RgClearTexture clear_texture = {
+          .texture = m_rg->m_textures[physical_texture],
+          .dst_stage_mask = src_stage_mask,
+          .dst_layout = src_layout,
+      };
+
+      desc.clear.visit(OverloadSet{
+          [](Monostate) {},
+          [&](const glm::vec4 &clear_color) {
+            clear_texture.clear.color = clear_color;
+            clear_textures.push_back(clear_texture);
+          },
+          [&](const VkClearDepthStencilValue &clear_depth_stencil) {
+            clear_texture.clear.depth_stencil = clear_depth_stencil;
+            clear_textures.push_back(clear_texture);
+          },
+      });
     }
   }
 }
 
-void RgBuilder::build() {
+void RgBuilder::clear_temporal_textures(
+    CommandAllocator &cmd_alloc,
+    Span<const RgClearTexture> clear_textures) const {
+  if (clear_textures.empty()) {
+    return;
+  }
+
+  VkCommandBuffer cmd_buffer = cmd_alloc.allocate();
+  {
+    CommandRecorder rec(*m_rg->m_device, cmd_buffer);
+
+    Vector<VkImageMemoryBarrier2> barriers;
+    barriers.reserve(clear_textures.size());
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture =
+          m_rg->m_device->get_texture(clear_texture.texture);
+      barriers.push_back({
+          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+          .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+          .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .image = texture.image,
+          .subresourceRange =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .levelCount = texture.num_mip_levels,
+                  .layerCount = texture.num_array_layers,
+              },
+      });
+    }
+    rec.pipeline_barrier({}, barriers);
+
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture =
+          m_rg->m_device->get_texture(clear_texture.texture);
+      VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
+      if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
+        rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
+      } else {
+        assert(aspect_mask &
+               (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
+        rec.clear_texture(clear_texture.texture,
+                          clear_texture.clear.depth_stencil);
+      }
+    }
+
+    barriers.clear();
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture =
+          m_rg->m_device->get_texture(clear_texture.texture);
+      barriers.push_back({
+          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+          .dstStageMask = clear_texture.dst_stage_mask,
+          .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .newLayout = clear_texture.dst_layout,
+          .image = texture.image,
+          .subresourceRange =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .levelCount = texture.num_mip_levels,
+                  .layerCount = texture.num_array_layers,
+              },
+      });
+    }
+    rec.pipeline_barrier({}, barriers);
+  }
+
+  m_rg->m_device->graphicsQueueSubmit({{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = cmd_buffer,
+  }});
+}
+
+void RgBuilder::build(CommandAllocator &cmd_alloc) {
   build_buffer_disjoint_set();
 
   RgTextureId backbuffer = m_rg->m_texture_ids["rg-backbuffer"];
@@ -1025,7 +1120,9 @@ void RgBuilder::build() {
 
   fill_pass_runtime_info(schedule);
 
-  place_barriers_and_semaphores(schedule);
+  Vector<RgClearTexture> clear_textures;
+  place_barriers_and_semaphores(schedule, clear_textures);
+  clear_temporal_textures(cmd_alloc, clear_textures);
 }
 
 } // namespace ren
