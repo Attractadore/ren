@@ -18,6 +18,24 @@
 #define REN_RG_DEBUG 0
 #endif
 
+#if REN_RG_DEBUG
+#include "Support/Timer.hpp"
+
+#define ren_rg_time_region(name) ren_time_region("rg-" name)
+#define RenRgTimeCounter(member, str)                                          \
+  TimeCounter member { "rg-" str }
+#define ren_rg_inc_time_counter(counter) ren_inc_time_counter(counter)
+#define ren_rg_dump_time_counter(counter) counter.dump()
+
+#else
+
+#define ren_rg_time_region(name) ren_force_semicolon
+#define ren_rg_time_counter(member, src)
+#define ren_rg_inc_time_counter(counter) ren_force_semicolon
+#define ren_rg_dump_time_counter(counter) ren_force_semicolon
+
+#endif
+
 namespace ren {
 
 namespace detail {
@@ -575,6 +593,7 @@ private:
 
   template <typename T>
   void set_update_callback(RgPassId pass, CRgUpdateCallback<T> auto cb) {
+    ren_rg_inc_time_counter(m_update_callback_counter);
     m_rg->m_pass_update_callbacks[pass] =
         [cb = std::move(cb)](RgUpdate &rg, const Any &data) {
           return cb(rg, *data.get<T>());
@@ -583,6 +602,7 @@ private:
 
   template <typename T>
   void set_host_callback(RgPassId pass, CRgHostCallback<T> auto cb) {
+    ren_rg_inc_time_counter(m_host_callback_counter);
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgHostPassInfo{
         .cb = [cb = std::move(cb)](
@@ -593,6 +613,7 @@ private:
 
   template <typename T>
   void set_graphics_callback(RgPassId pass, CRgGraphicsCallback<T> auto cb) {
+    ren_rg_inc_time_counter(m_graphics_callback_counter);
     assert(!m_passes[pass].type or
            m_passes[pass].type.get<RgGraphicsPassInfo>());
     m_passes[pass].type.get_or_emplace<RgGraphicsPassInfo>().cb =
@@ -604,6 +625,7 @@ private:
 
   template <typename T>
   void set_compute_callback(RgPassId pass, CRgComputeCallback<T> auto cb) {
+    ren_rg_inc_time_counter(m_compute_callback_counter);
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgComputePassInfo{
         .cb = [cb = std::move(cb)](
@@ -614,6 +636,7 @@ private:
 
   template <typename T>
   void set_transfer_callback(RgPassId pass, CRgTransferCallback<T> auto cb) {
+    ren_rg_inc_time_counter(m_transfer_callback_counter);
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgTransferPassInfo{
         .cb = [cb = std::move(cb)](
@@ -647,6 +670,10 @@ private:
                                Span<const RgClearTexture> clear_textures) const;
 
 private:
+#if REN_RG_DEBUG
+  RegionTimer m_rg_build_timer{"rg-build"};
+#endif
+
   RenderGraph *m_rg = nullptr;
 
   struct RgPassInfo {
@@ -707,6 +734,28 @@ private:
 #if REN_RG_DEBUG
   Vector<String> m_semaphore_names = {{}};
 #endif
+
+  RenRgTimeCounter(m_create_pass_counter, "create-pass");
+  RenRgTimeCounter(m_host_callback_counter, "set-host-callback");
+  RenRgTimeCounter(m_graphics_callback_counter, "set-graphics-callback");
+  RenRgTimeCounter(m_compute_callback_counter, "set-compute-callback");
+  RenRgTimeCounter(m_transfer_callback_counter, "set-transfer-callback");
+  RenRgTimeCounter(m_update_callback_counter, "set-update-callback");
+
+  RenRgTimeCounter(m_create_buffer_counter, "create-buffer");
+  RenRgTimeCounter(m_read_buffer_counter, "read-buffer");
+  RenRgTimeCounter(m_write_buffer_counter, "write-buffer");
+
+  RenRgTimeCounter(m_create_texture_counter, "create-texture");
+  RenRgTimeCounter(m_read_texture_counter, "read-texture");
+  RenRgTimeCounter(m_write_texture_counter, "write-texture");
+  RenRgTimeCounter(m_color_attachment_counter, "add-color-attachment");
+  RenRgTimeCounter(m_depth_attachment_counter, "add-depth-attachment");
+
+  RenRgTimeCounter(m_wait_semaphore_counter, "wait-semaphore");
+  RenRgTimeCounter(m_signal_semaphore_counter, "signal-semaphore");
+
+  RenRgTimeCounter(m_present_counter, "present");
 };
 
 struct RgNoPassData {};
