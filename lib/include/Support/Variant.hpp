@@ -1,11 +1,17 @@
 #pragma once
 #include "Optional.hpp"
+
+#include <boost/predef/compiler.h>
+
 #include <variant>
 
 namespace ren {
 
 template <class... Ts> struct OverloadSet : Ts... {
+  // FIXME: remove once Clang supports CTAD for aggregates
+#if BOOST_COMP_CLANG
   OverloadSet(Ts... fs) : Ts(std::move(fs))... {}
+#endif
   using Ts::operator()...;
 };
 
