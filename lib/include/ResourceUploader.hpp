@@ -30,13 +30,13 @@ public:
 
     usize size = size_bytes(data);
 
-    BufferView staging_buffer = device.get_buffer_view(arena.create_buffer({
+    BufferView staging_buffer = arena.create_buffer({
         .name = "Staging buffer",
         .heap = BufferHeap::Staging,
         .size = size,
-    }));
+    });
 
-    T *ptr = device.map_buffer<T>(staging_buffer);
+    auto *ptr = device.map_buffer<T>(staging_buffer);
     ranges::copy(data, ptr);
 
     m_buffer_copies.push_back({

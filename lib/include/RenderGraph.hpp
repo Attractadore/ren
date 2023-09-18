@@ -488,7 +488,7 @@ private:
   HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> m_heap_buffer_usage_flags =
       {};
-  std::array<std::array<Handle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
+  std::array<std::array<BufferView, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
       m_heap_buffers;
 
   HashMap<String, RgTextureId> m_texture_ids;

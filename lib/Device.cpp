@@ -396,8 +396,7 @@ void Device::write_descriptor_sets(
   UpdateDescriptorSets(configs.size(), configs.data(), 0, nullptr);
 }
 
-auto Device::create_buffer(const BufferCreateInfo &&create_info)
-    -> Handle<Buffer> {
+auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -451,7 +450,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
     address = GetBufferDeviceAddress(&buffer_info);
   }
 
-  return m_buffers.emplace(Buffer{
+  Handle<Buffer> hbuffer = m_buffers.emplace(Buffer{
       .handle = buffer,
       .allocation = allocation,
       .ptr = (std::byte *)map_info.pMappedData,
@@ -460,6 +459,11 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
       .heap = create_info.heap,
       .usage = create_info.usage,
   });
+
+  return {
+      .buffer = hbuffer,
+      .size = create_info.size,
+  };
 }
 
 void Device::destroy_buffer(Handle<Buffer> handle) {

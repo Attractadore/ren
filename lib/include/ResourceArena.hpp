@@ -76,10 +76,10 @@ public:
     return *this;
   }
 
-  auto create_buffer(const BufferCreateInfo &&create_info) -> Handle<Buffer> {
-    auto buffer = m_device->create_buffer(std::move(create_info));
-    insert(buffer);
-    return buffer;
+  auto create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
+    BufferView view = m_device->create_buffer(std::move(create_info));
+    insert(view.buffer);
+    return view;
   }
 
   void destroy_buffer(Handle<Buffer> buffer) { destroy(buffer); }

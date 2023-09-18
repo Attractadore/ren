@@ -132,11 +132,11 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
-  BufferView staging_buffer = device.get_buffer_view(arena.create_buffer({
+  BufferView staging_buffer = arena.create_buffer({
       .name = "Staging buffer",
       .heap = BufferHeap::Staging,
       .size = data.size_bytes(),
-  }));
+  });
 
   std::byte *ptr = device.map_buffer(staging_buffer);
   ranges::copy(data, ptr);
