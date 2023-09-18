@@ -130,19 +130,18 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
 } // namespace
 
 void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
-                                     std::span<const std::byte> data,
+                                     Span<const std::byte> data,
                                      Handle<Texture> texture) {
-  auto staging_buffer = device.get_buffer_view(arena.create_buffer({
+  BufferView staging_buffer = device.get_buffer_view(arena.create_buffer({
       .name = "Staging buffer",
-      .heap = BufferHeap::Upload,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      .heap = BufferHeap::Staging,
       .size = data.size_bytes(),
   }));
 
-  auto *ptr = device.map_buffer(staging_buffer);
+  std::byte *ptr = device.map_buffer(staging_buffer);
   ranges::copy(data, ptr);
 
-  m_texture_copies.push_back(TextureCopy{
+  m_texture_copies.push_back({
       .src = staging_buffer,
       .dst = texture,
   });

@@ -160,7 +160,7 @@ struct RgBufferCreateInfo {
   /// Buffer name
   String name;
   /// Memory heap from which to allocate buffer
-  BufferHeap heap = BufferHeap::Upload;
+  BufferHeap heap = BufferHeap::Dynamic;
   /// Initial buffer size
   usize size = 0;
 };

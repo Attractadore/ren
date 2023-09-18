@@ -11,15 +11,16 @@ namespace ren {
 class Device;
 
 enum class BufferHeap {
-  Device = 0,
-  Upload,
+  Static,
+  Dynamic,
+  Staging,
   Readback,
 };
-constexpr usize NUM_BUFFER_HEAPS = 3;
+constexpr usize NUM_BUFFER_HEAPS = 4;
 
 struct BufferCreateInfo {
   REN_DEBUG_NAME_FIELD("Buffer");
-  BufferHeap heap = BufferHeap::Device;
+  BufferHeap heap = BufferHeap::Static;
   VkBufferUsageFlags usage = 0;
   usize size;
 };

@@ -48,33 +48,17 @@ void setup_upload_pass(RgBuilder &rgb) {
 
   UploadPassResources rcs;
 
-  rcs.transform_matrices = pass.create_buffer(
-      {
-          .name = "transform-matrices",
-          .heap = BufferHeap::Upload,
-      },
-      RG_HOST_WRITE_BUFFER);
+  rcs.transform_matrices =
+      pass.create_buffer({.name = "transform-matrices"}, RG_HOST_WRITE_BUFFER);
 
-  rcs.normal_matrices = pass.create_buffer(
-      {
-          .name = "normal-matrices",
-          .heap = BufferHeap::Upload,
-      },
-      RG_HOST_WRITE_BUFFER);
+  rcs.normal_matrices =
+      pass.create_buffer({.name = "normal-matrices"}, RG_HOST_WRITE_BUFFER);
 
-  rcs.directional_lights = pass.create_buffer(
-      {
-          .name = "directional-lights",
-          .heap = BufferHeap::Upload,
-      },
-      RG_HOST_WRITE_BUFFER);
+  rcs.directional_lights =
+      pass.create_buffer({.name = "directional-lights"}, RG_HOST_WRITE_BUFFER);
 
-  rcs.materials = pass.create_buffer(
-      {
-          .name = "materials",
-          .heap = BufferHeap::Upload,
-      },
-      RG_HOST_WRITE_BUFFER);
+  rcs.materials =
+      pass.create_buffer({.name = "materials"}, RG_HOST_WRITE_BUFFER);
 
   pass.set_update_callback(ren_rg_update_callback(UploadPassData) {
     rg.resize_buffer(rcs.transform_matrices,

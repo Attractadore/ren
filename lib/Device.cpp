@@ -407,23 +407,31 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info)
   };
 
   VmaAllocationCreateInfo alloc_info = {
-      .flags = [&]() -> VmaAllocationCreateFlags {
-        switch (create_info.heap) {
-          using enum BufferHeap;
-        case Device:
-          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                 VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
-        case Upload:
-          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        case Readback:
-          return VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                 VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        }
-        unreachable("Unknown BufferHeap");
-      }(),
       .usage = VMA_MEMORY_USAGE_AUTO,
+  };
+
+  switch (create_info.heap) {
+    using enum BufferHeap;
+  default:
+    unreachable("Unknown BufferHeap");
+  case Static:
+    break;
+  case Dynamic: {
+    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+  } break;
+  case Staging: {
+    buffer_info.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+  } break;
+  case Readback: {
+    buffer_info.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                       VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+  } break;
   };
 
   VkBuffer buffer;

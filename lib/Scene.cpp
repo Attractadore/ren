@@ -124,7 +124,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       .vertex_buffer =
           m_device->get_buffer_view(m_persistent_arena.create_buffer({
               .name = "Vertex buffer",
-              .heap = BufferHeap::Device,
+              .heap = BufferHeap::Static,
               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
               .size = vertex_buffer_size,
@@ -132,7 +132,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
       .index_buffer =
           m_device->get_buffer_view(m_persistent_arena.create_buffer({
               .name = "Index buffer",
-              .heap = BufferHeap::Device,
+              .heap = BufferHeap::Static,
               .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                        VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
               .size = index_buffer_size,
