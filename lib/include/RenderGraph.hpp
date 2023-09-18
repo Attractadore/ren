@@ -6,6 +6,7 @@
 #include "Semaphore.hpp"
 #include "Support/Any.hpp"
 #include "Support/Errors.hpp"
+#include "Support/Macros.hpp"
 #include "Support/NewType.hpp"
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
@@ -30,7 +31,7 @@
 #else
 
 #define ren_rg_time_region(name) ren_force_semicolon
-#define ren_rg_time_counter(member, src)
+#define RenRgTimeCounter(member, src)
 #define ren_rg_inc_time_counter(counter) ren_force_semicolon
 #define ren_rg_dump_time_counter(counter) ren_force_semicolon
 

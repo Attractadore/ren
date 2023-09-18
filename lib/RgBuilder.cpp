@@ -334,14 +334,14 @@ auto RgBuilder::alloc_semaphore(StringView name) -> RgSemaphoreId {
 
 void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                VkPipelineStageFlags2 stage_mask, u64 value) {
-  ren_inc_time_counter(m_wait_semaphore_counter);
+  ren_rg_inc_time_counter(m_wait_semaphore_counter);
   m_passes[pass].wait_semaphores.push_back(
       add_semaphore_signal(semaphore, stage_mask, value));
 }
 
 void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                  VkPipelineStageFlags2 stage_mask, u64 value) {
-  ren_inc_time_counter(m_signal_semaphore_counter);
+  ren_rg_inc_time_counter(m_signal_semaphore_counter);
   m_passes[pass].signal_semaphores.push_back(
       add_semaphore_signal(semaphore, stage_mask, value));
 }
