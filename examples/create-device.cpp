@@ -1,4 +1,4 @@
-#include "app-base.hpp"
+#include "AppBase.hpp"
 
 class CreateDeviceApp : public AppBase {
 public:

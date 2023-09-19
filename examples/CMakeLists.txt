@@ -17,7 +17,7 @@ function(copy_dlls target)
   endif()
 endfunction()
 
-add_library(app-base app-base.cpp)
+add_library(app-base AppBase.cpp)
 target_link_libraries(
   app-base
   PUBLIC ren::ren-hpp SDL2::SDL2
