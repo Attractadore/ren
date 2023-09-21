@@ -24,10 +24,12 @@ constexpr inline struct {
 
 #define TRY_RESULT CAT(res, __LINE__)
 
+#define bail(msg, ...) return Err(fmt::format(msg __VA_OPT__(, ) __VA_ARGS__))
+
 #define OK(name, ...)                                                          \
   auto TRY_RESULT = (__VA_ARGS__).transform_error(get_error_string);           \
   if (!TRY_RESULT) {                                                           \
-    return Err(std::move(TRY_RESULT).error());                                 \
+    bail("{}", std::move(TRY_RESULT).error());                                 \
   }                                                                            \
   name = *std::move(TRY_RESULT)
 
@@ -35,7 +37,7 @@ constexpr inline struct {
   auto TRY_RESULT = (__VA_ARGS__).transform_error(get_error_string);           \
   static_assert(std::same_as<decltype(TRY_RESULT)::value_type, void>);         \
   if (!TRY_RESULT) {                                                           \
-    return Err(std::move(TRY_RESULT).error());                                 \
+    bail("{}", std::move(TRY_RESULT).error());                                 \
   }
 
 class AppBase {
@@ -67,13 +69,13 @@ protected:
   [[nodiscard]] static auto run(Args &&...args) -> int {
     auto rc = [&] -> Result<void> {
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
-        return Err(SDL_GetError());
+        bail("{}", SDL_GetError());
       }
       return [&] -> Result<App> {
         try {
           return App(std::forward<Args>(args)...);
         } catch (std::exception &err) {
-          return Err(err.what());
+          bail("{}", err.what());
         }
       }()
                         .and_then(&AppBase::loop);

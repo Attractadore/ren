@@ -29,7 +29,7 @@ auto create_instance() -> Result<Instance> {
 
   VkInstance instance = VK_NULL_HANDLE;
   if (vkCreateInstance(&create_info, nullptr, &instance)) {
-    return Err("Vulkan: Failed to create VkInstance");
+    bail("Vulkan: Failed to create VkInstance");
   }
 
   return Instance(instance);
@@ -39,11 +39,11 @@ auto select_adapter(VkInstance instance, unsigned idx = 0)
     -> Result<VkPhysicalDevice> {
   unsigned dev_cnt = 0;
   if (vkEnumeratePhysicalDevices(instance, &dev_cnt, nullptr)) {
-    return Err("Vulkan: Failed to enumerate devices");
+    bail("Vulkan: Failed to enumerate devices");
   }
   std::vector<VkPhysicalDevice> devs(dev_cnt);
   if (vkEnumeratePhysicalDevices(instance, &dev_cnt, devs.data())) {
-    return Err("Vulkan: Failed to enumerate devices");
+    bail("Vulkan: Failed to enumerate devices");
   }
   devs.resize(dev_cnt);
   if (idx < dev_cnt) {
@@ -59,12 +59,12 @@ auto create_device(VkPhysicalDevice adapter) -> Result<ren::UniqueDevice> {
 
   unsigned num_extensions = 0;
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions, nullptr)) {
-    return Err("SDL_Vulkan: Failed to query instance extensions");
+    bail("SDL_Vulkan: Failed to query instance extensions");
   }
   std::vector<const char *> extensions(num_extensions);
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
                                         extensions.data())) {
-    return Err("SDL_Vulkan: Failed to query instance extensions");
+    bail("SDL_Vulkan: Failed to query instance extensions");
   }
   extensions.resize(num_extensions);
 
@@ -120,7 +120,7 @@ AppBase::AppBase(const char *app_name) {
                                     m_window_height,
                                     SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN));
     if (!m_window) {
-      return Err(SDL_GetError());
+      bail("{}", SDL_GetError());
     }
 
     OK(auto instance, create_instance());
@@ -136,7 +136,7 @@ AppBase::AppBase(const char *app_name) {
     };
     OK(auto adapter, select_adapter(instance.get(), adapter_idx));
     if (!adapter) {
-      return Err("Failed to find adapter");
+      bail("Failed to find adapter");
     }
 
     OK(m_device, create_device(adapter));
