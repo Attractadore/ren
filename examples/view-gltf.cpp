@@ -221,7 +221,7 @@ private:
     if (index < 0) {
       return nullptr;
     }
-    assert(index < model.accessors.size());
+    assert(index < m_model.accessors.size());
     return &m_model.accessors[index];
   }
 
@@ -424,7 +424,7 @@ private:
   auto create_image(const GltfImageDesc &desc) -> Result<ren::ImageID> {
     const tinygltf::Image &image = m_model.images[desc.index];
     assert(image.image.size() ==
-           image.width * image.height * image.components * image.bits / 8);
+           image.width * image.height * image.component * image.bits / 8);
     OK(ren::Format format,
        get_image_format(image.component, image.pixel_type, desc.srgb));
     return m_scene
@@ -506,7 +506,7 @@ private:
   }
 
   auto get_or_create_material(int index) -> Result<ren::MaterialID> {
-    assert(material >= 0);
+    assert(index >= 0);
     if (index >= m_material_cache.size()) {
       m_material_cache.resize(index + 1);
     }
@@ -634,23 +634,93 @@ public:
   }
 
 protected:
+  auto process_event(const SDL_Event &e) -> Result<void> override {
+    switch (e.type) {
+    default:
+      break;
+    case SDL_MOUSEWHEEL: {
+      m_distance =
+          m_distance * glm::pow(2.0f, e.wheel.preciseY / m_zoom_sensitivity);
+    } break;
+    }
+    return {};
+  }
+
+  struct InputState {
+    float pitch = 0.0f;
+    float yaw = 0.0f;
+  };
+
+  auto get_input_state() const -> InputState {
+    InputState input;
+    const Uint8 *keys = SDL_GetKeyboardState(nullptr);
+    if (keys[m_pitch_up_key]) {
+      input.pitch += 1.0f;
+    }
+    if (keys[m_pitch_down_key]) {
+      input.pitch -= 1.0f;
+    }
+    if (keys[m_yaw_left_key]) {
+      input.yaw += 1.0f;
+    }
+    if (keys[m_yaw_right_key]) {
+      input.yaw -= 1.0f;
+    }
+    return input;
+  }
+
   auto iterate(unsigned width, unsigned height) -> Result<void> override {
+    float dt = 1.0f / 60.0f;
+
+    InputState input = get_input_state();
+
+    m_yaw += m_yaw_speed * dt * input.yaw;
+    m_pitch += m_pitch_speed * dt * input.pitch;
+    m_pitch = glm::clamp(m_pitch, -glm::radians(80.0f), glm::radians(80.0f));
+
+    glm::vec3 forward = {1.0f, 0.0f, 0.0f};
+    glm::vec3 left = {0.0f, 1.0f, 0.0f};
+    glm::vec3 up = {0.0f, 0.0f, 1.0f};
+
+    glm::quat rot = glm::angleAxis(m_yaw, up);
+    left = rot * left;
+    rot = glm::angleAxis(m_pitch, left) * rot;
+    forward = rot * forward;
+
+    glm::vec3 position = -m_distance * forward;
+
     ren::Scene &scene = get_scene();
     ren::CameraDesc desc = {
         .width = width,
         .height = height,
         .exposure_compensation = 3.0f,
         .exposure_mode = REN_EXPOSURE_MODE_AUTOMATIC,
-        .position = {-3.0f, 0.0f, 3.0f},
-        .forward = {1.0f, 0.0f, -1.0f},
-        .up = {0.0f, 0.0f, 1.0f},
     };
+    std::memcpy(desc.position, &position, sizeof(desc.position));
+    std::memcpy(desc.forward, &forward, sizeof(desc.forward));
+    std::memcpy(desc.up, &up, sizeof(desc.up));
     desc.set_projection(ren::PerspectiveProjection{
         .hfov = glm::radians(90.0f),
     });
     TRY_TO(scene.set_camera(desc));
+
     return {};
   }
+
+private:
+  SDL_Scancode m_pitch_up_key = SDL_SCANCODE_W;
+  SDL_Scancode m_pitch_down_key = SDL_SCANCODE_S;
+  SDL_Scancode m_yaw_left_key = SDL_SCANCODE_A;
+  SDL_Scancode m_yaw_right_key = SDL_SCANCODE_D;
+
+  float m_pitch_speed = glm::radians(45.0f);
+  float m_pitch = 0.0f;
+
+  float m_yaw_speed = -glm::radians(45.0f);
+  float m_yaw = 0.0f;
+
+  float m_zoom_sensitivity = -25.0f;
+  float m_distance = 3.0f;
 };
 
 int main(int argc, const char *argv[]) {
