@@ -2,6 +2,7 @@
 
 #include <boost/functional/hash.hpp>
 #include <cxxopts.hpp>
+#include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
@@ -35,7 +36,7 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   }
 
   if (!ret) {
-    while (not err.empty() and err.back() != '\n') {
+    while (not err.empty() and err.back() == '\n') {
       err.pop_back();
     }
     bail("{}", std::move(err));
@@ -186,14 +187,23 @@ public:
   }
 
   auto walk(int scene) -> Result<void> {
+    if (not m_model.extensionsRequired.empty()) {
+      bail("Required glTF extensions not supported: {}",
+           m_model.extensionsRequired);
+    }
+
     if (scene >= m_model.scenes.size()) {
       bail("Scene index {} out of bounds", scene);
     }
+
     TRY_TO(walk_scene(m_model.scenes[scene]));
-    m_scene->set_mesh_inst_matrices(
-        m_mesh_insts, std::span(reinterpret_cast<const RenMatrix4x4 *>(
-                                    m_mesh_inst_transforms.data()),
-                                m_mesh_inst_transforms.size()));
+    if (not m_mesh_insts.empty()) {
+      m_scene->set_mesh_inst_matrices(
+          m_mesh_insts, std::span(reinterpret_cast<const RenMatrix4x4 *>(
+                                      m_mesh_inst_transforms.data()),
+                                  m_mesh_inst_transforms.size()));
+    }
+
     return {};
   }
 
