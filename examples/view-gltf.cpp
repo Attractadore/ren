@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <filesystem>
 
+namespace chrono = std::chrono;
 namespace fs = std::filesystem;
 
 auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
@@ -669,8 +670,9 @@ protected:
     return input;
   }
 
-  auto iterate(unsigned width, unsigned height) -> Result<void> override {
-    float dt = 1.0f / 60.0f;
+  auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
+      -> Result<void> override {
+    float dt = chrono::duration_cast<chrono::duration<float>>(dt_ns).count();
 
     InputState input = get_input_state();
 

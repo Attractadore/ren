@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+namespace chrono = std::chrono;
+
 namespace {
 
 std::string env(const char *var) {
@@ -151,8 +153,14 @@ AppBase::AppBase(const char *app_name) {
 }
 
 auto AppBase::loop() -> Result<void> {
+  auto last_time = chrono::steady_clock::now();
   bool quit = false;
+
   while (!quit) {
+    auto now = chrono::steady_clock::now();
+    chrono::nanoseconds dt = now - last_time;
+    last_time = now;
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT) {
@@ -169,7 +177,7 @@ auto AppBase::loop() -> Result<void> {
       m_swapchain->set_size(m_window_width, m_window_height);
     }
 
-    TRY_TO(iterate(m_window_width, m_window_height));
+    TRY_TO(iterate(m_window_width, m_window_height, dt));
     TRY_TO(m_scene->draw());
   }
 
@@ -181,7 +189,8 @@ auto AppBase::get_scene() -> ren::Scene & { return *m_scene; }
 
 auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
 
-auto AppBase::iterate(unsigned width, unsigned height) -> Result<void> {
+auto AppBase::iterate(unsigned width, unsigned height, std::chrono::nanoseconds)
+    -> Result<void> {
   auto &scene = get_scene();
 
   TRY_TO(scene.set_camera({

@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 
+namespace chrono = std::chrono;
+
 class DrawTriangleApp : public AppBase {
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
@@ -69,7 +71,8 @@ public:
   }
 
 protected:
-  auto iterate(unsigned width, unsigned height) -> Result<void> override {
+  auto iterate(unsigned width, unsigned height, chrono::nanoseconds)
+      -> Result<void> override {
     auto &scene = get_scene();
     ren::CameraDesc desc = {
         .width = width,

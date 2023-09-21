@@ -4,6 +4,8 @@
 #include <SDL2/SDL.h>
 #include <fmt/format.h>
 
+#include <chrono>
+
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
 
@@ -62,7 +64,8 @@ protected:
 
   [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void>;
 
-  [[nodiscard]] virtual auto iterate(unsigned width, unsigned height)
+  [[nodiscard]] virtual auto iterate(unsigned width, unsigned height,
+                                     std::chrono::nanoseconds dt)
       -> Result<void>;
 
   template <class App, typename... Args>
