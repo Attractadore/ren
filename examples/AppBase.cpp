@@ -163,7 +163,9 @@ auto AppBase::loop() -> Result<void> {
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-      if (e.type == SDL_QUIT) {
+      if (e.type == SDL_QUIT or
+          (e.type == SDL_KEYDOWN and
+           e.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
         quit = true;
       }
       TRY_TO(process_event(e));
