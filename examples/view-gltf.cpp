@@ -15,6 +15,8 @@
 namespace chrono = std::chrono;
 namespace fs = std::filesystem;
 
+#define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
+
 auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   tinygltf::TinyGLTF loader;
   tinygltf::Model model;
@@ -192,6 +194,18 @@ public:
            m_model.extensionsRequired);
     }
 
+    if (not m_model.animations.empty()) {
+      warn("Ignoring {} animations", m_model.animations.size());
+    }
+
+    if (not m_model.skins.empty()) {
+      warn("Ignoring {} skins", m_model.skins.size());
+    }
+
+    if (not m_model.cameras.empty()) {
+      warn("Ignoring {} cameras", m_model.cameras.size());
+    }
+
     if (scene >= m_model.scenes.size()) {
       bail("Scene index {} out of bounds", scene);
     }
@@ -267,7 +281,7 @@ private:
         get_accessor_data<glm::vec3>(*normals);
 
     if (tangents) {
-      fmt::println(stderr, "Warn: ignoring tangents");
+      warn("Ignoring primitive tangents");
     }
 
     OK(auto colors_data, [&] -> Result<std::vector<glm::vec4>> {
@@ -276,26 +290,22 @@ private:
       }
       if (colors->type == TINYGLTF_TYPE_VEC3) {
         if (colors->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-          fmt::println(
-              stderr,
-              "Warn: converting colors from RGB8_SFLOAT to RGBA32_SFLOAT");
+          warn("Converting primitive colors from RGB8_SFLOAT to RGBA32_SFLOAT");
           return get_accessor_data<glm::vec3>(
               *colors, [](glm::vec3 color) { return glm::vec4(color, 1.0f); });
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            fmt::println(
-                stderr,
-                "Warn: converting colors from RGB8_UNORM to RGBA32_SFLOAT");
+            warn(
+                "Converting primitive colors from RGB8_UNORM to RGBA32_SFLOAT");
             return get_accessor_data<glm::u8vec3>(
                 *colors, [](glm::u8vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            fmt::println(
-                stderr,
-                "Warn: converting colors from RGB16_UNORM to RGBA32_SFLOAT");
+            warn("Converting primitive colors from RGB16_UNORM to "
+                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u16vec3>(
                 *colors, [](glm::u16vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
@@ -309,18 +319,16 @@ private:
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            fmt::println(
-                stderr,
-                "Warn: converting colors from RGBA8_UNORM to RGBA32_SFLOAT");
+            warn("Converting primitive colors from RGBA8_UNORM to "
+                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u8vec4>(
                 *colors, [](glm::u8vec4 color) {
                   return glm::unpackUnorm<float>(color);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            fmt::println(
-                stderr,
-                "Warn: converting colors from RGBA16_UNORM to RGBA32_SFLOAT");
+            warn("Converting primitive colors from RGBA16_UNORM to "
+                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u16vec4>(
                 *colors, [](glm::u16vec4 color) {
                   return glm::unpackUnorm<float>(color);
@@ -342,15 +350,13 @@ private:
         }
         if (uvs->normalized) {
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            fmt::println(stderr,
-                         "Warn: converting UVs from RG8_UNORM to RG32_SFLOAT");
+            warn("Converting primitive UVs from RG8_UNORM to RG32_SFLOAT");
             return get_accessor_data<glm::u8vec2>(*uvs, [](glm::u8vec2 color) {
               return glm::unpackUnorm<float>(color);
             });
           }
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            fmt::println(stderr,
-                         "Warn: converting UVs from RG16_UNORM to RG32_SFLOAT");
+            warn("Converting primitive UVs from RG16_UNORM to RG32_SFLOAT");
             return get_accessor_data<glm::u16vec2>(
                 *uvs, [](glm::u16vec2 color) {
                   return glm::unpackUnorm<float>(color);
@@ -371,14 +377,12 @@ private:
       }
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-          fmt::println(stderr,
-                       "Warn: converting indices from R8_UINT to R32_UINT");
+          warn("Converting primitive indices from R8_UINT to R32_UINT");
           return get_accessor_data<uint8_t>(
               *indices, [](uint8_t index) -> uint32_t { return index; });
         }
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-          fmt::println(stderr,
-                       "Warn: converting indices from R16_UINT to R32_UINT");
+          warn("Converting primitive indices from R16_UINT to R32_UINT");
           return get_accessor_data<uint16_t>(
               *indices, [](uint16_t index) -> uint32_t { return index; });
         }
@@ -427,6 +431,27 @@ private:
     };
     ren::MeshID &mesh = m_mesh_cache[desc];
     if (!mesh) {
+      std::string buffer;
+      auto warn_unused_attribute = [&](std::string_view attribute, int start) {
+        for (int index = start;; ++index) {
+          buffer.clear();
+          fmt::format_to(std::back_inserter(buffer), "{}_{}", attribute, index);
+          if (get_attribute_accessor_index(buffer) < 0) {
+            break;
+          }
+          warn("Ignoring primitive attribute {}", buffer);
+        }
+      };
+      warn_unused_attribute("TEXCOORD", 1);
+      warn_unused_attribute("COLOR", 1);
+      warn_unused_attribute("JOINTS", 0);
+      warn_unused_attribute("WEIGHTS", 0);
+      if (primitive.mode != TINYGLTF_MODE_TRIANGLES) {
+        bail("Unsupported primitive mode {}", primitive.mode);
+      }
+      if (not primitive.targets.empty()) {
+        warn("Ignoring {} primitive morph targets", primitive.targets.size());
+      }
       OK(ren::MeshID mesh, create_mesh(desc));
     }
     return mesh;
@@ -482,7 +507,8 @@ private:
         material.pbrMetallicRoughness.baseColorTexture;
     if (base_color_texture.index >= 0) {
       if (base_color_texture.texCoord > 0) {
-        bail("Only one texture coordinate set supported");
+        bail("Unsupported base color texture coordinate set {}",
+             base_color_texture.texCoord);
       }
       OK(desc.color_tex.image,
          get_or_create_image(base_color_texture.index, true));
@@ -581,6 +607,7 @@ private:
 
   auto walk_node(const tinygltf::Node &node, const glm::mat4 &parent_transform)
       -> Result<void> {
+    int node_index = &node - m_model.nodes.data();
     glm::mat4 transform = parent_transform * get_node_local_transform(node);
 
     if (node.mesh >= 0) {
@@ -588,13 +615,24 @@ private:
       for (const tinygltf::Primitive &primitive : mesh.primitives) {
         auto res = create_mesh_instance(primitive, transform);
         if (not res.has_value()) {
-          fmt::println(stderr,
-                       "Warn: failed to create mesh instance for mesh {} "
-                       "primitive {} in node {}: {}",
-                       node.mesh, &primitive - &mesh.primitives[0],
-                       &node - &m_model.nodes[0], res.error());
+          warn("Failed to create mesh instance for mesh {} "
+               "primitive {} in node {}: {}",
+               node.mesh, &primitive - &mesh.primitives[0], node_index,
+               res.error());
         }
       }
+    }
+
+    if (node.camera >= 0) {
+      warn("Ignoring camera {} for node {}", node.camera, node_index);
+    }
+
+    if (node.skin >= 0) {
+      warn("Ignoring skin {} for node {}", node.skin, node_index);
+    }
+
+    if (not node.weights.empty()) {
+      warn("Ignoring weights for node {}", node_index);
     }
 
     for (int child : node.children) {
@@ -632,7 +670,7 @@ public:
       TRY_TO(scene_walker.walk(scene));
       OK(auto dir_light, get_scene().create_dir_light({
                              .color = {1.0f, 1.0f, 1.0f},
-                             .illuminance = 25'000.0f,
+                             .illuminance = 100'000.0f,
                              .origin = {0.0f, 0.0f, 1.0f},
                          }));
       return {};
@@ -702,11 +740,16 @@ protected:
     glm::vec3 position = -m_distance * forward;
 
     ren::Scene &scene = get_scene();
+    float iso = 100.0f;
     ren::CameraDesc desc = {
         .width = width,
         .height = height,
-        .exposure_compensation = 3.0f,
-        .exposure_mode = REN_EXPOSURE_MODE_AUTOMATIC,
+        .aperture = 16.0f,
+        .shutter_time = 1.0f / iso,
+        .iso = iso,
+        // The Reinhard tone mapper darkens colors too much
+        .exposure_compensation = 1.0f,
+        .exposure_mode = REN_EXPOSURE_MODE_CAMERA,
     };
     std::memcpy(desc.position, &position, sizeof(desc.position));
     std::memcpy(desc.forward, &forward, sizeof(desc.forward));
