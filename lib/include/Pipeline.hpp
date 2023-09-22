@@ -27,6 +27,11 @@ struct InputAssemblyInfo {
   VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
+struct RasterizationInfo {
+  VkCullModeFlagBits cull_mode = VK_CULL_MODE_BACK_BIT;
+  VkFrontFace front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+};
+
 struct MultisampleInfo {
   u32 samples = 1;
 };
@@ -50,6 +55,7 @@ struct GraphicsPipelineCreateInfo {
   ShaderInfo vertex_shader;
   Optional<ShaderInfo> fragment_shader;
   InputAssemblyInfo input_assembly;
+  RasterizationInfo rasterization;
   MultisampleInfo multisample;
   Optional<DepthTestInfo> depth_test;
   TempSpan<const ColorAttachmentInfo> color_attachments;
