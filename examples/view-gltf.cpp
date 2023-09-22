@@ -102,6 +102,7 @@ auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::Sampler> {
   switch (sampler.magFilter) {
   default:
     bail("Unknown sampler magnification filter {}", sampler.magFilter);
+  case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR:
     mag_filter = REN_FILTER_LINEAR;
     break;
@@ -116,6 +117,7 @@ auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::Sampler> {
     bail("Linear minification filter not implemented");
   case TINYGLTF_TEXTURE_FILTER_NEAREST:
     bail("Nearest minification filter not implemented");
+  case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
     min_filter = REN_FILTER_LINEAR;
     mip_filter = REN_FILTER_LINEAR;
@@ -386,7 +388,7 @@ private:
           return get_accessor_data<uint16_t>(
               *indices, [](uint16_t index) -> uint32_t { return index; });
         }
-        if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+        if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
           return get_accessor_data<uint32_t>(*indices);
         }
       }
@@ -485,6 +487,12 @@ private:
     return image;
   }
 
+  auto get_or_create_texture_image(int index, bool srgb)
+      -> Result<ren::ImageID> {
+    int image = m_model.textures[index].source;
+    return get_or_create_image(image, srgb);
+  }
+
   auto get_texture_sampler(int texture) const -> Result<ren::Sampler> {
     int sampler = m_model.textures[texture].sampler;
     if (sampler < 0) {
@@ -511,7 +519,7 @@ private:
              base_color_texture.texCoord);
       }
       OK(desc.color_tex.image,
-         get_or_create_image(base_color_texture.index, true));
+         get_or_create_texture_image(base_color_texture.index, true));
       OK(desc.color_tex.sampler, get_texture_sampler(base_color_texture.index));
     }
 
@@ -557,8 +565,8 @@ private:
   auto create_mesh_instance(const tinygltf::Primitive &primitive,
                             const glm::mat4 &transform)
       -> Result<ren::MeshInstID> {
-    OK(ren::MeshID mesh, get_or_create_mesh(primitive));
     OK(ren::MaterialID material, get_or_create_material(primitive.material));
+    OK(ren::MeshID mesh, get_or_create_mesh(primitive));
     OK(ren::MeshInstID mesh_inst, m_scene
                                       ->create_mesh_inst({
                                           .mesh = mesh,
