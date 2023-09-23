@@ -4,19 +4,21 @@
 namespace ren {
 
 class RgBuilder;
-struct MeshInst;
+struct Mesh;
+struct MeshInstance;
 
 namespace glsl {
-struct DirLight;
 struct Material;
+struct DirLight;
 } // namespace glsl
 
 void setup_upload_pass(RgBuilder &rgb);
 
 struct UploadPassData {
-  Span<const MeshInst> mesh_insts;
-  Span<const glsl::DirLight> directional_lights;
+  Span<const Mesh> meshes;
   Span<const glsl::Material> materials;
+  Span<const MeshInstance> mesh_instances;
+  Span<const glsl::DirLight> directional_lights;
 };
 
 } // namespace ren

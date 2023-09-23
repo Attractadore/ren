@@ -1,5 +1,4 @@
 #include "Buffer.hpp"
-#include "Device.hpp"
 
 namespace ren {
 

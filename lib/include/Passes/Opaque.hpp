@@ -1,12 +1,14 @@
 #pragma once
-#include "HandleMap.hpp"
-#include "Mesh.hpp"
-#include "Model.hpp"
+#include "Buffer.hpp"
+#include "Handle.hpp"
 #include "Passes/Exposure.hpp"
-#include "Pipeline.hpp"
+#include "Support/Span.hpp"
 
 namespace ren {
 
+struct GraphicsPipeline;
+struct Mesh;
+struct MeshInstance;
 class RgBuilder;
 
 struct OpaquePassConfig {
@@ -16,8 +18,13 @@ struct OpaquePassConfig {
 };
 
 struct OpaquePassData {
-  const HandleMap<Mesh> *meshes = nullptr;
-  Span<const MeshInst> mesh_insts;
+  BufferView vertex_positions;
+  BufferView vertex_normals;
+  BufferView vertex_colors;
+  BufferView vertex_uvs;
+  BufferView vertex_indices;
+  Span<const Mesh> meshes;
+  Span<const MeshInstance> mesh_instances;
   glm::uvec2 viewport_size;
   glm::mat4 proj;
   glm::mat4 view;

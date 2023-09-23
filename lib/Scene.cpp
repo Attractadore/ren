@@ -3,7 +3,6 @@
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Span.hpp"
-#include "glsl/Encode.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <range/v3/algorithm.hpp>
@@ -22,6 +21,9 @@ auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
   seed = hash_combine(seed, sampler.wrap_v);
   return seed;
 }
+
+constexpr usize MESH_VERTEX_BUDGET = 1024 * 1024;
+constexpr usize MESH_INDEX_BUDGET = MESH_VERTEX_BUDGET / 2;
 
 Scene::Scene(Device &device, Swapchain &swapchain)
     : m_persistent_arena(device), m_frame_arena(device),
@@ -43,6 +45,46 @@ Scene::Scene(Device &device, Swapchain &swapchain)
   m_pipelines =
       load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
 
+  m_vertex_positions = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex positions pool",
+      .heap = BufferHeap::Static,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
+  });
+
+  m_vertex_normals = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex normals pool",
+      .heap = BufferHeap::Static,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
+  });
+
+  m_vertex_colors = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex colors pool",
+      .heap = BufferHeap::Static,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
+  });
+
+  m_vertex_uvs = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex UVs pool",
+      .heap = BufferHeap::Static,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .size = sizeof(glm::vec2) * MESH_VERTEX_BUDGET,
+  });
+
+  m_vertex_indices = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex indices pool",
+      .heap = BufferHeap::Static,
+      .usage =
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+      .size = sizeof(u32) * MESH_INDEX_BUDGET,
+  });
+
   // TODO: delete when Clang implements constexpr std::bit_cast for structs
   // with bitfields
 #define error "C handles can't be directly converted to SlotMap keys"
@@ -62,127 +104,90 @@ void Scene::next_frame() {
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
-  std::array<Span<const std::byte>, MESH_ATTRIBUTE_COUNT> upload_attributes;
-
-  upload_attributes[MESH_ATTRIBUTE_POSITIONS] =
-      Span(desc.positions, desc.num_vertices).as_bytes();
-
-  if (desc.colors) {
-    upload_attributes[MESH_ATTRIBUTE_COLORS] =
-        Span(desc.colors, desc.num_vertices).as_bytes();
-  }
-
   if (!desc.normals) {
     todo("Normals generation not implemented!");
   }
-  upload_attributes[MESH_ATTRIBUTE_NORMALS] =
-      Span(desc.normals, desc.num_vertices).as_bytes();
 
   if (desc.tangents) {
     todo("Normal mapping not implemented!");
-  }
-
-  if (desc.uvs) {
-    upload_attributes[MESH_ATTRIBUTE_UVS] =
-        Span(desc.uvs, desc.num_vertices).as_bytes();
   }
 
   if (!desc.indices) {
     todo("Index buffer generation not implemented!");
   }
 
-  auto used_attributes = range(int(MESH_ATTRIBUTE_COUNT)) |
-                         filter_map([&](int i) -> Optional<MeshAttribute> {
-                           auto mesh_attribute = static_cast<MeshAttribute>(i);
-                           if (not upload_attributes[mesh_attribute].empty()) {
-                             return mesh_attribute;
-                           }
-                           return None;
-                         });
+  // Create mesh
 
-  auto get_mesh_attribute_size = [](MeshAttribute attribute) -> unsigned {
-    switch (attribute) {
-    default:
-      unreachable("Unknown mesh attribute {}", int(attribute));
-    case MESH_ATTRIBUTE_POSITIONS:
-      return sizeof(glm::vec3);
-    case MESH_ATTRIBUTE_NORMALS:
-      return sizeof(glsl::normal_t);
-    case MESH_ATTRIBUTE_COLORS:
-      return sizeof(glsl::color_t);
-    case MESH_ATTRIBUTE_UVS:
-      return sizeof(glm::vec2);
-    }
-  };
+  Mesh mesh = {};
 
-  auto vertex_buffer_size =
-      desc.num_vertices *
-      ranges::accumulate(used_attributes | map(get_mesh_attribute_size), 0);
-  auto index_buffer_size = desc.num_indices * sizeof(unsigned);
+  mesh.base_vertex = m_num_vertex_positions;
+  m_num_vertex_positions += desc.num_vertices;
+  ren_assert(m_num_vertex_positions <= MESH_VERTEX_BUDGET,
+             "Mesh vertex positions pool overflow");
 
-  Mesh mesh = {
-      .vertex_buffer = m_persistent_arena.create_buffer({
-          .name = "Vertex buffer",
-          .heap = BufferHeap::Static,
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          .size = vertex_buffer_size,
-      }),
-      .index_buffer = m_persistent_arena.create_buffer({
-          .name = "Index buffer",
-          .heap = BufferHeap::Static,
-          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-          .size = index_buffer_size,
-      }),
-      .num_vertices = desc.num_vertices,
-      .num_indices = desc.num_indices,
-      .index_format = VK_INDEX_TYPE_UINT32,
-  };
-
-  mesh.attribute_offsets.fill(ATTRIBUTE_UNUSED);
-
-  size_t offset = 0;
-  for (auto mesh_attribute : used_attributes) {
-    mesh.attribute_offsets[mesh_attribute] = offset;
-    auto data = upload_attributes[mesh_attribute];
-    auto dst = mesh.vertex_buffer.subbuffer(offset);
-    switch (mesh_attribute) {
-    default:
-      assert(!"Unknown mesh attribute");
-    case MESH_ATTRIBUTE_POSITIONS: {
-      auto positions = data.reinterpret<const glm::vec3>();
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions,
-                                       dst);
-      offset += size_bytes(positions);
-    } break;
-    case MESH_ATTRIBUTE_NORMALS: {
-      auto normals =
-          data.reinterpret<const glm::vec3>() | map(glsl::encode_normal);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals, dst);
-      offset += size_bytes(normals);
-    } break;
-    case MESH_ATTRIBUTE_COLORS: {
-      auto colors =
-          data.reinterpret<const glm::vec4>() | map(glsl::encode_color);
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors, dst);
-      offset += size_bytes(colors);
-    } break;
-    case MESH_ATTRIBUTE_UVS: {
-      auto uvs = data.reinterpret<const glm::vec2>();
-      m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs, dst);
-      offset += size_bytes(uvs);
-    } break;
-    }
+  if (desc.colors) {
+    mesh.base_color_vertex = m_num_vertex_colors;
+    m_num_vertex_colors += desc.num_vertices;
+    ren_assert(m_num_vertex_colors <= MESH_VERTEX_BUDGET,
+               "Mesh vertex colors pool overflow");
   }
 
-  auto indices = std::span(desc.indices, desc.num_indices);
-  m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices,
-                                   mesh.index_buffer);
+  if (desc.uvs) {
+    mesh.base_uv_vertex = m_num_vertex_uvs;
+    m_num_vertex_uvs += desc.num_vertices;
+    ren_assert(m_num_vertex_uvs <= MESH_VERTEX_BUDGET,
+               "Mesh vertex UVs pool overflow");
+  }
 
-  auto key = m_meshes.emplace(std::move(mesh));
+  mesh.base_index = m_num_vertex_indices;
+  mesh.num_indices = desc.num_indices;
+  m_num_vertex_indices += desc.num_indices;
+  ren_assert(m_num_vertex_indices <= MESH_INDEX_BUDGET,
+             "Mesh vertex index pool overflow");
 
-  return std::bit_cast<RenMesh>(key);
+  // Upload vertices
+
+  {
+    auto positions_src =
+        Span(desc.positions, desc.num_vertices).reinterpret<glm::vec3>();
+    auto positions_dst = m_vertex_positions.slice<glm::vec3>(mesh.base_vertex,
+                                                             desc.num_vertices);
+    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions_src,
+                                     positions_dst);
+    auto normals_src =
+        Span(desc.normals, desc.num_vertices).reinterpret<glm::vec3>();
+    auto normals_dst =
+        m_vertex_normals.slice<glm::vec3>(mesh.base_vertex, desc.num_vertices);
+    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals_src,
+                                     normals_dst);
+  }
+  if (mesh.base_color_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
+    auto colors_src =
+        Span(desc.colors, desc.num_vertices).reinterpret<glm::vec4>();
+    auto colors_dst = m_vertex_colors.slice<glm::vec4>(mesh.base_color_vertex,
+                                                       desc.num_vertices);
+    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors_src,
+                                     colors_dst);
+  }
+  if (mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
+    auto uvs_src = Span(desc.uvs, desc.num_vertices).reinterpret<glm::vec2>();
+    auto uvs_dst =
+        m_vertex_uvs.slice<glm::vec2>(mesh.base_uv_vertex, desc.num_vertices);
+    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs_src,
+                                     uvs_dst);
+  }
+  {
+    Span<const u32> indices_src(desc.indices, desc.num_indices);
+    auto indices_dst =
+        m_vertex_indices.slice<u32>(mesh.base_index, mesh.num_indices);
+    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices_src,
+                                     indices_dst);
+  }
+
+  auto key = static_cast<RenMesh>(m_meshes.size());
+  m_meshes.push_back(mesh);
+
+  return key;
 }
 
 auto Scene::get_or_create_sampler(const RenSampler &sampler)
@@ -300,8 +305,9 @@ void Scene::set_tone_mapping(RenToneMappingOperator oper) noexcept {
 void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
   for (const auto &desc : descs) {
-    auto mesh_inst = m_mesh_insts.insert({
-        .mesh = std::bit_cast<Handle<Mesh>>(desc.mesh),
+    assert(desc.mesh);
+    auto mesh_inst = m_mesh_instances.insert({
+        .mesh = desc.mesh,
         .material = desc.material,
         .matrix = glm::mat4(1.0f),
     });
@@ -313,7 +319,7 @@ void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
 void Scene::destroy_mesh_insts(
     std::span<const RenMeshInst> mesh_insts) noexcept {
   for (auto mesh_inst : mesh_insts) {
-    m_mesh_insts.erase(std::bit_cast<Handle<MeshInst>>(mesh_inst));
+    m_mesh_instances.erase(std::bit_cast<Handle<MeshInstance>>(mesh_inst));
   }
 }
 
@@ -321,7 +327,7 @@ void Scene::set_mesh_inst_matrices(
     std::span<const RenMeshInst> mesh_insts,
     std::span<const RenMatrix4x4> matrices) noexcept {
   for (const auto &[mesh_inst, matrix] : zip(mesh_insts, matrices)) {
-    m_mesh_insts[std::bit_cast<Handle<MeshInst>>(mesh_inst)].matrix =
+    m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(mesh_inst)].matrix =
         glm::make_mat4(matrix[0]);
   }
 }
@@ -362,16 +368,21 @@ void Scene::draw() {
   update_rg_passes(*m_render_graph, m_cmd_allocator,
                    PassesConfig{
                        .pipelines = &m_pipelines,
-                       .pp_opts = &m_pp_opts,
                        .viewport_size = {m_viewport_width, m_viewport_height},
+                       .pp_opts = &m_pp_opts,
                    },
                    PassesData{
+                       .vertex_positions = m_vertex_positions,
+                       .vertex_normals = m_vertex_normals,
+                       .vertex_colors = m_vertex_colors,
+                       .vertex_uvs = m_vertex_uvs,
+                       .vertex_indices = m_vertex_indices,
+                       .meshes = m_meshes,
+                       .materials = m_materials,
+                       .mesh_instances = m_mesh_instances.values(),
+                       .directional_lights = m_dir_lights.values(),
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .camera = &m_camera,
-                       .meshes = &m_meshes,
-                       .mesh_insts = m_mesh_insts.values(),
-                       .directional_lights = m_dir_lights.values(),
-                       .materials = m_materials,
                        .pp_opts = &m_pp_opts,
                    });
 

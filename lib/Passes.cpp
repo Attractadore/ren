@@ -49,9 +49,10 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
 
   TRY_SET(rg.set_pass_data("upload",
                            UploadPassData{
-                               .mesh_insts = data.mesh_insts,
-                               .directional_lights = data.directional_lights,
+                               .meshes = data.meshes,
                                .materials = data.materials,
+                               .mesh_instances = data.mesh_instances,
+                               .directional_lights = data.directional_lights,
                            }));
 
   TRY_SET(set_exposure_pass_data(rg, data.pp_opts->exposure));
@@ -64,8 +65,13 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
       glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
   TRY_SET(rg.set_pass_data(
       "opaque", OpaquePassData{
+                    .vertex_positions = data.vertex_positions,
+                    .vertex_normals = data.vertex_normals,
+                    .vertex_colors = data.vertex_colors,
+                    .vertex_uvs = data.vertex_uvs,
+                    .vertex_indices = data.vertex_indices,
                     .meshes = data.meshes,
-                    .mesh_insts = data.mesh_insts,
+                    .mesh_instances = data.mesh_instances,
                     .viewport_size = size,
                     .proj = proj,
                     .view = view,

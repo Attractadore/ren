@@ -23,12 +23,11 @@ class ResourceUploader {
   Vector<TextureCopy> m_texture_copies;
 
 public:
-  template <ranges::sized_range R>
-  void stage_buffer(Device &device, ResourceArena &arena, R &&data,
+  template <typename T>
+  void stage_buffer(Device &device, ResourceArena &arena, Span<const T> data,
                     const BufferView &buffer) {
-    using T = ranges::range_value_t<R>;
-
     usize size = size_bytes(data);
+    assert(size <= buffer.size);
 
     BufferView staging_buffer = arena.create_buffer({
         .name = "Staging buffer",

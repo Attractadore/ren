@@ -25,9 +25,10 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
             this->size_bytes()};
   }
 
-  template <typename U> auto reinterpret() const -> Span<U> {
-    auto s = Span<U>(reinterpret_cast<U *>(this->data()),
-                     this->size_bytes() / sizeof(U));
+  template <typename U> auto reinterpret() const {
+    using V = std::conditional_t<std::is_const_v<T>, std::add_const_t<U>, U>;
+    auto s = Span<V>(reinterpret_cast<V *>(this->data()),
+                     this->size_bytes() / sizeof(V));
     assert(s.size_bytes() == this->size_bytes());
     return s;
   }

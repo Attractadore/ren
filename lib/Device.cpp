@@ -103,6 +103,7 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   VkPhysicalDeviceVulkan11Features vulkan11_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .pNext = &vulkan10_features,
+      .shaderDrawParameters = true,
   };
 
   VkPhysicalDeviceVulkan12Features vulkan12_features = {

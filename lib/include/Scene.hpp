@@ -3,7 +3,6 @@
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
 #include "Mesh.hpp"
-#include "Model.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
@@ -31,7 +30,16 @@ class Scene {
   Camera m_camera;
   PostProcessingOptions m_pp_opts;
 
-  HandleMap<Mesh> m_meshes;
+  BufferView m_vertex_positions;
+  BufferView m_vertex_normals;
+  BufferView m_vertex_colors;
+  BufferView m_vertex_uvs;
+  BufferView m_vertex_indices;
+  u32 m_num_vertex_positions = 0;
+  u32 m_num_vertex_colors = 0;
+  u32 m_num_vertex_uvs = 0;
+  u32 m_num_vertex_indices = 0;
+  Vector<Mesh> m_meshes = {{}};
 
   HashMap<RenSampler, Handle<Sampler>> m_samplers;
 
@@ -44,7 +52,7 @@ public:
   unsigned m_viewport_height = 720;
 
 private:
-  DenseHandleMap<MeshInst> m_mesh_insts;
+  DenseHandleMap<MeshInstance> m_mesh_instances;
 
   Vector<Handle<Texture>> m_images = {{}};
 

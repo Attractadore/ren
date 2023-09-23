@@ -1,5 +1,5 @@
 #pragma once
-#include "DenseHandleMap.hpp"
+#include "Buffer.hpp"
 #include "Support/Span.hpp"
 
 namespace ren {
@@ -8,7 +8,7 @@ class RenderGraph;
 class CommandAllocator;
 struct Camera;
 struct Mesh;
-struct MeshInst;
+struct MeshInstance;
 struct Pipelines;
 struct PostProcessingOptions;
 
@@ -21,21 +21,22 @@ struct Material;
 
 struct PassesConfig {
   const Pipelines *pipelines = nullptr;
-  const PostProcessingOptions *pp_opts = nullptr;
   glm::uvec2 viewport_size;
+  const PostProcessingOptions *pp_opts = nullptr;
 };
 
 struct PassesData {
+  BufferView vertex_positions;
+  BufferView vertex_normals;
+  BufferView vertex_colors;
+  BufferView vertex_uvs;
+  BufferView vertex_indices;
+  Span<const Mesh> meshes;
+  Span<const glsl::Material> materials;
+  Span<const MeshInstance> mesh_instances;
+  Span<const glsl::DirLight> directional_lights;
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
-
-  const DenseHandleMap<Mesh> *meshes = nullptr;
-  Span<const MeshInst> mesh_insts;
-
-  Span<const glsl::DirLight> directional_lights;
-
-  Span<const glsl::Material> materials;
-
   const PostProcessingOptions *pp_opts;
 };
 

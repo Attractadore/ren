@@ -1,26 +1,23 @@
 #pragma once
-#include "Buffer.hpp"
-#include "Formats.hpp"
+#include "Support/StdDef.hpp"
+#include "glsl/Mesh.hpp"
 
-#include <array>
+#include <glm/glm.hpp>
 
 namespace ren {
-inline constexpr unsigned ATTRIBUTE_UNUSED = -1;
-
-enum MeshAttribute {
-  MESH_ATTRIBUTE_POSITIONS = 0,
-  MESH_ATTRIBUTE_NORMALS,
-  MESH_ATTRIBUTE_COLORS,
-  MESH_ATTRIBUTE_UVS,
-  MESH_ATTRIBUTE_COUNT,
-};
 
 struct Mesh {
-  BufferView vertex_buffer;
-  BufferView index_buffer;
-  unsigned num_vertices;
-  unsigned num_indices;
-  VkIndexType index_format;
-  std::array<unsigned, MESH_ATTRIBUTE_COUNT> attribute_offsets;
+  u32 base_vertex = 0;
+  u32 base_color_vertex = glsl::MESH_ATTRIBUTE_UNUSED;
+  u32 base_uv_vertex = glsl::MESH_ATTRIBUTE_UNUSED;
+  u32 base_index = 0;
+  u32 num_indices = 0;
 };
+
+struct MeshInstance {
+  u32 mesh = 0;
+  u32 material = 0;
+  glm::mat4 matrix{1.0f};
+};
+
 } // namespace ren

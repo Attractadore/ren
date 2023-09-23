@@ -44,6 +44,15 @@ public:
   auto subbuffer(usize offset, usize size) const -> BufferView;
 
   auto subbuffer(usize offset) const -> BufferView;
+
+  template <typename T>
+  auto slice(usize start, usize count) const -> BufferView {
+    return subbuffer(sizeof(T) * start, sizeof(T) * count);
+  }
+
+  template <typename T> auto slice(usize start) const -> BufferView {
+    return subbuffer(sizeof(T) * start);
+  }
 };
 
 } // namespace ren
