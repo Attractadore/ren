@@ -777,7 +777,7 @@ private:
   SDL_Scancode m_yaw_right_key = SDL_SCANCODE_D;
 
   float m_pitch_speed = glm::radians(45.0f);
-  float m_pitch = 0.0f;
+  float m_pitch = glm::radians(45.0f);
 
   float m_yaw_speed = -glm::radians(45.0f);
   float m_yaw = 0.0f;
