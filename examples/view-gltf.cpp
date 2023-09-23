@@ -454,7 +454,7 @@ private:
       if (not primitive.targets.empty()) {
         warn("Ignoring {} primitive morph targets", primitive.targets.size());
       }
-      OK(ren::MeshID mesh, create_mesh(desc));
+      OK(mesh, create_mesh(desc));
     }
     return mesh;
   }
