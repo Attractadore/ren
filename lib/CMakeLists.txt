@@ -153,14 +153,7 @@ endif()
 
 add_subdirectory(Passes)
 
-if(BUILD_SHARED_LIBS)
-  add_library(ren::ren ALIAS ren)
-else()
-  include(BundleDependencies)
-  bundle_dependencies(ren ren-bundled)
-  set_target_properties(ren-bundled PROPERTIES EXPORT_NAME "ren")
-  add_library(ren::ren ALIAS ren-bundled)
-endif()
+add_library(ren::ren ALIAS ren)
 
 add_library(ren-hpp INTERFACE)
 target_sources(
@@ -178,14 +171,10 @@ add_library(ren::ren-hpp ALIAS ren-hpp)
 
 if(REN_INSTALL)
   include(GNUInstallDirs)
-  get_target_property(ren_target ren::ren ALIASED_TARGET)
   install(
-    TARGETS ${ren_target} ren-hpp
+    TARGETS ren ren-hpp
     EXPORT ${REN_TARGETS}
     FILE_SET HEADERS)
-  if(NOT BUILD_SHARED_LIBS)
-    install(FILES $<TARGET_PROPERTY:${ren_target},ARCHIVE_OUTPUT_NAME> TYPE LIB)
-  endif()
   install(
     EXPORT ${REN_TARGETS}
     NAMESPACE ren::
