@@ -263,8 +263,8 @@ Device::Device(Span<const char *const> extensions, u32 adapter) {
 
 #define define_device_deleter(T, F)                                            \
   template <> struct QueueDeleter<T> {                                         \
-    void operator()(Device &device, T handle) const noexcept {                 \
-      F(device.get_device(), handle, nullptr);                                 \
+    void operator()(T handle) const noexcept {                                 \
+      F(g_device->get_device(), handle, nullptr);                              \
     }                                                                          \
   }
 
@@ -282,14 +282,14 @@ define_device_deleter(VkSwapchainKHR, vkDestroySwapchainKHR);
 #undef define_device_deleter
 
 template <> struct QueueDeleter<VkSurfaceKHR> {
-  void operator()(Device &device, VkSurfaceKHR handle) const noexcept {
-    vkDestroySurfaceKHR(device.get_instance(), handle, nullptr);
+  void operator()(VkSurfaceKHR handle) const noexcept {
+    vkDestroySurfaceKHR(g_device->get_instance(), handle, nullptr);
   }
 };
 
 template <> struct QueueDeleter<VmaAllocation> {
-  void operator()(Device &device, VmaAllocation allocation) const noexcept {
-    vmaFreeMemory(device.get_allocator(), allocation);
+  void operator()(VmaAllocation allocation) const noexcept {
+    vmaFreeMemory(g_device->get_allocator(), allocation);
   }
 };
 
@@ -301,7 +301,7 @@ Device::~Device() {
 void Device::flush() {
   throw_if_failed(vkDeviceWaitIdle(get_device()),
                   "Vulkan: Failed to wait for idle device");
-  m_delete_queue.flush(*this);
+  m_delete_queue.flush();
 }
 
 void Device::next_frame() {
@@ -309,7 +309,7 @@ void Device::next_frame() {
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   wait_for_semaphore(get_semaphore(m_graphics_queue_semaphore),
                      m_frame_end_times[m_frame_index]);
-  m_delete_queue.next_frame(*this);
+  m_delete_queue.next_frame();
 }
 
 auto Device::create_descriptor_pool(

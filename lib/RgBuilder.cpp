@@ -374,9 +374,9 @@ void RgBuilder::present(StringView texture_name) {
                 .layerCount = 1,
             },
     };
-    glm::uvec3 src_size = device.get_texture(src).size;
+    glm::uvec3 src_size = g_device->get_texture(src).size;
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-    glm::uvec3 dst_size = device.get_texture(dst).size;
+    glm::uvec3 dst_size = g_device->get_texture(dst).size;
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
   });

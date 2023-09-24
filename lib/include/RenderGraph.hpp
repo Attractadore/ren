@@ -67,35 +67,33 @@ using RgUpdateCallback = std::function<bool(RgUpdate &, const Any &)>;
 static_assert(CRgUpdateCallback<RgUpdateCallback, Any>);
 
 template <typename F, typename T>
-concept CRgHostCallback =
-    std::invocable<F, Device &, const RgRuntime &, const T &>;
+concept CRgHostCallback = std::invocable<F, const RgRuntime &, const T &>;
 
-using RgHostCallback =
-    std::function<void(Device &, const RgRuntime &, const Any &)>;
+using RgHostCallback = std::function<void(const RgRuntime &, const Any &)>;
 static_assert(CRgHostCallback<RgHostCallback, Any>);
 
 template <typename F, typename T>
 concept CRgGraphicsCallback =
-    std::invocable<F, Device &, const RgRuntime &, RenderPass &, const T &>;
+    std::invocable<F, const RgRuntime &, RenderPass &, const T &>;
 
 using RgGraphicsCallback =
-    std::function<void(Device &, const RgRuntime &, RenderPass &, const Any &)>;
+    std::function<void(const RgRuntime &, RenderPass &, const Any &)>;
 static_assert(CRgGraphicsCallback<RgGraphicsCallback, Any>);
 
 template <typename F, typename T>
 concept CRgComputeCallback =
-    std::invocable<F, Device &, const RgRuntime &, ComputePass &, const T &>;
+    std::invocable<F, const RgRuntime &, ComputePass &, const T &>;
 
-using RgComputeCallback = std::function<void(Device &, const RgRuntime &,
-                                             ComputePass &, const Any &)>;
+using RgComputeCallback =
+    std::function<void(const RgRuntime &, ComputePass &, const Any &)>;
 static_assert(CRgComputeCallback<RgComputeCallback, Any>);
 
 template <typename F, typename T>
 concept CRgTransferCallback =
-    std::invocable<F, Device &, const RgRuntime &, TransferPass &, const T &>;
+    std::invocable<F, const RgRuntime &, TransferPass &, const T &>;
 
-using RgTransferCallback = std::function<void(Device &, const RgRuntime &,
-                                              TransferPass &, const Any &)>;
+using RgTransferCallback =
+    std::function<void(const RgRuntime &, TransferPass &, const Any &)>;
 static_assert(CRgTransferCallback<RgTransferCallback, Any>);
 
 constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
@@ -602,9 +600,8 @@ private:
     ren_rg_inc_time_counter(m_host_callback_counter);
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgHostPassInfo{
-        .cb = [cb = std::move(cb)](
-                  Device &device, const RgRuntime &rg,
-                  const Any &data) { cb(device, rg, *data.get<T>()); },
+        .cb = [cb = std::move(cb)](const RgRuntime &rg,
+                                   const Any &data) { cb(rg, *data.get<T>()); },
     };
   }
 
@@ -614,9 +611,9 @@ private:
     assert(!m_passes[pass].type or
            m_passes[pass].type.get<RgGraphicsPassInfo>());
     m_passes[pass].type.get_or_emplace<RgGraphicsPassInfo>().cb =
-        [cb = std::move(cb)](Device &device, const RgRuntime &rg,
-                             RenderPass &render_pass, const Any &data) {
-          cb(device, rg, render_pass, *data.get<T>());
+        [cb = std::move(cb)](const RgRuntime &rg, RenderPass &render_pass,
+                             const Any &data) {
+          cb(rg, render_pass, *data.get<T>());
         };
   }
 
@@ -626,8 +623,8 @@ private:
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgComputePassInfo{
         .cb = [cb = std::move(cb)](
-                  Device &device, const RgRuntime &rg, ComputePass &pass,
-                  const Any &data) { cb(device, rg, pass, *data.get<T>()); },
+                  const RgRuntime &rg, ComputePass &pass,
+                  const Any &data) { cb(rg, pass, *data.get<T>()); },
     };
   }
 
@@ -637,8 +634,8 @@ private:
     assert(!m_passes[pass].type);
     m_passes[pass].type = RgTransferPassInfo{
         .cb = [cb = std::move(cb)](
-                  Device &device, const RgRuntime &rg, TransferPass &pass,
-                  const Any &data) { cb(device, rg, pass, *data.get<T>()); },
+                  const RgRuntime &rg, TransferPass &pass,
+                  const Any &data) { cb(rg, pass, *data.get<T>()); },
     };
   }
 
@@ -820,8 +817,7 @@ public:
   }
 
 #define ren_rg_host_callback(T)                                                \
-  detail::CallbackTag<T>(), [=](Device & device, const RgRuntime &rg,          \
-                                const T &data)
+  detail::CallbackTag<T>(), [=](const RgRuntime &rg, const T &data)
 
   template <typename T>
   void set_graphics_callback(CRgGraphicsCallback<T> auto cb) {
@@ -835,8 +831,8 @@ public:
   }
 
 #define ren_rg_graphics_callback(T)                                            \
-  detail::CallbackTag<T>(), [=](Device & device, const RgRuntime &rg,          \
-                                RenderPass &render_pass, const T &data)
+  detail::CallbackTag<T>(), [=](const RgRuntime &rg, RenderPass &render_pass,  \
+                                const T &data)
 
   template <typename T>
   void set_compute_callback(CRgComputeCallback<T> auto cb) {
@@ -850,8 +846,8 @@ public:
   }
 
 #define ren_rg_compute_callback(T)                                             \
-  detail::CallbackTag<T>(), [=](Device & device, const RgRuntime &rg,          \
-                                ComputePass &pass, const T &data)
+  detail::CallbackTag<T>(), [=](const RgRuntime &rg, ComputePass &pass,        \
+                                const T &data)
 
   template <typename T>
   void set_transfer_callback(CRgTransferCallback<T> auto cb) {
@@ -865,8 +861,8 @@ public:
   }
 
 #define ren_rg_transfer_callback(T)                                            \
-  detail::CallbackTag<T>(), [=](Device & device, const RgRuntime &rg,          \
-                                TransferPass &cmd, const T &data)
+  detail::CallbackTag<T>(), [=](const RgRuntime &rg, TransferPass &cmd,        \
+                                const T &data)
 private:
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 

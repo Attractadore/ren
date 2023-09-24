@@ -19,8 +19,7 @@ struct UploadPassResources {
   RgBufferId directional_lights;
 };
 
-void run_upload_pass(Device &device, const RgRuntime &rg,
-                     const UploadPassResources &rcs,
+void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
                      const UploadPassData &data) {
   assert(rcs.meshes);
   assert(rcs.materials);
@@ -97,9 +96,8 @@ void setup_upload_pass(RgBuilder &rgb) {
     return true;
   });
 
-  pass.set_host_callback(ren_rg_host_callback(UploadPassData) {
-    run_upload_pass(device, rg, rcs, data);
-  });
+  pass.set_host_callback(
+      ren_rg_host_callback(UploadPassData) { run_upload_pass(rg, rcs, data); });
 }
 
 } // namespace ren

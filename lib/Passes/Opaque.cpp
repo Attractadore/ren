@@ -21,8 +21,8 @@ struct OpaquePassResources {
   RgTextureId exposure;
 };
 
-void run_opaque_pass(Device &device, const RgRuntime &rg,
-                     RenderPass &render_pass, const OpaquePassResources &rcs,
+void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
+                     const OpaquePassResources &rcs,
                      const OpaquePassData &data) {
   if (data.mesh_instances.empty()) {
     return;
@@ -38,24 +38,27 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
 
   auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBuffer>(rcs.uniforms);
   *uniforms = {
-      .positions = device.get_buffer_device_address<glsl::Positions>(
+      .positions = g_device->get_buffer_device_address<glsl::Positions>(
           data.vertex_positions),
-      .normals =
-          device.get_buffer_device_address<glsl::Normals>(data.vertex_normals),
+      .normals = g_device->get_buffer_device_address<glsl::Normals>(
+          data.vertex_normals),
       .colors =
-          device.get_buffer_device_address<glsl::Colors>(data.vertex_colors),
-      .uvs = device.get_buffer_device_address<glsl::UVs>(data.vertex_uvs),
-      .meshes = device.get_buffer_device_address<glsl::Meshes>(meshes),
-      .materials = device.get_buffer_device_address<glsl::Materials>(materials),
+          g_device->get_buffer_device_address<glsl::Colors>(data.vertex_colors),
+      .uvs = g_device->get_buffer_device_address<glsl::UVs>(data.vertex_uvs),
+      .meshes = g_device->get_buffer_device_address<glsl::Meshes>(meshes),
+      .materials =
+          g_device->get_buffer_device_address<glsl::Materials>(materials),
       .mesh_instances =
-          device.get_buffer_device_address<glsl::MeshInstances>(mesh_instances),
+          g_device->get_buffer_device_address<glsl::MeshInstances>(
+              mesh_instances),
       .transform_matrices =
-          device.get_buffer_device_address<glsl::TransformMatrices>(
+          g_device->get_buffer_device_address<glsl::TransformMatrices>(
               transform_matrices),
-      .normal_matrices = device.get_buffer_device_address<glsl::NormalMatrices>(
-          normal_matrices),
+      .normal_matrices =
+          g_device->get_buffer_device_address<glsl::NormalMatrices>(
+              normal_matrices),
       .directional_lights =
-          device.get_buffer_device_address<glsl::DirectionalLights>(
+          g_device->get_buffer_device_address<glsl::DirectionalLights>(
               directional_lights),
       .num_directional_lights = data.num_dir_lights,
       .pv = data.proj * data.view,
@@ -66,7 +69,7 @@ void run_opaque_pass(Device &device, const RgRuntime &rg,
   render_pass.bind_graphics_pipeline(rcs.pipeline);
   render_pass.bind_descriptor_sets({rg.get_texture_set()});
 
-  auto ub = device.get_buffer_device_address<glsl::OpaqueUniformBuffer>(
+  auto ub = g_device->get_buffer_device_address<glsl::OpaqueUniformBuffer>(
       rg.get_buffer(rcs.uniforms));
   render_pass.bind_index_buffer(data.vertex_indices, VK_INDEX_TYPE_UINT32);
   render_pass.set_push_constants(glsl::OpaqueConstants{.ub = ub});
@@ -150,7 +153,7 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
   });
 
   pass.set_graphics_callback(ren_rg_graphics_callback(OpaquePassData) {
-    run_opaque_pass(device, rg, render_pass, rcs, data);
+    run_opaque_pass(rg, render_pass, rcs, data);
   });
 }
 

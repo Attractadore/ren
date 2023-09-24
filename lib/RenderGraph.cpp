@@ -255,7 +255,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       pass.type.visit(OverloadSet{
           [&](const RgHostPass &host_pass) {
             if (host_pass.cb) {
-              host_pass.cb(*g_device, rt, m_pass_datas[pass.pass]);
+              host_pass.cb(rt, m_pass_datas[pass.pass]);
             }
           },
           [&](const RgGraphicsPass &graphics_pass) {
@@ -310,18 +310,17 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});
 
-            graphics_pass.cb(*g_device, rt, render_pass,
-                             m_pass_datas[pass.pass]);
+            graphics_pass.cb(rt, render_pass, m_pass_datas[pass.pass]);
           },
           [&](const RgComputePass &compute_pass) {
             if (compute_pass.cb) {
               ComputePass comp = get_command_recorder().compute_pass();
-              compute_pass.cb(*g_device, rt, comp, m_pass_datas[pass.pass]);
+              compute_pass.cb(rt, comp, m_pass_datas[pass.pass]);
             }
           },
           [&](const RgTransferPass &transfer_pass) {
             if (transfer_pass.cb) {
-              transfer_pass.cb(*g_device, rt, get_command_recorder(),
+              transfer_pass.cb(rt, get_command_recorder(),
                                m_pass_datas[pass.pass]);
             }
           },

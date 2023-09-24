@@ -19,36 +19,19 @@
 
 namespace ren {
 
-class Device;
 class SwapchainTextureCreateInfo;
 
-namespace detail {
-template <typename T, size_t Idx, typename... Ts>
-constexpr bool IsQueueTypeHelper = [] {
-  if constexpr (Idx >= sizeof...(Ts)) {
-    return false;
-  } else if constexpr (std::same_as<
-                           T, std::tuple_element_t<Idx, std::tuple<Ts...>>>) {
-    return true;
-  } else {
-    return IsQueueTypeHelper<T, Idx + 1, Ts...>;
-  }
-}();
-}
-
 template <typename T, typename... Ts>
-concept IsQueueType = detail::IsQueueTypeHelper<T, 0, Ts...>;
+concept IsQueueType = (std::same_as<T, Ts> or ...);
 
-using QueueCustomDeleter = std::function<void(Device &device)>;
+using QueueCustomDeleter = std::function<void()>;
 
 template <typename T> struct QueueDeleter {
-  void operator()(Device &device, T value) const noexcept;
+  void operator()(T value) const noexcept;
 };
 
 template <> struct QueueDeleter<QueueCustomDeleter> {
-  void operator()(Device &device, QueueCustomDeleter deleter) const noexcept {
-    deleter(device);
-  }
+  void operator()(QueueCustomDeleter deleter) const noexcept { deleter(); }
 };
 
 namespace detail {
@@ -74,19 +57,19 @@ private:
     get_frame_pushed_item_count<T>()++;
   }
 
-  template <typename T> void pop(Device &device, unsigned count) {
+  template <typename T> void pop(unsigned count) {
     auto &queue = get_queue<T>();
     for (int i = 0; i < count; ++i) {
       assert(not queue.empty());
-      QueueDeleter<T>()(device, std::move(queue.front()));
+      QueueDeleter<T>()(std::move(queue.front()));
       queue.pop();
     }
   }
 
 public:
-  void next_frame(Device &device) {
+  void next_frame() {
     m_frame_idx = (m_frame_idx + 1) % PIPELINE_DEPTH;
-    (pop<Ts>(device, get_frame_pushed_item_count<Ts>()), ...);
+    (pop<Ts>(get_frame_pushed_item_count<Ts>()), ...);
     m_frame_data[m_frame_idx] = {};
   }
 
@@ -101,8 +84,8 @@ public:
     push_impl(QueueCustomDeleter(std::move(callback)));
   }
 
-  void flush(Device &device) {
-    (pop<Ts>(device, get_queue<Ts>().size()), ...);
+  void flush() {
+    (pop<Ts>(get_queue<Ts>().size()), ...);
     m_frame_data.fill({});
   }
 };
@@ -391,6 +374,6 @@ public:
       -> VkResult;
 };
 
-extern std::unique_ptr<Device> g_device;
+extern Device *g_device;
 
 } // namespace ren

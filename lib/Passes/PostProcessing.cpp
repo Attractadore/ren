@@ -32,8 +32,7 @@ struct PostProcessingPassResources {
   RgTextureId exposure;
 };
 
-void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
-                                   ComputePass &pass,
+void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
   assert(rcs.pipeline);
   assert(rcs.texture);
@@ -45,7 +44,7 @@ void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
   BufferReference<glsl::LuminanceHistogram> histogram;
   StorageTextureId previous_exposure;
   if (rcs.histogram) {
-    histogram = device.get_buffer_device_address<glsl::LuminanceHistogram>(
+    histogram = g_device->get_buffer_device_address<glsl::LuminanceHistogram>(
         rg.get_buffer(rcs.histogram));
     previous_exposure = rg.get_storage_texture_descriptor(rcs.exposure);
   }
@@ -59,7 +58,7 @@ void run_post_processing_uber_pass(Device &device, const RgRuntime &rg,
       .tex = texture_index,
   });
 
-  glm::uvec2 size = device.get_texture(texture).size;
+  glm::uvec2 size = g_device->get_texture(texture).size;
   glm::uvec2 group_size = {glsl::POST_PROCESSING_THREADS_X,
                            glsl::POST_PROCESSING_THREADS_Y};
   glm::uvec2 work_size = {glsl::POST_PROCESSING_WORK_SIZE_X,
@@ -91,7 +90,7 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
   }
 
   pass.set_compute_callback(ren_rg_compute_callback(RgNoPassData) {
-    run_post_processing_uber_pass(device, rg, pass, rcs);
+    run_post_processing_uber_pass(rg, pass, rcs);
   });
 }
 
@@ -106,7 +105,7 @@ struct ReduceLuminanceHistogramPassData {
 };
 
 void run_reduce_luminance_histogram_pass(
-    Device &device, const RgRuntime &rg, ComputePass &pass,
+    const RgRuntime &rg, ComputePass &pass,
     const ReduceLuminanceHistogramPassResources &rcs,
     const ReduceLuminanceHistogramPassData &data) {
   assert(rcs.pipeline);
@@ -115,8 +114,9 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
-      .histogram = device.get_buffer_device_address<glsl::LuminanceHistogram>(
-          rg.get_buffer(rcs.histogram)),
+      .histogram =
+          g_device->get_buffer_device_address<glsl::LuminanceHistogram>(
+              rg.get_buffer(rcs.histogram)),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
       .exposure_compensation = data.exposure_compensation,
   });
@@ -143,7 +143,7 @@ void setup_reduce_luminance_histogram_pass(
 
   pass.set_compute_callback(
       ren_rg_compute_callback(ReduceLuminanceHistogramPassData) {
-        run_reduce_luminance_histogram_pass(device, rg, pass, rcs, data);
+        run_reduce_luminance_histogram_pass(rg, pass, rcs, data);
       });
 }
 

@@ -35,13 +35,12 @@ CommandPool &CommandPool::operator=(CommandPool &&other) {
 void CommandPool::destroy() {
   if (m_pool) {
     g_device->push_to_delete_queue(
-        [pool = m_pool,
-         cmd_buffers = std::move(m_cmd_buffers)](Device &device) {
+        [pool = m_pool, cmd_buffers = std::move(m_cmd_buffers)] {
           if (not cmd_buffers.empty()) {
-            vkFreeCommandBuffers(device.get_device(), pool, cmd_buffers.size(),
-                                 cmd_buffers.data());
+            vkFreeCommandBuffers(g_device->get_device(), pool,
+                                 cmd_buffers.size(), cmd_buffers.data());
           }
-          vkDestroyCommandPool(device.get_device(), pool, nullptr);
+          vkDestroyCommandPool(g_device->get_device(), pool, nullptr);
         });
   }
 }

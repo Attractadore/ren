@@ -11,8 +11,14 @@
 #include <cassert>
 
 namespace ren {
-std::unique_ptr<Device> g_device;
+
+Device *g_device = nullptr;
+
+namespace {
+std::unique_ptr<Device> g_device_holder;
 }
+
+} // namespace ren
 
 namespace {
 
@@ -49,12 +55,16 @@ RenResult ren_Init(size_t num_instance_extensions,
     assert(instance_extensions);
   }
   return lippincott([&] {
-    ren::g_device = std::make_unique<ren::Device>(
+    ren::g_device_holder = std::make_unique<ren::Device>(
         ren::Span(instance_extensions, num_instance_extensions), adapter);
+    ren::g_device = ren::g_device_holder.get();
   });
 }
 
-void ren_Quit() { ren::g_device.reset(); }
+void ren_Quit() {
+  ren::g_device_holder.reset();
+  ren::g_device = nullptr;
+}
 
 RenResult ren_vk_CreateSwapchain(RenPFNCreateSurface create_surface,
                                  void *usrptr, RenSwapchain **p_swapchain) {
