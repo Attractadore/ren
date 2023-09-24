@@ -96,7 +96,6 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 } // namespace
 
 RgBuilder::RgBuilder(RenderGraph &rg) {
-  ren_rg_time_region("builder-init");
   m_rg = &rg;
   m_rg->m_pass_ids.clear();
   m_rg->m_pass_datas = {{}};
@@ -111,7 +110,6 @@ RgBuilder::RgBuilder(RenderGraph &rg) {
 }
 
 auto RgBuilder::create_pass(String name) -> RgPassBuilder {
-  ren_rg_inc_time_counter(m_create_pass_counter);
   RgPassId id(m_passes.size());
   m_passes.emplace_back();
   m_rg->m_pass_datas.emplace_back();
@@ -166,7 +164,6 @@ auto RgBuilder::get_or_alloc_buffer(StringView name) -> RgBufferId {
 }
 
 void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) {
-  ren_rg_inc_time_counter(m_create_buffer_counter);
   RgBufferId id = get_or_alloc_buffer(std::move(create_info.name));
   m_rg->m_buffer_parents[id] = id;
   m_buffer_descs.insert(RgPhysicalBufferId(id), {
@@ -177,7 +174,6 @@ void RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) {
 
 auto RgBuilder::read_buffer(RgPassId pass, StringView buffer,
                             const RgBufferUsage &usage) -> RgBufferId {
-  ren_rg_inc_time_counter(m_read_buffer_counter);
   RgBufferId id = get_or_alloc_buffer(buffer);
   m_passes[pass].read_buffers.push_back(add_buffer_use(id, usage));
   return id;
@@ -186,7 +182,6 @@ auto RgBuilder::read_buffer(RgPassId pass, StringView buffer,
 auto RgBuilder::write_buffer(RgPassId pass, StringView dst_buffer,
                              StringView src_buffer, const RgBufferUsage &usage)
     -> RgBufferId {
-  ren_rg_inc_time_counter(m_write_buffer_counter);
   RgBufferId src_id = get_or_alloc_buffer(src_buffer);
   RgBufferId dst_id = get_or_alloc_buffer(dst_buffer);
   m_buffer_kills[src_id] = pass;
@@ -258,7 +253,6 @@ auto RgBuilder::get_or_alloc_texture(StringView name, u32 temporal_layer)
 }
 
 void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) {
-  ren_rg_inc_time_counter(m_create_texture_counter);
   assert(create_info.num_temporal_layers > 0);
   RgTextureId id = get_or_alloc_texture(std::move(create_info.name));
   for (int i : range(create_info.num_temporal_layers)) {
@@ -282,7 +276,6 @@ void RgBuilder::create_texture(RgTextureCreateInfo &&create_info) {
 auto RgBuilder::read_texture(RgPassId pass, StringView texture,
                              const RgTextureUsage &usage, u32 temporal_layer)
     -> RgTextureId {
-  ren_rg_inc_time_counter(m_read_texture_counter);
   RgTextureId id = get_or_alloc_texture(texture, temporal_layer);
   m_passes[pass].read_textures.push_back(add_texture_use(id, usage));
   return id;
@@ -291,7 +284,6 @@ auto RgBuilder::read_texture(RgPassId pass, StringView texture,
 auto RgBuilder::write_texture(RgPassId pass, StringView dst_texture,
                               StringView src_texture,
                               const RgTextureUsage &usage) -> RgTextureId {
-  ren_rg_inc_time_counter(m_write_texture_counter);
   RgTextureId src_id = get_or_alloc_texture(src_texture);
   RgTextureId dst_id = get_or_alloc_texture(dst_texture);
   m_texture_kills[src_id] = pass;
@@ -335,20 +327,17 @@ auto RgBuilder::alloc_semaphore(StringView name) -> RgSemaphoreId {
 
 void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                VkPipelineStageFlags2 stage_mask, u64 value) {
-  ren_rg_inc_time_counter(m_wait_semaphore_counter);
   m_passes[pass].wait_semaphores.push_back(
       add_semaphore_signal(semaphore, stage_mask, value));
 }
 
 void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                  VkPipelineStageFlags2 stage_mask, u64 value) {
-  ren_rg_inc_time_counter(m_signal_semaphore_counter);
   m_passes[pass].signal_semaphores.push_back(
       add_semaphore_signal(semaphore, stage_mask, value));
 }
 
 void RgBuilder::present(StringView texture_name) {
-  ren_rg_inc_time_counter(m_present_counter);
 
   m_rg->m_acquire_semaphore = alloc_semaphore("rg-acquire-semaphore");
   m_rg->m_present_semaphore = alloc_semaphore("rg-present-semaphore");
@@ -579,17 +568,9 @@ auto RgBuilder::passes() const {
 }
 
 void RgBuilder::create_resources(Span<const RgPassId> schedule) {
-  {
-    ren_rg_time_region("cr-clear-arena");
-    m_rg->m_arena.clear();
-  }
+  m_rg->m_arena.clear();
 
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> heap_usage_flags = {};
-
-  RenRgTimeCounter(update_buffer_heap_usage_flags_counter,
-                   "cr-update-buffer-heap-usage-flags");
-  RenRgTimeCounter(update_texture_usage_flags_counter,
-                   "cr-update-texture-usage-flags");
 
   for (RgPassId pass_id : schedule) {
     const RgPassInfo &pass = m_passes[pass_id];
@@ -602,11 +583,8 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       heap_usage_flags[heap] |= get_buffer_usage_flags(use.usage.access_mask);
     };
 
-    {
-      ren_rg_inc_time_counter(update_buffer_heap_usage_flags_counter);
-      ranges::for_each(pass.read_buffers, update_buffer_heap_usage_flags);
-      ranges::for_each(pass.write_buffers, update_buffer_heap_usage_flags);
-    }
+    ranges::for_each(pass.read_buffers, update_buffer_heap_usage_flags);
+    ranges::for_each(pass.write_buffers, update_buffer_heap_usage_flags);
 
     auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
       const RgTextureUse &use = m_texture_uses[use_id];
@@ -617,79 +595,65 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       });
     };
 
-    {
-      ren_rg_inc_time_counter(update_texture_usage_flags_counter);
-      ranges::for_each(pass.read_textures, update_texture_usage_flags);
-      ranges::for_each(pass.write_textures, update_texture_usage_flags);
-    }
+    ranges::for_each(pass.read_textures, update_texture_usage_flags);
+    ranges::for_each(pass.write_textures, update_texture_usage_flags);
   }
 
-  {
-    ren_rg_dump_time_counter(update_buffer_heap_usage_flags_counter);
-    ren_rg_time_region("cr-update-buffer-descs");
-    m_rg->m_buffers.resize(m_rg->m_buffer_parents.size());
-    m_rg->m_buffer_descs.clear();
-    for (const auto &[physical_buffer_id, desc] : m_buffer_descs) {
-      m_rg->m_buffer_descs.insert(physical_buffer_id,
-                                  {.heap = desc.heap, .size = desc.size});
-    }
-    m_rg->m_heap_buffer_usage_flags = heap_usage_flags;
-    m_rg->m_heap_buffers = {};
+  m_rg->m_buffers.resize(m_rg->m_buffer_parents.size());
+  m_rg->m_buffer_descs.clear();
+  for (const auto &[physical_buffer_id, desc] : m_buffer_descs) {
+    m_rg->m_buffer_descs.insert(physical_buffer_id,
+                                {.heap = desc.heap, .size = desc.size});
   }
+  m_rg->m_heap_buffer_usage_flags = heap_usage_flags;
+  m_rg->m_heap_buffers = {};
 
-  {
-    ren_rg_dump_time_counter(update_texture_usage_flags_counter);
-    ren_rg_time_region("cr-create-textures");
-    m_rg->m_textures.resize(m_rg->m_texture_parents.size());
-    m_rg->m_tex_alloc.clear();
-    m_rg->m_storage_texture_descriptors.resize(m_rg->m_textures.size());
-    m_rg->m_texture_instance_counts.clear();
-    for (const auto &[base_texture_id, desc] : m_texture_descs) {
-      VkImageUsageFlags usage = desc.usage;
-      if (desc.num_temporal_layers > 1 and desc.clear) {
-        usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-      }
-      u32 num_instances = PIPELINE_DEPTH + desc.num_temporal_layers - 1;
-      for (i32 i = 0; i < num_instances; ++i) {
-        RgPhysicalTextureId texture_id(base_texture_id + i);
-        Handle<Texture> htexture = m_rg->m_arena.create_texture({
-            .name = fmt::format("Render graph texture {}", i32(texture_id)),
-            .type = desc.type,
-            .format = desc.format,
-            .usage = usage,
-            .width = desc.width,
-            .height = desc.height,
-            .depth = desc.depth,
-            .num_mip_levels = desc.num_mip_levels,
-            .num_array_layers = desc.num_array_layers,
-        });
-        m_rg->m_textures[texture_id] = htexture;
-        StorageTextureId storage_descriptor;
-        if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-          storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
-              g_device->get_texture_view(htexture));
-        }
-        m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
-      }
-      m_rg->m_texture_instance_counts.insert(base_texture_id, num_instances);
+  m_rg->m_textures.resize(m_rg->m_texture_parents.size());
+  m_rg->m_tex_alloc.clear();
+  m_rg->m_storage_texture_descriptors.resize(m_rg->m_textures.size());
+  m_rg->m_texture_instance_counts.clear();
+  for (const auto &[base_texture_id, desc] : m_texture_descs) {
+    VkImageUsageFlags usage = desc.usage;
+    if (desc.num_temporal_layers > 1 and desc.clear) {
+      usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     }
-  }
-
-  {
-    ren_rg_time_region("cr-create-semaphores");
-    m_rg->m_semaphores.resize(m_semaphore_ids.size());
-    for (auto &&[index, semaphore] : m_rg->m_acquire_semaphores | enumerate) {
-      semaphore = m_rg->m_arena.create_semaphore({
-          .name =
-              fmt::format("Render graph swapchain acquire semaphore {}", index),
+    u32 num_instances = PIPELINE_DEPTH + desc.num_temporal_layers - 1;
+    for (i32 i = 0; i < num_instances; ++i) {
+      RgPhysicalTextureId texture_id(base_texture_id + i);
+      Handle<Texture> htexture = m_rg->m_arena.create_texture({
+          .name = fmt::format("Render graph texture {}", i32(texture_id)),
+          .type = desc.type,
+          .format = desc.format,
+          .usage = usage,
+          .width = desc.width,
+          .height = desc.height,
+          .depth = desc.depth,
+          .num_mip_levels = desc.num_mip_levels,
+          .num_array_layers = desc.num_array_layers,
       });
+      m_rg->m_textures[texture_id] = htexture;
+      StorageTextureId storage_descriptor;
+      if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+        storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
+            g_device->get_texture_view(htexture));
+      }
+      m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
     }
-    for (auto &&[index, semaphore] : m_rg->m_present_semaphores | enumerate) {
-      semaphore = m_rg->m_arena.create_semaphore({
-          .name =
-              fmt::format("Render graph swapchain present semaphore {}", index),
-      });
-    }
+    m_rg->m_texture_instance_counts.insert(base_texture_id, num_instances);
+  }
+
+  m_rg->m_semaphores.resize(m_semaphore_ids.size());
+  for (auto &&[index, semaphore] : m_rg->m_acquire_semaphores | enumerate) {
+    semaphore = m_rg->m_arena.create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain acquire semaphore {}", index),
+    });
+  }
+  for (auto &&[index, semaphore] : m_rg->m_present_semaphores | enumerate) {
+    semaphore = m_rg->m_arena.create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain present semaphore {}", index),
+    });
   }
 }
 
@@ -1072,157 +1036,90 @@ void RgBuilder::clear_temporal_textures(
     return;
   }
 
-  VkCommandBuffer cmd_buffer = [&] {
-    ren_rg_time_region("ctt-alloc-command-buffer");
-    return cmd_alloc.allocate();
-  }();
+  VkCommandBuffer cmd_buffer = cmd_alloc.allocate();
   {
     CommandRecorder rec(cmd_buffer);
 
     Vector<VkImageMemoryBarrier2> barriers;
-    {
-      ren_rg_time_region("ctt-gen-barriers-1");
-      barriers.reserve(clear_textures.size());
-      for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture = g_device->get_texture(clear_texture.texture);
-        barriers.push_back({
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .image = texture.image,
-            .subresourceRange =
-                {
-                    .aspectMask = getVkImageAspectFlags(texture.format),
-                    .levelCount = texture.num_mip_levels,
-                    .layerCount = texture.num_array_layers,
-                },
-        });
-      }
+    barriers.reserve(clear_textures.size());
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      barriers.push_back({
+          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+          .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+          .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .image = texture.image,
+          .subresourceRange =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .levelCount = texture.num_mip_levels,
+                  .layerCount = texture.num_array_layers,
+              },
+      });
     }
-    {
-      ren_rg_time_region("ctt-record-barriers-1");
-      rec.pipeline_barrier({}, barriers);
-    }
+    rec.pipeline_barrier({}, barriers);
 
-    {
-      ren_rg_time_region("ctt-record-clears");
-      for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture = g_device->get_texture(clear_texture.texture);
-        VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
-        if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
-          rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
-        } else {
-          assert(aspect_mask &
-                 (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
-          rec.clear_texture(clear_texture.texture,
-                            clear_texture.clear.depth_stencil);
-        }
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
+      if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
+        rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
+      } else {
+        assert(aspect_mask &
+               (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT));
+        rec.clear_texture(clear_texture.texture,
+                          clear_texture.clear.depth_stencil);
       }
     }
 
-    {
-      ren_rg_time_region("ctt-gen-barriers-2");
-      barriers.clear();
-      for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture = g_device->get_texture(clear_texture.texture);
-        barriers.push_back({
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = clear_texture.dst_stage_mask,
-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = clear_texture.dst_layout,
-            .image = texture.image,
-            .subresourceRange =
-                {
-                    .aspectMask = getVkImageAspectFlags(texture.format),
-                    .levelCount = texture.num_mip_levels,
-                    .layerCount = texture.num_array_layers,
-                },
-        });
-      }
+    barriers.clear();
+    for (const RgClearTexture &clear_texture : clear_textures) {
+      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      barriers.push_back({
+          .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+          .dstStageMask = clear_texture.dst_stage_mask,
+          .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+          .newLayout = clear_texture.dst_layout,
+          .image = texture.image,
+          .subresourceRange =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .levelCount = texture.num_mip_levels,
+                  .layerCount = texture.num_array_layers,
+              },
+      });
     }
-    {
-      ren_rg_time_region("ctt-record-barriers-2");
-      rec.pipeline_barrier({}, barriers);
-    }
+    rec.pipeline_barrier({}, barriers);
   }
 
-  {
-    ren_rg_time_region("ctt-submit");
-    g_device->graphicsQueueSubmit({{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-        .commandBuffer = cmd_buffer,
-    }});
-  }
+  g_device->graphicsQueueSubmit({{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = cmd_buffer,
+  }});
 }
 
 void RgBuilder::build(CommandAllocator &cmd_alloc) {
-  ren_rg_dump_time_counter(m_create_pass_counter);
-  ren_rg_dump_time_counter(m_host_callback_counter);
-  ren_rg_dump_time_counter(m_graphics_callback_counter);
-  ren_rg_dump_time_counter(m_compute_callback_counter);
-  ren_rg_dump_time_counter(m_transfer_callback_counter);
-  ren_rg_dump_time_counter(m_update_callback_counter);
+  build_buffer_disjoint_set();
 
-  ren_rg_dump_time_counter(m_create_buffer_counter);
-  ren_rg_dump_time_counter(m_read_buffer_counter);
-  ren_rg_dump_time_counter(m_write_buffer_counter);
+  RgTextureId backbuffer = m_rg->m_texture_ids["rg-backbuffer"];
+  assert(backbuffer);
+  m_rg->m_texture_parents[backbuffer] = backbuffer;
+  m_rg->m_backbuffer = RgPhysicalTextureId(backbuffer);
 
-  ren_rg_dump_time_counter(m_create_texture_counter);
-  ren_rg_dump_time_counter(m_read_texture_counter);
-  ren_rg_dump_time_counter(m_write_texture_counter);
-  ren_rg_dump_time_counter(m_color_attachment_counter);
-  ren_rg_dump_time_counter(m_depth_attachment_counter);
+  build_texture_disjoint_set();
 
-  ren_rg_dump_time_counter(m_wait_semaphore_counter);
-  ren_rg_dump_time_counter(m_signal_semaphore_counter);
-
-  ren_rg_dump_time_counter(m_present_counter);
-
-  {
-    ren_rg_time_region("build-buffer-disjoint-set");
-    build_buffer_disjoint_set();
-  }
-
-  {
-    ren_rg_time_region("setup-backbuffer");
-    RgTextureId backbuffer = m_rg->m_texture_ids["rg-backbuffer"];
-    assert(backbuffer);
-    m_rg->m_texture_parents[backbuffer] = backbuffer;
-    m_rg->m_backbuffer = RgPhysicalTextureId(backbuffer);
-  }
-
-  {
-    ren_rg_time_region("build-texture-disjoint-set");
-    build_texture_disjoint_set();
-  }
-
-  Vector<RgPassId> schedule = [&] {
-    ren_rg_time_region("schedule-passes");
-    return build_pass_schedule();
-  }();
+  Vector<RgPassId> schedule = build_pass_schedule();
   dump_pass_schedule(schedule);
 
-  {
-    ren_rg_time_region("create-resources");
-    create_resources(schedule);
-  }
+  create_resources(schedule);
 
-  {
-    ren_rg_time_region("fill-pass-runtime-info");
-    fill_pass_runtime_info(schedule);
-  }
+  fill_pass_runtime_info(schedule);
 
   Vector<RgClearTexture> clear_textures;
-  {
-    ren_rg_time_region("place-barriers");
-    place_barriers_and_semaphores(schedule, clear_textures);
-  }
-  {
-    ren_rg_time_region("clear-temporal-textures");
-    clear_temporal_textures(cmd_alloc, clear_textures);
-  }
+  place_barriers_and_semaphores(schedule, clear_textures);
+  clear_temporal_textures(cmd_alloc, clear_textures);
 }
 
 } // namespace ren

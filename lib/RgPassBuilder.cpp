@@ -50,7 +50,6 @@ auto RgPassBuilder::write_texture(StringView dst_texture,
 
 void RgPassBuilder::add_color_attachment(u32 index, RgTextureId texture,
                                          const ColorAttachmentOperations &ops) {
-  ren_rg_inc_time_counter(m_builder->m_color_attachment_counter);
   auto &color_attachments = m_builder->m_passes[m_pass]
                                 .type.get_or_emplace<RgGraphicsPassInfo>()
                                 .color_attachments;
@@ -65,7 +64,6 @@ void RgPassBuilder::add_color_attachment(u32 index, RgTextureId texture,
 
 void RgPassBuilder::add_depth_attachment(RgTextureId texture,
                                          const DepthAttachmentOperations &ops) {
-  ren_rg_inc_time_counter(m_builder->m_depth_attachment_counter);
   m_builder->m_passes[m_pass]
       .type.get_or_emplace<RgGraphicsPassInfo>()
       .depth_stencil_attachment = RgDepthStencilAttachment{
