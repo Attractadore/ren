@@ -8,6 +8,7 @@ option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
 option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
+option(REN_PCH "Enable precompiled header" OFF)
 
 find_package(
   Boost
@@ -23,55 +24,6 @@ find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
 
 add_subdirectory(glsl)
-
-add_library(Support INTERFACE)
-target_include_directories(Support INTERFACE ${CMAKE_CURRENT_LIST_DIR}/include)
-target_link_libraries(Support INTERFACE Boost::boost Boost::container fmt::fmt
-                                        range-v3::range-v3 tl::optional)
-foreach(SEVERITY ${REN_LOG_SEVERITY})
-  message(STATUS "Enable ${SEVERITY} logging")
-  target_compile_definitions(Support INTERFACE REN_LOG_${SEVERITY})
-endforeach()
-if(REN_ASSERTIONS)
-  message(STATUS "Enable assertions")
-  target_compile_definitions(Support INTERFACE REN_ASSERTIONS)
-endif()
-
-add_library(Support-PCH INTERFACE)
-target_link_libraries(Support-PCH INTERFACE Support)
-target_precompile_headers(
-  Support-PCH
-  INTERFACE
-  <array>
-  <chrono>
-  <deque>
-  <functional>
-  <memory>
-  <optional>
-  <iostream>
-  <queue>
-  <span>
-  <tuple>
-  <unordered_map>
-  <unordered_set>
-  <variant>
-  <vector>
-  <boost/container/flat_map.hpp>
-  <boost/container/flat_set.hpp>
-  <boost/container/small_vector.hpp>
-  <boost/container/static_vector.hpp>
-  <boost/functional/hash.hpp>
-  <fmt/format.h>
-  <range/v3/action.hpp>
-  <range/v3/algorithm.hpp>
-  <range/v3/range.hpp>
-  <range/v3/view.hpp>
-  <tl/optional.hpp>)
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(
-    Support-PCH
-    INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
-endif()
 
 add_library(
   ren
@@ -106,21 +58,71 @@ target_sources(
          ${REN_INCLUDE}/ren/ren-vk.h)
 target_link_libraries(
   ren
-  PRIVATE Support
-          Support-PCH
-          glm::glm
-          Vulkan::Headers
-          unofficial::spirv-reflect::spirv-reflect
+  PRIVATE Boost::boost
+          Boost::container
           GPUOpen::VulkanMemoryAllocator
+          Vulkan::Headers
+          fmt::fmt
+          glm::glm
+          range-v3::range-v3
+          tl::optional
+          unofficial::spirv-reflect::spirv-reflect
           volk::volk
           EmbeddedShaders)
-target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>
-                          <vk_mem_alloc.h> <vulkan/vulkan.h> <volk.h>)
+target_include_directories(ren PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
+if(REN_PCH)
+  message(STATUS "Enable precompiled header")
+  target_precompile_headers(
+    ren
+    PRIVATE
+    <array>
+    <chrono>
+    <deque>
+    <functional>
+    <memory>
+    <optional>
+    <iostream>
+    <queue>
+    <span>
+    <tuple>
+    <unordered_map>
+    <unordered_set>
+    <variant>
+    <vector>
+    <boost/container/flat_map.hpp>
+    <boost/container/flat_set.hpp>
+    <boost/container/small_vector.hpp>
+    <boost/container/static_vector.hpp>
+    <boost/functional/hash.hpp>
+    <fmt/format.h>
+    <range/v3/action.hpp>
+    <range/v3/algorithm.hpp>
+    <range/v3/range.hpp>
+    <range/v3/view.hpp>
+    <tl/optional.hpp>
+    <glm/glm.hpp>
+    <spirv_reflect.h>
+    <vk_mem_alloc.h>
+    <vulkan/vulkan.h>
+    <volk.h>)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(
+      ren
+      INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
+  endif()
+endif()
 target_compile_definitions(
   ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
               VMA_STATS_STRING_ENABLED=0)
 target_compile_definitions(ren PUBLIC VK_NO_PROTOTYPES)
+foreach(SEVERITY ${REN_LOG_SEVERITY})
+  message(STATUS "Enable ${SEVERITY} logging")
+  target_compile_definitions(ren INTERFACE REN_LOG_${SEVERITY})
+endforeach()
+if(REN_ASSERTIONS)
+  message(STATUS "Enable assertions")
+  target_compile_definitions(ren INTERFACE REN_ASSERTIONS)
+endif()
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)

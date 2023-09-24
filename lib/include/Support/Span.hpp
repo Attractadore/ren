@@ -3,6 +3,7 @@
 #include "StdDef.hpp"
 
 #include <span>
+#include <range/v3/iterator.hpp>
 
 namespace ren {
 

@@ -6,12 +6,12 @@
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
-#include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
-#include "Support/DenseSlotMap.hpp"
+#include "Support/Hash.hpp"
 #include "TextureIdAllocator.hpp"
 #include "glsl/Lighting.hpp"
 #include "glsl/Material.hpp"
+#include "ren/ren.h"
 
 namespace ren {
 

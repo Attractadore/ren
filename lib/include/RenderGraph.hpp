@@ -1,19 +1,15 @@
 #pragma once
 #include "Attachments.hpp"
-#include "Buffer.hpp"
 #include "Config.hpp"
 #include "ResourceArena.hpp"
-#include "Semaphore.hpp"
 #include "Support/Any.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Macros.hpp"
 #include "Support/NewType.hpp"
-#include "Support/String.hpp"
 #include "Support/Variant.hpp"
-#include "Texture.hpp"
 #include "TextureIdAllocator.hpp"
 
 #include <functional>
+#include <glm/glm.hpp>
+#include <vulkan/vulkan.h>
 
 #ifndef REN_RG_DEBUG
 #define REN_RG_DEBUG 0

@@ -1,10 +1,13 @@
 #pragma once
 #include "Config.hpp"
-#include "Descriptors.hpp"
-#include "Formats.hpp"
+#include "DebugNames.hpp"
+#include "Handle.hpp"
+#include "Support/Optional.hpp"
 #include "Support/Span.hpp"
 
 namespace ren {
+
+struct DescriptorSetLayout;
 
 struct PipelineLayoutCreateInfo {
   REN_DEBUG_NAME_FIELD("Pipeline layout");

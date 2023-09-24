@@ -121,10 +121,10 @@ public:
 
   constexpr void reserve(size_type capacity)
     requires requires(size_type capacity) {
-               m_keys.reserve(capacity);
-               m_values.reserve(capacity);
-               m_slots.reserve(capacity);
-             }
+      m_keys.reserve(capacity);
+      m_values.reserve(capacity);
+      m_slots.reserve(capacity);
+    }
   {
     m_keys.reserve(capacity);
     m_values.reserve(capacity);
@@ -133,10 +133,10 @@ public:
 
   constexpr size_type capacity() const noexcept
     requires requires {
-               { m_keys.capacity() } -> std::convertible_to<size_type>;
-               { m_values.capacity() } -> std::convertible_to<size_type>;
-               { m_slots.capacity() } -> std::convertible_to<size_type>;
-             }
+      { m_keys.capacity() } -> std::convertible_to<size_type>;
+      { m_values.capacity() } -> std::convertible_to<size_type>;
+      { m_slots.capacity() } -> std::convertible_to<size_type>;
+    }
   {
     return std::min({
         static_cast<size_type>(m_keys.capacity()),
@@ -147,10 +147,10 @@ public:
 
   constexpr void shrink_to_fit() noexcept
     requires requires {
-               m_keys.shrink_to_fit();
-               m_values.shrink_to_fit();
-               m_slots.shrink_to_fit();
-             }
+      m_keys.shrink_to_fit();
+      m_values.shrink_to_fit();
+      m_slots.shrink_to_fit();
+    }
   {
     m_keys.shrink_to_fit();
     m_values.shrink_to_fit();

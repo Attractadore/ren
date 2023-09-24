@@ -1,8 +1,9 @@
 #pragma once
-#include <boost/predef/compiler.h>
-#include <fmt/format.h>
+#include "Support/Macros.hpp"
 
+#include <boost/predef/compiler.h>
 #include <cassert>
+#include <fmt/format.h>
 #include <source_location>
 #include <stdexcept>
 
@@ -64,6 +65,7 @@ inline void check(bool condition, std::string_view condition_str,
 #define REN_ASSERTIONS 0
 #endif
 
+#if REN_ASSERTIONS
 #define ren_assert(condition, reason)                                          \
   if (REN_ASSERTIONS and not(condition)) {                                     \
     auto sl = std::source_location::current();                                 \
@@ -72,11 +74,20 @@ inline void check(bool condition, std::string_view condition_str,
                  reason ? reason : "");                                        \
     ren_trap();                                                                \
   }
+#else
+#define ren_assert(condition, reason) ren_force_semicolon
+#endif
+
+#if REN_ASSERTIONS
+#undef NDEBUG
+#endif
 
 #ifdef assert
 #undef assert
 #endif
 
+// FIXME: libstdc++ cassert doesn't have an include guard, so this macro will be
+// redefined if cassert is included after this header
 #define assert(condition) ren_assert(condition, nullptr)
 
 } // namespace ren

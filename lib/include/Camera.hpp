@@ -1,17 +1,15 @@
 #pragma once
+#include "Support/Variant.hpp"
 #include "ren/ren.h"
 
 #include <glm/glm.hpp>
-
-#include <variant>
 
 namespace ren {
 
 using PerspectiveProjection = RenPerspectiveProjection;
 using OrthographicProjection = RenOrthographicProjection;
 
-using CameraProjection =
-    std::variant<PerspectiveProjection, OrthographicProjection>;
+using CameraProjection = Variant<PerspectiveProjection, OrthographicProjection>;
 
 struct Camera {
   glm::vec3 position;

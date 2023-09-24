@@ -1,8 +1,6 @@
 #pragma once
 #include "Camera.hpp"
-#include "Support/Variant.hpp"
 
-#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/reciprocal.hpp>
 
@@ -39,19 +37,17 @@ inline glm::mat4 get_view_matrix(const Camera &camera) {
 
 inline glm::mat4 get_projection_matrix(const Camera &camera,
                                        float aspect_ratio) {
-  return std::visit(OverloadSet{
-                        [&](const PerspectiveProjection &proj) {
-                          float fov = proj.hfov / aspect_ratio;
-                          return infinitePerspectiveRH_ReverseZ(
-                              fov, aspect_ratio, 0.1f);
-                        },
-                        [&](const OrthographicProjection &proj) {
-                          float width = proj.width;
-                          float height = width / aspect_ratio;
-                          return orthoRH_ReverseZ(width, height, 0.1f, 100.0f);
-                        },
-                    },
-                    camera.projection);
+  return camera.projection.visit(OverloadSet{
+      [&](const PerspectiveProjection &proj) {
+        float fov = proj.hfov / aspect_ratio;
+        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, 0.1f);
+      },
+      [&](const OrthographicProjection &proj) {
+        float width = proj.width;
+        float height = width / aspect_ratio;
+        return orthoRH_ReverseZ(width, height, 0.1f, 100.0f);
+      },
+  });
 }
 
 } // namespace ren

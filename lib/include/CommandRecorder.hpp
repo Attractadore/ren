@@ -1,14 +1,17 @@
 #pragma once
 #include "Attachments.hpp"
-#include "Descriptors.hpp"
-#include "Pipeline.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Optional.hpp"
+#include "Buffer.hpp"
+#include "Config.hpp"
 #include "Support/Span.hpp"
+#include "Texture.hpp"
 
 #include <glm/glm.hpp>
 
 namespace ren {
+
+struct ComputePipeline;
+struct GraphicsPipeline;
+struct PipelineLayout;
 
 auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32;
 

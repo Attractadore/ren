@@ -1,6 +1,7 @@
 #include "RenderGraph.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
+#include "Formats.hpp"
 #include "Support/Algorithm.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"

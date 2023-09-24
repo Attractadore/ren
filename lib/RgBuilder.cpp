@@ -1,5 +1,6 @@
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
+#include "Formats.hpp"
 #include "RenderGraph.hpp"
 #include "Support/FlatSet.hpp"
 #include "Support/Math.hpp"

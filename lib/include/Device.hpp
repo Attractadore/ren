@@ -12,6 +12,9 @@
 #include "Support/Queue.hpp"
 #include "Support/Span.hpp"
 #include "Support/TypeMap.hpp"
+#include "Texture.hpp"
+
+#include <volk.h>
 
 #include <chrono>
 #include <functional>
@@ -19,7 +22,7 @@
 
 namespace ren {
 
-class SwapchainTextureCreateInfo;
+struct SwapchainTextureCreateInfo;
 
 template <typename T, typename... Ts>
 concept IsQueueType = (std::same_as<T, Ts> or ...);

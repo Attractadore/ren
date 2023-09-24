@@ -1,8 +1,9 @@
 #pragma once
 #include "ResourceArena.hpp"
-#include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
 #include "Support/Views.hpp"
+
+#include <range/v3/algorithm.hpp>
 
 namespace ren {
 

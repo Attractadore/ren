@@ -14,16 +14,16 @@ struct FormatProperties {
   FormatPropertyFlags flags;
   union {
     struct {
-      unsigned red_bits = 0;
-      unsigned green_bits = 0;
-      unsigned blue_bits = 0;
-      unsigned alpha_bits = 0;
+      u32 red_bits = 0;
+      u32 green_bits = 0;
+      u32 blue_bits = 0;
+      u32 alpha_bits = 0;
     };
     struct {
-      unsigned depth_bits;
-      unsigned stencil_bits;
+      u32 depth_bits;
+      u32 stencil_bits;
     };
-    unsigned unused_bits;
+    u32 unused_bits;
   };
 };
 

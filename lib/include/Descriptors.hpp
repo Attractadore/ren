@@ -1,20 +1,14 @@
 #pragma once
-#include "Buffer.hpp"
+#include "Config.hpp"
+#include "DebugNames.hpp"
 #include "Handle.hpp"
-#include "Support/Vector.hpp"
-#include "Texture.hpp"
 
 #include <array>
+#include <vulkan/vulkan.h>
 
 namespace ren {
 
-class Device;
 class ResourceArena;
-
-constexpr size_t DESCRIPTOR_TYPE_COUNT =
-    VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1;
-constexpr size_t MAX_DESCIPTOR_BINDINGS = 16;
-constexpr size_t MAX_DESCRIPTOR_SETS = 4;
 
 struct DescriptorPoolCreateInfo {
   REN_DEBUG_NAME_FIELD("Descriptor pool");

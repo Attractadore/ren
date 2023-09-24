@@ -1,5 +1,6 @@
 #include "CommandRecorder.hpp"
 #include "Device.hpp"
+#include "Formats.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 

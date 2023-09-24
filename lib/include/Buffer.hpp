@@ -1,14 +1,11 @@
 #pragma once
 #include "DebugNames.hpp"
 #include "Handle.hpp"
-#include "Support/Optional.hpp"
 #include "Support/StdDef.hpp"
 
 #include <vk_mem_alloc.h>
 
 namespace ren {
-
-class Device;
 
 enum class BufferHeap {
   Static,

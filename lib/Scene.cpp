@@ -1,5 +1,6 @@
 #include "Scene.hpp"
 #include "Camera.inl"
+#include "Formats.hpp"
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Span.hpp"

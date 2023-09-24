@@ -2,6 +2,8 @@
 #include "Buffer.hpp"
 #include "Support/Span.hpp"
 
+#include <glm/glm.hpp>
+
 namespace ren {
 
 class RenderGraph;

@@ -3,7 +3,7 @@
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
 
-#include <utility>
+#include <tuple>
 
 namespace ren {
 
@@ -20,7 +20,7 @@ struct SwapchainTextureCreateInfo {
 class Swapchain {
   VkSwapchainKHR m_swapchain = nullptr;
   SmallVector<Handle<Texture>, 3> m_textures;
-  unsigned m_image_index = -1;
+  u32 m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info = {};
 
 private:
@@ -35,11 +35,11 @@ public:
   Swapchain &operator=(Swapchain &&);
   ~Swapchain();
 
-  std::pair<unsigned, unsigned> get_size() const noexcept {
+  std::tuple<u32, u32> get_size() const noexcept {
     return {m_create_info.imageExtent.width, m_create_info.imageExtent.height};
   }
 
-  void set_size(unsigned width, unsigned height) noexcept;
+  void set_size(u32 width, u32 height) noexcept;
 
   VkPresentModeKHR get_present_mode() const noexcept {
     return m_create_info.presentMode;

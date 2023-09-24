@@ -1,6 +1,5 @@
 #pragma once
 #include "ExposureOptions.hpp"
-#include "Support/Optional.hpp"
 #include "ToneMappingOptions.hpp"
 
 namespace ren {

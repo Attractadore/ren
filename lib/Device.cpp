@@ -1,4 +1,5 @@
 #include "Device.hpp"
+#include "Formats.hpp"
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"

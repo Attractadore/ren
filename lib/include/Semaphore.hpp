@@ -1,6 +1,5 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Handle.hpp"
 #include "Support/Optional.hpp"
 #include "Support/StdDef.hpp"
 

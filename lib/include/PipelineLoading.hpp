@@ -1,6 +1,6 @@
 #pragma once
-#include "Descriptors.hpp"
-#include "Pipeline.hpp"
+#include "Handle.hpp"
+#include "ResourceArena.hpp"
 
 namespace ren {
 
@@ -16,7 +16,7 @@ struct Pipelines {
 auto create_pipeline_layout(ResourceArena &arena,
                             Handle<DescriptorSetLayout> persistent_set_layout,
                             TempSpan<const Span<const std::byte>> shaders,
-                            std::string_view name) -> Handle<PipelineLayout>;
+                            StringView name) -> Handle<PipelineLayout>;
 
 auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)

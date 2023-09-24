@@ -4,6 +4,8 @@
 #include "Passes/Exposure.hpp"
 #include "Support/Span.hpp"
 
+#include <glm/glm.hpp>
+
 namespace ren {
 
 struct GraphicsPipeline;
