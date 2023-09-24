@@ -230,7 +230,7 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
   for (const auto &desc : descs) {
     glsl::Material material = {
         .base_color = glm::make_vec4(desc.base_color_factor),
-        .base_color_texture = [&]() -> unsigned {
+        .base_color_texture = [&]() -> u32 {
           if (desc.color_tex.image) {
             return get_or_create_texture(desc.color_tex);
           }
@@ -238,6 +238,12 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
         }(),
         .metallic = desc.metallic_factor,
         .roughness = desc.roughness_factor,
+        .metallic_roughness_texture = [&]() -> u32 {
+          if (desc.metallic_roughness_tex.image) {
+            return get_or_create_texture(desc.metallic_roughness_tex);
+          }
+          return 0;
+        }(),
     };
 
     auto index = static_cast<RenMaterial>(m_materials.size());

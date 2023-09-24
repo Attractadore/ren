@@ -25,7 +25,7 @@ void main() {
   vec4 color = vec4(1.0f);
   if (mesh.base_color_vertex != MESH_ATTRIBUTE_UNUSED) {
     uint color_index = mesh.base_color_vertex + vertex_offset;
-    // color = g_pcs.ub.colors[color_index].color;
+    color = g_pcs.ub.colors[color_index].color;
   }
 
   vec2 uv = vec2(0.0f);

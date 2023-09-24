@@ -10,6 +10,7 @@ struct Material {
   uint base_color_texture;
   float metallic;
   float roughness;
+  uint metallic_roughness_texture;
 };
 
 GLSL_NAMESPACE_END

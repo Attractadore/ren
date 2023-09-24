@@ -29,6 +29,11 @@ void main() {
 
   float metallic = material.metallic;
   float roughness = material.roughness;
+  if (material.metallic_roughness_texture != 0) {
+    vec4 tex = texture(g_textures2d[material.metallic_roughness_texture], uv);
+    metallic *= tex.b;
+    roughness *= tex.g;
+  }
 
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 

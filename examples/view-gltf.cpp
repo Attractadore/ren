@@ -511,24 +511,39 @@ private:
     std::memcpy(desc.base_color_factor, &base_color_factor,
                 sizeof(base_color_factor));
 
-    const tinygltf::TextureInfo &base_color_texture =
-        material.pbrMetallicRoughness.baseColorTexture;
-    if (base_color_texture.index >= 0) {
-      if (base_color_texture.texCoord > 0) {
-        bail("Unsupported base color texture coordinate set {}",
-             base_color_texture.texCoord);
+    {
+      const tinygltf::TextureInfo &base_color_texture =
+          material.pbrMetallicRoughness.baseColorTexture;
+      if (base_color_texture.index >= 0) {
+        if (base_color_texture.texCoord > 0) {
+          bail("Unsupported base color texture coordinate set {}",
+               base_color_texture.texCoord);
+        }
+        OK(desc.color_tex.image,
+           get_or_create_texture_image(base_color_texture.index, true));
+        OK(desc.color_tex.sampler,
+           get_texture_sampler(base_color_texture.index));
       }
-      OK(desc.color_tex.image,
-         get_or_create_texture_image(base_color_texture.index, true));
-      OK(desc.color_tex.sampler, get_texture_sampler(base_color_texture.index));
-    }
-
-    if (material.pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
-      bail("Metallic-roughness textures are not implemented");
     }
 
     desc.metallic_factor = material.pbrMetallicRoughness.metallicFactor;
     desc.roughness_factor = material.pbrMetallicRoughness.roughnessFactor;
+
+    {
+      const tinygltf::TextureInfo &metallic_roughness_texture =
+          material.pbrMetallicRoughness.metallicRoughnessTexture;
+      if (metallic_roughness_texture.index >= 0) {
+        if (metallic_roughness_texture.texCoord > 0) {
+          bail("Unsupported metallic-roughness texture coordinate set {}",
+               metallic_roughness_texture.texCoord);
+        }
+        OK(desc.metallic_roughness_tex.image,
+           get_or_create_texture_image(metallic_roughness_texture.index,
+                                       false));
+        OK(desc.metallic_roughness_tex.sampler,
+           get_texture_sampler(metallic_roughness_texture.index));
+      }
+    }
 
     if (material.normalTexture.index >= 0) {
       bail("Normal mapping not implemented");
