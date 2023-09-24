@@ -106,8 +106,8 @@ void RenderGraph::rotate_resources() {
   m_semaphores[m_acquire_semaphore] = m_acquire_semaphores.front();
   m_semaphores[m_present_semaphore] = m_present_semaphores.front();
 
-  m_swapchain->acquireImage(m_semaphores[m_acquire_semaphore]);
-  m_textures[m_backbuffer] = m_swapchain->getTexture().texture;
+  m_textures[m_backbuffer] =
+      m_swapchain->acquire_texture(m_semaphores[m_acquire_semaphore]);
 }
 
 void RenderGraph::allocate_buffers() {
@@ -361,7 +361,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
 
   submit_batch();
 
-  m_swapchain->presentImage(m_semaphores[m_present_semaphore]);
+  m_swapchain->present(m_semaphores[m_present_semaphore]);
 }
 
 } // namespace ren

@@ -39,18 +39,19 @@ public:
 
   void set_size(u32 width, u32 height) noexcept;
 
-  VkPresentModeKHR get_present_mode() const noexcept {
+  auto get_present_mode() const noexcept -> VkPresentModeKHR {
     return m_create_info.presentMode;
   }
 
   void set_present_mode(VkPresentModeKHR);
 
-  VkSurfaceKHR get_surface() const noexcept { return m_create_info.surface; }
+  auto get_surface() const noexcept -> VkSurfaceKHR {
+    return m_create_info.surface;
+  }
 
-  void acquireImage(Handle<Semaphore> signal_semaphore);
-  void presentImage(Handle<Semaphore> wait_semaphore);
+  auto acquire_texture(Handle<Semaphore> signal_semaphore) -> Handle<Texture>;
 
-  auto getTexture() const -> TextureView;
+  void present(Handle<Semaphore> wait_semaphore);
 };
 
 } // namespace ren

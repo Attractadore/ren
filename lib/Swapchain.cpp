@@ -181,7 +181,8 @@ void Swapchain::set_size(unsigned width, unsigned height) noexcept {
 
 void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
-void Swapchain::acquireImage(Handle<Semaphore> signal_semaphore) {
+auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
+    -> Handle<Texture> {
   while (true) {
     VkResult result = vkAcquireNextImageKHR(
         g_renderer->get_device(), m_swapchain, UINT64_MAX,
@@ -192,7 +193,7 @@ void Swapchain::acquireImage(Handle<Semaphore> signal_semaphore) {
       throw_if_failed(result, "Vulkan: Failed to acquire image");
     case VK_SUCCESS:
     case VK_SUBOPTIMAL_KHR:
-      return;
+      return m_textures[m_image_index];
     case VK_ERROR_OUT_OF_DATE_KHR:
       create();
       continue;
@@ -200,7 +201,7 @@ void Swapchain::acquireImage(Handle<Semaphore> signal_semaphore) {
   }
 }
 
-void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
+void Swapchain::present(Handle<Semaphore> wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
@@ -220,10 +221,6 @@ void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
     create();
     return;
   }
-}
-
-auto Swapchain::getTexture() const -> TextureView {
-  return g_renderer->get_texture_view(m_textures[m_image_index]);
 }
 
 } // namespace ren
