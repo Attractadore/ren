@@ -7,8 +7,6 @@
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
 
-#include <range/v3/action.hpp>
-
 namespace ren {
 
 namespace {
@@ -446,7 +444,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     // Reads must happen before writes
     dependents.append(pass.read_buffers | map(get_buffer_kill));
     dependents.append(pass.read_textures | map(get_texture_kill));
-    ranges::actions::unstable_remove_if(dependents, is_null_pass);
+    dependents.unstable_erase_if(is_null_pass);
     return dependents;
   };
 
@@ -460,7 +458,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     // Writes must happen after creation
     dependencies.append(pass.write_buffers | map(get_buffer_def));
     dependencies.append(pass.write_textures | map(get_texture_def));
-    ranges::actions::unstable_remove_if(dependencies, is_null_pass);
+    dependencies.unstable_erase_if(is_null_pass);
     return dependencies;
   };
 

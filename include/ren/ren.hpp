@@ -32,7 +32,7 @@ template <typename T> using expected = std::expected<T, Error>;
 
 namespace detail {
 
-inline auto make_expected(RenResult result) -> expected<void> {
+[[nodiscard]] inline auto make_expected(RenResult result) -> expected<void> {
   if (result) {
     return unexpected(static_cast<Error>(result));
   }
@@ -104,6 +104,10 @@ inline auto init(std::span<const char *const> extensions, unsigned adapter = 0)
 
 inline void quit() { ren_Quit(); }
 
+inline auto draw() -> expected<void> {
+  return detail::make_expected(ren_Draw());
+}
+
 struct Swapchain;
 struct SwapchainDeleter {
   void operator()(Swapchain *swapchain) const noexcept {
@@ -150,10 +154,6 @@ struct Scene : RenScene {
   [[nodiscard]] auto set_tone_mapping(ToneMappingOperator oper)
       -> expected<void> {
     return detail::make_expected(ren_SetSceneToneMapping(this, oper));
-  }
-
-  [[nodiscard]] auto draw() -> expected<void> {
-    return detail::make_expected(ren_DrawScene(this));
   }
 
   [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {

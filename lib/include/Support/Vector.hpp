@@ -1,9 +1,11 @@
 #pragma once
+#include "Support/StdDef.hpp"
+
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
 #include <boost/predef/compiler.h>
+#include <range/v3/algorithm.hpp>
 #include <range/v3/range.hpp>
-
 #include <vector>
 
 namespace ren {
@@ -40,6 +42,38 @@ template <class Base> struct VectorMixin : public Base {
   constexpr void assign(I i, S s) {
     using CI = std::common_iterator<I, S>;
     this->assign(CI(i), CI(s));
+  }
+
+  using Base::erase;
+
+  template <std::equality_comparable_with<typename Base::value_type> U>
+  constexpr auto erase(const U &value) -> usize {
+    auto last = ranges::remove(*this, value);
+    usize count = ranges::distance(last, this->end());
+    this->erase(last, this->end());
+    return count;
+  }
+
+  template <std::predicate<typename Base::value_type> F>
+  constexpr auto erase_if(F &&filter) -> usize {
+    auto last = ranges::remove_if(*this, std::forward<F>(filter));
+    usize count = ranges::distance(last, this->end());
+    this->erase(last, this->end());
+    return count;
+  }
+
+  template <std::equality_comparable_with<typename Base::value_type> U>
+  constexpr auto unstable_erase(const U &value) -> usize {
+    return unstable_erase_if(
+        [&](const Base::value_type &elem) { return elem == value; });
+  }
+
+  template <std::predicate<typename Base::value_type> F>
+  constexpr auto unstable_erase_if(F &&filter) -> usize {
+    auto last = ranges::unstable_remove_if(*this, std::forward<F>(filter));
+    usize count = ranges::distance(last, this->end());
+    this->erase(last, this->end());
+    return count;
   }
 };
 } // namespace detail

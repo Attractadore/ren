@@ -94,7 +94,7 @@ auto AppBase::loop() -> Result<void> {
     }
 
     TRY_TO(iterate(m_window_width, m_window_height, dt));
-    TRY_TO(m_scene->draw());
+    TRY_TO(ren::draw());
   }
 
   return {};

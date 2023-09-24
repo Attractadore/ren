@@ -94,8 +94,6 @@ Scene::Scene(Swapchain &swapchain) {
 }
 
 void Scene::next_frame() {
-  m_frame_arena.clear();
-  g_device->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator->next_frame();
 }
@@ -381,7 +379,7 @@ void Scene::draw() {
 
   m_render_graph->execute(m_cmd_allocator);
 
-  next_frame();
+  m_frame_arena.clear();
 }
 
 } // namespace ren

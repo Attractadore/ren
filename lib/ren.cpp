@@ -8,15 +8,14 @@
 #include <range/v3/algorithm.hpp>
 #include <range/v3/view.hpp>
 
-#include <cassert>
-
 namespace ren {
 
 Device *g_device = nullptr;
 
 namespace {
 std::unique_ptr<Device> g_device_holder;
-}
+SmallVector<Scene *, 1> g_scenes;
+} // namespace
 
 } // namespace ren
 
@@ -62,8 +61,21 @@ RenResult ren_Init(size_t num_instance_extensions,
 }
 
 void ren_Quit() {
+  ren_assert(ren::g_scenes.empty(), "All scenes must be destroyed");
   ren::g_device_holder.reset();
   ren::g_device = nullptr;
+}
+
+RenResult ren_Draw() {
+  return lippincott([] {
+    for (ren::Scene *scene : ren::g_scenes) {
+      scene->draw();
+    }
+    ren::g_device->next_frame();
+    for (ren::Scene *scene : ren::g_scenes) {
+      scene->next_frame();
+    }
+  });
 }
 
 RenResult ren_vk_CreateSwapchain(RenPFNCreateSurface create_surface,
@@ -139,10 +151,17 @@ RenResult ren_CreateScene(RenSwapchain *swapchain, RenScene **p_scene) {
   assert(device);
   assert(swapchain);
   assert(p_scene);
-  return lippincott([&] { *p_scene = new RenScene(*swapchain); });
+  return lippincott([&] {
+    auto scene = std::make_unique<RenScene>(*swapchain);
+    ren::g_scenes.push_back(scene.get());
+    *p_scene = scene.release();
+  });
 }
 
-void ren_DestroyScene(RenScene *scene) { delete scene; }
+void ren_DestroyScene(RenScene *scene) {
+  ren::g_scenes.unstable_erase(scene);
+  delete scene;
+}
 
 RenResult ren_DrawScene(RenScene *scene) {
   assert(scene);

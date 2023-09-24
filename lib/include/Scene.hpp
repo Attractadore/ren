@@ -67,9 +67,6 @@ private:
 
   Pipelines m_pipelines;
 
-private:
-  void next_frame();
-
 public:
   Scene(Swapchain &swapchain);
 
@@ -107,6 +104,8 @@ public:
                          std::span<const RenDirLightDesc> descs);
 
   void draw();
+
+  void next_frame();
 };
 } // namespace ren
 
