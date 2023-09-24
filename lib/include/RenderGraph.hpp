@@ -47,7 +47,6 @@ template <typename T> struct CallbackTag {};
 
 class CommandAllocator;
 class CommandRecorder;
-class Device;
 class Swapchain;
 class RenderPass;
 class ComputePass;
@@ -403,8 +402,7 @@ struct RgTransferPass {
 
 class RenderGraph {
 public:
-  RenderGraph(Device &device, Swapchain &swapchain,
-              TextureIdAllocator &tex_alloc);
+  RenderGraph(Swapchain &swapchain, TextureIdAllocator &tex_alloc);
 
   template <typename T> auto set_pass_data(StringView pass, T data) -> bool {
     auto it = m_pass_ids.find(pass);
@@ -444,8 +442,6 @@ private:
   friend RgBuilder;
   friend RgRuntime;
   friend RgUpdate;
-
-  Device *m_device = nullptr;
 
   ResourceArena m_arena;
 

@@ -18,8 +18,6 @@ auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
 auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
     -> glm::uvec3;
 
-class Device;
-
 struct ColorAttachment {
   TextureView texture;
   ColorAttachmentOperations ops;
@@ -51,11 +49,10 @@ class ComputePass;
 class DebugRegion;
 
 class CommandRecorder {
-  Device *m_device;
-  VkCommandBuffer m_cmd_buffer;
+  VkCommandBuffer m_cmd_buffer = nullptr;
 
 public:
-  CommandRecorder(Device &device, VkCommandBuffer cmd_buffer);
+  CommandRecorder(VkCommandBuffer cmd_buffer);
   CommandRecorder(const CommandRecorder &) = delete;
   CommandRecorder(CommandRecorder &&) = delete;
   ~CommandRecorder();
@@ -128,13 +125,12 @@ public:
 };
 
 class RenderPass {
-  Device *m_device;
-  VkCommandBuffer m_cmd_buffer;
+  VkCommandBuffer m_cmd_buffer = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
   VkShaderStageFlags m_shader_stages = 0;
 
   friend class CommandRecorder;
-  RenderPass(Device &device, VkCommandBuffer cmd_buffer,
+  RenderPass(VkCommandBuffer cmd_buffer,
              const RenderPassBeginInfo &&begin_info);
 
 public:
@@ -182,12 +178,11 @@ public:
 };
 
 class ComputePass {
-  Device *m_device;
-  VkCommandBuffer m_cmd_buffer;
+  VkCommandBuffer m_cmd_buffer = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
 
   friend class CommandRecorder;
-  ComputePass(Device &device, VkCommandBuffer cmd_buffer);
+  ComputePass(VkCommandBuffer cmd_buffer);
 
 public:
   ComputePass(const ComputePass &) = delete;
@@ -233,11 +228,10 @@ public:
 };
 
 class DebugRegion {
-  Device *m_device;
-  VkCommandBuffer m_cmd_buffer;
+  VkCommandBuffer m_cmd_buffer = nullptr;
 
   friend class CommandRecorder;
-  DebugRegion(Device &device, VkCommandBuffer cmd_buffer, const char *label);
+  DebugRegion(VkCommandBuffer cmd_buffer, const char *label);
 
 public:
   DebugRegion(const DebugRegion &) = delete;

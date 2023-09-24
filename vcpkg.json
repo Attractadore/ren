@@ -12,6 +12,7 @@
     "range-v3",
     "spirv-reflect",
     "tl-optional",
+    "volk",
     "vulkan-headers",
     "vulkan-memory-allocator"
   ],

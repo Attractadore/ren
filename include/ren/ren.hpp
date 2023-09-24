@@ -8,10 +8,6 @@
 #include <span>
 #include <variant>
 
-struct RenDevice {
-  ~RenDevice() = delete;
-};
-
 struct RenSwapchain {
   ~RenSwapchain() = delete;
 };
@@ -100,14 +96,13 @@ using PointLightDesc = RenPointLightDesc;
 
 using SpotLightDesc = RenSpotLightDesc;
 
-struct Device;
-struct DeviceDeleter {
-  void operator()(Device *device) const noexcept {
-    ren_DestroyDevice(reinterpret_cast<RenDevice *>(device));
-  }
-};
-using UniqueDevice = std::unique_ptr<Device, DeviceDeleter>;
-using SharedDevice = std::shared_ptr<Device>;
+inline auto init(std::span<const char *const> extensions, unsigned adapter = 0)
+    -> expected<void> {
+  return detail::make_expected(
+      ren_Init(extensions.size(), extensions.data(), adapter));
+}
+
+inline void quit() { ren_Quit(); }
 
 struct Swapchain;
 struct SwapchainDeleter {
@@ -127,8 +122,6 @@ struct SceneDeleter {
 using UniqueScene = std::unique_ptr<Scene, SceneDeleter>;
 using SharedScene = std::shared_ptr<Scene>;
 
-struct Device : RenDevice {};
-
 struct Swapchain : RenSwapchain {
   void set_size(unsigned width, unsigned height) {
     ren_SetSwapchainSize(this, width, height);
@@ -142,10 +135,10 @@ struct Swapchain : RenSwapchain {
 };
 
 struct Scene : RenScene {
-  [[nodiscard]] static auto create(Device &device, Swapchain &swapchain)
+  [[nodiscard]] static auto create(Swapchain &swapchain)
       -> expected<UniqueScene> {
     RenScene *scene;
-    return detail::make_expected(ren_CreateScene(&device, &swapchain, &scene))
+    return detail::make_expected(ren_CreateScene(&swapchain, &scene))
         .transform(
             [&] { return UniqueScene(reinterpret_cast<Scene *>(scene)); });
   }

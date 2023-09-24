@@ -666,7 +666,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
         StorageTextureId storage_descriptor;
         if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
           storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
-              m_rg->m_device->get_texture_view(htexture));
+              g_device->get_texture_view(htexture));
         }
         m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
       }
@@ -1076,15 +1076,14 @@ void RgBuilder::clear_temporal_textures(
     return cmd_alloc.allocate();
   }();
   {
-    CommandRecorder rec(*m_rg->m_device, cmd_buffer);
+    CommandRecorder rec(cmd_buffer);
 
     Vector<VkImageMemoryBarrier2> barriers;
     {
       ren_rg_time_region("ctt-gen-barriers-1");
       barriers.reserve(clear_textures.size());
       for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture =
-            m_rg->m_device->get_texture(clear_texture.texture);
+        const Texture &texture = g_device->get_texture(clear_texture.texture);
         barriers.push_back({
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1107,8 +1106,7 @@ void RgBuilder::clear_temporal_textures(
     {
       ren_rg_time_region("ctt-record-clears");
       for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture =
-            m_rg->m_device->get_texture(clear_texture.texture);
+        const Texture &texture = g_device->get_texture(clear_texture.texture);
         VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
         if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
           rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
@@ -1125,8 +1123,7 @@ void RgBuilder::clear_temporal_textures(
       ren_rg_time_region("ctt-gen-barriers-2");
       barriers.clear();
       for (const RgClearTexture &clear_texture : clear_textures) {
-        const Texture &texture =
-            m_rg->m_device->get_texture(clear_texture.texture);
+        const Texture &texture = g_device->get_texture(clear_texture.texture);
         barriers.push_back({
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1152,7 +1149,7 @@ void RgBuilder::clear_temporal_textures(
 
   {
     ren_rg_time_region("ctt-submit");
-    m_rg->m_device->graphicsQueueSubmit({{
+    g_device->graphicsQueueSubmit({{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = cmd_buffer,
     }});

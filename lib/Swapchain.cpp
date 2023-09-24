@@ -8,38 +8,28 @@
 namespace ren {
 
 namespace {
-VkSurfaceCapabilitiesKHR getSurfaceCapabilities(Device &device,
-                                                VkSurfaceKHR surface) {
+
+auto get_surface_capabilities(VkSurfaceKHR surface)
+    -> VkSurfaceCapabilitiesKHR {
   VkSurfaceCapabilitiesKHR capabilities;
-  throw_if_failed(
-      device.GetPhysicalDeviceSurfaceCapabilitiesKHR(surface, &capabilities),
-      "Vulkan: Failed to get surface capabilities");
+  throw_if_failed(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+                      g_device->get_adapter(), surface, &capabilities),
+                  "Vulkan: Failed to get surface capabilities");
   return capabilities;
 }
 
-auto getSurfaceFormats(Device &device, VkSurfaceKHR surface) {
-  unsigned format_count = 0;
-  throw_if_failed(device.GetPhysicalDeviceSurfaceFormatsKHR(
-                      surface, &format_count, nullptr),
-                  "Vulkan: Failed to get surface formats");
-  SmallVector<VkSurfaceFormatKHR, 8> formats(format_count);
-  throw_if_failed(device.GetPhysicalDeviceSurfaceFormatsKHR(
-                      surface, &format_count, formats.data()),
-                  "Vulkan: Failed to get surface formats");
-  formats.resize(format_count);
-  return formats;
-}
+auto get_surface_formats(VkPhysicalDevice adapter, VkSurfaceKHR surface) {}
 
-VkSurfaceFormatKHR
-selectSurfaceFormat(std::span<const VkSurfaceFormatKHR> surface_formats) {
+auto select_surface_format(Span<const VkSurfaceFormatKHR> surface_formats)
+    -> VkSurfaceFormatKHR {
   auto it = ranges::find_if(surface_formats, [](const VkSurfaceFormatKHR &sf) {
     return isSRGBFormat(sf.format);
   });
   return it != surface_formats.end() ? *it : surface_formats.front();
 };
 
-VkCompositeAlphaFlagBitsKHR
-selectCompositeAlpha(VkCompositeAlphaFlagsKHR composite_alphas) {
+auto select_composite_alpha(VkCompositeAlphaFlagsKHR composite_alphas)
+    -> VkCompositeAlphaFlagBitsKHR {
   constexpr std::array preferred_order = {
       VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
       VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
@@ -57,10 +47,12 @@ selectCompositeAlpha(VkCompositeAlphaFlagsKHR composite_alphas) {
                                                   ~(composite_alphas - 1));
 }
 
-VkImageUsageFlags BLIT_STRATEGY_USAGE = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-VkImageUsageFlags RENDER_STRATEGY_USAGE = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+constexpr VkImageUsageFlags BLIT_STRATEGY_USAGE =
+    VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+constexpr VkImageUsageFlags RENDER_STRATEGY_USAGE =
+    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-VkImageUsageFlags selectImageUsage(VkImageUsageFlags image_usage) {
+auto select_image_usage(VkImageUsageFlags image_usage) -> VkImageUsageFlags {
   const std::array preferred_order = {
       BLIT_STRATEGY_USAGE,
   };
@@ -73,50 +65,65 @@ VkImageUsageFlags selectImageUsage(VkImageUsageFlags image_usage) {
 
   return RENDER_STRATEGY_USAGE;
 }
+
 } // namespace
 
-Swapchain::Swapchain(Device &device, VkSurfaceKHR surface)
-    : m_device(&device), m_create_info([&] {
-        auto capabilities = getSurfaceCapabilities(*m_device, surface);
-        auto surface_formats = getSurfaceFormats(*m_device, surface);
+Swapchain::Swapchain(VkSurfaceKHR surface) {
+  VkSurfaceCapabilitiesKHR capabilities = get_surface_capabilities(surface);
 
-        auto image_count = std::max(capabilities.minImageCount, 2u);
-        if (capabilities.maxImageCount) {
-          image_count = std::min(capabilities.maxImageCount, image_count);
-        }
-        auto surface_format = selectSurfaceFormat(surface_formats);
-        auto composite_alpha =
-            selectCompositeAlpha(capabilities.supportedCompositeAlpha);
-        auto image_usage = selectImageUsage(capabilities.supportedUsageFlags);
+  SmallVector<VkSurfaceFormatKHR, 8> surface_formats;
+  {
+    uint32_t num_formats = 0;
+    throw_if_failed(
+        vkGetPhysicalDeviceSurfaceFormatsKHR(g_device->get_adapter(), surface,
+                                             &num_formats, nullptr),
+        "Vulkan: Failed to get surface formats");
+    surface_formats.resize(num_formats);
+    throw_if_failed(vkGetPhysicalDeviceSurfaceFormatsKHR(
+                        g_device->get_adapter(), surface, &num_formats,
+                        surface_formats.data()),
+                    "Vulkan: Failed to get surface formats");
+    surface_formats.resize(num_formats);
+  }
 
-        return VkSwapchainCreateInfoKHR{
-            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .surface = surface,
-            .minImageCount = image_count,
-            .imageFormat = surface_format.format,
-            .imageColorSpace = surface_format.colorSpace,
-            .imageArrayLayers = 1,
-            .imageUsage = image_usage,
-            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .compositeAlpha = composite_alpha,
-            .presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR,
-            .clipped = true,
-        };
-      }()) {
+  auto num_images = std::max<u32>(capabilities.minImageCount, 2);
+  if (capabilities.maxImageCount) {
+    num_images = std::min<u32>(capabilities.maxImageCount, num_images);
+  }
+  VkSurfaceFormatKHR surface_format = select_surface_format(surface_formats);
+  VkCompositeAlphaFlagBitsKHR composite_alpha =
+      select_composite_alpha(capabilities.supportedCompositeAlpha);
+  VkImageUsageFlags image_usage =
+      select_image_usage(capabilities.supportedUsageFlags);
+
+  m_create_info = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .surface = surface,
+      .minImageCount = num_images,
+      .imageFormat = surface_format.format,
+      .imageColorSpace = surface_format.colorSpace,
+      .imageArrayLayers = 1,
+      .imageUsage = image_usage,
+      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .compositeAlpha = composite_alpha,
+      .presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR,
+      .clipped = true,
+  };
+
   create();
 }
 
 Swapchain::~Swapchain() {
   destroy();
-  m_device->push_to_delete_queue(m_create_info.surface);
+  g_device->push_to_delete_queue(m_create_info.surface);
 }
 
 void Swapchain::create() {
-  auto capabilities = getSurfaceCapabilities(*m_device, m_create_info.surface);
+  VkSurfaceCapabilitiesKHR capabilities =
+      get_surface_capabilities(m_create_info.surface);
   m_create_info.imageExtent = [&] {
-    constexpr auto special_value = 0xFFFFFFFF;
-    if (capabilities.currentExtent.width == special_value and
-        capabilities.currentExtent.height == special_value) {
+    if (capabilities.currentExtent.width == 0xFFFFFFFF and
+        capabilities.currentExtent.height == 0xFFFFFFFF) {
       return m_create_info.imageExtent;
     } else {
       return capabilities.currentExtent;
@@ -130,23 +137,24 @@ void Swapchain::create() {
   m_create_info.oldSwapchain = m_swapchain;
 
   VkSwapchainKHR new_swapchain;
-  throw_if_failed(m_device->CreateSwapchainKHR(&m_create_info, &new_swapchain),
+  throw_if_failed(vkCreateSwapchainKHR(g_device->get_device(), &m_create_info,
+                                       nullptr, &new_swapchain),
                   "Vulkan: Failed to create swapchain");
   destroy();
   m_swapchain = new_swapchain;
 
-  unsigned image_count = 0;
-  throw_if_failed(
-      m_device->GetSwapchainImagesKHR(m_swapchain, &image_count, nullptr),
-      "Vulkan: Failed to get swapchain image count");
-  SmallVector<VkImage, 3> images(image_count);
-  throw_if_failed(
-      m_device->GetSwapchainImagesKHR(m_swapchain, &image_count, images.data()),
-      "Vulkan: Failed to get swapchain images");
+  uint32_t num_images = 0;
+  throw_if_failed(vkGetSwapchainImagesKHR(g_device->get_device(), m_swapchain,
+                                          &num_images, nullptr),
+                  "Vulkan: Failed to get swapchain image count");
+  SmallVector<VkImage, 3> images(num_images);
+  throw_if_failed(vkGetSwapchainImagesKHR(g_device->get_device(), m_swapchain,
+                                          &num_images, images.data()),
+                  "Vulkan: Failed to get swapchain images");
 
-  m_textures.resize(image_count);
+  m_textures.resize(num_images);
   ranges::transform(images, m_textures.begin(), [&](VkImage image) {
-    return m_device->create_swapchain_texture({
+    return g_device->create_swapchain_texture({
         .image = image,
         .format = m_create_info.imageFormat,
         .usage = m_create_info.imageUsage,
@@ -157,9 +165,9 @@ void Swapchain::create() {
 }
 
 void Swapchain::destroy() {
-  m_device->push_to_delete_queue(m_swapchain);
+  g_device->push_to_delete_queue(m_swapchain);
   for (auto texture : m_textures) {
-    m_device->destroy_texture(texture);
+    g_device->destroy_texture(texture);
   }
   m_textures.clear();
 }
@@ -175,19 +183,19 @@ void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
 void Swapchain::acquireImage(Handle<Semaphore> signal_semaphore) {
   while (true) {
-    auto r = m_device->AcquireNextImageKHR(
-        m_swapchain, UINT64_MAX,
-        m_device->get_semaphore(signal_semaphore).handle, nullptr,
-        &m_image_index);
-    switch (r) {
+    VkResult result =
+        vkAcquireNextImageKHR(g_device->get_device(), m_swapchain, UINT64_MAX,
+                              g_device->get_semaphore(signal_semaphore).handle,
+                              nullptr, &m_image_index);
+    switch (result) {
+    default:
+      throw_if_failed(result, "Vulkan: Failed to acquire image");
     case VK_SUCCESS:
     case VK_SUBOPTIMAL_KHR:
       return;
     case VK_ERROR_OUT_OF_DATE_KHR:
       create();
       continue;
-    default:
-      throw std::runtime_error{"Vulkan: Failed to acquire image"};
     }
   }
 }
@@ -196,26 +204,26 @@ void Swapchain::presentImage(Handle<Semaphore> wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &m_device->get_semaphore(wait_semaphore).handle,
+      .pWaitSemaphores = &g_device->get_semaphore(wait_semaphore).handle,
       .swapchainCount = 1,
       .pSwapchains = &m_swapchain,
       .pImageIndices = &m_image_index,
   };
-  auto r = m_device->queuePresent(present_info);
-  switch (r) {
+  VkResult result = g_device->queue_present(present_info);
+  switch (result) {
+  default:
+    throw_if_failed(result, "Vulkan: Failed to present image");
   case VK_SUCCESS:
     return;
   case VK_SUBOPTIMAL_KHR:
   case VK_ERROR_OUT_OF_DATE_KHR:
     create();
     return;
-  default:
-    throw std::runtime_error{"Vulkan: Failed to present image"};
   }
 }
 
 auto Swapchain::getTexture() const -> TextureView {
-  return m_device->get_texture_view(m_textures[m_image_index]);
+  return g_device->get_texture_view(m_textures[m_image_index]);
 }
 
 } // namespace ren

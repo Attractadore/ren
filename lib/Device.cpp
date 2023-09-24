@@ -4,6 +4,8 @@
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
+#include <volk.h>
+
 namespace ren {
 namespace {
 
@@ -22,7 +24,7 @@ define_object_type(VkSemaphore, VK_OBJECT_TYPE_SEMAPHORE);
 #undef define_object_type
 
 template <typename T>
-void set_debug_name(Device &device, T object, const DebugName &name) {
+void set_debug_name(VkDevice device, T object, const DebugName &name) {
 #if REN_DEBUG_NAMES
   static_assert(ObjectType<T>);
   VkDebugUtilsObjectNameInfoEXT name_info = {
@@ -31,7 +33,7 @@ void set_debug_name(Device &device, T object, const DebugName &name) {
       .objectHandle = (uint64_t)object,
       .pObjectName = name.c_str(),
   };
-  throw_if_failed(device.SetDebugUtilsObjectNameEXT(&name_info),
+  throw_if_failed(vkSetDebugUtilsObjectNameEXT(device, &name_info),
                   "Vulkan: Failed to set object debug name");
 #endif
 }
@@ -57,39 +59,69 @@ auto Device::getInstanceExtensions() noexcept -> Span<const char *const> {
 }
 
 namespace {
-int findQueueFamilyWithCapabilities(Device *device, VkQueueFlags caps) {
-  unsigned qcnt = 0;
-  device->GetPhysicalDeviceQueueFamilyProperties(&qcnt, nullptr);
-  SmallVector<VkQueueFamilyProperties, 4> queues(qcnt);
-  device->GetPhysicalDeviceQueueFamilyProperties(&qcnt, queues.data());
-  for (unsigned i = 0; i < qcnt; ++i) {
-    constexpr auto filter =
-        VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-    if ((queues[i].queueFlags & filter) == caps) {
+
+auto create_instance(Span<const char *const> external_extensions)
+    -> UniqueInstance {
+  VkApplicationInfo application_info = {
+      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+      .apiVersion = Device::getRequiredAPIVersion(),
+  };
+
+  auto layers = Device::getRequiredLayers();
+
+  SmallVector<const char *> extensions(external_extensions);
+  extensions.append(Device::getInstanceExtensions());
+
+  VkInstanceCreateInfo create_info = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo = &application_info,
+      .enabledLayerCount = static_cast<uint32_t>(layers.size()),
+      .ppEnabledLayerNames = layers.data(),
+      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+      .ppEnabledExtensionNames = extensions.data(),
+  };
+
+  VkInstance instance;
+  throw_if_failed(vkCreateInstance(&create_info, nullptr, &instance),
+                  "Vulkan: Failed to create VkInstance");
+
+  return UniqueInstance(instance);
+}
+
+auto find_adapter(VkInstance instance, u32 adapter) -> VkPhysicalDevice {
+  uint32_t num_adapters = 0;
+  throw_if_failed(vkEnumeratePhysicalDevices(instance, &num_adapters, nullptr),
+                  "Vulkan: Failed to enumerate physical device");
+  SmallVector<VkPhysicalDevice> adapters(num_adapters);
+  throw_if_failed(
+      vkEnumeratePhysicalDevices(instance, &num_adapters, adapters.data()),
+      "Vulkan: Failed to enumerate physical device");
+  adapters.resize(num_adapters);
+  if (adapter < adapters.size()) {
+    return adapters[adapter];
+  }
+  return nullptr;
+}
+
+auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
+  uint32_t num_queues = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(adapter, &num_queues, nullptr);
+  SmallVector<VkQueueFamilyProperties, 4> queues(num_queues);
+  vkGetPhysicalDeviceQueueFamilyProperties(adapter, &num_queues, queues.data());
+  for (usize i = 0; i < num_queues; ++i) {
+    if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
       return i;
     }
   }
-  return -1;
+  return None;
 }
 
-int findGraphicsQueueFamily(Device *device) {
-  return findQueueFamilyWithCapabilities(device, VK_QUEUE_GRAPHICS_BIT |
-                                                     VK_QUEUE_COMPUTE_BIT |
-                                                     VK_QUEUE_TRANSFER_BIT);
-}
-} // namespace
-
-Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-               VkPhysicalDevice m_adapter)
-    : m_instance(instance), m_adapter(m_adapter) {
-  load_instance_functions(proc, m_instance, &m_vk);
-
-  m_graphics_queue_family = findGraphicsQueueFamily(this);
-
+auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
+    -> UniqueDevice {
   float queue_priority = 1.0f;
   VkDeviceQueueCreateInfo queue_create_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = m_graphics_queue_family,
+      .queueFamilyIndex = graphics_queue_family,
       .queueCount = 1,
       .pQueuePriorities = &queue_priority,
   };
@@ -126,8 +158,6 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
   };
 
   std::array extensions = {
-      VK_GOOGLE_HLSL_FUNCTIONALITY1_EXTENSION_NAME,
-      VK_GOOGLE_USER_TYPE_EXTENSION_NAME,
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
 
@@ -140,73 +170,137 @@ Device::Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
       .ppEnabledExtensionNames = extensions.data(),
   };
 
-  throw_if_failed(CreateDevice(&create_info, &m_device),
+  VkDevice device;
+  throw_if_failed(vkCreateDevice(adapter, &create_info, nullptr, &device),
                   "Vulkan: Failed to create device");
 
-  load_device_functions(m_vk.GetDeviceProcAddr, m_device, &m_vk);
+  return UniqueDevice(device);
+}
 
-  GetDeviceQueue(m_graphics_queue_family, 0, &m_graphics_queue);
+auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
+                      VkDevice device) -> UniqueAllocator {
+  VmaVulkanFunctions vk = {
+      .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
+      .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
+      .vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties,
+      .vkGetPhysicalDeviceMemoryProperties =
+          vkGetPhysicalDeviceMemoryProperties,
+      .vkAllocateMemory = vkAllocateMemory,
+      .vkFreeMemory = vkFreeMemory,
+      .vkMapMemory = vkMapMemory,
+      .vkUnmapMemory = vkUnmapMemory,
+      .vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges,
+      .vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges,
+      .vkBindBufferMemory = vkBindBufferMemory,
+      .vkBindImageMemory = vkBindImageMemory,
+      .vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements,
+      .vkGetImageMemoryRequirements = vkGetImageMemoryRequirements,
+      .vkCreateBuffer = vkCreateBuffer,
+      .vkDestroyBuffer = vkDestroyBuffer,
+      .vkCreateImage = vkCreateImage,
+      .vkDestroyImage = vkDestroyImage,
+      .vkCmdCopyBuffer = vkCmdCopyBuffer,
+      .vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2,
+      .vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2,
+      .vkBindBufferMemory2KHR = vkBindBufferMemory2,
+      .vkBindImageMemory2KHR = vkBindImageMemory2,
+      .vkGetPhysicalDeviceMemoryProperties2KHR =
+          vkGetPhysicalDeviceMemoryProperties2,
+      .vkGetDeviceBufferMemoryRequirements =
+          vkGetDeviceBufferMemoryRequirements,
+      .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
+  };
+
+  VmaAllocatorCreateInfo allocator_info = {
+      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+      .physicalDevice = adapter,
+      .device = device,
+      .pVulkanFunctions = &vk,
+      .instance = instance,
+      .vulkanApiVersion = Device::getRequiredAPIVersion(),
+  };
+
+  VmaAllocator allocator;
+  throw_if_failed(vmaCreateAllocator(&allocator_info, &allocator),
+                  "VMA: Failed to create allocator");
+
+  return UniqueAllocator(allocator);
+}
+
+} // namespace
+
+Device::Device(Span<const char *const> extensions, u32 adapter) {
+  throw_if_failed(volkInitialize(), "Volk: failed to initialize");
+
+  m_instance = create_instance(extensions);
+
+  volkLoadInstanceOnly(get_instance());
+
+  m_adapter = find_adapter(get_instance(), adapter);
+  if (!m_adapter) {
+    throw std::runtime_error("Vulkan: Failed to find requested adapter");
+  }
+
+  Optional<usize> graphics_queue_family = find_graphics_queue_family(m_adapter);
+  if (graphics_queue_family) {
+    m_graphics_queue_family = *graphics_queue_family;
+  } else {
+    throw std::runtime_error("Vulkan: Failed to find graphics queue");
+  }
+
+  m_device = create_device(m_adapter, m_graphics_queue_family);
+
+  volkLoadDevice(get_device());
+
+  vkGetDeviceQueue(get_device(), m_graphics_queue_family, 0, &m_graphics_queue);
   m_graphics_queue_semaphore = create_semaphore({
       .name = "Device time semaphore",
       .initial_value = 0,
   });
 
-  VmaVulkanFunctions vma_vulkan_functions = {
-      .vkGetInstanceProcAddr = m_vk.GetInstanceProcAddr,
-      .vkGetDeviceProcAddr = m_vk.GetDeviceProcAddr,
-  };
+  m_allocator = create_allocator(get_instance(), m_adapter, get_device());
+} // namespace ren
 
-  VmaAllocatorCreateInfo allocator_info = {
-      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-      .physicalDevice = m_adapter,
-      .device = m_device,
-      .pAllocationCallbacks = getAllocator(),
-      .pVulkanFunctions = &vma_vulkan_functions,
-      .instance = m_instance,
-      .vulkanApiVersion = getRequiredAPIVersion(),
-  };
-
-  throw_if_failed(vmaCreateAllocator(&allocator_info, &m_allocator),
-                  "VMA: Failed to create allocator");
-}
-
-#define define_queue_deleter(T, F)                                             \
+#define define_device_deleter(T, F)                                            \
   template <> struct QueueDeleter<T> {                                         \
     void operator()(Device &device, T handle) const noexcept {                 \
-      device.F(handle);                                                        \
+      F(device.get_device(), handle, nullptr);                                 \
     }                                                                          \
   }
 
-define_queue_deleter(VkBuffer, DestroyBuffer);
-define_queue_deleter(VkDescriptorPool, DestroyDescriptorPool);
-define_queue_deleter(VkDescriptorSetLayout, DestroyDescriptorSetLayout);
-define_queue_deleter(VkImage, DestroyImage);
-define_queue_deleter(VkImageView, DestroyImageView);
-define_queue_deleter(VkPipeline, DestroyPipeline);
-define_queue_deleter(VkPipelineLayout, DestroyPipelineLayout);
-define_queue_deleter(VkSampler, DestroySampler);
-define_queue_deleter(VkSemaphore, DestroySemaphore);
-define_queue_deleter(VkSurfaceKHR, DestroySurfaceKHR);
-define_queue_deleter(VkSwapchainKHR, DestroySwapchainKHR);
+define_device_deleter(VkBuffer, vkDestroyBuffer);
+define_device_deleter(VkDescriptorPool, vkDestroyDescriptorPool);
+define_device_deleter(VkDescriptorSetLayout, vkDestroyDescriptorSetLayout);
+define_device_deleter(VkImage, vkDestroyImage);
+define_device_deleter(VkImageView, vkDestroyImageView);
+define_device_deleter(VkPipeline, vkDestroyPipeline);
+define_device_deleter(VkPipelineLayout, vkDestroyPipelineLayout);
+define_device_deleter(VkSampler, vkDestroySampler);
+define_device_deleter(VkSemaphore, vkDestroySemaphore);
+define_device_deleter(VkSwapchainKHR, vkDestroySwapchainKHR);
 
-#undef define_queue_deleter
+#undef define_device_deleter
+
+template <> struct QueueDeleter<VkSurfaceKHR> {
+  void operator()(Device &device, VkSurfaceKHR handle) const noexcept {
+    vkDestroySurfaceKHR(device.get_instance(), handle, nullptr);
+  }
+};
 
 template <> struct QueueDeleter<VmaAllocation> {
   void operator()(Device &device, VmaAllocation allocation) const noexcept {
-    vmaFreeMemory(device.getVMAAllocator(), allocation);
+    vmaFreeMemory(device.get_allocator(), allocation);
   }
 };
 
 Device::~Device() {
   destroy_semaphore(m_graphics_queue_semaphore);
   flush();
-  vmaDestroyAllocator(m_allocator);
-  DestroyDevice();
-  DestroyInstance();
 }
 
 void Device::flush() {
-  DeviceWaitIdle();
+  throw_if_failed(vkDeviceWaitIdle(get_device()),
+                  "Vulkan: Failed to wait for idle device");
   m_delete_queue.flush(*this);
 }
 
@@ -242,9 +336,10 @@ auto Device::create_descriptor_pool(
   };
 
   VkDescriptorPool pool;
-  throw_if_failed(CreateDescriptorPool(&pool_info, &pool),
-                  "Vulkan: Failed to create descriptor pool");
-  set_debug_name(*this, pool, create_info.name);
+  throw_if_failed(
+      vkCreateDescriptorPool(get_device(), &pool_info, nullptr, &pool),
+      "Vulkan: Failed to create descriptor pool");
+  set_debug_name(get_device(), pool, create_info.name);
 
   return m_descriptor_pools.emplace(DescriptorPool{
       .handle = pool,
@@ -271,7 +366,9 @@ auto Device::get_descriptor_pool(Handle<DescriptorPool> pool) const
 }
 
 void Device::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
-  ResetDescriptorPool(get_descriptor_pool(pool).handle, 0);
+  throw_if_failed(
+      vkResetDescriptorPool(get_device(), get_descriptor_pool(pool).handle, 0),
+      "Vulkan: Failed to reset descriptor pool");
 }
 
 auto Device::create_descriptor_set_layout(
@@ -322,9 +419,10 @@ auto Device::create_descriptor_set_layout(
   };
 
   VkDescriptorSetLayout layout;
-  throw_if_failed(CreateDescriptorSetLayout(&layout_info, &layout),
-                  "Vulkann: Failed to create descriptor set layout");
-  set_debug_name(*this, layout, create_info.name);
+  throw_if_failed(
+      vkCreateDescriptorSetLayout(get_device(), &layout_info, nullptr, &layout),
+      "Vulkann: Failed to create descriptor set layout");
+  set_debug_name(get_device(), layout, create_info.name);
 
   return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
       .handle = layout,
@@ -367,7 +465,7 @@ auto Device::allocate_descriptor_sets(
       .pSetLayouts = vk_layouts.data(),
   };
 
-  auto result = AllocateDescriptorSets(&alloc_info, sets);
+  auto result = vkAllocateDescriptorSets(get_device(), &alloc_info, sets);
   switch (result) {
   default: {
     throw_if_failed(result, "Vulkan: Failed to allocate descriptor sets");
@@ -394,7 +492,8 @@ auto Device::allocate_descriptor_set(Handle<DescriptorPool> pool,
 
 void Device::write_descriptor_sets(
     TempSpan<const VkWriteDescriptorSet> configs) const {
-  UpdateDescriptorSets(configs.size(), configs.data(), 0, nullptr);
+  vkUpdateDescriptorSets(get_device(), configs.size(), configs.data(), 0,
+                         nullptr);
 }
 
 auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
@@ -437,10 +536,10 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
   VkBuffer buffer;
   VmaAllocation allocation;
   VmaAllocationInfo map_info;
-  throw_if_failed(vmaCreateBuffer(m_allocator, &buffer_info, &alloc_info,
+  throw_if_failed(vmaCreateBuffer(get_allocator(), &buffer_info, &alloc_info,
                                   &buffer, &allocation, &map_info),
                   "VMA: Failed to create buffer");
-  set_debug_name(*this, buffer, create_info.name);
+  set_debug_name(get_device(), buffer, create_info.name);
 
   uint64_t address = 0;
   if (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
@@ -448,7 +547,7 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .buffer = buffer,
     };
-    address = GetBufferDeviceAddress(&buffer_info);
+    address = vkGetBufferDeviceAddress(get_device(), &buffer_info);
   }
 
   Handle<Buffer> hbuffer = m_buffers.emplace(Buffer{
@@ -527,10 +626,10 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
 
   VkImage image;
   VmaAllocation allocation;
-  throw_if_failed(vmaCreateImage(m_allocator, &image_info, &alloc_info, &image,
-                                 &allocation, nullptr),
+  throw_if_failed(vmaCreateImage(get_allocator(), &image_info, &alloc_info,
+                                 &image, &allocation, nullptr),
                   "VMA: Failed to create image");
-  set_debug_name(*this, image, create_info.name);
+  set_debug_name(get_device(), image, create_info.name);
 
   return m_textures.emplace(Texture{
       .image = image,
@@ -548,7 +647,7 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
 
 auto Device::create_swapchain_texture(
     const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
-  set_debug_name(*this, create_info.image, "Swapchain image");
+  set_debug_name(get_device(), create_info.image, "Swapchain image");
 
   return m_textures.emplace(Texture{
       .image = create_info.image,
@@ -674,8 +773,9 @@ auto Device::getVkImageView(const TextureView &view) -> VkImageView {
                 .layerCount = view.num_array_layers,
             },
     };
-    throw_if_failed(CreateImageView(&view_info, &image_view),
-                    "Vulkan: Failed to create image view");
+    throw_if_failed(
+        vkCreateImageView(get_device(), &view_info, nullptr, &image_view),
+        "Vulkan: Failed to create image view");
   }
   return image_view;
 }
@@ -693,9 +793,10 @@ auto Device::create_sampler(const SamplerCreateInfo &&create_info)
   };
 
   VkSampler sampler;
-  throw_if_failed(CreateSampler(&sampler_info, &sampler),
-                  "Vulkan: Failed to create sampler");
-  set_debug_name(*this, sampler, create_info.name);
+  throw_if_failed(
+      vkCreateSampler(get_device(), &sampler_info, nullptr, &sampler),
+      "Vulkan: Failed to create sampler");
+  set_debug_name(get_device(), sampler, create_info.name);
 
   return m_samplers.emplace(Sampler{
       .handle = sampler,
@@ -732,9 +833,10 @@ auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
   };
 
   VkSemaphore semaphore;
-  throw_if_failed(CreateSemaphore(&semaphore_info, &semaphore),
-                  "Vulkan: Failed to create semaphore");
-  set_debug_name(*this, semaphore, create_info.name);
+  throw_if_failed(
+      vkCreateSemaphore(get_device(), &semaphore_info, nullptr, &semaphore),
+      "Vulkan: Failed to create semaphore");
+  set_debug_name(get_device(), semaphore, create_info.name);
 
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
@@ -753,7 +855,7 @@ auto Device::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
       .pSemaphores = &semaphore.handle,
       .pValues = &value,
   };
-  auto result = WaitSemaphores(&wait_info, timeout.count());
+  auto result = vkWaitSemaphores(get_device(), &wait_info, timeout.count());
   switch (result) {
   case VK_SUCCESS:
   case VK_TIMEOUT:
@@ -803,11 +905,11 @@ void Device::queueSubmit(
       .pSignalSemaphoreInfos = signal_semaphores.data(),
   };
 
-  throw_if_failed(QueueSubmit2(queue, 1, &submit_info, VK_NULL_HANDLE),
+  throw_if_failed(vkQueueSubmit2(queue, 1, &submit_info, nullptr),
                   "Vulkan: Failed to submit work to queue");
 }
 
-static auto create_shader_module(Device &device,
+static auto create_shader_module(VkDevice device,
                                  std::span<const std::byte> code) {
   assert(code.size() % sizeof(u32) == 0);
   VkShaderModuleCreateInfo module_info = {
@@ -816,7 +918,7 @@ static auto create_shader_module(Device &device,
       .pCode = reinterpret_cast<const u32 *>(code.data()),
   };
   VkShaderModule module;
-  throw_if_failed(device.CreateShaderModule(&module_info, &module),
+  throw_if_failed(vkCreateShaderModule(device, &module_info, nullptr, &module),
                   "Vulkan: Failed to create shader module");
   return module;
 }
@@ -833,7 +935,7 @@ auto Device::create_graphics_pipeline(
   VkShaderStageFlags stages = 0;
 
   auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
-    auto module = create_shader_module(*this, shader.code);
+    auto module = create_shader_module(get_device(), shader.code);
     shaders.push_back(VkPipelineShaderStageCreateInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage,
@@ -943,12 +1045,12 @@ auto Device::create_graphics_pipeline(
   };
 
   VkPipeline pipeline;
-  throw_if_failed(
-      CreateGraphicsPipelines(nullptr, 1, &pipeline_info, &pipeline),
-      "Vulkan: Failed to create graphics pipeline");
-  set_debug_name(*this, pipeline, create_info.name);
-  for (auto module : shader_modules) {
-    DestroyShaderModule(module);
+  throw_if_failed(vkCreateGraphicsPipelines(get_device(), nullptr, 1,
+                                            &pipeline_info, nullptr, &pipeline),
+                  "Vulkan: Failed to create graphics pipeline");
+  set_debug_name(get_device(), pipeline, create_info.name);
+  for (VkShaderModule module : shader_modules) {
+    vkDestroyShaderModule(get_device(), module, nullptr);
   }
 
   return m_graphics_pipelines.emplace(GraphicsPipeline{
@@ -982,7 +1084,8 @@ auto Device::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 
 auto Device::create_compute_pipeline(
     const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
-  auto module = create_shader_module(*this, create_info.shader.code);
+  VkShaderModule module =
+      create_shader_module(get_device(), create_info.shader.code);
 
   VkComputePipelineCreateInfo pipeline_info = {
       .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -997,10 +1100,11 @@ auto Device::create_compute_pipeline(
   };
 
   VkPipeline pipeline;
-  throw_if_failed(CreateComputePipelines(nullptr, 1, &pipeline_info, &pipeline),
+  throw_if_failed(vkCreateComputePipelines(get_device(), nullptr, 1,
+                                           &pipeline_info, nullptr, &pipeline),
                   "Vulkan: Failed to create compute pipeline");
-  set_debug_name(*this, pipeline, create_info.name);
-  DestroyShaderModule(module);
+  set_debug_name(get_device(), pipeline, create_info.name);
+  vkDestroyShaderModule(get_device(), module, nullptr);
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
@@ -1043,9 +1147,10 @@ auto Device::create_pipeline_layout(
   };
 
   VkPipelineLayout layout;
-  throw_if_failed(CreatePipelineLayout(&layout_info, &layout),
-                  "Vulkan: Failed to create pipeline layout");
-  set_debug_name(*this, layout, create_info.name);
+  throw_if_failed(
+      vkCreatePipelineLayout(get_device(), &layout_info, nullptr, &layout),
+      "Vulkan: Failed to create pipeline layout");
+  set_debug_name(get_device(), layout, create_info.name);
 
   return m_pipeline_layouts.emplace(PipelineLayout{
       .handle = layout,
@@ -1071,10 +1176,10 @@ auto Device::get_pipeline_layout(Handle<PipelineLayout> layout) const
   return m_pipeline_layouts[layout];
 }
 
-auto Device::queuePresent(const VkPresentInfoKHR &present_info) -> VkResult {
-  auto queue = getGraphicsQueue();
-  auto r = QueuePresentKHR(queue, &present_info);
-  switch (r) {
+auto Device::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
+  VkQueue queue = getGraphicsQueue();
+  VkResult result = vkQueuePresentKHR(queue, &present_info);
+  switch (result) {
   default:
     break;
   case VK_SUCCESS:
@@ -1092,7 +1197,7 @@ auto Device::queuePresent(const VkPresentInfoKHR &present_info) -> VkResult {
 #endif
   }
   }
-  return r;
+  return result;
 }
 
 } // namespace ren

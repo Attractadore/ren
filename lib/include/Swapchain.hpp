@@ -18,18 +18,17 @@ struct SwapchainTextureCreateInfo {
 };
 
 class Swapchain {
-  Device *m_device;
-  VkSwapchainKHR m_swapchain = VK_NULL_HANDLE;
+  VkSwapchainKHR m_swapchain = nullptr;
   SmallVector<Handle<Texture>, 3> m_textures;
   unsigned m_image_index = -1;
-  VkSwapchainCreateInfoKHR m_create_info;
+  VkSwapchainCreateInfoKHR m_create_info = {};
 
 private:
   void create();
   void destroy();
 
 public:
-  Swapchain(Device &device, VkSurfaceKHR surface);
+  Swapchain(VkSurfaceKHR surface);
   Swapchain(const Swapchain &) = delete;
   Swapchain(Swapchain &&);
   Swapchain &operator=(const Swapchain &) = delete;

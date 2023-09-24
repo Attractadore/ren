@@ -29,7 +29,7 @@ auto RgRuntime::get_buffer(RgBufferId buffer) const -> const BufferView & {
 auto RgRuntime::map_buffer_impl(RgBufferId buffer, usize offset) const
     -> std::byte * {
   const BufferView &view = get_buffer(buffer);
-  return m_rg->m_device->map_buffer<std::byte>(view, offset);
+  return g_device->map_buffer<std::byte>(view, offset);
 }
 
 auto RenderGraph::get_physical_texture(RgTextureId texture) const
@@ -63,7 +63,7 @@ void RgUpdate::resize_buffer(RgBufferId buffer, usize size) {
 
 auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
     -> RgPublicTextureDesc {
-  const Texture &texture = m_rg->m_device->get_texture(
+  const Texture &texture = g_device->get_texture(
       m_rg->m_textures[m_rg->get_physical_texture(texture_id)]);
   return {
       .type = texture.type,
@@ -74,10 +74,8 @@ auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
   };
 }
 
-RenderGraph::RenderGraph(Device &device, Swapchain &swapchain,
-                         TextureIdAllocator &tex_alloc)
-    : m_arena(device), m_tex_alloc(tex_alloc) {
-  m_device = &device;
+RenderGraph::RenderGraph(Swapchain &swapchain, TextureIdAllocator &tex_alloc)
+    : m_tex_alloc(tex_alloc) {
   m_swapchain = &swapchain;
 }
 
@@ -169,7 +167,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
         batch_signal_semaphores.empty()) {
       return;
     }
-    m_device->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
+    g_device->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
                                   batch_signal_semaphores);
     batch_cmd_buffers.clear();
     batch_wait_semaphores.clear();
@@ -200,7 +198,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       auto get_command_recorder = [&]() -> CommandRecorder & {
         if (!cmd_recorder) {
           cmd_buffer = cmd_alloc.allocate();
-          cmd_recorder.emplace(*m_device, cmd_buffer);
+          cmd_recorder.emplace(cmd_buffer);
 #if REN_RG_DEBUG
           debug_region.emplace(
               cmd_recorder->debug_region(m_pass_names[pass.pass].c_str()));
@@ -223,7 +221,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       auto get_vk_image_barrier =
           [&](const RgTextureBarrier &barrier) -> VkImageMemoryBarrier2 {
         const Texture &texture =
-            m_device->get_texture(m_textures[barrier.texture]);
+            g_device->get_texture(m_textures[barrier.texture]);
         return {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = barrier.src_stage_mask,
@@ -257,7 +255,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       pass.type.visit(OverloadSet{
           [&](const RgHostPass &host_pass) {
             if (host_pass.cb) {
-              host_pass.cb(*m_device, rt, m_pass_datas[pass.pass]);
+              host_pass.cb(*g_device, rt, m_pass_datas[pass.pass]);
             }
           },
           [&](const RgGraphicsPass &graphics_pass) {
@@ -274,9 +272,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                         -> Optional<ColorAttachment> {
                   return att.map(
                       [&](const RgColorAttachment &att) -> ColorAttachment {
-                        TextureView view = m_device->get_texture_view(
+                        TextureView view = g_device->get_texture_view(
                             m_textures[get_physical_texture(att.texture)]);
-                        viewport = m_device->get_texture_view_size(view);
+                        viewport = g_device->get_texture_view_size(view);
                         return {
                             .texture = view,
                             .ops = att.ops,
@@ -290,9 +288,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             if (graphics_pass.has_depth_attachment) {
               const RgDepthStencilAttachment &att =
                   rg_depth_stencil_attachments.pop_front();
-              TextureView view = m_device->get_texture_view(
+              TextureView view = g_device->get_texture_view(
                   m_textures[get_physical_texture(att.texture)]);
-              viewport = m_device->get_texture_view_size(view);
+              viewport = g_device->get_texture_view_size(view);
               depth_stencil_attachment = {
                   .texture = view,
                   .depth_ops = att.depth_ops,
@@ -312,18 +310,18 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});
 
-            graphics_pass.cb(*m_device, rt, render_pass,
+            graphics_pass.cb(*g_device, rt, render_pass,
                              m_pass_datas[pass.pass]);
           },
           [&](const RgComputePass &compute_pass) {
             if (compute_pass.cb) {
               ComputePass comp = get_command_recorder().compute_pass();
-              compute_pass.cb(*m_device, rt, comp, m_pass_datas[pass.pass]);
+              compute_pass.cb(*g_device, rt, comp, m_pass_datas[pass.pass]);
             }
           },
           [&](const RgTransferPass &transfer_pass) {
             if (transfer_pass.cb) {
-              transfer_pass.cb(*m_device, rt, get_command_recorder(),
+              transfer_pass.cb(*g_device, rt, get_command_recorder(),
                                m_pass_datas[pass.pass]);
             }
           },
@@ -342,7 +340,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       return {
           .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
           .semaphore =
-              m_device->get_semaphore(m_semaphores[signal.semaphore]).handle,
+              g_device->get_semaphore(m_semaphores[signal.semaphore]).handle,
           .value = signal.value,
           .stageMask = signal.stage_mask,
       };

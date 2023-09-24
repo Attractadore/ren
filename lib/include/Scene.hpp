@@ -22,8 +22,6 @@ template <> struct Hash<RenSampler> {
 class Swapchain;
 
 class Scene {
-  Device *m_device;
-
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;
 
@@ -73,7 +71,7 @@ private:
   void next_frame();
 
 public:
-  Scene(Device &device, Swapchain &swapchain);
+  Scene(Swapchain &swapchain);
 
   RenMesh create_mesh(const RenMeshDesc &desc);
 

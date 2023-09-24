@@ -3,7 +3,6 @@
 #include "BufferReference.hpp"
 #include "Config.hpp"
 #include "Descriptors.hpp"
-#include "DispatchTable.hpp"
 #include "HandleMap.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
@@ -16,6 +15,7 @@
 
 #include <chrono>
 #include <functional>
+#include <memory>
 
 namespace ren {
 
@@ -114,17 +114,39 @@ using DeleteQueue = detail::DeleteQueueImpl<
     VkSwapchainKHR, // Swapchain must be destroyed before surface
     VkSurfaceKHR, VmaAllocation>;
 
-class Device : public InstanceFunctionsMixin<Device>,
-               public PhysicalDeviceFunctionsMixin<Device>,
-               public DeviceFunctionsMixin<Device> {
-  VkInstance m_instance;
-  VkPhysicalDevice m_adapter;
-  VkDevice m_device;
-  VmaAllocator m_allocator;
-  DispatchTable m_vk = {};
+struct InstanceDeleter {
+  void operator()(VkInstance instance) const noexcept {
+    vkDestroyInstance(instance, nullptr);
+  }
+};
+
+struct DeviceDeleter {
+  void operator()(VkDevice device) const noexcept {
+    vkDestroyDevice(device, nullptr);
+  }
+};
+
+struct AllocatorDeleter {
+  void operator()(VmaAllocator allocator) const noexcept {
+    vmaDestroyAllocator(allocator);
+  }
+};
+
+template <typename T, typename D>
+using UniqueHandle = std::unique_ptr<std::remove_pointer_t<T>, D>;
+
+using UniqueInstance = UniqueHandle<VkInstance, InstanceDeleter>;
+using UniqueDevice = UniqueHandle<VkDevice, DeviceDeleter>;
+using UniqueAllocator = UniqueHandle<VmaAllocator, AllocatorDeleter>;
+
+class Device {
+  UniqueInstance m_instance;
+  VkPhysicalDevice m_adapter = nullptr;
+  UniqueDevice m_device;
+  UniqueAllocator m_allocator;
 
   unsigned m_graphics_queue_family = -1;
-  VkQueue m_graphics_queue;
+  VkQueue m_graphics_queue = nullptr;
   Handle<Semaphore> m_graphics_queue_semaphore;
   uint64_t m_graphics_queue_time = 0;
 
@@ -154,8 +176,7 @@ class Device : public InstanceFunctionsMixin<Device>,
   HandleMap<ComputePipeline> m_compute_pipelines;
 
 public:
-  Device(PFN_vkGetInstanceProcAddr proc, VkInstance instance,
-         VkPhysicalDevice adapter);
+  Device(Span<const char *const> extensions, u32 adapter);
   Device(const Device &) = delete;
   Device(Device &&);
   Device &operator=(const Device &) = delete;
@@ -173,17 +194,13 @@ public:
   static auto getRequiredLayers() noexcept -> Span<const char *const>;
   static auto getInstanceExtensions() noexcept -> Span<const char *const>;
 
-  auto getDispatchTable() const -> const DispatchTable & { return m_vk; }
+  auto get_instance() const -> VkInstance { return m_instance.get(); }
 
-  auto getInstance() const -> VkInstance { return m_instance; }
+  auto get_adapter() const -> VkPhysicalDevice { return m_adapter; }
 
-  auto getPhysicalDevice() const -> VkPhysicalDevice { return m_adapter; }
+  auto get_device() const -> VkDevice { return m_device.get(); }
 
-  auto getDevice() const -> VkDevice { return m_device; }
-
-  auto getVMAAllocator() const -> VmaAllocator { return m_allocator; }
-
-  auto getAllocator() const -> const VkAllocationCallbacks * { return nullptr; }
+  auto get_allocator() const -> VmaAllocator { return m_allocator.get(); }
 
   template <typename T> void push_to_delete_queue(T value) {
     m_delete_queue.push(std::move(value));
@@ -352,7 +369,7 @@ public:
 
   auto getGraphicsQueue() const -> VkQueue { return m_graphics_queue; }
 
-  auto getGraphicsQueueFamily() const -> unsigned {
+  auto get_graphics_queue_family() const -> unsigned {
     return m_graphics_queue_family;
   }
 
@@ -370,12 +387,10 @@ public:
               TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
               TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
-  [[nodiscard]] auto queuePresent(const VkPresentInfoKHR &present_info)
+  [[nodiscard]] auto queue_present(const VkPresentInfoKHR &present_info)
       -> VkResult;
 };
 
-} // namespace ren
+extern std::unique_ptr<Device> g_device;
 
-struct RenDevice : ren::Device {
-  using ren::Device::Device;
-};
+} // namespace ren

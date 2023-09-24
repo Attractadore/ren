@@ -65,7 +65,6 @@ typedef float RenVector3[3];
 typedef float RenVector4[4];
 typedef float RenMatrix4x4[4][4];
 
-typedef struct RenDevice RenDevice;
 typedef struct RenSwapchain RenSwapchain;
 typedef struct RenScene RenScene;
 
@@ -428,7 +427,10 @@ typedef struct {
   RenBool casts_shadows;
 } RenSpotLightDesc;
 
-void ren_DestroyDevice(RenDevice *device);
+RenResult ren_Init(size_t num_instance_extensions,
+                   const char *const *instance_extensions, unsigned adapter);
+
+void ren_Quit();
 
 void ren_DestroySwapchain(RenSwapchain *swapchain);
 
@@ -438,8 +440,7 @@ void ren_GetSwapchainSize(const RenSwapchain *swapchain, unsigned *p_width,
 void ren_SetSwapchainSize(RenSwapchain *swapchain, unsigned width,
                           unsigned height);
 
-REN_NODISCARD RenResult ren_CreateScene(RenDevice *device,
-                                        RenSwapchain *swapchain,
+REN_NODISCARD RenResult ren_CreateScene(RenSwapchain *swapchain,
                                         RenScene **p_scene);
 
 void ren_DestroyScene(RenScene *scene);

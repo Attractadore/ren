@@ -25,22 +25,18 @@ auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
 constexpr usize MESH_VERTEX_BUDGET = 1024 * 1024;
 constexpr usize MESH_INDEX_BUDGET = MESH_VERTEX_BUDGET / 2;
 
-Scene::Scene(Device &device, Swapchain &swapchain)
-    : m_persistent_arena(device), m_frame_arena(device),
-      m_cmd_allocator(device) {
-  m_device = &device;
-
+Scene::Scene(Swapchain &swapchain) {
   m_persistent_descriptor_set_layout =
       create_persistent_descriptor_set_layout(m_persistent_arena);
   std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
-      allocate_descriptor_pool_and_set(device, m_persistent_arena,
+      allocate_descriptor_pool_and_set(m_persistent_arena,
                                        m_persistent_descriptor_set_layout);
 
   m_texture_allocator = std::make_unique<TextureIdAllocator>(
-      device, m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
+      m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
 
   m_render_graph =
-      std::make_unique<RenderGraph>(device, swapchain, *m_texture_allocator);
+      std::make_unique<RenderGraph>(swapchain, *m_texture_allocator);
 
   m_pipelines =
       load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
@@ -98,7 +94,7 @@ Scene::Scene(Device &device, Swapchain &swapchain)
 
 void Scene::next_frame() {
   m_frame_arena.clear();
-  m_device->next_frame();
+  g_device->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator->next_frame();
 }
@@ -152,36 +148,32 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
         Span(desc.positions, desc.num_vertices).reinterpret<glm::vec3>();
     auto positions_dst = m_vertex_positions.slice<glm::vec3>(mesh.base_vertex,
                                                              desc.num_vertices);
-    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, positions_src,
+    m_resource_uploader.stage_buffer(m_frame_arena, positions_src,
                                      positions_dst);
     auto normals_src =
         Span(desc.normals, desc.num_vertices).reinterpret<glm::vec3>();
     auto normals_dst =
         m_vertex_normals.slice<glm::vec3>(mesh.base_vertex, desc.num_vertices);
-    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, normals_src,
-                                     normals_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, normals_src, normals_dst);
   }
   if (mesh.base_color_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
     auto colors_src =
         Span(desc.colors, desc.num_vertices).reinterpret<glm::vec4>();
     auto colors_dst = m_vertex_colors.slice<glm::vec4>(mesh.base_color_vertex,
                                                        desc.num_vertices);
-    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, colors_src,
-                                     colors_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, colors_src, colors_dst);
   }
   if (mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
     auto uvs_src = Span(desc.uvs, desc.num_vertices).reinterpret<glm::vec2>();
     auto uvs_dst =
         m_vertex_uvs.slice<glm::vec2>(mesh.base_uv_vertex, desc.num_vertices);
-    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, uvs_src,
-                                     uvs_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, uvs_src, uvs_dst);
   }
   {
     Span<const u32> indices_src(desc.indices, desc.num_indices);
     auto indices_dst =
         m_vertex_indices.slice<u32>(mesh.base_index, mesh.num_indices);
-    m_resource_uploader.stage_buffer(*m_device, m_frame_arena, indices_src,
-                                     indices_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, indices_src, indices_dst);
   }
 
   auto key = static_cast<RenMesh>(m_meshes.size());
@@ -207,7 +199,7 @@ auto Scene::get_or_create_sampler(const RenSampler &sampler)
 
 auto Scene::get_or_create_texture(const RenTexture &texture)
     -> SampledTextureId {
-  auto view = m_device->get_texture_view(m_images[texture.image]);
+  auto view = g_device->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
   auto sampler = get_or_create_sampler(texture.sampler);
   return m_texture_allocator->allocate_sampled_texture(view, sampler);
@@ -228,7 +220,7 @@ auto Scene::create_image(const RenImageDesc &desc) -> RenImage {
   m_images.push_back(texture);
   auto image_size = desc.width * desc.height * get_format_size(format);
   m_resource_uploader.stage_texture(
-      *m_device, m_frame_arena,
+      m_frame_arena,
       std::span(reinterpret_cast<const std::byte *>(desc.data), image_size),
       texture);
   return image;
@@ -363,7 +355,7 @@ void Scene::config_dir_lights(std::span<const RenDirLight> lights,
 }
 
 void Scene::draw() {
-  m_resource_uploader.upload(*m_device, m_cmd_allocator);
+  m_resource_uploader.upload(m_cmd_allocator);
 
   update_rg_passes(*m_render_graph, m_cmd_allocator,
                    PassesConfig{

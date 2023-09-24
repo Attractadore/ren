@@ -2,9 +2,11 @@
 #include "ren/ren.hpp"
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_vulkan.h>
 #include <fmt/format.h>
 
 #include <chrono>
+#include <vector>
 
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
@@ -50,7 +52,6 @@ class AppBase {
   };
 
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  ren::UniqueDevice m_device;
   ren::UniqueSwapchain m_swapchain;
   ren::UniqueScene m_scene;
 
@@ -74,6 +75,23 @@ protected:
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
+
+      if (SDL_Vulkan_LoadLibrary(nullptr)) {
+        bail("SDL2: failed to load Vulkan: {}", SDL_GetError());
+      }
+
+      uint32_t num_extensions = 0;
+      if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
+                                            nullptr)) {
+        bail("SDL2: failed to query Vulkan extensions: {}", SDL_GetError());
+      }
+      std::vector<const char *> extensions(num_extensions);
+      if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
+                                            extensions.data())) {
+        bail("SDL2: failed to query Vulkan extensions: {}", SDL_GetError());
+      }
+      TRY_TO(ren::init(extensions).transform_error(get_error_string));
+
       return [&] -> Result<App> {
         try {
           return App(std::forward<Args>(args)...);
@@ -88,6 +106,7 @@ protected:
                            return -1;
                          })
                          .error_or(0);
+    ren::quit();
     SDL_Quit();
     return rc;
   }

@@ -1,5 +1,5 @@
 find_package(SDL2 REQUIRED)
-find_package(Vulkan REQUIRED)
+find_package(VulkanHeaders REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(cxxopts REQUIRED)
@@ -27,8 +27,8 @@ endfunction()
 add_library(app-base AppBase.cpp)
 target_link_libraries(
   app-base
-  PUBLIC ren::ren-hpp SDL2::SDL2
-  PRIVATE fmt::fmt Vulkan::Vulkan)
+  PUBLIC ren::ren-hpp SDL2::SDL2 Vulkan::Headers
+  PRIVATE fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 
 add_executable(create-device create-device.cpp)

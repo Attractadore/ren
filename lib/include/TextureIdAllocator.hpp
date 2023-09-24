@@ -5,7 +5,6 @@
 
 namespace ren {
 
-class Device;
 struct DescriptorSetLayout;
 struct PipelineLayout;
 struct Sampler;
@@ -15,7 +14,6 @@ REN_NEW_TYPE(SampledTextureId, unsigned);
 REN_NEW_TYPE(StorageTextureId, unsigned);
 
 class TextureIdAllocator {
-  Device *m_device;
   VkDescriptorSet m_set;
   Handle<DescriptorSetLayout> m_layout;
   FreeListAllocator m_sampler_allocator;
@@ -23,8 +21,7 @@ class TextureIdAllocator {
   FreeListAllocator m_storage_texture_allocator;
 
 public:
-  TextureIdAllocator(Device &device, VkDescriptorSet set,
-                     Handle<DescriptorSetLayout> layout);
+  TextureIdAllocator(VkDescriptorSet set, Handle<DescriptorSetLayout> layout);
 
   auto get_set() const -> VkDescriptorSet;
 

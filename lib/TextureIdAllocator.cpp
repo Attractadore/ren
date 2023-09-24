@@ -5,9 +5,11 @@
 
 namespace ren {
 
-TextureIdAllocator::TextureIdAllocator(Device &device, VkDescriptorSet set,
-                                       Handle<DescriptorSetLayout> layout)
-    : m_device(&device), m_set(set), m_layout(layout) {}
+TextureIdAllocator::TextureIdAllocator(VkDescriptorSet set,
+                                       Handle<DescriptorSetLayout> layout) {
+  m_set = set;
+  m_layout = layout;
+}
 
 auto TextureIdAllocator::get_set() const -> VkDescriptorSet { return m_set; }
 
@@ -22,11 +24,11 @@ auto TextureIdAllocator::allocate_sampled_texture(const TextureView &view,
   assert(index < glsl::NUM_SAMPLED_TEXTURES);
 
   VkDescriptorImageInfo image = {
-      .sampler = m_device->get_sampler(sampler).handle,
-      .imageView = m_device->getVkImageView(view),
+      .sampler = g_device->get_sampler(sampler).handle,
+      .imageView = g_device->getVkImageView(view),
       .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
   };
-  m_device->write_descriptor_sets({{
+  g_device->write_descriptor_sets({{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
       .dstBinding = glsl::SAMPLED_TEXTURES_SLOT,
@@ -49,10 +51,10 @@ auto TextureIdAllocator::allocate_storage_texture(const TextureView &view)
   assert(index < glsl::NUM_STORAGE_TEXTURES);
 
   VkDescriptorImageInfo image = {
-      .imageView = m_device->getVkImageView(view),
+      .imageView = g_device->getVkImageView(view),
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
   };
-  m_device->write_descriptor_sets({{
+  g_device->write_descriptor_sets({{
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_set,
       .dstBinding = glsl::STORAGE_TEXTURES_SLOT,

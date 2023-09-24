@@ -50,7 +50,7 @@ struct DescriptorSetLayout {
 };
 
 [[nodiscard]] auto
-allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
+allocate_descriptor_pool_and_set(ResourceArena &arena,
                                  Handle<DescriptorSetLayout> layout)
     -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet>;
 

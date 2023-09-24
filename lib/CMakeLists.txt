@@ -13,17 +13,13 @@ find_package(
   Boost
   COMPONENTS container
   REQUIRED)
-find_package(
-  Python3
-  COMPONENTS Interpreter
-  REQUIRED)
-find_package(VulkanHeaders REQUIRED)
-target_compile_definitions(Vulkan::Headers INTERFACE VK_NO_PROTOTYPE)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
+find_package(volk REQUIRED)
+find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
 
 add_subdirectory(glsl)
@@ -77,20 +73,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
 endif()
 
-set(GEN_DISPATCH_TABLE_PY ${CMAKE_CURRENT_LIST_DIR}/GenDispatchTable.py)
-get_target_property(VULKAN_HEADERS_INCLUDE_DIRECTORY Vulkan::Headers
-                    INTERFACE_INCLUDE_DIRECTORIES)
-set(VK_XML ${VULKAN_HEADERS_INCLUDE_DIRECTORY}/../share/vulkan/registry/vk.xml)
-set(DISPATCH_TABLE_HPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.hpp)
-set(DISPATCH_TABLE_CPP ${CMAKE_CURRENT_BINARY_DIR}/DispatchTable.cpp)
-
-add_custom_command(
-  OUTPUT ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
-  DEPENDS ${VK_XML} ${GEN_DISPATCH_TABLE_PY}
-  COMMAND Python3::Interpreter ARGS ${GEN_DISPATCH_TABLE_PY} ${VK_XML}
-          ${DISPATCH_TABLE_HPP} ${DISPATCH_TABLE_CPP}
-  VERBATIM)
-
 add_library(
   ren
   ren.cpp
@@ -112,8 +94,7 @@ add_library(
   Swapchain.cpp
   Texture.cpp
   TextureIdAllocator.cpp
-  VMA.cpp
-  ${DISPATCH_TABLE_CPP})
+  VMA.cpp)
 target_sources(
   ren
   PUBLIC FILE_SET
@@ -131,13 +112,15 @@ target_link_libraries(
           Vulkan::Headers
           unofficial::spirv-reflect::spirv-reflect
           GPUOpen::VulkanMemoryAllocator
+          volk::volk
           EmbeddedShaders)
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_precompile_headers(ren PRIVATE <glm/glm.hpp> <spirv_reflect.h>
-                          <vk_mem_alloc.h> <vulkan/vulkan.h>)
+                          <vk_mem_alloc.h> <vulkan/vulkan.h> <volk.h>)
 target_compile_definitions(
-  ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=1
+  ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
               VMA_STATS_STRING_ENABLED=0)
+target_compile_definitions(ren PUBLIC VK_NO_PROTOTYPES)
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")
   target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)
@@ -167,6 +150,10 @@ target_sources(
          ${REN_INCLUDE}/ren/ren-vk.hpp)
 target_link_libraries(ren-hpp INTERFACE ren::ren)
 target_compile_features(ren-hpp INTERFACE cxx_std_23)
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+  # clangd std::expected fix
+  target_compile_definitions(ren-hpp INTERFACE __cpp_concepts=202002L)
+endif()
 add_library(ren::ren-hpp ALIAS ren-hpp)
 
 if(REN_INSTALL)

@@ -37,28 +37,27 @@ auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
   return num_groups;
 }
 
-CommandRecorder::CommandRecorder(Device &device, VkCommandBuffer cmd_buffer) {
+CommandRecorder::CommandRecorder(VkCommandBuffer cmd_buffer) {
   assert(cmd_buffer);
-  m_device = &device;
   m_cmd_buffer = cmd_buffer;
   VkCommandBufferBeginInfo begin_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
-  throw_if_failed(m_device->BeginCommandBuffer(m_cmd_buffer, &begin_info),
+  throw_if_failed(vkBeginCommandBuffer(m_cmd_buffer, &begin_info),
                   "Vulkan: Failed to begin command buffer");
 }
 
 CommandRecorder::~CommandRecorder() {
-  throw_if_failed(m_device->EndCommandBuffer(m_cmd_buffer),
+  throw_if_failed(vkEndCommandBuffer(m_cmd_buffer),
                   "Vulkan: Failed to end command buffer");
 }
 
 void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                                   TempSpan<const VkBufferCopy> regions) {
-  m_device->CmdCopyBuffer(m_cmd_buffer, m_device->get_buffer(src).handle,
-                          m_device->get_buffer(dst).handle, regions.size(),
-                          regions.data());
+  vkCmdCopyBuffer(m_cmd_buffer, g_device->get_buffer(src).handle,
+                  g_device->get_buffer(dst).handle, regions.size(),
+                  regions.data());
 }
 
 void CommandRecorder::copy_buffer(const BufferView &src,
@@ -75,15 +74,15 @@ void CommandRecorder::copy_buffer(const BufferView &src,
 void CommandRecorder::copy_buffer_to_texture(
     Handle<Buffer> src, Handle<Texture> dst,
     TempSpan<const VkBufferImageCopy> regions) {
-  m_device->CmdCopyBufferToImage(m_cmd_buffer, m_device->get_buffer(src).handle,
-                                 m_device->get_texture(dst).image,
-                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                 regions.size(), regions.data());
+  vkCmdCopyBufferToImage(m_cmd_buffer, g_device->get_buffer(src).handle,
+                         g_device->get_texture(dst).image,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
+                         regions.data());
 }
 
 void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
                                              Handle<Texture> dst, u32 level) {
-  const Texture &texture = m_device->get_texture(dst);
+  const Texture &texture = g_device->get_texture(dst);
   assert(level < texture.num_mip_levels);
   copy_buffer_to_texture(
       src.buffer, dst,
@@ -102,51 +101,48 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
   assert(view.offset % sizeof(u32) == 0);
   assert(view.size % sizeof(u32) == 0);
-  m_device->CmdFillBuffer(m_cmd_buffer,
-                          m_device->get_buffer(view.buffer).handle, view.offset,
-                          view.size, value);
+  vkCmdFillBuffer(m_cmd_buffer, g_device->get_buffer(view.buffer).handle,
+                  view.offset, view.size, value);
 };
 
 void CommandRecorder::update_buffer(const BufferView &view,
                                     TempSpan<const std::byte> data) {
   assert(view.size >= data.size());
   assert(data.size() % 4 == 0);
-  m_device->CmdUpdateBuffer(m_cmd_buffer,
-                            m_device->get_buffer(view.buffer).handle,
-                            view.offset, view.size, data.data());
+  vkCmdUpdateBuffer(m_cmd_buffer, g_device->get_buffer(view.buffer).handle,
+                    view.offset, view.size, data.data());
 }
 
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                            TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {
-  m_device->CmdBlitImage(m_cmd_buffer, m_device->get_texture(src).image,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         m_device->get_texture(dst).image,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
-                         regions.data(), filter);
+  vkCmdBlitImage(m_cmd_buffer, g_device->get_texture(src).image,
+                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 g_device->get_texture(dst).image,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
+                 regions.data(), filter);
 }
 
 void CommandRecorder::clear_texture(
     Handle<Texture> texture, TempSpan<const VkClearColorValue> clear_colors,
     TempSpan<const VkImageSubresourceRange> clear_ranges) {
   auto count = std::min<usize>(clear_colors.size(), clear_ranges.size());
-  m_device->CmdClearColorImage(m_cmd_buffer,
-                               m_device->get_texture(texture).image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               clear_colors.data(), count, clear_ranges.data());
+  vkCmdClearColorImage(m_cmd_buffer, g_device->get_texture(texture).image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                       clear_colors.data(), count, clear_ranges.data());
 }
 
 void CommandRecorder::clear_texture(Handle<Texture> htexture,
                                     const VkClearColorValue &clear_color) {
-  const Texture &texture = m_device->get_texture(htexture);
+  const Texture &texture = g_device->get_texture(htexture);
   VkImageSubresourceRange clear_range = {
       .aspectMask = getVkImageAspectFlags(texture.format),
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  m_device->CmdClearColorImage(m_cmd_buffer, texture.image,
-                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                               &clear_color, 1, &clear_range);
+  vkCmdClearColorImage(m_cmd_buffer, texture.image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1,
+                       &clear_range);
 }
 
 void CommandRecorder::clear_texture(Handle<Texture> texture,
@@ -162,8 +158,8 @@ void CommandRecorder::clear_texture(
     TempSpan<const VkImageSubresourceRange> clear_ranges) {
   auto count =
       std::min<usize>(clear_depth_stencils.size(), clear_ranges.size());
-  m_device->CmdClearDepthStencilImage(
-      m_cmd_buffer, m_device->get_texture(texture).image,
+  vkCmdClearDepthStencilImage(
+      m_cmd_buffer, g_device->get_texture(texture).image,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, clear_depth_stencils.data(), count,
       clear_ranges.data());
 }
@@ -171,15 +167,15 @@ void CommandRecorder::clear_texture(
 void CommandRecorder::clear_texture(
     Handle<Texture> htexture,
     const VkClearDepthStencilValue &clear_depth_stencil) {
-  const Texture &texture = m_device->get_texture(htexture);
+  const Texture &texture = g_device->get_texture(htexture);
   VkImageSubresourceRange clear_range = {
       .aspectMask = getVkImageAspectFlags(texture.format),
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  m_device->CmdClearDepthStencilImage(m_cmd_buffer, texture.image,
-                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                      &clear_depth_stencil, 1, &clear_range);
+  vkCmdClearDepthStencilImage(m_cmd_buffer, texture.image,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              &clear_depth_stencil, 1, &clear_range);
 }
 
 void CommandRecorder::pipeline_barrier(
@@ -189,7 +185,7 @@ void CommandRecorder::pipeline_barrier(
       !dependency_info.imageMemoryBarrierCount) {
     return;
   }
-  m_device->CmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
+  vkCmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
 }
 
 void CommandRecorder::pipeline_barrier(
@@ -207,20 +203,19 @@ void CommandRecorder::pipeline_barrier(
 
 auto CommandRecorder::render_pass(const RenderPassBeginInfo &&begin_info)
     -> RenderPass {
-  return RenderPass(*m_device, m_cmd_buffer, std::move(begin_info));
+  return RenderPass(m_cmd_buffer, std::move(begin_info));
 }
 
 auto CommandRecorder::compute_pass() -> ComputePass {
-  return ComputePass(*m_device, m_cmd_buffer);
+  return ComputePass(m_cmd_buffer);
 }
 
 auto CommandRecorder::debug_region(const char *label) -> DebugRegion {
-  return DebugRegion(*m_device, m_cmd_buffer, label);
+  return DebugRegion(m_cmd_buffer, label);
 }
 
-RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
+RenderPass::RenderPass(VkCommandBuffer cmd_buffer,
                        const RenderPassBeginInfo &&begin_info) {
-  m_device = &device;
   m_cmd_buffer = cmd_buffer;
 
   glm::uvec2 max_size = {-1, -1};
@@ -235,7 +230,7 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
             [&](const ColorAttachment &att) {
               VkRenderingAttachmentInfo info = {
                   .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                  .imageView = m_device->getVkImageView(att.texture),
+                  .imageView = g_device->getVkImageView(att.texture),
                   .imageLayout = get_layout_for_attachment_ops(att.ops.load,
                                                                att.ops.store),
                   .loadOp = att.ops.load,
@@ -245,8 +240,8 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
                             sizeof(att.ops.clear_color));
               std::memcpy(info.clearValue.color.float32, &att.ops.clear_color,
                           sizeof(att.ops.clear_color));
-              size = glm::min(
-                  size, glm::uvec2(device.get_texture_view_size(att.texture)));
+              size = glm::min(size, glm::uvec2(g_device->get_texture_view_size(
+                                        att.texture)));
               layers = glm::min(layers, att.texture.num_array_layers);
               return info;
             },
@@ -267,7 +262,7 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
         VkImageView view = nullptr;
 
         att.depth_ops.map([&](const DepthAttachmentOperations &ops) {
-          view = m_device->getVkImageView(att.texture);
+          view = g_device->getVkImageView(att.texture);
           depth_attachment = {
               .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
               .imageView = view,
@@ -279,7 +274,7 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
         });
 
         att.stencil_ops.map([&](const StencilAttachmentOperations &ops) {
-          view = view ? view : m_device->getVkImageView(att.texture);
+          view = view ? view : g_device->getVkImageView(att.texture);
           stencil_attachment = {
               .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
               .imageView = view,
@@ -290,8 +285,8 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
           };
         });
 
-        size = glm::min(size,
-                        glm::uvec2(device.get_texture_view_size(att.texture)));
+        size = glm::min(
+            size, glm::uvec2(g_device->get_texture_view_size(att.texture)));
         layers = glm::min(layers, att.texture.num_array_layers);
       });
 
@@ -308,10 +303,10 @@ RenderPass::RenderPass(Device &device, VkCommandBuffer cmd_buffer,
       .pStencilAttachment = &stencil_attachment,
   };
 
-  m_device->CmdBeginRendering(m_cmd_buffer, &rendering_info);
+  vkCmdBeginRendering(m_cmd_buffer, &rendering_info);
 }
 
-RenderPass::~RenderPass() { m_device->CmdEndRendering(m_cmd_buffer); }
+RenderPass::~RenderPass() { vkCmdEndRendering(m_cmd_buffer); }
 
 void RenderPass::set_viewports(
     StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports) {
@@ -319,29 +314,27 @@ void RenderPass::set_viewports(
     viewport.y += viewport.height;
     viewport.height = -viewport.height;
   }
-  m_device->CmdSetViewportWithCount(m_cmd_buffer, viewports.size(),
-                                    viewports.data());
+  vkCmdSetViewportWithCount(m_cmd_buffer, viewports.size(), viewports.data());
 }
 
 void RenderPass::set_scissor_rects(TempSpan<const VkRect2D> rects) {
-  m_device->CmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
+  vkCmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
 }
 
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
-  const auto &pipeline = m_device->get_graphics_pipeline(handle);
+  const auto &pipeline = g_device->get_graphics_pipeline(handle);
   m_pipeline_layout = pipeline.layout;
   m_shader_stages = pipeline.stages;
-  m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            pipeline.handle);
+  vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    pipeline.handle);
 }
 
 void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                       TempSpan<const VkDescriptorSet> sets,
                                       unsigned first_set) {
-  m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  m_device->get_pipeline_layout(layout).handle,
-                                  first_set, sets.size(), sets.data(), 0,
-                                  nullptr);
+  vkCmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          g_device->get_pipeline_layout(layout).handle,
+                          first_set, sets.size(), sets.data(), 0, nullptr);
 }
 
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
@@ -350,9 +343,8 @@ void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                                     unsigned offset) {
   ren_assert((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
              "Only graphics shader stages must be used");
-  m_device->CmdPushConstants(m_cmd_buffer,
-                             m_device->get_pipeline_layout(layout).handle,
-                             stages, offset, data.size(), data.data());
+  vkCmdPushConstants(m_cmd_buffer, g_device->get_pipeline_layout(layout).handle,
+                     stages, offset, data.size(), data.data());
 }
 
 void RenderPass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
@@ -368,40 +360,37 @@ void RenderPass::set_push_constants(TempSpan<const std::byte> data,
 }
 
 void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
-  m_device->CmdBindIndexBuffer(m_cmd_buffer,
-                               m_device->get_buffer(view.buffer).handle,
-                               view.offset, type);
+  vkCmdBindIndexBuffer(m_cmd_buffer, g_device->get_buffer(view.buffer).handle,
+                       view.offset, type);
 }
 
 void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
   assert(draw_info.num_indices > 0);
   assert(draw_info.num_instances > 0);
-  m_device->CmdDrawIndexed(m_cmd_buffer, draw_info.num_indices,
-                           draw_info.num_instances, draw_info.first_index,
-                           draw_info.vertex_offset, draw_info.first_instance);
+  vkCmdDrawIndexed(m_cmd_buffer, draw_info.num_indices, draw_info.num_instances,
+                   draw_info.first_index, draw_info.vertex_offset,
+                   draw_info.first_instance);
 }
 
-ComputePass::ComputePass(Device &device, VkCommandBuffer cmd_buffer) {
-  m_device = &device;
+ComputePass::ComputePass(VkCommandBuffer cmd_buffer) {
   m_cmd_buffer = cmd_buffer;
 }
 
 ComputePass::~ComputePass() {}
 
 void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
-  const auto &pipeline = m_device->get_compute_pipeline(handle);
+  const auto &pipeline = g_device->get_compute_pipeline(handle);
   m_pipeline_layout = pipeline.layout;
-  m_device->CmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            pipeline.handle);
+  vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                    pipeline.handle);
 }
 
 void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                        TempSpan<const VkDescriptorSet> sets,
                                        unsigned first_set) {
-  m_device->CmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                  m_device->get_pipeline_layout(layout).handle,
-                                  first_set, sets.size(), sets.data(), 0,
-                                  nullptr);
+  vkCmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                          g_device->get_pipeline_layout(layout).handle,
+                          first_set, sets.size(), sets.data(), 0, nullptr);
 }
 
 void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
@@ -413,9 +402,9 @@ void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
 void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
                                      TempSpan<const std::byte> data,
                                      unsigned offset) {
-  m_device->CmdPushConstants(
-      m_cmd_buffer, m_device->get_pipeline_layout(layout).handle,
-      VK_SHADER_STAGE_COMPUTE_BIT, offset, data.size(), data.data());
+  vkCmdPushConstants(m_cmd_buffer, g_device->get_pipeline_layout(layout).handle,
+                     VK_SHADER_STAGE_COMPUTE_BIT, offset, data.size(),
+                     data.data());
 }
 
 void ComputePass::set_push_constants(TempSpan<const std::byte> data,
@@ -426,7 +415,7 @@ void ComputePass::set_push_constants(TempSpan<const std::byte> data,
 
 void ComputePass::dispatch_groups(u32 num_groups_x, u32 num_groups_y,
                                   u32 num_groups_z) {
-  m_device->CmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
+  vkCmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
 }
 
 void ComputePass::dispatch_groups(glm::uvec2 num_groups) {
@@ -449,9 +438,7 @@ void ComputePass::dispatch_threads(glm::uvec3 size, glm::uvec3 group_size) {
   dispatch_groups(get_num_dispatch_groups(size, group_size));
 }
 
-DebugRegion::DebugRegion(Device &device, VkCommandBuffer cmd_buffer,
-                         const char *label) {
-  m_device = &device;
+DebugRegion::DebugRegion(VkCommandBuffer cmd_buffer, const char *label) {
   m_cmd_buffer = cmd_buffer;
 #if REN_DEBUG_NAMES
   assert(label);
@@ -459,19 +446,18 @@ DebugRegion::DebugRegion(Device &device, VkCommandBuffer cmd_buffer,
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pLabelName = label,
   };
-  m_device->CmdBeginDebugUtilsLabelEXT(m_cmd_buffer, &label_info);
+  vkCmdBeginDebugUtilsLabelEXT(m_cmd_buffer, &label_info);
 #endif
 }
 
 DebugRegion::DebugRegion(DebugRegion &&other) {
-  m_device = std::exchange(other.m_device, nullptr);
   m_cmd_buffer = std::exchange(other.m_cmd_buffer, nullptr);
 }
 
 DebugRegion::~DebugRegion() {
 #if REN_DEBUG_NAMES
   if (m_cmd_buffer) {
-    m_device->CmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+    vkCmdEndDebugUtilsLabelEXT(m_cmd_buffer);
   }
 #endif
 }

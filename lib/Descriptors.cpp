@@ -5,10 +5,10 @@
 
 namespace ren {
 
-auto allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
+auto allocate_descriptor_pool_and_set(ResourceArena &arena,
                                       Handle<DescriptorSetLayout> layout_handle)
     -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet> {
-  const auto &layout = device.get_descriptor_set_layout(layout_handle);
+  const auto &layout = g_device->get_descriptor_set_layout(layout_handle);
 
   VkDescriptorSetLayoutCreateFlags flags = 0;
   if (layout.flags &
@@ -27,7 +27,7 @@ auto allocate_descriptor_pool_and_set(Device &device, ResourceArena &arena,
       .pool_sizes = pool_sizes,
   });
 
-  auto set = device.allocate_descriptor_set(pool, layout_handle);
+  auto set = g_device->allocate_descriptor_set(pool, layout_handle);
   assert(set);
 
   return {pool, *set};

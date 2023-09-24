@@ -1,18 +1,14 @@
 #include "ResourceUploader.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
-#include "Device.hpp"
-#include "ResourceArena.hpp"
 #include "Support/Errors.hpp"
-#include "Support/Views.hpp"
 
 namespace ren {
 
 namespace {
 
-void generate_mipmaps(const Device &device, CommandRecorder &cmd,
-                      Handle<Texture> handle) {
-  const auto &texture = device.get_texture(handle);
+void generate_mipmaps(CommandRecorder &cmd, Handle<Texture> handle) {
+  const auto &texture = g_device->get_texture(handle);
   auto src_size = texture.size;
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
@@ -59,9 +55,9 @@ void generate_mipmaps(const Device &device, CommandRecorder &cmd,
   }
 }
 
-void upload_texture(const Device &device, CommandRecorder &cmd,
-                    const BufferView &src, Handle<Texture> dst) {
-  const auto &texture = device.get_texture(dst);
+void upload_texture(CommandRecorder &cmd, const BufferView &src,
+                    Handle<Texture> dst) {
+  const auto &texture = g_device->get_texture(dst);
 
   {
     // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
@@ -83,7 +79,7 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
 
   cmd.copy_buffer_to_texture(src, dst);
 
-  generate_mipmaps(device, cmd, dst);
+  generate_mipmaps(cmd, dst);
 
   // Transfer last mip level from TRANSFER_DST to READ_ONLY after copy or mipmap
   // generation
@@ -129,7 +125,7 @@ void upload_texture(const Device &device, CommandRecorder &cmd,
 
 } // namespace
 
-void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
+void ResourceUploader::stage_texture(ResourceArena &arena,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
   BufferView staging_buffer = arena.create_buffer({
@@ -138,7 +134,7 @@ void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
       .size = data.size_bytes(),
   });
 
-  std::byte *ptr = device.map_buffer(staging_buffer);
+  std::byte *ptr = g_device->map_buffer(staging_buffer);
   ranges::copy(data, ptr);
 
   m_texture_copies.push_back({
@@ -147,14 +143,14 @@ void ResourceUploader::stage_texture(Device &device, ResourceArena &arena,
   });
 }
 
-void ResourceUploader::upload(Device &device, CommandAllocator &cmd_allocator) {
+void ResourceUploader::upload(CommandAllocator &cmd_allocator) {
   if (m_buffer_copies.empty() and m_texture_copies.empty()) {
     return;
   }
 
   auto cmd_buffer = cmd_allocator.allocate();
   {
-    CommandRecorder cmd(device, cmd_buffer);
+    CommandRecorder cmd(cmd_buffer);
 
     if (not m_buffer_copies.empty()) {
       auto _ = cmd.debug_region("Upload buffers");
@@ -178,13 +174,13 @@ void ResourceUploader::upload(Device &device, CommandAllocator &cmd_allocator) {
     if (not m_texture_copies.empty()) {
       auto _ = cmd.debug_region("Upload textures");
       for (const auto &[src, dst] : m_texture_copies) {
-        upload_texture(device, cmd, src, dst);
+        upload_texture(cmd, src, dst);
       }
       m_texture_copies.clear();
     }
   }
 
-  device.graphicsQueueSubmit({{
+  g_device->graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd_buffer,
   }});

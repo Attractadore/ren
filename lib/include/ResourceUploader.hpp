@@ -1,5 +1,4 @@
 #pragma once
-#include "Device.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Vector.hpp"
@@ -24,7 +23,7 @@ class ResourceUploader {
 
 public:
   template <typename T>
-  void stage_buffer(Device &device, ResourceArena &arena, Span<const T> data,
+  void stage_buffer(ResourceArena &arena, Span<const T> data,
                     const BufferView &buffer) {
     usize size = size_bytes(data);
     assert(size <= buffer.size);
@@ -35,7 +34,7 @@ public:
         .size = size,
     });
 
-    auto *ptr = device.map_buffer<T>(staging_buffer);
+    auto *ptr = g_device->map_buffer<T>(staging_buffer);
     ranges::copy(data, ptr);
 
     m_buffer_copies.push_back({
@@ -44,10 +43,10 @@ public:
     });
   }
 
-  void stage_texture(Device &device, ResourceArena &alloc,
-                     Span<const std::byte> data, Handle<Texture> texture);
+  void stage_texture(ResourceArena &alloc, Span<const std::byte> data,
+                     Handle<Texture> texture);
 
-  void upload(Device &device, CommandAllocator &cmd_allocator);
+  void upload(CommandAllocator &cmd_allocator);
 };
 
 } // namespace ren
