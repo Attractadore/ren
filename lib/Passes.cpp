@@ -96,7 +96,7 @@ void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
     setup_all_passes(rgb, cfg);
     rgb.build(cmd_alloc);
     valid = set_all_passes_data(rg, data);
-    ren_assert(valid, "Render graph pass data update failed after rebuild");
+    ren_assert_msg(valid, "Render graph pass data update failed after rebuild");
   }
 }
 

@@ -61,7 +61,7 @@ RenResult ren_Init(size_t num_instance_extensions,
 }
 
 void ren_Quit() {
-  ren_assert(ren::g_scenes.empty(), "All scenes must be destroyed");
+  ren_assert_msg(ren::g_scenes.empty(), "All scenes must be destroyed");
   ren::g_renderer_holder.reset();
   ren::g_renderer = nullptr;
 }
@@ -80,7 +80,6 @@ RenResult ren_Draw() {
 
 RenResult ren_vk_CreateSwapchain(RenPFNCreateSurface create_surface,
                                  void *usrptr, RenSwapchain **p_swapchain) {
-  assert(device);
   assert(create_surface);
   assert(p_swapchain);
 
@@ -148,7 +147,6 @@ RenResult ren_vk_SetSwapchainPresentMode(RenSwapchain *swapchain,
 }
 
 RenResult ren_CreateScene(RenSwapchain *swapchain, RenScene **p_scene) {
-  assert(device);
   assert(swapchain);
   assert(p_scene);
   return lippincott([&] {

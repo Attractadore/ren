@@ -1,6 +1,4 @@
 #pragma once
-#include "Support/Macros.hpp"
-
 #include <boost/predef/compiler.h>
 #include <cassert>
 #include <fmt/format.h>
@@ -52,42 +50,29 @@ todo(std::string_view message,
   unreachable("{}:{}: {}", sl.file_name(), sl.line(), message);
 }
 
-inline void check(bool condition, std::string_view condition_str,
-                  std::string_view reason,
-                  std::source_location sl = std::source_location::current()) {
-  if (not condition) {
-    ::ren::unreachable("{}:{}: {}: Assertion \"{}\" failed: {}", sl.file_name(),
-                       sl.line(), sl.function_name(), condition_str, reason);
-  }
-}
-
 #ifndef REN_ASSERTIONS
 #define REN_ASSERTIONS 0
 #endif
 
 #if REN_ASSERTIONS
-#define ren_assert(condition, reason)                                          \
-  if (REN_ASSERTIONS and not(condition)) {                                     \
+#define ren_assert_msg(condition, msg)                                         \
+  if (not(condition)) {                                                        \
     auto sl = std::source_location::current();                                 \
     fmt::println(stderr, "{}:{}: {}: Assertion \"{}\" failed: {}",             \
                  sl.file_name(), sl.line(), sl.function_name(), #condition,    \
-                 reason ? reason : "");                                        \
+                 msg);                                                         \
+    ren_trap();                                                                \
+  }
+#define ren_assert(condition)                                                  \
+  if (not(condition)) {                                                        \
+    auto sl = std::source_location::current();                                 \
+    fmt::println(stderr, "{}:{}: {}: Assertion \"{}\" failed", sl.file_name(), \
+                 sl.line(), sl.function_name(), #condition);                   \
     ren_trap();                                                                \
   }
 #else
-#define ren_assert(condition, reason) ren_force_semicolon
+#define ren_assert_msg(condition, msg) (void)(condition), (void)(msg)
+#define ren_assert(condition) (void)(condition)
 #endif
-
-#if REN_ASSERTIONS
-#undef NDEBUG
-#endif
-
-#ifdef assert
-#undef assert
-#endif
-
-// FIXME: libstdc++ cassert doesn't have an include guard, so this macro will be
-// redefined if cassert is included after this header
-#define assert(condition) ren_assert(condition, nullptr)
 
 } // namespace ren

@@ -292,8 +292,9 @@ RenderPass::RenderPass(VkCommandBuffer cmd_buffer,
         layers = glm::min(layers, att.texture.num_array_layers);
       });
 
-  ren_assert(size != max_size, "At least one attachment must be provided");
-  ren_assert(layers != max_layers, "At least one attachment must be provided");
+  ren_assert_msg(size != max_size, "At least one attachment must be provided");
+  ren_assert_msg(layers != max_layers,
+                 "At least one attachment must be provided");
 
   VkRenderingInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -343,8 +344,8 @@ void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                                     VkShaderStageFlags stages,
                                     TempSpan<const std::byte> data,
                                     unsigned offset) {
-  ren_assert((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
-             "Only graphics shader stages must be used");
+  ren_assert_msg((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
+                 "Only graphics shader stages must be used");
   vkCmdPushConstants(m_cmd_buffer,
                      g_renderer->get_pipeline_layout(layout).handle, stages,
                      offset, data.size(), data.data());
@@ -352,13 +353,13 @@ void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
 
 void RenderPass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
                                       unsigned first_set) {
-  ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
+  ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
   bind_descriptor_sets(m_pipeline_layout, sets, first_set);
 }
 
 void RenderPass::set_push_constants(TempSpan<const std::byte> data,
                                     unsigned offset) {
-  ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
+  ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
   set_push_constants(m_pipeline_layout, m_shader_stages, data, offset);
 }
 
@@ -398,7 +399,7 @@ void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
 
 void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
                                        unsigned first_set) {
-  ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
+  ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
   bind_descriptor_sets(m_pipeline_layout, sets, first_set);
 }
 
@@ -412,7 +413,7 @@ void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
 
 void ComputePass::set_push_constants(TempSpan<const std::byte> data,
                                      unsigned offset) {
-  ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
+  ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
   set_push_constants(m_pipeline_layout, data, offset);
 }
 

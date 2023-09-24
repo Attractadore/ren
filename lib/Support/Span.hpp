@@ -2,8 +2,8 @@
 #include "Errors.hpp"
 #include "StdDef.hpp"
 
-#include <span>
 #include <range/v3/iterator.hpp>
+#include <span>
 
 namespace ren {
 

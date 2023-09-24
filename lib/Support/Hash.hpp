@@ -1,5 +1,5 @@
 #pragma once
-#include "Support/StdDef.hpp"
+#include "StdDef.hpp"
 
 #include <boost/functional/hash.hpp>
 

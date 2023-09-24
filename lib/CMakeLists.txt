@@ -69,7 +69,6 @@ target_link_libraries(
           unofficial::spirv-reflect::spirv-reflect
           volk::volk
           EmbeddedShaders)
-target_include_directories(ren PRIVATE ${CMAKE_CURRENT_LIST_DIR}/include)
 if(REN_PCH)
   message(STATUS "Enable precompiled header")
   target_precompile_headers(
@@ -117,11 +116,11 @@ target_compile_definitions(
 target_compile_definitions(ren PUBLIC VK_NO_PROTOTYPES)
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
-  target_compile_definitions(ren INTERFACE REN_LOG_${SEVERITY})
+  target_compile_definitions(ren PRIVATE REN_LOG_${SEVERITY})
 endforeach()
 if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
-  target_compile_definitions(ren INTERFACE REN_ASSERTIONS)
+  target_compile_definitions(ren PRIVATE REN_ASSERTIONS)
 endif()
 if(REN_VULKAN_VALIDATION)
   message(STATUS "Enable Vulkan validation layer")

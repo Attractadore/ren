@@ -170,7 +170,7 @@ public:
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
-    ren_assert(m_pipeline_layout, "A graphics pipeline must be bound");
+    ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, m_shader_stages,
                        TempSpan(&data, 1).as_bytes(), offset);
   }
@@ -215,7 +215,7 @@ public:
   }
 
   void set_push_constants(const auto &data, unsigned offset = 0) {
-    ren_assert(m_pipeline_layout, "A compute pipeline must be bound");
+    ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
     set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
                        offset);
   }

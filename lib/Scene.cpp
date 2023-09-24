@@ -88,7 +88,7 @@ Scene::Scene(Swapchain &swapchain) {
 #if !BOOST_COMP_CLANG
   static_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #else
-  ren_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
+  ren_assert_msg(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #endif
 #undef error
 }
@@ -117,28 +117,28 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
   mesh.base_vertex = m_num_vertex_positions;
   m_num_vertex_positions += desc.num_vertices;
-  ren_assert(m_num_vertex_positions <= MESH_VERTEX_BUDGET,
-             "Mesh vertex positions pool overflow");
+  ren_assert_msg(m_num_vertex_positions <= MESH_VERTEX_BUDGET,
+                 "Mesh vertex positions pool overflow");
 
   if (desc.colors) {
     mesh.base_color_vertex = m_num_vertex_colors;
     m_num_vertex_colors += desc.num_vertices;
-    ren_assert(m_num_vertex_colors <= MESH_VERTEX_BUDGET,
-               "Mesh vertex colors pool overflow");
+    ren_assert_msg(m_num_vertex_colors <= MESH_VERTEX_BUDGET,
+                   "Mesh vertex colors pool overflow");
   }
 
   if (desc.uvs) {
     mesh.base_uv_vertex = m_num_vertex_uvs;
     m_num_vertex_uvs += desc.num_vertices;
-    ren_assert(m_num_vertex_uvs <= MESH_VERTEX_BUDGET,
-               "Mesh vertex UVs pool overflow");
+    ren_assert_msg(m_num_vertex_uvs <= MESH_VERTEX_BUDGET,
+                   "Mesh vertex UVs pool overflow");
   }
 
   mesh.base_index = m_num_vertex_indices;
   mesh.num_indices = desc.num_indices;
   m_num_vertex_indices += desc.num_indices;
-  ren_assert(m_num_vertex_indices <= MESH_INDEX_BUDGET,
-             "Mesh vertex index pool overflow");
+  ren_assert_msg(m_num_vertex_indices <= MESH_INDEX_BUDGET,
+                 "Mesh vertex index pool overflow");
 
   // Upload vertices
 

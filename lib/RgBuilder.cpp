@@ -187,8 +187,8 @@ auto RgBuilder::write_buffer(RgPassId pass, StringView dst_buffer,
   m_buffer_children[src_id] = dst_id;
 #endif
   m_buffer_defs[dst_id] = pass;
-  ren_assert(!m_rg->m_buffer_parents[dst_id],
-             "Render graph buffers must be written only once");
+  ren_assert_msg(!m_rg->m_buffer_parents[dst_id],
+                 "Render graph buffers must be written only once");
   m_rg->m_buffer_parents[dst_id] = src_id;
   m_passes[pass].write_buffers.push_back(add_buffer_use(src_id, usage));
   return dst_id;
@@ -290,8 +290,8 @@ auto RgBuilder::write_texture(RgPassId pass, StringView dst_texture,
 #endif
   m_texture_defs[dst_id] = pass;
   for (int i : range(RG_MAX_TEMPORAL_LAYERS)) {
-    ren_assert(!m_rg->m_texture_parents[dst_id + i],
-               "Render graph textures must be written only once");
+    ren_assert_msg(!m_rg->m_texture_parents[dst_id + i],
+                   "Render graph textures must be written only once");
     m_rg->m_texture_parents[dst_id + i] = RgTextureId(src_id + i);
   }
   m_passes[pass].write_textures.push_back(add_texture_use(src_id, usage));

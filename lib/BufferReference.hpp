@@ -11,7 +11,8 @@ public:
   BufferReference() = default;
   BufferReference(std::nullptr_t) : BufferReference() {}
   explicit BufferReference(u64 value) {
-    ren_assert(value % alignof(T) == 0, "Buffer reference improperly aligned");
+    ren_assert_msg(value % alignof(T) == 0,
+                   "Buffer reference improperly aligned");
     m_value = value;
   }
 };
