@@ -130,6 +130,7 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
   VkPhysicalDeviceFeatures2 vulkan10_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .features = {
+          .samplerAnisotropy = true,
           .shaderInt64 = true,
       }};
 
@@ -790,6 +791,8 @@ auto Device::create_sampler(const SamplerCreateInfo &&create_info)
       .mipmapMode = create_info.mipmap_mode,
       .addressModeU = create_info.address_mode_u,
       .addressModeV = create_info.address_mode_v,
+      .anisotropyEnable = create_info.anisotropy.has_value(),
+      .maxAnisotropy = create_info.anisotropy.value_or(0.0f),
       .maxLod = VK_LOD_CLAMP_NONE,
   };
 

@@ -183,7 +183,7 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
 
 auto Scene::get_or_create_sampler(const RenSampler &sampler)
     -> Handle<Sampler> {
-  auto &handle = m_samplers[sampler];
+  Handle<Sampler> &handle = m_samplers[sampler];
   if (!handle) {
     handle = m_persistent_arena.create_sampler({
         .mag_filter = getVkFilter(sampler.mag_filter),
@@ -191,6 +191,7 @@ auto Scene::get_or_create_sampler(const RenSampler &sampler)
         .mipmap_mode = getVkSamplerMipmapMode(sampler.mipmap_filter),
         .address_mode_u = getVkSamplerAddressMode(sampler.wrap_u),
         .address_mode_v = getVkSamplerAddressMode(sampler.wrap_v),
+        .anisotropy = 16.0f,
     });
   }
   return handle;

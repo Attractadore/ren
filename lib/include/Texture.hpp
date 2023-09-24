@@ -68,11 +68,12 @@ public:
 
 struct SamplerCreateInfo {
   REN_DEBUG_NAME_FIELD("Sampler");
-  VkFilter mag_filter;
-  VkFilter min_filter;
-  VkSamplerMipmapMode mipmap_mode;
-  VkSamplerAddressMode address_mode_u;
-  VkSamplerAddressMode address_mode_v;
+  VkFilter mag_filter = VK_FILTER_LINEAR;
+  VkFilter min_filter = VK_FILTER_LINEAR;
+  VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  VkSamplerAddressMode address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  VkSamplerAddressMode address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  Optional<float> anisotropy;
 };
 
 struct Sampler {
@@ -82,6 +83,7 @@ struct Sampler {
   VkSamplerMipmapMode mipmap_mode;
   VkSamplerAddressMode address_mode_u;
   VkSamplerAddressMode address_mode_v;
+  Optional<float> anisotropy;
 };
 
 auto get_mip_level_count(unsigned width, unsigned height = 1,
