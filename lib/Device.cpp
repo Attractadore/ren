@@ -41,7 +41,7 @@ void set_debug_name(VkDevice device, T object, const DebugName &name) {
 
 } // namespace
 
-auto Device::getRequiredLayers() noexcept -> Span<const char *const> {
+auto Renderer::getRequiredLayers() noexcept -> Span<const char *const> {
   static constexpr auto layers = makeArray<const char *>(
 #if REN_VULKAN_VALIDATION
       "VK_LAYER_KHRONOS_validation"
@@ -50,7 +50,7 @@ auto Device::getRequiredLayers() noexcept -> Span<const char *const> {
   return layers;
 }
 
-auto Device::getInstanceExtensions() noexcept -> Span<const char *const> {
+auto Renderer::getInstanceExtensions() noexcept -> Span<const char *const> {
   static constexpr auto extensions = makeArray<const char *>(
 #if REN_DEBUG_NAMES
       VK_EXT_DEBUG_UTILS_EXTENSION_NAME
@@ -65,13 +65,13 @@ auto create_instance(Span<const char *const> external_extensions)
     -> UniqueInstance {
   VkApplicationInfo application_info = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .apiVersion = Device::getRequiredAPIVersion(),
+      .apiVersion = Renderer::getRequiredAPIVersion(),
   };
 
-  auto layers = Device::getRequiredLayers();
+  auto layers = Renderer::getRequiredLayers();
 
   SmallVector<const char *> extensions(external_extensions);
-  extensions.append(Device::getInstanceExtensions());
+  extensions.append(Renderer::getInstanceExtensions());
 
   VkInstanceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -219,7 +219,7 @@ auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
       .device = device,
       .pVulkanFunctions = &vk,
       .instance = instance,
-      .vulkanApiVersion = Device::getRequiredAPIVersion(),
+      .vulkanApiVersion = Renderer::getRequiredAPIVersion(),
   };
 
   VmaAllocator allocator;
@@ -231,7 +231,7 @@ auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
 
 } // namespace
 
-Device::Device(Span<const char *const> extensions, u32 adapter) {
+Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
   throw_if_failed(volkInitialize(), "Volk: failed to initialize");
 
   m_instance = create_instance(extensions);
@@ -266,7 +266,7 @@ Device::Device(Span<const char *const> extensions, u32 adapter) {
 #define define_device_deleter(T, F)                                            \
   template <> struct QueueDeleter<T> {                                         \
     void operator()(T handle) const noexcept {                                 \
-      F(g_device->get_device(), handle, nullptr);                              \
+      F(g_renderer->get_device(), handle, nullptr);                            \
     }                                                                          \
   }
 
@@ -285,28 +285,28 @@ define_device_deleter(VkSwapchainKHR, vkDestroySwapchainKHR);
 
 template <> struct QueueDeleter<VkSurfaceKHR> {
   void operator()(VkSurfaceKHR handle) const noexcept {
-    vkDestroySurfaceKHR(g_device->get_instance(), handle, nullptr);
+    vkDestroySurfaceKHR(g_renderer->get_instance(), handle, nullptr);
   }
 };
 
 template <> struct QueueDeleter<VmaAllocation> {
   void operator()(VmaAllocation allocation) const noexcept {
-    vmaFreeMemory(g_device->get_allocator(), allocation);
+    vmaFreeMemory(g_renderer->get_allocator(), allocation);
   }
 };
 
-Device::~Device() {
+Renderer::~Renderer() {
   destroy_semaphore(m_graphics_queue_semaphore);
   flush();
 }
 
-void Device::flush() {
+void Renderer::flush() {
   throw_if_failed(vkDeviceWaitIdle(get_device()),
                   "Vulkan: Failed to wait for idle device");
   m_delete_queue.flush();
 }
 
-void Device::next_frame() {
+void Renderer::next_frame() {
   m_frame_end_times[m_frame_index] = m_graphics_queue_time;
   m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
   wait_for_semaphore(get_semaphore(m_graphics_queue_semaphore),
@@ -314,7 +314,7 @@ void Device::next_frame() {
   m_delete_queue.next_frame();
 }
 
-auto Device::create_descriptor_pool(
+auto Renderer::create_descriptor_pool(
     const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool> {
   StaticVector<VkDescriptorPoolSize, MAX_DESCIPTOR_BINDINGS> pool_sizes;
 
@@ -351,29 +351,29 @@ auto Device::create_descriptor_pool(
   });
 }
 
-void Device::destroy_descriptor_pool(Handle<DescriptorPool> pool) {
+void Renderer::destroy_descriptor_pool(Handle<DescriptorPool> pool) {
   m_descriptor_pools.try_pop(pool).map(
       [&](const DescriptorPool &pool) { push_to_delete_queue(pool.handle); });
 }
 
-auto Device::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
+auto Renderer::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
     -> Optional<const DescriptorPool &> {
   return m_descriptor_pools.get(pool);
 }
 
-auto Device::get_descriptor_pool(Handle<DescriptorPool> pool) const
+auto Renderer::get_descriptor_pool(Handle<DescriptorPool> pool) const
     -> const DescriptorPool & {
   assert(m_descriptor_pools.contains(pool));
   return m_descriptor_pools[pool];
 }
 
-void Device::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
+void Renderer::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
   throw_if_failed(
       vkResetDescriptorPool(get_device(), get_descriptor_pool(pool).handle, 0),
       "Vulkan: Failed to reset descriptor pool");
 }
 
-auto Device::create_descriptor_set_layout(
+auto Renderer::create_descriptor_set_layout(
     const DescriptorSetLayoutCreateInfo &&create_info)
     -> Handle<DescriptorSetLayout> {
   auto binding_flags =
@@ -433,25 +433,26 @@ auto Device::create_descriptor_set_layout(
   });
 }
 
-void Device::destroy_descriptor_set_layout(Handle<DescriptorSetLayout> layout) {
+void Renderer::destroy_descriptor_set_layout(
+    Handle<DescriptorSetLayout> layout) {
   m_descriptor_set_layouts.try_pop(layout).map(
       [&](const DescriptorSetLayout &layout) {
         push_to_delete_queue(layout.handle);
       });
 }
 
-auto Device::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
+auto Renderer::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
     const -> Optional<const DescriptorSetLayout &> {
   return m_descriptor_set_layouts.get(layout);
 }
 
-auto Device::get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
-    -> const DescriptorSetLayout & {
+auto Renderer::get_descriptor_set_layout(
+    Handle<DescriptorSetLayout> layout) const -> const DescriptorSetLayout & {
   assert(m_descriptor_set_layouts.contains(layout));
   return m_descriptor_set_layouts[layout];
 }
 
-auto Device::allocate_descriptor_sets(
+auto Renderer::allocate_descriptor_sets(
     Handle<DescriptorPool> pool,
     TempSpan<const Handle<DescriptorSetLayout>> layouts,
     VkDescriptorSet *sets) const -> bool {
@@ -482,8 +483,8 @@ auto Device::allocate_descriptor_sets(
   }
 }
 
-auto Device::allocate_descriptor_set(Handle<DescriptorPool> pool,
-                                     Handle<DescriptorSetLayout> layout) const
+auto Renderer::allocate_descriptor_set(Handle<DescriptorPool> pool,
+                                       Handle<DescriptorSetLayout> layout) const
     -> Optional<VkDescriptorSet> {
   VkDescriptorSet set;
   if (allocate_descriptor_sets(pool, {&layout, 1}, &set)) {
@@ -492,13 +493,14 @@ auto Device::allocate_descriptor_set(Handle<DescriptorPool> pool,
   return None;
 }
 
-void Device::write_descriptor_sets(
+void Renderer::write_descriptor_sets(
     TempSpan<const VkWriteDescriptorSet> configs) const {
   vkUpdateDescriptorSets(get_device(), configs.size(), configs.data(), 0,
                          nullptr);
 }
 
-auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
+auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
+    -> BufferView {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -568,24 +570,24 @@ auto Device::create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
   };
 }
 
-void Device::destroy_buffer(Handle<Buffer> handle) {
+void Renderer::destroy_buffer(Handle<Buffer> handle) {
   m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
     push_to_delete_queue(buffer.handle);
     push_to_delete_queue(buffer.allocation);
   });
 }
 
-auto Device::try_get_buffer(Handle<Buffer> buffer) const
+auto Renderer::try_get_buffer(Handle<Buffer> buffer) const
     -> Optional<const Buffer &> {
   return m_buffers.get(buffer);
 };
 
-auto Device::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
+auto Renderer::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
   assert(m_buffers.contains(buffer));
   return m_buffers[buffer];
 };
 
-auto Device::try_get_buffer_view(Handle<Buffer> handle) const
+auto Renderer::try_get_buffer_view(Handle<Buffer> handle) const
     -> Optional<BufferView> {
   return try_get_buffer(handle).map([&](const Buffer &buffer) -> BufferView {
     return {
@@ -595,7 +597,7 @@ auto Device::try_get_buffer_view(Handle<Buffer> handle) const
   });
 };
 
-auto Device::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
+auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   const auto &buffer = get_buffer(handle);
   return {
       .buffer = handle,
@@ -603,7 +605,7 @@ auto Device::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   };
 };
 
-auto Device::create_texture(const TextureCreateInfo &&create_info)
+auto Renderer::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
   assert(create_info.width > 0);
   assert(create_info.height > 0);
@@ -647,7 +649,7 @@ auto Device::create_texture(const TextureCreateInfo &&create_info)
   });
 }
 
-auto Device::create_swapchain_texture(
+auto Renderer::create_swapchain_texture(
     const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
   set_debug_name(get_device(), create_info.image, "Swapchain image");
 
@@ -664,7 +666,7 @@ auto Device::create_swapchain_texture(
   });
 }
 
-void Device::destroy_texture(Handle<Texture> handle) {
+void Renderer::destroy_texture(Handle<Texture> handle) {
   m_textures.try_pop(handle).map([&](const Texture &texture) {
     if (texture.allocation) {
       push_to_delete_queue(texture.image);
@@ -677,12 +679,12 @@ void Device::destroy_texture(Handle<Texture> handle) {
   });
 }
 
-auto Device::try_get_texture(Handle<Texture> texture) const
+auto Renderer::try_get_texture(Handle<Texture> texture) const
     -> Optional<const Texture &> {
   return m_textures.get(texture);
 }
 
-auto Device::get_texture(Handle<Texture> texture) const -> const Texture & {
+auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   assert(m_textures.contains(texture));
   return m_textures[texture];
 }
@@ -715,7 +717,7 @@ static auto get_texture_default_view_type(VkImageType type,
               num_array_layers);
 }
 
-auto Device::try_get_texture_view(Handle<Texture> handle) const
+auto Renderer::try_get_texture_view(Handle<Texture> handle) const
     -> Optional<TextureView> {
   return try_get_texture(handle).map(
       [&](const Texture &texture) -> TextureView {
@@ -730,7 +732,7 @@ auto Device::try_get_texture_view(Handle<Texture> handle) const
       });
 }
 
-auto Device::get_texture_view(Handle<Texture> handle) const -> TextureView {
+auto Renderer::get_texture_view(Handle<Texture> handle) const -> TextureView {
   const auto &texture = get_texture(handle);
   return {
       .texture = handle,
@@ -742,15 +744,15 @@ auto Device::get_texture_view(Handle<Texture> handle) const -> TextureView {
   };
 }
 
-auto Device::get_texture_view_size(const TextureView &view,
-                                   u32 mip_level_offset) const -> glm::uvec3 {
+auto Renderer::get_texture_view_size(const TextureView &view,
+                                     u32 mip_level_offset) const -> glm::uvec3 {
   const Texture &texture = get_texture(view.texture);
   assert(view.first_mip_level + mip_level_offset < texture.num_mip_levels);
   return get_size_at_mip_level(texture.size,
                                view.first_mip_level + mip_level_offset);
 }
 
-auto Device::getVkImageView(const TextureView &view) -> VkImageView {
+auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
   auto [it, inserted] = m_image_views[view.texture].insert(view, nullptr);
   auto &image_view = std::get<1>(*it);
   if (inserted) {
@@ -782,7 +784,7 @@ auto Device::getVkImageView(const TextureView &view) -> VkImageView {
   return image_view;
 }
 
-auto Device::create_sampler(const SamplerCreateInfo &&create_info)
+auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
     -> Handle<Sampler> {
   VkSamplerCreateInfo sampler_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -812,17 +814,17 @@ auto Device::create_sampler(const SamplerCreateInfo &&create_info)
   });
 }
 
-void Device::destroy_sampler(Handle<Sampler> sampler) {
+void Renderer::destroy_sampler(Handle<Sampler> sampler) {
   m_samplers.try_pop(sampler).map(
       [&](const Sampler &sampler) { push_to_delete_queue(sampler.handle); });
 }
 
-auto Device::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
+auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
   assert(m_samplers.contains(sampler));
   return m_samplers[sampler];
 }
 
-auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
+auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
     -> Handle<Semaphore> {
   VkSemaphoreTypeCreateInfo semaphore_type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
@@ -845,13 +847,13 @@ auto Device::create_semaphore(const SemaphoreCreateInfo &&create_info)
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
-void Device::destroy_semaphore(Handle<Semaphore> semaphore) {
+void Renderer::destroy_semaphore(Handle<Semaphore> semaphore) {
   m_semaphores.try_pop(semaphore).map(
       [&](Semaphore semaphore) { push_to_delete_queue(semaphore.handle); });
 }
 
-auto Device::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
-                                std::chrono::nanoseconds timeout) const
+auto Renderer::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
+                                  std::chrono::nanoseconds timeout) const
     -> VkResult {
   VkSemaphoreWaitInfo wait_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
@@ -869,25 +871,25 @@ auto Device::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
   };
 }
 
-void Device::wait_for_semaphore(const Semaphore &semaphore,
-                                uint64_t value) const {
+void Renderer::wait_for_semaphore(const Semaphore &semaphore,
+                                  uint64_t value) const {
   auto result = wait_for_semaphore(semaphore, value,
                                    std::chrono::nanoseconds(UINT64_MAX));
   assert(result == VK_SUCCESS);
 }
 
-auto Device::try_get_semaphore(Handle<Semaphore> semaphore) const
+auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const
     -> Optional<const Semaphore &> {
   return m_semaphores.get(semaphore);
 }
 
-auto Device::get_semaphore(Handle<Semaphore> semaphore) const
+auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
     -> const Semaphore & {
   assert(m_semaphores.contains(semaphore));
   return m_semaphores[semaphore];
 }
 
-void Device::queueSubmit(
+void Renderer::queueSubmit(
     VkQueue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
     TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
     TempSpan<const VkSemaphoreSubmitInfo> input_signal_semaphores) {
@@ -927,7 +929,7 @@ static auto create_shader_module(VkDevice device,
   return module;
 }
 
-auto Device::create_graphics_pipeline(
+auto Renderer::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
     -> Handle<GraphicsPipeline> {
   constexpr size_t MAX_GRAPHICS_SHADER_STAGES = 2;
@@ -1068,25 +1070,25 @@ auto Device::create_graphics_pipeline(
   });
 }
 
-void Device::destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
+void Renderer::destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
   m_graphics_pipelines.try_pop(pipeline).map(
       [&](const GraphicsPipeline &pipeline) {
         push_to_delete_queue(pipeline.handle);
       });
 }
 
-auto Device::try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
-    -> Optional<const GraphicsPipeline &> {
+auto Renderer::try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline)
+    const -> Optional<const GraphicsPipeline &> {
   return m_graphics_pipelines.get(pipeline);
 }
 
-auto Device::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
+auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
     -> const GraphicsPipeline & {
   assert(m_graphics_pipelines.contains(pipeline));
   return m_graphics_pipelines[pipeline];
 }
 
-auto Device::create_compute_pipeline(
+auto Renderer::create_compute_pipeline(
     const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
   VkShaderModule module =
       create_shader_module(get_device(), create_info.shader.code);
@@ -1116,25 +1118,25 @@ auto Device::create_compute_pipeline(
   });
 }
 
-void Device::destroy_compute_pipeline(Handle<ComputePipeline> pipeline) {
+void Renderer::destroy_compute_pipeline(Handle<ComputePipeline> pipeline) {
   m_compute_pipelines.try_pop(pipeline).map(
       [&](const ComputePipeline &pipeline) {
         push_to_delete_queue(pipeline.handle);
       });
 }
 
-auto Device::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+auto Renderer::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
     -> Optional<const ComputePipeline &> {
   return m_compute_pipelines.get(pipeline);
 }
 
-auto Device::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
+auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
     -> const ComputePipeline & {
   assert(m_compute_pipelines.contains(pipeline));
   return m_compute_pipelines[pipeline];
 }
 
-auto Device::create_pipeline_layout(
+auto Renderer::create_pipeline_layout(
     const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout> {
   auto layouts =
       create_info.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
@@ -1163,24 +1165,24 @@ auto Device::create_pipeline_layout(
   });
 }
 
-void Device::destroy_pipeline_layout(Handle<PipelineLayout> layout) {
+void Renderer::destroy_pipeline_layout(Handle<PipelineLayout> layout) {
   m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
     push_to_delete_queue(layout.handle);
   });
 }
 
-auto Device::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
+auto Renderer::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
     -> Optional<const PipelineLayout &> {
   return m_pipeline_layouts.get(layout);
 }
 
-auto Device::get_pipeline_layout(Handle<PipelineLayout> layout) const
+auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
     -> const PipelineLayout & {
   assert(m_pipeline_layouts.contains(layout));
   return m_pipeline_layouts[layout];
 }
 
-auto Device::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
+auto Renderer::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
   VkQueue queue = getGraphicsQueue();
   VkResult result = vkQueuePresentKHR(queue, &present_info);
   switch (result) {

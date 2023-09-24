@@ -199,7 +199,7 @@ auto Scene::get_or_create_sampler(const RenSampler &sampler)
 
 auto Scene::get_or_create_texture(const RenTexture &texture)
     -> SampledTextureId {
-  auto view = g_device->get_texture_view(m_images[texture.image]);
+  auto view = g_renderer->get_texture_view(m_images[texture.image]);
   view.swizzle = getTextureSwizzle(texture.swizzle);
   auto sampler = get_or_create_sampler(texture.sampler);
   return m_texture_allocator->allocate_sampled_texture(view, sampler);

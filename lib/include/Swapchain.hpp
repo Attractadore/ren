@@ -7,8 +7,6 @@
 
 namespace ren {
 
-class Device;
-
 struct SwapchainTextureCreateInfo {
   VkImage image = nullptr;
   VkFormat format = VK_FORMAT_UNDEFINED;

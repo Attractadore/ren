@@ -44,7 +44,7 @@ void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
   BufferReference<glsl::LuminanceHistogram> histogram;
   StorageTextureId previous_exposure;
   if (rcs.histogram) {
-    histogram = g_device->get_buffer_device_address<glsl::LuminanceHistogram>(
+    histogram = g_renderer->get_buffer_device_address<glsl::LuminanceHistogram>(
         rg.get_buffer(rcs.histogram));
     previous_exposure = rg.get_storage_texture_descriptor(rcs.exposure);
   }
@@ -58,7 +58,7 @@ void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
       .tex = texture_index,
   });
 
-  glm::uvec2 size = g_device->get_texture(texture).size;
+  glm::uvec2 size = g_renderer->get_texture(texture).size;
   glm::uvec2 group_size = {glsl::POST_PROCESSING_THREADS_X,
                            glsl::POST_PROCESSING_THREADS_Y};
   glm::uvec2 work_size = {glsl::POST_PROCESSING_WORK_SIZE_X,
@@ -115,7 +115,7 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
       .histogram =
-          g_device->get_buffer_device_address<glsl::LuminanceHistogram>(
+          g_renderer->get_buffer_device_address<glsl::LuminanceHistogram>(
               rg.get_buffer(rcs.histogram)),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
       .exposure_compensation = data.exposure_compensation,

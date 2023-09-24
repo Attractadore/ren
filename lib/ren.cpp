@@ -10,10 +10,10 @@
 
 namespace ren {
 
-Device *g_device = nullptr;
+Renderer *g_renderer = nullptr;
 
 namespace {
-std::unique_ptr<Device> g_device_holder;
+std::unique_ptr<Renderer> g_renderer_holder;
 SmallVector<Scene *, 1> g_scenes;
 } // namespace
 
@@ -54,16 +54,16 @@ RenResult ren_Init(size_t num_instance_extensions,
     assert(instance_extensions);
   }
   return lippincott([&] {
-    ren::g_device_holder = std::make_unique<ren::Device>(
+    ren::g_renderer_holder = std::make_unique<ren::Renderer>(
         ren::Span(instance_extensions, num_instance_extensions), adapter);
-    ren::g_device = ren::g_device_holder.get();
+    ren::g_renderer = ren::g_renderer_holder.get();
   });
 }
 
 void ren_Quit() {
   ren_assert(ren::g_scenes.empty(), "All scenes must be destroyed");
-  ren::g_device_holder.reset();
-  ren::g_device = nullptr;
+  ren::g_renderer_holder.reset();
+  ren::g_renderer = nullptr;
 }
 
 RenResult ren_Draw() {
@@ -71,7 +71,7 @@ RenResult ren_Draw() {
     for (ren::Scene *scene : ren::g_scenes) {
       scene->draw();
     }
-    ren::g_device->next_frame();
+    ren::g_renderer->next_frame();
     for (ren::Scene *scene : ren::g_scenes) {
       scene->next_frame();
     }
@@ -89,7 +89,7 @@ RenResult ren_vk_CreateSwapchain(RenPFNCreateSurface create_surface,
 
   result = lippincott([&] {
     ren::throw_if_failed(
-        create_surface(ren::g_device->get_instance(), usrptr, &surface),
+        create_surface(ren::g_renderer->get_instance(), usrptr, &surface),
         "Vulkan: Failed to create surface");
   });
   if (result) {
@@ -105,7 +105,7 @@ RenResult ren_vk_CreateSwapchain(RenPFNCreateSurface create_surface,
 
 clean:
   if (surface) {
-    vkDestroySurfaceKHR(ren::g_device->get_instance(), surface, nullptr);
+    vkDestroySurfaceKHR(ren::g_renderer->get_instance(), surface, nullptr);
   }
 
   return result;

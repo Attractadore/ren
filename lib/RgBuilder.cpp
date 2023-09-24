@@ -362,9 +362,9 @@ void RgBuilder::present(StringView texture_name) {
                 .layerCount = 1,
             },
     };
-    glm::uvec3 src_size = g_device->get_texture(src).size;
+    glm::uvec3 src_size = g_renderer->get_texture(src).size;
     std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-    glm::uvec3 dst_size = g_device->get_texture(dst).size;
+    glm::uvec3 dst_size = g_renderer->get_texture(dst).size;
     std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
     cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
   });
@@ -633,7 +633,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       StorageTextureId storage_descriptor;
       if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
         storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
-            g_device->get_texture_view(htexture));
+            g_renderer->get_texture_view(htexture));
       }
       m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
     }
@@ -1041,7 +1041,7 @@ void RgBuilder::clear_temporal_textures(
     Vector<VkImageMemoryBarrier2> barriers;
     barriers.reserve(clear_textures.size());
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
       barriers.push_back({
           .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
           .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1058,7 +1058,7 @@ void RgBuilder::clear_temporal_textures(
     rec.pipeline_barrier({}, barriers);
 
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
       VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
       if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
         rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
@@ -1072,7 +1072,7 @@ void RgBuilder::clear_temporal_textures(
 
     barriers.clear();
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_device->get_texture(clear_texture.texture);
+      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
       barriers.push_back({
           .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
           .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1092,7 +1092,7 @@ void RgBuilder::clear_temporal_textures(
     rec.pipeline_barrier({}, barriers);
   }
 
-  g_device->graphicsQueueSubmit({{
+  g_renderer->graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd_buffer,
   }});

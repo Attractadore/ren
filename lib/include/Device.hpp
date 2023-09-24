@@ -125,7 +125,7 @@ using UniqueInstance = UniqueHandle<VkInstance, InstanceDeleter>;
 using UniqueDevice = UniqueHandle<VkDevice, DeviceDeleter>;
 using UniqueAllocator = UniqueHandle<VmaAllocator, AllocatorDeleter>;
 
-class Device {
+class Renderer {
   UniqueInstance m_instance;
   VkPhysicalDevice m_adapter = nullptr;
   UniqueDevice m_device;
@@ -162,12 +162,12 @@ class Device {
   HandleMap<ComputePipeline> m_compute_pipelines;
 
 public:
-  Device(Span<const char *const> extensions, u32 adapter);
-  Device(const Device &) = delete;
-  Device(Device &&);
-  Device &operator=(const Device &) = delete;
-  Device &operator=(Device &&);
-  ~Device();
+  Renderer(Span<const char *const> extensions, u32 adapter);
+  Renderer(const Renderer &) = delete;
+  Renderer(Renderer &&);
+  Renderer &operator=(const Renderer &) = delete;
+  Renderer &operator=(Renderer &&);
+  ~Renderer();
 
   void flush();
 
@@ -377,6 +377,6 @@ public:
       -> VkResult;
 };
 
-extern Device *g_device;
+extern Renderer *g_renderer;
 
 } // namespace ren

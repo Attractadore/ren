@@ -8,7 +8,7 @@ namespace ren {
 namespace {
 
 void generate_mipmaps(CommandRecorder &cmd, Handle<Texture> handle) {
-  const auto &texture = g_device->get_texture(handle);
+  const auto &texture = g_renderer->get_texture(handle);
   auto src_size = texture.size;
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
@@ -57,7 +57,7 @@ void generate_mipmaps(CommandRecorder &cmd, Handle<Texture> handle) {
 
 void upload_texture(CommandRecorder &cmd, const BufferView &src,
                     Handle<Texture> dst) {
-  const auto &texture = g_device->get_texture(dst);
+  const auto &texture = g_renderer->get_texture(dst);
 
   {
     // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
@@ -134,7 +134,7 @@ void ResourceUploader::stage_texture(ResourceArena &arena,
       .size = data.size_bytes(),
   });
 
-  std::byte *ptr = g_device->map_buffer(staging_buffer);
+  std::byte *ptr = g_renderer->map_buffer(staging_buffer);
   ranges::copy(data, ptr);
 
   m_texture_copies.push_back({
@@ -180,7 +180,7 @@ void ResourceUploader::upload(CommandAllocator &cmd_allocator) {
     }
   }
 
-  g_device->graphicsQueueSubmit({{
+  g_renderer->graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd_buffer,
   }});

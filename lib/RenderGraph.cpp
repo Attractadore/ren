@@ -30,7 +30,7 @@ auto RgRuntime::get_buffer(RgBufferId buffer) const -> const BufferView & {
 auto RgRuntime::map_buffer_impl(RgBufferId buffer, usize offset) const
     -> std::byte * {
   const BufferView &view = get_buffer(buffer);
-  return g_device->map_buffer<std::byte>(view, offset);
+  return g_renderer->map_buffer<std::byte>(view, offset);
 }
 
 auto RenderGraph::get_physical_texture(RgTextureId texture) const
@@ -64,7 +64,7 @@ void RgUpdate::resize_buffer(RgBufferId buffer, usize size) {
 
 auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
     -> RgPublicTextureDesc {
-  const Texture &texture = g_device->get_texture(
+  const Texture &texture = g_renderer->get_texture(
       m_rg->m_textures[m_rg->get_physical_texture(texture_id)]);
   return {
       .type = texture.type,
@@ -168,8 +168,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
         batch_signal_semaphores.empty()) {
       return;
     }
-    g_device->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
-                                  batch_signal_semaphores);
+    g_renderer->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
+                                    batch_signal_semaphores);
     batch_cmd_buffers.clear();
     batch_wait_semaphores.clear();
     batch_signal_semaphores.clear();
@@ -222,7 +222,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       auto get_vk_image_barrier =
           [&](const RgTextureBarrier &barrier) -> VkImageMemoryBarrier2 {
         const Texture &texture =
-            g_device->get_texture(m_textures[barrier.texture]);
+            g_renderer->get_texture(m_textures[barrier.texture]);
         return {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = barrier.src_stage_mask,
@@ -273,9 +273,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                         -> Optional<ColorAttachment> {
                   return att.map(
                       [&](const RgColorAttachment &att) -> ColorAttachment {
-                        TextureView view = g_device->get_texture_view(
+                        TextureView view = g_renderer->get_texture_view(
                             m_textures[get_physical_texture(att.texture)]);
-                        viewport = g_device->get_texture_view_size(view);
+                        viewport = g_renderer->get_texture_view_size(view);
                         return {
                             .texture = view,
                             .ops = att.ops,
@@ -289,9 +289,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             if (graphics_pass.has_depth_attachment) {
               const RgDepthStencilAttachment &att =
                   rg_depth_stencil_attachments.pop_front();
-              TextureView view = g_device->get_texture_view(
+              TextureView view = g_renderer->get_texture_view(
                   m_textures[get_physical_texture(att.texture)]);
-              viewport = g_device->get_texture_view_size(view);
+              viewport = g_renderer->get_texture_view_size(view);
               depth_stencil_attachment = {
                   .texture = view,
                   .depth_ops = att.depth_ops,
@@ -340,7 +340,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       return {
           .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
           .semaphore =
-              g_device->get_semaphore(m_semaphores[signal.semaphore]).handle,
+              g_renderer->get_semaphore(m_semaphores[signal.semaphore]).handle,
           .value = signal.value,
           .stageMask = signal.stage_mask,
       };

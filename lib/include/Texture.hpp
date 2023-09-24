@@ -10,8 +10,6 @@
 
 namespace ren {
 
-class Device;
-
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
   VkImageType type = VK_IMAGE_TYPE_2D;

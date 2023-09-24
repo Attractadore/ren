@@ -10,11 +10,11 @@ CommandPool::CommandPool() {
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-      .queueFamilyIndex = g_device->get_graphics_queue_family(),
+      .queueFamilyIndex = g_renderer->get_graphics_queue_family(),
   };
-  throw_if_failed(
-      vkCreateCommandPool(g_device->get_device(), &pool_info, nullptr, &m_pool),
-      "Vulkan: Failed to create command pool");
+  throw_if_failed(vkCreateCommandPool(g_renderer->get_device(), &pool_info,
+                                      nullptr, &m_pool),
+                  "Vulkan: Failed to create command pool");
 }
 
 CommandPool::CommandPool(CommandPool &&other)
@@ -34,13 +34,13 @@ CommandPool &CommandPool::operator=(CommandPool &&other) {
 
 void CommandPool::destroy() {
   if (m_pool) {
-    g_device->push_to_delete_queue(
+    g_renderer->push_to_delete_queue(
         [pool = m_pool, cmd_buffers = std::move(m_cmd_buffers)] {
           if (not cmd_buffers.empty()) {
-            vkFreeCommandBuffers(g_device->get_device(), pool,
+            vkFreeCommandBuffers(g_renderer->get_device(), pool,
                                  cmd_buffers.size(), cmd_buffers.data());
           }
-          vkDestroyCommandPool(g_device->get_device(), pool, nullptr);
+          vkDestroyCommandPool(g_renderer->get_device(), pool, nullptr);
         });
   }
 }
@@ -60,7 +60,7 @@ VkCommandBuffer CommandPool::allocate() {
         .commandBufferCount = alloc_count,
     };
     throw_if_failed(
-        vkAllocateCommandBuffers(g_device->get_device(), &alloc_info,
+        vkAllocateCommandBuffers(g_renderer->get_device(), &alloc_info,
                                  m_cmd_buffers.data() + old_capacity),
         "Vulkan: Failed to allocate command buffers");
   }
@@ -68,7 +68,7 @@ VkCommandBuffer CommandPool::allocate() {
 }
 
 void CommandPool::reset() {
-  throw_if_failed(vkResetCommandPool(g_device->get_device(), m_pool, 0),
+  throw_if_failed(vkResetCommandPool(g_renderer->get_device(), m_pool, 0),
                   "Vulkan: Failed to reset command pool");
   m_allocated_count = 0;
 }

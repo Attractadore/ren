@@ -19,39 +19,39 @@ private:
   }
 
   void destroy_handle(Handle<Buffer> buffer) {
-    g_device->destroy_buffer(buffer);
+    g_renderer->destroy_buffer(buffer);
   }
 
   void destroy_handle(Handle<Texture> texture) {
-    g_device->destroy_texture(texture);
+    g_renderer->destroy_texture(texture);
   }
 
   void destroy_handle(Handle<Sampler> sampler) {
-    g_device->destroy_sampler(sampler);
+    g_renderer->destroy_sampler(sampler);
   }
 
   void destroy_handle(Handle<Semaphore> semaphore) {
-    g_device->destroy_semaphore(semaphore);
+    g_renderer->destroy_semaphore(semaphore);
   }
 
   void destroy_handle(Handle<DescriptorPool> pool) {
-    g_device->destroy_descriptor_pool(pool);
+    g_renderer->destroy_descriptor_pool(pool);
   }
 
   void destroy_handle(Handle<DescriptorSetLayout> layout) {
-    g_device->destroy_descriptor_set_layout(layout);
+    g_renderer->destroy_descriptor_set_layout(layout);
   }
 
   void destroy_handle(Handle<PipelineLayout> layout) {
-    g_device->destroy_pipeline_layout(layout);
+    g_renderer->destroy_pipeline_layout(layout);
   }
 
   void destroy_handle(Handle<GraphicsPipeline> pipeline) {
-    g_device->destroy_graphics_pipeline(pipeline);
+    g_renderer->destroy_graphics_pipeline(pipeline);
   }
 
   void destroy_handle(Handle<ComputePipeline> pipeline) {
-    g_device->destroy_compute_pipeline(pipeline);
+    g_renderer->destroy_compute_pipeline(pipeline);
   }
 
   template <typename T> void clear() {
@@ -74,7 +74,7 @@ public:
   }
 
   auto create_buffer(const BufferCreateInfo &&create_info) -> BufferView {
-    BufferView view = g_device->create_buffer(std::move(create_info));
+    BufferView view = g_renderer->create_buffer(std::move(create_info));
     insert(view.buffer);
     return view;
   }
@@ -83,7 +83,7 @@ public:
 
   auto create_texture(const TextureCreateInfo &&create_info)
       -> Handle<Texture> {
-    auto texture = g_device->create_texture(std::move(create_info));
+    auto texture = g_renderer->create_texture(std::move(create_info));
     insert(texture);
     return texture;
   }
@@ -92,7 +92,7 @@ public:
 
   auto create_sampler(const SamplerCreateInfo &&create_info)
       -> Handle<Sampler> {
-    auto sampler = g_device->create_sampler(std::move(create_info));
+    auto sampler = g_renderer->create_sampler(std::move(create_info));
     insert(sampler);
     return sampler;
   }
@@ -101,7 +101,7 @@ public:
 
   auto create_semaphore(const SemaphoreCreateInfo &&create_info)
       -> Handle<Semaphore> {
-    auto semaphore = g_device->create_semaphore(std::move(create_info));
+    auto semaphore = g_renderer->create_semaphore(std::move(create_info));
     insert(semaphore);
     return semaphore;
   }
@@ -109,7 +109,7 @@ public:
   void destroy_semaphore(Handle<Semaphore> semaphore) { destroy(semaphore); }
 
   auto create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info) {
-    auto pool = g_device->create_descriptor_pool(std::move(create_info));
+    auto pool = g_renderer->create_descriptor_pool(std::move(create_info));
     insert(pool);
     return pool;
   }
@@ -119,7 +119,7 @@ public:
   auto create_descriptor_set_layout(
       const DescriptorSetLayoutCreateInfo &&create_info) {
     auto layout =
-        g_device->create_descriptor_set_layout(std::move(create_info));
+        g_renderer->create_descriptor_set_layout(std::move(create_info));
     insert(layout);
     return layout;
   }
@@ -130,7 +130,7 @@ public:
 
   auto create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
       -> Handle<PipelineLayout> {
-    auto layout = g_device->create_pipeline_layout(std::move(create_info));
+    auto layout = g_renderer->create_pipeline_layout(std::move(create_info));
     insert(layout);
     return layout;
   }
@@ -141,7 +141,8 @@ public:
 
   auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
       -> Handle<GraphicsPipeline> {
-    auto pipeline = g_device->create_graphics_pipeline(std::move(create_info));
+    auto pipeline =
+        g_renderer->create_graphics_pipeline(std::move(create_info));
     insert(pipeline);
     return pipeline;
   }
@@ -152,7 +153,7 @@ public:
 
   auto create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
       -> Handle<ComputePipeline> {
-    auto pipeline = g_device->create_compute_pipeline(std::move(create_info));
+    auto pipeline = g_renderer->create_compute_pipeline(std::move(create_info));
     insert(pipeline);
     return pipeline;
   }

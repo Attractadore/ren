@@ -35,7 +35,7 @@ public:
         .size = size,
     });
 
-    auto *ptr = g_device->map_buffer<T>(staging_buffer);
+    auto *ptr = g_renderer->map_buffer<T>(staging_buffer);
     ranges::copy(data, ptr);
 
     m_buffer_copies.push_back({
