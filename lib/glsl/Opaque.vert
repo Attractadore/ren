@@ -9,7 +9,7 @@ void main() {
   MeshInstance mesh_instance = g_pcs.ub.mesh_instances[mesh_instance_index].mesh_instance;
   uint mesh_index = mesh_instance.mesh;
   Mesh mesh = g_pcs.ub.meshes[mesh_index].mesh;
-  uint material_index = mesh_instance.mesh;
+  uint material_index = mesh_instance.material;
 
   uint vertex_offset = gl_VertexIndex - gl_BaseVertex;
   uint position_index = gl_VertexIndex;
