@@ -67,6 +67,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
       "opaque", OpaquePassData{
                     .vertex_positions = data.vertex_positions,
                     .vertex_normals = data.vertex_normals,
+                    .vertex_tangents = data.vertex_tangents,
                     .vertex_colors = data.vertex_colors,
                     .vertex_uvs = data.vertex_uvs,
                     .vertex_indices = data.vertex_indices,

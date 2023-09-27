@@ -31,6 +31,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   auto *meshes = rg.map_buffer<glsl::Mesh>(rcs.meshes);
   ranges::transform(data.meshes, meshes, [](const Mesh &mesh) -> glsl::Mesh {
     return {
+        .base_tangent_vertex = mesh.base_tangent_vertex,
         .base_color_vertex = mesh.base_color_vertex,
         .base_uv_vertex = mesh.base_uv_vertex,
     };

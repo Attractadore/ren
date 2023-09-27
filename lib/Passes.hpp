@@ -30,6 +30,7 @@ struct PassesConfig {
 struct PassesData {
   BufferView vertex_positions;
   BufferView vertex_normals;
+  BufferView vertex_tangents;
   BufferView vertex_colors;
   BufferView vertex_uvs;
   BufferView vertex_indices;

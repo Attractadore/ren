@@ -11,6 +11,8 @@ struct Material {
   float metallic;
   float roughness;
   uint metallic_roughness_texture;
+  uint normal_texture;
+  float normal_scale;
 };
 
 GLSL_NAMESPACE_END

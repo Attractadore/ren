@@ -8,6 +8,7 @@ GLSL_NAMESPACE_BEGIN
 const uint MESH_ATTRIBUTE_UNUSED = -1;
 
 struct Mesh {
+  uint base_tangent_vertex;
   uint base_color_vertex;
   uint base_uv_vertex;
 };

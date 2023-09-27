@@ -30,10 +30,12 @@ class Scene {
 
   BufferView m_vertex_positions;
   BufferView m_vertex_normals;
+  BufferView m_vertex_tangents;
   BufferView m_vertex_colors;
   BufferView m_vertex_uvs;
   BufferView m_vertex_indices;
   u32 m_num_vertex_positions = 0;
+  u32 m_num_vertex_tangents = 0;
   u32 m_num_vertex_colors = 0;
   u32 m_num_vertex_uvs = 0;
   u32 m_num_vertex_indices = 0;

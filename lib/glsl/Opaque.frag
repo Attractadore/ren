@@ -13,8 +13,8 @@ OUT vec4 g_color;
 
 void main() {
   vec3 position = g_in.position;
+  vec3 normal = g_in.normal;
   vec4 color = g_in.color;
-  vec3 normal = normalize(g_in.normal);
   vec2 uv = g_in.uv;
   uint material_index = g_in.material;
 
@@ -35,15 +35,27 @@ void main() {
     roughness *= tex.g;
   }
 
+  if (material.normal_texture != 0) {
+    vec3 tangent = g_in.tangent;
+    vec3 bitangent = g_in.bitangent;
+    vec3 tex = texture(g_textures2d[material.normal_texture], uv).xyz;
+    tex = 2.0f * tex - 1.0f;
+    tex.xy *= material.normal_scale;
+    normal = mat3(tangent, bitangent, normal) * tex;
+  }
+  normal = normalize(normal);
+
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
   uint num_directional_lights = g_pcs.ub.num_directional_lights;
   for (int i = 0; i < num_directional_lights; ++i) {
     DirLight light = g_pcs.ub.directional_lights[i].light;
-    result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
+    result.xyz += lighting(normal, light.origin, view, color.xyz, metallic,
+                           roughness, light.color * light.illuminance);
   }
 
-  float exposure = imageLoad(g_rimages2d[g_pcs.ub.exposure_texture], ivec2(0)).r;
+  float exposure =
+      imageLoad(g_rimages2d[g_pcs.ub.exposure_texture], ivec2(0)).r;
   result *= exposure;
 
   g_color = result;

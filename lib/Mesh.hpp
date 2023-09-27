@@ -8,6 +8,7 @@ namespace ren {
 
 struct Mesh {
   u32 base_vertex = 0;
+  u32 base_tangent_vertex = glsl::MESH_ATTRIBUTE_UNUSED;
   u32 base_color_vertex = glsl::MESH_ATTRIBUTE_UNUSED;
   u32 base_uv_vertex = glsl::MESH_ATTRIBUTE_UNUSED;
   u32 base_index = 0;

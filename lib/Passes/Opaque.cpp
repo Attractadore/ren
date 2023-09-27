@@ -42,6 +42,8 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
           data.vertex_positions),
       .normals = g_renderer->get_buffer_device_address<glsl::Normals>(
           data.vertex_normals),
+      .tangents = g_renderer->get_buffer_device_address<glsl::Tangents>(
+          data.vertex_tangents),
       .colors = g_renderer->get_buffer_device_address<glsl::Colors>(
           data.vertex_colors),
       .uvs = g_renderer->get_buffer_device_address<glsl::UVs>(data.vertex_uvs),

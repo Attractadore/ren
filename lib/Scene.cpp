@@ -58,6 +58,14 @@ Scene::Scene(Swapchain &swapchain) {
       .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
   });
 
+  m_vertex_tangents = m_persistent_arena.create_buffer({
+      .name = "Mesh vertex tangents pool",
+      .heap = BufferHeap::Static,
+      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
+  });
+
   m_vertex_colors = m_persistent_arena.create_buffer({
       .name = "Mesh vertex colors pool",
       .heap = BufferHeap::Static,
@@ -103,10 +111,6 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     todo("Normals generation not implemented!");
   }
 
-  if (desc.tangents) {
-    todo("Normal mapping not implemented!");
-  }
-
   if (!desc.indices) {
     todo("Index buffer generation not implemented!");
   }
@@ -119,6 +123,13 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
   m_num_vertex_positions += desc.num_vertices;
   ren_assert_msg(m_num_vertex_positions <= MESH_VERTEX_BUDGET,
                  "Mesh vertex positions pool overflow");
+
+  if (desc.tangents) {
+    mesh.base_tangent_vertex = m_num_vertex_tangents;
+    m_num_vertex_tangents += desc.num_vertices;
+    ren_assert_msg(m_num_vertex_tangents <= MESH_VERTEX_BUDGET,
+                   "Mesh vertex tangents pool overflow");
+  }
 
   if (desc.colors) {
     mesh.base_color_vertex = m_num_vertex_colors;
@@ -154,6 +165,13 @@ RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
     auto normals_dst =
         m_vertex_normals.slice<glm::vec3>(mesh.base_vertex, desc.num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, normals_src, normals_dst);
+  }
+  if (mesh.base_tangent_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
+    auto tangents_src =
+        Span(desc.tangents, desc.num_vertices).reinterpret<glm::vec4>();
+    auto tangents_dst = m_vertex_tangents.slice<glm::vec4>(
+        mesh.base_tangent_vertex, desc.num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, tangents_src, tangents_dst);
   }
   if (mesh.base_color_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
     auto colors_src =
@@ -245,6 +263,13 @@ void Scene::create_materials(std::span<const RenMaterialDesc> descs,
           }
           return 0;
         }(),
+        .normal_texture = [&]() -> u32 {
+          if (desc.normal_tex.image) {
+            return get_or_create_texture(desc.normal_tex);
+          }
+          return 0;
+        }(),
+        .normal_scale = desc.normal_scale,
     };
 
     auto index = static_cast<RenMaterial>(m_materials.size());
@@ -303,7 +328,30 @@ void Scene::set_tone_mapping(RenToneMappingOperator oper) noexcept {
 void Scene::create_mesh_insts(std::span<const RenMeshInstDesc> descs,
                               RenMeshInst *out) {
   for (const auto &desc : descs) {
-    assert(desc.mesh);
+    ren_assert(desc.mesh);
+    ren_assert(desc.material);
+    // TODO: return proper error
+    const Mesh &mesh = m_meshes[desc.mesh];
+    const glsl::Material &material = m_materials[desc.material];
+    if (material.base_color_texture) {
+      ren_assert_msg(
+          mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
+          "Mesh instance material with base color texture requires mesh "
+          "with UVs");
+    }
+    if (material.metallic_roughness_texture) {
+      ren_assert_msg(mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
+                     "Mesh instance material with metallic-roughness texture "
+                     "requires mesh with UVs");
+    }
+    if (material.normal_texture) {
+      ren_assert_msg(
+          mesh.base_tangent_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
+          "Mesh instance material with normal map requires mesh with tangents");
+      ren_assert_msg(
+          mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
+          "Mesh instance material with normal map requires mesh with UVs");
+    }
     auto mesh_inst = m_mesh_instances.insert({
         .mesh = desc.mesh,
         .material = desc.material,
@@ -372,6 +420,7 @@ void Scene::draw() {
                    PassesData{
                        .vertex_positions = m_vertex_positions,
                        .vertex_normals = m_vertex_normals,
+                       .vertex_tangents = m_vertex_tangents,
                        .vertex_colors = m_vertex_colors,
                        .vertex_uvs = m_vertex_uvs,
                        .vertex_indices = m_vertex_indices,
