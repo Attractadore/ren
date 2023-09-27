@@ -24,7 +24,7 @@ auto Hash<RenSampler>::operator()(const RenSampler &sampler) const noexcept
 }
 
 constexpr usize MESH_VERTEX_BUDGET = 1024 * 1024;
-constexpr usize MESH_INDEX_BUDGET = MESH_VERTEX_BUDGET / 2;
+constexpr usize MESH_INDEX_BUDGET = 1024 * 1024;
 
 Scene::Scene(Swapchain &swapchain) {
   m_persistent_descriptor_set_layout =

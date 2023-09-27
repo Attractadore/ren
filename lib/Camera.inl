@@ -40,12 +40,12 @@ inline glm::mat4 get_projection_matrix(const Camera &camera,
   return camera.projection.visit(OverloadSet{
       [&](const PerspectiveProjection &proj) {
         float fov = proj.hfov / aspect_ratio;
-        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, 0.1f);
+        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, 0.01f);
       },
       [&](const OrthographicProjection &proj) {
         float width = proj.width;
         float height = width / aspect_ratio;
-        return orthoRH_ReverseZ(width, height, 0.1f, 100.0f);
+        return orthoRH_ReverseZ(width, height, 0.01f, 100.0f);
       },
   });
 }
