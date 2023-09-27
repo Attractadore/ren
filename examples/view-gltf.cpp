@@ -553,13 +553,13 @@ private:
             .num_vertices = uint32_t(positions_data.size()),
             .num_indices = uint32_t(indices_data.size()),
             .positions = (const RenVector3 *)positions_data.data(),
-            .colors = colors_data.empty()
-                          ? nullptr
-                          : (const RenVector4 *)colors_data.data(),
             .normals = (const RenVector3 *)normals_data.data(),
             .tangents = tangents_data.empty()
                             ? nullptr
                             : (const RenVector4 *)tangents_data.data(),
+            .colors = colors_data.empty()
+                          ? nullptr
+                          : (const RenVector4 *)colors_data.data(),
             .uvs = uvs_data.empty() ? nullptr
                                     : (const RenVector2 *)uvs_data.data(),
             .indices = indices_data.data(),

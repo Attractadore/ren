@@ -107,13 +107,9 @@ void Scene::next_frame() {
 }
 
 RenMesh Scene::create_mesh(const RenMeshDesc &desc) {
-  if (!desc.normals) {
-    todo("Normals generation not implemented!");
-  }
-
-  if (!desc.indices) {
-    todo("Index buffer generation not implemented!");
-  }
+  ren_assert(desc.positions);
+  ren_assert(desc.normals);
+  ren_assert(desc.indices);
 
   // Create mesh
 

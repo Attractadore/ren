@@ -185,18 +185,15 @@ typedef struct RenMeshDesc {
   unsigned num_indices;
   /// This mesh's positions.
   const RenVector3 *positions;
-  /// Optional: this mesh's vertex colors.
-  const RenVector4 *colors;
-  /// Optional: this mesh's normals. Computed automatically if not specified.
+  /// This mesh's normals
   const RenVector3 *normals;
-  /// Optional: this mesh's tangents. Computed automatically if not specified.
-  /// When normals are not provided, the tangents are ignored and
-  /// computed automatically instead.
-  /// For tangents to be computed automatically, uvs must be provided.
+  /// Optional: this mesh's tangents
   const RenVector4 *tangents;
-  /// Optional: this mesh's uvs.
+  /// Optional: this mesh's vertex colors
+  const RenVector4 *colors;
+  /// Optional: this mesh's uvs
   const RenVector2 *uvs;
-  /// Optional: this mesh's indices.
+  /// This mesh's indices
   const unsigned *indices;
 
 #ifdef __cplusplus
