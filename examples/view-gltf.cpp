@@ -1,21 +1,23 @@
 #include "AppBase.hpp"
 
 #include <boost/functional/hash.hpp>
+#include <cstdint>
 #include <cxxopts.hpp>
+#include <filesystem>
+#include <fmt/chrono.h>
 #include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <mikktspace.h>
 #include <tiny_gltf.h>
-
-#include <cstdint>
-#include <filesystem>
 
 namespace chrono = std::chrono;
 namespace fs = std::filesystem;
 
 #define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
+#define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
 
 auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   tinygltf::TinyGLTF loader;
@@ -27,6 +29,9 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
     bail("Failed to open file {}: doesn't exist", path);
   }
 
+  log("Load scene...");
+  auto start = chrono::steady_clock::now();
+
   bool ret = true;
   if (path.extension() == ".gltf") {
     ret = loader.LoadASCIIFromFile(&model, &err, &warn, path.string());
@@ -36,6 +41,11 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
     bail("Failed to load glTF file {}: invalid extension {}", path,
          path.extension());
   }
+
+  auto end = chrono::steady_clock::now();
+
+  log("Loaded scene in {:.3f}s",
+      chrono::duration_cast<chrono::duration<float>>(end - start).count());
 
   if (!ret) {
     while (not err.empty() and err.back() == '\n') {
@@ -179,9 +189,107 @@ struct GltfImageDesc {
 
 template <> struct std::hash<GltfImageDesc> {
   static auto operator()(const GltfImageDesc &desc) -> size_t {
-    return std::hash<int>()(std::bit_cast<int>(desc));
+    size_t seed = 0;
+    boost::hash_combine(seed, desc.index);
+    boost::hash_combine(seed, desc.srgb);
+    return seed;
   }
 };
+
+template <typename T>
+auto unindex_attibute(std::span<const T> attribute,
+                      std::span<const uint32_t> indices, std::span<T> out) {
+  assert(out.size() == indices.size());
+  for (size_t i = 0; i < indices.size(); ++i) {
+    out[i] = attribute[indices[i]];
+  }
+}
+
+auto generate_tangents(std::span<const glm::vec3> positions,
+                       std::span<const glm::vec3> normals,
+                       std::span<const glm::vec2> tex_coords,
+                       std::span<glm::vec4> tangents) -> Result<void> {
+  assert(positions.size() % 3 == 0);
+  assert(positions.size() == normals.size());
+  assert(positions.size() == tex_coords.size());
+  assert(positions.size() == tangents.size());
+
+  struct Context {
+    size_t num_faces = 0;
+    const glm::vec3 *positions = nullptr;
+    const glm::vec3 *normals = nullptr;
+    const glm::vec2 *tex_coords = nullptr;
+    glm::vec4 *tangents = nullptr;
+  };
+
+  SMikkTSpaceInterface iface = {
+      .m_getNumFaces = [](const SMikkTSpaceContext *pContext) -> int {
+        return ((const Context *)(pContext->m_pUserData))->num_faces;
+      },
+
+      .m_getNumVerticesOfFace = [](const SMikkTSpaceContext *,
+                                   const int) -> int { return 3; },
+
+      .m_getPosition =
+          [](const SMikkTSpaceContext *pContext, float fvPosOut[],
+             const int iFace, const int iVert) {
+            glm::vec3 position = ((const Context *)(pContext->m_pUserData))
+                                     ->positions[iFace * 3 + iVert];
+            fvPosOut[0] = position.x;
+            fvPosOut[1] = position.y;
+            fvPosOut[2] = position.z;
+          },
+
+      .m_getNormal =
+          [](const SMikkTSpaceContext *pContext, float fvNormOut[],
+             const int iFace, const int iVert) {
+            glm::vec3 normal = ((const Context *)(pContext->m_pUserData))
+                                   ->normals[iFace * 3 + iVert];
+            fvNormOut[0] = normal.x;
+            fvNormOut[1] = normal.y;
+            fvNormOut[2] = normal.z;
+          },
+
+      .m_getTexCoord =
+          [](const SMikkTSpaceContext *pContext, float fvTexcOut[],
+             const int iFace, const int iVert) {
+            glm::vec2 tex_coord = ((const Context *)(pContext->m_pUserData))
+                                      ->tex_coords[iFace * 3 + iVert];
+            fvTexcOut[0] = tex_coord.x;
+            fvTexcOut[1] = tex_coord.y;
+          },
+
+      .m_setTSpaceBasic =
+          [](const SMikkTSpaceContext *pContext, const float fvTangent[],
+             const float fSign, const int iFace, const int iVert) {
+            glm::vec4 &tangent = ((const Context *)(pContext->m_pUserData))
+                                     ->tangents[iFace * 3 + iVert];
+            tangent.x = fvTangent[0];
+            tangent.y = fvTangent[1];
+            tangent.z = fvTangent[2];
+            tangent.w = fSign;
+          },
+  };
+
+  Context user_data = {
+      .num_faces = positions.size() / 3,
+      .positions = positions.data(),
+      .normals = normals.data(),
+      .tex_coords = tex_coords.data(),
+      .tangents = tangents.data(),
+  };
+
+  SMikkTSpaceContext ctx = {
+      .m_pInterface = &iface,
+      .m_pUserData = &user_data,
+  };
+
+  if (!genTangSpaceDefault(&ctx)) {
+    bail("Failed to generate tangents");
+  }
+
+  return {};
+}
 
 class SceneWalker {
 public:
@@ -282,8 +390,14 @@ private:
     std::vector<glm::vec3> normals_data =
         get_accessor_data<glm::vec3>(*normals);
 
+    std::vector<glm::vec4> tangents_data;
     if (tangents) {
-      warn("Ignoring primitive tangents");
+      if (tangents->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
+          tangents->type != TINYGLTF_TYPE_VEC4) {
+        bail("Invalid primitive TANGENT attribute format: {}/{}",
+             tangents->componentType, tangents->type);
+      }
+      tangents_data = get_accessor_data<glm::vec4>(*tangents);
     }
 
     OK(auto colors_data, [&] -> Result<std::vector<glm::vec4>> {
@@ -373,6 +487,7 @@ private:
 
     OK(auto indices_data, [&] -> Result<std::vector<uint32_t>> {
       if (!indices) {
+        warn("Generating primitive indices");
         std::vector<uint32_t> indices_data(positions_data.size());
         std::ranges::iota(indices_data, 0);
         return indices_data;
@@ -397,6 +512,42 @@ private:
            indices->componentType, indices->type, indices->normalized);
     }());
 
+    if (tangents_data.empty() and not uvs_data.empty()) {
+      warn("Generating primitive tangents...");
+      auto start = chrono::steady_clock::now();
+      {
+        std::vector<glm::vec3> unindexed_positions_data(indices_data.size());
+        unindex_attibute<glm::vec3>(positions_data, indices_data,
+                                    unindexed_positions_data);
+        std::swap(positions_data, unindexed_positions_data);
+      }
+      {
+        std::vector<glm::vec3> unindexed_normals_data(indices_data.size());
+        unindex_attibute<glm::vec3>(normals_data, indices_data,
+                                    unindexed_normals_data);
+        std::swap(normals_data, unindexed_normals_data);
+      }
+      if (not colors_data.empty()) {
+        std::vector<glm::vec4> unindexed_colors_data;
+        unindex_attibute<glm::vec4>(colors_data, indices_data,
+                                    unindexed_colors_data);
+        std::swap(colors_data, unindexed_colors_data);
+      }
+      {
+        std::vector<glm::vec2> unindexed_tex_coords_data(indices_data.size());
+        unindex_attibute<glm::vec2>(uvs_data, indices_data,
+                                    unindexed_tex_coords_data);
+        std::swap(uvs_data, unindexed_tex_coords_data);
+      }
+      tangents_data.resize(indices_data.size());
+      TRY_TO(generate_tangents(positions_data, normals_data, uvs_data,
+                               tangents_data));
+      std::ranges::iota(indices_data, 0);
+      auto end = chrono::steady_clock::now();
+      warn("Generated primitive tangents in {:.3f}s",
+           chrono::duration_cast<chrono::duration<float>>(end - start).count());
+    }
+
     return m_scene
         ->create_mesh({
             .num_vertices = uint32_t(positions_data.size()),
@@ -406,6 +557,9 @@ private:
                           ? nullptr
                           : (const RenVector4 *)colors_data.data(),
             .normals = (const RenVector3 *)normals_data.data(),
+            .tangents = tangents_data.empty()
+                            ? nullptr
+                            : (const RenVector4 *)tangents_data.data(),
             .uvs = uvs_data.empty() ? nullptr
                                     : (const RenVector2 *)uvs_data.data(),
             .indices = indices_data.data(),
@@ -545,9 +699,21 @@ private:
       }
     }
 
-    if (material.normalTexture.index >= 0) {
-      bail("Normal mapping not implemented");
+    {
+      const tinygltf::NormalTextureInfo &normal_texture =
+          material.normalTexture;
+      if (normal_texture.index >= 0) {
+        if (normal_texture.texCoord > 0) {
+          bail("Unsupported normal texture coordinate set {}",
+               normal_texture.texCoord);
+        }
+        OK(desc.normal_tex.image,
+           get_or_create_texture_image(normal_texture.index, false));
+        OK(desc.normal_tex.sampler, get_texture_sampler(normal_texture.index));
+        desc.normal_scale = normal_texture.scale;
+      }
     }
+
     if (material.occlusionTexture.index >= 0) {
       bail("Occlusion textures not implemented");
     }
@@ -666,7 +832,8 @@ private:
   };
 
   auto walk_scene(const tinygltf::Scene &scene) -> Result<void> {
-    auto transform = glm::identity<glm::mat4>();
+    auto transform = glm::mat4_cast(
+        glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     for (int node : scene.nodes) {
       TRY_TO(walk_node(m_model.nodes[node], transform));
     }

@@ -27,6 +27,7 @@
           ]
         },
         "cxxopts",
+        "mikktspace",
         "tinygltf"
       ]
     },

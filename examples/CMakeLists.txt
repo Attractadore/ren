@@ -1,14 +1,17 @@
+find_package(Boost REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(VulkanHeaders REQUIRED)
+find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
-find_package(cxxopts REQUIRED)
-find_package(Boost REQUIRED)
+find_package(mikktspace REQUIRED)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
 add_library(tinygltf tinygltf.cpp)
 target_include_directories(tinygltf PUBLIC ${TINYGLTF_INCLUDE_DIRS})
-target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE TINYGLTF_NO_STB_IMAGE_WRITE)
+target_compile_definitions(
+  tinygltf PUBLIC TINYGLTF_USE_CPP14 TINYGLTF_NO_STB_IMAGE_WRITE
+                  TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE)
 
 function(copy_dlls target)
   if(WIN32)
@@ -40,5 +43,6 @@ target_link_libraries(draw-triangle app-base glm::glm)
 copy_dlls(draw-triangle)
 
 add_executable(view-gltf view-gltf.cpp)
-target_link_libraries(view-gltf app-base cxxopts::cxxopts tinygltf Boost::boost)
+target_link_libraries(view-gltf app-base cxxopts::cxxopts tinygltf Boost::boost
+                      mikktspace::mikktspace)
 copy_dlls(view-gltf)
