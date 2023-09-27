@@ -715,15 +715,18 @@ private:
     }
 
     if (material.occlusionTexture.index >= 0) {
-      bail("Occlusion textures not implemented");
+      warn("Occlusion textures and indirect lighting not implemented");
     }
+
     if (material.emissiveTexture.index >= 0 or
         material.emissiveFactor != std::vector{0.0, 0.0, 0.0}) {
       bail("Emissive materials not implemented");
     }
+
     if (material.alphaMode != "OPAQUE") {
       bail("Translucent materials not implemented");
     }
+
     if (material.doubleSided) {
       bail("Double sided materials not implemented");
     }
