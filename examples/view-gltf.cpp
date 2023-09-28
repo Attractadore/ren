@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <meshoptimizer.h>
 #include <mikktspace.h>
 #include <tiny_gltf.h>
 
@@ -18,6 +19,10 @@ namespace fs = std::filesystem;
 
 #define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
 #define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
+
+auto duration_as_float(chrono::nanoseconds time) -> float {
+  return chrono::duration_cast<chrono::duration<float>>(time).count();
+}
 
 auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   tinygltf::TinyGLTF loader;
@@ -44,8 +49,7 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
 
   auto end = chrono::steady_clock::now();
 
-  log("Loaded scene in {:.3f}s",
-      chrono::duration_cast<chrono::duration<float>>(end - start).count());
+  log("Loaded scene in {:.3f}s", duration_as_float(end - start));
 
   if (!ret) {
     while (not err.empty() and err.back() == '\n') {
@@ -197,7 +201,7 @@ template <> struct std::hash<GltfImageDesc> {
 };
 
 template <typename T>
-auto unindex_attibute(std::span<const T> attribute,
+auto deindex_attibute(std::span<const T> attribute,
                       std::span<const uint32_t> indices, std::span<T> out) {
   assert(out.size() == indices.size());
   for (size_t i = 0; i < indices.size(); ++i) {
@@ -456,7 +460,7 @@ private:
            colors->componentType, colors->type, colors->normalized);
     }());
 
-    OK(auto uvs_data, [&] -> Result<std::vector<glm::vec2>> {
+    OK(auto tex_coords_data, [&] -> Result<std::vector<glm::vec2>> {
       if (!uvs) {
         return {};
       }
@@ -486,12 +490,6 @@ private:
     }());
 
     OK(auto indices_data, [&] -> Result<std::vector<uint32_t>> {
-      if (!indices) {
-        warn("Generating primitive indices");
-        std::vector<uint32_t> indices_data(positions_data.size());
-        std::ranges::iota(indices_data, 0);
-        return indices_data;
-      }
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
           warn("Converting primitive indices from R8_UINT to R32_UINT");
@@ -512,40 +510,210 @@ private:
            indices->componentType, indices->type, indices->normalized);
     }());
 
-    if (tangents_data.empty() and not uvs_data.empty()) {
+    if (tangents_data.empty() and not tex_coords_data.empty()) {
       warn("Generating primitive tangents...");
+      size_t num_vertices = positions_data.size();
+      size_t num_indices = indices_data.size();
+      if (not indices_data.empty()) {
+        warn("Deindexing mesh...");
+        auto start = chrono::steady_clock::now();
+        {
+          std::vector<glm::vec3> unindexed_positions_data(indices_data.size());
+          deindex_attibute<glm::vec3>(positions_data, indices_data,
+                                      unindexed_positions_data);
+          std::swap(positions_data, unindexed_positions_data);
+        }
+        {
+          std::vector<glm::vec3> unindexed_normals_data(indices_data.size());
+          deindex_attibute<glm::vec3>(normals_data, indices_data,
+                                      unindexed_normals_data);
+          std::swap(normals_data, unindexed_normals_data);
+        }
+        if (not colors_data.empty()) {
+          std::vector<glm::vec4> unindexed_colors_data;
+          deindex_attibute<glm::vec4>(colors_data, indices_data,
+                                      unindexed_colors_data);
+          std::swap(colors_data, unindexed_colors_data);
+        }
+        {
+          std::vector<glm::vec2> unindexed_tex_coords_data(indices_data.size());
+          deindex_attibute<glm::vec2>(tex_coords_data, indices_data,
+                                      unindexed_tex_coords_data);
+          std::swap(tex_coords_data, unindexed_tex_coords_data);
+        }
+        indices_data.clear();
+        auto end = chrono::steady_clock::now();
+        warn("Deindexed mesh from {} vertices and {} indices to {} vertices in "
+             "{:.3f}s",
+             num_vertices, num_indices, num_indices,
+             duration_as_float(end - start));
+      }
       auto start = chrono::steady_clock::now();
-      {
-        std::vector<glm::vec3> unindexed_positions_data(indices_data.size());
-        unindex_attibute<glm::vec3>(positions_data, indices_data,
-                                    unindexed_positions_data);
-        std::swap(positions_data, unindexed_positions_data);
-      }
-      {
-        std::vector<glm::vec3> unindexed_normals_data(indices_data.size());
-        unindex_attibute<glm::vec3>(normals_data, indices_data,
-                                    unindexed_normals_data);
-        std::swap(normals_data, unindexed_normals_data);
-      }
-      if (not colors_data.empty()) {
-        std::vector<glm::vec4> unindexed_colors_data;
-        unindex_attibute<glm::vec4>(colors_data, indices_data,
-                                    unindexed_colors_data);
-        std::swap(colors_data, unindexed_colors_data);
-      }
-      {
-        std::vector<glm::vec2> unindexed_tex_coords_data(indices_data.size());
-        unindex_attibute<glm::vec2>(uvs_data, indices_data,
-                                    unindexed_tex_coords_data);
-        std::swap(uvs_data, unindexed_tex_coords_data);
-      }
-      tangents_data.resize(indices_data.size());
-      TRY_TO(generate_tangents(positions_data, normals_data, uvs_data,
+      tangents_data.resize(positions_data.size());
+      TRY_TO(generate_tangents(positions_data, normals_data, tex_coords_data,
                                tangents_data));
-      std::ranges::iota(indices_data, 0);
       auto end = chrono::steady_clock::now();
       warn("Generated primitive tangents in {:.3f}s",
-           chrono::duration_cast<chrono::duration<float>>(end - start).count());
+           duration_as_float(end - start));
+    }
+
+    std::vector<meshopt_Stream> streams;
+    streams.reserve(5);
+    streams.push_back({
+        .data = positions_data.data(),
+        .size = sizeof(glm::vec3),
+        .stride = sizeof(glm::vec3),
+    });
+    streams.push_back({
+        .data = normals_data.data(),
+        .size = sizeof(glm::vec3),
+        .stride = sizeof(glm::vec3),
+    });
+    if (not tangents_data.empty()) {
+      streams.push_back({
+          .data = tangents_data.data(),
+          .size = sizeof(glm::vec4),
+          .stride = sizeof(glm::vec4),
+      });
+    }
+    if (not colors_data.empty()) {
+      streams.push_back({
+          .data = colors_data.data(),
+          .size = sizeof(glm::vec4),
+          .stride = sizeof(glm::vec4),
+      });
+    }
+    if (not tex_coords_data.empty()) {
+      streams.push_back({
+          .data = tex_coords_data.data(),
+          .size = sizeof(glm::vec2),
+          .stride = sizeof(glm::vec2),
+      });
+    }
+
+    std::vector<uint32_t> remap;
+    std::vector<uint32_t> remapped_indices_data;
+    std::vector<glm::vec3> remapped_positions_data;
+    std::vector<glm::vec3> remapped_normals_data;
+    std::vector<glm::vec4> remapped_tangents_data;
+    std::vector<glm::vec4> remapped_colors_data;
+    std::vector<glm::vec2> remapped_tex_coords_data;
+
+    auto remap_vertices = [&](size_t num_vertices) {
+      remapped_positions_data.resize(num_vertices);
+      meshopt_remapVertexBuffer(remapped_positions_data.data(),
+                                positions_data.data(), positions_data.size(),
+                                sizeof(glm::vec3), remap.data());
+      std::swap(positions_data, remapped_positions_data);
+
+      remapped_normals_data.resize(num_vertices);
+      meshopt_remapVertexBuffer(remapped_normals_data.data(),
+                                normals_data.data(), normals_data.size(),
+                                sizeof(glm::vec3), remap.data());
+      std::swap(normals_data, remapped_normals_data);
+
+      if (not tangents_data.empty()) {
+        remapped_tangents_data.resize(num_vertices);
+        meshopt_remapVertexBuffer(remapped_tangents_data.data(),
+                                  tangents_data.data(), tangents_data.size(),
+                                  sizeof(glm::vec4), remap.data());
+        std::swap(tangents_data, remapped_tangents_data);
+      }
+
+      if (not colors_data.empty()) {
+        remapped_colors_data.resize(num_vertices);
+        meshopt_remapVertexBuffer(remapped_colors_data.data(),
+                                  colors_data.data(), colors_data.size(),
+                                  sizeof(glm::vec4), remap.data());
+        std::swap(colors_data, remapped_colors_data);
+      }
+
+      if (not tex_coords_data.empty()) {
+        remapped_tex_coords_data.resize(num_vertices);
+        meshopt_remapVertexBuffer(
+            remapped_tex_coords_data.data(), tex_coords_data.data(),
+            tex_coords_data.size(), sizeof(glm::vec2), remap.data());
+        std::swap(tex_coords_data, remapped_tex_coords_data);
+      }
+    };
+
+    {
+      log("Remapping primitive vertices...");
+      auto start = chrono::steady_clock::now();
+
+      size_t old_num_vertices = positions_data.size();
+      size_t old_num_indices = indices_data.size();
+
+      size_t num_vertices;
+      if (indices_data.empty()) {
+        remap.resize(old_num_vertices);
+        num_vertices = meshopt_generateVertexRemapMulti(
+            remap.data(), nullptr, old_num_vertices, old_num_vertices,
+            streams.data(), streams.size());
+        indices_data.resize(old_num_vertices);
+        meshopt_remapIndexBuffer(indices_data.data(), nullptr,
+                                 indices_data.size(), remap.data());
+      } else {
+        remap.resize(indices_data.size());
+        num_vertices = meshopt_generateVertexRemapMulti(
+            remap.data(), indices_data.data(), indices_data.size(),
+            old_num_vertices, streams.data(), streams.size());
+        remapped_indices_data.resize(indices_data.size());
+        meshopt_remapIndexBuffer(remapped_indices_data.data(),
+                                 indices_data.data(), indices_data.size(),
+                                 remap.data());
+        std::swap(indices_data, remapped_indices_data);
+      }
+      remap_vertices(num_vertices);
+
+      auto end = chrono::steady_clock::now();
+      log("Remapped {} vertices and {} indices to {} vertices "
+          "and {} indices in {:.3f}s",
+          old_num_vertices, old_num_indices, num_vertices, indices_data.size(),
+          duration_as_float(end - start));
+    }
+
+    {
+      log("Optimizing vertex cache...");
+      auto start = chrono::steady_clock::now();
+      meshopt_optimizeVertexCache(indices_data.data(), indices_data.data(),
+                                  indices_data.size(), positions_data.size());
+      auto end = chrono::steady_clock::now();
+      log("Optimized vertex cache in {:.3f}s", duration_as_float(end - start));
+    }
+
+    {
+      log("Optimizing primitive for overdraw...");
+      auto start = chrono::steady_clock::now();
+      meshopt_optimizeOverdraw(indices_data.data(), indices_data.data(),
+                               indices_data.size(), &positions_data[0].x,
+                               positions_data.size(), sizeof(glm::vec3), 1.05f);
+      auto end = chrono::steady_clock::now();
+      log("Optimized primitive for overdraw in {:.3f}s",
+          duration_as_float(end - start));
+    }
+
+    {
+      log("Optimizing vertex fetch and remapping vertices...");
+      size_t old_num_vertices = positions_data.size();
+      size_t old_num_indices = indices_data.size();
+      auto start = chrono::steady_clock::now();
+      remap.resize(indices_data.size());
+      size_t num_vertices = meshopt_optimizeVertexFetchRemap(
+          remap.data(), indices_data.data(), indices_data.size(),
+          positions_data.size());
+      remapped_indices_data.resize(indices_data.size());
+      meshopt_remapIndexBuffer(remapped_indices_data.data(),
+                               indices_data.data(), indices_data.size(),
+                               remap.data());
+      std::swap(indices_data, remapped_indices_data);
+      remap_vertices(num_vertices);
+      auto end = chrono::steady_clock::now();
+      log("Optimized vertex fetch and remapped {} vertices and {} indices to "
+          "{} vertices "
+          "and {} indices in {:.3f}s",
+          old_num_vertices, old_num_indices, num_vertices, indices_data.size(),
+          duration_as_float(end - start));
     }
 
     return m_scene
@@ -560,8 +728,9 @@ private:
             .colors = colors_data.empty()
                           ? nullptr
                           : (const RenVector4 *)colors_data.data(),
-            .uvs = uvs_data.empty() ? nullptr
-                                    : (const RenVector2 *)uvs_data.data(),
+            .uvs = tex_coords_data.empty()
+                       ? nullptr
+                       : (const RenVector2 *)tex_coords_data.data(),
             .indices = indices_data.data(),
         })
         .transform_error(get_error_string);
@@ -913,7 +1082,7 @@ protected:
 
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
-    float dt = chrono::duration_cast<chrono::duration<float>>(dt_ns).count();
+    float dt = duration_as_float(dt_ns);
 
     InputState input = get_input_state();
 

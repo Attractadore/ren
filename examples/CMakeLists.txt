@@ -4,6 +4,7 @@ find_package(VulkanHeaders REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
+find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
@@ -43,6 +44,12 @@ target_link_libraries(draw-triangle app-base glm::glm)
 copy_dlls(draw-triangle)
 
 add_executable(view-gltf view-gltf.cpp)
-target_link_libraries(view-gltf app-base cxxopts::cxxopts tinygltf Boost::boost
-                      mikktspace::mikktspace)
+target_link_libraries(
+  view-gltf
+  app-base
+  Boost::boost
+  cxxopts::cxxopts
+  meshoptimizer::meshoptimizer
+  mikktspace::mikktspace
+  tinygltf)
 copy_dlls(view-gltf)

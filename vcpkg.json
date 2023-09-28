@@ -27,6 +27,7 @@
           ]
         },
         "cxxopts",
+        "meshoptimizer",
         "mikktspace",
         "tinygltf"
       ]
