@@ -308,6 +308,10 @@ public:
            m_model.extensionsRequired);
     }
 
+    if (not m_model.extensionsUsed.empty()) {
+      warn("Ignoring used glTF extensions: {}", m_model.extensionsUsed);
+    }
+
     if (not m_model.animations.empty()) {
       warn("Ignoring {} animations", m_model.animations.size());
     }
