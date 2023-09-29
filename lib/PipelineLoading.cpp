@@ -4,6 +4,7 @@
 #include "Support/Errors.hpp"
 #include "glsl/Textures.hpp"
 
+#include "EarlyZPassVertexShader.h"
 #include "OpaquePassFragmentShader.h"
 #include "OpaquePassVertexShader.h"
 #include "PostProcessingShader.h"
@@ -107,12 +108,31 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
+      .early_z_pass = load_early_z_pass_pipeline(arena),
       .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
       .post_processing =
           load_post_processing_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
           arena, persistent_set_layout),
   };
+}
+
+auto load_early_z_pass_pipeline(ResourceArena &arena)
+    -> Handle<GraphicsPipeline> {
+  auto vs =
+      Span(EarlyZPassVertexShader, EarlyZPassVertexShader_count).as_bytes();
+  auto layout = create_pipeline_layout(arena, Handle<DescriptorSetLayout>(),
+                                       {vs}, "Early Z pass");
+  return arena.create_graphics_pipeline({
+      .name = "Early Z pass graphics pipeline",
+      .layout = layout,
+      .vertex_shader = {vs},
+      .depth_test =
+          DepthTestInfo{
+              .format = DEPTH_FORMAT,
+              .compare_op = VK_COMPARE_OP_GREATER,
+          },
+  });
 }
 
 auto load_opaque_pass_pipeline(

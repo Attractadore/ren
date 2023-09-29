@@ -148,6 +148,8 @@ public:
 
   void set_scissor_rects(TempSpan<const VkRect2D> rects);
 
+  void set_depth_compare_op(VkCompareOp op);
+
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
   void bind_descriptor_sets(Handle<PipelineLayout> layout,

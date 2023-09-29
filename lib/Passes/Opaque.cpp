@@ -19,6 +19,7 @@ struct OpaquePassResources {
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
   RgTextureId exposure;
+  bool early_z : 1 = true;
 };
 
 void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
@@ -76,6 +77,12 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
   render_pass.bind_index_buffer(data.vertex_indices, VK_INDEX_TYPE_UINT32);
   render_pass.set_push_constants(glsl::OpaqueConstants{.ub = ub});
 
+  if (rcs.early_z) {
+    render_pass.set_depth_compare_op(VK_COMPARE_OP_EQUAL);
+  } else {
+    render_pass.set_depth_compare_op(VK_COMPARE_OP_GREATER);
+  }
+
   for (const auto &&[index, mesh_instance] : enumerate(data.mesh_instances)) {
     const Mesh &mesh = data.meshes[mesh_instance.mesh];
     render_pass.draw_indexed({
@@ -124,7 +131,7 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
 
   glm::uvec2 viewport_size = cfg.viewport_size;
 
-  auto texture = pass.create_color_attachment(
+  pass.create_color_attachment(
       {
           .name = "color-buffer",
           .format = COLOR_FORMAT,
@@ -137,18 +144,23 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
           .clear_color = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
       });
 
-  auto depth_texture = pass.create_depth_attachment(
-      {
-          .name = "depth-buffer",
-          .format = DEPTH_FORMAT,
-          .width = viewport_size.x,
-          .height = viewport_size.y,
-      },
-      {
-          .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-          .store = VK_ATTACHMENT_STORE_OP_STORE,
-          .clear_depth = 0.0f,
-      });
+  rcs.early_z = rgb.is_texture_valid("depth-buffer-after-early-z");
+  if (rcs.early_z) {
+    pass.read_depth_attachment("depth-buffer-after-early-z");
+  } else {
+    pass.create_depth_attachment(
+        {
+            .name = "depth-buffer",
+            .format = DEPTH_FORMAT,
+            .width = viewport_size.x,
+            .height = viewport_size.y,
+        },
+        {
+            .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .store = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .clear_depth = 0.0f,
+        });
+  }
 
   pass.set_update_callback(ren_rg_update_callback(OpaquePassData) {
     return viewport_size == data.viewport_size;

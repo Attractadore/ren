@@ -412,6 +412,7 @@ void Scene::draw() {
                        .pipelines = &m_pipelines,
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .pp_opts = &m_pp_opts,
+                       .early_z = false,
                    },
                    PassesData{
                        .vertex_positions = m_vertex_positions,

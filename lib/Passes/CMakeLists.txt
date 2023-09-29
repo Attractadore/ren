@@ -2,6 +2,7 @@ target_sources(
   ren
   PRIVATE AutomaticExposure.cpp
           CameraExposure.cpp
+          EarlyZ.cpp
           Exposure.cpp
           ManualExposure.cpp
           Opaque.cpp

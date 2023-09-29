@@ -194,6 +194,10 @@ auto RgBuilder::write_buffer(RgPassId pass, StringView dst_buffer,
   return dst_id;
 }
 
+auto RgBuilder::is_pass_valid(StringView pass) const -> bool {
+  return m_rg->is_pass_valid(pass);
+}
+
 auto RgBuilder::is_buffer_valid(StringView buffer) const -> bool {
   return m_rg->is_buffer_valid(buffer);
 }

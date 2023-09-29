@@ -81,6 +81,16 @@ auto RgPassBuilder::create_color_attachment(
   return texture;
 }
 
+auto RgPassBuilder::write_color_attachment(StringView dst_texture,
+                                           StringView src_texture,
+                                           const ColorAttachmentOperations &ops,
+                                           u32 index) -> RgTextureId {
+  RgTextureId texture =
+      write_texture(dst_texture, src_texture, RG_COLOR_ATTACHMENT);
+  add_color_attachment(index, texture, ops);
+  return texture;
+}
+
 auto RgPassBuilder::create_depth_attachment(
     RgTextureCreateInfo &&create_info, const DepthAttachmentOperations &ops)
     -> RgTextureId {
@@ -90,13 +100,13 @@ auto RgPassBuilder::create_depth_attachment(
   return texture;
 }
 
-auto RgPassBuilder::write_color_attachment(StringView dst_texture,
-                                           StringView src_texture,
-                                           const ColorAttachmentOperations &ops,
-                                           u32 index) -> RgTextureId {
-  RgTextureId texture =
-      write_texture(dst_texture, src_texture, RG_COLOR_ATTACHMENT);
-  add_color_attachment(index, texture, ops);
+auto RgPassBuilder::read_depth_attachment(StringView src_texture)
+    -> RgTextureId {
+  RgTextureId texture = read_texture(src_texture, RG_READ_DEPTH_ATTACHMENT);
+  add_depth_attachment(texture, {
+                                    .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                    .store = VK_ATTACHMENT_STORE_OP_NONE,
+                                });
   return texture;
 }
 

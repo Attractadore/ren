@@ -1,0 +1,8 @@
+#pragma once
+#include "EarlyZPass.h"
+
+GLSL_NAMESPACE_BEGIN
+
+GLSL_PUSH_CONSTANTS(GLSL_EARLY_Z_CONSTANTS, EarlyZConstants);
+
+GLSL_NAMESPACE_END

@@ -191,6 +191,12 @@ constexpr RgTextureUsage RG_READ_WRITE_DEPTH_ATTACHMENT = {
     .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
 };
 
+constexpr RgTextureUsage RG_READ_DEPTH_ATTACHMENT = {
+    .stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+    .access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+};
+
 constexpr RgTextureUsage RG_TRANSFER_SRC_TEXTURE = {
     .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
     .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
@@ -500,6 +506,8 @@ public:
 
   [[nodiscard]] auto create_pass(String name) -> RgPassBuilder;
 
+  auto is_pass_valid(StringView pass) const -> bool;
+
   void create_buffer(RgBufferCreateInfo &&create_info);
 
   auto is_buffer_valid(StringView buffer) const -> bool;
@@ -723,23 +731,23 @@ public:
                                    StringView src_texture,
                                    const RgTextureUsage &usage) -> RgTextureId;
 
-  [[nodiscard]] auto
-  create_color_attachment(RgTextureCreateInfo &&create_info,
-                          const ColorAttachmentOperations &ops, u32 index = 0)
+  auto create_color_attachment(RgTextureCreateInfo &&create_info,
+                               const ColorAttachmentOperations &ops,
+                               u32 index = 0) -> RgTextureId;
+
+  auto write_color_attachment(StringView dst_texture, StringView src_texture,
+                              const ColorAttachmentOperations &ops,
+                              u32 index = 0) -> RgTextureId;
+
+  auto create_depth_attachment(RgTextureCreateInfo &&create_info,
+                               const DepthAttachmentOperations &ops)
       -> RgTextureId;
 
-  [[nodiscard]] auto
-  create_depth_attachment(RgTextureCreateInfo &&create_info,
-                          const DepthAttachmentOperations &ops) -> RgTextureId;
+  auto read_depth_attachment(StringView texture) -> RgTextureId;
 
-  [[nodiscard]] auto
-  write_color_attachment(StringView dst_texture, StringView src_texture,
-                         const ColorAttachmentOperations &ops, u32 index = 0)
+  auto write_depth_attachment(StringView dst_texture, StringView src_texture,
+                              const DepthAttachmentOperations &ops)
       -> RgTextureId;
-
-  [[nodiscard]] auto
-  write_depth_attachment(StringView dst_texture, StringView src_texture,
-                         const DepthAttachmentOperations &ops) -> RgTextureId;
 
   template <typename T> void set_update_callback(CRgUpdateCallback<T> auto cb) {
     m_builder->set_update_callback<T>(m_pass, std::move(cb));

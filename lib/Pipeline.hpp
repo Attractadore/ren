@@ -4,10 +4,14 @@
 #include "Handle.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
+#include "Support/Variant.hpp"
 
 namespace ren {
 
 struct DescriptorSetLayout;
+
+struct DynamicState {};
+constexpr DynamicState DYNAMIC;
 
 struct PipelineLayoutCreateInfo {
   REN_DEBUG_NAME_FIELD("Pipeline layout");
@@ -42,7 +46,7 @@ struct MultisampleInfo {
 struct DepthTestInfo {
   VkFormat format = VK_FORMAT_UNDEFINED;
   bool write_depth = true;
-  VkCompareOp compare_op = VK_COMPARE_OP_GREATER;
+  Variant<VkCompareOp, DynamicState> compare_op = DYNAMIC;
 };
 
 struct ColorAttachmentInfo {

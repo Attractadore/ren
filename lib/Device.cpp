@@ -938,6 +938,11 @@ auto Renderer::create_graphics_pipeline(
       shaders;
   StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
 
+  StaticVector<VkDynamicState, 3> dynamic_states = {
+      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+  };
+
   VkShaderStageFlags stages = 0;
 
   auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
@@ -1004,7 +1009,12 @@ auto Renderer::create_graphics_pipeline(
     rendering_info.depthAttachmentFormat = depth_test.format;
     depth_stencil_info.depthTestEnable = true;
     depth_stencil_info.depthWriteEnable = depth_test.write_depth;
-    depth_stencil_info.depthCompareOp = depth_test.compare_op;
+    depth_test.compare_op.visit(OverloadSet{
+        [&](DynamicState) {
+          dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP);
+        },
+        [&](VkCompareOp op) { depth_stencil_info.depthCompareOp = op; },
+    });
   });
 
   auto color_attachments =
@@ -1021,11 +1031,6 @@ auto Renderer::create_graphics_pipeline(
       .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
       .attachmentCount = u32(color_attachments.size()),
       .pAttachments = color_attachments.data(),
-  };
-
-  std::array dynamic_states = {
-      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
   };
 
   VkPipelineDynamicStateCreateInfo dynamic_state_info = {

@@ -324,6 +324,10 @@ void RenderPass::set_scissor_rects(TempSpan<const VkRect2D> rects) {
   vkCmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
 }
 
+void RenderPass::set_depth_compare_op(VkCompareOp op) {
+  vkCmdSetDepthCompareOp(m_cmd_buffer, op);
+}
+
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
   const auto &pipeline = g_renderer->get_graphics_pipeline(handle);
   m_pipeline_layout = pipeline.layout;

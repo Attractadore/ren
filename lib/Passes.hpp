@@ -25,6 +25,7 @@ struct PassesConfig {
   const Pipelines *pipelines = nullptr;
   glm::uvec2 viewport_size;
   const PostProcessingOptions *pp_opts = nullptr;
+  bool early_z : 1 = true;
 };
 
 struct PassesData {

@@ -16,6 +16,7 @@ macro(add_embedded_shader source target)
   target_link_libraries(EmbeddedShaders INTERFACE ${target})
 endmacro()
 
+add_embedded_shader(EarlyZ.vert EarlyZPassVertexShader)
 add_embedded_shader(Opaque.vert OpaquePassVertexShader)
 add_embedded_shader(Opaque.frag OpaquePassFragmentShader)
 add_embedded_shader(PostProcessing.comp PostProcessingShader)

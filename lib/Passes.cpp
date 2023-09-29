@@ -1,5 +1,6 @@
 #include "Passes.hpp"
 #include "Camera.inl"
+#include "Passes/EarlyZ.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
@@ -21,6 +22,13 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
 
   auto exposure = setup_exposure_pass(rgb, cfg.pp_opts->exposure);
 
+  if (cfg.early_z) {
+    setup_early_z_pass(rgb, EarlyZPassConfig{
+                                .pipeline = cfg.pipelines->early_z_pass,
+                                .viewport_size = cfg.viewport_size,
+                            });
+  }
+
   setup_opaque_pass(rgb, OpaquePassConfig{
                              .pipeline = cfg.pipelines->opaque_pass,
                              .exposure = exposure,
@@ -35,7 +43,12 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   rgb.present("pp-color-buffer");
 }
 
-auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
+struct PassesExtraData {
+  bool early_z : 1 = true;
+};
+
+auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
+                         const PassesExtraData &extra_data) -> bool {
   assert(data.camera);
   assert(data.pp_opts);
 
@@ -63,6 +76,25 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
   auto proj = get_projection_matrix(camera, ar);
   auto view =
       glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
+
+  if (extra_data.early_z) {
+    TRY_SET(rg.set_pass_data("early-z",
+                             EarlyZPassData{
+                                 .vertex_positions = data.vertex_positions,
+                                 .vertex_indices = data.vertex_indices,
+                                 .meshes = data.meshes,
+                                 .mesh_instances = data.mesh_instances,
+                                 .viewport_size = size,
+                                 .proj = proj,
+                                 .view = view,
+                                 .eye = camera.position,
+                             }));
+  } else {
+    if (rg.is_pass_valid("early-z")) {
+      return false;
+    }
+  }
+
   TRY_SET(rg.set_pass_data(
       "opaque", OpaquePassData{
                     .vertex_positions = data.vertex_positions,
@@ -91,12 +123,15 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data) -> bool {
 
 void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
                       const PassesConfig &cfg, const PassesData &data) {
-  bool valid = set_all_passes_data(rg, data);
+  PassesExtraData extra_data{
+      .early_z = cfg.early_z,
+  };
+  bool valid = set_all_passes_data(rg, data, extra_data);
   if (!valid) {
     RgBuilder rgb(rg);
     setup_all_passes(rgb, cfg);
     rgb.build(cmd_alloc);
-    valid = set_all_passes_data(rg, data);
+    valid = set_all_passes_data(rg, data, extra_data);
     ren_assert_msg(valid, "Render graph pass data update failed after rebuild");
   }
 }
