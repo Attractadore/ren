@@ -1,5 +1,5 @@
 #include "ren/ren.h"
-#include "Device.hpp"
+#include "Renderer.hpp"
 #include "Scene.hpp"
 #include "Support/Errors.hpp"
 #include "Swapchain.hpp"

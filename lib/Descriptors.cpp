@@ -1,5 +1,5 @@
 #include "Descriptors.hpp"
-#include "Device.hpp"
+#include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Errors.hpp"
 

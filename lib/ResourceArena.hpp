@@ -1,5 +1,5 @@
 #pragma once
-#include "Device.hpp"
+#include "Renderer.hpp"
 #include "Support/HashSet.hpp"
 
 namespace ren {

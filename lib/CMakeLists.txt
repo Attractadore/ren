@@ -32,13 +32,13 @@ add_library(
   CommandAllocator.cpp
   CommandRecorder.cpp
   Descriptors.cpp
-  Device.cpp
   Formats.cpp
   FreeListAllocator.cpp
   Passes.cpp
   Pipeline.cpp
   PipelineLoading.cpp
   RenderGraph.cpp
+  Renderer.cpp
   ResourceUploader.cpp
   RgBuilder.cpp
   RgPassBuilder.cpp

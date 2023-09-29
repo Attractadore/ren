@@ -1,6 +1,6 @@
 #include "Swapchain.hpp"
-#include "Device.hpp"
 #include "Formats.hpp"
+#include "Renderer.hpp"
 #include "Support/Errors.hpp"
 
 #include <range/v3/algorithm.hpp>

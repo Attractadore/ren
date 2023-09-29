@@ -1,5 +1,5 @@
 #include "TextureIdAllocator.hpp"
-#include "Device.hpp"
+#include "Renderer.hpp"
 #include "Support/Errors.hpp"
 #include "glsl/Textures.hpp"
 

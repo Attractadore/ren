@@ -1,6 +1,6 @@
 #include "Texture.hpp"
-#include "Device.hpp"
 #include "Formats.hpp"
+#include "Renderer.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"
 

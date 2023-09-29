@@ -1,5 +1,5 @@
 #include "CommandAllocator.hpp"
-#include "Device.hpp"
+#include "Renderer.hpp"
 #include "Support/Algorithm.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"
