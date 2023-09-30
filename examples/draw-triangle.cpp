@@ -71,7 +71,7 @@ protected:
         .projection = ren::OrthographicProjection{.width = 2.0f},
         .width = width,
         .height = height,
-        .exposure_compensation = 3.0f,
+        .exposure_compensation = 2.0f,
         .exposure_mode = ren::ExposureMode::Automatic,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},

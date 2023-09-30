@@ -1050,8 +1050,6 @@ protected:
         .aperture = 16.0f,
         .shutter_time = 1.0f / iso,
         .iso = iso,
-        // The Reinhard tone mapper darkens colors too much
-        .exposure_compensation = 1.0f,
         .exposure_mode = ren::ExposureMode::Camera,
         .position = position,
         .forward = forward,
