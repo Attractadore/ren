@@ -70,11 +70,27 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 add_library(ren-vk INTERFACE)
-add_library(ren::ren-vk ALIAS ren-vk)
+add_library(ren::vk ALIAS ren-vk)
 target_sources(ren-vk INTERFACE FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                                 ${REN_INCLUDE}/ren/ren-vk.hpp)
-target_link_libraries(ren-vk INTERFACE ren Vulkan::Headers)
+target_link_libraries(ren-vk INTERFACE ren::ren Vulkan::Headers)
 target_compile_definitions(ren-vk INTERFACE VK_NO_PROTOTYPES)
+
+list(APPEND ren_targets ren)
+list(APPEND ren_targets ren-vk)
+
+if(REN_BUILD_SDL2_PLUGIN)
+  find_package(SDL2 REQUIRED)
+  list(APPEND ren_targets ren-sdl2)
+  add_library(ren-sdl2 ren-sdl2.cpp)
+  add_library(ren::sdl2 ALIAS ren-sdl2)
+  target_sources(ren-sdl2 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
+                                 FILES ${REN_INCLUDE}/ren/ren-sdl2.hpp)
+  target_link_libraries(
+    ren-sdl2
+    PUBLIC ren::ren SDL2::SDL2
+    PRIVATE ren::vk)
+endif()
 
 foreach(SEVERITY ${REN_LOG_SEVERITY})
   message(STATUS "Enable ${SEVERITY} logging")
@@ -145,11 +161,11 @@ add_subdirectory(Passes)
 if(REN_INSTALL)
   include(GNUInstallDirs)
   install(
-    TARGETS ren ren-vk
-    EXPORT ${REN_TARGETS}
+    TARGETS ${ren_targets}
+    EXPORT ${REN_TARGETS_EXPORT_NAME}
     FILE_SET HEADERS)
   install(
-    EXPORT ${REN_TARGETS}
+    EXPORT ${REN_TARGETS_EXPORT_NAME}
     NAMESPACE ren::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 endif()

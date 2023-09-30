@@ -29,10 +29,7 @@ function(copy_dlls target)
 endfunction()
 
 add_library(app-base AppBase.cpp)
-target_link_libraries(
-  app-base
-  PUBLIC ren::ren SDL2::SDL2
-  PRIVATE fmt::fmt ren::ren-vk)
+target_link_libraries(app-base PUBLIC ren::sdl2 fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 
 add_executable(create-device create-device.cpp)
@@ -40,7 +37,7 @@ target_link_libraries(create-device app-base)
 copy_dlls(create-device)
 
 add_executable(draw-triangle draw-triangle.cpp)
-target_link_libraries(draw-triangle app-base glm::glm)
+target_link_libraries(draw-triangle app-base)
 copy_dlls(draw-triangle)
 
 add_executable(view-gltf view-gltf.cpp)

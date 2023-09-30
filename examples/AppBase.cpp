@@ -1,32 +1,9 @@
 #include "AppBase.hpp"
-#include "ren/ren-vk.hpp"
 
-#include <fmt/format.h>
-
-#include <cassert>
+#include <SDL2/SDL_vulkan.h>
 #include <utility>
 
 namespace chrono = std::chrono;
-
-namespace {
-
-auto create_swapchain(SDL_Window *window)
-    -> Result<std::unique_ptr<ren::Swapchain>> {
-  return ren::vk::Swapchain::create(
-             [](VkInstance instance, void *window,
-                VkSurfaceKHR *p_surface) -> VkResult {
-               if (!SDL_Vulkan_CreateSurface(
-                       reinterpret_cast<SDL_Window *>(window), instance,
-                       p_surface)) {
-                 return VK_ERROR_UNKNOWN;
-               }
-               return VK_SUCCESS;
-             },
-             window)
-      .transform_error(get_error_string);
-}
-
-} // namespace
 
 auto get_error_string_impl(std::string err) -> std::string { return err; }
 
@@ -38,6 +15,8 @@ auto get_error_string_impl(ren::Error err) -> std::string {
     return "ren: System error";
   case ren::Error::Runtime:
     return "ren: Runtime error";
+  case ren::Error::SDL2:
+    return fmt::format("ren: SDL2 error: {}", SDL_GetError());
   case ren::Error::Unknown:
     return "ren: Unknown error";
   }
@@ -49,22 +28,23 @@ auto throw_error(std::string err) -> std::string {
 }
 
 AppBase::AppBase(const char *app_name) {
-  [&]() -> Result<void> {
-    m_window.reset(SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
-                                    SDL_WINDOWPOS_UNDEFINED, m_window_width,
-                                    m_window_height,
-                                    SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN));
+  [&] -> Result<void> {
+    m_window.reset(SDL_CreateWindow(
+        app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+        m_window_width, m_window_height,
+        SDL_WINDOW_RESIZABLE | ren::sdl2::get_window_flags()));
     if (!m_window) {
       bail("{}", SDL_GetError());
     }
 
-    OK(m_swapchain, create_swapchain(m_window.get()));
+    OK(m_swapchain, ren::sdl2::create_swapchain(m_window.get())
+                        .transform_error(get_error_string));
 
     OK(m_scene, ren::Scene::create(*m_swapchain));
 
     return {};
   }()
-               .transform_error(throw_error);
+             .transform_error(throw_error);
 }
 
 auto AppBase::loop() -> Result<void> {
@@ -106,7 +86,7 @@ auto AppBase::get_scene() -> ren::Scene & { return *m_scene; }
 
 auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
 
-auto AppBase::iterate(unsigned width, unsigned height, std::chrono::nanoseconds)
+auto AppBase::iterate(unsigned width, unsigned height, chrono::nanoseconds)
     -> Result<void> {
   auto &scene = get_scene();
   scene.set_camera({.width = width, .height = height});

@@ -34,6 +34,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "REN_BUILD_SDL2_PLUGIN": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
         "REN_PCH": "OFF",

@@ -11,6 +11,7 @@ enum class Error {
   Vulkan,
   System,
   Runtime,
+  SDL2,
   Unknown,
 };
 

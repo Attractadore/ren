@@ -1,12 +1,9 @@
 #pragma once
-#include "ren/ren.hpp"
+#include "ren/ren-sdl2.hpp"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <fmt/format.h>
-
 #include <chrono>
-#include <vector>
+#include <fmt/format.h>
 
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
@@ -76,24 +73,7 @@ protected:
         bail("{}", SDL_GetError());
       }
 
-      if (SDL_Vulkan_LoadLibrary(nullptr)) {
-        bail("SDL2: failed to load Vulkan: {}", SDL_GetError());
-      }
-
-      uint32_t num_extensions = 0;
-      if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
-                                            nullptr)) {
-        bail("SDL2: failed to query Vulkan extensions: {}", SDL_GetError());
-      }
-      std::vector<const char *> extensions(num_extensions);
-      if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_extensions,
-                                            extensions.data())) {
-        bail("SDL2: failed to query Vulkan extensions: {}", SDL_GetError());
-      }
-      TRY_TO(ren::init({
-                           .instance_extensions = extensions,
-                       })
-                 .transform_error(get_error_string));
+      TRY_TO(ren::sdl2::init().transform_error(get_error_string));
 
       return [&] -> Result<App> {
         try {

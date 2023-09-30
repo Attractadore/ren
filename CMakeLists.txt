@@ -24,7 +24,7 @@ set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-set(REN_TARGETS ${PROJECT_NAME}-targets)
+set(REN_TARGETS_EXPORT_NAME ${PROJECT_NAME}-targets)
 
 add_subdirectory(lib)
 
@@ -45,7 +45,7 @@ if(REN_INSTALL)
   set(CONFIG_VERSION
       ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake)
   file(WRITE ${CONFIG_CMAKE}
-       "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS}.cmake)")
+       "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS_EXPORT_NAME}.cmake)")
   write_basic_package_version_file(${CONFIG_VERSION}
                                    COMPATIBILITY SameMinorVersion)
   install(FILES ${CONFIG_CMAKE} ${CONFIG_VERSION}
