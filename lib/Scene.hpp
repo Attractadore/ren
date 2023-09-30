@@ -11,17 +11,15 @@
 #include "TextureIdAllocator.hpp"
 #include "glsl/Lighting.hpp"
 #include "glsl/Material.hpp"
-#include "ren/ren.h"
+#include "ren/ren.hpp"
 
 namespace ren {
 
-template <> struct Hash<RenSampler> {
-  auto operator()(const RenSampler &sampler) const noexcept -> usize;
+template <> struct Hash<SamplerDesc> {
+  auto operator()(const SamplerDesc &sampler) const noexcept -> usize;
 };
 
-class Swapchain;
-
-class Scene {
+class SceneImpl : public Scene {
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;
 
@@ -41,7 +39,7 @@ class Scene {
   u32 m_num_vertex_indices = 0;
   Vector<Mesh> m_meshes = {{}};
 
-  HashMap<RenSampler, Handle<Sampler>> m_samplers;
+  HashMap<SamplerDesc, Handle<Sampler>> m_samplers;
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
@@ -70,47 +68,59 @@ private:
   Pipelines m_pipelines;
 
 public:
-  Scene(Swapchain &swapchain);
+  SceneImpl(SwapchainImpl &swapchain);
 
-  RenMesh create_mesh(const RenMeshDesc &desc);
+  auto create_mesh(const MeshDesc &desc) -> MeshId;
 
 private:
-  [[nodiscard]] auto get_or_create_sampler(const RenSampler &sampler)
+  [[nodiscard]] auto get_or_create_sampler(const SamplerDesc &sampler)
       -> Handle<Sampler>;
 
-  [[nodiscard]] auto get_or_create_texture(const RenTexture &texture)
+  [[nodiscard]] auto get_or_create_texture(ImageId image,
+                                           const SamplerDesc &sampler)
       -> SampledTextureId;
 
 public:
-  RenImage create_image(const RenImageDesc &desc);
+  auto create_image(const ImageDesc &desc) -> ImageId;
 
-  void create_materials(std::span<const RenMaterialDesc> descs,
-                        RenMaterial *out);
+  void create_materials(Span<const MaterialDesc> descs, MaterialId *out);
 
-  void set_camera(const RenCameraDesc &desc) noexcept;
+  void set_camera(const CameraDesc &desc) noexcept;
 
-  void set_tone_mapping(RenToneMappingOperator oper) noexcept;
+  void set_tone_mapping(const ToneMappingDesc &desc) noexcept;
 
-  void create_mesh_insts(std::span<const RenMeshInstDesc> desc,
-                         RenMeshInst *out);
-  void destroy_mesh_insts(std::span<const RenMeshInst> mesh_insts) noexcept;
+  void create_mesh_instances(Span<const MeshInstanceDesc> descs,
+                             Span<const glm::mat4x3> transforms,
+                             MeshInstanceId *out);
 
-  void set_mesh_inst_matrices(std::span<const RenMeshInst> mesh_insts,
-                              std::span<const RenMatrix4x4> matrices) noexcept;
+  void
+  destroy_mesh_instances(Span<const MeshInstanceId> mesh_instances) noexcept;
 
-  void create_dir_lights(std::span<const RenDirLightDesc> descs,
-                         RenDirLight *out);
-  void destroy_dir_lights(std::span<const RenDirLight> lights) noexcept;
+  void
+  set_mesh_instance_transforms(Span<const MeshInstanceId> mesh_instances,
+                               Span<const glm::mat4x3> transforms) noexcept;
 
-  void config_dir_lights(std::span<const RenDirLight> lights,
-                         std::span<const RenDirLightDesc> descs);
+  auto create_directional_light(const DirectionalLightDesc &desc)
+      -> DirectionalLightId;
+
+  void destroy_directional_light(DirectionalLightId light) noexcept;
+
+  void update_directional_light(DirectionalLightId light,
+                                const DirectionalLightDesc &desc) noexcept;
 
   void draw();
 
   void next_frame();
 };
-} // namespace ren
 
-struct RenScene : ren::Scene {
-  using ren::Scene::Scene;
+struct GlobalScene : public SceneImpl {
+  GlobalScene(SwapchainImpl &swapchain);
+  GlobalScene(const GlobalScene &) = delete;
+  GlobalScene(GlobalScene &&) = delete;
+  ~GlobalScene();
+
+  GlobalScene &operator=(const GlobalScene &) = delete;
+  GlobalScene &operator=(GlobalScene &&) = delete;
 };
+
+} // namespace ren

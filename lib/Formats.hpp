@@ -1,7 +1,7 @@
 #pragma once
 #include "Support/Enum.hpp"
 #include "Support/StdDef.hpp"
-#include "ren/ren.h"
+#include "ren/ren.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -27,7 +27,7 @@ struct FormatProperties {
   };
 };
 
-auto getVkFormat(RenFormat format) -> VkFormat;
+auto getVkFormat(Format format) -> VkFormat;
 
 auto getFormatProperties(VkFormat format) -> FormatProperties;
 

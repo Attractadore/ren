@@ -75,7 +75,8 @@ auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
   };
 }
 
-RenderGraph::RenderGraph(Swapchain &swapchain, TextureIdAllocator &tex_alloc)
+RenderGraph::RenderGraph(SwapchainImpl &swapchain,
+                         TextureIdAllocator &tex_alloc)
     : m_tex_alloc(tex_alloc) {
   m_swapchain = &swapchain;
 }

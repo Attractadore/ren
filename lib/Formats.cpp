@@ -3,43 +3,44 @@
 
 namespace ren {
 
-auto getVkFormat(RenFormat format) -> VkFormat {
+auto getVkFormat(Format format) -> VkFormat {
+  using enum Format;
   switch (format) {
-  case REN_FORMAT_R8_UNORM:
+  default:
+    unreachable("Unknown format {}", int(format));
+  case R8_UNORM:
     return VK_FORMAT_R8_UNORM;
-  case REN_FORMAT_R8_SRGB:
+  case R8_SRGB:
     return VK_FORMAT_R8_SRGB;
-  case REN_FORMAT_RG8_UNORM:
+  case RG8_UNORM:
     return VK_FORMAT_R8G8_UNORM;
-  case REN_FORMAT_RG8_SRGB:
+  case RG8_SRGB:
     return VK_FORMAT_R8G8_SRGB;
-  case REN_FORMAT_RGB8_UNORM:
+  case RGB8_UNORM:
     return VK_FORMAT_R8G8B8_UNORM;
-  case REN_FORMAT_RGB8_SRGB:
+  case RGB8_SRGB:
     return VK_FORMAT_R8G8B8_SRGB;
-  case REN_FORMAT_RGBA8_UNORM:
+  case RGBA8_UNORM:
     return VK_FORMAT_R8G8B8A8_UNORM;
-  case REN_FORMAT_RGBA8_SRGB:
+  case RGBA8_SRGB:
     return VK_FORMAT_R8G8B8A8_SRGB;
-  case REN_FORMAT_BGRA8_UNORM:
+  case BGRA8_UNORM:
     return VK_FORMAT_B8G8R8A8_UNORM;
-  case REN_FORMAT_BGRA8_SRGB:
+  case BGRA8_SRGB:
     return VK_FORMAT_B8G8R8A8_SRGB;
-  case REN_FORMAT_R16_UNORM:
+  case R16_UNORM:
     return VK_FORMAT_R16_UNORM;
-  case REN_FORMAT_RG16_UNORM:
+  case RG16_UNORM:
     return VK_FORMAT_R16G16_UNORM;
-  case REN_FORMAT_RGB16_UNORM:
+  case RGB16_UNORM:
     return VK_FORMAT_R16G16B16_UNORM;
-  case REN_FORMAT_RGBA16_UNORM:
+  case RGBA16_UNORM:
     return VK_FORMAT_R16G16B16A16_UNORM;
-  case REN_FORMAT_RGB32_SFLOAT:
+  case RGB32_SFLOAT:
     return VK_FORMAT_R32G32B32_SFLOAT;
-  case REN_FORMAT_RGBA32_SFLOAT:
+  case RGBA32_SFLOAT:
     return VK_FORMAT_R32G32B32_SFLOAT;
-    break;
   }
-  unreachable("Unknown format {}", int(format));
 }
 
 FormatProperties getFormatProperties(VkFormat format) {

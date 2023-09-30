@@ -8,7 +8,6 @@
 #include "TextureIdAllocator.hpp"
 
 #include <functional>
-#include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
 
 #ifndef REN_RG_DEBUG
@@ -25,7 +24,7 @@ template <typename T> struct CallbackTag {};
 
 class CommandAllocator;
 class CommandRecorder;
-class Swapchain;
+class SwapchainImpl;
 class RenderPass;
 class ComputePass;
 using TransferPass = CommandRecorder;
@@ -384,7 +383,7 @@ struct RgTransferPass {
 
 class RenderGraph {
 public:
-  RenderGraph(Swapchain &swapchain, TextureIdAllocator &tex_alloc);
+  RenderGraph(SwapchainImpl &swapchain, TextureIdAllocator &tex_alloc);
 
   template <typename T> auto set_pass_data(StringView pass, T data) -> bool {
     auto it = m_pass_ids.find(pass);
@@ -478,7 +477,7 @@ private:
 
   Vector<Handle<Semaphore>> m_semaphores;
 
-  Swapchain *m_swapchain = nullptr;
+  SwapchainImpl *m_swapchain = nullptr;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
   RgSemaphoreId m_acquire_semaphore;

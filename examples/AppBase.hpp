@@ -52,8 +52,8 @@ class AppBase {
   };
 
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  ren::UniqueSwapchain m_swapchain;
-  ren::UniqueScene m_scene;
+  std::unique_ptr<ren::Swapchain> m_swapchain;
+  std::unique_ptr<ren::Scene> m_scene;
 
   unsigned m_window_width = 1280, m_window_height = 720;
 
@@ -90,7 +90,10 @@ protected:
                                             extensions.data())) {
         bail("SDL2: failed to query Vulkan extensions: {}", SDL_GetError());
       }
-      TRY_TO(ren::init(extensions).transform_error(get_error_string));
+      TRY_TO(ren::init({
+                           .instance_extensions = extensions,
+                       })
+                 .transform_error(get_error_string));
 
       return [&] -> Result<App> {
         try {

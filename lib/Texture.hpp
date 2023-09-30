@@ -3,7 +3,7 @@
 #include "Handle.hpp"
 #include "Support/Optional.hpp"
 #include "Support/StdDef.hpp"
-#include "ren/ren.h"
+#include "ren/ren.hpp"
 
 #include <glm/glm.hpp>
 #include <vk_mem_alloc.h>
@@ -89,12 +89,8 @@ auto get_mip_level_count(unsigned width, unsigned height = 1,
 
 auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level) -> glm::uvec3;
 
-auto getVkComponentSwizzle(RenTextureChannel channel) -> VkComponentSwizzle;
-auto getTextureSwizzle(const RenTextureChannelSwizzle &swizzle)
-    -> TextureSwizzle;
-
-auto getVkFilter(RenFilter filter) -> VkFilter;
-auto getVkSamplerMipmapMode(RenFilter filter) -> VkSamplerMipmapMode;
-auto getVkSamplerAddressMode(RenWrappingMode wrap) -> VkSamplerAddressMode;
+auto getVkFilter(Filter filter) -> VkFilter;
+auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
+auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
 
 } // namespace ren

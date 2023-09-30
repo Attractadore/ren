@@ -30,36 +30,29 @@ public:
 
       std::array<unsigned, 3> indices = {0, 1, 2};
 
-      ren::MeshDesc mesh_desc = {};
-      mesh_desc.set_positions(
-          std::span(reinterpret_cast<const ren::Vector3 *>(positions.data()),
-                    positions.size()));
-      mesh_desc.set_normals(
-          std::span(reinterpret_cast<const ren::Vector3 *>(normals.data()),
-                    normals.size()));
-      mesh_desc.set_colors(
-          std::span(reinterpret_cast<const ren::Vector4 *>(colors.data()),
-                    colors.size()));
-      mesh_desc.set_indices(indices);
+      OK(ren::MeshId mesh, scene.create_mesh({
+                               .positions = positions,
+                               .normals = normals,
+                               .colors = colors,
+                               .indices = indices,
+                           }));
 
-      OK(auto mesh, scene.create_mesh(mesh_desc));
+      OK(ren::MaterialId material, scene.create_material({
+                                       .metallic_factor = 1.0f,
+                                       .roughness_factor = 0.5f,
+                                   }));
 
-      OK(auto material, scene.create_material({
-                            .metallic_factor = 1.0f,
-                            .roughness_factor = 0.5f,
-                        }));
-
-      OK(auto model, scene.create_mesh_inst({
-                         .mesh = mesh,
-                         .material = material,
-                     }));
+      OK(ren::MeshInstanceId model, scene.create_mesh_instance({
+                                        .mesh = mesh,
+                                        .material = material,
+                                    }));
 
       // Ambient day light
-      OK(auto light, scene.create_dir_light({
-                         .color = {1.0f, 1.0f, 1.0f},
-                         .illuminance = 25'000.0f,
-                         .origin = {0.0f, 0.0f, 1.0f},
-                     }));
+      OK(ren::DirectionalLightId light, scene.create_directional_light({
+                                            .color = {1.0f, 1.0f, 1.0f},
+                                            .illuminance = 25'000.0f,
+                                            .origin = {0.0f, 0.0f, 1.0f},
+                                        }));
 
       return {};
     }()
@@ -73,18 +66,18 @@ public:
 protected:
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds)
       -> Result<void> override {
-    auto &scene = get_scene();
+    ren::Scene &scene = get_scene();
     ren::CameraDesc desc = {
+        .projection = ren::OrthographicProjection{.width = 2.0f},
         .width = width,
         .height = height,
         .exposure_compensation = 3.0f,
-        .exposure_mode = REN_EXPOSURE_MODE_AUTOMATIC,
+        .exposure_mode = ren::ExposureMode::Automatic,
         .position = {0.0f, 0.0f, 1.0f},
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},
     };
-    desc.set_projection(ren::OrthographicProjection{.width = 2.0f});
-    TRY_TO(scene.set_camera(desc));
+    scene.set_camera(desc);
     return {};
   }
 };

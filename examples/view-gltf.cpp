@@ -67,32 +67,33 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
 
 auto get_image_format(unsigned components, int pixel_type, bool srgb)
     -> Result<ren::Format> {
+  using enum ren::Format;
   if (pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
     if (components == 1) {
-      return srgb ? REN_FORMAT_R8_SRGB : REN_FORMAT_R8_UNORM;
+      return srgb ? R8_SRGB : R8_UNORM;
     }
     if (components == 2) {
-      return srgb ? REN_FORMAT_RG8_SRGB : REN_FORMAT_RG8_UNORM;
+      return srgb ? RG8_SRGB : RG8_UNORM;
     }
     if (components == 3) {
-      return srgb ? REN_FORMAT_RGB8_SRGB : REN_FORMAT_RGB8_UNORM;
+      return srgb ? RGB8_SRGB : RGB8_UNORM;
     }
     if (components == 4) {
-      return srgb ? REN_FORMAT_RGBA8_SRGB : REN_FORMAT_RGBA8_UNORM;
+      return srgb ? RGBA8_SRGB : RGBA8_UNORM;
     }
   }
   if (pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT and not srgb) {
     if (components == 1) {
-      return REN_FORMAT_R16_UNORM;
+      return R16_UNORM;
     }
     if (components == 2) {
-      return REN_FORMAT_RG16_UNORM;
+      return RG16_UNORM;
     }
     if (components == 3) {
-      return REN_FORMAT_RGB16_UNORM;
+      return RGB16_UNORM;
     }
     if (components == 4) {
-      return REN_FORMAT_RGBA16_UNORM;
+      return RGBA16_UNORM;
     }
   }
   bail("Unknown format: {}/{}, sRGB: {}", components, pixel_type, srgb);
@@ -103,25 +104,25 @@ auto get_sampler_wrap_mode(int mode) -> Result<ren::WrappingMode> {
   default:
     bail("Unknown sampler wrapping mode {}", mode);
   case TINYGLTF_TEXTURE_WRAP_REPEAT:
-    return REN_WRAPPING_MODE_REPEAT;
+    return ren::WrappingMode::Repeat;
   case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
-    return REN_WRAPPING_MODE_CLAMP_TO_EDGE;
+    return ren::WrappingMode::ClampToEdge;
   case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
-    return REN_WRAPPING_MODE_MIRRORED_REPEAT;
+    return ren::WrappingMode::MirroredRepeat;
   }
 }
 
-auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::Sampler> {
+auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::SamplerDesc> {
   ren::Filter mag_filter, min_filter, mip_filter;
   switch (sampler.magFilter) {
   default:
     bail("Unknown sampler magnification filter {}", sampler.magFilter);
   case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR:
-    mag_filter = REN_FILTER_LINEAR;
+    mag_filter = ren::Filter::Linear;
     break;
   case TINYGLTF_TEXTURE_FILTER_NEAREST:
-    mag_filter = REN_FILTER_NEAREST;
+    mag_filter = ren::Filter::Nearest;
     break;
   }
   switch (sampler.minFilter) {
@@ -133,25 +134,25 @@ auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::Sampler> {
     bail("Nearest minification filter not implemented");
   case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
-    min_filter = REN_FILTER_LINEAR;
-    mip_filter = REN_FILTER_LINEAR;
+    min_filter = ren::Filter::Linear;
+    mip_filter = ren::Filter::Linear;
     break;
   case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
-    min_filter = REN_FILTER_LINEAR;
-    mip_filter = REN_FILTER_NEAREST;
+    min_filter = ren::Filter::Linear;
+    mip_filter = ren::Filter::Nearest;
     break;
   case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
-    min_filter = REN_FILTER_NEAREST;
-    mip_filter = REN_FILTER_LINEAR;
+    min_filter = ren::Filter::Nearest;
+    mip_filter = ren::Filter::Linear;
     break;
   case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
-    min_filter = REN_FILTER_NEAREST;
-    mip_filter = REN_FILTER_NEAREST;
+    min_filter = ren::Filter::Nearest;
+    mip_filter = ren::Filter::Nearest;
     break;
   }
   OK(ren::WrappingMode wrap_u, get_sampler_wrap_mode(sampler.wrapS));
   OK(ren::WrappingMode wrap_v, get_sampler_wrap_mode(sampler.wrapT));
-  return ren::Sampler{
+  return ren::SamplerDesc{
       .mag_filter = mag_filter,
       .min_filter = min_filter,
       .mipmap_filter = mip_filter,
@@ -329,12 +330,6 @@ public:
     }
 
     TRY_TO(walk_scene(m_model.scenes[scene]));
-    if (not m_mesh_insts.empty()) {
-      m_scene->set_mesh_inst_matrices(
-          m_mesh_insts, std::span(reinterpret_cast<const RenMatrix4x4 *>(
-                                      m_mesh_inst_transforms.data()),
-                                  m_mesh_inst_transforms.size()));
-    }
 
     return {};
   }
@@ -368,7 +363,7 @@ private:
     return &m_model.accessors[index];
   }
 
-  auto create_mesh(const GltfMeshDesc &desc) -> Result<ren::MeshID> {
+  auto create_mesh(const GltfMeshDesc &desc) -> Result<ren::MeshId> {
     const tinygltf::Accessor *positions = get_accessor(desc.positions);
     if (!positions) {
       bail("Primitive doesn't have POSITION attribute");
@@ -722,26 +717,18 @@ private:
 
     return m_scene
         ->create_mesh({
-            .num_vertices = uint32_t(positions_data.size()),
-            .num_indices = uint32_t(indices_data.size()),
-            .positions = (const RenVector3 *)positions_data.data(),
-            .normals = (const RenVector3 *)normals_data.data(),
-            .tangents = tangents_data.empty()
-                            ? nullptr
-                            : (const RenVector4 *)tangents_data.data(),
-            .colors = colors_data.empty()
-                          ? nullptr
-                          : (const RenVector4 *)colors_data.data(),
-            .uvs = tex_coords_data.empty()
-                       ? nullptr
-                       : (const RenVector2 *)tex_coords_data.data(),
-            .indices = indices_data.data(),
+            .positions = positions_data,
+            .normals = normals_data,
+            .tangents = tangents_data,
+            .colors = colors_data,
+            .tex_coords = tex_coords_data,
+            .indices = indices_data,
         })
         .transform_error(get_error_string);
   }
 
   auto get_or_create_mesh(const tinygltf::Primitive &primitive)
-      -> Result<ren::MeshID> {
+      -> Result<ren::MeshId> {
     auto get_attribute_accessor_index =
         [&](const std::string &attribute) -> int {
       auto it = primitive.attributes.find(attribute);
@@ -758,7 +745,7 @@ private:
         .uvs = get_attribute_accessor_index("TEXCOORD_0"),
         .indices = primitive.indices,
     };
-    ren::MeshID &mesh = m_mesh_cache[desc];
+    ren::MeshId &mesh = m_mesh_cache[desc];
     if (!mesh) {
       std::string buffer;
       auto warn_unused_attribute = [&](std::string_view attribute, int start) {
@@ -786,7 +773,7 @@ private:
     return mesh;
   }
 
-  auto create_image(const GltfImageDesc &desc) -> Result<ren::ImageID> {
+  auto create_image(const GltfImageDesc &desc) -> Result<ren::ImageId> {
     const tinygltf::Image &image = m_model.images[desc.index];
     assert(image.image.size() ==
            image.width * image.height * image.component * image.bits / 8);
@@ -794,20 +781,20 @@ private:
        get_image_format(image.component, image.pixel_type, desc.srgb));
     return m_scene
         ->create_image({
-            .format = format,
             .width = unsigned(image.width),
             .height = unsigned(image.height),
+            .format = format,
             .data = image.image.data(),
         })
         .transform_error(get_error_string);
   }
 
-  auto get_or_create_image(int index, bool srgb) -> Result<ren::ImageID> {
+  auto get_or_create_image(int index, bool srgb) -> Result<ren::ImageId> {
     GltfImageDesc desc = {
         .index = index,
         .srgb = srgb,
     };
-    ren::ImageID &image = m_image_cache[desc];
+    ren::ImageId &image = m_image_cache[desc];
     if (!image) {
       OK(image, create_image(desc));
     }
@@ -815,12 +802,12 @@ private:
   }
 
   auto get_or_create_texture_image(int index, bool srgb)
-      -> Result<ren::ImageID> {
+      -> Result<ren::ImageId> {
     int image = m_model.textures[index].source;
     return get_or_create_image(image, srgb);
   }
 
-  auto get_texture_sampler(int texture) const -> Result<ren::Sampler> {
+  auto get_texture_sampler(int texture) const -> Result<ren::SamplerDesc> {
     int sampler = m_model.textures[texture].sampler;
     if (sampler < 0) {
       bail("Default sampler not implemented");
@@ -828,15 +815,13 @@ private:
     return get_sampler(m_model.samplers[sampler]);
   }
 
-  auto create_material(int index) -> Result<ren::MaterialID> {
+  auto create_material(int index) -> Result<ren::MaterialId> {
     const tinygltf::Material &material = m_model.materials[index];
     ren::MaterialDesc desc = {};
 
     assert(material.pbrMetallicRoughness.baseColorFactor.size() == 4);
-    glm::vec4 base_color_factor =
+    desc.base_color_factor =
         glm::make_vec4(material.pbrMetallicRoughness.baseColorFactor.data());
-    std::memcpy(desc.base_color_factor, &base_color_factor,
-                sizeof(base_color_factor));
 
     {
       const tinygltf::TextureInfo &base_color_texture =
@@ -846,9 +831,9 @@ private:
           bail("Unsupported base color texture coordinate set {}",
                base_color_texture.texCoord);
         }
-        OK(desc.color_tex.image,
+        OK(desc.base_color_texture.image,
            get_or_create_texture_image(base_color_texture.index, true));
-        OK(desc.color_tex.sampler,
+        OK(desc.base_color_texture.sampler,
            get_texture_sampler(base_color_texture.index));
       }
     }
@@ -864,10 +849,10 @@ private:
           bail("Unsupported metallic-roughness texture coordinate set {}",
                metallic_roughness_texture.texCoord);
         }
-        OK(desc.metallic_roughness_tex.image,
+        OK(desc.metallic_roughness_texture.image,
            get_or_create_texture_image(metallic_roughness_texture.index,
                                        false));
-        OK(desc.metallic_roughness_tex.sampler,
+        OK(desc.metallic_roughness_texture.sampler,
            get_texture_sampler(metallic_roughness_texture.index));
       }
     }
@@ -880,10 +865,11 @@ private:
           bail("Unsupported normal texture coordinate set {}",
                normal_texture.texCoord);
         }
-        OK(desc.normal_tex.image,
+        OK(desc.normal_texture.image,
            get_or_create_texture_image(normal_texture.index, false));
-        OK(desc.normal_tex.sampler, get_texture_sampler(normal_texture.index));
-        desc.normal_scale = normal_texture.scale;
+        OK(desc.normal_texture.sampler,
+           get_texture_sampler(normal_texture.index));
+        desc.normal_texture.scale = normal_texture.scale;
       }
     }
 
@@ -907,33 +893,33 @@ private:
     return m_scene->create_material(desc).transform_error(get_error_string);
   }
 
-  auto get_or_create_material(int index) -> Result<ren::MaterialID> {
+  auto get_or_create_material(int index) -> Result<ren::MaterialId> {
     assert(index >= 0);
     if (index >= m_material_cache.size()) {
       m_material_cache.resize(index + 1);
     }
-    ren::MaterialID &mat = m_material_cache[index];
-    if (!mat) {
-      OK(mat, create_material(index));
+    ren::MaterialId &material = m_material_cache[index];
+    if (!material) {
+      OK(material, create_material(index));
     }
-    return mat;
+    return material;
   }
 
   auto create_mesh_instance(const tinygltf::Primitive &primitive,
                             const glm::mat4 &transform)
-      -> Result<ren::MeshInstID> {
-    OK(ren::MaterialID material, get_or_create_material(primitive.material));
-    OK(ren::MeshID mesh, get_or_create_mesh(primitive));
-    OK(ren::MeshInstID mesh_inst, m_scene
-                                      ->create_mesh_inst({
-                                          .mesh = mesh,
-                                          .material = material,
-                                          .casts_shadows = true,
-                                      })
-                                      .transform_error(get_error_string));
-    m_mesh_insts.push_back(mesh_inst);
-    m_mesh_inst_transforms.push_back(transform);
-    return mesh_inst;
+      -> Result<ren::MeshInstanceId> {
+    OK(ren::MaterialId material, get_or_create_material(primitive.material));
+    OK(ren::MeshId mesh, get_or_create_mesh(primitive));
+    OK(ren::MeshInstanceId mesh_instance,
+       m_scene
+           ->create_mesh_instance(
+               {
+                   .mesh = mesh,
+                   .material = material,
+               },
+               transform)
+           .transform_error(get_error_string));
+    return mesh_instance;
   }
 
   auto get_node_local_transform(const tinygltf::Node &node) -> glm::mat4 {
@@ -1019,11 +1005,9 @@ private:
 private:
   tinygltf::Model m_model;
   ren::Scene *m_scene = nullptr;
-  std::unordered_map<GltfMeshDesc, ren::MeshID> m_mesh_cache;
-  std::unordered_map<GltfImageDesc, ren::ImageID> m_image_cache;
-  std::vector<ren::MaterialID> m_material_cache;
-  std::vector<ren::MeshInstID> m_mesh_insts;
-  std::vector<glm::mat4> m_mesh_inst_transforms;
+  std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
+  std::unordered_map<GltfImageDesc, ren::ImageId> m_image_cache;
+  std::vector<ren::MaterialId> m_material_cache;
 };
 
 class ViewGlTFApp : public AppBase {
@@ -1034,11 +1018,11 @@ public:
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
       TRY_TO(scene_walker.walk(scene));
-      OK(auto dir_light, get_scene().create_dir_light({
-                             .color = {1.0f, 1.0f, 1.0f},
-                             .illuminance = 100'000.0f,
-                             .origin = {0.0f, 0.0f, 1.0f},
-                         }));
+      OK(auto directional_light, get_scene().create_directional_light({
+                                     .color = {1.0f, 1.0f, 1.0f},
+                                     .illuminance = 100'000.0f,
+                                     .origin = {0.0f, 0.0f, 1.0f},
+                                 }));
       return {};
     }()
                  .transform_error(throw_error);
@@ -1086,6 +1070,8 @@ protected:
 
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
+    ren::Scene &scene = get_scene();
+
     float dt = duration_as_float(dt_ns);
 
     InputState input = get_input_state();
@@ -1105,9 +1091,12 @@ protected:
 
     glm::vec3 position = -m_distance * forward;
 
-    ren::Scene &scene = get_scene();
     float iso = 100.0f;
-    ren::CameraDesc desc = {
+    scene.set_camera({
+        .projection =
+            ren::PerspectiveProjection{
+                .hfov = glm::radians(90.0f),
+            },
         .width = width,
         .height = height,
         .aperture = 16.0f,
@@ -1115,15 +1104,11 @@ protected:
         .iso = iso,
         // The Reinhard tone mapper darkens colors too much
         .exposure_compensation = 1.0f,
-        .exposure_mode = REN_EXPOSURE_MODE_CAMERA,
-    };
-    std::memcpy(desc.position, &position, sizeof(desc.position));
-    std::memcpy(desc.forward, &forward, sizeof(desc.forward));
-    std::memcpy(desc.up, &up, sizeof(desc.up));
-    desc.set_projection(ren::PerspectiveProjection{
-        .hfov = glm::radians(90.0f),
+        .exposure_mode = ren::ExposureMode::Camera,
+        .position = position,
+        .forward = forward,
+        .up = up,
     });
-    TRY_TO(scene.set_camera(desc));
 
     return {};
   }

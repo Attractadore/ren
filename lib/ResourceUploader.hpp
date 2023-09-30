@@ -24,7 +24,7 @@ class ResourceUploader {
 
 public:
   template <typename T>
-  void stage_buffer(ResourceArena &arena, Span<const T> data,
+  void stage_buffer(ResourceArena &arena, std::span<const T> data,
                     const BufferView &buffer) {
     usize size = size_bytes(data);
     assert(size <= buffer.size);

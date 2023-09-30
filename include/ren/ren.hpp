@@ -1,342 +1,334 @@
 #pragma once
-#include "ren.h"
-
-#include <cassert>
-#include <cstring>
 #include <expected>
+#include <glm/glm.hpp>
 #include <memory>
 #include <span>
 #include <variant>
 
-struct RenSwapchain {
-  ~RenSwapchain() = delete;
-};
-
-struct RenScene {
-  ~RenScene() = delete;
-};
-
 namespace ren {
-inline namespace v0 {
 
 enum class Error {
-  Vulkan = REN_VULKAN_ERROR,
-  System = REN_SYSTEM_ERROR,
-  Runtime = REN_RUNTIME_ERROR,
-  Unknown = REN_UNKNOWN_ERROR,
+  Vulkan,
+  System,
+  Runtime,
+  Unknown,
 };
-
-using unexpected = std::unexpected<Error>;
 
 template <typename T> using expected = std::expected<T, Error>;
 
+#define ren_define_id(name)                                                    \
+  class name {                                                                 \
+  public:                                                                      \
+    explicit operator bool() const noexcept { return m_id; }                   \
+    operator unsigned() const noexcept { return m_id; }                        \
+                                                                               \
+  private:                                                                     \
+    unsigned m_id = 0;                                                         \
+  }
+
+ren_define_id(MeshId);
+ren_define_id(ImageId);
+ren_define_id(MaterialId);
+ren_define_id(MeshInstanceId);
+ren_define_id(DirectionalLightId);
+
+#undef ren_define_id
+
 namespace detail {
 
-[[nodiscard]] inline auto make_expected(RenResult result) -> expected<void> {
-  if (result) {
-    return unexpected(static_cast<Error>(result));
-  }
-  return {};
-}
+struct NullIdImpl {
+#define ren_define_null_id(type)                                               \
+  constexpr operator type() const noexcept { return {}; }
+
+  ren_define_null_id(MeshId);
+  ren_define_null_id(ImageId);
+  ren_define_null_id(MaterialId);
+  ren_define_null_id(MeshInstanceId);
+  ren_define_null_id(DirectionalLightId);
+
+#undef ren_define_null_id
+};
 
 } // namespace detail
 
-using Vector2 = RenVector2;
-using Vector3 = RenVector3;
-using Vector4 = RenVector4;
-using Matrix4x4 = RenMatrix4x4;
+constexpr detail::NullIdImpl NullId;
 
-using MeshID = RenMesh;
-constexpr MeshID NullMesh = REN_NULL_MESH;
-
-using ImageID = RenImage;
-constexpr ImageID NullImage = REN_NULL_IMAGE;
-
-using MaterialID = RenMaterial;
-constexpr MaterialID NullMaterial = REN_NULL_MATERIAL;
-
-using MeshInstID = RenMeshInst;
-constexpr MeshInstID NullMeshInst = REN_NULL_MESH_INST;
-
-using DirLightID = RenDirLight;
-constexpr DirLightID NullDirLight = REN_NULL_DIR_LIGHT;
-
-using PointLightID = RenPointLight;
-constexpr PointLightID NullPointLight = REN_NULL_POINT_LIGHT;
-
-using SpotLightID = RenSpotLight;
-constexpr SpotLightID NullSpotLight = REN_NULL_SPOT_LIGHT;
-
-using PerspectiveProjection = RenPerspectiveProjection;
-using OrthographicProjection = RenOrthographicProjection;
-using CameraDesc = RenCameraDesc;
-
-using ToneMappingOperator = RenToneMappingOperator;
-
-using MeshDesc = RenMeshDesc;
-
-using Format = RenFormat;
-using ImageDesc = RenImageDesc;
-
-using Filter = RenFilter;
-using WrappingMode = RenWrappingMode;
-using Sampler = RenSampler;
-using TextureChannel = RenTextureChannel;
-using TextureChannelSwizzle = RenTextureChannelSwizzle;
-using Texture = RenTexture;
-
-using AlphaMode = RenAlphaMode;
-using MaterialDesc = RenMaterialDesc;
-
-using MeshInstDesc = RenMeshInstDesc;
-
-using DirLightDesc = RenDirLightDesc;
-
-using PointLightDesc = RenPointLightDesc;
-
-using SpotLightDesc = RenSpotLightDesc;
-
-inline auto init(std::span<const char *const> extensions, unsigned adapter = 0)
-    -> expected<void> {
-  return detail::make_expected(
-      ren_Init(extensions.size(), extensions.data(), adapter));
-}
-
-inline void quit() { ren_Quit(); }
-
-inline auto draw() -> expected<void> {
-  return detail::make_expected(ren_Draw());
-}
-
-struct Swapchain;
-struct SwapchainDeleter {
-  void operator()(Swapchain *swapchain) const noexcept {
-    ren_DestroySwapchain(reinterpret_cast<RenSwapchain *>(swapchain));
-  }
-};
-using UniqueSwapchain = std::unique_ptr<Swapchain, SwapchainDeleter>;
-using SharedSwapchain = std::shared_ptr<Swapchain>;
-
-struct Scene;
-struct SceneDeleter {
-  void operator()(Scene *scene) const noexcept {
-    ren_DestroyScene(reinterpret_cast<RenScene *>(scene));
-  }
-};
-using UniqueScene = std::unique_ptr<Scene, SceneDeleter>;
-using SharedScene = std::shared_ptr<Scene>;
-
-struct Swapchain : RenSwapchain {
-  void set_size(unsigned width, unsigned height) {
-    ren_SetSwapchainSize(this, width, height);
-  }
-
-  auto get_size() const -> std::tuple<unsigned, unsigned> {
-    unsigned width, height;
-    ren_GetSwapchainSize(this, &width, &height);
-    return {width, height};
-  }
+struct InitInfo {
+  std::span<const char *const> instance_extensions;
+  unsigned adapter = 0;
 };
 
-struct Scene : RenScene {
+[[nodiscard]] auto init(const InitInfo &init_info) -> expected<void>;
+
+void quit();
+
+[[nodiscard]] auto draw() -> expected<void>;
+
+struct Swapchain {
+  virtual ~Swapchain() = default;
+
+  [[nodiscard]] auto get_size() const -> std::tuple<unsigned, unsigned>;
+
+  void set_size(unsigned width, unsigned height);
+
+protected:
+  Swapchain() = default;
+};
+
+/// Perspective projection parameters
+struct PerspectiveProjection {
+  /// Horizontal field of view in radians
+  float hfov = glm::radians(90.0f);
+};
+
+/// Orthographic projection
+struct OrthographicProjection {
+  /// Width of the orthographic projection box
+  float width;
+};
+
+/// How to calculate exposure
+enum class ExposureMode {
+  /// Calculate exposure using a physical camera model
+  Camera,
+  /// Calculate exposure automatically based on scene luminance
+  Automatic,
+};
+
+struct ReinhardToneMapping {};
+
+using ToneMappingDesc = std::variant<ReinhardToneMapping>;
+
+/// Scene camera description
+struct CameraDesc {
+  /// Projection to use
+  std::variant<PerspectiveProjection, OrthographicProjection> projection =
+      PerspectiveProjection();
+  /// Horizontal rendering resolution
+  unsigned width = 1280;
+  /// Vertical rendering resolution
+  unsigned height = 720;
+  /// Relative aperture in f-stops. Affects exposure when it's calculated based
+  /// on camera parameters and depth of field
+  float aperture = 16.0f;
+  /// Shutter time in seconds. Affects exposure when it's calculated based
+  /// on camera parameters and motion blur
+  float shutter_time = 1.0f / 400.0f;
+  /// Sensitivity in ISO. Ignored if exposure is not calculated based on camera
+  /// parameters
+  float iso = 400.0f;
+  /// Exposure compensation in f-stops.
+  float exposure_compensation = 0.0f;
+  /// Exposure computation mode.
+  ExposureMode exposure_mode = ExposureMode::Camera;
+  /// This camera's position in the world.
+  glm::vec3 position = {0.0f, 0.0f, 0.0f};
+  /// Where this camera is facing.
+  glm::vec3 forward = {1.0f, 0.0f, 0.0f};
+  /// This camera's up vector.
+  glm::vec3 up = {0.0f, 0.0f, 1.0f};
+};
+
+/// Mesh description
+struct MeshDesc {
+  /// This mesh's positions.
+  std::span<const glm::vec3> positions;
+  /// This mesh's normals
+  std::span<const glm::vec3> normals;
+  /// Optional: this mesh's tangents
+  std::span<const glm::vec4> tangents;
+  /// Optional: this mesh's vertex colors
+  std::span<const glm::vec4> colors;
+  /// Optional: this mesh's texture coordinates
+  std::span<const glm::vec2> tex_coords;
+  /// This mesh's indices
+  std::span<const unsigned> indices;
+};
+
+/// Image storage format
+enum class Format {
+  Unknown,
+  R8_UNORM,
+  R8_SRGB,
+  RG8_UNORM,
+  RG8_SRGB,
+  RGB8_UNORM,
+  RGB8_SRGB,
+  RGBA8_UNORM,
+  RGBA8_SRGB,
+  BGRA8_UNORM,
+  BGRA8_SRGB,
+  R16_UNORM,
+  RG16_UNORM,
+  RGB16_UNORM,
+  RGBA16_UNORM,
+  RGB32_SFLOAT,
+  RGBA32_SFLOAT,
+};
+
+/// Image description
+struct ImageDesc {
+  /// Width
+  unsigned width = 0;
+  /// Height
+  unsigned height = 0;
+  /// Storage format
+  Format format = Format::Unknown;
+  /// Pixel data
+  const void *data = nullptr;
+};
+
+/// Texture or mipmap filter
+enum class Filter {
+  Nearest,
+  Linear,
+};
+
+/// Texture wrapping mode
+enum WrappingMode {
+  Repeat,
+  MirroredRepeat,
+  ClampToEdge,
+};
+
+/// Texture sampler state description
+struct SamplerDesc {
+  /// Magnification filter
+  Filter mag_filter = Filter::Linear;
+  /// Minification filter
+  Filter min_filter = Filter::Linear;
+  /// Mipmap filter
+  Filter mipmap_filter = Filter::Linear;
+  /// U coordinate wrapping mode
+  WrappingMode wrap_u = WrappingMode::Repeat;
+  /// V coordinate wrapping mode
+  WrappingMode wrap_v = WrappingMode::Repeat;
+
+public:
+  constexpr auto operator<=>(const SamplerDesc &) const = default;
+};
+
+/// Material description
+struct MaterialDesc {
+  /// Color, multiplied with vertex color (if present, otherwise with
+  /// [1.0, 1.0, 1.0, 1.0]) and sampled texture color (if present, otherwise
+  /// with [1.0, 1.0, 1.0, 1.0]). Must be between 0 and 1
+  glm::vec4 base_color_factor = {1.0f, 1.0f, 1.0f, 1.0f};
+  /// Optional: color texture
+  struct {
+    ImageId image;
+    SamplerDesc sampler;
+  } base_color_texture;
+  /// Metallic factor, multiplied with channel B of the metallic-roughness
+  /// texture (if present, otherwise with 1.0). Must be between 0 and 1
+  float metallic_factor = 1.0f;
+  /// Roughness factor, multiplied with channel G of the metallic-roughness
+  /// texture (if present, otherwise with 1.0). Must be between 0 and 1
+  float roughness_factor = 1.0f;
+  /// Optional: metallic-roughness texture
+  struct {
+    ImageId image;
+    SamplerDesc sampler;
+  } metallic_roughness_texture;
+  /// Optional: normal texture
+  struct {
+    ImageId image;
+    SamplerDesc sampler;
+    /// Multiplier for sampled R and G channels
+    float scale = 1.0f;
+  } normal_texture;
+};
+
+/// Mesh instance description
+struct MeshInstanceDesc {
+  /// The mesh that will be used to render this mesh instance
+  MeshId mesh;
+  /// The material that will be used to render this mesh instance
+  MaterialId material;
+};
+
+/// Directional light description
+struct DirectionalLightDesc {
+  /// This light's color. Must be between 0 and 1
+  glm::vec3 color = {1.0f, 1.0f, 1.0f};
+  /// This light's intensity in lux
+  float illuminance = 100'000.0f;
+  /// The direction this light is shining from
+  glm::vec3 origin = {0.0f, 0.0f, 1.0f};
+};
+
+class Scene {
+public:
   [[nodiscard]] static auto create(Swapchain &swapchain)
-      -> expected<UniqueScene> {
-    RenScene *scene;
-    return detail::make_expected(ren_CreateScene(&swapchain, &scene))
-        .transform(
-            [&] { return UniqueScene(reinterpret_cast<Scene *>(scene)); });
-  }
+      -> expected<std::unique_ptr<Scene>>;
 
-  [[nodiscard]] auto set_camera(const CameraDesc &desc) -> expected<void> {
-    return detail::make_expected(ren_SetSceneCamera(this, &desc));
-  }
+  virtual ~Scene() = default;
 
-  [[nodiscard]] auto set_tone_mapping(ToneMappingOperator oper)
-      -> expected<void> {
-    return detail::make_expected(ren_SetSceneToneMapping(this, oper));
-  }
+  void set_camera(const CameraDesc &desc);
 
-  [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshID> {
-    RenMesh mesh;
-    return detail::make_expected(ren_CreateMesh(this, &desc, &mesh))
-        .transform([&] { return mesh; });
-  }
+  void set_tone_mapping(const ToneMappingDesc &desc);
 
-  [[nodiscard]] auto create_image(const ImageDesc &desc) -> expected<ImageID> {
-    RenImage image;
-    return detail::make_expected(ren_CreateImage(this, &desc, &image))
-        .transform([&] { return image; });
-  }
+  [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshId>;
 
-  [[nodiscard]] auto create_material(std::span<const MaterialDesc> descs,
-                                     std::span<MaterialID> materials)
-      -> expected<std::span<MaterialID>> {
-    assert(materials.size() >= descs.size());
-    RenMaterial material;
-    return detail::make_expected(ren_CreateMaterials(this, descs.data(),
-                                                     descs.size(),
-                                                     materials.data()))
-        .transform([&] { return materials.first(descs.size()); });
-  }
+  [[nodiscard]] auto create_image(const ImageDesc &desc) -> expected<ImageId>;
+
+  [[nodiscard]] auto create_materials(std::span<const MaterialDesc> descs,
+                                      MaterialId *out) -> expected<void>;
 
   [[nodiscard]] auto create_material(const MaterialDesc &desc)
-      -> expected<MaterialID> {
-    RenMaterial material;
-    return detail::make_expected(ren_CreateMaterial(this, &desc, &material))
-        .transform([&] { return material; });
+      -> expected<MaterialId> {
+    MaterialId material;
+    return create_materials({&desc, 1}, &material).transform([&] {
+      return material;
+    });
   }
 
-  [[nodiscard]] auto create_mesh_insts(std::span<const MeshInstDesc> descs,
-                                       std::span<MeshInstID> mesh_insts)
-      -> expected<std::span<MeshInstID>> {
-    RenMeshInst model;
-    return detail::make_expected(ren_CreateMeshInsts(this, descs.data(),
-                                                     descs.size(),
-                                                     mesh_insts.data()))
-        .transform([&] { return mesh_insts.first(descs.size()); });
+  [[nodiscard]] auto
+  create_mesh_instances(std::span<const MeshInstanceDesc> descs,
+                        std::span<const glm::mat4x3> transforms,
+                        MeshInstanceId *out) -> expected<void>;
+
+  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc)
+      -> expected<MeshInstanceId> {
+    MeshInstanceId mesh_instance;
+    return create_mesh_instances({&desc, 1}, {}, &mesh_instance).transform([&] {
+      return mesh_instance;
+    });
   }
 
-  [[nodiscard]] auto create_mesh_inst(const MeshInstDesc &desc)
-      -> expected<MeshInstID> {
-    RenMeshInst model;
-    return detail::make_expected(ren_CreateMeshInst(this, &desc, &model))
-        .transform([&] { return model; });
+  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc,
+                                          const glm::mat4x3 &transform)
+      -> expected<MeshInstanceId> {
+    MeshInstanceId mesh_instance;
+    return create_mesh_instances({&desc, 1}, {&transform, 1}, &mesh_instance)
+        .transform([&] { return mesh_instance; });
   }
 
-  void destroy_mesh_insts(std::span<const MeshInstID> mesh_insts) {
-    ren_DestroyMeshInsts(this, mesh_insts.data(), mesh_insts.size());
+  void destroy_mesh_instances(std::span<const MeshInstanceId> mesh_instances);
+
+  void destroy_mesh_instance(MeshInstanceId mesh_instance) {
+    destroy_mesh_instances({&mesh_instance, 1});
   }
 
-  void destroy_mesh_inst(MeshInstID mesh_inst) {
-    ren_DestroyMeshInst(this, mesh_inst);
+  void
+  set_mesh_instance_transforms(std::span<const MeshInstanceId> mesh_instances,
+                               std::span<const glm::mat4x3> transforms);
+
+  void set_mesh_instance_transform(MeshInstanceId mesh_instance,
+                                   const glm::mat4x3 &transform) {
+    set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
   }
 
-  void set_mesh_inst_matrices(std::span<const MeshInstID> mesh_insts,
-                              std::span<const Matrix4x4> matrices) {
-    assert(matrices.size() >= mesh_insts.size());
-    ren_SetMeshInstMatrices(this, mesh_insts.data(), matrices.data(),
-                            mesh_insts.size());
-  }
+  [[nodiscard]] auto create_directional_light(const DirectionalLightDesc &desc)
+      -> expected<DirectionalLightId>;
 
-  void set_mesh_inst_matrix(MeshInstID mesh_inst, const Matrix4x4 &matrix) {
-    ren_SetMeshInstMatrix(this, mesh_inst, &matrix);
-  }
+  void destroy_directional_light(DirectionalLightId light);
 
-  [[nodiscard]] auto create_dir_lights(std::span<const DirLightDesc> descs,
-                                       std::span<DirLightID> lights)
-      -> expected<std::span<DirLightID>> {
-    assert(lights.size() >= descs.size());
-    return detail::make_expected(ren_CreateDirLights(this, descs.data(),
-                                                     descs.size(),
-                                                     lights.data()))
-        .transform([&] { return lights.first(descs.size()); });
-  }
+  void update_directional_light(DirectionalLightId light,
+                                const DirectionalLightDesc &desc);
 
-  [[nodiscard]] auto create_dir_light(const DirLightDesc &desc)
-      -> expected<DirLightID> {
-    RenDirLight light;
-    return detail::make_expected(ren_CreateDirLight(this, &desc, &light))
-        .transform([&] { return light; });
-  }
-
-  void destroy_dir_lights(std::span<const DirLightID> lights) {
-    ren_DestroyDirLights(this, lights.data(), lights.size());
-  }
-
-  void destroy_dir_light(DirLightID light) { ren_DestroyDirLight(this, light); }
-
-  [[nodiscard]] auto config_dir_lights(std::span<const DirLightID> lights,
-                                       std::span<const DirLightDesc> descs)
-      -> expected<void> {
-    assert(lights.size() <= descs.size());
-    return detail::make_expected(
-        ren_ConfigDirLights(this, lights.data(), descs.data(), lights.size()));
-  }
-
-  [[nodiscard]] auto config_dir_light(DirLightID light,
-                                      const DirLightDesc &desc)
-      -> expected<void> {
-    return detail::make_expected(ren_ConfigDirLight(this, light, &desc));
-  }
-
-  [[nodiscard]] auto create_point_lights(std::span<const PointLightDesc> descs,
-                                         std::span<PointLightID> lights)
-      -> expected<std::span<PointLightID>> {
-    assert(lights.size() >= descs.size());
-    return detail::make_expected(ren_CreatePointLights(this, descs.data(),
-                                                       descs.size(),
-                                                       lights.data()))
-        .transform([&] { return lights.first(descs.size()); });
-  }
-
-  [[nodiscard]] auto create_point_light(const PointLightDesc &desc)
-      -> expected<PointLightID> {
-    RenPointLight light;
-    return detail::make_expected(ren_CreatePointLight(this, &desc, &light))
-        .transform([&] { return light; });
-  }
-
-  void destroy_point_lights(std::span<const PointLightID> lights) {
-    ren_DestroyPointLights(this, lights.data(), lights.size());
-  }
-
-  void destroy_point_light(PointLightID light) {
-    ren_DestroyPointLight(this, light);
-  }
-
-  [[nodiscard]] auto config_point_lights(std::span<const PointLightID> lights,
-                                         std::span<const PointLightDesc> descs)
-      -> expected<void> {
-    assert(lights.size() <= descs.size());
-    return detail::make_expected(ren_ConfigPointLights(
-        this, lights.data(), descs.data(), lights.size()));
-  }
-
-  [[nodiscard]] auto config_point_light(PointLightID light,
-                                        const PointLightDesc &desc)
-      -> expected<void> {
-    return detail::make_expected(ren_ConfigPointLight(this, light, &desc));
-  }
-
-  [[nodiscard]] auto create_spot_lights(std::span<const SpotLightDesc> descs,
-                                        std::span<SpotLightID> lights)
-      -> expected<std::span<SpotLightID>> {
-    assert(lights.size() >= descs.size());
-    return detail::make_expected(ren_CreateSpotLights(this, descs.data(),
-                                                      descs.size(),
-                                                      lights.data()))
-        .transform([&] { return lights.first(descs.size()); });
-  }
-
-  [[nodiscard]] auto create_spot_light(const SpotLightDesc &desc)
-      -> expected<SpotLightID> {
-    RenSpotLight light;
-    return detail::make_expected(ren_CreateSpotLight(this, &desc, &light))
-        .transform([&] { return light; });
-  }
-
-  void destroy_spot_lights(std::span<const SpotLightID> lights) {
-    ren_DestroySpotLights(this, lights.data(), lights.size());
-  }
-
-  void destroy_spot_light(SpotLightID light) {
-    ren_DestroySpotLight(this, light);
-  }
-
-  [[nodiscard]] auto config_spot_lights(std::span<const SpotLightID> lights,
-                                        std::span<const SpotLightDesc> descs)
-      -> expected<void> {
-    assert(lights.size() <= descs.size());
-    return detail::make_expected(
-        ren_ConfigSpotLights(this, lights.data(), descs.data(), lights.size()));
-  }
-
-  [[nodiscard]] auto config_spot_light(SpotLightID light,
-                                       const SpotLightDesc &desc)
-      -> expected<void> {
-    return detail::make_expected(ren_ConfigSpotLight(this, light, &desc));
-  }
+protected:
+  Scene() = default;
 };
 
-} // namespace v0
 } // namespace ren

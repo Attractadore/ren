@@ -1,13 +1,8 @@
 #pragma once
 #include "Support/Variant.hpp"
-#include "ren/ren.h"
-
-#include <glm/glm.hpp>
+#include "ren/ren.hpp"
 
 namespace ren {
-
-using PerspectiveProjection = RenPerspectiveProjection;
-using OrthographicProjection = RenOrthographicProjection;
 
 using CameraProjection = Variant<PerspectiveProjection, OrthographicProjection>;
 

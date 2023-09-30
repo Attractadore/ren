@@ -1,5 +1,6 @@
 #include "Swapchain.hpp"
 #include "Formats.hpp"
+#include "Lippincott.hpp"
 #include "Renderer.hpp"
 #include "Support/Errors.hpp"
 
@@ -68,7 +69,7 @@ auto select_image_usage(VkImageUsageFlags image_usage) -> VkImageUsageFlags {
 
 } // namespace
 
-Swapchain::Swapchain(VkSurfaceKHR surface) {
+SwapchainImpl::SwapchainImpl(VkSurfaceKHR surface) {
   VkSurfaceCapabilitiesKHR capabilities = get_surface_capabilities(surface);
 
   SmallVector<VkSurfaceFormatKHR, 8> surface_formats;
@@ -114,12 +115,12 @@ Swapchain::Swapchain(VkSurfaceKHR surface) {
   create();
 }
 
-Swapchain::~Swapchain() {
+SwapchainImpl::~SwapchainImpl() {
   destroy();
   g_renderer->push_to_delete_queue(m_create_info.surface);
 }
 
-void Swapchain::create() {
+void SwapchainImpl::create() {
   VkSurfaceCapabilitiesKHR capabilities =
       get_surface_capabilities(m_create_info.surface);
   m_create_info.imageExtent = [&] {
@@ -165,7 +166,7 @@ void Swapchain::create() {
   });
 }
 
-void Swapchain::destroy() {
+void SwapchainImpl::destroy() {
   g_renderer->push_to_delete_queue(m_swapchain);
   for (auto texture : m_textures) {
     g_renderer->destroy_texture(texture);
@@ -173,16 +174,16 @@ void Swapchain::destroy() {
   m_textures.clear();
 }
 
-void Swapchain::set_size(unsigned width, unsigned height) noexcept {
+void SwapchainImpl::set_size(unsigned width, unsigned height) {
   m_create_info.imageExtent = {
       .width = width,
       .height = height,
   };
 }
 
-void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
+void SwapchainImpl::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
-auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
+auto SwapchainImpl::acquire_texture(Handle<Semaphore> signal_semaphore)
     -> Handle<Texture> {
   while (true) {
     VkResult result = vkAcquireNextImageKHR(
@@ -202,7 +203,7 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
   }
 }
 
-void Swapchain::present(Handle<Semaphore> wait_semaphore) {
+void SwapchainImpl::present(Handle<Semaphore> wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
@@ -222,6 +223,30 @@ void Swapchain::present(Handle<Semaphore> wait_semaphore) {
     create();
     return;
   }
+}
+
+auto vk::Swapchain::create(vk::PFNCreateSurface create_surface, void *usrptr)
+    -> expected<std::unique_ptr<ren::Swapchain>> {
+  ren_assert(create_surface);
+  VkSurfaceKHR surface = nullptr;
+  return lippincott([&] {
+           throw_if_failed(
+               create_surface(g_renderer->get_instance(), usrptr, &surface),
+               "Vulkan: Failed to create surface");
+           return std::make_unique<SwapchainImpl>(surface);
+         })
+      .transform_error([&](Error error) {
+        vkDestroySurfaceKHR(g_renderer->get_instance(), surface, nullptr);
+        return error;
+      });
+}
+
+auto Swapchain::get_size() const -> std::tuple<unsigned, unsigned> {
+  return static_cast<const SwapchainImpl *>(this)->get_size();
+}
+
+void Swapchain::set_size(unsigned width, unsigned height) {
+  static_cast<SwapchainImpl *>(this)->set_size(width, height);
 }
 
 } // namespace ren

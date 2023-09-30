@@ -47,28 +47,59 @@ add_library(
   Texture.cpp
   TextureIdAllocator.cpp
   VMA.cpp)
-target_sources(
-  ren
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren.h
-         ${REN_INCLUDE}/ren/ren-vk.h)
+add_library(ren::ren ALIAS ren)
+target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                          ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(
   ren
+  PUBLIC glm::glm
   PRIVATE Boost::boost
           Boost::container
           GPUOpen::VulkanMemoryAllocator
           Vulkan::Headers
           fmt::fmt
-          glm::glm
           range-v3::range-v3
           tl::optional
           unofficial::spirv-reflect::spirv-reflect
           volk::volk
           EmbeddedShaders)
+target_compile_definitions(
+  ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
+              VMA_STATS_STRING_ENABLED=0 VK_NO_PROTOTYPES)
+target_compile_features(ren PUBLIC cxx_std_23)
+# Clang std::expected fix
+if(CMAKE_EXPORT_COMPILE_COMMANDS OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_definitions(ren PUBLIC __cpp_concepts=202002L)
+endif()
+
+add_library(ren-vk INTERFACE)
+add_library(ren::ren-vk ALIAS ren-vk)
+target_sources(ren-vk INTERFACE FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
+                                ${REN_INCLUDE}/ren/ren-vk.hpp)
+target_link_libraries(ren-vk INTERFACE ren Vulkan::Headers)
+target_compile_definitions(ren-vk INTERFACE VK_NO_PROTOTYPES)
+
+foreach(SEVERITY ${REN_LOG_SEVERITY})
+  message(STATUS "Enable ${SEVERITY} logging")
+  target_compile_definitions(ren PRIVATE REN_LOG_${SEVERITY})
+endforeach()
+if(REN_ASSERTIONS)
+  message(STATUS "Enable assertions")
+  target_compile_definitions(ren PRIVATE REN_ASSERTIONS)
+endif()
+if(REN_VULKAN_VALIDATION)
+  message(STATUS "Enable Vulkan validation layer")
+  target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)
+endif()
+if(REN_VULKAN_DEBUG_NAMES)
+  message(STATUS "Enable Vulkan object debug names")
+  target_compile_definitions(ren PRIVATE REN_DEBUG_NAMES)
+endif()
+if(REN_RENDER_GRAPH_DEBUG)
+  message(STATUS "Enable render graph debug features")
+  target_compile_definitions(ren PRIVATE REN_RG_DEBUG)
+endif()
+
 if(REN_PCH)
   message(STATUS "Enable precompiled header")
   target_precompile_headers(
@@ -110,57 +141,13 @@ if(REN_PCH)
       INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-Xclang -fno-pch-timestamp>")
   endif()
 endif()
-target_compile_definitions(
-  ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
-              VMA_STATS_STRING_ENABLED=0)
-target_compile_definitions(ren PUBLIC VK_NO_PROTOTYPES)
-foreach(SEVERITY ${REN_LOG_SEVERITY})
-  message(STATUS "Enable ${SEVERITY} logging")
-  target_compile_definitions(ren PRIVATE REN_LOG_${SEVERITY})
-endforeach()
-if(REN_ASSERTIONS)
-  message(STATUS "Enable assertions")
-  target_compile_definitions(ren PRIVATE REN_ASSERTIONS)
-endif()
-if(REN_VULKAN_VALIDATION)
-  message(STATUS "Enable Vulkan validation layer")
-  target_compile_definitions(ren PRIVATE REN_VULKAN_VALIDATION)
-endif()
-if(REN_VULKAN_DEBUG_NAMES)
-  message(STATUS "Enable Vulkan object debug names")
-  target_compile_definitions(ren PRIVATE REN_DEBUG_NAMES)
-endif()
-if(REN_RENDER_GRAPH_DEBUG)
-  message(STATUS "Enable render graph debug features")
-  target_compile_definitions(ren PRIVATE REN_RG_DEBUG)
-endif()
 
 add_subdirectory(Passes)
-
-add_library(ren::ren ALIAS ren)
-
-add_library(ren-hpp INTERFACE)
-target_sources(
-  ren-hpp
-  PUBLIC FILE_SET
-         HEADERS
-         BASE_DIRS
-         ${REN_INCLUDE}
-         FILES
-         ${REN_INCLUDE}/ren/ren.hpp
-         ${REN_INCLUDE}/ren/ren-vk.hpp)
-target_link_libraries(ren-hpp INTERFACE ren::ren)
-target_compile_features(ren-hpp INTERFACE cxx_std_23)
-if(CMAKE_EXPORT_COMPILE_COMMANDS)
-  # clangd std::expected fix
-  target_compile_definitions(ren-hpp INTERFACE __cpp_concepts=202002L)
-endif()
-add_library(ren::ren-hpp ALIAS ren-hpp)
 
 if(REN_INSTALL)
   include(GNUInstallDirs)
   install(
-    TARGETS ren ren-hpp
+    TARGETS ren ren-vk
     EXPORT ${REN_TARGETS}
     FILE_SET HEADERS)
   install(

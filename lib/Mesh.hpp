@@ -18,7 +18,7 @@ struct Mesh {
 struct MeshInstance {
   u32 mesh = 0;
   u32 material = 0;
-  glm::mat4 matrix{1.0f};
+  glm::mat4x3 matrix{1.0f};
 };
 
 } // namespace ren

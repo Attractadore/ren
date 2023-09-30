@@ -2,6 +2,7 @@
 #include "Semaphore.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
+#include "ren/ren-vk.hpp"
 
 #include <tuple>
 
@@ -15,7 +16,7 @@ struct SwapchainTextureCreateInfo {
   u32 height = 1;
 };
 
-class Swapchain {
+class SwapchainImpl : public vk::Swapchain {
   VkSwapchainKHR m_swapchain = nullptr;
   SmallVector<Handle<Texture>, 3> m_textures;
   u32 m_image_index = -1;
@@ -26,28 +27,26 @@ private:
   void destroy();
 
 public:
-  Swapchain(VkSurfaceKHR surface);
-  Swapchain(const Swapchain &) = delete;
-  Swapchain(Swapchain &&);
-  Swapchain &operator=(const Swapchain &) = delete;
-  Swapchain &operator=(Swapchain &&);
-  ~Swapchain();
+  SwapchainImpl(VkSurfaceKHR surface);
+  SwapchainImpl(const SwapchainImpl &) = delete;
+  SwapchainImpl(Swapchain &&);
+  SwapchainImpl &operator=(const SwapchainImpl &) = delete;
+  SwapchainImpl &operator=(SwapchainImpl &&);
+  ~SwapchainImpl();
 
-  std::tuple<u32, u32> get_size() const noexcept {
+  std::tuple<u32, u32> get_size() const {
     return {m_create_info.imageExtent.width, m_create_info.imageExtent.height};
   }
 
-  void set_size(u32 width, u32 height) noexcept;
+  void set_size(u32 width, u32 height);
 
-  auto get_present_mode() const noexcept -> VkPresentModeKHR {
+  auto get_present_mode() const -> VkPresentModeKHR {
     return m_create_info.presentMode;
   }
 
   void set_present_mode(VkPresentModeKHR);
 
-  auto get_surface() const noexcept -> VkSurfaceKHR {
-    return m_create_info.surface;
-  }
+  auto get_surface() const -> VkSurfaceKHR { return m_create_info.surface; }
 
   auto acquire_texture(Handle<Semaphore> signal_semaphore) -> Handle<Texture>;
 

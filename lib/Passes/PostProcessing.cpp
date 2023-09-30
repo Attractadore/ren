@@ -161,14 +161,6 @@ void ren::setup_post_processing_passes(RgBuilder &rgb,
     setup_initialize_luminance_histogram_pass(rgb);
   }
 
-  switch (cfg.options->tone_mapping.oper) {
-  case REN_TONE_MAPPING_OPERATOR_REINHARD: {
-  } break;
-  case REN_TONE_MAPPING_OPERATOR_ACES: {
-    todo("ACES tone mapping is not implemented!");
-  } break;
-  }
-
   setup_post_processing_uber_pass(rgb,
                                   {.pipeline = cfg.pipelines->post_processing});
 

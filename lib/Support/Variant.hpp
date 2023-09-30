@@ -26,7 +26,10 @@ using Monostate = std::monostate;
 
 template <typename... Ts> struct Variant : std::variant<Ts...> {
 public:
-  using std::variant<Ts...>::variant;
+  using Base = std::variant<Ts...>;
+  using Base::Base;
+
+  Variant(Base base) noexcept : Base(std::move(base)) {}
 
 #define CVariantType(U) detail::CSameAsAnyOf<U, Ts...>
 

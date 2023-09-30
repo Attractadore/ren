@@ -10,7 +10,8 @@ namespace chrono = std::chrono;
 
 namespace {
 
-auto create_swapchain(SDL_Window *window) -> Result<ren::UniqueSwapchain> {
+auto create_swapchain(SDL_Window *window)
+    -> Result<std::unique_ptr<ren::Swapchain>> {
   return ren::vk::Swapchain::create(
              [](VkInstance instance, void *window,
                 VkSurfaceKHR *p_surface) -> VkResult {
@@ -108,11 +109,6 @@ auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
 auto AppBase::iterate(unsigned width, unsigned height, std::chrono::nanoseconds)
     -> Result<void> {
   auto &scene = get_scene();
-
-  TRY_TO(scene.set_camera({
-      .width = width,
-      .height = height,
-  }));
-
+  scene.set_camera({.width = width, .height = height});
   return {};
 }

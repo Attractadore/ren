@@ -1,10 +1,11 @@
 #pragma once
-#include "ren/ren.h"
+#include "Support/Variant.hpp"
+#include "ren/ren.hpp"
 
 namespace ren {
 
 struct ToneMappingOptions {
-  RenToneMappingOperator oper = REN_TONE_MAPPING_OPERATOR_REINHARD;
+  Variant<ReinhardToneMapping> oper;
 };
 
 } // namespace ren
