@@ -409,22 +409,17 @@ private:
       }
       if (colors->type == TINYGLTF_TYPE_VEC3) {
         if (colors->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-          warn("Converting primitive colors from RGB8_SFLOAT to RGBA32_SFLOAT");
           return get_accessor_data<glm::vec3>(
               *colors, [](glm::vec3 color) { return glm::vec4(color, 1.0f); });
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            warn(
-                "Converting primitive colors from RGB8_UNORM to RGBA32_SFLOAT");
             return get_accessor_data<glm::u8vec3>(
                 *colors, [](glm::u8vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            warn("Converting primitive colors from RGB16_UNORM to "
-                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u16vec3>(
                 *colors, [](glm::u16vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
@@ -438,16 +433,12 @@ private:
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            warn("Converting primitive colors from RGBA8_UNORM to "
-                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u8vec4>(
                 *colors, [](glm::u8vec4 color) {
                   return glm::unpackUnorm<float>(color);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            warn("Converting primitive colors from RGBA16_UNORM to "
-                 "RGBA32_SFLOAT");
             return get_accessor_data<glm::u16vec4>(
                 *colors, [](glm::u16vec4 color) {
                   return glm::unpackUnorm<float>(color);
@@ -469,13 +460,11 @@ private:
         }
         if (uvs->normalized) {
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            warn("Converting primitive UVs from RG8_UNORM to RG32_SFLOAT");
             return get_accessor_data<glm::u8vec2>(*uvs, [](glm::u8vec2 color) {
               return glm::unpackUnorm<float>(color);
             });
           }
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-            warn("Converting primitive UVs from RG16_UNORM to RG32_SFLOAT");
             return get_accessor_data<glm::u16vec2>(
                 *uvs, [](glm::u16vec2 color) {
                   return glm::unpackUnorm<float>(color);
@@ -491,12 +480,10 @@ private:
     OK(auto indices_data, [&] -> Result<std::vector<uint32_t>> {
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-          warn("Converting primitive indices from R8_UINT to R32_UINT");
           return get_accessor_data<uint8_t>(
               *indices, [](uint8_t index) -> uint32_t { return index; });
         }
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-          warn("Converting primitive indices from R16_UINT to R32_UINT");
           return get_accessor_data<uint16_t>(
               *indices, [](uint16_t index) -> uint32_t { return index; });
         }
@@ -514,8 +501,6 @@ private:
       size_t num_vertices = positions_data.size();
       size_t num_indices = indices_data.size();
       if (not indices_data.empty()) {
-        warn("Deindexing mesh...");
-        auto start = chrono::steady_clock::now();
         {
           std::vector<glm::vec3> unindexed_positions_data(indices_data.size());
           deindex_attibute<glm::vec3>(positions_data, indices_data,
@@ -541,11 +526,6 @@ private:
           std::swap(tex_coords_data, unindexed_tex_coords_data);
         }
         indices_data.clear();
-        auto end = chrono::steady_clock::now();
-        warn("Deindexed mesh from {} vertices and {} indices to {} vertices in "
-             "{:.3f}s",
-             num_vertices, num_indices, num_indices,
-             duration_as_float(end - start));
       }
       auto start = chrono::steady_clock::now();
       tangents_data.resize(positions_data.size());
@@ -637,9 +617,6 @@ private:
     };
 
     {
-      log("Remapping primitive vertices...");
-      auto start = chrono::steady_clock::now();
-
       size_t old_num_vertices = positions_data.size();
       size_t old_num_indices = indices_data.size();
 
@@ -664,39 +641,16 @@ private:
         std::swap(indices_data, remapped_indices_data);
       }
       remap_vertices(num_vertices);
-
-      auto end = chrono::steady_clock::now();
-      log("Remapped {} vertices and {} indices to {} vertices "
-          "and {} indices in {:.3f}s",
-          old_num_vertices, old_num_indices, num_vertices, indices_data.size(),
-          duration_as_float(end - start));
     }
 
-    {
-      log("Optimizing vertex cache...");
-      auto start = chrono::steady_clock::now();
-      meshopt_optimizeVertexCache(indices_data.data(), indices_data.data(),
-                                  indices_data.size(), positions_data.size());
-      auto end = chrono::steady_clock::now();
-      log("Optimized vertex cache in {:.3f}s", duration_as_float(end - start));
-    }
+    meshopt_optimizeVertexCache(indices_data.data(), indices_data.data(),
+                                indices_data.size(), positions_data.size());
+
+    meshopt_optimizeOverdraw(indices_data.data(), indices_data.data(),
+                             indices_data.size(), &positions_data[0].x,
+                             positions_data.size(), sizeof(glm::vec3), 1.05f);
 
     {
-      log("Optimizing primitive for overdraw...");
-      auto start = chrono::steady_clock::now();
-      meshopt_optimizeOverdraw(indices_data.data(), indices_data.data(),
-                               indices_data.size(), &positions_data[0].x,
-                               positions_data.size(), sizeof(glm::vec3), 1.05f);
-      auto end = chrono::steady_clock::now();
-      log("Optimized primitive for overdraw in {:.3f}s",
-          duration_as_float(end - start));
-    }
-
-    {
-      log("Optimizing vertex fetch and remapping vertices...");
-      size_t old_num_vertices = positions_data.size();
-      size_t old_num_indices = indices_data.size();
-      auto start = chrono::steady_clock::now();
       remap.resize(indices_data.size());
       size_t num_vertices = meshopt_optimizeVertexFetchRemap(
           remap.data(), indices_data.data(), indices_data.size(),
@@ -707,12 +661,6 @@ private:
                                remap.data());
       std::swap(indices_data, remapped_indices_data);
       remap_vertices(num_vertices);
-      auto end = chrono::steady_clock::now();
-      log("Optimized vertex fetch and remapped {} vertices and {} indices to "
-          "{} vertices "
-          "and {} indices in {:.3f}s",
-          old_num_vertices, old_num_indices, num_vertices, indices_data.size(),
-          duration_as_float(end - start));
     }
 
     return m_scene
