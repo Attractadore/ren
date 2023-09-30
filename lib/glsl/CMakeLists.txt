@@ -8,12 +8,10 @@ if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   set(GLSL_FLAGS "${GLSL_FLAGS} -g")
 endif()
 
-add_library(EmbeddedShaders INTERFACE)
-
 macro(add_embedded_shader source target)
   add_glslc_shader(${source} GLSLC_FLAGS ${GLSL_FLAGS} ${ARGV} EMBED_TARGET
                    ${target})
-  target_link_libraries(EmbeddedShaders INTERFACE ${target})
+  target_link_libraries(ren PRIVATE ${target})
 endmacro()
 
 add_embedded_shader(EarlyZ.vert EarlyZPassVertexShader)

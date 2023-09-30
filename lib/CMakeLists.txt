@@ -23,8 +23,6 @@ find_package(volk REQUIRED)
 find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
 
-add_subdirectory(glsl)
-
 add_library(
   ren
   ren.cpp
@@ -61,8 +59,7 @@ target_link_libraries(
           range-v3::range-v3
           tl::optional
           unofficial::spirv-reflect::spirv-reflect
-          volk::volk
-          EmbeddedShaders)
+          volk::volk)
 target_compile_definitions(
   ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
               VMA_STATS_STRING_ENABLED=0 VK_NO_PROTOTYPES)
@@ -142,6 +139,7 @@ if(REN_PCH)
   endif()
 endif()
 
+add_subdirectory(glsl)
 add_subdirectory(Passes)
 
 if(REN_INSTALL)
