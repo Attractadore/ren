@@ -58,12 +58,11 @@ void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
       .tex = texture_index,
   });
 
+  // Dispatch 1 thread per 16 work items for optimal performance
   glm::uvec2 size = g_renderer->get_texture(texture).size;
-  glm::uvec2 group_size = {glsl::POST_PROCESSING_THREADS_X,
-                           glsl::POST_PROCESSING_THREADS_Y};
-  glm::uvec2 work_size = {glsl::POST_PROCESSING_WORK_SIZE_X,
-                          glsl::POST_PROCESSING_WORK_SIZE_Y};
-  pass.dispatch_threads(size, group_size * work_size);
+  pass.dispatch_threads(
+      size / glm::uvec2(4),
+      {glsl::POST_PROCESSING_THREADS_X, glsl::POST_PROCESSING_THREADS_Y});
 }
 
 struct PostProcessingPassConfig {
