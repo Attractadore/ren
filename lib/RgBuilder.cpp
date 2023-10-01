@@ -373,9 +373,15 @@ void RgBuilder::present(StringView texture_name) {
     cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
   });
 
+  // TODO: find a cleaner solution
   auto present = create_pass("rg-present");
-  auto _ = present.write_texture("rg-final-backbuffer", "rg-blitted-backbuffer",
-                                 RG_PRESENT_TEXTURE);
+  (void)present.write_texture("rg-final-backbuffer",
+#if REN_IMGUI
+                              "rg-imgui-backbuffer",
+#else
+                              "rg-blitted-backbuffer",
+#endif
+                              RG_PRESENT_TEXTURE);
   present.set_host_callback(ren_rg_host_callback(RgNoPassData){});
   present.signal_semaphore(m_rg->m_present_semaphore);
 }

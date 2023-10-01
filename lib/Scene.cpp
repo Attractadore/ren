@@ -9,6 +9,11 @@
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
 
+#if REN_IMGUI
+#include <imgui.h>
+#include <imgui_internal.h>
+#endif
+
 namespace ren {
 
 auto Hash<SamplerDesc>::operator()(const SamplerDesc &sampler) const noexcept
@@ -414,6 +419,7 @@ void SceneImpl::draw() {
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .pp_opts = &m_pp_opts,
                        .early_z = false,
+                       .imgui = m_imgui_context and m_imgui_enabled,
                    },
                    PassesData{
                        .vertex_positions = m_vertex_positions,
@@ -429,11 +435,44 @@ void SceneImpl::draw() {
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .camera = &m_camera,
                        .pp_opts = &m_pp_opts,
+                       .imgui_context = m_imgui_context,
                    });
 
   m_render_graph->execute(m_cmd_allocator);
 
   m_frame_arena.clear();
 }
+
+void SceneImpl::set_imgui_context(ImGuiContext *ctx) noexcept {
+  m_imgui_context = ctx;
+#if REN_IMGUI
+  if (!ctx) {
+    return;
+  }
+  ImGuiIO &io = ctx->IO;
+  io.BackendRendererName = "imgui_impl_ren";
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  u8 *data;
+  i32 width, height;
+  io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
+  ren::ImageId image = create_image({
+      .width = u32(width),
+      .height = u32(height),
+      .format = Format::RGBA8_UNORM,
+      .data = data,
+  });
+  SampledTextureId texture =
+      get_or_create_texture(image, {
+                                       .mag_filter = Filter::Linear,
+                                       .min_filter = Filter::Linear,
+                                       .mipmap_filter = Filter::Linear,
+                                       .wrap_u = WrappingMode::Repeat,
+                                       .wrap_v = WrappingMode::Repeat,
+                                   });
+  io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
+#endif
+}
+
+void SceneImpl::enable_imgui(bool value) noexcept { m_imgui_enabled = value; }
 
 } // namespace ren

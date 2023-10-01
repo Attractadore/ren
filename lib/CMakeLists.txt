@@ -10,6 +10,7 @@ option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
 option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
 option(REN_PCH "Enable precompiled header" OFF)
 option(REN_BUILD_SDL2_PLUGIN "Enable SDL2 plugin for simpler initialization and swapchain creation when using SDL2" OFF)
+option(REN_BUILD_IMGUI_PLUGIN "Enable ImGui plugin for debug UI rendering" OFF)
 
 find_package(
   Boost
@@ -26,6 +27,7 @@ find_package(volk REQUIRED)
 add_library(
   ren
   ren.cpp
+  ren-imgui.cpp
   Buffer.cpp
   CommandAllocator.cpp
   CommandRecorder.cpp
@@ -44,7 +46,8 @@ add_library(
   Swapchain.cpp
   Texture.cpp
   TextureIdAllocator.cpp
-  VMA.cpp)
+  VMA.cpp
+)
 add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.hpp)
@@ -91,6 +94,18 @@ if(REN_BUILD_SDL2_PLUGIN)
     ren-sdl2
     PUBLIC ren::ren SDL2::SDL2
     PRIVATE ren::vk)
+endif()
+
+if (REN_BUILD_IMGUI_PLUGIN)
+  message(STATUS "Enable ImGui plugin")
+  find_package(ImGui REQUIRED)
+  list(APPEND ren_targets ren-imgui)
+  target_compile_definitions(ren PRIVATE REN_IMGUI)
+  target_link_libraries(ren PRIVATE imgui::imgui)
+  add_library(ren-imgui INTERFACE)
+  add_library(ren::imgui ALIAS ren-imgui)
+  target_sources(ren-imgui INTERFACE FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren-imgui.hpp)
+  target_link_libraries(ren-imgui INTERFACE ren::ren imgui::imgui)
 endif()
 
 foreach(SEVERITY ${REN_LOG_SEVERITY})

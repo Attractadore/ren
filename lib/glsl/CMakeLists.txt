@@ -20,3 +20,5 @@ add_embedded_shader(Opaque.frag OpaquePassFragmentShader)
 add_embedded_shader(PostProcessing.comp PostProcessingShader)
 add_embedded_shader(ReduceLuminanceHistogram.comp
                     ReduceLuminanceHistogramShader)
+add_embedded_shader(ImGui.vert ImGuiVertexShader)
+add_embedded_shader(ImGui.frag ImGuiFragmentShader)

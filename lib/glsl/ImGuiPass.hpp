@@ -1,0 +1,8 @@
+#pragma once
+#include "ImGuiPass.h"
+
+GLSL_NAMESPACE_BEGIN
+
+GLSL_PUSH_CONSTANTS(GLSL_IMGUI_CONSTANTS, ImGuiConstants);
+
+GLSL_NAMESPACE_END

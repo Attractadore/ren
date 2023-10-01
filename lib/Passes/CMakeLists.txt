@@ -4,6 +4,7 @@ target_sources(
           CameraExposure.cpp
           EarlyZ.cpp
           Exposure.cpp
+          ImGui.cpp
           ManualExposure.cpp
           Opaque.cpp
           PostProcessing.cpp

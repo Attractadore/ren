@@ -1020,9 +1020,23 @@ auto Renderer::create_graphics_pipeline(
   auto color_attachments =
       create_info.color_attachments |
       map([&](const ColorAttachmentInfo &attachment) {
-        return VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = attachment.write_mask,
-        };
+        return attachment.blending.map_or(
+            [&](const ColorBlendAttachmentInfo &blending)
+                -> VkPipelineColorBlendAttachmentState {
+              return {
+                  .blendEnable = true,
+                  .srcColorBlendFactor = blending.src_color_blend_factor,
+                  .dstColorBlendFactor = blending.dst_color_blend_factor,
+                  .colorBlendOp = blending.color_blend_op,
+                  .srcAlphaBlendFactor = blending.src_alpha_blend_factor,
+                  .dstAlphaBlendFactor = blending.dst_alpha_blend_factor,
+                  .alphaBlendOp = blending.alpha_blend_op,
+                  .colorWriteMask = attachment.write_mask,
+              };
+            },
+            VkPipelineColorBlendAttachmentState{
+                .colorWriteMask = attachment.write_mask,
+            });
       }) |
       ranges::to<StaticVector<VkPipelineColorBlendAttachmentState,
                               MAX_COLOR_ATTACHMENTS>>;

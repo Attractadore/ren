@@ -27,7 +27,7 @@ function(copy_dlls target)
 endfunction()
 
 add_library(app-base AppBase.cpp)
-target_link_libraries(app-base PUBLIC ren::sdl2 fmt::fmt)
+target_link_libraries(app-base PUBLIC ren::sdl2 fmt::fmt PRIVATE ren::imgui)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 
 add_executable(create-device create-device.cpp)

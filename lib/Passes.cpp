@@ -1,6 +1,7 @@
 #include "Passes.hpp"
 #include "Camera.inl"
 #include "Passes/EarlyZ.hpp"
+#include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Upload.hpp"
@@ -39,12 +40,21 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
                                         .pipelines = cfg.pipelines,
                                         .options = cfg.pp_opts,
                                     });
+#if REN_IMGUI
+  if (cfg.imgui) {
+    setup_imgui_pass(rgb, ImGuiPassConfig{
+                              .pipeline = cfg.pipelines->imgui_pass,
+                              .fb_size = cfg.viewport_size,
+                          });
+  }
+#endif
 
   rgb.present("pp-color-buffer");
 }
 
 struct PassesExtraData {
   bool early_z : 1 = true;
+  bool imgui : 1 = false;
 };
 
 auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
@@ -114,6 +124,17 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
 
   TRY_SET(set_post_processing_passes_data(rg, *data.pp_opts));
 
+#if REN_IMGUI
+  if (extra_data.imgui) {
+    TRY_SET(rg.set_pass_data("imgui",
+                             ImGuiPassData{.context = data.imgui_context}));
+  } else {
+    if (rg.is_pass_valid("imgui")) {
+      return false;
+    }
+  }
+#endif
+
 #undef TRY_SET
 
   return true;
@@ -125,6 +146,7 @@ void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
                       const PassesConfig &cfg, const PassesData &data) {
   PassesExtraData extra_data{
       .early_z = cfg.early_z,
+      .imgui = cfg.imgui,
   };
   bool valid = set_all_passes_data(rg, data, extra_data);
   if (!valid) {

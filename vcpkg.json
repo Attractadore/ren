@@ -22,8 +22,16 @@
       "dependencies": [
         {
           "name": "sdl2",
-          "features": [ "vulkan" ]
+          "features": [
+            "vulkan"
+          ]
         }
+      ]
+    },
+    "imgui": {
+      "description": "Enable ImGui plugin",
+      "dependencies": [
+        "imgui"
       ]
     },
     "examples": {
@@ -31,7 +39,16 @@
       "dependencies": [
         {
           "name": "ren",
-          "features": [ "sdl2" ]
+          "features": [
+            "sdl2",
+            "imgui"
+          ]
+        },
+        {
+          "name": "imgui",
+          "features": [
+            "sdl2-binding"
+          ]
         },
         "boost-functional",
         "fmt",
@@ -45,7 +62,9 @@
     },
     "tests": {
       "description": "Build tests",
-      "dependencies": [ "gtest" ]
+      "dependencies": [
+        "gtest"
+      ]
     }
   }
 }

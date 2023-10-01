@@ -49,8 +49,18 @@ struct DepthTestInfo {
   Variant<VkCompareOp, DynamicState> compare_op = DYNAMIC;
 };
 
+struct ColorBlendAttachmentInfo {
+  VkBlendFactor src_color_blend_factor = VK_BLEND_FACTOR_SRC_ALPHA;
+  VkBlendFactor dst_color_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  VkBlendOp color_blend_op = VK_BLEND_OP_ADD;
+  VkBlendFactor src_alpha_blend_factor = VK_BLEND_FACTOR_ONE;
+  VkBlendFactor dst_alpha_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  VkBlendOp alpha_blend_op = VK_BLEND_OP_ADD;
+};
+
 struct ColorAttachmentInfo {
-  VkFormat format;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  Optional<ColorBlendAttachmentInfo> blending;
   VkColorComponentFlags write_mask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
       VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

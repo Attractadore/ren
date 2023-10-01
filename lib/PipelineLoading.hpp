@@ -12,6 +12,7 @@ struct Pipelines {
   Handle<GraphicsPipeline> opaque_pass;
   Handle<ComputePipeline> post_processing;
   Handle<ComputePipeline> reduce_luminance_histogram;
+  Handle<GraphicsPipeline> imgui_pass;
 };
 
 auto create_pipeline_layout(ResourceArena &arena,
@@ -37,5 +38,9 @@ auto load_post_processing_pipeline(
 auto load_reduce_luminance_histogram_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> Handle<ComputePipeline>;
+
+auto load_imgui_pipeline(ResourceArena &arena,
+                         Handle<DescriptorSetLayout> textures, VkFormat format)
+    -> Handle<GraphicsPipeline>;
 
 } // namespace ren

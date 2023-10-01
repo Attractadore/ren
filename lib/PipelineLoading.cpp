@@ -5,12 +5,14 @@
 #include "glsl/Textures.hpp"
 
 #include "EarlyZPassVertexShader.h"
+#include "ImGuiFragmentShader.h"
+#include "ImGuiVertexShader.h"
 #include "OpaquePassFragmentShader.h"
 #include "OpaquePassVertexShader.h"
 #include "PostProcessingShader.h"
 #include "ReduceLuminanceHistogramShader.h"
 
-#include "spirv_reflect.h"
+#include <spirv_reflect.h>
 
 namespace ren {
 
@@ -114,6 +116,9 @@ auto load_pipelines(ResourceArena &arena,
           load_post_processing_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
           arena, persistent_set_layout),
+      // TODO: pick format based on swapchain format
+      .imgui_pass = load_imgui_pipeline(arena, persistent_set_layout,
+                                        VK_FORMAT_B8G8R8A8_SRGB),
   };
 }
 
@@ -183,6 +188,37 @@ auto load_post_processing_pipeline(
       arena, persistent_set_layout,
       Span(PostProcessingShader, PostProcessingShader_count).as_bytes(),
       "Post-processing");
+}
+
+auto load_imgui_pipeline(ResourceArena &arena,
+                         Handle<DescriptorSetLayout> textures, VkFormat format)
+    -> Handle<GraphicsPipeline> {
+  auto vs = Span(ImGuiVertexShader, ImGuiVertexShader_count).as_bytes();
+  auto fs = Span(ImGuiFragmentShader, ImGuiFragmentShader_count).as_bytes();
+  Handle<PipelineLayout> layout =
+      create_pipeline_layout(arena, textures, {vs, fs}, "ImGui pass");
+  // TODO
+  std::array color_attachments = {ColorAttachmentInfo{
+      .format = format,
+      .blending =
+          ColorBlendAttachmentInfo{
+              .src_color_blend_factor = VK_BLEND_FACTOR_SRC_ALPHA,
+              .dst_color_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+              .color_blend_op = VK_BLEND_OP_ADD,
+              .src_alpha_blend_factor = VK_BLEND_FACTOR_ONE,
+              .dst_alpha_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+              .alpha_blend_op = VK_BLEND_OP_ADD,
+          },
+  }};
+  return arena.create_graphics_pipeline({
+      .name = "ImGui pass graphics pipeline",
+      .layout = layout,
+      .vertex_shader = {vs},
+      .fragment_shader = ShaderInfo{fs},
+      .rasterization = {.cull_mode = VK_CULL_MODE_NONE},
+      .color_attachments = color_attachments,
+  });
+  return {};
 }
 
 } // namespace ren
