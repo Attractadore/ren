@@ -18,6 +18,7 @@ find_package(
 find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
 find_package(fmt REQUIRED)
+find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
@@ -82,7 +83,6 @@ list(APPEND ren_targets ren-vk)
 if(REN_BUILD_SDL2_PLUGIN)
   message(STATUS "Enable SDL2 plugin")
   find_package(SDL2 REQUIRED)
-  list(APPEND ren_targets ren-sdl2)
   add_library(ren-sdl2 ren-sdl2.cpp)
   add_library(ren::sdl2 ALIAS ren-sdl2)
   target_sources(ren-sdl2 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
@@ -91,6 +91,7 @@ if(REN_BUILD_SDL2_PLUGIN)
     ren-sdl2
     PUBLIC ren::ren SDL2::SDL2
     PRIVATE ren::vk)
+  list(APPEND ren_targets ren-sdl2)
 endif()
 
 foreach(SEVERITY ${REN_LOG_SEVERITY})

@@ -2,7 +2,6 @@
 #include "Semaphore.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
-#include "ren/ren-vk.hpp"
 
 #include <tuple>
 

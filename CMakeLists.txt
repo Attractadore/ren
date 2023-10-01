@@ -32,7 +32,6 @@ endif()
 option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
 option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 
-find_package(glm REQUIRED)
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)

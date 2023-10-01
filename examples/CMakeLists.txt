@@ -2,6 +2,7 @@ find_package(Boost REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
+find_package(glm REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 
