@@ -9,6 +9,7 @@ option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
 option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
 option(REN_PCH "Enable precompiled header" OFF)
+option(REN_BUILD_SDL2_PLUGIN "Enable SDL2 plugin for simpler initialization and swapchain creation when using SDL2" OFF)
 
 find_package(
   Boost
@@ -79,6 +80,7 @@ list(APPEND ren_targets ren)
 list(APPEND ren_targets ren-vk)
 
 if(REN_BUILD_SDL2_PLUGIN)
+  message(STATUS "Enable SDL2 plugin")
   find_package(SDL2 REQUIRED)
   list(APPEND ren_targets ren-sdl2)
   add_library(ren-sdl2 ren-sdl2.cpp)
