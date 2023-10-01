@@ -4,7 +4,7 @@
 
 #include <SDL2/SDL_vulkan.h>
 
-auto ren::sdl2::init(const InitInfo &init_info) -> expected<void> {
+auto ren::sdl2::init(const RendererDesc &desc) -> expected<void> {
   if (SDL_Vulkan_LoadLibrary(nullptr)) {
     return std::unexpected(Error::SDL2);
   }
@@ -21,15 +21,14 @@ auto ren::sdl2::init(const InitInfo &init_info) -> expected<void> {
 
   return ren::init({
       .instance_extensions = extensions,
-      .adapter = init_info.adapter,
+      .adapter = desc.adapter,
   });
 }
 
 auto ren::sdl2::get_window_flags() -> Uint32 { return SDL_WINDOW_VULKAN; }
 
-auto ren::sdl2::create_swapchain(SDL_Window *window)
-    -> expected<std::unique_ptr<Swapchain>> {
-  return ren::vk::Swapchain::create(
+auto ren::sdl2::create_swapchain(SDL_Window *window) -> expected<Swapchain> {
+  return ren::vk::create_swapchain(
       [](VkInstance instance, void *window,
          VkSurfaceKHR *p_surface) -> VkResult {
         if (!SDL_Vulkan_CreateSurface((SDL_Window *)(window), instance,

@@ -1,8 +1,8 @@
 #pragma once
 #include <expected>
 #include <glm/glm.hpp>
-#include <memory>
 #include <span>
+#include <utility>
 #include <variant>
 
 namespace ren {
@@ -17,9 +17,31 @@ enum class Error {
 
 template <typename T> using expected = std::expected<T, Error>;
 
+namespace detail {
+
+struct NullIdImpl {};
+
+} // namespace detail
+
+constexpr detail::NullIdImpl NullId;
+
+#define ren_define_ptr_id(name)                                                \
+  class name {                                                                 \
+  public:                                                                      \
+    name() = default;                                                          \
+    name(detail::NullIdImpl) : name() {}                                       \
+    explicit operator bool() const noexcept { return m_id; }                   \
+    operator uintptr_t() const noexcept { return m_id; }                       \
+                                                                               \
+  private:                                                                     \
+    uintptr_t m_id = 0;                                                        \
+  }
+
 #define ren_define_id(name)                                                    \
   class name {                                                                 \
   public:                                                                      \
+    name() = default;                                                          \
+    name(detail::NullIdImpl) : name() {}                                       \
     explicit operator bool() const noexcept { return m_id; }                   \
     operator unsigned() const noexcept { return m_id; }                        \
                                                                                \
@@ -27,6 +49,8 @@ template <typename T> using expected = std::expected<T, Error>;
     unsigned m_id = 0;                                                         \
   }
 
+ren_define_ptr_id(SwapchainId);
+ren_define_ptr_id(SceneId);
 ren_define_id(MeshId);
 ren_define_id(ImageId);
 ren_define_id(MaterialId);
@@ -37,44 +61,58 @@ ren_define_id(DirectionalLightId);
 
 namespace detail {
 
-struct NullIdImpl {
-#define ren_define_null_id(type)                                               \
-  constexpr operator type() const noexcept { return {}; }
+template <typename I, void (*D)(I)> class UniqueHandle {
+public:
+  UniqueHandle() = default;
 
-  ren_define_null_id(MeshId);
-  ren_define_null_id(ImageId);
-  ren_define_null_id(MaterialId);
-  ren_define_null_id(MeshInstanceId);
-  ren_define_null_id(DirectionalLightId);
+  explicit UniqueHandle(I id) : m_id(id) {}
 
-#undef ren_define_null_id
+  UniqueHandle(UniqueHandle &&other) noexcept {
+    m_id = std::exchange(other.m_id, NullId);
+  }
+
+  UniqueHandle &operator=(UniqueHandle &&other) noexcept {
+    reset();
+    m_id = std::exchange(other.m_id, NullId);
+    return *this;
+  }
+
+  ~UniqueHandle() { reset(); }
+
+  operator I() const noexcept { return m_id; };
+
+  void reset() noexcept {
+    if (m_id) {
+      I id = std::exchange(m_id, NullId);
+      D(id);
+    }
+  }
+
+private:
+  I m_id;
 };
 
 } // namespace detail
 
-constexpr detail::NullIdImpl NullId;
-
-struct InitInfo {
+struct RendererDesc {
   std::span<const char *const> instance_extensions;
   unsigned adapter = 0;
 };
 
-[[nodiscard]] auto init(const InitInfo &init_info) -> expected<void>;
+[[nodiscard]] auto init(const RendererDesc &desc) -> expected<void>;
 
 void quit();
 
 [[nodiscard]] auto draw() -> expected<void>;
 
-struct Swapchain {
-  virtual ~Swapchain() = default;
+void destroy_swapchain(SwapchainId swapchain);
 
-  [[nodiscard]] auto get_size() const -> std::tuple<unsigned, unsigned>;
+using Swapchain = detail::UniqueHandle<SwapchainId, destroy_swapchain>;
 
-  void set_size(unsigned width, unsigned height);
+[[nodiscard]] auto get_size(SwapchainId swapchain)
+    -> std::tuple<unsigned, unsigned>;
 
-protected:
-  Swapchain() = default;
-};
+void set_size(SwapchainId swapchain, unsigned width, unsigned height);
 
 /// Perspective projection parameters
 struct PerspectiveProjection {
@@ -258,78 +296,82 @@ struct DirectionalLightDesc {
   glm::vec3 origin = {0.0f, 0.0f, 1.0f};
 };
 
-class Scene {
-public:
-  [[nodiscard]] static auto create(Swapchain &swapchain)
-      -> expected<std::unique_ptr<Scene>>;
+void destroy_scene(SceneId scene);
 
-  virtual ~Scene() = default;
+using Scene = detail::UniqueHandle<SceneId, destroy_scene>;
 
-  void set_camera(const CameraDesc &desc);
+[[nodiscard]] auto create_scene(SwapchainId swapchain) -> expected<Scene>;
 
-  void set_tone_mapping(const ToneMappingDesc &desc);
+void set_camera(SceneId scene, const CameraDesc &desc);
 
-  [[nodiscard]] auto create_mesh(const MeshDesc &desc) -> expected<MeshId>;
+void set_tone_mapping(SceneId scene, const ToneMappingDesc &desc);
 
-  [[nodiscard]] auto create_image(const ImageDesc &desc) -> expected<ImageId>;
+[[nodiscard]] auto create_mesh(SceneId scene, const MeshDesc &desc)
+    -> expected<MeshId>;
 
-  [[nodiscard]] auto create_materials(std::span<const MaterialDesc> descs,
-                                      MaterialId *out) -> expected<void>;
+[[nodiscard]] auto create_image(SceneId scene, const ImageDesc &desc)
+    -> expected<ImageId>;
 
-  [[nodiscard]] auto create_material(const MaterialDesc &desc)
-      -> expected<MaterialId> {
-    MaterialId material;
-    return create_materials({&desc, 1}, &material).transform([&] {
-      return material;
-    });
-  }
+[[nodiscard]] auto create_materials(SceneId scene,
+                                    std::span<const MaterialDesc> descs,
+                                    MaterialId *out) -> expected<void>;
 
-  [[nodiscard]] auto
-  create_mesh_instances(std::span<const MeshInstanceDesc> descs,
-                        std::span<const glm::mat4x3> transforms,
-                        MeshInstanceId *out) -> expected<void>;
+[[nodiscard]] inline auto create_material(SceneId scene,
+                                          const MaterialDesc &desc)
+    -> expected<MaterialId> {
+  MaterialId material;
+  return create_materials(scene, {&desc, 1}, &material).transform([&] {
+    return material;
+  });
+}
 
-  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc)
-      -> expected<MeshInstanceId> {
-    MeshInstanceId mesh_instance;
-    return create_mesh_instances({&desc, 1}, {}, &mesh_instance).transform([&] {
-      return mesh_instance;
-    });
-  }
+[[nodiscard]] auto
+create_mesh_instances(SceneId scene, std::span<const MeshInstanceDesc> descs,
+                      std::span<const glm::mat4x3> transforms,
+                      MeshInstanceId *out) -> expected<void>;
 
-  [[nodiscard]] auto create_mesh_instance(const MeshInstanceDesc &desc,
-                                          const glm::mat4x3 &transform)
-      -> expected<MeshInstanceId> {
-    MeshInstanceId mesh_instance;
-    return create_mesh_instances({&desc, 1}, {&transform, 1}, &mesh_instance)
-        .transform([&] { return mesh_instance; });
-  }
+[[nodiscard]] inline auto create_mesh_instance(SceneId scene,
+                                               const MeshInstanceDesc &desc)
+    -> expected<MeshInstanceId> {
+  MeshInstanceId mesh_instance;
+  return create_mesh_instances(scene, {&desc, 1}, {}, &mesh_instance)
+      .transform([&] { return mesh_instance; });
+}
 
-  void destroy_mesh_instances(std::span<const MeshInstanceId> mesh_instances);
+[[nodiscard]] inline auto create_mesh_instance(SceneId scene,
+                                               const MeshInstanceDesc &desc,
+                                               const glm::mat4x3 &transform)
+    -> expected<MeshInstanceId> {
+  MeshInstanceId mesh_instance;
+  return create_mesh_instances(scene, {&desc, 1}, {&transform, 1},
+                               &mesh_instance)
+      .transform([&] { return mesh_instance; });
+}
 
-  void destroy_mesh_instance(MeshInstanceId mesh_instance) {
-    destroy_mesh_instances({&mesh_instance, 1});
-  }
+void destroy_mesh_instances(SceneId scene,
+                            std::span<const MeshInstanceId> mesh_instances);
 
-  void
-  set_mesh_instance_transforms(std::span<const MeshInstanceId> mesh_instances,
-                               std::span<const glm::mat4x3> transforms);
+inline void destroy_mesh_instance(SceneId scene, MeshInstanceId mesh_instance) {
+  destroy_mesh_instances(scene, {&mesh_instance, 1});
+}
 
-  void set_mesh_instance_transform(MeshInstanceId mesh_instance,
-                                   const glm::mat4x3 &transform) {
-    set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
-  }
+void set_mesh_instance_transforms(
+    SceneId scene, std::span<const MeshInstanceId> mesh_instances,
+    std::span<const glm::mat4x3> transforms);
 
-  [[nodiscard]] auto create_directional_light(const DirectionalLightDesc &desc)
-      -> expected<DirectionalLightId>;
+inline void set_mesh_instance_transform(SceneId scene,
+                                        MeshInstanceId mesh_instance,
+                                        const glm::mat4x3 &transform) {
+  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
+}
 
-  void destroy_directional_light(DirectionalLightId light);
+[[nodiscard]] auto create_directional_light(SceneId scene,
+                                            const DirectionalLightDesc &desc)
+    -> expected<DirectionalLightId>;
 
-  void update_directional_light(DirectionalLightId light,
-                                const DirectionalLightDesc &desc);
+void destroy_directional_light(SceneId scene, DirectionalLightId light);
 
-protected:
-  Scene() = default;
-};
+void update_directional_light(SceneId scene, DirectionalLightId light,
+                              const DirectionalLightDesc &desc);
 
 } // namespace ren

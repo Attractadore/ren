@@ -49,16 +49,15 @@ class AppBase {
   };
 
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  std::unique_ptr<ren::Swapchain> m_swapchain;
-  std::unique_ptr<ren::Scene> m_scene;
+  ren::Swapchain m_swapchain;
+  ren::Scene m_scene;
 
   unsigned m_window_width = 1280, m_window_height = 720;
 
 protected:
   AppBase(const char *app_name);
 
-  auto get_scene() const -> const ren::Scene &;
-  auto get_scene() -> ren::Scene &;
+  auto get_scene() const -> ren::SceneId;
 
   [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void>;
 

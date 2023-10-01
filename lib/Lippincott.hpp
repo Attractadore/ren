@@ -1,8 +1,10 @@
 #pragma once
+#include "Support/String.hpp"
 #include "ren/ren.hpp"
 
 #include <concepts>
 #include <functional>
+#include <system_error>
 
 namespace ren {
 
@@ -18,7 +20,7 @@ auto lippincott(F &&f) noexcept -> expected<std::invoke_result_t<F>> {
   } catch (const std::system_error &) {
     return std::unexpected(Error::System);
   } catch (const std::runtime_error &e) {
-    if (std::string_view(e.what()).starts_with("Vulkan")) {
+    if (StringView(e.what()).starts_with("Vulkan")) {
       return std::unexpected(Error::Vulkan);
     }
     return std::unexpected(Error::Runtime);

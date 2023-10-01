@@ -1,7 +1,6 @@
 #include "Scene.hpp"
 #include "Camera.inl"
 #include "Formats.hpp"
-#include "Lippincott.hpp"
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Swapchain.hpp"
@@ -435,75 +434,6 @@ void SceneImpl::draw() {
   m_render_graph->execute(m_cmd_allocator);
 
   m_frame_arena.clear();
-}
-
-auto Scene::create(Swapchain &swapchain) -> expected<std::unique_ptr<Scene>> {
-  return lippincott([&] {
-    return std::make_unique<GlobalScene>(
-        static_cast<SwapchainImpl &>(swapchain));
-  });
-}
-
-void Scene::set_camera(const CameraDesc &desc) {
-  static_cast<SceneImpl *>(this)->set_camera(desc);
-}
-
-void Scene::set_tone_mapping(const ToneMappingDesc &desc) {
-  static_cast<SceneImpl *>(this)->set_tone_mapping(desc);
-}
-
-auto Scene::create_mesh(const MeshDesc &desc) -> expected<MeshId> {
-  return lippincott(
-      [&] { return static_cast<SceneImpl *>(this)->create_mesh(desc); });
-}
-
-auto Scene::create_image(const ImageDesc &desc) -> expected<ImageId> {
-  return lippincott(
-      [&] { return static_cast<SceneImpl *>(this)->create_image(desc); });
-}
-
-auto Scene::create_materials(std::span<const MaterialDesc> descs,
-                             MaterialId *out) -> expected<void> {
-  return lippincott([&] {
-    return static_cast<SceneImpl *>(this)->create_materials(descs, out);
-  });
-}
-
-auto Scene::create_mesh_instances(std::span<const MeshInstanceDesc> descs,
-                                  std::span<const glm::mat4x3> transforms,
-                                  MeshInstanceId *out) -> expected<void> {
-  return lippincott([&] {
-    static_cast<SceneImpl *>(this)->create_mesh_instances(descs, transforms,
-                                                          out);
-  });
-}
-
-void Scene::destroy_mesh_instances(
-    std::span<const MeshInstanceId> mesh_instances) {
-  static_cast<SceneImpl *>(this)->destroy_mesh_instances(mesh_instances);
-}
-
-void Scene::set_mesh_instance_transforms(
-    std::span<const MeshInstanceId> mesh_instances,
-    std::span<const glm::mat4x3> transforms) {
-  static_cast<SceneImpl *>(this)->set_mesh_instance_transforms(mesh_instances,
-                                                               transforms);
-}
-
-auto Scene::create_directional_light(const DirectionalLightDesc &desc)
-    -> expected<DirectionalLightId> {
-  return lippincott([&] {
-    return static_cast<SceneImpl *>(this)->create_directional_light(desc);
-  });
-}
-
-void Scene::destroy_directional_light(DirectionalLightId light) {
-  static_cast<SceneImpl *>(this)->destroy_directional_light(light);
-}
-
-void Scene::update_directional_light(DirectionalLightId light,
-                                     const DirectionalLightDesc &desc) {
-  static_cast<SceneImpl *>(this)->update_directional_light(light, desc);
 }
 
 } // namespace ren

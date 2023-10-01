@@ -16,7 +16,7 @@ struct SwapchainTextureCreateInfo {
   u32 height = 1;
 };
 
-class SwapchainImpl : public vk::Swapchain {
+class SwapchainImpl {
   VkSwapchainKHR m_swapchain = nullptr;
   SmallVector<Handle<Texture>, 3> m_textures;
   u32 m_image_index = -1;
@@ -54,7 +54,3 @@ public:
 };
 
 } // namespace ren
-
-struct RenSwapchain : ren::Swapchain {
-  using ren::Swapchain::Swapchain;
-};

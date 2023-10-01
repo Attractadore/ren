@@ -5,15 +5,14 @@
 
 namespace ren::sdl2 {
 
-struct InitInfo {
+struct RendererDesc {
   unsigned adapter = 0;
 };
 
-[[nodiscard]] auto init(const InitInfo &init_info = {}) -> expected<void>;
+[[nodiscard]] auto init(const RendererDesc &desc = {}) -> expected<void>;
 
 [[nodiscard]] auto get_window_flags() -> Uint32;
 
-[[nodiscard]] auto create_swapchain(SDL_Window *window)
-    -> expected<std::unique_ptr<Swapchain>>;
+[[nodiscard]] auto create_swapchain(SDL_Window *window) -> expected<Swapchain>;
 
 } // namespace ren::sdl2

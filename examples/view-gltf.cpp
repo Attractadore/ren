@@ -298,9 +298,9 @@ auto generate_tangents(std::span<const glm::vec3> positions,
 
 class SceneWalker {
 public:
-  SceneWalker(tinygltf::Model model, ren::Scene &scene) {
+  SceneWalker(tinygltf::Model model, ren::SceneId scene) {
     m_model = std::move(model);
-    m_scene = &scene;
+    m_scene = scene;
   }
 
   auto walk(int scene) -> Result<void> {
@@ -663,15 +663,15 @@ private:
       remap_vertices(num_vertices);
     }
 
-    return m_scene
-        ->create_mesh({
-            .positions = positions_data,
-            .normals = normals_data,
-            .tangents = tangents_data,
-            .colors = colors_data,
-            .tex_coords = tex_coords_data,
-            .indices = indices_data,
-        })
+    return ren::create_mesh(m_scene,
+                            {
+                                .positions = positions_data,
+                                .normals = normals_data,
+                                .tangents = tangents_data,
+                                .colors = colors_data,
+                                .tex_coords = tex_coords_data,
+                                .indices = indices_data,
+                            })
         .transform_error(get_error_string);
   }
 
@@ -727,13 +727,13 @@ private:
            image.width * image.height * image.component * image.bits / 8);
     OK(ren::Format format,
        get_image_format(image.component, image.pixel_type, desc.srgb));
-    return m_scene
-        ->create_image({
-            .width = unsigned(image.width),
-            .height = unsigned(image.height),
-            .format = format,
-            .data = image.image.data(),
-        })
+    return ren::create_image(m_scene,
+                             {
+                                 .width = unsigned(image.width),
+                                 .height = unsigned(image.height),
+                                 .format = format,
+                                 .data = image.image.data(),
+                             })
         .transform_error(get_error_string);
   }
 
@@ -838,7 +838,8 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return m_scene->create_material(desc).transform_error(get_error_string);
+    return ren::create_material(m_scene, desc)
+        .transform_error(get_error_string);
   }
 
   auto get_or_create_material(int index) -> Result<ren::MaterialId> {
@@ -859,13 +860,12 @@ private:
     OK(ren::MaterialId material, get_or_create_material(primitive.material));
     OK(ren::MeshId mesh, get_or_create_mesh(primitive));
     OK(ren::MeshInstanceId mesh_instance,
-       m_scene
-           ->create_mesh_instance(
-               {
-                   .mesh = mesh,
-                   .material = material,
-               },
-               transform)
+       ren::create_mesh_instance(m_scene,
+                                 {
+                                     .mesh = mesh,
+                                     .material = material,
+                                 },
+                                 transform)
            .transform_error(get_error_string));
     return mesh_instance;
   }
@@ -952,7 +952,7 @@ private:
 
 private:
   tinygltf::Model m_model;
-  ren::Scene *m_scene = nullptr;
+  ren::SceneId m_scene;
   std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
   std::unordered_map<GltfImageDesc, ren::ImageId> m_image_cache;
   std::vector<ren::MaterialId> m_material_cache;
@@ -966,11 +966,13 @@ public:
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
       TRY_TO(scene_walker.walk(scene));
-      OK(auto directional_light, get_scene().create_directional_light({
-                                     .color = {1.0f, 1.0f, 1.0f},
-                                     .illuminance = 100'000.0f,
-                                     .origin = {0.0f, 0.0f, 1.0f},
-                                 }));
+      OK(auto directional_light,
+         ren::create_directional_light(get_scene(),
+                                       {
+                                           .color = {1.0f, 1.0f, 1.0f},
+                                           .illuminance = 100'000.0f,
+                                           .origin = {0.0f, 0.0f, 1.0f},
+                                       }));
       return {};
     }()
                  .transform_error(throw_error);
@@ -1018,7 +1020,7 @@ protected:
 
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
-    ren::Scene &scene = get_scene();
+    ren::SceneId scene = get_scene();
 
     float dt = duration_as_float(dt_ns);
 
@@ -1040,21 +1042,21 @@ protected:
     glm::vec3 position = -m_distance * forward;
 
     float iso = 100.0f;
-    scene.set_camera({
-        .projection =
-            ren::PerspectiveProjection{
-                .hfov = glm::radians(90.0f),
-            },
-        .width = width,
-        .height = height,
-        .aperture = 16.0f,
-        .shutter_time = 1.0f / iso,
-        .iso = iso,
-        .exposure_mode = ren::ExposureMode::Camera,
-        .position = position,
-        .forward = forward,
-        .up = up,
-    });
+    ren::set_camera(scene, {
+                               .projection =
+                                   ren::PerspectiveProjection{
+                                       .hfov = glm::radians(90.0f),
+                                   },
+                               .width = width,
+                               .height = height,
+                               .aperture = 16.0f,
+                               .shutter_time = 1.0f / iso,
+                               .iso = iso,
+                               .exposure_mode = ren::ExposureMode::Camera,
+                               .position = position,
+                               .forward = forward,
+                               .up = up,
+                           });
 
     return {};
   }

@@ -37,10 +37,15 @@ AppBase::AppBase(const char *app_name) {
       bail("{}", SDL_GetError());
     }
 
-    OK(m_swapchain, ren::sdl2::create_swapchain(m_window.get())
-                        .transform_error(get_error_string));
+    auto res41 = (ren ::sdl2 ::create_swapchain(m_window.get())
+                      .transform_error(get_error_string))
+                     .transform_error(get_error_string);
+    if (!res41) {
+      return Err(fmt ::format("{}", std ::move(res41).error()));
+    }
+    m_swapchain = *std ::move(res41);
 
-    OK(m_scene, ren::Scene::create(*m_swapchain));
+    OK(m_scene, ren::create_scene(m_swapchain));
 
     return {};
   }()
@@ -71,7 +76,7 @@ auto AppBase::loop() -> Result<void> {
       SDL_Vulkan_GetDrawableSize(m_window.get(), &w, &h);
       m_window_width = w;
       m_window_height = h;
-      m_swapchain->set_size(m_window_width, m_window_height);
+      ren::set_size(m_swapchain, m_window_width, m_window_height);
     }
 
     TRY_TO(iterate(m_window_width, m_window_height, dt));
@@ -81,14 +86,13 @@ auto AppBase::loop() -> Result<void> {
   return {};
 }
 
-auto AppBase::get_scene() const -> const ren::Scene & { return *m_scene; }
-auto AppBase::get_scene() -> ren::Scene & { return *m_scene; }
+auto AppBase::get_scene() const -> ren::SceneId { return m_scene; }
 
 auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
 
 auto AppBase::iterate(unsigned width, unsigned height, chrono::nanoseconds)
     -> Result<void> {
-  auto &scene = get_scene();
-  scene.set_camera({.width = width, .height = height});
+  ren::SceneId scene = get_scene();
+  ren::set_camera(scene, {.width = width, .height = height});
   return {};
 }

@@ -8,7 +8,7 @@ class DrawTriangleApp : public AppBase {
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
     [&] -> Result<void> {
-      auto &scene = get_scene();
+      ren::SceneId scene = get_scene();
 
       std::array<glm::vec3, 3> positions = {{
           {0.0f, 0.5f, 0.0f},
@@ -30,29 +30,32 @@ public:
 
       std::array<unsigned, 3> indices = {0, 1, 2};
 
-      OK(ren::MeshId mesh, scene.create_mesh({
-                               .positions = positions,
-                               .normals = normals,
-                               .colors = colors,
-                               .indices = indices,
-                           }));
+      OK(ren::MeshId mesh, ren::create_mesh(scene, {
+                                                       .positions = positions,
+                                                       .normals = normals,
+                                                       .colors = colors,
+                                                       .indices = indices,
+                                                   }));
 
-      OK(ren::MaterialId material, scene.create_material({
-                                       .metallic_factor = 1.0f,
-                                       .roughness_factor = 0.5f,
-                                   }));
+      OK(ren::MaterialId material,
+         ren::create_material(scene, {
+                                         .metallic_factor = 1.0f,
+                                         .roughness_factor = 0.5f,
+                                     }));
 
-      OK(ren::MeshInstanceId model, scene.create_mesh_instance({
-                                        .mesh = mesh,
-                                        .material = material,
-                                    }));
+      OK(ren::MeshInstanceId model,
+         ren::create_mesh_instance(scene, {
+                                              .mesh = mesh,
+                                              .material = material,
+                                          }));
 
       // Ambient day light
-      OK(ren::DirectionalLightId light, scene.create_directional_light({
-                                            .color = {1.0f, 1.0f, 1.0f},
-                                            .illuminance = 25'000.0f,
-                                            .origin = {0.0f, 0.0f, 1.0f},
-                                        }));
+      OK(ren::DirectionalLightId light,
+         ren::create_directional_light(scene, {
+                                                  .color = {1.0f, 1.0f, 1.0f},
+                                                  .illuminance = 25'000.0f,
+                                                  .origin = {0.0f, 0.0f, 1.0f},
+                                              }));
 
       return {};
     }()
@@ -66,7 +69,7 @@ public:
 protected:
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds)
       -> Result<void> override {
-    ren::Scene &scene = get_scene();
+    ren::SceneId scene = get_scene();
     ren::CameraDesc desc = {
         .projection = ren::OrthographicProjection{.width = 2.0f},
         .width = width,
@@ -77,7 +80,7 @@ protected:
         .forward = {0.0f, 0.0f, -1.0f},
         .up = {0.0f, 1.0f, 0.0f},
     };
-    scene.set_camera(desc);
+    ren::set_camera(scene, desc);
     return {};
   }
 };

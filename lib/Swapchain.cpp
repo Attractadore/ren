@@ -1,6 +1,5 @@
 #include "Swapchain.hpp"
 #include "Formats.hpp"
-#include "Lippincott.hpp"
 #include "Renderer.hpp"
 #include "Support/Errors.hpp"
 
@@ -223,30 +222,6 @@ void SwapchainImpl::present(Handle<Semaphore> wait_semaphore) {
     create();
     return;
   }
-}
-
-auto vk::Swapchain::create(vk::PFNCreateSurface create_surface, void *usrptr)
-    -> expected<std::unique_ptr<ren::Swapchain>> {
-  ren_assert(create_surface);
-  VkSurfaceKHR surface = nullptr;
-  return lippincott([&] {
-           throw_if_failed(
-               create_surface(g_renderer->get_instance(), usrptr, &surface),
-               "Vulkan: Failed to create surface");
-           return std::make_unique<SwapchainImpl>(surface);
-         })
-      .transform_error([&](Error error) {
-        vkDestroySurfaceKHR(g_renderer->get_instance(), surface, nullptr);
-        return error;
-      });
-}
-
-auto Swapchain::get_size() const -> std::tuple<unsigned, unsigned> {
-  return static_cast<const SwapchainImpl *>(this)->get_size();
-}
-
-void Swapchain::set_size(unsigned width, unsigned height) {
-  static_cast<SwapchainImpl *>(this)->set_size(width, height);
 }
 
 } // namespace ren

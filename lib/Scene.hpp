@@ -19,7 +19,7 @@ template <> struct Hash<SamplerDesc> {
   auto operator()(const SamplerDesc &sampler) const noexcept -> usize;
 };
 
-class SceneImpl : public Scene {
+class SceneImpl {
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;
 
@@ -111,16 +111,6 @@ public:
   void draw();
 
   void next_frame();
-};
-
-struct GlobalScene : public SceneImpl {
-  GlobalScene(SwapchainImpl &swapchain);
-  GlobalScene(const GlobalScene &) = delete;
-  GlobalScene(GlobalScene &&) = delete;
-  ~GlobalScene();
-
-  GlobalScene &operator=(const GlobalScene &) = delete;
-  GlobalScene &operator=(GlobalScene &&) = delete;
 };
 
 } // namespace ren
