@@ -37,8 +37,7 @@
         "REN_BUILD_SDL2_PLUGIN": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
-        "REN_PCH": "OFF",
-        "VCPKG_MANIFEST_FEATURES": "examples;tests"
+        "REN_PCH": "OFF"
       }
     },
     {

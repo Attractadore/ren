@@ -17,15 +17,26 @@
     "vulkan-memory-allocator"
   ],
   "features": {
+    "sdl2": {
+      "description": "Enable SDL2 plugin",
+      "dependencies": [
+        {
+          "name": "sdl2",
+          "features": [ "vulkan" ]
+        }
+      ]
+    },
     "examples": {
       "description": "Build example executables",
       "dependencies": [
         {
-          "name": "sdl2",
-          "features": [
-            "vulkan"
-          ]
+          "name": "ren",
+          "features": [ "sdl2" ]
         },
+        "boost-functional",
+        "fmt",
+        "glm",
+        "sdl2",
         "cxxopts",
         "meshoptimizer",
         "mikktspace",
@@ -34,9 +45,7 @@
     },
     "tests": {
       "description": "Build tests",
-      "dependencies": [
-        "gtest"
-      ]
+      "dependencies": [ "gtest" ]
     }
   }
 }

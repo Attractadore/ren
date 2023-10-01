@@ -14,14 +14,13 @@ find_package(
   Boost
   COMPONENTS container
   REQUIRED)
+find_package(VulkanHeaders REQUIRED)
+find_package(VulkanMemoryAllocator REQUIRED)
 find_package(fmt REQUIRED)
-find_package(glm REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(volk REQUIRED)
-find_package(VulkanHeaders REQUIRED)
-find_package(VulkanMemoryAllocator REQUIRED)
 
 add_library(
   ren
