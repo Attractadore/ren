@@ -90,18 +90,6 @@ void set_size(SwapchainId swapchain, unsigned width, unsigned height) {
   get_swapchain(swapchain)->set_size(width, height);
 }
 
-namespace {
-
-auto get_scene(SceneId scene) -> SceneImpl * {
-  return std::bit_cast<SceneImpl *>(scene);
-}
-
-auto get_scene_id(const SceneImpl *scene) -> SceneId {
-  return std::bit_cast<SceneId>(scene);
-}
-
-} // namespace
-
 auto create_scene(SwapchainId swapchain) -> expected<Scene> {
   ren_assert(swapchain);
   return lippincott([&] {

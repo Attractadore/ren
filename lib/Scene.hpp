@@ -13,6 +13,8 @@
 #include "glsl/Material.hpp"
 #include "ren/ren.hpp"
 
+struct ImGuiContext;
+
 namespace ren {
 
 template <> struct Hash<SamplerDesc> {
@@ -67,6 +69,9 @@ private:
 
   Pipelines m_pipelines;
 
+  ImGuiContext *m_imgui_context = nullptr;
+  bool m_imgui_enabled = false;
+
 public:
   SceneImpl(SwapchainImpl &swapchain);
 
@@ -111,6 +116,18 @@ public:
   void draw();
 
   void next_frame();
+
+  void set_imgui_context(ImGuiContext *ctx) noexcept;
+
+  void enable_imgui(bool value) noexcept;
 };
+
+inline auto get_scene(SceneId scene) -> SceneImpl * {
+  return std::bit_cast<SceneImpl *>(scene);
+}
+
+inline auto get_scene_id(const SceneImpl *scene) -> SceneId {
+  return std::bit_cast<SceneId>(scene);
+}
 
 } // namespace ren

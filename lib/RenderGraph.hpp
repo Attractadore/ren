@@ -130,6 +130,11 @@ constexpr RgBufferUsage RG_CS_WRITE_BUFFER = {
 constexpr RgBufferUsage RG_CS_READ_WRITE_BUFFER =
     RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER;
 
+constexpr RgBufferUsage RG_INDEX_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
+    .access_mask = VK_ACCESS_2_INDEX_READ_BIT,
+};
+
 struct RgBufferCreateInfo {
   /// Buffer name
   String name;

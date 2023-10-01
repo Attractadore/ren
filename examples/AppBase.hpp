@@ -4,6 +4,8 @@
 #include <SDL2/SDL.h>
 #include <chrono>
 #include <fmt/format.h>
+#include <imgui.h>
+#include <imgui_impl_sdl2.h>
 
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
@@ -43,12 +45,22 @@ constexpr inline struct {
 
 class AppBase {
   struct WindowDeleter {
-    void operator()(SDL_Window *window) const noexcept {
+    static void operator()(SDL_Window *window) noexcept {
       SDL_DestroyWindow(window);
     }
   };
 
+  struct ImGuiContextDeleter {
+    static void operator()(ImGuiContext *ctx) noexcept {
+      if (ctx) {
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext(ctx);
+      }
+    }
+  };
+
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
+  std::unique_ptr<ImGuiContext, ImGuiContextDeleter> m_imgui_context;
   ren::Swapchain m_swapchain;
   ren::Scene m_scene;
 
@@ -71,6 +83,8 @@ protected:
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
+
+      IMGUI_CHECKVERSION();
 
       TRY_TO(ren::sdl2::init().transform_error(get_error_string));
 

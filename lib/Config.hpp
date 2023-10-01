@@ -3,6 +3,10 @@
 
 #include <vulkan/vulkan.h>
 
+#ifndef REN_IMGUI
+#define REN_IMGUI 0
+#endif
+
 namespace ren {
 
 constexpr usize PIPELINE_DEPTH = 2;
