@@ -12,10 +12,6 @@ namespace ren {
 struct GraphicsPipeline;
 class RgBuilder;
 
-struct ImGuiPassData {
-  const ImGuiContext *context = nullptr;
-};
-
 struct ImGuiPassConfig {
   Handle<GraphicsPipeline> pipeline;
   glm::uvec2 fb_size;

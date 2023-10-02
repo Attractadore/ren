@@ -18,7 +18,6 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
     }
     ren::SceneId scene = get_scene();
     ren::imgui::set_context(scene, m_imgui_context.get());
-    ren::imgui::enable(scene, true);
     return {};
   }()
              .transform_error(throw_error);
@@ -36,13 +35,9 @@ auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
   return {};
 }
 
-auto ImGuiApp::begin_frame() -> Result<void> {
+auto ImGuiApp::iterate(unsigned, unsigned, std::chrono::nanoseconds)
+    -> Result<void> {
   ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
-  return {};
-}
-
-auto ImGuiApp::end_frame() -> Result<void> {
-  ImGui::Render();
   return {};
 }

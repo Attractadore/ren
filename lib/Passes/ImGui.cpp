@@ -1,13 +1,11 @@
 #include "ImGui.hpp"
 #if REN_IMGUI
 #include "CommandRecorder.hpp"
+#include "ImGuiConfig.hpp"
 #include "Pipeline.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Span.hpp"
 #include "glsl/ImGuiPass.hpp"
-
-#include <imgui.h>
-#include <imgui_internal.h>
 
 namespace ren {
 
@@ -20,13 +18,12 @@ struct ImGuiPassResources {
   glm::uvec2 fb_size;
 };
 
-auto get_draw_data(const ImGuiContext *context) -> const ImDrawData * {
-  return &context->Viewports[0]->DrawDataP;
-}
-
 void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
-                    const ImGuiPassResources &rcs, const ImGuiPassData &data) {
-  const ImDrawData *draw_data = get_draw_data(data.context);
+                    const ImGuiPassResources &rcs) {
+  const ImDrawData *draw_data = ImGui::GetDrawData();
+  if (!draw_data->TotalVtxCount) {
+    return;
+  }
 
   {
     auto *vertices = rg.map_buffer<ImDrawVert>(rcs.vertices);
@@ -142,15 +139,15 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       .fb_size = cfg.fb_size,
   };
 
-  pass.set_update_callback(ren_rg_update_callback(ImGuiPassData) {
-    const ImDrawData *draw_data = get_draw_data(data.context);
-    rg.resize_buffer(vertices, draw_data->TotalIdxCount * sizeof(ImDrawVert));
+  pass.set_update_callback(ren_rg_update_callback(RgNoPassData) {
+    const ImDrawData *draw_data = ImGui::GetDrawData();
+    rg.resize_buffer(vertices, draw_data->TotalVtxCount * sizeof(ImDrawVert));
     rg.resize_buffer(indices, draw_data->TotalIdxCount * sizeof(ImDrawIdx));
     return true;
   });
 
-  pass.set_graphics_callback(ren_rg_graphics_callback(ImGuiPassData) {
-    run_imgui_pass(rg, render_pass, rcs, data);
+  pass.set_graphics_callback(ren_rg_graphics_callback(RgNoPassData) {
+    run_imgui_pass(rg, render_pass, rcs);
   });
 }
 

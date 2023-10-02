@@ -28,7 +28,6 @@ struct PassesConfig {
   glm::uvec2 viewport_size;
   const PostProcessingOptions *pp_opts = nullptr;
   bool early_z : 1 = true;
-  bool imgui : 1 = false;
 };
 
 struct PassesData {
@@ -45,7 +44,6 @@ struct PassesData {
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
   const PostProcessingOptions *pp_opts;
-  const ImGuiContext *imgui_context = nullptr;
 };
 
 void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,

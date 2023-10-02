@@ -1021,6 +1021,8 @@ protected:
 
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
+    TRY_TO(ImGuiApp::iterate(width, height, dt_ns));
+
     ImGui::ShowDemoWindow();
 
     ren::SceneId scene = get_scene();

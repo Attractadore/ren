@@ -10,8 +10,8 @@ public:
 protected:
   [[nodiscard]] auto process_event(const SDL_Event &e) -> Result<void> override;
 
-  [[nodiscard]] auto begin_frame() -> Result<void> override;
-  [[nodiscard]] auto end_frame() -> Result<void> override;
+  [[nodiscard]] auto iterate(unsigned, unsigned, std::chrono::nanoseconds)
+      -> Result<void> override;
 
 private:
   struct Deleter {
