@@ -1,6 +1,7 @@
 #include "Scene.hpp"
 #include "Camera.inl"
 #include "Formats.hpp"
+#include "ImGuiConfig.hpp"
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Swapchain.hpp"
@@ -8,11 +9,6 @@
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
-
-#if REN_IMGUI
-#include <imgui.h>
-#include <imgui_internal.h>
-#endif
 
 namespace ren {
 
@@ -411,7 +407,10 @@ void SceneImpl::update_directional_light(
 };
 
 void SceneImpl::draw() {
+  ren_ImGuiScope(m_imgui_context);
   m_resource_uploader.upload(m_cmd_allocator);
+
+  ImGui::Render();
 
   update_rg_passes(*m_render_graph, m_cmd_allocator,
                    PassesConfig{
@@ -419,7 +418,6 @@ void SceneImpl::draw() {
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .pp_opts = &m_pp_opts,
                        .early_z = false,
-                       .imgui = m_imgui_context and m_imgui_enabled,
                    },
                    PassesData{
                        .vertex_positions = m_vertex_positions,
@@ -435,7 +433,6 @@ void SceneImpl::draw() {
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .camera = &m_camera,
                        .pp_opts = &m_pp_opts,
-                       .imgui_context = m_imgui_context,
                    });
 
   m_render_graph->execute(m_cmd_allocator);
@@ -443,13 +440,14 @@ void SceneImpl::draw() {
   m_frame_arena.clear();
 }
 
-void SceneImpl::set_imgui_context(ImGuiContext *ctx) noexcept {
-  m_imgui_context = ctx;
+void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
 #if REN_IMGUI
-  if (!ctx) {
+  m_imgui_context = context;
+  if (!context) {
     return;
   }
-  ImGuiIO &io = ctx->IO;
+  ren_ImGuiScope(m_imgui_context);
+  ImGuiIO &io = ImGui::GetIO();
   io.BackendRendererName = "imgui_impl_ren";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
   u8 *data;
@@ -472,7 +470,5 @@ void SceneImpl::set_imgui_context(ImGuiContext *ctx) noexcept {
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
 #endif
 }
-
-void SceneImpl::enable_imgui(bool value) noexcept { m_imgui_enabled = value; }
 
 } // namespace ren

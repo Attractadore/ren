@@ -73,9 +73,7 @@ auto AppBase::loop() -> Result<void> {
       ren::set_size(m_swapchain, m_window_width, m_window_height);
     }
 
-    TRY_TO(begin_frame());
     TRY_TO(iterate(m_window_width, m_window_height, dt));
-    TRY_TO(end_frame());
     TRY_TO(ren::draw());
   }
 

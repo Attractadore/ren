@@ -70,7 +70,6 @@ private:
   Pipelines m_pipelines;
 
   ImGuiContext *m_imgui_context = nullptr;
-  bool m_imgui_enabled = false;
 
 public:
   SceneImpl(SwapchainImpl &swapchain);
@@ -117,9 +116,7 @@ public:
 
   void next_frame();
 
-  void set_imgui_context(ImGuiContext *ctx) noexcept;
-
-  void enable_imgui(bool value) noexcept;
+  void set_imgui_context(ImGuiContext *context) noexcept;
 };
 
 inline auto get_scene(SceneId scene) -> SceneImpl * {
