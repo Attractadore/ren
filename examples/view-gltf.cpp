@@ -1,4 +1,4 @@
-#include "AppBase.hpp"
+#include "ImGuiApp.hpp"
 
 #include <boost/functional/hash.hpp>
 #include <cstdint>
@@ -958,10 +958,10 @@ private:
   std::vector<ren::MaterialId> m_material_cache;
 };
 
-class ViewGlTFApp : public AppBase {
+class ViewGlTFApp : public ImGuiApp {
 public:
   ViewGlTFApp(const fs::path &path, unsigned scene)
-      : AppBase(fmt::format("View glTF: {}", path).c_str()) {
+      : ImGuiApp(fmt::format("View glTF: {}", path).c_str()) {
     [&]() -> Result<void> {
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
@@ -983,13 +983,14 @@ public:
   }
 
 protected:
-  auto process_event(const SDL_Event &e) -> Result<void> override {
-    switch (e.type) {
+  auto process_event(const SDL_Event &event) -> Result<void> override {
+    TRY_TO(ImGuiApp::process_event(event));
+    switch (event.type) {
     default:
       break;
     case SDL_MOUSEWHEEL: {
-      m_distance =
-          m_distance * glm::pow(2.0f, e.wheel.preciseY / m_zoom_sensitivity);
+      m_distance = m_distance *
+                   glm::pow(2.0f, event.wheel.preciseY / m_zoom_sensitivity);
     } break;
     }
     return {};
@@ -1020,6 +1021,8 @@ protected:
 
   auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
+    ImGui::ShowDemoWindow();
+
     ren::SceneId scene = get_scene();
 
     float dt = duration_as_float(dt_ns);

@@ -1,5 +1,4 @@
 #include "AppBase.hpp"
-#include "ren/ren-imgui.hpp"
 
 #include <SDL2/SDL_vulkan.h>
 #include <utility>
@@ -38,16 +37,9 @@ AppBase::AppBase(const char *app_name) {
       bail("{}", SDL_GetError());
     }
 
-    m_imgui_context.reset(ImGui::CreateContext());
-    ImGui::StyleColorsDark();
-    ImGui_ImplSDL2_InitForVulkan(m_window.get());
-
     OK(m_swapchain, ren::sdl2::create_swapchain(m_window.get()));
 
     OK(m_scene, ren::create_scene(m_swapchain));
-
-    ren::imgui::set_context(m_scene, m_imgui_context.get());
-    ren::imgui::enable(m_scene, true);
 
     return {};
   }()
@@ -70,7 +62,6 @@ auto AppBase::loop() -> Result<void> {
            e.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
         quit = true;
       }
-      ImGui_ImplSDL2_ProcessEvent(&e);
       TRY_TO(process_event(e));
     }
 
@@ -82,20 +73,14 @@ auto AppBase::loop() -> Result<void> {
       ren::set_size(m_swapchain, m_window_width, m_window_height);
     }
 
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-    ImGui::ShowDemoWindow();
+    TRY_TO(begin_frame());
     TRY_TO(iterate(m_window_width, m_window_height, dt));
-    ImGui::Render();
+    TRY_TO(end_frame());
     TRY_TO(ren::draw());
   }
 
   return {};
 }
-
-auto AppBase::get_scene() const -> ren::SceneId { return m_scene; }
-
-auto AppBase::process_event(const SDL_Event &e) -> Result<void> { return {}; }
 
 auto AppBase::iterate(unsigned width, unsigned height, chrono::nanoseconds)
     -> Result<void> {
