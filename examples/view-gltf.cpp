@@ -985,10 +985,14 @@ public:
 protected:
   auto process_event(const SDL_Event &event) -> Result<void> override {
     TRY_TO(ImGuiApp::process_event(event));
+    ImGuiIO &io = ImGui::GetIO();
     switch (event.type) {
     default:
       break;
     case SDL_MOUSEWHEEL: {
+      if (io.WantCaptureMouse) {
+        break;
+      }
       m_distance = m_distance *
                    glm::pow(2.0f, event.wheel.preciseY / m_zoom_sensitivity);
     } break;
