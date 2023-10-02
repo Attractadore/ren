@@ -3,6 +3,7 @@ find_package(SDL2 REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
+find_package(imgui REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 
@@ -28,8 +29,14 @@ function(copy_dlls target)
 endfunction()
 
 add_library(app-base AppBase.cpp)
-target_link_libraries(app-base PUBLIC ren::sdl2 fmt::fmt PRIVATE ren::imgui)
+target_link_libraries(app-base PUBLIC ren::sdl2 fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
+
+add_library(imgui-app ImGuiApp.cpp)
+target_link_libraries(
+  imgui-app
+  PUBLIC app-base imgui::imgui
+  PRIVATE ren::imgui)
 
 add_executable(create-device create-device.cpp)
 target_link_libraries(create-device app-base)
@@ -42,7 +49,7 @@ copy_dlls(draw-triangle)
 add_executable(view-gltf view-gltf.cpp)
 target_link_libraries(
   view-gltf
-  app-base
+  imgui-app
   Boost::boost
   cxxopts::cxxopts
   meshoptimizer::meshoptimizer

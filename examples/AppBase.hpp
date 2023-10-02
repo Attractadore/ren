@@ -4,8 +4,6 @@
 #include <SDL2/SDL.h>
 #include <chrono>
 #include <fmt/format.h>
-#include <imgui.h>
-#include <imgui_impl_sdl2.h>
 
 template <typename T = void> using Result = std::expected<T, std::string>;
 using Err = std::unexpected<std::string>;
@@ -50,17 +48,7 @@ class AppBase {
     }
   };
 
-  struct ImGuiContextDeleter {
-    static void operator()(ImGuiContext *ctx) noexcept {
-      if (ctx) {
-        ImGui_ImplSDL2_Shutdown();
-        ImGui::DestroyContext(ctx);
-      }
-    }
-  };
-
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  std::unique_ptr<ImGuiContext, ImGuiContextDeleter> m_imgui_context;
   ren::Swapchain m_swapchain;
   ren::Scene m_scene;
 
@@ -69,13 +57,22 @@ class AppBase {
 protected:
   AppBase(const char *app_name);
 
-  auto get_scene() const -> ren::SceneId;
+  auto get_window() const -> SDL_Window * { return m_window.get(); }
 
-  [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void>;
+  auto get_scene() const -> ren::SceneId { return m_scene; }
+
+  [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void> {
+    return {};
+  }
+
+  [[nodiscard]] virtual auto begin_frame() -> Result<void> { return {}; }
 
   [[nodiscard]] virtual auto iterate(unsigned width, unsigned height,
                                      std::chrono::nanoseconds dt)
+
       -> Result<void>;
+
+  [[nodiscard]] virtual auto end_frame() -> Result<void> { return {}; }
 
   template <class App, typename... Args>
   [[nodiscard]] static auto run(Args &&...args) -> int {
@@ -83,8 +80,6 @@ protected:
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
-
-      IMGUI_CHECKVERSION();
 
       TRY_TO(ren::sdl2::init().transform_error(get_error_string));
 
