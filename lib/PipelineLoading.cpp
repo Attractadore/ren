@@ -116,9 +116,6 @@ auto load_pipelines(ResourceArena &arena,
           load_post_processing_pipeline(arena, persistent_set_layout),
       .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
           arena, persistent_set_layout),
-      // TODO: pick format based on swapchain format
-      .imgui_pass = load_imgui_pipeline(arena, persistent_set_layout,
-                                        VK_FORMAT_B8G8R8A8_SRGB),
   };
 }
 
@@ -197,7 +194,6 @@ auto load_imgui_pipeline(ResourceArena &arena,
   auto fs = Span(ImGuiFragmentShader, ImGuiFragmentShader_count).as_bytes();
   Handle<PipelineLayout> layout =
       create_pipeline_layout(arena, textures, {vs, fs}, "ImGui pass");
-  // TODO
   std::array color_attachments = {ColorAttachmentInfo{
       .format = format,
       .blending =

@@ -28,9 +28,9 @@ private:
 public:
   SwapchainImpl(VkSurfaceKHR surface);
   SwapchainImpl(const SwapchainImpl &) = delete;
-  SwapchainImpl(Swapchain &&);
+  SwapchainImpl(Swapchain &&) noexcept;
   SwapchainImpl &operator=(const SwapchainImpl &) = delete;
-  SwapchainImpl &operator=(SwapchainImpl &&);
+  SwapchainImpl &operator=(SwapchainImpl &&) noexcept;
   ~SwapchainImpl();
 
   std::tuple<u32, u32> get_size() const {
@@ -44,6 +44,8 @@ public:
   }
 
   void set_present_mode(VkPresentModeKHR);
+
+  auto get_format() const -> VkFormat { return m_create_info.imageFormat; }
 
   auto get_surface() const -> VkSurfaceKHR { return m_create_info.surface; }
 
