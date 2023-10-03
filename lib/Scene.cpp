@@ -41,6 +41,13 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
 
   m_pipelines =
       load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
+#if REN_IMGUI
+  if (!m_pipelines.imgui_pass) {
+    m_pipelines.imgui_pass = load_imgui_pipeline(
+        m_persistent_arena, m_persistent_descriptor_set_layout,
+        swapchain.get_format());
+  }
+#endif
 
   m_vertex_positions = m_persistent_arena.create_buffer({
       .name = "Mesh vertex positions pool",
@@ -459,14 +466,16 @@ void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
       .format = Format::RGBA8_UNORM,
       .data = data,
   });
-  SampledTextureId texture =
-      get_or_create_texture(image, {
-                                       .mag_filter = Filter::Linear,
-                                       .min_filter = Filter::Linear,
-                                       .mipmap_filter = Filter::Linear,
-                                       .wrap_u = WrappingMode::Repeat,
-                                       .wrap_v = WrappingMode::Repeat,
-                                   });
+  SamplerDesc desc = {
+      .mag_filter = Filter::Linear,
+      .min_filter = Filter::Linear,
+      .mipmap_filter = Filter::Linear,
+      .wrap_u = WrappingMode::Repeat,
+      .wrap_v = WrappingMode::Repeat,
+  };
+  SampledTextureId texture = get_or_create_texture(image, desc);
+  // NOTE: texture from old context is leaked. Don't really care since context
+  // will probably be set only once
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
 #endif
 }
