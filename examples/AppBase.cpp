@@ -73,16 +73,22 @@ auto AppBase::loop() -> Result<void> {
       ren::set_size(m_swapchain, m_window_width, m_window_height);
     }
 
-    TRY_TO(iterate(m_window_width, m_window_height, dt));
+    TRY_TO(begin_frame());
+    TRY_TO(process_frame(m_window_width, m_window_height, dt));
     TRY_TO(ren::draw());
+    TRY_TO(end_frame());
   }
 
   return {};
 }
 
-auto AppBase::iterate(unsigned width, unsigned height, chrono::nanoseconds)
-    -> Result<void> {
+auto AppBase::begin_frame() -> Result<void> { return {}; }
+
+auto AppBase::process_frame(unsigned width, unsigned height,
+                            chrono::nanoseconds) -> Result<void> {
   ren::SceneId scene = get_scene();
   ren::set_camera(scene, {.width = width, .height = height});
   return {};
 }
+
+auto AppBase::end_frame() -> Result<void> { return {}; }

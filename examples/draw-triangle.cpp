@@ -67,7 +67,7 @@ public:
   }
 
 protected:
-  auto iterate(unsigned width, unsigned height, chrono::nanoseconds)
+  auto process_frame(unsigned width, unsigned height, chrono::nanoseconds)
       -> Result<void> override {
     ren::SceneId scene = get_scene();
     ren::CameraDesc desc = {

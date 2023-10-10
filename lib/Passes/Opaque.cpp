@@ -133,8 +133,8 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
 
   pass.create_color_attachment(
       {
-          .name = "color-buffer",
-          .format = COLOR_FORMAT,
+          .name = "hdr",
+          .format = HDR_FORMAT,
           .width = viewport_size.x,
           .height = viewport_size.y,
       },

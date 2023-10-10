@@ -1,4 +1,5 @@
 #include "ImGuiApp.hpp"
+#include "ren/ren-imgui.hpp"
 
 #include <boost/functional/hash.hpp>
 #include <cstdint>
@@ -990,7 +991,7 @@ protected:
     default:
       break;
     case SDL_MOUSEWHEEL: {
-      if (io.WantCaptureMouse) {
+      if (imgui_wants_capture_mouse()) {
         break;
       }
       m_distance = m_distance *
@@ -1023,10 +1024,8 @@ protected:
     return input;
   }
 
-  auto iterate(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
+  auto process_frame(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
-    TRY_TO(ImGuiApp::iterate(width, height, dt_ns));
-
     ImGui::ShowDemoWindow();
 
     ren::SceneId scene = get_scene();

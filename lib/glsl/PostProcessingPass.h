@@ -10,7 +10,8 @@ GLSL_NAMESPACE_BEGIN
   {                                                                            \
     GLSL_RESTRICT GLSL_BUFFER_REFERENCE(LuminanceHistogram) histogram;         \
     uint previous_exposure_texture;                                            \
-    uint tex;                                                                  \
+    uint hdr_texture;                                                          \
+    uint sdr_texture;                                                          \
   }
 
 const uint POST_PROCESSING_THREADS_X = 8;

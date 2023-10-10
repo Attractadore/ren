@@ -65,10 +65,13 @@ protected:
     return {};
   }
 
-  [[nodiscard]] virtual auto iterate(unsigned width, unsigned height,
-                                     std::chrono::nanoseconds dt)
+  [[nodiscard]] virtual auto begin_frame() -> Result<void>;
 
+  [[nodiscard]] virtual auto process_frame(unsigned width, unsigned height,
+                                           std::chrono::nanoseconds dt)
       -> Result<void>;
+
+  [[nodiscard]] virtual auto end_frame() -> Result<void>;
 
   template <class App, typename... Args>
   [[nodiscard]] static auto run(Args &&...args) -> int {

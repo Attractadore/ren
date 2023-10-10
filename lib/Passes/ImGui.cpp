@@ -126,7 +126,7 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       },
       RG_HOST_WRITE_BUFFER | RG_INDEX_BUFFER);
 
-  pass.write_color_attachment("rg-imgui-backbuffer", "rg-blitted-backbuffer",
+  pass.write_color_attachment("imgui", "sdr",
                               {
                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
