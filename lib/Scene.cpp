@@ -41,13 +41,6 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
 
   m_pipelines =
       load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
-#if REN_IMGUI
-  if (!m_pipelines.imgui_pass) {
-    m_pipelines.imgui_pass = load_imgui_pipeline(
-        m_persistent_arena, m_persistent_descriptor_set_layout,
-        swapchain.get_format());
-  }
-#endif
 
   m_vertex_positions = m_persistent_arena.create_buffer({
       .name = "Mesh vertex positions pool",
@@ -415,9 +408,14 @@ void SceneImpl::update_directional_light(
 
 void SceneImpl::draw() {
   ren_ImGuiScope(m_imgui_context);
+
   m_resource_uploader.upload(m_cmd_allocator);
 
-  ImGui::Render();
+#if REN_IMGUI
+  if (m_imgui_context) {
+    ImGui::Render();
+  }
+#endif
 
   update_rg_passes(*m_render_graph, m_cmd_allocator,
                    PassesConfig{

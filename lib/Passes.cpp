@@ -40,6 +40,7 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   setup_post_processing_passes(rgb, PostProcessingPassesConfig{
                                         .pipelines = cfg.pipelines,
                                         .options = cfg.pp_opts,
+                                        .size = cfg.viewport_size,
                                     });
 #if REN_IMGUI
   if (ImGui::GetCurrentContext()) {
@@ -47,10 +48,12 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
                               .pipeline = cfg.pipelines->imgui_pass,
                               .fb_size = cfg.viewport_size,
                           });
+    rgb.present("imgui");
+    return;
   }
 #endif
 
-  rgb.present("pp-color-buffer");
+  rgb.present("sdr");
 }
 
 struct PassesExtraData {
@@ -125,8 +128,9 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   TRY_SET(set_post_processing_passes_data(rg, *data.pp_opts));
 
 #if REN_IMGUI
-  if ((ImGui::GetCurrentContext() != nullptr) !=
-      rg.set_pass_data("imgui", RgNoPassData())) {
+  if (ImGui::GetCurrentContext()) {
+    TRY_SET(rg.set_pass_data("imgui", RgNoPassData()));
+  } else if (rg.is_pass_valid("imgui")) {
     return false;
   }
 #endif

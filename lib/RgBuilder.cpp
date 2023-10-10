@@ -340,7 +340,6 @@ void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
 }
 
 void RgBuilder::present(StringView texture_name) {
-
   m_rg->m_acquire_semaphore = alloc_semaphore("rg-acquire-semaphore");
   m_rg->m_present_semaphore = alloc_semaphore("rg-present-semaphore");
 
@@ -373,14 +372,8 @@ void RgBuilder::present(StringView texture_name) {
     cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
   });
 
-  // TODO: find a cleaner solution
   auto present = create_pass("rg-present");
-  (void)present.write_texture("rg-final-backbuffer",
-#if REN_IMGUI
-                              "rg-imgui-backbuffer",
-#else
-                              "rg-blitted-backbuffer",
-#endif
+  (void)present.write_texture("rg-final-backbuffer", "rg-blitted-backbuffer",
                               RG_PRESENT_TEXTURE);
   present.set_host_callback(ren_rg_host_callback(RgNoPassData){});
   present.signal_semaphore(m_rg->m_present_semaphore);

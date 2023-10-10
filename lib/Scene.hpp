@@ -117,6 +117,10 @@ public:
   void next_frame();
 
   void set_imgui_context(ImGuiContext *context) noexcept;
+
+  auto get_imgui_context() const noexcept -> ImGuiContext * {
+    return m_imgui_context;
+  }
 };
 
 inline auto get_scene(SceneId scene) -> SceneImpl * {

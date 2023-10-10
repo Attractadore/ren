@@ -110,12 +110,15 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
-      .early_z_pass = load_early_z_pass_pipeline(arena),
-      .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
-      .post_processing =
-          load_post_processing_pipeline(arena, persistent_set_layout),
-      .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
-          arena, persistent_set_layout),
+    .early_z_pass = load_early_z_pass_pipeline(arena),
+    .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
+    .post_processing =
+        load_post_processing_pipeline(arena, persistent_set_layout),
+    .reduce_luminance_histogram =
+        load_reduce_luminance_histogram_pipeline(arena, persistent_set_layout),
+#if REN_IMGUI
+    .imgui_pass = load_imgui_pipeline(arena, persistent_set_layout, SDR_FORMAT),
+#endif
   };
 }
 
@@ -147,7 +150,7 @@ auto load_opaque_pass_pipeline(
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
                                        "Opaque pass");
   std::array color_attachments = {ColorAttachmentInfo{
-      .format = COLOR_FORMAT,
+      .format = HDR_FORMAT,
   }};
   return arena.create_graphics_pipeline({
       .name = "Opaque pass graphics pipeline",

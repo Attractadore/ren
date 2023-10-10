@@ -10,8 +10,13 @@ public:
 protected:
   [[nodiscard]] auto process_event(const SDL_Event &e) -> Result<void> override;
 
-  [[nodiscard]] auto iterate(unsigned, unsigned, std::chrono::nanoseconds)
-      -> Result<void> override;
+  [[nodiscard]] auto begin_frame() -> Result<void> override;
+
+  [[nodiscard]] auto end_frame() -> Result<void> override;
+
+  auto imgui_wants_capture_keyboard() const -> bool;
+
+  auto imgui_wants_capture_mouse() const -> bool;
 
 private:
   struct Deleter {
@@ -19,4 +24,5 @@ private:
   };
 
   std::unique_ptr<ImGuiContext, Deleter> m_imgui_context;
+  bool m_imgui_enabled = true;
 };

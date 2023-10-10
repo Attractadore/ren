@@ -27,16 +27,15 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
 
 struct PostProcessingPassResources {
   Handle<ComputePipeline> pipeline;
-  RgTextureId texture;
+  glm::uvec2 size;
+  RgTextureId hdr;
+  RgTextureId sdr;
   RgBufferId histogram;
   RgTextureId exposure;
 };
 
 void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
-  assert(rcs.pipeline);
-  assert(rcs.texture);
-
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
 
@@ -49,24 +48,22 @@ void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
     previous_exposure = rg.get_storage_texture_descriptor(rcs.exposure);
   }
 
-  Handle<Texture> texture = rg.get_texture(rcs.texture);
-  u32 texture_index = rg.get_storage_texture_descriptor(rcs.texture);
-
   pass.set_push_constants(glsl::PostProcessingConstants{
       .histogram = histogram,
       .previous_exposure_texture = previous_exposure,
-      .tex = texture_index,
+      .hdr_texture = rg.get_storage_texture_descriptor(rcs.hdr),
+      .sdr_texture = rg.get_storage_texture_descriptor(rcs.sdr),
   });
 
   // Dispatch 1 thread per 16 work items for optimal performance
-  glm::uvec2 size = g_renderer->get_texture(texture).size;
   pass.dispatch_threads(
-      size / glm::uvec2(4),
+      rcs.size / glm::uvec2(4),
       {glsl::POST_PROCESSING_THREADS_X, glsl::POST_PROCESSING_THREADS_Y});
 }
 
 struct PostProcessingPassConfig {
   Handle<ComputePipeline> pipeline;
+  glm::uvec2 size;
 };
 
 void setup_post_processing_uber_pass(RgBuilder &rgb,
@@ -78,8 +75,16 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
 
   auto pass = rgb.create_pass("post-processing");
 
-  rcs.texture = pass.write_texture("pp-color-buffer", "color-buffer",
-                                   RG_CS_READ_WRITE_TEXTURE);
+  rcs.hdr = pass.read_texture("hdr", RG_CS_READ_TEXTURE);
+  rcs.sdr = pass.create_texture(
+      {
+          .name = "sdr",
+          .format = SDR_FORMAT,
+          .width = cfg.size.x,
+          .height = cfg.size.y,
+      },
+      RG_CS_WRITE_TEXTURE);
+  rcs.size = cfg.size;
 
   if (rgb.is_buffer_valid("luminance-histogram-empty")) {
     rcs.histogram =
@@ -160,8 +165,11 @@ void ren::setup_post_processing_passes(RgBuilder &rgb,
     setup_initialize_luminance_histogram_pass(rgb);
   }
 
-  setup_post_processing_uber_pass(rgb,
-                                  {.pipeline = cfg.pipelines->post_processing});
+  setup_post_processing_uber_pass(
+      rgb, {
+               .pipeline = cfg.pipelines->post_processing,
+               .size = cfg.size,
+           });
 
   if (automatic_exposure) {
     setup_reduce_luminance_histogram_pass(

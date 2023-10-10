@@ -94,8 +94,7 @@ SwapchainImpl::SwapchainImpl(VkSurfaceKHR surface) {
   VkCompositeAlphaFlagBitsKHR composite_alpha =
       select_composite_alpha(capabilities.supportedCompositeAlpha);
   VkImageUsageFlags image_usage =
-      select_image_usage(capabilities.supportedUsageFlags) |
-      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+      select_image_usage(capabilities.supportedUsageFlags);
 
   m_create_info = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,

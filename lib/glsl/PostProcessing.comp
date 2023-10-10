@@ -45,8 +45,9 @@ void store_luminance_histogram() {
 
 NUM_THREADS(THREADS_X, THREADS_Y, 1);
 void main() {
-  const uint tex = g_pcs.tex;
-  const ivec2 size = imageSize(g_rwimages2d[tex]);
+  const uint hdr_texture = g_pcs.hdr_texture;
+  const uint sdr_texture = g_pcs.sdr_texture;
+  const ivec2 size = imageSize(g_rimages2d[hdr_texture]);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);
 
   float exposure;
@@ -60,7 +61,7 @@ void main() {
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec4 color = imageLoad(g_rwimages2d[tex], ivec2(x, y));
+      vec4 color = imageLoad(g_rimages2d[hdr_texture], ivec2(x, y));
       float luminance = get_luminance(color.rgb);
 
       if (enable_automatic_exposure) {
@@ -70,7 +71,7 @@ void main() {
       // Tone mapping
       color.rgb /= (1.0f + luminance);
 
-      imageStore(g_rwimages2d[tex], ivec2(x, y), color);
+      imageStore(g_wimages2d[sdr_texture], ivec2(x, y), color);
     }
   }
 
