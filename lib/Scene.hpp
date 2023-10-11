@@ -66,6 +66,7 @@ private:
   ResourceArena m_frame_arena;
 
   std::unique_ptr<RenderGraph> m_render_graph;
+  bool m_early_z : 1 = false;
 
   Pipelines m_pipelines;
 

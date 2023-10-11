@@ -411,7 +411,15 @@ void SceneImpl::draw() {
 
   m_resource_uploader.upload(m_cmd_allocator);
 
+  bool early_z = m_early_z;
+
 #if REN_IMGUI
+  if (ImGui::Begin("Scene renderer settings")) {
+    ImGui::Checkbox("Early Z", &early_z);
+    m_early_z = early_z;
+    ImGui::End();
+  }
+
   if (m_imgui_context) {
     ImGui::Render();
   }
@@ -422,7 +430,7 @@ void SceneImpl::draw() {
                        .pipelines = &m_pipelines,
                        .viewport_size = {m_viewport_width, m_viewport_height},
                        .pp_opts = &m_pp_opts,
-                       .early_z = false,
+                       .early_z = early_z,
                    },
                    PassesData{
                        .vertex_positions = m_vertex_positions,
