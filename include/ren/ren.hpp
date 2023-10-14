@@ -123,7 +123,7 @@ struct PerspectiveProjection {
 /// Orthographic projection
 struct OrthographicProjection {
   /// Width of the orthographic projection box
-  float width;
+  float width = 1.0f;
 };
 
 /// How to calculate exposure
