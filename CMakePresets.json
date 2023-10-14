@@ -18,7 +18,6 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "REN_BUILD_TESTS": "OFF",
-        "REN_LOG_SEVERITY": "ERROR;WARN;INFO;DEBUG",
         "REN_ASSERTIONS": "ON",
         "REN_VULKAN_VALIDATION": "ON",
         "REN_VULKAN_DEBUG_NAMES": "ON",

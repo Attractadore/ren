@@ -1,9 +1,3 @@
-set(REN_LOG_SEVERITY
-    "ERROR;WARN;INFO"
-    CACHE
-      STRING
-      "Enable logging for these severity levels (Available levels are: ERROR, WARN, INFO, DEBUG)"
-)
 option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
@@ -109,10 +103,6 @@ if (REN_BUILD_IMGUI_PLUGIN)
   target_link_libraries(ren-imgui INTERFACE ren::ren imgui::imgui)
 endif()
 
-foreach(SEVERITY ${REN_LOG_SEVERITY})
-  message(STATUS "Enable ${SEVERITY} logging")
-  target_compile_definitions(ren PRIVATE REN_LOG_${SEVERITY})
-endforeach()
 if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
   target_compile_definitions(ren PRIVATE REN_ASSERTIONS)
