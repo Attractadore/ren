@@ -18,6 +18,68 @@
 namespace chrono = std::chrono;
 namespace fs = std::filesystem;
 
+enum Projection {
+  PROJECTION_PERSPECTIVE,
+  PROJECTION_ORTHOGRAPHIC,
+};
+
+struct CameraParams {
+  Projection projection = PROJECTION_PERSPECTIVE;
+  float hfov = 90.0f;
+  float orthographic_width = 1.0f;
+  ren::ExposureMode exposure = ren::ExposureMode::Camera;
+  float camera_exposure_comensation = 0.0f;
+  float iso = 100.0f;
+  float aperture = 16.0f;
+  float inv_shutter_time = 100.0f;
+  float automatic_exposure_compensation = 0.0f;
+};
+
+void draw_camera_imgui(CameraParams &params) {
+  if (ImGui::CollapsingHeader("Camera")) {
+    ImGui::SeparatorText("Projection");
+    int projection = params.projection;
+    ImGui::RadioButton("Perspective", &projection, PROJECTION_PERSPECTIVE);
+    if (projection == PROJECTION_PERSPECTIVE) {
+      ImGui::SliderFloat("Field of view", &params.hfov, 5.0f, 175.0f,
+                         "%.0f deg");
+    }
+    ImGui::RadioButton("Orthographic", &projection, PROJECTION_ORTHOGRAPHIC);
+    if (projection == PROJECTION_ORTHOGRAPHIC) {
+      ImGui::SliderFloat("Box width", &params.orthographic_width, 0.1f, 10.0f,
+                         "%.1f m");
+    }
+    params.projection = (Projection)projection;
+
+    ImGui::SeparatorText("Exposure");
+    int exposure = (int)params.exposure;
+    ImGui::RadioButton("Physical camera", &exposure,
+                       (int)ren::ExposureMode::Camera);
+    if (params.exposure == ren::ExposureMode::Camera) {
+      ImGui::SliderFloat("ISO", &params.iso, 100.0f, 3200.0f, "%.0f",
+                         ImGuiSliderFlags_AlwaysClamp |
+                             ImGuiSliderFlags_Logarithmic);
+      ImGui::SliderFloat("Aperture", &params.aperture, 1.0f, 22.0f, "f/%.1f",
+                         ImGuiSliderFlags_AlwaysClamp |
+                             ImGuiSliderFlags_Logarithmic);
+      ImGui::SliderFloat(
+          "Shutter time", &params.inv_shutter_time, 1.0f, 2000.0f, "%.0f 1/s",
+          ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic);
+      ImGui::InputFloat("Exposure compensation",
+                        &params.camera_exposure_comensation, 1.0f, 10.0f,
+                        "%.1f EV");
+    }
+    ImGui::RadioButton("Automatic", &exposure,
+                       (int)ren::ExposureMode::Automatic);
+    if (params.exposure == ren::ExposureMode::Automatic) {
+      ImGui::InputFloat("Exposure compensation",
+                        &params.automatic_exposure_compensation, 1.0f, 10.0f,
+                        "%.1f EV");
+    }
+    params.exposure = (ren::ExposureMode)exposure;
+  }
+}
+
 #define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
 #define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
 
@@ -1026,7 +1088,10 @@ protected:
 
   auto process_frame(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
       -> Result<void> override {
-    ImGui::ShowDemoWindow();
+    if (ImGui::Begin("Scene graphics settings")) {
+      draw_camera_imgui(m_camera_params);
+      ImGui::End();
+    }
 
     ren::SceneId scene = get_scene();
 
@@ -1049,22 +1114,43 @@ protected:
 
     glm::vec3 position = -m_distance * forward;
 
-    float iso = 100.0f;
-    ren::set_camera(scene, {
-                               .projection =
-                                   ren::PerspectiveProjection{
-                                       .hfov = glm::radians(90.0f),
-                                   },
-                               .width = width,
-                               .height = height,
-                               .aperture = 16.0f,
-                               .shutter_time = 1.0f / iso,
-                               .iso = iso,
-                               .exposure_mode = ren::ExposureMode::Camera,
-                               .position = position,
-                               .forward = forward,
-                               .up = up,
-                           });
+    {
+      float iso = 100.0f;
+      ren::CameraDesc desc = {
+          .width = width,
+          .height = height,
+          .aperture = m_camera_params.aperture,
+          .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
+          .iso = m_camera_params.iso,
+          .exposure_mode = m_camera_params.exposure,
+          .position = position,
+          .forward = forward,
+          .up = up,
+      };
+      switch (m_camera_params.projection) {
+      case PROJECTION_PERSPECTIVE: {
+        desc.projection = ren::PerspectiveProjection{
+            .hfov = glm::radians(m_camera_params.hfov),
+        };
+      } break;
+      case PROJECTION_ORTHOGRAPHIC: {
+        desc.projection = ren::OrthographicProjection{
+            .width = m_camera_params.orthographic_width,
+        };
+      } break;
+      }
+      switch (m_camera_params.exposure) {
+      case ren::ExposureMode::Camera: {
+        desc.exposure_compensation =
+            m_camera_params.camera_exposure_comensation;
+      } break;
+      case ren::ExposureMode::Automatic: {
+        desc.exposure_compensation =
+            m_camera_params.automatic_exposure_compensation;
+      } break;
+      }
+      ren::set_camera(scene, desc);
+    }
 
     return {};
   }
@@ -1083,6 +1169,8 @@ private:
 
   float m_zoom_sensitivity = -25.0f;
   float m_distance = 3.0f;
+
+  CameraParams m_camera_params;
 };
 
 int main(int argc, const char *argv[]) {
