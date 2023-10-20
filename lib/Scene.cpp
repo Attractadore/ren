@@ -414,13 +414,12 @@ void SceneImpl::draw() {
   bool early_z = m_early_z;
 
 #if REN_IMGUI
-  if (ImGui::Begin("Scene renderer settings")) {
-    ImGui::Checkbox("Early Z", &early_z);
-    m_early_z = early_z;
-    ImGui::End();
-  }
-
-  if (m_imgui_context) {
+  if (ImGui::GetCurrentContext()) {
+    if (ImGui::Begin("Scene renderer settings")) {
+      ImGui::Checkbox("Early Z", &early_z);
+      m_early_z = early_z;
+      ImGui::End();
+    }
     ImGui::Render();
   }
 #endif
