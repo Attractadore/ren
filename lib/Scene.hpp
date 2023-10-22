@@ -70,7 +70,9 @@ private:
 
   Pipelines m_pipelines;
 
+#if REN_IMGUI
   ImGuiContext *m_imgui_context = nullptr;
+#endif
 
 public:
   SceneImpl(SwapchainImpl &swapchain);
@@ -117,11 +119,15 @@ public:
 
   void next_frame();
 
+#if REN_IMGUI
   void set_imgui_context(ImGuiContext *context) noexcept;
 
   auto get_imgui_context() const noexcept -> ImGuiContext * {
     return m_imgui_context;
   }
+
+  void draw_imgui();
+#endif
 };
 
 inline auto get_scene(SceneId scene) -> SceneImpl * {

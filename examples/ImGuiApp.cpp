@@ -8,14 +8,49 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
     if (!IMGUI_CHECKVERSION()) {
       bail("ImGui: failed to check version");
     }
+
     m_imgui_context.reset(ImGui::CreateContext());
     if (!m_imgui_context) {
       bail("ImGui: failed to create context");
     }
+
     ImGui::StyleColorsDark();
+
+    float dpi;
+    {
+      int display = SDL_GetWindowDisplayIndex(get_window());
+      if (display < 0) {
+        bail("SDL2: failed to get window display: ", SDL_GetError());
+      }
+      if (SDL_GetDisplayDPI(display, &dpi, nullptr, nullptr)) {
+        bail("SDL2: failed to get DPI: ", SDL_GetError());
+      }
+    }
+
+    // Scale ImGui UI based on DPI
+    // A 15.6 inch 1920x1080 display's DPI is 142
+    float ui_scale = dpi / 142.0f;
+
+    ImGuiIO &io = ImGui::GetIO();
+    ImFont *default_font = io.Fonts->AddFontDefault();
+    ImFontConfig font_config = *std::ranges::find_if(
+        io.Fonts->ConfigData, [&](const ImFontConfig &font_config) {
+          return font_config.DstFont == default_font;
+        });
+    font_config.FontDataOwnedByAtlas = false;
+    font_config.SizePixels = glm::floor(16.0f * ui_scale);
+    std::ranges::fill(font_config.Name, '\0');
+    font_config.DstFont = nullptr;
+    m_font = io.Fonts->AddFont(&font_config);
+    io.Fonts->Build();
+
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.ScaleAllSizes(ui_scale);
+
     if (!ImGui_ImplSDL2_InitForVulkan(get_window())) {
       bail("ImGui-SDL2: failed to init backend");
     }
+
     ren::imgui::set_context(get_scene(), m_imgui_context.get());
     return {};
   }()
@@ -43,10 +78,16 @@ auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
 auto ImGuiApp::begin_frame() -> Result<void> {
   ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
+  ImGui::PushFont(m_font);
   return {};
 }
 
 auto ImGuiApp::end_frame() -> Result<void> {
+  ren::imgui::draw(get_scene());
+  ImGui::PopFont();
+  if (m_imgui_enabled) {
+    ImGui::Render();
+  }
   ImGui::EndFrame();
   return {};
 }

@@ -13,6 +13,7 @@ struct GraphicsPipeline;
 class RgBuilder;
 
 struct ImGuiPassConfig {
+  ImGuiContext *imgui_context = nullptr;
   Handle<GraphicsPipeline> pipeline;
   glm::uvec2 fb_size;
 };

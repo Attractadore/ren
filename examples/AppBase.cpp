@@ -32,7 +32,8 @@ AppBase::AppBase(const char *app_name) {
     m_window.reset(SDL_CreateWindow(
         app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         m_window_width, m_window_height,
-        SDL_WINDOW_RESIZABLE | ren::sdl2::get_window_flags()));
+        SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
+            ren::sdl2::get_window_flags()));
     if (!m_window) {
       bail("{}", SDL_GetError());
     }
@@ -75,8 +76,8 @@ auto AppBase::loop() -> Result<void> {
 
     TRY_TO(begin_frame());
     TRY_TO(process_frame(m_window_width, m_window_height, dt));
-    TRY_TO(ren::draw());
     TRY_TO(end_frame());
+    TRY_TO(ren::draw());
   }
 
   return {};

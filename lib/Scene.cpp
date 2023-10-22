@@ -407,53 +407,53 @@ void SceneImpl::update_directional_light(
 };
 
 void SceneImpl::draw() {
-  ren_ImGuiScope(m_imgui_context);
-
   m_resource_uploader.upload(m_cmd_allocator);
 
-  bool early_z = m_early_z;
-
+  update_rg_passes(
+      *m_render_graph, m_cmd_allocator,
+      PassesConfig {
 #if REN_IMGUI
-  if (ImGui::GetCurrentContext()) {
-    if (ImGui::Begin("Scene renderer settings")) {
-      ImGui::Checkbox("Early Z", &early_z);
-      m_early_z = early_z;
-      ImGui::End();
-    }
-    ImGui::Render();
-  }
+        .imgui_context = m_imgui_context,
 #endif
-
-  update_rg_passes(*m_render_graph, m_cmd_allocator,
-                   PassesConfig{
-                       .pipelines = &m_pipelines,
-                       .viewport_size = {m_viewport_width, m_viewport_height},
-                       .pp_opts = &m_pp_opts,
-                       .early_z = early_z,
-                   },
-                   PassesData{
-                       .vertex_positions = m_vertex_positions,
-                       .vertex_normals = m_vertex_normals,
-                       .vertex_tangents = m_vertex_tangents,
-                       .vertex_colors = m_vertex_colors,
-                       .vertex_uvs = m_vertex_uvs,
-                       .vertex_indices = m_vertex_indices,
-                       .meshes = m_meshes,
-                       .materials = m_materials,
-                       .mesh_instances = m_mesh_instances.values(),
-                       .directional_lights = m_dir_lights.values(),
-                       .viewport_size = {m_viewport_width, m_viewport_height},
-                       .camera = &m_camera,
-                       .pp_opts = &m_pp_opts,
-                   });
+        .pipelines = &m_pipelines,
+        .viewport_size = {m_viewport_width, m_viewport_height},
+        .pp_opts = &m_pp_opts, .early_z = m_early_z,
+      },
+      PassesData{
+          .vertex_positions = m_vertex_positions,
+          .vertex_normals = m_vertex_normals,
+          .vertex_tangents = m_vertex_tangents,
+          .vertex_colors = m_vertex_colors,
+          .vertex_uvs = m_vertex_uvs,
+          .vertex_indices = m_vertex_indices,
+          .meshes = m_meshes,
+          .materials = m_materials,
+          .mesh_instances = m_mesh_instances.values(),
+          .directional_lights = m_dir_lights.values(),
+          .viewport_size = {m_viewport_width, m_viewport_height},
+          .camera = &m_camera,
+          .pp_opts = &m_pp_opts,
+      });
 
   m_render_graph->execute(m_cmd_allocator);
 
   m_frame_arena.clear();
 }
 
-void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
 #if REN_IMGUI
+void SceneImpl::draw_imgui() {
+  ren_ImGuiScope(m_imgui_context);
+  if (ImGui::GetCurrentContext()) {
+    if (ImGui::Begin("Scene renderer settings")) {
+      bool early_z = m_early_z;
+      ImGui::Checkbox("Early Z", &early_z);
+      m_early_z = early_z;
+      ImGui::End();
+    }
+  }
+}
+
+void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
   m_imgui_context = context;
   if (!context) {
     return;
@@ -482,7 +482,7 @@ void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
   // NOTE: texture from old context is leaked. Don't really care since context
   // will probably be set only once
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
-#endif
 }
+#endif
 
 } // namespace ren

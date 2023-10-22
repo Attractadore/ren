@@ -43,8 +43,9 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
                                         .size = cfg.viewport_size,
                                     });
 #if REN_IMGUI
-  if (ImGui::GetCurrentContext()) {
+  if (cfg.imgui_context) {
     setup_imgui_pass(rgb, ImGuiPassConfig{
+                              .imgui_context = cfg.imgui_context,
                               .pipeline = cfg.pipelines->imgui_pass,
                               .fb_size = cfg.viewport_size,
                           });
@@ -57,6 +58,9 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
 }
 
 struct PassesExtraData {
+#if REN_IMGUI
+  ImGuiContext *imgui_context = nullptr;
+#endif
   bool early_z : 1 = true;
 };
 
@@ -128,7 +132,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   TRY_SET(set_post_processing_passes_data(rg, *data.pp_opts));
 
 #if REN_IMGUI
-  if (ImGui::GetCurrentContext()) {
+  if (extra_data.imgui_context) {
     TRY_SET(rg.set_pass_data("imgui", RgNoPassData()));
   } else if (rg.is_pass_valid("imgui")) {
     return false;
@@ -144,8 +148,11 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
 
 void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
                       const PassesConfig &cfg, const PassesData &data) {
-  PassesExtraData extra_data{
-      .early_z = cfg.early_z,
+  PassesExtraData extra_data = {
+#if REN_IMGUI
+    .imgui_context = cfg.imgui_context,
+#endif
+    .early_z = cfg.early_z,
   };
   bool valid = set_all_passes_data(rg, data, extra_data);
   if (!valid) {

@@ -12,6 +12,7 @@ namespace ren {
 namespace {
 
 struct ImGuiPassResources {
+  ImGuiContext *imgui_context = nullptr;
   Handle<GraphicsPipeline> pipeline;
   RgBufferId vertices;
   RgBufferId indices;
@@ -20,6 +21,8 @@ struct ImGuiPassResources {
 
 void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
                     const ImGuiPassResources &rcs) {
+  ren_ImGuiScope(rcs.imgui_context);
+
   const ImDrawData *draw_data = ImGui::GetDrawData();
   if (!draw_data->TotalVtxCount) {
     return;
@@ -132,19 +135,22 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
                               });
 
-  ImGuiPassResources rcs = {
-      .pipeline = cfg.pipeline,
-      .vertices = vertices,
-      .indices = indices,
-      .fb_size = cfg.fb_size,
-  };
-
+  ImGuiContext *imgui_context = cfg.imgui_context;
   pass.set_update_callback(ren_rg_update_callback(RgNoPassData) {
+    ren_ImGuiScope(imgui_context);
     const ImDrawData *draw_data = ImGui::GetDrawData();
     rg.resize_buffer(vertices, draw_data->TotalVtxCount * sizeof(ImDrawVert));
     rg.resize_buffer(indices, draw_data->TotalIdxCount * sizeof(ImDrawIdx));
     return true;
   });
+
+  ImGuiPassResources rcs = {
+      .imgui_context = cfg.imgui_context,
+      .pipeline = cfg.pipeline,
+      .vertices = vertices,
+      .indices = indices,
+      .fb_size = cfg.fb_size,
+  };
 
   pass.set_graphics_callback(ren_rg_graphics_callback(RgNoPassData) {
     run_imgui_pass(rg, render_pass, rcs);

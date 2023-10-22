@@ -25,4 +25,5 @@ private:
 
   std::unique_ptr<ImGuiContext, Deleter> m_imgui_context;
   bool m_imgui_enabled = true;
+  ImFont *m_font = nullptr;
 };

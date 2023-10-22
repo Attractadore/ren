@@ -1,5 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
+#include "Config.hpp"
 #include "Support/Span.hpp"
 
 #include <glm/glm.hpp>
@@ -24,6 +25,9 @@ struct Material;
 } // namespace glsl
 
 struct PassesConfig {
+#if REN_IMGUI
+  ImGuiContext *imgui_context = nullptr;
+#endif
   const Pipelines *pipelines = nullptr;
   glm::uvec2 viewport_size;
   const PostProcessingOptions *pp_opts = nullptr;

@@ -25,6 +25,4 @@ private:
 #define ren_ImGuiScope(context) ImGuiScope ren_imgui_scope_unique_name(context)
 
 } // namespace ren
-#else
-#define ren_ImGuiScope(context) (void)(context)
 #endif
