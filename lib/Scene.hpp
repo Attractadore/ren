@@ -28,12 +28,12 @@ class SceneImpl {
   Camera m_camera;
   PostProcessingOptions m_pp_opts;
 
-  BufferView m_vertex_positions;
-  BufferView m_vertex_normals;
-  BufferView m_vertex_tangents;
-  BufferView m_vertex_colors;
-  BufferView m_vertex_uvs;
-  BufferView m_vertex_indices;
+  AutoHandle<Buffer> m_vertex_positions;
+  AutoHandle<Buffer> m_vertex_normals;
+  AutoHandle<Buffer> m_vertex_tangents;
+  AutoHandle<Buffer> m_vertex_colors;
+  AutoHandle<Buffer> m_vertex_uvs;
+  AutoHandle<Buffer> m_vertex_indices;
   u32 m_num_vertex_positions = 0;
   u32 m_num_vertex_tangents = 0;
   u32 m_num_vertex_colors = 0;
@@ -41,7 +41,7 @@ class SceneImpl {
   u32 m_num_vertex_indices = 0;
   Vector<Mesh> m_meshes = {{}};
 
-  HashMap<SamplerDesc, Handle<Sampler>> m_samplers;
+  HashMap<SamplerDesc, AutoHandle<Sampler>> m_samplers;
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
@@ -54,15 +54,15 @@ public:
 private:
   DenseHandleMap<MeshInstance> m_mesh_instances;
 
-  Vector<Handle<Texture>> m_images = {{}};
+  Vector<AutoHandle<Texture>> m_images = Vector<AutoHandle<Texture>>(1);
 
-  Handle<DescriptorPool> m_persistent_descriptor_pool;
-  Handle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
+  AutoHandle<DescriptorPool> m_persistent_descriptor_pool;
+  AutoHandle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
   DenseHandleMap<glsl::DirLight> m_dir_lights;
 
-  ResourceArena m_persistent_arena;
+  ResourceArena m_arena;
   ResourceArena m_frame_arena;
 
   std::unique_ptr<RenderGraph> m_render_graph;

@@ -255,10 +255,12 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
   volkLoadDevice(get_device());
 
   vkGetDeviceQueue(get_device(), m_graphics_queue_family, 0, &m_graphics_queue);
-  m_graphics_queue_semaphore = create_semaphore({
-      .name = "Device time semaphore",
-      .initial_value = 0,
-  });
+  m_graphics_queue_semaphore =
+      create_semaphore({
+                           .name = "Device time semaphore",
+                           .initial_value = 0,
+                       })
+          .release();
 
   m_allocator = create_allocator(get_instance(), m_adapter, get_device());
 } // namespace ren
@@ -296,7 +298,7 @@ template <> struct QueueDeleter<VmaAllocation> {
 };
 
 Renderer::~Renderer() {
-  destroy_semaphore(m_graphics_queue_semaphore);
+  destroy(m_graphics_queue_semaphore);
   flush();
 }
 
@@ -315,7 +317,8 @@ void Renderer::next_frame() {
 }
 
 auto Renderer::create_descriptor_pool(
-    const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool> {
+    const DescriptorPoolCreateInfo &&create_info)
+    -> AutoHandle<DescriptorPool> {
   StaticVector<VkDescriptorPoolSize, MAX_DESCIPTOR_BINDINGS> pool_sizes;
 
   for (int i = 0; i < DESCRIPTOR_TYPE_COUNT; ++i) {
@@ -343,15 +346,15 @@ auto Renderer::create_descriptor_pool(
       "Vulkan: Failed to create descriptor pool");
   set_debug_name(get_device(), pool, create_info.name);
 
-  return m_descriptor_pools.emplace(DescriptorPool{
+  return AutoHandle(m_descriptor_pools.emplace(DescriptorPool{
       .handle = pool,
       .flags = create_info.flags,
       .set_count = create_info.set_count,
       .pool_sizes = create_info.pool_sizes,
-  });
+  }));
 }
 
-void Renderer::destroy_descriptor_pool(Handle<DescriptorPool> pool) {
+void Renderer::destroy(Handle<DescriptorPool> pool) {
   m_descriptor_pools.try_pop(pool).map(
       [&](const DescriptorPool &pool) { push_to_delete_queue(pool.handle); });
 }
@@ -375,7 +378,7 @@ void Renderer::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
 
 auto Renderer::create_descriptor_set_layout(
     const DescriptorSetLayoutCreateInfo &&create_info)
-    -> Handle<DescriptorSetLayout> {
+    -> AutoHandle<DescriptorSetLayout> {
   auto binding_flags =
       create_info.bindings |
       filter_map([](const DescriptorBinding &binding)
@@ -426,15 +429,14 @@ auto Renderer::create_descriptor_set_layout(
       "Vulkann: Failed to create descriptor set layout");
   set_debug_name(get_device(), layout, create_info.name);
 
-  return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
+  return AutoHandle(m_descriptor_set_layouts.emplace(DescriptorSetLayout{
       .handle = layout,
       .flags = create_info.flags,
       .bindings = create_info.bindings,
-  });
+  }));
 }
 
-void Renderer::destroy_descriptor_set_layout(
-    Handle<DescriptorSetLayout> layout) {
+void Renderer::destroy(Handle<DescriptorSetLayout> layout) {
   m_descriptor_set_layouts.try_pop(layout).map(
       [&](const DescriptorSetLayout &layout) {
         push_to_delete_queue(layout.handle);
@@ -500,7 +502,7 @@ void Renderer::write_descriptor_sets(
 }
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
-    -> BufferView {
+    -> AutoHandle<Buffer> {
   assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
@@ -554,7 +556,7 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     address = vkGetBufferDeviceAddress(get_device(), &buffer_info);
   }
 
-  Handle<Buffer> hbuffer = m_buffers.emplace(Buffer{
+  return AutoHandle(m_buffers.emplace(Buffer{
       .handle = buffer,
       .allocation = allocation,
       .ptr = (std::byte *)map_info.pMappedData,
@@ -562,15 +564,10 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
       .size = create_info.size,
       .heap = create_info.heap,
       .usage = create_info.usage,
-  });
-
-  return {
-      .buffer = hbuffer,
-      .size = create_info.size,
-  };
+  }));
 }
 
-void Renderer::destroy_buffer(Handle<Buffer> handle) {
+void Renderer::destroy(Handle<Buffer> handle) {
   m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
     push_to_delete_queue(buffer.handle);
     push_to_delete_queue(buffer.allocation);
@@ -606,7 +603,7 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
 };
 
 auto Renderer::create_texture(const TextureCreateInfo &&create_info)
-    -> Handle<Texture> {
+    -> AutoHandle<Texture> {
   assert(create_info.width > 0);
   assert(create_info.height > 0);
   assert(create_info.depth > 0);
@@ -635,7 +632,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
                   "VMA: Failed to create image");
   set_debug_name(get_device(), image, create_info.name);
 
-  return m_textures.emplace(Texture{
+  return AutoHandle(m_textures.emplace(Texture{
       .image = image,
       .allocation = allocation,
       .type = create_info.type,
@@ -646,14 +643,14 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
       .depth = create_info.depth,
       .num_mip_levels = create_info.num_mip_levels,
       .num_array_layers = create_info.num_array_layers,
-  });
+  }));
 }
 
 auto Renderer::create_swapchain_texture(
-    const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
+    const SwapchainTextureCreateInfo &&create_info) -> AutoHandle<Texture> {
   set_debug_name(get_device(), create_info.image, "Swapchain image");
 
-  return m_textures.emplace(Texture{
+  return AutoHandle(m_textures.emplace(Texture{
       .image = create_info.image,
       .type = VK_IMAGE_TYPE_2D,
       .format = create_info.format,
@@ -663,10 +660,10 @@ auto Renderer::create_swapchain_texture(
       .depth = 1,
       .num_mip_levels = 1,
       .num_array_layers = 1,
-  });
+  }));
 }
 
-void Renderer::destroy_texture(Handle<Texture> handle) {
+void Renderer::destroy(Handle<Texture> handle) {
   m_textures.try_pop(handle).map([&](const Texture &texture) {
     if (texture.allocation) {
       push_to_delete_queue(texture.image);
@@ -785,7 +782,7 @@ auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
 }
 
 auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
-    -> Handle<Sampler> {
+    -> AutoHandle<Sampler> {
   VkSamplerCreateInfo sampler_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .magFilter = create_info.mag_filter,
@@ -804,17 +801,17 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
       "Vulkan: Failed to create sampler");
   set_debug_name(get_device(), sampler, create_info.name);
 
-  return m_samplers.emplace(Sampler{
+  return AutoHandle(m_samplers.emplace(Sampler{
       .handle = sampler,
       .mag_filter = create_info.mag_filter,
       .min_filter = create_info.min_filter,
       .mipmap_mode = create_info.mipmap_mode,
       .address_mode_u = create_info.address_mode_u,
       .address_mode_v = create_info.address_mode_v,
-  });
+  }));
 }
 
-void Renderer::destroy_sampler(Handle<Sampler> sampler) {
+void Renderer::destroy(Handle<Sampler> sampler) {
   m_samplers.try_pop(sampler).map(
       [&](const Sampler &sampler) { push_to_delete_queue(sampler.handle); });
 }
@@ -825,7 +822,7 @@ auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
 }
 
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
-    -> Handle<Semaphore> {
+    -> AutoHandle<Semaphore> {
   VkSemaphoreTypeCreateInfo semaphore_type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
   };
@@ -844,10 +841,10 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
       "Vulkan: Failed to create semaphore");
   set_debug_name(get_device(), semaphore, create_info.name);
 
-  return m_semaphores.emplace(Semaphore{.handle = semaphore});
+  return AutoHandle(m_semaphores.emplace(Semaphore{.handle = semaphore}));
 }
 
-void Renderer::destroy_semaphore(Handle<Semaphore> semaphore) {
+void Renderer::destroy(Handle<Semaphore> semaphore) {
   m_semaphores.try_pop(semaphore).map(
       [&](Semaphore semaphore) { push_to_delete_queue(semaphore.handle); });
 }
@@ -931,7 +928,7 @@ static auto create_shader_module(VkDevice device,
 
 auto Renderer::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
-    -> Handle<GraphicsPipeline> {
+    -> AutoHandle<GraphicsPipeline> {
   constexpr size_t MAX_GRAPHICS_SHADER_STAGES = 2;
 
   StaticVector<VkPipelineShaderStageCreateInfo, MAX_GRAPHICS_SHADER_STAGES>
@@ -1078,7 +1075,7 @@ auto Renderer::create_graphics_pipeline(
     vkDestroyShaderModule(get_device(), module, nullptr);
   }
 
-  return m_graphics_pipelines.emplace(GraphicsPipeline{
+  return AutoHandle(m_graphics_pipelines.emplace(GraphicsPipeline{
       .handle = pipeline,
       .layout = create_info.layout,
       .stages = stages,
@@ -1086,10 +1083,10 @@ auto Renderer::create_graphics_pipeline(
       .multisample = create_info.multisample,
       .depth_test = create_info.depth_test,
       .color_attachments = create_info.color_attachments,
-  });
+  }));
 }
 
-void Renderer::destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
+void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
   m_graphics_pipelines.try_pop(pipeline).map(
       [&](const GraphicsPipeline &pipeline) {
         push_to_delete_queue(pipeline.handle);
@@ -1108,7 +1105,8 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 }
 
 auto Renderer::create_compute_pipeline(
-    const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
+    const ComputePipelineCreateInfo &&create_info)
+    -> AutoHandle<ComputePipeline> {
   VkShaderModule module =
       create_shader_module(get_device(), create_info.shader.code);
 
@@ -1131,13 +1129,13 @@ auto Renderer::create_compute_pipeline(
   set_debug_name(get_device(), pipeline, create_info.name);
   vkDestroyShaderModule(get_device(), module, nullptr);
 
-  return m_compute_pipelines.emplace(ComputePipeline{
+  return AutoHandle(m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
       .layout = create_info.layout,
-  });
+  }));
 }
 
-void Renderer::destroy_compute_pipeline(Handle<ComputePipeline> pipeline) {
+void Renderer::destroy(Handle<ComputePipeline> pipeline) {
   m_compute_pipelines.try_pop(pipeline).map(
       [&](const ComputePipeline &pipeline) {
         push_to_delete_queue(pipeline.handle);
@@ -1156,7 +1154,8 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
 }
 
 auto Renderer::create_pipeline_layout(
-    const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout> {
+    const PipelineLayoutCreateInfo &&create_info)
+    -> AutoHandle<PipelineLayout> {
   auto layouts =
       create_info.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
         return get_descriptor_set_layout(layout).handle;
@@ -1177,14 +1176,14 @@ auto Renderer::create_pipeline_layout(
       "Vulkan: Failed to create pipeline layout");
   set_debug_name(get_device(), layout, create_info.name);
 
-  return m_pipeline_layouts.emplace(PipelineLayout{
+  return AutoHandle(m_pipeline_layouts.emplace(PipelineLayout{
       .handle = layout,
       .set_layouts{create_info.set_layouts},
       .push_constants = create_info.push_constants,
-  });
+  }));
 }
 
-void Renderer::destroy_pipeline_layout(Handle<PipelineLayout> layout) {
+void Renderer::destroy(Handle<PipelineLayout> layout) {
   m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
     push_to_delete_queue(layout.handle);
   });

@@ -18,8 +18,8 @@ struct EarlyZPassConfig {
 };
 
 struct EarlyZPassData {
-  BufferView vertex_positions;
-  BufferView vertex_indices;
+  Handle<Buffer> vertex_positions;
+  Handle<Buffer> vertex_indices;
   Span<const Mesh> meshes;
   Span<const MeshInstance> mesh_instances;
   glm::uvec2 viewport_size;

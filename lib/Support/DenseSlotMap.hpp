@@ -257,19 +257,23 @@ public:
   }
 
   constexpr const_iterator find(key_type k) const noexcept {
-    assert(k.slot < m_slots.size());
-    auto &slot = m_slots[k.slot];
-    if (slot.version == k.version) {
-      return ranges::next(begin(), slot.index);
+    if (k != key_type()) {
+      assert(k.slot < m_slots.size());
+      auto &slot = m_slots[k.slot];
+      if (slot.version == k.version) {
+        return ranges::next(begin(), slot.index);
+      }
     }
     return end();
   }
 
   constexpr iterator find(key_type k) noexcept {
-    assert(k.slot < m_slots.size());
-    auto &slot = m_slots[k.slot];
-    if (slot.version == k.version) {
-      return ranges::next(begin(), slot.index);
+    if (k != key_type()) {
+      assert(k.slot < m_slots.size());
+      auto &slot = m_slots[k.slot];
+      if (slot.version == k.version) {
+        return ranges::next(begin(), slot.index);
+      }
     }
     return end();
   }

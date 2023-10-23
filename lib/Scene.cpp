@@ -28,10 +28,9 @@ constexpr usize MESH_INDEX_BUDGET = 1024 * 1024;
 
 SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   m_persistent_descriptor_set_layout =
-      create_persistent_descriptor_set_layout(m_persistent_arena);
+      create_persistent_descriptor_set_layout();
   std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
-      allocate_descriptor_pool_and_set(m_persistent_arena,
-                                       m_persistent_descriptor_set_layout);
+      allocate_descriptor_pool_and_set(m_persistent_descriptor_set_layout);
 
   m_texture_allocator = std::make_unique<TextureIdAllocator>(
       m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
@@ -39,10 +38,9 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   m_render_graph =
       std::make_unique<RenderGraph>(swapchain, *m_texture_allocator);
 
-  m_pipelines =
-      load_pipelines(m_persistent_arena, m_persistent_descriptor_set_layout);
+  m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
 
-  m_vertex_positions = m_persistent_arena.create_buffer({
+  m_vertex_positions = g_renderer->create_buffer({
       .name = "Mesh vertex positions pool",
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -50,7 +48,7 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
   });
 
-  m_vertex_normals = m_persistent_arena.create_buffer({
+  m_vertex_normals = g_renderer->create_buffer({
       .name = "Mesh vertex normals pool",
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -58,7 +56,7 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
   });
 
-  m_vertex_tangents = m_persistent_arena.create_buffer({
+  m_vertex_tangents = g_renderer->create_buffer({
       .name = "Mesh vertex tangents pool",
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -66,7 +64,7 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
   });
 
-  m_vertex_colors = m_persistent_arena.create_buffer({
+  m_vertex_colors = g_renderer->create_buffer({
       .name = "Mesh vertex colors pool",
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -74,7 +72,7 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
   });
 
-  m_vertex_uvs = m_persistent_arena.create_buffer({
+  m_vertex_uvs = g_renderer->create_buffer({
       .name = "Mesh vertex UVs pool",
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -82,7 +80,7 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       .size = sizeof(glm::vec2) * MESH_VERTEX_BUDGET,
   });
 
-  m_vertex_indices = m_persistent_arena.create_buffer({
+  m_vertex_indices = g_renderer->create_buffer({
       .name = "Mesh vertex indices pool",
       .heap = BufferHeap::Static,
       .usage =
@@ -154,33 +152,35 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   // Upload vertices
 
   {
-    auto positions_dst =
-        m_vertex_positions.slice<glm::vec3>(mesh.base_vertex, num_vertices);
+    auto positions_dst = g_renderer->get_buffer_view(m_vertex_positions)
+                             .slice<glm::vec3>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.positions,
                                      positions_dst);
-    auto normals_dst =
-        m_vertex_normals.slice<glm::vec3>(mesh.base_vertex, num_vertices);
+    auto normals_dst = g_renderer->get_buffer_view(m_vertex_normals)
+                           .slice<glm::vec3>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.normals, normals_dst);
   }
   if (mesh.base_tangent_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
-    auto tangents_dst = m_vertex_tangents.slice<glm::vec4>(
-        mesh.base_tangent_vertex, num_vertices);
+    auto tangents_dst =
+        g_renderer->get_buffer_view(m_vertex_tangents)
+            .slice<glm::vec4>(mesh.base_tangent_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.tangents,
                                      tangents_dst);
   }
   if (mesh.base_color_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
     auto colors_dst =
-        m_vertex_colors.slice<glm::vec4>(mesh.base_color_vertex, num_vertices);
+        g_renderer->get_buffer_view(m_vertex_colors)
+            .slice<glm::vec4>(mesh.base_color_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.colors, colors_dst);
   }
   if (mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
-    auto uvs_dst =
-        m_vertex_uvs.slice<glm::vec2>(mesh.base_uv_vertex, num_vertices);
+    auto uvs_dst = g_renderer->get_buffer_view(m_vertex_uvs)
+                       .slice<glm::vec2>(mesh.base_uv_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.tex_coords, uvs_dst);
   }
   {
-    auto indices_dst =
-        m_vertex_indices.slice<u32>(mesh.base_index, num_indices);
+    auto indices_dst = g_renderer->get_buffer_view(m_vertex_indices)
+                           .slice<u32>(mesh.base_index, num_indices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.indices, indices_dst);
   }
 
@@ -192,9 +192,9 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
 auto SceneImpl::get_or_create_sampler(const SamplerDesc &sampler)
     -> Handle<Sampler> {
-  Handle<Sampler> &handle = m_samplers[sampler];
+  AutoHandle<Sampler> &handle = m_samplers[sampler];
   if (!handle) {
-    handle = m_persistent_arena.create_sampler({
+    handle = g_renderer->create_sampler({
         .mag_filter = getVkFilter(sampler.mag_filter),
         .min_filter = getVkFilter(sampler.min_filter),
         .mipmap_mode = getVkSamplerMipmapMode(sampler.mipmap_filter),
@@ -216,7 +216,7 @@ auto SceneImpl::get_or_create_texture(ImageId image,
 
 auto SceneImpl::create_image(const ImageDesc &desc) -> ImageId {
   auto format = getVkFormat(desc.format);
-  auto texture = m_persistent_arena.create_texture({
+  auto texture = g_renderer->create_texture({
       .type = VK_IMAGE_TYPE_2D,
       .format = format,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -229,7 +229,7 @@ auto SceneImpl::create_image(const ImageDesc &desc) -> ImageId {
   m_resource_uploader.stage_texture(
       m_frame_arena, Span((const std::byte *)desc.data, size), texture);
   auto image = std::bit_cast<ImageId>(u32(m_images.size()));
-  m_images.push_back(texture);
+  m_images.push_back(std::move(texture));
   return image;
 }
 

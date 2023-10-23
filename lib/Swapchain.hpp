@@ -17,7 +17,7 @@ struct SwapchainTextureCreateInfo {
 
 class SwapchainImpl {
   VkSwapchainKHR m_swapchain = nullptr;
-  SmallVector<Handle<Texture>, 3> m_textures;
+  SmallVector<AutoHandle<Texture>, 3> m_textures;
   u32 m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info = {};
 

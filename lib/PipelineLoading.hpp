@@ -4,8 +4,8 @@
 
 namespace ren {
 
-auto create_persistent_descriptor_set_layout(ResourceArena &arena)
-    -> Handle<DescriptorSetLayout>;
+auto create_persistent_descriptor_set_layout()
+    -> AutoHandle<DescriptorSetLayout>;
 
 struct Pipelines {
   Handle<GraphicsPipeline> early_z_pass;

@@ -569,8 +569,6 @@ auto RgBuilder::passes() const {
 }
 
 void RgBuilder::create_resources(Span<const RgPassId> schedule) {
-  m_rg->m_arena.clear();
-
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> heap_usage_flags = {};
 
   for (RgPassId pass_id : schedule) {
@@ -610,6 +608,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   m_rg->m_heap_buffers = {};
 
   m_rg->m_textures.resize(m_rg->m_texture_parents.size());
+  m_rg->m_texture_arena.clear();
   m_rg->m_tex_alloc.clear();
   m_rg->m_storage_texture_descriptors.resize(m_rg->m_textures.size());
   m_rg->m_texture_instance_counts.clear();
@@ -621,7 +620,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
     u32 num_instances = PIPELINE_DEPTH + desc.num_temporal_layers - 1;
     for (i32 i = 0; i < num_instances; ++i) {
       RgPhysicalTextureId texture_id(base_texture_id + i);
-      Handle<Texture> htexture = m_rg->m_arena.create_texture({
+      Handle<Texture> htexture = m_rg->m_texture_arena.create_texture({
           .name = fmt::format("Render graph texture {}", i32(texture_id)),
           .type = desc.type,
           .format = desc.format,
@@ -632,30 +631,18 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
           .num_mip_levels = desc.num_mip_levels,
           .num_array_layers = desc.num_array_layers,
       });
-      m_rg->m_textures[texture_id] = htexture;
       StorageTextureId storage_descriptor;
       if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
         storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
             g_renderer->get_texture_view(htexture));
       }
+      m_rg->m_textures[texture_id] = htexture;
       m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
     }
     m_rg->m_texture_instance_counts.insert(base_texture_id, num_instances);
   }
 
   m_rg->m_semaphores.resize(m_semaphore_ids.size());
-  for (auto &&[index, semaphore] : m_rg->m_acquire_semaphores | enumerate) {
-    semaphore = m_rg->m_arena.create_semaphore({
-        .name =
-            fmt::format("Render graph swapchain acquire semaphore {}", index),
-    });
-  }
-  for (auto &&[index, semaphore] : m_rg->m_present_semaphores | enumerate) {
-    semaphore = m_rg->m_arena.create_semaphore({
-        .name =
-            fmt::format("Render graph swapchain present semaphore {}", index),
-    });
-  }
 }
 
 void RgBuilder::fill_pass_runtime_info(Span<const RgPassId> schedule) {

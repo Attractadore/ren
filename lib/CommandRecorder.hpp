@@ -177,6 +177,9 @@ public:
                        TempSpan(&data, 1).as_bytes(), offset);
   }
 
+  void bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
+                         u32 offset = 0);
+
   void bind_index_buffer(const BufferView &buffer, VkIndexType type);
 
   void draw_indexed(const DrawIndexedInfo &&draw_info);

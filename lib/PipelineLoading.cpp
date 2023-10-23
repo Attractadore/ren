@@ -16,8 +16,8 @@
 
 namespace ren {
 
-auto create_persistent_descriptor_set_layout(ResourceArena &arena)
-    -> Handle<DescriptorSetLayout> {
+auto create_persistent_descriptor_set_layout()
+    -> AutoHandle<DescriptorSetLayout> {
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings = {};
 #if 0
   bindings[glsl::SAMPLERS_SLOT] = {
@@ -42,7 +42,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
       .count = glsl::NUM_STORAGE_TEXTURES,
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
-  return arena.create_descriptor_set_layout({
+  return g_renderer->create_descriptor_set_layout({
       .name = "Textures descriptor set layout",
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
       .bindings = bindings,

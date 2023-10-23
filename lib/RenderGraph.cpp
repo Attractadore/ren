@@ -79,6 +79,18 @@ RenderGraph::RenderGraph(SwapchainImpl &swapchain,
                          TextureIdAllocator &tex_alloc)
     : m_tex_alloc(tex_alloc) {
   m_swapchain = &swapchain;
+  for (auto &&[index, semaphore] : m_acquire_semaphores | enumerate) {
+    semaphore = g_renderer->create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain acquire semaphore {}", index),
+    });
+  }
+  for (auto &&[index, semaphore] : m_present_semaphores | enumerate) {
+    semaphore = g_renderer->create_semaphore({
+        .name =
+            fmt::format("Render graph swapchain present semaphore {}", index),
+    });
+  }
 }
 
 auto RenderGraph::is_pass_valid(StringView pass) const -> bool {
@@ -123,14 +135,16 @@ void RenderGraph::allocate_buffers() {
   }
 
   // Resize each buffer heap if necessary
-  Span<BufferView> heap_buffers = m_heap_buffers.front();
+  Span<AutoHandle<Buffer>> heap_buffers = m_heap_buffers.front();
   for (int heap = 0; heap < heap_buffers.size(); ++heap) {
-    BufferView &heap_buffer = heap_buffers[heap];
+    AutoHandle<Buffer> &heap_buffer = heap_buffers[heap];
+    usize heap_size =
+        g_renderer->try_get_buffer(heap_buffer)
+            .map_or([](const Buffer &buffer) { return buffer.size; }, 0);
     auto required_heap_size =
         std::min<usize>(required_heap_sizes[heap], 1024 * 1024);
-    if (heap_buffer.size < required_heap_size) {
-      m_arena.destroy_buffer(heap_buffer.buffer);
-      heap_buffer = m_arena.create_buffer({
+    if (heap_size < required_heap_size) {
+      heap_buffer = g_renderer->create_buffer({
           .name = fmt::format("Render graph buffer for heap {}", heap),
           .heap = BufferHeap(heap),
           .usage = m_heap_buffer_usage_flags[heap],
@@ -148,7 +162,11 @@ void RenderGraph::allocate_buffers() {
     usize size = desc.size;
     assert(offset + size <= required_heap_sizes[heap]);
     stack_tops[heap] = offset + size;
-    m_buffers[buffer] = heap_buffers[heap].subbuffer(offset, size);
+    m_buffers[buffer] = {
+        .buffer = heap_buffers[heap],
+        .offset = offset,
+        .size = size,
+    };
   }
 }
 

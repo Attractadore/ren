@@ -1,13 +1,11 @@
 #include "Descriptors.hpp"
 #include "Renderer.hpp"
-#include "ResourceArena.hpp"
 #include "Support/Errors.hpp"
 
 namespace ren {
 
-auto allocate_descriptor_pool_and_set(ResourceArena &arena,
-                                      Handle<DescriptorSetLayout> layout_handle)
-    -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet> {
+auto allocate_descriptor_pool_and_set(Handle<DescriptorSetLayout> layout_handle)
+    -> std::tuple<AutoHandle<DescriptorPool>, VkDescriptorSet> {
   const auto &layout = g_renderer->get_descriptor_set_layout(layout_handle);
 
   VkDescriptorSetLayoutCreateFlags flags = 0;
@@ -21,7 +19,7 @@ auto allocate_descriptor_pool_and_set(ResourceArena &arena,
     pool_sizes[binding.type] += binding.count;
   }
 
-  auto pool = arena.create_descriptor_pool({
+  auto pool = g_renderer->create_descriptor_pool({
       .flags = flags,
       .set_count = 1,
       .pool_sizes = pool_sizes,
@@ -30,7 +28,7 @@ auto allocate_descriptor_pool_and_set(ResourceArena &arena,
   auto set = g_renderer->allocate_descriptor_set(pool, layout_handle);
   assert(set);
 
-  return {pool, *set};
+  return {std::move(pool), *set};
 }
 
 } // namespace ren

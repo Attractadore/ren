@@ -166,9 +166,6 @@ void SwapchainImpl::create() {
 
 void SwapchainImpl::destroy() {
   g_renderer->push_to_delete_queue(m_swapchain);
-  for (auto texture : m_textures) {
-    g_renderer->destroy_texture(texture);
-  }
   m_textures.clear();
 }
 

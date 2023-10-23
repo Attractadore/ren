@@ -194,9 +194,7 @@ public:
 
   [[nodiscard]] auto create_descriptor_set_layout(
       const DescriptorSetLayoutCreateInfo &&create_info)
-      -> Handle<DescriptorSetLayout>;
-
-  void destroy_descriptor_set_layout(Handle<DescriptorSetLayout> layout);
+      -> AutoHandle<DescriptorSetLayout>;
 
   auto try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
       -> Optional<const DescriptorSetLayout &>;
@@ -206,9 +204,7 @@ public:
 
   [[nodiscard]] auto
   create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
-      -> Handle<DescriptorPool>;
-
-  void destroy_descriptor_pool(Handle<DescriptorPool>);
+      -> AutoHandle<DescriptorPool>;
 
   auto try_get_descriptor_pool(Handle<DescriptorPool> layout) const
       -> Optional<const DescriptorPool &>;
@@ -231,9 +227,7 @@ public:
   write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
-      -> BufferView;
-
-  void destroy_buffer(Handle<Buffer> buffer);
+      -> AutoHandle<Buffer>;
 
   auto try_get_buffer(Handle<Buffer> buffer) const -> Optional<const Buffer &>;
 
@@ -257,23 +251,28 @@ public:
   }
 
   template <typename T>
+  auto get_buffer_device_address(Handle<Buffer> buffer,
+                                 u64 map_offset = 0) const
+      -> BufferReference<T> {
+    auto addr = get_buffer(buffer).address;
+    if (!addr)
+      return {};
+    return BufferReference<T>(addr + map_offset);
+  }
+
+  template <typename T>
   auto get_buffer_device_address(const BufferView &view,
                                  u64 map_offset = 0) const
       -> BufferReference<T> {
-    auto addr = get_buffer(view.buffer).address;
-    if (!addr)
-      return {};
-    return BufferReference<T>(addr + view.offset + map_offset);
+    return get_buffer_device_address<T>(view.buffer, view.offset + map_offset);
   }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+      -> AutoHandle<Texture>;
 
   [[nodiscard]] auto
   create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
-      -> Handle<Texture>;
-
-  void destroy_texture(Handle<Texture> texture);
+      -> AutoHandle<Texture>;
 
   auto try_get_texture(Handle<Texture> texture) const
       -> Optional<const Texture &>;
@@ -291,9 +290,7 @@ public:
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
   [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
-      -> Handle<Sampler>;
-
-  void destroy_sampler(Handle<Sampler> sampler);
+      -> AutoHandle<Sampler>;
 
   auto try_get_sampler(Handle<Sampler> sampler) const
       -> Optional<const Sampler &>;
@@ -302,9 +299,7 @@ public:
 
   [[nodiscard]] auto
   create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
-      -> Handle<PipelineLayout>;
-
-  void destroy_pipeline_layout(Handle<PipelineLayout> layout);
+      -> AutoHandle<PipelineLayout>;
 
   auto try_get_pipeline_layout(Handle<PipelineLayout> layout) const
       -> Optional<const PipelineLayout &>;
@@ -314,9 +309,7 @@ public:
 
   [[nodiscard]] auto
   create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
-      -> Handle<GraphicsPipeline>;
-
-  void destroy_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
+      -> AutoHandle<GraphicsPipeline>;
 
   auto try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> Optional<const GraphicsPipeline &>;
@@ -326,9 +319,7 @@ public:
 
   [[nodiscard]] auto
   create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
-      -> Handle<ComputePipeline>;
-
-  void destroy_compute_pipeline(Handle<ComputePipeline> pipeline);
+      -> AutoHandle<ComputePipeline>;
 
   auto try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
       -> Optional<const ComputePipeline &>;
@@ -337,9 +328,7 @@ public:
       -> const ComputePipeline &;
 
   [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
-      -> Handle<Semaphore>;
-
-  void destroy_semaphore(Handle<Semaphore> semaphore);
+      -> AutoHandle<Semaphore>;
 
   auto try_get_semaphore(Handle<Semaphore> semaphore) const
       -> Optional<const Semaphore &>;
@@ -375,8 +364,27 @@ public:
 
   [[nodiscard]] auto queue_present(const VkPresentInfoKHR &present_info)
       -> VkResult;
+
+private:
+  template <typename H> friend class AutoHandle;
+
+  void destroy(Handle<DescriptorSetLayout> layout);
+  void destroy(Handle<DescriptorPool>);
+  void destroy(Handle<Buffer> buffer);
+  void destroy(Handle<Texture> texture);
+  void destroy(Handle<Sampler> sampler);
+  void destroy(Handle<PipelineLayout> layout);
+  void destroy(Handle<GraphicsPipeline> pipeline);
+  void destroy(Handle<ComputePipeline> pipeline);
+  void destroy(Handle<Semaphore> semaphore);
 };
 
 extern Renderer *g_renderer;
+
+template <typename H> void AutoHandle<H>::destroy() {
+  if (m_handle) {
+    g_renderer->destroy(m_handle);
+  }
+}
 
 } // namespace ren

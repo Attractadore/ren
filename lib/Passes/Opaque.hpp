@@ -20,12 +20,12 @@ struct OpaquePassConfig {
 };
 
 struct OpaquePassData {
-  BufferView vertex_positions;
-  BufferView vertex_normals;
-  BufferView vertex_tangents;
-  BufferView vertex_colors;
-  BufferView vertex_uvs;
-  BufferView vertex_indices;
+  Handle<Buffer> vertex_positions;
+  Handle<Buffer> vertex_normals;
+  Handle<Buffer> vertex_tangents;
+  Handle<Buffer> vertex_colors;
+  Handle<Buffer> vertex_uvs;
+  Handle<Buffer> vertex_indices;
   Span<const Mesh> meshes;
   Span<const MeshInstance> mesh_instances;
   glm::uvec2 viewport_size;

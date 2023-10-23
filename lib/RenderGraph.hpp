@@ -1,6 +1,7 @@
 #pragma once
 #include "Attachments.hpp"
 #include "Config.hpp"
+#include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Any.hpp"
 #include "Support/NewType.hpp"
@@ -429,8 +430,6 @@ private:
   friend RgRuntime;
   friend RgUpdate;
 
-  ResourceArena m_arena;
-
   struct RgPassRuntimeInfo {
     RgPassId pass;
     u32 num_memory_barriers;
@@ -470,12 +469,13 @@ private:
   HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> m_heap_buffer_usage_flags =
       {};
-  std::array<std::array<BufferView, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
+  std::array<std::array<AutoHandle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
       m_heap_buffers;
 
   HashMap<String, RgTextureId> m_texture_ids;
   Vector<RgTextureId> m_texture_parents;
   Vector<Handle<Texture>> m_textures;
+  SingleResourceArena<Texture> m_texture_arena;
   HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
   TextureIdAllocatorScope m_tex_alloc;
   Vector<StorageTextureId> m_storage_texture_descriptors;
@@ -483,8 +483,8 @@ private:
   Vector<Handle<Semaphore>> m_semaphores;
 
   SwapchainImpl *m_swapchain = nullptr;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
+  std::array<AutoHandle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
+  std::array<AutoHandle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
   RgSemaphoreId m_acquire_semaphore;
   RgSemaphoreId m_present_semaphore;
   RgPhysicalTextureId m_backbuffer;

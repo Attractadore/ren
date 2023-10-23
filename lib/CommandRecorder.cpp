@@ -367,9 +367,14 @@ void RenderPass::set_push_constants(TempSpan<const std::byte> data,
   set_push_constants(m_pipeline_layout, m_shader_stages, data, offset);
 }
 
+void RenderPass::bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
+                                   u32 offset) {
+  vkCmdBindIndexBuffer(m_cmd_buffer, g_renderer->get_buffer(buffer).handle,
+                       offset, type);
+}
+
 void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
-  vkCmdBindIndexBuffer(m_cmd_buffer, g_renderer->get_buffer(view.buffer).handle,
-                       view.offset, type);
+  bind_index_buffer(view.buffer, type, view.offset);
 }
 
 void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
