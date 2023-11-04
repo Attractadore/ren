@@ -11,7 +11,6 @@ namespace ren {
 namespace {
 
 struct UploadPassResources {
-  RgBufferId meshes;
   RgBufferId materials;
   RgBufferId mesh_instances;
   RgBufferId transform_matrices;
@@ -21,21 +20,11 @@ struct UploadPassResources {
 
 void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
                      const UploadPassData &data) {
-  assert(rcs.meshes);
   assert(rcs.materials);
   assert(rcs.mesh_instances);
   assert(rcs.transform_matrices);
   assert(rcs.normal_matrices);
   assert(rcs.directional_lights);
-
-  auto *meshes = rg.map_buffer<glsl::Mesh>(rcs.meshes);
-  ranges::transform(data.meshes, meshes, [](const Mesh &mesh) -> glsl::Mesh {
-    return {
-        .base_tangent_vertex = mesh.base_tangent_vertex,
-        .base_color_vertex = mesh.base_color_vertex,
-        .base_uv_vertex = mesh.base_uv_vertex,
-    };
-  });
 
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
   ranges::copy(data.materials, materials);
@@ -45,7 +34,6 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   auto *normal_matrices = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
   for (const auto &[i, mesh_instance] : data.mesh_instances | enumerate) {
     mesh_instances[i] = {
-        .mesh = mesh_instance.mesh,
         .material = mesh_instance.material,
     };
     transform_matrices[i] = mesh_instance.matrix;
@@ -65,8 +53,6 @@ void setup_upload_pass(RgBuilder &rgb) {
 
   UploadPassResources rcs;
 
-  rcs.meshes = pass.create_buffer({.name = "meshes"}, RG_HOST_WRITE_BUFFER);
-
   rcs.materials =
       pass.create_buffer({.name = "materials"}, RG_HOST_WRITE_BUFFER);
 
@@ -83,7 +69,6 @@ void setup_upload_pass(RgBuilder &rgb) {
       pass.create_buffer({.name = "directional-lights"}, RG_HOST_WRITE_BUFFER);
 
   pass.set_update_callback(ren_rg_update_callback(UploadPassData) {
-    rg.resize_buffer(rcs.meshes, sizeof(glsl::Mesh) * data.meshes.size());
     rg.resize_buffer(rcs.materials,
                      sizeof(glsl::Material) * data.materials.size());
     rg.resize_buffer(rcs.mesh_instances,

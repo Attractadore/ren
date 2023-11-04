@@ -3,17 +3,18 @@
 
 #include "OpaquePass.h"
 
-#define VS_OUT                                                                 \
-  {                                                                            \
-    vec3 position;                                                             \
-    vec3 normal;                                                               \
-    vec3 tangent;                                                              \
-    vec3 bitangent;                                                            \
-    vec4 color;                                                                \
-    vec2 uv;                                                                   \
-    flat uint material;                                                        \
-  }
+layout(constant_id = S_OPAQUE_FEATURE_VC) const bool OPAQUE_FEATURE_VC = false;
+layout(constant_id = S_OPAQUE_FEATURE_UV) const bool OPAQUE_FEATURE_UV = true;
+layout(constant_id = S_OPAQUE_FEATURE_TS) const bool OPAQUE_FEATURE_TS = true;
 
-#define FS_IN VS_OUT
+PUSH_CONSTANTS GLSL_OPAQUE_CONSTANTS pc;
+
+const uint V_POSITION = 0;
+const uint V_NORMAL = 1;
+const uint V_TANGENT = 2;
+const uint V_BITANGENT = 3;
+const uint V_UV = 4;
+const uint V_COLOR = 5;
+const uint V_MATERIAL = 6;
 
 #endif // REN_GLSL_OPAQUE_PASS_GLSL

@@ -931,9 +931,13 @@ auto Renderer::create_graphics_pipeline(
     -> AutoHandle<GraphicsPipeline> {
   constexpr size_t MAX_GRAPHICS_SHADER_STAGES = 2;
 
+  StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
+  StaticVector<Vector<u32>, MAX_GRAPHICS_SHADER_STAGES> spec_data;
+  StaticVector<Vector<VkSpecializationMapEntry>, MAX_GRAPHICS_SHADER_STAGES>
+      spec_map;
+  StaticVector<VkSpecializationInfo, MAX_GRAPHICS_SHADER_STAGES> spec_infos;
   StaticVector<VkPipelineShaderStageCreateInfo, MAX_GRAPHICS_SHADER_STAGES>
       shaders;
-  StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
 
   StaticVector<VkDynamicState, 3> dynamic_states = {
       VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
@@ -944,11 +948,33 @@ auto Renderer::create_graphics_pipeline(
 
   auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
     auto module = create_shader_module(get_device(), shader.code);
-    shaders.push_back(VkPipelineShaderStageCreateInfo{
+
+    Vector<u32> &data = spec_data.emplace_back();
+    Vector<VkSpecializationMapEntry> &map = spec_map.emplace_back();
+    data.reserve(shader.spec_constants.size());
+    map.reserve(shader.spec_constants.size());
+    for (const SpecConstant &c : shader.spec_constants) {
+      map.push_back({
+          .constantID = c.id,
+          .offset = u32(data.size() * sizeof(c.value)),
+          .size = sizeof(c.value),
+      });
+      data.push_back(c.value);
+    }
+    VkSpecializationInfo &spec_info = spec_infos.emplace_back();
+    spec_info = {
+        .mapEntryCount = u32(map.size()),
+        .pMapEntries = map.data(),
+        .dataSize = Span(data).size_bytes(),
+        .pData = data.data(),
+    };
+
+    shaders.push_back({
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage,
         .module = module,
         .pName = shader.entry_point,
+        .pSpecializationInfo = &spec_info,
     });
     shader_modules.push_back(module);
     stages |= stage;

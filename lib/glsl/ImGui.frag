@@ -5,11 +5,12 @@ TEXTURES;
 
 PUSH_CONSTANTS GLSL_IMGUI_CONSTANTS pc;
 
-IN_BLOCK FS_IN v_in;
+layout(location = V_COLOR) in vec4 v_color;
+layout(location = V_UV) in vec2 v_uv;
 
-OUT vec4 f_color;
+layout(location = 0) out vec4 f_color;
 
 void main()
 {
-    f_color = v_in.color * texture(g_textures2d[pc.tex], v_in.tex_coord);
+    f_color = v_color * texture(g_textures2d[pc.tex], v_uv);
 }

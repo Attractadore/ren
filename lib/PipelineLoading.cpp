@@ -4,13 +4,14 @@
 #include "Support/Errors.hpp"
 #include "glsl/Textures.hpp"
 
-#include "EarlyZPassVertexShader.h"
-#include "ImGuiFragmentShader.h"
-#include "ImGuiVertexShader.h"
-#include "OpaquePassFragmentShader.h"
-#include "OpaquePassVertexShader.h"
-#include "PostProcessingShader.h"
-#include "ReduceLuminanceHistogramShader.h"
+#include "EarlyZPassVS.h"
+#include "ImGuiFS.h"
+#include "ImGuiVS.h"
+#include "OpaquePassFS.h"
+#include "OpaquePassVS.h"
+#include "PostProcessingCS.h"
+#include "ReduceLuminanceHistogramCS.h"
+#include "glsl/OpaquePass.hpp"
 
 #include <spirv_reflect.h>
 
@@ -111,7 +112,7 @@ auto load_pipelines(ResourceArena &arena,
     -> Pipelines {
   return {
     .early_z_pass = load_early_z_pass_pipeline(arena),
-    .opaque_pass = load_opaque_pass_pipeline(arena, persistent_set_layout),
+    .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
     .post_processing =
         load_post_processing_pipeline(arena, persistent_set_layout),
     .reduce_luminance_histogram =
@@ -124,8 +125,7 @@ auto load_pipelines(ResourceArena &arena,
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Handle<GraphicsPipeline> {
-  auto vs =
-      Span(EarlyZPassVertexShader, EarlyZPassVertexShader_count).as_bytes();
+  auto vs = Span(EarlyZPassVS, EarlyZPassVS_count).as_bytes();
   auto layout = create_pipeline_layout(arena, Handle<DescriptorSetLayout>(),
                                        {vs}, "Early Z pass");
   return arena.create_graphics_pipeline({
@@ -140,35 +140,45 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
   });
 }
 
-auto load_opaque_pass_pipeline(
+auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<GraphicsPipeline> {
-  auto vs =
-      Span(OpaquePassVertexShader, OpaquePassVertexShader_count).as_bytes();
-  auto fs =
-      Span(OpaquePassFragmentShader, OpaquePassFragmentShader_count).as_bytes();
+    -> std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> {
+  auto vs = Span(OpaquePassVS, OpaquePassVS_count).as_bytes();
+  auto fs = Span(OpaquePassFS, OpaquePassFS_count).as_bytes();
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
                                        "Opaque pass");
   std::array color_attachments = {ColorAttachmentInfo{
       .format = HDR_FORMAT,
   }};
-  return arena.create_graphics_pipeline({
-      .name = "Opaque pass graphics pipeline",
-      .layout = layout,
-      .vertex_shader =
-          {
-              .code = vs,
-          },
-      .fragment_shader =
-          ShaderInfo{
-              .code = fs,
-          },
-      .depth_test =
-          DepthTestInfo{
-              .format = DEPTH_FORMAT,
-          },
-      .color_attachments = color_attachments,
-  });
+  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
+  for (int i = 0; i < NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
+    MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
+    std::array<SpecConstant, 3> spec_constants = {{
+        {glsl::S_OPAQUE_FEATURE_VC, flags.isSet(MeshAttribute::Color)},
+        {glsl::S_OPAQUE_FEATURE_TS, flags.isSet(MeshAttribute::Tangent)},
+        {glsl::S_OPAQUE_FEATURE_UV, flags.isSet(MeshAttribute::UV)},
+    }};
+    pipelines[i] = arena.create_graphics_pipeline({
+        .name = "Opaque pass graphics pipeline",
+        .layout = layout,
+        .vertex_shader =
+            {
+                .code = vs,
+                .spec_constants = spec_constants,
+            },
+        .fragment_shader =
+            ShaderInfo{
+                .code = fs,
+                .spec_constants = spec_constants,
+            },
+        .depth_test =
+            DepthTestInfo{
+                .format = DEPTH_FORMAT,
+            },
+        .color_attachments = color_attachments,
+    });
+  };
+  return pipelines;
 }
 
 auto load_reduce_luminance_histogram_pipeline(
@@ -176,7 +186,7 @@ auto load_reduce_luminance_histogram_pipeline(
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      Span(ReduceLuminanceHistogramShader, ReduceLuminanceHistogramShader_count)
+      Span(ReduceLuminanceHistogramCS, ReduceLuminanceHistogramCS_count)
           .as_bytes(),
       "Reduce luminance histogram");
 }
@@ -186,15 +196,15 @@ auto load_post_processing_pipeline(
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, persistent_set_layout,
-      Span(PostProcessingShader, PostProcessingShader_count).as_bytes(),
+      Span(PostProcessingCS, PostProcessingCS_count).as_bytes(),
       "Post-processing");
 }
 
 auto load_imgui_pipeline(ResourceArena &arena,
                          Handle<DescriptorSetLayout> textures, VkFormat format)
     -> Handle<GraphicsPipeline> {
-  auto vs = Span(ImGuiVertexShader, ImGuiVertexShader_count).as_bytes();
-  auto fs = Span(ImGuiFragmentShader, ImGuiFragmentShader_count).as_bytes();
+  auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
+  auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
   Handle<PipelineLayout> layout =
       create_pipeline_layout(arena, textures, {vs, fs}, "ImGui pass");
   std::array color_attachments = {ColorAttachmentInfo{

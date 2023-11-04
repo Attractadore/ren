@@ -23,9 +23,6 @@ auto Hash<SamplerDesc>::operator()(const SamplerDesc &sampler) const noexcept
   return seed;
 }
 
-constexpr usize MESH_VERTEX_BUDGET = 1024 * 1024;
-constexpr usize MESH_INDEX_BUDGET = 1024 * 1024;
-
 SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   m_persistent_descriptor_set_layout =
       create_persistent_descriptor_set_layout();
@@ -39,54 +36,6 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
       std::make_unique<RenderGraph>(swapchain, *m_texture_allocator);
 
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
-
-  m_vertex_positions = g_renderer->create_buffer({
-      .name = "Mesh vertex positions pool",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
-  });
-
-  m_vertex_normals = g_renderer->create_buffer({
-      .name = "Mesh vertex normals pool",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glm::vec3) * MESH_VERTEX_BUDGET,
-  });
-
-  m_vertex_tangents = g_renderer->create_buffer({
-      .name = "Mesh vertex tangents pool",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
-  });
-
-  m_vertex_colors = g_renderer->create_buffer({
-      .name = "Mesh vertex colors pool",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glm::vec4) * MESH_VERTEX_BUDGET,
-  });
-
-  m_vertex_uvs = g_renderer->create_buffer({
-      .name = "Mesh vertex UVs pool",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glm::vec2) * MESH_VERTEX_BUDGET,
-  });
-
-  m_vertex_indices = g_renderer->create_buffer({
-      .name = "Mesh vertex indices pool",
-      .heap = BufferHeap::Static,
-      .usage =
-          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-      .size = sizeof(u32) * MESH_INDEX_BUDGET,
-  });
 
   // TODO: delete when Clang implements constexpr std::bit_cast for structs
   // with bitfields
@@ -105,81 +54,83 @@ void SceneImpl::next_frame() {
 }
 
 auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
-  usize num_vertices = desc.positions.size();
-  usize num_indices = desc.indices.size();
+  u32 num_vertices = desc.positions.size();
+  u32 num_indices = desc.indices.size();
 
   ren_assert(num_vertices > 0);
   ren_assert(desc.normals.size() == num_vertices);
   ren_assert(num_indices > 0 and num_indices % 3 == 0);
+  ren_assert_msg(num_vertices <= NUM_VERTEX_POOL_VERTICES,
+                 "Vertex pool overflow");
+  ren_assert_msg(num_indices <= NUM_VERTEX_POOL_INDICES, "Index pool overflow");
 
-  // Create mesh
-
-  Mesh mesh = {};
-
-  mesh.base_vertex = m_num_vertex_positions;
-  m_num_vertex_positions += num_vertices;
-  ren_assert_msg(m_num_vertex_positions <= MESH_VERTEX_BUDGET,
-                 "Mesh vertex positions pool overflow");
-
+  MeshAttributeFlags attributes;
   if (not desc.tangents.empty()) {
-    ren_assert(desc.tangents.size() == num_vertices);
-    mesh.base_tangent_vertex = m_num_vertex_tangents;
-    m_num_vertex_tangents += num_vertices;
-    ren_assert_msg(m_num_vertex_tangents <= MESH_VERTEX_BUDGET,
-                   "Mesh vertex tangents pool overflow");
+    attributes |= MeshAttribute::Tangent;
   }
-
-  if (not desc.colors.empty()) {
-    mesh.base_color_vertex = m_num_vertex_colors;
-    m_num_vertex_colors += num_vertices;
-    ren_assert_msg(m_num_vertex_colors <= MESH_VERTEX_BUDGET,
-                   "Mesh vertex colors pool overflow");
-  }
-
   if (not desc.tex_coords.empty()) {
-    mesh.base_uv_vertex = m_num_vertex_uvs;
-    m_num_vertex_uvs += num_vertices;
-    ren_assert_msg(m_num_vertex_uvs <= MESH_VERTEX_BUDGET,
-                   "Mesh vertex UVs pool overflow");
+    attributes |= MeshAttribute::UV;
+  }
+  if (not desc.colors.empty()) {
+    attributes |= MeshAttribute::Color;
   }
 
-  mesh.base_index = m_num_vertex_indices;
-  mesh.num_indices = num_indices;
-  m_num_vertex_indices += num_indices;
-  ren_assert_msg(m_num_vertex_indices <= MESH_INDEX_BUDGET,
-                 "Mesh vertex index pool overflow");
+  // Find or allocate vertex pool
+
+  auto &vertex_pool_list = m_vertex_pool_lists[usize(attributes.get())];
+  if (vertex_pool_list.empty()) {
+    vertex_pool_list.emplace_back(create_vertex_pool(attributes));
+  } else {
+    const VertexPool &pool = vertex_pool_list.back();
+    if (pool.num_free_indices < num_indices or
+        pool.num_free_vertices < num_vertices) {
+      vertex_pool_list.emplace_back(create_vertex_pool(attributes));
+    }
+  }
+  ren_assert(not vertex_pool_list.empty());
+  u32 vertex_pool_index = vertex_pool_list.size() - 1;
+  VertexPool &vertex_pool = vertex_pool_list[vertex_pool_index];
+
+  Mesh mesh = {
+      .attributes = attributes,
+      .pool = vertex_pool_index,
+      .base_vertex = NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices,
+      .base_index = NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices,
+      .num_indices = num_indices,
+  };
+
+  vertex_pool.num_free_vertices -= num_vertices;
+  vertex_pool.num_free_indices -= num_indices;
 
   // Upload vertices
 
   {
-    auto positions_dst = g_renderer->get_buffer_view(m_vertex_positions)
+    auto positions_dst = g_renderer->get_buffer_view(vertex_pool.positions)
                              .slice<glm::vec3>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.positions,
                                      positions_dst);
-    auto normals_dst = g_renderer->get_buffer_view(m_vertex_normals)
+    auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
                            .slice<glm::vec3>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.normals, normals_dst);
   }
-  if (mesh.base_tangent_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
-    auto tangents_dst =
-        g_renderer->get_buffer_view(m_vertex_tangents)
-            .slice<glm::vec4>(mesh.base_tangent_vertex, num_vertices);
+  if (not desc.tangents.empty()) {
+    auto tangents_dst = g_renderer->get_buffer_view(vertex_pool.tangents)
+                            .slice<glm::vec4>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.tangents,
                                      tangents_dst);
   }
-  if (mesh.base_color_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
-    auto colors_dst =
-        g_renderer->get_buffer_view(m_vertex_colors)
-            .slice<glm::vec4>(mesh.base_color_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.colors, colors_dst);
-  }
-  if (mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED) {
-    auto uvs_dst = g_renderer->get_buffer_view(m_vertex_uvs)
-                       .slice<glm::vec2>(mesh.base_uv_vertex, num_vertices);
+  if (not desc.tex_coords.empty()) {
+    auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
+                       .slice<glm::vec2>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.tex_coords, uvs_dst);
   }
+  if (not desc.colors.empty()) {
+    auto colors_dst = g_renderer->get_buffer_view(vertex_pool.colors)
+                          .slice<glm::vec4>(mesh.base_vertex, num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, desc.colors, colors_dst);
+  }
   {
-    auto indices_dst = g_renderer->get_buffer_view(m_vertex_indices)
+    auto indices_dst = g_renderer->get_buffer_view(vertex_pool.indices)
                            .slice<u32>(mesh.base_index, num_indices);
     m_resource_uploader.stage_buffer(m_frame_arena, desc.indices, indices_dst);
   }
@@ -314,36 +265,10 @@ void SceneImpl::set_tone_mapping(const ToneMappingDesc &oper) noexcept {
 void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
                                       Span<const glm::mat4x3> transforms,
                                       MeshInstanceId *out) {
-  auto verify_desc = [&](const MeshInstanceDesc &desc) {
-    ren_assert(desc.mesh);
-    ren_assert(desc.material);
-    // TODO: return proper error
-    const Mesh &mesh = m_meshes[desc.mesh];
-    const glsl::Material &material = m_materials[desc.material];
-    if (material.base_color_texture) {
-      ren_assert_msg(
-          mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
-          "Mesh instance material with base color texture requires mesh "
-          "with UVs");
-    }
-    if (material.metallic_roughness_texture) {
-      ren_assert_msg(mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
-                     "Mesh instance material with metallic-roughness texture "
-                     "requires mesh with UVs");
-    }
-    if (material.normal_texture) {
-      ren_assert_msg(
-          mesh.base_tangent_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
-          "Mesh instance material with normal map requires mesh with tangents");
-      ren_assert_msg(
-          mesh.base_uv_vertex != glsl::MESH_ATTRIBUTE_UNUSED,
-          "Mesh instance material with normal map requires mesh with UVs");
-    }
-  };
-
   if (transforms.empty()) {
     for (const MeshInstanceDesc &desc : descs) {
-      verify_desc(desc);
+      ren_assert(desc.mesh);
+      ren_assert(desc.material);
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
@@ -354,7 +279,8 @@ void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
   } else {
     ren_assert(descs.size() == transforms.size());
     for (const auto &[desc, transform] : zip(descs, transforms)) {
-      verify_desc(desc);
+      ren_assert(desc.mesh);
+      ren_assert(desc.material);
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
@@ -420,12 +346,7 @@ void SceneImpl::draw() {
         .pp_opts = &m_pp_opts, .early_z = m_early_z,
       },
       PassesData{
-          .vertex_positions = m_vertex_positions,
-          .vertex_normals = m_vertex_normals,
-          .vertex_tangents = m_vertex_tangents,
-          .vertex_colors = m_vertex_colors,
-          .vertex_uvs = m_vertex_uvs,
-          .vertex_indices = m_vertex_indices,
+          .vertex_pool_lists = m_vertex_pool_lists,
           .meshes = m_meshes,
           .materials = m_materials,
           .mesh_instances = m_mesh_instances.values(),

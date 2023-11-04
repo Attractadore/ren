@@ -10,9 +10,8 @@ namespace ren {
 namespace {
 
 struct OpaquePassResources {
-  Handle<GraphicsPipeline> pipeline;
+  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
   RgBufferId uniforms;
-  RgBufferId meshes;
   RgBufferId materials;
   RgBufferId mesh_instances;
   RgBufferId transform_matrices;
@@ -29,7 +28,6 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
     return;
   }
 
-  const BufferView &meshes = rg.get_buffer(rcs.meshes);
   const BufferView &materials = rg.get_buffer(rcs.materials);
   const BufferView &mesh_instances = rg.get_buffer(rcs.mesh_instances);
   const BufferView &transform_matrices = rg.get_buffer(rcs.transform_matrices);
@@ -39,16 +37,6 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
 
   auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBuffer>(rcs.uniforms);
   *uniforms = {
-      .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
-          data.vertex_positions),
-      .normals = g_renderer->get_buffer_device_address<glsl::Normals>(
-          data.vertex_normals),
-      .tangents = g_renderer->get_buffer_device_address<glsl::Tangents>(
-          data.vertex_tangents),
-      .colors = g_renderer->get_buffer_device_address<glsl::Colors>(
-          data.vertex_colors),
-      .uvs = g_renderer->get_buffer_device_address<glsl::UVs>(data.vertex_uvs),
-      .meshes = g_renderer->get_buffer_device_address<glsl::Meshes>(meshes),
       .materials =
           g_renderer->get_buffer_device_address<glsl::Materials>(materials),
       .mesh_instances =
@@ -69,13 +57,8 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
       .exposure_texture = exposure,
   };
 
-  render_pass.bind_graphics_pipeline(rcs.pipeline);
-  render_pass.bind_descriptor_sets({rg.get_texture_set()});
-
   auto ub = g_renderer->get_buffer_device_address<glsl::OpaqueUniformBuffer>(
       rg.get_buffer(rcs.uniforms));
-  render_pass.bind_index_buffer(data.vertex_indices, VK_INDEX_TYPE_UINT32);
-  render_pass.set_push_constants(glsl::OpaqueConstants{.ub = ub});
 
   if (rcs.early_z) {
     render_pass.set_depth_compare_op(VK_COMPARE_OP_EQUAL);
@@ -85,6 +68,26 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
 
   for (const auto &&[index, mesh_instance] : enumerate(data.mesh_instances)) {
     const Mesh &mesh = data.meshes[mesh_instance.mesh];
+    auto attributes = static_cast<usize>(mesh.attributes.get());
+    const VertexPoolList &vertex_pool_list =
+        data.vertex_pool_lists[usize(mesh.attributes.get())];
+    const VertexPool &vertex_pool = vertex_pool_list[mesh.pool];
+    render_pass.bind_graphics_pipeline(rcs.pipelines[attributes]);
+    render_pass.bind_descriptor_sets({rg.get_texture_set()});
+    render_pass.bind_index_buffer(vertex_pool.indices, VK_INDEX_TYPE_UINT32);
+    render_pass.set_push_constants(glsl::OpaqueConstants{
+        .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
+            vertex_pool.positions),
+        .normals = g_renderer->get_buffer_device_address<glsl::Normals>(
+            vertex_pool.normals),
+        .tangents = g_renderer->try_get_buffer_device_address<glsl::Tangents>(
+            vertex_pool.tangents),
+        .uvs = g_renderer->try_get_buffer_device_address<glsl::UVs>(
+            vertex_pool.uvs),
+        .colors = g_renderer->try_get_buffer_device_address<glsl::Colors>(
+            vertex_pool.colors),
+        .ub = ub,
+    });
     render_pass.draw_indexed({
         .num_indices = mesh.num_indices,
         .num_instances = 1,
@@ -101,7 +104,7 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
   assert(cfg.pipeline);
 
   OpaquePassResources rcs;
-  rcs.pipeline = cfg.pipeline;
+  rcs.pipelines = cfg.pipelines;
 
   auto pass = rgb.create_pass("opaque");
 
@@ -111,8 +114,6 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
           .size = sizeof(glsl::OpaqueUniformBuffer),
       },
       RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER | RG_FS_READ_BUFFER);
-
-  rcs.meshes = pass.read_buffer("meshes", RG_VS_READ_BUFFER);
 
   rcs.materials = pass.read_buffer("materials", RG_FS_READ_BUFFER);
 

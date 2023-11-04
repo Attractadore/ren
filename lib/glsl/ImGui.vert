@@ -2,7 +2,8 @@
 
 PUSH_CONSTANTS GLSL_IMGUI_CONSTANTS pc;
 
-OUT_BLOCK VS_OUT v_out;
+layout(location = V_COLOR) out vec4 v_color;
+layout(location = V_UV) out vec2 v_uv;
 
 vec4 decode_color(uint32_t color) {
   uint r = (color & 0x000000FF) >>  0;
@@ -15,7 +16,7 @@ vec4 decode_color(uint32_t color) {
 void main()
 {
     ImGuiVertex vertex = pc.vertices[gl_VertexIndex].vertex;
-    v_out.color = decode_color(vertex.color);
-    v_out.tex_coord = vertex.tex_coord;
+    v_color = decode_color(vertex.color);
+    v_uv = vertex.uv;
     gl_Position = vec4(vertex.position * pc.scale + pc.translate, 0.0f, 1.0f);
 }

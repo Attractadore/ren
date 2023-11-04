@@ -255,9 +255,19 @@ public:
                                  u64 map_offset = 0) const
       -> BufferReference<T> {
     auto addr = get_buffer(buffer).address;
-    if (!addr)
-      return {};
-    return BufferReference<T>(addr + map_offset);
+    return BufferReference<T>(addr ? (addr + map_offset) : 0);
+  }
+
+  template <typename T>
+  auto try_get_buffer_device_address(Handle<Buffer> buffer,
+                                     u64 map_offset = 0) const
+      -> BufferReference<T> {
+    return try_get_buffer(buffer).map_or(
+        [&](const Buffer &buffer) {
+          return BufferReference<T>(
+              buffer.address ? (buffer.address + map_offset) : 0);
+        },
+        BufferReference<T>());
   }
 
   template <typename T>

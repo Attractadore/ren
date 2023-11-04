@@ -28,17 +28,7 @@ class SceneImpl {
   Camera m_camera;
   PostProcessingOptions m_pp_opts;
 
-  AutoHandle<Buffer> m_vertex_positions;
-  AutoHandle<Buffer> m_vertex_normals;
-  AutoHandle<Buffer> m_vertex_tangents;
-  AutoHandle<Buffer> m_vertex_colors;
-  AutoHandle<Buffer> m_vertex_uvs;
-  AutoHandle<Buffer> m_vertex_indices;
-  u32 m_num_vertex_positions = 0;
-  u32 m_num_vertex_tangents = 0;
-  u32 m_num_vertex_colors = 0;
-  u32 m_num_vertex_uvs = 0;
-  u32 m_num_vertex_indices = 0;
+  std::array<VertexPoolList, NUM_MESH_ATTRIBUTE_FLAGS> m_vertex_pool_lists;
   Vector<Mesh> m_meshes = {{}};
 
   HashMap<SamplerDesc, AutoHandle<Sampler>> m_samplers;

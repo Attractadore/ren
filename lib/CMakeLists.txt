@@ -29,6 +29,7 @@ add_library(
   Descriptors.cpp
   Formats.cpp
   FreeListAllocator.cpp
+  Mesh.cpp
   Passes.cpp
   Pipeline.cpp
   PipelineLoading.cpp

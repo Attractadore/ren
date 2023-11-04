@@ -17,20 +17,23 @@ struct EarlyZPassResources {
 void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
                       const EarlyZPassResources &rcs,
                       const EarlyZPassData &data) {
-  const BufferView &transform_matrices = rg.get_buffer(rcs.transform_matrices);
-  render_pass.bind_graphics_pipeline(rcs.pipeline);
-  render_pass.bind_index_buffer(data.vertex_indices, VK_INDEX_TYPE_UINT32);
-  render_pass.set_push_constants(glsl::EarlyZConstants{
-      .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
-          data.vertex_positions),
+  glsl::EarlyZConstants constants = {
       .transform_matrices =
           g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
-              transform_matrices),
+              rg.get_buffer(rcs.transform_matrices)),
       .pv = data.proj * data.view,
-  });
-
-  for (const auto &&[index, mesh_instance] : data.mesh_instances | enumerate) {
+  };
+  render_pass.bind_graphics_pipeline(rcs.pipeline);
+  for (const auto &[index, mesh_instance] : data.mesh_instances | enumerate) {
     const Mesh &mesh = data.meshes[mesh_instance.mesh];
+    const VertexPoolList &vertex_pool_list =
+        data.vertex_pool_lists[usize(mesh.attributes.get())];
+    const VertexPool &vertex_pool = vertex_pool_list[mesh.pool];
+    render_pass.bind_index_buffer(vertex_pool.indices, VK_INDEX_TYPE_UINT32);
+    constants.positions =
+        g_renderer->get_buffer_device_address<glsl::Positions>(
+            vertex_pool.positions);
+    render_pass.set_push_constants(constants);
     render_pass.draw_indexed({
         .num_indices = mesh.num_indices,
         .num_instances = 1,

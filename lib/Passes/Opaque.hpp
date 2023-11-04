@@ -1,6 +1,5 @@
 #pragma once
-#include "Buffer.hpp"
-#include "Handle.hpp"
+#include "Mesh.hpp"
 #include "Passes/Exposure.hpp"
 #include "Support/Span.hpp"
 
@@ -14,18 +13,13 @@ struct MeshInstance;
 class RgBuilder;
 
 struct OpaquePassConfig {
-  Handle<GraphicsPipeline> pipeline;
+  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
   ExposurePassOutput exposure;
   glm::uvec2 viewport_size;
 };
 
 struct OpaquePassData {
-  Handle<Buffer> vertex_positions;
-  Handle<Buffer> vertex_normals;
-  Handle<Buffer> vertex_tangents;
-  Handle<Buffer> vertex_colors;
-  Handle<Buffer> vertex_uvs;
-  Handle<Buffer> vertex_indices;
+  Span<const VertexPoolList> vertex_pool_lists;
   Span<const Mesh> meshes;
   Span<const MeshInstance> mesh_instances;
   glm::uvec2 viewport_size;

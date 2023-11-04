@@ -25,9 +25,15 @@ struct PipelineLayout {
   VkPushConstantRange push_constants;
 };
 
+struct SpecConstant {
+  u32 id = -1;
+  u32 value = 0;
+};
+
 struct ShaderInfo {
   Span<const std::byte> code;
   const char *entry_point = "main";
+  Span<const SpecConstant> spec_constants;
 };
 
 struct InputAssemblyInfo {

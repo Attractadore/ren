@@ -32,7 +32,7 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   }
 
   setup_opaque_pass(rgb, OpaquePassConfig{
-                             .pipeline = cfg.pipelines->opaque_pass,
+                             .pipelines = cfg.pipelines->opaque_pass,
                              .exposure = exposure,
                              .viewport_size = cfg.viewport_size,
                          });
@@ -79,7 +79,6 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
 
   TRY_SET(rg.set_pass_data("upload",
                            UploadPassData{
-                               .meshes = data.meshes,
                                .materials = data.materials,
                                .mesh_instances = data.mesh_instances,
                                .directional_lights = data.directional_lights,
@@ -97,8 +96,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   if (extra_data.early_z) {
     TRY_SET(rg.set_pass_data("early-z",
                              EarlyZPassData{
-                                 .vertex_positions = data.vertex_positions,
-                                 .vertex_indices = data.vertex_indices,
+                                 .vertex_pool_lists = data.vertex_pool_lists,
                                  .meshes = data.meshes,
                                  .mesh_instances = data.mesh_instances,
                                  .viewport_size = size,
@@ -114,12 +112,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
 
   TRY_SET(rg.set_pass_data(
       "opaque", OpaquePassData{
-                    .vertex_positions = data.vertex_positions,
-                    .vertex_normals = data.vertex_normals,
-                    .vertex_tangents = data.vertex_tangents,
-                    .vertex_colors = data.vertex_colors,
-                    .vertex_uvs = data.vertex_uvs,
-                    .vertex_indices = data.vertex_indices,
+                    .vertex_pool_lists = data.vertex_pool_lists,
                     .meshes = data.meshes,
                     .mesh_instances = data.mesh_instances,
                     .viewport_size = size,

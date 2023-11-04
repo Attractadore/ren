@@ -3,11 +3,7 @@
 
 #include "ImGuiPass.h"
 
-#define VS_OUT { \
-  vec4 color; \
-  vec2 tex_coord; \
-}
-
-#define FS_IN VS_OUT
+const uint V_COLOR = 0;
+const uint V_UV = 1;
 
 #endif // REN_GLSL_IMGUI_GLSL

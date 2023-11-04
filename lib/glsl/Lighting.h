@@ -11,6 +11,8 @@ struct DirLight {
   vec3 origin;
 };
 
+GLSL_BUFFER(4) DirectionalLights { DirLight light; };
+
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
                      float roughness, vec3 illuminance) {
   float alpha = roughness * roughness;

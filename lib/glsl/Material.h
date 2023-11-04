@@ -15,6 +15,8 @@ struct Material {
   float normal_scale;
 };
 
+GLSL_BUFFER(4) Materials { Material material; };
+
 GLSL_NAMESPACE_END
 
 #endif // REN_GLSL_MATERIAL_H

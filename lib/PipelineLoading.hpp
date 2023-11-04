@@ -1,5 +1,6 @@
 #pragma once
 #include "Handle.hpp"
+#include "Mesh.hpp"
 #include "ResourceArena.hpp"
 
 namespace ren {
@@ -9,7 +10,7 @@ auto create_persistent_descriptor_set_layout()
 
 struct Pipelines {
   Handle<GraphicsPipeline> early_z_pass;
-  Handle<GraphicsPipeline> opaque_pass;
+  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> opaque_pass;
   Handle<ComputePipeline> post_processing;
   Handle<ComputePipeline> reduce_luminance_histogram;
   Handle<GraphicsPipeline> imgui_pass;
@@ -27,9 +28,9 @@ auto load_pipelines(ResourceArena &arena,
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Handle<GraphicsPipeline>;
 
-auto load_opaque_pass_pipeline(
+auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<GraphicsPipeline>;
+    -> std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS>;
 
 auto load_post_processing_pipeline(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)

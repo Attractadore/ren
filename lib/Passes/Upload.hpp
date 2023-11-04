@@ -15,7 +15,6 @@ struct DirLight;
 void setup_upload_pass(RgBuilder &rgb);
 
 struct UploadPassData {
-  Span<const Mesh> meshes;
   Span<const glsl::Material> materials;
   Span<const MeshInstance> mesh_instances;
   Span<const glsl::DirLight> directional_lights;

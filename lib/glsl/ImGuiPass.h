@@ -7,7 +7,7 @@ GLSL_NAMESPACE_BEGIN
 
 struct ImGuiVertex {
   vec2 position;
-  vec2 tex_coord;
+  vec2 uv;
   uint32_t color;
 };
 
