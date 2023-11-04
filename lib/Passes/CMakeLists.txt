@@ -1,10 +1,2 @@
-target_sources(
-  ren
-  PRIVATE AutomaticExposure.cpp
-          CameraExposure.cpp
-          Exposure.cpp
-          ImGui.cpp
-          ManualExposure.cpp
-          Opaque.cpp
-          PostProcessing.cpp)
+target_sources(ren PRIVATE Exposure.cpp ImGui.cpp Opaque.cpp PostProcessing.cpp)
 target_include_directories(ren PRIVATE ${CMAKE_CURRENT_LIST_DIR}/..)
