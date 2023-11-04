@@ -75,7 +75,7 @@ auto create_pipeline_layout(ResourceArena &arena,
           shader.EnumeratePushConstantBlocks(&num_push_constants, &block_var),
           "SPIRV-Reflect: Failed to enumerate push constants");
       push_constants.stageFlags |= stage;
-      push_constants.size = block_var->size;
+      push_constants.size = block_var->padded_size;
     }
   }
 

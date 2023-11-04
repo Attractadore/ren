@@ -32,7 +32,6 @@ GLSL_BUFFER(8) OpaqueUniformBuffer {
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(UVs) uvs;                \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(Colors) colors;          \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(OpaqueUniformBuffer) ub; \
-    int pad;                                                                   \
   }
 
 const uint S_OPAQUE_FEATURE_VC = 0;
