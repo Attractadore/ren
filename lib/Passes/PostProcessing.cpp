@@ -168,7 +168,7 @@ void ren::setup_post_processing_passes(RgBuilder &rgb,
   setup_post_processing_uber_pass(
       rgb, {
                .pipeline = cfg.pipelines->post_processing,
-               .size = cfg.size,
+               .size = cfg.viewport,
            });
 
   if (automatic_exposure) {

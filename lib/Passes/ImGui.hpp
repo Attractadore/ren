@@ -15,7 +15,7 @@ class RgBuilder;
 struct ImGuiPassConfig {
   ImGuiContext *imgui_context = nullptr;
   Handle<GraphicsPipeline> pipeline;
-  glm::uvec2 fb_size;
+  glm::uvec2 viewport;
 };
 
 void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg);

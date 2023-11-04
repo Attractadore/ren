@@ -7,28 +7,41 @@
 
 namespace ren {
 
-struct GraphicsPipeline;
 struct Mesh;
 struct MeshInstance;
+struct Pipelines;
 class RgBuilder;
 
-struct OpaquePassConfig {
-  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
+namespace glsl {
+struct Material;
+struct DirLight;
+} // namespace glsl
+
+struct OpaquePassesConfig {
+  const Pipelines *pipelines = nullptr;
   ExposurePassOutput exposure;
-  glm::uvec2 viewport_size;
+  glm::uvec2 viewport;
+  bool early_z = false;
 };
 
-struct OpaquePassData {
+struct OpaquePassesData {
   Span<const VertexPoolList> vertex_pool_lists;
   Span<const Mesh> meshes;
+  Span<const glsl::Material> materials;
   Span<const MeshInstance> mesh_instances;
-  glm::uvec2 viewport_size;
+  Span<const glsl::DirLight> directional_lights;
+
+  glm::uvec2 viewport;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;
-  u32 num_dir_lights = 0;
+
+  bool early_z = false;
 };
 
-void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg);
+void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg);
+
+auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
+    -> bool;
 
 } // namespace ren

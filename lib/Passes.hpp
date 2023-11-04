@@ -28,7 +28,7 @@ struct PassesConfig {
   ImGuiContext *imgui_context = nullptr;
 #endif
   const Pipelines *pipelines = nullptr;
-  glm::uvec2 viewport_size;
+  glm::uvec2 viewport;
   const PostProcessingOptions *pp_opts = nullptr;
   bool early_z : 1 = true;
 };

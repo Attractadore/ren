@@ -342,7 +342,7 @@ void SceneImpl::draw() {
         .imgui_context = m_imgui_context,
 #endif
         .pipelines = &m_pipelines,
-        .viewport_size = {m_viewport_width, m_viewport_height},
+        .viewport = {m_viewport_width, m_viewport_height},
         .pp_opts = &m_pp_opts, .early_z = m_early_z,
       },
       PassesData{

@@ -12,16 +12,16 @@ namespace ren {
 namespace {
 
 struct ImGuiPassResources {
-  ImGuiContext *imgui_context = nullptr;
+  ImGuiContext *context = nullptr;
   Handle<GraphicsPipeline> pipeline;
   RgBufferId vertices;
   RgBufferId indices;
-  glm::uvec2 fb_size;
+  glm::uvec2 viewport;
 };
 
 void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
                     const ImGuiPassResources &rcs) {
-  ren_ImGuiScope(rcs.imgui_context);
+  ren_ImGuiScope(rcs.context);
 
   const ImDrawData *draw_data = ImGui::GetDrawData();
   if (!draw_data->TotalVtxCount) {
@@ -61,7 +61,7 @@ void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
                             -draw_data->DisplaySize.y};
   glm::vec2 scale = 2.0f / display_size;
   glm::vec2 translate = glm::vec2(-1.0f) - display_offset * scale;
-  glm::vec2 fb_size = rcs.fb_size;
+  glm::vec2 fb_size = rcs.viewport;
 
   usize vertex_offset = 0;
   usize index_offset = 0;
@@ -145,11 +145,11 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
   });
 
   ImGuiPassResources rcs = {
-      .imgui_context = cfg.imgui_context,
+      .context = cfg.imgui_context,
       .pipeline = cfg.pipeline,
       .vertices = vertices,
       .indices = indices,
-      .fb_size = cfg.fb_size,
+      .viewport = cfg.viewport,
   };
 
   pass.set_graphics_callback(ren_rg_graphics_callback(RgNoPassData) {

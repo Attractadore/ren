@@ -11,7 +11,7 @@ struct PostProcessingOptions;
 struct PostProcessingPassesConfig {
   const Pipelines *pipelines = nullptr;
   const PostProcessingOptions *options = nullptr;
-  glm::uvec2 size;
+  glm::uvec2 viewport;
 };
 
 void setup_post_processing_passes(RgBuilder &rgb,

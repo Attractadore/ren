@@ -1,11 +1,9 @@
 #include "Passes.hpp"
 #include "Camera.inl"
 #include "ImGuiConfig.hpp"
-#include "Passes/EarlyZ.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
-#include "Passes/Upload.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
@@ -20,34 +18,26 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   assert(cfg.pipelines);
   assert(cfg.pp_opts);
 
-  setup_upload_pass(rgb);
-
   auto exposure = setup_exposure_pass(rgb, cfg.pp_opts->exposure);
 
-  if (cfg.early_z) {
-    setup_early_z_pass(rgb, EarlyZPassConfig{
-                                .pipeline = cfg.pipelines->early_z_pass,
-                                .viewport_size = cfg.viewport_size,
-                            });
-  }
-
-  setup_opaque_pass(rgb, OpaquePassConfig{
-                             .pipelines = cfg.pipelines->opaque_pass,
-                             .exposure = exposure,
-                             .viewport_size = cfg.viewport_size,
-                         });
+  setup_opaque_passes(rgb, OpaquePassesConfig{
+                               .pipelines = cfg.pipelines,
+                               .exposure = exposure,
+                               .viewport = cfg.viewport,
+                               .early_z = cfg.early_z,
+                           });
 
   setup_post_processing_passes(rgb, PostProcessingPassesConfig{
                                         .pipelines = cfg.pipelines,
                                         .options = cfg.pp_opts,
-                                        .size = cfg.viewport_size,
+                                        .viewport = cfg.viewport,
                                     });
 #if REN_IMGUI
   if (cfg.imgui_context) {
     setup_imgui_pass(rgb, ImGuiPassConfig{
                               .imgui_context = cfg.imgui_context,
                               .pipeline = cfg.pipelines->imgui_pass,
-                              .fb_size = cfg.viewport_size,
+                              .viewport = cfg.viewport,
                           });
     rgb.present("imgui");
     return;
@@ -61,7 +51,7 @@ struct PassesExtraData {
 #if REN_IMGUI
   ImGuiContext *imgui_context = nullptr;
 #endif
-  bool early_z : 1 = true;
+  bool early_z = false;
 };
 
 auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
@@ -69,22 +59,12 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   assert(data.camera);
   assert(data.pp_opts);
 
-#define TRY_SET(...)                                                           \
-  do {                                                                         \
-    bool valid = __VA_ARGS__;                                                  \
-    if (!valid) {                                                              \
-      return false;                                                            \
-    }                                                                          \
-  } while (0)
+  bool valid = true;
 
-  TRY_SET(rg.set_pass_data("upload",
-                           UploadPassData{
-                               .materials = data.materials,
-                               .mesh_instances = data.mesh_instances,
-                               .directional_lights = data.directional_lights,
-                           }));
-
-  TRY_SET(set_exposure_pass_data(rg, data.pp_opts->exposure));
+  valid = set_exposure_pass_data(rg, data.pp_opts->exposure);
+  if (not valid) {
+    return false;
+  }
 
   const auto &camera = *data.camera;
   auto size = data.viewport_size;
@@ -93,46 +73,38 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   auto view =
       glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
 
-  if (extra_data.early_z) {
-    TRY_SET(rg.set_pass_data("early-z",
-                             EarlyZPassData{
-                                 .vertex_pool_lists = data.vertex_pool_lists,
-                                 .meshes = data.meshes,
-                                 .mesh_instances = data.mesh_instances,
-                                 .viewport_size = size,
-                                 .proj = proj,
-                                 .view = view,
-                                 .eye = camera.position,
-                             }));
-  } else {
-    if (rg.is_pass_valid("early-z")) {
-      return false;
-    }
+  valid = set_opaque_passes_data(
+      rg, OpaquePassesData{
+              .vertex_pool_lists = data.vertex_pool_lists,
+              .meshes = data.meshes,
+              .materials = data.materials,
+              .mesh_instances = data.mesh_instances,
+              .directional_lights = data.directional_lights,
+              .viewport = data.viewport_size,
+              .proj = proj,
+              .view = view,
+              .eye = camera.position,
+              .early_z = extra_data.early_z,
+          });
+  if (not valid) {
+    return false;
   }
 
-  TRY_SET(rg.set_pass_data(
-      "opaque", OpaquePassData{
-                    .vertex_pool_lists = data.vertex_pool_lists,
-                    .meshes = data.meshes,
-                    .mesh_instances = data.mesh_instances,
-                    .viewport_size = size,
-                    .proj = proj,
-                    .view = view,
-                    .eye = camera.position,
-                    .num_dir_lights = u32(data.directional_lights.size()),
-                }));
-
-  TRY_SET(set_post_processing_passes_data(rg, *data.pp_opts));
+  valid = set_post_processing_passes_data(rg, *data.pp_opts);
+  if (not valid) {
+    return false;
+  }
 
 #if REN_IMGUI
   if (extra_data.imgui_context) {
-    TRY_SET(rg.set_pass_data("imgui", RgNoPassData()));
-  } else if (rg.is_pass_valid("imgui")) {
+    valid = rg.set_pass_data("imgui", RgNoPassData());
+  } else {
+    valid = not rg.is_pass_valid("imgui");
+  }
+  if (not valid) {
     return false;
   }
 #endif
-
-#undef TRY_SET
 
   return true;
 }
