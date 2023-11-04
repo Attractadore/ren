@@ -39,12 +39,19 @@ struct RenderPassBeginInfo {
 
 class RenderPass;
 
+struct DrawInfo {
+  u32 num_vertices = 0;
+  u32 num_instances = 1;
+  u32 first_vertex = 0;
+  u32 first_instance = 0;
+};
+
 struct DrawIndexedInfo {
-  unsigned num_indices = 0;
-  unsigned num_instances = 1;
-  unsigned first_index = 0;
-  int vertex_offset = 0;
-  unsigned first_instance = 0;
+  u32 num_indices = 0;
+  u32 num_instances = 1;
+  u32 first_index = 0;
+  i32 vertex_offset = 0;
+  u32 first_instance = 0;
 };
 
 class ComputePass;
@@ -181,6 +188,8 @@ public:
                          u32 offset = 0);
 
   void bind_index_buffer(const BufferView &buffer, VkIndexType type);
+
+  void draw(const DrawInfo &&draw_info);
 
   void draw_indexed(const DrawIndexedInfo &&draw_info);
 };

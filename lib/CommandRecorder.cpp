@@ -377,9 +377,12 @@ void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
   bind_index_buffer(view.buffer, type, view.offset);
 }
 
+void RenderPass::draw(const DrawInfo &&draw_info) {
+  vkCmdDraw(m_cmd_buffer, draw_info.num_vertices, draw_info.num_instances,
+            draw_info.first_vertex, draw_info.first_instance);
+}
+
 void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
-  assert(draw_info.num_indices > 0);
-  assert(draw_info.num_instances > 0);
   vkCmdDrawIndexed(m_cmd_buffer, draw_info.num_indices, draw_info.num_instances,
                    draw_info.first_index, draw_info.vertex_offset,
                    draw_info.first_instance);
