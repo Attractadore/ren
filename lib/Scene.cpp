@@ -105,34 +105,65 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   // Upload vertices
 
   {
-    auto positions_dst = g_renderer->get_buffer_view(vertex_pool.positions)
-                             .slice<glm::vec3>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.positions,
+    mesh.bb = ranges::accumulate(
+        desc.positions |
+            map([](const glm::vec3 &pos) { return glm::abs(pos); }),
+        glm::vec3(0.0f),
+        [](const glm::vec3 &l, const glm::vec3 &r) { return glm::max(l, r); });
+    mesh.bb = glm::exp2(glm::ceil(glm::log2(mesh.bb)));
+
+    Vector<glsl::Position> positions =
+        desc.positions | map([&](const glm::vec3 &position) {
+          return glsl::encode_position(position, mesh.bb);
+        });
+
+    auto positions_dst =
+        g_renderer->get_buffer_view(vertex_pool.positions)
+            .slice<glsl::Position>(mesh.base_vertex, num_vertices);
+
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(positions),
                                      positions_dst);
+
+    glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
+
+    Vector<glm::vec3> normals =
+        desc.normals |
+        map([&](const glm::vec3 &normal) { return normal_matrix * normal; });
+
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
                            .slice<glm::vec3>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.normals, normals_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
   }
   if (not desc.tangents.empty()) {
+    glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
+
+    Vector<glm::vec4> tangents =
+        desc.tangents | map([&](const glm::vec4 &tangent) {
+          return glm::vec4(normal_matrix * glm::vec3(tangent), tangent.w);
+        });
+
     auto tangents_dst = g_renderer->get_buffer_view(vertex_pool.tangents)
                             .slice<glm::vec4>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.tangents,
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
                                      tangents_dst);
   }
   if (not desc.tex_coords.empty()) {
     auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
                        .slice<glm::vec2>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.tex_coords, uvs_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.tex_coords),
+                                     uvs_dst);
   }
   if (not desc.colors.empty()) {
     auto colors_dst = g_renderer->get_buffer_view(vertex_pool.colors)
                           .slice<glm::vec4>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.colors, colors_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.colors),
+                                     colors_dst);
   }
   {
     auto indices_dst = g_renderer->get_buffer_view(vertex_pool.indices)
                            .slice<u32>(mesh.base_index, num_indices);
-    m_resource_uploader.stage_buffer(m_frame_arena, desc.indices, indices_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.indices),
+                                     indices_dst);
   }
 
   auto key = std::bit_cast<MeshId>(u32(m_meshes.size()));
@@ -269,9 +300,11 @@ void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
     for (const MeshInstanceDesc &desc : descs) {
       ren_assert(desc.mesh);
       ren_assert(desc.material);
+      const Mesh &mesh = m_meshes[desc.mesh];
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
+          .matrix = glsl::make_decode_position_matrix(mesh.bb),
       });
       *out = std::bit_cast<MeshInstanceId>(mesh_instance);
       ++out;
@@ -281,10 +314,11 @@ void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
     for (const auto &[desc, transform] : zip(descs, transforms)) {
       ren_assert(desc.mesh);
       ren_assert(desc.material);
+      const Mesh &mesh = m_meshes[desc.mesh];
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
-          .matrix = transform,
+          .matrix = transform * glsl::make_decode_position_matrix(mesh.bb),
       });
       *out = std::bit_cast<MeshInstanceId>(mesh_instance);
       ++out;
@@ -303,9 +337,11 @@ void SceneImpl::set_mesh_instance_transforms(
     Span<const MeshInstanceId> mesh_instances,
     Span<const glm::mat4x3> matrices) noexcept {
   ren_assert(mesh_instances.size() == matrices.size());
-  for (const auto &[mesh_instance, matrix] : zip(mesh_instances, matrices)) {
-    m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(mesh_instance)]
-        .matrix = matrix;
+  for (const auto &[handle, matrix] : zip(mesh_instances, matrices)) {
+    MeshInstance &mesh_instance =
+        m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(handle)];
+    const Mesh &mesh = m_meshes[mesh_instance.mesh];
+    mesh_instance.matrix = matrix * glsl::make_decode_position_matrix(mesh.bb);
   }
 }
 

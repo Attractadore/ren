@@ -24,6 +24,7 @@ struct Mesh {
   u32 base_vertex = 0;
   u32 base_index = 0;
   u32 num_indices = 0;
+  glm::vec3 bb;
 };
 
 constexpr u32 NUM_VERTEX_POOL_VERTICES = 1 << 20;

@@ -19,7 +19,7 @@ void main() {
   mat4x3 transform_matrix = pc.ub.transform_matrices[gl_BaseInstance].matrix;
   mat3 normal_matrix = pc.ub.normal_matrices[gl_BaseInstance].matrix;
 
-  vec3 position = pc.positions[gl_VertexIndex].position;
+  vec3 position = decode_position(pc.positions[gl_VertexIndex].position);
 
   position = transform_matrix * vec4(position, 1.0f);
   v_position = position;

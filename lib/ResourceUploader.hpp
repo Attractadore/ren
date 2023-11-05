@@ -24,7 +24,7 @@ class ResourceUploader {
 
 public:
   template <typename T>
-  void stage_buffer(ResourceArena &arena, std::span<const T> data,
+  void stage_buffer(ResourceArena &arena, Span<T> data,
                     const BufferView &buffer) {
     usize size = size_bytes(data);
     assert(size <= buffer.size);
@@ -35,7 +35,7 @@ public:
         .size = size,
     });
 
-    auto *ptr = g_renderer->map_buffer<T>(staging_buffer);
+    auto *ptr = g_renderer->map_buffer<std::remove_const_t<T>>(staging_buffer);
     ranges::copy(data, ptr);
 
     m_buffer_copies.push_back({

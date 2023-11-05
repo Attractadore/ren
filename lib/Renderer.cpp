@@ -132,11 +132,13 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
       .features = {
           .samplerAnisotropy = true,
           .shaderInt64 = true,
+          .shaderInt16 = true,
       }};
 
   VkPhysicalDeviceVulkan11Features vulkan11_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .pNext = &vulkan10_features,
+      .storageBuffer16BitAccess = true,
       .shaderDrawParameters = true,
   };
 

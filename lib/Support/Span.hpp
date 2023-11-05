@@ -48,7 +48,12 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
 };
 
 template <ranges::contiguous_range R>
+  requires ranges::indirectly_writable<ranges::iterator_t<R>,
+                                       ranges::range_value_t<R>>
 Span(R &&r) -> Span<ranges::range_value_t<R>>;
+
+template <ranges::contiguous_range R>
+Span(R &&r) -> Span<const ranges::range_value_t<R>>;
 
 template <std::contiguous_iterator Iter>
 Span(Iter first, usize count)
