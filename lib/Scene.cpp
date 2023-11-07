@@ -123,23 +123,24 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
     m_resource_uploader.stage_buffer(m_frame_arena, Span(positions),
                                      positions_dst);
+  }
 
-    glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
-
+  glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
+  {
     Vector<glm::vec3> normals =
-        desc.normals |
-        map([&](const glm::vec3 &normal) { return normal_matrix * normal; });
+        desc.normals | map([&](const glm::vec3 &normal) {
+          return glm::normalize(normal_matrix * normal);
+        });
 
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
                            .slice<glm::vec3>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
   }
   if (not desc.tangents.empty()) {
-    glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
-
     Vector<glm::vec4> tangents =
         desc.tangents | map([&](const glm::vec4 &tangent) {
-          return glm::vec4(normal_matrix * glm::vec3(tangent), tangent.w);
+          return glm::vec4(glm::normalize(normal_matrix * glm::vec3(tangent)),
+                           tangent.w);
         });
 
     auto tangents_dst = g_renderer->get_buffer_view(vertex_pool.tangents)

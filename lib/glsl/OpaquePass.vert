@@ -26,12 +26,12 @@ void main() {
   gl_Position = pc.ub.pv * vec4(position, 1.0f);
 
   vec3 normal = pc.normals[gl_VertexIndex].normal;
-  normal = normal_matrix * normal;
+  normal = normalize(normal_matrix * normal);
   v_normal = normal;
 
   if (OPAQUE_FEATURE_TS) {
     vec4 tangent = pc.tangents[gl_VertexIndex].tangent;
-    tangent.xyz = normal_matrix * tangent.xyz;
+    tangent.xyz = normalize(normal_matrix * tangent.xyz);
     vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
     v_tangent = tangent.xyz;
     v_bitangent = bitangent;
