@@ -6,21 +6,19 @@
 GLSL_NAMESPACE_BEGIN
 
 struct Position {
-  int16_t x, y, z;
+  i16vec3 position;
 };
 
 inline Position encode_position(vec3 position, vec3 bb) {
   vec3 scale = float(1 << 15) / bb;
-  ivec3 iposition = min(ivec3(round(position * scale)), (1 << 15) - 1);
   Position eposition;
-  eposition.x = int16_t(iposition.x);
-  eposition.y = int16_t(iposition.y);
-  eposition.z = int16_t(iposition.z);
+  eposition.position =
+      i16vec3(min(ivec3(round(position * scale)), (1 << 15) - 1));
   return eposition;
 }
 
 inline vec3 decode_position(Position position) {
-  return vec3(position.x, position.y, position.z);
+  return vec3(position.position);
 }
 
 inline mat4 make_decode_position_matrix(vec3 bb) {
