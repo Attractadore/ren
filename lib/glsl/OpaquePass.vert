@@ -25,7 +25,7 @@ void main() {
   v_position = position;
   gl_Position = pc.ub.pv * vec4(position, 1.0f);
 
-  vec3 normal = pc.normals[gl_VertexIndex].normal;
+  vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
   normal = normalize(normal_matrix * normal);
   v_normal = normal;
 

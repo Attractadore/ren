@@ -8,7 +8,7 @@ GLSL_NAMESPACE_BEGIN
 
 GLSL_BUFFER(2) Positions { Position position; };
 
-GLSL_BUFFER(4) Normals { vec3 normal; };
+GLSL_BUFFER(2) Normals { Normal normal; };
 
 GLSL_BUFFER(4) Tangents { vec4 tangent; };
 

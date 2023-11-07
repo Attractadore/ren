@@ -127,13 +127,13 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
   {
-    Vector<glm::vec3> normals =
+    Vector<glsl::Normal> normals =
         desc.normals | map([&](const glm::vec3 &normal) {
-          return glm::normalize(normal_matrix * normal);
+          return glsl::encode_normal(glm::normalize(normal_matrix * normal));
         });
 
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
-                           .slice<glm::vec3>(mesh.base_vertex, num_vertices);
+                           .slice<glsl::Normal>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
   }
   if (not desc.tangents.empty()) {
