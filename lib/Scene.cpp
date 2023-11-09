@@ -125,34 +125,44 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                                      positions_dst);
   }
 
-  glm::mat3 encode_transform_matrix =
-      glsl::make_encode_position_matrix(mesh.bb);
-  glm::mat3 encode_normal_matrix =
-      glm::inverse(glm::transpose(encode_transform_matrix));
   {
+    glm::mat3 encode_transform_matrix =
+        glsl::make_encode_position_matrix(mesh.bb);
+    glm::mat3 encode_normal_matrix =
+        glm::inverse(glm::transpose(encode_transform_matrix));
     Vector<glsl::Normal> normals =
         desc.normals | map([&](const glm::vec3 &normal) {
           return glsl::encode_normal(
               glm::normalize(encode_normal_matrix * normal));
         });
-
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
                            .slice<glsl::Normal>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
-  }
-  if (not desc.tangents.empty()) {
-    Vector<glm::vec4> tangents =
-        desc.tangents | map([&](const glm::vec4 &tangent) {
-          return glm::vec4(
-              glm::normalize(encode_transform_matrix * glm::vec3(tangent)),
-              tangent.w);
-        });
 
-    auto tangents_dst = g_renderer->get_buffer_view(vertex_pool.tangents)
-                            .slice<glm::vec4>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
-                                     tangents_dst);
+    if (not desc.tangents.empty()) {
+      Vector<glsl::Tangent> tangents =
+          zip(desc.tangents, normals) |
+          map([&](const auto &tangent_and_normal) {
+            glm::vec4 tangent = std::get<0>(tangent_and_normal);
+            tangent = glm::vec4(
+                glm::normalize(encode_transform_matrix * glm::vec3(tangent)),
+                tangent.w);
+            glm::vec3 normal =
+                glsl::decode_normal(std::get<1>(tangent_and_normal));
+            // Encoding and then decoding the normal can change how the tangent
+            // basis is selected due to rounding errors. Since shaders use the
+            // decoded normal to decode the tangent, use it for encoding as well
+            return glsl::encode_tangent(tangent, normal);
+          });
+
+      auto tangents_dst =
+          g_renderer->get_buffer_view(vertex_pool.tangents)
+              .slice<glsl::Tangent>(mesh.base_vertex, num_vertices);
+      m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
+                                       tangents_dst);
+    }
   }
+
   if (not desc.tex_coords.empty()) {
     auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
                        .slice<glm::vec2>(mesh.base_vertex, num_vertices);

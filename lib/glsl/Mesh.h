@@ -10,7 +10,7 @@ GLSL_BUFFER(2) Positions { Position position; };
 
 GLSL_BUFFER(2) Normals { Normal normal; };
 
-GLSL_BUFFER(4) Tangents { vec4 tangent; };
+GLSL_BUFFER(2) Tangents { Tangent tangent; };
 
 GLSL_BUFFER(4) UVs { vec2 uv; };
 

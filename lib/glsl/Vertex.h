@@ -67,6 +67,48 @@ inline vec3 decode_normal(Normal normal) {
   return normalize(vec3(xy, z));
 }
 
+struct Tangent {
+  uint16_t tangent_and_sign;
+};
+
+inline vec3 ortho_vec(vec3 v) {
+  if (abs(v.y) > abs(v.z)) {
+    return vec3(v.y, -v.x, 0.0f);
+  }
+  return vec3(v.z, 0.0f, -v.x);
+}
+
+inline float sq_wrap(float v) {
+  return (2.0f - abs(v)) * (v >= 0.0f ? 1.0f : -1.0f);
+}
+
+inline Tangent encode_tangent(vec4 tangent, vec3 normal) {
+  vec3 t1 = normalize(ortho_vec(normal));
+  vec3 t2 = cross(normal, t1);
+  vec2 xy = vec2(dot(vec3(tangent), t1), dot(vec3(tangent), t2));
+  float x = xy.x / (abs(xy.x) + abs(xy.y));
+  x = xy.y >= 0.0f ? x : sq_wrap(x);
+  x = x * 0.25f + 0.5f;
+  uint tangent_and_sign = min(uint(x * float(1 << 15)), (1u << 15) - 1);
+  tangent_and_sign |= (tangent.w < 0.0f) ? (1 << 15) : 0;
+  Tangent etangent;
+  etangent.tangent_and_sign = uint16_t(tangent_and_sign);
+  return etangent;
+}
+
+inline vec4 decode_tangent(Tangent tangent, vec3 normal) {
+  vec3 t1 = normalize(ortho_vec(normal));
+  vec3 t2 = cross(normal, t1);
+  uint tangent_and_sign = tangent.tangent_and_sign;
+  float x = (tangent_and_sign & ((1 << 15) - 1)) / float(1 << 15);
+  x = x * 4.0f - 2.0f;
+  float y = 1.0f - abs(x);
+  x = y >= 0.0f ? x : sq_wrap(x);
+  vec2 xy = normalize(vec2(x, y));
+  float sign = bool(tangent_and_sign & (1 << 15)) ? -1.0f : 1.0f;
+  return vec4(t1 * xy.x + t2 * xy.y, sign);
+}
+
 GLSL_NAMESPACE_END
 
 #endif // REN_GLSL_VERTEX_H

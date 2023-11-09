@@ -25,16 +25,19 @@ void main() {
   v_position = position;
   gl_Position = pc.ub.pv * vec4(position, 1.0f);
 
-  vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
-  normal = normalize(normal_matrix * normal);
-  v_normal = normal;
-
   if (OPAQUE_FEATURE_TS) {
-    vec4 tangent = pc.tangents[gl_VertexIndex].tangent;
+    vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
+    vec4 tangent = decode_tangent(pc.tangents[gl_VertexIndex].tangent, normal);
+    normal = normalize(normal_matrix * normal);
     tangent.xyz = normalize((transform_matrix * vec4(tangent.xyz, 0.0f)).xyz);
     vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
+    v_normal = normal;
     v_tangent = tangent.xyz;
     v_bitangent = bitangent;
+  } else {
+    vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
+    normal = normalize(normal_matrix * normal);
+    v_normal = normal;
   }
 
   if (OPAQUE_FEATURE_UV) {
