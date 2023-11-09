@@ -89,7 +89,7 @@ inline Tangent encode_tangent(vec4 tangent, vec3 normal) {
   float x = xy.x / (abs(xy.x) + abs(xy.y));
   x = xy.y >= 0.0f ? x : sq_wrap(x);
   x = x * 0.25f + 0.5f;
-  uint tangent_and_sign = min(uint(x * float(1 << 15)), (1u << 15) - 1);
+  uint tangent_and_sign = min(uint(round(x * float(1 << 15))), (1u << 15) - 1);
   tangent_and_sign |= (tangent.w < 0.0f) ? (1 << 15) : 0;
   Tangent etangent;
   etangent.tangent_and_sign = uint16_t(tangent_and_sign);
