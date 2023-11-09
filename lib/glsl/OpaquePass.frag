@@ -8,8 +8,7 @@ TEXTURES;
 layout(location = V_POSITION) in vec3 v_position;
 
 layout(location = V_NORMAL) in vec3 v_normal;
-layout(location = V_TANGENT) in vec3 v_tangent;
-layout(location = V_BITANGENT) in vec3 v_bitangent;
+layout(location = V_TANGENT) in vec4 v_tangent;
 
 layout(location = V_UV) in vec2 v_uv;
 
@@ -44,7 +43,12 @@ void main() {
     vec3 tex = texture(g_textures2d[material.normal_texture], v_uv).xyz;
     tex = 2.0f * tex - 1.0f;
     tex.xy *= material.normal_scale;
-    normal = mat3(v_tangent, v_bitangent, normal) * tex;
+    vec3 tangent = v_tangent.xyz;
+    vec3 bitangent = normalize(cross(normal, tangent));
+    tangent = normalize(cross(bitangent, normal));
+    normal = cross(tangent, bitangent);
+    bitangent *= v_tangent.w;
+    normal = mat3(tangent, bitangent, normal) * tex;
   }
   normal = normalize(normal);
 

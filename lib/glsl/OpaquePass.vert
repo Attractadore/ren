@@ -3,8 +3,7 @@
 layout(location = V_POSITION) out vec3 v_position;
 
 layout(location = V_NORMAL) out vec3 v_normal;
-layout(location = V_TANGENT) out vec3 v_tangent;
-layout(location = V_BITANGENT) out vec3 v_bitangent;
+layout(location = V_TANGENT) out vec4 v_tangent;
 
 layout(location = V_UV) out vec2 v_uv;
 
@@ -30,10 +29,8 @@ void main() {
     vec4 tangent = decode_tangent(pc.tangents[gl_VertexIndex].tangent, normal);
     normal = normalize(normal_matrix * normal);
     tangent.xyz = normalize((transform_matrix * vec4(tangent.xyz, 0.0f)).xyz);
-    vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
     v_normal = normal;
-    v_tangent = tangent.xyz;
-    v_bitangent = bitangent;
+    v_tangent = tangent;
   } else {
     vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
     normal = normalize(normal_matrix * normal);
