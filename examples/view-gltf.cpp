@@ -356,6 +356,16 @@ auto generate_tangents(std::span<const glm::vec3> positions,
     bail("Failed to generate tangents");
   }
 
+  for (size_t i = 0; i < normals.size(); ++i) {
+    const glm::vec3 &normal = normals[i];
+    glm::vec4 &tangent = tangents[i];
+    glm::vec3 tangent3d(tangent);
+    float sign = tangent.w;
+    float proj = glm::dot(normal, tangent3d);
+    tangent3d = glm::normalize(tangent3d - proj * normal);
+    tangent = glm::vec4(tangent3d, sign);
+  };
+
   return {};
 }
 
