@@ -170,10 +170,10 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                                      uvs_dst);
   }
   if (not desc.colors.empty()) {
+    Vector<glsl::Color> colors = desc.colors | map(glsl::encode_color);
     auto colors_dst = g_renderer->get_buffer_view(vertex_pool.colors)
-                          .slice<glm::vec4>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.colors),
-                                     colors_dst);
+                          .slice<glsl::Color>(mesh.base_vertex, num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(colors), colors_dst);
   }
   {
     auto indices_dst = g_renderer->get_buffer_view(vertex_pool.indices)

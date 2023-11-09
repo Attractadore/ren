@@ -25,4 +25,6 @@
 
 #define inline
 
+#define alignas(alignment)
+
 #endif // REN_GLSL_COMMON_GLSL

@@ -42,6 +42,6 @@ void main() {
   }
 
   if (OPAQUE_FEATURE_VC) {
-    v_color = pc.colors[gl_VertexIndex].color;
+    v_color = decode_color(pc.colors[gl_VertexIndex].color);
   }
 }

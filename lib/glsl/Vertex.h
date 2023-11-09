@@ -109,6 +109,18 @@ inline vec4 decode_tangent(Tangent tangent, vec3 normal) {
   return vec4(t1 * xy.x + t2 * xy.y, sign);
 }
 
+struct alignas(4) Color {
+  u8vec4 color;
+};
+
+inline Color encode_color(vec4 color) {
+  Color ecolor;
+  ecolor.color = u8vec4(clamp(round(color * 255.0f), 0.0f, 255.0f));
+  return ecolor;
+}
+
+inline vec4 decode_color(Color color) { return vec4(color.color) / 255.0f; }
+
 GLSL_NAMESPACE_END
 
 #endif // REN_GLSL_VERTEX_H

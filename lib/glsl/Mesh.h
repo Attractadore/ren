@@ -14,7 +14,7 @@ GLSL_BUFFER(2) Tangents { Tangent tangent; };
 
 GLSL_BUFFER(4) UVs { vec2 uv; };
 
-GLSL_BUFFER(4) Colors { vec4 color; };
+GLSL_BUFFER(4) Colors { Color color; };
 
 struct MeshInstance {
   uint material;

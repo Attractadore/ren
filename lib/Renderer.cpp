@@ -145,6 +145,8 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
   VkPhysicalDeviceVulkan12Features vulkan12_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .pNext = &vulkan11_features,
+      .storageBuffer8BitAccess = true,
+      .shaderInt8 = true,
       .descriptorBindingSampledImageUpdateAfterBind = true,
       .descriptorBindingStorageImageUpdateAfterBind = true,
       .descriptorBindingPartiallyBound = true,
