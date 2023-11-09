@@ -31,7 +31,7 @@ void main() {
 
   if (OPAQUE_FEATURE_TS) {
     vec4 tangent = pc.tangents[gl_VertexIndex].tangent;
-    tangent.xyz = normalize(normal_matrix * tangent.xyz);
+    tangent.xyz = normalize((transform_matrix * vec4(tangent.xyz, 0.0f)).xyz);
     vec3 bitangent = cross(normal, tangent.xyz) * tangent.w;
     v_tangent = tangent.xyz;
     v_bitangent = bitangent;

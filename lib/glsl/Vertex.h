@@ -21,6 +21,15 @@ inline vec3 decode_position(Position position) {
   return vec3(position.position);
 }
 
+inline mat4 make_encode_position_matrix(vec3 bb) {
+  vec3 scale = float(1 << 15) / bb;
+  mat4 m = mat4(1.0f);
+  m[0][0] = scale.x;
+  m[1][1] = scale.y;
+  m[2][2] = scale.z;
+  return m;
+}
+
 inline mat4 make_decode_position_matrix(vec3 bb) {
   vec3 scale = bb / float(1 << 15);
   mat4 m = mat4(1.0f);

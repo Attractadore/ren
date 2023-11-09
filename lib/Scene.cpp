@@ -125,11 +125,15 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                                      positions_dst);
   }
 
-  glm::mat3 normal_matrix = glsl::make_decode_position_matrix(mesh.bb);
+  glm::mat3 encode_transform_matrix =
+      glsl::make_encode_position_matrix(mesh.bb);
+  glm::mat3 encode_normal_matrix =
+      glm::inverse(glm::transpose(encode_transform_matrix));
   {
     Vector<glsl::Normal> normals =
         desc.normals | map([&](const glm::vec3 &normal) {
-          return glsl::encode_normal(glm::normalize(normal_matrix * normal));
+          return glsl::encode_normal(
+              glm::normalize(encode_normal_matrix * normal));
         });
 
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
@@ -139,8 +143,9 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   if (not desc.tangents.empty()) {
     Vector<glm::vec4> tangents =
         desc.tangents | map([&](const glm::vec4 &tangent) {
-          return glm::vec4(glm::normalize(normal_matrix * glm::vec3(tangent)),
-                           tangent.w);
+          return glm::vec4(
+              glm::normalize(encode_transform_matrix * glm::vec3(tangent)),
+              tangent.w);
         });
 
     auto tangents_dst = g_renderer->get_buffer_view(vertex_pool.tangents)
