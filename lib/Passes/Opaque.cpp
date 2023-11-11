@@ -32,6 +32,7 @@ struct UploadPassResources {
 };
 
 struct UploadPassData {
+  Span<const Mesh> meshes;
   Span<const glsl::Material> materials;
   Span<const MeshInstance> mesh_instances;
   Span<const glsl::DirLight> directional_lights;
@@ -52,7 +53,9 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   auto *transform_matrices = rg.map_buffer<glm::mat4x3>(rcs.transform_matrices);
   auto *normal_matrices = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
   for (const auto &[i, mesh_instance] : data.mesh_instances | enumerate) {
+    const Mesh &mesh = data.meshes[mesh_instance.mesh];
     mesh_instances[i] = {
+        .tbs = mesh.tbs,
         .material = mesh_instance.material,
     };
     transform_matrices[i] = mesh_instance.matrix;
@@ -389,6 +392,7 @@ auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
 
   valid = rg.set_pass_data(UPLOAD_PASS,
                            UploadPassData{
+                               .meshes = data.meshes,
                                .materials = data.materials,
                                .mesh_instances = data.mesh_instances,
                                .directional_lights = data.directional_lights,

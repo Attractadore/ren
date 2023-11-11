@@ -25,6 +25,7 @@ struct Mesh {
   u32 base_index = 0;
   u32 num_indices = 0;
   glm::vec3 bb;
+  glsl::TextureBoundingSquare tbs;
 };
 
 constexpr u32 NUM_VERTEX_POOL_VERTICES = 1 << 20;

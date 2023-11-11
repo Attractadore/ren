@@ -12,11 +12,12 @@ GLSL_BUFFER(2) Normals { Normal normal; };
 
 GLSL_BUFFER(2) Tangents { Tangent tangent; };
 
-GLSL_BUFFER(4) UVs { vec2 uv; };
+GLSL_BUFFER(4) UVs { UV uv; };
 
 GLSL_BUFFER(4) Colors { Color color; };
 
 struct MeshInstance {
+  TextureBoundingSquare tbs;
   uint material;
 };
 

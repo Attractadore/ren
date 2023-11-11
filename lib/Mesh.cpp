@@ -38,7 +38,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
         .heap = BufferHeap::Static,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = sizeof(glm::vec2) * NUM_VERTEX_POOL_VERTICES,
+        .size = sizeof(glsl::UV) * NUM_VERTEX_POOL_VERTICES,
     });
   }
 

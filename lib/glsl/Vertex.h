@@ -109,6 +109,27 @@ inline vec4 decode_tangent(Tangent tangent, vec3 normal) {
   return vec4(t1 * xy.x + t2 * xy.y, sign);
 }
 
+struct TextureBoundingSquare {
+  vec2 min;
+  vec2 max;
+};
+
+struct alignas(4) UV {
+  u16vec2 uv;
+};
+
+inline UV encode_uv(vec2 uv, TextureBoundingSquare bs) {
+  vec2 fuv = float(1 << 16) * (uv - bs.min) / (bs.max - bs.min);
+  fuv = clamp(round(fuv), 0.0f, float((1 << 16) - 1));
+  UV euv;
+  euv.uv = u16vec2(fuv);
+  return euv;
+}
+
+inline vec2 decode_uv(UV uv, TextureBoundingSquare bs) {
+  return mix(bs.min, bs.max, vec2(uv.uv) / float(1 << 16));
+}
+
 struct alignas(4) Color {
   u8vec4 color;
 };

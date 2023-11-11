@@ -164,10 +164,33 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   }
 
   if (not desc.tex_coords.empty()) {
+    for (glm::vec2 uv : desc.tex_coords) {
+      mesh.tbs.min = glm::min(mesh.tbs.min, uv);
+      mesh.tbs.max = glm::max(mesh.tbs.max, uv);
+    }
+
+    // Round off the minimum and the maximum of the bounding square to the next
+    // power of 2 if they are not equal to 0
+    {
+      glm::vec2 p = glm::log2(glm::max(-mesh.tbs.min, mesh.tbs.max));
+      glm::vec2 bs = glm::exp2(glm::ceil(p));
+      mesh.tbs.min = glm::mix(glm::vec2(0.0f), -bs,
+                              glm::notEqual(mesh.tbs.min, glm::vec2(0.0f)));
+      mesh.tbs.max = glm::mix(glm::vec2(0.0f), bs,
+                              glm::notEqual(mesh.tbs.max, glm::vec2(0.0f)));
+    }
+
+    Vector<glsl::UV> uvs =
+        desc.tex_coords | map([&](glm::vec2 uv) {
+          glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.tbs);
+          glm::vec2 decoded_uv = glsl::decode_uv(encoded_uv, mesh.tbs);
+          ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
+          return encoded_uv;
+        });
+
     auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
-                       .slice<glm::vec2>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.tex_coords),
-                                     uvs_dst);
+                       .slice<glsl::UV>(mesh.base_vertex, num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(uvs), uvs_dst);
   }
   if (not desc.colors.empty()) {
     Vector<glsl::Color> colors = desc.colors | map(glsl::encode_color);
