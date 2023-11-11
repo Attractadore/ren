@@ -25,8 +25,8 @@ struct Mesh {
   u32 base_index = 0;
   u32 num_indices = 0;
   // Select relatively big default bounding box size to avoid log2 NaN
-  glm::vec3 bb = glm::vec3(1.0f);
-  glsl::TextureBoundingSquare tbs;
+  glm::vec3 position_encode_bounding_box = glm::vec3(1.0f);
+  glsl::BoundingSquare uv_bounding_square;
 };
 
 constexpr u32 NUM_VERTEX_POOL_VERTICES = 1 << 20;

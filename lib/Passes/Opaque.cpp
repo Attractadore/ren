@@ -55,7 +55,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   for (const auto &[i, mesh_instance] : data.mesh_instances | enumerate) {
     const Mesh &mesh = data.meshes[mesh_instance.mesh];
     mesh_instances[i] = {
-        .tbs = mesh.tbs,
+        .uv_bounding_square = mesh.uv_bounding_square,
         .material = mesh_instance.material,
     };
     transform_matrices[i] = mesh_instance.matrix;

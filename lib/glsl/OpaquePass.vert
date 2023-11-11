@@ -38,7 +38,7 @@ void main() {
   }
 
   if (OPAQUE_FEATURE_UV) {
-    v_uv = decode_uv(pc.uvs[gl_VertexIndex].uv, mesh_instance.tbs);
+    v_uv = decode_uv(pc.uvs[gl_VertexIndex].uv, mesh_instance.uv_bounding_square);
   }
 
   if (OPAQUE_FEATURE_VC) {

@@ -106,13 +106,16 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   {
     for (const glm::vec3 &position : desc.positions) {
-      mesh.bb = glm::max(mesh.bb, glm::abs(position));
+      mesh.position_encode_bounding_box =
+          glm::max(mesh.position_encode_bounding_box, glm::abs(position));
     }
-    mesh.bb = glm::exp2(glm::ceil(glm::log2(mesh.bb)));
+    mesh.position_encode_bounding_box =
+        glm::exp2(glm::ceil(glm::log2(mesh.position_encode_bounding_box)));
 
     Vector<glsl::Position> positions =
         desc.positions | map([&](const glm::vec3 &position) {
-          return glsl::encode_position(position, mesh.bb);
+          return glsl::encode_position(position,
+                                       mesh.position_encode_bounding_box);
         });
 
     auto positions_dst =
@@ -125,7 +128,7 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   {
     glm::mat3 encode_transform_matrix =
-        glsl::make_encode_position_matrix(mesh.bb);
+        glsl::make_encode_position_matrix(mesh.position_encode_bounding_box);
     glm::mat3 encode_normal_matrix =
         glm::inverse(glm::transpose(encode_transform_matrix));
     Vector<glsl::Normal> normals =
@@ -163,27 +166,31 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   if (not desc.tex_coords.empty()) {
     for (glm::vec2 uv : desc.tex_coords) {
-      mesh.tbs.min = glm::min(mesh.tbs.min, uv);
-      mesh.tbs.max = glm::max(mesh.tbs.max, uv);
+      mesh.uv_bounding_square.min = glm::min(mesh.uv_bounding_square.min, uv);
+      mesh.uv_bounding_square.max = glm::max(mesh.uv_bounding_square.max, uv);
     }
 
     // Round off the minimum and the maximum of the bounding square to the next
     // power of 2 if they are not equal to 0
     {
       // Select a relatively big default square size to avoid log2 NaN
-      glm::vec2 p =
-          glm::log2(glm::max(glm::max(-mesh.tbs.min, mesh.tbs.max), 1.0f));
+      glm::vec2 p = glm::log2(glm::max(
+          glm::max(-mesh.uv_bounding_square.min, mesh.uv_bounding_square.max),
+          1.0f));
       glm::vec2 bs = glm::exp2(glm::ceil(p));
-      mesh.tbs.min = glm::mix(glm::vec2(0.0f), -bs,
-                              glm::notEqual(mesh.tbs.min, glm::vec2(0.0f)));
-      mesh.tbs.max = glm::mix(glm::vec2(0.0f), bs,
-                              glm::notEqual(mesh.tbs.max, glm::vec2(0.0f)));
+      mesh.uv_bounding_square.min =
+          glm::mix(glm::vec2(0.0f), -bs,
+                   glm::notEqual(mesh.uv_bounding_square.min, glm::vec2(0.0f)));
+      mesh.uv_bounding_square.max =
+          glm::mix(glm::vec2(0.0f), bs,
+                   glm::notEqual(mesh.uv_bounding_square.max, glm::vec2(0.0f)));
     }
 
     Vector<glsl::UV> uvs =
         desc.tex_coords | map([&](glm::vec2 uv) {
-          glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.tbs);
-          glm::vec2 decoded_uv = glsl::decode_uv(encoded_uv, mesh.tbs);
+          glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.uv_bounding_square);
+          glm::vec2 decoded_uv =
+              glsl::decode_uv(encoded_uv, mesh.uv_bounding_square);
           ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
           return encoded_uv;
         });
@@ -343,7 +350,8 @@ void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
-          .matrix = glsl::make_decode_position_matrix(mesh.bb),
+          .matrix = glsl::make_decode_position_matrix(
+              mesh.position_encode_bounding_box),
       });
       *out = std::bit_cast<MeshInstanceId>(mesh_instance);
       ++out;
@@ -357,7 +365,8 @@ void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
       Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
           .mesh = desc.mesh,
           .material = desc.material,
-          .matrix = transform * glsl::make_decode_position_matrix(mesh.bb),
+          .matrix = transform * glsl::make_decode_position_matrix(
+                                    mesh.position_encode_bounding_box),
       });
       *out = std::bit_cast<MeshInstanceId>(mesh_instance);
       ++out;
@@ -380,7 +389,8 @@ void SceneImpl::set_mesh_instance_transforms(
     MeshInstance &mesh_instance =
         m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(handle)];
     const Mesh &mesh = m_meshes[mesh_instance.mesh];
-    mesh_instance.matrix = matrix * glsl::make_decode_position_matrix(mesh.bb);
+    mesh_instance.matrix = matrix * glsl::make_decode_position_matrix(
+                                        mesh.position_encode_bounding_box);
   }
 }
 

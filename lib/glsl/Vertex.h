@@ -5,6 +5,11 @@
 
 GLSL_NAMESPACE_BEGIN
 
+struct BoundingSquare {
+  vec2 min;
+  vec2 max;
+};
+
 struct Position {
   i16vec3 position;
 };
@@ -109,16 +114,11 @@ inline vec4 decode_tangent(Tangent tangent, vec3 normal) {
   return vec4(t1 * xy.x + t2 * xy.y, sign);
 }
 
-struct TextureBoundingSquare {
-  vec2 min;
-  vec2 max;
-};
-
 struct alignas(4) UV {
   u16vec2 uv;
 };
 
-inline UV encode_uv(vec2 uv, TextureBoundingSquare bs) {
+inline UV encode_uv(vec2 uv, BoundingSquare bs) {
   vec2 fuv = float(1 << 16) * (uv - bs.min) / (bs.max - bs.min);
   fuv = clamp(round(fuv), 0.0f, float((1 << 16) - 1));
   UV euv;
@@ -126,7 +126,7 @@ inline UV encode_uv(vec2 uv, TextureBoundingSquare bs) {
   return euv;
 }
 
-inline vec2 decode_uv(UV uv, TextureBoundingSquare bs) {
+inline vec2 decode_uv(UV uv, BoundingSquare bs) {
   return mix(bs.min, bs.max, vec2(uv.uv) / float(1 << 16));
 }
 
