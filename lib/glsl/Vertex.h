@@ -14,6 +14,11 @@ struct Position {
   i16vec3 position;
 };
 
+struct PositionBoundingBox {
+  Position min;
+  Position max;
+};
+
 inline Position encode_position(vec3 position, vec3 bb) {
   vec3 scale = float(1 << 15) / bb;
   Position eposition;

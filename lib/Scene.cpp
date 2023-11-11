@@ -118,6 +118,13 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                                        mesh.position_encode_bounding_box);
         });
 
+    for (const glsl::Position &position : positions) {
+      mesh.bounding_box.min.position =
+          glm::min(mesh.bounding_box.min.position, position.position);
+      mesh.bounding_box.max.position =
+          glm::max(mesh.bounding_box.max.position, position.position);
+    }
+
     auto positions_dst =
         g_renderer->get_buffer_view(vertex_pool.positions)
             .slice<glsl::Position>(mesh.base_vertex, num_vertices);
