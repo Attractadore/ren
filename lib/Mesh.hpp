@@ -24,7 +24,8 @@ struct Mesh {
   u32 base_vertex = 0;
   u32 base_index = 0;
   u32 num_indices = 0;
-  glm::vec3 bb;
+  // Select relatively big default bounding box size to avoid log2 NaN
+  glm::vec3 bb = glm::vec3(1.0f);
   glsl::TextureBoundingSquare tbs;
 };
 

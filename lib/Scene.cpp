@@ -105,11 +105,9 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   // Upload vertices
 
   {
-    mesh.bb = ranges::accumulate(
-        desc.positions |
-            map([](const glm::vec3 &pos) { return glm::abs(pos); }),
-        glm::vec3(0.0f),
-        [](const glm::vec3 &l, const glm::vec3 &r) { return glm::max(l, r); });
+    for (const glm::vec3 &position : desc.positions) {
+      mesh.bb = glm::max(mesh.bb, glm::abs(position));
+    }
     mesh.bb = glm::exp2(glm::ceil(glm::log2(mesh.bb)));
 
     Vector<glsl::Position> positions =
@@ -172,7 +170,9 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
     // Round off the minimum and the maximum of the bounding square to the next
     // power of 2 if they are not equal to 0
     {
-      glm::vec2 p = glm::log2(glm::max(-mesh.tbs.min, mesh.tbs.max));
+      // Select a relatively big default square size to avoid log2 NaN
+      glm::vec2 p =
+          glm::log2(glm::max(glm::max(-mesh.tbs.min, mesh.tbs.max), 1.0f));
       glm::vec2 bs = glm::exp2(glm::ceil(p));
       mesh.tbs.min = glm::mix(glm::vec2(0.0f), -bs,
                               glm::notEqual(mesh.tbs.min, glm::vec2(0.0f)));
