@@ -16,6 +16,7 @@ endmacro()
 
 add_embedded_shader(EarlyZPass.vert EarlyZPassVS)
 
+add_embedded_shader(InstanceCulling.comp InstanceCullingCS)
 add_embedded_shader(OpaquePass.vert OpaquePassVS)
 add_embedded_shader(OpaquePass.frag OpaquePassFS)
 

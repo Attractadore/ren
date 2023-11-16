@@ -11,7 +11,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glsl::Position) * NUM_VERTEX_POOL_VERTICES,
+      .size = sizeof(glsl::Position) * glsl::NUM_VERTEX_POOL_VERTICES,
   });
 
   pool.normals = g_renderer->create_buffer({
@@ -19,7 +19,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
       .heap = BufferHeap::Static,
       .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .size = sizeof(glsl::Normal) * NUM_VERTEX_POOL_VERTICES,
+      .size = sizeof(glsl::Normal) * glsl::NUM_VERTEX_POOL_VERTICES,
   });
 
   if (attributes.isSet(MeshAttribute::Tangent)) {
@@ -28,7 +28,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
         .heap = BufferHeap::Static,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = sizeof(glsl::Tangent) * NUM_VERTEX_POOL_VERTICES,
+        .size = sizeof(glsl::Tangent) * glsl::NUM_VERTEX_POOL_VERTICES,
     });
   }
 
@@ -38,7 +38,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
         .heap = BufferHeap::Static,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = sizeof(glsl::UV) * NUM_VERTEX_POOL_VERTICES,
+        .size = sizeof(glsl::UV) * glsl::NUM_VERTEX_POOL_VERTICES,
     });
   }
 
@@ -48,7 +48,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
         .heap = BufferHeap::Static,
         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = sizeof(glsl::Color) * NUM_VERTEX_POOL_VERTICES,
+        .size = sizeof(glsl::Color) * glsl::NUM_VERTEX_POOL_VERTICES,
     });
   }
 
@@ -57,7 +57,7 @@ auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool {
       .heap = BufferHeap::Static,
       .usage =
           VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-      .size = sizeof(u32) * NUM_VERTEX_POOL_INDICES,
+      .size = sizeof(u32) * glsl::NUM_VERTEX_POOL_INDICES,
   });
 
   return pool;

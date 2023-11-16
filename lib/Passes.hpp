@@ -34,6 +34,8 @@ struct PassesConfig {
 };
 
 struct PassesData {
+  Span<const u32> batch_offsets;
+  Span<const u32> batch_max_counts;
   Span<const VertexPoolList> vertex_pool_lists;
   Span<const Mesh> meshes;
   Span<const glsl::Material> materials;

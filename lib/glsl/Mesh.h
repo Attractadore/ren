@@ -16,12 +16,36 @@ GLSL_BUFFER(4) UVs { UV uv; };
 
 GLSL_BUFFER(4) Colors { Color color; };
 
-struct MeshInstance {
-  BoundingSquare uv_bounding_square;
+const uint MESH_ATTRIBUTE_UV_BIT = 1 << 0;
+const uint MESH_ATTRIBUTE_TANGENT_BIT = 1 << 1;
+const uint MESH_ATTRIBUTE_COLOR_BIT = 1 << 2;
+
+const uint NUM_MESH_ATTRIBUTE_FLAGS =
+    (MESH_ATTRIBUTE_UV_BIT | MESH_ATTRIBUTE_TANGENT_BIT |
+     MESH_ATTRIBUTE_COLOR_BIT) +
+    1;
+
+const uint MAX_NUM_VERTEX_POOLS = 256;
+
+const uint NUM_VERTEX_POOL_INDICES = 1 << 24;
+const uint NUM_VERTEX_POOL_VERTICES = NUM_VERTEX_POOL_INDICES / 4;
+
+struct MeshInstanceCullData {
+  uint8_t attribute_mask;
+  uint8_t pool;
+  uint base_vertex;
+  uint base_index;
+  uint num_indices;
+};
+
+struct MeshInstanceDrawData {
+  BoundingSquare uv_bs;
   uint material;
 };
 
-GLSL_BUFFER(4) MeshInstances { MeshInstance mesh_instance; };
+GLSL_BUFFER(4) CullMeshInstances { MeshInstanceCullData data; };
+
+GLSL_BUFFER(4) DrawMeshInstances { MeshInstanceDrawData data; };
 
 GLSL_BUFFER(4) TransformMatrices { mat4x3 matrix; };
 

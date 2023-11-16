@@ -10,13 +10,12 @@ namespace ren {
 
 struct Buffer;
 
-#define MESH_ATTRIBUTES (Color)(Tangent)(UV)
-REN_DEFINE_FLAGS_ENUM(MeshAttribute, MESH_ATTRIBUTES);
-
-constexpr usize NUM_MESH_ATTRIBUTE_FLAGS =
-    (usize)(MeshAttribute::Color | MeshAttribute::Tangent | MeshAttribute::UV)
-        .get() +
-    1;
+enum class MeshAttribute {
+  UV = glsl::MESH_ATTRIBUTE_UV_BIT,
+  Tangent = glsl::MESH_ATTRIBUTE_TANGENT_BIT,
+  Color = glsl::MESH_ATTRIBUTE_COLOR_BIT,
+};
+ENABLE_FLAGS(MeshAttribute);
 
 struct Mesh {
   MeshAttributeFlags attributes;
@@ -33,9 +32,6 @@ struct Mesh {
   glsl::BoundingSquare uv_bounding_square;
 };
 
-constexpr u32 NUM_VERTEX_POOL_VERTICES = 1 << 20;
-constexpr u32 NUM_VERTEX_POOL_INDICES = 5 * NUM_VERTEX_POOL_VERTICES;
-
 struct VertexPool {
   AutoHandle<Buffer> positions;
   AutoHandle<Buffer> normals;
@@ -43,8 +39,8 @@ struct VertexPool {
   AutoHandle<Buffer> colors;
   AutoHandle<Buffer> uvs;
   AutoHandle<Buffer> indices;
-  u32 num_free_vertices = NUM_VERTEX_POOL_VERTICES;
-  u32 num_free_indices = NUM_VERTEX_POOL_INDICES;
+  u32 num_free_vertices = glsl::NUM_VERTEX_POOL_VERTICES;
+  u32 num_free_indices = glsl::NUM_VERTEX_POOL_INDICES;
 };
 
 using VertexPoolList = SmallVector<VertexPool, 1>;

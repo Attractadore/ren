@@ -75,6 +75,8 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
 
   valid = set_opaque_passes_data(
       rg, OpaquePassesData{
+              .batch_offsets = data.batch_offsets,
+              .batch_max_counts = data.batch_max_counts,
               .vertex_pool_lists = data.vertex_pool_lists,
               .meshes = data.meshes,
               .materials = data.materials,

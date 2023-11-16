@@ -7,6 +7,7 @@
 #include "EarlyZPassVS.h"
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
+#include "InstanceCullingCS.h"
 #include "OpaquePassFS.h"
 #include "OpaquePassVS.h"
 #include "PostProcessingCS.h"
@@ -111,6 +112,7 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
+    .instance_culling = load_instance_culling_pipeline(arena),
     .early_z_pass = load_early_z_pass_pipeline(arena),
     .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
     .post_processing =
@@ -121,6 +123,14 @@ auto load_pipelines(ResourceArena &arena,
     .imgui_pass = load_imgui_pipeline(arena, persistent_set_layout, SDR_FORMAT),
 #endif
   };
+}
+
+auto load_instance_culling_pipeline(ResourceArena &arena)
+    -> Handle<ComputePipeline> {
+  return load_compute_pipeline(
+      arena, NullHandle,
+      Span(InstanceCullingCS, InstanceCullingCS_count).as_bytes(),
+      "Instance culling");
 }
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
@@ -142,7 +152,7 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
 
 auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> {
+    -> std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS> {
   auto vs = Span(OpaquePassVS, OpaquePassVS_count).as_bytes();
   auto fs = Span(OpaquePassFS, OpaquePassFS_count).as_bytes();
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
@@ -150,8 +160,9 @@ auto load_opaque_pass_pipelines(
   std::array color_attachments = {ColorAttachmentInfo{
       .format = HDR_FORMAT,
   }};
-  std::array<Handle<GraphicsPipeline>, NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
-  for (int i = 0; i < NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
+  std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
+      pipelines;
+  for (int i = 0; i < glsl::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
     MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
     std::array<SpecConstant, 3> spec_constants = {{
         {glsl::S_OPAQUE_FEATURE_VC, flags.isSet(MeshAttribute::Color)},

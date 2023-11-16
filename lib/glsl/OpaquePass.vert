@@ -12,7 +12,7 @@ layout(location = V_COLOR) out vec4 v_color;
 layout(location = V_MATERIAL) out flat uint v_material;
 
 void main() {
-  MeshInstance mesh_instance = pc.ub.mesh_instances[gl_BaseInstance].mesh_instance;
+  MeshInstanceDrawData mesh_instance = pc.ub.mesh_instances[gl_BaseInstance].data;
   v_material = mesh_instance.material;
 
   mat4x3 transform_matrix = pc.ub.transform_matrices[gl_BaseInstance].matrix;
@@ -38,7 +38,7 @@ void main() {
   }
 
   if (OPAQUE_FEATURE_UV) {
-    v_uv = decode_uv(pc.uvs[gl_VertexIndex].uv, mesh_instance.uv_bounding_square);
+    v_uv = decode_uv(pc.uvs[gl_VertexIndex].uv, mesh_instance.uv_bs);
   }
 
   if (OPAQUE_FEATURE_VC) {

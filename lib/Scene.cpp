@@ -5,6 +5,7 @@
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
 #include "Swapchain.hpp"
+#include "glsl/Batch.hpp"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
@@ -46,6 +47,9 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   ren_assert_msg(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #endif
 #undef error
+
+  m_batch_max_counts.resize(glsl::NUM_BATCHES);
+  m_batch_offsets.resize(glsl::NUM_BATCHES);
 }
 
 void SceneImpl::next_frame() {
@@ -60,9 +64,10 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   ren_assert(num_vertices > 0);
   ren_assert(desc.normals.size() == num_vertices);
   ren_assert(num_indices > 0 and num_indices % 3 == 0);
-  ren_assert_msg(num_vertices <= NUM_VERTEX_POOL_VERTICES,
+  ren_assert_msg(num_vertices <= glsl::NUM_VERTEX_POOL_VERTICES,
                  "Vertex pool overflow");
-  ren_assert_msg(num_indices <= NUM_VERTEX_POOL_INDICES, "Index pool overflow");
+  ren_assert_msg(num_indices <= glsl::NUM_VERTEX_POOL_INDICES,
+                 "Index pool overflow");
 
   MeshAttributeFlags attributes;
   if (not desc.tangents.empty()) {
@@ -94,8 +99,10 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   Mesh mesh = {
       .attributes = attributes,
       .pool = vertex_pool_index,
-      .base_vertex = NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices,
-      .base_index = NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices,
+      .base_vertex =
+          glsl::NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices,
+      .base_index =
+          glsl::NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices,
       .num_indices = num_indices,
   };
 
@@ -427,6 +434,18 @@ void SceneImpl::update_directional_light(
 void SceneImpl::draw() {
   m_resource_uploader.upload(m_cmd_allocator);
 
+  {
+    ranges::fill(m_batch_max_counts, 0);
+    for (const MeshInstance &mesh_instance : m_mesh_instances.values()) {
+      const Mesh &mesh = m_meshes[mesh_instance.mesh];
+      uint batch_id = glsl::get_batch_id(
+          static_cast<uint32_t>(mesh.attributes.get()), mesh.pool);
+      m_batch_max_counts[batch_id]++;
+    }
+    m_batch_offsets.assign(m_batch_max_counts |
+                           ranges::views::exclusive_scan(0));
+  }
+
   update_rg_passes(
       *m_render_graph, m_cmd_allocator,
       PassesConfig {
@@ -438,6 +457,8 @@ void SceneImpl::draw() {
         .pp_opts = &m_pp_opts, .early_z = m_early_z,
       },
       PassesData{
+          .batch_offsets = m_batch_offsets,
+          .batch_max_counts = m_batch_max_counts,
           .vertex_pool_lists = m_vertex_pool_lists,
           .meshes = m_meshes,
           .materials = m_materials,

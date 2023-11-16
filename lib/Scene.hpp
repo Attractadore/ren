@@ -28,8 +28,11 @@ class SceneImpl {
   Camera m_camera;
   PostProcessingOptions m_pp_opts;
 
-  std::array<VertexPoolList, NUM_MESH_ATTRIBUTE_FLAGS> m_vertex_pool_lists;
+  std::array<VertexPoolList, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
+      m_vertex_pool_lists;
   Vector<Mesh> m_meshes = {{}};
+  Vector<u32> m_batch_offsets;
+  Vector<u32> m_batch_max_counts;
 
   HashMap<SamplerDesc, AutoHandle<Sampler>> m_samplers;
 
