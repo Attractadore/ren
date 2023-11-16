@@ -388,6 +388,45 @@ void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
                    draw_info.first_instance);
 }
 
+void RenderPass::draw_indirect(const BufferView &view, usize stride) {
+  const Buffer &buffer = g_renderer->get_buffer(view.buffer);
+  usize count = (view.size + stride - sizeof(VkDrawIndirectCommand)) /
+                sizeof(VkDrawIndirectCommand);
+  vkCmdDrawIndirect(m_cmd_buffer, buffer.handle, view.offset, count, stride);
+}
+
+void RenderPass::draw_indirect_count(const BufferView &view,
+                                     const BufferView &counter, usize stride) {
+  const Buffer &buffer = g_renderer->get_buffer(view.buffer);
+  const Buffer &count_buffer = g_renderer->get_buffer(counter.buffer);
+  usize max_count = (view.size + stride - sizeof(VkDrawIndirectCommand)) /
+                    sizeof(VkDrawIndirectCommand);
+  vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle, view.offset,
+                                count_buffer.handle, counter.offset, max_count,
+                                stride);
+}
+
+void RenderPass::draw_indexed_indirect(const BufferView &view, usize stride) {
+  const Buffer &buffer = g_renderer->get_buffer(view.buffer);
+  usize count = (view.size + stride - sizeof(VkDrawIndexedIndirectCommand)) /
+                sizeof(VkDrawIndexedIndirectCommand);
+  vkCmdDrawIndexedIndirect(m_cmd_buffer, buffer.handle, view.offset, count,
+                           stride);
+}
+
+void RenderPass::draw_indexed_indirect_count(const BufferView &view,
+                                             const BufferView &counter,
+                                             usize stride) {
+  const Buffer &buffer = g_renderer->get_buffer(view.buffer);
+  const Buffer &count_buffer = g_renderer->get_buffer(counter.buffer);
+  usize max_count =
+      (view.size + stride - sizeof(VkDrawIndexedIndirectCommand)) /
+      sizeof(VkDrawIndexedIndirectCommand);
+  vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle, view.offset,
+                                count_buffer.handle, counter.offset, max_count,
+                                stride);
+}
+
 ComputePass::ComputePass(VkCommandBuffer cmd_buffer) {
   m_cmd_buffer = cmd_buffer;
 }

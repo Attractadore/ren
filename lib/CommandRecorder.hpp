@@ -54,6 +54,12 @@ struct DrawIndexedInfo {
   u32 first_instance = 0;
 };
 
+struct DrawIndirectCountInfo {
+  BufferView buffer;
+  BufferView count_buffer;
+  u32 max_count;
+};
+
 class ComputePass;
 
 class DebugRegion;
@@ -192,6 +198,20 @@ public:
   void draw(const DrawInfo &&draw_info);
 
   void draw_indexed(const DrawIndexedInfo &&draw_info);
+
+  void draw_indirect(const BufferView &view,
+                     usize stride = sizeof(VkDrawIndirectCommand));
+
+  void draw_indirect_count(const BufferView &view, const BufferView &counter,
+                           usize stride = sizeof(VkDrawIndirectCommand));
+
+  void
+  draw_indexed_indirect(const BufferView &view,
+                        usize stride = sizeof(VkDrawIndexedIndirectCommand));
+
+  void draw_indexed_indirect_count(
+      const BufferView &view, const BufferView &counter,
+      usize stride = sizeof(VkDrawIndexedIndirectCommand));
 };
 
 class ComputePass {
