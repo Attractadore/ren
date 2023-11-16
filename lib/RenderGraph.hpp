@@ -136,6 +136,11 @@ constexpr RgBufferUsage RG_INDEX_BUFFER = {
     .access_mask = VK_ACCESS_2_INDEX_READ_BIT,
 };
 
+constexpr RgBufferUsage RG_INDIRECT_COMMAND_BUFFER = {
+    .stage_mask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+    .access_mask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+};
+
 struct RgBufferCreateInfo {
   /// Buffer name
   String name;
