@@ -7,6 +7,7 @@
 #include "Swapchain.hpp"
 #include "glsl/Batch.hpp"
 
+#include <meshoptimizer.h>
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
@@ -80,37 +81,70 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
     attributes |= MeshAttribute::Color;
   }
 
-  // Find or allocate vertex pool
+  Mesh mesh = {.attributes = attributes};
 
-  auto &vertex_pool_list = m_vertex_pool_lists[usize(attributes.get())];
-  if (vertex_pool_list.empty()) {
-    vertex_pool_list.emplace_back(create_vertex_pool(attributes));
-  } else {
-    const VertexPool &pool = vertex_pool_list.back();
-    if (pool.num_free_indices < num_indices or
-        pool.num_free_vertices < num_vertices) {
-      vertex_pool_list.emplace_back(create_vertex_pool(attributes));
+  // Generate LODs
+
+  Vector<u32> indices;
+  {
+    auto optimize_lod = [&](Span<u32> lod) {
+      meshopt_optimizeVertexCache(lod.data(), lod.data(), lod.size(),
+                                  num_vertices);
+    };
+
+    constexpr float threshold = 0.75f;
+    constexpr float error = 0.001f;
+
+    indices.reserve(num_indices * 1.0f / (1.0f - threshold) + 1);
+    indices = desc.indices;
+    optimize_lod(indices);
+
+    mesh.lods.push_back({.num_indices = num_indices});
+
+    Vector<u32> lod_indices(num_indices);
+
+    while (mesh.lods.size() < glsl::MAX_NUM_LODS) {
+      u32 num_prev_lod_indices = mesh.lods.back().num_indices;
+
+      u32 num_target_indices =
+          std::max(u32(num_prev_lod_indices * threshold), 3u);
+      num_target_indices -= num_target_indices % 3;
+
+      u32 num_lod_indices = meshopt_simplify(
+          lod_indices.data(), indices.data(), num_prev_lod_indices,
+          (const float *)desc.positions.data(), desc.positions.size(),
+          sizeof(glm::vec3), num_target_indices, error, 0, nullptr);
+      if (num_lod_indices > num_target_indices) {
+        break;
+      }
+      lod_indices.resize(num_lod_indices);
+      optimize_lod(lod_indices);
+
+      indices.insert(indices.begin(), lod_indices.begin(), lod_indices.end());
+
+      mesh.lods.push_back({.num_indices = num_lod_indices});
     }
   }
-  ren_assert(not vertex_pool_list.empty());
-  u32 vertex_pool_index = vertex_pool_list.size() - 1;
-  VertexPool &vertex_pool = vertex_pool_list[vertex_pool_index];
+  num_indices = indices.size();
 
-  Mesh mesh = {
-      .attributes = attributes,
-      .pool = vertex_pool_index,
-      .base_vertex =
-          glsl::NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices,
-      .base_index =
-          glsl::NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices,
-      .num_indices = num_indices,
+  Vector<u32> remap(num_vertices);
+  num_vertices = meshopt_optimizeVertexFetchRemap(remap.data(), indices.data(),
+                                                  indices.size(), num_vertices);
+  meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(),
+                           remap.data());
+
+  Vector<std::byte> scratch;
+  auto remap_stream = [&]<typename T>(Vector<T> &stream) {
+    scratch.resize(sizeof(T) * num_vertices);
+    meshopt_remapVertexBuffer(scratch.data(), stream.data(), stream.size(),
+                              sizeof(T), remap.data());
+    std::memcpy(stream.data(), scratch.data(), scratch.size());
+    stream.resize(num_vertices);
   };
 
-  vertex_pool.num_free_vertices -= num_vertices;
-  vertex_pool.num_free_indices -= num_indices;
+  // Encode vertex attributes
 
-  // Upload vertices
-
+  Vector<glsl::Position> positions;
   {
     for (const glm::vec3 &position : desc.positions) {
       mesh.position_encode_bounding_box =
@@ -119,11 +153,11 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
     mesh.position_encode_bounding_box =
         glm::exp2(glm::ceil(glm::log2(mesh.position_encode_bounding_box)));
 
-    Vector<glsl::Position> positions =
-        desc.positions | map([&](const glm::vec3 &position) {
-          return glsl::encode_position(position,
-                                       mesh.position_encode_bounding_box);
-        });
+    positions = desc.positions | map([&](const glm::vec3 &position) {
+                  return glsl::encode_position(
+                      position, mesh.position_encode_bounding_box);
+                });
+    remap_stream(positions);
 
     for (const glsl::Position &position : positions) {
       mesh.bounding_box.min.position =
@@ -131,53 +165,42 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
       mesh.bounding_box.max.position =
           glm::max(mesh.bounding_box.max.position, position.position);
     }
-
-    auto positions_dst =
-        g_renderer->get_buffer_view(vertex_pool.positions)
-            .slice<glsl::Position>(mesh.base_vertex, num_vertices);
-
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(positions),
-                                     positions_dst);
   }
 
+  Vector<glsl::Normal> normals;
+  Vector<glsl::Tangent> tangents;
   {
     glm::mat3 encode_transform_matrix =
         glsl::make_encode_position_matrix(mesh.position_encode_bounding_box);
     glm::mat3 encode_normal_matrix =
         glm::inverse(glm::transpose(encode_transform_matrix));
-    Vector<glsl::Normal> normals =
-        desc.normals | map([&](const glm::vec3 &normal) {
-          return glsl::encode_normal(
-              glm::normalize(encode_normal_matrix * normal));
-        });
-    auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
-                           .slice<glsl::Normal>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
+
+    normals = desc.normals | map([&](const glm::vec3 &normal) {
+                return glsl::encode_normal(
+                    glm::normalize(encode_normal_matrix * normal));
+              });
+    remap_stream(normals);
 
     if (not desc.tangents.empty()) {
-      Vector<glsl::Tangent> tangents =
-          zip(desc.tangents, normals) |
-          map([&](const auto &tangent_and_normal) {
-            glm::vec4 tangent = std::get<0>(tangent_and_normal);
-            tangent = glm::vec4(
-                glm::normalize(encode_transform_matrix * glm::vec3(tangent)),
-                tangent.w);
-            glm::vec3 normal =
-                glsl::decode_normal(std::get<1>(tangent_and_normal));
-            // Encoding and then decoding the normal can change how the tangent
-            // basis is selected due to rounding errors. Since shaders use the
-            // decoded normal to decode the tangent, use it for encoding as well
-            return glsl::encode_tangent(tangent, normal);
-          });
-
-      auto tangents_dst =
-          g_renderer->get_buffer_view(vertex_pool.tangents)
-              .slice<glsl::Tangent>(mesh.base_vertex, num_vertices);
-      m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
-                                       tangents_dst);
+      tangents = zip(desc.tangents, normals) |
+                 map([&](const auto &tangent_and_normal) {
+                   glm::vec4 tangent = std::get<0>(tangent_and_normal);
+                   tangent = glm::vec4(glm::normalize(encode_transform_matrix *
+                                                      glm::vec3(tangent)),
+                                       tangent.w);
+                   glm::vec3 normal =
+                       glsl::decode_normal(std::get<1>(tangent_and_normal));
+                   // Encoding and then decoding the normal can change how the
+                   // tangent basis is selected due to rounding errors. Since
+                   // shaders use the decoded normal to decode the tangent, use
+                   // it for encoding as well
+                   return glsl::encode_tangent(tangent, normal);
+                 });
+      remap_stream(tangents);
     }
   }
 
+  Vector<glsl::UV> uvs;
   if (not desc.tex_coords.empty()) {
     for (glm::vec2 uv : desc.tex_coords) {
       mesh.uv_bounding_square.min = glm::min(mesh.uv_bounding_square.min, uv);
@@ -200,30 +223,94 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                    glm::notEqual(mesh.uv_bounding_square.max, glm::vec2(0.0f)));
     }
 
-    Vector<glsl::UV> uvs =
-        desc.tex_coords | map([&](glm::vec2 uv) {
-          glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.uv_bounding_square);
-          glm::vec2 decoded_uv =
-              glsl::decode_uv(encoded_uv, mesh.uv_bounding_square);
-          ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
-          return encoded_uv;
-        });
+    uvs = desc.tex_coords | map([&](glm::vec2 uv) {
+            glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.uv_bounding_square);
+            glm::vec2 decoded_uv =
+                glsl::decode_uv(encoded_uv, mesh.uv_bounding_square);
+            ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
+            return encoded_uv;
+          });
+    remap_stream(uvs);
+  }
 
+  Vector<glsl::Color> colors;
+  if (not desc.colors.empty()) {
+    colors = desc.colors | map(glsl::encode_color);
+    remap_stream(colors);
+  }
+
+  // Find or allocate vertex pool
+
+  auto &vertex_pool_list = m_vertex_pool_lists[usize(attributes.get())];
+  if (vertex_pool_list.empty()) {
+    vertex_pool_list.emplace_back(create_vertex_pool(attributes));
+  } else {
+    const VertexPool &pool = vertex_pool_list.back();
+    if (pool.num_free_indices < num_indices or
+        pool.num_free_vertices < num_vertices) {
+      vertex_pool_list.emplace_back(create_vertex_pool(attributes));
+    }
+  }
+  ren_assert(not vertex_pool_list.empty());
+  mesh.pool = vertex_pool_list.size() - 1;
+  VertexPool &vertex_pool = vertex_pool_list[mesh.pool];
+
+  mesh.base_vertex =
+      glsl::NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices;
+  mesh.base_index =
+      glsl::NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices;
+  mesh.num_indices = num_indices;
+
+  mesh.lods.back().base_index = mesh.base_index;
+  for (usize lod = mesh.lods.size() - 1; lod > 0; --lod) {
+    mesh.lods[lod - 1].base_index =
+        mesh.lods[lod].base_index + mesh.lods[lod].num_indices;
+  }
+
+  vertex_pool.num_free_vertices -= num_vertices;
+  vertex_pool.num_free_indices -= num_indices;
+
+  // Upload vertices
+
+  {
+    auto positions_dst =
+        g_renderer->get_buffer_view(vertex_pool.positions)
+            .slice<glsl::Position>(mesh.base_vertex, num_vertices);
+
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(positions),
+                                     positions_dst);
+  }
+
+  {
+    auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
+                           .slice<glsl::Normal>(mesh.base_vertex, num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
+  }
+
+  if (not tangents.empty()) {
+    auto tangents_dst =
+        g_renderer->get_buffer_view(vertex_pool.tangents)
+            .slice<glsl::Tangent>(mesh.base_vertex, num_vertices);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
+                                     tangents_dst);
+  }
+
+  if (not uvs.empty()) {
     auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
                        .slice<glsl::UV>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, Span(uvs), uvs_dst);
   }
-  if (not desc.colors.empty()) {
-    Vector<glsl::Color> colors = desc.colors | map(glsl::encode_color);
+
+  if (not colors.empty()) {
     auto colors_dst = g_renderer->get_buffer_view(vertex_pool.colors)
                           .slice<glsl::Color>(mesh.base_vertex, num_vertices);
     m_resource_uploader.stage_buffer(m_frame_arena, Span(colors), colors_dst);
   }
+
   {
     auto indices_dst = g_renderer->get_buffer_view(vertex_pool.indices)
-                           .slice<u32>(mesh.base_index, num_indices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(desc.indices),
-                                     indices_dst);
+                           .slice<u32>(mesh.base_index, mesh.num_indices);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(indices), indices_dst);
   }
 
   auto key = std::bit_cast<MeshId>(u32(m_meshes.size()));

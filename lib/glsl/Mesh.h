@@ -28,20 +28,34 @@ const uint NUM_MESH_ATTRIBUTE_FLAGS =
 const uint MAX_NUM_VERTEX_POOLS = 256;
 
 const uint NUM_VERTEX_POOL_INDICES = 1 << 24;
-const uint NUM_VERTEX_POOL_VERTICES = NUM_VERTEX_POOL_INDICES / 4;
+const uint NUM_VERTEX_POOL_VERTICES = NUM_VERTEX_POOL_INDICES / 7;
 
-struct MeshInstanceCullData {
-  uint8_t attribute_mask;
-  uint8_t pool;
-  uint base_vertex;
+const uint MAX_NUM_LODS = 8;
+
+struct MeshLOD {
   uint base_index;
   uint num_indices;
+};
+
+struct MeshCullData {
+  uint8_t attribute_mask;
+  uint8_t pool;
+  PositionBoundingBox bb;
+  uint base_vertex;
+  uint num_lods;
+  MeshLOD lods[MAX_NUM_LODS];
+};
+
+struct MeshInstanceCullData {
+  uint mesh;
 };
 
 struct MeshInstanceDrawData {
   BoundingSquare uv_bs;
   uint material;
 };
+
+GLSL_BUFFER(4) CullMeshes { MeshCullData data; };
 
 GLSL_BUFFER(4) CullMeshInstances { MeshInstanceCullData data; };
 

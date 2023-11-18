@@ -9,15 +9,18 @@ void main() {
 
   for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
     MeshInstanceCullData mesh_instance = pc.mesh_instances[i].data;
+    MeshCullData mesh = pc.meshes[mesh_instance.mesh].data;
+
+    MeshLOD lod = mesh.lods[0];
 
     DrawIndexedIndirectCommand command;
-    command.num_indices = mesh_instance.num_indices; 
+    command.num_indices = lod.num_indices; 
     command.num_instances = 1;
-    command.base_index = mesh_instance.base_index;
-    command.base_vertex = mesh_instance.base_vertex;
+    command.base_index = lod.base_index;
+    command.base_vertex = mesh.base_vertex;
     command.base_instance = i;
 
-    uint batch_id = get_batch_id(mesh_instance.attribute_mask, mesh_instance.pool);
+    uint batch_id = get_batch_id(mesh.attribute_mask, mesh.pool);
     uint offset = pc.batch_command_offsets[batch_id].offset + atomicAdd(pc.batch_command_counts[batch_id].count, 1);
     pc.commands[offset].command = command;
   }

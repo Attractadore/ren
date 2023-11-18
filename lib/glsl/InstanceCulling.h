@@ -15,6 +15,7 @@ GLSL_BUFFER(4) BatchCommandCounts { uint count; };
 
 #define GLSL_INSTANCE_CULLING_CONSTANTS                                        \
   {                                                                            \
+    GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshes) meshes;      \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshInstances)       \
         mesh_instances;                                                        \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(BatchCommandOffsets)     \

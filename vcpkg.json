@@ -9,6 +9,7 @@
     "boost-preprocessor",
     "fmt",
     "glm",
+    "meshoptimizer",
     "range-v3",
     "spirv-reflect",
     "tl-optional",

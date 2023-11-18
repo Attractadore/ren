@@ -21,6 +21,7 @@ const char OPAQUE_PASS[] = "opaque";
 const char INSTANCE_CULLING_INIT_PASS[] = "init-instance-culling";
 const char INSTANCE_CULLING_PASS[] = "instance-culling";
 
+const char MESH_CULL_DATA_BUFFER[] = "mesh-cull-data";
 const char MESH_INSTANCE_CULL_DATA_BUFFER[] = "mesh-instance-cull-data";
 const char BATCH_COMMAND_OFFSETS_BUFFER[] = "batch-command-offsets";
 
@@ -42,6 +43,7 @@ struct UploadPassResources {
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
 
+  RgBufferId mesh_cull_data;
   RgBufferId mesh_instance_cull_data;
   RgBufferId batch_command_offsets;
 };
@@ -65,6 +67,20 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
   ranges::copy(data.materials, materials);
 
+  auto *mesh_cull_data = rg.map_buffer<glsl::MeshCullData>(rcs.mesh_cull_data);
+  for (const auto &[i, mesh] : data.meshes | enumerate) {
+    auto attribute_mask = static_cast<uint8_t>(mesh.attributes.get());
+    uint8_t pool = mesh.pool;
+    mesh_cull_data[i] = {
+        .attribute_mask = attribute_mask,
+        .pool = pool,
+        .bb = mesh.bounding_box,
+        .base_vertex = mesh.base_vertex,
+        .num_lods = u32(mesh.lods.size()),
+    };
+    ranges::copy(mesh.lods, mesh_cull_data[i].lods);
+  }
+
   auto *mesh_instance_cull_data =
       rg.map_buffer<glsl::MeshInstanceCullData>(rcs.mesh_instance_cull_data);
   auto *mesh_instance_draw_data =
@@ -73,14 +89,8 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
   auto *normal_matrices = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
   for (const auto &[i, mesh_instance] : data.mesh_instances | enumerate) {
     const Mesh &mesh = data.meshes[mesh_instance.mesh];
-    auto attribute_mask = static_cast<uint8_t>(mesh.attributes.get());
-    uint8_t pool = mesh.pool;
     mesh_instance_cull_data[i] = {
-        .attribute_mask = attribute_mask,
-        .pool = pool,
-        .base_vertex = mesh.base_vertex,
-        .base_index = mesh.base_index,
-        .num_indices = mesh.num_indices,
+        .mesh = mesh_instance.mesh,
     };
     mesh_instance_draw_data[i] = {
         .uv_bs = mesh.uv_bounding_square,
@@ -106,6 +116,13 @@ void setup_upload_pass(RgBuilder &rgb) {
 
   rcs.materials =
       pass.create_buffer({.name = MATERIALS_BUFFER}, RG_HOST_WRITE_BUFFER);
+
+  rcs.mesh_cull_data = pass.create_buffer(
+      {
+          .name = MESH_CULL_DATA_BUFFER,
+          .heap = BufferHeap::Dynamic,
+      },
+      RG_HOST_WRITE_BUFFER);
 
   rcs.mesh_instance_cull_data = pass.create_buffer(
       {
@@ -137,6 +154,8 @@ void setup_upload_pass(RgBuilder &rgb) {
   pass.set_update_callback(ren_rg_update_callback(UploadPassData) {
     rg.resize_buffer(rcs.materials,
                      sizeof(glsl::Material) * data.materials.size());
+    rg.resize_buffer(rcs.mesh_cull_data,
+                     sizeof(glsl::MeshCullData) * data.meshes.size());
     rg.resize_buffer(rcs.mesh_instance_cull_data,
                      sizeof(glsl::MeshInstanceCullData) *
                          data.mesh_instances.size());
@@ -158,6 +177,7 @@ void setup_upload_pass(RgBuilder &rgb) {
 
 struct InstanceCullingPassResources {
   Handle<ComputePipeline> pipeline;
+  RgBufferId meshes;
   RgBufferId mesh_instances;
   RgBufferId commands;
   RgBufferId batch_offsets;
@@ -173,6 +193,8 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
                                const InstanceCullingPassData &data) {
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.set_push_constants(glsl::InstanceCullingConstants{
+      .meshes = g_renderer->get_buffer_device_address<glsl::CullMeshes>(
+          rg.get_buffer(rcs.meshes)),
       .mesh_instances =
           g_renderer->get_buffer_device_address<glsl::CullMeshInstances>(
               rg.get_buffer(rcs.mesh_instances)),
@@ -218,6 +240,8 @@ void setup_instance_culling_pass(RgBuilder &rgb,
   }
 
   auto pass = rgb.create_pass(INSTANCE_CULLING_PASS);
+
+  rcs.meshes = pass.read_buffer(MESH_CULL_DATA_BUFFER, RG_CS_READ_BUFFER);
 
   rcs.mesh_instances =
       pass.read_buffer(MESH_INSTANCE_CULL_DATA_BUFFER, RG_CS_READ_BUFFER);

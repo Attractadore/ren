@@ -20,9 +20,6 @@ ENABLE_FLAGS(MeshAttribute);
 struct Mesh {
   MeshAttributeFlags attributes;
   u32 pool = -1;
-  u32 base_vertex = 0;
-  u32 base_index = 0;
-  u32 num_indices = 0;
   glsl::PositionBoundingBox bounding_box = {
       .min = {glm::i16vec3(std::numeric_limits<i16>::max())},
       .max = {glm::i16vec3(std::numeric_limits<i16>::min())},
@@ -30,6 +27,10 @@ struct Mesh {
   // Select relatively big default bounding box size to avoid log2 NaN
   glm::vec3 position_encode_bounding_box = glm::vec3(1.0f);
   glsl::BoundingSquare uv_bounding_square;
+  u32 base_vertex = 0;
+  u32 base_index = 0;
+  u32 num_indices = 0;
+  StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 
 struct VertexPool {
