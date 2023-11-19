@@ -83,65 +83,6 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   Mesh mesh = {.attributes = attributes};
 
-  // Generate LODs
-
-  Vector<u32> indices;
-  {
-    auto optimize_lod = [&](Span<u32> lod) {
-      meshopt_optimizeVertexCache(lod.data(), lod.data(), lod.size(),
-                                  num_vertices);
-    };
-
-    constexpr float threshold = 0.75f;
-    constexpr float error = 0.001f;
-
-    indices.reserve(num_indices * 1.0f / (1.0f - threshold) + 1);
-    indices = desc.indices;
-    optimize_lod(indices);
-
-    mesh.lods.push_back({.num_indices = num_indices});
-
-    Vector<u32> lod_indices(num_indices);
-
-    while (mesh.lods.size() < glsl::MAX_NUM_LODS) {
-      u32 num_prev_lod_indices = mesh.lods.back().num_indices;
-
-      u32 num_target_indices =
-          std::max(u32(num_prev_lod_indices * threshold), 3u);
-      num_target_indices -= num_target_indices % 3;
-
-      u32 num_lod_indices = meshopt_simplify(
-          lod_indices.data(), indices.data(), num_prev_lod_indices,
-          (const float *)desc.positions.data(), desc.positions.size(),
-          sizeof(glm::vec3), num_target_indices, error, 0, nullptr);
-      if (num_lod_indices > num_target_indices) {
-        break;
-      }
-      lod_indices.resize(num_lod_indices);
-      optimize_lod(lod_indices);
-
-      indices.insert(indices.begin(), lod_indices.begin(), lod_indices.end());
-
-      mesh.lods.push_back({.num_indices = num_lod_indices});
-    }
-  }
-  num_indices = indices.size();
-
-  Vector<u32> remap(num_vertices);
-  num_vertices = meshopt_optimizeVertexFetchRemap(remap.data(), indices.data(),
-                                                  indices.size(), num_vertices);
-  meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(),
-                           remap.data());
-
-  Vector<std::byte> scratch;
-  auto remap_stream = [&]<typename T>(Vector<T> &stream) {
-    scratch.resize(sizeof(T) * num_vertices);
-    meshopt_remapVertexBuffer(scratch.data(), stream.data(), stream.size(),
-                              sizeof(T), remap.data());
-    std::memcpy(stream.data(), scratch.data(), scratch.size());
-    stream.resize(num_vertices);
-  };
-
   // Encode vertex attributes
 
   Vector<glsl::Position> positions;
@@ -157,7 +98,6 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                   return glsl::encode_position(
                       position, mesh.position_encode_bounding_box);
                 });
-    remap_stream(positions);
 
     for (const glsl::Position &position : positions) {
       mesh.bounding_box.min.position =
@@ -179,7 +119,6 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                 return glsl::encode_normal(
                     glm::normalize(encode_normal_matrix * normal));
               });
-    remap_stream(normals);
 
     if (not desc.tangents.empty()) {
       tangents = zip(desc.tangents, normals) |
@@ -196,7 +135,6 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                    // it for encoding as well
                    return glsl::encode_tangent(tangent, normal);
                  });
-      remap_stream(tangents);
     }
   }
 
@@ -230,13 +168,86 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
             ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
             return encoded_uv;
           });
-    remap_stream(uvs);
   }
 
   Vector<glsl::Color> colors;
   if (not desc.colors.empty()) {
     colors = desc.colors | map(glsl::encode_color);
-    remap_stream(colors);
+  }
+
+  // Generate LODs
+
+  Vector<u32> indices;
+  {
+    constexpr float threshold = 0.75f;
+    constexpr float error = 0.001f;
+
+    indices.reserve(num_indices * 1.0f / (1.0f - threshold) + 1);
+    indices = desc.indices;
+
+    mesh.lods.push_back({.num_indices = num_indices});
+
+    Vector<u32> lod_indices(num_indices);
+
+    while (mesh.lods.size() < glsl::MAX_NUM_LODS) {
+      u32 num_prev_lod_indices = mesh.lods.back().num_indices;
+
+      u32 num_target_indices =
+          std::max(u32(num_prev_lod_indices * threshold), 3u);
+      num_target_indices -= num_target_indices % 3;
+
+      u32 num_lod_indices = meshopt_simplify(
+          lod_indices.data(), indices.data(), num_prev_lod_indices,
+          (const float *)desc.positions.data(), desc.positions.size(),
+          sizeof(glm::vec3), num_target_indices, error, 0, nullptr);
+      if (num_lod_indices > num_target_indices) {
+        break;
+      }
+      lod_indices.resize(num_lod_indices);
+
+      // Insert coarse LODs in front for vertex fetch optimization
+      indices.insert(indices.begin(), lod_indices.begin(), lod_indices.end());
+
+      mesh.lods.push_back({.num_indices = num_lod_indices});
+    }
+  }
+  num_indices = indices.size();
+
+  // Optimize each LOD
+
+  for (const glsl::MeshLOD &lod : mesh.lods) {
+    meshopt_optimizeVertexCache(&indices[lod.base_index],
+                                &indices[lod.base_index], lod.num_indices,
+                                num_vertices);
+  }
+
+  // Optimize all LODs
+
+  {
+    Vector<u32> remap(num_vertices);
+    num_vertices = meshopt_optimizeVertexFetchRemap(
+        remap.data(), indices.data(), num_indices, num_vertices);
+
+    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
+                             remap.data());
+
+    auto remap_stream = [&]<typename T>(Vector<T> &stream) {
+      meshopt_remapVertexBuffer(stream.data(), stream.data(), stream.size(),
+                                sizeof(T), remap.data());
+      stream.resize(num_vertices);
+    };
+
+    remap_stream(positions);
+    remap_stream(normals);
+    if (not tangents.empty()) {
+      remap_stream(tangents);
+    }
+    if (not uvs.empty()) {
+      remap_stream(uvs);
+    }
+    if (not colors.empty()) {
+      remap_stream(colors);
+    }
   }
 
   // Find or allocate vertex pool
