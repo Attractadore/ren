@@ -28,7 +28,7 @@ void main() {
     vec3 normal = decode_normal(pc.normals[gl_VertexIndex].normal);
     vec4 tangent = decode_tangent(pc.tangents[gl_VertexIndex].tangent, normal);
     normal = normalize(normal_matrix * normal);
-    tangent.xyz = normalize((transform_matrix * vec4(tangent.xyz, 0.0f)).xyz);
+    tangent.xyz = normalize(transform_matrix * vec4(tangent.xyz, 0.0f));
     v_normal = normal;
     v_tangent = tangent;
   } else {

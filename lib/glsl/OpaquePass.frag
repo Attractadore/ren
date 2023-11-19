@@ -44,10 +44,8 @@ void main() {
     tex = 2.0f * tex - 1.0f;
     tex.xy *= material.normal_scale;
     vec3 tangent = v_tangent.xyz;
-    vec3 bitangent = normalize(cross(normal, tangent));
-    tangent = normalize(cross(bitangent, normal));
-    normal = cross(tangent, bitangent);
-    bitangent *= v_tangent.w;
+    float s = v_tangent.w;
+    vec3 bitangent = s * cross(normal, tangent);
     normal = mat3(tangent, bitangent, normal) * tex;
   }
   normal = normalize(normal);
