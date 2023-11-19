@@ -335,7 +335,7 @@ auto generate_tangents(std::span<const glm::vec3> positions,
             tangent.x = fvTangent[0];
             tangent.y = fvTangent[1];
             tangent.z = fvTangent[2];
-            tangent.w = fSign;
+            tangent.w = -fSign;
           },
   };
 
