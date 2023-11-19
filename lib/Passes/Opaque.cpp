@@ -59,7 +59,6 @@ struct UploadPassData {
 void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
                      const UploadPassData &data) {
   assert(rcs.materials);
-  assert(rcs.mesh_instances);
   assert(rcs.transform_matrices);
   assert(rcs.normal_matrices);
   assert(rcs.directional_lights);

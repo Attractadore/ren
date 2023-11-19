@@ -8,6 +8,7 @@
 #include "glsl/Batch.hpp"
 
 #include <meshoptimizer.h>
+#include <mikktspace.h>
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
 #include <range/v3/range.hpp>
@@ -60,11 +61,11 @@ void SceneImpl::next_frame() {
 
 auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   u32 num_vertices = desc.positions.size();
-  u32 num_indices = desc.indices.size();
+  u32 num_indices = desc.indices.empty() ? num_vertices : desc.indices.size();
 
   ren_assert(num_vertices > 0);
   ren_assert(desc.normals.size() == num_vertices);
-  ren_assert(num_indices > 0 and num_indices % 3 == 0);
+  ren_assert(num_indices % 3 == 0);
   ren_assert_msg(num_vertices <= glsl::NUM_VERTEX_POOL_VERTICES,
                  "Vertex pool overflow");
   ren_assert_msg(num_indices <= glsl::NUM_VERTEX_POOL_INDICES,
@@ -72,34 +73,260 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   MeshAttributeFlags attributes;
   if (not desc.tangents.empty()) {
+    ren_assert(desc.tangents.size() == num_vertices);
     attributes |= MeshAttribute::Tangent;
   }
   if (not desc.tex_coords.empty()) {
+    ren_assert(desc.tex_coords.size() == num_vertices);
+    attributes |= MeshAttribute::Tangent;
     attributes |= MeshAttribute::UV;
   }
   if (not desc.colors.empty()) {
+    ren_assert(desc.colors.size() == num_vertices);
     attributes |= MeshAttribute::Color;
   }
 
   Mesh mesh = {.attributes = attributes};
 
+  auto positions = desc.positions | ranges::to<Vector>;
+  auto normals = desc.normals | ranges::to<Vector>;
+  auto tangents = desc.tangents | ranges::to<Vector>;
+  auto uvs = desc.tex_coords | ranges::to<Vector>;
+  auto colors = desc.colors | ranges::to<Vector>;
+
+  Vector<u32> remap;
+  auto remap_streams = [&] {
+    auto remap_stream = [&]<typename T>(Vector<T> &stream) {
+      meshopt_remapVertexBuffer(stream.data(), stream.data(), stream.size(),
+                                sizeof(T), remap.data());
+      stream.resize(num_vertices);
+    };
+    remap_stream(positions);
+    remap_stream(normals);
+    if (not tangents.empty()) {
+      remap_stream(tangents);
+    }
+    if (not uvs.empty()) {
+      remap_stream(uvs);
+    }
+    if (not colors.empty()) {
+      remap_stream(colors);
+    }
+  };
+
+  constexpr float LOD_THRESHOLD = 0.75f;
+  constexpr float LOD_ERROR = 0.001f;
+
+  Vector<u32> indices;
+  auto generate_index_buffer = [&](Span<const u32> init_indices) {
+    StaticVector<meshopt_Stream, 5> streams;
+    auto add_stream = [&]<typename T>(Vector<T> &stream) {
+      streams.push_back({
+          .data = stream.data(),
+          .size = sizeof(T),
+          .stride = sizeof(T),
+      });
+    };
+    add_stream(positions);
+    add_stream(normals);
+    if (not tangents.empty()) {
+      add_stream(tangents);
+    }
+    if (not uvs.empty()) {
+      add_stream(uvs);
+    }
+    if (not colors.empty()) {
+      add_stream(colors);
+    }
+    const u32 *init = init_indices.data();
+    if (init_indices.empty()) {
+      init = nullptr;
+      num_indices = num_vertices;
+    } else {
+      num_indices = init_indices.size();
+    }
+    remap.resize(num_vertices);
+    num_vertices = meshopt_generateVertexRemapMulti(
+        remap.data(), init, num_indices, num_vertices, streams.data(),
+        streams.size());
+    indices.resize(num_indices);
+    meshopt_remapIndexBuffer(indices.data(), init, num_indices, remap.data());
+    remap_streams();
+  };
+
+  // (Re)generate index buffer to remove duplicate vertices for LOD generation
+  // to work correctly
+
+  indices.reserve(num_indices * 1.0f / (1.0f - LOD_THRESHOLD) + 1);
+  generate_index_buffer(desc.indices);
+
+  // Generate LODs
+
+  {
+    mesh.lods.push_back({.num_indices = num_indices});
+
+    // Skip LOD generation if tangents are given to avoid generating triangles
+    // with inconsistent tangent space handedness
+    if (tangents.empty()) {
+      Vector<u32> lod_indices(num_indices);
+      while (mesh.lods.size() < glsl::MAX_NUM_LODS) {
+        u32 num_prev_lod_indices = mesh.lods.back().num_indices;
+
+        auto num_target_indices =
+            std::max<u32>(num_prev_lod_indices * LOD_THRESHOLD, 3);
+        num_target_indices -= num_target_indices % 3;
+
+        u32 num_lod_indices = meshopt_simplify(
+            lod_indices.data(), indices.data(), num_prev_lod_indices,
+            (const float *)positions.data(), num_vertices, sizeof(glm::vec3),
+            num_target_indices, LOD_ERROR, 0, nullptr);
+        if (num_lod_indices > num_target_indices) {
+          break;
+        }
+        lod_indices.resize(num_lod_indices);
+
+        // Insert coarser LODs in front for vertex fetch optimization
+        indices.insert(indices.begin(), lod_indices.begin(), lod_indices.end());
+
+        mesh.lods.push_back({.num_indices = num_lod_indices});
+      }
+
+      for (usize lod = mesh.lods.size() - 1; lod > 0; --lod) {
+        mesh.lods[lod - 1].base_index =
+            mesh.lods[lod].base_index + mesh.lods[lod].num_indices;
+      }
+    }
+  }
+  num_indices = indices.size();
+
+  // Generate tangents
+
+  if (not uvs.empty() and tangents.empty()) {
+    auto unindex_stream = [&]<typename T>(Vector<T> &stream) {
+      Vector<T> unindexed_stream =
+          indices | map([&](u32 index) { return stream[index]; });
+      std::swap(stream, unindexed_stream);
+    };
+    num_vertices = num_indices;
+    unindex_stream(positions);
+    unindex_stream(normals);
+    tangents.resize(num_vertices);
+    unindex_stream(uvs);
+    if (not colors.empty()) {
+      unindex_stream(colors);
+    }
+
+    struct Context {
+      size_t num_faces = 0;
+      const glm::vec3 *positions = nullptr;
+      const glm::vec3 *normals = nullptr;
+      glm::vec4 *tangents = nullptr;
+      const glm::vec2 *uvs = nullptr;
+    };
+
+    SMikkTSpaceInterface iface = {
+        .m_getNumFaces = [](const SMikkTSpaceContext *pContext) -> int {
+          return ((const Context *)(pContext->m_pUserData))->num_faces;
+        },
+
+        .m_getNumVerticesOfFace = [](const SMikkTSpaceContext *,
+                                     const int) -> int { return 3; },
+
+        .m_getPosition =
+            [](const SMikkTSpaceContext *pContext, float fvPosOut[],
+               const int iFace, const int iVert) {
+              glm::vec3 position = ((const Context *)(pContext->m_pUserData))
+                                       ->positions[iFace * 3 + iVert];
+              fvPosOut[0] = position.x;
+              fvPosOut[1] = position.y;
+              fvPosOut[2] = position.z;
+            },
+
+        .m_getNormal =
+            [](const SMikkTSpaceContext *pContext, float fvNormOut[],
+               const int iFace, const int iVert) {
+              glm::vec3 normal = ((const Context *)(pContext->m_pUserData))
+                                     ->normals[iFace * 3 + iVert];
+              fvNormOut[0] = normal.x;
+              fvNormOut[1] = normal.y;
+              fvNormOut[2] = normal.z;
+            },
+
+        .m_getTexCoord =
+            [](const SMikkTSpaceContext *pContext, float fvTexcOut[],
+               const int iFace, const int iVert) {
+              glm::vec2 tex_coord = ((const Context *)(pContext->m_pUserData))
+                                        ->uvs[iFace * 3 + iVert];
+              fvTexcOut[0] = tex_coord.x;
+              fvTexcOut[1] = tex_coord.y;
+            },
+
+        .m_setTSpaceBasic =
+            [](const SMikkTSpaceContext *pContext, const float fvTangent[],
+               const float fSign, const int iFace, const int iVert) {
+              glm::vec4 &tangent = ((const Context *)(pContext->m_pUserData))
+                                       ->tangents[iFace * 3 + iVert];
+              tangent.x = fvTangent[0];
+              tangent.y = fvTangent[1];
+              tangent.z = fvTangent[2];
+              tangent.w = -fSign;
+            },
+    };
+
+    Context user_data = {
+        .num_faces = num_vertices / 3,
+        .positions = positions.data(),
+        .normals = normals.data(),
+        .tangents = tangents.data(),
+        .uvs = uvs.data(),
+    };
+
+    SMikkTSpaceContext ctx = {
+        .m_pInterface = &iface,
+        .m_pUserData = &user_data,
+    };
+
+    genTangSpaceDefault(&ctx);
+
+    generate_index_buffer({});
+  }
+
+  // Optimize each LOD separately
+
+  for (const glsl::MeshLOD &lod : mesh.lods) {
+    meshopt_optimizeVertexCache(&indices[lod.base_index],
+                                &indices[lod.base_index], lod.num_indices,
+                                num_vertices);
+  }
+
+  // Optimize all LODs
+
+  {
+    remap.resize(num_vertices);
+    num_vertices = meshopt_optimizeVertexFetchRemap(
+        remap.data(), indices.data(), num_indices, num_vertices);
+    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
+                             remap.data());
+    remap_streams();
+  }
+
   // Encode vertex attributes
 
-  Vector<glsl::Position> positions;
+  Vector<glsl::Position> enc_positions;
   {
-    for (const glm::vec3 &position : desc.positions) {
+    for (const glm::vec3 &position : positions) {
       mesh.position_encode_bounding_box =
           glm::max(mesh.position_encode_bounding_box, glm::abs(position));
     }
     mesh.position_encode_bounding_box =
         glm::exp2(glm::ceil(glm::log2(mesh.position_encode_bounding_box)));
 
-    positions = desc.positions | map([&](const glm::vec3 &position) {
-                  return glsl::encode_position(
-                      position, mesh.position_encode_bounding_box);
-                });
+    enc_positions = positions | map([&](const glm::vec3 &position) {
+                      return glsl::encode_position(
+                          position, mesh.position_encode_bounding_box);
+                    });
 
-    for (const glsl::Position &position : positions) {
+    for (const glsl::Position &position : enc_positions) {
       mesh.bounding_box.min.position =
           glm::min(mesh.bounding_box.min.position, position.position);
       mesh.bounding_box.max.position =
@@ -107,40 +334,50 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
     }
   }
 
-  Vector<glsl::Normal> normals;
-  Vector<glsl::Tangent> tangents;
+  Vector<glsl::Normal> enc_normals;
+  Vector<glsl::Tangent> enc_tangents;
   {
     glm::mat3 encode_transform_matrix =
         glsl::make_encode_position_matrix(mesh.position_encode_bounding_box);
     glm::mat3 encode_normal_matrix =
         glm::inverse(glm::transpose(encode_transform_matrix));
 
-    normals = desc.normals | map([&](const glm::vec3 &normal) {
-                return glsl::encode_normal(
-                    glm::normalize(encode_normal_matrix * normal));
-              });
+    enc_normals = normals | map([&](const glm::vec3 &normal) {
+                    return glsl::encode_normal(
+                        glm::normalize(encode_normal_matrix * normal));
+                  });
 
-    if (not desc.tangents.empty()) {
-      tangents = zip(desc.tangents, normals) |
-                 map([&](const auto &tangent_and_normal) {
-                   glm::vec4 tangent = std::get<0>(tangent_and_normal);
-                   tangent = glm::vec4(glm::normalize(encode_transform_matrix *
-                                                      glm::vec3(tangent)),
-                                       tangent.w);
-                   glm::vec3 normal =
-                       glsl::decode_normal(std::get<1>(tangent_and_normal));
-                   // Encoding and then decoding the normal can change how the
-                   // tangent basis is selected due to rounding errors. Since
-                   // shaders use the decoded normal to decode the tangent, use
-                   // it for encoding as well
-                   return glsl::encode_tangent(tangent, normal);
-                 });
+    if (not tangents.empty()) {
+      // Orthonormalize tangent space
+      for (usize i = 0; i < num_vertices; ++i) {
+        const glm::vec3 &normal = normals[i];
+        glm::vec4 &tangent = tangents[i];
+        glm::vec3 tangent3d(tangent);
+        float sign = tangent.w;
+        float proj = glm::dot(normal, tangent3d);
+        tangent3d = glm::normalize(tangent3d - proj * normal);
+        tangent = glm::vec4(tangent3d, sign);
+      };
+      enc_tangents =
+          zip(tangents, enc_normals) | map([&](const auto &tangent_and_normal) {
+            glm::vec4 tangent = std::get<0>(tangent_and_normal);
+            tangent = glm::vec4(
+                glm::normalize(encode_transform_matrix * glm::vec3(tangent)),
+                tangent.w);
+            glm::vec3 normal =
+                glsl::decode_normal(std::get<1>(tangent_and_normal));
+            // Encoding and then decoding the normal can change how the
+            // tangent basis is selected due to rounding errors. Since
+            // shaders use the decoded normal to decode the tangent, use
+            // it for encoding as well
+            return glsl::encode_tangent(tangent, normal);
+          });
     }
   }
 
-  Vector<glsl::UV> uvs;
-  if (not desc.tex_coords.empty()) {
-    for (glm::vec2 uv : desc.tex_coords) {
+  Vector<glsl::UV> enc_uvs;
+  if (not uvs.empty()) {
+    for (glm::vec2 uv : uvs) {
       mesh.uv_bounding_square.min = glm::min(mesh.uv_bounding_square.min, uv);
       mesh.uv_bounding_square.max = glm::max(mesh.uv_bounding_square.max, uv);
     }
@@ -161,93 +398,14 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
                    glm::notEqual(mesh.uv_bounding_square.max, glm::vec2(0.0f)));
     }
 
-    uvs = desc.tex_coords | map([&](glm::vec2 uv) {
-            glsl::UV encoded_uv = glsl::encode_uv(uv, mesh.uv_bounding_square);
-            glm::vec2 decoded_uv =
-                glsl::decode_uv(encoded_uv, mesh.uv_bounding_square);
-            ren_assert(glm::length(decoded_uv - uv) <= 1.0f / 2048.0f);
-            return encoded_uv;
-          });
+    enc_uvs = uvs | map([&](glm::vec2 uv) {
+                return glsl::encode_uv(uv, mesh.uv_bounding_square);
+              });
   }
 
-  Vector<glsl::Color> colors;
-  if (not desc.colors.empty()) {
-    colors = desc.colors | map(glsl::encode_color);
-  }
-
-  // Generate LODs
-
-  Vector<u32> indices;
-  {
-    constexpr float threshold = 0.75f;
-    constexpr float error = 0.001f;
-
-    indices.reserve(num_indices * 1.0f / (1.0f - threshold) + 1);
-    indices = desc.indices;
-
-    mesh.lods.push_back({.num_indices = num_indices});
-
-    Vector<u32> lod_indices(num_indices);
-
-    while (mesh.lods.size() < glsl::MAX_NUM_LODS) {
-      u32 num_prev_lod_indices = mesh.lods.back().num_indices;
-
-      u32 num_target_indices =
-          std::max(u32(num_prev_lod_indices * threshold), 3u);
-      num_target_indices -= num_target_indices % 3;
-
-      u32 num_lod_indices = meshopt_simplify(
-          lod_indices.data(), indices.data(), num_prev_lod_indices,
-          (const float *)desc.positions.data(), desc.positions.size(),
-          sizeof(glm::vec3), num_target_indices, error, 0, nullptr);
-      if (num_lod_indices > num_target_indices) {
-        break;
-      }
-      lod_indices.resize(num_lod_indices);
-
-      // Insert coarse LODs in front for vertex fetch optimization
-      indices.insert(indices.begin(), lod_indices.begin(), lod_indices.end());
-
-      mesh.lods.push_back({.num_indices = num_lod_indices});
-    }
-  }
-  num_indices = indices.size();
-
-  // Optimize each LOD
-
-  for (const glsl::MeshLOD &lod : mesh.lods) {
-    meshopt_optimizeVertexCache(&indices[lod.base_index],
-                                &indices[lod.base_index], lod.num_indices,
-                                num_vertices);
-  }
-
-  // Optimize all LODs
-
-  {
-    Vector<u32> remap(num_vertices);
-    num_vertices = meshopt_optimizeVertexFetchRemap(
-        remap.data(), indices.data(), num_indices, num_vertices);
-
-    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
-                             remap.data());
-
-    auto remap_stream = [&]<typename T>(Vector<T> &stream) {
-      meshopt_remapVertexBuffer(stream.data(), stream.data(), stream.size(),
-                                sizeof(T), remap.data());
-      stream.resize(num_vertices);
-    };
-
-    remap_stream(positions);
-    remap_stream(normals);
-    if (not tangents.empty()) {
-      remap_stream(tangents);
-    }
-    if (not uvs.empty()) {
-      remap_stream(uvs);
-    }
-    if (not colors.empty()) {
-      remap_stream(colors);
-    }
+  Vector<glsl::Color> enc_colors;
+  if (not colors.empty()) {
+    enc_colors = colors | map(glsl::encode_color);
   }
 
   // Find or allocate vertex pool
@@ -271,11 +429,8 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   mesh.base_index =
       glsl::NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices;
   mesh.num_indices = num_indices;
-
-  mesh.lods.back().base_index = mesh.base_index;
-  for (usize lod = mesh.lods.size() - 1; lod > 0; --lod) {
-    mesh.lods[lod - 1].base_index =
-        mesh.lods[lod].base_index + mesh.lods[lod].num_indices;
+  for (glsl::MeshLOD &lod : mesh.lods) {
+    lod.base_index += mesh.base_index;
   }
 
   vertex_pool.num_free_vertices -= num_vertices;
@@ -288,34 +443,36 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
         g_renderer->get_buffer_view(vertex_pool.positions)
             .slice<glsl::Position>(mesh.base_vertex, num_vertices);
 
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(positions),
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(enc_positions),
                                      positions_dst);
   }
 
   {
     auto normals_dst = g_renderer->get_buffer_view(vertex_pool.normals)
                            .slice<glsl::Normal>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(normals), normals_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(enc_normals),
+                                     normals_dst);
   }
 
-  if (not tangents.empty()) {
+  if (not enc_tangents.empty()) {
     auto tangents_dst =
         g_renderer->get_buffer_view(vertex_pool.tangents)
             .slice<glsl::Tangent>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(tangents),
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(enc_tangents),
                                      tangents_dst);
   }
 
-  if (not uvs.empty()) {
+  if (not enc_uvs.empty()) {
     auto uvs_dst = g_renderer->get_buffer_view(vertex_pool.uvs)
                        .slice<glsl::UV>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(uvs), uvs_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(enc_uvs), uvs_dst);
   }
 
-  if (not colors.empty()) {
+  if (not enc_colors.empty()) {
     auto colors_dst = g_renderer->get_buffer_view(vertex_pool.colors)
                           .slice<glsl::Color>(mesh.base_vertex, num_vertices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(colors), colors_dst);
+    m_resource_uploader.stage_buffer(m_frame_arena, Span(enc_colors),
+                                     colors_dst);
   }
 
   {

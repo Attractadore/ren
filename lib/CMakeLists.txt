@@ -15,6 +15,7 @@ find_package(VulkanMemoryAllocator REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(meshoptimizer REQUIRED)
+find_package(mikktspace REQUIRED)
 find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
@@ -57,6 +58,7 @@ target_link_libraries(
           Vulkan::Headers
           fmt::fmt
           meshoptimizer::meshoptimizer
+          mikktspace::mikktspace
           range-v3::range-v3
           tl::optional
           unofficial::spirv-reflect::spirv-reflect

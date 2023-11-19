@@ -4,8 +4,6 @@ find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(imgui REQUIRED)
-find_package(meshoptimizer REQUIRED)
-find_package(mikktspace REQUIRED)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
 add_library(tinygltf tinygltf.cpp)
@@ -52,7 +50,5 @@ target_link_libraries(
   imgui-app
   Boost::boost
   cxxopts::cxxopts
-  meshoptimizer::meshoptimizer
-  mikktspace::mikktspace
   tinygltf)
 copy_dlls(view-gltf)

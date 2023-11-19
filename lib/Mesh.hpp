@@ -30,7 +30,7 @@ struct Mesh {
   u32 base_vertex = 0;
   u32 base_index = 0;
   u32 num_indices = 0;
-  StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
+  Vector<glsl::MeshLOD> lods;
 };
 
 struct VertexPool {
