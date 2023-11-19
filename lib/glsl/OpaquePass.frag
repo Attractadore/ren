@@ -60,7 +60,7 @@ void main() {
   }
 
   float exposure = imageLoad(g_rimages2d[pc.ub.exposure_texture], ivec2(0)).r;
-  result *= exposure;
+  result.xyz *= exposure;
 
   f_color = result;
 }
