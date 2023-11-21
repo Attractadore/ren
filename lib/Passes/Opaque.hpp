@@ -33,12 +33,16 @@ struct OpaquePassesData {
   Span<const MeshInstance> mesh_instances;
   Span<const glsl::DirLight> directional_lights;
 
+  float lod_triangle_pixels = 0;
+  i32 lod_bias = 0;
+
   glm::uvec2 viewport;
   glm::mat4 proj;
   glm::mat4 view;
   glm::vec3 eye;
 
   bool instance_frustum_culling : 1 = true;
+  bool lod_selection : 1 = true;
   bool early_z : 1 = false;
 };
 

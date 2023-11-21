@@ -41,11 +41,15 @@ struct PassesData {
   Span<const glsl::Material> materials;
   Span<const MeshInstance> mesh_instances;
   Span<const glsl::DirLight> directional_lights;
-  glm::uvec2 viewport_size;
+  glm::uvec2 viewport;
   const Camera *camera = nullptr;
   const PostProcessingOptions *pp_opts;
 
+  float lod_triangle_pixels = 4.0f;
+  i32 lod_bias = 0;
+
   bool instance_frustum_culling : 1 = true;
+  bool lod_selection : 1 = true;
 };
 
 void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,

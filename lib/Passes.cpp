@@ -67,7 +67,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
   }
 
   const auto &camera = *data.camera;
-  auto size = data.viewport_size;
+  auto size = data.viewport;
   auto ar = float(size.x) / float(size.y);
   auto proj = get_projection_matrix(camera, ar);
   auto view =
@@ -82,11 +82,14 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
               .materials = data.materials,
               .mesh_instances = data.mesh_instances,
               .directional_lights = data.directional_lights,
-              .viewport = data.viewport_size,
+              .lod_triangle_pixels = data.lod_triangle_pixels,
+              .lod_bias = data.lod_bias,
+              .viewport = data.viewport,
               .proj = proj,
               .view = view,
               .eye = camera.position,
               .instance_frustum_culling = data.instance_frustum_culling,
+              .lod_selection = data.lod_selection,
               .early_z = extra_data.early_z,
           });
   if (not valid) {

@@ -7,6 +7,7 @@ layout(local_size_x = INSTANCE_CULLING_THREADS) in;
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
   const bool frustum_culling = bool(pc.mask & INSTANCE_CULLING_FRUSTUM_BIT);
+  const bool lod_selection = bool(pc.mask & INSTANCE_CULLING_LOD_SELECTION_BIT);
 
   for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
     MeshInstanceCullData mesh_instance = pc.mesh_instances[i].data;
@@ -47,7 +48,7 @@ void main() {
       continue;
     }
 
-    uint l = 0;
+    int l = 0;
     // Select highest lod and don't cull if bounding box crosses near plane
     if (zmin > n) {
       vec2 s[8];
@@ -64,8 +65,40 @@ void main() {
       if (frustum_culling && (any(lessThan(smax, vec2(-1.0f))) || any(greaterThan(smin, vec2(1.0f))))) {
         continue;
       }
+      if (lod_selection) {
+        uvec4 faces[6] = {
+          // Top
+          uvec4(7, 5, 6, 4),
+          // Bottom
+          uvec4(3, 1, 2, 0),
+          // Right
+          uvec4(5, 2, 6, 1),
+          // Left
+          uvec4(4, 3, 7, 0),
+          // Front
+          uvec4(4, 1, 5, 0),
+          // Back
+          uvec4(7, 2, 6, 3),
+        };
+        // Compute total front and back-facing projected area
+        float area = 0.0f;
+        for (int f = 0; f < 6; ++f) {
+          uvec4 face = faces[f];
+          area += abs(determinant(mat2(s[face.x] - s[face.y], s[face.z] - s[face.w])));
+        }
+        // Face area is half of abs of det of matrix of diagonals
+        area /= 2.0f;
+        uint num_triangles = uint(area * pc.lod_triangle_density);
+        uint num_indices = num_triangles * 3;
+        for (; l < mesh.num_lods - 1; ++l) {
+          if (mesh.lods[l].num_indices <= num_indices) {
+            break;
+          }
+        }
+      }
     }
 
+    l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
     MeshLOD lod = mesh.lods[l];
 
     DrawIndexedIndirectCommand command;

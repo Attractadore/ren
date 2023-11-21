@@ -720,10 +720,13 @@ void SceneImpl::draw() {
           .materials = m_materials,
           .mesh_instances = m_mesh_instances.values(),
           .directional_lights = m_dir_lights.values(),
-          .viewport_size = {m_viewport_width, m_viewport_height},
+          .viewport = {m_viewport_width, m_viewport_height},
           .camera = &m_camera,
           .pp_opts = &m_pp_opts,
+          .lod_triangle_pixels = m_lod_triangle_pixels,
+          .lod_bias = m_lod_bias,
           .instance_frustum_culling = m_instance_frustum_culling,
+          .lod_selection = m_lod_selection,
       });
 
   m_render_graph->execute(m_cmd_allocator);
@@ -741,6 +744,21 @@ void SceneImpl::draw_imgui() {
         bool frustum = m_instance_frustum_culling;
         ImGui::Checkbox("Frustum culling", &frustum);
         m_instance_frustum_culling = frustum;
+      }
+
+      ImGui::SeparatorText("Level of detail");
+      {
+        ImGui::SliderInt("LOD bias", &m_lod_bias, -(glsl::MAX_NUM_LODS - 1),
+                         glsl::MAX_NUM_LODS - 1, "%d");
+
+        bool selection = m_lod_selection;
+        ImGui::Checkbox("LOD selection", &selection);
+        m_lod_selection = selection;
+
+        ImGui::BeginDisabled(!m_lod_selection);
+        ImGui::SliderFloat("LOD pixels per triangle", &m_lod_triangle_pixels,
+                           1.0f, 64.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+        ImGui::EndDisabled();
       }
 
       ImGui::SeparatorText("Opaque pass");

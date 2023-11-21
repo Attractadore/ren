@@ -187,7 +187,11 @@ struct InstanceCullingPassResources {
 struct InstanceCullingPassData {
   u32 num_mesh_instances = 0;
   glm::mat4 pv;
+  glm::uvec2 viewport;
+  float lod_triangle_pixels = 4.0f;
+  i32 lod_bias = 0;
   bool frustum_culling : 1 = true;
+  bool lod_selection : 1 = true;
 };
 
 void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
@@ -197,6 +201,14 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
   if (data.frustum_culling) {
     mask |= glsl::INSTANCE_CULLING_FRUSTUM_BIT;
   }
+  if (data.lod_selection) {
+    mask |= glsl::INSTANCE_CULLING_LOD_SELECTION_BIT;
+  }
+
+  float num_viewport_triangles =
+      data.viewport.x * data.viewport.y / data.lod_triangle_pixels;
+  float lod_triangle_density = num_viewport_triangles / 4.0f;
+
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.set_push_constants(glsl::InstanceCullingConstants{
       .meshes = g_renderer->get_buffer_device_address<glsl::CullMeshes>(
@@ -218,6 +230,8 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
       .mask = mask,
       .num_mesh_instances = data.num_mesh_instances,
       .pv = data.pv,
+      .lod_triangle_density = lod_triangle_density,
+      .lod_bias = data.lod_bias,
   });
   pass.dispatch_threads(data.num_mesh_instances,
                         glsl::INSTANCE_CULLING_THREADS);
@@ -621,7 +635,11 @@ auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
       InstanceCullingPassData{
           .num_mesh_instances = u32(data.mesh_instances.size()),
           .pv = pv,
+          .viewport = data.viewport,
+          .lod_triangle_pixels = data.lod_triangle_pixels,
+          .lod_bias = data.lod_bias,
           .frustum_culling = data.instance_frustum_culling,
+          .lod_selection = data.lod_selection,
       });
   if (not valid) {
     return false;

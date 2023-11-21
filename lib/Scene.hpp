@@ -59,8 +59,13 @@ private:
   ResourceArena m_frame_arena;
 
   std::unique_ptr<RenderGraph> m_render_graph;
+
+  float m_lod_triangle_pixels = 16.0f;
+  i32 m_lod_bias = 0;
+
   bool m_instance_frustum_culling : 1 = true;
-  bool m_early_z : 1 = false;
+  bool m_lod_selection : 1 = true;
+  bool m_early_z : 1 = true;
 
   Pipelines m_pipelines;
 

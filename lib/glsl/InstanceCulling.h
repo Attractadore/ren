@@ -10,6 +10,7 @@ GLSL_NAMESPACE_BEGIN
 const uint INSTANCE_CULLING_THREADS = 128;
 
 const uint INSTANCE_CULLING_FRUSTUM_BIT = 1 << 0;
+const uint INSTANCE_CULLING_LOD_SELECTION_BIT = 1 << 1;
 
 GLSL_BUFFER(4) BatchCommandOffsets { uint offset; };
 
@@ -31,6 +32,8 @@ GLSL_BUFFER(4) BatchCommandCounts { uint count; };
     uint mask;                                                                 \
     uint num_mesh_instances;                                                   \
     mat4 pv;                                                                   \
+    float lod_triangle_density;                                                \
+    int lod_bias;                                                              \
   }
 
 GLSL_NAMESPACE_END
