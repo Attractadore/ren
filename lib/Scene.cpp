@@ -314,24 +314,25 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   Vector<glsl::Position> enc_positions;
   {
+    glsl::BoundingBox bb = {
+        .min = glm::vec3(std::numeric_limits<float>::infinity()),
+        .max = -glm::vec3(std::numeric_limits<float>::infinity()),
+    };
     for (const glm::vec3 &position : positions) {
       mesh.position_encode_bounding_box =
           glm::max(mesh.position_encode_bounding_box, glm::abs(position));
+      bb.min = glm::min(bb.min, position);
+      bb.max = glm::max(bb.max, position);
     }
     mesh.position_encode_bounding_box =
         glm::exp2(glm::ceil(glm::log2(mesh.position_encode_bounding_box)));
+    mesh.bounding_box =
+        glsl::encode_bounding_box(bb, mesh.position_encode_bounding_box);
 
     enc_positions = positions | map([&](const glm::vec3 &position) {
                       return glsl::encode_position(
                           position, mesh.position_encode_bounding_box);
                     });
-
-    for (const glsl::Position &position : enc_positions) {
-      mesh.bounding_box.min.position =
-          glm::min(mesh.bounding_box.min.position, position.position);
-      mesh.bounding_box.max.position =
-          glm::max(mesh.bounding_box.max.position, position.position);
-    }
   }
 
   Vector<glsl::Normal> enc_normals;
@@ -722,6 +723,7 @@ void SceneImpl::draw() {
           .viewport_size = {m_viewport_width, m_viewport_height},
           .camera = &m_camera,
           .pp_opts = &m_pp_opts,
+          .instance_frustum_culling = m_instance_frustum_culling,
       });
 
   m_render_graph->execute(m_cmd_allocator);
@@ -734,9 +736,20 @@ void SceneImpl::draw_imgui() {
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
-      bool early_z = m_early_z;
-      ImGui::Checkbox("Early Z", &early_z);
-      m_early_z = early_z;
+      ImGui::SeparatorText("Instance culling");
+      {
+        bool frustum = m_instance_frustum_culling;
+        ImGui::Checkbox("Frustum culling", &frustum);
+        m_instance_frustum_culling = frustum;
+      }
+
+      ImGui::SeparatorText("Opaque pass");
+      {
+        bool early_z = m_early_z;
+        ImGui::Checkbox("Early Z", &early_z);
+        m_early_z = early_z;
+      }
+
       ImGui::End();
     }
   }

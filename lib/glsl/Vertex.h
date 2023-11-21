@@ -10,6 +10,11 @@ struct BoundingSquare {
   vec2 max;
 };
 
+struct BoundingBox {
+  vec3 min;
+  vec3 max;
+};
+
 struct Position {
   i16vec3 position;
 };
@@ -29,6 +34,20 @@ inline Position encode_position(vec3 position, vec3 bb) {
 
 inline vec3 decode_position(Position position) {
   return vec3(position.position);
+}
+
+inline PositionBoundingBox encode_bounding_box(BoundingBox bb, vec3 ebb) {
+  PositionBoundingBox pbb;
+  pbb.min = encode_position(bb.min, ebb);
+  pbb.max = encode_position(bb.max, ebb);
+  return pbb;
+}
+
+inline BoundingBox decode_bounding_box(PositionBoundingBox pbb) {
+  BoundingBox bb;
+  bb.min = decode_position(pbb.min);
+  bb.max = decode_position(pbb.max);
+  return bb;
 }
 
 inline mat4 make_encode_position_matrix(vec3 bb) {

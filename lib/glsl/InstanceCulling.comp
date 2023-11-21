@@ -6,12 +6,67 @@ PUSH_CONSTANTS GLSL_INSTANCE_CULLING_CONSTANTS pc;
 layout(local_size_x = INSTANCE_CULLING_THREADS) in;
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+  const bool frustum_culling = bool(pc.mask & INSTANCE_CULLING_FRUSTUM_BIT);
 
   for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
     MeshInstanceCullData mesh_instance = pc.mesh_instances[i].data;
     MeshCullData mesh = pc.meshes[mesh_instance.mesh].data;
 
-    MeshLOD lod = mesh.lods[0];
+    mat4 m = mat4(pc.transform_matrices[i].matrix);
+    mat4 pvm = pc.pv * m;
+
+    BoundingBox bb = decode_bounding_box(mesh.bb);
+
+    vec3 bbs = bb.max - bb.min;
+
+    vec4 px = pvm * vec4(bbs.x, 0.0f, 0.0f, 0.0f);
+    vec4 py = pvm * vec4(0.0f, bbs.y, 0.0f, 0.0f);
+    vec4 pz = pvm * vec4(0.0f, 0.0f, bbs.z, 0.0f);
+
+    vec4 p[8];
+    p[0] = pvm * vec4(bb.min, 1.0f);
+    p[1] = p[0] + px;
+    p[2] = p[1] + py;
+    p[3] = p[0] + py;
+    p[4] = p[0] + pz;
+    p[5] = p[1] + pz;
+    p[6] = p[2] + pz;
+    p[7] = p[3] + pz;
+
+    float n = p[0].z;
+
+    float zmin = p[0].w;
+    float zmax = p[0].w;
+    for (int i = 1; i < 8; ++i) {
+      zmin = min(zmin, p[i].w);
+      zmax = max(zmax, p[i].w);
+    }
+
+    // Cull if bounding box is in front of near plane
+    if (frustum_culling && zmax < n) {
+      continue;
+    }
+
+    uint l = 0;
+    // Select highest lod and don't cull if bounding box crosses near plane
+    if (zmin > n) {
+      vec2 s[8];
+      for (int i = 0; i < 8; ++i) {
+        s[i] = p[i].xy / p[i].w;
+      }
+      vec2 smin = s[0];
+      vec2 smax = s[0];
+      for (int i = 1; i < 8; ++i) {
+        smin = min(smin, s[i]);
+        smax = max(smax, s[i]);
+      }
+      // Ignore far plane
+      if (frustum_culling && (any(lessThan(smax, vec2(-1.0f))) || any(greaterThan(smin, vec2(1.0f))))) {
+        continue;
+      }
+    }
+
+    MeshLOD lod = mesh.lods[l];
 
     DrawIndexedIndirectCommand command;
     command.num_indices = lod.num_indices; 

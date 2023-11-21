@@ -38,7 +38,8 @@ struct OpaquePassesData {
   glm::mat4 view;
   glm::vec3 eye;
 
-  bool early_z = false;
+  bool instance_frustum_culling : 1 = true;
+  bool early_z : 1 = false;
 };
 
 void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg);

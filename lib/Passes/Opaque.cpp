@@ -178,18 +178,25 @@ struct InstanceCullingPassResources {
   Handle<ComputePipeline> pipeline;
   RgBufferId meshes;
   RgBufferId mesh_instances;
+  RgBufferId transform_matrices;
   RgBufferId commands;
   RgBufferId batch_offsets;
   RgBufferId batch_counts;
 };
 
 struct InstanceCullingPassData {
-  u32 num_mesh_instances;
+  u32 num_mesh_instances = 0;
+  glm::mat4 pv;
+  bool frustum_culling : 1 = true;
 };
 
 void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
                                const InstanceCullingPassResources &rcs,
                                const InstanceCullingPassData &data) {
+  u32 mask = 0;
+  if (data.frustum_culling) {
+    mask |= glsl::INSTANCE_CULLING_FRUSTUM_BIT;
+  }
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.set_push_constants(glsl::InstanceCullingConstants{
       .meshes = g_renderer->get_buffer_device_address<glsl::CullMeshes>(
@@ -197,6 +204,9 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
       .mesh_instances =
           g_renderer->get_buffer_device_address<glsl::CullMeshInstances>(
               rg.get_buffer(rcs.mesh_instances)),
+      .transform_matrices =
+          g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
+              rg.get_buffer(rcs.transform_matrices)),
       .batch_command_offsets =
           g_renderer->get_buffer_device_address<glsl::BatchCommandOffsets>(
               rg.get_buffer(rcs.batch_offsets)),
@@ -205,7 +215,9 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
               rg.get_buffer(rcs.batch_counts)),
       .commands = g_renderer->get_buffer_device_address<
           glsl::DrawIndexedIndirectCommands>(rg.get_buffer(rcs.commands)),
+      .mask = mask,
       .num_mesh_instances = data.num_mesh_instances,
+      .pv = data.pv,
   });
   pass.dispatch_threads(data.num_mesh_instances,
                         glsl::INSTANCE_CULLING_THREADS);
@@ -244,6 +256,9 @@ void setup_instance_culling_pass(RgBuilder &rgb,
 
   rcs.mesh_instances =
       pass.read_buffer(MESH_INSTANCE_CULL_DATA_BUFFER, RG_CS_READ_BUFFER);
+
+  rcs.transform_matrices =
+      pass.read_buffer(TRANSFORM_MATRICES_BUFFER, RG_CS_READ_BUFFER);
 
   rcs.commands = pass.create_buffer(
       {
@@ -391,8 +406,7 @@ struct OpaquePassData {
   Span<const Mesh> meshes;
   Span<const MeshInstance> mesh_instances;
   glm::uvec2 viewport;
-  glm::mat4 proj;
-  glm::mat4 view;
+  glm::mat4 pv;
   glm::vec3 eye;
   u32 num_directional_lights = 0;
 };
@@ -430,7 +444,7 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
           g_renderer->get_buffer_device_address<glsl::DirectionalLights>(
               directional_lights),
       .num_directional_lights = data.num_directional_lights,
-      .pv = data.proj * data.view,
+      .pv = data.pv,
       .eye = data.eye,
       .exposure_texture = exposure,
   };
@@ -600,10 +614,14 @@ auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
     return false;
   }
 
+  glm::mat4 pv = data.proj * data.view;
+
   valid = rg.set_pass_data(
       INSTANCE_CULLING_PASS,
       InstanceCullingPassData{
           .num_mesh_instances = u32(data.mesh_instances.size()),
+          .pv = pv,
+          .frustum_culling = data.instance_frustum_culling,
       });
   if (not valid) {
     return false;
@@ -638,8 +656,7 @@ auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
           .meshes = data.meshes,
           .mesh_instances = data.mesh_instances,
           .viewport = data.viewport,
-          .proj = data.proj,
-          .view = data.view,
+          .pv = pv,
           .eye = data.eye,
           .num_directional_lights = u32(data.directional_lights.size()),
       });

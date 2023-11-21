@@ -44,6 +44,8 @@ struct PassesData {
   glm::uvec2 viewport_size;
   const Camera *camera = nullptr;
   const PostProcessingOptions *pp_opts;
+
+  bool instance_frustum_culling : 1 = true;
 };
 
 void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,

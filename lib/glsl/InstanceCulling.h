@@ -9,6 +9,8 @@ GLSL_NAMESPACE_BEGIN
 
 const uint INSTANCE_CULLING_THREADS = 128;
 
+const uint INSTANCE_CULLING_FRUSTUM_BIT = 1 << 0;
+
 GLSL_BUFFER(4) BatchCommandOffsets { uint offset; };
 
 GLSL_BUFFER(4) BatchCommandCounts { uint count; };
@@ -18,13 +20,17 @@ GLSL_BUFFER(4) BatchCommandCounts { uint count; };
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshes) meshes;      \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshInstances)       \
         mesh_instances;                                                        \
+    GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(TransformMatrices)       \
+        transform_matrices;                                                    \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(BatchCommandOffsets)     \
         batch_command_offsets;                                                 \
     GLSL_RESTRICT GLSL_BUFFER_REFERENCE(BatchCommandCounts)                    \
         batch_command_counts;                                                  \
     GLSL_RESTRICT GLSL_WRITEONLY GLSL_BUFFER_REFERENCE(                        \
         DrawIndexedIndirectCommands) commands;                                 \
+    uint mask;                                                                 \
     uint num_mesh_instances;                                                   \
+    mat4 pv;                                                                   \
   }
 
 GLSL_NAMESPACE_END

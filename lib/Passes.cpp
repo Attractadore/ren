@@ -86,6 +86,7 @@ auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
               .proj = proj,
               .view = view,
               .eye = camera.position,
+              .instance_frustum_culling = data.instance_frustum_culling,
               .early_z = extra_data.early_z,
           });
   if (not valid) {
