@@ -7,6 +7,8 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_image_load_formatted : require
+#extension GL_KHR_shader_subgroup_ballot: require
+#extension GL_KHR_shader_subgroup_arithmetic: require
 
 #define GLSL_NAMESPACE_BEGIN
 #define GLSL_NAMESPACE_END

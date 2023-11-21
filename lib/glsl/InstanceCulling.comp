@@ -108,8 +108,14 @@ void main() {
     command.base_vertex = mesh.base_vertex;
     command.base_instance = i;
 
-    uint batch_id = get_batch_id(mesh.attribute_mask, mesh.pool);
-    uint offset = pc.batch_command_offsets[batch_id].offset + atomicAdd(pc.batch_command_counts[batch_id].count, 1);
+    uint offset = 0;
+    uint num_active = subgroupAdd(1);
+    if (subgroupElect()) {
+      uint batch_id = get_batch_id(mesh.attribute_mask, mesh.pool);
+      offset = pc.batch_command_offsets[batch_id].offset + atomicAdd(pc.batch_command_counts[batch_id].count, num_active);
+    }
+    offset = subgroupMax(offset) + subgroupExclusiveAdd(1);
+    
     pc.commands[offset].command = command;
   }
 }
