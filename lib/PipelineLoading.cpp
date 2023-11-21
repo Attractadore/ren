@@ -7,7 +7,7 @@
 #include "EarlyZPassVS.h"
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
-#include "InstanceCullingCS.h"
+#include "InstanceCullingAndLODCS.h"
 #include "OpaquePassFS.h"
 #include "OpaquePassVS.h"
 #include "PostProcessingCS.h"
@@ -112,7 +112,7 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
-    .instance_culling = load_instance_culling_pipeline(arena),
+    .instance_culling_and_lod = load_instance_culling_and_lod_pipeline(arena),
     .early_z_pass = load_early_z_pass_pipeline(arena),
     .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
     .post_processing =
@@ -125,11 +125,11 @@ auto load_pipelines(ResourceArena &arena,
   };
 }
 
-auto load_instance_culling_pipeline(ResourceArena &arena)
+auto load_instance_culling_and_lod_pipeline(ResourceArena &arena)
     -> Handle<ComputePipeline> {
   return load_compute_pipeline(
       arena, NullHandle,
-      Span(InstanceCullingCS, InstanceCullingCS_count).as_bytes(),
+      Span(InstanceCullingAndLODCS, InstanceCullingAndLODCS_count).as_bytes(),
       "Instance culling");
 }
 

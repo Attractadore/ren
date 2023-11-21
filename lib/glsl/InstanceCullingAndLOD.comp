@@ -1,13 +1,13 @@
-#include "InstanceCulling.glsl"
+#include "InstanceCullingAndLOD.glsl"
 #include "Batch.glsl"
 
-PUSH_CONSTANTS GLSL_INSTANCE_CULLING_CONSTANTS pc;
+PUSH_CONSTANTS GLSL_INSTANCE_CULLING_AND_LOD_CONSTANTS pc;
 
-layout(local_size_x = INSTANCE_CULLING_THREADS) in;
+layout(local_size_x = INSTANCE_CULLING_AND_LOD_THREADS) in;
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
-  const bool frustum_culling = bool(pc.mask & INSTANCE_CULLING_FRUSTUM_BIT);
-  const bool lod_selection = bool(pc.mask & INSTANCE_CULLING_LOD_SELECTION_BIT);
+  const bool frustum_culling = bool(pc.mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+  const bool lod_selection = bool(pc.mask & INSTANCE_CULLING_AND_LOD_SELECTION_BIT);
 
   for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
     MeshInstanceCullData mesh_instance = pc.mesh_instances[i].data;

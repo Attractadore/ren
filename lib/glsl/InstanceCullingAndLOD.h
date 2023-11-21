@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_INSTANCE_CULLING_H
-#define REN_GLSL_INSTANCE_CULLING_H
+#ifndef REN_GLSL_INSTANCE_CULLING_AND_LOD_H
+#define REN_GLSL_INSTANCE_CULLING_AND_LOD_H
 
 #include "Indirect.h"
 #include "Mesh.h"
@@ -7,16 +7,16 @@
 
 GLSL_NAMESPACE_BEGIN
 
-const uint INSTANCE_CULLING_THREADS = 128;
+const uint INSTANCE_CULLING_AND_LOD_THREADS = 128;
 
-const uint INSTANCE_CULLING_FRUSTUM_BIT = 1 << 0;
-const uint INSTANCE_CULLING_LOD_SELECTION_BIT = 1 << 1;
+const uint INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT = 1 << 0;
+const uint INSTANCE_CULLING_AND_LOD_SELECTION_BIT = 1 << 1;
 
 GLSL_BUFFER(4) BatchCommandOffsets { uint offset; };
 
 GLSL_BUFFER(4) BatchCommandCounts { uint count; };
 
-#define GLSL_INSTANCE_CULLING_CONSTANTS                                        \
+#define GLSL_INSTANCE_CULLING_AND_LOD_CONSTANTS                                \
   {                                                                            \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshes) meshes;      \
     GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(CullMeshInstances)       \
@@ -38,4 +38,4 @@ GLSL_BUFFER(4) BatchCommandCounts { uint count; };
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_INSTANCE_CULLING_H
+#endif // REN_GLSL_INSTANCE_CULLING_AND_LOD_H

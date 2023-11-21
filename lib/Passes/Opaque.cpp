@@ -6,7 +6,7 @@
 #include "Support/Views.hpp"
 #include "glsl/Batch.hpp"
 #include "glsl/EarlyZPass.hpp"
-#include "glsl/InstanceCulling.hpp"
+#include "glsl/InstanceCullingAndLOD.hpp"
 #include "glsl/OpaquePass.hpp"
 
 #include <range/v3/view.hpp>
@@ -18,8 +18,9 @@ namespace {
 const char UPLOAD_PASS[] = "upload";
 const char EARLY_Z_PASS[] = "early-z";
 const char OPAQUE_PASS[] = "opaque";
-const char INSTANCE_CULLING_INIT_PASS[] = "init-instance-culling";
-const char INSTANCE_CULLING_PASS[] = "instance-culling";
+const char INSTANCE_CULLING_AND_LOD_INIT_PASS[] =
+    "init-instance-culling-and-lod";
+const char INSTANCE_CULLING_AND_LOD_PASS[] = "instance-culling-and-lod";
 
 const char MESH_CULL_DATA_BUFFER[] = "mesh-cull-data";
 const char MESH_INSTANCE_CULL_DATA_BUFFER[] = "mesh-instance-cull-data";
@@ -174,7 +175,7 @@ void setup_upload_pass(RgBuilder &rgb) {
       ren_rg_host_callback(UploadPassData) { run_upload_pass(rg, rcs, data); });
 }
 
-struct InstanceCullingPassResources {
+struct InstanceCullingAndLODPassResources {
   Handle<ComputePipeline> pipeline;
   RgBufferId meshes;
   RgBufferId mesh_instances;
@@ -184,7 +185,7 @@ struct InstanceCullingPassResources {
   RgBufferId batch_counts;
 };
 
-struct InstanceCullingPassData {
+struct InstanceCullingAndLODPassData {
   u32 num_mesh_instances = 0;
   glm::mat4 pv;
   glm::uvec2 viewport;
@@ -194,15 +195,16 @@ struct InstanceCullingPassData {
   bool lod_selection : 1 = true;
 };
 
-void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
-                               const InstanceCullingPassResources &rcs,
-                               const InstanceCullingPassData &data) {
+void run_instance_culling_and_lod_pass(
+    const RgRuntime &rg, ComputePass &pass,
+    const InstanceCullingAndLODPassResources &rcs,
+    const InstanceCullingAndLODPassData &data) {
   u32 mask = 0;
   if (data.frustum_culling) {
-    mask |= glsl::INSTANCE_CULLING_FRUSTUM_BIT;
+    mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
   }
   if (data.lod_selection) {
-    mask |= glsl::INSTANCE_CULLING_LOD_SELECTION_BIT;
+    mask |= glsl::INSTANCE_CULLING_AND_LOD_SELECTION_BIT;
   }
 
   float num_viewport_triangles =
@@ -210,7 +212,7 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
   float lod_triangle_density = num_viewport_triangles / 4.0f;
 
   pass.bind_compute_pipeline(rcs.pipeline);
-  pass.set_push_constants(glsl::InstanceCullingConstants{
+  pass.set_push_constants(glsl::InstanceCullingAndLODConstants{
       .meshes = g_renderer->get_buffer_device_address<glsl::CullMeshes>(
           rg.get_buffer(rcs.meshes)),
       .mesh_instances =
@@ -234,22 +236,22 @@ void run_instance_culling_pass(const RgRuntime &rg, ComputePass &pass,
       .lod_bias = data.lod_bias,
   });
   pass.dispatch_threads(data.num_mesh_instances,
-                        glsl::INSTANCE_CULLING_THREADS);
+                        glsl::INSTANCE_CULLING_AND_LOD_THREADS);
 }
 
 struct InstanceCullingPassConfig {
   Handle<ComputePipeline> pipeline;
 };
 
-void setup_instance_culling_pass(RgBuilder &rgb,
-                                 const InstanceCullingPassConfig &cfg) {
-  InstanceCullingPassResources rcs;
+void setup_instance_culling_and_lod_pass(RgBuilder &rgb,
+                                         const InstanceCullingPassConfig &cfg) {
+  InstanceCullingAndLODPassResources rcs;
   rcs.pipeline = cfg.pipeline;
 
   String batch_counts_empty =
       fmt::format("{}-empty", BATCH_COMMAND_COUNTS_BUFFER);
   {
-    auto init_pass = rgb.create_pass(INSTANCE_CULLING_INIT_PASS);
+    auto init_pass = rgb.create_pass(INSTANCE_CULLING_AND_LOD_INIT_PASS);
 
     RgBufferId batch_counts = init_pass.create_buffer(
         {
@@ -264,7 +266,7 @@ void setup_instance_culling_pass(RgBuilder &rgb,
     });
   }
 
-  auto pass = rgb.create_pass(INSTANCE_CULLING_PASS);
+  auto pass = rgb.create_pass(INSTANCE_CULLING_AND_LOD_PASS);
 
   rcs.meshes = pass.read_buffer(MESH_CULL_DATA_BUFFER, RG_CS_READ_BUFFER);
 
@@ -288,15 +290,17 @@ void setup_instance_culling_pass(RgBuilder &rgb,
       pass.write_buffer(BATCH_COMMAND_COUNTS_BUFFER, batch_counts_empty,
                         RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER);
 
-  pass.set_update_callback(ren_rg_update_callback(InstanceCullingPassData) {
+  pass.set_update_callback(ren_rg_update_callback(
+      InstanceCullingAndLODPassData) {
     rg.resize_buffer(rcs.commands, sizeof(glsl::DrawIndexedIndirectCommand) *
                                        data.num_mesh_instances);
     return true;
   });
 
-  pass.set_compute_callback(ren_rg_compute_callback(InstanceCullingPassData) {
-    run_instance_culling_pass(rg, pass, rcs, data);
-  });
+  pass.set_compute_callback(
+      ren_rg_compute_callback(InstanceCullingAndLODPassData) {
+        run_instance_culling_and_lod_pass(rg, pass, rcs, data);
+      });
 };
 
 struct EarlyZPassResources {
@@ -596,8 +600,8 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
 
 void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg) {
   setup_upload_pass(rgb);
-  setup_instance_culling_pass(rgb,
-                              {.pipeline = cfg.pipelines->instance_culling});
+  setup_instance_culling_and_lod_pass(
+      rgb, {.pipeline = cfg.pipelines->instance_culling_and_lod});
   if (cfg.early_z) {
     setup_early_z_pass(rgb, {
                                 .pipeline = cfg.pipelines->early_z_pass,
@@ -631,8 +635,8 @@ auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
   glm::mat4 pv = data.proj * data.view;
 
   valid = rg.set_pass_data(
-      INSTANCE_CULLING_PASS,
-      InstanceCullingPassData{
+      INSTANCE_CULLING_AND_LOD_PASS,
+      InstanceCullingAndLODPassData{
           .num_mesh_instances = u32(data.mesh_instances.size()),
           .pv = pv,
           .viewport = data.viewport,
