@@ -694,7 +694,7 @@ void SceneImpl::draw() {
     ranges::fill(m_batch_max_counts, 0);
     for (const MeshInstance &mesh_instance : m_mesh_instances.values()) {
       const Mesh &mesh = m_meshes[mesh_instance.mesh];
-      uint batch_id = glsl::get_batch_id(
+      u32 batch_id = glsl::get_batch_id(
           static_cast<uint32_t>(mesh.attributes.get()), mesh.pool);
       m_batch_max_counts[batch_id]++;
     }
