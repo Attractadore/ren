@@ -353,8 +353,6 @@ public:
   void execute(CommandAllocator &cmd_alloc);
 
 private:
-  auto physical_buffers() const;
-
   auto get_physical_variable(RgVariableId variable) const
       -> RgPhysicalVariableId;
 
@@ -364,8 +362,6 @@ private:
   auto get_physical_buffer(RgBufferId buffer) const -> RgPhysicalBufferId;
 
   auto get_physical_texture(RgTextureId texture) const -> RgPhysicalTextureId;
-
-  void allocate_buffers();
 
   void rotate_resources();
 
@@ -405,19 +401,10 @@ private:
   Vector<RgVariableId> m_variable_parents;
   Vector<Any> m_variables;
 
-  struct RgBufferDesc {
-    BufferHeap heap;
-    usize size = 0;
-  };
-
   HashMap<String, RgBufferId> m_buffer_ids;
   Vector<RgBufferId> m_buffer_parents;
   Vector<BufferView> m_buffers;
-  HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
-  std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> m_heap_buffer_usage_flags =
-      {};
-  std::array<std::array<AutoHandle<Buffer>, NUM_BUFFER_HEAPS>, PIPELINE_DEPTH>
-      m_heap_buffers;
+  std::array<AutoHandle<Buffer>, NUM_BUFFER_HEAPS> m_heap_buffers;
 
   HashMap<String, RgTextureId> m_texture_ids;
   Vector<RgTextureId> m_texture_parents;

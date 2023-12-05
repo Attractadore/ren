@@ -22,11 +22,6 @@ auto RenderGraph::get_physical_variable(RgRWVariableId data) const
   return get_physical_variable(RgVariableId(data));
 }
 
-auto RenderGraph::physical_buffers() const {
-  return range<int>(1, m_buffers.size()) |
-         map([](int idx) { return RgPhysicalBufferId(idx); });
-}
-
 auto RenderGraph::get_physical_buffer(RgBufferId buffer) const
     -> RgPhysicalBufferId {
   RgBufferId parent = m_buffer_parents[buffer];
@@ -103,7 +98,12 @@ auto RenderGraph::is_texture_valid(StringView texture) const -> bool {
 }
 
 void RenderGraph::rotate_resources() {
-  rotate_right(m_heap_buffers);
+  for (int base_buffer_id = 1; base_buffer_id < m_buffer_parents.size();
+       base_buffer_id += PIPELINE_DEPTH) {
+    if (m_buffer_parents[base_buffer_id] == base_buffer_id) {
+      rotate_right(Span(m_buffers).subspan(base_buffer_id, PIPELINE_DEPTH));
+    }
+  }
 
   for (auto [texture, num_instances] : m_texture_instance_counts) {
     rotate_right(Span(m_textures).subspan(texture, num_instances));
@@ -120,57 +120,8 @@ void RenderGraph::rotate_resources() {
       m_swapchain->acquire_texture(m_semaphores[m_acquire_semaphore]);
 }
 
-void RenderGraph::allocate_buffers() {
-  // Calculate required size for each buffer heap
-  std::array<usize, NUM_BUFFER_HEAPS> required_heap_sizes = {};
-  for (RgPhysicalBufferId buffer : physical_buffers()) {
-    const RgBufferDesc &desc = m_buffer_descs[buffer];
-    auto heap = int(desc.heap);
-    usize heap_size = required_heap_sizes[heap];
-    heap_size = pad(heap_size, GPU_COALESCING_WIDTH) + desc.size;
-    required_heap_sizes[heap] = heap_size;
-  }
-
-  // Resize each buffer heap if necessary
-  Span<AutoHandle<Buffer>> heap_buffers = m_heap_buffers.front();
-  for (int heap = 0; heap < heap_buffers.size(); ++heap) {
-    AutoHandle<Buffer> &heap_buffer = heap_buffers[heap];
-    usize heap_size =
-        g_renderer->try_get_buffer(heap_buffer)
-            .map_or([](const Buffer &buffer) { return buffer.size; }, 0);
-    auto required_heap_size =
-        std::min<usize>(required_heap_sizes[heap], 1024 * 1024);
-    if (heap_size < required_heap_size) {
-      heap_buffer = g_renderer->create_buffer({
-          .name = fmt::format("Render graph buffer for heap {}", heap),
-          .heap = BufferHeap(heap),
-          .usage = m_heap_buffer_usage_flags[heap],
-          .size = std::bit_ceil(required_heap_size),
-      });
-    }
-  }
-
-  // Allocate buffers
-  std::array<usize, NUM_BUFFER_HEAPS> stack_tops = {};
-  for (RgPhysicalBufferId buffer : physical_buffers()) {
-    const RgBufferDesc &desc = m_buffer_descs[buffer];
-    auto heap = int(desc.heap);
-    usize offset = pad(stack_tops[heap], GPU_COALESCING_WIDTH);
-    usize size = desc.size;
-    assert(offset + size <= required_heap_sizes[heap]);
-    stack_tops[heap] = offset + size;
-    m_buffers[buffer] = {
-        .buffer = heap_buffers[heap],
-        .offset = offset,
-        .size = size,
-    };
-  }
-}
-
 void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   rotate_resources();
-
-  allocate_buffers();
 
   RgRuntime rt;
   rt.m_rg = this;

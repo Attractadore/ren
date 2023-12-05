@@ -226,13 +226,14 @@ auto RgBuilder::get_or_alloc_buffer(StringView name) -> RgBufferId {
   auto it = m_rg->m_buffer_ids.find(name);
   if (it == m_rg->m_buffer_ids.end()) {
     RgBufferId id(m_rg->m_buffer_parents.size());
-    m_rg->m_buffer_parents.emplace_back();
-    m_buffer_defs.emplace_back();
-    m_buffer_kills.emplace_back();
-#if REN_RG_DEBUG
-    m_buffer_children.emplace_back();
-#endif
+    usize num_buffers = id + PIPELINE_DEPTH;
+    m_rg->m_buffer_parents.resize(num_buffers);
     it = m_rg->m_buffer_ids.insert(it, String(name), id);
+    m_buffer_defs.resize(num_buffers);
+    m_buffer_kills.resize(num_buffers);
+#if REN_RG_DEBUG
+    m_buffer_children.resize(num_buffers);
+#endif
   }
   RgBufferId id = it->second;
 #if REN_RG_DEBUG
@@ -714,14 +715,48 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
     ranges::for_each(pass.write_textures, update_texture_usage_flags);
   }
 
-  m_rg->m_buffers.resize(m_rg->m_buffer_parents.size());
-  m_rg->m_buffer_descs.clear();
-  for (const auto &[physical_buffer_id, desc] : m_buffer_descs) {
-    m_rg->m_buffer_descs.insert(physical_buffer_id,
-                                {.heap = desc.heap, .size = desc.size});
+  // Calculate required size for each buffer heap
+  std::array<usize, NUM_BUFFER_HEAPS> required_heap_sizes = {};
+  for (const auto &[buffer, desc] : m_buffer_descs) {
+    auto heap = int(desc.heap);
+    required_heap_sizes[heap] += pad(desc.size, GPU_COALESCING_WIDTH);
   }
-  m_rg->m_heap_buffer_usage_flags = heap_usage_flags;
+  for (usize &size : required_heap_sizes) {
+    size *= PIPELINE_DEPTH;
+  }
+
   m_rg->m_heap_buffers = {};
+  for (int heap = 0; heap < m_rg->m_heap_buffers.size(); ++heap) {
+    AutoHandle<Buffer> &heap_buffer = m_rg->m_heap_buffers[heap];
+    usize size = required_heap_sizes[heap];
+    if (size > 0) {
+      heap_buffer = g_renderer->create_buffer({
+          .name = fmt::format("Render graph buffer for heap {}", heap),
+          .heap = BufferHeap(heap),
+          .usage = heap_usage_flags[heap],
+          .size = size,
+      });
+    }
+  }
+
+  std::array<usize, NUM_BUFFER_HEAPS> heap_tops = {};
+  m_rg->m_buffers.resize(m_rg->m_buffer_parents.size());
+  for (const auto &[base_buffer_id, desc] : m_buffer_descs) {
+    auto heap = int(desc.heap);
+    Handle<Buffer> buffer = m_rg->m_heap_buffers[heap];
+    usize offset = heap_tops[heap];
+    usize size = desc.size;
+    for (int i = 0; i < PIPELINE_DEPTH; ++i) {
+      ren_assert(offset + size <= required_heap_sizes[heap]);
+      m_rg->m_buffers[base_buffer_id + i] = {
+          .buffer = buffer,
+          .offset = offset,
+          .size = size,
+      };
+      offset += pad(size, GPU_COALESCING_WIDTH);
+    }
+    heap_tops[heap] = offset;
+  }
 
   m_rg->m_textures.resize(m_rg->m_texture_parents.size());
   m_rg->m_texture_arena.clear();
