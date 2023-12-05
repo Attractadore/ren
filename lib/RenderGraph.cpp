@@ -10,6 +10,18 @@
 
 namespace ren {
 
+auto RenderGraph::get_physical_variable(RgVariableId data) const
+    -> RgPhysicalVariableId {
+  RgVariableId parent = m_variable_parents[data];
+  ren_assert(m_variable_parents[parent] == parent);
+  return RgPhysicalVariableId(parent);
+}
+
+auto RenderGraph::get_physical_variable(RgRWVariableId data) const
+    -> RgPhysicalVariableId {
+  return get_physical_variable(RgVariableId(data));
+}
+
 auto RenderGraph::physical_buffers() const {
   return range<int>(1, m_buffers.size()) |
          map([](int idx) { return RgPhysicalBufferId(idx); });
@@ -56,25 +68,6 @@ auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
   return m_rg->m_tex_alloc.get_set();
 }
 
-RgUpdate::RgUpdate(RenderGraph &rg) { m_rg = &rg; }
-
-void RgUpdate::resize_buffer(RgBufferId buffer, usize size) {
-  m_rg->m_buffer_descs[m_rg->get_physical_buffer(buffer)].size = size;
-}
-
-auto RgUpdate::get_texture_desc(RgTextureId texture_id) const
-    -> RgPublicTextureDesc {
-  const Texture &texture = g_renderer->get_texture(
-      m_rg->m_textures[m_rg->get_physical_texture(texture_id)]);
-  return {
-      .type = texture.type,
-      .format = texture.format,
-      .size = texture.size,
-      .num_mip_levels = texture.num_mip_levels,
-      .num_array_layers = texture.num_array_layers,
-  };
-}
-
 RenderGraph::RenderGraph(SwapchainImpl &swapchain,
                          TextureIdAllocator &tex_alloc)
     : m_tex_alloc(tex_alloc) {
@@ -95,6 +88,10 @@ RenderGraph::RenderGraph(SwapchainImpl &swapchain,
 
 auto RenderGraph::is_pass_valid(StringView pass) const -> bool {
   return m_pass_ids.contains(pass);
+}
+
+auto RenderGraph::is_variable_valid(StringView data) const -> bool {
+  return m_variable_ids.contains(data);
 }
 
 auto RenderGraph::is_buffer_valid(StringView buffer) const -> bool {
@@ -275,7 +272,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       pass.type.visit(OverloadSet{
           [&](const RgHostPass &host_pass) {
             if (host_pass.cb) {
-              host_pass.cb(rt, m_pass_datas[pass.pass]);
+              host_pass.cb(rt);
             }
           },
           [&](const RgGraphicsPass &graphics_pass) {
@@ -330,18 +327,17 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});
 
-            graphics_pass.cb(rt, render_pass, m_pass_datas[pass.pass]);
+            graphics_pass.cb(rt, render_pass);
           },
           [&](const RgComputePass &compute_pass) {
             if (compute_pass.cb) {
               ComputePass comp = get_command_recorder().compute_pass();
-              compute_pass.cb(rt, comp, m_pass_datas[pass.pass]);
+              compute_pass.cb(rt, comp);
             }
           },
           [&](const RgTransferPass &transfer_pass) {
             if (transfer_pass.cb) {
-              transfer_pass.cb(rt, get_command_recorder(),
-                               m_pass_datas[pass.pass]);
+              transfer_pass.cb(rt, get_command_recorder());
             }
           },
       });

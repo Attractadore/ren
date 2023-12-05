@@ -15,6 +15,8 @@ class RgBuilder;
 struct ImGuiPassConfig {
   ImGuiContext *imgui_context = nullptr;
   Handle<GraphicsPipeline> pipeline;
+  u32 num_vertices = 0;
+  u32 num_indices = 0;
   glm::uvec2 viewport;
 };
 

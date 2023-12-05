@@ -12,24 +12,27 @@
 
 namespace ren {
 
-namespace {
-
-void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
+void setup_render_graph(RgBuilder &rgb, const PassesConfig &cfg) {
   assert(cfg.pipelines);
-  assert(cfg.pp_opts);
 
-  auto exposure = setup_exposure_pass(rgb, cfg.pp_opts->exposure);
+  auto exposure =
+      setup_exposure_pass(rgb, ExposurePassConfig{.mode = cfg.exposure_mode});
 
-  setup_opaque_passes(rgb, OpaquePassesConfig{
-                               .pipelines = cfg.pipelines,
-                               .exposure = exposure,
-                               .viewport = cfg.viewport,
-                               .early_z = cfg.early_z,
-                           });
+  setup_opaque_passes(rgb,
+                      OpaquePassesConfig{
+                          .pipelines = cfg.pipelines,
+                          .num_meshes = cfg.num_meshes,
+                          .num_mesh_instances = cfg.num_mesh_instances,
+                          .num_materials = cfg.num_materials,
+                          .num_directional_lights = cfg.num_directional_lights,
+                          .viewport = cfg.viewport,
+                          .exposure = exposure,
+                          .early_z = cfg.early_z,
+                      });
 
   setup_post_processing_passes(rgb, PostProcessingPassesConfig{
                                         .pipelines = cfg.pipelines,
-                                        .options = cfg.pp_opts,
+                                        .exposure_mode = cfg.exposure_mode,
                                         .viewport = cfg.viewport,
                                     });
 #if REN_IMGUI
@@ -37,6 +40,8 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
     setup_imgui_pass(rgb, ImGuiPassConfig{
                               .imgui_context = cfg.imgui_context,
                               .pipeline = cfg.pipelines->imgui_pass,
+                              .num_vertices = cfg.num_imgui_vertices,
+                              .num_indices = cfg.num_imgui_indices,
                               .viewport = cfg.viewport,
                           });
     rgb.present("imgui");
@@ -47,92 +52,40 @@ void setup_all_passes(RgBuilder &rgb, const PassesConfig &cfg) {
   rgb.present("sdr");
 }
 
-struct PassesExtraData {
-#if REN_IMGUI
-  ImGuiContext *imgui_context = nullptr;
-#endif
-  bool early_z = false;
-};
-
-auto set_all_passes_data(RenderGraph &rg, const PassesData &data,
-                         const PassesExtraData &extra_data) -> bool {
-  assert(data.camera);
-  assert(data.pp_opts);
-
-  bool valid = true;
-
-  valid = set_exposure_pass_data(rg, data.pp_opts->exposure);
-  if (not valid) {
-    return false;
+void update_render_graph(RenderGraph &rg, const PassesConfig &cfg,
+                         const PassesRuntimeConfig &rt_cfg) {
+  switch (cfg.exposure_mode) {
+  case ExposureMode::Camera: {
+    *rg.get_parameter<CameraExposureRuntimeConfig>(
+        CAMERA_EXPOSURE_RUNTIME_CONFIG) = {
+        .options = *rt_cfg.pp_opts.exposure.mode.get<ExposureOptions::Camera>(),
+    };
+  } break;
+  case ExposureMode::Automatic: {
+    *rg.get_parameter<AutomaticExposureRuntimeConfig>(
+        AUTOMATIC_EXPOSURE_RUNTIME_CONFIG) = {
+        .options =
+            *rt_cfg.pp_opts.exposure.mode.get<ExposureOptions::Automatic>(),
+    };
+  } break;
   }
 
-  const auto &camera = *data.camera;
-  auto size = data.viewport;
-  auto ar = float(size.x) / float(size.y);
-  auto proj = get_projection_matrix(camera, ar);
-  auto view =
-      glm::lookAt(camera.position, camera.position + camera.forward, camera.up);
-
-  valid = set_opaque_passes_data(
-      rg, OpaquePassesData{
-              .batch_offsets = data.batch_offsets,
-              .batch_max_counts = data.batch_max_counts,
-              .vertex_pool_lists = data.vertex_pool_lists,
-              .meshes = data.meshes,
-              .materials = data.materials,
-              .mesh_instances = data.mesh_instances,
-              .directional_lights = data.directional_lights,
-              .lod_triangle_pixels = data.lod_triangle_pixels,
-              .lod_bias = data.lod_bias,
-              .viewport = data.viewport,
-              .proj = proj,
-              .view = view,
-              .eye = camera.position,
-              .instance_frustum_culling = data.instance_frustum_culling,
-              .lod_selection = data.lod_selection,
-              .early_z = extra_data.early_z,
-          });
-  if (not valid) {
-    return false;
-  }
-
-  valid = set_post_processing_passes_data(rg, *data.pp_opts);
-  if (not valid) {
-    return false;
-  }
-
-#if REN_IMGUI
-  if (extra_data.imgui_context) {
-    valid = rg.set_pass_data("imgui", RgNoPassData());
-  } else {
-    valid = not rg.is_pass_valid("imgui");
-  }
-  if (not valid) {
-    return false;
-  }
-#endif
-
-  return true;
-}
-
-} // namespace
-
-void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
-                      const PassesConfig &cfg, const PassesData &data) {
-  PassesExtraData extra_data = {
-#if REN_IMGUI
-    .imgui_context = cfg.imgui_context,
-#endif
-    .early_z = cfg.early_z,
+  *rg.get_parameter<SceneRuntimeConfig>(SCENE_RUNTIME_CONFIG) = {
+      .camera = rt_cfg.camera,
+      .vertex_pool_lists = rt_cfg.vertex_pool_lists,
+      .meshes = rt_cfg.meshes,
+      .mesh_instances = rt_cfg.mesh_instances,
+      .materials = rt_cfg.materials,
+      .directional_lights = rt_cfg.directional_lights,
   };
-  bool valid = set_all_passes_data(rg, data, extra_data);
-  if (!valid) {
-    RgBuilder rgb(rg);
-    setup_all_passes(rgb, cfg);
-    rgb.build(cmd_alloc);
-    valid = set_all_passes_data(rg, data, extra_data);
-    ren_assert_msg(valid, "Render graph pass data update failed after rebuild");
-  }
+
+  *rg.get_parameter<InstanceCullingAndLODRuntimeConfig>(
+      INSTANCE_CULLING_AND_LOD_RUNTIME_CONFIG) = {
+      .lod_bias = rt_cfg.lod_bias,
+      .lod_triangle_pixels = rt_cfg.lod_triangle_pixels,
+      .frustum_culling = rt_cfg.instance_frustum_culling,
+      .lod_selection = rt_cfg.lod_selection,
+  };
 }
 
 } // namespace ren

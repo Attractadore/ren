@@ -17,12 +17,6 @@
 
 namespace ren {
 
-namespace detail {
-
-template <typename T> struct CallbackTag {};
-
-} // namespace detail
-
 class CommandAllocator;
 class CommandRecorder;
 class SwapchainImpl;
@@ -34,49 +28,43 @@ class RenderGraph;
 class RgBuilder;
 class RgPassBuilder;
 class RgRuntime;
-class RgUpdate;
 
-template <typename F, typename T>
-concept CRgUpdateCallback =
-    std::invocable<F, RgUpdate &, const T &> and
-    std::same_as<std::invoke_result_t<F, RgUpdate &, const T &>, bool>;
+template <typename F>
+concept CRgHostCallback = std::invocable<F, const RgRuntime &>;
 
-using RgUpdateCallback = std::function<bool(RgUpdate &, const Any &)>;
-static_assert(CRgUpdateCallback<RgUpdateCallback, Any>);
+using RgHostCallback = std::function<void(const RgRuntime &)>;
+static_assert(CRgHostCallback<RgHostCallback>);
 
-template <typename F, typename T>
-concept CRgHostCallback = std::invocable<F, const RgRuntime &, const T &>;
-
-using RgHostCallback = std::function<void(const RgRuntime &, const Any &)>;
-static_assert(CRgHostCallback<RgHostCallback, Any>);
-
-template <typename F, typename T>
+template <typename F>
 concept CRgGraphicsCallback =
-    std::invocable<F, const RgRuntime &, RenderPass &, const T &>;
+    std::invocable<F, const RgRuntime &, RenderPass &>;
 
-using RgGraphicsCallback =
-    std::function<void(const RgRuntime &, RenderPass &, const Any &)>;
-static_assert(CRgGraphicsCallback<RgGraphicsCallback, Any>);
+using RgGraphicsCallback = std::function<void(const RgRuntime &, RenderPass &)>;
+static_assert(CRgGraphicsCallback<RgGraphicsCallback>);
 
-template <typename F, typename T>
+template <typename F>
 concept CRgComputeCallback =
-    std::invocable<F, const RgRuntime &, ComputePass &, const T &>;
+    std::invocable<F, const RgRuntime &, ComputePass &>;
 
-using RgComputeCallback =
-    std::function<void(const RgRuntime &, ComputePass &, const Any &)>;
-static_assert(CRgComputeCallback<RgComputeCallback, Any>);
+using RgComputeCallback = std::function<void(const RgRuntime &, ComputePass &)>;
+static_assert(CRgComputeCallback<RgComputeCallback>);
 
-template <typename F, typename T>
+template <typename F>
 concept CRgTransferCallback =
-    std::invocable<F, const RgRuntime &, TransferPass &, const T &>;
+    std::invocable<F, const RgRuntime &, TransferPass &>;
 
 using RgTransferCallback =
-    std::function<void(const RgRuntime &, TransferPass &, const Any &)>;
-static_assert(CRgTransferCallback<RgTransferCallback, Any>);
+    std::function<void(const RgRuntime &, TransferPass &)>;
+static_assert(CRgTransferCallback<RgTransferCallback>);
 
 constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
 
 REN_NEW_TYPE(RgPassId, u32);
+
+REN_NEW_TYPE(RgPhysicalVariableId, u32);
+REN_NEW_TYPE(RgVariableId, u32);
+REN_NEW_TYPE(RgRWVariableId, u32);
+REN_NEW_TYPE(RgParameterId, u32);
 
 REN_NEW_TYPE(RgPhysicalBufferId, u32);
 REN_NEW_TYPE(RgBufferId, u32);
@@ -294,58 +282,6 @@ struct RgTransferPassInfo {
   RgTransferCallback cb;
 };
 
-class RgRuntime {
-public:
-  auto get_buffer(RgBufferId buffer) const -> const BufferView &;
-
-  template <typename T>
-  auto map_buffer(RgBufferId buffer, usize offset = 0) const -> T * {
-    return (T *)map_buffer_impl(buffer, offset);
-  }
-
-  auto get_texture(RgTextureId texture) const -> Handle<Texture>;
-
-  auto get_storage_texture_descriptor(RgTextureId texture) const
-      -> StorageTextureId;
-
-  auto get_texture_set() const -> VkDescriptorSet;
-
-private:
-  auto map_buffer_impl(RgBufferId buffer, usize offset) const -> std::byte *;
-
-  friend RenderGraph;
-  RenderGraph *m_rg = nullptr;
-};
-
-struct RgPublicTextureDesc {
-  VkImageType type;
-  VkFormat format;
-  union {
-    struct {
-      u32 width;
-      u32 height;
-      u32 depth;
-    };
-    glm::uvec3 size;
-  };
-  u32 num_mip_levels;
-  u32 num_array_layers;
-};
-
-class RgUpdate {
-public:
-  void resize_buffer(RgBufferId buffer, usize size);
-
-  auto get_texture_desc(RgTextureId texture) const -> RgPublicTextureDesc;
-
-private:
-  RgUpdate(RenderGraph &rg);
-
-private:
-  friend RenderGraph;
-  RenderGraph *m_rg = nullptr;
-};
-
 struct RgMemoryBarrier {
   VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
   VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
@@ -396,22 +332,19 @@ class RenderGraph {
 public:
   RenderGraph(SwapchainImpl &swapchain, TextureIdAllocator &tex_alloc);
 
-  template <typename T> auto set_pass_data(StringView pass, T data) -> bool {
-    auto it = m_pass_ids.find(pass);
-    if (it == m_pass_ids.end()) {
-      return false;
+  auto is_pass_valid(StringView pass) const -> bool;
+
+  template <typename T>
+  auto get_parameter(StringView parameter) -> Optional<T &> {
+    auto it = m_parameter_ids.find(parameter);
+    if (it == m_parameter_ids.end()) {
+      return None;
     }
-    RgPassId pass_id = it->second;
-    const Any &pass_data = m_pass_datas[pass_id] = std::move(data);
-    const RgUpdateCallback &update_callback = m_pass_update_callbacks[pass_id];
-    if (update_callback) {
-      RgUpdate upd(*this);
-      return update_callback(upd, pass_data);
-    }
-    return true;
+    RgParameterId id = it->second;
+    return m_parameters[id].get<T>();
   }
 
-  auto is_pass_valid(StringView pass) const -> bool;
+  auto is_variable_valid(StringView variable) const -> bool;
 
   auto is_buffer_valid(StringView buffer) const -> bool;
 
@@ -421,6 +354,12 @@ public:
 
 private:
   auto physical_buffers() const;
+
+  auto get_physical_variable(RgVariableId variable) const
+      -> RgPhysicalVariableId;
+
+  auto get_physical_variable(RgRWVariableId variable) const
+      -> RgPhysicalVariableId;
 
   auto get_physical_buffer(RgBufferId buffer) const -> RgPhysicalBufferId;
 
@@ -433,7 +372,6 @@ private:
 private:
   friend RgBuilder;
   friend RgRuntime;
-  friend RgUpdate;
 
   struct RgPassRuntimeInfo {
     RgPassId pass;
@@ -447,13 +385,10 @@ private:
   Vector<RgPassRuntimeInfo> m_passes;
 
   HashMap<String, RgPassId> m_pass_ids;
-  Vector<Any> m_pass_datas;
 
 #if REN_RG_DEBUG
   Vector<String> m_pass_names;
 #endif
-
-  Vector<RgUpdateCallback> m_pass_update_callbacks;
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
@@ -462,6 +397,13 @@ private:
   Vector<RgTextureBarrier> m_texture_barriers;
   Vector<RgSemaphoreSignal> m_wait_semaphores;
   Vector<RgSemaphoreSignal> m_signal_semaphores;
+
+  HashMap<String, RgParameterId> m_parameter_ids;
+  Vector<Any> m_parameters;
+
+  HashMap<String, RgVariableId> m_variable_ids;
+  Vector<RgVariableId> m_variable_parents;
+  Vector<Any> m_variables;
 
   struct RgBufferDesc {
     BufferHeap heap;
@@ -495,6 +437,49 @@ private:
   RgPhysicalTextureId m_backbuffer;
 };
 
+class RgRuntime {
+public:
+  template <typename T>
+  auto get_parameter(RgParameterId parameter) const -> const T & {
+    ren_assert(parameter);
+    auto opt = m_rg->m_parameters[parameter].get<T>();
+    ren_assert(opt);
+    return *opt;
+  }
+
+  template <typename T>
+  auto get_variable(RgVariableId variable) const -> const T & {
+    ren_assert(variable);
+    return *m_rg->m_variables[m_rg->get_physical_variable(variable)].get<T>();
+  }
+
+  template <typename T>
+  auto get_variable(RgRWVariableId variable) const -> T & {
+    ren_assert(variable);
+    return *m_rg->m_variables[m_rg->get_physical_variable(variable)].get<T>();
+  }
+
+  auto get_buffer(RgBufferId buffer) const -> const BufferView &;
+
+  template <typename T>
+  auto map_buffer(RgBufferId buffer, usize offset = 0) const -> T * {
+    return (T *)map_buffer_impl(buffer, offset);
+  }
+
+  auto get_texture(RgTextureId texture) const -> Handle<Texture>;
+
+  auto get_storage_texture_descriptor(RgTextureId texture) const
+      -> StorageTextureId;
+
+  auto get_texture_set() const -> VkDescriptorSet;
+
+private:
+  auto map_buffer_impl(RgBufferId buffer, usize offset) const -> std::byte *;
+
+  friend RenderGraph;
+  RenderGraph *m_rg = nullptr;
+};
+
 REN_NEW_TYPE(RgBufferUseId, u32);
 REN_NEW_TYPE(RgTextureUseId, u32);
 REN_NEW_TYPE(RgSemaphoreSignalId, u32);
@@ -517,6 +502,19 @@ public:
 
   auto is_pass_valid(StringView pass) const -> bool;
 
+  template <typename T> void create_parameter(String name) {
+    RgParameterId id = get_or_alloc_parameter(name);
+    m_rg->m_parameters[id].emplace<T>();
+  }
+
+  template <typename T> void create_variable(String name) {
+    RgVariableId id = get_or_alloc_variable(name);
+    m_rg->m_variable_parents[id] = id;
+    m_rg->m_variables[id].emplace<T>();
+  }
+
+  auto is_variable_valid(StringView variable) const -> bool;
+
   void create_buffer(RgBufferCreateInfo &&create_info);
 
   auto is_buffer_valid(StringView buffer) const -> bool;
@@ -531,6 +529,23 @@ public:
 
 private:
   friend RgPassBuilder;
+
+  [[nodiscard]] auto get_variable_def(RgVariableId variable) const -> RgPassId;
+
+  [[nodiscard]] auto get_variable_kill(RgVariableId variable) const -> RgPassId;
+
+  [[nodiscard]] auto get_or_alloc_variable(StringView name) -> RgVariableId;
+
+  [[nodiscard]] auto read_variable(RgPassId pass, StringView variable)
+      -> RgVariableId;
+
+  [[nodiscard]] auto write_variable(RgPassId pass, StringView dst_variable,
+                                    StringView src_variable) -> RgRWVariableId;
+
+  [[nodiscard]] auto get_or_alloc_parameter(StringView name) -> RgParameterId;
+
+  [[nodiscard]] auto read_parameter(RgPassId pass, StringView name)
+      -> RgParameterId;
 
   [[nodiscard]] auto get_buffer_def(RgBufferId buffer) const -> RgPassId;
 
@@ -581,52 +596,25 @@ private:
   void signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                         VkPipelineStageFlags2 stage_mask, u64 value);
 
-  template <typename T>
-  void set_update_callback(RgPassId pass, CRgUpdateCallback<T> auto cb) {
-    m_rg->m_pass_update_callbacks[pass] =
-        [cb = std::move(cb)](RgUpdate &rg, const Any &data) {
-          return cb(rg, *data.get<T>());
-        };
-  }
-
-  template <typename T>
-  void set_host_callback(RgPassId pass, CRgHostCallback<T> auto cb) {
+  void set_host_callback(RgPassId pass, CRgHostCallback auto cb) {
     assert(!m_passes[pass].type);
-    m_passes[pass].type = RgHostPassInfo{
-        .cb = [cb = std::move(cb)](const RgRuntime &rg,
-                                   const Any &data) { cb(rg, *data.get<T>()); },
-    };
+    m_passes[pass].type = RgHostPassInfo{.cb = std::move(cb)};
   }
 
-  template <typename T>
-  void set_graphics_callback(RgPassId pass, CRgGraphicsCallback<T> auto cb) {
+  void set_graphics_callback(RgPassId pass, CRgGraphicsCallback auto cb) {
     assert(!m_passes[pass].type or
            m_passes[pass].type.get<RgGraphicsPassInfo>());
-    m_passes[pass].type.get_or_emplace<RgGraphicsPassInfo>().cb =
-        [cb = std::move(cb)](const RgRuntime &rg, RenderPass &render_pass,
-                             const Any &data) {
-          cb(rg, render_pass, *data.get<T>());
-        };
+    m_passes[pass].type.get_or_emplace<RgGraphicsPassInfo>().cb = std::move(cb);
   }
 
-  template <typename T>
-  void set_compute_callback(RgPassId pass, CRgComputeCallback<T> auto cb) {
+  void set_compute_callback(RgPassId pass, CRgComputeCallback auto cb) {
     assert(!m_passes[pass].type);
-    m_passes[pass].type = RgComputePassInfo{
-        .cb = [cb = std::move(cb)](
-                  const RgRuntime &rg, ComputePass &pass,
-                  const Any &data) { cb(rg, pass, *data.get<T>()); },
-    };
+    m_passes[pass].type = RgComputePassInfo{.cb = std::move(cb)};
   }
 
-  template <typename T>
-  void set_transfer_callback(RgPassId pass, CRgTransferCallback<T> auto cb) {
+  void set_transfer_callback(RgPassId pass, CRgTransferCallback auto cb) {
     assert(!m_passes[pass].type);
-    m_passes[pass].type = RgTransferPassInfo{
-        .cb = [cb = std::move(cb)](
-                  const RgRuntime &rg, TransferPass &pass,
-                  const Any &data) { cb(rg, pass, *data.get<T>()); },
-    };
+    m_passes[pass].type = RgTransferPassInfo{.cb = std::move(cb)};
   }
 
   auto get_buffer_parent(RgBufferId buffer) -> RgBufferId;
@@ -657,6 +645,11 @@ private:
   RenderGraph *m_rg = nullptr;
 
   struct RgPassInfo {
+#if REN_RG_DEBUG
+    SmallVector<RgParameterId> read_parameters;
+#endif
+    SmallVector<RgVariableId> read_variables;
+    SmallVector<RgVariableId> write_variables;
     SmallVector<RgBufferUseId> read_buffers;
     SmallVector<RgBufferUseId> write_buffers;
     SmallVector<RgTextureUseId> read_textures;
@@ -666,7 +659,6 @@ private:
     Variant<Monostate, RgHostPassInfo, RgGraphicsPassInfo, RgComputePassInfo,
             RgTransferPassInfo>
         type;
-    RgUpdateCallback update_cb;
   };
 
   Vector<RgPassInfo> m_passes = {{}};
@@ -680,6 +672,17 @@ private:
     VkBufferUsageFlags usage = 0;
     usize size = 0;
   };
+
+#if REN_RG_DEBUG
+  HashMap<RgParameterId, String> m_parameter_names;
+#endif
+
+#if REN_RG_DEBUG
+  HashMap<RgVariableId, String> m_variable_names;
+  Vector<RgVariableId> m_variable_children = {{}};
+#endif
+  Vector<RgPassId> m_variable_defs = {{}};
+  Vector<RgPassId> m_variable_kills = {{}};
 
   HashMap<RgPhysicalBufferId, RgBufferDesc> m_buffer_descs;
 #if REN_RG_DEBUG
@@ -720,6 +723,20 @@ struct RgNoPassData {};
 
 class RgPassBuilder {
 public:
+  [[nodiscard]] auto read_parameter(StringView parameter) -> RgParameterId;
+
+  template <typename T>
+  [[nodiscard]] auto create_variable(StringView variable) -> RgRWVariableId {
+    String init_name = fmt::format("rg-init-{}", variable);
+    m_builder->create_variable<T>(init_name);
+    return write_variable(variable, init_name);
+  }
+
+  [[nodiscard]] auto read_variable(StringView variable) -> RgVariableId;
+
+  [[nodiscard]] auto write_variable(StringView dst_variable,
+                                    StringView src_variable) -> RgRWVariableId;
+
   [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info,
                                    const RgBufferUsage &usage) -> RgBufferId;
 
@@ -758,75 +775,22 @@ public:
                               const DepthAttachmentOperations &ops)
       -> RgTextureId;
 
-  template <typename T> void set_update_callback(CRgUpdateCallback<T> auto cb) {
-    m_builder->set_update_callback<T>(m_pass, std::move(cb));
+  void set_host_callback(CRgHostCallback auto cb) {
+    m_builder->set_host_callback(m_pass, std::move(cb));
   }
 
-  template <typename T>
-  void set_update_callback(detail::CallbackTag<T>,
-                           CRgUpdateCallback<T> auto cb) {
-    set_update_callback<T>(std::move(cb));
+  void set_graphics_callback(CRgGraphicsCallback auto cb) {
+    m_builder->set_graphics_callback(m_pass, std::move(cb));
   }
 
-#define ren_rg_update_callback(T)                                              \
-  detail::CallbackTag<T>(), [=](RgUpdate & rg, const T &data)
-
-  template <typename T> void set_host_callback(CRgHostCallback<T> auto cb) {
-    m_builder->set_host_callback<T>(m_pass, std::move(cb));
+  void set_compute_callback(CRgComputeCallback auto cb) {
+    m_builder->set_compute_callback(m_pass, std::move(cb));
   }
 
-  template <typename T>
-  void set_host_callback(detail::CallbackTag<T>, CRgHostCallback<T> auto cb) {
-    set_host_callback<T>(std::move(cb));
+  void set_transfer_callback(CRgTransferCallback auto cb) {
+    m_builder->set_transfer_callback(m_pass, std::move(cb));
   }
 
-#define ren_rg_host_callback(T)                                                \
-  detail::CallbackTag<T>(), [=](const RgRuntime &rg, const T &data)
-
-  template <typename T>
-  void set_graphics_callback(CRgGraphicsCallback<T> auto cb) {
-    m_builder->set_graphics_callback<T>(m_pass, std::move(cb));
-  }
-
-  template <typename T>
-  void set_graphics_callback(detail::CallbackTag<T>,
-                             CRgGraphicsCallback<T> auto cb) {
-    set_graphics_callback<T>(std::move(cb));
-  }
-
-#define ren_rg_graphics_callback(T)                                            \
-  detail::CallbackTag<T>(), [=](const RgRuntime &rg, RenderPass &render_pass,  \
-                                const T &data)
-
-  template <typename T>
-  void set_compute_callback(CRgComputeCallback<T> auto cb) {
-    m_builder->set_compute_callback<T>(m_pass, std::move(cb));
-  }
-
-  template <typename T>
-  void set_compute_callback(detail::CallbackTag<T>,
-                            CRgComputeCallback<T> auto cb) {
-    set_compute_callback<T>(std::move(cb));
-  }
-
-#define ren_rg_compute_callback(T)                                             \
-  detail::CallbackTag<T>(), [=](const RgRuntime &rg, ComputePass &pass,        \
-                                const T &data)
-
-  template <typename T>
-  void set_transfer_callback(CRgTransferCallback<T> auto cb) {
-    m_builder->set_transfer_callback<T>(m_pass, std::move(cb));
-  }
-
-  template <typename T>
-  void set_transfer_callback(detail::CallbackTag<T>,
-                             CRgTransferCallback<T> auto cb) {
-    set_transfer_callback<T>(std::move(cb));
-  }
-
-#define ren_rg_transfer_callback(T)                                            \
-  detail::CallbackTag<T>(), [=](const RgRuntime &rg, TransferPass &cmd,        \
-                                const T &data)
 private:
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 

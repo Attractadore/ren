@@ -3,6 +3,7 @@
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
 #include "Mesh.hpp"
+#include "Passes.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
@@ -31,8 +32,6 @@ class SceneImpl {
   std::array<VertexPoolList, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       m_vertex_pool_lists;
   Vector<Mesh> m_meshes = {{}};
-  Vector<u32> m_batch_offsets;
-  Vector<u32> m_batch_max_counts;
 
   HashMap<SamplerDesc, AutoHandle<Sampler>> m_samplers;
 
@@ -60,9 +59,12 @@ private:
 
   std::unique_ptr<RenderGraph> m_render_graph;
 
+  PassesConfig m_rg_config;
+
   float m_lod_triangle_pixels = 16.0f;
   i32 m_lod_bias = 0;
 
+  bool m_rg_valid : 1 = false;
   bool m_instance_frustum_culling : 1 = true;
   bool m_lod_selection : 1 = true;
   bool m_early_z : 1 = true;
@@ -127,6 +129,9 @@ public:
 
   void draw_imgui();
 #endif
+
+private:
+  void update_rg_config();
 };
 
 inline auto get_scene(SceneId scene) -> SceneImpl * {

@@ -96,11 +96,14 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 RgBuilder::RgBuilder(RenderGraph &rg) {
   m_rg = &rg;
   m_rg->m_pass_ids.clear();
-  m_rg->m_pass_datas = {{}};
 #if REN_RG_DEBUG
   m_rg->m_pass_names = {{}};
 #endif
-  m_rg->m_pass_update_callbacks = {{}};
+  m_rg->m_parameter_ids.clear();
+  m_rg->m_parameters = {{}};
+  m_rg->m_variable_ids.clear();
+  m_rg->m_variable_parents = {{}};
+  m_rg->m_variables = {{}};
   m_rg->m_buffer_ids.clear();
   m_rg->m_buffer_parents = {{}};
   m_rg->m_texture_ids.clear();
@@ -110,13 +113,95 @@ RgBuilder::RgBuilder(RenderGraph &rg) {
 auto RgBuilder::create_pass(String name) -> RgPassBuilder {
   RgPassId id(m_passes.size());
   m_passes.emplace_back();
-  m_rg->m_pass_datas.emplace_back();
 #if REN_RG_DEBUG
   m_rg->m_pass_names.push_back(name);
 #endif
-  m_rg->m_pass_update_callbacks.emplace_back();
   m_rg->m_pass_ids.insert(std::move(name), id);
   return RgPassBuilder(id, *this);
+}
+
+auto RgBuilder::get_or_alloc_parameter(StringView parameter) -> RgParameterId {
+  auto it = m_rg->m_parameter_ids.find(parameter);
+  if (it == m_rg->m_parameter_ids.end()) {
+    RgParameterId id(m_rg->m_parameters.size());
+    m_rg->m_parameters.emplace_back();
+    it = m_rg->m_parameter_ids.insert(it, String(parameter), id);
+  }
+  RgParameterId id = it->second;
+#if REN_RG_DEBUG
+  {
+    auto it = m_parameter_names.find(id);
+    if (it == m_parameter_names.end()) {
+      m_parameter_names.insert(it, id, String(parameter));
+    }
+  }
+#endif
+  return id;
+}
+
+auto RgBuilder::read_parameter(RgPassId pass, StringView parameter)
+    -> RgParameterId {
+  RgParameterId id = get_or_alloc_parameter(parameter);
+#if REN_RG_DEBUG
+  m_passes[pass].read_parameters.push_back(id);
+#endif
+  return id;
+};
+
+auto RgBuilder::get_variable_def(RgVariableId variable) const -> RgPassId {
+  return m_variable_defs[variable];
+}
+
+auto RgBuilder::get_variable_kill(RgVariableId variable) const -> RgPassId {
+  return m_variable_kills[variable];
+}
+
+auto RgBuilder::get_or_alloc_variable(StringView name) -> RgVariableId {
+  auto it = m_rg->m_variable_ids.find(name);
+  if (it == m_rg->m_variable_ids.end()) {
+    RgVariableId id(m_rg->m_variable_parents.size());
+    m_rg->m_variable_parents.emplace_back();
+    m_rg->m_variables.emplace_back();
+    m_variable_defs.emplace_back();
+    m_variable_kills.emplace_back();
+#if REN_RG_DEBUG
+    m_variable_children.emplace_back();
+#endif
+    it = m_rg->m_variable_ids.insert(it, String(name), id);
+  }
+  RgVariableId id = it->second;
+#if REN_RG_DEBUG
+  {
+    auto it = m_variable_names.find(id);
+    if (it == m_variable_names.end()) {
+      m_variable_names.insert(it, id, String(name));
+    }
+  }
+#endif
+  return id;
+};
+
+auto RgBuilder::read_variable(RgPassId pass, StringView variable)
+    -> RgVariableId {
+  RgVariableId id = get_or_alloc_variable(variable);
+  m_passes[pass].read_variables.push_back(id);
+  return id;
+}
+
+auto RgBuilder::write_variable(RgPassId pass, StringView dst_variable,
+                               StringView src_variable) -> RgRWVariableId {
+  RgVariableId src_id = get_or_alloc_variable(src_variable);
+  RgVariableId dst_id = get_or_alloc_variable(dst_variable);
+  m_variable_kills[src_id] = pass;
+#if REN_RG_DEBUG
+  m_variable_children[src_id] = dst_id;
+#endif
+  m_variable_defs[dst_id] = pass;
+  ren_assert_msg(!m_rg->m_variable_parents[dst_id],
+                 "Render graph variables can only be written once");
+  m_rg->m_variable_parents[dst_id] = src_id;
+  m_passes[pass].write_variables.push_back(src_id);
+  return RgRWVariableId(dst_id);
 }
 
 auto RgBuilder::add_buffer_use(RgBufferId buffer, const RgBufferUsage &usage)
@@ -350,9 +435,9 @@ void RgBuilder::present(StringView texture_name) {
   RgTextureId backbuffer = blit.write_texture(
       "rg-blitted-backbuffer", "rg-backbuffer", RG_TRANSFER_DST_TEXTURE);
 
-  blit.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
-    Handle<Texture> src = rg.get_texture(texture);
-    Handle<Texture> dst = rg.get_texture(backbuffer);
+  blit.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
+    Handle<Texture> src = rt.get_texture(texture);
+    Handle<Texture> dst = rt.get_texture(backbuffer);
     VkImageBlit region = {
         .srcSubresource =
             {
@@ -375,7 +460,7 @@ void RgBuilder::present(StringView texture_name) {
   auto present = create_pass("rg-present");
   (void)present.write_texture("rg-final-backbuffer", "rg-blitted-backbuffer",
                               RG_PRESENT_TEXTURE);
-  present.set_host_callback(ren_rg_host_callback(RgNoPassData){});
+  present.set_host_callback([=](const RgRuntime &) {});
   present.signal_semaphore(m_rg->m_present_semaphore);
 }
 
@@ -422,6 +507,14 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     }
   };
 
+  auto get_variable_def = [&](RgVariableId variable) {
+    return this->get_variable_def(variable);
+  };
+
+  auto get_variable_kill = [&](RgVariableId variable) {
+    return this->get_variable_kill(variable);
+  };
+
   auto get_buffer_def = [&](RgBufferUseId use) {
     return this->get_buffer_def(m_buffer_uses[use].buffer);
   };
@@ -445,6 +538,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     const RgPassInfo &pass = m_passes[pass_id];
     dependents.clear();
     // Reads must happen before writes
+    dependents.append(pass.read_variables | map(get_variable_kill));
     dependents.append(pass.read_buffers | map(get_buffer_kill));
     dependents.append(pass.read_textures | map(get_texture_kill));
     dependents.unstable_erase_if(is_null_pass);
@@ -456,9 +550,11 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     const RgPassInfo &pass = m_passes[pass_id];
     dependencies.clear();
     // Reads must happen after creation
+    dependencies.append(pass.read_variables | map(get_variable_def));
     dependencies.append(pass.read_buffers | map(get_buffer_def));
     dependencies.append(pass.read_textures | map(get_texture_def));
     // Writes must happen after creation
+    dependencies.append(pass.write_variables | map(get_variable_def));
     dependencies.append(pass.write_buffers | map(get_buffer_def));
     dependencies.append(pass.write_textures | map(get_texture_def));
     dependencies.unstable_erase_if(is_null_pass);
@@ -526,6 +622,26 @@ void RgBuilder::dump_pass_schedule(Span<const RgPassId> schedule) const {
   for (RgPassId pass_id : schedule) {
     const RgPassInfo &pass = m_passes[pass_id];
     fmt::println(stderr, "  * {}", m_rg->m_pass_names[pass_id]);
+    if (not pass.read_parameters.empty()) {
+      fmt::println(stderr, "    Reads parameters:");
+      for (RgParameterId parameter : pass.read_parameters) {
+        fmt::println(stderr, "      - {}", m_parameter_names[parameter]);
+      }
+    }
+    if (not pass.read_variables.empty()) {
+      fmt::println(stderr, "    Reads variables:");
+      for (RgVariableId variable : pass.read_variables) {
+        fmt::println(stderr, "      - {}", m_variable_names[variable]);
+      }
+    }
+    if (not pass.write_variables.empty()) {
+      fmt::println(stderr, "    Writes variables:");
+      for (RgVariableId src_variable : pass.write_variables) {
+        RgVariableId dst_variable = m_variable_children[src_variable];
+        fmt::println(stderr, "      - {} -> {}", m_variable_names[src_variable],
+                     m_variable_names[dst_variable]);
+      }
+    }
     if (not pass.read_buffers.empty()) {
       fmt::println(stderr, "    Reads buffers:");
       for (RgBufferUseId use : pass.read_buffers) {

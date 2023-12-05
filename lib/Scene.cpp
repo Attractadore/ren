@@ -49,9 +49,6 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   ren_assert_msg(std::bit_cast<u32>(SlotMapKey()) == 0, error);
 #endif
 #undef error
-
-  m_batch_max_counts.resize(glsl::NUM_BATCHES);
-  m_batch_offsets.resize(glsl::NUM_BATCHES);
 }
 
 void SceneImpl::next_frame() {
@@ -687,44 +684,86 @@ void SceneImpl::update_directional_light(
   };
 };
 
+void SceneImpl::update_rg_config() {
+  auto set_if_changed = [&](auto &config, const auto &new_value) {
+    if (config != new_value) {
+      config = new_value;
+      m_rg_valid = false;
+    }
+  };
+
+  auto grow_if_needed = [&](std::unsigned_integral auto &config,
+                            size_t new_size) {
+    if (new_size > config) {
+      config = new_size * 2;
+      m_rg_valid = false;
+    }
+  };
+
+  m_rg_config.pipelines = &m_pipelines;
+
+  grow_if_needed(m_rg_config.num_meshes, m_meshes.size());
+  grow_if_needed(m_rg_config.num_mesh_instances, m_mesh_instances.size());
+  grow_if_needed(m_rg_config.num_materials, m_materials.size());
+  grow_if_needed(m_rg_config.num_directional_lights, m_dir_lights.size());
+
+  glm::uvec2 viewport = {m_viewport_width, m_viewport_height};
+  set_if_changed(m_rg_config.viewport, viewport);
+
+  auto exposure_mode = m_pp_opts.exposure.mode.visit(OverloadSet{
+      [](const ExposureOptions::Manual &) -> ExposureMode { todo(); },
+      [](const ExposureOptions::Camera &) { return ExposureMode::Camera; },
+      [](const ExposureOptions::Automatic &) {
+        return ExposureMode::Automatic;
+      },
+  });
+  set_if_changed(m_rg_config.exposure_mode, exposure_mode);
+
+#if REN_IMGUI
+  {
+    ren_ImGuiScope(m_imgui_context);
+    set_if_changed(m_rg_config.imgui_context, m_imgui_context);
+    if (ImGui::GetCurrentContext()) {
+      const ImDrawData *draw_data = ImGui::GetDrawData();
+      grow_if_needed(m_rg_config.num_imgui_vertices, draw_data->TotalVtxCount);
+      grow_if_needed(m_rg_config.num_imgui_indices, draw_data->TotalIdxCount);
+    }
+  }
+#endif
+
+  if (m_early_z != m_rg_config.early_z) {
+    m_rg_config.early_z = m_early_z;
+    m_rg_valid = false;
+  }
+}
+
 void SceneImpl::draw() {
   m_resource_uploader.upload(m_cmd_allocator);
 
-  {
-    ranges::fill(m_batch_max_counts, 0);
-    for (const MeshInstance &mesh_instance : m_mesh_instances.values()) {
-      const Mesh &mesh = m_meshes[mesh_instance.mesh];
-      u32 batch_id = glsl::get_batch_id(
-          static_cast<uint32_t>(mesh.attributes.get()), mesh.pool);
-      m_batch_max_counts[batch_id]++;
-    }
-    m_batch_offsets.assign(m_batch_max_counts |
-                           ranges::views::exclusive_scan(0));
+  update_rg_config();
+
+  if (not m_rg_valid) {
+    RgBuilder rgb(*m_render_graph);
+    setup_render_graph(rgb, m_rg_config);
+    rgb.build(m_cmd_allocator);
+    m_rg_valid = true;
   }
 
-  update_rg_passes(
-      *m_render_graph, m_cmd_allocator,
-      PassesConfig {
-#if REN_IMGUI
-        .imgui_context = m_imgui_context,
-#endif
-        .pipelines = &m_pipelines,
-        .viewport = {m_viewport_width, m_viewport_height},
-        .pp_opts = &m_pp_opts, .early_z = m_early_z,
-      },
-      PassesData{
-          .batch_offsets = m_batch_offsets,
-          .batch_max_counts = m_batch_max_counts,
+  update_render_graph(
+      *m_render_graph, m_rg_config,
+      PassesRuntimeConfig{
+          .camera = m_camera,
           .vertex_pool_lists = m_vertex_pool_lists,
           .meshes = m_meshes,
-          .materials = m_materials,
           .mesh_instances = m_mesh_instances.values(),
+          .materials = m_materials,
           .directional_lights = m_dir_lights.values(),
-          .viewport = {m_viewport_width, m_viewport_height},
-          .camera = &m_camera,
-          .pp_opts = &m_pp_opts,
+
+          .pp_opts = m_pp_opts,
+
           .lod_triangle_pixels = m_lod_triangle_pixels,
           .lod_bias = m_lod_bias,
+
           .instance_frustum_culling = m_instance_frustum_culling,
           .lod_selection = m_lod_selection,
       });

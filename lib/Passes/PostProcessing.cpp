@@ -6,7 +6,7 @@
 #include "glsl/PostProcessingPass.hpp"
 #include "glsl/ReduceLuminanceHistogramPass.hpp"
 
-using namespace ren;
+namespace ren {
 
 namespace {
 
@@ -20,8 +20,8 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
       },
       RG_TRANSFER_DST_BUFFER);
 
-  pass.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
-    cmd.fill_buffer(rg.get_buffer(histogram), 0);
+  pass.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
+    cmd.fill_buffer(rt.get_buffer(histogram), 0);
   });
 };
 
@@ -93,13 +93,14 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
     rcs.exposure = pass.read_texture("exposure", RG_CS_READ_TEXTURE, 1);
   }
 
-  pass.set_compute_callback(ren_rg_compute_callback(RgNoPassData) {
-    run_post_processing_uber_pass(rg, pass, rcs);
+  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
+    run_post_processing_uber_pass(rt, pass, rcs);
   });
 }
 
 struct ReduceLuminanceHistogramPassResources {
   Handle<ComputePipeline> pipeline;
+  RgParameterId cfg;
   RgBufferId histogram;
   RgTextureId exposure;
 };
@@ -110,11 +111,11 @@ struct ReduceLuminanceHistogramPassData {
 
 void run_reduce_luminance_histogram_pass(
     const RgRuntime &rg, ComputePass &pass,
-    const ReduceLuminanceHistogramPassResources &rcs,
-    const ReduceLuminanceHistogramPassData &data) {
+    const ReduceLuminanceHistogramPassResources &rcs) {
   assert(rcs.pipeline);
   assert(rcs.histogram);
   assert(rcs.exposure);
+  const auto &cfg = rg.get_parameter<AutomaticExposureRuntimeConfig>(rcs.cfg);
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
@@ -122,7 +123,7 @@ void run_reduce_luminance_histogram_pass(
           g_renderer->get_buffer_device_address<glsl::LuminanceHistogram>(
               rg.get_buffer(rcs.histogram)),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
-      .exposure_compensation = data.exposure_compensation,
+      .exposure_compensation = cfg.options.exposure_compensation,
   });
   pass.dispatch_groups(1);
 }
@@ -140,61 +141,39 @@ void setup_reduce_luminance_histogram_pass(
 
   auto pass = rgb.create_pass("reduce-luminance-histogram");
 
+  rcs.cfg = pass.read_parameter(AUTOMATIC_EXPOSURE_RUNTIME_CONFIG);
+
   rcs.histogram = pass.read_buffer("luminance-histogram", RG_CS_READ_BUFFER);
 
   rcs.exposure = pass.write_texture("exposure", "automatic-exposure-init",
                                     RG_CS_WRITE_TEXTURE);
 
-  pass.set_compute_callback(
-      ren_rg_compute_callback(ReduceLuminanceHistogramPassData) {
-        run_reduce_luminance_histogram_pass(rg, pass, rcs, data);
-      });
+  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
+    run_reduce_luminance_histogram_pass(rt, pass, rcs);
+  });
 }
 
 } // namespace
 
-void ren::setup_post_processing_passes(RgBuilder &rgb,
-                                       const PostProcessingPassesConfig &cfg) {
+void setup_post_processing_passes(RgBuilder &rgb,
+                                  const PostProcessingPassesConfig &cfg) {
   assert(cfg.pipelines);
-  assert(cfg.options);
 
-  auto automatic_exposure =
-      cfg.options->exposure.mode.get<ExposureOptions::Automatic>();
-
-  if (automatic_exposure) {
+  if (cfg.exposure_mode == ExposureMode::Automatic) {
     setup_initialize_luminance_histogram_pass(rgb);
   }
 
   setup_post_processing_uber_pass(
-      rgb, {
+      rgb, PostProcessingPassConfig{
                .pipeline = cfg.pipelines->post_processing,
                .size = cfg.viewport,
            });
 
-  if (automatic_exposure) {
+  if (cfg.exposure_mode == ExposureMode::Automatic) {
     setup_reduce_luminance_histogram_pass(
-        rgb, {.pipeline = cfg.pipelines->reduce_luminance_histogram});
+        rgb, ReduceLuminanceHistogramPassConfig{
+                 .pipeline = cfg.pipelines->reduce_luminance_histogram});
   }
 }
 
-auto ren::set_post_processing_passes_data(RenderGraph &rg,
-                                          const PostProcessingOptions &opts)
-    -> bool {
-  bool valid = true;
-
-  auto automatic_exposure =
-      opts.exposure.mode.get<ExposureOptions::Automatic>();
-
-  if (automatic_exposure) {
-    valid =
-        rg.set_pass_data("reduce-luminance-histogram",
-                         ReduceLuminanceHistogramPassData{
-                             .exposure_compensation =
-                                 automatic_exposure->exposure_compensation});
-    if (!valid) {
-      return false;
-    }
-  }
-
-  return true;
-}
+} // namespace ren

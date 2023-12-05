@@ -8,12 +8,13 @@ namespace ren {
 
 namespace {
 
-struct ManualExposurePassData {
-  ExposureOptions::Manual options;
-};
-
 auto setup_manual_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
   auto pass = rgb.create_pass("manual-exposure");
+
+  rgb.create_parameter<ManualExposureRuntimeConfig>(
+      MANUAL_EXPOSURE_RUNTIME_CONFIG);
+
+  RgParameterId cfg = pass.read_parameter(MANUAL_EXPOSURE_RUNTIME_CONFIG);
 
   RgTextureId exposure_texture = pass.create_texture(
       {
@@ -24,10 +25,11 @@ auto setup_manual_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
       },
       RG_TRANSFER_DST_TEXTURE);
 
-  pass.set_transfer_callback(ren_rg_transfer_callback(ManualExposurePassData) {
-    float exposure = data.options.exposure;
+  pass.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
+    float exposure =
+        rt.get_parameter<ManualExposureRuntimeConfig>(cfg).options.exposure;
     assert(exposure > 0.0f);
-    cmd.clear_texture(rg.get_texture(exposure_texture),
+    cmd.clear_texture(rt.get_texture(exposure_texture),
                       glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
   });
 
@@ -42,12 +44,13 @@ auto get_camera_exposure(const ExposureOptions::Camera &camera) -> float {
   return 1.0f / max_luminance;
 };
 
-struct CameraExposurePassData {
-  ExposureOptions::Camera options;
-};
-
 auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
   auto pass = rgb.create_pass("camera-exposure");
+
+  rgb.create_parameter<CameraExposureRuntimeConfig>(
+      CAMERA_EXPOSURE_RUNTIME_CONFIG);
+
+  RgParameterId cfg = pass.read_parameter(CAMERA_EXPOSURE_RUNTIME_CONFIG);
 
   RgTextureId exposure_texture = pass.create_texture(
       {
@@ -58,10 +61,11 @@ auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
       },
       RG_TRANSFER_DST_TEXTURE);
 
-  pass.set_transfer_callback(ren_rg_transfer_callback(CameraExposurePassData) {
-    auto exposure = get_camera_exposure(data.options);
+  pass.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
+    float exposure = get_camera_exposure(
+        rt.get_parameter<CameraExposureRuntimeConfig>(cfg).options);
     assert(exposure > 0.0f);
-    cmd.clear_texture(rg.get_texture(exposure_texture),
+    cmd.clear_texture(rt.get_texture(exposure_texture),
                       glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
   });
 
@@ -69,8 +73,8 @@ auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
 }
 
 auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
-  auto pass = rgb.create_pass("automatic-exposure");
-  pass.set_host_callback(ren_rg_host_callback(RgNoPassData){});
+  rgb.create_parameter<AutomaticExposureRuntimeConfig>(
+      AUTOMATIC_EXPOSURE_RUNTIME_CONFIG);
   rgb.create_texture({
       .name = "automatic-exposure-init",
       .format = VK_FORMAT_R32_SFLOAT,
@@ -84,34 +88,14 @@ auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
 
 } // namespace
 
-auto setup_exposure_pass(RgBuilder &rgb, const ExposureOptions &opts)
+auto setup_exposure_pass(RgBuilder &rgb, const ExposurePassConfig &cfg)
     -> ExposurePassOutput {
-  return opts.mode.visit(
-      [&](const ExposureOptions::Manual &) {
-        return setup_manual_exposure_pass(rgb);
-      },
-      [&](const ExposureOptions::Camera &) {
-        return setup_camera_exposure_pass(rgb);
-      },
-      [&](const ExposureOptions::Automatic &) {
-        return setup_automatic_exposure_pass(rgb);
-      });
-}
-
-auto set_exposure_pass_data(RenderGraph &rg, const ExposureOptions &opts)
-    -> bool {
-  return opts.mode.visit(
-      [&](const ExposureOptions::Manual &options) {
-        return rg.set_pass_data("manual-exposure",
-                                ManualExposurePassData{.options = options});
-      },
-      [&](const ExposureOptions::Camera &options) {
-        return rg.set_pass_data("camera-exposure",
-                                CameraExposurePassData{.options = options});
-      },
-      [&](const ExposureOptions::Automatic &) {
-        return rg.is_pass_valid("automatic-exposure");
-      });
+  switch (cfg.mode) {
+  case ExposureMode::Camera:
+    return setup_camera_exposure_pass(rgb);
+  case ExposureMode::Automatic:
+    return setup_automatic_exposure_pass(rgb);
+  }
 }
 
 } // namespace ren

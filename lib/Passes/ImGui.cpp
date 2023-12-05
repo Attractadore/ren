@@ -119,6 +119,7 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       {
           .name = "imgui-vertices",
           .heap = BufferHeap::Dynamic,
+          .size = sizeof(ImDrawVert) * cfg.num_vertices,
       },
       RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER);
 
@@ -126,6 +127,7 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       {
           .name = "imgui-indices",
           .heap = BufferHeap::Dynamic,
+          .size = sizeof(ImDrawIdx) * cfg.num_indices,
       },
       RG_HOST_WRITE_BUFFER | RG_INDEX_BUFFER);
 
@@ -135,15 +137,6 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
                               });
 
-  ImGuiContext *imgui_context = cfg.imgui_context;
-  pass.set_update_callback(ren_rg_update_callback(RgNoPassData) {
-    ren_ImGuiScope(imgui_context);
-    const ImDrawData *draw_data = ImGui::GetDrawData();
-    rg.resize_buffer(vertices, draw_data->TotalVtxCount * sizeof(ImDrawVert));
-    rg.resize_buffer(indices, draw_data->TotalIdxCount * sizeof(ImDrawIdx));
-    return true;
-  });
-
   ImGuiPassResources rcs = {
       .context = cfg.imgui_context,
       .pipeline = cfg.pipeline,
@@ -152,8 +145,8 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       .viewport = cfg.viewport,
   };
 
-  pass.set_graphics_callback(ren_rg_graphics_callback(RgNoPassData) {
-    run_imgui_pass(rg, render_pass, rcs);
+  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
+    run_imgui_pass(rt, render_pass, rcs);
   });
 }
 

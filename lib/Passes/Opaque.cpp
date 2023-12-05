@@ -1,4 +1,5 @@
 #include "Passes/Opaque.hpp"
+#include "Camera.inl"
 #include "CommandRecorder.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
@@ -37,7 +38,27 @@ const char DIRECTIONAL_LIGHTS_BUFFER[] = "directional-lights";
 
 const char DEPTH_BUFFER[] = "depth-buffer";
 
+const char SCENE_DATA[] = "scene-data";
+const char BATCHES_DATA[] = "batches-data";
+
+struct SceneData {
+  u32 num_mesh_instances = 0;
+  u32 num_directional_lights = 0;
+  glm::mat4 pv;
+  glm::vec3 eye;
+};
+
+struct BatchData {
+  Vector<u32> counts;
+  Vector<u32> offsets;
+};
+
 struct UploadPassResources {
+  RgParameterId scene_cfg;
+
+  RgRWVariableId scene;
+  RgRWVariableId batches;
+
   RgBufferId materials;
   RgBufferId mesh_instance_draw_data;
   RgBufferId transform_matrices;
@@ -47,28 +68,33 @@ struct UploadPassResources {
   RgBufferId mesh_cull_data;
   RgBufferId mesh_instance_cull_data;
   RgBufferId batch_command_offsets;
+
+  glm::uvec2 viewport;
 };
 
-struct UploadPassData {
-  Span<const u32> batch_offsets;
-  Span<const Mesh> meshes;
-  Span<const glsl::Material> materials;
-  Span<const MeshInstance> mesh_instances;
-  Span<const glsl::DirLight> directional_lights;
-};
-
-void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
-                     const UploadPassData &data) {
+void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs) {
   assert(rcs.materials);
   assert(rcs.transform_matrices);
   assert(rcs.normal_matrices);
   assert(rcs.directional_lights);
 
+  const auto &scene_cfg = rg.get_parameter<SceneRuntimeConfig>(rcs.scene_cfg);
+
+  glm::mat4 proj = get_projection_matrix(scene_cfg.camera, rcs.viewport);
+  glm::mat4 view = get_view_matrix(scene_cfg.camera);
+
+  rg.get_variable<SceneData>(rcs.scene) = {
+      .num_mesh_instances = u32(scene_cfg.mesh_instances.size()),
+      .num_directional_lights = u32(scene_cfg.directional_lights.size()),
+      .pv = proj * view,
+      .eye = scene_cfg.camera.position,
+  };
+
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
-  ranges::copy(data.materials, materials);
+  ranges::copy(scene_cfg.materials, materials);
 
   auto *mesh_cull_data = rg.map_buffer<glsl::MeshCullData>(rcs.mesh_cull_data);
-  for (const auto &[i, mesh] : data.meshes | enumerate) {
+  for (const auto &[i, mesh] : scene_cfg.meshes | enumerate) {
     auto attribute_mask = static_cast<uint8_t>(mesh.attributes.get());
     uint8_t pool = mesh.pool;
     mesh_cull_data[i] = {
@@ -87,8 +113,8 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
       rg.map_buffer<glsl::MeshInstanceDrawData>(rcs.mesh_instance_draw_data);
   auto *transform_matrices = rg.map_buffer<glm::mat4x3>(rcs.transform_matrices);
   auto *normal_matrices = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
-  for (const auto &[i, mesh_instance] : data.mesh_instances | enumerate) {
-    const Mesh &mesh = data.meshes[mesh_instance.mesh];
+  for (const auto &[i, mesh_instance] : scene_cfg.mesh_instances | enumerate) {
+    const Mesh &mesh = scene_cfg.meshes[mesh_instance.mesh];
     mesh_instance_cull_data[i] = {
         .mesh = mesh_instance.mesh,
     };
@@ -101,26 +127,60 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs,
         glm::transpose(glm::inverse(glm::mat3(mesh_instance.matrix)));
   }
 
-  auto *batch_offsets = rg.map_buffer<u32>(rcs.batch_command_offsets);
-  ranges::copy(data.batch_offsets, batch_offsets);
-
   auto *directional_lights =
       rg.map_buffer<glsl::DirLight>(rcs.directional_lights);
-  ranges::copy(data.directional_lights, directional_lights);
+  ranges::copy(scene_cfg.directional_lights, directional_lights);
+
+  auto &batches = rg.get_variable<BatchData>(rcs.batches);
+  {
+    batches.counts.resize(glsl::NUM_BATCHES);
+    ranges::fill(batches.counts, 0);
+    for (const MeshInstance &mesh_instance : scene_cfg.mesh_instances) {
+      const Mesh &mesh = scene_cfg.meshes[mesh_instance.mesh];
+      u32 batch_id = glsl::get_batch_id(
+          static_cast<uint32_t>(mesh.attributes.get()), mesh.pool);
+      batches.counts[batch_id]++;
+    }
+    batches.offsets.assign(batches.counts | ranges::views::exclusive_scan(0));
+  }
+  auto *batch_offsets = rg.map_buffer<u32>(rcs.batch_command_offsets);
+  ranges::copy(batches.offsets, batch_offsets);
 }
 
-void setup_upload_pass(RgBuilder &rgb) {
+struct UploadPassConfig {
+  u32 num_meshes;
+  u32 num_mesh_instances;
+  u32 num_materials;
+  u32 num_directional_lights;
+  glm::uvec2 viewport;
+};
+
+void setup_upload_pass(RgBuilder &rgb, const UploadPassConfig &cfg) {
   auto pass = rgb.create_pass(UPLOAD_PASS);
 
   UploadPassResources rcs;
 
-  rcs.materials =
-      pass.create_buffer({.name = MATERIALS_BUFFER}, RG_HOST_WRITE_BUFFER);
+  rgb.create_parameter<SceneRuntimeConfig>(SCENE_RUNTIME_CONFIG);
+
+  rcs.scene_cfg = pass.read_parameter(SCENE_RUNTIME_CONFIG);
+
+  rcs.scene = pass.create_variable<SceneData>(SCENE_DATA);
+
+  rcs.batches = pass.create_variable<BatchData>(BATCHES_DATA);
+
+  rcs.materials = pass.create_buffer(
+      {
+          .name = MATERIALS_BUFFER,
+          .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::Material) * cfg.num_materials,
+      },
+      RG_HOST_WRITE_BUFFER);
 
   rcs.mesh_cull_data = pass.create_buffer(
       {
           .name = MESH_CULL_DATA_BUFFER,
           .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::MeshCullData) * cfg.num_meshes,
       },
       RG_HOST_WRITE_BUFFER);
 
@@ -128,6 +188,7 @@ void setup_upload_pass(RgBuilder &rgb) {
       {
           .name = MESH_INSTANCE_CULL_DATA_BUFFER,
           .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::MeshInstanceCullData) * cfg.num_mesh_instances,
       },
       RG_HOST_WRITE_BUFFER);
 
@@ -140,75 +201,74 @@ void setup_upload_pass(RgBuilder &rgb) {
       RG_HOST_WRITE_BUFFER);
 
   rcs.mesh_instance_draw_data = pass.create_buffer(
-      {.name = MESH_INSTANCE_DRAW_DATA_BUFFER}, RG_HOST_WRITE_BUFFER);
+      {
+          .name = MESH_INSTANCE_DRAW_DATA_BUFFER,
+          .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::MeshInstanceDrawData) * cfg.num_mesh_instances,
+      },
+      RG_HOST_WRITE_BUFFER);
 
   rcs.transform_matrices = pass.create_buffer(
-      {.name = TRANSFORM_MATRICES_BUFFER}, RG_HOST_WRITE_BUFFER);
+      {
+          .name = TRANSFORM_MATRICES_BUFFER,
+          .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::mat4x3) * cfg.num_mesh_instances,
+      },
+      RG_HOST_WRITE_BUFFER);
 
-  rcs.normal_matrices = pass.create_buffer({.name = NORMAL_MATRICES_BUFFER},
-                                           RG_HOST_WRITE_BUFFER);
+  rcs.normal_matrices = pass.create_buffer(
+      {
+          .name = NORMAL_MATRICES_BUFFER,
+          .heap = BufferHeap::Dynamic,
+          .size = sizeof(glm::mat3) * cfg.num_mesh_instances,
+      },
+      RG_HOST_WRITE_BUFFER);
 
   rcs.directional_lights = pass.create_buffer(
-      {.name = DIRECTIONAL_LIGHTS_BUFFER}, RG_HOST_WRITE_BUFFER);
+      {
+          .name = DIRECTIONAL_LIGHTS_BUFFER,
+          .heap = BufferHeap::Dynamic,
+          .size = sizeof(glsl::DirLight) * cfg.num_directional_lights,
+      },
+      RG_HOST_WRITE_BUFFER);
 
-  pass.set_update_callback(ren_rg_update_callback(UploadPassData) {
-    rg.resize_buffer(rcs.materials,
-                     sizeof(glsl::Material) * data.materials.size());
-    rg.resize_buffer(rcs.mesh_cull_data,
-                     sizeof(glsl::MeshCullData) * data.meshes.size());
-    rg.resize_buffer(rcs.mesh_instance_cull_data,
-                     sizeof(glsl::MeshInstanceCullData) *
-                         data.mesh_instances.size());
-    rg.resize_buffer(rcs.mesh_instance_draw_data,
-                     sizeof(glsl::MeshInstanceDrawData) *
-                         data.mesh_instances.size());
-    rg.resize_buffer(rcs.transform_matrices,
-                     sizeof(glm::mat4x3) * data.mesh_instances.size());
-    rg.resize_buffer(rcs.normal_matrices,
-                     sizeof(glm::mat3) * data.mesh_instances.size());
-    rg.resize_buffer(rcs.directional_lights,
-                     data.directional_lights.size_bytes());
-    return true;
-  });
+  rcs.viewport = cfg.viewport;
 
   pass.set_host_callback(
-      ren_rg_host_callback(UploadPassData) { run_upload_pass(rg, rcs, data); });
+      [=](const RgRuntime &rt) { run_upload_pass(rt, rcs); });
 }
 
 struct InstanceCullingAndLODPassResources {
   Handle<ComputePipeline> pipeline;
+  RgVariableId scene;
+  RgParameterId cfg;
   RgBufferId meshes;
   RgBufferId mesh_instances;
   RgBufferId transform_matrices;
   RgBufferId commands;
   RgBufferId batch_offsets;
   RgBufferId batch_counts;
-};
-
-struct InstanceCullingAndLODPassData {
-  u32 num_mesh_instances = 0;
-  glm::mat4 pv;
   glm::uvec2 viewport;
-  float lod_triangle_pixels = 4.0f;
-  i32 lod_bias = 0;
-  bool frustum_culling : 1 = true;
-  bool lod_selection : 1 = true;
 };
 
 void run_instance_culling_and_lod_pass(
     const RgRuntime &rg, ComputePass &pass,
-    const InstanceCullingAndLODPassResources &rcs,
-    const InstanceCullingAndLODPassData &data) {
+    const InstanceCullingAndLODPassResources &rcs) {
+  const auto &scene = rg.get_variable<SceneData>(rcs.scene);
+
+  const auto &cfg =
+      rg.get_parameter<InstanceCullingAndLODRuntimeConfig>(rcs.cfg);
+
   u32 mask = 0;
-  if (data.frustum_culling) {
+  if (cfg.frustum_culling) {
     mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
   }
-  if (data.lod_selection) {
+  if (cfg.lod_selection) {
     mask |= glsl::INSTANCE_CULLING_AND_LOD_SELECTION_BIT;
   }
 
   float num_viewport_triangles =
-      data.viewport.x * data.viewport.y / data.lod_triangle_pixels;
+      rcs.viewport.x * rcs.viewport.y / cfg.lod_triangle_pixels;
   float lod_triangle_density = num_viewport_triangles / 4.0f;
 
   pass.bind_compute_pipeline(rcs.pipeline);
@@ -230,21 +290,23 @@ void run_instance_culling_and_lod_pass(
       .commands = g_renderer->get_buffer_device_address<
           glsl::DrawIndexedIndirectCommands>(rg.get_buffer(rcs.commands)),
       .mask = mask,
-      .num_mesh_instances = data.num_mesh_instances,
-      .pv = data.pv,
+      .num_mesh_instances = scene.num_mesh_instances,
+      .pv = scene.pv,
       .lod_triangle_density = lod_triangle_density,
-      .lod_bias = data.lod_bias,
+      .lod_bias = cfg.lod_bias,
   });
-  pass.dispatch_threads(data.num_mesh_instances,
+  pass.dispatch_threads(scene.num_mesh_instances,
                         glsl::INSTANCE_CULLING_AND_LOD_THREADS);
 }
 
-struct InstanceCullingPassConfig {
+struct InstanceCullingAndLODPassConfig {
   Handle<ComputePipeline> pipeline;
+  u32 num_mesh_instances;
+  glm::uvec2 viewport;
 };
 
-void setup_instance_culling_and_lod_pass(RgBuilder &rgb,
-                                         const InstanceCullingPassConfig &cfg) {
+void setup_instance_culling_and_lod_pass(
+    RgBuilder &rgb, const InstanceCullingAndLODPassConfig &cfg) {
   InstanceCullingAndLODPassResources rcs;
   rcs.pipeline = cfg.pipeline;
 
@@ -261,12 +323,20 @@ void setup_instance_culling_and_lod_pass(RgBuilder &rgb,
         },
         RG_TRANSFER_DST_BUFFER);
 
-    init_pass.set_transfer_callback(ren_rg_transfer_callback(RgNoPassData) {
-      cmd.fill_buffer(rg.get_buffer(batch_counts), 0);
-    });
+    init_pass.set_transfer_callback(
+        [=](const RgRuntime &rt, TransferPass &cmd) {
+          cmd.fill_buffer(rt.get_buffer(batch_counts), 0);
+        });
   }
 
   auto pass = rgb.create_pass(INSTANCE_CULLING_AND_LOD_PASS);
+
+  rcs.scene = pass.read_variable(SCENE_DATA);
+
+  rgb.create_parameter<InstanceCullingAndLODRuntimeConfig>(
+      INSTANCE_CULLING_AND_LOD_RUNTIME_CONFIG);
+
+  rcs.cfg = pass.read_parameter(INSTANCE_CULLING_AND_LOD_RUNTIME_CONFIG);
 
   rcs.meshes = pass.read_buffer(MESH_CULL_DATA_BUFFER, RG_CS_READ_BUFFER);
 
@@ -280,6 +350,8 @@ void setup_instance_culling_and_lod_pass(RgBuilder &rgb,
       {
           .name = INDIRECT_COMMANDS_BUFFER,
           .heap = BufferHeap::Static,
+          .size =
+              sizeof(glsl::DrawIndexedIndirectCommand) * cfg.num_mesh_instances,
       },
       RG_CS_WRITE_BUFFER);
 
@@ -290,42 +362,30 @@ void setup_instance_culling_and_lod_pass(RgBuilder &rgb,
       pass.write_buffer(BATCH_COMMAND_COUNTS_BUFFER, batch_counts_empty,
                         RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER);
 
-  pass.set_update_callback(ren_rg_update_callback(
-      InstanceCullingAndLODPassData) {
-    rg.resize_buffer(rcs.commands, sizeof(glsl::DrawIndexedIndirectCommand) *
-                                       data.num_mesh_instances);
-    return true;
-  });
+  rcs.viewport = cfg.viewport;
 
-  pass.set_compute_callback(
-      ren_rg_compute_callback(InstanceCullingAndLODPassData) {
-        run_instance_culling_and_lod_pass(rg, pass, rcs, data);
-      });
+  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
+    run_instance_culling_and_lod_pass(rt, pass, rcs);
+  });
 };
 
 struct EarlyZPassResources {
   Handle<GraphicsPipeline> pipeline;
+  RgParameterId scene_cfg;
+  RgVariableId scene;
+  RgVariableId batches;
   RgBufferId commands;
   RgBufferId batch_counts;
   RgBufferId transform_matrices;
 };
 
-struct EarlyZPassData {
-  Span<const u32> batch_offsets;
-  Span<const u32> batch_max_counts;
-  Span<const VertexPoolList> vertex_pool_lists;
-  Span<const Mesh> meshes;
-  Span<const MeshInstance> mesh_instances;
-  glm::uvec2 viewport;
-  glm::mat4 proj;
-  glm::mat4 view;
-  glm::vec3 eye;
-};
-
 void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
-                      const EarlyZPassResources &rcs,
-                      const EarlyZPassData &data) {
-  if (data.mesh_instances.empty()) {
+                      const EarlyZPassResources &rcs) {
+  const auto &scene_cfg = rg.get_parameter<SceneRuntimeConfig>(rcs.scene_cfg);
+  const auto &scene = rg.get_variable<SceneData>(rcs.scene);
+  const auto &batches = rg.get_variable<BatchData>(rcs.batches);
+
+  if (scene.num_mesh_instances == 0) {
     return;
   }
 
@@ -334,23 +394,22 @@ void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
   auto transform_matrices =
       g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
           rg.get_buffer(rcs.transform_matrices));
-  glm::mat4 proj_view = data.proj * data.view;
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
        ++attribute_mask) {
     for (const auto &[pool, vertex_pool] :
-         data.vertex_pool_lists[attribute_mask] | enumerate) {
+         scene_cfg.vertex_pool_lists[attribute_mask] | enumerate) {
       render_pass.bind_index_buffer(vertex_pool.indices, VK_INDEX_TYPE_UINT32);
       render_pass.set_push_constants(glsl::EarlyZConstants{
           .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
               vertex_pool.positions),
           .transform_matrices = transform_matrices,
-          .pv = proj_view,
+          .pv = scene.pv,
       });
       u32 batch_id = glsl::get_batch_id(attribute_mask, pool);
-      u32 offset = data.batch_offsets[batch_id];
-      u32 count = data.batch_max_counts[batch_id];
+      u32 offset = batches.offsets[batch_id];
+      u32 count = batches.counts[batch_id];
       render_pass.draw_indexed_indirect_count(
           commands.slice<glsl::DrawIndexedIndirectCommand>(offset, count),
           batch_counts.slice<u32>(batch_id));
@@ -369,6 +428,12 @@ void setup_early_z_pass(RgBuilder &rgb, const EarlyZPassConfig &cfg) {
 
   auto pass = rgb.create_pass(EARLY_Z_PASS);
 
+  rcs.scene_cfg = pass.read_parameter(SCENE_RUNTIME_CONFIG);
+
+  rcs.scene = pass.read_variable(SCENE_DATA);
+
+  rcs.batches = pass.read_variable(BATCHES_DATA);
+
   rcs.commands =
       pass.read_buffer(INDIRECT_COMMANDS_BUFFER, RG_INDIRECT_COMMAND_BUFFER);
 
@@ -378,14 +443,12 @@ void setup_early_z_pass(RgBuilder &rgb, const EarlyZPassConfig &cfg) {
   rcs.transform_matrices =
       pass.read_buffer(TRANSFORM_MATRICES_BUFFER, RG_VS_READ_BUFFER);
 
-  glm::uvec2 viewport = cfg.viewport;
-
   pass.create_depth_attachment(
       {
           .name = DEPTH_BUFFER,
           .format = DEPTH_FORMAT,
-          .width = viewport.x,
-          .height = viewport.y,
+          .width = cfg.viewport.x,
+          .height = cfg.viewport.y,
       },
       {
           .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -393,18 +456,17 @@ void setup_early_z_pass(RgBuilder &rgb, const EarlyZPassConfig &cfg) {
           .clear_depth = 0.0f,
       });
 
-  pass.set_update_callback(ren_rg_update_callback(EarlyZPassData) {
-    return viewport == data.viewport;
-  });
-
-  pass.set_graphics_callback(ren_rg_graphics_callback(EarlyZPassData) {
-    run_early_z_pass(rg, render_pass, rcs, data);
+  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
+    run_early_z_pass(rt, render_pass, rcs);
   });
 }
 
 struct OpaquePassResources {
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       pipelines;
+  RgParameterId scene_cfg;
+  RgVariableId scene;
+  RgVariableId batches;
   RgBufferId commands;
   RgBufferId batch_counts;
   RgBufferId uniforms;
@@ -417,22 +479,13 @@ struct OpaquePassResources {
   bool early_z = false;
 };
 
-struct OpaquePassData {
-  Span<const u32> batch_offsets;
-  Span<const u32> batch_max_counts;
-  Span<const VertexPoolList> vertex_pool_lists;
-  Span<const Mesh> meshes;
-  Span<const MeshInstance> mesh_instances;
-  glm::uvec2 viewport;
-  glm::mat4 pv;
-  glm::vec3 eye;
-  u32 num_directional_lights = 0;
-};
-
 void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
-                     const OpaquePassResources &rcs,
-                     const OpaquePassData &data) {
-  if (data.mesh_instances.empty()) {
+                     const OpaquePassResources &rcs) {
+  const auto &scene_cfg = rg.get_parameter<SceneRuntimeConfig>(rcs.scene_cfg);
+  const auto &scene = rg.get_variable<SceneData>(rcs.scene);
+  const auto &batches = rg.get_variable<BatchData>(rcs.batches);
+
+  if (scene.num_mesh_instances == 0) {
     return;
   }
 
@@ -461,9 +514,9 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
       .directional_lights =
           g_renderer->get_buffer_device_address<glsl::DirectionalLights>(
               directional_lights),
-      .num_directional_lights = data.num_directional_lights,
-      .pv = data.pv,
-      .eye = data.eye,
+      .num_directional_lights = scene.num_directional_lights,
+      .pv = scene.pv,
+      .eye = scene.eye,
       .exposure_texture = exposure,
   };
 
@@ -479,7 +532,7 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
        ++attribute_mask) {
     const VertexPoolList &vertex_pool_list =
-        data.vertex_pool_lists[attribute_mask];
+        scene_cfg.vertex_pool_lists[attribute_mask];
     if (vertex_pool_list.empty()) {
       continue;
     }
@@ -501,8 +554,8 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
           .ub = ub,
       });
       u32 batch_id = glsl::get_batch_id(attribute_mask, pool);
-      u32 offset = data.batch_offsets[batch_id];
-      u32 count = data.batch_max_counts[batch_id];
+      u32 offset = batches.offsets[batch_id];
+      u32 count = batches.counts[batch_id];
       render_pass.draw_indexed_indirect_count(
           commands.slice<glsl::DrawIndexedIndirectCommand>(offset, count),
           batch_counts.slice<u32>(batch_id));
@@ -523,6 +576,12 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
   rcs.pipelines = cfg.pipelines;
 
   auto pass = rgb.create_pass(OPAQUE_PASS);
+
+  rcs.scene_cfg = pass.read_parameter(SCENE_RUNTIME_CONFIG);
+
+  rcs.scene = pass.read_variable(SCENE_DATA);
+
+  rcs.batches = pass.read_variable(BATCHES_DATA);
 
   rcs.commands =
       pass.read_buffer(INDIRECT_COMMANDS_BUFFER, RG_INDIRECT_COMMAND_BUFFER);
@@ -554,14 +613,12 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
   rcs.exposure = pass.read_texture("exposure", RG_FS_READ_TEXTURE,
                                    cfg.exposure.temporal_layer);
 
-  glm::uvec2 viewport = cfg.viewport;
-
   pass.create_color_attachment(
       {
           .name = "hdr",
           .format = HDR_FORMAT,
-          .width = viewport.x,
-          .height = viewport.y,
+          .width = cfg.viewport.x,
+          .height = cfg.viewport.y,
       },
       {
           .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -577,8 +634,8 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
         {
             .name = DEPTH_BUFFER,
             .format = DEPTH_FORMAT,
-            .width = viewport.x,
-            .height = viewport.y,
+            .width = cfg.viewport.x,
+            .height = cfg.viewport.y,
         },
         {
             .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -587,106 +644,43 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
         });
   }
 
-  pass.set_update_callback(ren_rg_update_callback(OpaquePassData) {
-    return viewport == data.viewport;
-  });
-
-  pass.set_graphics_callback(ren_rg_graphics_callback(OpaquePassData) {
-    run_opaque_pass(rg, render_pass, rcs, data);
+  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
+    run_opaque_pass(rt, render_pass, rcs);
   });
 }
 
 } // namespace
 
 void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg) {
-  setup_upload_pass(rgb);
+  setup_upload_pass(rgb,
+                    UploadPassConfig{
+                        .num_meshes = cfg.num_meshes,
+                        .num_mesh_instances = cfg.num_mesh_instances,
+                        .num_materials = cfg.num_materials,
+                        .num_directional_lights = cfg.num_directional_lights,
+                        .viewport = cfg.viewport,
+                    });
+
   setup_instance_culling_and_lod_pass(
-      rgb, {.pipeline = cfg.pipelines->instance_culling_and_lod});
+      rgb, InstanceCullingAndLODPassConfig{
+               .pipeline = cfg.pipelines->instance_culling_and_lod,
+               .num_mesh_instances = cfg.num_mesh_instances,
+               .viewport = cfg.viewport,
+           });
+
   if (cfg.early_z) {
-    setup_early_z_pass(rgb, {
+    setup_early_z_pass(rgb, EarlyZPassConfig{
                                 .pipeline = cfg.pipelines->early_z_pass,
                                 .viewport = cfg.viewport,
                             });
   }
-  setup_opaque_pass(rgb, {
+
+  setup_opaque_pass(rgb, OpaquePassConfig{
                              .pipelines = cfg.pipelines->opaque_pass,
                              .exposure = cfg.exposure,
                              .viewport = cfg.viewport,
                              .early_z = cfg.early_z,
                          });
-}
-
-auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
-    -> bool {
-  bool valid = true;
-
-  valid = rg.set_pass_data(UPLOAD_PASS,
-                           UploadPassData{
-                               .batch_offsets = data.batch_offsets,
-                               .meshes = data.meshes,
-                               .materials = data.materials,
-                               .mesh_instances = data.mesh_instances,
-                               .directional_lights = data.directional_lights,
-                           });
-  if (not valid) {
-    return false;
-  }
-
-  glm::mat4 pv = data.proj * data.view;
-
-  valid = rg.set_pass_data(
-      INSTANCE_CULLING_AND_LOD_PASS,
-      InstanceCullingAndLODPassData{
-          .num_mesh_instances = u32(data.mesh_instances.size()),
-          .pv = pv,
-          .viewport = data.viewport,
-          .lod_triangle_pixels = data.lod_triangle_pixels,
-          .lod_bias = data.lod_bias,
-          .frustum_culling = data.instance_frustum_culling,
-          .lod_selection = data.lod_selection,
-      });
-  if (not valid) {
-    return false;
-  }
-
-  if (data.early_z) {
-    valid = rg.set_pass_data(EARLY_Z_PASS,
-                             EarlyZPassData{
-                                 .batch_offsets = data.batch_offsets,
-                                 .batch_max_counts = data.batch_max_counts,
-                                 .vertex_pool_lists = data.vertex_pool_lists,
-                                 .meshes = data.meshes,
-                                 .mesh_instances = data.mesh_instances,
-                                 .viewport = data.viewport,
-                                 .proj = data.proj,
-                                 .view = data.view,
-                                 .eye = data.eye,
-                             });
-  } else {
-    valid = not rg.is_pass_valid(EARLY_Z_PASS);
-  }
-  if (not valid) {
-    return false;
-  }
-
-  valid = rg.set_pass_data(
-      OPAQUE_PASS,
-      OpaquePassData{
-          .batch_offsets = data.batch_offsets,
-          .batch_max_counts = data.batch_max_counts,
-          .vertex_pool_lists = data.vertex_pool_lists,
-          .meshes = data.meshes,
-          .mesh_instances = data.mesh_instances,
-          .viewport = data.viewport,
-          .pv = pv,
-          .eye = data.eye,
-          .num_directional_lights = u32(data.directional_lights.size()),
-      });
-  if (not valid) {
-    return false;
-  }
-
-  return true;
 }
 
 } // namespace ren

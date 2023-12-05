@@ -1,4 +1,5 @@
 #pragma once
+#include "Camera.hpp"
 #include "Mesh.hpp"
 #include "Passes/Exposure.hpp"
 #include "Support/Span.hpp"
@@ -7,48 +8,47 @@
 
 namespace ren {
 
-struct Mesh;
-struct MeshInstance;
+const char SCENE_RUNTIME_CONFIG[] = "scene-runtime-config";
+const char INSTANCE_CULLING_AND_LOD_RUNTIME_CONFIG[] =
+    "instance-culling-and-lod-runtime-config";
+
 struct Pipelines;
 class RgBuilder;
 
 namespace glsl {
+
 struct Material;
 struct DirLight;
+
 } // namespace glsl
 
 struct OpaquePassesConfig {
   const Pipelines *pipelines = nullptr;
+  u32 num_meshes = 0;
+  u32 num_mesh_instances = 0;
+  u32 num_materials = 0;
+  u32 num_directional_lights = 0;
+  glm::uvec2 viewport;
   ExposurePassOutput exposure;
-  glm::uvec2 viewport;
-  bool early_z = false;
-};
-
-struct OpaquePassesData {
-  Span<const u32> batch_offsets;
-  Span<const u32> batch_max_counts;
-  Span<const VertexPoolList> vertex_pool_lists;
-  Span<const Mesh> meshes;
-  Span<const glsl::Material> materials;
-  Span<const MeshInstance> mesh_instances;
-  Span<const glsl::DirLight> directional_lights;
-
-  float lod_triangle_pixels = 0;
-  i32 lod_bias = 0;
-
-  glm::uvec2 viewport;
-  glm::mat4 proj;
-  glm::mat4 view;
-  glm::vec3 eye;
-
-  bool instance_frustum_culling : 1 = true;
-  bool lod_selection : 1 = true;
   bool early_z : 1 = false;
 };
 
-void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg);
+struct SceneRuntimeConfig {
+  Camera camera;
+  Span<const VertexPoolList> vertex_pool_lists;
+  Span<const Mesh> meshes;
+  Span<const MeshInstance> mesh_instances;
+  Span<const glsl::Material> materials;
+  Span<const glsl::DirLight> directional_lights;
+};
 
-auto set_opaque_passes_data(RenderGraph &rg, const OpaquePassesData &data)
-    -> bool;
+struct InstanceCullingAndLODRuntimeConfig {
+  i32 lod_bias = 0;
+  float lod_triangle_pixels = 4.0f;
+  bool frustum_culling : 1 = true;
+  bool lod_selection : 1 = true;
+};
+
+void setup_opaque_passes(RgBuilder &rgb, const OpaquePassesConfig &cfg);
 
 } // namespace ren

@@ -1,7 +1,9 @@
 #pragma once
 #include "Buffer.hpp"
+#include "Camera.hpp"
 #include "Config.hpp"
 #include "Mesh.hpp"
+#include "PostProcessingOptions.hpp"
 #include "Support/Span.hpp"
 
 #include <glm/glm.hpp>
@@ -11,6 +13,7 @@ struct ImGuiContext;
 namespace ren {
 
 class RenderGraph;
+class RgBuilder;
 class CommandAllocator;
 struct Camera;
 struct Pipelines;
@@ -24,27 +27,40 @@ struct Material;
 } // namespace glsl
 
 struct PassesConfig {
+  const Pipelines *pipelines = nullptr;
+
+  u32 num_meshes = 0;
+  u32 num_mesh_instances = 0;
+  u32 num_materials = 0;
+  u32 num_directional_lights = 0;
+  glm::uvec2 viewport;
+
+  // Exposure
+  ExposureMode exposure_mode;
+
+  // ImGui
 #if REN_IMGUI
   ImGuiContext *imgui_context = nullptr;
+  u32 num_imgui_vertices = 0;
+  u32 num_imgui_indices = 0;
 #endif
-  const Pipelines *pipelines = nullptr;
-  glm::uvec2 viewport;
-  const PostProcessingOptions *pp_opts = nullptr;
+
   bool early_z : 1 = true;
 };
 
-struct PassesData {
-  Span<const u32> batch_offsets;
-  Span<const u32> batch_max_counts;
+void setup_render_graph(RgBuilder &rgb, const PassesConfig &cfg);
+
+struct PassesRuntimeConfig {
+  Camera camera;
   Span<const VertexPoolList> vertex_pool_lists;
   Span<const Mesh> meshes;
-  Span<const glsl::Material> materials;
   Span<const MeshInstance> mesh_instances;
+  Span<const glsl::Material> materials;
   Span<const glsl::DirLight> directional_lights;
-  glm::uvec2 viewport;
-  const Camera *camera = nullptr;
-  const PostProcessingOptions *pp_opts;
 
+  PostProcessingOptions pp_opts;
+
+  // Instance culling
   float lod_triangle_pixels = 4.0f;
   i32 lod_bias = 0;
 
@@ -52,7 +68,7 @@ struct PassesData {
   bool lod_selection : 1 = true;
 };
 
-void update_rg_passes(RenderGraph &rg, CommandAllocator &cmd_alloc,
-                      const PassesConfig &cfg, const PassesData &data);
+void update_render_graph(RenderGraph &rg, const PassesConfig &cfg,
+                         const PassesRuntimeConfig &rt_cfg);
 
 } // namespace ren

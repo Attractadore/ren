@@ -7,6 +7,19 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
   m_builder = &builder;
 }
 
+auto RgPassBuilder::read_variable(StringView name) -> RgVariableId {
+  return m_builder->read_variable(m_pass, name);
+};
+
+auto RgPassBuilder::write_variable(StringView dst_data, StringView src_data)
+    -> RgRWVariableId {
+  return m_builder->write_variable(m_pass, dst_data, src_data);
+}
+
+auto RgPassBuilder::read_parameter(StringView parameter) -> RgParameterId {
+  return m_builder->read_parameter(m_pass, parameter);
+};
+
 auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
                                   const RgBufferUsage &usage) -> RgBufferId {
   String name = std::move(create_info.name);
