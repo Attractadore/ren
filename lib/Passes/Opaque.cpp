@@ -476,7 +476,6 @@ struct OpaquePassResources {
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
   RgTextureId exposure;
-  bool early_z = false;
 };
 
 void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
@@ -522,12 +521,6 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
 
   auto ub = g_renderer->get_buffer_device_address<glsl::OpaqueUniformBuffer>(
       rg.get_buffer(rcs.uniforms));
-
-  if (rcs.early_z) {
-    render_pass.set_depth_compare_op(VK_COMPARE_OP_EQUAL);
-  } else {
-    render_pass.set_depth_compare_op(VK_COMPARE_OP_GREATER);
-  }
 
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
        ++attribute_mask) {
@@ -626,7 +619,6 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
           .clear_color = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
       });
 
-  rcs.early_z = cfg.early_z;
   if (cfg.early_z) {
     pass.read_depth_attachment(DEPTH_BUFFER);
   } else {

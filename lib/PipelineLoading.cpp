@@ -145,7 +145,7 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
       .depth_test =
           DepthTestInfo{
               .format = DEPTH_FORMAT,
-              .compare_op = VK_COMPARE_OP_GREATER,
+              .compare_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
           },
   });
 }
@@ -185,6 +185,7 @@ auto load_opaque_pass_pipelines(
         .depth_test =
             DepthTestInfo{
                 .format = DEPTH_FORMAT,
+                .compare_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
             },
         .color_attachments = color_attachments,
     });
