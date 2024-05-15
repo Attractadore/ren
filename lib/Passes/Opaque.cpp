@@ -100,7 +100,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs) {
     mesh_cull_data[i] = {
         .attribute_mask = attribute_mask,
         .pool = pool,
-        .bb = mesh.bounding_box,
+        .bb = mesh.bb,
         .base_vertex = mesh.base_vertex,
         .num_lods = u32(mesh.lods.size()),
     };
@@ -119,7 +119,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs) {
         .mesh = mesh_instance.mesh,
     };
     mesh_instance_draw_data[i] = {
-        .uv_bs = mesh.uv_bounding_square,
+        .uv_bs = mesh.uv_bs,
         .material = mesh_instance.material,
     };
     transform_matrices[i] = mesh_instance.matrix;
