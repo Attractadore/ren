@@ -11,6 +11,7 @@
     "glm",
     "meshoptimizer",
     "mikktspace",
+    "ms-gsl",
     "range-v3",
     "spirv-reflect",
     "tl-optional",
