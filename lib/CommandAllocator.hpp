@@ -6,7 +6,10 @@
 
 namespace ren {
 
+class Renderer;
+
 class CommandPool {
+  Renderer *m_renderer = nullptr;
   VkCommandPool m_pool = nullptr;
   Vector<VkCommandBuffer> m_cmd_buffers;
   unsigned m_allocated_count = 0;
@@ -15,11 +18,11 @@ private:
   void destroy();
 
 public:
-  CommandPool();
+  explicit CommandPool(Renderer &renderer);
   CommandPool(const CommandPool &) = delete;
-  CommandPool(CommandPool &&other);
+  CommandPool(CommandPool &&other) noexcept;
   CommandPool &operator=(const CommandPool &) = delete;
-  CommandPool &operator=(CommandPool &&other);
+  CommandPool &operator=(CommandPool &&other) noexcept;
   ~CommandPool();
 
   VkCommandBuffer allocate();
@@ -28,12 +31,14 @@ public:
 
 class CommandAllocator {
 public:
+  explicit CommandAllocator(Renderer &renderer);
+
   void next_frame();
 
   auto allocate() -> VkCommandBuffer;
 
 private:
-  std::array<CommandPool, PIPELINE_DEPTH> m_frame_pools;
+  StaticVector<CommandPool, PIPELINE_DEPTH> m_frame_pools;
 };
 
 } // namespace ren

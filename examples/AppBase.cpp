@@ -1,4 +1,5 @@
 #include "AppBase.hpp"
+#include "ren/ren-sdl2.hpp"
 
 #include <SDL2/SDL_vulkan.h>
 #include <utility>
@@ -29,22 +30,26 @@ auto throw_error(std::string err) -> std::string {
 
 AppBase::AppBase(const char *app_name) {
   [&] -> Result<void> {
+    OK(m_renderer, ren::sdl2::create_renderer());
+
     m_window.reset(SDL_CreateWindow(
-        app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        m_window_width, m_window_height,
+        app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
         SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
-            ren::sdl2::get_window_flags()));
+            ren::sdl2::get_required_window_flags(*m_renderer)));
     if (!m_window) {
       bail("{}", SDL_GetError());
     }
 
-    OK(m_swapchain, ren::sdl2::create_swapchain(m_window.get()));
+    OK(m_swapchain, ren::sdl2::create_swapchain(*m_renderer, m_window.get()));
 
-    OK(m_scene, ren::create_scene(m_swapchain));
+    OK(m_scene, m_renderer->create_scene(*m_swapchain));
+
+    OK(m_camera, m_scene->create_camera());
 
     return {};
   }()
-             .transform_error(throw_error);
+             .transform_error(throw_error)
+             .value();
 }
 
 auto AppBase::loop() -> Result<void> {
@@ -69,15 +74,13 @@ auto AppBase::loop() -> Result<void> {
     {
       int w, h;
       SDL_Vulkan_GetDrawableSize(m_window.get(), &w, &h);
-      m_window_width = w;
-      m_window_height = h;
-      ren::set_size(m_swapchain, m_window_width, m_window_height);
+      TRY_TO(m_swapchain->set_size(w, h));
     }
 
     TRY_TO(begin_frame());
-    TRY_TO(process_frame(m_window_width, m_window_height, dt));
+    TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(ren::draw());
+    TRY_TO(m_scene->draw());
   }
 
   return {};
@@ -85,11 +88,6 @@ auto AppBase::loop() -> Result<void> {
 
 auto AppBase::begin_frame() -> Result<void> { return {}; }
 
-auto AppBase::process_frame(unsigned width, unsigned height,
-                            chrono::nanoseconds) -> Result<void> {
-  ren::SceneId scene = get_scene();
-  ren::set_camera(scene, {.width = width, .height = height});
-  return {};
-}
+auto AppBase::process_frame(chrono::nanoseconds) -> Result<void> { return {}; }
 
 auto AppBase::end_frame() -> Result<void> { return {}; }

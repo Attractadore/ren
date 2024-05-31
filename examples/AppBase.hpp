@@ -1,5 +1,5 @@
 #pragma once
-#include "ren/ren-sdl2.hpp"
+#include "ren/ren.hpp"
 
 #include <SDL2/SDL.h>
 #include <chrono>
@@ -49,17 +49,19 @@ class AppBase {
   };
 
   std::unique_ptr<SDL_Window, WindowDeleter> m_window;
-  ren::Swapchain m_swapchain;
-  ren::Scene m_scene;
-
-  unsigned m_window_width = 1280, m_window_height = 720;
+  std::unique_ptr<ren::IRenderer> m_renderer;
+  std::unique_ptr<ren::ISwapchain> m_swapchain;
+  std::unique_ptr<ren::IScene> m_scene;
+  ren::CameraId m_camera;
 
 protected:
   AppBase(const char *app_name);
 
   auto get_window() const -> SDL_Window * { return m_window.get(); }
 
-  auto get_scene() const -> ren::SceneId { return m_scene; }
+  auto get_scene() const -> ren::IScene & { return *m_scene; }
+
+  auto get_camera() const -> ren::CameraId { return m_camera; }
 
   [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void> {
     return {};
@@ -67,8 +69,7 @@ protected:
 
   [[nodiscard]] virtual auto begin_frame() -> Result<void>;
 
-  [[nodiscard]] virtual auto process_frame(unsigned width, unsigned height,
-                                           std::chrono::nanoseconds dt)
+  [[nodiscard]] virtual auto process_frame(std::chrono::nanoseconds dt)
       -> Result<void>;
 
   [[nodiscard]] virtual auto end_frame() -> Result<void>;
@@ -79,8 +80,6 @@ protected:
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
-
-      TRY_TO(ren::sdl2::init().transform_error(get_error_string));
 
       return [&] -> Result<App> {
         try {
@@ -96,7 +95,6 @@ protected:
                            return -1;
                          })
                          .error_or(0);
-    ren::quit();
     SDL_Quit();
     return rc;
   }

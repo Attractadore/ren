@@ -1,8 +1,8 @@
 #include "PipelineLoading.hpp"
+#include "Mesh.hpp"
 #include "ResourceArena.hpp"
-#include "Support/Array.hpp"
 #include "Support/Errors.hpp"
-#include "glsl/Textures.hpp"
+#include "glsl/Textures.h"
 
 #include "EarlyZPassVS.h"
 #include "ImGuiFS.h"
@@ -18,8 +18,8 @@
 
 namespace ren {
 
-auto create_persistent_descriptor_set_layout()
-    -> AutoHandle<DescriptorSetLayout> {
+auto create_persistent_descriptor_set_layout(ResourceArena &arena)
+    -> Handle<DescriptorSetLayout> {
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings = {};
 #if 0
   bindings[glsl::SAMPLERS_SLOT] = {
@@ -44,7 +44,7 @@ auto create_persistent_descriptor_set_layout()
       .count = glsl::NUM_STORAGE_TEXTURES,
       .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
-  return g_renderer->create_descriptor_set_layout({
+  return arena.create_descriptor_set_layout({
       .name = "Textures descriptor set layout",
       .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
       .bindings = bindings,

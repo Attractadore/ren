@@ -2,15 +2,17 @@
 #include "Support/Variant.hpp"
 #include "ren/ren.hpp"
 
+#include <glm/glm.hpp>
+
 namespace ren {
 
-using CameraProjection = Variant<PerspectiveProjection, OrthographicProjection>;
+using CameraProjection =
+    Variant<CameraPerspectiveProjectionDesc, CameraOrthographicProjectionDesc>;
 
 struct Camera {
-  glm::vec3 position;
-  glm::vec3 forward;
-  glm::vec3 up;
+  CameraTransformDesc transform;
   CameraProjection projection;
+  CameraParameterDesc params;
 };
 
 } // namespace ren

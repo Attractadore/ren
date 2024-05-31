@@ -5,7 +5,7 @@
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Views.hpp"
-#include "glsl/Batch.hpp"
+#include "glsl/Batch.h"
 #include "glsl/EarlyZPass.hpp"
 #include "glsl/InstanceCullingAndLOD.hpp"
 #include "glsl/OpaquePass.hpp"
@@ -87,7 +87,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs) {
       .num_mesh_instances = u32(scene_cfg.mesh_instances.size()),
       .num_directional_lights = u32(scene_cfg.directional_lights.size()),
       .pv = proj * view,
-      .eye = scene_cfg.camera.position,
+      .eye = scene_cfg.camera.transform.position,
   };
 
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
@@ -235,7 +235,7 @@ void setup_upload_pass(RgBuilder &rgb, const UploadPassConfig &cfg) {
   rcs.viewport = cfg.viewport;
 
   pass.set_host_callback(
-      [=](const RgRuntime &rt) { run_upload_pass(rt, rcs); });
+      [=](Renderer &, const RgRuntime &rt) { run_upload_pass(rt, rcs); });
 }
 
 struct InstanceCullingAndLODPassResources {
@@ -252,7 +252,7 @@ struct InstanceCullingAndLODPassResources {
 };
 
 void run_instance_culling_and_lod_pass(
-    const RgRuntime &rg, ComputePass &pass,
+    Renderer &renderer, const RgRuntime &rg, ComputePass &pass,
     const InstanceCullingAndLODPassResources &rcs) {
   const auto &scene = rg.get_variable<SceneData>(rcs.scene);
 
@@ -273,22 +273,23 @@ void run_instance_culling_and_lod_pass(
 
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.set_push_constants(glsl::InstanceCullingAndLODConstants{
-      .meshes = g_renderer->get_buffer_device_address<glsl::CullMeshes>(
+      .meshes = renderer.get_buffer_device_address<glsl::CullMeshes>(
           rg.get_buffer(rcs.meshes)),
       .mesh_instances =
-          g_renderer->get_buffer_device_address<glsl::CullMeshInstances>(
+          renderer.get_buffer_device_address<glsl::CullMeshInstances>(
               rg.get_buffer(rcs.mesh_instances)),
       .transform_matrices =
-          g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
+          renderer.get_buffer_device_address<glsl::TransformMatrices>(
               rg.get_buffer(rcs.transform_matrices)),
       .batch_command_offsets =
-          g_renderer->get_buffer_device_address<glsl::BatchCommandOffsets>(
+          renderer.get_buffer_device_address<glsl::BatchCommandOffsets>(
               rg.get_buffer(rcs.batch_offsets)),
       .batch_command_counts =
-          g_renderer->get_buffer_device_address<glsl::BatchCommandCounts>(
+          renderer.get_buffer_device_address<glsl::BatchCommandCounts>(
               rg.get_buffer(rcs.batch_counts)),
-      .commands = g_renderer->get_buffer_device_address<
-          glsl::DrawIndexedIndirectCommands>(rg.get_buffer(rcs.commands)),
+      .commands =
+          renderer.get_buffer_device_address<glsl::DrawIndexedIndirectCommands>(
+              rg.get_buffer(rcs.commands)),
       .mask = mask,
       .num_mesh_instances = scene.num_mesh_instances,
       .pv = scene.pv,
@@ -324,7 +325,7 @@ void setup_instance_culling_and_lod_pass(
         RG_TRANSFER_DST_BUFFER);
 
     init_pass.set_transfer_callback(
-        [=](const RgRuntime &rt, TransferPass &cmd) {
+        [=](Renderer &renderer, const RgRuntime &rt, TransferPass &cmd) {
           cmd.fill_buffer(rt.get_buffer(batch_counts), 0);
         });
   }
@@ -364,9 +365,10 @@ void setup_instance_culling_and_lod_pass(
 
   rcs.viewport = cfg.viewport;
 
-  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
-    run_instance_culling_and_lod_pass(rt, pass, rcs);
-  });
+  pass.set_compute_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, ComputePass &pass) {
+        run_instance_culling_and_lod_pass(renderer, rt, pass, rcs);
+      });
 };
 
 struct EarlyZPassResources {
@@ -379,8 +381,8 @@ struct EarlyZPassResources {
   RgBufferId transform_matrices;
 };
 
-void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
-                      const EarlyZPassResources &rcs) {
+void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
+                      RenderPass &render_pass, const EarlyZPassResources &rcs) {
   const auto &scene_cfg = rg.get_parameter<SceneRuntimeConfig>(rcs.scene_cfg);
   const auto &scene = rg.get_variable<SceneData>(rcs.scene);
   const auto &batches = rg.get_variable<BatchData>(rcs.batches);
@@ -392,7 +394,7 @@ void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
   const BufferView &commands = rg.get_buffer(rcs.commands);
   const BufferView &batch_counts = rg.get_buffer(rcs.batch_counts);
   auto transform_matrices =
-      g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
+      renderer.get_buffer_device_address<glsl::TransformMatrices>(
           rg.get_buffer(rcs.transform_matrices));
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
@@ -402,7 +404,7 @@ void run_early_z_pass(const RgRuntime &rg, RenderPass &render_pass,
          scene_cfg.vertex_pool_lists[attribute_mask] | enumerate) {
       render_pass.bind_index_buffer(vertex_pool.indices, VK_INDEX_TYPE_UINT32);
       render_pass.set_push_constants(glsl::EarlyZConstants{
-          .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
+          .positions = renderer.get_buffer_device_address<glsl::Positions>(
               vertex_pool.positions),
           .transform_matrices = transform_matrices,
           .pv = scene.pv,
@@ -456,9 +458,10 @@ void setup_early_z_pass(RgBuilder &rgb, const EarlyZPassConfig &cfg) {
           .clear_depth = 0.0f,
       });
 
-  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
-    run_early_z_pass(rt, render_pass, rcs);
-  });
+  pass.set_graphics_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
+        run_early_z_pass(renderer, rt, render_pass, rcs);
+      });
 }
 
 struct OpaquePassResources {
@@ -478,8 +481,8 @@ struct OpaquePassResources {
   RgTextureId exposure;
 };
 
-void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
-                     const OpaquePassResources &rcs) {
+void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
+                     RenderPass &render_pass, const OpaquePassResources &rcs) {
   const auto &scene_cfg = rg.get_parameter<SceneRuntimeConfig>(rcs.scene_cfg);
   const auto &scene = rg.get_variable<SceneData>(rcs.scene);
   const auto &batches = rg.get_variable<BatchData>(rcs.batches);
@@ -500,18 +503,18 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
   auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBuffer>(rcs.uniforms);
   *uniforms = {
       .materials =
-          g_renderer->get_buffer_device_address<glsl::Materials>(materials),
+          renderer.get_buffer_device_address<glsl::Materials>(materials),
       .mesh_instances =
-          g_renderer->get_buffer_device_address<glsl::DrawMeshInstances>(
+          renderer.get_buffer_device_address<glsl::DrawMeshInstances>(
               mesh_instances),
       .transform_matrices =
-          g_renderer->get_buffer_device_address<glsl::TransformMatrices>(
+          renderer.get_buffer_device_address<glsl::TransformMatrices>(
               transform_matrices),
       .normal_matrices =
-          g_renderer->get_buffer_device_address<glsl::NormalMatrices>(
+          renderer.get_buffer_device_address<glsl::NormalMatrices>(
               normal_matrices),
       .directional_lights =
-          g_renderer->get_buffer_device_address<glsl::DirectionalLights>(
+          renderer.get_buffer_device_address<glsl::DirectionalLights>(
               directional_lights),
       .num_directional_lights = scene.num_directional_lights,
       .pv = scene.pv,
@@ -519,7 +522,7 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
       .exposure_texture = exposure,
   };
 
-  auto ub = g_renderer->get_buffer_device_address<glsl::OpaqueUniformBuffer>(
+  auto ub = renderer.get_buffer_device_address<glsl::OpaqueUniformBuffer>(
       rg.get_buffer(rcs.uniforms));
 
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
@@ -534,15 +537,15 @@ void run_opaque_pass(const RgRuntime &rg, RenderPass &render_pass,
     for (const auto &[pool, vertex_pool] : vertex_pool_list | enumerate) {
       render_pass.bind_index_buffer(vertex_pool.indices, VK_INDEX_TYPE_UINT32);
       render_pass.set_push_constants(glsl::OpaqueConstants{
-          .positions = g_renderer->get_buffer_device_address<glsl::Positions>(
+          .positions = renderer.get_buffer_device_address<glsl::Positions>(
               vertex_pool.positions),
-          .normals = g_renderer->get_buffer_device_address<glsl::Normals>(
+          .normals = renderer.get_buffer_device_address<glsl::Normals>(
               vertex_pool.normals),
-          .tangents = g_renderer->try_get_buffer_device_address<glsl::Tangents>(
+          .tangents = renderer.try_get_buffer_device_address<glsl::Tangents>(
               vertex_pool.tangents),
-          .uvs = g_renderer->try_get_buffer_device_address<glsl::UVs>(
+          .uvs = renderer.try_get_buffer_device_address<glsl::UVs>(
               vertex_pool.uvs),
-          .colors = g_renderer->try_get_buffer_device_address<glsl::Colors>(
+          .colors = renderer.try_get_buffer_device_address<glsl::Colors>(
               vertex_pool.colors),
           .ub = ub,
       });
@@ -636,9 +639,10 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
         });
   }
 
-  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
-    run_opaque_pass(rt, render_pass, rcs);
-  });
+  pass.set_graphics_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
+        run_opaque_pass(renderer, rt, render_pass, rcs);
+      });
 }
 
 } // namespace

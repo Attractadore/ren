@@ -93,4 +93,8 @@ auto getVkFilter(Filter filter) -> VkFilter;
 auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
 auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
 
+template <> struct Hash<SamplerDesc> {
+  auto operator()(const SamplerDesc &sampler) const noexcept -> usize;
+};
+
 } // namespace ren

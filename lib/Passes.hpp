@@ -1,10 +1,9 @@
 #pragma once
-#include "Buffer.hpp"
 #include "Camera.hpp"
-#include "Config.hpp"
 #include "Mesh.hpp"
 #include "PostProcessingOptions.hpp"
 #include "Support/Span.hpp"
+#include "ren/ren.hpp"
 
 #include <glm/glm.hpp>
 
@@ -35,8 +34,7 @@ struct PassesConfig {
   u32 num_directional_lights = 0;
   glm::uvec2 viewport;
 
-  // Exposure
-  ExposureMode exposure_mode;
+  ExposureMode exposure;
 
   // ImGui
 #if REN_IMGUI

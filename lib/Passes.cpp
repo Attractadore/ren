@@ -1,14 +1,10 @@
 #include "Passes.hpp"
-#include "Camera.inl"
-#include "ImGuiConfig.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "PipelineLoading.hpp"
 #include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
-#include "glsl/Lighting.h"
-#include "glsl/Material.h"
 
 namespace ren {
 
@@ -16,7 +12,7 @@ void setup_render_graph(RgBuilder &rgb, const PassesConfig &cfg) {
   assert(cfg.pipelines);
 
   auto exposure =
-      setup_exposure_pass(rgb, ExposurePassConfig{.mode = cfg.exposure_mode});
+      setup_exposure_pass(rgb, ExposurePassConfig{.mode = cfg.exposure});
 
   setup_opaque_passes(rgb,
                       OpaquePassesConfig{
@@ -32,7 +28,7 @@ void setup_render_graph(RgBuilder &rgb, const PassesConfig &cfg) {
 
   setup_post_processing_passes(rgb, PostProcessingPassesConfig{
                                         .pipelines = cfg.pipelines,
-                                        .exposure_mode = cfg.exposure_mode,
+                                        .exposure_mode = cfg.exposure,
                                         .viewport = cfg.viewport,
                                     });
 #if REN_IMGUI
@@ -54,18 +50,18 @@ void setup_render_graph(RgBuilder &rgb, const PassesConfig &cfg) {
 
 void update_render_graph(RenderGraph &rg, const PassesConfig &cfg,
                          const PassesRuntimeConfig &rt_cfg) {
-  switch (cfg.exposure_mode) {
+  switch (cfg.exposure) {
   case ExposureMode::Camera: {
     *rg.get_parameter<CameraExposureRuntimeConfig>(
         CAMERA_EXPOSURE_RUNTIME_CONFIG) = {
-        .options = *rt_cfg.pp_opts.exposure.mode.get<ExposureOptions::Camera>(),
+        .cam_params = rt_cfg.pp_opts.exposure.cam_params,
+        .ec = rt_cfg.pp_opts.exposure.ec,
     };
   } break;
   case ExposureMode::Automatic: {
     *rg.get_parameter<AutomaticExposureRuntimeConfig>(
         AUTOMATIC_EXPOSURE_RUNTIME_CONFIG) = {
-        .options =
-            *rt_cfg.pp_opts.exposure.mode.get<ExposureOptions::Automatic>(),
+        .ec = rt_cfg.pp_opts.exposure.ec,
     };
   } break;
   }

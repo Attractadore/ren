@@ -19,8 +19,8 @@ struct ImGuiPassResources {
   glm::uvec2 viewport;
 };
 
-void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
-                    const ImGuiPassResources &rcs) {
+void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
+                    RenderPass &render_pass, const ImGuiPassResources &rcs) {
   ren_ImGuiScope(rcs.context);
 
   const ImDrawData *draw_data = ImGui::GetDrawData();
@@ -90,9 +90,8 @@ void run_imgui_pass(const RgRuntime &rg, RenderPass &render_pass,
       SampledTextureId texture((uintptr_t)cmd.TextureId);
 
       render_pass.set_push_constants(glsl::ImGuiConstants{
-          .vertices =
-              g_renderer->get_buffer_device_address<glsl::ImGuiVertices>(
-                  rg.get_buffer(rcs.vertices)),
+          .vertices = renderer.get_buffer_device_address<glsl::ImGuiVertices>(
+              rg.get_buffer(rcs.vertices)),
           .scale = scale,
           .translate = translate,
           .tex = texture,
@@ -145,9 +144,10 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       .viewport = cfg.viewport,
   };
 
-  pass.set_graphics_callback([=](const RgRuntime &rt, RenderPass &render_pass) {
-    run_imgui_pass(rt, render_pass, rcs);
-  });
+  pass.set_graphics_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
+        run_imgui_pass(renderer, rt, render_pass, rcs);
+      });
 }
 
 } // namespace ren

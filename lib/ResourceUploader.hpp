@@ -1,13 +1,17 @@
 #pragma once
-#include "ResourceArena.hpp"
+#include "Buffer.hpp"
+#include "Support/Span.hpp"
 #include "Support/Vector.hpp"
-#include "Support/Views.hpp"
 
-#include <range/v3/algorithm.hpp>
+#include <cstring>
 
 namespace ren {
 
+class Renderer;
+class ResourceArena;
 class CommandAllocator;
+
+struct Texture;
 
 class ResourceUploader {
   struct BufferCopy {
@@ -24,30 +28,19 @@ class ResourceUploader {
 
 public:
   template <typename T>
-  void stage_buffer(ResourceArena &arena, Span<T> data,
+  void stage_buffer(Renderer &renderer, ResourceArena &arena, Span<T> data,
                     const BufferView &buffer) {
-    usize size = size_bytes(data);
-    assert(size <= buffer.size);
-
-    BufferView staging_buffer = arena.create_buffer({
-        .name = "Staging buffer",
-        .heap = BufferHeap::Staging,
-        .size = size,
-    });
-
-    auto *ptr = g_renderer->map_buffer<std::remove_const_t<T>>(staging_buffer);
-    ranges::copy(data, ptr);
-
-    m_buffer_copies.push_back({
-        .src = staging_buffer,
-        .dst = buffer,
-    });
+    stage_buffer(renderer, arena, data.template reinterpret<const std::byte>(),
+                 buffer);
   }
 
-  void stage_texture(ResourceArena &alloc, Span<const std::byte> data,
-                     Handle<Texture> texture);
+  void stage_buffer(Renderer &renderer, ResourceArena &arena,
+                    Span<const std::byte> data, const BufferView &buffer);
 
-  void upload(CommandAllocator &cmd_allocator);
+  void stage_texture(Renderer &renderer, ResourceArena &alloc,
+                     Span<const std::byte> data, Handle<Texture> texture);
+
+  void upload(Renderer &renderer, CommandAllocator &cmd_allocator);
 };
 
 } // namespace ren

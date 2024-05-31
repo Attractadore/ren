@@ -4,7 +4,6 @@
 #include "Formats.hpp"
 #include "Support/Algorithm.hpp"
 #include "Support/Errors.hpp"
-#include "Support/Math.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -37,7 +36,7 @@ auto RgRuntime::get_buffer(RgBufferId buffer) const -> const BufferView & {
 auto RgRuntime::map_buffer_impl(RgBufferId buffer, usize offset) const
     -> std::byte * {
   const BufferView &view = get_buffer(buffer);
-  return g_renderer->map_buffer<std::byte>(view, offset);
+  return m_rg->m_renderer->map_buffer<std::byte>(view, offset);
 }
 
 auto RenderGraph::get_physical_texture(RgTextureId texture) const
@@ -63,22 +62,11 @@ auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
   return m_rg->m_tex_alloc.get_set();
 }
 
-RenderGraph::RenderGraph(SwapchainImpl &swapchain,
+RenderGraph::RenderGraph(Renderer &renderer, Swapchain &swapchain,
                          TextureIdAllocator &tex_alloc)
-    : m_tex_alloc(tex_alloc) {
+    : m_tex_alloc(tex_alloc), m_arena(renderer) {
+  m_renderer = &renderer;
   m_swapchain = &swapchain;
-  for (auto &&[index, semaphore] : m_acquire_semaphores | enumerate) {
-    semaphore = g_renderer->create_semaphore({
-        .name =
-            fmt::format("Render graph swapchain acquire semaphore {}", index),
-    });
-  }
-  for (auto &&[index, semaphore] : m_present_semaphores | enumerate) {
-    semaphore = g_renderer->create_semaphore({
-        .name =
-            fmt::format("Render graph swapchain present semaphore {}", index),
-    });
-  }
 }
 
 auto RenderGraph::is_pass_valid(StringView pass) const -> bool {
@@ -135,7 +123,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
         batch_signal_semaphores.empty()) {
       return;
     }
-    g_renderer->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
+    m_renderer->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
                                     batch_signal_semaphores);
     batch_cmd_buffers.clear();
     batch_wait_semaphores.clear();
@@ -166,7 +154,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       auto get_command_recorder = [&]() -> CommandRecorder & {
         if (!cmd_recorder) {
           cmd_buffer = cmd_alloc.allocate();
-          cmd_recorder.emplace(cmd_buffer);
+          cmd_recorder.emplace(*m_renderer, cmd_buffer);
 #if REN_RG_DEBUG
           debug_region.emplace(
               cmd_recorder->debug_region(m_pass_names[pass.pass].c_str()));
@@ -189,7 +177,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       auto get_vk_image_barrier =
           [&](const RgTextureBarrier &barrier) -> VkImageMemoryBarrier2 {
         const Texture &texture =
-            g_renderer->get_texture(m_textures[barrier.texture]);
+            m_renderer->get_texture(m_textures[barrier.texture]);
         return {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask = barrier.src_stage_mask,
@@ -223,7 +211,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       pass.type.visit(OverloadSet{
           [&](const RgHostPass &host_pass) {
             if (host_pass.cb) {
-              host_pass.cb(rt);
+              host_pass.cb(*m_renderer, rt);
             }
           },
           [&](const RgGraphicsPass &graphics_pass) {
@@ -240,9 +228,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                         -> Optional<ColorAttachment> {
                   return att.map(
                       [&](const RgColorAttachment &att) -> ColorAttachment {
-                        TextureView view = g_renderer->get_texture_view(
+                        TextureView view = m_renderer->get_texture_view(
                             m_textures[get_physical_texture(att.texture)]);
-                        viewport = g_renderer->get_texture_view_size(view);
+                        viewport = m_renderer->get_texture_view_size(view);
                         return {
                             .texture = view,
                             .ops = att.ops,
@@ -256,9 +244,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             if (graphics_pass.has_depth_attachment) {
               const RgDepthStencilAttachment &att =
                   rg_depth_stencil_attachments.pop_front();
-              TextureView view = g_renderer->get_texture_view(
+              TextureView view = m_renderer->get_texture_view(
                   m_textures[get_physical_texture(att.texture)]);
-              viewport = g_renderer->get_texture_view_size(view);
+              viewport = m_renderer->get_texture_view_size(view);
               depth_stencil_attachment = {
                   .texture = view,
                   .depth_ops = att.depth_ops,
@@ -278,17 +266,17 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});
 
-            graphics_pass.cb(rt, render_pass);
+            graphics_pass.cb(*m_renderer, rt, render_pass);
           },
           [&](const RgComputePass &compute_pass) {
             if (compute_pass.cb) {
               ComputePass comp = get_command_recorder().compute_pass();
-              compute_pass.cb(rt, comp);
+              compute_pass.cb(*m_renderer, rt, comp);
             }
           },
           [&](const RgTransferPass &transfer_pass) {
             if (transfer_pass.cb) {
-              transfer_pass.cb(rt, get_command_recorder());
+              transfer_pass.cb(*m_renderer, rt, get_command_recorder());
             }
           },
       });
@@ -306,7 +294,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       return {
           .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
           .semaphore =
-              g_renderer->get_semaphore(m_semaphores[signal.semaphore]).handle,
+              m_renderer->get_semaphore(m_semaphores[signal.semaphore]).handle,
           .value = signal.value,
           .stageMask = signal.stage_mask,
       };

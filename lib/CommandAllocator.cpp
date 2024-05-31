@@ -6,23 +6,24 @@
 
 namespace ren {
 
-CommandPool::CommandPool() {
+CommandPool::CommandPool(Renderer &renderer) {
+  m_renderer = &renderer;
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-      .queueFamilyIndex = g_renderer->get_graphics_queue_family(),
+      .queueFamilyIndex = m_renderer->get_graphics_queue_family(),
   };
-  throw_if_failed(vkCreateCommandPool(g_renderer->get_device(), &pool_info,
+  throw_if_failed(vkCreateCommandPool(m_renderer->get_device(), &pool_info,
                                       nullptr, &m_pool),
                   "Vulkan: Failed to create command pool");
 }
 
-CommandPool::CommandPool(CommandPool &&other)
+CommandPool::CommandPool(CommandPool &&other) noexcept
     : m_pool(std::exchange(other.m_pool, nullptr)),
       m_cmd_buffers(std::move(other.m_cmd_buffers)),
       m_allocated_count(std::exchange(other.m_allocated_count, 0)) {}
 
-CommandPool &CommandPool::operator=(CommandPool &&other) {
+CommandPool &CommandPool::operator=(CommandPool &&other) noexcept {
   destroy();
   m_pool = other.m_pool;
   other.m_pool = nullptr;
@@ -34,13 +35,14 @@ CommandPool &CommandPool::operator=(CommandPool &&other) {
 
 void CommandPool::destroy() {
   if (m_pool) {
-    g_renderer->push_to_delete_queue(
-        [pool = m_pool, cmd_buffers = std::move(m_cmd_buffers)] {
+    m_renderer->push_to_delete_queue(
+        [pool = m_pool,
+         cmd_buffers = std::move(m_cmd_buffers)](Renderer &renderer) {
           if (not cmd_buffers.empty()) {
-            vkFreeCommandBuffers(g_renderer->get_device(), pool,
+            vkFreeCommandBuffers(renderer.get_device(), pool,
                                  cmd_buffers.size(), cmd_buffers.data());
           }
-          vkDestroyCommandPool(g_renderer->get_device(), pool, nullptr);
+          vkDestroyCommandPool(renderer.get_device(), pool, nullptr);
         });
   }
 }
@@ -60,7 +62,7 @@ VkCommandBuffer CommandPool::allocate() {
         .commandBufferCount = alloc_count,
     };
     throw_if_failed(
-        vkAllocateCommandBuffers(g_renderer->get_device(), &alloc_info,
+        vkAllocateCommandBuffers(m_renderer->get_device(), &alloc_info,
                                  m_cmd_buffers.data() + old_capacity),
         "Vulkan: Failed to allocate command buffers");
   }
@@ -68,9 +70,15 @@ VkCommandBuffer CommandPool::allocate() {
 }
 
 void CommandPool::reset() {
-  throw_if_failed(vkResetCommandPool(g_renderer->get_device(), m_pool, 0),
+  throw_if_failed(vkResetCommandPool(m_renderer->get_device(), m_pool, 0),
                   "Vulkan: Failed to reset command pool");
   m_allocated_count = 0;
+}
+
+CommandAllocator::CommandAllocator(Renderer &renderer) {
+  for (auto i : range(PIPELINE_DEPTH)) {
+    m_frame_pools.emplace_back(renderer);
+  }
 }
 
 void CommandAllocator::next_frame() {

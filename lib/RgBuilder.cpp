@@ -436,32 +436,33 @@ void RgBuilder::present(StringView texture_name) {
   RgTextureId backbuffer = blit.write_texture(
       "rg-blitted-backbuffer", "rg-backbuffer", RG_TRANSFER_DST_TEXTURE);
 
-  blit.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
-    Handle<Texture> src = rt.get_texture(texture);
-    Handle<Texture> dst = rt.get_texture(backbuffer);
-    VkImageBlit region = {
-        .srcSubresource =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = 1,
-            },
-        .dstSubresource =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = 1,
-            },
-    };
-    glm::uvec3 src_size = g_renderer->get_texture(src).size;
-    std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-    glm::uvec3 dst_size = g_renderer->get_texture(dst).size;
-    std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
-    cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
-  });
+  blit.set_transfer_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, TransferPass &cmd) {
+        Handle<Texture> src = rt.get_texture(texture);
+        Handle<Texture> dst = rt.get_texture(backbuffer);
+        VkImageBlit region = {
+            .srcSubresource =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .layerCount = 1,
+                },
+            .dstSubresource =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .layerCount = 1,
+                },
+        };
+        glm::uvec3 src_size = renderer.get_texture(src).size;
+        std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
+        glm::uvec3 dst_size = renderer.get_texture(dst).size;
+        std::memcpy(&region.dstOffsets[1], &dst_size, sizeof(dst_size));
+        cmd.blit(src, dst, {region}, VK_FILTER_LINEAR);
+      });
 
   auto present = create_pass("rg-present");
   (void)present.write_texture("rg-final-backbuffer", "rg-blitted-backbuffer",
                               RG_PRESENT_TEXTURE);
-  present.set_host_callback([=](const RgRuntime &) {});
+  present.set_host_callback([=](Renderer &, const RgRuntime &) {});
   present.signal_semaphore(m_rg->m_present_semaphore);
 }
 
@@ -686,6 +687,8 @@ auto RgBuilder::passes() const {
 }
 
 void RgBuilder::create_resources(Span<const RgPassId> schedule) {
+  m_rg->m_arena.clear();
+
   std::array<VkBufferUsageFlags, NUM_BUFFER_HEAPS> heap_usage_flags = {};
 
   for (RgPassId pass_id : schedule) {
@@ -727,15 +730,18 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
 
   m_rg->m_heap_buffers = {};
   for (int heap = 0; heap < m_rg->m_heap_buffers.size(); ++heap) {
-    AutoHandle<Buffer> &heap_buffer = m_rg->m_heap_buffers[heap];
+    Handle<Buffer> &heap_buffer = m_rg->m_heap_buffers[heap];
     usize size = required_heap_sizes[heap];
     if (size > 0) {
-      heap_buffer = g_renderer->create_buffer({
-          .name = fmt::format("Render graph buffer for heap {}", heap),
-          .heap = BufferHeap(heap),
-          .usage = heap_usage_flags[heap],
-          .size = size,
-      });
+      heap_buffer =
+          m_rg->m_arena
+              .create_buffer({
+                  .name = fmt::format("Render graph buffer for heap {}", heap),
+                  .heap = BufferHeap(heap),
+                  .usage = heap_usage_flags[heap],
+                  .size = size,
+              })
+              .buffer;
     }
   }
 
@@ -759,7 +765,6 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   }
 
   m_rg->m_textures.resize(m_rg->m_texture_parents.size());
-  m_rg->m_texture_arena.clear();
   m_rg->m_tex_alloc.clear();
   m_rg->m_storage_texture_descriptors.resize(m_rg->m_textures.size());
   m_rg->m_texture_instance_counts.clear();
@@ -771,7 +776,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
     u32 num_instances = PIPELINE_DEPTH + desc.num_temporal_layers - 1;
     for (i32 i = 0; i < num_instances; ++i) {
       RgPhysicalTextureId texture_id(base_texture_id + i);
-      Handle<Texture> htexture = m_rg->m_texture_arena.create_texture({
+      Handle<Texture> htexture = m_rg->m_arena.create_texture({
           .name = fmt::format("Render graph texture {}", i32(texture_id)),
           .type = desc.type,
           .format = desc.format,
@@ -785,7 +790,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       StorageTextureId storage_descriptor;
       if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
         storage_descriptor = m_rg->m_tex_alloc.allocate_storage_texture(
-            g_renderer->get_texture_view(htexture));
+            *m_rg->m_renderer, m_rg->m_renderer->get_texture_view(htexture));
       }
       m_rg->m_textures[texture_id] = htexture;
       m_rg->m_storage_texture_descriptors[texture_id] = storage_descriptor;
@@ -794,6 +799,14 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   }
 
   m_rg->m_semaphores.resize(m_semaphore_ids.size());
+  for (usize i = 0; i < PIPELINE_DEPTH; ++i) {
+    m_rg->m_acquire_semaphores[i] = m_rg->m_arena.create_semaphore({
+        .name = fmt::format("Render graph swapchain acquire semaphore {}", i),
+    });
+    m_rg->m_present_semaphores[i] = m_rg->m_arena.create_semaphore({
+        .name = fmt::format("Render graph swapchain present semaphore {}", i),
+    });
+  }
 }
 
 void RgBuilder::fill_pass_runtime_info(Span<const RgPassId> schedule) {
@@ -1177,12 +1190,13 @@ void RgBuilder::clear_temporal_textures(
 
   VkCommandBuffer cmd_buffer = cmd_alloc.allocate();
   {
-    CommandRecorder rec(cmd_buffer);
+    CommandRecorder rec(*m_rg->m_renderer, cmd_buffer);
 
     Vector<VkImageMemoryBarrier2> barriers;
     barriers.reserve(clear_textures.size());
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
+      const Texture &texture =
+          m_rg->m_renderer->get_texture(clear_texture.texture);
       barriers.push_back({
           .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
           .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1199,7 +1213,8 @@ void RgBuilder::clear_temporal_textures(
     rec.pipeline_barrier({}, barriers);
 
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
+      const Texture &texture =
+          m_rg->m_renderer->get_texture(clear_texture.texture);
       VkImageAspectFlags aspect_mask = getVkImageAspectFlags(texture.format);
       if (aspect_mask & VK_IMAGE_ASPECT_COLOR_BIT) {
         rec.clear_texture(clear_texture.texture, clear_texture.clear.color);
@@ -1213,7 +1228,8 @@ void RgBuilder::clear_temporal_textures(
 
     barriers.clear();
     for (const RgClearTexture &clear_texture : clear_textures) {
-      const Texture &texture = g_renderer->get_texture(clear_texture.texture);
+      const Texture &texture =
+          m_rg->m_renderer->get_texture(clear_texture.texture);
       barriers.push_back({
           .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
           .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -1233,7 +1249,7 @@ void RgBuilder::clear_temporal_textures(
     rec.pipeline_barrier({}, barriers);
   }
 
-  g_renderer->graphicsQueueSubmit({{
+  m_rg->m_renderer->graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd_buffer,
   }});

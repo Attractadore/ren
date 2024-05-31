@@ -3,9 +3,9 @@
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
 
-#include <tuple>
-
 namespace ren {
+
+class Renderer;
 
 struct SwapchainTextureCreateInfo {
   VkImage image = nullptr;
@@ -15,9 +15,10 @@ struct SwapchainTextureCreateInfo {
   u32 height = 1;
 };
 
-class SwapchainImpl {
+class Swapchain final : public ISwapchain {
+  Renderer *m_renderer = nullptr;
   VkSwapchainKHR m_swapchain = nullptr;
-  SmallVector<AutoHandle<Texture>, 3> m_textures;
+  SmallVector<Handle<Texture>, 3> m_textures;
   u32 m_image_index = -1;
   VkSwapchainCreateInfoKHR m_create_info = {};
 
@@ -26,18 +27,19 @@ private:
   void destroy();
 
 public:
-  SwapchainImpl(VkSurfaceKHR surface);
-  SwapchainImpl(const SwapchainImpl &) = delete;
-  SwapchainImpl(Swapchain &&) noexcept;
-  SwapchainImpl &operator=(const SwapchainImpl &) = delete;
-  SwapchainImpl &operator=(SwapchainImpl &&) noexcept;
-  ~SwapchainImpl();
+  Swapchain(Renderer &renderer, VkSurfaceKHR surface);
+  Swapchain(const Swapchain &) = delete;
+  Swapchain(Swapchain &&) noexcept;
+  ~Swapchain();
 
-  std::tuple<u32, u32> get_size() const {
+  Swapchain &operator=(const Swapchain &) = delete;
+  Swapchain &operator=(Swapchain &&) noexcept;
+
+  auto get_size() const -> glm::uvec2 override {
     return {m_create_info.imageExtent.width, m_create_info.imageExtent.height};
   }
 
-  void set_size(u32 width, u32 height);
+  auto set_size(unsigned width, unsigned height) -> expected<void> override;
 
   auto get_present_mode() const -> VkPresentModeKHR {
     return m_create_info.presentMode;

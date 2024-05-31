@@ -5,6 +5,8 @@
 
 namespace ren {
 
+class Renderer;
+
 struct DescriptorSetLayout;
 struct PipelineLayout;
 struct Sampler;
@@ -27,12 +29,13 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampled_texture(const TextureView &view,
+  auto allocate_sampled_texture(Renderer &renderer, const TextureView &view,
                                 Handle<Sampler> sampler) -> SampledTextureId;
 
   void free_sampled_texture(SampledTextureId texture);
 
-  auto allocate_storage_texture(const TextureView &view) -> StorageTextureId;
+  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
+      -> StorageTextureId;
 
   void free_storage_texture(StorageTextureId texture);
 
@@ -53,10 +56,11 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampled_texture(const TextureView &view,
+  auto allocate_sampled_texture(Renderer &renderer, const TextureView &view,
                                 Handle<Sampler> sampler) -> SampledTextureId;
 
-  auto allocate_storage_texture(const TextureView &view) -> StorageTextureId;
+  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
+      -> StorageTextureId;
 
   void clear();
 

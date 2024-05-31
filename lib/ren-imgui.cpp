@@ -1,21 +1,20 @@
-#include "Config.hpp"
 #if REN_IMGUI
+#include "ren/ren-imgui.hpp"
 #include "Lippincott.hpp"
 #include "Scene.hpp"
-#include "ren/ren-imgui.hpp"
 
 namespace ren::imgui {
 
-void set_context(SceneId scene, ImGuiContext *ctx) {
-  get_scene(scene)->set_imgui_context(ctx);
+void set_context(IScene &scene, ImGuiContext *ctx) {
+  static_cast<Scene &>(scene).set_imgui_context(ctx);
 }
 
-auto get_context(SceneId scene) -> ImGuiContext * {
-  return get_scene(scene)->get_imgui_context();
+auto get_context(IScene &scene) -> ImGuiContext * {
+  return static_cast<Scene &>(scene).get_imgui_context();
 }
 
-auto draw(SceneId scene) -> expected<void> {
-  return lippincott([&] { get_scene(scene)->draw_imgui(); });
+auto draw(IScene &scene) -> expected<void> {
+  return lippincott([&] { return static_cast<Scene &>(scene).draw_imgui(); });
 }
 
 } // namespace ren::imgui

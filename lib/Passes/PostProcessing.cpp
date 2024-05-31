@@ -1,7 +1,6 @@
 #include "Passes/PostProcessing.hpp"
 #include "CommandRecorder.hpp"
 #include "PipelineLoading.hpp"
-#include "PostProcessingOptions.hpp"
 #include "RenderGraph.hpp"
 #include "glsl/PostProcessingPass.hpp"
 #include "glsl/ReduceLuminanceHistogramPass.hpp"
@@ -20,9 +19,10 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
       },
       RG_TRANSFER_DST_BUFFER);
 
-  pass.set_transfer_callback([=](const RgRuntime &rt, TransferPass &cmd) {
-    cmd.fill_buffer(rt.get_buffer(histogram), 0);
-  });
+  pass.set_transfer_callback(
+      [=](Renderer &, const RgRuntime &rt, TransferPass &cmd) {
+        cmd.fill_buffer(rt.get_buffer(histogram), 0);
+      });
 };
 
 struct PostProcessingPassResources {
@@ -34,7 +34,8 @@ struct PostProcessingPassResources {
   RgTextureId exposure;
 };
 
-void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
+void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
+                                   ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
@@ -43,7 +44,7 @@ void run_post_processing_uber_pass(const RgRuntime &rg, ComputePass &pass,
   BufferReference<glsl::LuminanceHistogram> histogram;
   StorageTextureId previous_exposure;
   if (rcs.histogram) {
-    histogram = g_renderer->get_buffer_device_address<glsl::LuminanceHistogram>(
+    histogram = renderer.get_buffer_device_address<glsl::LuminanceHistogram>(
         rg.get_buffer(rcs.histogram));
     previous_exposure = rg.get_storage_texture_descriptor(rcs.exposure);
   }
@@ -93,9 +94,10 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
     rcs.exposure = pass.read_texture("exposure", RG_CS_READ_TEXTURE, 1);
   }
 
-  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
-    run_post_processing_uber_pass(rt, pass, rcs);
-  });
+  pass.set_compute_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, ComputePass &pass) {
+        run_post_processing_uber_pass(renderer, rt, pass, rcs);
+      });
 }
 
 struct ReduceLuminanceHistogramPassResources {
@@ -110,7 +112,7 @@ struct ReduceLuminanceHistogramPassData {
 };
 
 void run_reduce_luminance_histogram_pass(
-    const RgRuntime &rg, ComputePass &pass,
+    Renderer &renderer, const RgRuntime &rg, ComputePass &pass,
     const ReduceLuminanceHistogramPassResources &rcs) {
   assert(rcs.pipeline);
   assert(rcs.histogram);
@@ -119,11 +121,10 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
-      .histogram =
-          g_renderer->get_buffer_device_address<glsl::LuminanceHistogram>(
-              rg.get_buffer(rcs.histogram)),
+      .histogram = renderer.get_buffer_device_address<glsl::LuminanceHistogram>(
+          rg.get_buffer(rcs.histogram)),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
-      .exposure_compensation = cfg.options.exposure_compensation,
+      .exposure_compensation = cfg.ec,
   });
   pass.dispatch_groups(1);
 }
@@ -148,9 +149,10 @@ void setup_reduce_luminance_histogram_pass(
   rcs.exposure = pass.write_texture("exposure", "automatic-exposure-init",
                                     RG_CS_WRITE_TEXTURE);
 
-  pass.set_compute_callback([=](const RgRuntime &rt, ComputePass &pass) {
-    run_reduce_luminance_histogram_pass(rt, pass, rcs);
-  });
+  pass.set_compute_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, ComputePass &pass) {
+        run_reduce_luminance_histogram_pass(renderer, rt, pass, rcs);
+      });
 }
 
 } // namespace

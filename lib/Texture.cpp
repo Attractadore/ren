@@ -1,6 +1,4 @@
 #include "Texture.hpp"
-#include "Formats.hpp"
-#include "Renderer.hpp"
 #include "Support/Errors.hpp"
 #include "Support/Math.hpp"
 
@@ -50,6 +48,17 @@ auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode {
   case WrappingMode::ClampToEdge:
     return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
   }
+}
+
+auto Hash<SamplerDesc>::operator()(const SamplerDesc &sampler) const noexcept
+    -> usize {
+  usize seed = 0;
+  seed = hash_combine(seed, sampler.mag_filter);
+  seed = hash_combine(seed, sampler.min_filter);
+  seed = hash_combine(seed, sampler.mipmap_filter);
+  seed = hash_combine(seed, sampler.wrap_u);
+  seed = hash_combine(seed, sampler.wrap_v);
+  return seed;
 }
 
 } // namespace ren

@@ -19,7 +19,7 @@ namespace ren {
 
 class CommandAllocator;
 class CommandRecorder;
-class SwapchainImpl;
+class Swapchain;
 class RenderPass;
 class ComputePass;
 using TransferPass = CommandRecorder;
@@ -30,31 +30,33 @@ class RgPassBuilder;
 class RgRuntime;
 
 template <typename F>
-concept CRgHostCallback = std::invocable<F, const RgRuntime &>;
+concept CRgHostCallback = std::invocable<F, Renderer &, const RgRuntime &>;
 
-using RgHostCallback = std::function<void(const RgRuntime &)>;
+using RgHostCallback = std::function<void(Renderer &, const RgRuntime &)>;
 static_assert(CRgHostCallback<RgHostCallback>);
 
 template <typename F>
 concept CRgGraphicsCallback =
-    std::invocable<F, const RgRuntime &, RenderPass &>;
+    std::invocable<F, Renderer &, const RgRuntime &, RenderPass &>;
 
-using RgGraphicsCallback = std::function<void(const RgRuntime &, RenderPass &)>;
+using RgGraphicsCallback =
+    std::function<void(Renderer &, const RgRuntime &, RenderPass &)>;
 static_assert(CRgGraphicsCallback<RgGraphicsCallback>);
 
 template <typename F>
 concept CRgComputeCallback =
-    std::invocable<F, const RgRuntime &, ComputePass &>;
+    std::invocable<F, Renderer &, const RgRuntime &, ComputePass &>;
 
-using RgComputeCallback = std::function<void(const RgRuntime &, ComputePass &)>;
+using RgComputeCallback =
+    std::function<void(Renderer &, const RgRuntime &, ComputePass &)>;
 static_assert(CRgComputeCallback<RgComputeCallback>);
 
 template <typename F>
 concept CRgTransferCallback =
-    std::invocable<F, const RgRuntime &, TransferPass &>;
+    std::invocable<F, Renderer &, const RgRuntime &, TransferPass &>;
 
 using RgTransferCallback =
-    std::function<void(const RgRuntime &, TransferPass &)>;
+    std::function<void(Renderer &, const RgRuntime &, TransferPass &)>;
 static_assert(CRgTransferCallback<RgTransferCallback>);
 
 constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
@@ -330,7 +332,8 @@ struct RgTransferPass {
 
 class RenderGraph {
 public:
-  RenderGraph(SwapchainImpl &swapchain, TextureIdAllocator &tex_alloc);
+  RenderGraph(Renderer &renderer, Swapchain &swapchain,
+              TextureIdAllocator &tex_alloc);
 
   auto is_pass_valid(StringView pass) const -> bool;
 
@@ -404,24 +407,28 @@ private:
   HashMap<String, RgBufferId> m_buffer_ids;
   Vector<RgBufferId> m_buffer_parents;
   Vector<BufferView> m_buffers;
-  std::array<AutoHandle<Buffer>, NUM_BUFFER_HEAPS> m_heap_buffers;
+  std::array<Handle<Buffer>, NUM_BUFFER_HEAPS> m_heap_buffers;
 
   HashMap<String, RgTextureId> m_texture_ids;
   Vector<RgTextureId> m_texture_parents;
   Vector<Handle<Texture>> m_textures;
-  SingleResourceArena<Texture> m_texture_arena;
   HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
   TextureIdAllocatorScope m_tex_alloc;
   Vector<StorageTextureId> m_storage_texture_descriptors;
 
   Vector<Handle<Semaphore>> m_semaphores;
 
-  SwapchainImpl *m_swapchain = nullptr;
-  std::array<AutoHandle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
-  std::array<AutoHandle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
+  Swapchain *m_swapchain = nullptr;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
+  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
   RgSemaphoreId m_acquire_semaphore;
   RgSemaphoreId m_present_semaphore;
   RgPhysicalTextureId m_backbuffer;
+
+  using Arena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
+
+  Arena m_arena;
+  Renderer *m_renderer = nullptr;
 };
 
 class RgRuntime {

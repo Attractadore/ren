@@ -8,6 +8,8 @@
 
 namespace ren {
 
+class ResourceArena;
+
 struct Buffer;
 
 enum class MeshAttribute {
@@ -17,12 +19,17 @@ enum class MeshAttribute {
 };
 ENABLE_FLAGS(MeshAttribute);
 
+struct Meshlet {
+  u32 base_vertex = 0;
+  u32 base_index = 0;
+};
+
 struct Mesh {
   MeshAttributeFlags attributes;
   u32 pool = -1;
-  glsl::PositionBoundingBox bb;
+  glsl::PositionBoundingBox bb = {};
   glm::vec3 pos_enc_bb;
-  glsl::BoundingSquare uv_bs;
+  glsl::BoundingSquare uv_bs = {};
   u32 base_vertex = 0;
   u32 base_index = 0;
   u32 num_indices = 0;
@@ -30,19 +37,20 @@ struct Mesh {
 };
 
 struct VertexPool {
-  AutoHandle<Buffer> positions;
-  AutoHandle<Buffer> normals;
-  AutoHandle<Buffer> tangents;
-  AutoHandle<Buffer> colors;
-  AutoHandle<Buffer> uvs;
-  AutoHandle<Buffer> indices;
+  Handle<Buffer> positions;
+  Handle<Buffer> normals;
+  Handle<Buffer> tangents;
+  Handle<Buffer> colors;
+  Handle<Buffer> uvs;
+  Handle<Buffer> indices;
   u32 num_free_vertices = glsl::NUM_VERTEX_POOL_VERTICES;
   u32 num_free_indices = glsl::NUM_VERTEX_POOL_INDICES;
 };
 
 using VertexPoolList = SmallVector<VertexPool, 1>;
 
-auto create_vertex_pool(MeshAttributeFlags attributes) -> VertexPool;
+auto create_vertex_pool(ResourceArena &arena, MeshAttributeFlags attributes)
+    -> VertexPool;
 
 struct MeshInstance {
   u32 mesh = 0;

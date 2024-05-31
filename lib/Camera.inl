@@ -31,21 +31,22 @@ constexpr auto orthoRH_ReverseZ(T width, T height, T zNear, T zFar) {
 }
 
 inline glm::mat4 get_view_matrix(const Camera &camera) {
-  return glm::lookAt(camera.position, camera.position + camera.forward,
-                     camera.up);
+  const CameraTransformDesc &transform = camera.transform;
+  return glm::lookAt(transform.position, transform.position + transform.forward,
+                     transform.up);
 }
 
 inline glm::mat4 get_projection_matrix(const Camera &camera,
                                        float aspect_ratio) {
   return camera.projection.visit(OverloadSet{
-      [&](const PerspectiveProjection &proj) {
-        float fov = proj.hfov / aspect_ratio;
-        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, 0.01f);
+      [&](const CameraPerspectiveProjectionDesc &persp) {
+        float fov = persp.hfov / aspect_ratio;
+        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, persp.near);
       },
-      [&](const OrthographicProjection &proj) {
-        float width = proj.width;
+      [&](const CameraOrthographicProjectionDesc &ortho) {
+        float width = ortho.width;
         float height = width / aspect_ratio;
-        return orthoRH_ReverseZ(width, height, 0.01f, 100.0f);
+        return orthoRH_ReverseZ(width, height, ortho.near, ortho.far);
       },
   });
 }

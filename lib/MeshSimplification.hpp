@@ -19,7 +19,7 @@ struct MeshSimplificationOptions {
   /// Percentage of triangles to retain at each LOD
   float threshold = 0.75f;
   /// Number of LOD triangles after which to stop simplification.
-  u32 min_num_triangles = 4; // Minimal manifold mesh is a tetrahedron
+  u32 min_num_triangles = 1;
 };
 
 void mesh_simplify(const MeshSimplificationOptions &opts);

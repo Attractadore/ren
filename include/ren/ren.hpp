@@ -1,9 +1,8 @@
 #pragma once
 #include <expected>
 #include <glm/glm.hpp>
+#include <memory>
 #include <span>
-#include <utility>
-#include <variant>
 
 namespace ren {
 
@@ -25,18 +24,6 @@ struct NullIdImpl {};
 
 constexpr detail::NullIdImpl NullId;
 
-#define ren_define_ptr_id(name)                                                \
-  class name {                                                                 \
-  public:                                                                      \
-    name() = default;                                                          \
-    name(detail::NullIdImpl) : name() {}                                       \
-    explicit operator bool() const noexcept { return m_id; }                   \
-    operator uintptr_t() const noexcept { return m_id; }                       \
-                                                                               \
-  private:                                                                     \
-    uintptr_t m_id = 0;                                                        \
-  }
-
 #define ren_define_id(name)                                                    \
   class name {                                                                 \
   public:                                                                      \
@@ -49,138 +36,109 @@ constexpr detail::NullIdImpl NullId;
     unsigned m_id = 0;                                                         \
   }
 
-ren_define_ptr_id(SwapchainId);
-ren_define_ptr_id(SceneId);
 ren_define_id(MeshId);
 ren_define_id(ImageId);
 ren_define_id(MaterialId);
 ren_define_id(MeshInstanceId);
 ren_define_id(DirectionalLightId);
+ren_define_id(CameraId);
 
 #undef ren_define_id
 
-namespace detail {
+struct IRenderer;
+struct ISwapchain;
+struct IScene;
 
-template <typename I, void (*D)(I)> class UniqueHandle {
-public:
-  UniqueHandle() = default;
-
-  explicit UniqueHandle(I id) : m_id(id) {}
-
-  UniqueHandle(UniqueHandle &&other) noexcept {
-    m_id = std::exchange(other.m_id, NullId);
-  }
-
-  UniqueHandle &operator=(UniqueHandle &&other) noexcept {
-    reset();
-    m_id = std::exchange(other.m_id, NullId);
-    return *this;
-  }
-
-  ~UniqueHandle() { reset(); }
-
-  operator I() const noexcept { return m_id; };
-
-  void reset() noexcept {
-    if (m_id) {
-      I id = std::exchange(m_id, NullId);
-      D(id);
-    }
-  }
-
-private:
-  I m_id;
-};
-
-} // namespace detail
-
-struct RendererDesc {
-  std::span<const char *const> instance_extensions;
+/// Renderer description.
+struct RendererCreateInfo {
+  /// Additional Vulkan extensions to enable.
+  std::span<const char *const> vk_instance_extensions;
+  /// Index of adapter to use as returned by vkEnumeratePhysicalDevices.
   unsigned adapter = 0;
 };
 
-[[nodiscard]] auto init(const RendererDesc &desc) -> expected<void>;
+[[nodiscard]] auto create_renderer(const RendererCreateInfo &create_info)
+    -> expected<std::unique_ptr<IRenderer>>;
 
-void quit();
+struct IRenderer {
+  virtual ~IRenderer() = default;
 
-[[nodiscard]] auto draw() -> expected<void>;
+  [[nodiscard]] virtual auto create_scene(ISwapchain &swapchain)
+      -> expected<std::unique_ptr<IScene>> = 0;
+};
 
-void destroy_swapchain(SwapchainId swapchain);
+struct ISwapchain {
+  virtual ~ISwapchain() = default;
 
-using Swapchain = detail::UniqueHandle<SwapchainId, destroy_swapchain>;
+  [[nodiscard]] virtual auto get_size() const -> glm::uvec2 = 0;
 
-[[nodiscard]] auto get_size(SwapchainId swapchain)
-    -> std::tuple<unsigned, unsigned>;
+  [[nodiscard]] virtual auto set_size(unsigned width, unsigned height)
+      -> expected<void> = 0;
+};
 
-void set_size(SwapchainId swapchain, unsigned width, unsigned height);
-
-/// Perspective projection parameters
-struct PerspectiveProjection {
-  /// Horizontal field of view in radians
+/// Camera perspective projection descriptor.
+struct CameraPerspectiveProjectionDesc {
+  /// Horizontal field-of-view in radians.
   float hfov = glm::radians(90.0f);
+  /// Near plane.
+  float near = 0.01f;
 };
 
-/// Orthographic projection
-struct OrthographicProjection {
-  /// Width of the orthographic projection box
+/// Camera orthographic projection descriptor.
+struct CameraOrthographicProjectionDesc {
+  /// Box width in units.
   float width = 1.0f;
+  /// Near plane.
+  float near = 0.01f;
+  /// Far plane.
+  float far = 100.0f;
 };
 
-/// How to calculate exposure
-enum class ExposureMode {
-  /// Calculate exposure using a physical camera model
-  Camera,
-  /// Calculate exposure automatically based on scene luminance
-  Automatic,
-};
-
-struct ReinhardToneMapping {};
-
-using ToneMappingDesc = std::variant<ReinhardToneMapping>;
-
-/// Scene camera description
-struct CameraDesc {
-  /// Projection to use
-  std::variant<PerspectiveProjection, OrthographicProjection> projection =
-      PerspectiveProjection();
-  /// Horizontal rendering resolution
-  unsigned width = 1280;
-  /// Vertical rendering resolution
-  unsigned height = 720;
-  /// Relative aperture in f-stops. Affects exposure when it's calculated based
-  /// on camera parameters and depth of field
-  float aperture = 16.0f;
-  /// Shutter time in seconds. Affects exposure when it's calculated based
-  /// on camera parameters and motion blur
-  float shutter_time = 1.0f / 400.0f;
-  /// Sensitivity in ISO. Ignored if exposure is not calculated based on camera
-  /// parameters
-  float iso = 400.0f;
-  /// Exposure compensation in f-stops.
-  float exposure_compensation = 0.0f;
-  /// Exposure computation mode.
-  ExposureMode exposure_mode = ExposureMode::Camera;
-  /// This camera's position in the world.
-  glm::vec3 position = {0.0f, 0.0f, 0.0f};
-  /// Where this camera is facing.
+/// Camera transform descriptor.
+struct CameraTransformDesc {
+  glm::vec3 position;
   glm::vec3 forward = {1.0f, 0.0f, 0.0f};
-  /// This camera's up vector.
   glm::vec3 up = {0.0f, 0.0f, 1.0f};
 };
 
+/// Camera physical parameters and settings descriptor.
+struct CameraParameterDesc {
+  /// Relative aperture in f-stops.
+  float aperture = 16.0f;
+  /// Shutter time in seconds.
+  float shutter_time = 1.0f / 400.0f;
+  /// Sensitivity in ISO. Ignored if exposure is not calculated from camera
+  /// parameters.
+  float iso = 400.0f;
+};
+
+/// Exposure algorithm.
+enum class ExposureMode {
+  /// Calculate exposure using a physical camera model.
+  Camera,
+  /// Calculate exposure automatically based on scene luminance.
+  Automatic,
+};
+
+struct ExposureDesc {
+  ExposureMode mode = ExposureMode::Automatic;
+  /// Exposure compensation in f-stops.
+  float ec = 0.0f;
+
+  bool operator==(const ExposureDesc &) const = default;
+};
+
 /// Mesh description
-struct MeshDesc {
-  /// This mesh's positions.
+struct MeshCreateInfo {
   std::span<const glm::vec3> positions;
-  /// This mesh's normals
   std::span<const glm::vec3> normals;
-  /// Optional: this mesh's tangents
+  /// Optional
   std::span<const glm::vec4> tangents;
-  /// Optional: this mesh's vertex colors
+  /// Optional
   std::span<const glm::vec4> colors;
-  /// Optional: this mesh's texture coordinates
-  std::span<const glm::vec2> tex_coords;
-  /// This mesh's indices
+  /// Optional
+  std::span<const glm::vec2> uvs;
+  /// Optional
   std::span<const unsigned> indices;
 };
 
@@ -205,25 +163,23 @@ enum class Format {
   RGBA32_SFLOAT,
 };
 
-/// Image description
-struct ImageDesc {
-  /// Width
+/// Image description.
+struct ImageCreateInfo {
   unsigned width = 0;
-  /// Height
   unsigned height = 0;
-  /// Storage format
+  /// Pixel format.
   Format format = Format::Unknown;
-  /// Pixel data
+  /// Pixel data.
   const void *data = nullptr;
 };
 
-/// Texture or mipmap filter
+/// Texture or mipmap filter.
 enum class Filter {
   Nearest,
   Linear,
 };
 
-/// Texture wrapping mode
+/// Texture wrapping mode.
 enum WrappingMode {
   Repeat,
   MirroredRepeat,
@@ -248,7 +204,7 @@ public:
 };
 
 /// Material description
-struct MaterialDesc {
+struct MaterialCreateInfo {
   /// Color, multiplied with vertex color (if present, otherwise with
   /// [1.0, 1.0, 1.0, 1.0]) and sampled texture color (if present, otherwise
   /// with [1.0, 1.0, 1.0, 1.0]). Must be between 0 and 1
@@ -278,100 +234,94 @@ struct MaterialDesc {
   } normal_texture;
 };
 
-/// Mesh instance description
-struct MeshInstanceDesc {
+struct MeshInstanceCreateInfo {
   /// The mesh that will be used to render this mesh instance
   MeshId mesh;
   /// The material that will be used to render this mesh instance
   MaterialId material;
 };
 
-/// Directional light description
+/// Directional light descriptor
 struct DirectionalLightDesc {
-  /// This light's color. Must be between 0 and 1
+  /// This light's color. Must be between 0 and 1.
   glm::vec3 color = {1.0f, 1.0f, 1.0f};
-  /// This light's intensity in lux
+  /// This light's intensity in lux.
   float illuminance = 100'000.0f;
-  /// The direction this light is shining from
+  /// The direction this light is shining from.
   glm::vec3 origin = {0.0f, 0.0f, 1.0f};
 };
 
-void destroy_scene(SceneId scene);
+struct IScene {
+  virtual ~IScene() = default;
 
-using Scene = detail::UniqueHandle<SceneId, destroy_scene>;
+  [[nodiscard]] virtual auto create_camera() -> expected<CameraId> = 0;
 
-[[nodiscard]] auto create_scene(SwapchainId swapchain) -> expected<Scene>;
+  virtual void destroy_camera(CameraId camera) = 0;
 
-void set_camera(SceneId scene, const CameraDesc &desc);
+  /// Set active scene camera.
+  virtual void set_camera(CameraId camera) = 0;
 
-void set_tone_mapping(SceneId scene, const ToneMappingDesc &desc);
+  virtual void set_camera_perspective_projection(
+      CameraId camera, const CameraPerspectiveProjectionDesc &desc) = 0;
 
-[[nodiscard]] auto create_mesh(SceneId scene, const MeshDesc &desc)
-    -> expected<MeshId>;
+  virtual void set_camera_orthographic_projection(
+      CameraId camera, const CameraOrthographicProjectionDesc &desc) = 0;
 
-[[nodiscard]] auto create_image(SceneId scene, const ImageDesc &desc)
-    -> expected<ImageId>;
+  virtual void set_camera_transform(CameraId camera,
+                                    const CameraTransformDesc &desc) = 0;
 
-[[nodiscard]] auto create_materials(SceneId scene,
-                                    std::span<const MaterialDesc> descs,
-                                    MaterialId *out) -> expected<void>;
+  virtual void set_camera_parameters(CameraId camera,
+                                     const CameraParameterDesc &desc) = 0;
 
-[[nodiscard]] inline auto create_material(SceneId scene,
-                                          const MaterialDesc &desc)
-    -> expected<MaterialId> {
-  MaterialId material;
-  return create_materials(scene, {&desc, 1}, &material).transform([&] {
-    return material;
-  });
-}
+  virtual void set_exposure(const ExposureDesc &desc) = 0;
 
-[[nodiscard]] auto
-create_mesh_instances(SceneId scene, std::span<const MeshInstanceDesc> descs,
-                      std::span<const glm::mat4x3> transforms,
-                      MeshInstanceId *out) -> expected<void>;
+  [[nodiscard]] virtual auto create_mesh(const MeshCreateInfo &create_info)
+      -> expected<MeshId> = 0;
 
-[[nodiscard]] inline auto create_mesh_instance(SceneId scene,
-                                               const MeshInstanceDesc &desc)
-    -> expected<MeshInstanceId> {
-  MeshInstanceId mesh_instance;
-  return create_mesh_instances(scene, {&desc, 1}, {}, &mesh_instance)
-      .transform([&] { return mesh_instance; });
-}
+  [[nodiscard]] virtual auto create_image(const ImageCreateInfo &create_info)
+      -> expected<ImageId> = 0;
 
-[[nodiscard]] inline auto create_mesh_instance(SceneId scene,
-                                               const MeshInstanceDesc &desc,
-                                               const glm::mat4x3 &transform)
-    -> expected<MeshInstanceId> {
-  MeshInstanceId mesh_instance;
-  return create_mesh_instances(scene, {&desc, 1}, {&transform, 1},
-                               &mesh_instance)
-      .transform([&] { return mesh_instance; });
-}
+  [[nodiscard]] virtual auto
+  create_material(const MaterialCreateInfo &create_info)
+      -> expected<MaterialId> = 0;
 
-void destroy_mesh_instances(SceneId scene,
-                            std::span<const MeshInstanceId> mesh_instances);
+  [[nodiscard]] virtual auto
+  create_mesh_instances(std::span<const MeshInstanceCreateInfo> create_info,
+                        std::span<MeshInstanceId> out) -> expected<void> = 0;
 
-inline void destroy_mesh_instance(SceneId scene, MeshInstanceId mesh_instance) {
-  destroy_mesh_instances(scene, {&mesh_instance, 1});
-}
+  [[nodiscard]] auto
+  create_mesh_instance(const MeshInstanceCreateInfo &create_info)
+      -> expected<MeshInstanceId> {
+    MeshInstanceId mesh_instance;
+    return create_mesh_instances({&create_info, 1}, {&mesh_instance, 1})
+        .transform([&] { return mesh_instance; });
+  }
 
-void set_mesh_instance_transforms(
-    SceneId scene, std::span<const MeshInstanceId> mesh_instances,
-    std::span<const glm::mat4x3> transforms);
+  virtual void
+  destroy_mesh_instances(std::span<const MeshInstanceId> mesh_instances) = 0;
 
-inline void set_mesh_instance_transform(SceneId scene,
-                                        MeshInstanceId mesh_instance,
-                                        const glm::mat4x3 &transform) {
-  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
-}
+  void destroy_mesh_instance(MeshInstanceId mesh_instance) {
+    destroy_mesh_instances({&mesh_instance, 1});
+  }
 
-[[nodiscard]] auto create_directional_light(SceneId scene,
-                                            const DirectionalLightDesc &desc)
-    -> expected<DirectionalLightId>;
+  virtual void
+  set_mesh_instance_transforms(std::span<const MeshInstanceId> mesh_instances,
+                               std::span<const glm::mat4x3> transforms) = 0;
 
-void destroy_directional_light(SceneId scene, DirectionalLightId light);
+  void set_mesh_instance_transform(MeshInstanceId mesh_instance,
+                                   const glm::mat4x3 &transform) {
+    set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
+  }
 
-void update_directional_light(SceneId scene, DirectionalLightId light,
-                              const DirectionalLightDesc &desc);
+  [[nodiscard]] virtual auto create_directional_light()
+      -> expected<DirectionalLightId> = 0;
+
+  virtual void destroy_directional_light(DirectionalLightId light) = 0;
+
+  virtual void set_directional_light(DirectionalLightId light,
+                                     const DirectionalLightDesc &desc) = 0;
+
+  [[nodiscard]] virtual auto draw() -> expected<void> = 0;
+};
 
 } // namespace ren

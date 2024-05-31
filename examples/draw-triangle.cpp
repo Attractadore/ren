@@ -2,13 +2,11 @@
 
 #include <glm/glm.hpp>
 
-namespace chrono = std::chrono;
-
 class DrawTriangleApp : public AppBase {
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
     [&] -> Result<void> {
-      ren::SceneId scene = get_scene();
+      ren::IScene &scene = get_scene();
 
       std::array<glm::vec3, 3> positions = {{
           {0.0f, 0.5f, 0.0f},
@@ -30,58 +28,54 @@ public:
 
       std::array<unsigned, 3> indices = {0, 1, 2};
 
-      OK(ren::MeshId mesh, ren::create_mesh(scene, {
-                                                       .positions = positions,
-                                                       .normals = normals,
-                                                       .colors = colors,
-                                                       .indices = indices,
-                                                   }));
+      OK(ren::MeshId mesh, scene.create_mesh({
+                               .positions = positions,
+                               .normals = normals,
+                               .colors = colors,
+                               .indices = indices,
+                           }));
 
-      OK(ren::MaterialId material,
-         ren::create_material(scene, {
-                                         .metallic_factor = 1.0f,
-                                         .roughness_factor = 0.5f,
-                                     }));
+      OK(ren::MaterialId material, scene.create_material({
+                                       .metallic_factor = 1.0f,
+                                       .roughness_factor = 0.5f,
+                                   }));
 
-      OK(ren::MeshInstanceId model,
-         ren::create_mesh_instance(scene, {
-                                              .mesh = mesh,
-                                              .material = material,
-                                          }));
+      OK(ren::MeshInstanceId model, scene.create_mesh_instance({
+                                        .mesh = mesh,
+                                        .material = material,
+                                    }));
 
       // Ambient day light
-      OK(ren::DirectionalLightId light,
-         ren::create_directional_light(scene, {
-                                                  .color = {1.0f, 1.0f, 1.0f},
-                                                  .illuminance = 25'000.0f,
-                                                  .origin = {0.0f, 0.0f, 1.0f},
-                                              }));
+      OK(ren::DirectionalLightId light, scene.create_directional_light());
+
+      scene.set_directional_light(light, {
+                                             .color = {1.0f, 1.0f, 1.0f},
+                                             .illuminance = 25'000.0f,
+                                             .origin = {0.0f, 0.0f, 1.0f},
+                                         });
+
+      ren::CameraId camera = get_camera();
+
+      scene.set_camera_orthographic_projection(camera, {.width = 2.0f});
+      scene.set_camera_transform(camera, {
+                                             .position = {0.0f, 0.0f, 1.0f},
+                                             .forward = {0.0f, 0.0f, -1.0f},
+                                             .up = {0.0f, 1.0f, 0.0f},
+                                         });
+
+      scene.set_exposure({
+          .mode = ren::ExposureMode::Automatic,
+          .ec = 2.0f,
+      });
 
       return {};
     }()
-               .transform_error(throw_error);
+               .transform_error(throw_error)
+               .value();
   }
 
   [[nodiscard]] static auto run() -> int {
     return AppBase::run<DrawTriangleApp>();
-  }
-
-protected:
-  auto process_frame(unsigned width, unsigned height, chrono::nanoseconds)
-      -> Result<void> override {
-    ren::SceneId scene = get_scene();
-    ren::CameraDesc desc = {
-        .projection = ren::OrthographicProjection{.width = 2.0f},
-        .width = width,
-        .height = height,
-        .exposure_compensation = 2.0f,
-        .exposure_mode = ren::ExposureMode::Automatic,
-        .position = {0.0f, 0.0f, 1.0f},
-        .forward = {0.0f, 0.0f, -1.0f},
-        .up = {0.0f, 1.0f, 0.0f},
-    };
-    ren::set_camera(scene, desc);
-    return {};
   }
 };
 

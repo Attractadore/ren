@@ -1,12 +1,11 @@
 #include "Scene.hpp"
-#include "Camera.inl"
 #include "Formats.hpp"
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
 #include "Passes.hpp"
 #include "Support/Errors.hpp"
+#include "Support/Views.hpp"
 #include "Swapchain.hpp"
-#include "glsl/Batch.hpp"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
@@ -14,28 +13,22 @@
 
 namespace ren {
 
-auto Hash<SamplerDesc>::operator()(const SamplerDesc &sampler) const noexcept
-    -> usize {
-  usize seed = 0;
-  seed = hash_combine(seed, sampler.mag_filter);
-  seed = hash_combine(seed, sampler.min_filter);
-  seed = hash_combine(seed, sampler.mipmap_filter);
-  seed = hash_combine(seed, sampler.wrap_u);
-  seed = hash_combine(seed, sampler.wrap_v);
-  return seed;
-}
+Scene::Scene(Renderer &renderer, Swapchain &swapchain)
+    : m_cmd_allocator(renderer), m_arena(renderer), m_frame_arena(renderer) {
+  m_renderer = &renderer;
+  m_swapchain = &swapchain;
 
-SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
   m_persistent_descriptor_set_layout =
-      create_persistent_descriptor_set_layout();
+      create_persistent_descriptor_set_layout(m_arena);
   std::tie(m_persistent_descriptor_pool, m_persistent_descriptor_set) =
-      allocate_descriptor_pool_and_set(m_persistent_descriptor_set_layout);
+      allocate_descriptor_pool_and_set(*m_renderer, m_arena,
+                                       m_persistent_descriptor_set_layout);
 
   m_texture_allocator = std::make_unique<TextureIdAllocator>(
       m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
 
-  m_render_graph =
-      std::make_unique<RenderGraph>(swapchain, *m_texture_allocator);
+  m_render_graph = std::make_unique<RenderGraph>(*m_renderer, swapchain,
+                                                 *m_texture_allocator);
 
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
 
@@ -50,12 +43,13 @@ SceneImpl::SceneImpl(SwapchainImpl &swapchain) {
 #undef error
 }
 
-void SceneImpl::next_frame() {
+void Scene::next_frame() {
+  m_renderer->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator->next_frame();
 }
 
-auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
+auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   Vector<glsl::Position> positions;
   Vector<glsl::Normal> normals;
   Vector<glsl::Tangent> tangents;
@@ -67,7 +61,7 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
       .positions = desc.positions,
       .normals = desc.normals,
       .tangents = desc.tangents,
-      .uvs = desc.tex_coords,
+      .uvs = desc.uvs,
       .colors = desc.colors,
       .enc_positions = &positions,
       .enc_normals = &normals,
@@ -88,12 +82,13 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
 
   auto &vertex_pool_list = m_vertex_pool_lists[usize(mesh.attributes.get())];
   if (vertex_pool_list.empty()) {
-    vertex_pool_list.emplace_back(create_vertex_pool(mesh.attributes));
+    vertex_pool_list.emplace_back(create_vertex_pool(m_arena, mesh.attributes));
   } else {
     const VertexPool &pool = vertex_pool_list.back();
     if (pool.num_free_indices < mesh.num_indices or
         pool.num_free_vertices < num_vertices) {
-      vertex_pool_list.emplace_back(create_vertex_pool(mesh.attributes));
+      vertex_pool_list.emplace_back(
+          create_vertex_pool(m_arena, mesh.attributes));
     }
   }
   ren_assert(not vertex_pool_list.empty());
@@ -116,9 +111,10 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   auto stage_stream = [&]<typename T>(const Vector<T> &stream,
                                       Handle<Buffer> buffer) {
     if (not stream.empty()) {
-      auto stream_dst = g_renderer->get_buffer_view(buffer).slice<T>(
+      auto stream_dst = m_renderer->get_buffer_view(buffer).slice<T>(
           mesh.base_vertex, num_vertices);
-      m_resource_uploader.stage_buffer(m_frame_arena, Span(stream), stream_dst);
+      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(stream),
+                                       stream_dst);
     }
   };
 
@@ -129,9 +125,10 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   stage_stream(colors, vertex_pool.colors);
 
   {
-    auto indices_dst = g_renderer->get_buffer_view(vertex_pool.indices)
+    auto indices_dst = m_renderer->get_buffer_view(vertex_pool.indices)
                            .slice<u32>(mesh.base_index, mesh.num_indices);
-    m_resource_uploader.stage_buffer(m_frame_arena, Span(indices), indices_dst);
+    m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(indices),
+                                     indices_dst);
   }
 
   auto key = std::bit_cast<MeshId>(u32(m_meshes.size()));
@@ -140,11 +137,11 @@ auto SceneImpl::create_mesh(const MeshDesc &desc) -> MeshId {
   return key;
 }
 
-auto SceneImpl::get_or_create_sampler(const SamplerDesc &sampler)
+auto Scene::get_or_create_sampler(const SamplerDesc &sampler)
     -> Handle<Sampler> {
-  AutoHandle<Sampler> &handle = m_samplers[sampler];
+  Handle<Sampler> &handle = m_samplers[sampler];
   if (!handle) {
-    handle = g_renderer->create_sampler({
+    handle = m_arena.create_sampler({
         .mag_filter = getVkFilter(sampler.mag_filter),
         .min_filter = getVkFilter(sampler.min_filter),
         .mipmap_mode = getVkSamplerMipmapMode(sampler.mipmap_filter),
@@ -156,17 +153,18 @@ auto SceneImpl::get_or_create_sampler(const SamplerDesc &sampler)
   return handle;
 }
 
-auto SceneImpl::get_or_create_texture(ImageId image,
-                                      const SamplerDesc &sampler_desc)
+auto Scene::get_or_create_texture(ImageId image,
+                                  const SamplerDesc &sampler_desc)
     -> SampledTextureId {
-  auto view = g_renderer->get_texture_view(m_images[image]);
+  auto view = m_renderer->get_texture_view(m_images[image]);
   auto sampler = get_or_create_sampler(sampler_desc);
-  return m_texture_allocator->allocate_sampled_texture(view, sampler);
+  return m_texture_allocator->allocate_sampled_texture(*m_renderer, view,
+                                                       sampler);
 }
 
-auto SceneImpl::create_image(const ImageDesc &desc) -> ImageId {
+auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
   auto format = getVkFormat(desc.format);
-  auto texture = g_renderer->create_texture({
+  auto texture = m_arena.create_texture({
       .type = VK_IMAGE_TYPE_2D,
       .format = format,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -176,161 +174,145 @@ auto SceneImpl::create_image(const ImageDesc &desc) -> ImageId {
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   usize size = desc.width * desc.height * get_format_size(format);
-  m_resource_uploader.stage_texture(
-      m_frame_arena, Span((const std::byte *)desc.data, size), texture);
+  m_resource_uploader.stage_texture(*m_renderer, m_frame_arena,
+                                    Span((const std::byte *)desc.data, size),
+                                    texture);
   auto image = std::bit_cast<ImageId>(u32(m_images.size()));
   m_images.push_back(std::move(texture));
   return image;
 }
 
-void SceneImpl::create_materials(Span<const MaterialDesc> descs,
-                                 MaterialId *out) {
-  for (const auto &desc : descs) {
-    glsl::Material material = {
-        .base_color = desc.base_color_factor,
-        .base_color_texture = [&]() -> u32 {
-          if (desc.base_color_texture.image) {
-            return get_or_create_texture(desc.base_color_texture.image,
-                                         desc.base_color_texture.sampler);
-          }
-          return 0;
-        }(),
-        .metallic = desc.metallic_factor,
-        .roughness = desc.roughness_factor,
-        .metallic_roughness_texture = [&]() -> u32 {
-          if (desc.metallic_roughness_texture.image) {
-            return get_or_create_texture(
-                desc.metallic_roughness_texture.image,
-                desc.metallic_roughness_texture.sampler);
-          }
-          return 0;
-        }(),
-        .normal_texture = [&]() -> u32 {
-          if (desc.normal_texture.image) {
-            return get_or_create_texture(desc.normal_texture.image,
-                                         desc.normal_texture.sampler);
-          }
-          return 0;
-        }(),
-        .normal_scale = desc.normal_texture.scale,
-    };
-
-    auto index = std::bit_cast<MaterialId>(u32(m_materials.size()));
-    m_materials.push_back(material);
-
-    *out = index;
-    ++out;
-  }
-}
-
-void SceneImpl::set_camera(const CameraDesc &desc) noexcept {
-  m_camera = Camera{
-      .position = desc.position,
-      .forward = glm::normalize(desc.forward),
-      .up = glm::normalize(desc.up),
-      .projection = desc.projection,
-  };
-
-  m_pp_opts.exposure = {
-      .mode = [&]() -> ExposureOptions::Mode {
-        switch (desc.exposure_mode) {
-        default:
-          unreachable("Unknown exposure mode");
-        case ExposureMode::Camera:
-          return ExposureOptions::Camera{
-              .aperture = desc.aperture,
-              .shutter_time = desc.shutter_time,
-              .iso = desc.iso,
-              .exposure_compensation = desc.exposure_compensation,
-          };
-        case ExposureMode::Automatic:
-          return ExposureOptions::Automatic{
-              .exposure_compensation = desc.exposure_compensation,
-          };
+auto Scene::create_material(const MaterialCreateInfo &desc)
+    -> expected<MaterialId> {
+  glsl::Material material = {
+      .base_color = desc.base_color_factor,
+      .base_color_texture = [&]() -> u32 {
+        if (desc.base_color_texture.image) {
+          return get_or_create_texture(desc.base_color_texture.image,
+                                       desc.base_color_texture.sampler);
         }
+        return 0;
       }(),
+      .metallic = desc.metallic_factor,
+      .roughness = desc.roughness_factor,
+      .metallic_roughness_texture = [&]() -> u32 {
+        if (desc.metallic_roughness_texture.image) {
+          return get_or_create_texture(desc.metallic_roughness_texture.image,
+                                       desc.metallic_roughness_texture.sampler);
+        }
+        return 0;
+      }(),
+      .normal_texture = [&]() -> u32 {
+        if (desc.normal_texture.image) {
+          return get_or_create_texture(desc.normal_texture.image,
+                                       desc.normal_texture.sampler);
+        }
+        return 0;
+      }(),
+      .normal_scale = desc.normal_texture.scale,
   };
 
-  m_viewport_width = desc.width;
-  m_viewport_height = desc.height;
+  auto index = std::bit_cast<MaterialId>(u32(m_materials.size()));
+  m_materials.push_back(material);
+
+  return index;
 }
 
-void SceneImpl::set_tone_mapping(const ToneMappingDesc &oper) noexcept {
-  m_pp_opts.tone_mapping = {
-      .oper = oper,
-  };
+auto Scene::create_camera() -> expected<CameraId> {
+  return std::bit_cast<CameraId>(m_cameras.emplace());
+}
+
+void Scene::destroy_camera(CameraId camera) {
+  m_cameras.erase(std::bit_cast<Handle<Camera>>(camera));
+}
+
+auto Scene::get_camera(CameraId camera) -> Camera & {
+  return m_cameras[std::bit_cast<Handle<Camera>>(camera)];
+}
+
+void Scene::set_camera(CameraId camera) {
+  m_camera = std::bit_cast<Handle<Camera>>(camera);
+}
+
+void Scene::set_camera_perspective_projection(
+    CameraId camera, const CameraPerspectiveProjectionDesc &desc) {
+  get_camera(camera).projection = desc;
+}
+
+void Scene::set_camera_orthographic_projection(
+    CameraId camera, const CameraOrthographicProjectionDesc &desc) {
+  get_camera(camera).projection = desc;
+}
+
+void Scene::set_camera_transform(CameraId camera,
+                                 const CameraTransformDesc &desc) {
+  get_camera(camera).transform = desc;
+}
+
+void Scene::set_camera_parameters(CameraId camera,
+                                  const CameraParameterDesc &desc) {
+  get_camera(camera).params = desc;
+}
+
+void Scene::set_exposure(const ExposureDesc &desc) {
+  m_exposure = desc.mode;
+  m_pp_opts.exposure.ec = desc.ec;
 };
 
-void SceneImpl::create_mesh_instances(Span<const MeshInstanceDesc> descs,
-                                      Span<const glm::mat4x3> transforms,
-                                      MeshInstanceId *out) {
-  if (transforms.empty()) {
-    for (const MeshInstanceDesc &desc : descs) {
-      ren_assert(desc.mesh);
-      ren_assert(desc.material);
-      const Mesh &mesh = m_meshes[desc.mesh];
-      Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
-          .mesh = desc.mesh,
-          .material = desc.material,
-          .matrix = glsl::make_decode_position_matrix(mesh.pos_enc_bb),
-      });
-      *out = std::bit_cast<MeshInstanceId>(mesh_instance);
-      ++out;
-    }
-  } else {
-    ren_assert(descs.size() == transforms.size());
-    for (const auto &[desc, transform] : zip(descs, transforms)) {
-      ren_assert(desc.mesh);
-      ren_assert(desc.material);
-      const Mesh &mesh = m_meshes[desc.mesh];
-      Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
-          .mesh = desc.mesh,
-          .material = desc.material,
-          .matrix =
-              transform * glsl::make_decode_position_matrix(mesh.pos_enc_bb),
-      });
-      *out = std::bit_cast<MeshInstanceId>(mesh_instance);
-      ++out;
-    }
+auto Scene::create_mesh_instances(
+    std::span<const MeshInstanceCreateInfo> create_info,
+    std::span<MeshInstanceId> out) -> expected<void> {
+  ren_assert(out.size() >= create_info.size());
+  for (usize i : range(create_info.size())) {
+    ren_assert(create_info[i].mesh);
+    ren_assert(create_info[i].material);
+    const Mesh &mesh = m_meshes[create_info[i].mesh];
+    Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
+        .mesh = create_info[i].mesh,
+        .material = create_info[i].material,
+        .matrix = glsl::make_decode_position_matrix(mesh.pos_enc_bb),
+    });
+    out[i] = std::bit_cast<MeshInstanceId>(mesh_instance);
   }
+  return {};
 }
 
-void SceneImpl::destroy_mesh_instances(
-    Span<const MeshInstanceId> mesh_instances) noexcept {
+void Scene::destroy_mesh_instances(
+    std::span<const MeshInstanceId> mesh_instances) {
   for (MeshInstanceId mesh_instance : mesh_instances) {
     m_mesh_instances.erase(std::bit_cast<Handle<MeshInstance>>(mesh_instance));
   }
 }
 
-void SceneImpl::set_mesh_instance_transforms(
-    Span<const MeshInstanceId> mesh_instances,
-    Span<const glm::mat4x3> matrices) noexcept {
+void Scene::set_mesh_instance_transforms(
+    std::span<const MeshInstanceId> mesh_instances,
+    std::span<const glm::mat4x3> matrices) {
   ren_assert(mesh_instances.size() == matrices.size());
-  for (const auto &[handle, matrix] : zip(mesh_instances, matrices)) {
+  for (usize i : range(mesh_instances.size())) {
     MeshInstance &mesh_instance =
-        m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(handle)];
+        m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(
+            mesh_instances[i])];
     const Mesh &mesh = m_meshes[mesh_instance.mesh];
     mesh_instance.matrix =
-        matrix * glsl::make_decode_position_matrix(mesh.pos_enc_bb);
+        matrices[i] * glsl::make_decode_position_matrix(mesh.pos_enc_bb);
   }
 }
 
-auto SceneImpl::create_directional_light(const DirectionalLightDesc &desc)
-    -> DirectionalLightId {
-  auto light = m_dir_lights.insert(glsl::DirLight{
-      .color = desc.color,
-      .illuminance = desc.illuminance,
-      .origin = desc.origin,
+auto Scene::create_directional_light() -> expected<DirectionalLightId> {
+  auto light = m_dir_lights.insert({
+      .color = {1.0f, 1.0f, 1.0f},
+      .illuminance = 100'000.0f,
+      .origin = {0.0f, 0.0f, 1.0f},
   });
   return std::bit_cast<DirectionalLightId>(light);
 };
 
-void SceneImpl::destroy_directional_light(DirectionalLightId light) noexcept {
+void Scene::destroy_directional_light(DirectionalLightId light) {
   m_dir_lights.erase(std::bit_cast<Handle<glsl::DirLight>>(light));
 }
 
-void SceneImpl::update_directional_light(
-    DirectionalLightId light, const DirectionalLightDesc &desc) noexcept {
+void Scene::set_directional_light(DirectionalLightId light,
+                                  const DirectionalLightDesc &desc) {
   m_dir_lights[std::bit_cast<Handle<glsl::DirLight>>(light)] = {
       .color = desc.color,
       .illuminance = desc.illuminance,
@@ -338,7 +320,7 @@ void SceneImpl::update_directional_light(
   };
 };
 
-void SceneImpl::update_rg_config() {
+void Scene::update_rg_config() {
   auto set_if_changed = [&](auto &config, const auto &new_value) {
     if (config != new_value) {
       config = new_value;
@@ -361,17 +343,10 @@ void SceneImpl::update_rg_config() {
   grow_if_needed(m_rg_config.num_materials, m_materials.size());
   grow_if_needed(m_rg_config.num_directional_lights, m_dir_lights.size());
 
-  glm::uvec2 viewport = {m_viewport_width, m_viewport_height};
+  glm::uvec2 viewport = m_swapchain->get_size();
   set_if_changed(m_rg_config.viewport, viewport);
 
-  auto exposure_mode = m_pp_opts.exposure.mode.visit(OverloadSet{
-      [](const ExposureOptions::Manual &) -> ExposureMode { todo(); },
-      [](const ExposureOptions::Camera &) { return ExposureMode::Camera; },
-      [](const ExposureOptions::Automatic &) {
-        return ExposureMode::Automatic;
-      },
-  });
-  set_if_changed(m_rg_config.exposure_mode, exposure_mode);
+  set_if_changed(m_rg_config.exposure, m_exposure);
 
 #if REN_IMGUI
   {
@@ -391,8 +366,10 @@ void SceneImpl::update_rg_config() {
   }
 }
 
-void SceneImpl::draw() {
-  m_resource_uploader.upload(m_cmd_allocator);
+auto Scene::draw() -> expected<void> {
+  m_pp_opts.exposure.cam_params = m_cameras[m_camera].params;
+
+  m_resource_uploader.upload(*m_renderer, m_cmd_allocator);
 
   update_rg_config();
 
@@ -406,7 +383,7 @@ void SceneImpl::draw() {
   update_render_graph(
       *m_render_graph, m_rg_config,
       PassesRuntimeConfig{
-          .camera = m_camera,
+          .camera = m_cameras[m_camera],
           .vertex_pool_lists = m_vertex_pool_lists,
           .meshes = m_meshes,
           .mesh_instances = m_mesh_instances.values(),
@@ -425,10 +402,14 @@ void SceneImpl::draw() {
   m_render_graph->execute(m_cmd_allocator);
 
   m_frame_arena.clear();
+
+  next_frame();
+
+  return {};
 }
 
 #if REN_IMGUI
-void SceneImpl::draw_imgui() {
+void Scene::draw_imgui() {
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
@@ -466,7 +447,7 @@ void SceneImpl::draw_imgui() {
   }
 }
 
-void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
+void Scene::set_imgui_context(ImGuiContext *context) noexcept {
   m_imgui_context = context;
   if (!context) {
     return;
@@ -479,11 +460,12 @@ void SceneImpl::set_imgui_context(ImGuiContext *context) noexcept {
   i32 width, height;
   io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
   ren::ImageId image = create_image({
-      .width = u32(width),
-      .height = u32(height),
-      .format = Format::RGBA8_UNORM,
-      .data = data,
-  });
+                                        .width = u32(width),
+                                        .height = u32(height),
+                                        .format = Format::RGBA8_UNORM,
+                                        .data = data,
+                                    })
+                           .value();
   SamplerDesc desc = {
       .mag_filter = Filter::Linear,
       .min_filter = Filter::Linear,

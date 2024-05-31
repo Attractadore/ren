@@ -5,10 +5,10 @@
 
 namespace ren::imgui {
 
-void set_context(SceneId scene, ImGuiContext *ctx);
+void set_context(IScene &scene, ImGuiContext *ctx);
 
-auto get_context(SceneId scene) -> ImGuiContext *;
+auto get_context(IScene &scene) -> ImGuiContext *;
 
-auto draw(SceneId scene) -> expected<void>;
+auto draw(IScene &scene) -> expected<void>;
 
 } // namespace ren::imgui

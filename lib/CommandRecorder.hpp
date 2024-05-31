@@ -9,6 +9,8 @@
 
 namespace ren {
 
+class Renderer;
+
 struct ComputePipeline;
 struct GraphicsPipeline;
 struct PipelineLayout;
@@ -65,10 +67,11 @@ class ComputePass;
 class DebugRegion;
 
 class CommandRecorder {
+  Renderer *m_renderer = nullptr;
   VkCommandBuffer m_cmd_buffer = nullptr;
 
 public:
-  CommandRecorder(VkCommandBuffer cmd_buffer);
+  CommandRecorder(Renderer &renderer, VkCommandBuffer cmd_buffer);
   CommandRecorder(const CommandRecorder &) = delete;
   CommandRecorder(CommandRecorder &&) = delete;
   ~CommandRecorder();
@@ -141,12 +144,13 @@ public:
 };
 
 class RenderPass {
+  Renderer *m_renderer = nullptr;
   VkCommandBuffer m_cmd_buffer = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
   VkShaderStageFlags m_shader_stages = 0;
 
   friend class CommandRecorder;
-  RenderPass(VkCommandBuffer cmd_buffer,
+  RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
              const RenderPassBeginInfo &&begin_info);
 
 public:
@@ -215,11 +219,12 @@ public:
 };
 
 class ComputePass {
+  Renderer *m_renderer = nullptr;
   VkCommandBuffer m_cmd_buffer = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
 
   friend class CommandRecorder;
-  ComputePass(VkCommandBuffer cmd_buffer);
+  ComputePass(Renderer &renderer, VkCommandBuffer cmd_buffer);
 
 public:
   ComputePass(const ComputePass &) = delete;

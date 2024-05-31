@@ -1,8 +1,9 @@
 #pragma once
 #include "Support/Variant.hpp"
-#include "ren/ren.hpp"
 
 namespace ren {
+
+struct ReinhardToneMapping {};
 
 struct ToneMappingOptions {
   Variant<ReinhardToneMapping> oper;

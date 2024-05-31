@@ -1,12 +1,12 @@
 #pragma once
 #include "Handle.hpp"
-#include "Mesh.hpp"
 #include "ResourceArena.hpp"
+#include "glsl/Mesh.h"
 
 namespace ren {
 
-auto create_persistent_descriptor_set_layout()
-    -> AutoHandle<DescriptorSetLayout>;
+auto create_persistent_descriptor_set_layout(ResourceArena &arena)
+    -> Handle<DescriptorSetLayout>;
 
 struct Pipelines {
   Handle<ComputePipeline> instance_culling_and_lod;

@@ -8,6 +8,9 @@
 
 namespace ren {
 
+class Renderer;
+class ResourceArena;
+
 struct DescriptorPoolCreateInfo {
   REN_DEBUG_NAME_FIELD("Descriptor pool");
   VkDescriptorPoolCreateFlags flags;
@@ -42,7 +45,8 @@ struct DescriptorSetLayout {
 };
 
 [[nodiscard]] auto
-allocate_descriptor_pool_and_set(Handle<DescriptorSetLayout> layout)
-    -> std::tuple<AutoHandle<DescriptorPool>, VkDescriptorSet>;
+allocate_descriptor_pool_and_set(Renderer &renderer, ResourceArena &arena,
+                                 Handle<DescriptorSetLayout> layout)
+    -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet>;
 
 } // namespace ren

@@ -3,17 +3,17 @@
 #include "Renderer.hpp"
 #include "Support/Errors.hpp"
 
-#include <range/v3/algorithm.hpp>
+#include <algorithm>
 
 namespace ren {
 
 namespace {
 
-auto get_surface_capabilities(VkSurfaceKHR surface)
+auto get_surface_capabilities(VkPhysicalDevice adapter, VkSurfaceKHR surface)
     -> VkSurfaceCapabilitiesKHR {
   VkSurfaceCapabilitiesKHR capabilities;
-  throw_if_failed(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-                      g_renderer->get_adapter(), surface, &capabilities),
+  throw_if_failed(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(adapter, surface,
+                                                            &capabilities),
                   "Vulkan: Failed to get surface capabilities");
   return capabilities;
 }
@@ -22,9 +22,9 @@ auto get_surface_formats(VkPhysicalDevice adapter, VkSurfaceKHR surface) {}
 
 auto select_surface_format(Span<const VkSurfaceFormatKHR> surface_formats)
     -> VkSurfaceFormatKHR {
-  auto it = ranges::find_if(surface_formats, [](const VkSurfaceFormatKHR &sf) {
-    return isSRGBFormat(sf.format);
-  });
+  auto it = std::find_if(
+      surface_formats.begin(), surface_formats.end(),
+      [](const VkSurfaceFormatKHR &sf) { return isSRGBFormat(sf.format); });
   return it != surface_formats.end() ? *it : surface_formats.front();
 };
 
@@ -68,19 +68,22 @@ auto select_image_usage(VkImageUsageFlags image_usage) -> VkImageUsageFlags {
 
 } // namespace
 
-SwapchainImpl::SwapchainImpl(VkSurfaceKHR surface) {
-  VkSurfaceCapabilitiesKHR capabilities = get_surface_capabilities(surface);
+Swapchain::Swapchain(Renderer &renderer, VkSurfaceKHR surface) {
+  m_renderer = &renderer;
+
+  VkSurfaceCapabilitiesKHR capabilities =
+      get_surface_capabilities(m_renderer->get_adapter(), surface);
 
   SmallVector<VkSurfaceFormatKHR, 8> surface_formats;
   {
     uint32_t num_formats = 0;
     throw_if_failed(
-        vkGetPhysicalDeviceSurfaceFormatsKHR(g_renderer->get_adapter(), surface,
+        vkGetPhysicalDeviceSurfaceFormatsKHR(m_renderer->get_adapter(), surface,
                                              &num_formats, nullptr),
         "Vulkan: Failed to get surface formats");
     surface_formats.resize(num_formats);
     throw_if_failed(vkGetPhysicalDeviceSurfaceFormatsKHR(
-                        g_renderer->get_adapter(), surface, &num_formats,
+                        m_renderer->get_adapter(), surface, &num_formats,
                         surface_formats.data()),
                     "Vulkan: Failed to get surface formats");
     surface_formats.resize(num_formats);
@@ -113,14 +116,14 @@ SwapchainImpl::SwapchainImpl(VkSurfaceKHR surface) {
   create();
 }
 
-SwapchainImpl::~SwapchainImpl() {
+Swapchain::~Swapchain() {
   destroy();
-  g_renderer->push_to_delete_queue(m_create_info.surface);
+  m_renderer->push_to_delete_queue(m_create_info.surface);
 }
 
-void SwapchainImpl::create() {
-  VkSurfaceCapabilitiesKHR capabilities =
-      get_surface_capabilities(m_create_info.surface);
+void Swapchain::create() {
+  VkSurfaceCapabilitiesKHR capabilities = get_surface_capabilities(
+      m_renderer->get_adapter(), m_create_info.surface);
   m_create_info.imageExtent = [&] {
     if (capabilities.currentExtent.width == 0xFFFFFFFF and
         capabilities.currentExtent.height == 0xFFFFFFFF) {
@@ -137,53 +140,57 @@ void SwapchainImpl::create() {
   m_create_info.oldSwapchain = m_swapchain;
 
   VkSwapchainKHR new_swapchain;
-  throw_if_failed(vkCreateSwapchainKHR(g_renderer->get_device(), &m_create_info,
+  throw_if_failed(vkCreateSwapchainKHR(m_renderer->get_device(), &m_create_info,
                                        nullptr, &new_swapchain),
                   "Vulkan: Failed to create swapchain");
   destroy();
   m_swapchain = new_swapchain;
 
   uint32_t num_images = 0;
-  throw_if_failed(vkGetSwapchainImagesKHR(g_renderer->get_device(), m_swapchain,
+  throw_if_failed(vkGetSwapchainImagesKHR(m_renderer->get_device(), m_swapchain,
                                           &num_images, nullptr),
                   "Vulkan: Failed to get swapchain image count");
   SmallVector<VkImage, 3> images(num_images);
-  throw_if_failed(vkGetSwapchainImagesKHR(g_renderer->get_device(), m_swapchain,
+  throw_if_failed(vkGetSwapchainImagesKHR(m_renderer->get_device(), m_swapchain,
                                           &num_images, images.data()),
                   "Vulkan: Failed to get swapchain images");
 
   m_textures.resize(num_images);
-  ranges::transform(images, m_textures.begin(), [&](VkImage image) {
-    return g_renderer->create_swapchain_texture({
-        .image = image,
+  for (usize i = 0; i < num_images; ++i) {
+    m_textures[i] = m_renderer->create_swapchain_texture({
+        .image = images[i],
         .format = m_create_info.imageFormat,
         .usage = m_create_info.imageUsage,
         .width = m_create_info.imageExtent.width,
         .height = m_create_info.imageExtent.height,
     });
-  });
+  }
 }
 
-void SwapchainImpl::destroy() {
-  g_renderer->push_to_delete_queue(m_swapchain);
+void Swapchain::destroy() {
+  m_renderer->push_to_delete_queue(m_swapchain);
+  for (Handle<Texture> t : m_textures) {
+    m_renderer->destroy(t);
+  }
   m_textures.clear();
 }
 
-void SwapchainImpl::set_size(unsigned width, unsigned height) {
+auto Swapchain::set_size(unsigned width, unsigned height) -> expected<void> {
   m_create_info.imageExtent = {
       .width = width,
       .height = height,
   };
+  return {};
 }
 
-void SwapchainImpl::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
+void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
 
-auto SwapchainImpl::acquire_texture(Handle<Semaphore> signal_semaphore)
+auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
     -> Handle<Texture> {
   while (true) {
     VkResult result = vkAcquireNextImageKHR(
-        g_renderer->get_device(), m_swapchain, UINT64_MAX,
-        g_renderer->get_semaphore(signal_semaphore).handle, nullptr,
+        m_renderer->get_device(), m_swapchain, UINT64_MAX,
+        m_renderer->get_semaphore(signal_semaphore).handle, nullptr,
         &m_image_index);
     switch (result) {
     default:
@@ -198,16 +205,16 @@ auto SwapchainImpl::acquire_texture(Handle<Semaphore> signal_semaphore)
   }
 }
 
-void SwapchainImpl::present(Handle<Semaphore> wait_semaphore) {
+void Swapchain::present(Handle<Semaphore> wait_semaphore) {
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &g_renderer->get_semaphore(wait_semaphore).handle,
+      .pWaitSemaphores = &m_renderer->get_semaphore(wait_semaphore).handle,
       .swapchainCount = 1,
       .pSwapchains = &m_swapchain,
       .pImageIndices = &m_image_index,
   };
-  VkResult result = g_renderer->queue_present(present_info);
+  VkResult result = m_renderer->queue_present(present_info);
   switch (result) {
   default:
     throw_if_failed(result, "Vulkan: Failed to present image");

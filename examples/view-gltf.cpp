@@ -1,5 +1,4 @@
 #include "ImGuiApp.hpp"
-#include "ren/ren-imgui.hpp"
 
 #include <boost/functional/hash.hpp>
 #include <cstdint>
@@ -273,9 +272,9 @@ auto deindex_attibute(std::span<const T> attribute,
 
 class SceneWalker {
 public:
-  SceneWalker(tinygltf::Model model, ren::SceneId scene) {
+  SceneWalker(tinygltf::Model model, ren::IScene &scene) {
     m_model = std::move(model);
-    m_scene = scene;
+    m_scene = &scene;
   }
 
   auto walk(int scene) -> Result<void> {
@@ -471,15 +470,15 @@ private:
            indices->componentType, indices->type, indices->normalized);
     }());
 
-    return ren::create_mesh(m_scene,
-                            {
-                                .positions = positions_data,
-                                .normals = normals_data,
-                                .tangents = tangents_data,
-                                .colors = colors_data,
-                                .tex_coords = tex_coords_data,
-                                .indices = indices_data,
-                            })
+    return m_scene
+        ->create_mesh({
+            .positions = positions_data,
+            .normals = normals_data,
+            .tangents = tangents_data,
+            .colors = colors_data,
+            .uvs = tex_coords_data,
+            .indices = indices_data,
+        })
         .transform_error(get_error_string);
   }
 
@@ -535,13 +534,14 @@ private:
            image.width * image.height * image.component * image.bits / 8);
     OK(ren::Format format,
        get_image_format(image.component, image.pixel_type, desc.srgb));
-    return ren::create_image(m_scene,
-                             {
-                                 .width = unsigned(image.width),
-                                 .height = unsigned(image.height),
-                                 .format = format,
-                                 .data = image.image.data(),
-                             })
+
+    return m_scene
+        ->create_image({
+            .width = unsigned(image.width),
+            .height = unsigned(image.height),
+            .format = format,
+            .data = image.image.data(),
+        })
         .transform_error(get_error_string);
   }
 
@@ -573,7 +573,7 @@ private:
 
   auto create_material(int index) -> Result<ren::MaterialId> {
     const tinygltf::Material &material = m_model.materials[index];
-    ren::MaterialDesc desc = {};
+    ren::MaterialCreateInfo desc = {};
 
     assert(material.pbrMetallicRoughness.baseColorFactor.size() == 4);
     desc.base_color_factor =
@@ -646,8 +646,7 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return ren::create_material(m_scene, desc)
-        .transform_error(get_error_string);
+    return m_scene->create_material(desc).transform_error(get_error_string);
   }
 
   auto get_or_create_material(int index) -> Result<ren::MaterialId> {
@@ -668,13 +667,13 @@ private:
     OK(ren::MaterialId material, get_or_create_material(primitive.material));
     OK(ren::MeshId mesh, get_or_create_mesh(primitive));
     OK(ren::MeshInstanceId mesh_instance,
-       ren::create_mesh_instance(m_scene,
-                                 {
-                                     .mesh = mesh,
-                                     .material = material,
-                                 },
-                                 transform)
+       m_scene
+           ->create_mesh_instance({
+               .mesh = mesh,
+               .material = material,
+           })
            .transform_error(get_error_string));
+    m_scene->set_mesh_instance_transform(mesh_instance, transform);
     return mesh_instance;
   }
 
@@ -760,7 +759,7 @@ private:
 
 private:
   tinygltf::Model m_model;
-  ren::SceneId m_scene;
+  ren::IScene *m_scene = nullptr;
   std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
   std::unordered_map<GltfImageDesc, ren::ImageId> m_image_cache;
   std::vector<ren::MaterialId> m_material_cache;
@@ -774,16 +773,17 @@ public:
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
       TRY_TO(scene_walker.walk(scene));
-      OK(auto directional_light,
-         ren::create_directional_light(get_scene(),
-                                       {
-                                           .color = {1.0f, 1.0f, 1.0f},
-                                           .illuminance = 100'000.0f,
-                                           .origin = {0.0f, 0.0f, 1.0f},
-                                       }));
+      OK(auto directional_light, get_scene().create_directional_light());
+      get_scene().set_directional_light(directional_light,
+                                        {
+                                            .color = {1.0f, 1.0f, 1.0f},
+                                            .illuminance = 100'000.0f,
+                                            .origin = {0.0f, 0.0f, 1.0f},
+                                        });
       return {};
     }()
-                 .transform_error(throw_error);
+                 .transform_error(throw_error)
+                 .value();
   }
 
   [[nodiscard]] static auto run(const fs::path &path, unsigned scene) -> int {
@@ -831,14 +831,13 @@ protected:
     return input;
   }
 
-  auto process_frame(unsigned width, unsigned height, chrono::nanoseconds dt_ns)
-      -> Result<void> override {
+  auto process_frame(chrono::nanoseconds dt_ns) -> Result<void> override {
     if (ImGui::Begin("Scene graphics settings")) {
       draw_camera_imgui(m_camera_params);
       ImGui::End();
     }
 
-    ren::SceneId scene = get_scene();
+    ren::IScene &scene = get_scene();
 
     float dt = duration_as_float(dt_ns);
 
@@ -860,41 +859,44 @@ protected:
     glm::vec3 position = -m_distance * forward;
 
     {
-      float iso = 100.0f;
-      ren::CameraDesc desc = {
-          .width = width,
-          .height = height,
-          .aperture = m_camera_params.aperture,
-          .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
-          .iso = m_camera_params.iso,
-          .exposure_mode = m_camera_params.exposure,
-          .position = position,
-          .forward = forward,
-          .up = up,
-      };
+      ren::CameraId camera = get_camera();
+
+      scene.set_camera_transform(camera, {
+                                             .position = position,
+                                             .forward = forward,
+                                             .up = up,
+                                         });
+      scene.set_camera_parameters(
+          camera, {
+                      .aperture = m_camera_params.aperture,
+                      .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
+                      .iso = m_camera_params.iso,
+                  });
+
       switch (m_camera_params.projection) {
       case PROJECTION_PERSPECTIVE: {
-        desc.projection = ren::PerspectiveProjection{
-            .hfov = glm::radians(m_camera_params.hfov),
-        };
+        scene.set_camera_perspective_projection(
+            camera, {.hfov = glm::radians(m_camera_params.hfov)});
       } break;
       case PROJECTION_ORTHOGRAPHIC: {
-        desc.projection = ren::OrthographicProjection{
-            .width = m_camera_params.orthographic_width,
-        };
+        scene.set_camera_orthographic_projection(
+            camera, {.width = m_camera_params.orthographic_width});
       } break;
       }
+
+      float ec;
       switch (m_camera_params.exposure) {
       case ren::ExposureMode::Camera: {
-        desc.exposure_compensation =
-            m_camera_params.camera_exposure_comensation;
+        ec = m_camera_params.camera_exposure_comensation;
       } break;
       case ren::ExposureMode::Automatic: {
-        desc.exposure_compensation =
-            m_camera_params.automatic_exposure_compensation;
+        ec = m_camera_params.automatic_exposure_compensation;
       } break;
       }
-      ren::set_camera(scene, desc);
+      scene.set_exposure({
+          .mode = m_camera_params.exposure,
+          .ec = ec,
+      });
     }
 
     return {};

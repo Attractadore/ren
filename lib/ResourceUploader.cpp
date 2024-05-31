@@ -1,14 +1,16 @@
 #include "ResourceUploader.hpp"
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
-#include "Support/Errors.hpp"
+#include "Renderer.hpp"
+#include "ResourceArena.hpp"
 
 namespace ren {
 
 namespace {
 
-void generate_mipmaps(CommandRecorder &cmd, Handle<Texture> handle) {
-  const auto &texture = g_renderer->get_texture(handle);
+void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
+                      Handle<Texture> handle) {
+  const auto &texture = renderer.get_texture(handle);
   auto src_size = texture.size;
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
@@ -55,9 +57,9 @@ void generate_mipmaps(CommandRecorder &cmd, Handle<Texture> handle) {
   }
 }
 
-void upload_texture(CommandRecorder &cmd, const BufferView &src,
-                    Handle<Texture> dst) {
-  const auto &texture = g_renderer->get_texture(dst);
+void upload_texture(Renderer &renderer, CommandRecorder &cmd,
+                    const BufferView &src, Handle<Texture> dst) {
+  const auto &texture = renderer.get_texture(dst);
 
   {
     // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
@@ -79,7 +81,7 @@ void upload_texture(CommandRecorder &cmd, const BufferView &src,
 
   cmd.copy_buffer_to_texture(src, dst);
 
-  generate_mipmaps(cmd, dst);
+  generate_mipmaps(renderer, cmd, dst);
 
   // Transfer last mip level from TRANSFER_DST to READ_ONLY after copy or mipmap
   // generation
@@ -125,17 +127,40 @@ void upload_texture(CommandRecorder &cmd, const BufferView &src,
 
 } // namespace
 
-void ResourceUploader::stage_texture(ResourceArena &arena,
-                                     Span<const std::byte> data,
-                                     Handle<Texture> texture) {
+void ResourceUploader::stage_buffer(Renderer &renderer, ResourceArena &arena,
+                                    Span<const std::byte> data,
+                                    const BufferView &buffer) {
+  usize size = data.size_bytes();
+  ren_assert(size <= buffer.size);
+
   BufferView staging_buffer = arena.create_buffer({
       .name = "Staging buffer",
       .heap = BufferHeap::Staging,
-      .size = data.size_bytes(),
+      .size = size,
   });
 
-  std::byte *ptr = g_renderer->map_buffer(staging_buffer);
-  ranges::copy(data, ptr);
+  std::byte *ptr = renderer.map_buffer(staging_buffer);
+  std::memcpy(ptr, data.data(), size);
+
+  m_buffer_copies.push_back({
+      .src = staging_buffer,
+      .dst = buffer,
+  });
+}
+
+void ResourceUploader::stage_texture(Renderer &renderer, ResourceArena &arena,
+                                     Span<const std::byte> data,
+                                     Handle<Texture> texture) {
+  usize size = data.size_bytes();
+
+  BufferView staging_buffer = arena.create_buffer({
+      .name = "Staging buffer",
+      .heap = BufferHeap::Staging,
+      .size = size,
+  });
+
+  std::byte *ptr = renderer.map_buffer(staging_buffer);
+  std::memcpy(ptr, data.data(), size);
 
   m_texture_copies.push_back({
       .src = staging_buffer,
@@ -143,14 +168,15 @@ void ResourceUploader::stage_texture(ResourceArena &arena,
   });
 }
 
-void ResourceUploader::upload(CommandAllocator &cmd_allocator) {
+void ResourceUploader::upload(Renderer &renderer,
+                              CommandAllocator &cmd_allocator) {
   if (m_buffer_copies.empty() and m_texture_copies.empty()) {
     return;
   }
 
   auto cmd_buffer = cmd_allocator.allocate();
   {
-    CommandRecorder cmd(cmd_buffer);
+    CommandRecorder cmd(renderer, cmd_buffer);
 
     if (not m_buffer_copies.empty()) {
       auto _ = cmd.debug_region("Upload buffers");
@@ -174,13 +200,13 @@ void ResourceUploader::upload(CommandAllocator &cmd_allocator) {
     if (not m_texture_copies.empty()) {
       auto _ = cmd.debug_region("Upload textures");
       for (const auto &[src, dst] : m_texture_copies) {
-        upload_texture(cmd, src, dst);
+        upload_texture(renderer, cmd, src, dst);
       }
       m_texture_copies.clear();
     }
   }
 
-  g_renderer->graphicsQueueSubmit({{
+  renderer.graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd_buffer,
   }});
