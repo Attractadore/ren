@@ -46,13 +46,11 @@ public:
                                     }));
 
       // Ambient day light
-      OK(ren::DirectionalLightId light, scene.create_directional_light());
-
-      scene.set_directional_light(light, {
-                                             .color = {1.0f, 1.0f, 1.0f},
-                                             .illuminance = 25'000.0f,
-                                             .origin = {0.0f, 0.0f, 1.0f},
-                                         });
+      OK(ren::DirectionalLightId light, scene.create_directional_light({
+                                            .color = {1.0f, 1.0f, 1.0f},
+                                            .illuminance = 25'000.0f,
+                                            .origin = {0.0f, 0.0f, 1.0f},
+                                        }));
 
       ren::CameraId camera = get_camera();
 

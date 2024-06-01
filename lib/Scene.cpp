@@ -137,18 +137,11 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   return key;
 }
 
-auto Scene::get_or_create_sampler(const SamplerDesc &sampler)
+auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
     -> Handle<Sampler> {
-  Handle<Sampler> &handle = m_samplers[sampler];
+  Handle<Sampler> &handle = m_samplers[create_info];
   if (!handle) {
-    handle = m_arena.create_sampler({
-        .mag_filter = getVkFilter(sampler.mag_filter),
-        .min_filter = getVkFilter(sampler.min_filter),
-        .mipmap_mode = getVkSamplerMipmapMode(sampler.mipmap_filter),
-        .address_mode_u = getVkSamplerAddressMode(sampler.wrap_u),
-        .address_mode_v = getVkSamplerAddressMode(sampler.wrap_v),
-        .anisotropy = 16.0f,
-    });
+    handle = m_arena.create_sampler(std::move(create_info));
   }
   return handle;
 }
@@ -156,8 +149,15 @@ auto Scene::get_or_create_sampler(const SamplerDesc &sampler)
 auto Scene::get_or_create_texture(ImageId image,
                                   const SamplerDesc &sampler_desc)
     -> SampledTextureId {
-  auto view = m_renderer->get_texture_view(m_images[image]);
-  auto sampler = get_or_create_sampler(sampler_desc);
+  TextureView view = m_renderer->get_texture_view(m_images[image]);
+  Handle<Sampler> sampler = get_or_create_sampler({
+      .mag_filter = getVkFilter(sampler_desc.mag_filter),
+      .min_filter = getVkFilter(sampler_desc.min_filter),
+      .mipmap_mode = getVkSamplerMipmapMode(sampler_desc.mipmap_filter),
+      .address_mode_u = getVkSamplerAddressMode(sampler_desc.wrap_u),
+      .address_mode_v = getVkSamplerAddressMode(sampler_desc.wrap_v),
+      .anisotropy = 16.0f,
+  });
   return m_texture_allocator->allocate_sampled_texture(*m_renderer, view,
                                                        sampler);
 }
@@ -184,38 +184,26 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
 
 auto Scene::create_material(const MaterialCreateInfo &desc)
     -> expected<MaterialId> {
-  glsl::Material material = {
-      .base_color = desc.base_color_factor,
-      .base_color_texture = [&]() -> u32 {
-        if (desc.base_color_texture.image) {
-          return get_or_create_texture(desc.base_color_texture.image,
-                                       desc.base_color_texture.sampler);
-        }
-        return 0;
-      }(),
-      .metallic = desc.metallic_factor,
-      .roughness = desc.roughness_factor,
-      .metallic_roughness_texture = [&]() -> u32 {
-        if (desc.metallic_roughness_texture.image) {
-          return get_or_create_texture(desc.metallic_roughness_texture.image,
-                                       desc.metallic_roughness_texture.sampler);
-        }
-        return 0;
-      }(),
-      .normal_texture = [&]() -> u32 {
-        if (desc.normal_texture.image) {
-          return get_or_create_texture(desc.normal_texture.image,
-                                       desc.normal_texture.sampler);
-        }
-        return 0;
-      }(),
-      .normal_scale = desc.normal_texture.scale,
+  auto get_sampled_texture_id = [&](const auto &texture) -> u32 {
+    if (texture.image) {
+      return get_or_create_texture(texture.image, texture.sampler);
+    }
+    return 0;
   };
 
-  auto index = std::bit_cast<MaterialId>(u32(m_materials.size()));
-  m_materials.push_back(material);
+  auto id = std::bit_cast<MaterialId>(u32(m_materials.size()));
+  m_materials.push_back({
+      .base_color = desc.base_color_factor,
+      .base_color_texture = get_sampled_texture_id(desc.base_color_texture),
+      .metallic = desc.metallic_factor,
+      .roughness = desc.roughness_factor,
+      .metallic_roughness_texture =
+          get_sampled_texture_id(desc.metallic_roughness_texture),
+      .normal_texture = get_sampled_texture_id(desc.normal_texture),
+      .normal_scale = desc.normal_texture.scale,
+  });
 
-  return index;
+  return id;
 }
 
 auto Scene::create_camera() -> expected<CameraId> {
@@ -235,27 +223,41 @@ void Scene::set_camera(CameraId camera) {
 }
 
 void Scene::set_camera_perspective_projection(
-    CameraId camera, const CameraPerspectiveProjectionDesc &desc) {
-  get_camera(camera).projection = desc;
+    CameraId id, const CameraPerspectiveProjectionDesc &desc) {
+  Camera &camera = get_camera(id);
+  camera.proj = CameraProjection::Perspective;
+  camera.persp_hfov = desc.hfov;
+  camera.near = desc.near;
+  camera.far = 0.0f;
 }
 
 void Scene::set_camera_orthographic_projection(
-    CameraId camera, const CameraOrthographicProjectionDesc &desc) {
-  get_camera(camera).projection = desc;
+    CameraId id, const CameraOrthographicProjectionDesc &desc) {
+  Camera &camera = get_camera(id);
+  camera.proj = CameraProjection::Orthograpic;
+  camera.ortho_width = desc.width;
+  camera.near = desc.near;
+  camera.far = desc.far;
 }
 
-void Scene::set_camera_transform(CameraId camera,
-                                 const CameraTransformDesc &desc) {
-  get_camera(camera).transform = desc;
+void Scene::set_camera_transform(CameraId id, const CameraTransformDesc &desc) {
+  Camera &camera = get_camera(id);
+  camera.position = desc.position;
+  camera.forward = desc.forward;
+  camera.up = desc.up;
 }
 
-void Scene::set_camera_parameters(CameraId camera,
+void Scene::set_camera_parameters(CameraId id,
                                   const CameraParameterDesc &desc) {
-  get_camera(camera).params = desc;
+  get_camera(id).params = {
+      .aperture = desc.aperture,
+      .shutter_time = desc.shutter_time,
+      .iso = desc.iso,
+  };
 }
 
 void Scene::set_exposure(const ExposureDesc &desc) {
-  m_exposure = desc.mode;
+  m_pp_opts.exposure.mode = desc.mode;
   m_pp_opts.exposure.ec = desc.ec;
 };
 
@@ -298,13 +300,12 @@ void Scene::set_mesh_instance_transforms(
   }
 }
 
-auto Scene::create_directional_light() -> expected<DirectionalLightId> {
-  auto light = m_dir_lights.insert({
-      .color = {1.0f, 1.0f, 1.0f},
-      .illuminance = 100'000.0f,
-      .origin = {0.0f, 0.0f, 1.0f},
-  });
-  return std::bit_cast<DirectionalLightId>(light);
+auto Scene::create_directional_light(const DirectionalLightDesc &desc)
+    -> expected<DirectionalLightId> {
+  Handle<glsl::DirLight> light = m_dir_lights.emplace();
+  auto id = std::bit_cast<DirectionalLightId>(light);
+  set_directional_light(id, desc);
+  return id;
 };
 
 void Scene::destroy_directional_light(DirectionalLightId light) {
@@ -346,7 +347,7 @@ void Scene::update_rg_config() {
   glm::uvec2 viewport = m_swapchain->get_size();
   set_if_changed(m_rg_config.viewport, viewport);
 
-  set_if_changed(m_rg_config.exposure, m_exposure);
+  set_if_changed(m_rg_config.exposure, m_pp_opts.exposure.mode);
 
 #if REN_IMGUI
   {

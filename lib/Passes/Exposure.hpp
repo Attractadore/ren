@@ -1,4 +1,5 @@
 #pragma once
+#include "Camera.hpp"
 #include "Support/StdDef.hpp"
 #include "ren/ren.hpp"
 
@@ -19,7 +20,7 @@ struct ExposurePassOutput {
 };
 
 struct CameraExposureRuntimeConfig {
-  CameraParameterDesc cam_params;
+  CameraParameters cam_params;
   float ec = 0.0f;
 };
 

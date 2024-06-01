@@ -60,7 +60,8 @@ public:
       std::span<const MeshInstanceId> mesh_instances,
       std::span<const glm::mat4x3> transforms) override;
 
-  auto create_directional_light() -> expected<DirectionalLightId> override;
+  auto create_directional_light(const DirectionalLightDesc &desc)
+      -> expected<DirectionalLightId> override;
 
   void destroy_directional_light(DirectionalLightId light) override;
 
@@ -84,12 +85,14 @@ public:
 private:
   auto get_camera(CameraId camera) -> Camera &;
 
-  [[nodiscard]] auto get_or_create_sampler(const SamplerDesc &sampler)
+  [[nodiscard]] auto
+  get_or_create_sampler(const SamplerCreateInfo &&create_info)
       -> Handle<Sampler>;
 
   [[nodiscard]] auto get_or_create_texture(ImageId image,
-                                           const SamplerDesc &sampler)
+                                           const SamplerDesc &sampler_desc)
       -> SampledTextureId;
+
   void update_rg_config();
 
 private:
@@ -99,7 +102,6 @@ private:
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;
 
-  ExposureMode m_exposure = ExposureMode::Automatic;
   Handle<Camera> m_camera;
   HandleMap<Camera> m_cameras;
 
@@ -109,7 +111,7 @@ private:
       m_vertex_pool_lists;
   Vector<Mesh> m_meshes = {{}};
 
-  HashMap<SamplerDesc, Handle<Sampler>> m_samplers;
+  HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 

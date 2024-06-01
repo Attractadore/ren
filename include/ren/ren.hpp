@@ -124,8 +124,6 @@ struct ExposureDesc {
   ExposureMode mode = ExposureMode::Automatic;
   /// Exposure compensation in f-stops.
   float ec = 0.0f;
-
-  bool operator==(const ExposureDesc &) const = default;
 };
 
 /// Mesh description
@@ -198,9 +196,6 @@ struct SamplerDesc {
   WrappingMode wrap_u = WrappingMode::Repeat;
   /// V coordinate wrapping mode
   WrappingMode wrap_v = WrappingMode::Repeat;
-
-public:
-  constexpr auto operator<=>(const SamplerDesc &) const = default;
 };
 
 /// Material description
@@ -313,7 +308,8 @@ struct IScene {
     set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
   }
 
-  [[nodiscard]] virtual auto create_directional_light()
+  [[nodiscard]] virtual auto
+  create_directional_light(const DirectionalLightDesc &desc)
       -> expected<DirectionalLightId> = 0;
 
   virtual void destroy_directional_light(DirectionalLightId light) = 0;

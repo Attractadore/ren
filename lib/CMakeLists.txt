@@ -26,6 +26,7 @@ add_library(
   ren.cpp
   ren-imgui.cpp
   Buffer.cpp
+  Camera.cpp
   CommandAllocator.cpp
   CommandRecorder.cpp
   Descriptors.cpp

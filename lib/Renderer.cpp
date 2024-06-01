@@ -798,8 +798,8 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
       .mipmapMode = create_info.mipmap_mode,
       .addressModeU = create_info.address_mode_u,
       .addressModeV = create_info.address_mode_v,
-      .anisotropyEnable = create_info.anisotropy.has_value(),
-      .maxAnisotropy = create_info.anisotropy.value_or(0.0f),
+      .anisotropyEnable = create_info.anisotropy > 0.0f,
+      .maxAnisotropy = create_info.anisotropy,
       .maxLod = VK_LOD_CLAMP_NONE,
   };
 

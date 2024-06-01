@@ -1,9 +1,9 @@
 #pragma once
 #include <boost/predef/compiler.h>
-#include <cassert>
 #include <fmt/format.h>
 #include <source_location>
 #include <stdexcept>
+#include <utility>
 
 namespace ren {
 
@@ -34,7 +34,7 @@ template <typename... Ts>
                                      Ts &&...args) {
   fmt::print(stderr, "{}\n",
              fmt::format(std::move(fmt_str), std::forward<Ts>(args)...));
-  ren_trap();
+  std::unreachable();
 }
 
 [[noreturn]] inline void

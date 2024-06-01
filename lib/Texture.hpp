@@ -1,7 +1,6 @@
 #pragma once
 #include "DebugNames.hpp"
 #include "Handle.hpp"
-#include "Support/Optional.hpp"
 #include "Support/StdDef.hpp"
 #include "ren/ren.hpp"
 
@@ -71,7 +70,10 @@ struct SamplerCreateInfo {
   VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
   VkSamplerAddressMode address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
   VkSamplerAddressMode address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  Optional<float> anisotropy;
+  float anisotropy = 0.0f;
+
+public:
+  bool operator==(const SamplerCreateInfo &) const = default;
 };
 
 struct Sampler {
@@ -81,7 +83,7 @@ struct Sampler {
   VkSamplerMipmapMode mipmap_mode;
   VkSamplerAddressMode address_mode_u;
   VkSamplerAddressMode address_mode_v;
-  Optional<float> anisotropy;
+  float anisotropy;
 };
 
 auto get_mip_level_count(unsigned width, unsigned height = 1,
@@ -93,8 +95,8 @@ auto getVkFilter(Filter filter) -> VkFilter;
 auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
 auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
 
-template <> struct Hash<SamplerDesc> {
-  auto operator()(const SamplerDesc &sampler) const noexcept -> usize;
+template <> struct Hash<SamplerCreateInfo> {
+  auto operator()(const SamplerCreateInfo &create_info) const noexcept -> usize;
 };
 
 } // namespace ren

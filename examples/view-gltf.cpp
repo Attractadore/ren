@@ -773,13 +773,11 @@ public:
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
       TRY_TO(scene_walker.walk(scene));
-      OK(auto directional_light, get_scene().create_directional_light());
-      get_scene().set_directional_light(directional_light,
-                                        {
-                                            .color = {1.0f, 1.0f, 1.0f},
-                                            .illuminance = 100'000.0f,
-                                            .origin = {0.0f, 0.0f, 1.0f},
-                                        });
+      OK(auto directional_light, get_scene().create_directional_light({
+                                     .color = {1.0f, 1.0f, 1.0f},
+                                     .illuminance = 100'000.0f,
+                                     .origin = {0.0f, 0.0f, 1.0f},
+                                 }));
       return {};
     }()
                  .transform_error(throw_error)

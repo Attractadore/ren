@@ -1,5 +1,4 @@
 #include "Passes/Opaque.hpp"
-#include "Camera.inl"
 #include "CommandRecorder.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
@@ -87,7 +86,7 @@ void run_upload_pass(const RgRuntime &rg, const UploadPassResources &rcs) {
       .num_mesh_instances = u32(scene_cfg.mesh_instances.size()),
       .num_directional_lights = u32(scene_cfg.directional_lights.size()),
       .pv = proj * view,
-      .eye = scene_cfg.camera.transform.position,
+      .eye = scene_cfg.camera.position,
   };
 
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);

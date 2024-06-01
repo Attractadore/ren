@@ -7,7 +7,7 @@ namespace ren {
 
 namespace {
 
-auto get_camera_exposure(const CameraParameterDesc &camera, float ec) -> float {
+auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
   auto ev100_pow2 = camera.aperture * camera.aperture / camera.shutter_time *
                     100.0f / camera.iso;
   auto max_luminance = 1.2f * ev100_pow2 * glm::exp2(-ec);

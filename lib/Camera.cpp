@@ -1,8 +1,8 @@
-#pragma once
 #include "Camera.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/reciprocal.hpp>
+#include <utility>
 
 namespace ren {
 
@@ -30,29 +30,27 @@ constexpr auto orthoRH_ReverseZ(T width, T height, T zNear, T zFar) {
   return result;
 }
 
-inline glm::mat4 get_view_matrix(const Camera &camera) {
-  const CameraTransformDesc &transform = camera.transform;
-  return glm::lookAt(transform.position, transform.position + transform.forward,
-                     transform.up);
+glm::mat4 get_view_matrix(const Camera &camera) {
+  return glm::lookAt(camera.position, camera.position + camera.forward,
+                     camera.up);
 }
 
-inline glm::mat4 get_projection_matrix(const Camera &camera,
-                                       float aspect_ratio) {
-  return camera.projection.visit(OverloadSet{
-      [&](const CameraPerspectiveProjectionDesc &persp) {
-        float fov = persp.hfov / aspect_ratio;
-        return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, persp.near);
-      },
-      [&](const CameraOrthographicProjectionDesc &ortho) {
-        float width = ortho.width;
-        float height = width / aspect_ratio;
-        return orthoRH_ReverseZ(width, height, ortho.near, ortho.far);
-      },
-  });
+glm::mat4 get_projection_matrix(const Camera &camera, float aspect_ratio) {
+  switch (camera.proj) {
+  case CameraProjection::Perspective: {
+    float fov = camera.persp_hfov / aspect_ratio;
+    return infinitePerspectiveRH_ReverseZ(fov, aspect_ratio, camera.near);
+  }
+  case CameraProjection::Orthograpic: {
+    float width = camera.ortho_width;
+    float height = width / aspect_ratio;
+    return orthoRH_ReverseZ(width, height, camera.near, camera.far);
+  }
+  }
+  std::unreachable();
 }
 
-inline glm::mat4 get_projection_matrix(const Camera &camera,
-                                       glm::uvec2 viewport) {
+glm::mat4 get_projection_matrix(const Camera &camera, glm::uvec2 viewport) {
   return get_projection_matrix(camera, float(viewport.x) / float(viewport.y));
 }
 
