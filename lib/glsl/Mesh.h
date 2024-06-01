@@ -1,20 +1,10 @@
 #ifndef REN_GLSL_MESH_H
 #define REN_GLSL_MESH_H
 
+#include "Common.h"
 #include "Vertex.h"
-#include "common.h"
 
 GLSL_NAMESPACE_BEGIN
-
-GLSL_BUFFER(2) Positions { Position position; };
-
-GLSL_BUFFER(2) Normals { Normal normal; };
-
-GLSL_BUFFER(2) Tangents { Tangent tangent; };
-
-GLSL_BUFFER(4) UVs { UV uv; };
-
-GLSL_BUFFER(4) Colors { Color color; };
 
 const uint MESH_ATTRIBUTE_UV_BIT = 1 << 0;
 const uint MESH_ATTRIBUTE_TANGENT_BIT = 1 << 1;
@@ -25,10 +15,10 @@ const uint NUM_MESH_ATTRIBUTE_FLAGS =
      MESH_ATTRIBUTE_COLOR_BIT) +
     1;
 
-const uint MAX_NUM_VERTEX_POOLS = 256;
+const uint MAX_NUM_INDEX_POOL_BITS = 8;
+const uint MAX_NUM_INDEX_POOLS = 1 << MAX_NUM_INDEX_POOL_BITS;
 
-const uint NUM_VERTEX_POOL_INDICES = 1 << 24;
-const uint NUM_VERTEX_POOL_VERTICES = NUM_VERTEX_POOL_INDICES / 7;
+const uint INDEX_POOL_SIZE = 1 << 24;
 
 const uint MAX_NUM_LODS = 8;
 
@@ -37,33 +27,45 @@ struct MeshLOD {
   uint num_indices;
 };
 
-struct MeshCullData {
-  uint8_t attribute_mask;
-  uint8_t pool;
+struct Mesh {
+  GLSL_REF(PositionRef) positions;
+  GLSL_REF(NormalRef) normals;
+  GLSL_REF(TangentRef) tangents;
+  GLSL_REF(UVRef) uvs;
+  GLSL_REF(ColorRef) colors;
   PositionBoundingBox bb;
-  uint base_vertex;
+  BoundingSquare uv_bs;
+  uint index_pool;
   uint num_lods;
   MeshLOD lods[MAX_NUM_LODS];
 };
 
-struct MeshInstanceCullData {
-  uint mesh;
-};
+GLSL_REF_TYPE(8) MeshRef { Mesh mesh; };
 
-struct MeshInstanceDrawData {
-  BoundingSquare uv_bs;
+inline uint get_mesh_attribute_mask(Mesh mesh) {
+  uint mask = 0;
+  if (!GLSL_IS_NULL(mesh.tangents)) {
+    mask |= MESH_ATTRIBUTE_TANGENT_BIT;
+  }
+  if (!GLSL_IS_NULL(mesh.uvs)) {
+    mask |= MESH_ATTRIBUTE_UV_BIT;
+  }
+  if (!GLSL_IS_NULL(mesh.colors)) {
+    mask |= MESH_ATTRIBUTE_COLOR_BIT;
+  }
+  return mask;
+}
+
+struct MeshInstance {
+  uint mesh;
   uint material;
 };
 
-GLSL_BUFFER(4) CullMeshes { MeshCullData data; };
+GLSL_REF_TYPE(4) MeshInstanceRef { MeshInstance mesh_instance; };
 
-GLSL_BUFFER(4) CullMeshInstances { MeshInstanceCullData data; };
+GLSL_REF_TYPE(4) TransformMatrixRef { mat4x3 matrix; };
 
-GLSL_BUFFER(4) DrawMeshInstances { MeshInstanceDrawData data; };
-
-GLSL_BUFFER(4) TransformMatrices { mat4x3 matrix; };
-
-GLSL_BUFFER(4) NormalMatrices { mat3 matrix; };
+GLSL_REF_TYPE(4) NormalMatrixRef { mat3 matrix; };
 
 GLSL_NAMESPACE_END
 

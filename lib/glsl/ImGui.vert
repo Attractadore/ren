@@ -1,7 +1,5 @@
 #include "ImGuiPass.glsl"
 
-PUSH_CONSTANTS GLSL_IMGUI_CONSTANTS pc;
-
 layout(location = V_COLOR) out vec4 v_color;
 layout(location = V_UV) out vec2 v_uv;
 

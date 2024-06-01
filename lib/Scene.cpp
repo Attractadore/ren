@@ -71,67 +71,62 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       .indices = &indices,
   });
 
-  u32 num_vertices = positions.size();
+  // Upload vertices
 
-  ren_assert_msg(num_vertices <= glsl::NUM_VERTEX_POOL_VERTICES,
-                 "Vertex pool overflow");
-  ren_assert_msg(mesh.num_indices <= glsl::NUM_VERTEX_POOL_INDICES,
+  auto create_stream = [&]<typename T>(const Vector<T> &stream,
+                                       Handle<Buffer> &buffer, DebugName name) {
+    if (not stream.empty()) {
+      BufferView view = m_arena.create_buffer({
+          .name = std::move(name),
+          .heap = BufferHeap::Static,
+          .usage = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR |
+                   VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+          .size = Span(stream).size_bytes(),
+      });
+      buffer = view.buffer;
+      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(stream),
+                                       view);
+    }
+  };
+
+  u32 index = m_meshes.size();
+
+  create_stream(positions, mesh.positions,
+                fmt::format("Mesh {} positions", index));
+  create_stream(normals, mesh.normals, fmt::format("Mesh {} normals", index));
+  create_stream(tangents, mesh.tangents,
+                fmt::format("Mesh {} tangents", index));
+  create_stream(uvs, mesh.uvs, fmt::format("Mesh {} uvs", index));
+  create_stream(colors, mesh.colors, fmt::format("Mesh {} colors", index));
+
+  // Find or allocate index pool
+
+  ren_assert_msg(mesh.num_indices <= glsl::INDEX_POOL_SIZE,
                  "Index pool overflow");
 
-  // Find or allocate vertex pool
-
-  auto &vertex_pool_list = m_vertex_pool_lists[usize(mesh.attributes.get())];
-  if (vertex_pool_list.empty()) {
-    vertex_pool_list.emplace_back(create_vertex_pool(m_arena, mesh.attributes));
-  } else {
-    const VertexPool &pool = vertex_pool_list.back();
-    if (pool.num_free_indices < mesh.num_indices or
-        pool.num_free_vertices < num_vertices) {
-      vertex_pool_list.emplace_back(
-          create_vertex_pool(m_arena, mesh.attributes));
-    }
+  if (m_index_pools.empty() or
+      m_index_pools.back().num_free_indices < mesh.num_indices) {
+    m_index_pools.emplace_back(create_index_pool(m_arena));
   }
-  ren_assert(not vertex_pool_list.empty());
-  mesh.pool = vertex_pool_list.size() - 1;
-  VertexPool &vertex_pool = vertex_pool_list[mesh.pool];
 
-  mesh.base_vertex =
-      glsl::NUM_VERTEX_POOL_VERTICES - vertex_pool.num_free_vertices;
-  mesh.base_index =
-      glsl::NUM_VERTEX_POOL_INDICES - vertex_pool.num_free_indices;
+  mesh.index_pool = m_index_pools.size() - 1;
+  IndexPool &index_pool = m_index_pools.back();
+
+  mesh.base_index = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
   for (glsl::MeshLOD &lod : mesh.lods) {
     lod.base_index += mesh.base_index;
   }
 
-  vertex_pool.num_free_vertices -= num_vertices;
-  vertex_pool.num_free_indices -= mesh.num_indices;
+  index_pool.num_free_indices -= mesh.num_indices;
 
-  // Upload vertices
+  // Upload indices
 
-  auto stage_stream = [&]<typename T>(const Vector<T> &stream,
-                                      Handle<Buffer> buffer) {
-    if (not stream.empty()) {
-      auto stream_dst = m_renderer->get_buffer_view(buffer).slice<T>(
-          mesh.base_vertex, num_vertices);
-      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(stream),
-                                       stream_dst);
-    }
-  };
+  auto indices_dst = m_renderer->get_buffer_view(index_pool.indices)
+                         .slice<u32>(mesh.base_index, mesh.num_indices);
+  m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(indices),
+                                   indices_dst);
 
-  stage_stream(positions, vertex_pool.positions);
-  stage_stream(normals, vertex_pool.normals);
-  stage_stream(tangents, vertex_pool.tangents);
-  stage_stream(uvs, vertex_pool.uvs);
-  stage_stream(colors, vertex_pool.colors);
-
-  {
-    auto indices_dst = m_renderer->get_buffer_view(vertex_pool.indices)
-                           .slice<u32>(mesh.base_index, mesh.num_indices);
-    m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(indices),
-                                     indices_dst);
-  }
-
-  auto key = std::bit_cast<MeshId>(u32(m_meshes.size()));
+  auto key = std::bit_cast<MeshId>(index);
   m_meshes.push_back(mesh);
 
   return key;
@@ -385,7 +380,7 @@ auto Scene::draw() -> expected<void> {
       *m_render_graph, m_rg_config,
       PassesRuntimeConfig{
           .camera = m_cameras[m_camera],
-          .vertex_pool_lists = m_vertex_pool_lists,
+          .index_pools = m_index_pools,
           .meshes = m_meshes,
           .mesh_instances = m_mesh_instances.values(),
           .materials = m_materials,

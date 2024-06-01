@@ -107,8 +107,7 @@ private:
 
   PostProcessingOptions m_pp_opts;
 
-  std::array<VertexPoolList, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
-      m_vertex_pool_lists;
+  IndexPoolList m_index_pools;
   Vector<Mesh> m_meshes = {{}};
 
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;

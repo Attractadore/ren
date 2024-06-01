@@ -1,6 +1,6 @@
 #pragma once
-#include "Support/Errors.hpp"
-#include "Support/StdDef.hpp"
+#include "../Support/Errors.hpp"
+#include "../Support/StdDef.hpp"
 
 namespace ren {
 
@@ -15,10 +15,18 @@ public:
                    "Buffer reference improperly aligned");
     m_value = value;
   }
+
+  bool is_null() const { return m_value == 0; }
+
+  explicit operator bool() const { return !is_null(); }
 };
 
-constexpr usize DEFAULT_BUFFER_REFERENCE_ALIGNMENT = 16;
+#define GLSL_REF_TYPE(alignment) struct alignas(alignment)
 
-constexpr usize GPU_COALESCING_WIDTH = 128;
+#define GLSL_REF(RefType) ren::BufferReference<RefType>
+
+#define GLSL_IS_NULL(ref) (ref.is_null())
+
+#define GLSL_SIZEOF(RefType) (sizeof(RefType))
 
 } // namespace ren

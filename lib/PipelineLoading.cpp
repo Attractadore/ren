@@ -12,7 +12,7 @@
 #include "OpaquePassVS.h"
 #include "PostProcessingCS.h"
 #include "ReduceLuminanceHistogramCS.h"
-#include "glsl/OpaquePass.hpp"
+#include "glsl/OpaquePass.h"
 
 #include <spirv_reflect.h>
 

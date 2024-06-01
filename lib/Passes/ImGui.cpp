@@ -5,7 +5,7 @@
 #include "Pipeline.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Span.hpp"
-#include "glsl/ImGuiPass.hpp"
+#include "glsl/ImGuiPass.h"
 
 namespace ren {
 
@@ -89,8 +89,8 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
       SampledTextureId texture((uintptr_t)cmd.TextureId);
 
-      render_pass.set_push_constants(glsl::ImGuiConstants{
-          .vertices = renderer.get_buffer_device_address<glsl::ImGuiVertices>(
+      render_pass.set_push_constants(glsl::ImGuiPassConstants{
+          .vertices = renderer.get_buffer_device_address<glsl::ImGuiVertexRef>(
               rg.get_buffer(rcs.vertices)),
           .scale = scale,
           .translate = translate,

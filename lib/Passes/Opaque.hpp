@@ -35,7 +35,7 @@ struct OpaquePassesConfig {
 
 struct SceneRuntimeConfig {
   Camera camera;
-  Span<const VertexPoolList> vertex_pool_lists;
+  Span<const IndexPool> index_pools;
   Span<const Mesh> meshes;
   Span<const MeshInstance> mesh_instances;
   Span<const glsl::Material> materials;

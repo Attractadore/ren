@@ -1,7 +1,7 @@
 #ifndef REN_GLSL_TEXTURES_H
 #define REN_GLSL_TEXTURES_H
 
-#include "common.h"
+#include "Common.h"
 
 GLSL_NAMESPACE_BEGIN
 

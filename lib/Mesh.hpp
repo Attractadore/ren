@@ -25,32 +25,42 @@ struct Meshlet {
 };
 
 struct Mesh {
-  MeshAttributeFlags attributes;
-  u32 pool = -1;
+  Handle<Buffer> positions;
+  Handle<Buffer> normals;
+  Handle<Buffer> tangents;
+  Handle<Buffer> uvs;
+  Handle<Buffer> colors;
+  u32 index_pool = -1;
   glsl::PositionBoundingBox bb = {};
   glm::vec3 pos_enc_bb;
   glsl::BoundingSquare uv_bs = {};
-  u32 base_vertex = 0;
   u32 base_index = 0;
   u32 num_indices = 0;
   StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 
-struct VertexPool {
-  Handle<Buffer> positions;
-  Handle<Buffer> normals;
-  Handle<Buffer> tangents;
-  Handle<Buffer> colors;
-  Handle<Buffer> uvs;
-  Handle<Buffer> indices;
-  u32 num_free_vertices = glsl::NUM_VERTEX_POOL_VERTICES;
-  u32 num_free_indices = glsl::NUM_VERTEX_POOL_INDICES;
+inline auto get_mesh_attribute_mask(const Mesh &mesh) -> u32 {
+  uint mask = 0;
+  if (mesh.tangents) {
+    mask |= glsl::MESH_ATTRIBUTE_TANGENT_BIT;
+  }
+  if (mesh.uvs) {
+    mask |= glsl::MESH_ATTRIBUTE_UV_BIT;
+  }
+  if (mesh.colors) {
+    mask |= glsl::MESH_ATTRIBUTE_COLOR_BIT;
+  }
+  return mask;
 };
 
-using VertexPoolList = SmallVector<VertexPool, 1>;
+struct IndexPool {
+  Handle<Buffer> indices;
+  u32 num_free_indices = glsl::INDEX_POOL_SIZE;
+};
 
-auto create_vertex_pool(ResourceArena &arena, MeshAttributeFlags attributes)
-    -> VertexPool;
+using IndexPoolList = SmallVector<IndexPool, 1>;
+
+auto create_index_pool(ResourceArena &arena) -> IndexPool;
 
 struct MeshInstance {
   u32 mesh = 0;

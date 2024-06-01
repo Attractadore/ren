@@ -1,7 +1,7 @@
 #ifndef REN_GLSL_MATERIAL_H
 #define REN_GLSL_MATERIAL_H
 
-#include "common.h"
+#include "Common.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -15,7 +15,7 @@ struct Material {
   float normal_scale;
 };
 
-GLSL_BUFFER(4) Materials { Material material; };
+GLSL_REF_TYPE(4) MaterialRef { Material material; };
 
 GLSL_NAMESPACE_END
 

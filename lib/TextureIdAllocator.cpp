@@ -1,7 +1,6 @@
 #include "TextureIdAllocator.hpp"
 #include "Renderer.hpp"
-#include "Support/Errors.hpp"
-#include "glsl/Textures.hpp"
+#include "glsl/Textures.h"
 
 namespace ren {
 

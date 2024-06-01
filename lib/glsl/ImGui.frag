@@ -3,8 +3,6 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS GLSL_IMGUI_CONSTANTS pc;
-
 layout(location = V_COLOR) in vec4 v_color;
 layout(location = V_UV) in vec2 v_uv;
 

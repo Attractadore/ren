@@ -1,10 +1,10 @@
 #include "PostProcessing.glsl"
-#include "PostProcessingPass.glsl"
+#include "PostProcessingPass.h"
 #include "Textures.glsl"
 
 TEXTURES;
 
-PUSH_CONSTANTS GLSL_POST_PROCESSING_CONSTANTS g_pcs;
+PUSH_CONSTANTS(PostProcessingPassConstants);
 
 const uint THREADS_X = POST_PROCESSING_THREADS_X;
 const uint THREADS_Y = POST_PROCESSING_THREADS_Y;
@@ -38,30 +38,28 @@ void store_luminance_histogram() {
   for (; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += stride) {
     // Ignore bin 0 and zero-valued bins
     if (i > 0 && histogram[i] > 0) {
-      atomicAdd(g_pcs.histogram.bins[i], histogram[i]);
+      atomicAdd(pc.histogram.bins[i], histogram[i]);
     }
   }
 }
 
-NUM_THREADS(THREADS_X, THREADS_Y, 1);
+NUM_THREADS_2D(THREADS_X, THREADS_Y);
 void main() {
-  const uint hdr_texture = g_pcs.hdr_texture;
-  const uint sdr_texture = g_pcs.sdr_texture;
-  const ivec2 size = imageSize(g_rimages2d[hdr_texture]);
+  const ivec2 size = imageSize(g_rimages2d[pc.hdr_texture]);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);
 
   float exposure;
-  bool enable_automatic_exposure = !IS_NULL(g_pcs.histogram);
+  bool enable_automatic_exposure = !GLSL_IS_NULL(pc.histogram);
   if (enable_automatic_exposure) {
     exposure =
-        imageLoad(g_rimages2d[g_pcs.previous_exposure_texture], ivec2(0)).r;
+        imageLoad(g_rimages2d[pc.previous_exposure_texture], ivec2(0)).r;
     init_luminance_histogram();
   }
 
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec4 color = imageLoad(g_rimages2d[hdr_texture], ivec2(x, y));
+      vec4 color = imageLoad(g_rimages2d[pc.hdr_texture], ivec2(x, y));
       float luminance = get_luminance(color.rgb);
 
       if (enable_automatic_exposure) {
@@ -71,7 +69,7 @@ void main() {
       // Tone mapping
       color.rgb /= (1.0f + luminance);
 
-      imageStore(g_wimages2d[sdr_texture], ivec2(x, y), color);
+      imageStore(g_wimages2d[pc.sdr_texture], ivec2(x, y), color);
     }
   }
 

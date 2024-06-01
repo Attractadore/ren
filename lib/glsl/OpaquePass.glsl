@@ -3,11 +3,11 @@
 
 #include "OpaquePass.h"
 
-layout(constant_id = S_OPAQUE_FEATURE_VC) const bool OPAQUE_FEATURE_VC = false;
-layout(constant_id = S_OPAQUE_FEATURE_UV) const bool OPAQUE_FEATURE_UV = true;
-layout(constant_id = S_OPAQUE_FEATURE_TS) const bool OPAQUE_FEATURE_TS = true;
+SPEC_CONSTANT(S_OPAQUE_FEATURE_VC) bool OPAQUE_FEATURE_VC = false;
+SPEC_CONSTANT(S_OPAQUE_FEATURE_UV) bool OPAQUE_FEATURE_UV = true;
+SPEC_CONSTANT(S_OPAQUE_FEATURE_TS) bool OPAQUE_FEATURE_TS = true;
 
-PUSH_CONSTANTS GLSL_OPAQUE_CONSTANTS pc;
+PUSH_CONSTANTS(OpaquePassConstants);
 
 const uint V_POSITION = 0;
 const uint V_NORMAL = 1;

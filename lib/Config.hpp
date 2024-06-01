@@ -19,4 +19,6 @@ constexpr usize DESCRIPTOR_TYPE_COUNT = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT + 1;
 constexpr usize MAX_DESCIPTOR_BINDINGS = 16;
 constexpr usize MAX_DESCRIPTOR_SETS = 4;
 
+constexpr usize MAX_PUSH_CONSTANTS_SIZE = 128;
+
 } // namespace ren

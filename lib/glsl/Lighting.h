@@ -1,7 +1,8 @@
 #ifndef REN_GLSL_LIGHTING_H
 #define REN_GLSL_LIGHTING_H
 
-#include "common.h"
+#include "BufferReference.h"
+#include "Common.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -11,7 +12,7 @@ struct DirLight {
   vec3 origin;
 };
 
-GLSL_BUFFER(4) DirectionalLights { DirLight light; };
+GLSL_REF_TYPE(4) DirectionalLightRef { DirLight light; };
 
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
                      float roughness, vec3 illuminance) {

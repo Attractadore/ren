@@ -1,6 +1,5 @@
 #pragma once
 #include "Buffer.hpp"
-#include "BufferReference.hpp"
 #include "Config.hpp"
 #include "Descriptors.hpp"
 #include "Handle.hpp"
@@ -14,6 +13,7 @@
 #include "Support/Span.hpp"
 #include "Support/TypeMap.hpp"
 #include "Texture.hpp"
+#include "glsl/BufferReference.hpp"
 
 #include <volk.h>
 

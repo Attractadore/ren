@@ -189,7 +189,10 @@ public:
 
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
-  void set_push_constants(const auto &data, unsigned offset = 0) {
+  template <typename T>
+  void set_push_constants(const T &data, unsigned offset = 0)
+    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+  {
     ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, m_shader_stages,
                        TempSpan(&data, 1).as_bytes(), offset);

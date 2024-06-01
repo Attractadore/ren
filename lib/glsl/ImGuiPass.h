@@ -1,7 +1,8 @@
 #ifndef REN_GLSL_IMGUI_H
 #define REN_GLSL_IMGUI_H
 
-#include "common.h"
+#include "BufferReference.h"
+#include "Common.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -11,15 +12,14 @@ struct ImGuiVertex {
   uint32_t color;
 };
 
-GLSL_BUFFER(4) ImGuiVertices { ImGuiVertex vertex; };
+GLSL_REF_TYPE(4) ImGuiVertexRef { ImGuiVertex vertex; };
 
-#define GLSL_IMGUI_CONSTANTS                                                   \
-  {                                                                            \
-    GLSL_RESTRICT GLSL_READONLY GLSL_BUFFER_REFERENCE(ImGuiVertices) vertices; \
-    vec2 scale;                                                                \
-    vec2 translate;                                                            \
-    uint tex;                                                                  \
-  }
+struct ImGuiPassConstants {
+  GLSL_REF(ImGuiVertexRef) vertices;
+  vec2 scale;
+  vec2 translate;
+  uint tex;
+};
 
 GLSL_NAMESPACE_END
 

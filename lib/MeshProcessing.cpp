@@ -109,17 +109,14 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   if (not tangents.empty()) {
     *opts.enc_tangents =
         mesh_encode_tangents(tangents, mesh.pos_enc_bb, *opts.enc_normals);
-    mesh.attributes |= MeshAttribute::Tangent;
   }
 
   if (not uvs.empty()) {
     *opts.enc_uvs = mesh_encode_uvs(uvs, &mesh.uv_bs);
-    mesh.attributes |= MeshAttribute::UV;
   }
 
   if (not colors.empty()) {
     *opts.enc_colors = mesh_encode_colors(colors);
-    mesh.attributes |= MeshAttribute::Color;
   }
 
   return mesh;

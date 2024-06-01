@@ -1,7 +1,8 @@
 #ifndef REN_GLSL_VERTEX_H
 #define REN_GLSL_VERTEX_H
 
-#include "common.h"
+#include "BufferReference.h"
+#include "Common.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -18,6 +19,8 @@ struct BoundingBox {
 struct Position {
   i16vec3 position;
 };
+
+GLSL_REF_TYPE(2) PositionRef { Position position; };
 
 struct PositionBoundingBox {
   Position min;
@@ -72,6 +75,8 @@ struct Normal {
   u16vec2 normal;
 };
 
+GLSL_REF_TYPE(2) NormalRef { Normal normal; };
+
 inline vec2 oct_wrap(vec2 v) {
   return (1.0f - abs(vec2(v.y, v.x))) *
          mix(vec2(-1.0f), vec2(1.0f), greaterThanEqual(v, vec2(0.0f)));
@@ -99,6 +104,8 @@ inline vec3 decode_normal(Normal normal) {
 struct Tangent {
   uint16_t tangent_and_sign;
 };
+
+GLSL_REF_TYPE(2) TangentRef { Tangent tangent; };
 
 inline vec3 ortho_vec(vec3 v) {
   if (abs(v.y) > abs(v.z)) {
@@ -142,6 +149,8 @@ struct alignas(4) UV {
   u16vec2 uv;
 };
 
+GLSL_REF_TYPE(4) UVRef { UV uv; };
+
 inline UV encode_uv(vec2 uv, BoundingSquare bs) {
   vec2 fuv = float(1 << 16) * (uv - bs.min) / (bs.max - bs.min);
   fuv = clamp(round(fuv), 0.0f, float((1 << 16) - 1));
@@ -157,6 +166,8 @@ inline vec2 decode_uv(UV uv, BoundingSquare bs) {
 struct alignas(4) Color {
   u8vec4 color;
 };
+
+GLSL_REF_TYPE(4) ColorRef { Color color; };
 
 inline Color encode_color(vec4 color) {
   Color ecolor;

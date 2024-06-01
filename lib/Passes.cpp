@@ -68,7 +68,7 @@ void update_render_graph(RenderGraph &rg, const PassesConfig &cfg,
 
   *rg.get_parameter<SceneRuntimeConfig>(SCENE_RUNTIME_CONFIG) = {
       .camera = rt_cfg.camera,
-      .vertex_pool_lists = rt_cfg.vertex_pool_lists,
+      .index_pools = rt_cfg.index_pools,
       .meshes = rt_cfg.meshes,
       .mesh_instances = rt_cfg.mesh_instances,
       .materials = rt_cfg.materials,

@@ -1,17 +1,17 @@
-#include "ReduceLuminanceHistogramPass.glsl"
+#include "ReduceLuminanceHistogramPass.h"
 #include "Textures.glsl"
 
 TEXTURES;
 
-PUSH_CONSTANTS GLSL_REDUCE_LUMINANCE_HISTOGRAM_CONSTANTS g_pcs;
+PUSH_CONSTANTS(ReduceLuminanceHistogramPassConstants);
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
-NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X, 1, 1);
+NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X);
 void main() {
   uint index = gl_LocalInvocationIndex;
 
-  histogram[index] = g_pcs.histogram.bins[index];
+  histogram[index] = pc.histogram.bins[index];
   barrier();
 
   if (index != 0) {
@@ -31,10 +31,10 @@ void main() {
   float exposure = 1.0f / MIN_LUMINANCE;
   if (num_samples > 0) {
     log_luminance /= num_samples;
-    float luminance = exp2(log_luminance - g_pcs.exposure_compensation);
+    float luminance = exp2(log_luminance - pc.exposure_compensation);
     float max_luminance = 9.6f * luminance;
     exposure = 1.0f / max_luminance;
   }
 
-  imageStore(g_rwimages2d[g_pcs.exposure_texture], ivec2(0), vec4(exposure));
+  imageStore(g_rwimages2d[pc.exposure_texture], ivec2(0), vec4(exposure));
 }

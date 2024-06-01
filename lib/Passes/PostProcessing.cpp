@@ -2,8 +2,8 @@
 #include "CommandRecorder.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
-#include "glsl/PostProcessingPass.hpp"
-#include "glsl/ReduceLuminanceHistogramPass.hpp"
+#include "glsl/PostProcessingPass.h"
+#include "glsl/ReduceLuminanceHistogramPass.h"
 
 namespace ren {
 
@@ -15,7 +15,7 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
   auto histogram = pass.create_buffer(
       {
           .name = "luminance-histogram-empty",
-          .size = sizeof(glsl::LuminanceHistogram),
+          .size = sizeof(glsl::LuminanceHistogramRef),
       },
       RG_TRANSFER_DST_BUFFER);
 
@@ -41,15 +41,15 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
   pass.bind_descriptor_sets({rg.get_texture_set()});
 
   assert(!rcs.histogram == !rcs.exposure);
-  BufferReference<glsl::LuminanceHistogram> histogram;
+  BufferReference<glsl::LuminanceHistogramRef> histogram;
   StorageTextureId previous_exposure;
   if (rcs.histogram) {
-    histogram = renderer.get_buffer_device_address<glsl::LuminanceHistogram>(
+    histogram = renderer.get_buffer_device_address<glsl::LuminanceHistogramRef>(
         rg.get_buffer(rcs.histogram));
     previous_exposure = rg.get_storage_texture_descriptor(rcs.exposure);
   }
 
-  pass.set_push_constants(glsl::PostProcessingConstants{
+  pass.set_push_constants(glsl::PostProcessingPassConstants{
       .histogram = histogram,
       .previous_exposure_texture = previous_exposure,
       .hdr_texture = rg.get_storage_texture_descriptor(rcs.hdr),
@@ -120,9 +120,10 @@ void run_reduce_luminance_histogram_pass(
   const auto &cfg = rg.get_parameter<AutomaticExposureRuntimeConfig>(rcs.cfg);
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
-  pass.set_push_constants(glsl::ReduceLuminanceHistogramConstants{
-      .histogram = renderer.get_buffer_device_address<glsl::LuminanceHistogram>(
-          rg.get_buffer(rcs.histogram)),
+  pass.set_push_constants(glsl::ReduceLuminanceHistogramPassConstants{
+      .histogram =
+          renderer.get_buffer_device_address<glsl::LuminanceHistogramRef>(
+              rg.get_buffer(rcs.histogram)),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
       .exposure_compensation = cfg.ec,
   });

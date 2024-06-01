@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_BATCH_H
 #define REN_GLSL_BATCH_H
 
+#include "Common.h"
 #include "Mesh.h"
-#include "common.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -10,16 +10,12 @@ struct Batch {
   uint id;
 };
 
-const uint NUM_BATCHES = NUM_MESH_ATTRIBUTE_FLAGS * MAX_NUM_VERTEX_POOLS;
+const uint MAX_NUM_BATCHES = NUM_MESH_ATTRIBUTE_FLAGS * MAX_NUM_INDEX_POOLS;
 
 inline Batch make_batch(uint attribute_mask, uint pool) {
   Batch batch;
-  batch.id = (attribute_mask << 8) | pool;
+  batch.id = (attribute_mask << MAX_NUM_INDEX_POOL_BITS) | pool;
   return batch;
-}
-
-inline uint get_batch_id(uint attribute_mask, uint pool) {
-  return make_batch(attribute_mask, pool).id;
 }
 
 GLSL_NAMESPACE_END

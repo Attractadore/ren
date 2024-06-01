@@ -1,8 +1,0 @@
-#pragma once
-#include "PostProcessingPass.h"
-
-GLSL_NAMESPACE_BEGIN
-
-GLSL_PUSH_CONSTANTS(GLSL_POST_PROCESSING_CONSTANTS, PostProcessingConstants);
-
-GLSL_NAMESPACE_END

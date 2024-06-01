@@ -3,6 +3,8 @@
 
 #include "ImGuiPass.h"
 
+PUSH_CONSTANTS(ImGuiPassConstants);
+
 const uint V_COLOR = 0;
 const uint V_UV = 1;
 
