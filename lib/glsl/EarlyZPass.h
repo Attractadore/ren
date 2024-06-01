@@ -7,7 +7,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct EarlyZPassConstants {
+struct EarlyZPassArgs {
   GLSL_REF(MeshRef) meshes;
   GLSL_REF(MeshInstanceRef) mesh_instances;
   GLSL_REF(TransformMatrixRef) transform_matrices;

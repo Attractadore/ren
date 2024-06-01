@@ -14,11 +14,11 @@ macro(add_embedded_shader source target)
   target_link_libraries(ren PRIVATE ${target})
 endmacro()
 
-add_embedded_shader(EarlyZPass.vert EarlyZPassVS)
+add_embedded_shader(EarlyZ.vert EarlyZVS)
 
 add_embedded_shader(InstanceCullingAndLOD.comp InstanceCullingAndLODCS)
-add_embedded_shader(OpaquePass.vert OpaquePassVS)
-add_embedded_shader(OpaquePass.frag OpaquePassFS)
+add_embedded_shader(Opaque.vert OpaqueVS)
+add_embedded_shader(Opaque.frag OpaqueFS)
 
 add_embedded_shader(PostProcessing.comp PostProcessingCS)
 add_embedded_shader(ReduceLuminanceHistogram.comp ReduceLuminanceHistogramCS)

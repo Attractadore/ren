@@ -6,7 +6,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct PostProcessingPassConstants {
+struct PostProcessingPassArgs {
   GLSL_REF(LuminanceHistogramRef) histogram;
   uint previous_exposure_texture;
   uint hdr_texture;

@@ -14,7 +14,7 @@ struct ImGuiVertex {
 
 GLSL_REF_TYPE(4) ImGuiVertexRef { ImGuiVertex vertex; };
 
-struct ImGuiPassConstants {
+struct ImGuiPassArgs {
   GLSL_REF(ImGuiVertexRef) vertices;
   vec2 scale;
   vec2 translate;

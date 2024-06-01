@@ -89,7 +89,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
       SampledTextureId texture((uintptr_t)cmd.TextureId);
 
-      render_pass.set_push_constants(glsl::ImGuiPassConstants{
+      render_pass.set_push_constants(glsl::ImGuiPassArgs{
           .vertices = renderer.get_buffer_device_address<glsl::ImGuiVertexRef>(
               rg.get_buffer(rcs.vertices)),
           .scale = scale,

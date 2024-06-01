@@ -6,7 +6,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct ReduceLuminanceHistogramPassConstants {
+struct ReduceLuminanceHistogramPassArgs {
   GLSL_REF(LuminanceHistogramRef) histogram;
   uint exposure_texture;
   float exposure_compensation;

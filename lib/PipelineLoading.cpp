@@ -4,12 +4,12 @@
 #include "Support/Errors.hpp"
 #include "glsl/Textures.h"
 
-#include "EarlyZPassVS.h"
+#include "EarlyZVS.h"
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
 #include "InstanceCullingAndLODCS.h"
-#include "OpaquePassFS.h"
-#include "OpaquePassVS.h"
+#include "OpaqueFS.h"
+#include "OpaqueVS.h"
 #include "PostProcessingCS.h"
 #include "ReduceLuminanceHistogramCS.h"
 #include "glsl/OpaquePass.h"
@@ -135,7 +135,7 @@ auto load_instance_culling_and_lod_pipeline(ResourceArena &arena)
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Handle<GraphicsPipeline> {
-  auto vs = Span(EarlyZPassVS, EarlyZPassVS_count).as_bytes();
+  auto vs = Span(EarlyZVS, EarlyZVS_count).as_bytes();
   auto layout = create_pipeline_layout(arena, Handle<DescriptorSetLayout>(),
                                        {vs}, "Early Z pass");
   return arena.create_graphics_pipeline({
@@ -153,8 +153,8 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
 auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS> {
-  auto vs = Span(OpaquePassVS, OpaquePassVS_count).as_bytes();
-  auto fs = Span(OpaquePassFS, OpaquePassFS_count).as_bytes();
+  auto vs = Span(OpaqueVS, OpaqueVS_count).as_bytes();
+  auto fs = Span(OpaqueFS, OpaqueFS_count).as_bytes();
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
                                        "Opaque pass");
   std::array color_attachments = {ColorAttachmentInfo{
@@ -170,7 +170,7 @@ auto load_opaque_pass_pipelines(
         {glsl::S_OPAQUE_FEATURE_UV, flags.isSet(MeshAttribute::UV)},
     }};
     pipelines[i] = arena.create_graphics_pipeline({
-        .name = "Opaque pass graphics pipeline",
+        .name = fmt::format("Opaque pass graphics pipeline {}", i),
         .layout = layout,
         .vertex_shader =
             {

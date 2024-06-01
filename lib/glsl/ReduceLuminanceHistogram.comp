@@ -3,7 +3,7 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS(ReduceLuminanceHistogramPassConstants);
+PUSH_CONSTANTS(ReduceLuminanceHistogramPassArgs);
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 

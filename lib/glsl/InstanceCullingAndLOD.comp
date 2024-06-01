@@ -1,7 +1,7 @@
-#include "InstanceCullingAndLOD.h"
+#include "InstanceCullingAndLODPass.h"
 #include "Batch.h"
 
-PUSH_CONSTANTS(InstanceCullingAndLODConstants);
+PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
 NUM_THREADS(INSTANCE_CULLING_AND_LOD_THREADS);
 void main() {

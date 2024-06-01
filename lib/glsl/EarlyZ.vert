@@ -1,6 +1,6 @@
 #include "EarlyZPass.h"
 
-PUSH_CONSTANTS(EarlyZPassConstants);
+PUSH_CONSTANTS(EarlyZPassArgs);
 
 void main() {
   MeshInstance mesh_instance = pc.mesh_instances[gl_BaseInstance].mesh_instance;

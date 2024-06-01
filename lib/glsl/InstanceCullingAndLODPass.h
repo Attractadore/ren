@@ -16,7 +16,7 @@ GLSL_REF_TYPE(4) BatchCommandOffsetRef { uint offset; };
 
 GLSL_REF_TYPE(4) BatchCommandCountRef { uint count; };
 
-struct InstanceCullingAndLODConstants {
+struct InstanceCullingAndLODPassArgs {
   GLSL_REF(MeshRef) meshes;
   GLSL_REF(MeshInstanceRef) mesh_instances;
   GLSL_REF(TransformMatrixRef) transform_matrices;

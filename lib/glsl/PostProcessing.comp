@@ -4,7 +4,7 @@
 
 TEXTURES;
 
-PUSH_CONSTANTS(PostProcessingPassConstants);
+PUSH_CONSTANTS(PostProcessingPassArgs);
 
 const uint THREADS_X = POST_PROCESSING_THREADS_X;
 const uint THREADS_Y = POST_PROCESSING_THREADS_Y;

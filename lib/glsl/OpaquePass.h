@@ -10,20 +10,19 @@ GLSL_NAMESPACE_BEGIN
 
 GLSL_REF_TYPE(8) OpaqueUniformBufferRef {
   GLSL_REF(MeshRef) meshes;
-  GLSL_REF(MaterialRef) materials;
   GLSL_REF(MeshInstanceRef) mesh_instances;
   GLSL_REF(TransformMatrixRef) transform_matrices;
   GLSL_REF(NormalMatrixRef) normal_matrices;
-  GLSL_REF(DirectionalLightRef) directional_lights;
-  uint num_directional_lights;
   mat4 proj_view;
-  vec3 eye;
-  uint exposure_texture;
 };
 
-struct OpaquePassConstants {
+struct OpaquePassArgs {
   GLSL_REF(OpaqueUniformBufferRef) ub;
-  int pad;
+  GLSL_REF(MaterialRef) materials;
+  GLSL_REF(DirectionalLightRef) directional_lights;
+  uint num_directional_lights;
+  vec3 eye;
+  uint exposure_texture;
 };
 
 const uint S_OPAQUE_FEATURE_VC = 0;
