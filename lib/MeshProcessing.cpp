@@ -70,7 +70,7 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   });
 
   u32 num_vertices = positions.size();
-  mesh.num_indices = opts.indices->size();
+  u32 num_indices = opts.indices->size();
 
   // Optimize each LOD separately
 
@@ -85,9 +85,9 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   {
     Vector<u32> remap(num_vertices);
     num_vertices = meshopt_optimizeVertexFetchRemap(
-        remap.data(), opts.indices->data(), mesh.num_indices, num_vertices);
+        remap.data(), opts.indices->data(), num_indices, num_vertices);
     meshopt_remapIndexBuffer(opts.indices->data(), opts.indices->data(),
-                             mesh.num_indices, remap.data());
+                             num_indices, remap.data());
     mesh_remap_vertex_streams({
         .positions = &positions,
         .normals = &normals,
@@ -98,6 +98,17 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
         .remap = remap,
     });
   }
+
+  // Generate meshlets
+
+  mesh_generate_meshlets({
+      .positions = positions,
+      .indices = *opts.indices,
+      .lods = mesh.lods,
+      .meshlets = opts.meshlets,
+      .meshlet_indices = opts.meshlet_indices,
+      .meshlet_triangles = opts.meshlet_triangles,
+  });
 
   // Encode vertex attributes
 
@@ -392,6 +403,64 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
     enc_colors[i] = glsl::encode_color(colors[i]);
   }
   return enc_colors;
+}
+
+void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
+  constexpr float CONE_WEIGHT = 0.0f;
+
+  Vector<meshopt_Meshlet> lod_meshlets;
+  for (isize l = opts.lods.size() - 1; l >= 0; --l) {
+    glsl::MeshLOD &lod = opts.lods[l];
+
+    u32 num_lod_meshlets =
+        meshopt_buildMeshletsBound(lod.num_indices, glsl::NUM_MESHLET_VERTICES,
+                                   glsl::NUM_MESHLET_TRIANGLES);
+    lod_meshlets.resize(num_lod_meshlets);
+
+    u32 base_meshlet = opts.meshlets->size();
+    u32 base_index = opts.meshlet_indices->size();
+    u32 base_triangle = opts.meshlet_triangles->size();
+    ren_assert(base_triangle == lod.base_index);
+    opts.meshlet_indices->resize(base_index +
+                                 num_lod_meshlets * glsl::NUM_MESHLET_VERTICES);
+    opts.meshlet_triangles->resize(
+        base_triangle + num_lod_meshlets * glsl::NUM_MESHLET_TRIANGLES * 3);
+
+    num_lod_meshlets = meshopt_buildMeshlets(
+        lod_meshlets.data(), &(*opts.meshlet_indices)[base_index],
+        &(*opts.meshlet_triangles)[base_triangle],
+        &opts.indices[lod.base_index], lod.num_indices,
+        (const float *)opts.positions.data(), opts.positions.size(),
+        sizeof(glm::vec3), glsl::NUM_MESHLET_VERTICES,
+        glsl::NUM_MESHLET_TRIANGLES, CONE_WEIGHT);
+
+    opts.meshlets->resize(base_meshlet + num_lod_meshlets);
+
+    lod.base_meshlet = base_meshlet;
+    lod.num_meshlets = num_lod_meshlets;
+
+    u32 num_lod_triangles = 0;
+    for (usize m = 0; m < num_lod_meshlets; ++m) {
+      const meshopt_Meshlet lod_meshlet = lod_meshlets[m];
+
+      (*opts.meshlets)[base_meshlet + m] = {
+          .base_index = base_index,
+          .num_indices = lod_meshlet.vertex_count,
+          .base_triangle = base_triangle + num_lod_triangles * 3,
+          .num_triangles = lod_meshlet.triangle_count,
+      };
+
+      base_index += lod_meshlet.vertex_count;
+      num_lod_triangles += lod_meshlet.triangle_count;
+    }
+
+    ren_assert(num_lod_triangles * 3 == lod.num_indices);
+
+    opts.meshlet_indices->resize(base_index);
+    opts.meshlet_triangles->resize(base_triangle + num_lod_triangles * 3);
+  }
+
+  ren_assert(opts.meshlet_triangles->size() == opts.indices.size());
 }
 
 } // namespace ren

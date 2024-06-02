@@ -56,6 +56,9 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   Vector<glsl::UV> uvs;
   Vector<glsl::Color> colors;
   Vector<u32> indices = desc.indices;
+  Vector<glsl::Meshlet> meshlets;
+  Vector<u32> meshlet_indices;
+  Vector<u8> meshlet_triangles;
 
   Mesh mesh = mesh_process(MeshProcessingOptions{
       .positions = desc.positions,
@@ -69,62 +72,75 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       .enc_uvs = &uvs,
       .enc_colors = &colors,
       .indices = &indices,
+      .meshlets = &meshlets,
+      .meshlet_indices = &meshlet_indices,
+      .meshlet_triangles = &meshlet_triangles,
   });
 
   // Upload vertices
 
-  auto create_stream = [&]<typename T>(const Vector<T> &stream,
+  auto upload_buffer = [&]<typename T>(const Vector<T> &data,
                                        Handle<Buffer> &buffer, DebugName name) {
-    if (not stream.empty()) {
+    if (not data.empty()) {
       BufferView view = m_arena.create_buffer({
           .name = std::move(name),
           .heap = BufferHeap::Static,
           .usage = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR |
                    VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
-          .size = Span(stream).size_bytes(),
+          .size = Span(data).size_bytes(),
       });
       buffer = view.buffer;
-      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(stream),
+      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(data),
                                        view);
     }
   };
 
   u32 index = m_meshes.size();
 
-  create_stream(positions, mesh.positions,
+  upload_buffer(positions, mesh.positions,
                 fmt::format("Mesh {} positions", index));
-  create_stream(normals, mesh.normals, fmt::format("Mesh {} normals", index));
-  create_stream(tangents, mesh.tangents,
+  upload_buffer(normals, mesh.normals, fmt::format("Mesh {} normals", index));
+  upload_buffer(tangents, mesh.tangents,
                 fmt::format("Mesh {} tangents", index));
-  create_stream(uvs, mesh.uvs, fmt::format("Mesh {} uvs", index));
-  create_stream(colors, mesh.colors, fmt::format("Mesh {} colors", index));
+  upload_buffer(uvs, mesh.uvs, fmt::format("Mesh {} uvs", index));
+  upload_buffer(colors, mesh.colors, fmt::format("Mesh {} colors", index));
 
   // Find or allocate index pool
 
-  ren_assert_msg(mesh.num_indices <= glsl::INDEX_POOL_SIZE,
-                 "Index pool overflow");
+  u32 num_indices = indices.size();
+
+  ren_assert_msg(num_indices <= glsl::INDEX_POOL_SIZE, "Index pool overflow");
 
   if (m_index_pools.empty() or
-      m_index_pools.back().num_free_indices < mesh.num_indices) {
+      m_index_pools.back().num_free_indices < num_indices) {
     m_index_pools.emplace_back(create_index_pool(m_arena));
   }
 
   mesh.index_pool = m_index_pools.size() - 1;
   IndexPool &index_pool = m_index_pools.back();
 
-  mesh.base_index = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
+  u32 base_index = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
   for (glsl::MeshLOD &lod : mesh.lods) {
-    lod.base_index += mesh.base_index;
+    lod.base_index += base_index;
   }
 
-  index_pool.num_free_indices -= mesh.num_indices;
+  index_pool.num_free_indices -= num_indices;
 
   // Upload indices
 
-  auto indices_dst = m_renderer->get_buffer_view(index_pool.indices)
-                         .slice<u32>(mesh.base_index, mesh.num_indices);
-  m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(indices),
-                                   indices_dst);
+  m_resource_uploader.stage_buffer(
+      *m_renderer, m_frame_arena, Span(indices),
+      m_renderer->get_buffer_view(index_pool.indices)
+          .slice<u32>(base_index, num_indices));
+
+  // Upload meshlets
+
+  upload_buffer(meshlets, mesh.meshlets,
+                fmt::format("Mesh {} meshlets", index));
+  upload_buffer(meshlet_indices, mesh.meshlet_indices,
+                fmt::format("Mesh {} meshlet indices", index));
+  upload_buffer(meshlet_triangles, mesh.meshlet_triangles,
+                fmt::format("Mesh {} meshlet triangles", index));
 
   auto key = std::bit_cast<MeshId>(index);
   m_meshes.push_back(mesh);

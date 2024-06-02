@@ -19,23 +19,19 @@ enum class MeshAttribute {
 };
 ENABLE_FLAGS(MeshAttribute);
 
-struct Meshlet {
-  u32 base_vertex = 0;
-  u32 base_index = 0;
-};
-
 struct Mesh {
   Handle<Buffer> positions;
+  glsl::PositionBoundingBox bb = {};
+  glm::vec3 pos_enc_bb;
   Handle<Buffer> normals;
   Handle<Buffer> tangents;
   Handle<Buffer> uvs;
+  glsl::BoundingSquare uv_bs = {};
   Handle<Buffer> colors;
   u32 index_pool = -1;
-  glsl::PositionBoundingBox bb = {};
-  glm::vec3 pos_enc_bb;
-  glsl::BoundingSquare uv_bs = {};
-  u32 base_index = 0;
-  u32 num_indices = 0;
+  Handle<Buffer> meshlets;
+  Handle<Buffer> meshlet_indices;
+  Handle<Buffer> meshlet_triangles;
   StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 

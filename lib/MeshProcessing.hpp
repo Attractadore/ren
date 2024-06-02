@@ -21,6 +21,9 @@ struct MeshProcessingOptions {
   NotNull<Vector<glsl::UV> *> enc_uvs;
   NotNull<Vector<glsl::Color> *> enc_colors;
   NotNull<Vector<u32> *> indices;
+  NotNull<Vector<glsl::Meshlet> *> meshlets;
+  NotNull<Vector<u32> *> meshlet_indices;
+  NotNull<Vector<u8> *> meshlet_triangles;
 };
 
 [[nodiscard]] auto mesh_process(const MeshProcessingOptions &opts) -> Mesh;
@@ -79,5 +82,16 @@ mesh_encode_positions(Span<const glm::vec3> positions,
 
 [[nodiscard]] auto mesh_encode_colors(Span<const glm::vec4> colors)
     -> Vector<glsl::Color>;
+
+struct MeshGenerateMeshletsOptions {
+  Span<const glm::vec3> positions;
+  Span<const u32> indices;
+  Span<glsl::MeshLOD> lods;
+  NotNull<Vector<glsl::Meshlet> *> meshlets;
+  NotNull<Vector<u32> *> meshlet_indices;
+  NotNull<Vector<u8> *> meshlet_triangles;
+};
+
+void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts);
 
 } // namespace ren
