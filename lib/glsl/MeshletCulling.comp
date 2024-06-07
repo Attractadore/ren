@@ -1,0 +1,36 @@
+#include "MeshletCullingPass.h"
+
+PUSH_CONSTANTS(MeshletCullingPassArgs);
+
+NUM_THREADS(MESHLET_CULLING_THREADS);
+void main() {
+  const uint bucket_size = DEREF(pc.bucket_size);
+  const uint bucket_stride = 1 << pc.bucket;
+
+  const uint index = gl_GlobalInvocationID.x / bucket_stride;
+  const uint offset = gl_GlobalInvocationID.x % bucket_stride;
+
+  if (index >= bucket_size) {
+    return;
+  };
+
+  MeshletCullData cull_data = DEREF(pc.bucket_cull_data[index]);
+  Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
+  Meshlet meshlet = DEREF(mesh.meshlets[cull_data.base_meshlet + offset]);
+
+  DrawIndexedIndirectCommand command;
+  command.num_indices = meshlet.num_triangles * 3;
+  command.num_instances = 1;
+  command.base_index = meshlet.base_triangle;
+  command.base_vertex = meshlet.base_index;
+  command.base_instance = cull_data.mesh_instance;
+
+  uint command_offset;
+  uint num_commands = subgroupAdd(1);
+  if (subgroupElect()) {
+    command_offset = atomicAdd(DEREF(pc.num_commands), num_commands);
+  }
+  command_offset = subgroupBroadcastFirst(command_offset) + subgroupExclusiveAdd(1);
+
+  DEREF(pc.commands[command_offset]) = command;
+}

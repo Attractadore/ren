@@ -1,19 +1,22 @@
 #include "InstanceCullingAndLODPass.h"
+#include "Math.h"
 
 PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
 NUM_THREADS(INSTANCE_CULLING_AND_LOD_THREADS);
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
-  const bool frustum_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
-  const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+  InstanceCullingAndLODPassUniforms ub = DEREF(pc.ub);
 
-  for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {
+  const bool frustum_culling = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+  const bool lod_selection = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+
+  for (uint t = gl_GlobalInvocationID.x; t < ub.num_instances; t += STRIDE) {
     InstanceCullData cull_data = DEREF(pc.cull_data[t]);
 
     Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
 
-    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
+    mat4 pvm = ub.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
 
     BoundingBox bb = decode_bounding_box(mesh.bb);
 
@@ -87,33 +90,44 @@ void main() {
         }
         // Face area is half of abs of det of matrix of diagonals
         area /= 2.0f;
-        uint num_triangles = uint(area * pc.lod_triangle_density);
-        uint num_indices = num_triangles * 3;
+        uint num_triangles = uint(area * ub.lod_triangle_density);
         for (; l < mesh.num_lods - 1; ++l) {
-          if (mesh.lods[l].num_indices <= num_indices) {
+          if (mesh.lods[l].num_triangles <= num_triangles) {
             break;
           }
         }
       }
     }
 
-    l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
+    l = clamp(l - ub.lod_bias, 0, int(mesh.num_lods - 1));
     MeshLOD lod = mesh.lods[l];
 
-    DrawIndexedIndirectCommand command;
-    command.num_indices = lod.num_indices; 
-    command.num_instances = 1;
-    command.base_index = lod.base_index;
-    command.base_vertex = 0;
-    command.base_instance = cull_data.mesh_instance;
+    uint base_meshlet = lod.base_meshlet;
+    uint num_meshlets = lod.num_meshlets;
+    while (num_meshlets != 0) {
+      uint bucket = findLSB(num_meshlets);
+      uint bucket_stride = 1 << bucket;
 
-    uint offset;
-    uint num_commands = subgroupAdd(1);
-    if (subgroupElect()) {
-      offset = atomicAdd(DEREF(pc.num_commands), num_commands);
+      MeshletCullData meshlet_cull_data;
+      meshlet_cull_data.mesh = cull_data.mesh;
+      meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
+      meshlet_cull_data.base_meshlet = base_meshlet;
+
+      base_meshlet += bucket_stride;
+      num_meshlets &= ~bucket_stride;
+
+      uint bucket_offset = ub.meshlet_bucket_offsets[bucket];
+      uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1);
+      uint bucket_size = offset + 1;
+      DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;
+
+      uint old_num_bucket_threads = (bucket_size - 1) * bucket_stride;
+      uint old_num_bucket_work_groups = ceil_div(old_num_bucket_threads, MESHLET_CULLING_THREADS);
+      uint num_bucket_threads = bucket_size * bucket_stride;
+      uint num_bucket_work_groups = ceil_div(num_bucket_threads, MESHLET_CULLING_THREADS);
+      if (old_num_bucket_work_groups != num_bucket_work_groups) {
+        atomicMax(DEREF(pc.meshlet_bucket_commands[bucket]).x, num_bucket_work_groups);
+      }
     }
-    offset = subgroupBroadcastFirst(offset) + subgroupExclusiveAdd(1);
-    
-    DEREF(pc.commands[offset]) = command;
   }
 }

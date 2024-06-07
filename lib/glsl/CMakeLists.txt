@@ -16,6 +16,7 @@ endmacro()
 add_embedded_shader(EarlyZ.vert EarlyZVS)
 
 add_embedded_shader(InstanceCullingAndLOD.comp InstanceCullingAndLODCS)
+add_embedded_shader(MeshletCulling.comp MeshletCullingCS)
 add_embedded_shader(Opaque.vert OpaqueVS)
 add_embedded_shader(Opaque.frag OpaqueFS)
 

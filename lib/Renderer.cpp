@@ -118,14 +118,21 @@ auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
   return None;
 }
 
-auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
-    -> UniqueDevice {
+auto create_device(VkPhysicalDevice adapter,
+                   u32 graphics_queue_family) -> UniqueDevice {
   float queue_priority = 1.0f;
   VkDeviceQueueCreateInfo queue_create_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       .queueFamilyIndex = graphics_queue_family,
       .queueCount = 1,
       .pQueuePriorities = &queue_priority,
+  };
+
+  void *pnext = nullptr;
+  auto add_features = [&](auto &features) {
+    ren_assert(!features.pNext);
+    features.pNext = pnext;
+    pnext = &features;
   };
 
   VkPhysicalDeviceFeatures2 vulkan10_features = {
@@ -136,16 +143,18 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
           .shaderInt16 = true,
       }};
 
+  add_features(vulkan10_features);
+
   VkPhysicalDeviceVulkan11Features vulkan11_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-      .pNext = &vulkan10_features,
       .storageBuffer16BitAccess = true,
       .shaderDrawParameters = true,
   };
 
+  add_features(vulkan11_features);
+
   VkPhysicalDeviceVulkan12Features vulkan12_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .pNext = &vulkan11_features,
       .drawIndirectCount = true,
       .storageBuffer8BitAccess = true,
       .shaderInt8 = true,
@@ -157,21 +166,32 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
       .bufferDeviceAddress = true,
   };
 
+  add_features(vulkan12_features);
+
   VkPhysicalDeviceVulkan13Features vulkan13_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .pNext = &vulkan12_features,
       .synchronization2 = true,
       .dynamicRendering = true,
       .maintenance4 = true,
   };
 
+  add_features(vulkan13_features);
+
+  VkPhysicalDeviceIndexTypeUint8FeaturesEXT uint8_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT,
+      .indexTypeUint8 = true,
+  };
+
+  add_features(uint8_features);
+
   std::array extensions = {
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+      VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
   };
 
   VkDeviceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = &vulkan13_features,
+      .pNext = pnext,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = &queue_create_info,
       .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
@@ -694,9 +714,9 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-static auto get_texture_default_view_type(VkImageType type,
-                                          u16 num_array_layers)
-    -> VkImageViewType {
+static auto
+get_texture_default_view_type(VkImageType type,
+                              u16 num_array_layers) -> VkImageViewType {
   if (num_array_layers > 1) {
     switch (type) {
     default:

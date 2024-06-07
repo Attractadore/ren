@@ -1,5 +1,6 @@
 #pragma once
 #include "Mesh.hpp"
+#include "MeshSimplification.hpp"
 #include "Support/NotNull.hpp"
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
@@ -15,12 +16,12 @@ struct MeshProcessingOptions {
   Span<const glm::vec4> tangents;
   Span<const glm::vec2> uvs;
   Span<const glm::vec4> colors;
+  Span<const u32> indices;
   NotNull<Vector<glsl::Position> *> enc_positions;
   NotNull<Vector<glsl::Normal> *> enc_normals;
   NotNull<Vector<glsl::Tangent> *> enc_tangents;
   NotNull<Vector<glsl::UV> *> enc_uvs;
   NotNull<Vector<glsl::Color> *> enc_colors;
-  NotNull<Vector<u32> *> indices;
   NotNull<Vector<glsl::Meshlet> *> meshlets;
   NotNull<Vector<u32> *> meshlet_indices;
   NotNull<Vector<u8> *> meshlet_triangles;
@@ -86,10 +87,11 @@ mesh_encode_positions(Span<const glm::vec3> positions,
 struct MeshGenerateMeshletsOptions {
   Span<const glm::vec3> positions;
   Span<const u32> indices;
-  Span<glsl::MeshLOD> lods;
+  Span<const LOD> lods;
   NotNull<Vector<glsl::Meshlet> *> meshlets;
   NotNull<Vector<u32> *> meshlet_indices;
   NotNull<Vector<u8> *> meshlet_triangles;
+  NotNull<Mesh *> mesh;
 };
 
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts);

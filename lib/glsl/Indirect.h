@@ -25,6 +25,14 @@ struct DrawIndexedIndirectCommand {
 
 GLSL_DEFINE_PTR_TYPE(DrawIndexedIndirectCommand, 4);
 
+struct DispatchIndirectCommand {
+  uint32_t x;
+  uint32_t y;
+  uint32_t z;
+};
+
+GLSL_DEFINE_PTR_TYPE(DispatchIndirectCommand, 4);
+
 GLSL_NAMESPACE_END
 
 #endif // REN_GLSL_INDIRECT_H

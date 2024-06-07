@@ -1,6 +1,7 @@
 #include "MeshPass.hpp"
 #include "Support/Views.hpp"
 #include "glsl/EarlyZPass.h"
+#include "glsl/MeshletCullingPass.h"
 #include "glsl/OpaquePass.h"
 
 namespace ren {
@@ -16,6 +17,7 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls, Renderer &renderer,
   m_pipelines = begin_info.pipelines;
 
   m_draw_size = begin_info.draw_size;
+  m_num_draw_meshlets = begin_info.num_draw_meshlets;
 
   m_meshes = begin_info.meshes;
   m_materials = begin_info.materials;
@@ -23,6 +25,8 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls, Renderer &renderer,
   m_transform_matrices = begin_info.transform_matrices;
   m_normal_matrices = begin_info.normal_matrices;
   m_commands = begin_info.commands;
+  ren_assert(m_commands.size >=
+             m_num_draw_meshlets * sizeof(glsl::DrawIndexedIndirectCommand));
 
   m_meshes_ptr = renderer.get_buffer_device_ptr<glsl::Mesh>(m_meshes);
   m_materials_ptr =
@@ -132,46 +136,131 @@ void MeshPassClass::Instance::Instance::insert_cross_draw_barriers(
   cmd.pipeline_barrier(barriers, {});
 }
 
-void MeshPassClass::Instance::Instance::run_instance_culling_pass(
-    CommandRecorder &cmd, u32 num_instances,
-    DevicePtr<glsl::InstanceCullData> cull_data_ptr,
+void MeshPassClass::Instance::Instance::run_culling(
+    CommandRecorder &cmd, const BatchDraw &draw,
     DevicePtr<u32> command_count_ptr) {
-  ComputePass pass = cmd.compute_pass();
-  float num_viewport_triangles =
-      m_viewport.x * m_viewport.y /
-      m_instance_culling_and_lod_settings.lod_triangle_pixel_count;
-  float lod_triangle_density = num_viewport_triangles / 4.0f;
-  pass.bind_compute_pipeline(m_pipelines->instance_culling_and_lod);
-  ren_assert(m_meshes_ptr);
-  ren_assert(m_transform_matrices_ptr);
-  ren_assert(cull_data_ptr);
-  ren_assert(m_commands_ptr);
-  ren_assert(command_count_ptr);
-  pass.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
-      .meshes = m_meshes_ptr,
-      .transform_matrices = m_transform_matrices_ptr,
-      .cull_data = cull_data_ptr,
-      .commands = m_commands_ptr,
-      .num_commands = command_count_ptr,
-      .feature_mask = m_instance_culling_and_lod_settings.feature_mask,
-      .num_instances = num_instances,
-      .proj_view = m_proj_view,
-      .lod_triangle_density = lod_triangle_density,
-      .lod_bias = m_instance_culling_and_lod_settings.lod_bias,
-  });
-  pass.dispatch_threads(num_instances, glsl::INSTANCE_CULLING_AND_LOD_THREADS);
-}
+  auto [cull_data, cull_data_ptr, _] =
+      m_upload_allocator->allocate<glsl::InstanceCullData>(
+          draw.instances.size());
+  std::ranges::copy(draw.instances, cull_data);
 
-void MeshPassClass::Instance::Instance::insert_dispatch_to_draw_barrier(
-    CommandRecorder &cmd) {
-  VkMemoryBarrier2 barrier = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-      .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-      .dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-  };
-  cmd.pipeline_barrier({barrier}, {});
+  u32 num_instances = draw.instances.size();
+
+  u32 buckets_size = 0;
+  std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+  for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+    bucket_offsets[bucket] = buckets_size;
+    u32 bucket_stride = 1 << bucket;
+    u32 bucket_size =
+        std::min(num_instances, draw.num_meshlets / bucket_stride);
+    buckets_size += bucket_size;
+  }
+
+  auto [meshlet_bucket_commands_ptr, meshlet_bucket_commands] =
+      m_device_allocator->allocate<glsl::DispatchIndirectCommand>(
+          glsl::NUM_MESHLET_CULLING_BUCKETS);
+  auto [meshlet_bucket_sizes_ptr, meshlet_bucket_sizes] =
+      m_device_allocator->allocate<u32>(glsl::NUM_MESHLET_CULLING_BUCKETS);
+  auto meshlet_cull_data_ptr =
+      m_device_allocator->allocate<glsl::MeshletCullData>(buckets_size).ptr;
+  {
+    std::array<glsl::DispatchIndirectCommand, glsl::NUM_MESHLET_CULLING_BUCKETS>
+        commands;
+    std::ranges::fill(commands,
+                      glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
+    cmd.update_buffer(meshlet_bucket_commands, commands);
+
+    cmd.fill_buffer(meshlet_bucket_sizes, 0);
+
+    cmd.pipeline_barrier(
+        {{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        }},
+        {});
+  }
+
+  {
+    ComputePass pass = cmd.compute_pass();
+    float num_viewport_triangles =
+        m_viewport.x * m_viewport.y /
+        m_instance_culling_and_lod_settings.lod_triangle_pixel_count;
+    float lod_triangle_density = num_viewport_triangles / 4.0f;
+    pass.bind_compute_pipeline(m_pipelines->instance_culling_and_lod);
+    auto [uniforms, ub, _] =
+        m_upload_allocator->allocate<glsl::InstanceCullingAndLODPassUniforms>(
+            1);
+    *uniforms = {
+        .feature_mask = m_instance_culling_and_lod_settings.feature_mask,
+        .num_instances = num_instances,
+        .proj_view = m_proj_view,
+        .lod_triangle_density = lod_triangle_density,
+        .lod_bias = m_instance_culling_and_lod_settings.lod_bias,
+        .meshlet_bucket_offsets = bucket_offsets,
+    };
+    ren_assert(m_meshes_ptr);
+    ren_assert(m_transform_matrices_ptr);
+    ren_assert(cull_data_ptr);
+    ren_assert(meshlet_bucket_commands_ptr);
+    ren_assert(meshlet_bucket_sizes_ptr);
+    ren_assert(meshlet_cull_data_ptr);
+    pass.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
+        .ub = ub,
+        .meshes = m_meshes_ptr,
+        .transform_matrices = m_transform_matrices_ptr,
+        .cull_data = cull_data_ptr,
+        .meshlet_bucket_commands = meshlet_bucket_commands_ptr,
+        .meshlet_bucket_sizes = meshlet_bucket_sizes_ptr,
+        .meshlet_cull_data = meshlet_cull_data_ptr,
+    });
+    pass.dispatch_threads(num_instances,
+                          glsl::INSTANCE_CULLING_AND_LOD_THREADS);
+  }
+
+  cmd.pipeline_barrier(
+      {{
+          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+          .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+          .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+          .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+      }},
+      {});
+
+  {
+    ComputePass pass = cmd.compute_pass();
+    pass.bind_compute_pipeline(m_pipelines->meshlet_culling);
+    for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+      ren_assert(m_meshes_ptr);
+      ren_assert(meshlet_cull_data_ptr);
+      ren_assert(m_commands_ptr);
+      ren_assert(command_count_ptr);
+      pass.set_push_constants(glsl::MeshletCullingPassArgs{
+          .meshes = m_meshes_ptr,
+          .bucket_cull_data = meshlet_cull_data_ptr + bucket_offsets[bucket],
+          .bucket_size = meshlet_bucket_sizes_ptr + bucket,
+          .commands = m_commands_ptr,
+          .num_commands = command_count_ptr,
+          .bucket = bucket,
+      });
+      pass.dispatch_indirect(
+          meshlet_bucket_commands.slice<glsl::DispatchIndirectCommand>(bucket));
+    }
+  }
+
+  cmd.pipeline_barrier(
+      {{
+          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+          .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+          .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+          .dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+          .dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+      }},
+      {});
 }
 
 void MeshPassClass::Instance::Instance::patch_attachments() {
@@ -201,13 +290,21 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     BatchDesc batch = {
         .pipeline = pipeline,
         .index_buffer_view = m_index_pools[mesh.index_pool],
-        .index_type = VK_INDEX_TYPE_UINT32,
     };
     auto it = batches.find(batch);
     [[unlikely]] if (it == batches.end()) {
       it = batches.insert(it, batch, {});
     }
-    it->second.push_back({
+    u32 num_meshlets = mesh.lods[0].num_meshlets;
+    auto &batch_draws = it->second;
+    [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
+    BatchDraw *draw = &batch_draws.back();
+    [[unlikely]] if (draw->instances.size() == m_draw_size or
+                     draw->num_meshlets + num_meshlets > m_num_draw_meshlets) {
+      draw = &batch_draws.emplace_back();
+    }
+    draw->num_meshlets += num_meshlets;
+    draw->instances.push_back({
         .mesh = mesh_instance.mesh,
         .mesh_instance = u32(i),
     });
@@ -262,14 +359,21 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
     BatchDesc batch = {
         .pipeline = m_pipelines->opaque_pass[i32(attributes.get())],
         .index_buffer_view = m_index_pools[mesh.index_pool],
-        .index_type = VK_INDEX_TYPE_UINT32,
     };
     auto it = batches.find(batch);
     [[unlikely]] if (it == batches.end()) {
       it = batches.insert(it, batch, {});
     }
-
-    it->second.push_back({
+    u32 num_meshlets = mesh.lods[0].num_meshlets;
+    auto &batch_draws = it->second;
+    [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
+    BatchDraw *draw = &batch_draws.back();
+    [[unlikely]] if (draw->instances.size() == m_draw_size or
+                     draw->num_meshlets + num_meshlets > m_num_draw_meshlets) {
+      draw = &batch_draws.emplace_back();
+    }
+    draw->num_meshlets += num_meshlets;
+    draw->instances.push_back({
         .mesh = mesh_instance.mesh,
         .mesh_instance = u32(i),
     });
@@ -278,6 +382,8 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
 
 void OpaqueMeshPassClass::Instance::bind_render_pass_resources(
     RenderPass &render_pass) {
+  ren_assert(m_textures);
+  render_pass.bind_descriptor_sets({m_textures});
   auto [uniforms_host_ptr, uniforms_device_ptr, _] =
       m_upload_allocator->allocate<glsl::OpaquePassUniforms>(1);
   ren_assert(m_meshes_ptr);
@@ -291,9 +397,6 @@ void OpaqueMeshPassClass::Instance::bind_render_pass_resources(
       .normal_matrices = m_normal_matrices_ptr,
       .proj_view = m_proj_view,
   };
-  ren_assert(m_textures);
-  render_pass.bind_descriptor_sets({m_textures});
-  ren_assert(uniforms_device_ptr);
   ren_assert(m_materials_ptr);
   ren_assert(m_directional_lights_ptr);
   ren_assert(m_exposure);

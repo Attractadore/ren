@@ -8,6 +8,7 @@
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
 #include "InstanceCullingAndLODCS.h"
+#include "MeshletCullingCS.h"
 #include "OpaqueFS.h"
 #include "OpaqueVS.h"
 #include "PostProcessingCS.h"
@@ -94,8 +95,8 @@ auto create_pipeline_layout(ResourceArena &arena,
 
 auto load_compute_pipeline(ResourceArena &arena,
                            Handle<DescriptorSetLayout> persistent_set_layout,
-                           Span<const std::byte> shader, std::string_view name)
-    -> Handle<ComputePipeline> {
+                           Span<const std::byte> shader,
+                           std::string_view name) -> Handle<ComputePipeline> {
   auto layout =
       create_pipeline_layout(arena, persistent_set_layout, {shader}, name);
   return arena.create_compute_pipeline({
@@ -112,15 +113,20 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
   return {
-    .instance_culling_and_lod = load_instance_culling_and_lod_pipeline(arena),
-    .early_z_pass = load_early_z_pass_pipeline(arena),
-    .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
-    .post_processing =
-        load_post_processing_pipeline(arena, persistent_set_layout),
-    .reduce_luminance_histogram =
-        load_reduce_luminance_histogram_pipeline(arena, persistent_set_layout),
+      .instance_culling_and_lod = load_instance_culling_and_lod_pipeline(arena),
+      .meshlet_culling = load_compute_pipeline(
+          arena, NullHandle,
+          Span(MeshletCullingCS, MeshletCullingCS_count).as_bytes(),
+          "Meshlet culling"),
+      .early_z_pass = load_early_z_pass_pipeline(arena),
+      .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
+      .post_processing =
+          load_post_processing_pipeline(arena, persistent_set_layout),
+      .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
+          arena, persistent_set_layout),
 #if REN_IMGUI
-    .imgui_pass = load_imgui_pipeline(arena, persistent_set_layout, SDR_FORMAT),
+      .imgui_pass =
+          load_imgui_pipeline(arena, persistent_set_layout, SDR_FORMAT),
 #endif
   };
 }
@@ -213,8 +219,8 @@ auto load_post_processing_pipeline(
 }
 
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures, VkFormat format)
-    -> Handle<GraphicsPipeline> {
+                         Handle<DescriptorSetLayout> textures,
+                         VkFormat format) -> Handle<GraphicsPipeline> {
   auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
   Handle<PipelineLayout> layout =

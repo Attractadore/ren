@@ -31,7 +31,6 @@ struct Mesh {
   u32 index_pool = -1;
   Handle<Buffer> meshlets;
   Handle<Buffer> meshlet_indices;
-  Handle<Buffer> meshlet_triangles;
   StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 

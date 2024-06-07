@@ -23,6 +23,9 @@ const uint INDEX_POOL_SIZE = 1 << 24;
 const uint NUM_MESHLET_VERTICES = 64;
 const uint NUM_MESHLET_TRIANGLES = 124;
 
+const uint MESH_MESHLET_COUNT_BITS = 15;
+const uint MAX_NUM_MESH_MESHLETS = 1 << MESH_MESHLET_COUNT_BITS;
+
 struct Meshlet {
   uint base_index;
   uint num_indices;
@@ -37,8 +40,7 @@ const uint MAX_NUM_LODS = 8;
 struct MeshLOD {
   uint base_meshlet;
   uint num_meshlets;
-  uint base_index;
-  uint num_indices;
+  uint num_triangles;
 };
 
 struct Mesh {
@@ -48,6 +50,7 @@ struct Mesh {
   GLSL_PTR(UV) uvs;
   GLSL_PTR(Color) colors;
   GLSL_PTR(Meshlet) meshlets;
+  GLSL_PTR(uint) meshlet_indices;
   PositionBoundingBox bb;
   BoundingSquare uv_bs;
   uint index_pool;

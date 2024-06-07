@@ -26,7 +26,13 @@ public:
 
 protected:
   class Instance;
-  using Batches = HashMap<BatchDesc, Vector<glsl::InstanceCullData>>;
+
+  struct BatchDraw {
+    u32 num_meshlets = 0;
+    Vector<glsl::InstanceCullData> instances;
+  };
+
+  using Batches = HashMap<BatchDesc, Vector<BatchDraw>>;
 
   Batches m_batches;
 };
@@ -39,6 +45,7 @@ struct MeshPassClass::BeginInfo {
   NotNull<const Pipelines *> pipelines;
 
   u32 draw_size = 0;
+  u32 num_draw_meshlets = 0;
 
   BufferView meshes;
   BufferView materials;
@@ -71,54 +78,44 @@ protected:
   template <typename Self>
   void execute(this Self &self, Renderer &renderer, CommandRecorder &cmd) {
     ren_assert(self.m_draw_size > 0);
+    ren_assert(self.m_num_draw_meshlets > 0);
 
     Batches &batches = self.m_class->m_batches;
 
-    for (auto &[_, instances] : batches) {
-      instances.clear();
+    for (auto &[_, draws] : batches) {
+      draws.clear();
     }
     self.build_batches(batches);
 
     u32 num_draws = 0;
-    for (const auto &[_, instances] : batches) {
-      num_draws += ceilDiv(instances.size(), self.m_draw_size);
+    for (const auto &[_, draws] : batches) {
+      num_draws += draws.size();
     }
 
     self.init_command_count_buffer(cmd, num_draws);
 
-    u32 draw = 0;
-    for (const auto &[batch, instances] : batches) {
-      for (usize offset = 0; offset < instances.size();
-           offset += self.m_draw_size) {
-        bool is_first_draw = draw == 0;
-
-        auto num_instances =
-            std::min<u32>(instances.size() - offset, self.m_draw_size);
-        auto [cull_data_host_ptr, cull_data_ptr, _] =
-            self.m_upload_allocator->template allocate<glsl::InstanceCullData>(
-                num_instances);
-        std::copy_n(&instances[offset], num_instances, cull_data_host_ptr);
+    u32 draw_id = 0;
+    for (const auto &[batch, draws] : batches) {
+      for (const BatchDraw &draw : draws) {
+        bool is_first_draw = draw_id == 0;
 
         if (not is_first_draw) {
           self.insert_cross_draw_barriers(cmd);
         }
 
-        self.run_instance_culling_pass(cmd, num_instances, cull_data_ptr,
-                                       self.m_command_count_ptr + draw);
-
-        self.insert_dispatch_to_draw_barrier(cmd);
+        self.run_culling(cmd, draw, self.m_command_count_ptr + draw_id);
 
         self.run_render_pass(
             cmd, batch,
             self.m_commands.template slice<glsl::DrawIndexedIndirectCommand>(
-                0, num_instances),
-            self.m_command_count.template slice<u32>(draw));
+                0, draw.num_meshlets),
+            self.m_command_count.template slice<u32>(draw_id));
 
         if (is_first_draw) {
           self.patch_attachments();
         }
 
-        draw += 1;
+        draw_id += 1;
       }
     }
   };
@@ -133,12 +130,8 @@ protected:
 
   void insert_cross_draw_barriers(CommandRecorder &cmd);
 
-  void
-  run_instance_culling_pass(CommandRecorder &cmd, u32 num_instances,
-                            DevicePtr<glsl::InstanceCullData> cull_data_ptr,
-                            DevicePtr<u32> command_count_ptr);
-
-  void insert_dispatch_to_draw_barrier(CommandRecorder &cmd);
+  void run_culling(CommandRecorder &cmd, const BatchDraw &draw,
+                   DevicePtr<u32> command_count_ptr);
 
   template <typename Self>
   void run_render_pass(this Self &self, CommandRecorder &cmd,
@@ -156,7 +149,8 @@ protected:
     render_pass.set_scissor_rects(
         {{.extent = {self.m_viewport.x, self.m_viewport.y}}});
     render_pass.bind_graphics_pipeline(batch.pipeline);
-    render_pass.bind_index_buffer(batch.index_buffer_view, batch.index_type);
+    render_pass.bind_index_buffer(batch.index_buffer_view,
+                                  VK_INDEX_TYPE_UINT8_EXT);
     self.bind_render_pass_resources(render_pass);
     render_pass.draw_indexed_indirect_count(commands, command_count);
   }
@@ -194,6 +188,7 @@ protected:
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
   u32 m_draw_size = 0;
+  u32 m_num_draw_meshlets = 0;
 
   InstanceCullingAndLODSettings m_instance_culling_and_lod_settings;
 

@@ -71,6 +71,8 @@ auto Scene::get_pipelines() const -> const Pipelines & { return m_pipelines; }
 
 auto Scene::get_draw_size() const -> u32 { return m_draw_size; }
 
+auto Scene::get_num_draw_meshlets() const -> u32 { return m_num_draw_meshlets; }
+
 auto Scene::get_meshes() const -> Span<const Mesh> { return m_meshes; }
 
 auto Scene::get_index_pools() const -> Span<const IndexPool> {
@@ -117,7 +119,6 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   Vector<glsl::Tangent> tangents;
   Vector<glsl::UV> uvs;
   Vector<glsl::Color> colors;
-  Vector<u32> indices = desc.indices;
   Vector<glsl::Meshlet> meshlets;
   Vector<u32> meshlet_indices;
   Vector<u8> meshlet_triangles;
@@ -128,12 +129,12 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       .tangents = desc.tangents,
       .uvs = desc.uvs,
       .colors = desc.colors,
+      .indices = desc.indices,
       .enc_positions = &positions,
       .enc_normals = &normals,
       .enc_tangents = &tangents,
       .enc_uvs = &uvs,
       .enc_colors = &colors,
-      .indices = &indices,
       .meshlets = &meshlets,
       .meshlet_indices = &meshlet_indices,
       .meshlet_triangles = &meshlet_triangles,
@@ -169,31 +170,25 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 
   // Find or allocate index pool
 
-  u32 num_indices = indices.size();
+  u32 num_triangles = meshlet_triangles.size() / 3;
 
-  ren_assert_msg(num_indices <= glsl::INDEX_POOL_SIZE, "Index pool overflow");
+  ren_assert_msg(num_triangles * 3 <= glsl::INDEX_POOL_SIZE,
+                 "Index pool overflow");
 
   if (m_index_pools.empty() or
-      m_index_pools.back().num_free_indices < num_indices) {
+      m_index_pools.back().num_free_indices < num_triangles * 3) {
     m_index_pools.emplace_back(create_index_pool(m_arena));
   }
 
   mesh.index_pool = m_index_pools.size() - 1;
   IndexPool &index_pool = m_index_pools.back();
 
-  u32 base_index = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
-  for (glsl::MeshLOD &lod : mesh.lods) {
-    lod.base_index += base_index;
+  u32 base_triangle = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
+  for (glsl::Meshlet &meshlet : meshlets) {
+    meshlet.base_triangle += base_triangle;
   }
 
-  index_pool.num_free_indices -= num_indices;
-
-  // Upload indices
-
-  m_resource_uploader.stage_buffer(
-      *m_renderer, m_frame_arena, Span(indices),
-      m_renderer->get_buffer_view(index_pool.indices)
-          .slice<u32>(base_index, num_indices));
+  index_pool.num_free_indices -= num_triangles * 3;
 
   // Upload meshlets
 
@@ -201,8 +196,13 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
                 fmt::format("Mesh {} meshlets", index));
   upload_buffer(meshlet_indices, mesh.meshlet_indices,
                 fmt::format("Mesh {} meshlet indices", index));
-  upload_buffer(meshlet_triangles, mesh.meshlet_triangles,
-                fmt::format("Mesh {} meshlet triangles", index));
+
+  // Upload triangles
+
+  m_resource_uploader.stage_buffer(
+      *m_renderer, m_frame_arena, Span(meshlet_triangles),
+      m_renderer->get_buffer_view(index_pool.indices)
+          .slice<u8>(base_triangle, num_triangles * 3));
 
   auto key = std::bit_cast<MeshId>(index);
   m_meshes.push_back(mesh);
@@ -481,6 +481,12 @@ void Scene::draw_imgui() {
         ImGui::SliderInt("Maximum indirect draw instance count", &draw_size, 1,
                          128 * 1024);
         m_draw_size = draw_size;
+      }
+      {
+        int num_draw_meshlets = m_num_draw_meshlets;
+        ImGui::SliderInt("Maximum indirect draw instance count",
+                         &num_draw_meshlets, 1, 1024 * 1024);
+        m_num_draw_meshlets = num_draw_meshlets;
       }
 
       ImGui::SeparatorText("Instance culling");

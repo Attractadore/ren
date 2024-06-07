@@ -7,6 +7,11 @@
 
 namespace ren {
 
+struct LOD {
+  u32 base_index = 0;
+  u32 num_indices = 0;
+};
+
 struct MeshSimplificationOptions {
   NotNull<Vector<glm::vec3> *> positions;
   NotNull<Vector<glm::vec3> *> normals;
@@ -14,7 +19,7 @@ struct MeshSimplificationOptions {
   Vector<glm::vec2> *uvs = nullptr;
   Vector<glm::vec4> *colors = nullptr;
   NotNull<Vector<u32> *> indices;
-  NotNull<StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> *> lods;
+  NotNull<StaticVector<LOD, glsl::MAX_NUM_LODS> *> lods;
   u32 num_lods = glsl::MAX_NUM_LODS;
   /// Percentage of triangles to retain at each LOD
   float threshold = 0.75f;

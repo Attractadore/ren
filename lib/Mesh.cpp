@@ -12,7 +12,7 @@ auto create_index_pool(ResourceArena &arena) -> IndexPool {
                          .heap = BufferHeap::Static,
                          .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                   VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                         .size = sizeof(u32) * pool.num_free_indices,
+                         .size = sizeof(u8) * pool.num_free_indices,
                      })
                      .buffer;
 

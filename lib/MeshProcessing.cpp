@@ -12,6 +12,7 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   Vector<glm::vec4> tangents = opts.tangents;
   Vector<glm::vec2> uvs = opts.uvs;
   Vector<glm::vec4> colors = opts.colors;
+  Vector<u32> indices = opts.indices;
 
   ren_assert(positions.size() > 0);
   ren_assert(normals.size() == positions.size());
@@ -24,8 +25,8 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   if (not colors.empty()) {
     ren_assert(colors.size() == positions.size());
   }
-  if (not opts.indices->empty()) {
-    ren_assert(opts.indices->size() % 3 == 0);
+  if (not indices.empty()) {
+    ren_assert(indices.size() % 3 == 0);
   } else {
     ren_assert(positions.size() % 3 == 0);
   }
@@ -41,7 +42,7 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
       .tangents = tangents.size() ? &tangents : nullptr,
       .uvs = uvs.size() ? &uvs : nullptr,
       .colors = colors.size() ? &colors : nullptr,
-      .indices = opts.indices,
+      .indices = &indices,
   });
 
   // Generate tangents
@@ -53,31 +54,32 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
         .tangents = &tangents,
         .uvs = &uvs,
         .colors = colors.size() ? &colors : nullptr,
-        .indices = opts.indices,
+        .indices = &indices,
     });
   }
 
   // Generate LODs
 
+  StaticVector<LOD, glsl::MAX_NUM_LODS> lods;
   mesh_simplify({
       .positions = &positions,
       .normals = &normals,
       .tangents = tangents.size() ? &tangents : nullptr,
       .uvs = uvs.size() ? &uvs : nullptr,
       .colors = colors.size() ? &colors : nullptr,
-      .indices = opts.indices,
-      .lods = &mesh.lods,
+      .indices = &indices,
+      .lods = &lods,
   });
 
   u32 num_vertices = positions.size();
-  u32 num_indices = opts.indices->size();
+  u32 num_indices = indices.size();
 
   // Optimize each LOD separately
 
-  for (const glsl::MeshLOD &lod : mesh.lods) {
-    meshopt_optimizeVertexCache(&(*opts.indices)[lod.base_index],
-                                &(*opts.indices)[lod.base_index],
-                                lod.num_indices, num_vertices);
+  for (const LOD &lod : lods) {
+    meshopt_optimizeVertexCache(&indices[lod.base_index],
+                                &indices[lod.base_index], lod.num_indices,
+                                num_vertices);
   }
 
   // Optimize all LODs together.
@@ -85,9 +87,9 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   {
     Vector<u32> remap(num_vertices);
     num_vertices = meshopt_optimizeVertexFetchRemap(
-        remap.data(), opts.indices->data(), num_indices, num_vertices);
-    meshopt_remapIndexBuffer(opts.indices->data(), opts.indices->data(),
-                             num_indices, remap.data());
+        remap.data(), indices.data(), num_indices, num_vertices);
+    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
+                             remap.data());
     mesh_remap_vertex_streams({
         .positions = &positions,
         .normals = &normals,
@@ -103,11 +105,12 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
 
   mesh_generate_meshlets({
       .positions = positions,
-      .indices = *opts.indices,
-      .lods = mesh.lods,
+      .indices = indices,
+      .lods = lods,
       .meshlets = opts.meshlets,
       .meshlet_indices = opts.meshlet_indices,
       .meshlet_triangles = opts.meshlet_triangles,
+      .mesh = &mesh,
   });
 
   // Encode vertex attributes
@@ -292,10 +295,9 @@ void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts) {
   });
 }
 
-auto mesh_encode_positions(Span<const glm::vec3> positions,
-                           NotNull<glsl::PositionBoundingBox *> pbb,
-                           NotNull<glm::vec3 *> enc_bb)
-    -> Vector<glsl::Position> {
+auto mesh_encode_positions(
+    Span<const glm::vec3> positions, NotNull<glsl::PositionBoundingBox *> pbb,
+    NotNull<glm::vec3 *> enc_bb) -> Vector<glsl::Position> {
   glsl::BoundingBox bb = {
       .min = glm::vec3(std::numeric_limits<float>::infinity()),
       .max = -glm::vec3(std::numeric_limits<float>::infinity()),
@@ -338,10 +340,9 @@ auto mesh_encode_normals(Span<const glm::vec3> normals,
   return enc_normals;
 }
 
-auto mesh_encode_tangents(Span<const glm::vec4> tangents,
-                          const glm::vec3 &pos_enc_bb,
-                          Span<const glsl::Normal> enc_normals)
-    -> Vector<glsl::Tangent> {
+auto mesh_encode_tangents(
+    Span<const glm::vec4> tangents, const glm::vec3 &pos_enc_bb,
+    Span<const glsl::Normal> enc_normals) -> Vector<glsl::Tangent> {
   glm::mat3 encode_transform_matrix =
       glsl::make_encode_position_matrix(pos_enc_bb);
 
@@ -396,8 +397,8 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
   return enc_uvs;
 }
 
-[[nodiscard]] auto mesh_encode_colors(Span<const glm::vec4> colors)
-    -> Vector<glsl::Color> {
+[[nodiscard]] auto
+mesh_encode_colors(Span<const glm::vec4> colors) -> Vector<glsl::Color> {
   Vector<glsl::Color> enc_colors(colors.size());
   for (usize i = 0; i < colors.size(); ++i) {
     enc_colors[i] = glsl::encode_color(colors[i]);
@@ -408,9 +409,10 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
   constexpr float CONE_WEIGHT = 0.0f;
 
+  opts.mesh->lods.resize(opts.lods.size());
   Vector<meshopt_Meshlet> lod_meshlets;
   for (isize l = opts.lods.size() - 1; l >= 0; --l) {
-    glsl::MeshLOD &lod = opts.lods[l];
+    const LOD &lod = opts.lods[l];
 
     u32 num_lod_meshlets =
         meshopt_buildMeshletsBound(lod.num_indices, glsl::NUM_MESHLET_VERTICES,
@@ -436,19 +438,32 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
 
     opts.meshlets->resize(base_meshlet + num_lod_meshlets);
 
-    lod.base_meshlet = base_meshlet;
-    lod.num_meshlets = num_lod_meshlets;
+    opts.mesh->lods[l] = {
+        .base_meshlet = base_meshlet,
+        .num_meshlets = num_lod_meshlets,
+        .num_triangles = lod.num_indices * 3,
+    };
 
     u32 num_lod_triangles = 0;
     for (usize m = 0; m < num_lod_meshlets; ++m) {
       const meshopt_Meshlet lod_meshlet = lod_meshlets[m];
 
-      (*opts.meshlets)[base_meshlet + m] = {
+      glsl::Meshlet meshlet = {
           .base_index = base_index,
           .num_indices = lod_meshlet.vertex_count,
           .base_triangle = base_triangle + num_lod_triangles * 3,
           .num_triangles = lod_meshlet.triangle_count,
       };
+
+      // Compact triangle buffer.
+      std::ranges::copy_backward(
+          Span(*opts.meshlet_triangles)
+              .subspan(base_triangle + lod_meshlet.triangle_offset,
+                       lod_meshlet.triangle_count * 3),
+          &(*opts.meshlet_triangles)[meshlet.base_triangle +
+                                     meshlet.num_triangles * 3]);
+
+      (*opts.meshlets)[base_meshlet + m] = meshlet;
 
       base_index += lod_meshlet.vertex_count;
       num_lod_triangles += lod_meshlet.triangle_count;

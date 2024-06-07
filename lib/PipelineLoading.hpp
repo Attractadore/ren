@@ -10,6 +10,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
 
 struct Pipelines {
   Handle<ComputePipeline> instance_culling_and_lod;
+  Handle<ComputePipeline> meshlet_culling;
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;

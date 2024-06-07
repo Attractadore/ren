@@ -51,6 +51,8 @@ public:
 
   auto get_draw_size() const -> u32;
 
+  auto get_num_draw_meshlets() const -> u32;
+
   auto get_meshes() const -> Span<const Mesh>;
 
   auto get_index_pools() const -> Span<const IndexPool>;
@@ -188,6 +190,7 @@ private:
   float m_exposure_compensation = 0.0f;
 
   u32 m_draw_size = 8 * 1024;
+  u32 m_num_draw_meshlets = 1024 * 1024;
 
   float m_lod_triangle_pixels = 16.0f;
   i32 m_lod_bias = 0;
