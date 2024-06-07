@@ -23,6 +23,12 @@ const uint INDEX_POOL_SIZE = 1 << 24;
 const uint NUM_MESHLET_VERTICES = 64;
 const uint NUM_MESHLET_TRIANGLES = 124;
 
+const uint MAX_NUM_BATCH_MESH_INSTANCES = 1024;
+const uint MAX_NUM_BATCH_MESHLET_INSTANCES = 32 * MAX_NUM_BATCH_MESH_INSTANCES;
+
+const uint MESH_MESHLET_COUNT_BITS = 15;
+const uint MAX_NUM_MESH_MESHLETS = 1 << MESH_MESHLET_COUNT_BITS;
+
 struct Meshlet {
   uint base_index;
   uint num_indices;

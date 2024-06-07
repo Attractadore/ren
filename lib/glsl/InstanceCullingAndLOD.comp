@@ -1,5 +1,5 @@
 #include "InstanceCullingAndLODPass.h"
-#include "Batch.h"
+#include "Math.h"
 
 PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
@@ -100,22 +100,32 @@ void main() {
     l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
     MeshLOD lod = mesh.lods[l];
 
-    DrawIndexedIndirectCommand command;
-    command.num_indices = lod.num_indices; 
-    command.num_instances = 1;
-    command.base_index = lod.base_index;
-    command.base_vertex = 0;
-    command.base_instance = i;
+    uint base_meshlet = lod.base_meshlet;
+    uint num_meshlets = lod.num_meshlets;
+    while (num_meshlets) {
+      uint bucket = findLSB(num_meshlets);
+      uint bucket_size = 1 << bucket;
 
-    uint offset;
-    uint num_commands = subgroupAdd(1);
-    if (subgroupElect()) {
-      Batch batch = make_batch(get_mesh_attribute_mask(mesh), mesh.index_pool);
-      uint base_offset = pc.batch_command_offsets[batch.id].offset;
-      offset = base_offset + atomicAdd(pc.batch_command_counts[batch.id].count, num_commands);
+      MeshletCullingData data;
+      data.mesh = mesh_instance.mesh;
+      data.mesh_instance = i;
+      data.base_meshlet = base_meshlet;
+
+      base_meshlet += bucket_size;
+      num_meshlets &= ~bucket_size;
+
+      uint bucket_base_offset = pc.meshlet_bucket_offsets[bucket];
+      uint bucket_offset = atomicAdd(pc.meshlet_bucket_counts[bucket], 1);
+      uint bucket_count = bucket_offset + 1;
+      pc.meshlet_culling_data[bucket_base_offset + bucket_offset] = data;
+
+      uint old_num_bucket_threads = (bucket_count - 1) * bucket_size;
+      uint old_num_bucket_work_groups = ceil_dev(old_num_bucket_threads, MESHLET_CULLING_THREADS);
+      uint num_bucket_threads = bucket_count * bucket_size;
+      uint num_bucket_work_groups = ceil_dev(num_bucket_threads, MESHLET_CULLING_THREADS);
+      if (old_num_bucket_work_groups != num_bucket_work_groups) {
+        atomicMax(pc.meshlet_bucket_commands[bucket].command.x, num_bucket_work_groups);
+      }
     }
-    offset = subgroupBroadcastFirst(offset) + subgroupExclusiveAdd(1);
-    
-    pc.commands[offset].command = command;
   }
 }
