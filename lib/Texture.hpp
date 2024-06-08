@@ -95,8 +95,6 @@ auto getVkFilter(Filter filter) -> VkFilter;
 auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
 auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
 
-template <> struct Hash<SamplerCreateInfo> {
-  auto operator()(const SamplerCreateInfo &create_info) const noexcept -> usize;
-};
+REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode, address_mode_u, address_mode_v, anisotropy);
 
 } // namespace ren

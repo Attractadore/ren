@@ -50,16 +50,4 @@ auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode {
   }
 }
 
-auto Hash<SamplerCreateInfo>::operator()(
-    const SamplerCreateInfo &create_info) const noexcept -> usize {
-  usize seed = 0;
-  seed = hash_combine(seed, create_info.mag_filter);
-  seed = hash_combine(seed, create_info.min_filter);
-  seed = hash_combine(seed, create_info.mipmap_mode);
-  seed = hash_combine(seed, create_info.address_mode_u);
-  seed = hash_combine(seed, create_info.address_mode_v);
-  seed = hash_combine(seed, create_info.anisotropy);
-  return seed;
-}
-
 } // namespace ren
