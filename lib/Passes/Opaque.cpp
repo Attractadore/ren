@@ -4,7 +4,6 @@
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "Support/Views.hpp"
-#include "glsl/Batch.h"
 #include "glsl/EarlyZPass.h"
 #include "glsl/InstanceCullingAndLODPass.h"
 #include "glsl/OpaquePass.h"

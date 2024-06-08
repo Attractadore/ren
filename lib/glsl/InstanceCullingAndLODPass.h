@@ -17,9 +17,8 @@ struct InstanceCullingAndLODPassArgs {
   GLSL_PTR(Mesh) meshes;
   GLSL_PTR(MeshInstance) mesh_instances;
   GLSL_PTR(mat4x3) transform_matrices;
-  GLSL_PTR(uint) batch_command_offsets;
-  GLSL_PTR(uint) batch_command_counts;
   GLSL_PTR(DrawIndexedIndirectCommand) commands;
+  GLSL_PTR(uint) num_commands;
   uint feature_mask;
   uint num_mesh_instances;
   mat4 proj_view;

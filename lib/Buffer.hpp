@@ -2,6 +2,7 @@
 #include "DebugNames.hpp"
 #include "Handle.hpp"
 #include "Support/StdDef.hpp"
+#include "Support/Hash.hpp"
 
 #include <vk_mem_alloc.h>
 
@@ -51,5 +52,8 @@ public:
     return subbuffer(sizeof(T) * start);
   }
 };
+
+REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, size);
+
 
 } // namespace ren

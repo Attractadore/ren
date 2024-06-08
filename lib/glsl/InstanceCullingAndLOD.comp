@@ -1,5 +1,4 @@
 #include "InstanceCullingAndLODPass.h"
-#include "Batch.h"
 
 PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
@@ -110,9 +109,7 @@ void main() {
     uint offset;
     uint num_commands = subgroupAdd(1);
     if (subgroupElect()) {
-      Batch batch = make_batch(get_mesh_attribute_mask(mesh), mesh.index_pool);
-      uint base_offset = DEREF(pc.batch_command_offsets[batch.id]);
-      offset = base_offset + atomicAdd(DEREF(pc.batch_command_counts[batch.id]), num_commands);
+      offset = atomicAdd(DEREF(pc.num_commands), num_commands);
     }
     offset = subgroupBroadcastFirst(offset) + subgroupExclusiveAdd(1);
     
