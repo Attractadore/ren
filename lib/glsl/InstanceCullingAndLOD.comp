@@ -10,10 +10,10 @@ void main() {
   const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
 
   for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
-    MeshInstance mesh_instance = pc.mesh_instances[i].mesh_instance;
-    Mesh mesh = pc.meshes[mesh_instance.mesh].mesh;
+    MeshInstance mesh_instance = DEREF(pc.mesh_instances[i]);
+    Mesh mesh = DEREF(pc.meshes[mesh_instance.mesh]);
 
-    mat4 pvm = pc.proj_view * mat4(pc.transform_matrices[i].matrix);
+    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[i]));
 
     BoundingBox bb = decode_bounding_box(mesh.bb);
 
@@ -111,11 +111,11 @@ void main() {
     uint num_commands = subgroupAdd(1);
     if (subgroupElect()) {
       Batch batch = make_batch(get_mesh_attribute_mask(mesh), mesh.index_pool);
-      uint base_offset = pc.batch_command_offsets[batch.id].offset;
-      offset = base_offset + atomicAdd(pc.batch_command_counts[batch.id].count, num_commands);
+      uint base_offset = DEREF(pc.batch_command_offsets[batch.id]);
+      offset = base_offset + atomicAdd(DEREF(pc.batch_command_counts[batch.id]), num_commands);
     }
     offset = subgroupBroadcastFirst(offset) + subgroupExclusiveAdd(1);
     
-    pc.commands[offset].command = command;
+    DEREF(pc.commands[offset]) = command;
   }
 }

@@ -2,6 +2,7 @@
 #define REN_GLSL_MATERIAL_H
 
 #include "Common.h"
+#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -15,7 +16,7 @@ struct Material {
   float normal_scale;
 };
 
-GLSL_REF_TYPE(4) MaterialRef { Material material; };
+GLSL_DEFINE_PTR_TYPE(Material, 4);
 
 GLSL_NAMESPACE_END
 

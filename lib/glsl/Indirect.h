@@ -1,7 +1,8 @@
 #ifndef REN_GLSL_INDIRECT_H
 #define REN_GLSL_INDIRECT_H
 
-#include "BufferReference.h"
+#include "Common.h"
+#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -12,6 +13,8 @@ struct DrawIndirectCommand {
   uint32_t base_instance;
 };
 
+GLSL_DEFINE_PTR_TYPE(DrawIndirectCommand, 4);
+
 struct DrawIndexedIndirectCommand {
   uint32_t num_indices;
   uint32_t num_instances;
@@ -20,9 +23,7 @@ struct DrawIndexedIndirectCommand {
   uint32_t base_instance;
 };
 
-GLSL_REF_TYPE(4) DrawIndexedIndirectCommandRef {
-  DrawIndexedIndirectCommand command;
-};
+GLSL_DEFINE_PTR_TYPE(DrawIndexedIndirectCommand, 4);
 
 GLSL_NAMESPACE_END
 

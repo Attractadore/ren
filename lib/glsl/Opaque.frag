@@ -19,7 +19,7 @@ layout(location = V_MATERIAL) in flat uint v_material;
 layout(location = 0) out vec4 f_color;
 
 void main() {
-  Material material = pc.materials[v_material].material;
+  Material material = DEREF(pc.materials[v_material]);
 
   vec4 color = material.base_color;
   if (OPAQUE_FEATURE_VC) {
@@ -53,7 +53,7 @@ void main() {
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
   vec3 view = normalize(pc.eye - v_position);
   for (int i = 0; i < pc.num_directional_lights; ++i) {
-    DirLight light = pc.directional_lights[i].light;
+    DirLight light = DEREF(pc.directional_lights[i]);
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
 

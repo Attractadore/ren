@@ -96,15 +96,13 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
   for (auto i : range<usize>(1, scene_cfg.meshes.size())) {
     const Mesh &mesh = scene_cfg.meshes[i];
     meshes[i] = {
-        .positions = renderer.get_buffer_device_address<glsl::PositionRef>(
-            mesh.positions),
-        .normals =
-            renderer.get_buffer_device_address<glsl::NormalRef>(mesh.normals),
-        .tangents = renderer.try_get_buffer_device_address<glsl::TangentRef>(
-            mesh.tangents),
-        .uvs = renderer.try_get_buffer_device_address<glsl::UVRef>(mesh.uvs),
-        .colors =
-            renderer.try_get_buffer_device_address<glsl::ColorRef>(mesh.colors),
+        .positions =
+            renderer.get_buffer_device_ptr<glsl::Position>(mesh.positions),
+        .normals = renderer.get_buffer_device_ptr<glsl::Normal>(mesh.normals),
+        .tangents =
+            renderer.try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
+        .uvs = renderer.try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
+        .colors = renderer.try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
         .bb = mesh.bb,
         .uv_bs = mesh.uv_bs,
         .index_pool = mesh.index_pool,
@@ -265,22 +263,19 @@ void run_instance_culling_and_lod_pass(
 
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
-      .meshes = renderer.get_buffer_device_address<glsl::MeshRef>(
-          rg.get_buffer(rcs.meshes)),
-      .mesh_instances =
-          renderer.get_buffer_device_address<glsl::MeshInstanceRef>(
-              rg.get_buffer(rcs.mesh_instances)),
-      .transform_matrices =
-          renderer.get_buffer_device_address<glsl::TransformMatrixRef>(
-              rg.get_buffer(rcs.transform_matrices)),
-      .batch_command_offsets =
-          renderer.get_buffer_device_address<glsl::BatchCommandOffsetRef>(
-              rg.get_buffer(rcs.batch_offsets)),
-      .batch_command_counts =
-          renderer.get_buffer_device_address<glsl::BatchCommandCountRef>(
-              rg.get_buffer(rcs.batch_counts)),
-      .commands = renderer.get_buffer_device_address<
-          glsl::DrawIndexedIndirectCommandRef>(rg.get_buffer(rcs.commands)),
+      .meshes =
+          renderer.get_buffer_device_ptr<glsl::Mesh>(rg.get_buffer(rcs.meshes)),
+      .mesh_instances = renderer.get_buffer_device_ptr<glsl::MeshInstance>(
+          rg.get_buffer(rcs.mesh_instances)),
+      .transform_matrices = renderer.get_buffer_device_ptr<glm::mat4x3>(
+          rg.get_buffer(rcs.transform_matrices)),
+      .batch_command_offsets = renderer.get_buffer_device_ptr<glm::uint>(
+          rg.get_buffer(rcs.batch_offsets)),
+      .batch_command_counts = renderer.get_buffer_device_ptr<glm::uint>(
+          rg.get_buffer(rcs.batch_counts)),
+      .commands =
+          renderer.get_buffer_device_ptr<glsl::DrawIndexedIndirectCommand>(
+              rg.get_buffer(rcs.commands)),
       .feature_mask = mask,
       .num_mesh_instances = scene.num_mesh_instances,
       .proj_view = scene.pv,
@@ -388,16 +383,14 @@ void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
   const BufferView &mesh_instances = rg.get_buffer(rcs.mesh_instances);
   const BufferView &commands = rg.get_buffer(rcs.commands);
   const BufferView &batch_counts = rg.get_buffer(rcs.batch_counts);
-  auto transform_matrices =
-      renderer.get_buffer_device_address<glsl::TransformMatrixRef>(
-          rg.get_buffer(rcs.transform_matrices));
+  auto transform_matrices = renderer.get_buffer_device_ptr<glm::mat4x3>(
+      rg.get_buffer(rcs.transform_matrices));
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
   render_pass.set_push_constants(glsl::EarlyZPassArgs{
-      .meshes = renderer.get_buffer_device_address<glsl::MeshRef>(meshes),
+      .meshes = renderer.get_buffer_device_ptr<glsl::Mesh>(meshes),
       .mesh_instances =
-          renderer.get_buffer_device_address<glsl::MeshInstanceRef>(
-              mesh_instances),
+          renderer.get_buffer_device_ptr<glsl::MeshInstance>(mesh_instances),
       .transform_matrices = transform_matrices,
       .proj_view = scene.pv,
   });
@@ -503,22 +496,19 @@ void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
   const BufferView &batch_counts = rg.get_buffer(rcs.batch_counts);
   StorageTextureId exposure = rg.get_storage_texture_descriptor(rcs.exposure);
 
-  auto *uniforms = rg.map_buffer<glsl::OpaqueUniformBufferRef>(rcs.uniforms);
-  *uniforms = glsl::OpaqueUniformBufferRef{
-      .meshes = renderer.get_buffer_device_address<glsl::MeshRef>(meshes),
+  auto *uniforms = rg.map_buffer<glsl::OpaquePassUniforms>(rcs.uniforms);
+  *uniforms = glsl::OpaquePassUniforms{
+      .meshes = renderer.get_buffer_device_ptr<glsl::Mesh>(meshes),
       .mesh_instances =
-          renderer.get_buffer_device_address<glsl::MeshInstanceRef>(
-              mesh_instances),
+          renderer.get_buffer_device_ptr<glsl::MeshInstance>(mesh_instances),
       .transform_matrices =
-          renderer.get_buffer_device_address<glsl::TransformMatrixRef>(
-              transform_matrices),
+          renderer.get_buffer_device_ptr<glm::mat4x3>(transform_matrices),
       .normal_matrices =
-          renderer.get_buffer_device_address<glsl::NormalMatrixRef>(
-              normal_matrices),
+          renderer.get_buffer_device_ptr<glm::mat3>(normal_matrices),
       .proj_view = scene.pv,
   };
 
-  auto ub = renderer.get_buffer_device_address<glsl::OpaqueUniformBufferRef>(
+  auto ub = renderer.get_buffer_device_ptr<glsl::OpaquePassUniforms>(
       rg.get_buffer(rcs.uniforms));
 
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
@@ -527,11 +517,9 @@ void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
     render_pass.bind_descriptor_sets({rg.get_texture_set()});
     render_pass.set_push_constants(glsl::OpaquePassArgs{
         .ub = ub,
-        .materials =
-            renderer.get_buffer_device_address<glsl::MaterialRef>(materials),
+        .materials = renderer.get_buffer_device_ptr<glsl::Material>(materials),
         .directional_lights =
-            renderer.get_buffer_device_address<glsl::DirectionalLightRef>(
-                directional_lights),
+            renderer.get_buffer_device_ptr<glsl::DirLight>(directional_lights),
         .num_directional_lights = scene.num_directional_lights,
         .eye = scene.eye,
         .exposure_texture = exposure,
@@ -577,7 +565,7 @@ void setup_opaque_pass(RgBuilder &rgb, const OpaquePassConfig &cfg) {
   rcs.uniforms = pass.create_buffer(
       {
           .name = "opaque-pass-uniforms",
-          .size = sizeof(glsl::OpaqueUniformBufferRef),
+          .size = sizeof(glsl::OpaquePassUniforms),
       },
       RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER | RG_FS_READ_BUFFER);
 

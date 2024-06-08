@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_LUMINANCE_HISTOGRAM_H
 #define REN_GLSL_LUMINANCE_HISTOGRAM_H
 
-#include "BufferReference.h"
 #include "Common.h"
+#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -16,9 +16,11 @@ const float MAX_LOG_LUMINANCE = log2(MAX_LUMINANCE);
 
 const uint NUM_LUMINANCE_HISTOGRAM_BINS = 64;
 
-GLSL_REF_TYPE(4) LuminanceHistogramRef {
+struct LuminanceHistogram {
   uint bins[NUM_LUMINANCE_HISTOGRAM_BINS];
 };
+
+GLSL_DEFINE_PTR_TYPE(LuminanceHistogram, 4);
 
 GLSL_NAMESPACE_END
 

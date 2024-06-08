@@ -1,16 +1,16 @@
 #ifndef REN_GLSL_EARLY_Z_PASS_H
 #define REN_GLSL_EARLY_Z_PASS_H
 
-#include "BufferReference.h"
 #include "Common.h"
+#include "DevicePtr.h"
 #include "Mesh.h"
 
 GLSL_NAMESPACE_BEGIN
 
 struct EarlyZPassArgs {
-  GLSL_REF(MeshRef) meshes;
-  GLSL_REF(MeshInstanceRef) mesh_instances;
-  GLSL_REF(TransformMatrixRef) transform_matrices;
+  GLSL_PTR(Mesh) meshes;
+  GLSL_PTR(MeshInstance) mesh_instances;
+  GLSL_PTR(mat4x3) transform_matrices;
   mat4 proj_view;
 };
 

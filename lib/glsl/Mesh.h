@@ -30,7 +30,7 @@ struct Meshlet {
   uint num_triangles;
 };
 
-GLSL_REF_TYPE(4) MeshletRef { Meshlet meshlet; };
+GLSL_DEFINE_PTR_TYPE(Meshlet, 4);
 
 const uint MAX_NUM_LODS = 8;
 
@@ -42,12 +42,12 @@ struct MeshLOD {
 };
 
 struct Mesh {
-  GLSL_REF(PositionRef) positions;
-  GLSL_REF(NormalRef) normals;
-  GLSL_REF(TangentRef) tangents;
-  GLSL_REF(UVRef) uvs;
-  GLSL_REF(ColorRef) colors;
-  GLSL_REF(MeshletRef) meshlets;
+  GLSL_PTR(Position) positions;
+  GLSL_PTR(Normal) normals;
+  GLSL_PTR(Tangent) tangents;
+  GLSL_PTR(UV) uvs;
+  GLSL_PTR(Color) colors;
+  GLSL_PTR(Meshlet) meshlets;
   PositionBoundingBox bb;
   BoundingSquare uv_bs;
   uint index_pool;
@@ -55,7 +55,7 @@ struct Mesh {
   MeshLOD lods[MAX_NUM_LODS];
 };
 
-GLSL_REF_TYPE(8) MeshRef { Mesh mesh; };
+GLSL_DEFINE_PTR_TYPE(Mesh, 8);
 
 inline uint get_mesh_attribute_mask(Mesh mesh) {
   uint mask = 0;
@@ -76,11 +76,7 @@ struct MeshInstance {
   uint material;
 };
 
-GLSL_REF_TYPE(4) MeshInstanceRef { MeshInstance mesh_instance; };
-
-GLSL_REF_TYPE(4) TransformMatrixRef { mat4x3 matrix; };
-
-GLSL_REF_TYPE(4) NormalMatrixRef { mat3 matrix; };
+GLSL_DEFINE_PTR_TYPE(MeshInstance, 4);
 
 GLSL_NAMESPACE_END
 

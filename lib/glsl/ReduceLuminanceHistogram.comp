@@ -11,7 +11,7 @@ NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X);
 void main() {
   uint index = gl_LocalInvocationIndex;
 
-  histogram[index] = pc.histogram.bins[index];
+  histogram[index] = DEREF(pc.histogram).bins[index];
   barrier();
 
   if (index != 0) {

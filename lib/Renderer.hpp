@@ -13,7 +13,7 @@
 #include "Support/Span.hpp"
 #include "Support/TypeMap.hpp"
 #include "Texture.hpp"
-#include "glsl/BufferReference.hpp"
+#include "glsl/DevicePtr.hpp"
 
 #include <volk.h>
 
@@ -262,30 +262,27 @@ public:
   }
 
   template <typename T>
-  auto get_buffer_device_address(Handle<Buffer> buffer,
-                                 u64 map_offset = 0) const
-      -> BufferReference<T> {
+  auto get_buffer_device_ptr(Handle<Buffer> buffer, u64 map_offset = 0) const
+      -> DevicePtr<T> {
     auto addr = get_buffer(buffer).address;
-    return BufferReference<T>(addr ? (addr + map_offset) : 0);
+    return DevicePtr<T>(addr ? (addr + map_offset) : 0);
   }
 
   template <typename T>
-  auto try_get_buffer_device_address(Handle<Buffer> buffer,
-                                     u64 map_offset = 0) const
-      -> BufferReference<T> {
+  auto try_get_buffer_device_ptr(Handle<Buffer> buffer,
+                                 u64 map_offset = 0) const -> DevicePtr<T> {
     return try_get_buffer(buffer).map_or(
         [&](const Buffer &buffer) {
-          return BufferReference<T>(
-              buffer.address ? (buffer.address + map_offset) : 0);
+          return DevicePtr<T>(buffer.address ? (buffer.address + map_offset)
+                                             : 0);
         },
-        BufferReference<T>());
+        DevicePtr<T>());
   }
 
   template <typename T>
-  auto get_buffer_device_address(const BufferView &view,
-                                 u64 map_offset = 0) const
-      -> BufferReference<T> {
-    return get_buffer_device_address<T>(view.buffer, view.offset + map_offset);
+  auto get_buffer_device_ptr(const BufferView &view, u64 map_offset = 0) const
+      -> DevicePtr<T> {
+    return get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
   }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)

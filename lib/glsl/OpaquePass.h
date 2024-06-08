@@ -2,24 +2,27 @@
 #define REN_GLSL_OPAQUE_PASS_H
 
 #include "Common.h"
+#include "DevicePtr.h"
 #include "Lighting.h"
 #include "Material.h"
 #include "Mesh.h"
 
 GLSL_NAMESPACE_BEGIN
 
-GLSL_REF_TYPE(8) OpaqueUniformBufferRef {
-  GLSL_REF(MeshRef) meshes;
-  GLSL_REF(MeshInstanceRef) mesh_instances;
-  GLSL_REF(TransformMatrixRef) transform_matrices;
-  GLSL_REF(NormalMatrixRef) normal_matrices;
+struct OpaquePassUniforms {
+  GLSL_PTR(Mesh) meshes;
+  GLSL_PTR(MeshInstance) mesh_instances;
+  GLSL_PTR(mat4x3) transform_matrices;
+  GLSL_PTR(mat3) normal_matrices;
   mat4 proj_view;
 };
 
+GLSL_DEFINE_PTR_TYPE(OpaquePassUniforms, 8);
+
 struct OpaquePassArgs {
-  GLSL_REF(OpaqueUniformBufferRef) ub;
-  GLSL_REF(MaterialRef) materials;
-  GLSL_REF(DirectionalLightRef) directional_lights;
+  GLSL_PTR(OpaquePassUniforms) ub;
+  GLSL_PTR(Material) materials;
+  GLSL_PTR(DirLight) directional_lights;
   uint num_directional_lights;
   vec3 eye;
   uint exposure_texture;

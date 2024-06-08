@@ -38,7 +38,7 @@ void store_luminance_histogram() {
   for (; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += stride) {
     // Ignore bin 0 and zero-valued bins
     if (i > 0 && histogram[i] > 0) {
-      atomicAdd(pc.histogram.bins[i], histogram[i]);
+      atomicAdd(DEREF(pc.histogram).bins[i], histogram[i]);
     }
   }
 }

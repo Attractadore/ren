@@ -6,7 +6,7 @@
 #include "Support/Math.hpp"
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
-#include "glsl/BufferReference.h"
+#include "glsl/DevicePtr.h"
 
 namespace ren {
 
@@ -723,7 +723,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
   std::array<usize, NUM_BUFFER_HEAPS> required_heap_sizes = {};
   for (const auto &[buffer, desc] : m_buffer_descs) {
     auto heap = int(desc.heap);
-    required_heap_sizes[heap] += pad(desc.size, glsl::GPU_COALESCING_WIDTH);
+    required_heap_sizes[heap] += pad(desc.size, glsl::DEVICE_CACHE_LINE_SIZE);
   }
   for (usize &size : required_heap_sizes) {
     size *= PIPELINE_DEPTH;
@@ -760,7 +760,7 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
           .offset = offset,
           .size = size,
       };
-      offset += pad(size, glsl::GPU_COALESCING_WIDTH);
+      offset += pad(size, glsl::DEVICE_CACHE_LINE_SIZE);
     }
     heap_tops[heap] = offset;
   }

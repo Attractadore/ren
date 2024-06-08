@@ -1,8 +1,8 @@
-#ifndef REN_GLSL_IMGUI_H
-#define REN_GLSL_IMGUI_H
+#ifndef REN_GLSL_IMGUI_PASS_H
+#define REN_GLSL_IMGUI_PASS_H
 
-#include "BufferReference.h"
 #include "Common.h"
+#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -12,10 +12,10 @@ struct ImGuiVertex {
   uint32_t color;
 };
 
-GLSL_REF_TYPE(4) ImGuiVertexRef { ImGuiVertex vertex; };
+GLSL_DEFINE_PTR_TYPE(ImGuiVertex, 4);
 
 struct ImGuiPassArgs {
-  GLSL_REF(ImGuiVertexRef) vertices;
+  GLSL_PTR(ImGuiVertex) vertices;
   vec2 scale;
   vec2 translate;
   uint tex;
@@ -23,4 +23,4 @@ struct ImGuiPassArgs {
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_IMGUI_H
+#endif // REN_GLSL_IMGUI_PASS_H

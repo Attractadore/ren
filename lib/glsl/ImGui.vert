@@ -13,7 +13,7 @@ vec4 decode_color(uint32_t color) {
 
 void main()
 {
-    ImGuiVertex vertex = pc.vertices[gl_VertexIndex].vertex;
+    ImGuiVertex vertex = DEREF(pc.vertices[gl_VertexIndex]);
     v_color = decode_color(vertex.color);
     v_uv = vertex.uv;
     gl_Position = vec4(vertex.position * pc.scale + pc.translate, 0.0f, 1.0f);
