@@ -274,9 +274,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
               compute_pass.cb(*m_renderer, rt, comp);
             }
           },
-          [&](const RgTransferPass &transfer_pass) {
-            if (transfer_pass.cb) {
-              transfer_pass.cb(*m_renderer, rt, get_command_recorder());
+          [&](const RgGenericPass &pass) {
+            if (pass.cb) {
+              pass.cb(*m_renderer, rt, get_command_recorder());
             }
           },
       });

@@ -437,8 +437,8 @@ void RgBuilder::present(StringView texture_name) {
   RgTextureId backbuffer = blit.write_texture(
       "rg-blitted-backbuffer", "rg-backbuffer", RG_TRANSFER_DST_TEXTURE);
 
-  blit.set_transfer_callback(
-      [=](Renderer &renderer, const RgRuntime &rt, TransferPass &cmd) {
+  blit.set_callback(
+      [=](Renderer &renderer, const RgRuntime &rt, CommandRecorder &cmd) {
         Handle<Texture> src = rt.get_texture(texture);
         Handle<Texture> dst = rt.get_texture(backbuffer);
         VkImageBlit region = {
@@ -846,9 +846,8 @@ void RgBuilder::fill_pass_runtime_info(Span<const RgPassId> schedule) {
           m_rg->m_passes[idx].type =
               RgComputePass{.cb = std::move(compute_pass.cb)};
         },
-        [&](RgTransferPassInfo &transfer_pass) {
-          m_rg->m_passes[idx].type =
-              RgTransferPass{.cb = std::move(transfer_pass.cb)};
+        [&](RgGenericPassInfo &pass) {
+          m_rg->m_passes[idx].type = RgGenericPass{.cb = std::move(pass.cb)};
         },
     });
   }

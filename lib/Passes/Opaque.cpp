@@ -315,8 +315,8 @@ void setup_instance_culling_and_lod_pass(
         },
         RG_TRANSFER_DST_BUFFER);
 
-    init_pass.set_transfer_callback(
-        [=](Renderer &renderer, const RgRuntime &rt, TransferPass &cmd) {
+    init_pass.set_callback(
+        [=](Renderer &renderer, const RgRuntime &rt, CommandRecorder &cmd) {
           cmd.fill_buffer(rt.get_buffer(batch_counts), 0);
         });
   }

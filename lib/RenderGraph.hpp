@@ -22,7 +22,6 @@ class CommandRecorder;
 class Swapchain;
 class RenderPass;
 class ComputePass;
-using TransferPass = CommandRecorder;
 
 class RenderGraph;
 class RgBuilder;
@@ -52,12 +51,12 @@ using RgComputeCallback =
 static_assert(CRgComputeCallback<RgComputeCallback>);
 
 template <typename F>
-concept CRgTransferCallback =
-    std::invocable<F, Renderer &, const RgRuntime &, TransferPass &>;
+concept CRgCallback =
+    std::invocable<F, Renderer &, const RgRuntime &, CommandRecorder &>;
 
-using RgTransferCallback =
-    std::function<void(Renderer &, const RgRuntime &, TransferPass &)>;
-static_assert(CRgTransferCallback<RgTransferCallback>);
+using RgCallback =
+    std::function<void(Renderer &, const RgRuntime &, CommandRecorder &)>;
+static_assert(CRgCallback<RgCallback>);
 
 constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
 
@@ -280,8 +279,8 @@ struct RgComputePassInfo {
   RgComputeCallback cb;
 };
 
-struct RgTransferPassInfo {
-  RgTransferCallback cb;
+struct RgGenericPassInfo {
+  RgCallback cb;
 };
 
 struct RgMemoryBarrier {
@@ -326,8 +325,8 @@ struct RgComputePass {
   RgComputeCallback cb;
 };
 
-struct RgTransferPass {
-  RgTransferCallback cb;
+struct RgGenericPass {
+  RgCallback cb;
 };
 
 class RenderGraph {
@@ -378,7 +377,7 @@ private:
     u32 num_texture_barriers;
     u32 num_wait_semaphores;
     u32 num_signal_semaphores;
-    Variant<RgHostPass, RgGraphicsPass, RgComputePass, RgTransferPass> type;
+    Variant<RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass> type;
   };
 
   Vector<RgPassRuntimeInfo> m_passes;
@@ -606,9 +605,9 @@ private:
     m_passes[pass].type = RgComputePassInfo{.cb = std::move(cb)};
   }
 
-  void set_transfer_callback(RgPassId pass, CRgTransferCallback auto cb) {
+  void set_callback(RgPassId pass, CRgCallback auto cb) {
     assert(!m_passes[pass].type);
-    m_passes[pass].type = RgTransferPassInfo{.cb = std::move(cb)};
+    m_passes[pass].type = RgGenericPassInfo{.cb = std::move(cb)};
   }
 
   auto get_buffer_parent(RgBufferId buffer) -> RgBufferId;
@@ -651,7 +650,7 @@ private:
     SmallVector<RgSemaphoreSignalId> wait_semaphores;
     SmallVector<RgSemaphoreSignalId> signal_semaphores;
     Variant<Monostate, RgHostPassInfo, RgGraphicsPassInfo, RgComputePassInfo,
-            RgTransferPassInfo>
+            RgGenericPassInfo>
         type;
   };
 
@@ -781,8 +780,8 @@ public:
     m_builder->set_compute_callback(m_pass, std::move(cb));
   }
 
-  void set_transfer_callback(CRgTransferCallback auto cb) {
-    m_builder->set_transfer_callback(m_pass, std::move(cb));
+  void set_callback(CRgCallback auto cb) {
+    m_builder->set_callback(m_pass, std::move(cb));
   }
 
 private:

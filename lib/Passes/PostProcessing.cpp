@@ -19,10 +19,9 @@ void setup_initialize_luminance_histogram_pass(RgBuilder &rgb) {
       },
       RG_TRANSFER_DST_BUFFER);
 
-  pass.set_transfer_callback(
-      [=](Renderer &, const RgRuntime &rt, TransferPass &cmd) {
-        cmd.fill_buffer(rt.get_buffer(histogram), 0);
-      });
+  pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
+    cmd.fill_buffer(rt.get_buffer(histogram), 0);
+  });
 };
 
 struct PostProcessingPassResources {

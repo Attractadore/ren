@@ -31,15 +31,14 @@ auto setup_camera_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
       },
       RG_TRANSFER_DST_TEXTURE);
 
-  pass.set_transfer_callback(
-      [=](Renderer &, const RgRuntime &rt, TransferPass &cmd) {
-        const auto &[cam_params, ec] =
-            rt.get_parameter<CameraExposureRuntimeConfig>(cfg);
-        float exposure = get_camera_exposure(cam_params, ec);
-        assert(exposure > 0.0f);
-        cmd.clear_texture(rt.get_texture(exposure_texture),
-                          glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
-      });
+  pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
+    const auto &[cam_params, ec] =
+        rt.get_parameter<CameraExposureRuntimeConfig>(cfg);
+    float exposure = get_camera_exposure(cam_params, ec);
+    assert(exposure > 0.0f);
+    cmd.clear_texture(rt.get_texture(exposure_texture),
+                      glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
+  });
 
   return {.temporal_layer = 0};
 }
