@@ -1,7 +1,8 @@
 #pragma once
-#include "Config.hpp"
 #if REN_IMGUI
-#include "Handle.hpp"
+#include "RenderGraph.hpp"
+#include "Support/NotNull.hpp"
+#include "Support/StdDef.hpp"
 
 #include <glm/glm.hpp>
 
@@ -9,18 +10,16 @@ struct ImGuiContext;
 
 namespace ren {
 
-struct GraphicsPipeline;
-class RgBuilder;
+class Scene;
 
 struct ImGuiPassConfig {
-  ImGuiContext *imgui_context = nullptr;
-  Handle<GraphicsPipeline> pipeline;
+  RgTextureId rt;
   u32 num_vertices = 0;
   u32 num_indices = 0;
-  glm::uvec2 viewport;
 };
 
-void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg);
+auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                      const ImGuiPassConfig &cfg) -> RgTextureId;
 
 } // namespace ren
 

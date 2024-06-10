@@ -3,113 +3,70 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Support/Algorithm.hpp"
-#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
 namespace ren {
 
-auto RenderGraph::get_physical_variable(RgVariableId data) const
-    -> RgPhysicalVariableId {
-  RgVariableId parent = m_variable_parents[data];
-  ren_assert(m_variable_parents[parent] == parent);
-  return RgPhysicalVariableId(parent);
+auto RgRuntime::get_buffer(RgBufferToken buffer) const -> const BufferView & {
+  ren_assert(buffer);
+  return m_rg->m_buffers[m_rg->m_physical_buffers[buffer]];
 }
 
-auto RenderGraph::get_physical_variable(RgRWVariableId data) const
-    -> RgPhysicalVariableId {
-  return get_physical_variable(RgVariableId(data));
+auto RgRuntime::get_texture(RgTextureToken texture) const -> Handle<Texture> {
+  ren_assert(texture);
+  return m_rg->m_textures[m_rg->m_physical_textures[texture]];
 }
 
-auto RenderGraph::get_physical_buffer(RgBufferId buffer) const
-    -> RgPhysicalBufferId {
-  RgBufferId parent = m_buffer_parents[buffer];
-  assert(m_buffer_parents[parent] == parent);
-  return RgPhysicalBufferId(parent);
-}
-
-auto RgRuntime::get_buffer(RgBufferId buffer) const -> const BufferView & {
-  assert(buffer);
-  return m_rg->m_buffers[m_rg->get_physical_buffer(buffer)];
-}
-
-auto RgRuntime::map_buffer_impl(RgBufferId buffer, usize offset) const
-    -> std::byte * {
-  const BufferView &view = get_buffer(buffer);
-  return m_rg->m_renderer->map_buffer<std::byte>(view, offset);
-}
-
-auto RenderGraph::get_physical_texture(RgTextureId texture) const
-    -> RgPhysicalTextureId {
-  RgTextureId parent = m_texture_parents[texture];
-  assert(m_texture_parents[parent] == parent);
-  return RgPhysicalTextureId(parent);
-}
-
-auto RgRuntime::get_texture(RgTextureId texture) const -> Handle<Texture> {
-  assert(texture);
-  return m_rg->m_textures[m_rg->get_physical_texture(texture)];
-}
-
-auto RgRuntime::get_storage_texture_descriptor(RgTextureId texture) const
+auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture) const
     -> StorageTextureId {
-  assert(texture);
+  ren_assert(texture);
   return m_rg
-      ->m_storage_texture_descriptors[m_rg->get_physical_texture(texture)];
+      ->m_storage_texture_descriptors[m_rg->m_physical_textures[texture]];
 }
 
 auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
   return m_rg->m_tex_alloc.get_set();
 }
 
-RenderGraph::RenderGraph(Renderer &renderer, Swapchain &swapchain,
-                         TextureIdAllocator &tex_alloc)
+RenderGraph::RenderGraph(Renderer &renderer, TextureIdAllocator &tex_alloc)
     : m_tex_alloc(tex_alloc), m_arena(renderer) {
   m_renderer = &renderer;
-  m_swapchain = &swapchain;
 }
 
-auto RenderGraph::is_pass_valid(StringView pass) const -> bool {
-  return m_pass_ids.contains(pass);
+void RenderGraph::set_texture(RgTextureId id, Handle<Texture> texture,
+                              const RgTextureUsage &usage) {
+  ren_assert(id);
+  ren_assert(texture);
+  RgPhysicalTextureId physical_texture = m_physical_textures[id];
+  m_textures[physical_texture] = texture;
+  m_texture_usages[physical_texture] = usage;
 }
 
-auto RenderGraph::is_variable_valid(StringView data) const -> bool {
-  return m_variable_ids.contains(data);
-}
-
-auto RenderGraph::is_buffer_valid(StringView buffer) const -> bool {
-  return m_buffer_ids.contains(buffer);
-}
-
-auto RenderGraph::is_texture_valid(StringView texture) const -> bool {
-  return m_texture_ids.contains(texture);
+void RenderGraph::set_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore) {
+  ren_assert(id);
+  ren_assert(semaphore);
+  m_semaphores[id] = semaphore;
 }
 
 void RenderGraph::rotate_resources() {
-  for (int base_buffer_id = 1; base_buffer_id < m_buffer_parents.size();
-       base_buffer_id += PIPELINE_DEPTH) {
-    if (m_buffer_parents[base_buffer_id] == base_buffer_id) {
-      rotate_right(Span(m_buffers).subspan(base_buffer_id, PIPELINE_DEPTH));
-    }
+  for (usize buffer = 0; buffer < m_buffers.size(); buffer += PIPELINE_DEPTH) {
+    rotate_left(Span(m_buffers).subspan(buffer, PIPELINE_DEPTH));
   }
 
-  for (auto [texture, num_instances] : m_texture_instance_counts) {
-    rotate_right(Span(m_textures).subspan(texture, num_instances));
-    rotate_right(
-        Span(m_storage_texture_descriptors).subspan(texture, num_instances));
+  for (usize texture = 0; texture < m_textures.size();) {
+    usize num_temporal_layers = m_texture_temporal_layer_count[texture];
+    rotate_left(Span(m_textures).subspan(texture, num_temporal_layers));
+    rotate_left(Span(m_texture_usages).subspan(texture, num_temporal_layers));
+    rotate_left(Span(m_storage_texture_descriptors)
+                    .subspan(texture, num_temporal_layers));
+    texture += num_temporal_layers;
   }
-
-  rotate_right(m_acquire_semaphores);
-  rotate_right(m_present_semaphores);
-  m_semaphores[m_acquire_semaphore] = m_acquire_semaphores.front();
-  m_semaphores[m_present_semaphore] = m_present_semaphores.front();
-
-  m_textures[m_backbuffer] =
-      m_swapchain->acquire_texture(m_semaphores[m_acquire_semaphore]);
 }
 
 void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   rotate_resources();
+  place_barriers();
 
   RgRuntime rt;
   rt.m_rg = this;
@@ -133,17 +90,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   Vector<VkMemoryBarrier2> vk_memory_barriers;
   Vector<VkImageMemoryBarrier2> vk_image_barriers;
 
-  Span<RgMemoryBarrier> rg_memory_barriers = m_memory_barriers;
-  Span<RgTextureBarrier> rg_texture_barriers = m_texture_barriers;
-  Span<RgSemaphoreSignal> rg_wait_semaphores = m_wait_semaphores;
-  Span<RgSemaphoreSignal> rg_signal_semaphores = m_signal_semaphores;
-
-  Span<Optional<RgColorAttachment>> rg_color_attachments = m_color_attachments;
-  Span<RgDepthStencilAttachment> rg_depth_stencil_attachments =
-      m_depth_stencil_attachments;
-
   for (const RgPassRuntimeInfo &pass : m_passes) {
-    if (pass.num_wait_semaphores > 0) {
+    if (not pass.wait_semaphores.empty()) {
       submit_batch();
     }
 
@@ -163,52 +111,18 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
         return *cmd_recorder;
       };
 
-      auto get_vk_memory_barrier =
-          [](const RgMemoryBarrier &barrier) -> VkMemoryBarrier2 {
-        return {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = barrier.src_stage_mask,
-            .srcAccessMask = barrier.src_access_mask,
-            .dstStageMask = barrier.dst_stage_mask,
-            .dstAccessMask = barrier.dst_access_mask,
-        };
-      };
-
-      auto get_vk_image_barrier =
-          [&](const RgTextureBarrier &barrier) -> VkImageMemoryBarrier2 {
-        const Texture &texture =
-            m_renderer->get_texture(m_textures[barrier.texture]);
-        return {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask = barrier.src_stage_mask,
-            .srcAccessMask = barrier.src_access_mask,
-            .dstStageMask = barrier.dst_stage_mask,
-            .dstAccessMask = barrier.dst_access_mask,
-            .oldLayout = barrier.src_layout,
-            .newLayout = barrier.dst_layout,
-            .image = texture.image,
-            .subresourceRange =
-                {
-                    .aspectMask = getVkImageAspectFlags(texture.format),
-                    .levelCount = texture.num_mip_levels,
-                    .layerCount = texture.num_array_layers,
-                },
-        };
-      };
-
-      vk_memory_barriers.assign(
-          rg_memory_barriers.pop_front(pass.num_memory_barriers));
-
-      vk_image_barriers.assign(
-          rg_texture_barriers.pop_front(pass.num_texture_barriers) |
-          map(get_vk_image_barrier));
-
-      if (not vk_memory_barriers.empty() or not vk_image_barriers.empty()) {
-        CommandRecorder &rec = get_command_recorder();
-        rec.pipeline_barrier(vk_memory_barriers, vk_image_barriers);
+      if (pass.num_memory_barriers > 0 or pass.num_texture_barriers > 0) {
+        auto memory_barriers =
+            Span(m_memory_barriers)
+                .subspan(pass.base_memory_barrier, pass.num_memory_barriers);
+        auto texture_barriers =
+            Span(m_texture_barriers)
+                .subspan(pass.base_texture_barrier, pass.num_texture_barriers);
+        get_command_recorder().pipeline_barrier(memory_barriers,
+                                                texture_barriers);
       }
 
-      pass.type.visit(OverloadSet{
+      pass.data.visit(OverloadSet{
           [&](const RgHostPass &host_pass) {
             if (host_pass.cb) {
               host_pass.cb(*m_renderer, rt);
@@ -222,14 +136,15 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
             glm::uvec2 viewport = {-1, -1};
 
             auto color_attachments =
-                rg_color_attachments.pop_front(
-                    graphics_pass.num_color_attachments) |
+                Span(m_color_attachments)
+                    .subspan(graphics_pass.base_color_attachment,
+                             graphics_pass.num_color_attachments) |
                 map([&](const Optional<RgColorAttachment> &att)
                         -> Optional<ColorAttachment> {
                   return att.map(
                       [&](const RgColorAttachment &att) -> ColorAttachment {
                         TextureView view = m_renderer->get_texture_view(
-                            m_textures[get_physical_texture(att.texture)]);
+                            m_textures[m_physical_textures[att.texture]]);
                         viewport = m_renderer->get_texture_view_size(view);
                         return {
                             .texture = view,
@@ -240,19 +155,19 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                 ranges::to<StaticVector<Optional<ColorAttachment>,
                                         MAX_COLOR_ATTACHMENTS>>;
 
-            Optional<DepthStencilAttachment> depth_stencil_attachment;
-            if (graphics_pass.has_depth_attachment) {
-              const RgDepthStencilAttachment &att =
-                  rg_depth_stencil_attachments.pop_front();
-              TextureView view = m_renderer->get_texture_view(
-                  m_textures[get_physical_texture(att.texture)]);
-              viewport = m_renderer->get_texture_view_size(view);
-              depth_stencil_attachment = {
-                  .texture = view,
-                  .depth_ops = att.depth_ops,
-                  .stencil_ops = att.stencil_ops,
-              };
-            }
+            auto depth_stencil_attachment = graphics_pass.depth_attachment.map(
+                [&](u32 index) -> DepthStencilAttachment {
+                  const RgDepthStencilAttachment &att =
+                      m_depth_stencil_attachments[index];
+                  TextureView view = m_renderer->get_texture_view(
+                      m_textures[m_physical_textures[att.texture]]);
+                  viewport = m_renderer->get_texture_view_size(view);
+                  return {
+                      .texture = view,
+                      .depth_ops = att.depth_ops,
+                      .stencil_ops = att.stencil_ops,
+                  };
+                });
 
             RenderPass render_pass = get_command_recorder().render_pass({
                 .color_attachments = color_attachments,
@@ -290,7 +205,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
     }
 
     auto get_vk_semaphore =
-        [&](const RgSemaphoreSignal &signal) -> VkSemaphoreSubmitInfo {
+        [&](RgSemaphoreSignalId id) -> VkSemaphoreSubmitInfo {
+      const RgSemaphoreSignal &signal = m_semaphore_signals[id];
       return {
           .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
           .semaphore =
@@ -300,22 +216,282 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       };
     };
 
-    batch_wait_semaphores.append(
-        rg_wait_semaphores.pop_front(pass.num_wait_semaphores) |
-        map(get_vk_semaphore));
+    batch_wait_semaphores.append(pass.wait_semaphores | map(get_vk_semaphore));
 
-    batch_signal_semaphores.append(
-        rg_signal_semaphores.pop_front(pass.num_signal_semaphores) |
-        map(get_vk_semaphore));
+    batch_signal_semaphores.append(pass.signal_semaphores |
+                                   map(get_vk_semaphore));
 
-    if (pass.num_signal_semaphores > 0) {
+    if (not pass.signal_semaphores.empty()) {
       submit_batch();
     }
   }
 
   submit_batch();
+}
 
-  m_swapchain->present(m_semaphores[m_present_semaphore]);
+void RenderGraph::place_barriers() {
+  constexpr VkAccessFlags2 READ_ONLY_ACCESS_MASK =
+      VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT |
+      VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_UNIFORM_READ_BIT |
+      VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT |
+      VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+      VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+      VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+      VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+
+  constexpr VkAccessFlags2 WRITE_ONLY_ACCESS_MASK =
+      VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+      VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+      VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+
+  Vector<RgBufferUsage> buffer_after_write_hazard_src_states(m_buffers.size());
+  Vector<VkPipelineStageFlags2> buffer_after_read_hazard_src_states(
+      m_buffers.size());
+
+  struct TextureUsageWithoutLayout {
+    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+    VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
+  };
+
+  Vector<TextureUsageWithoutLayout> texture_after_write_hazard_src_states(
+      m_textures.size());
+  Vector<VkPipelineStageFlags2> texture_after_read_hazard_src_states(
+      m_textures.size());
+  Vector<VkImageLayout> texture_layouts(m_textures.size());
+
+  for (auto i : range<usize>(1, m_textures.size())) {
+    const RgTextureUsage &state = m_texture_usages[i];
+    if (state.access_mask & WRITE_ONLY_ACCESS_MASK) {
+      texture_after_write_hazard_src_states[i] = {
+          .stage_mask = state.stage_mask,
+          .access_mask = state.access_mask & WRITE_ONLY_ACCESS_MASK,
+      };
+    } else {
+      texture_after_read_hazard_src_states[i] = state.access_mask;
+    }
+    texture_layouts[i] =
+        m_external_textures[i] ? state.layout : VK_IMAGE_LAYOUT_UNDEFINED;
+  }
+
+  m_memory_barriers.clear();
+  m_texture_barriers.clear();
+
+  for (RgPassRuntimeInfo &pass : m_passes) {
+    usize old_memory_barrier_count = m_memory_barriers.size();
+    usize old_texture_barrier_count = m_texture_barriers.size();
+
+    // TODO: merge separate barriers together if it doesn't change how
+    // synchronization happens
+    auto maybe_place_barrier_for_buffer = [&](RgBufferUseId use_id) {
+      const RgBufferUse &use = m_buffer_uses[use_id];
+      RgPhysicalBufferId physical_buffer = m_physical_buffers[use.buffer];
+
+      VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
+      VkAccessFlags2 dst_access_mask = use.usage.access_mask;
+
+      // Don't need a barrier for host-only accesses
+      bool is_host_only_access = dst_stage_mask == VK_PIPELINE_STAGE_2_NONE;
+      if (is_host_only_access) {
+        ren_assert(dst_access_mask == VK_ACCESS_2_NONE);
+        return;
+      }
+
+      VkPipelineStageFlags2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+      VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+
+      if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
+        RgBufferUsage &after_write_state =
+            buffer_after_write_hazard_src_states[physical_buffer];
+        // Reset the source stage mask that the next WAR hazard will use
+        src_stage_mask =
+            std::exchange(buffer_after_read_hazard_src_states[physical_buffer],
+                          VK_PIPELINE_STAGE_2_NONE);
+        // If this is a WAR hazard, need to wait for all previous
+        // reads to finish. The previous write's memory has already been made
+        // available by previous RAW barriers, so it only needs to be made
+        // visible
+        // FIXME: According to the Vulkan spec, WAR hazards require only an
+        // execution barrier
+        if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+          // No reads were performed between this write and the previous one so
+          // this is a WAW hazard. Need to wait for the previous write to finish
+          // and make its memory available and visible
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+        }
+        // Update the source stage and access masks that further RAW and WAW
+        // hazards will use
+        after_write_state.stage_mask = dst_stage_mask;
+        // Read accesses are redundant for source access mask
+        after_write_state.access_mask =
+            dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+      } else {
+        // This is a RAW hazard. Need to wait for the previous write to finish
+        // and make it's memory available and visible
+        // TODO/FIXME: all RAW barriers should be merged, since if they are
+        // issued separately they might cause the cache to be flushed multiple
+        // times
+        const RgBufferUsage &after_write_state =
+            buffer_after_write_hazard_src_states[physical_buffer];
+        src_stage_mask = after_write_state.stage_mask;
+        src_access_mask = after_write_state.access_mask;
+        // Update the source stage mask that the next WAR hazard will use
+        buffer_after_read_hazard_src_states[physical_buffer] |= dst_stage_mask;
+      }
+
+      // First barrier isn't required and can be skipped
+      bool is_first_access = src_stage_mask == VK_PIPELINE_STAGE_2_NONE;
+      if (is_first_access) {
+        assert(src_access_mask == VK_PIPELINE_STAGE_2_NONE);
+        return;
+      }
+
+      m_memory_barriers.push_back({
+          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+          .srcStageMask = src_stage_mask,
+          .srcAccessMask = src_access_mask,
+          .dstStageMask = dst_stage_mask,
+          .dstAccessMask = dst_access_mask,
+      });
+    };
+
+    ranges::for_each(pass.read_buffers, maybe_place_barrier_for_buffer);
+    ranges::for_each(pass.write_buffers, maybe_place_barrier_for_buffer);
+
+    auto maybe_place_barrier_for_texture = [&](RgTextureUseId use_id) {
+      const RgTextureUse &use = m_texture_uses[use_id];
+      RgPhysicalTextureId physical_texture = m_physical_textures[use.texture];
+
+      VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
+      VkAccessFlags2 dst_access_mask = use.usage.access_mask;
+      VkImageLayout dst_layout = use.usage.layout;
+      assert(dst_layout);
+      if (dst_layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+        assert(dst_stage_mask);
+        assert(dst_access_mask);
+      }
+
+      VkImageLayout &src_layout = texture_layouts[physical_texture];
+
+      if (dst_layout == src_layout) {
+        // Only a memory barrier is required if layout doesn't change
+        // NOTE: this code is copy-pasted from above
+
+        VkPipelineStageFlags2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
+        VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+
+        if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
+          TextureUsageWithoutLayout &after_write_state =
+              texture_after_write_hazard_src_states[physical_texture];
+          src_stage_mask = std::exchange(
+              texture_after_read_hazard_src_states[physical_texture],
+              VK_PIPELINE_STAGE_2_NONE);
+          if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+            src_stage_mask = after_write_state.stage_mask;
+            src_access_mask = after_write_state.access_mask;
+          }
+          after_write_state.stage_mask = dst_stage_mask;
+          after_write_state.access_mask =
+              dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+        } else {
+          const TextureUsageWithoutLayout &after_write_state =
+              texture_after_write_hazard_src_states[physical_texture];
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+          texture_after_read_hazard_src_states[physical_texture] |=
+              dst_stage_mask;
+        }
+
+        assert(src_stage_mask != VK_PIPELINE_STAGE_2_NONE);
+
+        m_memory_barriers.push_back({
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .srcStageMask = src_stage_mask,
+            .srcAccessMask = src_access_mask,
+            .dstStageMask = dst_stage_mask,
+            .dstAccessMask = dst_access_mask,
+        });
+      } else {
+        // Need an image barrier to change layout.
+        // Layout transitions are read-write operations, so only to take care of
+        // WAR and WAW hazards in this case
+
+        TextureUsageWithoutLayout &after_write_state =
+            texture_after_write_hazard_src_states[physical_texture];
+        // If this is a WAR hazard, must wait for all previous reads to finish
+        // and make the layout transition's memory available.
+        // Also reset the source stage mask that the next WAR barrier will use
+        VkPipelineStageFlags2 src_stage_mask = std::exchange(
+            texture_after_read_hazard_src_states[physical_texture],
+            VK_PIPELINE_STAGE_2_NONE);
+        VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
+        if (src_stage_mask == VK_PIPELINE_STAGE_2_NONE) {
+          // If there were no reads between this write and the previous one,
+          // need to wait for the previous write to finish and make it's memory
+          // available and the layout transition's memory visible
+          src_stage_mask = after_write_state.stage_mask;
+          src_access_mask = after_write_state.access_mask;
+        }
+        // Update the source stage and access masks that further RAW and WAW
+        // barriers will use
+        after_write_state.stage_mask = dst_stage_mask;
+        after_write_state.access_mask =
+            dst_access_mask & WRITE_ONLY_ACCESS_MASK;
+
+        const Texture &texture =
+            m_renderer->get_texture(m_textures[physical_texture]);
+
+        m_texture_barriers.push_back({
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = src_stage_mask,
+            .srcAccessMask = src_access_mask,
+            .dstStageMask = dst_stage_mask,
+            .dstAccessMask = dst_access_mask,
+            .oldLayout = src_layout,
+            .newLayout = dst_layout,
+            .image = texture.image,
+            .subresourceRange =
+                {
+                    .aspectMask = getVkImageAspectFlags(texture.format),
+                    .levelCount = texture.num_mip_levels,
+                    .layerCount = texture.num_array_layers,
+                },
+        });
+
+        // Update current layout
+        src_layout = dst_layout;
+      }
+    };
+
+    ranges::for_each(pass.read_textures, maybe_place_barrier_for_texture);
+    ranges::for_each(pass.write_textures, maybe_place_barrier_for_texture);
+
+    usize new_memory_barrier_count = m_memory_barriers.size();
+    usize new_texture_barrier_count = m_texture_barriers.size();
+
+    pass.base_memory_barrier = old_memory_barrier_count;
+    pass.num_memory_barriers =
+        new_memory_barrier_count - old_memory_barrier_count;
+    pass.base_texture_barrier = old_texture_barrier_count;
+    pass.num_texture_barriers =
+        new_texture_barrier_count - old_texture_barrier_count;
+  }
+
+  for (auto i : range<usize>(1, m_textures.size())) {
+    VkPipelineStageFlags2 stage_mask = texture_after_read_hazard_src_states[i];
+    VkAccessFlags2 access_mask = 0;
+    if (!stage_mask) {
+      const TextureUsageWithoutLayout &state =
+          texture_after_write_hazard_src_states[i];
+      stage_mask = state.stage_mask;
+      access_mask = state.access_mask;
+    }
+    m_texture_usages[i] = {
+        .stage_mask = stage_mask,
+        .access_mask = access_mask,
+        .layout = texture_layouts[i],
+    };
+  }
 }
 
 } // namespace ren

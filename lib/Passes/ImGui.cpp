@@ -2,9 +2,7 @@
 #if REN_IMGUI
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
-#include "Pipeline.hpp"
-#include "RenderGraph.hpp"
-#include "Support/Span.hpp"
+#include "Scene.hpp"
 #include "glsl/ImGuiPass.h"
 
 namespace ren {
@@ -12,16 +10,13 @@ namespace ren {
 namespace {
 
 struct ImGuiPassResources {
-  ImGuiContext *context = nullptr;
-  Handle<GraphicsPipeline> pipeline;
-  RgBufferId vertices;
-  RgBufferId indices;
-  glm::uvec2 viewport;
+  RgBufferToken vertices;
+  RgBufferToken indices;
 };
 
-void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
+void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
                     RenderPass &render_pass, const ImGuiPassResources &rcs) {
-  ren_ImGuiScope(rcs.context);
+  ren_ImGuiScope(scene.get_imgui_context());
 
   const ImDrawData *draw_data = ImGui::GetDrawData();
   if (!draw_data->TotalVtxCount) {
@@ -41,7 +36,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
     }
   }
 
-  render_pass.bind_graphics_pipeline(rcs.pipeline);
+  render_pass.bind_graphics_pipeline(scene.get_pipelines().imgui_pass);
 
   static_assert(sizeof(ImDrawIdx) * 8 == 16);
   render_pass.bind_index_buffer(rg.get_buffer(rcs.indices),
@@ -61,7 +56,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
                             -draw_data->DisplaySize.y};
   glm::vec2 scale = 2.0f / display_size;
   glm::vec2 translate = glm::vec2(-1.0f) - display_offset * scale;
-  glm::vec2 fb_size = rcs.viewport;
+  glm::vec2 fb_size = scene.get_viewport();
 
   usize vertex_offset = 0;
   usize index_offset = 0;
@@ -111,10 +106,13 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
 } // namespace
 
-void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
-  auto pass = rgb.create_pass("imgui");
+auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                      const ImGuiPassConfig &cfg) -> RgTextureId {
+  ImGuiPassResources rcs;
 
-  RgBufferId vertices = pass.create_buffer(
+  auto pass = rgb.create_pass({.name = "imgui"});
+
+  std::tie(std::ignore, rcs.vertices) = pass.create_buffer(
       {
           .name = "imgui-vertices",
           .heap = BufferHeap::Dynamic,
@@ -122,7 +120,7 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       },
       RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER);
 
-  RgBufferId indices = pass.create_buffer(
+  std::tie(std::ignore, rcs.indices) = pass.create_buffer(
       {
           .name = "imgui-indices",
           .heap = BufferHeap::Dynamic,
@@ -130,24 +128,19 @@ void setup_imgui_pass(RgBuilder &rgb, const ImGuiPassConfig &cfg) {
       },
       RG_HOST_WRITE_BUFFER | RG_INDEX_BUFFER);
 
-  pass.write_color_attachment("imgui", "sdr",
-                              {
-                                  .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                  .store = VK_ATTACHMENT_STORE_OP_STORE,
-                              });
-
-  ImGuiPassResources rcs = {
-      .context = cfg.imgui_context,
-      .pipeline = cfg.pipeline,
-      .vertices = vertices,
-      .indices = indices,
-      .viewport = cfg.viewport,
-  };
+  auto [rt, _] =
+      pass.write_color_attachment("imgui", cfg.rt,
+                                  {
+                                      .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                      .store = VK_ATTACHMENT_STORE_OP_STORE,
+                                  });
 
   pass.set_graphics_callback(
       [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
-        run_imgui_pass(renderer, rt, render_pass, rcs);
+        run_imgui_pass(renderer, rt, *scene, render_pass, rcs);
       });
+
+  return rt;
 }
 
 } // namespace ren

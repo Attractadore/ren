@@ -35,7 +35,6 @@ add_library(
   Mesh.cpp
   MeshProcessing.cpp
   MeshSimplification.cpp
-  Passes.cpp
   Pipeline.cpp
   PipelineLoading.cpp
   RenderGraph.cpp

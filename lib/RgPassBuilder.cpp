@@ -7,64 +7,50 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
   m_builder = &builder;
 }
 
-auto RgPassBuilder::read_variable(StringView name) -> RgVariableId {
-  return m_builder->read_variable(m_pass, name);
-};
-
-auto RgPassBuilder::write_variable(StringView dst_data, StringView src_data)
-    -> RgRWVariableId {
-  return m_builder->write_variable(m_pass, dst_data, src_data);
-}
-
-auto RgPassBuilder::read_parameter(StringView parameter) -> RgParameterId {
-  return m_builder->read_parameter(m_pass, parameter);
-};
-
 auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
-                                  const RgBufferUsage &usage) -> RgBufferId {
-  String name = std::move(create_info.name);
-  String init_name = fmt::format("rg-init-{}", name);
-  create_info.name = init_name;
-  m_builder->create_buffer(std::move(create_info));
-  return write_buffer(name, init_name, usage);
+                                  const RgBufferUsage &usage)
+    -> std::tuple<RgBufferId, RgBufferToken> {
+  RgDebugName name = std::move(create_info.name);
+  return write_buffer(std::move(name),
+                      m_builder->create_buffer(std::move(create_info)), usage);
 }
 
-auto RgPassBuilder::read_buffer(StringView buffer, const RgBufferUsage &usage)
-    -> RgBufferId {
+auto RgPassBuilder::read_buffer(RgBufferId buffer, const RgBufferUsage &usage)
+    -> RgBufferToken {
   return m_builder->read_buffer(m_pass, buffer, usage);
 }
 
-auto RgPassBuilder::write_buffer(StringView dst_buffer, StringView src_buffer,
-                                 const RgBufferUsage &usage) -> RgBufferId {
-  return m_builder->write_buffer(m_pass, std::move(dst_buffer), src_buffer,
-                                 usage);
+auto RgPassBuilder::write_buffer(RgDebugName name, RgBufferId buffer,
+                                 const RgBufferUsage &usage)
+    -> std::tuple<RgBufferId, RgBufferToken> {
+  return m_builder->write_buffer(m_pass, std::move(name), buffer, usage);
 }
 
 auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info,
-                                   const RgTextureUsage &usage) -> RgTextureId {
-  String name = std::move(create_info.name);
-  String init_name = fmt::format("rg-init-{}", name);
-  create_info.name = init_name;
-  m_builder->create_texture(std::move(create_info));
-  return write_texture(name, init_name, usage);
+                                   const RgTextureUsage &usage)
+    -> std::tuple<RgTextureId, RgTextureToken> {
+  RgDebugName name = std::move(create_info.name);
+  return write_texture(std::move(name),
+                       m_builder->create_texture(std::move(create_info)),
+                       usage);
 };
 
-auto RgPassBuilder::read_texture(StringView texture,
+auto RgPassBuilder::read_texture(RgTextureId texture,
                                  const RgTextureUsage &usage,
-                                 u32 temporal_layer) -> RgTextureId {
+                                 u32 temporal_layer) -> RgTextureToken {
   return m_builder->read_texture(m_pass, texture, usage, temporal_layer);
 }
 
-auto RgPassBuilder::write_texture(StringView dst_texture,
-                                  StringView src_texture,
-                                  const RgTextureUsage &usage) -> RgTextureId {
-  return m_builder->write_texture(m_pass, dst_texture, src_texture, usage);
+auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
+                                  const RgTextureUsage &usage)
+    -> std::tuple<RgTextureId, RgTextureToken> {
+  return m_builder->write_texture(m_pass, std::move(name), texture, usage);
 }
 
-void RgPassBuilder::add_color_attachment(u32 index, RgTextureId texture,
+void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,
                                          const ColorAttachmentOperations &ops) {
   auto &color_attachments = m_builder->m_passes[m_pass]
-                                .type.get_or_emplace<RgGraphicsPassInfo>()
+                                .data.get_or_emplace<RgGraphicsPassInfo>()
                                 .color_attachments;
   if (color_attachments.size() <= index) {
     color_attachments.resize(index + 1);
@@ -75,10 +61,10 @@ void RgPassBuilder::add_color_attachment(u32 index, RgTextureId texture,
   };
 }
 
-void RgPassBuilder::add_depth_attachment(RgTextureId texture,
+void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
                                          const DepthAttachmentOperations &ops) {
   m_builder->m_passes[m_pass]
-      .type.get_or_emplace<RgGraphicsPassInfo>()
+      .data.get_or_emplace<RgGraphicsPassInfo>()
       .depth_stencil_attachment = RgDepthStencilAttachment{
       .texture = texture,
       .depth_ops = ops,
@@ -87,50 +73,53 @@ void RgPassBuilder::add_depth_attachment(RgTextureId texture,
 
 auto RgPassBuilder::create_color_attachment(
     RgTextureCreateInfo &&create_info, const ColorAttachmentOperations &ops,
-    u32 index) -> RgTextureId {
-  RgTextureId texture =
+    u32 index) -> std::tuple<RgTextureId, RgTextureToken> {
+  auto [texture, token] =
       create_texture(std::move(create_info), RG_COLOR_ATTACHMENT);
-  add_color_attachment(index, texture, ops);
-  return texture;
+  add_color_attachment(index, token, ops);
+  return {texture, token};
 }
 
-auto RgPassBuilder::write_color_attachment(StringView dst_texture,
-                                           StringView src_texture,
+auto RgPassBuilder::write_color_attachment(RgDebugName name,
+                                           RgTextureId texture,
                                            const ColorAttachmentOperations &ops,
-                                           u32 index) -> RgTextureId {
-  RgTextureId texture =
-      write_texture(dst_texture, src_texture, RG_COLOR_ATTACHMENT);
-  add_color_attachment(index, texture, ops);
-  return texture;
+                                           u32 index)
+    -> std::tuple<RgTextureId, RgTextureToken> {
+  auto [new_texture, token] =
+      write_texture(std::move(name), texture, RG_COLOR_ATTACHMENT);
+  add_color_attachment(index, token, ops);
+  return {new_texture, token};
 }
 
 auto RgPassBuilder::create_depth_attachment(
     RgTextureCreateInfo &&create_info, const DepthAttachmentOperations &ops)
-    -> RgTextureId {
-  RgTextureId texture =
+    -> std::tuple<RgTextureId, RgTextureToken> {
+  auto [texture, token] =
       create_texture(std::move(create_info), RG_READ_WRITE_DEPTH_ATTACHMENT);
-  add_depth_attachment(texture, ops);
-  return texture;
+  add_depth_attachment(token, ops);
+  return {texture, token};
 }
 
-auto RgPassBuilder::read_depth_attachment(StringView src_texture)
-    -> RgTextureId {
-  RgTextureId texture = read_texture(src_texture, RG_READ_DEPTH_ATTACHMENT);
-  add_depth_attachment(texture, {
-                                    .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                    .store = VK_ATTACHMENT_STORE_OP_NONE,
-                                });
-  return texture;
+auto RgPassBuilder::read_depth_attachment(RgTextureId texture,
+                                          u32 temporal_layer)
+    -> RgTextureToken {
+  RgTextureToken token =
+      read_texture(texture, RG_READ_DEPTH_ATTACHMENT, temporal_layer);
+  add_depth_attachment(token, {
+                                  .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                  .store = VK_ATTACHMENT_STORE_OP_NONE,
+                              });
+  return token;
 }
 
-auto RgPassBuilder::write_depth_attachment(StringView dst_texture,
-                                           StringView src_texture,
+auto RgPassBuilder::write_depth_attachment(RgDebugName name,
+                                           RgTextureId texture,
                                            const DepthAttachmentOperations &ops)
-    -> RgTextureId {
-  RgTextureId texture =
-      write_texture(dst_texture, src_texture, RG_READ_WRITE_DEPTH_ATTACHMENT);
-  add_depth_attachment(texture, ops);
-  return texture;
+    -> std::tuple<RgTextureId, RgTextureToken> {
+  auto [new_texture, token] =
+      write_texture(std::move(name), texture, RG_READ_WRITE_DEPTH_ATTACHMENT);
+  add_depth_attachment(token, ops);
+  return {new_texture, token};
 }
 
 void RgPassBuilder::wait_semaphore(RgSemaphoreId semaphore,

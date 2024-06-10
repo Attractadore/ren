@@ -4,6 +4,7 @@
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Any.hpp"
+#include "Support/DynamicBitset.hpp"
 #include "Support/NewType.hpp"
 #include "Support/Variant.hpp"
 #include "TextureIdAllocator.hpp"
@@ -11,11 +12,15 @@
 #include <functional>
 #include <vulkan/vulkan.h>
 
-#ifndef REN_RG_DEBUG
-#define REN_RG_DEBUG 0
+namespace ren {
+
+#if REN_RG_DEBUG
+using RgDebugName = String;
+#else
+using RgDebugName = DummyString;
 #endif
 
-namespace ren {
+#define REN_RG_DEBUG_NAME_TYPE [[no_unique_address]] RgDebugName
 
 class CommandAllocator;
 class CommandRecorder;
@@ -58,17 +63,32 @@ using RgCallback =
     std::function<void(Renderer &, const RgRuntime &, CommandRecorder &)>;
 static_assert(CRgCallback<RgCallback>);
 
+template <typename F>
+concept CRgTextureInitCallback =
+    std::invocable<F, Handle<Texture>, Renderer &, CommandRecorder &>;
+
+using RgTextureInitCallback =
+    std::function<void(Handle<Texture>, Renderer &, CommandRecorder &)>;
+static_assert(CRgTextureInitCallback<RgTextureInitCallback>);
+
 constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
 
 REN_NEW_TYPE(RgPassId, u32);
 
+struct RgPassCreateInfo {
+  REN_RG_DEBUG_NAME_TYPE name;
+};
+
 REN_NEW_TYPE(RgPhysicalVariableId, u32);
-REN_NEW_TYPE(RgVariableId, u32);
-REN_NEW_TYPE(RgRWVariableId, u32);
-REN_NEW_TYPE(RgParameterId, u32);
+REN_NEW_TEMPLATE_TYPE(RgVariableId, u32, T);
+using RgGenericVariableId = RgVariableId<void>;
+REN_NEW_TEMPLATE_TYPE(RgVariableToken, u32, T);
+using RgGenericVariableToken = RgVariableToken<void>;
+REN_NEW_TEMPLATE_TYPE(RgRWVariableToken, u32, T);
 
 REN_NEW_TYPE(RgPhysicalBufferId, u32);
 REN_NEW_TYPE(RgBufferId, u32);
+REN_NEW_TYPE(RgBufferToken, u32);
 
 struct RgBufferUsage {
   /// Pipeline stages in which this buffer is accessed
@@ -132,7 +152,7 @@ constexpr RgBufferUsage RG_INDIRECT_COMMAND_BUFFER = {
 
 struct RgBufferCreateInfo {
   /// Buffer name
-  String name;
+  REN_RG_DEBUG_NAME_TYPE name;
   /// Memory heap from which to allocate buffer
   BufferHeap heap = BufferHeap::Dynamic;
   /// Initial buffer size
@@ -141,6 +161,7 @@ struct RgBufferCreateInfo {
 
 REN_NEW_TYPE(RgPhysicalTextureId, u32);
 REN_NEW_TYPE(RgTextureId, u32);
+REN_NEW_TYPE(RgTextureToken, u32);
 
 struct RgTextureUsage {
   /// Pipeline stages in which the texture is accessed
@@ -214,7 +235,7 @@ constexpr RgTextureUsage RG_PRESENT_TEXTURE = {
 
 struct RgTextureCreateInfo {
   /// Texture name
-  String name;
+  REN_RG_DEBUG_NAME_TYPE name;
   /// Texture type
   VkImageType type = VK_IMAGE_TYPE_2D;
   /// Texture format
@@ -231,21 +252,53 @@ struct RgTextureCreateInfo {
   u32 num_array_layers = 1;
   /// Number of temporal layers
   u32 num_temporal_layers = 1;
-  /// Initial clear color or depth-stencil for temporal layers
-  Variant<Monostate, glm::vec4, VkClearDepthStencilValue> clear;
+  /// Texture usage in init callback
+  RgTextureUsage init_usage;
+  /// Init callback for temporal layers
+  RgTextureInitCallback init_cb;
+};
+
+struct RgExternalTextureCreateInfo {
+  /// Texture name
+  REN_RG_DEBUG_NAME_TYPE name;
+  /// Texture type
+  VkImageType type = VK_IMAGE_TYPE_2D;
+  /// Texture format
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  /// Texture width
+  u32 width = 0;
+  /// Texture height
+  u32 height = 1;
+  /// Texture depth
+  u32 depth = 1;
+  /// Number of mip levels
+  u32 num_mip_levels = 1;
+  /// Number of array layers
+  u32 num_array_layers = 1;
 };
 
 REN_NEW_TYPE(RgSemaphoreId, u32);
+
+struct RgSemaphoreCreateInfo {
+  /// Semaphore name.
+  REN_RG_DEBUG_NAME_TYPE name;
+  /// Semaphore type.
+  VkSemaphoreType type = VK_SEMAPHORE_TYPE_BINARY;
+};
 
 struct RgBufferUse {
   RgBufferId buffer;
   RgBufferUsage usage;
 };
 
+REN_NEW_TYPE(RgBufferUseId, u32);
+
 struct RgTextureUse {
   RgTextureId texture;
   RgTextureUsage usage;
 };
+
+REN_NEW_TYPE(RgTextureUseId, u32);
 
 struct RgSemaphoreSignal {
   RgSemaphoreId semaphore;
@@ -253,17 +306,19 @@ struct RgSemaphoreSignal {
   u64 value = 0;
 };
 
+REN_NEW_TYPE(RgSemaphoreSignalId, u32);
+
 struct RgHostPassInfo {
   RgHostCallback cb;
 };
 
 struct RgColorAttachment {
-  RgTextureId texture;
+  RgTextureToken texture;
   ColorAttachmentOperations ops;
 };
 
 struct RgDepthStencilAttachment {
-  RgTextureId texture;
+  RgTextureToken texture;
   Optional<DepthAttachmentOperations> depth_ops;
   Optional<StencilAttachmentOperations> stencil_ops;
 };
@@ -283,41 +338,14 @@ struct RgGenericPassInfo {
   RgCallback cb;
 };
 
-struct RgMemoryBarrier {
-  VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
-  VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
-
-public:
-  operator VkMemoryBarrier2() const {
-    return {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-        .srcStageMask = src_stage_mask,
-        .srcAccessMask = src_access_mask,
-        .dstStageMask = dst_stage_mask,
-        .dstAccessMask = dst_access_mask,
-    };
-  }
-};
-
-struct RgTextureBarrier {
-  RgPhysicalTextureId texture;
-  VkPipelineStageFlagBits2 src_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  VkAccessFlags2 src_access_mask = VK_ACCESS_2_NONE;
-  VkImageLayout src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-  VkPipelineStageFlagBits2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  VkAccessFlags2 dst_access_mask = VK_ACCESS_2_NONE;
-  VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-};
-
 struct RgHostPass {
   RgHostCallback cb;
 };
 
 struct RgGraphicsPass {
+  u32 base_color_attachment = 0;
   u32 num_color_attachments = 0;
-  bool has_depth_attachment = false;
+  Optional<u32> depth_attachment;
   RgGraphicsCallback cb;
 };
 
@@ -329,61 +357,44 @@ struct RgGenericPass {
   RgCallback cb;
 };
 
+struct RgPassRuntimeInfo {
+  RgPassId pass;
+  u32 base_memory_barrier = 0;
+  u32 num_memory_barriers = 0;
+  u32 base_texture_barrier = 0;
+  u32 num_texture_barriers = 0;
+  SmallVector<RgGenericVariableId> read_variables;
+  SmallVector<RgGenericVariableId> write_variables;
+  SmallVector<RgBufferUseId> read_buffers;
+  SmallVector<RgBufferUseId> write_buffers;
+  SmallVector<RgTextureUseId> read_textures;
+  SmallVector<RgTextureUseId> write_textures;
+  SmallVector<RgSemaphoreSignalId> wait_semaphores;
+  SmallVector<RgSemaphoreSignalId> signal_semaphores;
+  Variant<RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass> data;
+};
+
 class RenderGraph {
 public:
-  RenderGraph(Renderer &renderer, Swapchain &swapchain,
-              TextureIdAllocator &tex_alloc);
+  RenderGraph(Renderer &renderer, TextureIdAllocator &tex_alloc);
 
-  auto is_pass_valid(StringView pass) const -> bool;
+  void set_texture(RgTextureId id, Handle<Texture> texture,
+                   const RgTextureUsage &usage = {});
 
-  template <typename T>
-  auto get_parameter(StringView parameter) -> Optional<T &> {
-    auto it = m_parameter_ids.find(parameter);
-    if (it == m_parameter_ids.end()) {
-      return None;
-    }
-    RgParameterId id = it->second;
-    return m_parameters[id].get<T>();
-  }
-
-  auto is_variable_valid(StringView variable) const -> bool;
-
-  auto is_buffer_valid(StringView buffer) const -> bool;
-
-  auto is_texture_valid(StringView texture) const -> bool;
+  void set_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
   void execute(CommandAllocator &cmd_alloc);
 
 private:
-  auto get_physical_variable(RgVariableId variable) const
-      -> RgPhysicalVariableId;
-
-  auto get_physical_variable(RgRWVariableId variable) const
-      -> RgPhysicalVariableId;
-
-  auto get_physical_buffer(RgBufferId buffer) const -> RgPhysicalBufferId;
-
-  auto get_physical_texture(RgTextureId texture) const -> RgPhysicalTextureId;
-
   void rotate_resources();
+
+  void place_barriers();
 
 private:
   friend RgBuilder;
   friend RgRuntime;
 
-  struct RgPassRuntimeInfo {
-    RgPassId pass;
-    u32 num_memory_barriers;
-    u32 num_texture_barriers;
-    u32 num_wait_semaphores;
-    u32 num_signal_semaphores;
-    Variant<RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass> type;
-  };
-
   Vector<RgPassRuntimeInfo> m_passes;
-
-  HashMap<String, RgPassId> m_pass_ids;
-
 #if REN_RG_DEBUG
   Vector<String> m_pass_names;
 #endif
@@ -391,38 +402,29 @@ private:
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
 
-  Vector<RgMemoryBarrier> m_memory_barriers;
-  Vector<RgTextureBarrier> m_texture_barriers;
-  Vector<RgSemaphoreSignal> m_wait_semaphores;
-  Vector<RgSemaphoreSignal> m_signal_semaphores;
+  Vector<VkMemoryBarrier2> m_memory_barriers;
+  Vector<VkImageMemoryBarrier2> m_texture_barriers;
 
-  HashMap<String, RgParameterId> m_parameter_ids;
-  Vector<Any> m_parameters;
+  Vector<RgBufferUse> m_buffer_uses;
+  Vector<RgTextureUse> m_texture_uses;
+  Vector<RgSemaphoreSignal> m_semaphore_signals;
 
-  HashMap<String, RgVariableId> m_variable_ids;
-  Vector<RgVariableId> m_variable_parents;
+  Vector<RgPhysicalVariableId> m_physical_variables;
   Vector<Any> m_variables;
 
-  HashMap<String, RgBufferId> m_buffer_ids;
-  Vector<RgBufferId> m_buffer_parents;
+  Vector<RgPhysicalBufferId> m_physical_buffers;
   Vector<BufferView> m_buffers;
   std::array<Handle<Buffer>, NUM_BUFFER_HEAPS> m_heap_buffers;
 
-  HashMap<String, RgTextureId> m_texture_ids;
-  Vector<RgTextureId> m_texture_parents;
+  Vector<RgPhysicalTextureId> m_physical_textures;
   Vector<Handle<Texture>> m_textures;
-  HashMap<RgPhysicalTextureId, u32> m_texture_instance_counts;
+  DynamicBitset m_external_textures;
+  Vector<u32> m_texture_temporal_layer_count;
+  Vector<RgTextureUsage> m_texture_usages;
   TextureIdAllocatorScope m_tex_alloc;
   Vector<StorageTextureId> m_storage_texture_descriptors;
 
   Vector<Handle<Semaphore>> m_semaphores;
-
-  Swapchain *m_swapchain = nullptr;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
-  RgSemaphoreId m_acquire_semaphore;
-  RgSemaphoreId m_present_semaphore;
-  RgPhysicalTextureId m_backbuffer;
 
   using Arena = detail::ResourceArenaImpl<Buffer, Texture, Semaphore>;
 
@@ -433,112 +435,112 @@ private:
 class RgRuntime {
 public:
   template <typename T>
-  auto get_parameter(RgParameterId parameter) const -> const T & {
-    ren_assert(parameter);
-    auto opt = m_rg->m_parameters[parameter].get<T>();
-    ren_assert(opt);
-    return *opt;
+  auto get_variable(RgVariableToken<T> variable) const -> const T & {
+    RgPhysicalVariableId physical_variable =
+        m_rg->m_physical_variables[variable];
+    return *m_rg->m_variables[physical_variable].get<T>();
   }
 
   template <typename T>
-  auto get_variable(RgVariableId variable) const -> const T & {
-    ren_assert(variable);
-    return *m_rg->m_variables[m_rg->get_physical_variable(variable)].get<T>();
+  auto get_variable(RgRWVariableToken<T> variable) const -> T & {
+    RgPhysicalVariableId physical_variable =
+        m_rg->m_physical_variables[variable];
+    return *m_rg->m_variables[physical_variable].get<T>();
+  }
+
+  auto get_buffer(RgBufferToken buffer) const -> const BufferView &;
+
+  template <typename T>
+  auto get_buffer_device_ptr(RgBufferToken buffer, usize offset = 0) const
+      -> DevicePtr<T> {
+    return m_rg->m_renderer->get_buffer_device_ptr<T>(get_buffer(buffer),
+                                                      offset);
   }
 
   template <typename T>
-  auto get_variable(RgRWVariableId variable) const -> T & {
-    ren_assert(variable);
-    return *m_rg->m_variables[m_rg->get_physical_variable(variable)].get<T>();
+  auto map_buffer(RgBufferToken buffer, usize offset = 0) const -> T * {
+    return m_rg->m_renderer->map_buffer<T>(get_buffer(buffer), offset);
   }
 
-  auto get_buffer(RgBufferId buffer) const -> const BufferView &;
+  auto get_texture(RgTextureToken texture) const -> Handle<Texture>;
 
-  template <typename T>
-  auto map_buffer(RgBufferId buffer, usize offset = 0) const -> T * {
-    return (T *)map_buffer_impl(buffer, offset);
-  }
-
-  auto get_texture(RgTextureId texture) const -> Handle<Texture>;
-
-  auto get_storage_texture_descriptor(RgTextureId texture) const
+  auto get_storage_texture_descriptor(RgTextureToken texture) const
       -> StorageTextureId;
 
   auto get_texture_set() const -> VkDescriptorSet;
 
 private:
-  auto map_buffer_impl(RgBufferId buffer, usize offset) const -> std::byte *;
-
   friend RenderGraph;
   RenderGraph *m_rg = nullptr;
-};
-
-REN_NEW_TYPE(RgBufferUseId, u32);
-REN_NEW_TYPE(RgTextureUseId, u32);
-REN_NEW_TYPE(RgSemaphoreSignalId, u32);
-
-struct RgClearTexture {
-  Handle<Texture> texture;
-  VkPipelineStageFlags2 dst_stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  VkImageLayout dst_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-  union {
-    glm::vec4 color;
-    VkClearDepthStencilValue depth_stencil;
-  } clear;
 };
 
 class RgBuilder {
 public:
   RgBuilder(RenderGraph &rg);
 
-  [[nodiscard]] auto create_pass(String name) -> RgPassBuilder;
+  [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
+      -> RgPassBuilder;
 
-  auto is_pass_valid(StringView pass) const -> bool;
-
-  template <typename T> void create_parameter(String name) {
-    RgParameterId id = get_or_alloc_parameter(name);
-    m_rg->m_parameters[id].emplace<T>();
+  template <typename T>
+  [[nodiscard]] auto create_variable() -> RgVariableId<T> {
+    RgVariableId<T> variable(
+        create_virtual_variable(RgPassId(), {}, RgGenericVariableId()));
+    m_rg->m_variables[m_rg->m_physical_variables[variable]]
+        .template emplace<T>();
+    return variable;
   }
 
-  template <typename T> void create_variable(String name) {
-    RgVariableId id = get_or_alloc_variable(name);
-    m_rg->m_variable_parents[id] = id;
-    m_rg->m_variables[id].emplace<T>();
-  }
+  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info)
+      -> RgBufferId;
 
-  auto is_variable_valid(StringView variable) const -> bool;
+  [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
+      -> RgTextureId;
 
-  void create_buffer(RgBufferCreateInfo &&create_info);
+  [[nodiscard]] auto
+  create_external_texture(RgExternalTextureCreateInfo &&create_info)
+      -> RgTextureId;
 
-  auto is_buffer_valid(StringView buffer) const -> bool;
-
-  void create_texture(RgTextureCreateInfo &&create_info);
-
-  auto is_texture_valid(StringView texture) const -> bool;
-
-  void present(StringView texture);
+  [[nodiscard]] auto
+  create_external_semaphore(RgSemaphoreCreateInfo &&create_info)
+      -> RgSemaphoreId;
 
   void build(CommandAllocator &cmd_alloc);
 
 private:
   friend RgPassBuilder;
 
-  [[nodiscard]] auto get_variable_def(RgVariableId variable) const -> RgPassId;
+  [[nodiscard]] auto get_variable_def(RgGenericVariableId variable) const
+      -> RgPassId;
 
-  [[nodiscard]] auto get_variable_kill(RgVariableId variable) const -> RgPassId;
+  [[nodiscard]] auto get_variable_kill(RgGenericVariableId variable) const
+      -> RgPassId;
 
-  [[nodiscard]] auto get_or_alloc_variable(StringView name) -> RgVariableId;
+  [[nodiscard]] auto create_virtual_variable(RgPassId pass, RgDebugName name,
+                                             RgGenericVariableId parent)
+      -> RgGenericVariableId;
 
-  [[nodiscard]] auto read_variable(RgPassId pass, StringView variable)
-      -> RgVariableId;
+  template <typename T>
+  [[nodiscard]] auto read_variable(RgPassId pass, RgVariableId<T> variable)
+      -> RgVariableToken<T> {
+    return RgVariableToken<T>(
+        read_variable(pass, RgGenericVariableId(variable)));
+  }
 
-  [[nodiscard]] auto write_variable(RgPassId pass, StringView dst_variable,
-                                    StringView src_variable) -> RgRWVariableId;
+  [[nodiscard]] auto read_variable(RgPassId pass, RgGenericVariableId variable)
+      -> RgGenericVariableToken;
 
-  [[nodiscard]] auto get_or_alloc_parameter(StringView name) -> RgParameterId;
+  template <typename T>
+  [[nodiscard]] auto write_variable(RgPassId pass, RgDebugName name,
+                                    RgVariableId<T> variable)
+      -> std::tuple<RgVariableId<T>, RgRWVariableToken<T>> {
+    auto [new_variable, token] =
+        write_variable(pass, std::move(name), RgGenericVariableId(variable));
+    return {RgVariableId<T>(new_variable), RgRWVariableToken<T>(token)};
+  }
 
-  [[nodiscard]] auto read_parameter(RgPassId pass, StringView name)
-      -> RgParameterId;
+  [[nodiscard]] auto write_variable(RgPassId pass, RgDebugName name,
+                                    RgGenericVariableId variable)
+      -> std::tuple<RgGenericVariableId, RgGenericVariableToken>;
 
   [[nodiscard]] auto get_buffer_def(RgBufferId buffer) const -> RgPassId;
 
@@ -548,14 +550,15 @@ private:
                                     const RgBufferUsage &usage)
       -> RgBufferUseId;
 
-  [[nodiscard]] auto get_or_alloc_buffer(StringView name) -> RgBufferId;
+  [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
+                                           RgBufferId parent) -> RgBufferId;
 
-  [[nodiscard]] auto read_buffer(RgPassId pass, StringView buffer,
-                                 const RgBufferUsage &usage) -> RgBufferId;
+  [[nodiscard]] auto read_buffer(RgPassId pass, RgBufferId buffer,
+                                 const RgBufferUsage &usage) -> RgBufferToken;
 
-  [[nodiscard]] auto write_buffer(RgPassId pass, StringView dst_buffer,
-                                  StringView src_buffer,
-                                  const RgBufferUsage &usage) -> RgBufferId;
+  [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
+                                  RgBufferId buffer, const RgBufferUsage &usage)
+      -> std::tuple<RgBufferId, RgBufferToken>;
 
   [[nodiscard]] auto get_texture_def(RgTextureId texture) const -> RgPassId;
 
@@ -565,23 +568,23 @@ private:
                                      const RgTextureUsage &usage)
       -> RgTextureUseId;
 
-  [[nodiscard]] auto get_or_alloc_texture(StringView name,
-                                          u32 temporal_layer = 0)
+  [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
+                                            RgTextureId parent,
+                                            u32 num_temporal_layers = 1)
       -> RgTextureId;
 
-  [[nodiscard]] auto read_texture(RgPassId pass, StringView texture,
+  [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
                                   const RgTextureUsage &usage,
-                                  u32 temporal_layer = 0) -> RgTextureId;
+                                  u32 temporal_layer = 0) -> RgTextureToken;
 
-  [[nodiscard]] auto write_texture(RgPassId pass, StringView dst_texture,
-                                   StringView src_texture,
-                                   const RgTextureUsage &usage) -> RgTextureId;
+  [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
+                                   RgTextureId texture,
+                                   const RgTextureUsage &usage)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto add_semaphore_signal(RgSemaphoreId semaphore,
                                           VkPipelineStageFlags2 stage_mask,
                                           u64 value) -> RgSemaphoreSignalId;
-
-  [[nodiscard]] auto alloc_semaphore(StringView name) -> RgSemaphoreId;
 
   void wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                       VkPipelineStageFlags2 stage_mask, u64 value);
@@ -590,35 +593,25 @@ private:
                         VkPipelineStageFlags2 stage_mask, u64 value);
 
   void set_host_callback(RgPassId pass, CRgHostCallback auto cb) {
-    assert(!m_passes[pass].type);
-    m_passes[pass].type = RgHostPassInfo{.cb = std::move(cb)};
+    ren_assert(!m_passes[pass].data);
+    m_passes[pass].data = RgHostPassInfo{.cb = std::move(cb)};
   }
 
   void set_graphics_callback(RgPassId pass, CRgGraphicsCallback auto cb) {
-    assert(!m_passes[pass].type or
-           m_passes[pass].type.get<RgGraphicsPassInfo>());
-    m_passes[pass].type.get_or_emplace<RgGraphicsPassInfo>().cb = std::move(cb);
+    ren_assert(!m_passes[pass].data or
+               m_passes[pass].data.get<RgGraphicsPassInfo>());
+    m_passes[pass].data.get_or_emplace<RgGraphicsPassInfo>().cb = std::move(cb);
   }
 
   void set_compute_callback(RgPassId pass, CRgComputeCallback auto cb) {
-    assert(!m_passes[pass].type);
-    m_passes[pass].type = RgComputePassInfo{.cb = std::move(cb)};
+    ren_assert(!m_passes[pass].data);
+    m_passes[pass].data = RgComputePassInfo{.cb = std::move(cb)};
   }
 
   void set_callback(RgPassId pass, CRgCallback auto cb) {
-    assert(!m_passes[pass].type);
-    m_passes[pass].type = RgGenericPassInfo{.cb = std::move(cb)};
+    ren_assert(!m_passes[pass].data);
+    m_passes[pass].data = RgGenericPassInfo{.cb = std::move(cb)};
   }
-
-  auto get_buffer_parent(RgBufferId buffer) -> RgBufferId;
-
-  void build_buffer_disjoint_set();
-
-  auto get_texture_parent(RgTextureId texture) -> RgTextureId;
-
-  void build_texture_disjoint_set();
-
-  auto passes() const;
 
   auto build_pass_schedule() -> Vector<RgPassId>;
 
@@ -628,21 +621,14 @@ private:
 
   void fill_pass_runtime_info(Span<const RgPassId> schedule);
 
-  void place_barriers_and_semaphores(Span<const RgPassId> schedule,
-                                     Vector<RgClearTexture> &clear_textures);
-
-  void clear_temporal_textures(CommandAllocator &cmd_alloc,
-                               Span<const RgClearTexture> clear_textures) const;
+  void init_temporal_textures(CommandAllocator &cmd_alloc) const;
 
 private:
   RenderGraph *m_rg = nullptr;
 
   struct RgPassInfo {
-#if REN_RG_DEBUG
-    SmallVector<RgParameterId> read_parameters;
-#endif
-    SmallVector<RgVariableId> read_variables;
-    SmallVector<RgVariableId> write_variables;
+    SmallVector<RgGenericVariableId> read_variables;
+    SmallVector<RgGenericVariableId> write_variables;
     SmallVector<RgBufferUseId> read_buffers;
     SmallVector<RgBufferUseId> write_buffers;
     SmallVector<RgTextureUseId> read_textures;
@@ -651,14 +637,10 @@ private:
     SmallVector<RgSemaphoreSignalId> signal_semaphores;
     Variant<Monostate, RgHostPassInfo, RgGraphicsPassInfo, RgComputePassInfo,
             RgGenericPassInfo>
-        type;
+        data;
   };
 
   Vector<RgPassInfo> m_passes = {{}};
-
-  Vector<RgBufferUse> m_buffer_uses;
-  Vector<RgTextureUse> m_texture_uses;
-  Vector<RgSemaphoreSignal> m_semaphore_signals;
 
   struct RgBufferDesc {
     BufferHeap heap;
@@ -667,12 +649,8 @@ private:
   };
 
 #if REN_RG_DEBUG
-  HashMap<RgParameterId, String> m_parameter_names;
-#endif
-
-#if REN_RG_DEBUG
-  HashMap<RgVariableId, String> m_variable_names;
-  Vector<RgVariableId> m_variable_children = {{}};
+  HashMap<RgGenericVariableId, String> m_variable_names;
+  Vector<RgGenericVariableId> m_variable_children = {{}};
 #endif
   Vector<RgPassId> m_variable_defs = {{}};
   Vector<RgPassId> m_variable_kills = {{}};
@@ -694,79 +672,97 @@ private:
     u32 depth = 1;
     u32 num_mip_levels = 1;
     u32 num_array_layers = 1;
-    u32 num_temporal_layers = 1;
-    Variant<Monostate, glm::vec4, VkClearDepthStencilValue> clear;
   };
 
   HashMap<RgPhysicalTextureId, RgTextureDesc> m_texture_descs;
+  HashMap<RgPhysicalTextureId, RgTextureInitCallback> m_texture_init_callbacks;
 #if REN_RG_DEBUG
   HashMap<RgTextureId, String> m_texture_names;
   Vector<RgTextureId> m_texture_children = {{}};
+  Vector<RgTextureId> m_texture_parents = {{}};
 #endif
   Vector<RgPassId> m_texture_defs = {{}};
   Vector<RgPassId> m_texture_kills = {{}};
 
-  HashMap<String, RgSemaphoreId> m_semaphore_ids;
 #if REN_RG_DEBUG
   Vector<String> m_semaphore_names = {{}};
 #endif
 };
 
-struct RgNoPassData {};
-
 class RgPassBuilder {
 public:
-  [[nodiscard]] auto read_parameter(StringView parameter) -> RgParameterId;
-
   template <typename T>
-  [[nodiscard]] auto create_variable(StringView variable) -> RgRWVariableId {
-    String init_name = fmt::format("rg-init-{}", variable);
-    m_builder->create_variable<T>(init_name);
-    return write_variable(variable, init_name);
+  [[nodiscard]] auto create_variable(RgDebugName name)
+      -> std::tuple<RgVariableId<T>, RgRWVariableToken<T>> {
+    return write_variable(std::move(name), m_builder->create_variable<T>());
   }
 
-  [[nodiscard]] auto read_variable(StringView variable) -> RgVariableId;
+  template <typename T>
+  [[nodiscard]] auto read_variable(RgVariableId<T> variable)
+      -> RgVariableToken<T> {
+    return m_builder->read_variable(m_pass, variable);
+  }
 
-  [[nodiscard]] auto write_variable(StringView dst_variable,
-                                    StringView src_variable) -> RgRWVariableId;
+  template <typename T>
+  [[nodiscard]] auto write_variable(RgDebugName name, RgVariableId<T> variable)
+      -> std::tuple<RgVariableId<T>, RgRWVariableToken<T>> {
+    return m_builder->write_variable(m_pass, std::move(name), variable);
+  }
 
   [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info,
-                                   const RgBufferUsage &usage) -> RgBufferId;
+                                   const RgBufferUsage &usage)
+      -> std::tuple<RgBufferId, RgBufferToken>;
 
-  [[nodiscard]] auto read_buffer(StringView buffer, const RgBufferUsage &usage)
-      -> RgBufferId;
+  [[nodiscard]] auto read_buffer(RgBufferId buffer, const RgBufferUsage &usage)
+      -> RgBufferToken;
 
-  [[nodiscard]] auto write_buffer(StringView dst_buffer, StringView src_buffer,
-                                  const RgBufferUsage &usage) -> RgBufferId;
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId buffer,
+                                  const RgBufferUsage &usage)
+      -> std::tuple<RgBufferId, RgBufferToken>;
 
   [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info,
-                                    const RgTextureUsage &usage) -> RgTextureId;
+                                    const RgTextureUsage &usage)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
-  [[nodiscard]] auto read_texture(StringView texture,
+  [[nodiscard]] auto read_texture(RgTextureId texture,
                                   const RgTextureUsage &usage,
-                                  u32 temporal_layer = 0) -> RgTextureId;
+                                  u32 temporal_layer = 0) -> RgTextureToken;
 
-  [[nodiscard]] auto write_texture(StringView dst_texture,
-                                   StringView src_texture,
-                                   const RgTextureUsage &usage) -> RgTextureId;
+  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
+                                   const RgTextureUsage &usage)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto create_color_attachment(RgTextureCreateInfo &&create_info,
-                               const ColorAttachmentOperations &ops,
-                               u32 index = 0) -> RgTextureId;
+  [[nodiscard]] auto
+  create_color_attachment(RgTextureCreateInfo &&create_info,
+                          const ColorAttachmentOperations &ops, u32 index = 0)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto write_color_attachment(StringView dst_texture, StringView src_texture,
-                              const ColorAttachmentOperations &ops,
-                              u32 index = 0) -> RgTextureId;
+  [[nodiscard]] auto
+  write_color_attachment(RgDebugName name, RgTextureId texture,
+                         const ColorAttachmentOperations &ops, u32 index = 0)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto create_depth_attachment(RgTextureCreateInfo &&create_info,
-                               const DepthAttachmentOperations &ops)
-      -> RgTextureId;
+  [[nodiscard]] auto
+  create_depth_attachment(RgTextureCreateInfo &&create_info,
+                          const DepthAttachmentOperations &ops)
+      -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto read_depth_attachment(StringView texture) -> RgTextureId;
+  auto read_depth_attachment(RgTextureId texture, u32 temporal_layer = 0)
+      -> RgTextureToken;
 
-  auto write_depth_attachment(StringView dst_texture, StringView src_texture,
+  auto write_depth_attachment(RgDebugName name, RgTextureId texture,
                               const DepthAttachmentOperations &ops)
-      -> RgTextureId;
+      -> std::tuple<RgTextureId, RgTextureToken>;
+
+  void
+  wait_semaphore(RgSemaphoreId semaphore,
+                 VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
+                 u64 value = 0);
+
+  void
+  signal_semaphore(RgSemaphoreId semaphore,
+                   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
+                   u64 value = 0);
 
   void set_host_callback(CRgHostCallback auto cb) {
     m_builder->set_host_callback(m_pass, std::move(cb));
@@ -787,21 +783,11 @@ public:
 private:
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 
-  void add_color_attachment(u32 index, RgTextureId texture,
+  void add_color_attachment(u32 index, RgTextureToken texture,
                             const ColorAttachmentOperations &ops);
 
-  void add_depth_attachment(RgTextureId texture,
+  void add_depth_attachment(RgTextureToken texture,
                             const DepthAttachmentOperations &ops);
-
-  void
-  wait_semaphore(RgSemaphoreId semaphore,
-                 VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                 u64 value = 0);
-
-  void
-  signal_semaphore(RgSemaphoreId semaphore,
-                   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                   u64 value = 0);
 
 private:
   friend class RgBuilder;
