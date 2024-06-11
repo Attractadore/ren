@@ -1,5 +1,6 @@
 #pragma once
 #include "Attachments.hpp"
+#include "BumpAllocator.hpp"
 #include "Config.hpp"
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
@@ -430,6 +431,8 @@ private:
 
   Arena m_arena;
   Renderer *m_renderer = nullptr;
+  DeviceBumpAllocator m_device_allocator;
+  UploadBumpAllocator m_upload_allocator;
 };
 
 class RgRuntime {
@@ -468,6 +471,20 @@ public:
       -> StorageTextureId;
 
   auto get_texture_set() const -> VkDescriptorSet;
+
+  auto get_device_allocator() const -> DeviceBumpAllocator &;
+
+  auto get_upload_allocator() const -> UploadBumpAllocator &;
+
+  template <typename T = std::byte>
+  auto allocate_device(usize count = 1) const -> DeviceBumpAllocation<T> {
+    return get_device_allocator().allocate<T>(count);
+  }
+
+  template <typename T = std::byte>
+  auto allocate_upload(usize count = 1) const -> UploadBumpAllocation<T> {
+    return get_upload_allocator().allocate<T>(count);
+  }
 
 private:
   friend RenderGraph;

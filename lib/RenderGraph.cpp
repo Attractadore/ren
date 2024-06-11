@@ -29,8 +29,17 @@ auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
   return m_rg->m_tex_alloc.get_set();
 }
 
+auto RgRuntime::get_device_allocator() const -> DeviceBumpAllocator & {
+  return m_rg->m_device_allocator;
+}
+
+auto RgRuntime::get_upload_allocator() const -> UploadBumpAllocator & {
+  return m_rg->m_upload_allocator;
+}
+
 RenderGraph::RenderGraph(Renderer &renderer, TextureIdAllocator &tex_alloc)
-    : m_tex_alloc(tex_alloc), m_arena(renderer) {
+    : m_tex_alloc(tex_alloc), m_arena(renderer), m_device_allocator(renderer),
+      m_upload_allocator(renderer) {
   m_renderer = &renderer;
 }
 

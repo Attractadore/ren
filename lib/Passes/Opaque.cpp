@@ -419,7 +419,6 @@ struct OpaquePassResources {
   RgVariableToken<BatchData> batches;
   RgBufferToken commands;
   RgBufferToken batch_counts;
-  RgBufferToken uniforms;
   RgBufferToken meshes;
   RgBufferToken materials;
   RgBufferToken mesh_instances;
@@ -440,8 +439,9 @@ void run_opaque_pass(const RgRuntime &rg, const Scene &scene,
   const BufferView &commands = rg.get_buffer(rcs.commands);
   const BufferView &batch_counts = rg.get_buffer(rcs.batch_counts);
 
-  auto *uniforms = rg.map_buffer<glsl::OpaquePassUniforms>(rcs.uniforms);
-  *uniforms = glsl::OpaquePassUniforms{
+  auto [uniforms_host_ptr, uniforms_device_ptr, _] =
+      rg.allocate_upload<glsl::OpaquePassUniforms>();
+  *uniforms_host_ptr = {
       .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
       .mesh_instances =
           rg.get_buffer_device_ptr<glsl::MeshInstance>(rcs.mesh_instances),
@@ -452,15 +452,13 @@ void run_opaque_pass(const RgRuntime &rg, const Scene &scene,
       .proj_view = scene.get_camera_proj_view(),
   };
 
-  auto ub = rg.get_buffer_device_ptr<glsl::OpaquePassUniforms>(rcs.uniforms);
-
   for (u32 attribute_mask = 0; attribute_mask < glsl::NUM_MESH_ATTRIBUTE_FLAGS;
        ++attribute_mask) {
     render_pass.bind_graphics_pipeline(
         scene.get_pipelines().opaque_pass[attribute_mask]);
     render_pass.bind_descriptor_sets({rg.get_texture_set()});
     render_pass.set_push_constants(glsl::OpaquePassArgs{
-        .ub = ub,
+        .ub = uniforms_device_ptr,
         .materials = rg.get_buffer_device_ptr<glsl::Material>(rcs.materials),
         .directional_lights =
             rg.get_buffer_device_ptr<glsl::DirLight>(rcs.directional_lights),
@@ -505,14 +503,6 @@ auto setup_opaque_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
 
   rcs.batch_counts =
       pass.read_buffer(cfg.batch_counts, RG_INDIRECT_COMMAND_BUFFER);
-
-  std::tie(std::ignore, rcs.uniforms) = pass.create_buffer(
-      {
-          .name = "opaque-pass-uniforms",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(glsl::OpaquePassUniforms),
-      },
-      RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER | RG_FS_READ_BUFFER);
 
   rcs.meshes = pass.read_buffer(cfg.meshes, RG_VS_READ_BUFFER);
 
