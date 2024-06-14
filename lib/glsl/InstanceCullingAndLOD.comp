@@ -1,5 +1,4 @@
 #include "InstanceCullingAndLODPass.h"
-#include "Batch.h"
 
 PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
@@ -9,11 +8,12 @@ void main() {
   const bool frustum_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
   const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
 
-  for (uint i = gl_GlobalInvocationID.x; i < pc.num_mesh_instances; i += STRIDE) {
-    MeshInstance mesh_instance = DEREF(pc.mesh_instances[i]);
-    Mesh mesh = DEREF(pc.meshes[mesh_instance.mesh]);
+  for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {
+    InstanceCullData cull_data = DEREF(pc.cull_data[t]);
 
-    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[i]));
+    Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
+
+    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
 
     BoundingBox bb = decode_bounding_box(mesh.bb);
 
@@ -105,14 +105,12 @@ void main() {
     command.num_instances = 1;
     command.base_index = lod.base_index;
     command.base_vertex = 0;
-    command.base_instance = i;
+    command.base_instance = cull_data.mesh_instance;
 
     uint offset;
     uint num_commands = subgroupAdd(1);
     if (subgroupElect()) {
-      Batch batch = make_batch(get_mesh_attribute_mask(mesh), mesh.index_pool);
-      uint base_offset = DEREF(pc.batch_command_offsets[batch.id]);
-      offset = base_offset + atomicAdd(DEREF(pc.batch_command_counts[batch.id]), num_commands);
+      offset = atomicAdd(DEREF(pc.num_commands), num_commands);
     }
     offset = subgroupBroadcastFirst(offset) + subgroupExclusiveAdd(1);
     

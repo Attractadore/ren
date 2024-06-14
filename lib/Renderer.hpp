@@ -269,6 +269,12 @@ public:
   }
 
   template <typename T>
+  auto get_buffer_device_ptr(const BufferView &view, u64 map_offset = 0) const
+      -> DevicePtr<T> {
+    return get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
+  }
+
+  template <typename T>
   auto try_get_buffer_device_ptr(Handle<Buffer> buffer,
                                  u64 map_offset = 0) const -> DevicePtr<T> {
     return try_get_buffer(buffer).map_or(
@@ -280,9 +286,9 @@ public:
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(const BufferView &view, u64 map_offset = 0) const
-      -> DevicePtr<T> {
-    return get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
+  auto try_get_buffer_device_ptr(const BufferView& view,
+                                 u64 map_offset = 0) const -> DevicePtr<T> {
+    return try_get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
   }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)

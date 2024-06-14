@@ -33,6 +33,7 @@ add_library(
   Formats.cpp
   FreeListAllocator.cpp
   Mesh.cpp
+  MeshPass.cpp
   MeshProcessing.cpp
   MeshSimplification.cpp
   Pipeline.cpp

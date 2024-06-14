@@ -2,6 +2,7 @@
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
 #include "DenseHandleMap.hpp"
+#include "Material.hpp"
 #include "Mesh.hpp"
 #include "Passes/Present.hpp"
 #include "PipelineLoading.hpp"
@@ -10,7 +11,6 @@
 #include "Texture.hpp"
 #include "TextureIdAllocator.hpp"
 #include "glsl/Lighting.h"
-#include "glsl/Material.h"
 #include "ren/ren.hpp"
 
 struct ImGuiContext;
@@ -18,6 +18,7 @@ struct ImGuiContext;
 namespace ren {
 
 struct SceneRgConfig {
+  u32 batch_size = 0;
   u32 num_meshes = 0;
   u32 num_mesh_instances = 0;
   u32 num_materials = 0;
@@ -48,11 +49,13 @@ public:
 
   auto get_pipelines() const -> const Pipelines &;
 
+  auto get_draw_size() const -> u32;
+
   auto get_meshes() const -> Span<const Mesh>;
 
   auto get_index_pools() const -> Span<const IndexPool>;
 
-  auto get_materials() const -> Span<const glsl::Material>;
+  auto get_materials() const -> Span<const Material>;
 
   auto get_mesh_instances() const -> Span<const MeshInstance>;
 
@@ -93,12 +96,12 @@ public:
 
   auto create_image(const ImageCreateInfo &desc) -> expected<ImageId> override;
 
-  auto create_material(const MaterialCreateInfo &)
-      -> expected<MaterialId> override;
+  auto
+  create_material(const MaterialCreateInfo &) -> expected<MaterialId> override;
 
-  auto create_mesh_instances(std::span<const MeshInstanceCreateInfo> descs,
-                             std::span<MeshInstanceId>)
-      -> expected<void> override;
+  auto
+  create_mesh_instances(std::span<const MeshInstanceCreateInfo> descs,
+                        std::span<MeshInstanceId>) -> expected<void> override;
 
   void destroy_mesh_instances(
       std::span<const MeshInstanceId> mesh_instances) override;
@@ -132,13 +135,12 @@ public:
 private:
   auto get_camera(CameraId camera) -> Camera &;
 
-  [[nodiscard]] auto
-  get_or_create_sampler(const SamplerCreateInfo &&create_info)
-      -> Handle<Sampler>;
+  [[nodiscard]] auto get_or_create_sampler(
+      const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
 
-  [[nodiscard]] auto get_or_create_texture(ImageId image,
-                                           const SamplerDesc &sampler_desc)
-      -> SampledTextureId;
+  [[nodiscard]] auto
+  get_or_create_texture(ImageId image,
+                        const SamplerDesc &sampler_desc) -> SampledTextureId;
 
   void update_rg_config();
 
@@ -164,7 +166,7 @@ private:
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
-  Vector<glsl::Material> m_materials = {{}};
+  Vector<Material> m_materials = {{}};
 
   DenseHandleMap<MeshInstance> m_mesh_instances;
 
@@ -184,6 +186,8 @@ private:
 
   ExposureMode m_exposure_mode = {};
   float m_exposure_compensation = 0.0f;
+
+  u32 m_draw_size = 8 * 1024;
 
   float m_lod_triangle_pixels = 16.0f;
   i32 m_lod_bias = 0;

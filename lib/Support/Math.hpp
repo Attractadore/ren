@@ -1,5 +1,7 @@
 #pragma once
+#include <bit>
 #include <concepts>
+#include <limits>
 
 namespace ren {
 auto ceilDiv(std::unsigned_integral auto x, std::unsigned_integral auto over) {

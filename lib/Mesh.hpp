@@ -35,20 +35,6 @@ struct Mesh {
   StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 
-inline auto get_mesh_attribute_mask(const Mesh &mesh) -> u32 {
-  uint mask = 0;
-  if (mesh.tangents) {
-    mask |= glsl::MESH_ATTRIBUTE_TANGENT_BIT;
-  }
-  if (mesh.uvs) {
-    mask |= glsl::MESH_ATTRIBUTE_UV_BIT;
-  }
-  if (mesh.colors) {
-    mask |= glsl::MESH_ATTRIBUTE_COLOR_BIT;
-  }
-  return mask;
-};
-
 struct IndexPool {
   Handle<Buffer> indices;
   u32 num_free_indices = glsl::INDEX_POOL_SIZE;

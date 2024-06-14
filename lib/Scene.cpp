@@ -69,13 +69,15 @@ auto Scene::get_viewport() const -> glm::uvec2 {
 
 auto Scene::get_pipelines() const -> const Pipelines & { return m_pipelines; }
 
+auto Scene::get_draw_size() const -> u32 { return m_draw_size; }
+
 auto Scene::get_meshes() const -> Span<const Mesh> { return m_meshes; }
 
 auto Scene::get_index_pools() const -> Span<const IndexPool> {
   return m_index_pools;
 }
 
-auto Scene::get_materials() const -> Span<const glsl::Material> {
+auto Scene::get_materials() const -> Span<const Material> {
   return m_materials;
 }
 
@@ -217,9 +219,8 @@ auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
   return handle;
 }
 
-auto Scene::get_or_create_texture(ImageId image,
-                                  const SamplerDesc &sampler_desc)
-    -> SampledTextureId {
+auto Scene::get_or_create_texture(
+    ImageId image, const SamplerDesc &sampler_desc) -> SampledTextureId {
   TextureView view = m_renderer->get_texture_view(m_images[image]);
   Handle<Sampler> sampler = get_or_create_sampler({
       .mag_filter = getVkFilter(sampler_desc.mag_filter),
@@ -408,6 +409,7 @@ void Scene::update_rg_config() {
     }
   };
 
+  set_if_changed(m_rg_config.batch_size, m_draw_size);
   grow_if_needed(m_rg_config.num_meshes, m_meshes.size());
   grow_if_needed(m_rg_config.num_mesh_instances, m_mesh_instances.size());
   grow_if_needed(m_rg_config.num_materials, m_materials.size());
@@ -474,6 +476,13 @@ void Scene::draw_imgui() {
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
+      {
+        int draw_size = m_draw_size;
+        ImGui::SliderInt("Maximum indirect draw instance count", &draw_size, 1,
+                         128 * 1024);
+        m_draw_size = draw_size;
+      }
+
       ImGui::SeparatorText("Instance culling");
       {
         bool frustum = m_instance_frustum_culling;
