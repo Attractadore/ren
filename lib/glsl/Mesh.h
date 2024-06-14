@@ -57,20 +57,6 @@ struct Mesh {
 
 GLSL_DEFINE_PTR_TYPE(Mesh, 8);
 
-inline uint get_mesh_attribute_mask(Mesh mesh) {
-  uint mask = 0;
-  if (!GLSL_IS_NULL(mesh.tangents)) {
-    mask |= MESH_ATTRIBUTE_TANGENT_BIT;
-  }
-  if (!GLSL_IS_NULL(mesh.uvs)) {
-    mask |= MESH_ATTRIBUTE_UV_BIT;
-  }
-  if (!GLSL_IS_NULL(mesh.colors)) {
-    mask |= MESH_ATTRIBUTE_COLOR_BIT;
-  }
-  return mask;
-}
-
 struct MeshInstance {
   uint mesh;
   uint material;
