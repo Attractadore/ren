@@ -69,10 +69,6 @@ target_compile_definitions(
   ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
               VMA_STATS_STRING_ENABLED=0 VK_NO_PROTOTYPES)
 target_compile_features(ren PUBLIC cxx_std_23)
-# Clang std::expected fix
-if(CMAKE_EXPORT_COMPILE_COMMANDS OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_definitions(ren PUBLIC __cpp_concepts=202002L)
-endif()
 
 add_library(ren-vk INTERFACE)
 add_library(ren::vk ALIAS ren-vk)

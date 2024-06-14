@@ -45,16 +45,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       std::make_unique<RenderGraph>(*m_renderer, *m_texture_allocator);
 
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
-
-  // TODO: delete when Clang implements constexpr std::bit_cast for structs
-  // with bitfields
-#define error "C handles can't be directly converted to SlotMap keys"
-#if !BOOST_COMP_CLANG
-  static_assert(std::bit_cast<u32>(SlotMapKey()) == 0, error);
-#else
-  ren_assert_msg(std::bit_cast<u32>(SlotMapKey()) == 0, error);
-#endif
-#undef error
 }
 
 auto Scene::get_exposure_mode() const -> ExposureMode {

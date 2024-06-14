@@ -2,6 +2,7 @@
 #include "DebugNames.hpp"
 #include "Handle.hpp"
 #include "Support/StdDef.hpp"
+#include "Support/Hash.hpp"
 
 #include <vk_mem_alloc.h>
 
@@ -50,6 +51,11 @@ public:
   template <typename T> auto slice(usize start) const -> BufferView {
     return subbuffer(sizeof(T) * start);
   }
+
+  bool operator==(const BufferView&) const = default;
 };
+
+REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, size);
+
 
 } // namespace ren

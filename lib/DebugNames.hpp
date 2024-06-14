@@ -12,6 +12,8 @@ struct DummyString {
   DummyString(const char *) {}
   DummyString(const std::string &) {}
   DummyString(std::string_view) {}
+
+  bool operator==(const DummyString&) const = default;
 };
 
 #if REN_DEBUG_NAMES
