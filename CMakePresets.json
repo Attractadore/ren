@@ -7,17 +7,13 @@
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_COLOR_DIAGNOSTICS": "ON"
-      }
-    },
-    {
-      "name": "debug",
-      "displayName": "Debug Config",
-      "description": "Debug build with debug options",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "REN_BUILD_TESTS": "OFF",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "REN_BUILD_SDL2_PLUGIN": "ON",
+        "REN_BUILD_IMGUI_PLUGIN": "ON",
+        "REN_BUILD_EXAMPLES": "ON",
+        "REN_BUILD_TESTS": "ON",
+        "REN_PCH": "OFF",
         "REN_ASSERTIONS": "ON",
         "REN_VULKAN_VALIDATION": "ON",
         "REN_VULKAN_DEBUG_NAMES": "ON",
@@ -26,18 +22,21 @@
       }
     },
     {
-      "name": "devel",
+      "name": "debug",
+      "displayName": "Debug Config",
+      "description": "Debug build with debug options",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "dev",
       "displayName": "Development Config",
-      "description": "Development build with debug options, optimizations, tests and examples",
+      "description": "Development build with debug options and optimizations",
       "inherits": "debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_BUILD_SDL2_PLUGIN": "ON",
-        "REN_BUILD_IMGUI_PLUGIN": "ON",
-        "REN_BUILD_EXAMPLES": "ON",
-        "REN_BUILD_TESTS": "ON",
-        "REN_PCH": "OFF"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
@@ -47,7 +46,12 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "REN_BUILD_TESTS": "OFF"
+        "REN_BUILD_TESTS": "OFF",
+        "REN_ASSERTIONS": "OFF",
+        "REN_VULKAN_VALIDATION": "OFF",
+        "REN_VULKAN_DEBUG_NAMES": "OFF",
+        "REN_RENDER_GRAPH_DEBUG": "OFF",
+        "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
       }
     },
     {
@@ -55,7 +59,9 @@
       "hidden": true,
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
+        "REN_BUILD_TESTS": "OFF",
+        "REN_VULKAN_VALIDATION": "OFF"
       },
       "condition": {
         "type": "notEquals",
@@ -66,28 +72,18 @@
     {
       "name": "linux-mingw-debug",
       "displayName": "Debug Config for MinGW on Linux",
-      "description": "Debug build with assertions",
       "inherits": [
         "linux-mingw",
         "debug"
-      ],
-      "cacheVariables": {
-        "REN_VULKAN_VALIDATION": "OFF"
-      }
+      ]
     },
     {
-      "name": "linux-mingw-devel",
+      "name": "linux-mingw-dev",
       "displayName": "Development Config for MinGW on Linux",
-      "description": "Debug build with examples",
       "inherits": [
         "linux-mingw",
-        "devel"
-      ],
-      "cacheVariables": {
-        "REN_BUILD_TESTS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF",
-        "VCPKG_MANIFEST_FEATURES": "examples"
-      }
+        "dev"
+      ]
     },
     {
       "name": "linux-mingw-release",
