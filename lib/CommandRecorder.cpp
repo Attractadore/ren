@@ -24,15 +24,15 @@ auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32 {
   return num_groups;
 }
 
-auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
-    -> glm::uvec2 {
+auto get_num_dispatch_groups(glm::uvec2 size,
+                             glm::uvec2 group_size) -> glm::uvec2 {
   auto num_groups = size / group_size +
                     glm::uvec2(glm::notEqual(size % group_size, glm::uvec2(0)));
   return num_groups;
 }
 
-auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
-    -> glm::uvec3 {
+auto get_num_dispatch_groups(glm::uvec3 size,
+                             glm::uvec3 group_size) -> glm::uvec3 {
   auto num_groups = size / group_size +
                     glm::uvec3(glm::notEqual(size % group_size, glm::uvec3(0)));
   return num_groups;
@@ -495,6 +495,12 @@ void ComputePass::dispatch_threads(glm::uvec2 size, glm::uvec2 group_size) {
 
 void ComputePass::dispatch_threads(glm::uvec3 size, glm::uvec3 group_size) {
   dispatch_groups(get_num_dispatch_groups(size, group_size));
+}
+
+void ComputePass::dispatch_indirect(const BufferView &view) {
+  ren_assert(view.size >= sizeof(VkDispatchIndirectCommand));
+  vkCmdDispatchIndirect(
+      m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle, view.offset);
 }
 
 DebugRegion::DebugRegion(VkCommandBuffer cmd_buffer, const char *label) {

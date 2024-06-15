@@ -271,6 +271,8 @@ public:
   void dispatch_threads(u32 size, u32 group_size);
   void dispatch_threads(glm::uvec2 size, glm::uvec2 group_size);
   void dispatch_threads(glm::uvec3 size, glm::uvec3 group_size);
+
+  void dispatch_indirect(const BufferView &view);
 };
 
 class DebugRegion {
