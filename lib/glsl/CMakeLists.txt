@@ -5,11 +5,11 @@ option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO
 set(GLSL_FLAGS -Os)
 if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   message(STATUS "Enable source-level debug info for shaders")
-  set(GLSL_FLAGS "${GLSL_FLAGS} -g")
+  list(APPEND GLSLC_FLAGS -g)
 endif()
 
 macro(add_embedded_shader source target)
-  add_glslc_shader(${source} GLSLC_FLAGS ${GLSL_FLAGS} ${ARGV} EMBED_TARGET
+  add_glslc_shader(${source} GLSLC_FLAGS ${GLSL_FLAGS} EMBED_TARGET
                    ${target})
   target_link_libraries(ren PRIVATE ${target})
 endmacro()

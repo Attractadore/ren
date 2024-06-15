@@ -1,16 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 
-find_package(
-  Vulkan
-  COMPONENTS glslc
-  REQUIRED)
-message(STATUS "Using glslc from Vulkan SDK")
+find_program(REN_GLSLC glslc DOC "Path to glslc")
+find_package(Vulkan COMPONENTS glslc)
+if (Vulkan::glslc)
+  message(STATUS "Using glslc from Vulkan SDK")
+  set(REN_GLSLC $<TARGET_FILE::Vulkan::glslc> CACHE PATH "" FORCE)
+endif()
+if (NOT REN_GLSLC)
+  message(FATAL_ERROR "Failed to find glslc")
+endif()
 
 function(add_glslc_shader SHADER_SOURCE)
   set(ARGS_OPTIONS STUB)
   set(ARGS_ONE EMBED_TARGET OUTPUT_FILE)
   set(ARGS_MULTI GLSLC_FLAGS INCLUDE_DIRECTORIES DEFINES)
-  cmake_parse_arguments(PARSE_ARGV 2 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
+  cmake_parse_arguments(PARSE_ARGV 1 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
                         "${ARGS_MULTI}")
 
   cmake_path(GET SHADER_SOURCE PARENT_PATH SHADER_REL_DIR)
@@ -37,8 +41,6 @@ function(add_glslc_shader SHADER_SOURCE)
 
   set(GLSLC_FLAGS --target-env=vulkan1.3 -std=460 ${OPTION_GLSLC_FLAGS}
                   ${GLSLC_INCLUDE_FLAGS} ${GLSLC_DEFINE_FLAGS})
-
-  set(glslc $<TARGET_FILE:Vulkan::glslc>)
 
   if(OPTION_EMBED_TARGET)
     set(SHADER_INC ${OPTION_EMBED_TARGET}.inc)
@@ -79,7 +81,7 @@ function(add_glslc_shader SHADER_SOURCE)
     add_custom_command(
       OUTPUT ${SHADER_INC_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
-      COMMAND ${glslc} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -mfmt=num -o
+      COMMAND ${REN_GLSLC} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -mfmt=num -o
               ${SHADER_INC_FILE} -MD -MF ${SHADER_INC_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${SHADER_INC_FILE}.d)
@@ -95,7 +97,7 @@ function(add_glslc_shader SHADER_SOURCE)
     add_custom_command(
       OUTPUT ${SHADER_BINARY_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
-      COMMAND ${glslc} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -o
+      COMMAND ${REN_GLSLC} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -o
               ${SHADER_BINARY_FILE} -MD -MF ${SHADER_BINARY_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${SHADER_BINARY_FILE}.d)
