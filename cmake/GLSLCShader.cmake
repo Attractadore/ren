@@ -39,7 +39,7 @@ function(add_glslc_shader SHADER_SOURCE)
     list(APPEND GLSLC_DEFINE_FLAGS -D${def})
   endforeach()
 
-  set(GLSLC_FLAGS --target-env=vulkan1.3 -std=460 ${OPTION_GLSLC_FLAGS}
+  set(GLSLC_FLAGS ${OPTION_GLSLC_FLAGS}
                   ${GLSLC_INCLUDE_FLAGS} ${GLSLC_DEFINE_FLAGS})
 
   if(OPTION_EMBED_TARGET)
