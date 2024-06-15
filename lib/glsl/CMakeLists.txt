@@ -1,16 +1,16 @@
-include(GLSLCShader)
+include(GlslangShader)
 
-option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO
-       "Compile shaders with source-level debug info" OFF)
-set(GLSL_FLAGS -Os --target-env=vulkan1.3 -std=460)
+option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
+  set(GLSL_FLAGS -Os --target-env vulkan1.3 --glsl-version 460 "-P#extension GL_GOOGLE_include_directive : require")
+message(${GLSL_FLAGS})
 if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   message(STATUS "Enable source-level debug info for shaders")
-  list(APPEND GLSLC_FLAGS -g -O0)
+  list(APPEND GLSL_FLAGS -gVS)
 endif()
 
 macro(add_embedded_shader source target)
-  add_glslc_shader(${source} GLSLC_FLAGS ${GLSL_FLAGS} EMBED_TARGET
-                   ${target})
+  add_glslang_shader(${source} GLSLANG_FLAGS ${GLSL_FLAGS} EMBED_TARGET
+                     ${target})
   target_link_libraries(ren PRIVATE ${target})
 endmacro()
 

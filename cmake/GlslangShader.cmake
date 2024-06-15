@@ -1,19 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
 
-find_program(REN_GLSLC glslc DOC "Path to glslc")
-find_package(Vulkan COMPONENTS glslc)
-if (Vulkan::glslc)
-  message(STATUS "Using glslc from Vulkan SDK")
-  set(REN_GLSLC $<TARGET_FILE::Vulkan::glslc> CACHE PATH "" FORCE)
+find_program(REN_GLSLANG glslang DOC "Path to glslang")
+find_package(Vulkan COMPONENTS glslangValidator)
+if (Vulkan::glslangValidator)
+  message(STATUS "Using glslang from Vulkan SDK")
+  set(REN_GLSLANG $<TARGET_FILE::Vulkan::glslangValidator> CACHE PATH "" FORCE)
 endif()
-if (NOT REN_GLSLC)
-  message(FATAL_ERROR "Failed to find glslc")
+if (NOT REN_GLSLANG)
+  message(FATAL_ERROR "Failed to find glslang")
 endif()
 
-function(add_glslc_shader SHADER_SOURCE)
+function(add_glslang_shader SHADER_SOURCE)
   set(ARGS_OPTIONS STUB)
   set(ARGS_ONE EMBED_TARGET OUTPUT_FILE)
-  set(ARGS_MULTI GLSLC_FLAGS INCLUDE_DIRECTORIES DEFINES)
+  set(ARGS_MULTI GLSLANG_FLAGS INCLUDE_DIRECTORIES DEFINES)
   cmake_parse_arguments(PARSE_ARGV 1 OPTION "${ARGS_OPTIONS}" "${ARGS_ONE}"
                         "${ARGS_MULTI}")
 
@@ -28,19 +28,19 @@ function(add_glslc_shader SHADER_SOURCE)
       FATAL_ERROR "Could not find shader source file ${SHADER_SOURCE_FILE}")
   endif()
 
-  set(GLSLC_INCLUDE_FLAGS "")
+  set(GLSLANG_INCLUDE_FLAGS "")
   foreach(inc_dir ${OPTION_INCLUDE_DIRECTORIES})
-    list(APPEND GLSLC_INCLUDE_FLAGS
+    list(APPEND GLSLANG_INCLUDE_FLAGS
          -I$<PATH:ABSOLUTE_PATH,${inc_dir},${CMAKE_CURRENT_SOURCE_DIR}>)
   endforeach()
 
-  set(GLSLC_DEFINE_FLAGS "")
+  set(GLSLANG_DEFINE_FLAGS "")
   foreach(def ${OPTION_DEFINES})
-    list(APPEND GLSLC_DEFINE_FLAGS -D${def})
+    list(APPEND GLSLANG_DEFINE_FLAGS -D${def})
   endforeach()
 
-  set(GLSLC_FLAGS ${OPTION_GLSLC_FLAGS}
-                  ${GLSLC_INCLUDE_FLAGS} ${GLSLC_DEFINE_FLAGS})
+  set(GLSLANG_FLAGS ${OPTION_GLSLANG_FLAGS}
+                  ${GLSLANG_INCLUDE_FLAGS} ${GLSLANG_DEFINE_FLAGS})
 
   if(OPTION_EMBED_TARGET)
     set(SHADER_INC ${OPTION_EMBED_TARGET}.inc)
@@ -81,8 +81,8 @@ function(add_glslc_shader SHADER_SOURCE)
     add_custom_command(
       OUTPUT ${SHADER_INC_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
-      COMMAND ${REN_GLSLC} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -mfmt=num -o
-              ${SHADER_INC_FILE} -MD -MF ${SHADER_INC_FILE}.d
+      COMMAND ${REN_GLSLANG} ${GLSLANG_FLAGS} ${SHADER_SOURCE_FILE} -x -o
+              ${SHADER_INC_FILE} --depfile ${SHADER_INC_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${SHADER_INC_FILE}.d)
     set(SHADER_INC_TARGET ${OPTION_EMBED_TARGET}-Inc)
@@ -97,8 +97,8 @@ function(add_glslc_shader SHADER_SOURCE)
     add_custom_command(
       OUTPUT ${SHADER_BINARY_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
-      COMMAND ${REN_GLSLC} ${GLSLC_FLAGS} ${SHADER_SOURCE_FILE} -o
-              ${SHADER_BINARY_FILE} -MD -MF ${SHADER_BINARY_FILE}.d
+      COMMAND ${REN_GLSLANG} ${GLSLANG_FLAGS} ${SHADER_SOURCE_FILE} -o
+              ${SHADER_BINARY_FILE} --depfile ${SHADER_BINARY_FILE}.d
       COMMAND_EXPAND_LISTS
       DEPFILE ${SHADER_BINARY_FILE}.d)
   endif()
