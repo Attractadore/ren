@@ -136,7 +136,7 @@ protected:
   void
   run_instance_culling_pass(CommandRecorder &cmd, u32 num_instances,
                             DevicePtr<glsl::InstanceCullData> cull_data_ptr,
-                            DevicePtr<uint> command_count_ptr);
+                            DevicePtr<u32> command_count_ptr);
 
   void insert_dispatch_to_draw_barrier(CommandRecorder &cmd);
 

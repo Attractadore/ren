@@ -70,8 +70,8 @@ void MeshPassClass::Instance::Instance::init_command_count_buffer(
   cmd.pipeline_barrier({barrier}, {});
 }
 
-auto MeshPassClass::Instance::Instance::
-    get_cross_draw_indirect_buffer_barrier() -> VkMemoryBarrier2 {
+auto MeshPassClass::Instance::Instance::get_cross_draw_indirect_buffer_barrier()
+    -> VkMemoryBarrier2 {
   return {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
       .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
@@ -135,7 +135,7 @@ void MeshPassClass::Instance::Instance::insert_cross_draw_barriers(
 void MeshPassClass::Instance::Instance::run_instance_culling_pass(
     CommandRecorder &cmd, u32 num_instances,
     DevicePtr<glsl::InstanceCullData> cull_data_ptr,
-    DevicePtr<uint> command_count_ptr) {
+    DevicePtr<u32> command_count_ptr) {
   ComputePass pass = cmd.compute_pass();
   float num_viewport_triangles =
       m_viewport.x * m_viewport.y /
