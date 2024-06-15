@@ -64,7 +64,7 @@ target_link_libraries(
           mikktspace::mikktspace
           range-v3::range-v3
           tl::optional
-          unofficial::spirv-reflect::spirv-reflect
+          unofficial::spirv-reflect
           volk::volk)
 target_compile_definitions(
   ren PRIVATE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
