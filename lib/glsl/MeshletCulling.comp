@@ -3,12 +3,56 @@
 
 PUSH_CONSTANTS(MeshletCullingPassArgs);
 
+bool cull(Meshlet meshlet, uint mesh_instance) {
+  const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
+  const bool frustum_culling = bool(pc.feature_mask & MESHLET_CULLING_FRUSTUM_BIT);
+
+  if (!cone_culling && !frustum_culling) {
+    return false;
+  }
+
+  mat4x3 transform_matrix = DEREF(pc.transform_matrices[mesh_instance]);
+
+  if (cone_culling) {
+    vec3 cone_apex = transform_matrix * vec4(decode_position(meshlet.cone_apex), 1.0f);
+    vec3 cone_axis = transform_matrix * vec4(decode_position(meshlet.cone_axis), 0.0f);
+    if (dot(cone_apex - pc.eye, normalize(cone_axis)) >= meshlet.cone_cutoff * length(cone_apex - pc.eye)) {
+      return true;
+    }
+  }
+
+  if (!frustum_culling) {
+    return false;
+  }
+
+  mat4 pvm = pc.proj_view * mat4(transform_matrix);
+  ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, meshlet.bb);
+
+  // TODO: support finite far plane.
+  float n = cs_bb.p[0].z;
+
+  float zmin, zmax;
+  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
+
+  // Cull if bounding box is in front of near plane.
+  if (zmax < n) {
+    return true;
+  }
+
+  // Don't cull if bounding box crosses near plane.
+  if (zmin <= n) {
+    return false;
+  }
+
+  NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
+
+  return cull_ndc_bb(ndc_bb);
+}
+
 NUM_THREADS(MESHLET_CULLING_THREADS);
 void main() {
   const uint bucket_size = DEREF(pc.bucket_size);
   const uint bucket_stride = 1 << pc.bucket;
-  const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
-  const bool frustum_culling = bool(pc.feature_mask & MESHLET_CULLING_FRUSTUM_BIT);
 
   const uint index = gl_GlobalInvocationID.x / bucket_stride;
   const uint offset = gl_GlobalInvocationID.x % bucket_stride;
@@ -21,67 +65,8 @@ void main() {
   Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
   Meshlet meshlet = DEREF(mesh.meshlets[cull_data.base_meshlet + offset]);
 
-  mat4x3 transform_matrix = DEREF(pc.transform_matrices[cull_data.mesh_instance]);
-
-  if (cone_culling) {
-    vec3 cone_apex = transform_matrix * vec4(decode_position(meshlet.cone_apex), 1.0f);
-    vec3 cone_axis = transform_matrix * vec4(decode_position(meshlet.cone_axis), 0.0f);
-    if (dot(cone_apex - pc.eye, normalize(cone_axis)) >= meshlet.cone_cutoff * length(cone_apex - pc.eye)) {
-      return;
-    }
-  }
-
-  if (frustum_culling) {
-    mat4 pvm = pc.proj_view * mat4(transform_matrix);
-  
-    BoundingBox bb = decode_bounding_box(meshlet.bb);
-  
-    vec3 bbs = bb.max - bb.min;
-  
-    vec4 px = pvm * vec4(bbs.x, 0.0f, 0.0f, 0.0f);
-    vec4 py = pvm * vec4(0.0f, bbs.y, 0.0f, 0.0f);
-    vec4 pz = pvm * vec4(0.0f, 0.0f, bbs.z, 0.0f);
-  
-    vec4 p[8];
-    p[0] = pvm * vec4(bb.min, 1.0f);
-    p[1] = p[0] + px;
-    p[2] = p[1] + py;
-    p[3] = p[0] + py;
-    p[4] = p[0] + pz;
-    p[5] = p[1] + pz;
-    p[6] = p[2] + pz;
-    p[7] = p[3] + pz;
-  
-    float n = p[0].z;
-  
-    float zmin = p[0].w;
-    float zmax = p[0].w;
-    for (int i = 1; i < 8; ++i) {
-      zmin = min(zmin, p[i].w);
-      zmax = max(zmax, p[i].w);
-    }
-  
-    // Cull if bounding box is in front of near plane
-    if (zmax < n) {
-      return;
-    }
-  
-    if (zmin > n) {
-      vec2 s[8];
-      for (int i = 0; i < 8; ++i) {
-        s[i] = p[i].xy / p[i].w;
-      }
-      vec2 smin = s[0];
-      vec2 smax = s[0];
-      for (int i = 1; i < 8; ++i) {
-        smin = min(smin, s[i]);
-        smax = max(smax, s[i]);
-      }
-      // Ignore far plane
-      if (any(lessThan(smax, vec2(-1.0f))) || any(greaterThan(smin, vec2(1.0f)))) {
-        return;
-      }
-    }
+  if (cull(meshlet, cull_data.mesh_instance)) {
+    return;
   }
 
   DrawIndexedIndirectCommand command;

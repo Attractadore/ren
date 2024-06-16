@@ -3,102 +3,70 @@
 
 PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
 
+int cull_and_select_lod(InstanceCullingAndLODPassUniforms ub, Mesh mesh, uint mesh_instance) {
+  const bool frustum_culling = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+  const bool lod_selection = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+
+  if (!frustum_culling && !lod_selection) {
+    return 0;
+  }
+
+  mat4 pvm = ub.proj_view * mat4(DEREF(pc.transform_matrices[mesh_instance]));
+  ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
+
+  // TODO: support finite far plane.
+  float n = cs_bb.p[0].z;
+
+  float zmin, zmax;
+  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
+
+  // Cull if bounding box is in front of near plane.
+  if (frustum_culling && zmax < n) {
+    return -1;
+  }
+
+  // Select highest lod and don't cull if bounding box crosses near plane.
+  if (zmin < n) {
+    return 0;
+  }
+
+  NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
+
+  if (frustum_culling && cull_ndc_bb(ndc_bb)) {
+    return -1;
+  }
+
+  if (!lod_selection) {
+    return 0;
+  }
+
+  float area = get_ndc_bb_area(ndc_bb);
+  uint num_triangles = uint(area * ub.lod_triangle_density);
+
+  int l = 0;
+  for (; l < mesh.num_lods - 1; ++l) {
+    if (mesh.lods[l].num_triangles <= num_triangles) {
+      break;
+    }
+  }
+
+  return l;
+}
+
 NUM_THREADS(INSTANCE_CULLING_AND_LOD_THREADS);
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
   InstanceCullingAndLODPassUniforms ub = DEREF(pc.ub);
-
-  const bool frustum_culling = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
-  const bool lod_selection = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
 
   for (uint t = gl_GlobalInvocationID.x; t < ub.num_instances; t += STRIDE) {
     InstanceCullData cull_data = DEREF(pc.cull_data[t]);
 
     Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
 
-    mat4 pvm = ub.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
-
-    BoundingBox bb = decode_bounding_box(mesh.bb);
-
-    vec3 bbs = bb.max - bb.min;
-
-    vec4 px = pvm * vec4(bbs.x, 0.0f, 0.0f, 0.0f);
-    vec4 py = pvm * vec4(0.0f, bbs.y, 0.0f, 0.0f);
-    vec4 pz = pvm * vec4(0.0f, 0.0f, bbs.z, 0.0f);
-
-    vec4 p[8];
-    p[0] = pvm * vec4(bb.min, 1.0f);
-    p[1] = p[0] + px;
-    p[2] = p[1] + py;
-    p[3] = p[0] + py;
-    p[4] = p[0] + pz;
-    p[5] = p[1] + pz;
-    p[6] = p[2] + pz;
-    p[7] = p[3] + pz;
-
-    float n = p[0].z;
-
-    float zmin = p[0].w;
-    float zmax = p[0].w;
-    for (int i = 1; i < 8; ++i) {
-      zmin = min(zmin, p[i].w);
-      zmax = max(zmax, p[i].w);
-    }
-
-    // Cull if bounding box is in front of near plane
-    if (frustum_culling && zmax < n) {
+    int l = cull_and_select_lod(ub, mesh, cull_data.mesh_instance);
+    if (l < 0) {
       continue;
     }
-
-    int l = 0;
-    // Select highest lod and don't cull if bounding box crosses near plane
-    if (zmin > n) {
-      vec2 s[8];
-      for (int i = 0; i < 8; ++i) {
-        s[i] = p[i].xy / p[i].w;
-      }
-      vec2 smin = s[0];
-      vec2 smax = s[0];
-      for (int i = 1; i < 8; ++i) {
-        smin = min(smin, s[i]);
-        smax = max(smax, s[i]);
-      }
-      // Ignore far plane
-      if (frustum_culling && (any(lessThan(smax, vec2(-1.0f))) || any(greaterThan(smin, vec2(1.0f))))) {
-        continue;
-      }
-      if (lod_selection) {
-        uvec4 faces[6] = {
-          // Top
-          uvec4(7, 5, 6, 4),
-          // Bottom
-          uvec4(3, 1, 2, 0),
-          // Right
-          uvec4(5, 2, 6, 1),
-          // Left
-          uvec4(4, 3, 7, 0),
-          // Front
-          uvec4(4, 1, 5, 0),
-          // Back
-          uvec4(7, 2, 6, 3),
-        };
-        // Compute total front and back-facing projected area
-        float area = 0.0f;
-        for (int f = 0; f < 6; ++f) {
-          uvec4 face = faces[f];
-          area += abs(determinant(mat2(s[face.x] - s[face.y], s[face.z] - s[face.w])));
-        }
-        // Face area is half of abs of det of matrix of diagonals
-        area /= 2.0f;
-        uint num_triangles = uint(area * ub.lod_triangle_density);
-        for (; l < mesh.num_lods - 1; ++l) {
-          if (mesh.lods[l].num_triangles <= num_triangles) {
-            break;
-          }
-        }
-      }
-    }
-
     l = clamp(l - ub.lod_bias, 0, int(mesh.num_lods - 1));
     MeshLOD lod = mesh.lods[l];
 
