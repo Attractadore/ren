@@ -92,6 +92,7 @@ struct MeshGenerateMeshletsOptions {
   NotNull<Vector<u32> *> meshlet_indices;
   NotNull<Vector<u8> *> meshlet_triangles;
   NotNull<Mesh *> mesh;
+  float cone_weight = 0.0f;
 };
 
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts);

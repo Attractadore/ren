@@ -28,9 +28,11 @@ const uint MAX_NUM_MESH_MESHLETS = 1 << MESH_MESHLET_COUNT_BITS;
 
 struct Meshlet {
   uint base_index;
-  uint num_indices;
   uint base_triangle;
   uint num_triangles;
+  Position cone_apex;
+  Position cone_axis;
+  float cone_cutoff;
 };
 
 GLSL_DEFINE_PTR_TYPE(Meshlet, 4);

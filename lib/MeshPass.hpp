@@ -60,6 +60,7 @@ struct MeshPassClass::BeginInfo {
   NotNull<UploadBumpAllocator *> upload_allocator;
 
   InstanceCullingAndLODSettings instance_culling_and_lod_settings;
+  u32 meshlet_culling_feature_mask = 0;
 
   TempSpan<const Optional<ColorAttachment>> color_attachments;
   Optional<DepthStencilAttachment> depth_stencil_attachment;
@@ -191,6 +192,7 @@ protected:
   u32 m_num_draw_meshlets = 0;
 
   InstanceCullingAndLODSettings m_instance_culling_and_lod_settings;
+  u32 m_meshlet_culling_feature_mask = 0;
 
   StaticVector<Optional<ColorAttachment>, 8> m_color_attachments;
   Optional<DepthStencilAttachment> m_depth_stencil_attachment;

@@ -13,6 +13,7 @@
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Present.hpp"
+#include "glsl/MeshletCullingPass.h"
 
 #include <range/v3/algorithm.hpp>
 #include <range/v3/numeric.hpp>
@@ -102,6 +103,18 @@ auto Scene::get_lod_triangle_pixel_count() const -> float {
 }
 
 auto Scene::get_lod_bias() const -> i32 { return m_lod_bias; }
+
+bool Scene::is_meshlet_cone_culling_enabled() const {
+  return m_meshlet_cone_culling;
+}
+
+auto Scene::get_meshlet_culling_feature_mask() const -> u32 {
+  u32 mask = 0;
+  if (is_meshlet_cone_culling_enabled()) {
+    mask |= glsl::MESHLET_CULLING_CONE_BIT;
+  }
+  return mask;
+}
 
 bool Scene::is_early_z_enabled() const { return m_early_z; }
 
@@ -509,6 +522,13 @@ void Scene::draw_imgui() {
         ImGui::SliderFloat("LOD pixels per triangle", &m_lod_triangle_pixels,
                            1.0f, 64.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
         ImGui::EndDisabled();
+      }
+
+      ImGui::SeparatorText("Meshlet culling");
+      {
+        bool cone = m_meshlet_cone_culling;
+        ImGui::Checkbox("Cone culling", &cone);
+        m_meshlet_cone_culling = cone;
       }
 
       ImGui::SeparatorText("Opaque pass");

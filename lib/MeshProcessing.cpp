@@ -1,6 +1,7 @@
 #include "MeshProcessing.hpp"
 #include "MeshSimplification.hpp"
 
+#include <glm/gtc/type_ptr.hpp>
 #include <meshoptimizer.h>
 #include <mikktspace.h>
 
@@ -82,6 +83,7 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
                                 num_vertices);
   }
 
+#if 0
   // Optimize all LODs together.
 
   {
@@ -100,18 +102,7 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
         .remap = remap,
     });
   }
-
-  // Generate meshlets
-
-  mesh_generate_meshlets({
-      .positions = positions,
-      .indices = indices,
-      .lods = lods,
-      .meshlets = opts.meshlets,
-      .meshlet_indices = opts.meshlet_indices,
-      .meshlet_triangles = opts.meshlet_triangles,
-      .mesh = &mesh,
-  });
+#endif
 
   // Encode vertex attributes
 
@@ -132,6 +123,19 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   if (not colors.empty()) {
     *opts.enc_colors = mesh_encode_colors(colors);
   }
+
+  // Generate meshlets
+
+  mesh_generate_meshlets({
+      .positions = positions,
+      .indices = indices,
+      .lods = lods,
+      .meshlets = opts.meshlets,
+      .meshlet_indices = opts.meshlet_indices,
+      .meshlet_triangles = opts.meshlet_triangles,
+      .mesh = &mesh,
+      .cone_weight = 1.0f,
+  });
 
   return mesh;
 }
@@ -407,7 +411,9 @@ mesh_encode_colors(Span<const glm::vec4> colors) -> Vector<glsl::Color> {
 }
 
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
-  constexpr float CONE_WEIGHT = 0.0f;
+  ren_assert(opts.mesh->pos_enc_bb != glm::vec3(0.0f));
+
+  SmallVector<u32, glsl::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
 
   opts.mesh->lods.resize(opts.lods.size());
   Vector<meshopt_Meshlet> lod_meshlets;
@@ -434,7 +440,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
         &opts.indices[lod.base_index], lod.num_indices,
         (const float *)opts.positions.data(), opts.positions.size(),
         sizeof(glm::vec3), glsl::NUM_MESHLET_VERTICES,
-        glsl::NUM_MESHLET_TRIANGLES, CONE_WEIGHT);
+        glsl::NUM_MESHLET_TRIANGLES, opts.cone_weight);
 
     opts.meshlets->resize(base_meshlet + num_lod_meshlets);
 
@@ -450,18 +456,48 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
 
       glsl::Meshlet meshlet = {
           .base_index = base_index,
-          .num_indices = lod_meshlet.vertex_count,
           .base_triangle = base_triangle + num_lod_triangles * 3,
           .num_triangles = lod_meshlet.triangle_count,
       };
 
+      auto indices = Span(*opts.meshlet_indices)
+                         .subspan(base_index, lod_meshlet.vertex_count);
+
+      auto triangles = Span(*opts.meshlet_triangles)
+                           .subspan(base_triangle + lod_meshlet.triangle_offset,
+                                    lod_meshlet.triangle_count * 3);
+
+      opt_triangles = triangles;
+
+      // Optimize meshlet.
+      // TODO: replace with meshopt_optimizeMeshlet
+
+      meshopt_optimizeVertexCache(opt_triangles.data(), opt_triangles.data(),
+                                  opt_triangles.size(),
+                                  lod_meshlet.vertex_count);
+
+      meshopt_optimizeVertexFetch(indices.data(), opt_triangles.data(),
+                                  opt_triangles.size(), indices.data(),
+                                  indices.size(), sizeof(u32));
+
       // Compact triangle buffer.
-      std::ranges::copy_backward(
+      triangles =
           Span(*opts.meshlet_triangles)
-              .subspan(base_triangle + lod_meshlet.triangle_offset,
-                       lod_meshlet.triangle_count * 3),
-          &(*opts.meshlet_triangles)[meshlet.base_triangle +
-                                     meshlet.num_triangles * 3]);
+              .subspan(meshlet.base_triangle, meshlet.num_triangles * 3);
+      std::ranges::copy(opt_triangles, triangles.data());
+
+      meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+          indices.data(), triangles.data(), lod_meshlet.triangle_count,
+          (const float *)opts.positions.data(), opts.positions.size(),
+          sizeof(glm::vec3));
+      glm::vec3 cone_apex = glm::make_vec3(bounds.cone_apex);
+      glm::vec3 cone_axis = glm::make_vec3(bounds.cone_axis);
+
+      meshlet.cone_apex =
+          glsl::encode_position(cone_apex, opts.mesh->pos_enc_bb),
+      meshlet.cone_axis =
+          glsl::encode_position(cone_axis, opts.mesh->pos_enc_bb),
+      meshlet.cone_cutoff = bounds.cone_cutoff,
 
       (*opts.meshlets)[base_meshlet + m] = meshlet;
 

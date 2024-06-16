@@ -71,6 +71,10 @@ public:
 
   auto get_lod_bias() const -> i32;
 
+  bool is_meshlet_cone_culling_enabled() const;
+
+  auto get_meshlet_culling_feature_mask() const -> u32;
+
   bool is_early_z_enabled() const;
 
 public:
@@ -198,6 +202,7 @@ private:
   bool m_rg_valid : 1 = false;
   bool m_instance_frustum_culling : 1 = true;
   bool m_lod_selection : 1 = true;
+  bool m_meshlet_cone_culling : 1 = true;
   bool m_early_z : 1 = true;
 
   Pipelines m_pipelines;

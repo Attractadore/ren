@@ -52,8 +52,10 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
             renderer.try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
         .uvs = renderer.try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
         .colors = renderer.try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
-        .meshlets = renderer.get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
-        .meshlet_indices = renderer.get_buffer_device_ptr<u32>(mesh.meshlet_indices),
+        .meshlets =
+            renderer.get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
+        .meshlet_indices =
+            renderer.get_buffer_device_ptr<u32>(mesh.meshlet_indices),
         .bb = mesh.bb,
         .uv_bs = mesh.uv_bs,
         .index_pool = mesh.index_pool,
@@ -221,6 +223,8 @@ void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
                               scene.get_lod_triangle_pixel_count(),
                           .lod_bias = scene.get_lod_bias(),
                       },
+                  .meshlet_culling_feature_mask =
+                      scene.get_meshlet_culling_feature_mask(),
                   .depth_stencil_attachment =
                       DepthStencilAttachment{
                           .texture = renderer.get_texture_view(
@@ -234,6 +238,7 @@ void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
                       },
                   .viewport = scene.get_viewport(),
                   .proj_view = scene.get_camera_proj_view(),
+                  .eye = scene.get_camera().position,
               },
 
       });
@@ -353,6 +358,8 @@ void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
                                   scene.get_lod_triangle_pixel_count(),
                               .lod_bias = scene.get_lod_bias(),
                           },
+                      .meshlet_culling_feature_mask =
+                          scene.get_meshlet_culling_feature_mask(),
                       .color_attachments = {ColorAttachment{
                           .texture = renderer.get_texture_view(
                               rg.get_texture(rcs.hdr)),

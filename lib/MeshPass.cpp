@@ -48,6 +48,7 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls, Renderer &renderer,
 
   m_instance_culling_and_lod_settings =
       begin_info.instance_culling_and_lod_settings;
+  m_meshlet_culling_feature_mask = begin_info.meshlet_culling_feature_mask;
 
   m_color_attachments = begin_info.color_attachments;
   m_depth_stencil_attachment = begin_info.depth_stencil_attachment;
@@ -236,16 +237,21 @@ void MeshPassClass::Instance::Instance::run_culling(
     pass.bind_compute_pipeline(m_pipelines->meshlet_culling);
     for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
       ren_assert(m_meshes_ptr);
+      ren_assert(m_transform_matrices_ptr);
       ren_assert(meshlet_cull_data_ptr);
       ren_assert(m_commands_ptr);
       ren_assert(command_count_ptr);
+      ren_assert(m_eye != glm::vec3(0.0f));
       pass.set_push_constants(glsl::MeshletCullingPassArgs{
           .meshes = m_meshes_ptr,
+          .transform_matrices = m_transform_matrices_ptr,
           .bucket_cull_data = meshlet_cull_data_ptr + bucket_offsets[bucket],
           .bucket_size = meshlet_bucket_sizes_ptr + bucket,
           .commands = m_commands_ptr,
           .num_commands = command_count_ptr,
+          .feature_mask = m_meshlet_culling_feature_mask,
           .bucket = bucket,
+          .eye = m_eye,
       });
       pass.dispatch_indirect(
           meshlet_bucket_commands.slice<glsl::DispatchIndirectCommand>(bucket));

@@ -1,4 +1,5 @@
 #include "MeshletCullingPass.h"
+#include "Vertex.h"
 
 PUSH_CONSTANTS(MeshletCullingPassArgs);
 
@@ -6,6 +7,7 @@ NUM_THREADS(MESHLET_CULLING_THREADS);
 void main() {
   const uint bucket_size = DEREF(pc.bucket_size);
   const uint bucket_stride = 1 << pc.bucket;
+  const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
 
   const uint index = gl_GlobalInvocationID.x / bucket_stride;
   const uint offset = gl_GlobalInvocationID.x % bucket_stride;
@@ -17,6 +19,15 @@ void main() {
   MeshletCullData cull_data = DEREF(pc.bucket_cull_data[index]);
   Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
   Meshlet meshlet = DEREF(mesh.meshlets[cull_data.base_meshlet + offset]);
+
+  if (cone_culling) {
+    mat4x3 transform_matrix = DEREF(pc.transform_matrices[cull_data.mesh_instance]);
+    vec3 cone_apex = transform_matrix * vec4(decode_position(meshlet.cone_apex), 1.0f);
+    vec3 cone_axis = transform_matrix * vec4(decode_position(meshlet.cone_axis), 0.0f);
+    if (dot(cone_apex - pc.eye, normalize(cone_axis)) >= meshlet.cone_cutoff * length(cone_apex - pc.eye)) {
+      return;
+    }
+  }
 
   DrawIndexedIndirectCommand command;
   command.num_indices = meshlet.num_triangles * 3;

@@ -8,16 +8,21 @@
 
 GLSL_NAMESPACE_BEGIN
 
+const uint MESHLET_CULLING_CONE_BIT = 1 << 0;
+
 struct MeshletCullingPassArgs {
   GLSL_PTR(Mesh) meshes;
+  GLSL_PTR(mat4x3) transform_matrices;
   /// Pointer to current bucket's cull data.
   GLSL_PTR(MeshletCullData) bucket_cull_data;
   /// Pointer to current bucket's size.
   GLSL_PTR(uint) bucket_size;
   GLSL_PTR(DrawIndexedIndirectCommand) commands;
   GLSL_PTR(uint) num_commands;
+  uint feature_mask;
   /// Current bucket index.
   uint bucket;
+  vec3 eye;
 };
 
 GLSL_NAMESPACE_END

@@ -22,7 +22,7 @@ ENABLE_FLAGS(MeshAttribute);
 struct Mesh {
   Handle<Buffer> positions;
   glsl::PositionBoundingBox bb = {};
-  glm::vec3 pos_enc_bb;
+  glm::vec3 pos_enc_bb = glm::vec3(0.0f);
   Handle<Buffer> normals;
   Handle<Buffer> tangents;
   Handle<Buffer> uvs;
