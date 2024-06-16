@@ -9,6 +9,10 @@
 #define GLSL_NAMESPACE_BEGIN
 #define GLSL_NAMESPACE_END
 
+#define GLSL_IN(T) T
+#define GLSL_OUT(T) out T
+#define GLSL_INOUT(T) inout T
+
 #else
 #include "Keywords.hpp"
 
@@ -17,6 +21,10 @@
 
 #define GLSL_NAMESPACE_BEGIN namespace ren::glsl {
 #define GLSL_NAMESPACE_END }
+
+#define GLSL_IN(T) const T&
+#define GLSL_OUT(T) T &
+#define GLSL_INOUT(T) T &
 
 GLSL_NAMESPACE_BEGIN
 using namespace glm;
