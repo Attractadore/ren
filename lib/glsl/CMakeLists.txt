@@ -1,8 +1,7 @@
 include(GlslangShader)
 
 option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
-  set(GLSL_FLAGS -Os --target-env vulkan1.3 --glsl-version 460 "-P#extension GL_GOOGLE_include_directive : require")
-message(${GLSL_FLAGS})
+set(GLSL_FLAGS -Os --target-env vulkan1.3 --glsl-version 460 "-P#extension GL_GOOGLE_include_directive : require")
 if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   message(STATUS "Enable source-level debug info for shaders")
   list(APPEND GLSL_FLAGS -gVS)
