@@ -108,10 +108,17 @@ bool Scene::is_meshlet_cone_culling_enabled() const {
   return m_meshlet_cone_culling;
 }
 
+bool Scene::is_meshlet_frustum_culling_enabled() const {
+  return m_meshlet_frustum_culling;
+}
+
 auto Scene::get_meshlet_culling_feature_mask() const -> u32 {
   u32 mask = 0;
   if (is_meshlet_cone_culling_enabled()) {
     mask |= glsl::MESHLET_CULLING_CONE_BIT;
+  }
+  if (is_meshlet_frustum_culling_enabled()) {
+    mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
   }
   return mask;
 }
@@ -505,7 +512,7 @@ void Scene::draw_imgui() {
       ImGui::SeparatorText("Instance culling");
       {
         bool frustum = m_instance_frustum_culling;
-        ImGui::Checkbox("Frustum culling", &frustum);
+        ImGui::Checkbox("Frustum culling## Instance", &frustum);
         m_instance_frustum_culling = frustum;
       }
 
@@ -529,6 +536,10 @@ void Scene::draw_imgui() {
         bool cone = m_meshlet_cone_culling;
         ImGui::Checkbox("Cone culling", &cone);
         m_meshlet_cone_culling = cone;
+
+        bool frustum = m_meshlet_frustum_culling;
+        ImGui::Checkbox("Frustum culling## Meshlet", &frustum);
+        m_meshlet_frustum_culling = frustum;
       }
 
       ImGui::SeparatorText("Opaque pass");

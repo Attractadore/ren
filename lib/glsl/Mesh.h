@@ -33,6 +33,7 @@ struct Meshlet {
   Position cone_apex;
   Position cone_axis;
   float cone_cutoff;
+  PositionBoundingBox bb;
 };
 
 GLSL_DEFINE_PTR_TYPE(Meshlet, 4);

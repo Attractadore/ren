@@ -252,6 +252,7 @@ void MeshPassClass::Instance::Instance::run_culling(
           .feature_mask = m_meshlet_culling_feature_mask,
           .bucket = bucket,
           .eye = m_eye,
+          .proj_view = m_proj_view,
       });
       pass.dispatch_indirect(
           meshlet_bucket_commands.slice<glsl::DispatchIndirectCommand>(bucket));

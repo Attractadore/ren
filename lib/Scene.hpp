@@ -73,6 +73,8 @@ public:
 
   bool is_meshlet_cone_culling_enabled() const;
 
+  bool is_meshlet_frustum_culling_enabled() const;
+
   auto get_meshlet_culling_feature_mask() const -> u32;
 
   bool is_early_z_enabled() const;
@@ -203,6 +205,7 @@ private:
   bool m_instance_frustum_culling : 1 = true;
   bool m_lod_selection : 1 = true;
   bool m_meshlet_cone_culling : 1 = true;
+  bool m_meshlet_frustum_culling : 1 = true;
   bool m_early_z : 1 = true;
 
   Pipelines m_pipelines;

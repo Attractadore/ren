@@ -502,7 +502,21 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
           glsl::encode_position(cone_apex, opts.mesh->pos_enc_bb),
       meshlet.cone_axis =
           glsl::encode_position(cone_axis, opts.mesh->pos_enc_bb),
-      meshlet.cone_cutoff = bounds.cone_cutoff,
+      meshlet.cone_cutoff = bounds.cone_cutoff;
+
+      glsl::BoundingBox bb = {
+          .min = glm::vec3(std::numeric_limits<float>::infinity()),
+          .max = -glm::vec3(std::numeric_limits<float>::infinity()),
+      };
+
+      for (u8 t : triangles) {
+        u32 index = indices[t];
+        const glm::vec3 &position = opts.positions[index];
+        bb.min = glm::min(bb.min, position);
+        bb.max = glm::max(bb.max, position);
+      }
+
+      meshlet.bb = glsl::encode_bounding_box(bb, opts.mesh->pos_enc_bb);
 
       (*opts.meshlets)[base_meshlet + m] = meshlet;
 
