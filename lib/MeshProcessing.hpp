@@ -63,26 +63,28 @@ struct MeshGenerateTangentsOptions {
 
 void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts);
 
+void mesh_compute_bounds(Span<const glm::vec3> positions,
+                         NotNull<glsl::PositionBoundingBox *> bb,
+                         NotNull<glm::vec3 *> enc_bb);
+
 [[nodiscard]] auto
 mesh_encode_positions(Span<const glm::vec3> positions,
-                      NotNull<glsl::PositionBoundingBox *> bb,
-                      NotNull<glm::vec3 *> enc_bb) -> Vector<glsl::Position>;
+                      const glm::vec3 &enc_bb) -> Vector<glsl::Position>;
 
-[[nodiscard]] auto mesh_encode_normals(Span<const glm::vec3> normals,
-                                       const glm::vec3 &pos_enc_bb)
-    -> Vector<glsl::Normal>;
+[[nodiscard]] auto
+mesh_encode_normals(Span<const glm::vec3> normals,
+                    const glm::vec3 &pos_enc_bb) -> Vector<glsl::Normal>;
 
-[[nodiscard]] auto mesh_encode_tangents(Span<const glm::vec4> tangents,
-                                        const glm::vec3 &pos_enc_bb,
-                                        Span<const glsl::Normal> enc_normals)
-    -> Vector<glsl::Tangent>;
+[[nodiscard]] auto mesh_encode_tangents(
+    Span<const glm::vec4> tangents, const glm::vec3 &pos_enc_bb,
+    Span<const glsl::Normal> enc_normals) -> Vector<glsl::Tangent>;
 
-[[nodiscard]] auto mesh_encode_uvs(Span<const glm::vec2> uvs,
-                                   NotNull<glsl::BoundingSquare *> uv_bs)
-    -> Vector<glsl::UV>;
+[[nodiscard]] auto
+mesh_encode_uvs(Span<const glm::vec2> uvs,
+                NotNull<glsl::BoundingSquare *> uv_bs) -> Vector<glsl::UV>;
 
-[[nodiscard]] auto mesh_encode_colors(Span<const glm::vec4> colors)
-    -> Vector<glsl::Color>;
+[[nodiscard]] auto
+mesh_encode_colors(Span<const glm::vec4> colors) -> Vector<glsl::Color>;
 
 struct MeshGenerateMeshletsOptions {
   Span<const glm::vec3> positions;

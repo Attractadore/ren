@@ -104,10 +104,26 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   }
 #endif
 
+  // Compute bounds.
+
+  mesh_compute_bounds(positions, &mesh.bb, &mesh.pos_enc_bb);
+
+  // Generate meshlets
+
+  mesh_generate_meshlets({
+      .positions = positions,
+      .indices = indices,
+      .lods = lods,
+      .meshlets = opts.meshlets,
+      .meshlet_indices = opts.meshlet_indices,
+      .meshlet_triangles = opts.meshlet_triangles,
+      .mesh = &mesh,
+      .cone_weight = 1.0f,
+  });
+
   // Encode vertex attributes
 
-  *opts.enc_positions =
-      mesh_encode_positions(positions, &mesh.bb, &mesh.pos_enc_bb);
+  *opts.enc_positions = mesh_encode_positions(positions, mesh.pos_enc_bb);
 
   *opts.enc_normals = mesh_encode_normals(normals, mesh.pos_enc_bb);
 
@@ -123,19 +139,6 @@ auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
   if (not colors.empty()) {
     *opts.enc_colors = mesh_encode_colors(colors);
   }
-
-  // Generate meshlets
-
-  mesh_generate_meshlets({
-      .positions = positions,
-      .indices = indices,
-      .lods = lods,
-      .meshlets = opts.meshlets,
-      .meshlet_indices = opts.meshlet_indices,
-      .meshlet_triangles = opts.meshlet_triangles,
-      .mesh = &mesh,
-      .cone_weight = 1.0f,
-  });
 
   return mesh;
 }
@@ -299,9 +302,9 @@ void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts) {
   });
 }
 
-auto mesh_encode_positions(
-    Span<const glm::vec3> positions, NotNull<glsl::PositionBoundingBox *> pbb,
-    NotNull<glm::vec3 *> enc_bb) -> Vector<glsl::Position> {
+void mesh_compute_bounds(Span<const glm::vec3> positions,
+                         NotNull<glsl::PositionBoundingBox *> pbb,
+                         NotNull<glm::vec3 *> enc_bb) {
   glsl::BoundingBox bb = {
       .min = glm::vec3(std::numeric_limits<float>::infinity()),
       .max = -glm::vec3(std::numeric_limits<float>::infinity()),
@@ -318,13 +321,15 @@ auto mesh_encode_positions(
 
   *enc_bb = glm::exp2(glm::ceil(glm::log2(*enc_bb)));
 
+  *pbb = glsl::encode_bounding_box(bb, *enc_bb);
+}
+
+auto mesh_encode_positions(Span<const glm::vec3> positions,
+                           const glm::vec3 &enc_bb) -> Vector<glsl::Position> {
   Vector<glsl::Position> enc_positions(positions.size());
   for (usize i = 0; i < positions.size(); ++i) {
-    enc_positions[i] = glsl::encode_position(positions[i], *enc_bb);
+    enc_positions[i] = glsl::encode_position(positions[i], enc_bb);
   }
-
-  *pbb = glsl::encode_bounding_box(bb, *enc_bb);
-
   return enc_positions;
 }
 
