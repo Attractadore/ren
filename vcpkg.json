@@ -6,6 +6,7 @@
     "boost-container",
     "boost-dynamic-bitset",
     "boost-functional",
+    "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
     "fmt",
