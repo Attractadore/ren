@@ -1,6 +1,6 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Handle.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/StdDef.hpp"
 #include "ren/ren.hpp"
 
@@ -95,6 +95,7 @@ auto getVkFilter(Filter filter) -> VkFilter;
 auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
 auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
 
-REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode, address_mode_u, address_mode_v, anisotropy);
+REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode,
+                     address_mode_u, address_mode_v, anisotropy);
 
 } // namespace ren

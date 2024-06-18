@@ -389,7 +389,7 @@ void Renderer::destroy(Handle<DescriptorPool> pool) {
 
 auto Renderer::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
     -> Optional<const DescriptorPool &> {
-  return m_descriptor_pools.get(pool);
+  return m_descriptor_pools.try_get(pool);
 }
 
 auto Renderer::get_descriptor_pool(Handle<DescriptorPool> pool) const
@@ -473,7 +473,7 @@ void Renderer::destroy(Handle<DescriptorSetLayout> layout) {
 
 auto Renderer::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
     const -> Optional<const DescriptorSetLayout &> {
-  return m_descriptor_set_layouts.get(layout);
+  return m_descriptor_set_layouts.try_get(layout);
 }
 
 auto Renderer::get_descriptor_set_layout(
@@ -604,7 +604,7 @@ void Renderer::destroy(Handle<Buffer> handle) {
 
 auto Renderer::try_get_buffer(Handle<Buffer> buffer) const
     -> Optional<const Buffer &> {
-  return m_buffers.get(buffer);
+  return m_buffers.try_get(buffer);
 };
 
 auto Renderer::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
@@ -706,7 +706,7 @@ void Renderer::destroy(Handle<Texture> handle) {
 
 auto Renderer::try_get_texture(Handle<Texture> texture) const
     -> Optional<const Texture &> {
-  return m_textures.get(texture);
+  return m_textures.try_get(texture);
 }
 
 auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
@@ -905,7 +905,7 @@ void Renderer::wait_for_semaphore(const Semaphore &semaphore,
 
 auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const
     -> Optional<const Semaphore &> {
-  return m_semaphores.get(semaphore);
+  return m_semaphores.try_get(semaphore);
 }
 
 auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
@@ -1149,7 +1149,7 @@ void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
 
 auto Renderer::try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline)
     const -> Optional<const GraphicsPipeline &> {
-  return m_graphics_pipelines.get(pipeline);
+  return m_graphics_pipelines.try_get(pipeline);
 }
 
 auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
@@ -1197,7 +1197,7 @@ void Renderer::destroy(Handle<ComputePipeline> pipeline) {
 
 auto Renderer::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
     -> Optional<const ComputePipeline &> {
-  return m_compute_pipelines.get(pipeline);
+  return m_compute_pipelines.try_get(pipeline);
 }
 
 auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
@@ -1243,7 +1243,7 @@ void Renderer::destroy(Handle<PipelineLayout> layout) {
 
 auto Renderer::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
     -> Optional<const PipelineLayout &> {
-  return m_pipeline_layouts.get(layout);
+  return m_pipeline_layouts.try_get(layout);
 }
 
 auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const

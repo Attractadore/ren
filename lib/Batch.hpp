@@ -1,6 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Handle.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/Hash.hpp"
 
 namespace ren {

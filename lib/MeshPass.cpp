@@ -291,9 +291,8 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     Batches &batches) {
   Handle<GraphicsPipeline> pipeline = m_pipelines->early_z_pass;
 
-  for (auto i : range(m_host_mesh_instances.size())) {
-    const MeshInstance &mesh_instance = m_host_mesh_instances[i];
-    const Mesh &mesh = m_host_meshes[mesh_instance.mesh];
+  for (const auto &[h, mesh_instance] : *m_host_mesh_instances) {
+    const Mesh &mesh = m_host_meshes->get(mesh_instance.mesh);
     BatchDesc batch = {
         .pipeline = pipeline,
         .index_buffer_view = m_index_pools[mesh.index_pool],
@@ -313,7 +312,7 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     draw->num_meshlets += num_meshlets;
     draw->instances.push_back({
         .mesh = mesh_instance.mesh,
-        .mesh_instance = u32(i),
+        .mesh_instance = h,
     });
   }
 }
@@ -346,11 +345,9 @@ OpaqueMeshPassClass::Instance::Instance(OpaqueMeshPassClass &cls,
 }
 
 void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
-  for (auto i : range(m_host_mesh_instances.size())) {
-    const MeshInstance &mesh_instance = m_host_mesh_instances[i];
-
-    const Mesh &mesh = m_host_meshes[mesh_instance.mesh];
-    const Material &material = m_host_materials[mesh_instance.material];
+  for (const auto &[h, mesh_instance] : *m_host_mesh_instances) {
+    const Mesh &mesh = m_host_meshes->get(mesh_instance.mesh);
+    const Material &material = m_host_materials->get(mesh_instance.material);
 
     MeshAttributeFlags attributes;
     if (material.base_color_texture) {
@@ -382,7 +379,7 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
     draw->num_meshlets += num_meshlets;
     draw->instances.push_back({
         .mesh = mesh_instance.mesh,
-        .mesh_instance = u32(i),
+        .mesh_instance = h,
     });
   }
 }

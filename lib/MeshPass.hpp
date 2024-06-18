@@ -38,9 +38,9 @@ protected:
 };
 
 struct MeshPassClass::BeginInfo {
-  Span<const Mesh> host_meshes;
-  Span<const Material> host_materials;
-  Span<const MeshInstance> host_mesh_instances;
+  NotNull<const GenArray<Mesh> *> host_meshes;
+  NotNull<const GenArray<Material> *> host_materials;
+  NotNull<const GenArray<MeshInstance> *> host_mesh_instances;
   Span<const BufferView> index_pools;
   NotNull<const Pipelines *> pipelines;
 
@@ -161,9 +161,9 @@ protected:
 protected:
   MeshPassClass *m_class = nullptr;
 
-  Span<const Mesh> m_host_meshes;
-  Span<const Material> m_host_materials;
-  Span<const MeshInstance> m_host_mesh_instances;
+  const GenArray<Mesh> *m_host_meshes = nullptr;
+  const GenArray<Material> *m_host_materials = nullptr;
+  const GenArray<MeshInstance> *m_host_mesh_instances = nullptr;
   Span<const BufferView> m_index_pools;
   const Pipelines *m_pipelines = nullptr;
 

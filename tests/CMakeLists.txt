@@ -7,5 +7,3 @@ function(ren_add_test target)
   target_include_directories(${target} PRIVATE ${PROJECT_SOURCE_DIR}/lib)
   gtest_discover_tests(${target} DISCOVERY_TIMEOUT 20)
 endfunction()
-
-ren_add_test(TestDenseSlotMap)

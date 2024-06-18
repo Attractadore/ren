@@ -1,7 +1,9 @@
 #pragma once
-#include "Handle.hpp"
+#include "Material.hpp"
 #include "Support/Flags.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/StdDef.hpp"
+#include "Support/Vector.hpp"
 #include "glsl/Mesh.h"
 
 #include <glm/glm.hpp>
@@ -44,9 +46,8 @@ using IndexPoolList = SmallVector<IndexPool, 1>;
 auto create_index_pool(ResourceArena &arena) -> IndexPool;
 
 struct MeshInstance {
-  u32 mesh = 0;
-  u32 material = 0;
-  glm::mat4x3 matrix{1.0f};
+  Handle<Mesh> mesh;
+  Handle<Material> material;
 };
 
 } // namespace ren

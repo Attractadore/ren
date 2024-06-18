@@ -2,10 +2,9 @@
 #include "Buffer.hpp"
 #include "Config.hpp"
 #include "Descriptors.hpp"
-#include "Handle.hpp"
-#include "HandleMap.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
+#include "Support/GenArray.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
 #include "Support/Optional.hpp"
@@ -143,25 +142,25 @@ class Renderer final : public IRenderer {
 
   DeleteQueue m_delete_queue;
 
-  HandleMap<Buffer> m_buffers;
+  GenArray<Buffer> m_buffers;
 
-  HandleMap<Texture> m_textures;
+  GenArray<Texture> m_textures;
 
   HashMap<Handle<Texture>, SmallLinearMap<TextureView, VkImageView, 3>>
       m_image_views;
 
-  HandleMap<Sampler> m_samplers;
+  GenArray<Sampler> m_samplers;
 
-  HandleMap<Semaphore> m_semaphores;
+  GenArray<Semaphore> m_semaphores;
 
-  HandleMap<DescriptorPool> m_descriptor_pools;
+  GenArray<DescriptorPool> m_descriptor_pools;
 
-  HandleMap<DescriptorSetLayout> m_descriptor_set_layouts;
+  GenArray<DescriptorSetLayout> m_descriptor_set_layouts;
 
-  HandleMap<PipelineLayout> m_pipeline_layouts;
+  GenArray<PipelineLayout> m_pipeline_layouts;
 
-  HandleMap<GraphicsPipeline> m_graphics_pipelines;
-  HandleMap<ComputePipeline> m_compute_pipelines;
+  GenArray<GraphicsPipeline> m_graphics_pipelines;
+  GenArray<ComputePipeline> m_compute_pipelines;
 
 public:
   Renderer(Span<const char *const> extensions, u32 adapter);
@@ -209,9 +208,8 @@ public:
   auto get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
       -> const DescriptorSetLayout &;
 
-  [[nodiscard]] auto
-  create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
-      -> Handle<DescriptorPool>;
+  [[nodiscard]] auto create_descriptor_pool(
+      const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool>;
 
   void destroy(Handle<DescriptorPool>);
 
@@ -227,16 +225,15 @@ public:
   allocate_descriptor_sets(Handle<DescriptorPool> pool,
                            TempSpan<const Handle<DescriptorSetLayout>> layouts,
                            VkDescriptorSet *sets) const -> bool;
-  [[nodiscard]] auto
-  allocate_descriptor_set(Handle<DescriptorPool> pool,
-                          Handle<DescriptorSetLayout> layout) const
-      -> Optional<VkDescriptorSet>;
+  [[nodiscard]] auto allocate_descriptor_set(
+      Handle<DescriptorPool> pool,
+      Handle<DescriptorSetLayout> layout) const -> Optional<VkDescriptorSet>;
 
   void
   write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
-  [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
-      -> Handle<Buffer>;
+  [[nodiscard]] auto
+  create_buffer(const BufferCreateInfo &&create_info) -> Handle<Buffer>;
 
   void destroy(Handle<Buffer> buffer);
 
@@ -262,15 +259,15 @@ public:
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(Handle<Buffer> buffer, u64 map_offset = 0) const
-      -> DevicePtr<T> {
+  auto get_buffer_device_ptr(Handle<Buffer> buffer,
+                             u64 map_offset = 0) const -> DevicePtr<T> {
     auto addr = get_buffer(buffer).address;
     return DevicePtr<T>(addr ? (addr + map_offset) : 0);
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(const BufferView &view, u64 map_offset = 0) const
-      -> DevicePtr<T> {
+  auto get_buffer_device_ptr(const BufferView &view,
+                             u64 map_offset = 0) const -> DevicePtr<T> {
     return get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
   }
 
@@ -286,27 +283,26 @@ public:
   }
 
   template <typename T>
-  auto try_get_buffer_device_ptr(const BufferView& view,
+  auto try_get_buffer_device_ptr(const BufferView &view,
                                  u64 map_offset = 0) const -> DevicePtr<T> {
     return try_get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
   }
 
-  [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+  [[nodiscard]] auto
+  create_texture(const TextureCreateInfo &&create_info) -> Handle<Texture>;
 
   void destroy(Handle<Texture> texture);
 
-  [[nodiscard]] auto
-  create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+  [[nodiscard]] auto create_swapchain_texture(
+      const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture>;
 
-  auto try_get_texture(Handle<Texture> texture) const
-      -> Optional<const Texture &>;
+  auto
+  try_get_texture(Handle<Texture> texture) const -> Optional<const Texture &>;
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto try_get_texture_view(Handle<Texture> texture) const
-      -> Optional<TextureView>;
+  auto
+  try_get_texture_view(Handle<Texture> texture) const -> Optional<TextureView>;
 
   auto get_texture_view(Handle<Texture> texture) const -> TextureView;
 
@@ -315,19 +311,18 @@ public:
 
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
-  [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
-      -> Handle<Sampler>;
+  [[nodiscard]] auto
+  create_sampler(const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
 
   void destroy(Handle<Sampler> sampler);
 
-  auto try_get_sampler(Handle<Sampler> sampler) const
-      -> Optional<const Sampler &>;
+  auto
+  try_get_sampler(Handle<Sampler> sampler) const -> Optional<const Sampler &>;
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
 
-  [[nodiscard]] auto
-  create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
-      -> Handle<PipelineLayout>;
+  [[nodiscard]] auto create_pipeline_layout(
+      const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout>;
 
   void destroy(Handle<PipelineLayout> layout);
 
@@ -349,9 +344,8 @@ public:
   auto get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> const GraphicsPipeline &;
 
-  [[nodiscard]] auto
-  create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
-      -> Handle<ComputePipeline>;
+  [[nodiscard]] auto create_compute_pipeline(
+      const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline>;
 
   void destroy(Handle<ComputePipeline> pipeline);
 
@@ -371,10 +365,9 @@ public:
 
   auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
 
-  [[nodiscard]] auto wait_for_semaphore(const Semaphore &semaphore,
-                                        uint64_t value,
-                                        std::chrono::nanoseconds timeout) const
-      -> VkResult;
+  [[nodiscard]] auto
+  wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
+                     std::chrono::nanoseconds timeout) const -> VkResult;
 
   void wait_for_semaphore(const Semaphore &semaphore, uint64_t value) const;
 
@@ -398,8 +391,8 @@ public:
               TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
               TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
-  [[nodiscard]] auto queue_present(const VkPresentInfoKHR &present_info)
-      -> VkResult;
+  [[nodiscard]] auto
+  queue_present(const VkPresentInfoKHR &present_info) -> VkResult;
 
 private:
   template <typename H> friend class Handle;

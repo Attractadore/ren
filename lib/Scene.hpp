@@ -1,13 +1,14 @@
 #pragma once
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
-#include "DenseHandleMap.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
 #include "Passes/Present.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
+#include "Support/GenArray.hpp"
+#include "Support/GenMap.hpp"
 #include "Texture.hpp"
 #include "TextureIdAllocator.hpp"
 #include "glsl/Lighting.h"
@@ -33,6 +34,8 @@ struct SceneRgConfig {
   bool early_z : 1 = false;
 };
 
+using Image = Handle<Texture>;
+
 class Scene final : public IScene {
 public:
   Scene(Renderer &renderer, Swapchain &swapchain);
@@ -53,15 +56,18 @@ public:
 
   auto get_num_draw_meshlets() const -> u32;
 
-  auto get_meshes() const -> Span<const Mesh>;
+  auto get_meshes() const -> const GenArray<Mesh> &;
 
   auto get_index_pools() const -> Span<const IndexPool>;
 
-  auto get_materials() const -> Span<const Material>;
+  auto get_materials() const -> const GenArray<Material> &;
 
-  auto get_mesh_instances() const -> Span<const MeshInstance>;
+  auto get_mesh_instances() const -> const GenArray<MeshInstance> &;
 
-  auto get_directional_lights() const -> Span<const glsl::DirLight>;
+  auto get_mesh_instance_transforms() const
+      -> const GenMap<glm::mat4x3, Handle<MeshInstance>> &;
+
+  auto get_directional_lights() const -> const GenArray<glsl::DirLight> &;
 
   bool is_frustum_culling_enabled() const;
 
@@ -147,7 +153,7 @@ private:
       const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
 
   [[nodiscard]] auto
-  get_or_create_texture(ImageId image,
+  get_or_create_texture(Handle<Image> image,
                         const SamplerDesc &sampler_desc) -> SampledTextureId;
 
   void update_rg_config();
@@ -165,26 +171,27 @@ private:
   CommandAllocator m_cmd_allocator;
 
   Handle<Camera> m_camera;
-  HandleMap<Camera> m_cameras;
+  GenArray<Camera> m_cameras;
 
   IndexPoolList m_index_pools;
-  Vector<Mesh> m_meshes = {{}};
+  GenArray<Mesh> m_meshes;
 
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
-  Vector<Material> m_materials = {{}};
+  GenArray<Material> m_materials;
 
-  DenseHandleMap<MeshInstance> m_mesh_instances;
+  GenArray<MeshInstance> m_mesh_instances;
+  GenMap<glm::mat4x3, Handle<MeshInstance>> m_mesh_instance_transforms;
 
-  Vector<Handle<Texture>> m_images = Vector<Handle<Texture>>(1);
+  GenArray<Image> m_images;
 
   Handle<DescriptorPool> m_persistent_descriptor_pool;
   Handle<DescriptorSetLayout> m_persistent_descriptor_set_layout;
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
-  DenseHandleMap<glsl::DirLight> m_dir_lights;
+  GenArray<glsl::DirLight> m_dir_lights;
 
   ResourceArena m_arena;
   ResourceArena m_frame_arena;

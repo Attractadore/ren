@@ -1,6 +1,6 @@
 #pragma once
 #include "FreeListAllocator.hpp"
-#include "Handle.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/NewType.hpp"
 
 namespace ren {
@@ -34,8 +34,8 @@ public:
 
   void free_sampled_texture(SampledTextureId texture);
 
-  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> StorageTextureId;
+  auto allocate_storage_texture(Renderer &renderer,
+                                const TextureView &view) -> StorageTextureId;
 
   void free_storage_texture(StorageTextureId texture);
 
@@ -59,8 +59,8 @@ public:
   auto allocate_sampled_texture(Renderer &renderer, const TextureView &view,
                                 Handle<Sampler> sampler) -> SampledTextureId;
 
-  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> StorageTextureId;
+  auto allocate_storage_texture(Renderer &renderer,
+                                const TextureView &view) -> StorageTextureId;
 
   void clear();
 

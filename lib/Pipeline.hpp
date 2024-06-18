@@ -1,10 +1,11 @@
 #pragma once
 #include "Config.hpp"
 #include "DebugNames.hpp"
-#include "Handle.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
 #include "Support/Variant.hpp"
+#include "Support/Vector.hpp"
 
 namespace ren {
 

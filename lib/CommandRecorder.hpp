@@ -4,6 +4,7 @@
 #include "Config.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"
+#include "Support/Vector.hpp"
 #include "Texture.hpp"
 
 #include <glm/glm.hpp>
@@ -18,11 +19,11 @@ struct PipelineLayout;
 
 auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32;
 
-auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
-    -> glm::uvec2;
+auto get_num_dispatch_groups(glm::uvec2 size,
+                             glm::uvec2 group_size) -> glm::uvec2;
 
-auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
-    -> glm::uvec3;
+auto get_num_dispatch_groups(glm::uvec3 size,
+                             glm::uvec3 group_size) -> glm::uvec3;
 
 struct ColorAttachment {
   TextureView texture;

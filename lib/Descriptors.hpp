@@ -1,7 +1,7 @@
 #pragma once
 #include "Config.hpp"
 #include "DebugNames.hpp"
-#include "Handle.hpp"
+#include "Support/GenIndex.hpp"
 
 #include <array>
 #include <vulkan/vulkan.h>

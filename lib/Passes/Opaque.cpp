@@ -3,10 +3,7 @@
 #include "MeshPass.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
-#include "Support/Views.hpp"
 #include "glsl/InstanceCullingAndLODPass.h"
-
-#include <range/v3/view.hpp>
 
 namespace ren {
 
@@ -37,14 +34,15 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
   glm::mat4 view = get_view_matrix(camera);
 
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
-  ranges::copy(scene.get_materials(), materials);
+  for (const auto &[h, material] : scene.get_materials()) {
+    materials[h] = material;
+  }
 
   auto *meshes_ptr = rg.map_buffer<glsl::Mesh>(rcs.meshes);
-  Span<const Mesh> meshes = scene.get_meshes();
+  const GenArray<Mesh> &meshes = scene.get_meshes();
 
-  for (auto i : range<usize>(1, meshes.size())) {
-    const Mesh &mesh = meshes[i];
-    meshes_ptr[i] = {
+  for (const auto &[h, mesh] : meshes) {
+    meshes_ptr[h] = {
         .positions =
             renderer.get_buffer_device_ptr<glsl::Position>(mesh.positions),
         .normals = renderer.get_buffer_device_ptr<glsl::Normal>(mesh.normals),
@@ -61,7 +59,7 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
         .index_pool = mesh.index_pool,
         .num_lods = u32(mesh.lods.size()),
     };
-    ranges::copy(mesh.lods, meshes_ptr[i].lods);
+    ranges::copy(mesh.lods, meshes_ptr[h].lods);
   }
 
   auto *mesh_instances_ptr =
@@ -70,21 +68,25 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
       rg.map_buffer<glm::mat4x3>(rcs.transform_matrices);
   auto *normal_matrices_ptr = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
 
-  Span<const MeshInstance> mesh_instances = scene.get_mesh_instances();
+  const GenArray<MeshInstance> &mesh_instances = scene.get_mesh_instances();
+  const GenMap<glm::mat4x3, Handle<MeshInstance>> &transforms =
+      scene.get_mesh_instance_transforms();
 
-  for (const auto &[i, mesh_instance] : mesh_instances | enumerate) {
-    mesh_instances_ptr[i] = {
+  for (const auto &[h, mesh_instance] : mesh_instances) {
+    mesh_instances_ptr[h] = {
         .mesh = mesh_instance.mesh,
         .material = mesh_instance.material,
     };
-    transform_matrices_ptr[i] = mesh_instance.matrix;
-    normal_matrices_ptr[i] =
-        glm::transpose(glm::inverse(glm::mat3(mesh_instance.matrix)));
+    transform_matrices_ptr[h] = transforms[h];
+    normal_matrices_ptr[h] =
+        glm::transpose(glm::inverse(glm::mat3(transforms[h])));
   }
 
   auto *directional_lights =
       rg.map_buffer<glsl::DirLight>(rcs.directional_lights);
-  ranges::copy(scene.get_directional_lights(), directional_lights);
+  for (const auto &[h, light] : scene.get_directional_lights()) {
+    directional_lights[h] = light;
+  }
 
   Vector<BufferView> &index_pools = rg.get_variable(rcs.index_pools);
   index_pools.clear();
@@ -203,9 +205,9 @@ void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
       DepthOnlyMeshPassClass::BeginInfo{
           .base =
               {
-                  .host_meshes = scene.get_meshes(),
-                  .host_materials = scene.get_materials(),
-                  .host_mesh_instances = scene.get_mesh_instances(),
+                  .host_meshes = &scene.get_meshes(),
+                  .host_materials = &scene.get_materials(),
+                  .host_mesh_instances = &scene.get_mesh_instances(),
                   .index_pools = rg.get_variable(rcs.index_pools),
                   .pipelines = &scene.get_pipelines(),
                   .draw_size = scene.get_draw_size(),
@@ -334,9 +336,9 @@ void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
           OpaqueMeshPassClass::BeginInfo{
               .base =
                   {
-                      .host_meshes = scene.get_meshes(),
-                      .host_materials = scene.get_materials(),
-                      .host_mesh_instances = scene.get_mesh_instances(),
+                      .host_meshes = &scene.get_meshes(),
+                      .host_materials = &scene.get_materials(),
+                      .host_mesh_instances = &scene.get_mesh_instances(),
                       .index_pools = rg.get_variable(rcs.index_pools),
                       .pipelines = &scene.get_pipelines(),
                       .draw_size = scene.get_draw_size(),

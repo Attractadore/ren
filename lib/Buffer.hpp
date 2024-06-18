@@ -1,8 +1,8 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Handle.hpp"
-#include "Support/StdDef.hpp"
+#include "Support/GenIndex.hpp"
 #include "Support/Hash.hpp"
+#include "Support/StdDef.hpp"
 
 #include <vk_mem_alloc.h>
 
@@ -52,10 +52,9 @@ public:
     return subbuffer(sizeof(T) * start);
   }
 
-  bool operator==(const BufferView&) const = default;
+  bool operator==(const BufferView &) const = default;
 };
 
 REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, size);
-
 
 } // namespace ren

@@ -74,22 +74,27 @@ auto Scene::get_draw_size() const -> u32 { return m_draw_size; }
 
 auto Scene::get_num_draw_meshlets() const -> u32 { return m_num_draw_meshlets; }
 
-auto Scene::get_meshes() const -> Span<const Mesh> { return m_meshes; }
+auto Scene::get_meshes() const -> const GenArray<Mesh> & { return m_meshes; }
 
 auto Scene::get_index_pools() const -> Span<const IndexPool> {
   return m_index_pools;
 }
 
-auto Scene::get_materials() const -> Span<const Material> {
+auto Scene::get_materials() const -> const GenArray<Material> & {
   return m_materials;
 }
 
-auto Scene::get_mesh_instances() const -> Span<const MeshInstance> {
-  return m_mesh_instances.values();
+auto Scene::get_mesh_instances() const -> const GenArray<MeshInstance> & {
+  return m_mesh_instances;
 }
 
-auto Scene::get_directional_lights() const -> Span<const glsl::DirLight> {
-  return m_dir_lights.values();
+auto Scene::get_mesh_instance_transforms() const
+    -> const GenMap<glm::mat4x3, Handle<MeshInstance>> & {
+  return m_mesh_instance_transforms;
+}
+
+auto Scene::get_directional_lights() const -> const GenArray<glsl::DirLight> & {
+  return m_dir_lights;
 }
 
 bool Scene::is_frustum_culling_enabled() const {
@@ -224,10 +229,9 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       m_renderer->get_buffer_view(index_pool.indices)
           .slice<u8>(base_triangle, num_triangles * 3));
 
-  auto key = std::bit_cast<MeshId>(index);
-  m_meshes.push_back(mesh);
+  Handle<Mesh> h = m_meshes.insert(mesh);
 
-  return key;
+  return std::bit_cast<MeshId>(h);
 }
 
 auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
@@ -240,7 +244,7 @@ auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
 }
 
 auto Scene::get_or_create_texture(
-    ImageId image, const SamplerDesc &sampler_desc) -> SampledTextureId {
+    Handle<Image> image, const SamplerDesc &sampler_desc) -> SampledTextureId {
   TextureView view = m_renderer->get_texture_view(m_images[image]);
   Handle<Sampler> sampler = get_or_create_sampler({
       .mag_filter = getVkFilter(sampler_desc.mag_filter),
@@ -269,22 +273,21 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
   m_resource_uploader.stage_texture(*m_renderer, m_frame_arena,
                                     Span((const std::byte *)desc.data, size),
                                     texture);
-  auto image = std::bit_cast<ImageId>(u32(m_images.size()));
-  m_images.push_back(std::move(texture));
-  return image;
+  Handle<Image> h = m_images.insert(texture);
+  return std::bit_cast<ImageId>(h);
 }
 
 auto Scene::create_material(const MaterialCreateInfo &desc)
     -> expected<MaterialId> {
   auto get_sampled_texture_id = [&](const auto &texture) -> u32 {
     if (texture.image) {
-      return get_or_create_texture(texture.image, texture.sampler);
+      return get_or_create_texture(std::bit_cast<Handle<Image>>(texture.image),
+                                   texture.sampler);
     }
     return 0;
   };
 
-  auto id = std::bit_cast<MaterialId>(u32(m_materials.size()));
-  m_materials.push_back({
+  Handle<glsl::Material> h = m_materials.insert({
       .base_color = desc.base_color_factor,
       .base_color_texture = get_sampled_texture_id(desc.base_color_texture),
       .metallic = desc.metallic_factor,
@@ -295,7 +298,8 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
       .normal_scale = desc.normal_texture.scale,
   });
 
-  return id;
+  return std::bit_cast<MaterialId>(h);
+  ;
 }
 
 auto Scene::create_camera() -> expected<CameraId> {
@@ -360,12 +364,14 @@ auto Scene::create_mesh_instances(
   for (usize i : range(create_info.size())) {
     ren_assert(create_info[i].mesh);
     ren_assert(create_info[i].material);
-    const Mesh &mesh = m_meshes[create_info[i].mesh];
+    const Mesh &mesh =
+        m_meshes[std::bit_cast<Handle<Mesh>>(create_info[i].mesh)];
     Handle<MeshInstance> mesh_instance = m_mesh_instances.insert({
-        .mesh = create_info[i].mesh,
-        .material = create_info[i].material,
-        .matrix = glsl::make_decode_position_matrix(mesh.pos_enc_bb),
+        .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
+        .material = std::bit_cast<Handle<Material>>(create_info[i].material),
     });
+    m_mesh_instance_transforms.insert(
+        mesh_instance, glsl::make_decode_position_matrix(mesh.pos_enc_bb));
     out[i] = std::bit_cast<MeshInstanceId>(mesh_instance);
   }
   return {};
@@ -383,11 +389,11 @@ void Scene::set_mesh_instance_transforms(
     std::span<const glm::mat4x3> matrices) {
   ren_assert(mesh_instances.size() == matrices.size());
   for (usize i : range(mesh_instances.size())) {
-    MeshInstance &mesh_instance =
-        m_mesh_instances[std::bit_cast<Handle<MeshInstance>>(
-            mesh_instances[i])];
-    const Mesh &mesh = m_meshes[mesh_instance.mesh];
-    mesh_instance.matrix =
+    auto h = std::bit_cast<Handle<MeshInstance>>(mesh_instances[i]);
+    MeshInstance &mesh_instance = m_mesh_instances[h];
+    const Mesh &mesh =
+        m_meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
+    m_mesh_instance_transforms[h] =
         matrices[i] * glsl::make_decode_position_matrix(mesh.pos_enc_bb);
   }
 }
@@ -580,7 +586,8 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
       .wrap_u = WrappingMode::Repeat,
       .wrap_v = WrappingMode::Repeat,
   };
-  SampledTextureId texture = get_or_create_texture(image, desc);
+  SampledTextureId texture =
+      get_or_create_texture(std::bit_cast<Handle<Image>>(image), desc);
   // NOTE: texture from old context is leaked. Don't really care since context
   // will probably be set only once
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
