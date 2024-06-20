@@ -45,6 +45,7 @@ AppBase::AppBase(const char *app_name) {
     OK(m_scene, m_renderer->create_scene(*m_swapchain));
 
     OK(m_camera, m_scene->create_camera());
+    m_scene->set_camera(m_camera);
 
     return {};
   }()
