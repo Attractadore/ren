@@ -42,7 +42,7 @@ auto get_num_dispatch_groups(glm::uvec3 size,
 
 CommandRecorder::CommandRecorder(Renderer &renderer,
                                  VkCommandBuffer cmd_buffer) {
-  assert(cmd_buffer);
+  ren_assert(cmd_buffer);
   m_renderer = &renderer;
   m_cmd_buffer = cmd_buffer;
   VkCommandBufferBeginInfo begin_info = {
@@ -67,7 +67,7 @@ void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
 
 void CommandRecorder::copy_buffer(const BufferView &src,
                                   const BufferView &dst) {
-  assert(src.size <= dst.size);
+  ren_assert(src.size <= dst.size);
   copy_buffer(src.buffer, dst.buffer,
               {{
                   .srcOffset = src.offset,
@@ -88,7 +88,7 @@ void CommandRecorder::copy_buffer_to_texture(
 void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
                                              Handle<Texture> dst, u32 level) {
   const Texture &texture = m_renderer->get_texture(dst);
-  assert(level < texture.num_mip_levels);
+  ren_assert(level < texture.num_mip_levels);
   copy_buffer_to_texture(
       src.buffer, dst,
       {{
@@ -104,16 +104,16 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
 }
 
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
-  assert(view.offset % sizeof(u32) == 0);
-  assert(view.size % sizeof(u32) == 0);
+  ren_assert(view.offset % sizeof(u32) == 0);
+  ren_assert(view.size % sizeof(u32) == 0);
   vkCmdFillBuffer(m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle,
                   view.offset, view.size, value);
 };
 
 void CommandRecorder::update_buffer(const BufferView &view,
                                     TempSpan<const std::byte> data) {
-  assert(view.size >= data.size());
-  assert(data.size() % 4 == 0);
+  ren_assert(view.size >= data.size());
+  ren_assert(data.size() % 4 == 0);
   vkCmdUpdateBuffer(m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle,
                     view.offset, view.size, data.data());
 }
@@ -508,7 +508,7 @@ void ComputePass::dispatch_indirect(const BufferView &view) {
 DebugRegion::DebugRegion(VkCommandBuffer cmd_buffer, const char *label) {
   m_cmd_buffer = cmd_buffer;
 #if REN_DEBUG_NAMES
-  assert(label);
+  ren_assert(label);
   VkDebugUtilsLabelEXT label_info = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pLabelName = label,

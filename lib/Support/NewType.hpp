@@ -1,36 +1,37 @@
 #pragma once
 #include "Support/Hash.hpp"
+#include "Support/StdDef.hpp"
 
-#define REN_NEW_TYPE(Name, Type)                                               \
-  class Name {                                                                 \
-    Type value = {};                                                           \
+#define REN_NEW_TYPE(NewType, BaseType)                                        \
+  class NewType {                                                              \
+    BaseType m_value = {};                                                     \
                                                                                \
   public:                                                                      \
-    Name() = default;                                                          \
-    explicit Name(Type value) noexcept : value(std::move(value)) {}            \
+    NewType() = default;                                                       \
+    explicit NewType(BaseType value) noexcept : m_value(std::move(value)) {}   \
                                                                                \
-    operator Type() const noexcept { return value; }                           \
+    operator BaseType() const noexcept { return m_value; }                     \
   };                                                                           \
                                                                                \
-  template <> struct Hash<Name> {                                              \
-    auto operator()(const Name &value) const noexcept -> std::size_t {         \
-      return Hash<Type>()(value);                                              \
+  template <> struct Hash<NewType> {                                           \
+    auto operator()(const NewType &value) const noexcept -> u64 {              \
+      return Hash<BaseType>()(value);                                          \
     }                                                                          \
   }
 
-#define REN_NEW_TEMPLATE_TYPE(Name, Type, T)                                   \
-  template <typename T> class Name {                                           \
-    Type value = {};                                                           \
+#define REN_NEW_TEMPLATE_TYPE(NewType, BaseType, T)                            \
+  template <typename T> class NewType {                                        \
+    BaseType m_value = {};                                                     \
                                                                                \
   public:                                                                      \
-    Name() = default;                                                          \
-    explicit Name(Type value) noexcept : value(std::move(value)) {}            \
+    NewType() = default;                                                       \
+    explicit NewType(BaseType value) noexcept : m_value(std::move(value)) {}   \
                                                                                \
-    operator Type() const noexcept { return value; }                           \
+    operator BaseType() const noexcept { return m_value; }                     \
   };                                                                           \
                                                                                \
-  template <typename T> struct Hash<Name<T>> {                                 \
-    auto operator()(const Name<T> &value) const noexcept -> std::size_t {      \
-      return Hash<Type>()(value);                                              \
+  template <typename T> struct Hash<NewType<T>> {                              \
+    auto operator()(const NewType<T> &value) const noexcept -> u64 {           \
+      return Hash<BaseType>()(value);                                          \
     }                                                                          \
   }

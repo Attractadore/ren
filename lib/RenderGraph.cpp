@@ -351,7 +351,7 @@ void RenderGraph::place_barriers() {
       // First barrier isn't required and can be skipped
       bool is_first_access = src_stage_mask == VK_PIPELINE_STAGE_2_NONE;
       if (is_first_access) {
-        assert(src_access_mask == VK_PIPELINE_STAGE_2_NONE);
+        ren_assert(src_access_mask == VK_PIPELINE_STAGE_2_NONE);
         return;
       }
 
@@ -374,10 +374,10 @@ void RenderGraph::place_barriers() {
       VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
       VkAccessFlags2 dst_access_mask = use.usage.access_mask;
       VkImageLayout dst_layout = use.usage.layout;
-      assert(dst_layout);
+      ren_assert(dst_layout);
       if (dst_layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-        assert(dst_stage_mask);
-        assert(dst_access_mask);
+        ren_assert(dst_stage_mask);
+        ren_assert(dst_access_mask);
       }
 
       VkImageLayout &src_layout = texture_layouts[physical_texture];
@@ -411,7 +411,7 @@ void RenderGraph::place_barriers() {
               dst_stage_mask;
         }
 
-        assert(src_stage_mask != VK_PIPELINE_STAGE_2_NONE);
+        ren_assert(src_stage_mask != VK_PIPELINE_STAGE_2_NONE);
 
         m_memory_barriers.push_back({
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,

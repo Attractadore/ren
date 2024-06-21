@@ -42,37 +42,27 @@ void set_debug_name(VkDevice device, T object, const DebugName &name) {
 
 } // namespace
 
-auto Renderer::getRequiredLayers() noexcept -> Span<const char *const> {
-  static constexpr auto layers = makeArray<const char *>(
-#if REN_VULKAN_VALIDATION
-      "VK_LAYER_KHRONOS_validation"
-#endif
-  );
-  return layers;
-}
-
-auto Renderer::getInstanceExtensions() noexcept -> Span<const char *const> {
-  static constexpr auto extensions = makeArray<const char *>(
-#if REN_DEBUG_NAMES
-      VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-#endif
-  );
-  return extensions;
-}
-
 namespace {
 
 auto create_instance(Span<const char *const> external_extensions)
     -> UniqueInstance {
   VkApplicationInfo application_info = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .apiVersion = Renderer::getRequiredAPIVersion(),
+      .apiVersion = VK_API_VERSION_1_3,
   };
 
-  auto layers = Renderer::getRequiredLayers();
+  auto layers = make_array<const char *>(
+#if REN_VULKAN_VALIDATION
+      "VK_LAYER_KHRONOS_validation"
+#endif
+  );
 
   SmallVector<const char *> extensions(external_extensions);
-  extensions.append(Renderer::getInstanceExtensions());
+  extensions.append(make_array<const char *>(
+#if REN_DEBUG_NAMES
+      VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+#endif
+      ));
 
   VkInstanceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -245,7 +235,7 @@ auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
       .device = device,
       .pVulkanFunctions = &vk,
       .instance = instance,
-      .vulkanApiVersion = Renderer::getRequiredAPIVersion(),
+      .vulkanApiVersion = VK_API_VERSION_1_3,
   };
 
   VmaAllocator allocator;
@@ -394,7 +384,7 @@ auto Renderer::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
 
 auto Renderer::get_descriptor_pool(Handle<DescriptorPool> pool) const
     -> const DescriptorPool & {
-  assert(m_descriptor_pools.contains(pool));
+  ren_assert(m_descriptor_pools.contains(pool));
   return m_descriptor_pools[pool];
 }
 
@@ -467,7 +457,7 @@ auto Renderer::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
 
 auto Renderer::get_descriptor_set_layout(
     Handle<DescriptorSetLayout> layout) const -> const DescriptorSetLayout & {
-  assert(m_descriptor_set_layouts.contains(layout));
+  ren_assert(m_descriptor_set_layouts.contains(layout));
   return m_descriptor_set_layouts[layout];
 }
 
@@ -520,7 +510,7 @@ void Renderer::write_descriptor_sets(
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Handle<Buffer> {
-  assert(create_info.size > 0);
+  ren_assert(create_info.size > 0);
 
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -597,7 +587,7 @@ auto Renderer::try_get_buffer(Handle<Buffer> buffer) const
 };
 
 auto Renderer::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
-  assert(m_buffers.contains(buffer));
+  ren_assert(m_buffers.contains(buffer));
   return m_buffers[buffer];
 };
 
@@ -621,11 +611,11 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
 
 auto Renderer::create_texture(const TextureCreateInfo &&create_info)
     -> Handle<Texture> {
-  assert(create_info.width > 0);
-  assert(create_info.height > 0);
-  assert(create_info.depth > 0);
-  assert(create_info.num_mip_levels > 0);
-  assert(create_info.num_array_layers > 0);
+  ren_assert(create_info.width > 0);
+  ren_assert(create_info.height > 0);
+  ren_assert(create_info.depth > 0);
+  ren_assert(create_info.num_mip_levels > 0);
+  ren_assert(create_info.num_array_layers > 0);
 
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -699,7 +689,7 @@ auto Renderer::try_get_texture(Handle<Texture> texture) const
 }
 
 auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
-  assert(m_textures.contains(texture));
+  ren_assert(m_textures.contains(texture));
   return m_textures[texture];
 }
 
@@ -761,40 +751,46 @@ auto Renderer::get_texture_view(Handle<Texture> handle) const -> TextureView {
 auto Renderer::get_texture_view_size(const TextureView &view,
                                      u32 mip_level_offset) const -> glm::uvec3 {
   const Texture &texture = get_texture(view.texture);
-  assert(view.first_mip_level + mip_level_offset < texture.num_mip_levels);
+  ren_assert(view.first_mip_level + mip_level_offset < texture.num_mip_levels);
   return get_size_at_mip_level(texture.size,
                                view.first_mip_level + mip_level_offset);
 }
 
 auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
-  auto [it, inserted] = m_image_views[view.texture].insert(view, nullptr);
-  auto &image_view = std::get<1>(*it);
-  if (inserted) {
-    VkImageViewCreateInfo view_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = get_texture(view.texture).image,
-        .viewType = view.type,
-        .format = view.format,
-        .components =
-            {
-                .r = view.swizzle.r,
-                .g = view.swizzle.g,
-                .b = view.swizzle.b,
-                .a = view.swizzle.a,
-            },
-        .subresourceRange =
-            {
-                .aspectMask = getVkImageAspectFlags(view.format),
-                .baseMipLevel = view.first_mip_level,
-                .levelCount = view.num_mip_levels,
-                .baseArrayLayer = view.first_array_layer,
-                .layerCount = view.num_array_layers,
-            },
-    };
-    throw_if_failed(
-        vkCreateImageView(get_device(), &view_info, nullptr, &image_view),
-        "Vulkan: Failed to create image view");
+  auto &image_views = m_image_views[view.texture];
+
+  [[likely]] if (Optional<VkImageView> image_view = image_views.get(view)) {
+    return *image_view;
   }
+
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = get_texture(view.texture).image,
+      .viewType = view.type,
+      .format = view.format,
+      .components =
+          {
+              .r = view.swizzle.r,
+              .g = view.swizzle.g,
+              .b = view.swizzle.b,
+              .a = view.swizzle.a,
+          },
+      .subresourceRange =
+          {
+              .aspectMask = getVkImageAspectFlags(view.format),
+              .baseMipLevel = view.first_mip_level,
+              .levelCount = view.num_mip_levels,
+              .baseArrayLayer = view.first_array_layer,
+              .layerCount = view.num_array_layers,
+          },
+  };
+  VkImageView image_view;
+  throw_if_failed(
+      vkCreateImageView(get_device(), &view_info, nullptr, &image_view),
+      "Vulkan: Failed to create image view");
+
+  image_views.insert(view, image_view);
+
   return image_view;
 }
 
@@ -834,7 +830,7 @@ void Renderer::destroy(Handle<Sampler> sampler) {
 }
 
 auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
-  assert(m_samplers.contains(sampler));
+  ren_assert(m_samplers.contains(sampler));
   return m_samplers[sampler];
 }
 
@@ -889,7 +885,7 @@ void Renderer::wait_for_semaphore(const Semaphore &semaphore,
                                   uint64_t value) const {
   auto result = wait_for_semaphore(semaphore, value,
                                    std::chrono::nanoseconds(UINT64_MAX));
-  assert(result == VK_SUCCESS);
+  ren_assert(result == VK_SUCCESS);
 }
 
 auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const
@@ -899,7 +895,7 @@ auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const
 
 auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
     -> const Semaphore & {
-  assert(m_semaphores.contains(semaphore));
+  ren_assert(m_semaphores.contains(semaphore));
   return m_semaphores[semaphore];
 }
 
@@ -931,7 +927,7 @@ void Renderer::queueSubmit(
 
 static auto create_shader_module(VkDevice device,
                                  std::span<const std::byte> code) {
-  assert(code.size() % sizeof(u32) == 0);
+  ren_assert(code.size() % sizeof(u32) == 0);
   VkShaderModuleCreateInfo module_info = {
       .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
       .codeSize = code.size(),
@@ -1143,7 +1139,7 @@ auto Renderer::try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline)
 
 auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
     -> const GraphicsPipeline & {
-  assert(m_graphics_pipelines.contains(pipeline));
+  ren_assert(m_graphics_pipelines.contains(pipeline));
   return m_graphics_pipelines[pipeline];
 }
 
@@ -1191,7 +1187,7 @@ auto Renderer::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
 
 auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
     -> const ComputePipeline & {
-  assert(m_compute_pipelines.contains(pipeline));
+  ren_assert(m_compute_pipelines.contains(pipeline));
   return m_compute_pipelines[pipeline];
 }
 
@@ -1238,7 +1234,7 @@ auto Renderer::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
 
 auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
     -> const PipelineLayout & {
-  assert(m_pipeline_layouts.contains(layout));
+  ren_assert(m_pipeline_layouts.contains(layout));
   return m_pipeline_layouts[layout];
 }
 

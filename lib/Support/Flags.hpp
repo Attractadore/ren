@@ -1,26 +1,20 @@
 #pragma once
-#include <concepts>
+#include <type_traits>
 
 namespace ren {
-namespace detail {
+
 template <typename E>
-concept ScopedEnum = not std::convertible_to<E, std::underlying_type_t<E>>;
-
-enum class TestEnumClass {};
-static_assert(ScopedEnum<TestEnumClass>);
-enum TestEnum {};
-static_assert(not ScopedEnum<TestEnum>);
-
-template <ScopedEnum E> constexpr bool EnableFlags = false;
+  requires std::is_scoped_enum_v<E>
+constexpr bool ENABLE_ENUM_FLAGS = false;
 
 struct EmptyFlagsT {};
-} // namespace detail
-constexpr detail::EmptyFlagsT EmptyFlags;
+
+inline constexpr EmptyFlagsT EmptyFlags;
 
 template <typename E>
-concept FlagsEnum = detail::EnableFlags<E>;
+concept CFlagsEnum = ENABLE_ENUM_FLAGS<E>;
 
-template <FlagsEnum E> class Flags {
+template <CFlagsEnum E> class Flags {
   E m_value = E(0);
 
 public:
@@ -28,47 +22,51 @@ public:
   using Underlying = std::underlying_type_t<E>;
 
   constexpr Flags() noexcept = default;
-  constexpr Flags(decltype(EmptyFlags)) noexcept {}
+  constexpr Flags(EmptyFlagsT) noexcept {}
   constexpr Flags(Enum e) noexcept : m_value{e} {}
 
-  constexpr Enum operator&(Enum e) const noexcept {
+  constexpr Enum operator&(Enum bit) const noexcept {
     return static_cast<Enum>(static_cast<Underlying>(m_value) &
-                             static_cast<Underlying>(e));
+                             static_cast<Underlying>(bit));
   }
 
-  constexpr Flags operator&(Flags f) const noexcept {
+  constexpr Flags operator&(Flags mask) const noexcept {
     return static_cast<Enum>(static_cast<Underlying>(m_value) &
-                             static_cast<Underlying>(f.m_value));
+                             static_cast<Underlying>(mask.m_value));
   }
 
-  constexpr Flags &operator&=(Flags f) noexcept { return *this = *this & f; }
+  constexpr Flags &operator&=(Flags mask) noexcept {
+    return *this = *this & mask;
+  }
 
-  constexpr Flags operator|(Flags f) const noexcept {
+  constexpr Flags operator|(Flags mask) const noexcept {
     return static_cast<Enum>(static_cast<Underlying>(m_value) |
-                             static_cast<Underlying>(f.m_value));
+                             static_cast<Underlying>(mask.m_value));
   }
 
-  constexpr Flags &operator|=(Flags f) noexcept { return *this = *this | f; }
+  constexpr Flags &operator|=(Flags mask) noexcept {
+    return *this = *this | mask;
+  }
 
-  constexpr bool isSet(Enum bit) const noexcept {
+  constexpr bool is_set(Enum bit) const noexcept {
     return static_cast<Underlying>(*this & bit);
   }
 
-  constexpr bool anySet(Flags mask) const noexcept {
+  constexpr bool is_any_set(Flags mask) const noexcept {
     return (*this & mask) != EmptyFlags;
   }
 
-  constexpr bool allSet(Flags mask) const noexcept {
+  constexpr bool is_all_set(Flags mask) const noexcept {
     return (*this & mask) == mask;
   }
 
-  constexpr bool noneSet(Flags mask) const noexcept {
+  constexpr bool is_none_set(Flags mask) const noexcept {
     return (*this & mask) == EmptyFlags;
   }
 
-  constexpr bool isSubset(Flags super_set) const noexcept {
-    auto intersect = *this & super_set;
-    return intersect and *this == intersect;
+  constexpr bool is_subset(Flags mask) const noexcept {
+    auto intersect = *this & mask;
+    return intersect and (*this) == intersect;
   }
 
   constexpr Enum get() const noexcept { return m_value; }
@@ -80,39 +78,36 @@ public:
   constexpr auto operator<=>(const Flags &) const noexcept = default;
 };
 
-template <FlagsEnum E> constexpr E operator&(E l, E r) {
+template <CFlagsEnum E> constexpr E operator&(E l, E r) {
   using U = std::underlying_type_t<E>;
   return static_cast<E>(static_cast<U>(l) & static_cast<U>(r));
 }
 
-template <FlagsEnum E> constexpr E operator&(E l, Flags<E> r) { return r & l; }
+template <CFlagsEnum E> constexpr E operator&(E l, Flags<E> r) { return r & l; }
 
-template <FlagsEnum E> constexpr Flags<E> operator|(E l, E r) {
+template <CFlagsEnum E> constexpr Flags<E> operator|(E l, E r) {
   return Flags(l) | Flags(r);
 }
 
-template <FlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
+template <CFlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
   return r | l;
 }
 
-#define ENABLE_FLAGS(E)                                                        \
-  namespace detail {                                                           \
-  template <> constexpr inline bool EnableFlags<E> = true;                     \
-  }                                                                            \
+#define REN_ENABLE_ENUM_FLAGS(E)                                               \
+  template <> inline constexpr bool ENABLE_ENUM_FLAGS<E> = true;               \
   using E##Flags = Flags<E>
 
-// clang-format off
-#define BEGIN_FLAGS_ENUM(E)                                                    \
-  namespace detail::E##_impl {                                                 \
-    constexpr auto first = __LINE__;                                           \
+#define REN_BEGIN_FLAGS_ENUM(E)                                                \
+  namespace detail::E##Impl {                                                  \
+    constexpr auto FIRST = __LINE__;                                           \
     enum class E
 
-#define FLAG(flag) flag = 1 << (__LINE__ - first - 1)
+#define REN_FLAG(Flag) Flag = 1 << (__LINE__ - FIRST - 1)
 
-#define END_FLAGS_ENUM(E)                                                      \
+#define REN_END_FLAGS_ENUM(E)                                                  \
   ;                                                                            \
   }                                                                            \
-  using E = detail::E##_impl::E;                                               \
-  ENABLE_FLAGS(E)
-// clang-format on
+  using E = detail::E##Impl::E;                                                \
+  REN_ENABLE_ENUM_FLAGS(E)
+
 } // namespace ren

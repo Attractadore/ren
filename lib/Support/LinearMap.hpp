@@ -1,154 +1,81 @@
 #pragma once
+#include "Optional.hpp"
+#include "StdDef.hpp"
+#include "TypeTraits.hpp"
 #include "Vector.hpp"
 
 #include <ranges>
-#include <utility>
 
 namespace ren {
+
 namespace detail {
-template <typename K, typename V, class Compare,
-          template <typename...> typename Container>
+
+template <typename K, typename V, typename Compare, typename KeyContainer,
+          typename ValueContainer>
 class LinearMapImpl {
-  Container<K> m_keys;
-  Container<V> m_values;
-
-private:
-  using items_t = decltype(std::views::zip(std::declval<Container<K> &>(),
-                                           std::declval<Container<V> &>()));
-  using const_items_t =
-      decltype(std::views::zip(std::declval<const Container<K> &>(),
-                               std::declval<const Container<V> &>()));
-
-  constexpr items_t items() noexcept {
-    return std::views::zip(m_keys, m_values);
-  }
-
-  constexpr const_items_t items() const noexcept {
-    return std::views::zip(m_keys, m_values);
-  }
-
 public:
-  using key_type = K;
-  using value_type = V;
-  using iterator = std::ranges::iterator_t<items_t>;
-  using const_iterator = std::ranges::iterator_t<const_items_t>;
+  auto size() const -> usize { return m_keys.size(); }
 
-  constexpr auto keys() noexcept { return items() | std::views::keys; }
-  constexpr auto keys() const noexcept { return items() | std::views::keys; }
-  constexpr auto values() noexcept { return items() | std::views::values; }
-  constexpr auto values() const noexcept {
-    return items() | std::views::values;
+  bool empty() const { return size() == 0; }
+
+  template <typename Self> auto begin(this Self &self) {
+    return std::ranges::begin(std::views::zip(self.m_keys, self.m_values));
   }
 
-  constexpr size_t size() const noexcept { return items().size(); }
-
-  constexpr iterator begin() noexcept { return std::ranges::begin(items()); }
-  constexpr const_iterator begin() const noexcept {
-    return std::ranges::begin(items());
-  }
-  constexpr const_iterator cbegin() const noexcept {
-    return std::ranges::begin(items());
+  template <typename Self> auto end(this Self &self) {
+    return std::ranges::end(std::views::zip(self.m_keys, self.m_values));
   }
 
-  constexpr iterator end() noexcept { return std::ranges::end(items()); }
-  constexpr const_iterator end() const noexcept {
-    return std::ranges::end(items());
-  }
-  constexpr const_iterator cend() const noexcept {
-    return std::ranges::end(items());
-  }
-
-  constexpr const value_type *data() const noexcept { return m_values.data(); }
-
-  constexpr iterator find(const key_type &key) noexcept {
-    return begin() + std::ranges::distance(keys().begin(),
-                                           std::ranges::find(keys(), key));
+  template <typename Self> auto find(this Self &self, const K &find_key) {
+    return self.begin() +
+           std::ranges::distance(
+               self.m_keys.begin(),
+               std::ranges::find_if(self.m_keys, [&](const K &key) {
+                 return self.m_compare(key, find_key);
+               }));
   }
 
-  constexpr const_iterator find(const key_type &key) const noexcept {
-    return begin() + std::ranges::distance(keys().begin(),
-                                           std::ranges::find(keys(), key));
-  }
-
-  constexpr std::pair<iterator, bool> insert(const key_type &key,
-                                             const value_type &value) {
-    auto it = find(key);
-    if (it != end()) {
-      return {it, false};
-    }
+  void insert(K key, V value) {
+    ren_assert(find(key) == end());
     m_keys.push_back(key);
     m_values.push_back(value);
-    return {--end(), true};
   }
 
-  constexpr std::pair<iterator, bool> insert(key_type &&key,
-                                             const value_type &value) {
-    auto it = find(key);
-    if (it != end()) {
-      return {it, false};
-    }
-    m_keys.push_back(std::move(key));
-    m_values.push_back(value);
-    return {--end(), true};
+  template <typename Self>
+  auto operator[](this Self &self, const K &key) -> ConstLikeT<V, Self> & {
+    auto it = self.find(key);
+    ren_assert(it != self.end());
+    return std::get<1>(*it);
   }
 
-  constexpr std::pair<iterator, bool> insert(const key_type &key,
-                                             value_type &&value) {
-    auto it = find(key);
-    if (it != end()) {
-      return {it, false};
-    }
-    m_keys.push_back(key);
-    m_values.push_back(std::move(value));
-    return {--end(), true};
-  }
-
-  constexpr std::pair<iterator, bool> insert(key_type &&key,
-                                             value_type &&value) {
-    auto it = find(key);
-    if (it != end()) {
-      return {it, false};
-    }
-    m_keys.push_back(std::move(key));
-    m_values.push_back(std::move(value));
-    return {--end(), true};
-  }
-
-  constexpr value_type &operator[](const key_type &key)
-    requires std::default_initializable<value_type>
-  {
-    auto it = find(key);
-    if (it != end()) {
+  template <typename Self>
+  auto get(this Self &self, const K &key) -> Optional<ConstLikeT<V, Self> &> {
+    auto it = self.find(key);
+    if (it != self.end()) {
       return std::get<1>(*it);
-    }
-    m_keys.push_back(key);
-    return m_values.emplace_back();
+    };
+    return None;
   }
 
-  constexpr value_type &operator[](key_type &&key)
-    requires std::default_initializable<value_type>
-  {
-    auto it = find(key);
-    if (it != end()) {
-      return std::get<1>(*it);
-    }
-    m_keys.push_back(std::move(key));
-    return m_values.emplace_back();
-  }
-
-  constexpr void clear() noexcept {
+  void clear() {
     m_keys.clear();
     m_values.clear();
   }
+
+private:
+  KeyContainer m_keys;
+  ValueContainer m_values;
+  [[no_unique_address]] Compare m_compare;
 };
+
 } // namespace detail
 
 template <typename K, typename V, class Compare = std::ranges::equal_to>
-using LinearMap = detail::LinearMapImpl<K, V, Compare, Vector>;
+using LinearMap = detail::LinearMapImpl<K, V, Compare, Vector<K>, Vector<V>>;
 
-template <typename K, typename V, size_t N,
+template <typename K, typename V, usize N,
           class Compare = std::ranges::equal_to>
 using SmallLinearMap =
-    detail::LinearMapImpl<K, V, Compare,
-                          detail::SizedSmallVector<N>::template type>;
+    detail::LinearMapImpl<K, V, Compare, SmallVector<K, N>, SmallVector<V, N>>;
+
 } // namespace ren

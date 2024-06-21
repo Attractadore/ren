@@ -55,7 +55,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
 auto create_pipeline_layout(ResourceArena &arena,
                             Handle<DescriptorSetLayout> persistent_set_layout,
                             TempSpan<const Span<const std::byte>> shaders,
-                            std::string_view name) -> Handle<PipelineLayout> {
+                            StringView name) -> Handle<PipelineLayout> {
   VkPushConstantRange push_constants = {};
 
   for (auto code : shaders) {
@@ -70,7 +70,7 @@ auto create_pipeline_layout(ResourceArena &arena,
     throw_if_failed(
         shader.EnumeratePushConstantBlocks(&num_push_constants, nullptr),
         "SPIRV-Reflect: Failed to enumerate push constants");
-    assert(num_push_constants <= 1);
+    ren_assert(num_push_constants <= 1);
     if (num_push_constants) {
       SpvReflectBlockVariable *block_var;
       throw_if_failed(
@@ -96,7 +96,7 @@ auto create_pipeline_layout(ResourceArena &arena,
 auto load_compute_pipeline(ResourceArena &arena,
                            Handle<DescriptorSetLayout> persistent_set_layout,
                            Span<const std::byte> shader,
-                           std::string_view name) -> Handle<ComputePipeline> {
+                           StringView name) -> Handle<ComputePipeline> {
   auto layout =
       create_pipeline_layout(arena, persistent_set_layout, {shader}, name);
   return arena.create_compute_pipeline({
@@ -171,9 +171,9 @@ auto load_opaque_pass_pipelines(
   for (int i = 0; i < glsl::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
     MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
     std::array<SpecConstant, 3> spec_constants = {{
-        {glsl::S_OPAQUE_FEATURE_VC, flags.isSet(MeshAttribute::Color)},
-        {glsl::S_OPAQUE_FEATURE_TS, flags.isSet(MeshAttribute::Tangent)},
-        {glsl::S_OPAQUE_FEATURE_UV, flags.isSet(MeshAttribute::UV)},
+        {glsl::S_OPAQUE_FEATURE_VC, flags.is_set(MeshAttribute::Color)},
+        {glsl::S_OPAQUE_FEATURE_TS, flags.is_set(MeshAttribute::Tangent)},
+        {glsl::S_OPAQUE_FEATURE_UV, flags.is_set(MeshAttribute::UV)},
     }};
     pipelines[i] = arena.create_graphics_pipeline({
         .name = fmt::format("Opaque pass graphics pipeline {}", i),

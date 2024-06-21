@@ -30,8 +30,7 @@ public:
   template <typename T>
   void stage_buffer(Renderer &renderer, ResourceArena &arena, Span<T> data,
                     const BufferView &buffer) {
-    stage_buffer(renderer, arena, data.template reinterpret<const std::byte>(),
-                 buffer);
+    stage_buffer(renderer, arena, data.as_bytes(), buffer);
   }
 
   void stage_buffer(Renderer &renderer, ResourceArena &arena,

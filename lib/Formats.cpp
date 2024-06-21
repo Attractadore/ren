@@ -1,4 +1,5 @@
 #include "Formats.hpp"
+#include "Support/Assert.hpp"
 #include "Support/Errors.hpp"
 
 namespace ren {
@@ -153,26 +154,27 @@ FormatProperties getFormatProperties(VkFormat format) {
 }
 
 bool isSRGBFormat(VkFormat format) {
-  return getFormatProperties(format).flags.isSet(FormatProperty::SRGB);
+  return getFormatProperties(format).flags.is_set(FormatProperty::SRGB);
 }
 
 bool isColorFormat(VkFormat format) {
-  return getFormatProperties(format).flags.isSet(FormatProperty::Color);
+  return getFormatProperties(format).flags.is_set(FormatProperty::Color);
 }
 
 bool isDepthFormat(VkFormat format) {
-  return getFormatProperties(format).flags.isSet(FormatProperty::Depth);
+  return getFormatProperties(format).flags.is_set(FormatProperty::Depth);
 }
 
 bool isStencilFormat(VkFormat format) {
-  return getFormatProperties(format).flags.isSet(FormatProperty::Stencil);
+  return getFormatProperties(format).flags.is_set(FormatProperty::Stencil);
 }
 
 VkFormat getSRGBFormat(VkFormat format) {
   using enum VkFormat;
   switch (format) {
   default: {
-    assert(not getFormatProperties(format).flags.isSet(FormatProperty::SRGB));
+    ren_assert(
+        not getFormatProperties(format).flags.is_set(FormatProperty::SRGB));
     unreachable("VkFormat {} doesn't have an SRGB counterpart", int(format));
   }
   case VK_FORMAT_R8G8B8A8_UNORM:

@@ -1,10 +1,11 @@
 #include "Buffer.hpp"
+#include "Support/Assert.hpp"
 
 namespace ren {
 
 auto BufferView::subbuffer(size_t offset, size_t size) const -> BufferView {
-  assert(offset <= this->size);
-  assert(offset + size <= this->size);
+  ren_assert(offset <= this->size);
+  ren_assert(offset + size <= this->size);
   return {
       .buffer = buffer,
       .offset = this->offset + offset,
@@ -13,7 +14,7 @@ auto BufferView::subbuffer(size_t offset, size_t size) const -> BufferView {
 }
 
 auto BufferView::subbuffer(size_t offset) const -> BufferView {
-  assert(offset <= this->size);
+  ren_assert(offset <= this->size);
   return subbuffer(offset, this->size - offset);
 }
 

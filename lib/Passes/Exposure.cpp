@@ -34,7 +34,7 @@ auto setup_camera_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
   pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
     float exposure = get_camera_exposure(scene->get_camera().params,
                                          scene->get_exposure_compensation());
-    assert(exposure > 0.0f);
+    ren_assert(exposure > 0.0f);
     cmd.clear_texture(rt.get_texture(exposure_token),
                       glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
   });
@@ -62,8 +62,8 @@ auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
 
 } // namespace
 
-auto setup_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
-    -> ExposurePassOutput {
+auto setup_exposure_pass(RgBuilder &rgb,
+                         NotNull<const Scene *> scene) -> ExposurePassOutput {
   switch (scene->get_exposure_mode()) {
   case ExposureMode::Camera:
     return setup_camera_exposure_pass(rgb, scene);

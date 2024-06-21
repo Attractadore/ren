@@ -1,7 +1,8 @@
 #pragma once
-#include "Errors.hpp"
+#include "Assert.hpp"
 #include "GenIndex.hpp"
 #include "Optional.hpp"
+#include "TypeTraits.hpp"
 
 #include <algorithm>
 #include <concepts>
@@ -80,33 +81,24 @@ public:
            GenIndex::is_active(key.gen);
   }
 
-  auto get(K key) const -> const T & {
-    ren_assert(contains(key));
-    return m_values[key];
+  template <typename Self>
+  auto get(this Self &self, K key) -> ConstLikeT<T, Self> & {
+    ren_assert(self.contains(key));
+    return self.m_values[key];
   }
 
-  auto get(K key) -> T & {
-    ren_assert(contains(key));
-    return m_values[key];
-  }
-
-  auto try_get(K key) const -> Optional<const T &> {
-    if (not contains(key)) {
+  template <typename Self>
+  auto try_get(this Self &self, K key) -> Optional<ConstLikeT<T, Self> &> {
+    if (not self.contains(key)) {
       return None;
     }
-    return m_values[key];
+    return self.m_values[key];
   }
 
-  auto try_get(K key) -> Optional<T &> {
-    if (not contains(key)) {
-      return None;
-    }
-    return m_values[key];
+  template <typename Self>
+  auto operator[](this Self &self, K key) -> ConstLikeT<T, Self> & {
+    return self.get(key);
   }
-
-  auto operator[](K key) const -> const T & { return get(key); }
-
-  auto operator[](K key) -> T & { return get(key); }
 
   void insert(K key, T value) {
     static_assert(GenIndex::INIT > GenIndex::TOMBSTONE);

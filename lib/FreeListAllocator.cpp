@@ -1,4 +1,5 @@
 #include "FreeListAllocator.hpp"
+#include "Support/Assert.hpp"
 
 namespace ren {
 
@@ -12,7 +13,7 @@ auto FreeListAllocator::allocate() -> unsigned {
 }
 
 void FreeListAllocator::free(unsigned idx) {
-  assert(idx);
+  ren_assert(idx);
   m_frame_freed[m_frame_index].push_back(idx);
 }
 

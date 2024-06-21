@@ -1,5 +1,5 @@
 #pragma once
-#include "Support/Enum.hpp"
+#include "Support/Flags.hpp"
 #include "Support/StdDef.hpp"
 #include "ren/ren.hpp"
 
@@ -7,8 +7,12 @@
 
 namespace ren {
 
-#define REN_FORMAT_PROPERTIES (Color)(SRGB)(Depth)(Stencil)
-REN_DEFINE_FLAGS_ENUM(FormatProperty, REN_FORMAT_PROPERTIES);
+REN_BEGIN_FLAGS_ENUM(FormatProperty){
+    REN_FLAG(Color),
+    REN_FLAG(SRGB),
+    REN_FLAG(Depth),
+    REN_FLAG(Stencil),
+} REN_END_FLAGS_ENUM(FormatProperty);
 
 struct FormatProperties {
   FormatPropertyFlags flags;

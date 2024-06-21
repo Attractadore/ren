@@ -1,7 +1,8 @@
 #pragma once
-#include "Errors.hpp"
+#include "Assert.hpp"
 #include "GenIndexPool.hpp"
 #include "Optional.hpp"
+#include "TypeTraits.hpp"
 
 #include <algorithm>
 #include <boost/iterator/iterator_facade.hpp>
@@ -57,21 +58,21 @@ public:
   }
 
 private:
-  template <bool> class IteratorImpl;
+  template <bool> class Iterator;
 
 public:
-  using const_iterator = IteratorImpl<true>;
-  using iterator = IteratorImpl<false>;
+  using const_iterator = Iterator<true>;
+  using iterator = Iterator<false>;
 
-  auto begin() const -> const_iterator {
-    return {m_indices.begin(), &m_values[0]};
+  template <typename Self>
+  auto begin(this Self &self) -> Iterator<std::is_const_v<Self>> {
+    return {self.m_indices.begin(), &self.m_values[0]};
   }
 
-  auto end() const -> const_iterator { return {m_indices.end(), &m_values[0]}; }
-
-  auto begin() -> iterator { return {m_indices.begin(), &m_values[0]}; }
-
-  auto end() -> iterator { return {m_indices.end(), &m_values[0]}; }
+  template <typename Self>
+  auto end(this Self &self) -> Iterator<std::is_const_v<Self>> {
+    return {self.m_indices.end(), &self.m_values[0]};
+  }
 
   auto size() const -> usize { return m_indices.size(); }
 
@@ -79,33 +80,24 @@ public:
 
   bool contains(K key) const { return m_indices.contains(key); }
 
-  auto get(K key) const -> const T & {
-    ren_assert(contains(key));
-    return m_values[key];
+  template <typename Self>
+  auto get(this Self &self, K key) -> ConstLikeT<T, Self> & {
+    ren_assert(self.contains(key));
+    return self.m_values[key];
   }
 
-  auto get(K key) -> T & {
-    ren_assert(contains(key));
-    return m_values[key];
-  }
-
-  auto try_get(K key) const -> Optional<const T &> {
-    if (not contains(key)) {
+  template <typename Self>
+  auto try_get(this Self &self, K key) -> Optional<ConstLikeT<T, Self> &> {
+    if (not self.contains(key)) {
       return None;
     }
-    return m_values[key];
+    return self.m_values[key];
   }
 
-  auto try_get(K key) -> Optional<T &> {
-    if (not contains(key)) {
-      return None;
-    }
-    return m_values[key];
+  template <typename Self>
+  auto operator[](this Self &self, K key) -> ConstLikeT<T, Self> & {
+    return self.get(key);
   }
-
-  auto operator[](K key) const -> const T & { return get(key); }
-
-  auto operator[](K key) -> T & { return get(key); }
 
   auto insert(T value) -> K {
     K new_key = m_indices.generate();
@@ -135,7 +127,7 @@ public:
   }
 
   template <typename... Ts>
-    requires std::constructible_from<T, Ts...>
+    requires std::constructible_from<T, Ts &&...>
   auto emplace(Ts &&...args) -> K {
     return insert(T(std::forward<Ts>(args)...));
   }
@@ -187,14 +179,14 @@ private:
   using IteratorValueType = std::conditional_t<IsConst, const T, T>;
 
   template <bool IsConst>
-  class IteratorImpl : public boost::iterator_facade<
-                           IteratorImpl<IsConst>, std::pair<K, T>,
-                           boost::forward_traversal_tag,
-                           std::pair<K, IteratorValueType<IsConst> &>> {
+  class Iterator : public boost::iterator_facade<
+                       Iterator<IsConst>, std::pair<const K, T>,
+                       boost::forward_traversal_tag,
+                       std::pair<const K, IteratorValueType<IsConst> &>> {
   public:
-    IteratorImpl() = default;
+    Iterator() = default;
 
-    operator IteratorImpl<true>() const
+    operator Iterator<true>() const
       requires(not IsConst)
     {
       return {
@@ -204,18 +196,18 @@ private:
     }
 
   private:
-    template <bool> friend class IteratorImpl;
+    template <bool> friend class Iterator;
     friend boost::iterator_core_access;
     friend GenArray;
 
-    IteratorImpl(GenIndexPool<K>::const_iterator it,
-                 IteratorValueType<IsConst> *data) {
+    Iterator(GenIndexPool<K>::const_iterator it,
+             IteratorValueType<IsConst> *data) {
       m_it = it;
       m_data = data;
     }
 
     template <bool IsOtherConst>
-    bool equal(IteratorImpl<IsOtherConst> other) const {
+    bool equal(Iterator<IsOtherConst> other) const {
       return m_it == other.m_it;
     }
 

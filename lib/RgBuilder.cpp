@@ -2,6 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "RenderGraph.hpp"
+#include "Support/Errors.hpp"
 #include "Support/FlatSet.hpp"
 #include "Support/Math.hpp"
 #include "Support/PriorityQueue.hpp"
@@ -488,7 +489,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     dependents.append(pass.read_variables | map(get_variable_kill));
     dependents.append(pass.read_buffers | map(get_buffer_kill));
     dependents.append(pass.read_textures | map(get_texture_kill));
-    dependents.unstable_erase_if(is_null_pass);
+    dependents.erase_if(is_null_pass);
     return dependents;
   };
 
@@ -504,7 +505,7 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
     dependencies.append(pass.write_variables | map(get_variable_def));
     dependencies.append(pass.write_buffers | map(get_buffer_def));
     dependencies.append(pass.write_textures | map(get_texture_def));
-    dependencies.unstable_erase_if(is_null_pass);
+    dependencies.erase_if(is_null_pass);
     return dependencies;
   };
 

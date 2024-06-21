@@ -16,12 +16,11 @@ auto TextureIdAllocator::get_set_layout() const -> Handle<DescriptorSetLayout> {
   return m_layout;
 }
 
-auto TextureIdAllocator::allocate_sampled_texture(Renderer &renderer,
-                                                  const TextureView &view,
-                                                  Handle<Sampler> sampler)
-    -> SampledTextureId {
+auto TextureIdAllocator::allocate_sampled_texture(
+    Renderer &renderer, const TextureView &view,
+    Handle<Sampler> sampler) -> SampledTextureId {
   auto index = m_sampled_texture_allocator.allocate();
-  assert(index < glsl::NUM_SAMPLED_TEXTURES);
+  ren_assert(index < glsl::NUM_SAMPLED_TEXTURES);
 
   VkDescriptorImageInfo image = {
       .sampler = renderer.get_sampler(sampler).handle,
@@ -45,11 +44,10 @@ void TextureIdAllocator::free_sampled_texture(SampledTextureId texture) {
   m_sampled_texture_allocator.free(texture);
 }
 
-auto TextureIdAllocator::allocate_storage_texture(Renderer &renderer,
-                                                  const TextureView &view)
-    -> StorageTextureId {
+auto TextureIdAllocator::allocate_storage_texture(
+    Renderer &renderer, const TextureView &view) -> StorageTextureId {
   auto index = m_storage_texture_allocator.allocate();
-  assert(index < glsl::NUM_STORAGE_TEXTURES);
+  ren_assert(index < glsl::NUM_STORAGE_TEXTURES);
 
   VkDescriptorImageInfo image = {
       .imageView = renderer.getVkImageView(view),
@@ -102,17 +100,15 @@ auto TextureIdAllocatorScope::get_set_layout() const
   return m_alloc->get_set_layout();
 }
 
-auto TextureIdAllocatorScope::allocate_sampled_texture(Renderer &renderer,
-                                                       const TextureView &view,
-                                                       Handle<Sampler> sampler)
-    -> SampledTextureId {
+auto TextureIdAllocatorScope::allocate_sampled_texture(
+    Renderer &renderer, const TextureView &view,
+    Handle<Sampler> sampler) -> SampledTextureId {
   return m_sampled_textures.emplace_back(
       m_alloc->allocate_sampled_texture(renderer, view, sampler));
 }
 
-auto TextureIdAllocatorScope::allocate_storage_texture(Renderer &renderer,
-                                                       const TextureView &view)
-    -> StorageTextureId {
+auto TextureIdAllocatorScope::allocate_storage_texture(
+    Renderer &renderer, const TextureView &view) -> StorageTextureId {
   return m_storage_textures.emplace_back(
       m_alloc->allocate_storage_texture(renderer, view));
 }

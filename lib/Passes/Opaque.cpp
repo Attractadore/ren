@@ -22,10 +22,10 @@ struct UploadPassResources {
 
 void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
                      const Scene &scene, const UploadPassResources &rcs) {
-  assert(rcs.materials);
-  assert(rcs.transform_matrices);
-  assert(rcs.normal_matrices);
-  assert(rcs.directional_lights);
+  ren_assert(rcs.materials);
+  ren_assert(rcs.transform_matrices);
+  ren_assert(rcs.normal_matrices);
+  ren_assert(rcs.directional_lights);
 
   const Camera &camera = scene.get_camera();
   glm::uvec2 viewport = scene.get_viewport();

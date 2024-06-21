@@ -6,42 +6,14 @@
 namespace ren {
 
 template <typename T> struct Span : std::span<T, std::dynamic_extent> {
-  Span() : Span(nullptr, usize(0)) {}
+  using std::span<T, std::dynamic_extent>::span;
 
-  Span(T *ptr, usize count)
-      : std::span<T, std::dynamic_extent>::span(ptr, count) {}
-
-  Span(T *first, T *last)
-      : std::span<T, std::dynamic_extent>::span(first, last) {}
-
-  template <typename R>
-    requires(not std::same_as<std::remove_cvref_t<R>, Span<T>>) and
-            std::ranges::contiguous_range<R>
-  Span(R &&r) : Span(std::ranges::data(r), std::ranges::size(r)) {}
+  template <usize S>
+  Span(std::span<T, S> s)
+      : std::span<T, std::dynamic_extent>(s.begin(), s.end()) {}
 
   auto as_bytes() -> Span<const std::byte> const {
-    return {reinterpret_cast<const std::byte *>(this->data()),
-            this->size_bytes()};
-  }
-
-  template <typename U> auto reinterpret() const {
-    using V = std::conditional_t<std::is_const_v<T>, std::add_const_t<U>, U>;
-    auto s = Span<V>(reinterpret_cast<V *>(this->data()),
-                     this->size_bytes() / sizeof(V));
-    assert(s.size_bytes() == this->size_bytes());
-    return s;
-  }
-
-  auto pop_front() -> T & {
-    T &f = this->front();
-    *this = this->subspan(1);
-    return f;
-  }
-
-  auto pop_front(usize count) -> Span {
-    Span f = this->first(count);
-    *this = this->subspan(count);
-    return f;
+    return {(const std::byte *)(this->data()), this->size_bytes()};
   }
 };
 
@@ -59,8 +31,7 @@ template <typename T> struct TempSpan : Span<T> {
       : TempSpan(&*ilist.begin(), &*ilist.end()) {}
 
   auto as_bytes() -> TempSpan<const std::byte> const {
-    return {reinterpret_cast<const std::byte *>(this->data()),
-            this->size_bytes()};
+    return {(const std::byte *)(this->data()), this->size_bytes()};
   }
 };
 
@@ -79,5 +50,11 @@ template <typename T>
 inline constexpr bool enable_borrowed_range<ren::Span<T>> = true;
 
 template <typename T> inline constexpr bool enable_view<ren::Span<T>> = true;
+
+template <typename T>
+inline constexpr bool enable_borrowed_range<ren::TempSpan<T>> = true;
+
+template <typename T>
+inline constexpr bool enable_view<ren::TempSpan<T>> = true;
 
 } // namespace std::ranges

@@ -1,11 +1,14 @@
 #pragma once
+#include "Assert.hpp"
+
 #include <ranges>
 
 namespace ren {
 
-constexpr auto map = std::views::transform;
+inline constexpr auto map = std::views::transform;
 
 template <std::integral I> auto range(I begin, I end) {
+  ren_assert(begin <= end);
   return std::views::iota(begin, end);
 }
 

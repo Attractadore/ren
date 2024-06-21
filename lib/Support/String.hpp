@@ -9,6 +9,15 @@ namespace ren {
 using String = std::string;
 using StringView = std::string_view;
 
+struct DummyString {
+  DummyString() = default;
+  DummyString(const char *) {}
+  DummyString(const String &) {}
+  DummyString(StringView) {}
+
+  bool operator==(const DummyString &) const = default;
+};
+
 struct StringHash {
   using is_transparent = void;
 

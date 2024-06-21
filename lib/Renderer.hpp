@@ -177,13 +177,6 @@ public:
 
   void next_frame();
 
-  static auto getRequiredAPIVersion() noexcept -> uint32_t {
-    return VK_API_VERSION_1_3;
-  }
-
-  static auto getRequiredLayers() noexcept -> Span<const char *const>;
-  static auto getInstanceExtensions() noexcept -> Span<const char *const>;
-
   auto get_instance() const -> VkInstance { return m_instance.get(); }
 
   auto get_adapter() const -> VkPhysicalDevice { return m_adapter; }

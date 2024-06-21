@@ -1,4 +1,5 @@
 #include "Camera.hpp"
+#include "Support/Assert.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/reciprocal.hpp>
@@ -8,8 +9,8 @@ namespace ren {
 
 template <typename T>
 constexpr auto infinitePerspectiveRH_ReverseZ(T fovy, T aspect, T zNear) {
-  assert(glm::abs(aspect - std::numeric_limits<T>::epsilon()) >
-         static_cast<T>(0));
+  ren_assert(glm::abs(aspect - std::numeric_limits<T>::epsilon()) >
+             static_cast<T>(0));
   auto cotHalfFovy = glm::cot(fovy / static_cast<T>(2));
   auto result = glm::zero<glm::mat<4, 4, T, glm::defaultp>>();
   result[0][0] = cotHalfFovy / aspect;

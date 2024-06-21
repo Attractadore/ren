@@ -3,7 +3,6 @@
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
 #include "Support/Algorithm.hpp"
-#include "Support/Errors.hpp"
 #include "Support/Span.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
@@ -14,6 +13,8 @@
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Present.hpp"
 #include "glsl/MeshletCullingPass.h"
+
+#include <fmt/format.h>
 
 namespace ren {
 

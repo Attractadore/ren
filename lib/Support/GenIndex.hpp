@@ -6,8 +6,8 @@ namespace ren {
 
 namespace detail {
 
-constexpr u8 TOMBSTONE = 0;
-constexpr u8 INIT = TOMBSTONE + 1;
+inline constexpr u8 TOMBSTONE = 0;
+inline constexpr u8 INIT = TOMBSTONE + 1;
 
 inline constexpr bool is_active(u8 gen) { return gen % 2 != TOMBSTONE % 2; }
 
@@ -57,6 +57,6 @@ struct NullHandleT {
   template <typename T> operator Handle<T>() const { return Handle<T>(); }
 };
 
-constexpr NullHandleT NullHandle;
+inline constexpr NullHandleT NullHandle;
 
 } // namespace ren

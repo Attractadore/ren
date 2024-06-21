@@ -26,7 +26,7 @@ auto allocate_descriptor_pool_and_set(Renderer &renderer, ResourceArena &arena,
   });
 
   auto set = renderer.allocate_descriptor_set(pool, layout_handle);
-  assert(set);
+  ren_assert(set);
 
   return {pool, *set};
 }

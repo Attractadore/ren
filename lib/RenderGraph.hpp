@@ -7,6 +7,7 @@
 #include "Support/Any.hpp"
 #include "Support/DynamicBitset.hpp"
 #include "Support/NewType.hpp"
+#include "Support/String.hpp"
 #include "Support/Variant.hpp"
 #include "TextureIdAllocator.hpp"
 
@@ -98,8 +99,8 @@ struct RgBufferUsage {
   VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
 };
 
-constexpr auto operator|(const RgBufferUsage &lhs, const RgBufferUsage &rhs)
-    -> RgBufferUsage {
+constexpr auto operator|(const RgBufferUsage &lhs,
+                         const RgBufferUsage &rhs) -> RgBufferUsage {
   return {
       .stage_mask = lhs.stage_mask | rhs.stage_mask,
       .access_mask = lhs.access_mask | rhs.access_mask,
@@ -454,8 +455,8 @@ public:
   auto get_buffer(RgBufferToken buffer) const -> const BufferView &;
 
   template <typename T>
-  auto get_buffer_device_ptr(RgBufferToken buffer, usize offset = 0) const
-      -> DevicePtr<T> {
+  auto get_buffer_device_ptr(RgBufferToken buffer,
+                             usize offset = 0) const -> DevicePtr<T> {
     return m_rg->m_renderer->get_buffer_device_ptr<T>(get_buffer(buffer),
                                                       offset);
   }
@@ -495,8 +496,8 @@ class RgBuilder {
 public:
   RgBuilder(RenderGraph &rg);
 
-  [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
-      -> RgPassBuilder;
+  [[nodiscard]] auto
+  create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder;
 
   template <typename T>
   [[nodiscard]] auto create_variable() -> RgVariableId<T> {
@@ -507,38 +508,36 @@ public:
     return variable;
   }
 
-  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info)
-      -> RgBufferId;
-
-  [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
-      -> RgTextureId;
+  [[nodiscard]] auto
+  create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId;
 
   [[nodiscard]] auto
-  create_external_texture(RgExternalTextureCreateInfo &&create_info)
-      -> RgTextureId;
+  create_texture(RgTextureCreateInfo &&create_info) -> RgTextureId;
 
-  [[nodiscard]] auto
-  create_external_semaphore(RgSemaphoreCreateInfo &&create_info)
-      -> RgSemaphoreId;
+  [[nodiscard]] auto create_external_texture(
+      RgExternalTextureCreateInfo &&create_info) -> RgTextureId;
+
+  [[nodiscard]] auto create_external_semaphore(
+      RgSemaphoreCreateInfo &&create_info) -> RgSemaphoreId;
 
   void build(CommandAllocator &cmd_alloc);
 
 private:
   friend RgPassBuilder;
 
-  [[nodiscard]] auto get_variable_def(RgGenericVariableId variable) const
-      -> RgPassId;
+  [[nodiscard]] auto
+  get_variable_def(RgGenericVariableId variable) const -> RgPassId;
 
-  [[nodiscard]] auto get_variable_kill(RgGenericVariableId variable) const
-      -> RgPassId;
+  [[nodiscard]] auto
+  get_variable_kill(RgGenericVariableId variable) const -> RgPassId;
 
-  [[nodiscard]] auto create_virtual_variable(RgPassId pass, RgDebugName name,
-                                             RgGenericVariableId parent)
-      -> RgGenericVariableId;
+  [[nodiscard]] auto
+  create_virtual_variable(RgPassId pass, RgDebugName name,
+                          RgGenericVariableId parent) -> RgGenericVariableId;
 
   template <typename T>
-  [[nodiscard]] auto read_variable(RgPassId pass, RgVariableId<T> variable)
-      -> RgVariableToken<T> {
+  [[nodiscard]] auto
+  read_variable(RgPassId pass, RgVariableId<T> variable) -> RgVariableToken<T> {
     return RgVariableToken<T>(
         read_variable(pass, RgGenericVariableId(variable)));
   }
@@ -563,9 +562,9 @@ private:
 
   [[nodiscard]] auto get_buffer_kill(RgBufferId buffer) const -> RgPassId;
 
-  [[nodiscard]] auto add_buffer_use(RgBufferId buffer,
-                                    const RgBufferUsage &usage)
-      -> RgBufferUseId;
+  [[nodiscard]] auto
+  add_buffer_use(RgBufferId buffer,
+                 const RgBufferUsage &usage) -> RgBufferUseId;
 
   [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
                                            RgBufferId parent) -> RgBufferId;
@@ -581,23 +580,21 @@ private:
 
   [[nodiscard]] auto get_texture_kill(RgTextureId texture) const -> RgPassId;
 
-  [[nodiscard]] auto add_texture_use(RgTextureId texture,
-                                     const RgTextureUsage &usage)
-      -> RgTextureUseId;
+  [[nodiscard]] auto
+  add_texture_use(RgTextureId texture,
+                  const RgTextureUsage &usage) -> RgTextureUseId;
 
-  [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
-                                            RgTextureId parent,
-                                            u32 num_temporal_layers = 1)
-      -> RgTextureId;
+  [[nodiscard]] auto
+  create_virtual_texture(RgPassId pass, RgDebugName name, RgTextureId parent,
+                         u32 num_temporal_layers = 1) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
                                   const RgTextureUsage &usage,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
-  [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
-                                   RgTextureId texture,
-                                   const RgTextureUsage &usage)
-      -> std::tuple<RgTextureId, RgTextureToken>;
+  [[nodiscard]] auto write_texture(
+      RgPassId pass, RgDebugName name, RgTextureId texture,
+      const RgTextureUsage &usage) -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto add_semaphore_signal(RgSemaphoreId semaphore,
                                           VkPipelineStageFlags2 stage_mask,
@@ -715,8 +712,8 @@ public:
   }
 
   template <typename T>
-  [[nodiscard]] auto read_variable(RgVariableId<T> variable)
-      -> RgVariableToken<T> {
+  [[nodiscard]] auto
+  read_variable(RgVariableId<T> variable) -> RgVariableToken<T> {
     return m_builder->read_variable(m_pass, variable);
   }
 
@@ -730,8 +727,8 @@ public:
                                    const RgBufferUsage &usage)
       -> std::tuple<RgBufferId, RgBufferToken>;
 
-  [[nodiscard]] auto read_buffer(RgBufferId buffer, const RgBufferUsage &usage)
-      -> RgBufferToken;
+  [[nodiscard]] auto read_buffer(RgBufferId buffer,
+                                 const RgBufferUsage &usage) -> RgBufferToken;
 
   [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId buffer,
                                   const RgBufferUsage &usage)
@@ -749,23 +746,22 @@ public:
                                    const RgTextureUsage &usage)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
-  [[nodiscard]] auto
-  create_color_attachment(RgTextureCreateInfo &&create_info,
-                          const ColorAttachmentOperations &ops, u32 index = 0)
-      -> std::tuple<RgTextureId, RgTextureToken>;
+  [[nodiscard]] auto create_color_attachment(
+      RgTextureCreateInfo &&create_info, const ColorAttachmentOperations &ops,
+      u32 index = 0) -> std::tuple<RgTextureId, RgTextureToken>;
 
-  [[nodiscard]] auto
-  write_color_attachment(RgDebugName name, RgTextureId texture,
-                         const ColorAttachmentOperations &ops, u32 index = 0)
-      -> std::tuple<RgTextureId, RgTextureToken>;
+  [[nodiscard]] auto write_color_attachment(
+      RgDebugName name, RgTextureId texture,
+      const ColorAttachmentOperations &ops,
+      u32 index = 0) -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto
   create_depth_attachment(RgTextureCreateInfo &&create_info,
                           const DepthAttachmentOperations &ops)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto read_depth_attachment(RgTextureId texture, u32 temporal_layer = 0)
-      -> RgTextureToken;
+  auto read_depth_attachment(RgTextureId texture,
+                             u32 temporal_layer = 0) -> RgTextureToken;
 
   auto write_depth_attachment(RgDebugName name, RgTextureId texture,
                               const DepthAttachmentOperations &ops)
