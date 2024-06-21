@@ -19,7 +19,6 @@ find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
-find_package(range-v3 REQUIRED)
 find_package(tl-optional REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(volk REQUIRED)
@@ -35,7 +34,6 @@ target_link_libraries(
             fmt::fmt
             meshoptimizer::meshoptimizer
             mikktspace::mikktspace
-            range-v3::range-v3
             tl::optional
             unofficial::spirv-reflect
             volk::volk)
@@ -152,10 +150,6 @@ if(REN_PCH)
     <boost/container/static_vector.hpp>
     <boost/functional/hash.hpp>
     <fmt/format.h>
-    <range/v3/action.hpp>
-    <range/v3/algorithm.hpp>
-    <range/v3/range.hpp>
-    <range/v3/view.hpp>
     <tl/optional.hpp>
     <glm/glm.hpp>
     <spirv_reflect.h>

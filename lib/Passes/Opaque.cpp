@@ -59,7 +59,7 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
         .index_pool = mesh.index_pool,
         .num_lods = u32(mesh.lods.size()),
     };
-    ranges::copy(mesh.lods, meshes_ptr[h].lods);
+    std::ranges::copy(mesh.lods, meshes_ptr[h].lods);
   }
 
   auto *mesh_instances_ptr =

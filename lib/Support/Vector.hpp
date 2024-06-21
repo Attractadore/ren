@@ -1,11 +1,11 @@
 #pragma once
 #include "StdDef.hpp"
 
+#include <algorithm>
 #include <boost/container/small_vector.hpp>
 #include <boost/container/static_vector.hpp>
 #include <boost/predef/compiler.h>
-#include <range/v3/algorithm.hpp>
-#include <range/v3/range.hpp>
+#include <iterator>
 #include <vector>
 
 namespace ren {
@@ -13,12 +13,12 @@ namespace detail {
 template <class Base> struct VectorMixin : public Base {
   using Base::Base;
 
-  template <ranges::input_range R> VectorMixin(R &&range) {
+  template <std::ranges::input_range R> VectorMixin(R &&range) {
     this->assign(std::forward<R>(range));
   }
 
-  constexpr auto append(ranges::input_range auto &&r) {
-    return this->append(ranges::begin(r), ranges::end(r));
+  constexpr auto append(std::ranges::input_range auto &&r) {
+    return this->append(std::ranges::begin(r), std::ranges::end(r));
   }
 
   template <std::input_iterator I, std::sentinel_for<I> S>
@@ -33,8 +33,8 @@ template <class Base> struct VectorMixin : public Base {
 
   using Base::assign;
 
-  constexpr void assign(ranges::input_range auto &&r) {
-    this->assign(ranges::begin(r), ranges::end(r));
+  constexpr void assign(std::ranges::input_range auto &&r) {
+    this->assign(std::ranges::begin(r), std::ranges::end(r));
   }
 
   template <std::input_iterator I, std::sentinel_for<I> S>
@@ -48,17 +48,17 @@ template <class Base> struct VectorMixin : public Base {
 
   template <std::equality_comparable_with<typename Base::value_type> U>
   constexpr auto erase(const U &value) -> usize {
-    auto last = ranges::remove(*this, value);
-    usize count = ranges::distance(last, this->end());
+    auto last = std::ranges::remove(*this, value);
+    usize count = std::ranges::distance(last, this->end());
     this->erase(last, this->end());
     return count;
   }
 
   template <std::predicate<typename Base::value_type> F>
   constexpr auto erase_if(F &&filter) -> usize {
-    auto last = ranges::remove_if(*this, std::forward<F>(filter));
-    usize count = ranges::distance(last, this->end());
-    this->erase(last, this->end());
+    auto r = std::ranges::remove_if(*this, std::forward<F>(filter));
+    usize count = std::ranges::size(r);
+    this->erase(std::ranges::begin(r), std::ranges::end(r));
     return count;
   }
 
@@ -70,10 +70,7 @@ template <class Base> struct VectorMixin : public Base {
 
   template <std::predicate<typename Base::value_type> F>
   constexpr auto unstable_erase_if(F &&filter) -> usize {
-    auto last = ranges::unstable_remove_if(*this, std::forward<F>(filter));
-    usize count = ranges::distance(last, this->end());
-    this->erase(last, this->end());
-    return count;
+    return erase_if(std::forward<F>(filter));
   }
 };
 } // namespace detail

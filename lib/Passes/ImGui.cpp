@@ -27,11 +27,11 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
     auto *vertices = rg.map_buffer<ImDrawVert>(rcs.vertices);
     auto *indices = rg.map_buffer<ImDrawIdx>(rcs.indices);
     for (const ImDrawList *cmd_list : draw_data->CmdLists) {
-      ranges::copy_n(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size,
-                     vertices);
+      std::ranges::copy_n(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size,
+                          vertices);
       vertices += cmd_list->VtxBuffer.Size;
-      ranges::copy_n(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size,
-                     indices);
+      std::ranges::copy_n(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size,
+                          indices);
       indices += cmd_list->IdxBuffer.Size;
     }
   }

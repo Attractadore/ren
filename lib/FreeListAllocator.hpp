@@ -2,6 +2,8 @@
 #include "Config.hpp"
 #include "Support/Vector.hpp"
 
+#include <array>
+
 namespace ren {
 
 class FreeListAllocator {

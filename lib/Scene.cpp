@@ -15,10 +15,6 @@
 #include "Passes/Present.hpp"
 #include "glsl/MeshletCullingPass.h"
 
-#include <range/v3/algorithm.hpp>
-#include <range/v3/numeric.hpp>
-#include <range/v3/range.hpp>
-
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)

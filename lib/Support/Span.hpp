@@ -1,8 +1,6 @@
 #pragma once
-#include "Errors.hpp"
 #include "StdDef.hpp"
 
-#include <range/v3/iterator.hpp>
 #include <span>
 
 namespace ren {
@@ -19,7 +17,7 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
   template <typename R>
     requires(not std::same_as<std::remove_cvref_t<R>, Span<T>>) and
             std::ranges::contiguous_range<R>
-  Span(R &&r) : Span(ranges::data(r), ranges::size(r)) {}
+  Span(R &&r) : Span(std::ranges::data(r), std::ranges::size(r)) {}
 
   auto as_bytes() -> Span<const std::byte> const {
     return {reinterpret_cast<const std::byte *>(this->data()),
@@ -47,17 +45,12 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
   }
 };
 
-template <ranges::contiguous_range R>
-  requires ranges::indirectly_writable<ranges::iterator_t<R>,
-                                       ranges::range_value_t<R>>
-Span(R &&r) -> Span<ranges::range_value_t<R>>;
-
-template <ranges::contiguous_range R>
-Span(R &&r) -> Span<const ranges::range_value_t<R>>;
+template <std::ranges::contiguous_range R>
+Span(R &&r) -> Span<std::remove_reference_t<std::ranges::range_reference_t<R>>>;
 
 template <std::contiguous_iterator Iter>
-Span(Iter first, usize count)
-    -> Span<std::remove_reference_t<std::iter_reference_t<Iter>>>;
+Span(Iter first,
+     usize count) -> Span<std::remove_reference_t<std::iter_reference_t<Iter>>>;
 
 template <typename T> struct TempSpan : Span<T> {
   using Span<T>::Span;
@@ -71,8 +64,8 @@ template <typename T> struct TempSpan : Span<T> {
   }
 };
 
-template <ranges::contiguous_range R>
-TempSpan(R &&r) -> TempSpan<ranges::range_value_t<R>>;
+template <std::ranges::contiguous_range R>
+TempSpan(R &&r) -> TempSpan<std::ranges::range_value_t<R>>;
 
 template <std::contiguous_iterator Iter>
 TempSpan(Iter first, usize count)
@@ -80,11 +73,11 @@ TempSpan(Iter first, usize count)
 
 } // namespace ren
 
-namespace ranges {
+namespace std::ranges {
 
 template <typename T>
 inline constexpr bool enable_borrowed_range<ren::Span<T>> = true;
 
 template <typename T> inline constexpr bool enable_view<ren::Span<T>> = true;
 
-} // namespace ranges
+} // namespace std::ranges

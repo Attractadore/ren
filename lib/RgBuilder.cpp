@@ -186,8 +186,8 @@ auto RgBuilder::write_variable(RgPassId pass, RgDebugName name,
   return {dst, RgGenericVariableToken(src)};
 }
 
-auto RgBuilder::add_buffer_use(RgBufferId buffer, const RgBufferUsage &usage)
-    -> RgBufferUseId {
+auto RgBuilder::add_buffer_use(RgBufferId buffer,
+                               const RgBufferUsage &usage) -> RgBufferUseId {
   ren_assert(buffer);
   RgBufferUseId id(m_rg->m_buffer_uses.size());
   m_rg->m_buffer_uses.push_back({
@@ -381,8 +381,8 @@ auto RgBuilder::create_external_texture(
 }
 
 auto RgBuilder::read_texture(RgPassId pass, RgTextureId texture,
-                             const RgTextureUsage &usage, u32 temporal_layer)
-    -> RgTextureToken {
+                             const RgTextureUsage &usage,
+                             u32 temporal_layer) -> RgTextureToken {
   ren_assert(texture);
 #if REN_RG_DEBUG
   ren_assert_msg(
@@ -551,9 +551,10 @@ auto RgBuilder::build_pass_schedule() -> Vector<RgPassId> {
         int max_dependency_time = -1;
         Span<const RgPassId> dependencies = get_dependencies(s);
         if (not dependencies.empty()) {
-          max_dependency_time = ranges::max(dependencies | map([&](RgPassId d) {
-                                              return pass_schedule_times[d];
-                                            }));
+          max_dependency_time =
+              std::ranges::max(dependencies | map([&](RgPassId d) {
+                                 return pass_schedule_times[d];
+                               }));
         }
         unscheduled_passes.push({max_dependency_time, s});
       }
@@ -711,8 +712,8 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       heap_usage_flags[heap] |= get_buffer_usage_flags(use.usage.access_mask);
     };
 
-    ranges::for_each(pass.read_buffers, update_buffer_heap_usage_flags);
-    ranges::for_each(pass.write_buffers, update_buffer_heap_usage_flags);
+    std::ranges::for_each(pass.read_buffers, update_buffer_heap_usage_flags);
+    std::ranges::for_each(pass.write_buffers, update_buffer_heap_usage_flags);
 
     auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
       const RgTextureUse &use = m_rg->m_texture_uses[use_id];
@@ -723,8 +724,8 @@ void RgBuilder::create_resources(Span<const RgPassId> schedule) {
       });
     };
 
-    ranges::for_each(pass.read_textures, update_texture_usage_flags);
-    ranges::for_each(pass.write_textures, update_texture_usage_flags);
+    std::ranges::for_each(pass.read_textures, update_texture_usage_flags);
+    std::ranges::for_each(pass.write_textures, update_texture_usage_flags);
   }
 
   // Calculate required size for each buffer heap
@@ -850,7 +851,7 @@ void RgBuilder::init_temporal_textures(CommandAllocator &cmd_alloc) const {
 
 void RgBuilder::fill_pass_runtime_info(Span<const RgPassId> schedule) {
   m_rg->m_passes.resize(schedule.size());
-  for (auto [idx, pass_id] : schedule | enumerate) {
+  for (auto [idx, pass_id] : schedule | std::views::enumerate) {
     RgPassInfo &pass_info = m_passes[pass_id];
     m_rg->m_passes[idx] = {
         .pass = pass_id,

@@ -4,6 +4,8 @@
 #include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 
+#include <ranges>
+
 namespace ren {
 
 namespace {
@@ -254,7 +256,7 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
                 .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             });
       }) |
-      ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>;
+      std::ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>();
 
   VkRenderingAttachmentInfo depth_attachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};

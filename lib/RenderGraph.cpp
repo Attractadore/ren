@@ -161,8 +161,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                         };
                       });
                 }) |
-                ranges::to<StaticVector<Optional<ColorAttachment>,
-                                        MAX_COLOR_ATTACHMENTS>>;
+                std::ranges::to<StaticVector<Optional<ColorAttachment>,
+                                             MAX_COLOR_ATTACHMENTS>>();
 
             auto depth_stencil_attachment = graphics_pass.depth_attachment.map(
                 [&](u32 index) -> DepthStencilAttachment {
@@ -364,8 +364,8 @@ void RenderGraph::place_barriers() {
       });
     };
 
-    ranges::for_each(pass.read_buffers, maybe_place_barrier_for_buffer);
-    ranges::for_each(pass.write_buffers, maybe_place_barrier_for_buffer);
+    std::ranges::for_each(pass.read_buffers, maybe_place_barrier_for_buffer);
+    std::ranges::for_each(pass.write_buffers, maybe_place_barrier_for_buffer);
 
     auto maybe_place_barrier_for_texture = [&](RgTextureUseId use_id) {
       const RgTextureUse &use = m_texture_uses[use_id];
@@ -472,8 +472,8 @@ void RenderGraph::place_barriers() {
       }
     };
 
-    ranges::for_each(pass.read_textures, maybe_place_barrier_for_texture);
-    ranges::for_each(pass.write_textures, maybe_place_barrier_for_texture);
+    std::ranges::for_each(pass.read_textures, maybe_place_barrier_for_texture);
+    std::ranges::for_each(pass.write_textures, maybe_place_barrier_for_texture);
 
     usize new_memory_barrier_count = m_memory_barriers.size();
     usize new_texture_barrier_count = m_texture_barriers.size();

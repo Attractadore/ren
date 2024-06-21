@@ -407,34 +407,23 @@ void Renderer::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
 auto Renderer::create_descriptor_set_layout(
     const DescriptorSetLayoutCreateInfo &&create_info)
     -> Handle<DescriptorSetLayout> {
-  auto binding_flags =
-      create_info.bindings |
-      filter_map([](const DescriptorBinding &binding)
-                     -> Optional<VkDescriptorBindingFlags> {
-        if (binding.count == 0) {
-          return None;
-        }
-        return binding.flags;
-      }) |
-      ranges::to<
-          StaticVector<VkDescriptorBindingFlags, MAX_DESCIPTOR_BINDINGS>>;
 
-  auto bindings =
-      enumerate(create_info.bindings) |
-      filter_map([](const auto &p) -> Optional<VkDescriptorSetLayoutBinding> {
-        const auto &[index, binding] = p;
-        if (binding.count == 0) {
-          return None;
-        }
-        return VkDescriptorSetLayoutBinding{
-            .binding = unsigned(index),
-            .descriptorType = binding.type,
-            .descriptorCount = binding.count,
-            .stageFlags = binding.stages,
-        };
-      }) |
-      ranges::to<
-          StaticVector<VkDescriptorSetLayoutBinding, MAX_DESCIPTOR_BINDINGS>>;
+  StaticVector<VkDescriptorBindingFlags, MAX_DESCIPTOR_BINDINGS> binding_flags;
+  StaticVector<VkDescriptorSetLayoutBinding, MAX_DESCIPTOR_BINDINGS> bindings;
+
+  for (const auto &[index, binding] :
+       create_info.bindings | std::views::enumerate) {
+    if (binding.count == 0) {
+      continue;
+    }
+    binding_flags.push_back(binding.flags);
+    bindings.push_back({
+        .binding = unsigned(index),
+        .descriptorType = binding.type,
+        .descriptorCount = binding.count,
+        .stageFlags = binding.stages,
+    });
+  }
 
   VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
       .sType =
@@ -489,7 +478,7 @@ auto Renderer::allocate_descriptor_sets(
   auto vk_layouts = layouts | map([&](Handle<DescriptorSetLayout> layout) {
                       return get_descriptor_set_layout(layout).handle;
                     }) |
-                    ranges::to<SmallVector<VkDescriptorSetLayout>>;
+                    std::ranges::to<SmallVector<VkDescriptorSetLayout>>();
 
   VkDescriptorSetAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1018,7 +1007,7 @@ auto Renderer::create_graphics_pipeline(
       map([&](const ColorAttachmentInfo &attachment) {
         return attachment.format;
       }) |
-      ranges::to<StaticVector<VkFormat, MAX_COLOR_ATTACHMENTS>>;
+      std::ranges::to<StaticVector<VkFormat, MAX_COLOR_ATTACHMENTS>>();
 
   VkPipelineRenderingCreateInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -1089,8 +1078,8 @@ auto Renderer::create_graphics_pipeline(
                 .colorWriteMask = attachment.write_mask,
             });
       }) |
-      ranges::to<StaticVector<VkPipelineColorBlendAttachmentState,
-                              MAX_COLOR_ATTACHMENTS>>;
+      std::ranges::to<StaticVector<VkPipelineColorBlendAttachmentState,
+                                   MAX_COLOR_ATTACHMENTS>>();
 
   VkPipelineColorBlendStateCreateInfo blend_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
@@ -1212,7 +1201,8 @@ auto Renderer::create_pipeline_layout(
       create_info.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
         return get_descriptor_set_layout(layout).handle;
       }) |
-      ranges::to<StaticVector<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS>>;
+      std::ranges::to<
+          StaticVector<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS>>();
 
   VkPipelineLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
