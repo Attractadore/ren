@@ -3,7 +3,6 @@
 #include "CommandAllocator.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
-#include "Passes/Present.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
@@ -165,7 +164,10 @@ private:
   Swapchain *m_swapchain = nullptr;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
-  PresentPassOutput m_present_pass_resources;
+
+  RgTextureId m_backbuffer;
+  RgSemaphoreId m_present_semaphore;
+  RgSemaphoreId m_acquire_semaphore;
 
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;

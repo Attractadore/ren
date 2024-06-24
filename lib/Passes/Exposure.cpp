@@ -15,14 +15,12 @@ auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
   return 1.0f / max_luminance;
 };
 
-auto setup_camera_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
-    -> ExposurePassOutput {
-  ExposurePassOutput out;
-
+void setup_camera_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                                const ExposurePassConfig &cfg) {
   auto pass = rgb.create_pass({.name = "camera-exposure"});
 
   RgTextureToken exposure_token;
-  std::tie(out.exposure, exposure_token) = pass.create_texture(
+  std::tie(*cfg.exposure, exposure_token) = pass.create_texture(
       {
           .name = "exposure",
           .format = VK_FORMAT_R32_SFLOAT,
@@ -30,6 +28,7 @@ auto setup_camera_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
           .height = 1,
       },
       RG_TRANSFER_DST_TEXTURE);
+  *cfg.temporal_layer = 0;
 
   pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
     float exposure = get_camera_exposure(scene->get_camera().params,
@@ -38,13 +37,11 @@ auto setup_camera_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
     cmd.clear_texture(rt.get_texture(exposure_token),
                       glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
   });
-
-  return out;
 }
 
-auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
-  ExposurePassOutput out;
-  out.exposure = rgb.create_texture({
+void setup_automatic_exposure_pass(RgBuilder &rgb,
+                                   const ExposurePassConfig &cfg) {
+  *cfg.exposure = rgb.create_texture({
       .name = "automatic-exposure",
       .format = VK_FORMAT_R32_SFLOAT,
       .width = 1,
@@ -56,19 +53,18 @@ auto setup_automatic_exposure_pass(RgBuilder &rgb) -> ExposurePassOutput {
             cmd.clear_texture(texture, glm::vec4(1.0f / glsl::MIN_LUMINANCE));
           },
   });
-  out.temporal_layer = 1;
-  return out;
+  *cfg.temporal_layer = 1;
 }
 
 } // namespace
 
-auto setup_exposure_pass(RgBuilder &rgb,
-                         NotNull<const Scene *> scene) -> ExposurePassOutput {
+void setup_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                         const ExposurePassConfig &cfg) {
   switch (scene->get_exposure_mode()) {
   case ExposureMode::Camera:
-    return setup_camera_exposure_pass(rgb, scene);
+    return setup_camera_exposure_pass(rgb, scene, cfg);
   case ExposureMode::Automatic:
-    return setup_automatic_exposure_pass(rgb);
+    return setup_automatic_exposure_pass(rgb, cfg);
   }
   std::unreachable();
 }

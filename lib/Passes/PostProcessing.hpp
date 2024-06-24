@@ -9,10 +9,10 @@ struct Pipelines;
 struct PostProcessingPassesConfig {
   RgTextureId hdr;
   RgTextureId exposure;
+  NotNull<RgTextureId *> sdr;
 };
 
-auto setup_post_processing_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
-                                  const PostProcessingPassesConfig &cfg)
-    -> RgTextureId;
+void setup_post_processing_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
+                                  const PostProcessingPassesConfig &cfg);
 
 } // namespace ren

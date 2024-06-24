@@ -13,13 +13,13 @@ namespace ren {
 class Scene;
 
 struct ImGuiPassConfig {
-  RgTextureId rt;
+  NotNull<RgTextureId *> sdr;
   u32 num_vertices = 0;
   u32 num_indices = 0;
 };
 
-auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
-                      const ImGuiPassConfig &cfg) -> RgTextureId;
+void setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                      const ImGuiPassConfig &cfg);
 
 } // namespace ren
 

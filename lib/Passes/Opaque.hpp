@@ -1,5 +1,5 @@
 #pragma once
-#include "Passes/Exposure.hpp"
+#include "RenderGraph.hpp"
 #include "Support/NotNull.hpp"
 
 namespace ren {
@@ -12,10 +12,12 @@ struct OpaquePassesConfig {
   u32 num_mesh_instances = 0;
   u32 num_materials = 0;
   u32 num_directional_lights = 0;
-  ExposurePassOutput exposure;
+  RgTextureId exposure;
+  u32 exposure_temporal_layer = 0;
+  NotNull<RgTextureId *> hdr;
 };
 
-auto setup_opaque_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
-                         const OpaquePassesConfig &cfg) -> RgTextureId;
+void setup_opaque_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
+                         const OpaquePassesConfig &cfg);
 
 } // namespace ren

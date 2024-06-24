@@ -477,11 +477,9 @@ auto Scene::draw() -> expected<void> {
   Handle<Semaphore> present_semaphore = m_present_semaphores.front();
   Handle<Texture> backbuffer = m_swapchain->acquire_texture(acquire_semaphore);
 
-  m_render_graph->set_texture(m_present_pass_resources.backbuffer, backbuffer);
-  m_render_graph->set_semaphore(m_present_pass_resources.acquire_semaphore,
-                                acquire_semaphore);
-  m_render_graph->set_semaphore(m_present_pass_resources.present_semaphore,
-                                present_semaphore);
+  m_render_graph->set_texture(m_backbuffer, backbuffer);
+  m_render_graph->set_semaphore(m_acquire_semaphore, acquire_semaphore);
+  m_render_graph->set_semaphore(m_present_semaphore, present_semaphore);
 
   m_render_graph->execute(m_cmd_allocator);
 
@@ -592,9 +590,16 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
 #endif
 
 void Scene::setup_rg(RgBuilder &rgb) {
-  ExposurePassOutput exposure = setup_exposure_pass(rgb, this);
+  RgTextureId exposure;
+  u32 exposure_temporal_layer = 0;
+  setup_exposure_pass(rgb, this,
+                      {
+                          .exposure = &exposure,
+                          .temporal_layer = &exposure_temporal_layer,
+                      });
 
-  RgTextureId hdr = setup_opaque_passes(
+  RgTextureId hdr;
+  setup_opaque_passes(
       rgb, this,
       OpaquePassesConfig{
           .num_meshes = m_rg_config.num_meshes,
@@ -602,31 +607,36 @@ void Scene::setup_rg(RgBuilder &rgb) {
           .num_materials = m_rg_config.num_materials,
           .num_directional_lights = m_rg_config.num_directional_lights,
           .exposure = exposure,
+          .exposure_temporal_layer = exposure_temporal_layer,
+          .hdr = &hdr,
       });
 
-  RgTextureId sdr =
-      setup_post_processing_passes(rgb, this,
-                                   PostProcessingPassesConfig{
-                                       .hdr = hdr,
-                                       .exposure = exposure.exposure,
-                                   });
+  RgTextureId sdr;
+  setup_post_processing_passes(rgb, this,
+                               PostProcessingPassesConfig{
+                                   .hdr = hdr,
+                                   .exposure = exposure,
+                                   .sdr = &sdr,
+                               });
 #if REN_IMGUI
   if (m_rg_config.imgui_context) {
-    sdr = setup_imgui_pass(rgb, this,
-                           ImGuiPassConfig{
-                               .rt = sdr,
-                               .num_vertices = m_rg_config.num_imgui_vertices,
-                               .num_indices = m_rg_config.num_imgui_indices,
-                           });
+    setup_imgui_pass(rgb, this,
+                     ImGuiPassConfig{
+                         .sdr = &sdr,
+                         .num_vertices = m_rg_config.num_imgui_vertices,
+                         .num_indices = m_rg_config.num_imgui_indices,
+                     });
   }
 #endif
 
-  m_present_pass_resources = setup_present_pass(
-      rgb, PresentPassConfig{
-               .src = sdr,
-               .backbuffer_format = m_swapchain->get_format(),
-               .backbuffer_size = m_swapchain->get_size(),
-           });
+  setup_present_pass(rgb, PresentPassConfig{
+                              .src = sdr,
+                              .backbuffer_format = m_swapchain->get_format(),
+                              .backbuffer_size = m_swapchain->get_size(),
+                              .backbuffer = &m_backbuffer,
+                              .acquire_semaphore = &m_acquire_semaphore,
+                              .present_semaphore = &m_present_semaphore,
+                          });
 }
 
 } // namespace ren

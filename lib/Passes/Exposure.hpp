@@ -7,12 +7,12 @@ namespace ren {
 
 class Scene;
 
-struct ExposurePassOutput {
-  RgTextureId exposure;
-  u32 temporal_layer = 0;
+struct ExposurePassConfig {
+  NotNull<RgTextureId *> exposure;
+  NotNull<u32 *> temporal_layer;
 };
 
-auto setup_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene)
-    -> ExposurePassOutput;
+void setup_exposure_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                         const ExposurePassConfig &cfg);
 
 } // namespace ren

@@ -106,8 +106,8 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
 
 } // namespace
 
-auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
-                      const ImGuiPassConfig &cfg) -> RgTextureId {
+void setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+                      const ImGuiPassConfig &cfg) {
   ImGuiPassResources rcs;
 
   auto pass = rgb.create_pass({.name = "imgui"});
@@ -128,8 +128,8 @@ auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
       },
       RG_HOST_WRITE_BUFFER | RG_INDEX_BUFFER);
 
-  auto [rt, _] =
-      pass.write_color_attachment("imgui", cfg.rt,
+  std::tie(*cfg.sdr, std::ignore) =
+      pass.write_color_attachment("imgui", *cfg.sdr,
                                   {
                                       .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                       .store = VK_ATTACHMENT_STORE_OP_STORE,
@@ -139,8 +139,6 @@ auto setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
       [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
         run_imgui_pass(renderer, rt, *scene, render_pass, rcs);
       });
-
-  return rt;
 }
 
 } // namespace ren
