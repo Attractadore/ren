@@ -2,11 +2,13 @@ cmake_minimum_required(VERSION 3.20)
 
 find_program(REN_GLSLANG glslang DOC "Path to glslang")
 find_package(Vulkan COMPONENTS glslangValidator)
-if (Vulkan::glslangValidator)
+if(Vulkan::glslangValidator)
   message(STATUS "Using glslang from Vulkan SDK")
-  set(REN_GLSLANG $<TARGET_FILE::Vulkan::glslangValidator> CACHE PATH "" FORCE)
+  set(REN_GLSLANG
+      $<TARGET_FILE::Vulkan::glslangValidator>
+      CACHE PATH "" FORCE)
 endif()
-if (NOT REN_GLSLANG)
+if(NOT REN_GLSLANG)
   message(FATAL_ERROR "Failed to find glslang")
 endif()
 
@@ -39,8 +41,8 @@ function(add_glslang_shader SHADER_SOURCE)
     list(APPEND GLSLANG_DEFINE_FLAGS -D${def})
   endforeach()
 
-  set(GLSLANG_FLAGS ${OPTION_GLSLANG_FLAGS}
-                  ${GLSLANG_INCLUDE_FLAGS} ${GLSLANG_DEFINE_FLAGS})
+  set(GLSLANG_FLAGS ${OPTION_GLSLANG_FLAGS} ${GLSLANG_INCLUDE_FLAGS}
+                    ${GLSLANG_DEFINE_FLAGS})
 
   if(OPTION_EMBED_TARGET)
     set(SHADER_INC ${OPTION_EMBED_TARGET}.inc)
@@ -50,9 +52,7 @@ function(add_glslang_shader SHADER_SOURCE)
     cmake_path(SET SHADER_H_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_H})
     cmake_path(SET SHADER_C_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_C})
 
-    file(
-      WRITE ${SHADER_H_FILE}
-      "
+    set(h_file_src "
       #pragma once
       #include <stddef.h>
       #include <stdint.h>
@@ -68,9 +68,16 @@ function(add_glslang_shader SHADER_SOURCE)
       }
       #endif")
 
-    file(
-      WRITE ${SHADER_C_FILE}
-      "
+    set(h_file)
+    if(EXISTS ${SHADER_H_FILE})
+      file(READ ${SHADER_H_FILE} h_file)
+    endif()
+
+    if(NOT h_file STREQUAL h_file_src)
+      file(WRITE ${SHADER_H_FILE} "${h_file_src}")
+    endif()
+
+    set(c_file_src "
       #include \"${SHADER_H_FILE}\"
 
       const uint32_t ${OPTION_EMBED_TARGET}[] = {
@@ -78,13 +85,22 @@ function(add_glslang_shader SHADER_SOURCE)
       };
       const size_t ${OPTION_EMBED_TARGET}_count = sizeof(${OPTION_EMBED_TARGET}) / sizeof(uint32_t);")
 
+    set(c_file)
+    if(EXISTS ${SHADER_C_FILE})
+      file(READ ${SHADER_C_FILE} c_file)
+    endif()
+
+    if(NOT c_file STREQUAL c_file_src)
+      file(WRITE ${SHADER_C_FILE} "${c_file_src}")
+    endif()
+
     add_custom_command(
       OUTPUT ${SHADER_INC_FILE}
       DEPENDS ${SHADER_SOURCE_FILE}
       COMMAND ${REN_GLSLANG} ${GLSLANG_FLAGS} ${SHADER_SOURCE_FILE} -x -o
               ${SHADER_INC_FILE} --depfile ${SHADER_INC_FILE}.d
-      COMMAND_EXPAND_LISTS
-      DEPFILE ${SHADER_INC_FILE}.d)
+      DEPFILE ${SHADER_INC_FILE}.d
+      COMMAND_EXPAND_LISTS VERBATIM)
     set(SHADER_INC_TARGET ${OPTION_EMBED_TARGET}-Inc)
     add_custom_target(${SHADER_INC_TARGET} DEPENDS ${SHADER_INC_FILE})
 
