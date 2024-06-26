@@ -1,27 +1,45 @@
 #include "Passes/Present.hpp"
 #include "CommandRecorder.hpp"
+#include "Swapchain.hpp"
 
-namespace ren {
+void ren::setup_present_pass(const PassCommonConfig &ccfg,
+                             const PresentPassConfig &cfg) {
+  RgBuilder &rgb = *ccfg.rgb;
 
-void setup_present_pass(RgBuilder &rgb, const PresentPassConfig &cfg) {
-  *cfg.backbuffer = rgb.create_external_texture({
-      .name = "backbuffer",
-      .format = cfg.backbuffer_format,
-      .width = cfg.backbuffer_size.x,
-      .height = cfg.backbuffer_size.y,
-  });
+  if (!ccfg.rcs->backbuffer) {
+    glm::uvec2 size = cfg.swapchain->get_size();
+    VkFormat format = cfg.swapchain->get_format();
+    ccfg.rcs->backbuffer = ccfg.rgp->create_texture({
+        .name = "backbuffer",
+        .format = format,
+        .width = size.x,
+        .height = size.y,
+        .ext =
+            RgTextureExternalInfo{
+                .usage = cfg.swapchain->get_usage(),
+            },
+    });
+  }
 
-  auto blit = rgb.create_pass({.name = "blit-to-swapchain"});
+  if (!ccfg.rcs->acquire_semaphore) {
+    ccfg.rcs->acquire_semaphore =
+        ccfg.rgp->create_external_semaphore("acquire-semaphore");
+  }
 
-  *cfg.acquire_semaphore =
-      rgb.create_external_semaphore({.name = "acquire-semaphore"});
-  blit.wait_semaphore(*cfg.acquire_semaphore);
+  if (!ccfg.rcs->present_semaphore) {
+    ccfg.rcs->present_semaphore =
+        ccfg.rgp->create_external_semaphore("present-semaphore");
+  }
+
+  auto blit = ccfg.rgb->create_pass({.name = "blit-to-swapchain"});
+
+  blit.wait_semaphore(ccfg.rcs->acquire_semaphore);
 
   RgTextureToken src_token =
       blit.read_texture(cfg.src, RG_TRANSFER_SRC_TEXTURE);
 
   auto [final_backbuffer, backbuffer_token] = blit.write_texture(
-      "final-backbuffer", *cfg.backbuffer, RG_TRANSFER_DST_TEXTURE);
+      "final-backbuffer", ccfg.rcs->backbuffer, RG_TRANSFER_DST_TEXTURE);
 
   blit.set_callback(
       [=](Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
@@ -47,15 +65,18 @@ void setup_present_pass(RgBuilder &rgb, const PresentPassConfig &cfg) {
         cmd.blit(src, backbuffer, {region}, VK_FILTER_LINEAR);
       });
 
-  auto transition = rgb.create_pass({.name = "present"});
+  auto transition = ccfg.rgb->create_pass({.name = "present"});
   transition.set_callback(
       [](Renderer &, const RgRuntime &, CommandRecorder &) {});
 
   (void)transition.read_texture(final_backbuffer, RG_PRESENT_TEXTURE);
 
-  *cfg.present_semaphore =
-      rgb.create_external_semaphore({.name = "present-semaphore"});
-  transition.signal_semaphore(*cfg.present_semaphore);
-}
+  transition.signal_semaphore(ccfg.rcs->present_semaphore);
 
-} // namespace ren
+  rgb.set_external_semaphore(ccfg.rcs->acquire_semaphore,
+                             cfg.acquire_semaphore);
+  rgb.set_external_semaphore(ccfg.rcs->present_semaphore,
+                             cfg.present_semaphore);
+  rgb.set_external_texture(ccfg.rcs->backbuffer, cfg.swapchain->acquire_texture(
+                                                     cfg.acquire_semaphore));
+}

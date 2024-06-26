@@ -1,10 +1,7 @@
 #pragma once
-#include "Passes/Exposure.hpp"
-#include "Support/NotNull.hpp"
+#include "Pass.hpp"
 
 namespace ren {
-
-struct Pipelines;
 
 struct PostProcessingPassesConfig {
   RgTextureId hdr;
@@ -12,7 +9,7 @@ struct PostProcessingPassesConfig {
   NotNull<RgTextureId *> sdr;
 };
 
-void setup_post_processing_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
+void setup_post_processing_passes(const PassCommonConfig &ccfg,
                                   const PostProcessingPassesConfig &cfg);
 
 } // namespace ren

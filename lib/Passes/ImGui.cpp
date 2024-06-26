@@ -1,5 +1,5 @@
-#include "ImGui.hpp"
 #if REN_IMGUI
+#include "ImGui.hpp"
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
 #include "Scene.hpp"
@@ -10,37 +10,38 @@ namespace ren {
 namespace {
 
 struct ImGuiPassResources {
-  RgBufferToken vertices;
-  RgBufferToken indices;
+  ImGuiContext *ctx = nullptr;
+  Handle<GraphicsPipeline> pipeline;
+  glm::uvec2 viewport;
 };
 
-void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
+void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
                     RenderPass &render_pass, const ImGuiPassResources &rcs) {
-  ren_ImGuiScope(scene.get_imgui_context());
+  ren_ImGuiScope(rcs.ctx);
 
   const ImDrawData *draw_data = ImGui::GetDrawData();
   if (!draw_data->TotalVtxCount) {
     return;
   }
 
-  {
-    auto *vertices = rg.map_buffer<ImDrawVert>(rcs.vertices);
-    auto *indices = rg.map_buffer<ImDrawIdx>(rcs.indices);
-    for (const ImDrawList *cmd_list : draw_data->CmdLists) {
-      std::ranges::copy_n(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size,
-                          vertices);
-      vertices += cmd_list->VtxBuffer.Size;
-      std::ranges::copy_n(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size,
-                          indices);
-      indices += cmd_list->IdxBuffer.Size;
-    }
+  auto [vertices, vertices_ptr, _] =
+      rg.allocate<ImDrawVert>(draw_data->TotalVtxCount);
+  auto [indices, indices_ptr, index_buffer] =
+      rg.allocate<ImDrawIdx>(draw_data->TotalIdxCount);
+
+  for (const ImDrawList *cmd_list : draw_data->CmdLists) {
+    std::ranges::copy_n(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size,
+                        vertices);
+    vertices += cmd_list->VtxBuffer.Size;
+    std::ranges::copy_n(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size,
+                        indices);
+    indices += cmd_list->IdxBuffer.Size;
   }
 
-  render_pass.bind_graphics_pipeline(scene.get_pipelines().imgui_pass);
+  render_pass.bind_graphics_pipeline(rcs.pipeline);
 
   static_assert(sizeof(ImDrawIdx) * 8 == 16);
-  render_pass.bind_index_buffer(rg.get_buffer(rcs.indices),
-                                VK_INDEX_TYPE_UINT16);
+  render_pass.bind_index_buffer(index_buffer, VK_INDEX_TYPE_UINT16);
 
   render_pass.bind_descriptor_sets({rg.get_texture_set()});
 
@@ -56,7 +57,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
                             -draw_data->DisplaySize.y};
   glm::vec2 scale = 2.0f / display_size;
   glm::vec2 translate = glm::vec2(-1.0f) - display_offset * scale;
-  glm::vec2 fb_size = scene.get_viewport();
+  glm::vec2 fb_size = rcs.viewport;
 
   usize vertex_offset = 0;
   usize index_offset = 0;
@@ -85,8 +86,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
       SampledTextureId texture((uintptr_t)cmd.TextureId);
 
       render_pass.set_push_constants(glsl::ImGuiPassArgs{
-          .vertices = renderer.get_buffer_device_ptr<glsl::ImGuiVertex>(
-              rg.get_buffer(rcs.vertices)),
+          .vertices = DevicePtr<glsl::ImGuiVertex>(vertices_ptr),
           .scale = scale,
           .translate = translate,
           .tex = texture,
@@ -106,41 +106,30 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg, const Scene &scene,
 
 } // namespace
 
-void setup_imgui_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
-                      const ImGuiPassConfig &cfg) {
-  ImGuiPassResources rcs;
+} // namespace ren
 
-  auto pass = rgb.create_pass({.name = "imgui"});
-
-  std::tie(std::ignore, rcs.vertices) = pass.create_buffer(
-      {
-          .name = "imgui-vertices",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(ImDrawVert) * cfg.num_vertices,
-      },
-      RG_HOST_WRITE_BUFFER | RG_VS_READ_BUFFER);
-
-  std::tie(std::ignore, rcs.indices) = pass.create_buffer(
-      {
-          .name = "imgui-indices",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(ImDrawIdx) * cfg.num_indices,
-      },
-      RG_HOST_WRITE_BUFFER | RG_INDEX_BUFFER);
+void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
+                           const ImGuiPassConfig &cfg) {
+  auto pass = ccfg.rgb->create_pass({.name = "imgui"});
 
   std::tie(*cfg.sdr, std::ignore) =
-      pass.write_color_attachment("imgui", *cfg.sdr,
+      pass.write_color_attachment("sdr-imgui", *cfg.sdr,
                                   {
                                       .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                       .store = VK_ATTACHMENT_STORE_OP_STORE,
                                   });
 
+  const Scene &scene = *ccfg.scene;
+
+  ImGuiPassResources rcs = {
+      .ctx = scene.get_imgui_context(),
+      .pipeline = ccfg.pipelines->imgui_pass,
+      .viewport = scene.get_viewport(),
+  };
+
   pass.set_graphics_callback(
-      [=](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
-        run_imgui_pass(renderer, rt, *scene, render_pass, rcs);
+      [rcs](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
+        run_imgui_pass(renderer, rt, render_pass, rcs);
       });
 }
-
-} // namespace ren
-
 #endif // REN_IMGUI

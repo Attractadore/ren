@@ -7,16 +7,8 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
   m_builder = &builder;
 }
 
-auto RgPassBuilder::create_buffer(RgBufferCreateInfo &&create_info,
-                                  const RgBufferUsage &usage)
-    -> std::tuple<RgBufferId, RgBufferToken> {
-  RgDebugName name = std::move(create_info.name);
-  return write_buffer(std::move(name),
-                      m_builder->create_buffer(std::move(create_info)), usage);
-}
-
-auto RgPassBuilder::read_buffer(RgBufferId buffer, const RgBufferUsage &usage)
-    -> RgBufferToken {
+auto RgPassBuilder::read_buffer(RgBufferId buffer,
+                                const RgBufferUsage &usage) -> RgBufferToken {
   return m_builder->read_buffer(m_pass, buffer, usage);
 }
 
@@ -25,15 +17,6 @@ auto RgPassBuilder::write_buffer(RgDebugName name, RgBufferId buffer,
     -> std::tuple<RgBufferId, RgBufferToken> {
   return m_builder->write_buffer(m_pass, std::move(name), buffer, usage);
 }
-
-auto RgPassBuilder::create_texture(RgTextureCreateInfo &&create_info,
-                                   const RgTextureUsage &usage)
-    -> std::tuple<RgTextureId, RgTextureToken> {
-  RgDebugName name = std::move(create_info.name);
-  return write_texture(std::move(name),
-                       m_builder->create_texture(std::move(create_info)),
-                       usage);
-};
 
 auto RgPassBuilder::read_texture(RgTextureId texture,
                                  const RgTextureUsage &usage,
@@ -49,7 +32,7 @@ auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
 
 void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,
                                          const ColorAttachmentOperations &ops) {
-  auto &color_attachments = m_builder->m_passes[m_pass]
+  auto &color_attachments = m_builder->m_data->m_passes[m_pass]
                                 .data.get_or_emplace<RgGraphicsPassInfo>()
                                 .color_attachments;
   if (color_attachments.size() <= index) {
@@ -63,7 +46,7 @@ void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,
 
 void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
                                          const DepthAttachmentOperations &ops) {
-  m_builder->m_passes[m_pass]
+  m_builder->m_data->m_passes[m_pass]
       .data.get_or_emplace<RgGraphicsPassInfo>()
       .depth_stencil_attachment = RgDepthStencilAttachment{
       .texture = texture,
@@ -71,38 +54,17 @@ void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
   };
 }
 
-auto RgPassBuilder::create_color_attachment(
-    RgTextureCreateInfo &&create_info, const ColorAttachmentOperations &ops,
+auto RgPassBuilder::write_color_attachment(
+    RgDebugName name, RgTextureId texture, const ColorAttachmentOperations &ops,
     u32 index) -> std::tuple<RgTextureId, RgTextureToken> {
-  auto [texture, token] =
-      create_texture(std::move(create_info), RG_COLOR_ATTACHMENT);
-  add_color_attachment(index, token, ops);
-  return {texture, token};
-}
-
-auto RgPassBuilder::write_color_attachment(RgDebugName name,
-                                           RgTextureId texture,
-                                           const ColorAttachmentOperations &ops,
-                                           u32 index)
-    -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
       write_texture(std::move(name), texture, RG_COLOR_ATTACHMENT);
   add_color_attachment(index, token, ops);
   return {new_texture, token};
 }
 
-auto RgPassBuilder::create_depth_attachment(
-    RgTextureCreateInfo &&create_info, const DepthAttachmentOperations &ops)
-    -> std::tuple<RgTextureId, RgTextureToken> {
-  auto [texture, token] =
-      create_texture(std::move(create_info), RG_READ_WRITE_DEPTH_ATTACHMENT);
-  add_depth_attachment(token, ops);
-  return {texture, token};
-}
-
-auto RgPassBuilder::read_depth_attachment(RgTextureId texture,
-                                          u32 temporal_layer)
-    -> RgTextureToken {
+auto RgPassBuilder::read_depth_attachment(
+    RgTextureId texture, u32 temporal_layer) -> RgTextureToken {
   RgTextureToken token =
       read_texture(texture, RG_READ_DEPTH_ATTACHMENT, temporal_layer);
   add_depth_attachment(token, {

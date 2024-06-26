@@ -3,15 +3,13 @@
 #include "MeshPass.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
-#include "glsl/InstanceCullingAndLODPass.h"
 
 namespace ren {
 
 namespace {
 
 struct UploadPassResources {
-  RgRWVariableToken<Vector<BufferView>> index_pools;
-
+  NotNull<const Scene *> scene;
   RgBufferToken meshes;
   RgBufferToken materials;
   RgBufferToken mesh_instances;
@@ -21,17 +19,8 @@ struct UploadPassResources {
 };
 
 void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
-                     const Scene &scene, const UploadPassResources &rcs) {
-  ren_assert(rcs.materials);
-  ren_assert(rcs.transform_matrices);
-  ren_assert(rcs.normal_matrices);
-  ren_assert(rcs.directional_lights);
-
-  const Camera &camera = scene.get_camera();
-  glm::uvec2 viewport = scene.get_viewport();
-
-  glm::mat4 proj = get_projection_matrix(camera, viewport);
-  glm::mat4 view = get_view_matrix(camera);
+                     const UploadPassResources &rcs) {
+  const Scene &scene = *rcs.scene;
 
   auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
   for (const auto &[h, material] : scene.get_materials()) {
@@ -87,20 +76,9 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
   for (const auto &[h, light] : scene.get_directional_lights()) {
     directional_lights[h] = light;
   }
-
-  Vector<BufferView> &index_pools = rg.get_variable(rcs.index_pools);
-  index_pools.clear();
-  for (const IndexPool &pool : scene.get_index_pools()) {
-    index_pools.push_back(renderer.get_buffer_view(pool.indices));
-  }
 }
 
 struct UploadPassConfig {
-  u32 num_meshes;
-  u32 num_mesh_instances;
-  u32 num_materials;
-  u32 num_directional_lights;
-  NotNull<RgVariableId<Vector<BufferView>> *> index_pools;
   NotNull<RgBufferId *> meshes;
   NotNull<RgBufferId *> materials;
   NotNull<RgBufferId *> mesh_instances;
@@ -109,73 +87,71 @@ struct UploadPassConfig {
   NotNull<RgBufferId *> directional_lights;
 };
 
-void setup_upload_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+void setup_upload_pass(const PassCommonConfig &ccfg,
                        const UploadPassConfig &cfg) {
-  UploadPassResources rcs;
+  RgBuilder &rgb = *ccfg.rgb;
+  const Scene &scene = *ccfg.scene;
+
+  UploadPassResources rcs = {.scene = &scene};
 
   auto pass = rgb.create_pass({.name = "upload"});
 
-  std::tie(*cfg.index_pools, rcs.index_pools) =
-      pass.create_variable<Vector<BufferView>>("index-pools");
+  *cfg.materials = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glsl::Material) * scene.get_materials().size(),
+  });
 
-  std::tie(*cfg.materials, rcs.materials) = pass.create_buffer(
-      {
-          .name = "materials",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(glsl::Material) * cfg.num_materials,
-      },
-      RG_HOST_WRITE_BUFFER);
+  std::tie(*cfg.materials, rcs.materials) =
+      pass.write_buffer("materials", *cfg.materials, RG_HOST_WRITE_BUFFER);
 
-  std::tie(*cfg.meshes, rcs.meshes) = pass.create_buffer(
-      {
-          .name = "meshes",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(glsl::Mesh) * cfg.num_meshes,
-      },
-      RG_HOST_WRITE_BUFFER);
+  *cfg.meshes = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glsl::Mesh) * scene.get_meshes().size(),
+  });
 
-  std::tie(*cfg.mesh_instances, rcs.mesh_instances) = pass.create_buffer(
-      {
-          .name = "mesh-instances",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(glsl::MeshInstance) * cfg.num_mesh_instances,
-      },
-      RG_HOST_WRITE_BUFFER);
+  std::tie(*cfg.meshes, rcs.meshes) =
+      pass.write_buffer("meshes", *cfg.meshes, RG_HOST_WRITE_BUFFER);
 
-  std::tie(*cfg.transform_matrices, rcs.transform_matrices) =
-      pass.create_buffer(
-          {
-              .name = "transform-matrices",
-              .heap = BufferHeap::Dynamic,
-              .size = sizeof(glsl::mat4x3) * cfg.num_mesh_instances,
-          },
-          RG_HOST_WRITE_BUFFER);
+  usize num_mesh_instances = scene.get_mesh_instances().size();
 
-  std::tie(*cfg.normal_matrices, rcs.normal_matrices) = pass.create_buffer(
-      {
-          .name = "normal-matrices",
-          .heap = BufferHeap::Dynamic,
-          .size = sizeof(glm::mat3) * cfg.num_mesh_instances,
-      },
-      RG_HOST_WRITE_BUFFER);
+  *cfg.mesh_instances = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glsl::MeshInstance) * num_mesh_instances,
+  });
 
-  std::tie(*cfg.directional_lights, rcs.directional_lights) =
-      pass.create_buffer(
-          {
-              .name = "directional-lights",
-              .heap = BufferHeap::Dynamic,
-              .size = sizeof(glsl::DirLight) * cfg.num_directional_lights,
-          },
-          RG_HOST_WRITE_BUFFER);
+  std::tie(*cfg.mesh_instances, rcs.mesh_instances) = pass.write_buffer(
+      "mesh-instances", *cfg.mesh_instances, RG_HOST_WRITE_BUFFER);
 
-  pass.set_host_callback([=](Renderer &renderer, const RgRuntime &rt) {
-    run_upload_pass(renderer, rt, *scene, rcs);
+  *cfg.transform_matrices = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glsl::mat4x3) * num_mesh_instances,
+  });
+
+  std::tie(*cfg.transform_matrices, rcs.transform_matrices) = pass.write_buffer(
+      "transform-matrices", *cfg.transform_matrices, RG_HOST_WRITE_BUFFER);
+
+  *cfg.normal_matrices = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glm::mat3) * num_mesh_instances,
+  });
+
+  std::tie(*cfg.normal_matrices, rcs.normal_matrices) = pass.write_buffer(
+      "normal-matrices", *cfg.normal_matrices, RG_HOST_WRITE_BUFFER);
+
+  *cfg.directional_lights = rgb.create_buffer({
+      .heap = BufferHeap::Dynamic,
+      .size = sizeof(glsl::DirLight) * scene.get_directional_lights().size(),
+  });
+
+  std::tie(*cfg.directional_lights, rcs.directional_lights) = pass.write_buffer(
+      "directional-lights", *cfg.directional_lights, RG_HOST_WRITE_BUFFER);
+
+  pass.set_host_callback([rcs](Renderer &renderer, const RgRuntime &rg) {
+    run_upload_pass(renderer, rg, rcs);
   });
 }
 
 struct EarlyZPassResources {
-  RgVariableToken<Vector<BufferView>> index_pools;
-  RgRWVariableToken<DepthOnlyMeshPassClass> mesh_pass;
   RgBufferToken meshes;
   RgBufferToken mesh_instances;
   RgBufferToken transform_matrices;
@@ -185,54 +161,54 @@ struct EarlyZPassResources {
 
 void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
                       CommandRecorder &cmd, const Scene &scene,
-                      const EarlyZPassResources &rcs) {
-  u32 feature_mask = 0;
-  if (scene.is_frustum_culling_enabled()) {
-    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
-  }
-  if (scene.is_lod_selection_enabled()) {
-    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
-  }
+                      const EarlyZPassResources &rcs) {}
 
-  auto &mesh_pass = rg.get_variable(rcs.mesh_pass);
-  mesh_pass.execute(
-      renderer, cmd,
+struct EarlyZPassConfig {
+  RgBufferId meshes;
+  Span<const BufferView> index_pools;
+  RgBufferId mesh_instances;
+  RgBufferId transform_matrices;
+  NotNull<RgTextureId *> depth_buffer;
+};
+
+void setup_early_z_pass(const PassCommonConfig &ccfg,
+                        const EarlyZPassConfig &cfg) {
+  const Scene &scene = *ccfg.scene;
+  DepthOnlyMeshPassClass mesh_pass;
+  mesh_pass.record(
+      *ccfg.rgb,
       DepthOnlyMeshPassClass::BeginInfo{
           .base =
               {
+                  .pass_name = "early-z",
+                  .depth_attachment = cfg.depth_buffer,
+                  .depth_attachment_ops =
+                      {
+                          .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                          .store = VK_ATTACHMENT_STORE_OP_STORE,
+                      },
+                  .depth_attachment_name = "depth-buffer",
                   .host_meshes = &scene.get_meshes(),
                   .host_materials = &scene.get_materials(),
                   .host_mesh_instances = &scene.get_mesh_instances(),
-                  .index_pools = rg.get_variable(rcs.index_pools),
-                  .pipelines = &scene.get_pipelines(),
+                  .index_pools = cfg.index_pools,
+                  .pipelines = ccfg.pipelines,
                   .draw_size = scene.get_draw_size(),
                   .num_draw_meshlets = scene.get_num_draw_meshlets(),
-                  .meshes = rg.get_buffer(rcs.meshes),
-                  .mesh_instances = rg.get_buffer(rcs.mesh_instances),
-                  .transform_matrices = rg.get_buffer(rcs.transform_matrices),
-                  .commands = rg.get_buffer(rcs.commands),
-                  .device_allocator = &rg.get_device_allocator(),
-                  .upload_allocator = &rg.get_upload_allocator(),
+                  .meshes = cfg.meshes,
+                  .mesh_instances = cfg.mesh_instances,
+                  .transform_matrices = cfg.transform_matrices,
+                  .upload_allocator = ccfg.allocator,
                   .instance_culling_and_lod_settings =
                       {
-                          .feature_mask = feature_mask,
+                          .feature_mask =
+                              scene.get_instance_culling_and_lod_feature_mask(),
                           .lod_triangle_pixel_count =
                               scene.get_lod_triangle_pixel_count(),
                           .lod_bias = scene.get_lod_bias(),
                       },
                   .meshlet_culling_feature_mask =
                       scene.get_meshlet_culling_feature_mask(),
-                  .depth_stencil_attachment =
-                      DepthStencilAttachment{
-                          .texture = renderer.get_texture_view(
-                              rg.get_texture(rcs.depth_buffer)),
-                          .depth_ops =
-                              DepthAttachmentOperations{
-                                  .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                  .store = VK_ATTACHMENT_STORE_OP_STORE,
-                              },
-
-                      },
                   .viewport = scene.get_viewport(),
                   .proj_view = scene.get_camera_proj_view(),
                   .eye = scene.get_camera().position,
@@ -241,59 +217,7 @@ void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
       });
 }
 
-struct EarlyZPassConfig {
-  RgVariableId<Vector<BufferView>> index_pools;
-  RgBufferId meshes;
-  RgBufferId mesh_instances;
-  RgBufferId transform_matrices;
-  NotNull<RgBufferId *> commands;
-  NotNull<RgTextureId *> depth_buffer;
-};
-
-void setup_early_z_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
-                        const EarlyZPassConfig &cfg) {
-  EarlyZPassResources rcs;
-
-  auto pass = rgb.create_pass({.name = "early-z"});
-
-  rcs.index_pools = pass.read_variable(cfg.index_pools);
-
-  std::tie(std::ignore, rcs.mesh_pass) =
-      pass.create_variable<DepthOnlyMeshPassClass>("early-z-mesh-pass");
-
-  rcs.meshes = pass.read_buffer(cfg.meshes, RG_VS_READ_BUFFER);
-
-  rcs.mesh_instances = pass.read_buffer(cfg.mesh_instances, RG_VS_READ_BUFFER);
-
-  rcs.transform_matrices =
-      pass.read_buffer(cfg.transform_matrices, RG_VS_READ_BUFFER);
-
-  // TODO/FIXME: resource is used for scratch space, so don't need to track
-  // dependencies.
-  std::tie(*cfg.commands, rcs.commands) =
-      pass.write_buffer("indirect-commands-after-early-z", *cfg.commands,
-                        RG_INDIRECT_COMMAND_BUFFER | RG_CS_WRITE_BUFFER);
-
-  glm::uvec2 viewport = scene->get_viewport();
-
-  std::tie(*cfg.depth_buffer, rcs.depth_buffer) = pass.create_texture(
-      {
-          .name = "depth-buffer",
-          .format = DEPTH_FORMAT,
-          .width = viewport.x,
-          .height = viewport.y,
-      },
-      RG_READ_WRITE_DEPTH_ATTACHMENT);
-
-  pass.set_callback(
-      [=](Renderer &renderer, const RgRuntime &rt, CommandRecorder &cmd) {
-        run_early_z_pass(renderer, rt, cmd, *scene, rcs);
-      });
-}
-
 struct OpaquePassResources {
-  RgVariableToken<Vector<BufferView>> index_pools;
-  RgRWVariableToken<OpaqueMeshPassClass> mesh_pass;
   RgBufferToken commands;
   RgBufferToken meshes;
   RgBufferToken materials;
@@ -308,170 +232,93 @@ struct OpaquePassResources {
 
 void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
                      CommandRecorder &cmd, const Scene &scene,
-                     const OpaquePassResources &rcs) {
-  u32 feature_mask = 0;
-  if (scene.is_frustum_culling_enabled()) {
-    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
-  }
-  if (scene.is_lod_selection_enabled()) {
-    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
-  }
-
-  auto &mesh_pass = rg.get_variable(rcs.mesh_pass);
-  mesh_pass
-      .execute(
-          renderer, cmd,
-          OpaqueMeshPassClass::BeginInfo{
-              .base =
-                  {
-                      .host_meshes = &scene.get_meshes(),
-                      .host_materials = &scene.get_materials(),
-                      .host_mesh_instances = &scene.get_mesh_instances(),
-                      .index_pools = rg.get_variable(rcs.index_pools),
-                      .pipelines = &scene.get_pipelines(),
-                      .draw_size = scene.get_draw_size(),
-                      .num_draw_meshlets = scene.get_num_draw_meshlets(),
-                      .meshes = rg.get_buffer(rcs.meshes),
-                      .materials = rg.get_buffer(rcs.materials),
-                      .mesh_instances = rg.get_buffer(rcs.mesh_instances),
-                      .transform_matrices =
-                          rg.get_buffer(rcs.transform_matrices),
-                      .normal_matrices = rg.get_buffer(rcs.normal_matrices),
-                      .commands = rg.get_buffer(rcs.commands),
-                      .textures = rg.get_texture_set(),
-                      .device_allocator = &rg.get_device_allocator(),
-                      .upload_allocator = &rg.get_upload_allocator(),
-                      .instance_culling_and_lod_settings =
-                          {
-                              .feature_mask = feature_mask,
-                              .lod_triangle_pixel_count =
-                                  scene.get_lod_triangle_pixel_count(),
-                              .lod_bias = scene.get_lod_bias(),
-                          },
-                      .meshlet_culling_feature_mask =
-                          scene.get_meshlet_culling_feature_mask(),
-                      .color_attachments = {ColorAttachment{
-                          .texture = renderer.get_texture_view(
-                              rg.get_texture(rcs.hdr)),
-                          .ops =
-                              {
-                                  .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                  .store = VK_ATTACHMENT_STORE_OP_STORE,
-                                  .clear_color =
-                                      glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
-                              },
-                      }},
-                      .depth_stencil_attachment =
-                          DepthStencilAttachment{
-                              .texture = renderer.get_texture_view(rg.get_texture(rcs.depth_buffer)),
-                              .depth_ops =
-                                  DepthAttachmentOperations{
-                                      .load = scene
-                                                      .is_early_z_enabled()
-                                                  ? VK_ATTACHMENT_LOAD_OP_LOAD
-                                                  : VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                      .store = scene
-                                                       .is_early_z_enabled()
-                                                   ? VK_ATTACHMENT_STORE_OP_NONE
-                                                   : VK_ATTACHMENT_STORE_OP_STORE,
-                                  },
-
-                          },
-                      .viewport = scene.get_viewport(),
-                      .proj_view = scene.get_camera_proj_view(),
-                      .eye = scene.get_camera().position,
-                  },
-              .num_directional_lights =
-                  u32(scene.get_directional_lights().size()),
-              .directional_lights = rg.get_buffer(rcs.directional_lights),
-              .exposure = rg.get_storage_texture_descriptor(rcs.exposure),
-          });
-}
+                     const OpaquePassResources &rcs) {}
 
 struct OpaquePassConfig {
-  RgVariableId<Vector<BufferView>> index_pools;
   RgBufferId meshes;
+  Span<const BufferView> index_pools;
   RgBufferId materials;
   RgBufferId mesh_instances;
   RgBufferId transform_matrices;
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
-  RgBufferId commands;
   NotNull<RgTextureId *> hdr;
   RgTextureId depth_buffer;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
 };
 
-void setup_opaque_pass(RgBuilder &rgb, NotNull<const Scene *> scene,
+void setup_opaque_pass(const PassCommonConfig &ccfg,
                        const OpaquePassConfig &cfg) {
-  OpaquePassResources rcs;
-  auto pass = rgb.create_pass({.name = "opaque"});
-
-  rcs.index_pools = pass.read_variable(cfg.index_pools);
-
-  std::tie(std::ignore, rcs.mesh_pass) =
-      pass.create_variable<OpaqueMeshPassClass>("opaque-mesh-pass");
-
-  rcs.meshes = pass.read_buffer(cfg.meshes, RG_VS_READ_BUFFER);
-
-  rcs.materials = pass.read_buffer(cfg.materials, RG_FS_READ_BUFFER);
-
-  rcs.mesh_instances = pass.read_buffer(cfg.mesh_instances, RG_VS_READ_BUFFER);
-
-  rcs.transform_matrices =
-      pass.read_buffer(cfg.transform_matrices, RG_VS_READ_BUFFER);
-
-  rcs.normal_matrices =
-      pass.read_buffer(cfg.normal_matrices, RG_VS_READ_BUFFER);
-
-  rcs.directional_lights =
-      pass.read_buffer(cfg.directional_lights, RG_FS_READ_BUFFER);
-
-  std::tie(std::ignore, rcs.commands) =
-      pass.write_buffer("indirect-commands-after-opaque", cfg.commands,
-                        RG_INDIRECT_COMMAND_BUFFER | RG_CS_WRITE_BUFFER);
-
-  glm::uvec2 viewport = scene->get_viewport();
-
-  std::tie(*cfg.hdr, rcs.hdr) = pass.create_texture(
-      {
-          .name = "hdr",
-          .format = HDR_FORMAT,
-          .width = viewport.x,
-          .height = viewport.y,
-      },
-      RG_COLOR_ATTACHMENT);
-
-  if (scene->is_early_z_enabled()) {
-    rcs.depth_buffer =
-        pass.read_texture(cfg.depth_buffer, RG_READ_DEPTH_ATTACHMENT);
-  } else {
-    std::tie(std::ignore, rcs.depth_buffer) = pass.create_texture(
-        {
-            .name = "depth-buffer",
-            .format = DEPTH_FORMAT,
-            .width = viewport.x,
-            .height = viewport.y,
-        },
-        RG_READ_WRITE_DEPTH_ATTACHMENT);
-  }
-
-  rcs.exposure = pass.read_texture(cfg.exposure, RG_FS_READ_TEXTURE,
-                                   cfg.exposure_temporal_layer);
-
-  pass.set_callback(
-      [=](Renderer &renderer, const RgRuntime &rt, CommandRecorder &cmd) {
-        run_opaque_pass(renderer, rt, cmd, *scene, rcs);
-      });
+  const Scene &scene = *ccfg.scene;
+  RgTextureId depth_buffer = cfg.depth_buffer;
+  OpaqueMeshPassClass mesh_pass;
+  mesh_pass
+      .record(*ccfg.rgb,
+              OpaqueMeshPassClass::BeginInfo{
+                  .base =
+                      {
+                          .pass_name = "opaque",
+                          .color_attachments = {cfg.hdr},
+                          .color_attachment_ops = {{
+                              .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                              .store = VK_ATTACHMENT_STORE_OP_STORE,
+                              .clear_color = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                          }},
+                          .color_attachment_names = {"hdr"},
+                          .depth_attachment = &depth_buffer,
+                          .depth_attachment_ops = scene.is_early_z_enabled() ?
+                           DepthAttachmentOperations {
+                                .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                .store = VK_ATTACHMENT_STORE_OP_NONE,
+                           } :
+                           DepthAttachmentOperations {
+                               .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                               .store = VK_ATTACHMENT_STORE_OP_STORE,
+                           },
+                          .depth_attachment_name = "depth-buffer",
+                          .host_meshes = &scene.get_meshes(),
+                          .host_materials = &scene.get_materials(),
+                          .host_mesh_instances = &scene.get_mesh_instances(),
+                          .index_pools = cfg.index_pools,
+                          .pipelines = ccfg.pipelines,
+                          .draw_size = scene.get_draw_size(),
+                          .num_draw_meshlets = scene.get_num_draw_meshlets(),
+                          .meshes = cfg.meshes,
+                          .materials = cfg.materials,
+                          .mesh_instances = cfg.mesh_instances,
+                          .transform_matrices = cfg.transform_matrices,
+                          .normal_matrices = cfg.normal_matrices,
+                          .upload_allocator = ccfg.allocator,
+                          .instance_culling_and_lod_settings =
+                              {
+                                  .feature_mask = scene.get_instance_culling_and_lod_feature_mask(),
+                                  .lod_triangle_pixel_count =
+                                      scene.get_lod_triangle_pixel_count(),
+                                  .lod_bias = scene.get_lod_bias(),
+                              },
+                          .meshlet_culling_feature_mask =
+                              scene.get_meshlet_culling_feature_mask(),
+                          .viewport = scene.get_viewport(),
+                          .proj_view = scene.get_camera_proj_view(),
+                          .eye = scene.get_camera().position,
+                      },
+                  .directional_lights = cfg.directional_lights,
+                  .num_directional_lights =
+                      u32(scene.get_directional_lights().size()),
+                  .exposure = cfg.exposure,
+                  .exposure_temporal_layer = cfg.exposure_temporal_layer,
+              });
 }
 
 } // namespace
 
-void setup_opaque_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
-                         const OpaquePassesConfig &cfg) {
+} // namespace ren
 
-  RgVariableId<Vector<BufferView>> index_pools;
+void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
+                              const OpaquePassesConfig &cfg) {
+  const Scene &scene = *ccfg.scene;
+
   RgBufferId meshes;
   RgBufferId materials;
   RgBufferId mesh_instances;
@@ -479,56 +326,67 @@ void setup_opaque_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
   RgBufferId normal_matrices;
   RgBufferId directional_lights;
 
-  setup_upload_pass(rgb, scene,
-                    UploadPassConfig{
-                        .num_meshes = cfg.num_meshes,
-                        .num_mesh_instances = cfg.num_mesh_instances,
-                        .num_materials = cfg.num_materials,
-                        .num_directional_lights = cfg.num_directional_lights,
-                        .index_pools = &index_pools,
-                        .meshes = &meshes,
-                        .materials = &materials,
-                        .mesh_instances = &mesh_instances,
-                        .transform_matrices = &transform_matrices,
-                        .normal_matrices = &normal_matrices,
-                        .directional_lights = &directional_lights,
-                    });
-
-  RgBufferId commands = rgb.create_buffer({
-      .name = "indirect-commands",
-      .heap = BufferHeap::Static,
-      .size = sizeof(glsl::DrawIndexedIndirectCommand) *
-              scene->get_num_draw_meshlets(),
-  });
-
-  RgTextureId depth_buffer;
-  if (scene->is_early_z_enabled()) {
-    setup_early_z_pass(rgb, scene,
-                       EarlyZPassConfig{
-                           .index_pools = index_pools,
-                           .meshes = meshes,
-                           .mesh_instances = mesh_instances,
-                           .transform_matrices = transform_matrices,
-                           .commands = &commands,
-                           .depth_buffer = &depth_buffer,
-                       });
+  SmallVector<BufferView> index_pools;
+  for (const IndexPool &pool : scene.get_index_pools()) {
+    index_pools.push_back({
+        .buffer = pool.indices,
+        .size = sizeof(u8[glsl::INDEX_POOL_SIZE]),
+    });
   }
 
-  setup_opaque_pass(rgb, scene,
+  setup_upload_pass(ccfg, UploadPassConfig{
+                              .meshes = &meshes,
+                              .materials = &materials,
+                              .mesh_instances = &mesh_instances,
+                              .transform_matrices = &transform_matrices,
+                              .normal_matrices = &normal_matrices,
+                              .directional_lights = &directional_lights,
+                          });
+
+  glm::uvec2 viewport = scene.get_viewport();
+
+  if (!ccfg.rcs->depth_buffer) {
+    ccfg.rcs->depth_buffer = ccfg.rgp->create_texture({
+        .name = "depth-buffer",
+        .format = DEPTH_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId depth_buffer = ccfg.rcs->depth_buffer;
+
+  if (scene.is_early_z_enabled()) {
+    setup_early_z_pass(ccfg, EarlyZPassConfig{
+                                 .meshes = meshes,
+                                 .index_pools = index_pools,
+                                 .mesh_instances = mesh_instances,
+                                 .transform_matrices = transform_matrices,
+                                 .depth_buffer = &depth_buffer,
+                             });
+  }
+
+  if (!ccfg.rcs->hdr) {
+    ccfg.rcs->hdr = ccfg.rgp->create_texture({
+        .name = "hdr",
+        .format = HDR_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  *cfg.hdr = ccfg.rcs->hdr;
+
+  setup_opaque_pass(ccfg,
                     OpaquePassConfig{
-                        .index_pools = index_pools,
                         .meshes = meshes,
+                        .index_pools = index_pools,
                         .materials = materials,
                         .mesh_instances = mesh_instances,
                         .transform_matrices = transform_matrices,
                         .normal_matrices = normal_matrices,
                         .directional_lights = directional_lights,
-                        .commands = commands,
                         .hdr = cfg.hdr,
                         .depth_buffer = depth_buffer,
                         .exposure = cfg.exposure,
                         .exposure_temporal_layer = cfg.exposure_temporal_layer,
                     });
 }
-
-} // namespace ren

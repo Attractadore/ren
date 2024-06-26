@@ -3,6 +3,7 @@
 #include "CommandAllocator.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
+#include "Passes/Pass.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
@@ -16,22 +17,6 @@
 struct ImGuiContext;
 
 namespace ren {
-
-struct SceneRgConfig {
-  u32 batch_size = 0;
-  u32 num_meshes = 0;
-  u32 num_mesh_instances = 0;
-  u32 num_materials = 0;
-  u32 num_directional_lights = 0;
-  glm::uvec2 viewport;
-  ExposureMode exposure = {};
-#if REN_IMGUI
-  ImGuiContext *imgui_context = nullptr;
-  u32 num_imgui_vertices = 0;
-  u32 num_imgui_indices = 0;
-#endif
-  bool early_z : 1 = false;
-};
 
 using Image = Handle<Texture>;
 
@@ -49,12 +34,6 @@ public:
 
   auto get_viewport() const -> glm::uvec2;
 
-  auto get_pipelines() const -> const Pipelines &;
-
-  auto get_draw_size() const -> u32;
-
-  auto get_num_draw_meshlets() const -> u32;
-
   auto get_meshes() const -> const GenArray<Mesh> &;
 
   auto get_index_pools() const -> Span<const IndexPool>;
@@ -68,6 +47,12 @@ public:
 
   auto get_directional_lights() const -> const GenArray<glsl::DirLight> &;
 
+  bool is_early_z_enabled() const;
+
+  auto get_draw_size() const -> u32;
+
+  auto get_num_draw_meshlets() const -> u32;
+
   bool is_frustum_culling_enabled() const;
 
   bool is_lod_selection_enabled() const;
@@ -76,13 +61,13 @@ public:
 
   auto get_lod_bias() const -> i32;
 
+  auto get_instance_culling_and_lod_feature_mask() const -> u32;
+
   bool is_meshlet_cone_culling_enabled() const;
 
   bool is_meshlet_frustum_culling_enabled() const;
 
   auto get_meshlet_culling_feature_mask() const -> u32;
-
-  bool is_early_z_enabled() const;
 
 public:
   auto create_camera() -> expected<CameraId> override;
@@ -155,9 +140,7 @@ private:
   get_or_create_texture(Handle<Image> image,
                         const SamplerDesc &sampler_desc) -> SampledTextureId;
 
-  void update_rg_config();
-
-  void setup_rg(RgBuilder &rgb);
+  auto build_rg() -> RenderGraph;
 
 private:
   Renderer *m_renderer = nullptr;
@@ -165,12 +148,10 @@ private:
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
 
-  RgTextureId m_backbuffer;
-  RgSemaphoreId m_present_semaphore;
-  RgSemaphoreId m_acquire_semaphore;
-
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;
+  DeviceBumpAllocator m_device_allocator;
+  UploadBumpAllocator m_upload_allocator;
 
   Handle<Camera> m_camera;
   GenArray<Camera> m_cameras;
@@ -198,8 +179,9 @@ private:
   ResourceArena m_arena;
   ResourceArena m_frame_arena;
 
-  SceneRgConfig m_rg_config;
-  std::unique_ptr<RenderGraph> m_render_graph;
+  PassPersistentConfig m_pass_cfg;
+  PassPersistentResources m_pass_rcs;
+  std::unique_ptr<RgPersistent> m_rgp;
 
   ExposureMode m_exposure_mode = {};
   float m_exposure_compensation = 0.0f;
@@ -210,7 +192,6 @@ private:
   float m_lod_triangle_pixels = 16.0f;
   i32 m_lod_bias = 0;
 
-  bool m_rg_valid : 1 = false;
   bool m_instance_frustum_culling : 1 = true;
   bool m_lod_selection : 1 = true;
   bool m_meshlet_cone_culling : 1 = true;

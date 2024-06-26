@@ -1,14 +1,27 @@
 #include "MeshPass.hpp"
+#include "RenderGraph.hpp"
 #include "Support/Views.hpp"
 #include "glsl/EarlyZPass.h"
 #include "glsl/MeshletCullingPass.h"
 #include "glsl/OpaquePass.h"
 
+#include <fmt/format.h>
+
 namespace ren {
 
-MeshPassClass::Instance::Instance(MeshPassClass &cls, Renderer &renderer,
+MeshPassClass::Instance::Instance(MeshPassClass &cls,
                                   const BeginInfo &begin_info) {
   m_class = &cls;
+
+  m_class->m_pass_name = begin_info.pass_name;
+
+  m_color_attachments = begin_info.color_attachments;
+  m_color_attachment_ops = begin_info.color_attachment_ops;
+  m_class->m_color_attachment_names = begin_info.color_attachment_names;
+
+  m_depth_attachment = begin_info.depth_attachment;
+  m_depth_attachment_ops = begin_info.depth_attachment_ops;
+  m_class->m_depth_attachment_name = begin_info.depth_attachment_name;
 
   m_host_meshes = begin_info.host_meshes;
   m_host_materials = begin_info.host_materials;
@@ -24,128 +37,21 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls, Renderer &renderer,
   m_mesh_instances = begin_info.mesh_instances;
   m_transform_matrices = begin_info.transform_matrices;
   m_normal_matrices = begin_info.normal_matrices;
-  m_commands = begin_info.commands;
-  ren_assert(m_commands.size >=
-             m_num_draw_meshlets * sizeof(glsl::DrawIndexedIndirectCommand));
 
-  m_meshes_ptr = renderer.get_buffer_device_ptr<glsl::Mesh>(m_meshes);
-  m_materials_ptr =
-      renderer.try_get_buffer_device_ptr<glsl::Material>(m_materials);
-  m_mesh_instances_ptr =
-      renderer.get_buffer_device_ptr<glsl::MeshInstance>(m_mesh_instances);
-  m_transform_matrices_ptr =
-      renderer.get_buffer_device_ptr<glm::mat4x3>(m_transform_matrices);
-  m_normal_matrices_ptr =
-      renderer.try_get_buffer_device_ptr<glm::mat3>(m_normal_matrices);
-  m_commands_ptr =
-      renderer.get_buffer_device_ptr<glsl::DrawIndexedIndirectCommand>(
-          m_commands);
-
-  m_textures = begin_info.textures;
-
-  m_device_allocator = begin_info.device_allocator;
   m_upload_allocator = begin_info.upload_allocator;
 
   m_instance_culling_and_lod_settings =
       begin_info.instance_culling_and_lod_settings;
   m_meshlet_culling_feature_mask = begin_info.meshlet_culling_feature_mask;
 
-  m_color_attachments = begin_info.color_attachments;
-  m_depth_stencil_attachment = begin_info.depth_stencil_attachment;
-
   m_viewport = begin_info.viewport;
   m_proj_view = begin_info.proj_view;
   m_eye = begin_info.eye;
 }
 
-void MeshPassClass::Instance::Instance::init_command_count_buffer(
-    CommandRecorder &cmd, u32 num_draws) {
-  auto alloc = m_device_allocator->allocate<u32>(num_draws);
-  m_command_count = alloc.view;
-  m_command_count_ptr = alloc.ptr;
-  cmd.fill_buffer(m_command_count, 0);
-  VkMemoryBarrier2 barrier = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT,
-      .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-      .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                       VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-  };
-  cmd.pipeline_barrier({barrier}, {});
-}
-
-auto MeshPassClass::Instance::Instance::get_cross_draw_indirect_buffer_barrier()
-    -> VkMemoryBarrier2 {
-  return {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-  };
-}
-
-auto MeshPassClass::Instance::Instance::
-    get_cross_draw_color_attachment_barrier() -> Optional<VkMemoryBarrier2> {
-  for (const Optional<ColorAttachment> &attachment : m_color_attachments) {
-    if (attachment) {
-      ren_assert(attachment->ops.store == VK_ATTACHMENT_STORE_OP_STORE);
-      return VkMemoryBarrier2{
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-          .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-          .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-          .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      };
-    }
-  }
-  return None;
-}
-
-auto MeshPassClass::Instance::Instance::
-    get_cross_draw_depth_attachment_barrier() -> Optional<VkMemoryBarrier2> {
-  if (m_depth_stencil_attachment) {
-    ren_assert(m_depth_stencil_attachment->depth_ops);
-    ren_assert(!m_depth_stencil_attachment->stencil_ops);
-    const DepthAttachmentOperations &ops =
-        *m_depth_stencil_attachment->depth_ops;
-    if (ops.store == VK_ATTACHMENT_STORE_OP_STORE) {
-      return VkMemoryBarrier2{
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-          .srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-          .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-          .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-      };
-    }
-    ren_assert(ops.store == VK_ATTACHMENT_STORE_OP_NONE);
-  }
-  return None;
-}
-
-void MeshPassClass::Instance::Instance::insert_cross_draw_barriers(
-    CommandRecorder &cmd) {
-  StaticVector<VkMemoryBarrier2, 3> barriers;
-  barriers.push_back(get_cross_draw_indirect_buffer_barrier());
-  if (auto barrier = get_cross_draw_color_attachment_barrier()) {
-    barriers.push_back(*barrier);
-  }
-  if (auto barrier = get_cross_draw_depth_attachment_barrier()) {
-    barriers.push_back(*barrier);
-  }
-  cmd.pipeline_barrier(barriers, {});
-}
-
-void MeshPassClass::Instance::Instance::run_culling(
-    CommandRecorder &cmd, const BatchDraw &draw,
-    DevicePtr<u32> command_count_ptr) {
-  auto [cull_data, cull_data_ptr, _] =
-      m_upload_allocator->allocate<glsl::InstanceCullData>(
-          draw.instances.size());
-  std::ranges::copy(draw.instances, cull_data);
-
-  u32 num_instances = draw.instances.size();
+void MeshPassClass::Instance::Instance::record_culling(
+    RgBuilder &rgb, const CullingConfig &cfg) {
+  u32 num_instances = cfg.draw->instances.size();
 
   u32 buckets_size = 0;
   std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
@@ -153,139 +59,241 @@ void MeshPassClass::Instance::Instance::run_culling(
     bucket_offsets[bucket] = buckets_size;
     u32 bucket_stride = 1 << bucket;
     u32 bucket_size =
-        std::min(num_instances, draw.num_meshlets / bucket_stride);
+        std::min(num_instances, cfg.draw->num_meshlets / bucket_stride);
     buckets_size += bucket_size;
   }
 
-  auto [meshlet_bucket_commands_ptr, meshlet_bucket_commands] =
-      m_device_allocator->allocate<glsl::DispatchIndirectCommand>(
-          glsl::NUM_MESHLET_CULLING_BUCKETS);
-  auto [meshlet_bucket_sizes_ptr, meshlet_bucket_sizes] =
-      m_device_allocator->allocate<u32>(glsl::NUM_MESHLET_CULLING_BUCKETS);
-  auto meshlet_cull_data_ptr =
-      m_device_allocator->allocate<glsl::MeshletCullData>(buckets_size).ptr;
+  RgBufferId meshlet_bucket_commands = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(
+          glsl::DispatchIndirectCommand[glsl::NUM_MESHLET_CULLING_BUCKETS]),
+  });
+
+  RgBufferId meshlet_bucket_sizes = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(u32[glsl::NUM_MESHLET_CULLING_BUCKETS]),
+  });
+
+  RgBufferId meshlet_cull_data = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(glsl::MeshletCullData) * buckets_size,
+  });
+
+  *cfg.commands = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(glsl::DrawIndexedIndirectCommand) * m_num_draw_meshlets,
+  });
+
+  *cfg.command_count = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(u32),
+  });
+
   {
-    std::array<glsl::DispatchIndirectCommand, glsl::NUM_MESHLET_CULLING_BUCKETS>
-        commands;
-    std::ranges::fill(commands,
-                      glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
-    cmd.update_buffer(meshlet_bucket_commands, commands);
+    auto pass = rgb.create_pass(
+        {.name = fmt::format("{}-init-culling", m_class->m_pass_name)});
 
-    cmd.fill_buffer(meshlet_bucket_sizes, 0);
+    struct {
+      RgBufferToken meshlet_bucket_commands;
+      RgBufferToken meshlet_bucket_sizes;
+      RgBufferToken meshlet_draw_command_count;
+    } rcs;
 
-    cmd.pipeline_barrier(
-        {{
-            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-            .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-        }},
-        {});
+    std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
+        pass.write_buffer("init-meshlet-bucket-commands",
+                          meshlet_bucket_commands, RG_TRANSFER_DST_BUFFER);
+
+    std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
+        pass.write_buffer("init-meshlet-bucket-sizes", meshlet_bucket_sizes,
+                          RG_TRANSFER_DST_BUFFER);
+
+    std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
+        pass.write_buffer("init-meshlet-draw-command-count", *cfg.command_count,
+                          RG_TRANSFER_DST_BUFFER);
+
+    pass.set_callback([rcs](Renderer &, const RgRuntime &rg,
+                            CommandRecorder &cmd) {
+      std::array<glsl::DispatchIndirectCommand,
+                 glsl::NUM_MESHLET_CULLING_BUCKETS>
+          commands;
+      std::ranges::fill(commands,
+                        glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
+      cmd.update_buffer(rg.get_buffer(rcs.meshlet_bucket_commands), commands);
+
+      cmd.fill_buffer(rg.get_buffer(rcs.meshlet_bucket_sizes), 0);
+
+      cmd.fill_buffer(rg.get_buffer(rcs.meshlet_draw_command_count), 0);
+    });
   }
 
   {
-    ComputePass pass = cmd.compute_pass();
+    auto pass =
+        rgb.create_pass({.name = fmt::format("{}-instance-culling-and-lod",
+                                             m_class->m_pass_name)});
+
+    struct {
+      Handle<ComputePipeline> pipeline;
+      DevicePtr<glsl::InstanceCullingAndLODPassUniforms> uniforms;
+      RgBufferToken meshes;
+      RgBufferToken transform_matrices;
+      DevicePtr<glsl::InstanceCullData> instance_cull_data;
+      u32 num_instances;
+      RgBufferToken meshlet_bucket_commands;
+      RgBufferToken meshlet_bucket_sizes;
+      RgBufferToken meshlet_cull_data;
+    } rcs;
+
+    rcs.pipeline = m_pipelines->instance_culling_and_lod;
+
+    rcs.meshes = pass.read_buffer(m_meshes, RG_CS_READ_BUFFER);
+
+    rcs.transform_matrices =
+        pass.read_buffer(m_transform_matrices, RG_CS_READ_BUFFER);
+
+    auto [instance_cull_data, instance_cull_data_ptr, _] =
+        m_upload_allocator->allocate<glsl::InstanceCullData>(
+            cfg.draw->instances.size());
+    std::ranges::copy(cfg.draw->instances, instance_cull_data);
+    rcs.instance_cull_data = instance_cull_data_ptr;
+    rcs.num_instances = num_instances;
+
+    std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
+        pass.write_buffer("meshlet-bucket-commands", meshlet_bucket_commands,
+                          RG_CS_WRITE_BUFFER);
+
+    std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
+        pass.write_buffer("meshlet-bucket-sizes", meshlet_bucket_sizes,
+                          RG_CS_WRITE_BUFFER);
+
+    std::tie(meshlet_cull_data, rcs.meshlet_cull_data) = pass.write_buffer(
+        "meshlet-cull-data", meshlet_cull_data, RG_CS_WRITE_BUFFER);
+
+    u32 feature_mask = m_instance_culling_and_lod_settings.feature_mask;
     float num_viewport_triangles =
         m_viewport.x * m_viewport.y /
         m_instance_culling_and_lod_settings.lod_triangle_pixel_count;
     float lod_triangle_density = num_viewport_triangles / 4.0f;
-    pass.bind_compute_pipeline(m_pipelines->instance_culling_and_lod);
-    auto [uniforms, ub, _] =
+    i32 lod_bias = m_instance_culling_and_lod_settings.lod_bias;
+
+    auto [uniforms, uniforms_ptr, _2] =
         m_upload_allocator->allocate<glsl::InstanceCullingAndLODPassUniforms>(
             1);
     *uniforms = {
-        .feature_mask = m_instance_culling_and_lod_settings.feature_mask,
+        .feature_mask = feature_mask,
         .num_instances = num_instances,
         .proj_view = m_proj_view,
         .lod_triangle_density = lod_triangle_density,
-        .lod_bias = m_instance_culling_and_lod_settings.lod_bias,
+        .lod_bias = lod_bias,
         .meshlet_bucket_offsets = bucket_offsets,
     };
-    ren_assert(m_meshes_ptr);
-    ren_assert(m_transform_matrices_ptr);
-    ren_assert(cull_data_ptr);
-    ren_assert(meshlet_bucket_commands_ptr);
-    ren_assert(meshlet_bucket_sizes_ptr);
-    ren_assert(meshlet_cull_data_ptr);
-    pass.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
-        .ub = ub,
-        .meshes = m_meshes_ptr,
-        .transform_matrices = m_transform_matrices_ptr,
-        .cull_data = cull_data_ptr,
-        .meshlet_bucket_commands = meshlet_bucket_commands_ptr,
-        .meshlet_bucket_sizes = meshlet_bucket_sizes_ptr,
-        .meshlet_cull_data = meshlet_cull_data_ptr,
-    });
-    pass.dispatch_threads(num_instances,
-                          glsl::INSTANCE_CULLING_AND_LOD_THREADS);
-  }
+    rcs.uniforms = uniforms_ptr;
 
-  cmd.pipeline_barrier(
-      {{
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-          .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-          .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-          .dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-      }},
-      {});
+    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
+                                    ComputePass &cmd) {
+      cmd.bind_compute_pipeline(rcs.pipeline);
+      ren_assert(rcs.uniforms);
+      ren_assert(rcs.instance_cull_data);
+      cmd.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
+          .ub = rcs.uniforms,
+          .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
+          .transform_matrices =
+              rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+          .cull_data = rcs.instance_cull_data,
+          .meshlet_bucket_commands =
+              rg.get_buffer_device_ptr<glsl::DispatchIndirectCommand>(
+                  rcs.meshlet_bucket_commands),
+          .meshlet_bucket_sizes =
+              rg.get_buffer_device_ptr<u32>(rcs.meshlet_bucket_sizes),
+          .meshlet_cull_data = rg.get_buffer_device_ptr<glsl::MeshletCullData>(
+              rcs.meshlet_cull_data),
+      });
+      cmd.dispatch_threads(rcs.num_instances,
+                           glsl::INSTANCE_CULLING_AND_LOD_THREADS);
+    });
+  }
 
   {
-    ComputePass pass = cmd.compute_pass();
-    pass.bind_compute_pipeline(m_pipelines->meshlet_culling);
-    for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
-      ren_assert(m_meshes_ptr);
-      ren_assert(m_transform_matrices_ptr);
-      ren_assert(meshlet_cull_data_ptr);
-      ren_assert(m_commands_ptr);
-      ren_assert(command_count_ptr);
-      ren_assert(m_eye != glm::vec3(0.0f));
-      pass.set_push_constants(glsl::MeshletCullingPassArgs{
-          .meshes = m_meshes_ptr,
-          .transform_matrices = m_transform_matrices_ptr,
-          .bucket_cull_data = meshlet_cull_data_ptr + bucket_offsets[bucket],
-          .bucket_size = meshlet_bucket_sizes_ptr + bucket,
-          .commands = m_commands_ptr,
-          .num_commands = command_count_ptr,
-          .feature_mask = m_meshlet_culling_feature_mask,
-          .bucket = bucket,
-          .eye = m_eye,
-          .proj_view = m_proj_view,
-      });
-      pass.dispatch_indirect(
-          meshlet_bucket_commands.slice<glsl::DispatchIndirectCommand>(bucket));
-    }
-  }
+    auto pass = rgb.create_pass(
+        {.name = fmt::format("{}-meshlet-culling", m_class->m_pass_name)});
 
-  cmd.pipeline_barrier(
-      {{
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-          .srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-          .dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-          .dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-      }},
-      {});
-}
+    struct {
+      Handle<ComputePipeline> pipeline;
+      RgBufferToken meshes;
+      RgBufferToken transform_matrices;
+      RgBufferToken meshlet_bucket_commands;
+      RgBufferToken meshlet_bucket_sizes;
+      RgBufferToken meshlet_cull_data;
+      RgBufferToken meshlet_draw_commands;
+      RgBufferToken meshlet_draw_command_count;
+      u32 feature_mask;
+      std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+      glm::vec3 eye;
+      glm::mat4 proj_view;
+    } rcs;
 
-void MeshPassClass::Instance::Instance::patch_attachments() {
-  for (Optional<ColorAttachment> &attachment : m_color_attachments) {
-    if (attachment) {
-      attachment->ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
-    }
-  }
-  if (m_depth_stencil_attachment) {
-    ren_assert(m_depth_stencil_attachment->depth_ops);
-    m_depth_stencil_attachment->depth_ops->load = VK_ATTACHMENT_LOAD_OP_LOAD;
+    rcs.pipeline = m_pipelines->meshlet_culling;
+
+    rcs.meshes = pass.read_buffer(m_meshes, RG_CS_READ_BUFFER);
+
+    rcs.transform_matrices =
+        pass.read_buffer(m_transform_matrices, RG_CS_READ_BUFFER);
+
+    rcs.meshlet_bucket_commands =
+        pass.read_buffer(meshlet_bucket_commands, RG_INDIRECT_COMMAND_BUFFER);
+
+    rcs.meshlet_bucket_sizes =
+        pass.read_buffer(meshlet_bucket_sizes, RG_CS_READ_BUFFER);
+
+    rcs.meshlet_cull_data =
+        pass.read_buffer(meshlet_cull_data, RG_CS_READ_BUFFER);
+
+    std::tie(*cfg.commands, rcs.meshlet_draw_commands) = pass.write_buffer(
+        "meshlet-draw-commands", *cfg.commands, RG_CS_WRITE_BUFFER);
+
+    std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
+        pass.write_buffer("meshlet-draw-command-count", *cfg.command_count,
+                          RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER);
+
+    rcs.feature_mask = m_meshlet_culling_feature_mask;
+    rcs.bucket_offsets = bucket_offsets;
+    rcs.eye = m_eye;
+    rcs.proj_view = m_proj_view;
+
+    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
+                                    ComputePass &pass) {
+      pass.bind_compute_pipeline(rcs.pipeline);
+      for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+        pass.set_push_constants(glsl::MeshletCullingPassArgs{
+            .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
+            .transform_matrices =
+                rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+            .bucket_cull_data = rg.get_buffer_device_ptr<glsl::MeshletCullData>(
+                                    rcs.meshlet_cull_data) +
+                                rcs.bucket_offsets[bucket],
+            .bucket_size =
+                rg.get_buffer_device_ptr<u32>(rcs.meshlet_bucket_sizes) +
+                bucket,
+            .commands =
+                rg.get_buffer_device_ptr<glsl::DrawIndexedIndirectCommand>(
+                    rcs.meshlet_draw_commands),
+            .num_commands =
+                rg.get_buffer_device_ptr<u32>(rcs.meshlet_draw_command_count),
+            .feature_mask = rcs.feature_mask,
+            .bucket = bucket,
+            .eye = rcs.eye,
+            .proj_view = rcs.proj_view,
+        });
+        pass.dispatch_indirect(
+            rg.get_buffer(rcs.meshlet_bucket_commands)
+                .slice<glsl::DispatchIndirectCommand>(bucket));
+      }
+    });
   }
 }
 
 DepthOnlyMeshPassClass::Instance::Instance(DepthOnlyMeshPassClass &cls,
-                                           Renderer &renderer,
                                            const BeginInfo &begin_info)
-    : MeshPassClass::Instance::Instance(cls, renderer, begin_info.base) {}
+    : MeshPassClass::Instance::Instance(cls, begin_info.base) {}
 
 void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     Batches &batches) {
@@ -317,31 +325,40 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
   }
 }
 
-void DepthOnlyMeshPassClass::Instance::Instance::bind_render_pass_resources(
-    RenderPass &render_pass) {
-  ren_assert(m_meshes_ptr);
-  ren_assert(m_mesh_instances_ptr);
-  ren_assert(m_transform_matrices_ptr);
+auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
+    RgPassBuilder &pass) -> RenderPassResources {
+  RenderPassResources rcs;
+
+  rcs.meshes = pass.read_buffer(m_meshes, RG_VS_READ_BUFFER);
+  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, RG_VS_READ_BUFFER);
+  rcs.transform_matrices =
+      pass.read_buffer(m_transform_matrices, RG_VS_READ_BUFFER);
+
+  rcs.proj_view = m_proj_view;
+
+  return rcs;
+}
+
+void DepthOnlyMeshPassClass::Instance::bind_render_pass_resources(
+    const RgRuntime &rg, RenderPass &render_pass,
+    const RenderPassResources &rcs) {
   render_pass.set_push_constants(glsl::EarlyZPassArgs{
-      .meshes = m_meshes_ptr,
-      .mesh_instances = m_mesh_instances_ptr,
-      .transform_matrices = m_transform_matrices_ptr,
-      .proj_view = m_proj_view,
+      .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
+      .mesh_instances =
+          rg.get_buffer_device_ptr<glsl::MeshInstance>(rcs.mesh_instances),
+      .transform_matrices =
+          rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+      .proj_view = rcs.proj_view,
   });
 }
 
 OpaqueMeshPassClass::Instance::Instance(OpaqueMeshPassClass &cls,
-                                        Renderer &renderer,
                                         const BeginInfo &begin_info)
-    : MeshPassClass::Instance::Instance(cls, renderer, begin_info.base) {
-  m_num_directional_lights = begin_info.num_directional_lights;
-
+    : MeshPassClass::Instance::Instance(cls, begin_info.base) {
   m_directional_lights = begin_info.directional_lights;
-
-  m_directional_lights_ptr =
-      renderer.get_buffer_device_ptr<glsl::DirLight>(m_directional_lights);
-
+  m_num_directional_lights = begin_info.num_directional_lights;
   m_exposure = begin_info.exposure;
+  m_exposure_temporal_layer = begin_info.exposure_temporal_layer;
 }
 
 void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
@@ -384,33 +401,52 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
   }
 }
 
+auto OpaqueMeshPassClass::Instance::get_render_pass_resources(
+    RgPassBuilder &pass) const -> RenderPassResources {
+  RenderPassResources rcs;
+
+  rcs.meshes = pass.read_buffer(m_meshes, RG_VS_READ_BUFFER);
+  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, RG_VS_READ_BUFFER);
+  rcs.transform_matrices =
+      pass.read_buffer(m_transform_matrices, RG_VS_READ_BUFFER);
+  rcs.normal_matrices = pass.read_buffer(m_normal_matrices, RG_VS_READ_BUFFER);
+  rcs.materials = pass.read_buffer(m_materials, RG_FS_READ_BUFFER);
+  rcs.directional_lights =
+      pass.read_buffer(m_directional_lights, RG_FS_READ_BUFFER);
+  rcs.exposure = pass.read_texture(m_exposure, RG_FS_READ_TEXTURE,
+                                   m_exposure_temporal_layer);
+
+  rcs.proj_view = m_proj_view;
+  rcs.eye = m_eye;
+  rcs.num_directional_lights = m_num_directional_lights;
+
+  return rcs;
+};
+
 void OpaqueMeshPassClass::Instance::bind_render_pass_resources(
-    RenderPass &render_pass) {
-  ren_assert(m_textures);
-  render_pass.bind_descriptor_sets({m_textures});
+    const RgRuntime &rg, RenderPass &render_pass,
+    const RenderPassResources &rcs) {
+  render_pass.bind_descriptor_sets({rg.get_texture_set()});
   auto [uniforms_host_ptr, uniforms_device_ptr, _] =
-      m_upload_allocator->allocate<glsl::OpaquePassUniforms>(1);
-  ren_assert(m_meshes_ptr);
-  ren_assert(m_mesh_instances_ptr);
-  ren_assert(m_transform_matrices_ptr);
-  ren_assert(m_normal_matrices_ptr);
+      rg.allocate<glsl::OpaquePassUniforms>();
   *uniforms_host_ptr = {
-      .meshes = m_meshes_ptr,
-      .mesh_instances = m_mesh_instances_ptr,
-      .transform_matrices = m_transform_matrices_ptr,
-      .normal_matrices = m_normal_matrices_ptr,
-      .proj_view = m_proj_view,
+      .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
+      .mesh_instances =
+          rg.get_buffer_device_ptr<glsl::MeshInstance>(rcs.mesh_instances),
+      .transform_matrices =
+          rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+      .normal_matrices =
+          rg.get_buffer_device_ptr<glm::mat3>(rcs.normal_matrices),
+      .proj_view = rcs.proj_view,
   };
-  ren_assert(m_materials_ptr);
-  ren_assert(m_directional_lights_ptr);
-  ren_assert(m_exposure);
   render_pass.set_push_constants(glsl::OpaquePassArgs{
       .ub = uniforms_device_ptr,
-      .materials = m_materials_ptr,
-      .directional_lights = m_directional_lights_ptr,
-      .num_directional_lights = m_num_directional_lights,
-      .eye = m_eye,
-      .exposure_texture = m_exposure,
+      .materials = rg.get_buffer_device_ptr<glsl::Material>(rcs.materials),
+      .directional_lights =
+          rg.get_buffer_device_ptr<glsl::DirLight>(rcs.directional_lights),
+      .num_directional_lights = rcs.num_directional_lights,
+      .eye = rcs.eye,
+      .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
   });
 }
 

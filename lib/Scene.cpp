@@ -2,16 +2,16 @@
 #include "Formats.hpp"
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
-#include "Support/Algorithm.hpp"
-#include "Support/Span.hpp"
-#include "Support/Views.hpp"
-#include "Swapchain.hpp"
-
 #include "Passes/Exposure.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Present.hpp"
+#include "Support/Algorithm.hpp"
+#include "Support/Span.hpp"
+#include "Support/Views.hpp"
+#include "Swapchain.hpp"
+#include "glsl/InstanceCullingAndLODPass.h"
 #include "glsl/MeshletCullingPass.h"
 
 #include <fmt/format.h>
@@ -19,7 +19,9 @@
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
-    : m_cmd_allocator(renderer), m_arena(renderer), m_frame_arena(renderer) {
+    : m_cmd_allocator(renderer), m_device_allocator(renderer, 64 * 1024 * 1024),
+      m_upload_allocator(renderer, 64 * 1024 * 1024), m_arena(renderer),
+      m_frame_arena(renderer) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
@@ -39,10 +41,9 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_texture_allocator = std::make_unique<TextureIdAllocator>(
       m_persistent_descriptor_set, m_persistent_descriptor_set_layout);
 
-  m_render_graph =
-      std::make_unique<RenderGraph>(*m_renderer, *m_texture_allocator);
-
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
+
+  m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_texture_allocator);
 }
 
 auto Scene::get_exposure_mode() const -> ExposureMode {
@@ -64,12 +65,6 @@ auto Scene::get_camera_proj_view() const -> glm::mat4 {
 auto Scene::get_viewport() const -> glm::uvec2 {
   return m_swapchain->get_size();
 }
-
-auto Scene::get_pipelines() const -> const Pipelines & { return m_pipelines; }
-
-auto Scene::get_draw_size() const -> u32 { return m_draw_size; }
-
-auto Scene::get_num_draw_meshlets() const -> u32 { return m_num_draw_meshlets; }
 
 auto Scene::get_meshes() const -> const GenArray<Mesh> & { return m_meshes; }
 
@@ -94,6 +89,12 @@ auto Scene::get_directional_lights() const -> const GenArray<glsl::DirLight> & {
   return m_dir_lights;
 }
 
+bool Scene::is_early_z_enabled() const { return m_early_z; }
+
+auto Scene::get_draw_size() const -> u32 { return m_draw_size; }
+
+auto Scene::get_num_draw_meshlets() const -> u32 { return m_num_draw_meshlets; }
+
 bool Scene::is_frustum_culling_enabled() const {
   return m_instance_frustum_culling;
 }
@@ -105,6 +106,17 @@ auto Scene::get_lod_triangle_pixel_count() const -> float {
 }
 
 auto Scene::get_lod_bias() const -> i32 { return m_lod_bias; }
+
+auto Scene::get_instance_culling_and_lod_feature_mask() const -> u32 {
+  u32 feature_mask = 0;
+  if (is_frustum_culling_enabled()) {
+    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
+  }
+  if (is_lod_selection_enabled()) {
+    feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
+  }
+  return feature_mask;
+}
 
 bool Scene::is_meshlet_cone_culling_enabled() const {
   return m_meshlet_cone_culling;
@@ -125,12 +137,12 @@ auto Scene::get_meshlet_culling_feature_mask() const -> u32 {
   return mask;
 }
 
-bool Scene::is_early_z_enabled() const { return m_early_z; }
-
 void Scene::next_frame() {
   m_renderer->next_frame();
   m_cmd_allocator.next_frame();
   m_texture_allocator->next_frame();
+  m_device_allocator.next_frame();
+  m_upload_allocator.next_frame();
   rotate_left(m_acquire_semaphores);
   rotate_left(m_present_semaphores);
 }
@@ -416,74 +428,14 @@ void Scene::set_directional_light(DirectionalLightId light,
   };
 };
 
-void Scene::update_rg_config() {
-  auto set_if_changed = [&](auto &config, const auto &new_value) {
-    if (config != new_value) {
-      config = new_value;
-      m_rg_valid = false;
-    }
-  };
-
-  auto grow_if_needed = [&](std::unsigned_integral auto &config,
-                            size_t new_size) {
-    if (new_size > config) {
-      config = new_size * 2;
-      m_rg_valid = false;
-    }
-  };
-
-  set_if_changed(m_rg_config.batch_size, m_draw_size);
-  grow_if_needed(m_rg_config.num_meshes, m_meshes.size());
-  grow_if_needed(m_rg_config.num_mesh_instances, m_mesh_instances.size());
-  grow_if_needed(m_rg_config.num_materials, m_materials.size());
-  grow_if_needed(m_rg_config.num_directional_lights, m_dir_lights.size());
-
-  glm::uvec2 viewport = m_swapchain->get_size();
-  set_if_changed(m_rg_config.viewport, viewport);
-
-  set_if_changed(m_rg_config.exposure, m_exposure_mode);
-
-#if REN_IMGUI
-  {
-    ren_ImGuiScope(m_imgui_context);
-    set_if_changed(m_rg_config.imgui_context, m_imgui_context);
-    if (ImGui::GetCurrentContext()) {
-      const ImDrawData *draw_data = ImGui::GetDrawData();
-      grow_if_needed(m_rg_config.num_imgui_vertices, draw_data->TotalVtxCount);
-      grow_if_needed(m_rg_config.num_imgui_indices, draw_data->TotalIdxCount);
-    }
-  }
-#endif
-
-  if (m_early_z != m_rg_config.early_z) {
-    m_rg_config.early_z = m_early_z;
-    m_rg_valid = false;
-  }
-}
-
 auto Scene::draw() -> expected<void> {
   m_resource_uploader.upload(*m_renderer, m_cmd_allocator);
 
-  update_rg_config();
+  RenderGraph render_graph = build_rg();
 
-  if (not m_rg_valid) {
-    RgBuilder rgb(*m_render_graph);
-    setup_rg(rgb);
-    rgb.build(m_cmd_allocator);
-    m_rg_valid = true;
-  }
+  render_graph.execute(m_cmd_allocator);
 
-  Handle<Semaphore> acquire_semaphore = m_acquire_semaphores.front();
-  Handle<Semaphore> present_semaphore = m_present_semaphores.front();
-  Handle<Texture> backbuffer = m_swapchain->acquire_texture(acquire_semaphore);
-
-  m_render_graph->set_texture(m_backbuffer, backbuffer);
-  m_render_graph->set_semaphore(m_acquire_semaphore, acquire_semaphore);
-  m_render_graph->set_semaphore(m_present_semaphore, present_semaphore);
-
-  m_render_graph->execute(m_cmd_allocator);
-
-  m_swapchain->present(present_semaphore);
+  m_swapchain->present(m_present_semaphores.front());
 
   m_frame_arena.clear();
 
@@ -589,54 +541,74 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
 }
 #endif
 
-void Scene::setup_rg(RgBuilder &rgb) {
+auto Scene::build_rg() -> RenderGraph {
+  bool dirty = false;
+  auto set_if_changed =
+      [&]<typename T>(T &config_value,
+                      const std::convertible_to<T> auto &new_value) {
+        if (config_value != new_value) {
+          config_value = new_value;
+          dirty = true;
+        }
+      };
+
+  set_if_changed(m_pass_cfg.viewport, get_viewport());
+
+  set_if_changed(m_pass_cfg.exposure, m_exposure_mode);
+
+  set_if_changed(m_pass_cfg.backbuffer_usage, m_swapchain->get_usage());
+
+  if (dirty) {
+    m_rgp->reset();
+    m_pass_rcs = {};
+  }
+
+  RgBuilder rgb(*m_rgp, *m_renderer);
+
+  PassCommonConfig cfg = {
+      .rgp = m_rgp.get(),
+      .rgb = &rgb,
+      .allocator = &m_upload_allocator,
+      .pipelines = &m_pipelines,
+      .scene = this,
+      .rcs = &m_pass_rcs,
+  };
+
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
-  setup_exposure_pass(rgb, this,
-                      {
-                          .exposure = &exposure,
-                          .temporal_layer = &exposure_temporal_layer,
-                      });
+  setup_exposure_pass(cfg, ExposurePassConfig{
+                               .exposure = &exposure,
+                               .temporal_layer = &exposure_temporal_layer,
+                           });
 
   RgTextureId hdr;
-  setup_opaque_passes(
-      rgb, this,
-      OpaquePassesConfig{
-          .num_meshes = m_rg_config.num_meshes,
-          .num_mesh_instances = m_rg_config.num_mesh_instances,
-          .num_materials = m_rg_config.num_materials,
-          .num_directional_lights = m_rg_config.num_directional_lights,
-          .exposure = exposure,
-          .exposure_temporal_layer = exposure_temporal_layer,
-          .hdr = &hdr,
-      });
+  setup_opaque_passes(cfg,
+                      OpaquePassesConfig{
+                          .exposure = exposure,
+                          .exposure_temporal_layer = exposure_temporal_layer,
+                          .hdr = &hdr,
+                      });
 
   RgTextureId sdr;
-  setup_post_processing_passes(rgb, this,
-                               PostProcessingPassesConfig{
-                                   .hdr = hdr,
-                                   .exposure = exposure,
-                                   .sdr = &sdr,
-                               });
+  setup_post_processing_passes(cfg, PostProcessingPassesConfig{
+                                        .hdr = hdr,
+                                        .exposure = exposure,
+                                        .sdr = &sdr,
+                                    });
 #if REN_IMGUI
-  if (m_rg_config.imgui_context) {
-    setup_imgui_pass(rgb, this,
-                     ImGuiPassConfig{
-                         .sdr = &sdr,
-                         .num_vertices = m_rg_config.num_imgui_vertices,
-                         .num_indices = m_rg_config.num_imgui_indices,
-                     });
+  if (get_imgui_context()) {
+    setup_imgui_pass(cfg, ImGuiPassConfig{.sdr = &sdr});
   }
 #endif
 
-  setup_present_pass(rgb, PresentPassConfig{
+  setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,
-                              .backbuffer_format = m_swapchain->get_format(),
-                              .backbuffer_size = m_swapchain->get_size(),
-                              .backbuffer = &m_backbuffer,
-                              .acquire_semaphore = &m_acquire_semaphore,
-                              .present_semaphore = &m_present_semaphore,
+                              .acquire_semaphore = m_acquire_semaphores.front(),
+                              .present_semaphore = m_present_semaphores.front(),
+                              .swapchain = m_swapchain,
                           });
+
+  return rgb.build(m_device_allocator, m_upload_allocator);
 }
 
 } // namespace ren

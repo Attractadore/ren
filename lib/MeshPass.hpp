@@ -5,11 +5,11 @@
 #include "Material.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
+#include "RenderGraph.hpp"
 #include "Renderer.hpp"
 #include "Support/NotNull.hpp"
 #include "TextureIdAllocator.hpp"
 #include "glsl/InstanceCullingAndLODPass.hpp"
-#include "glsl/Lighting.h"
 
 namespace ren {
 
@@ -18,10 +18,10 @@ public:
   struct BeginInfo;
 
   template <typename Self>
-  void execute(this Self &self, Renderer &renderer, CommandRecorder &cmd,
-               const Self::BeginInfo &begin_info) {
-    typename Self::Instance instance(self, renderer, begin_info);
-    instance.execute(renderer, cmd);
+  void record(this Self &self, RgBuilder &rgb,
+              const Self::BeginInfo &begin_info) {
+    typename Self::Instance instance(self, begin_info);
+    instance.record(rgb);
   };
 
 protected:
@@ -35,9 +35,23 @@ protected:
   using Batches = HashMap<BatchDesc, Vector<BatchDraw>>;
 
   Batches m_batches;
+
+  String m_pass_name;
+  StaticVector<String, 8> m_color_attachment_names;
+  String m_depth_attachment_name;
 };
 
 struct MeshPassClass::BeginInfo {
+  StringView pass_name;
+
+  TempSpan<const NotNull<RgTextureId *>> color_attachments;
+  TempSpan<const ColorAttachmentOperations> color_attachment_ops;
+  TempSpan<const StringView> color_attachment_names;
+
+  NotNull<RgTextureId *> depth_attachment;
+  DepthAttachmentOperations depth_attachment_ops;
+  StringView depth_attachment_name;
+
   NotNull<const GenArray<Mesh> *> host_meshes;
   NotNull<const GenArray<Material> *> host_materials;
   NotNull<const GenArray<MeshInstance> *> host_mesh_instances;
@@ -47,23 +61,16 @@ struct MeshPassClass::BeginInfo {
   u32 draw_size = 0;
   u32 num_draw_meshlets = 0;
 
-  BufferView meshes;
-  BufferView materials;
-  BufferView mesh_instances;
-  BufferView transform_matrices;
-  BufferView normal_matrices;
-  BufferView commands;
+  RgBufferId meshes;
+  RgBufferId materials;
+  RgBufferId mesh_instances;
+  RgBufferId transform_matrices;
+  RgBufferId normal_matrices;
 
-  VkDescriptorSet textures = nullptr;
-
-  NotNull<DeviceBumpAllocator *> device_allocator;
   NotNull<UploadBumpAllocator *> upload_allocator;
 
   InstanceCullingAndLODSettings instance_culling_and_lod_settings;
   u32 meshlet_culling_feature_mask = 0;
-
-  TempSpan<const Optional<ColorAttachment>> color_attachments;
-  Optional<DepthStencilAttachment> depth_stencil_attachment;
 
   glm::uvec2 viewport;
   glm::mat4 proj_view;
@@ -74,10 +81,9 @@ class MeshPassClass::Instance {
 protected:
   friend class MeshPassClass;
 
-  Instance(MeshPassClass &cls, Renderer &renderer, const BeginInfo &begin_info);
+  Instance(MeshPassClass &cls, const BeginInfo &begin_info);
 
-  template <typename Self>
-  void execute(this Self &self, Renderer &renderer, CommandRecorder &cmd) {
+  template <typename Self> void record(this Self &self, RgBuilder &rgb) {
     ren_assert(self.m_draw_size > 0);
     ren_assert(self.m_num_draw_meshlets > 0);
 
@@ -93,70 +99,83 @@ protected:
       num_draws += draws.size();
     }
 
-    self.init_command_count_buffer(cmd, num_draws);
-
-    u32 draw_id = 0;
     for (const auto &[batch, draws] : batches) {
       for (const BatchDraw &draw : draws) {
-        bool is_first_draw = draw_id == 0;
-
-        if (not is_first_draw) {
-          self.insert_cross_draw_barriers(cmd);
-        }
-
-        self.run_culling(cmd, draw, self.m_command_count_ptr + draw_id);
-
-        self.run_render_pass(
-            cmd, batch,
-            self.m_commands.template slice<glsl::DrawIndexedIndirectCommand>(
-                0, draw.num_meshlets),
-            self.m_command_count.template slice<u32>(draw_id));
-
-        if (is_first_draw) {
-          self.patch_attachments();
-        }
-
-        draw_id += 1;
+        RgBufferId commands;
+        RgBufferId command_count;
+        self.record_culling(rgb, CullingConfig{
+                                     .draw = &draw,
+                                     .commands = &commands,
+                                     .command_count = &command_count,
+                                 });
+        self.record_render_pass(rgb, batch, commands, command_count);
       }
     }
   };
 
-  void init_command_count_buffer(CommandRecorder &cmd, u32 num_draws);
+  struct CullingConfig {
+    NotNull<const BatchDraw *> draw;
+    NotNull<RgBufferId *> commands;
+    NotNull<RgBufferId *> command_count;
+  };
 
-  auto get_cross_draw_indirect_buffer_barrier() -> VkMemoryBarrier2;
-
-  auto get_cross_draw_color_attachment_barrier() -> Optional<VkMemoryBarrier2>;
-
-  auto get_cross_draw_depth_attachment_barrier() -> Optional<VkMemoryBarrier2>;
-
-  void insert_cross_draw_barriers(CommandRecorder &cmd);
-
-  void run_culling(CommandRecorder &cmd, const BatchDraw &draw,
-                   DevicePtr<u32> command_count_ptr);
+  void record_culling(RgBuilder &rgb, const CullingConfig &cfg);
 
   template <typename Self>
-  void run_render_pass(this Self &self, CommandRecorder &cmd,
-                       const BatchDesc &batch, const BufferView &commands,
-                       const BufferView &command_count) {
-    RenderPass render_pass = cmd.render_pass({
-        .color_attachments = self.m_color_attachments,
-        .depth_stencil_attachment = self.m_depth_stencil_attachment,
-    });
-    render_pass.set_viewports({{
-        .width = float(self.m_viewport.x),
-        .height = float(self.m_viewport.y),
-        .maxDepth = 1.0f,
-    }});
-    render_pass.set_scissor_rects(
-        {{.extent = {self.m_viewport.x, self.m_viewport.y}}});
-    render_pass.bind_graphics_pipeline(batch.pipeline);
-    render_pass.bind_index_buffer(batch.index_buffer_view,
-                                  VK_INDEX_TYPE_UINT8_EXT);
-    self.bind_render_pass_resources(render_pass);
-    render_pass.draw_indexed_indirect_count(commands, command_count);
-  }
+  void record_render_pass(this Self &self, RgBuilder &rgb,
+                          const BatchDesc &batch, RgBufferId commands,
+                          RgBufferId command_count) {
+    auto pass = rgb.create_pass({.name = self.m_class->m_pass_name});
 
-  void patch_attachments();
+    for (usize i = 0; i < self.m_color_attachments.size(); ++i) {
+      NotNull<RgTextureId *> color_attachment = self.m_color_attachments[i];
+      if (!*color_attachment) {
+        continue;
+      }
+      ColorAttachmentOperations &ops = self.m_color_attachment_ops[i];
+      std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
+          self.m_class->m_color_attachment_names[i], *color_attachment, ops);
+      ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+
+    if (*self.m_depth_attachment) {
+      if (self.m_depth_attachment_ops.store == VK_ATTACHMENT_STORE_OP_NONE) {
+        pass.read_depth_attachment(*self.m_depth_attachment);
+      } else {
+        std::tie(*self.m_depth_attachment, std::ignore) =
+            pass.write_depth_attachment(self.m_class->m_depth_attachment_name,
+                                        *self.m_depth_attachment,
+                                        self.m_depth_attachment_ops);
+        self.m_depth_attachment_ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+      }
+    }
+
+    struct {
+      Handle<GraphicsPipeline> pipeline;
+      BufferView indices;
+      RgBufferToken commands;
+      RgBufferToken command_count;
+      typename Self::RenderPassResources ext;
+    } rcs;
+
+    rcs.pipeline = batch.pipeline;
+    rcs.indices = batch.index_buffer_view;
+
+    rcs.commands = pass.read_buffer(commands, RG_INDIRECT_COMMAND_BUFFER);
+    rcs.command_count =
+        pass.read_buffer(command_count, RG_INDIRECT_COMMAND_BUFFER);
+
+    rcs.ext = self.get_render_pass_resources(pass);
+
+    pass.set_graphics_callback([rcs](Renderer &, const RgRuntime &rg,
+                                     RenderPass &render_pass) {
+      render_pass.bind_graphics_pipeline(rcs.pipeline);
+      render_pass.bind_index_buffer(rcs.indices, VK_INDEX_TYPE_UINT8_EXT);
+      Self::bind_render_pass_resources(rg, render_pass, rcs.ext);
+      render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
+                                              rg.get_buffer(rcs.command_count));
+    });
+  }
 
 protected:
   MeshPassClass *m_class = nullptr;
@@ -167,25 +186,12 @@ protected:
   Span<const BufferView> m_index_pools;
   const Pipelines *m_pipelines = nullptr;
 
-  BufferView m_meshes;
-  BufferView m_materials;
-  BufferView m_mesh_instances;
-  BufferView m_transform_matrices;
-  BufferView m_normal_matrices;
-  BufferView m_commands;
-  BufferView m_command_count;
+  RgBufferId m_meshes;
+  RgBufferId m_materials;
+  RgBufferId m_mesh_instances;
+  RgBufferId m_transform_matrices;
+  RgBufferId m_normal_matrices;
 
-  DevicePtr<glsl::Mesh> m_meshes_ptr;
-  DevicePtr<glsl::Material> m_materials_ptr;
-  DevicePtr<glsl::MeshInstance> m_mesh_instances_ptr;
-  DevicePtr<glm::mat4x3> m_transform_matrices_ptr;
-  DevicePtr<glm::mat3> m_normal_matrices_ptr;
-  DevicePtr<glsl::DrawIndexedIndirectCommand> m_commands_ptr;
-  DevicePtr<u32> m_command_count_ptr;
-
-  VkDescriptorSet m_textures = nullptr;
-
-  DeviceBumpAllocator *m_device_allocator = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
   u32 m_draw_size = 0;
@@ -194,8 +200,11 @@ protected:
   InstanceCullingAndLODSettings m_instance_culling_and_lod_settings;
   u32 m_meshlet_culling_feature_mask = 0;
 
-  StaticVector<Optional<ColorAttachment>, 8> m_color_attachments;
-  Optional<DepthStencilAttachment> m_depth_stencil_attachment;
+  StaticVector<NotNull<RgTextureId *>, 8> m_color_attachments;
+  StaticVector<ColorAttachmentOperations, 8> m_color_attachment_ops;
+
+  RgTextureId *m_depth_attachment = nullptr;
+  DepthAttachmentOperations m_depth_attachment_ops;
 
   glm::uvec2 m_viewport;
   glm::mat4 m_proj_view;
@@ -218,12 +227,22 @@ struct DepthOnlyMeshPassClass::BeginInfo {
 class DepthOnlyMeshPassClass::Instance : public MeshPassClass::Instance {
 private:
   friend class MeshPassClass;
-  Instance(DepthOnlyMeshPassClass &cls, Renderer &renderer,
-           const BeginInfo &begin_info);
+  Instance(DepthOnlyMeshPassClass &cls, const BeginInfo &begin_info);
 
   void build_batches(Batches &batches);
 
-  void bind_render_pass_resources(RenderPass &render_pass);
+  struct RenderPassResources {
+    RgBufferToken meshes;
+    RgBufferToken mesh_instances;
+    RgBufferToken transform_matrices;
+    glm::mat4 proj_view;
+  };
+
+  auto get_render_pass_resources(RgPassBuilder &pass) -> RenderPassResources;
+
+  static void bind_render_pass_resources(const RgRuntime &rg,
+                                         RenderPass &render_pass,
+                                         const RenderPassResources &rcs);
 };
 
 class OpaqueMeshPassClass : public MeshPassClass {
@@ -237,29 +256,44 @@ private:
 
 struct OpaqueMeshPassClass::BeginInfo {
   MeshPassClass::BeginInfo base;
+  RgBufferId directional_lights;
   u32 num_directional_lights = 0;
-  BufferView directional_lights;
-  StorageTextureId exposure;
+  RgTextureId exposure;
+  u32 exposure_temporal_layer = 0;
 };
 
 class OpaqueMeshPassClass::Instance : public MeshPassClass::Instance {
 private:
   friend class MeshPassClass;
-  Instance(OpaqueMeshPassClass &cls, Renderer &renderer,
-           const BeginInfo &begin_info);
+  Instance(OpaqueMeshPassClass &cls, const BeginInfo &begin_info);
 
   void build_batches(Batches &batches);
 
-  void bind_render_pass_resources(RenderPass &render_pass);
+  struct RenderPassResources {
+    RgBufferToken meshes;
+    RgBufferToken mesh_instances;
+    RgBufferToken transform_matrices;
+    RgBufferToken normal_matrices;
+    RgBufferToken materials;
+    RgBufferToken directional_lights;
+    RgTextureToken exposure;
+    glm::mat4 proj_view;
+    glm::vec3 eye;
+    u32 num_directional_lights = 0;
+  };
+
+  auto
+  get_render_pass_resources(RgPassBuilder &pass) const -> RenderPassResources;
+
+  static void bind_render_pass_resources(const RgRuntime &rg,
+                                         RenderPass &render_pass,
+                                         const RenderPassResources &rcs);
 
 private:
+  RgBufferId m_directional_lights;
   u32 m_num_directional_lights = 0;
-
-  BufferView m_directional_lights;
-
-  DevicePtr<glsl::DirLight> m_directional_lights_ptr;
-
-  StorageTextureId m_exposure;
+  RgTextureId m_exposure;
+  u32 m_exposure_temporal_layer = 0;
 };
 
 } // namespace ren

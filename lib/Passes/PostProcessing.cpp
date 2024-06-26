@@ -12,12 +12,14 @@ namespace {
 auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb) -> RgBufferId {
   auto pass = rgb.create_pass({.name = "init-luminance-histogram"});
 
-  auto [histogram, histogram_token] = pass.create_buffer(
-      {
-          .name = "luminance-histogram-empty",
-          .size = sizeof(glsl::LuminanceHistogram),
-      },
-      RG_TRANSFER_DST_BUFFER);
+  RgBufferId histogram = rgb.create_buffer({
+      .heap = BufferHeap::Static,
+      .size = sizeof(glsl::LuminanceHistogram),
+  });
+
+  RgBufferToken histogram_token;
+  std::tie(histogram, histogram_token) = pass.write_buffer(
+      "luminance-histogram-empty", histogram, RG_TRANSFER_DST_BUFFER);
 
   pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
     cmd.fill_buffer(rt.get_buffer(histogram_token), 0);
@@ -27,6 +29,7 @@ auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb) -> RgBufferId {
 };
 
 struct PostProcessingPassResources {
+  Handle<ComputePipeline> pipeline;
   RgTextureToken hdr;
   RgTextureToken sdr;
   RgBufferToken histogram;
@@ -34,9 +37,9 @@ struct PostProcessingPassResources {
 };
 
 void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
-                                   const Scene &scene, ComputePass &pass,
+                                   ComputePass &pass,
                                    const PostProcessingPassResources &rcs) {
-  pass.bind_compute_pipeline(scene.get_pipelines().post_processing);
+  pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
 
   DevicePtr<glsl::LuminanceHistogram> histogram;
@@ -69,25 +72,23 @@ struct PostProcessingPassConfig {
   NotNull<RgTextureId *> sdr;
 };
 
-void setup_post_processing_uber_pass(RgBuilder &rgb,
-                                     NotNull<const Scene *> scene,
+void setup_post_processing_uber_pass(const PassCommonConfig &ccfg,
                                      const PostProcessingPassConfig &cfg) {
   PostProcessingPassResources rcs;
+
+  rcs.pipeline = ccfg.pipelines->post_processing;
+
+  RgBuilder &rgb = *ccfg.rgb;
+  const Scene &scene = *ccfg.scene;
 
   auto pass = rgb.create_pass({.name = "post-processing"});
 
   rcs.hdr = pass.read_texture(cfg.hdr, RG_CS_READ_TEXTURE);
 
-  glm::uvec2 viewport = scene->get_viewport();
+  glm::uvec2 viewport = scene.get_viewport();
 
-  std::tie(*cfg.sdr, rcs.sdr) = pass.create_texture(
-      {
-          .name = "sdr",
-          .format = SDR_FORMAT,
-          .width = viewport.x,
-          .height = viewport.y,
-      },
-      RG_CS_WRITE_TEXTURE);
+  std::tie(*cfg.sdr, rcs.sdr) =
+      pass.write_texture("sdr", *cfg.sdr, RG_CS_WRITE_TEXTURE);
 
   if (*cfg.histogram) {
     std::tie(*cfg.histogram, rcs.histogram) = pass.write_buffer(
@@ -97,26 +98,28 @@ void setup_post_processing_uber_pass(RgBuilder &rgb,
   }
 
   pass.set_compute_callback(
-      [=](Renderer &renderer, const RgRuntime &rt, ComputePass &pass) {
-        run_post_processing_uber_pass(renderer, rt, *scene, pass, rcs);
+      [rcs](Renderer &renderer, const RgRuntime &rg, ComputePass &pass) {
+        run_post_processing_uber_pass(renderer, rg, pass, rcs);
       });
 }
 
 struct ReduceLuminanceHistogramPassResources {
+  Handle<ComputePipeline> pipeline;
   RgBufferToken histogram;
   RgTextureToken exposure;
+  float ec;
 };
 
 void run_reduce_luminance_histogram_pass(
-    const RgRuntime &rg, const Scene &scene, ComputePass &pass,
+    const RgRuntime &rg, ComputePass &pass,
     const ReduceLuminanceHistogramPassResources &rcs) {
-  pass.bind_compute_pipeline(scene.get_pipelines().reduce_luminance_histogram);
+  pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramPassArgs{
       .histogram =
           rg.get_buffer_device_ptr<glsl::LuminanceHistogram>(rcs.histogram),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
-      .exposure_compensation = scene.get_exposure_compensation(),
+      .exposure_compensation = rcs.ec,
   });
   pass.dispatch_groups(1);
 }
@@ -127,49 +130,65 @@ struct ReduceLuminanceHistogramPassConfig {
 };
 
 void setup_reduce_luminance_histogram_pass(
-    RgBuilder &rgb, NotNull<const Scene *> scene,
+    const PassCommonConfig &ccfg,
     const ReduceLuminanceHistogramPassConfig &cfg) {
   ReduceLuminanceHistogramPassResources rcs;
 
-  auto pass = rgb.create_pass({.name = "reduce-luminance-histogram"});
+  rcs.pipeline = ccfg.pipelines->reduce_luminance_histogram;
+
+  auto pass = ccfg.rgb->create_pass({.name = "reduce-luminance-histogram"});
 
   rcs.histogram = pass.read_buffer(cfg.histogram, RG_CS_READ_BUFFER);
 
   std::tie(std::ignore, rcs.exposure) =
-      pass.write_texture("new-exposure", cfg.exposure, RG_CS_WRITE_TEXTURE);
+      pass.write_texture("exposure", cfg.exposure, RG_CS_WRITE_TEXTURE);
+
+  rcs.ec = ccfg.scene->get_exposure_compensation();
 
   pass.set_compute_callback(
-      [=](Renderer &, const RgRuntime &rt, ComputePass &pass) {
-        run_reduce_luminance_histogram_pass(rt, *scene, pass, rcs);
+      [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+        run_reduce_luminance_histogram_pass(rg, pass, rcs);
       });
 }
 
 } // namespace
 
-void setup_post_processing_passes(RgBuilder &rgb, NotNull<const Scene *> scene,
-                                  const PostProcessingPassesConfig &cfg) {
-  ExposureMode exposure_mode = scene->get_exposure_mode();
+} // namespace ren
+
+void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
+                                       const PostProcessingPassesConfig &cfg) {
+  const Scene &scene = *ccfg.scene;
+
+  ExposureMode exposure_mode = scene.get_exposure_mode();
 
   RgBufferId histogram;
   if (exposure_mode == ExposureMode::Automatic) {
-    histogram = setup_initialize_luminance_histogram_pass(rgb);
+    histogram = setup_initialize_luminance_histogram_pass(*ccfg.rgb);
   }
 
-  setup_post_processing_uber_pass(rgb, scene,
-                                  PostProcessingPassConfig{
-                                      .histogram = &histogram,
-                                      .hdr = cfg.hdr,
-                                      .exposure = cfg.exposure,
-                                      .sdr = cfg.sdr,
-                                  });
+  if (!ccfg.rcs->sdr) {
+    glm::uvec2 viewport = scene.get_viewport();
+    ccfg.rcs->sdr = ccfg.rgp->create_texture({
+        .name = "sdr",
+        .format = SDR_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  *cfg.sdr = ccfg.rcs->sdr;
+
+  setup_post_processing_uber_pass(ccfg, PostProcessingPassConfig{
+                                            .histogram = &histogram,
+                                            .hdr = cfg.hdr,
+                                            .exposure = cfg.exposure,
+                                            .sdr = cfg.sdr,
+                                        });
 
   if (exposure_mode == ExposureMode::Automatic) {
-    setup_reduce_luminance_histogram_pass(rgb, scene,
+    setup_reduce_luminance_histogram_pass(ccfg,
                                           ReduceLuminanceHistogramPassConfig{
                                               .histogram = histogram,
                                               .exposure = cfg.exposure,
                                           });
   }
 }
-
-} // namespace ren
