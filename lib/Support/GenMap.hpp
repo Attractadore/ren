@@ -112,8 +112,7 @@ public:
                 GenIndex::TOMBSTONE);
 
       auto *new_values = (T *)std::malloc(new_capacity * sizeof(T));
-      if constexpr (std::is_trivially_copyable_v<T> and
-                    std::is_trivially_destructible_v<T>) {
+      if constexpr (std::is_trivially_copyable_v<T>) {
         std::copy_n(m_values, m_capacity, new_values);
       } else {
         for (usize i = 0; i < m_capacity; ++i) {

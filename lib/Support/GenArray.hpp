@@ -106,8 +106,7 @@ public:
       auto new_capacity = std::max<usize>(m_capacity * 2, new_key + 1);
 
       auto *new_values = (T *)std::malloc(new_capacity * sizeof(T));
-      if constexpr (std::is_trivially_copyable_v<T> and
-                    std::is_trivially_destructible_v<T>) {
+      if constexpr (std::is_trivially_copyable_v<T>) {
         std::copy_n(m_values, m_capacity, new_values);
       } else {
         for (K key : m_indices) {
