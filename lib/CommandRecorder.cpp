@@ -183,6 +183,15 @@ void CommandRecorder::clear_texture(
                               &clear_depth_stencil, 1, &clear_range);
 }
 
+void CommandRecorder::copy_texture(Handle<Texture> hsrc, Handle<Texture> hdst) {
+  const Texture &src = m_renderer->get_texture(hsrc);
+  const Texture &dst = m_renderer->get_texture(hdst);
+  ren_assert(src.size == dst.size);
+  VkImageCopy region = {.extent = {src.size.x, src.size.y, src.size.z}};
+  vkCmdCopyImage(m_cmd_buffer, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+}
+
 void CommandRecorder::pipeline_barrier(
     const VkDependencyInfo &dependency_info) {
   if (!dependency_info.memoryBarrierCount and

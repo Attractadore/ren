@@ -138,6 +138,8 @@ public:
   void clear_texture(Handle<Texture> texture,
                      const VkClearDepthStencilValue &clear_depth_stencil);
 
+  void copy_texture(Handle<Texture> src, Handle<Texture> dst);
+
   void pipeline_barrier(const VkDependencyInfo &dependency_info);
 
   void pipeline_barrier(TempSpan<const VkMemoryBarrier2> barriers,
