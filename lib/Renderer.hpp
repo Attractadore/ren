@@ -128,6 +128,9 @@ using UniqueAllocator = UniqueHandle<VmaAllocator, AllocatorDeleter>;
 
 class Renderer final : public IRenderer {
   UniqueInstance m_instance;
+#if REN_VULKAN_VALIDATION
+  VkDebugReportCallbackEXT m_debug_callback = nullptr;
+#endif
   VkPhysicalDevice m_adapter = nullptr;
   UniqueDevice m_device;
   UniqueAllocator m_allocator;

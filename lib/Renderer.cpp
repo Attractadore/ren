@@ -3,6 +3,7 @@
 #include "Scene.hpp"
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
+#include "Support/Macros.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -58,11 +59,12 @@ auto create_instance(Span<const char *const> external_extensions)
   );
 
   SmallVector<const char *> extensions(external_extensions);
-  extensions.append(make_array<const char *>(
 #if REN_DEBUG_NAMES
-      VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+  extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
-      ));
+#if REN_VULKAN_VALIDATION
+  extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
 
   VkInstanceCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -79,6 +81,34 @@ auto create_instance(Span<const char *const> external_extensions)
 
   return UniqueInstance(instance);
 }
+
+#if REN_VULKAN_VALIDATION
+auto create_debug_report_callback(VkInstance instance)
+    -> VkDebugReportCallbackEXT {
+  VkDebugReportCallbackCreateInfoEXT create_info = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
+      .flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
+      .pfnCallback = [](VkDebugReportFlagsEXT flags,
+                        VkDebugReportObjectTypeEXT objectType, uint64_t object,
+                        size_t location, int32_t messageCode,
+                        const char *pLayerPrefix, const char *pMessage,
+                        void *pUserData) -> VkBool32 {
+        fmt::println(stderr, "{}", pMessage);
+#if 0
+        if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
+          ren_trap();
+        }
+#endif
+        return false;
+      },
+  };
+  VkDebugReportCallbackEXT cb = nullptr;
+  throw_if_failed(
+      vkCreateDebugReportCallbackEXT(instance, &create_info, nullptr, &cb),
+      "Vulkan: Failed to create VkDebugReportCallbackEXT");
+  return cb;
+}
+#endif
 
 auto find_adapter(VkInstance instance, u32 adapter) -> VkPhysicalDevice {
   uint32_t num_adapters = 0;
@@ -254,6 +284,10 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
 
   volkLoadInstanceOnly(get_instance());
 
+#if REN_VULKAN_VALIDATION
+  m_debug_callback = create_debug_report_callback(m_instance.get());
+#endif
+
   m_adapter = find_adapter(get_instance(), adapter);
   if (!m_adapter) {
     throw std::runtime_error("Vulkan: Failed to find requested adapter");
@@ -314,6 +348,9 @@ template <> struct QueueDeleter<VmaAllocation> {
 Renderer::~Renderer() {
   destroy(m_graphics_queue_semaphore);
   flush();
+#if REN_VULKAN_VALIDATION
+  vkDestroyDebugReportCallbackEXT(m_instance.get(), m_debug_callback, nullptr);
+#endif
 }
 
 auto Renderer::create_scene(ISwapchain &swapchain)
