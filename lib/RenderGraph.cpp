@@ -38,8 +38,9 @@ auto RgRuntime::get_upload_allocator() const -> UploadBumpAllocator & {
 }
 
 RenderGraph::RenderGraph(Renderer &renderer, TextureIdAllocator &tex_alloc)
-    : m_tex_alloc(tex_alloc), m_arena(renderer), m_device_allocator(renderer),
-      m_upload_allocator(renderer) {
+    : m_tex_alloc(tex_alloc), m_arena(renderer),
+      m_device_allocator(renderer, 1 * 1024 * 1024),
+      m_upload_allocator(renderer, 1 * 1024 * 1024) {
   m_renderer = &renderer;
 }
 

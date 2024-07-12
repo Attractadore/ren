@@ -2,6 +2,7 @@
 #include "Buffer.hpp"
 #include "Config.hpp"
 #include "Renderer.hpp"
+#include "Support/Algorithm.hpp"
 #include "Support/Math.hpp"
 #include "glsl/DevicePtr.h"
 
@@ -14,7 +15,7 @@ public:
   template <typename T = std::byte>
   using Allocation = Policy::template Allocation<T>;
 
-  BumpAllocator(Renderer &renderer, usize block_size = 1 * 1024 * 1024) {
+  BumpAllocator(Renderer &renderer, usize block_size) {
     m_renderer = &renderer;
     m_block_size = block_size;
   }
@@ -40,8 +41,9 @@ public:
   template <typename T = std::byte>
   auto allocate(usize count) -> Allocation<T> {
     m_block_offset = pad(m_block_offset, alignof(T));
-    m_block_offset = pad(m_block_offset, glsl::DEFAULT_DEVICE_PTR_ALIGNMENT);
+    m_block_offset = pad(m_block_offset, Policy::ALIGNMENT);
     usize size = count * sizeof(T);
+    ren_assert(size <= m_block_size);
 
     Vector<Block> &blocks = m_block_ring.front();
 
@@ -88,6 +90,8 @@ private:
 };
 
 struct DeviceBumpAllocationPolicy {
+  static constexpr usize ALIGNMENT = glsl::DEFAULT_DEVICE_PTR_ALIGNMENT;
+
   struct Block {
     DevicePtr<std::byte> ptr;
     Handle<Buffer> buffer;
@@ -116,8 +120,8 @@ struct DeviceBumpAllocationPolicy {
   };
 
   template <typename T>
-  static auto allocate(const Block &block, usize offset, usize size)
-      -> Allocation<T> {
+  static auto allocate(const Block &block, usize offset,
+                       usize size) -> Allocation<T> {
     return {
         .ptr = DevicePtr<T>(block.ptr + offset),
         .view =
@@ -131,6 +135,9 @@ struct DeviceBumpAllocationPolicy {
 };
 
 struct UploadBumpAllocationPolicy {
+  static constexpr auto ALIGNMENT =
+      std::max<usize>(glsl::DEFAULT_DEVICE_PTR_ALIGNMENT, 64);
+
   struct Block {
     std::byte *host_ptr = nullptr;
     DevicePtr<std::byte> device_ptr;
@@ -162,8 +169,8 @@ struct UploadBumpAllocationPolicy {
   };
 
   template <typename T>
-  static auto allocate(const Block &block, usize offset, usize size)
-      -> Allocation<T> {
+  static auto allocate(const Block &block, usize offset,
+                       usize size) -> Allocation<T> {
     return {
         .host_ptr = (T *)(block.host_ptr + offset),
         .device_ptr = DevicePtr<T>(block.device_ptr + offset),
