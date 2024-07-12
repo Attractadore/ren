@@ -49,6 +49,10 @@ public:
 
   auto get_format() const -> VkFormat { return m_create_info.imageFormat; }
 
+  auto get_usage() const -> VkImageUsageFlags {
+    return m_create_info.imageUsage;
+  }
+
   auto get_surface() const -> VkSurfaceKHR { return m_create_info.surface; }
 
   auto acquire_texture(Handle<Semaphore> signal_semaphore) -> Handle<Texture>;
