@@ -28,6 +28,8 @@
     explicit NewType(BaseType value) noexcept : m_value(std::move(value)) {}   \
                                                                                \
     operator BaseType() const noexcept { return m_value; }                     \
+                                                                               \
+    explicit operator bool() const { return bool(m_value); }                   \
   };                                                                           \
                                                                                \
   template <typename T> struct Hash<NewType<T>> {                              \
