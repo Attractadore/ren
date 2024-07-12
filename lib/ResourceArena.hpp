@@ -22,6 +22,7 @@ public:
     clear();
     m_renderer = other.m_renderer;
     m_resources = std::move(other.m_resources);
+    return *this;
   }
 
   auto create_buffer(const BufferCreateInfo &&create_info) -> BufferView
@@ -46,8 +47,8 @@ public:
     return insert(m_renderer->create_sampler(std::move(create_info)));
   }
 
-  auto create_semaphore(const SemaphoreCreateInfo &&create_info)
-      -> Handle<Semaphore>
+  auto
+  create_semaphore(const SemaphoreCreateInfo &&create_info) -> Handle<Semaphore>
     requires IsArenaResource<Semaphore>
   {
     return insert(m_renderer->create_semaphore(std::move(create_info)));
