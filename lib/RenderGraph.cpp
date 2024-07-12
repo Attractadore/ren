@@ -3,6 +3,7 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Support/Errors.hpp"
+#include "Support/NotNull.hpp"
 #include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
@@ -13,7 +14,7 @@ namespace ren {
 
 RgPersistent::RgPersistent(Renderer &renderer,
                            TextureIdAllocator &texture_descriptor_allocator)
-    : m_texture_arena(renderer),
+    : m_texture_arena(renderer), m_prev_texture_arena(renderer),
       m_texture_descriptor_allocator(texture_descriptor_allocator) {}
 
 auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
@@ -77,10 +78,10 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
     RgTextureId init_id;
     if (i > 0) {
       init_id = m_textures.insert({
-          .parent = id,
 #if REN_RG_DEBUG
           .name = std::move(init_name),
 #endif
+          .parent = id,
       });
     }
 
@@ -96,10 +97,10 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
         .num_array_layers = create_info.num_array_layers,
         .init_id = init_id,
         .id = m_textures.insert({
-            .parent = id,
 #if REN_RG_DEBUG
             .name = std::move(name),
 #endif
+            .parent = id,
         }),
     };
 
@@ -124,11 +125,9 @@ void RgPersistent::reset() {
   m_physical_textures.clear();
   m_persistent_textures.clear();
   m_external_textures.clear();
-  m_num_frame_physical_textures = 0;
-  m_texture_init_info.clear();
-  m_textures.clear();
-  m_frame_textures.clear();
   m_texture_descriptor_allocator.clear();
+  m_textures.clear();
+  m_texture_init_info.clear();
   m_semaphores.clear();
 }
 
@@ -137,7 +136,9 @@ void RgPersistent::rotate_textures() {
   for (usize i = 0; i < m_physical_textures.size();
        i += RG_MAX_TEMPORAL_LAYERS) {
     RgPhysicalTexture &physical_texture = m_physical_textures[i];
-    RgDebugName name = std::move(physical_texture.name);
+#if REN_RG_DEBUG
+    String name = std::move(physical_texture.name);
+#endif
     VkImageUsageFlags usage = physical_texture.usage;
     Handle<Texture> handle = physical_texture.handle;
     StorageTextureId storage_descriptor = physical_texture.storage_descriptor;
@@ -149,7 +150,9 @@ void RgPersistent::rotate_textures() {
       if (!cur_physical_texture.handle) {
         break;
       }
+#if REN_RG_DEBUG
       prev_physical_texture.name = std::move(physical_texture.name);
+#endif
       prev_physical_texture.usage = physical_texture.usage;
       prev_physical_texture.handle = physical_texture.handle;
       prev_physical_texture.storage_descriptor =
@@ -157,7 +160,9 @@ void RgPersistent::rotate_textures() {
       prev_physical_texture.state = physical_texture.state;
     }
     RgPhysicalTexture &last_physical_texture = m_physical_textures[last - 1];
+#if REN_RG_DEBUG
     last_physical_texture.name = std::move(physical_texture.name);
+#endif
     last_physical_texture.usage = usage;
     last_physical_texture.handle = handle;
     last_physical_texture.storage_descriptor = storage_descriptor;
@@ -236,19 +241,11 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 } // namespace
 
 RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer) {
+  m_renderer = &renderer;
   m_rgp = &rgp;
   m_data = &rgp.m_build_data;
   m_rt_data = &rgp.m_rt_data;
-  m_renderer = &renderer;
 
-  m_rgp->m_physical_textures.resize(m_rgp->m_physical_textures.size() -
-                                    m_rgp->m_num_frame_physical_textures);
-  m_rgp->m_num_frame_physical_textures = 0;
-
-  for (RgTextureId texture : m_rgp->m_frame_textures) {
-    m_rgp->m_textures.erase(texture);
-  }
-  m_rgp->m_frame_textures.clear();
   for (auto &&[_, texture] : m_rgp->m_textures) {
     texture.def = {};
     texture.kill = {};
@@ -305,11 +302,11 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
   }
 
   RgBufferId buffer = m_data->m_buffers.insert({
-      .parent = physical_buffer,
-      .def = pass,
 #if REN_RG_DEBUG
       .name = std::move(name),
 #endif
+      .parent = physical_buffer,
+      .def = pass,
   });
 
   if (parent) {
@@ -374,11 +371,11 @@ auto RgBuilder::create_virtual_texture(RgPassId pass, RgDebugName name,
   ren_assert(parent);
   RgPhysicalTextureId physical_texture = m_rgp->m_textures[parent].parent;
   RgTextureId texture = m_rgp->m_textures.insert({
-      .parent = physical_texture,
-      .def = pass,
 #if REN_RG_DEBUG
       .name = std::move(name),
 #endif
+      .parent = physical_texture,
+      .def = pass,
   });
   m_rgp->m_frame_textures.push_back(texture);
   m_rgp->m_textures[parent].kill = pass;
@@ -707,154 +704,131 @@ void RgBuilder::dump_pass_schedule() const {
 #endif
 }
 
-void RgBuilder::create_resources(DeviceBumpAllocator &device_allocator,
-                                 UploadBumpAllocator &upload_allocator) {
-  Vector<RgPhysicalTextureId> init_textures;
-  Vector<RgPhysicalTextureId> update_usage_textures;
-
-  for (const auto &[_, pass] : m_data->m_passes) {
-    auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
-      const RgTextureUse &use = m_data->m_texture_uses[use_id];
-      const RgTexture &texture = m_rgp->m_textures[use.texture];
-      RgPhysicalTextureId physical_texture_id = texture.parent;
-      RgPhysicalTexture &physical_texture =
+void RgBuilder::alloc_textures() {
+  for (auto &&[base_physical_texture_id, init_info] :
+       m_rgp->m_texture_init_info) {
+    for (auto i : range<usize>(1, RG_MAX_TEMPORAL_LAYERS)) {
+      RgPhysicalTextureId physical_texture_id(base_physical_texture_id + i);
+      const RgPhysicalTexture &physical_texture =
           m_rgp->m_physical_textures[physical_texture_id];
-      VkImageUsageFlags usage = get_texture_usage_flags(use.usage.access_mask);
-      bool needs_init = !physical_texture.handle;
-      bool needs_usage_update =
-          (physical_texture.usage | usage) != physical_texture.usage;
-      physical_texture.usage |= usage;
-      if (needs_init) {
-        ren_assert(not m_rgp->m_external_textures[physical_texture_id]);
-        init_textures.push_back(physical_texture_id);
-      } else if (needs_usage_update) {
-        ren_assert(not m_rgp->m_external_textures[physical_texture_id]);
-        todo();
+      if (!physical_texture.handle) {
+        break;
       }
-    };
+      auto pass = create_pass({
+#if REN_RG_DEBUG
+          .name = fmt::format("rg#init-{}", physical_texture.name),
+#endif
+      });
+      RgTextureToken token =
+          write_texture(pass.m_pass, physical_texture.id,
+                        physical_texture.init_id, init_info.usage);
+      pass.set_callback(
+          [token, cb = std::move(init_info.cb)](
+              Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
+            cb(rg.get_texture(token), renderer, cmd);
+          });
+    }
+  }
+  m_rgp->m_texture_init_info.clear();
 
+  bool need_alloc = false;
+  auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
+    const RgTextureUse &use = m_data->m_texture_uses[use_id];
+    const RgTexture &texture = m_rgp->m_textures[use.texture];
+    RgPhysicalTextureId physical_texture_id = texture.parent;
+    RgPhysicalTexture &physical_texture =
+        m_rgp->m_physical_textures[physical_texture_id];
+    VkImageUsageFlags usage = get_texture_usage_flags(use.usage.access_mask);
+    bool needs_usage_update =
+        (physical_texture.usage | usage) != physical_texture.usage;
+    physical_texture.usage |= usage;
+    if (!physical_texture.handle or needs_usage_update) {
+      ren_assert(not m_rgp->m_external_textures[physical_texture_id]);
+      need_alloc = true;
+    }
+  };
+  for (const auto &[_, pass] : m_data->m_passes) {
     std::ranges::for_each(pass.read_textures, update_texture_usage_flags);
     std::ranges::for_each(pass.write_textures, update_texture_usage_flags);
   }
 
-  bool allocate_descriptors = false;
+  if (not need_alloc) {
+    return;
+  }
 
-  auto create_physical_texture = [&](RgPhysicalTexture &physical_texture) {
-    allocate_descriptors = true;
-    m_renderer->destroy(physical_texture.handle);
-    physical_texture.handle = m_rgp->m_texture_arena.create_texture({
+  std::swap(m_rgp->m_texture_arena, m_rgp->m_prev_texture_arena);
+  m_rgp->m_texture_descriptor_allocator.clear();
+  m_rgp->m_num_prev_physical_textures = 0;
+  usize num_physical_textures = m_rgp->m_physical_textures.size();
+  for (auto i : range(num_physical_textures)) {
+    NotNull<RgPhysicalTexture *> physical_texture =
+        &m_rgp->m_physical_textures[i];
+    if (!physical_texture->usage or m_rgp->m_external_textures[i]) {
+      continue;
+    }
+
+    if (m_rgp->m_persistent_textures[i] and physical_texture->handle) {
+      RgPhysicalTextureId j(m_rgp->m_physical_textures.size());
+      RgPhysicalTexture &src_physical_texture =
+          m_rgp->m_physical_textures.emplace_back();
+      physical_texture = &m_rgp->m_physical_textures[i];
+      m_rgp->m_persistent_textures.push_back(true);
+      m_rgp->m_external_textures.push_back(false);
+      m_rgp->m_num_prev_physical_textures += 1;
+      src_physical_texture = {
+          .handle = physical_texture->handle,
+          .state = physical_texture->state,
+          .id = m_rgp->m_textures.insert({
 #if REN_RG_DEBUG
-        .name = physical_texture.name,
+              .name = m_rgp->m_textures[physical_texture->id].name,
 #endif
-        .type = physical_texture.type,
-        .format = physical_texture.format,
-        .usage = physical_texture.usage,
-        .width = physical_texture.size.x,
-        .height = physical_texture.size.y,
-        .depth = physical_texture.size.z,
-        .num_mip_levels = physical_texture.num_mip_levels,
-        .num_array_layers = physical_texture.num_array_layers,
+              .parent = j,
+          }),
+      };
+      m_rgp->m_frame_textures.push_back(src_physical_texture.id);
+
+      auto pass = create_pass({
+#if REN_RG_DEBUG
+          .name = fmt::format("rg#copy-{}", physical_texture->name),
+#endif
+      });
+      RgTextureToken src = read_texture(pass.m_pass, src_physical_texture.id,
+                                        RG_TRANSFER_SRC_TEXTURE);
+      RgTextureToken dst =
+          write_texture(pass.m_pass, physical_texture->id,
+                        physical_texture->init_id, RG_TRANSFER_DST_TEXTURE);
+      pass.set_callback([src, dst](Renderer &renderer, const RgRuntime &rg,
+                                   CommandRecorder &cmd) {
+        cmd.copy_texture(rg.get_texture(src), rg.get_texture(dst));
+      });
+    }
+
+    physical_texture->handle = m_rgp->m_texture_arena.create_texture({
+#if REN_RG_DEBUG
+        .name = physical_texture->name,
+#endif
+        .type = physical_texture->type,
+        .format = physical_texture->format,
+        .usage = physical_texture->usage,
+        .width = physical_texture->size.x,
+        .height = physical_texture->size.y,
+        .depth = physical_texture->size.z,
+        .num_mip_levels = physical_texture->num_mip_levels,
+        .num_array_layers = physical_texture->num_array_layers,
     });
-    physical_texture.storage_descriptor = {};
-    physical_texture.state = {};
-  };
-
-  for (RgPhysicalTextureId physical_texture_id : init_textures) {
-    create_physical_texture(m_rgp->m_physical_textures[physical_texture_id]);
-  }
-
-  if (not m_rgp->m_texture_init_info.empty()) {
-    auto pass = create_pass({.name = "rg#init-persistent-textures"});
-    using CbTokens = StaticVector<RgTextureToken, RG_MAX_TEMPORAL_LAYERS - 1>;
-    Vector<std::tuple<CbTokens, RgTextureInitCallback>> token_cb_pairs;
-    for (auto &[base_physical_texture_id, init_info] :
-         m_rgp->m_texture_init_info) {
-      CbTokens tokens;
-      for (auto i : range<usize>(1, RG_MAX_TEMPORAL_LAYERS)) {
-        RgPhysicalTextureId physical_texture_id(base_physical_texture_id + i);
-        const RgPhysicalTexture &physical_texture =
-            m_rgp->m_physical_textures[physical_texture_id];
-        if (!physical_texture.handle) {
-          break;
-        }
-        tokens.push_back(write_texture(pass.m_pass, physical_texture.id,
-                                       physical_texture.init_id,
-                                       init_info.usage));
-      }
-      token_cb_pairs.push_back({std::move(tokens), std::move(init_info.cb)});
+    physical_texture->storage_descriptor = {};
+    if (physical_texture->usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+      physical_texture->storage_descriptor =
+          m_rgp->m_texture_descriptor_allocator.allocate_storage_texture(
+              *m_renderer,
+              m_renderer->get_texture_view(physical_texture->handle));
     }
-    pass.set_callback(
-        [=, tokens_cb_pairs = std::move(token_cb_pairs)](
-            Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
-          for (const auto &[tokens, cb] : tokens_cb_pairs) {
-            for (RgTextureToken token : tokens) {
-              cb(rg.get_texture(token), renderer, cmd);
-            }
-          }
-        });
-    m_rgp->m_texture_init_info.clear();
+    physical_texture->state = {};
   }
+}
 
-  Vector<std::tuple<RgPhysicalTextureId, RgPhysicalTextureId>>
-      update_texture_pairs;
-
-  for (RgPhysicalTextureId physical_texture_id : update_usage_textures) {
-    RgPhysicalTextureId copy_src_physical_texture_id(
-        m_rgp->m_physical_textures.size());
-    m_rgp->m_physical_textures.emplace_back();
-    m_rgp->m_persistent_textures.push_back(true);
-    m_rgp->m_external_textures.push_back(false);
-    m_rgp->m_num_frame_physical_textures += 1;
-    RgPhysicalTexture &physical_texture =
-        m_rgp->m_physical_textures[physical_texture_id];
-    RgPhysicalTexture &copy_src_physical_texture =
-        m_rgp->m_physical_textures[copy_src_physical_texture_id];
-    copy_src_physical_texture = {
-        .handle = physical_texture.handle,
-        .state = physical_texture.state,
-        .id =
-            m_rgp->m_textures.insert({.parent = copy_src_physical_texture_id}),
-    };
-    m_rgp->m_frame_textures.push_back(copy_src_physical_texture.id);
-    create_physical_texture(physical_texture);
-    update_texture_pairs.push_back(
-        {physical_texture_id, copy_src_physical_texture_id});
-  }
-
-  if (allocate_descriptors) {
-    m_rgp->m_texture_descriptor_allocator.clear();
-    for (RgPhysicalTexture &physical_texture : m_rgp->m_physical_textures) {
-      if (physical_texture.usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-        ren_assert(physical_texture.handle);
-        physical_texture.storage_descriptor =
-            m_rgp->m_texture_descriptor_allocator.allocate_storage_texture(
-                *m_renderer,
-                m_renderer->get_texture_view(physical_texture.handle));
-      }
-    }
-  }
-
-  if (not update_texture_pairs.empty()) {
-    auto pass = create_pass({.name = "rg#copy-persistent-textures"});
-    Vector<std::tuple<RgTextureToken, RgTextureToken>> token_pairs;
-    for (auto [src_id, dst_id] : update_texture_pairs) {
-      const RgPhysicalTexture &src = m_rgp->m_physical_textures[src_id];
-      const RgPhysicalTexture &dst = m_rgp->m_physical_textures[dst_id];
-      RgTextureToken src_token =
-          read_texture(pass.m_pass, src.id, RG_TRANSFER_SRC_TEXTURE);
-      RgTextureToken dst_token = write_texture(pass.m_pass, dst.id, dst.init_id,
-                                               RG_TRANSFER_DST_TEXTURE);
-      token_pairs.push_back({src_token, dst_token});
-    }
-    pass.set_callback(
-        [=, tokens_pairs = std::move(token_pairs)](
-            Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
-          for (auto [src, dst] : tokens_pairs) {
-            cmd.copy_texture(rg.get_texture(src), rg.get_texture(dst));
-          }
-        });
-  }
-
+void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
+                              UploadBumpAllocator &upload_allocator) {
   for (RgPhysicalBuffer &physical_buffer : m_data->m_physical_buffers) {
     switch (BufferHeap heap = physical_buffer.heap) {
     default:
@@ -1286,7 +1260,8 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
                       UploadBumpAllocator &upload_allocator) -> RenderGraph {
   m_rgp->rotate_textures();
 
-  create_resources(device_allocator, upload_allocator);
+  alloc_textures();
+  alloc_buffers(device_allocator, upload_allocator);
 
   build_pass_schedule();
   dump_pass_schedule();
@@ -1545,6 +1520,16 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   }
 
   submit_batch();
+
+  m_rgp->m_prev_texture_arena.clear();
+  m_rgp->m_physical_textures.resize(m_rgp->m_physical_textures.size() -
+                                    m_rgp->m_num_prev_physical_textures);
+  m_rgp->m_persistent_textures.resize(m_rgp->m_physical_textures.size());
+  m_rgp->m_external_textures.resize(m_rgp->m_physical_textures.size());
+  for (RgTextureId texture : m_rgp->m_frame_textures) {
+    m_rgp->m_textures.erase(texture);
+  }
+  m_rgp->m_frame_textures.clear();
 }
 
 auto RgRuntime::get_buffer(RgBufferToken buffer) const -> const BufferView & {

@@ -323,11 +323,13 @@ struct RgPhysicalBuffer {
 };
 
 struct RgBuffer {
+#if REN_RG_DEBUG
+  String name;
+#endif
   RgPhysicalBufferId parent;
   RgPassId def;
   RgPassId kill;
 #if REN_RG_DEBUG
-  String name;
   RgBufferId child;
 #endif
 };
@@ -378,7 +380,9 @@ struct RgTextureInitInfo {
 };
 
 struct RgPhysicalTexture {
-  REN_RG_DEBUG_NAME_TYPE name;
+#if REN_RG_DEBUG
+  String name;
+#endif
   VkImageType type = VK_IMAGE_TYPE_2D;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageUsageFlags usage = 0;
@@ -393,11 +397,13 @@ struct RgPhysicalTexture {
 };
 
 struct RgTexture {
+#if REN_RG_DEBUG
+  String name;
+#endif
   RgPhysicalTextureId parent;
   RgPassId def;
   RgPassId kill;
-#ifdef REN_RG_DEBUG
-  String name;
+#if REN_RG_DEBUG
   RgTextureId child;
 #endif
 };
@@ -408,10 +414,10 @@ struct RgTextureUse {
 };
 
 struct RgSemaphore {
-  Handle<Semaphore> handle;
 #if REN_RG_DEBUG
   String name;
 #endif
+  Handle<Semaphore> handle;
 };
 
 struct RgSemaphoreSignal {
@@ -509,11 +515,15 @@ private:
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
   DynamicBitset m_external_textures;
-  usize m_num_frame_physical_textures = 0;
-  HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
-  GenArray<RgTexture> m_textures;
-  Vector<RgTextureId> m_frame_textures;
   TextureIdAllocatorScope m_texture_descriptor_allocator;
+  GenArray<RgTexture> m_textures;
+
+  HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
+
+  TextureArena m_prev_texture_arena;
+  usize m_num_prev_physical_textures = 0;
+
+  Vector<RgTextureId> m_frame_textures;
 
   GenArray<RgSemaphore> m_semaphores;
 
@@ -609,8 +619,10 @@ private:
     pass.ext = RgGenericPass{.cb = std::move(cb)};
   }
 
-  void create_resources(DeviceBumpAllocator &device_allocator,
-                        UploadBumpAllocator &upload_allocator);
+  void alloc_textures();
+
+  void alloc_buffers(DeviceBumpAllocator &device_allocator,
+                     UploadBumpAllocator &upload_allocator);
 
   auto build_pass_schedule();
 
