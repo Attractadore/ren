@@ -62,8 +62,6 @@ add_library(
   RenderGraph.cpp
   Renderer.cpp
   ResourceUploader.cpp
-  RgBuilder.cpp
-  RgPassBuilder.cpp
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
