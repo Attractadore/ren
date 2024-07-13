@@ -10,6 +10,7 @@
 #include "Support/GenMap.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/NewType.hpp"
+#include "Support/PriorityQueue.hpp"
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
 #include "TextureIdAllocator.hpp"
@@ -436,6 +437,9 @@ struct RgSemaphoreSignal {
 struct RgBuildData {
   GenArray<RgPass> m_passes;
   Vector<RgPassId> m_schedule;
+  Vector<RgPassId> m_pass_predecessors;
+  Vector<RgPassId> m_pass_successors;
+  MinQueue<std::tuple<int, RgPassId>> m_unscheduled_passes;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
   GenArray<RgBuffer> m_buffers;
@@ -483,6 +487,7 @@ struct RgRtData {
 #if REN_RG_DEBUG
   GenMap<String, RgPassId> m_pass_names;
 #endif
+  Vector<VkCommandBufferSubmitInfo> m_batch_cmd_buffers;
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;

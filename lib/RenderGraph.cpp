@@ -4,7 +4,6 @@
 #include "Formats.hpp"
 #include "Support/Errors.hpp"
 #include "Support/NotNull.hpp"
-#include "Support/PriorityQueue.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -514,19 +513,17 @@ auto RgBuilder::build_pass_schedule() {
 
   auto is_null_pass = [](RgPassId pass) -> bool { return !pass; };
 
-  SmallVector<RgPassId> dependents;
-  auto get_dependants = [&](RgPassId pass_id) -> Span<const RgPassId> {
+  auto get_dependents = [&](RgPassId pass_id, Vector<RgPassId> &dependents) {
     const RgPass &pass = passes[pass_id];
     dependents.clear();
     // Reads must happen before writes
     dependents.append(pass.read_buffers | map(get_buffer_kill));
     dependents.append(pass.read_textures | map(get_texture_kill));
     dependents.erase_if(is_null_pass);
-    return dependents;
   };
 
-  SmallVector<RgPassId> dependencies;
-  auto get_dependencies = [&](RgPassId pass_id) -> Span<const RgPassId> {
+  auto get_dependencies = [&](RgPassId pass_id,
+                              Vector<RgPassId> &dependencies) {
     const RgPass &pass = passes[pass_id];
     dependencies.clear();
     // Reads must happen after creation
@@ -536,33 +533,38 @@ auto RgBuilder::build_pass_schedule() {
     dependencies.append(pass.write_buffers | map(get_buffer_def));
     dependencies.append(pass.write_textures | map(get_texture_def));
     dependencies.erase_if(is_null_pass);
-    return dependencies;
   };
 
   // Schedule passes whose dependencies were scheduled the longest time ago
   // first
-  MinQueue<std::tuple<int, RgPassId>> unscheduled_passes;
+  auto &unscheduled_passes = m_data->m_unscheduled_passes;
+  ren_assert(unscheduled_passes.empty());
+
+  auto &predecessors = m_data->m_pass_predecessors;
+  predecessors.clear();
+  auto &successors = m_data->m_pass_successors;
+  successors.clear();
 
   // Build DAG
   for (const auto &[pass, _] : passes) {
-    auto predecessors = get_dependencies(pass);
-    auto successors = get_dependants(pass);
+    get_dependencies(pass, predecessors);
 
     for (RgPassId p : predecessors) {
       add_edge(p, pass);
-    }
-
-    for (RgPassId s : successors) {
-      add_edge(pass, s);
     }
 
     if (predecessors.empty()) {
       // This is a pass with no dependencies and can be scheduled right away
       unscheduled_passes.push({-1, pass});
     }
+
+    get_dependents(pass, successors);
+    for (RgPassId s : successors) {
+      add_edge(pass, s);
+    }
   }
 
-  Vector<RgPassId> &schedule = m_data->m_schedule;
+  auto &schedule = m_data->m_schedule;
   schedule.clear();
 
   while (not unscheduled_passes.empty()) {
@@ -579,10 +581,10 @@ auto RgBuilder::build_pass_schedule() {
       ren_assert(passes[s].num_predecessors > 0);
       if (--passes[s].num_predecessors == 0) {
         int max_dependency_time = -1;
-        Span<const RgPassId> dependencies = get_dependencies(s);
-        if (not dependencies.empty()) {
+        get_dependencies(s, predecessors);
+        if (not predecessors.empty()) {
           max_dependency_time =
-              std::ranges::max(dependencies | map([&](RgPassId d) {
+              std::ranges::max(predecessors | map([&](RgPassId d) {
                                  return passes[d].schedule_time;
                                }));
         }
@@ -1382,7 +1384,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   RgRuntime rt;
   rt.m_rg = this;
 
-  Vector<VkCommandBufferSubmitInfo> batch_cmd_buffers;
+  auto &batch_cmd_buffers = m_data->m_batch_cmd_buffers;
+  batch_cmd_buffers.clear();
   Span<const VkSemaphoreSubmitInfo> batch_wait_semaphores;
   Span<const VkSemaphoreSubmitInfo> batch_signal_semaphores;
 
