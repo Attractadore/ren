@@ -63,40 +63,37 @@ void MeshPassClass::Instance::Instance::record_culling(
     buckets_size += bucket_size;
   }
 
-  RgBufferId meshlet_bucket_commands = rgb.create_buffer({
+  auto meshlet_bucket_commands =
+      rgb.create_buffer<glsl::DispatchIndirectCommand>({
+          .heap = BufferHeap::Static,
+          .size = glsl::NUM_MESHLET_CULLING_BUCKETS,
+      });
+
+  auto meshlet_bucket_sizes = rgb.create_buffer<u32>({
       .heap = BufferHeap::Static,
-      .size = sizeof(
-          glsl::DispatchIndirectCommand[glsl::NUM_MESHLET_CULLING_BUCKETS]),
+      .size = glsl::NUM_MESHLET_CULLING_BUCKETS,
   });
 
-  RgBufferId meshlet_bucket_sizes = rgb.create_buffer({
+  auto meshlet_cull_data = rgb.create_buffer<glsl::MeshletCullData>({
       .heap = BufferHeap::Static,
-      .size = sizeof(u32[glsl::NUM_MESHLET_CULLING_BUCKETS]),
+      .size = buckets_size,
   });
 
-  RgBufferId meshlet_cull_data = rgb.create_buffer({
+  *cfg.commands = rgb.create_buffer<glsl::DrawIndexedIndirectCommand>({
       .heap = BufferHeap::Static,
-      .size = sizeof(glsl::MeshletCullData) * buckets_size,
+      .size = m_num_draw_meshlets,
   });
 
-  *cfg.commands = rgb.create_buffer({
-      .heap = BufferHeap::Static,
-      .size = sizeof(glsl::DrawIndexedIndirectCommand) * m_num_draw_meshlets,
-  });
-
-  *cfg.command_count = rgb.create_buffer({
-      .heap = BufferHeap::Static,
-      .size = sizeof(u32),
-  });
+  *cfg.command_count = rgb.create_buffer<u32>({.heap = BufferHeap::Static});
 
   {
     auto pass = rgb.create_pass(
         {.name = fmt::format("{}-init-culling", m_class->m_pass_name)});
 
     struct {
-      RgBufferToken meshlet_bucket_commands;
-      RgBufferToken meshlet_bucket_sizes;
-      RgBufferToken meshlet_draw_command_count;
+      RgUntypedBufferToken meshlet_bucket_commands;
+      RgUntypedBufferToken meshlet_bucket_sizes;
+      RgUntypedBufferToken meshlet_draw_command_count;
     } rcs;
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
@@ -134,13 +131,13 @@ void MeshPassClass::Instance::Instance::record_culling(
     struct {
       Handle<ComputePipeline> pipeline;
       DevicePtr<glsl::InstanceCullingAndLODPassUniforms> uniforms;
-      RgBufferToken meshes;
-      RgBufferToken transform_matrices;
+      RgBufferToken<glsl::Mesh> meshes;
+      RgBufferToken<glm::mat4x3> transform_matrices;
       DevicePtr<glsl::InstanceCullData> instance_cull_data;
       u32 num_instances;
-      RgBufferToken meshlet_bucket_commands;
-      RgBufferToken meshlet_bucket_sizes;
-      RgBufferToken meshlet_cull_data;
+      RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
+      RgBufferToken<u32> meshlet_bucket_sizes;
+      RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
     } rcs;
 
     rcs.pipeline = m_pipelines->instance_culling_and_lod;
@@ -195,17 +192,15 @@ void MeshPassClass::Instance::Instance::record_culling(
       ren_assert(rcs.instance_cull_data);
       cmd.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
           .ub = rcs.uniforms,
-          .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
+          .meshes = rg.get_buffer_device_ptr(rcs.meshes),
           .transform_matrices =
-              rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+              rg.get_buffer_device_ptr(rcs.transform_matrices),
           .cull_data = rcs.instance_cull_data,
           .meshlet_bucket_commands =
-              rg.get_buffer_device_ptr<glsl::DispatchIndirectCommand>(
-                  rcs.meshlet_bucket_commands),
+              rg.get_buffer_device_ptr(rcs.meshlet_bucket_commands),
           .meshlet_bucket_sizes =
-              rg.get_buffer_device_ptr<u32>(rcs.meshlet_bucket_sizes),
-          .meshlet_cull_data = rg.get_buffer_device_ptr<glsl::MeshletCullData>(
-              rcs.meshlet_cull_data),
+              rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes),
+          .meshlet_cull_data = rg.get_buffer_device_ptr(rcs.meshlet_cull_data),
       });
       cmd.dispatch_threads(rcs.num_instances,
                            glsl::INSTANCE_CULLING_AND_LOD_THREADS);
@@ -218,13 +213,13 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     struct {
       Handle<ComputePipeline> pipeline;
-      RgBufferToken meshes;
-      RgBufferToken transform_matrices;
-      RgBufferToken meshlet_bucket_commands;
-      RgBufferToken meshlet_bucket_sizes;
-      RgBufferToken meshlet_cull_data;
-      RgBufferToken meshlet_draw_commands;
-      RgBufferToken meshlet_draw_command_count;
+      RgBufferToken<glsl::Mesh> meshes;
+      RgBufferToken<glm::mat4x3> transform_matrices;
+      RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
+      RgBufferToken<u32> meshlet_bucket_sizes;
+      RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
+      RgBufferToken<glsl::DrawIndexedIndirectCommand> meshlet_draw_commands;
+      RgBufferToken<u32> meshlet_draw_command_count;
       u32 feature_mask;
       std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
       glm::vec3 eye;
@@ -259,35 +254,32 @@ void MeshPassClass::Instance::Instance::record_culling(
     rcs.eye = m_eye;
     rcs.proj_view = m_proj_view;
 
-    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
-                                    ComputePass &pass) {
-      pass.bind_compute_pipeline(rcs.pipeline);
-      for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
-        pass.set_push_constants(glsl::MeshletCullingPassArgs{
-            .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
-            .transform_matrices =
-                rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
-            .bucket_cull_data = rg.get_buffer_device_ptr<glsl::MeshletCullData>(
-                                    rcs.meshlet_cull_data) +
-                                rcs.bucket_offsets[bucket],
-            .bucket_size =
-                rg.get_buffer_device_ptr<u32>(rcs.meshlet_bucket_sizes) +
-                bucket,
-            .commands =
-                rg.get_buffer_device_ptr<glsl::DrawIndexedIndirectCommand>(
-                    rcs.meshlet_draw_commands),
-            .num_commands =
-                rg.get_buffer_device_ptr<u32>(rcs.meshlet_draw_command_count),
-            .feature_mask = rcs.feature_mask,
-            .bucket = bucket,
-            .eye = rcs.eye,
-            .proj_view = rcs.proj_view,
+    pass.set_compute_callback(
+        [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+          pass.bind_compute_pipeline(rcs.pipeline);
+          for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+            pass.set_push_constants(glsl::MeshletCullingPassArgs{
+                .meshes = rg.get_buffer_device_ptr(rcs.meshes),
+                .transform_matrices =
+                    rg.get_buffer_device_ptr(rcs.transform_matrices),
+                .bucket_cull_data =
+                    rg.get_buffer_device_ptr(rcs.meshlet_cull_data) +
+                    rcs.bucket_offsets[bucket],
+                .bucket_size =
+                    rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes) + bucket,
+                .commands = rg.get_buffer_device_ptr(rcs.meshlet_draw_commands),
+                .num_commands =
+                    rg.get_buffer_device_ptr(rcs.meshlet_draw_command_count),
+                .feature_mask = rcs.feature_mask,
+                .bucket = bucket,
+                .eye = rcs.eye,
+                .proj_view = rcs.proj_view,
+            });
+            pass.dispatch_indirect(
+                rg.get_buffer(rcs.meshlet_bucket_commands)
+                    .slice<glsl::DispatchIndirectCommand>(bucket));
+          }
         });
-        pass.dispatch_indirect(
-            rg.get_buffer(rcs.meshlet_bucket_commands)
-                .slice<glsl::DispatchIndirectCommand>(bucket));
-      }
-    });
   }
 }
 
@@ -343,11 +335,9 @@ void DepthOnlyMeshPassClass::Instance::bind_render_pass_resources(
     const RgRuntime &rg, RenderPass &render_pass,
     const RenderPassResources &rcs) {
   render_pass.set_push_constants(glsl::EarlyZPassArgs{
-      .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
-      .mesh_instances =
-          rg.get_buffer_device_ptr<glsl::MeshInstance>(rcs.mesh_instances),
-      .transform_matrices =
-          rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
+      .meshes = rg.get_buffer_device_ptr(rcs.meshes),
+      .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
+      .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
       .proj_view = rcs.proj_view,
   });
 }
@@ -430,20 +420,16 @@ void OpaqueMeshPassClass::Instance::bind_render_pass_resources(
   auto [uniforms_host_ptr, uniforms_device_ptr, _] =
       rg.allocate<glsl::OpaquePassUniforms>();
   *uniforms_host_ptr = {
-      .meshes = rg.get_buffer_device_ptr<glsl::Mesh>(rcs.meshes),
-      .mesh_instances =
-          rg.get_buffer_device_ptr<glsl::MeshInstance>(rcs.mesh_instances),
-      .transform_matrices =
-          rg.get_buffer_device_ptr<glm::mat4x3>(rcs.transform_matrices),
-      .normal_matrices =
-          rg.get_buffer_device_ptr<glm::mat3>(rcs.normal_matrices),
+      .meshes = rg.get_buffer_device_ptr(rcs.meshes),
+      .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
+      .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
+      .normal_matrices = rg.get_buffer_device_ptr(rcs.normal_matrices),
       .proj_view = rcs.proj_view,
   };
   render_pass.set_push_constants(glsl::OpaquePassArgs{
       .ub = uniforms_device_ptr,
-      .materials = rg.get_buffer_device_ptr<glsl::Material>(rcs.materials),
-      .directional_lights =
-          rg.get_buffer_device_ptr<glsl::DirLight>(rcs.directional_lights),
+      .materials = rg.get_buffer_device_ptr(rcs.materials),
+      .directional_lights = rg.get_buffer_device_ptr(rcs.directional_lights),
       .num_directional_lights = rcs.num_directional_lights,
       .eye = rcs.eye,
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),

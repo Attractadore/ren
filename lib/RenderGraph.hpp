@@ -213,11 +213,17 @@ using RgPassId = Handle<RgPass>;
 REN_NEW_TYPE(RgPhysicalBufferId, u32);
 
 struct RgBuffer;
-using RgBufferId = Handle<RgBuffer>;
+REN_NEW_TEMPLATE_TYPE(RgBufferId, Handle<RgBuffer>, T);
+using RgUntypedBufferId = Handle<RgBuffer>;
 
-class RgBufferToken {
+template <typename T> class RgBufferToken {
 public:
   RgBufferToken() = default;
+  template <typename U>
+    requires std::same_as<T, std::byte>
+  RgBufferToken(RgBufferToken<U> other) {
+    m_value = other;
+  }
 
   explicit RgBufferToken(u32 value) { m_value = value; }
 
@@ -228,6 +234,7 @@ public:
 private:
   u32 m_value = -1;
 };
+using RgUntypedBufferToken = RgBufferToken<std::byte>;
 
 REN_NEW_TYPE(RgBufferUseId, u32);
 
@@ -310,10 +317,10 @@ struct RgPass {
 };
 
 struct RgBufferCreateInfo {
-  /// Memory heap from which to allocate buffer
+  /// Memory heap from which to allocate buffer.
   BufferHeap heap = BufferHeap::Dynamic;
-  /// Initial buffer size
-  usize size = 0;
+  /// Buffer size.
+  usize size = 1;
 };
 
 struct RgPhysicalBuffer {
@@ -330,12 +337,12 @@ struct RgBuffer {
   RgPassId def;
   RgPassId kill;
 #if REN_RG_DEBUG
-  RgBufferId child;
+  RgUntypedBufferId child;
 #endif
 };
 
 struct RgBufferUse {
-  RgBufferId buffer;
+  RgUntypedBufferId buffer;
   RgBufferState usage;
 };
 
@@ -539,7 +546,14 @@ public:
   create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder;
 
   [[nodiscard]] auto
-  create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId;
+  create_buffer(RgBufferCreateInfo &&create_info) -> RgUntypedBufferId;
+
+  template <typename T>
+  [[nodiscard]] auto
+  create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId<T> {
+    create_info.size *= sizeof(T);
+    return RgBufferId<T>(create_buffer(std::move(create_info)));
+  }
 
   void set_external_texture(RgTextureId id, Handle<Texture> texture,
                             const RgTextureState &usage = {});
@@ -553,18 +567,21 @@ private:
   friend RgPassBuilder;
 
   [[nodiscard]] auto
-  add_buffer_use(RgBufferId buffer,
+  add_buffer_use(RgUntypedBufferId buffer,
                  const RgBufferState &usage) -> RgBufferUseId;
 
-  [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
-                                           RgBufferId parent) -> RgBufferId;
+  [[nodiscard]] auto
+  create_virtual_buffer(RgPassId pass, RgDebugName name,
+                        RgUntypedBufferId parent) -> RgUntypedBufferId;
 
-  [[nodiscard]] auto read_buffer(RgPassId pass, RgBufferId buffer,
-                                 const RgBufferState &usage) -> RgBufferToken;
+  [[nodiscard]] auto
+  read_buffer(RgPassId pass, RgUntypedBufferId buffer,
+              const RgBufferState &usage) -> RgUntypedBufferToken;
 
   [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
-                                  RgBufferId buffer, const RgBufferState &usage)
-      -> std::tuple<RgBufferId, RgBufferToken>;
+                                  RgUntypedBufferId buffer,
+                                  const RgBufferState &usage)
+      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto
   add_texture_use(RgTextureId texture,
@@ -645,12 +662,29 @@ private:
 
 class RgPassBuilder {
 public:
-  [[nodiscard]] auto read_buffer(RgBufferId buffer,
-                                 const RgBufferState &usage) -> RgBufferToken;
+  [[nodiscard]] auto
+  read_buffer(RgUntypedBufferId buffer,
+              const RgBufferState &usage) -> RgUntypedBufferToken;
 
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId buffer,
+  template <typename T>
+  [[nodiscard]] auto
+  read_buffer(RgBufferId<T> buffer,
+              const RgBufferState &usage) -> RgBufferToken<T> {
+    return RgBufferToken<T>(read_buffer(RgUntypedBufferId(buffer), usage));
+  }
+
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
                                   const RgBufferState &usage)
-      -> std::tuple<RgBufferId, RgBufferToken>;
+      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
+
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
+                                  const RgBufferState &usage)
+      -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
+    auto [id, token] =
+        write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
+    return {RgBufferId<T>(id), RgBufferToken<T>(token)};
+  }
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
                                   const RgTextureState &usage,
@@ -732,10 +766,10 @@ private:
 
 class RgRuntime {
 public:
-  auto get_buffer(RgBufferToken buffer) const -> const BufferView &;
+  auto get_buffer(RgUntypedBufferToken buffer) const -> const BufferView &;
 
   template <typename T>
-  auto get_buffer_device_ptr(RgBufferToken buffer,
+  auto get_buffer_device_ptr(RgUntypedBufferToken buffer,
                              usize offset = 0) const -> DevicePtr<T> {
     DevicePtr<T> ptr =
         m_rg->m_renderer->get_buffer_device_ptr<T>(get_buffer(buffer), offset);
@@ -744,8 +778,19 @@ public:
   }
 
   template <typename T>
-  auto map_buffer(RgBufferToken buffer, usize offset = 0) const -> T * {
+  auto get_buffer_device_ptr(RgBufferToken<T> buffer,
+                             usize offset = 0) const -> DevicePtr<T> {
+    return get_buffer_device_ptr<T>(RgUntypedBufferToken(buffer), offset);
+  }
+
+  template <typename T>
+  auto map_buffer(RgUntypedBufferToken buffer, usize offset = 0) const -> T * {
     return m_rg->m_renderer->map_buffer<T>(get_buffer(buffer), offset);
+  }
+
+  template <typename T>
+  auto map_buffer(RgBufferToken<T> buffer, usize offset = 0) const -> T * {
+    return map_buffer<T>(RgUntypedBufferToken(buffer), offset);
   }
 
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;

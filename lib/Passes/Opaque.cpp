@@ -10,24 +10,24 @@ namespace {
 
 struct UploadPassResources {
   NotNull<const Scene *> scene;
-  RgBufferToken meshes;
-  RgBufferToken materials;
-  RgBufferToken mesh_instances;
-  RgBufferToken transform_matrices;
-  RgBufferToken normal_matrices;
-  RgBufferToken directional_lights;
+  RgBufferToken<glsl::Mesh> meshes;
+  RgBufferToken<glsl::Material> materials;
+  RgBufferToken<glsl::MeshInstance> mesh_instances;
+  RgBufferToken<glm::mat4x3> transform_matrices;
+  RgBufferToken<glm::mat3> normal_matrices;
+  RgBufferToken<glsl::DirLight> directional_lights;
 };
 
 void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
                      const UploadPassResources &rcs) {
   const Scene &scene = *rcs.scene;
 
-  auto *materials = rg.map_buffer<glsl::Material>(rcs.materials);
+  auto *materials = rg.map_buffer(rcs.materials);
   for (const auto &[h, material] : scene.get_materials()) {
     materials[h] = material;
   }
 
-  auto *meshes_ptr = rg.map_buffer<glsl::Mesh>(rcs.meshes);
+  auto *meshes_ptr = rg.map_buffer(rcs.meshes);
   const GenArray<Mesh> &meshes = scene.get_meshes();
 
   for (const auto &[h, mesh] : meshes) {
@@ -51,11 +51,9 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
     std::ranges::copy(mesh.lods, meshes_ptr[h].lods);
   }
 
-  auto *mesh_instances_ptr =
-      rg.map_buffer<glsl::MeshInstance>(rcs.mesh_instances);
-  auto *transform_matrices_ptr =
-      rg.map_buffer<glm::mat4x3>(rcs.transform_matrices);
-  auto *normal_matrices_ptr = rg.map_buffer<glm::mat3>(rcs.normal_matrices);
+  auto *mesh_instances_ptr = rg.map_buffer(rcs.mesh_instances);
+  auto *transform_matrices_ptr = rg.map_buffer(rcs.transform_matrices);
+  auto *normal_matrices_ptr = rg.map_buffer(rcs.normal_matrices);
 
   const GenArray<MeshInstance> &mesh_instances = scene.get_mesh_instances();
   const GenMap<glm::mat4x3, Handle<MeshInstance>> &transforms =
@@ -71,20 +69,19 @@ void run_upload_pass(Renderer &renderer, const RgRuntime &rg,
         glm::transpose(glm::inverse(glm::mat3(transforms[h])));
   }
 
-  auto *directional_lights =
-      rg.map_buffer<glsl::DirLight>(rcs.directional_lights);
+  auto *directional_lights = rg.map_buffer(rcs.directional_lights);
   for (const auto &[h, light] : scene.get_directional_lights()) {
     directional_lights[h] = light;
   }
 }
 
 struct UploadPassConfig {
-  NotNull<RgBufferId *> meshes;
-  NotNull<RgBufferId *> materials;
-  NotNull<RgBufferId *> mesh_instances;
-  NotNull<RgBufferId *> transform_matrices;
-  NotNull<RgBufferId *> normal_matrices;
-  NotNull<RgBufferId *> directional_lights;
+  NotNull<RgBufferId<glsl::Mesh> *> meshes;
+  NotNull<RgBufferId<glsl::Material> *> materials;
+  NotNull<RgBufferId<glsl::MeshInstance> *> mesh_instances;
+  NotNull<RgBufferId<glm::mat4x3> *> transform_matrices;
+  NotNull<RgBufferId<glm::mat3> *> normal_matrices;
+  NotNull<RgBufferId<glsl::DirLight> *> directional_lights;
 };
 
 void setup_upload_pass(const PassCommonConfig &ccfg,
@@ -96,17 +93,17 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
 
   auto pass = rgb.create_pass({.name = "upload"});
 
-  *cfg.materials = rgb.create_buffer({
+  *cfg.materials = rgb.create_buffer<glsl::Material>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glsl::Material) * scene.get_materials().size(),
+      .size = scene.get_materials().size(),
   });
 
   std::tie(*cfg.materials, rcs.materials) =
       pass.write_buffer("materials", *cfg.materials, RG_HOST_WRITE_BUFFER);
 
-  *cfg.meshes = rgb.create_buffer({
+  *cfg.meshes = rgb.create_buffer<glsl::Mesh>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glsl::Mesh) * scene.get_meshes().size(),
+      .size = scene.get_meshes().size(),
   });
 
   std::tie(*cfg.meshes, rcs.meshes) =
@@ -114,33 +111,33 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
 
   usize num_mesh_instances = scene.get_mesh_instances().size();
 
-  *cfg.mesh_instances = rgb.create_buffer({
+  *cfg.mesh_instances = rgb.create_buffer<glsl::MeshInstance>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glsl::MeshInstance) * num_mesh_instances,
+      .size = num_mesh_instances,
   });
 
   std::tie(*cfg.mesh_instances, rcs.mesh_instances) = pass.write_buffer(
       "mesh-instances", *cfg.mesh_instances, RG_HOST_WRITE_BUFFER);
 
-  *cfg.transform_matrices = rgb.create_buffer({
+  *cfg.transform_matrices = rgb.create_buffer<glm::mat4x3>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glsl::mat4x3) * num_mesh_instances,
+      .size = num_mesh_instances,
   });
 
   std::tie(*cfg.transform_matrices, rcs.transform_matrices) = pass.write_buffer(
       "transform-matrices", *cfg.transform_matrices, RG_HOST_WRITE_BUFFER);
 
-  *cfg.normal_matrices = rgb.create_buffer({
+  *cfg.normal_matrices = rgb.create_buffer<glm::mat3>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glm::mat3) * num_mesh_instances,
+      .size = num_mesh_instances,
   });
 
   std::tie(*cfg.normal_matrices, rcs.normal_matrices) = pass.write_buffer(
       "normal-matrices", *cfg.normal_matrices, RG_HOST_WRITE_BUFFER);
 
-  *cfg.directional_lights = rgb.create_buffer({
+  *cfg.directional_lights = rgb.create_buffer<glsl::DirLight>({
       .heap = BufferHeap::Dynamic,
-      .size = sizeof(glsl::DirLight) * scene.get_directional_lights().size(),
+      .size = scene.get_directional_lights().size(),
   });
 
   std::tie(*cfg.directional_lights, rcs.directional_lights) = pass.write_buffer(
@@ -151,23 +148,11 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 }
 
-struct EarlyZPassResources {
-  RgBufferToken meshes;
-  RgBufferToken mesh_instances;
-  RgBufferToken transform_matrices;
-  RgBufferToken commands;
-  RgTextureToken depth_buffer;
-};
-
-void run_early_z_pass(Renderer &renderer, const RgRuntime &rg,
-                      CommandRecorder &cmd, const Scene &scene,
-                      const EarlyZPassResources &rcs) {}
-
 struct EarlyZPassConfig {
-  RgBufferId meshes;
+  RgBufferId<glsl::Mesh> meshes;
   Span<const BufferView> index_pools;
-  RgBufferId mesh_instances;
-  RgBufferId transform_matrices;
+  RgBufferId<glsl::MeshInstance> mesh_instances;
+  RgBufferId<glm::mat4x3> transform_matrices;
   NotNull<RgTextureId *> depth_buffer;
 };
 
@@ -217,31 +202,14 @@ void setup_early_z_pass(const PassCommonConfig &ccfg,
       });
 }
 
-struct OpaquePassResources {
-  RgBufferToken commands;
-  RgBufferToken meshes;
-  RgBufferToken materials;
-  RgBufferToken mesh_instances;
-  RgBufferToken transform_matrices;
-  RgBufferToken normal_matrices;
-  RgBufferToken directional_lights;
-  RgTextureToken hdr;
-  RgTextureToken depth_buffer;
-  RgTextureToken exposure;
-};
-
-void run_opaque_pass(Renderer &renderer, const RgRuntime &rg,
-                     CommandRecorder &cmd, const Scene &scene,
-                     const OpaquePassResources &rcs) {}
-
 struct OpaquePassConfig {
-  RgBufferId meshes;
+  RgBufferId<glsl::Mesh> meshes;
   Span<const BufferView> index_pools;
-  RgBufferId materials;
-  RgBufferId mesh_instances;
-  RgBufferId transform_matrices;
-  RgBufferId normal_matrices;
-  RgBufferId directional_lights;
+  RgBufferId<glsl::Material> materials;
+  RgBufferId<glsl::MeshInstance> mesh_instances;
+  RgBufferId<glm::mat4x3> transform_matrices;
+  RgBufferId<glm::mat3> normal_matrices;
+  RgBufferId<glsl::DirLight> directional_lights;
   NotNull<RgTextureId *> hdr;
   RgTextureId depth_buffer;
   RgTextureId exposure;
@@ -319,12 +287,12 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
                               const OpaquePassesConfig &cfg) {
   const Scene &scene = *ccfg.scene;
 
-  RgBufferId meshes;
-  RgBufferId materials;
-  RgBufferId mesh_instances;
-  RgBufferId transform_matrices;
-  RgBufferId normal_matrices;
-  RgBufferId directional_lights;
+  RgBufferId<glsl::Mesh> meshes;
+  RgBufferId<glsl::Material> materials;
+  RgBufferId<glsl::MeshInstance> mesh_instances;
+  RgBufferId<glm::mat4x3> transform_matrices;
+  RgBufferId<glm::mat3> normal_matrices;
+  RgBufferId<glsl::DirLight> directional_lights;
 
   SmallVector<BufferView> index_pools;
   for (const IndexPool &pool : scene.get_index_pools()) {

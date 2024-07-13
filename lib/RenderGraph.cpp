@@ -278,7 +278,7 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
   return RgPassBuilder(pass, *this);
 }
 
-auto RgBuilder::add_buffer_use(RgBufferId buffer,
+auto RgBuilder::add_buffer_use(RgUntypedBufferId buffer,
                                const RgBufferState &usage) -> RgBufferUseId {
   ren_assert(buffer);
   RgBufferUseId id(m_data->m_buffer_uses.size());
@@ -291,7 +291,8 @@ auto RgBuilder::add_buffer_use(RgBufferId buffer,
 };
 
 auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
-                                      RgBufferId parent) -> RgBufferId {
+                                      RgUntypedBufferId parent)
+    -> RgUntypedBufferId {
   RgPhysicalBufferId physical_buffer;
   if (parent) {
     physical_buffer = m_data->m_buffers[parent].parent;
@@ -301,7 +302,7 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
     m_data->m_physical_buffers.emplace_back();
   }
 
-  RgBufferId buffer = m_data->m_buffers.insert({
+  RgUntypedBufferId buffer = m_data->m_buffers.insert({
 #if REN_RG_DEBUG
       .name = std::move(name),
 #endif
@@ -325,8 +326,9 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
   return buffer;
 }
 
-auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId {
-  RgBufferId buffer = create_virtual_buffer(NullHandle, "", NullHandle);
+auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
+    -> RgUntypedBufferId {
+  RgUntypedBufferId buffer = create_virtual_buffer(NullHandle, "", NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
   m_data->m_physical_buffers[physical_buffer] = {
       .heap = create_info.heap,
@@ -335,23 +337,24 @@ auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId {
   return buffer;
 }
 
-auto RgBuilder::read_buffer(RgPassId pass, RgBufferId buffer,
-                            const RgBufferState &usage) -> RgBufferToken {
+auto RgBuilder::read_buffer(RgPassId pass, RgUntypedBufferId buffer,
+                            const RgBufferState &usage)
+    -> RgUntypedBufferToken {
   ren_assert(buffer);
   RgBufferUseId use = add_buffer_use(buffer, usage);
   m_data->m_passes[pass].read_buffers.push_back(use);
-  return RgBufferToken(use);
+  return RgUntypedBufferToken(use);
 }
 
-auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name, RgBufferId src,
-                             const RgBufferState &usage)
-    -> std::tuple<RgBufferId, RgBufferToken> {
+auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name,
+                             RgUntypedBufferId src, const RgBufferState &usage)
+    -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   ren_assert(src);
   ren_assert(m_data->m_buffers[src].def != pass);
   RgBufferUseId use = add_buffer_use(src, usage);
   m_data->m_passes[pass].write_buffers.push_back(use);
-  RgBufferId dst = create_virtual_buffer(pass, std::move(name), src);
-  return {dst, RgBufferToken(use)};
+  RgUntypedBufferId dst = create_virtual_buffer(pass, std::move(name), src);
+  return {dst, RgUntypedBufferToken(use)};
 }
 
 auto RgBuilder::add_texture_use(RgTextureId texture,
@@ -595,8 +598,8 @@ void RgBuilder::dump_pass_schedule() const {
 #if REN_RG_DEBUG
   fmt::println(stderr, "Scheduled passes:");
 
-  SmallVector<RgBufferId> create_buffers;
-  SmallVector<RgBufferId> write_buffers;
+  SmallVector<RgUntypedBufferId> create_buffers;
+  SmallVector<RgUntypedBufferId> write_buffers;
   SmallVector<RgTextureId> create_textures;
   SmallVector<RgTextureId> write_textures;
 
@@ -611,7 +614,7 @@ void RgBuilder::dump_pass_schedule() const {
     create_buffers.clear();
     write_buffers.clear();
     for (RgBufferUseId use : pass.write_buffers) {
-      RgBufferId id = buffer_uses[use].buffer;
+      RgUntypedBufferId id = buffer_uses[use].buffer;
       const RgBuffer &buffer = buffers[id];
       if (buffer.name.empty()) {
         create_buffers.push_back(buffer.child);
@@ -622,7 +625,7 @@ void RgBuilder::dump_pass_schedule() const {
 
     if (not create_buffers.empty()) {
       fmt::println(stderr, "    Creates buffers:");
-      for (RgBufferId buffer : create_buffers) {
+      for (RgUntypedBufferId buffer : create_buffers) {
         fmt::println(stderr, "      - {}", buffers[buffer].name);
       }
     }
@@ -635,7 +638,7 @@ void RgBuilder::dump_pass_schedule() const {
     }
     if (not write_buffers.empty()) {
       fmt::println(stderr, "    Writes buffers:");
-      for (RgBufferId src_id : write_buffers) {
+      for (RgUntypedBufferId src_id : write_buffers) {
         const RgBuffer &src = buffers[src_id];
         const RgBuffer &dst = buffers[src.child];
         fmt::println(stderr, "      - {} -> {}", src.name, dst.name);
@@ -1287,14 +1290,15 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
   m_builder = &builder;
 }
 
-auto RgPassBuilder::read_buffer(RgBufferId buffer,
-                                const RgBufferState &usage) -> RgBufferToken {
+auto RgPassBuilder::read_buffer(RgUntypedBufferId buffer,
+                                const RgBufferState &usage)
+    -> RgUntypedBufferToken {
   return m_builder->read_buffer(m_pass, buffer, usage);
 }
 
-auto RgPassBuilder::write_buffer(RgDebugName name, RgBufferId buffer,
+auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
                                  const RgBufferState &usage)
-    -> std::tuple<RgBufferId, RgBufferToken> {
+    -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   return m_builder->write_buffer(m_pass, std::move(name), buffer, usage);
 }
 
@@ -1532,7 +1536,8 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   m_rgp->m_frame_textures.clear();
 }
 
-auto RgRuntime::get_buffer(RgBufferToken buffer) const -> const BufferView & {
+auto RgRuntime::get_buffer(RgUntypedBufferToken buffer) const
+    -> const BufferView & {
   ren_assert(buffer);
   return m_rg->m_data->m_buffers[buffer];
 }

@@ -13,6 +13,10 @@
 
 namespace ren {
 
+namespace glsl {
+struct DirLight;
+}
+
 class MeshPassClass {
 public:
   struct BeginInfo;
@@ -61,11 +65,11 @@ struct MeshPassClass::BeginInfo {
   u32 draw_size = 0;
   u32 num_draw_meshlets = 0;
 
-  RgBufferId meshes;
-  RgBufferId materials;
-  RgBufferId mesh_instances;
-  RgBufferId transform_matrices;
-  RgBufferId normal_matrices;
+  RgBufferId<glsl::Mesh> meshes;
+  RgBufferId<glsl::Material> materials;
+  RgBufferId<glsl::MeshInstance> mesh_instances;
+  RgBufferId<glm::mat4x3> transform_matrices;
+  RgBufferId<glm::mat3> normal_matrices;
 
   NotNull<UploadBumpAllocator *> upload_allocator;
 
@@ -101,8 +105,8 @@ protected:
 
     for (const auto &[batch, draws] : batches) {
       for (const BatchDraw &draw : draws) {
-        RgBufferId commands;
-        RgBufferId command_count;
+        RgBufferId<glsl::DrawIndexedIndirectCommand> commands;
+        RgBufferId<u32> command_count;
         self.record_culling(rgb, CullingConfig{
                                      .draw = &draw,
                                      .commands = &commands,
@@ -115,16 +119,16 @@ protected:
 
   struct CullingConfig {
     NotNull<const BatchDraw *> draw;
-    NotNull<RgBufferId *> commands;
-    NotNull<RgBufferId *> command_count;
+    NotNull<RgBufferId<glsl::DrawIndexedIndirectCommand> *> commands;
+    NotNull<RgBufferId<u32> *> command_count;
   };
 
   void record_culling(RgBuilder &rgb, const CullingConfig &cfg);
 
   template <typename Self>
   void record_render_pass(this Self &self, RgBuilder &rgb,
-                          const BatchDesc &batch, RgBufferId commands,
-                          RgBufferId command_count) {
+                          const BatchDesc &batch, RgUntypedBufferId commands,
+                          RgUntypedBufferId command_count) {
     auto pass = rgb.create_pass({.name = self.m_class->m_pass_name});
 
     for (usize i = 0; i < self.m_color_attachments.size(); ++i) {
@@ -153,8 +157,8 @@ protected:
     struct {
       Handle<GraphicsPipeline> pipeline;
       BufferView indices;
-      RgBufferToken commands;
-      RgBufferToken command_count;
+      RgUntypedBufferToken commands;
+      RgUntypedBufferToken command_count;
       typename Self::RenderPassResources ext;
     } rcs;
 
@@ -186,11 +190,11 @@ protected:
   Span<const BufferView> m_index_pools;
   const Pipelines *m_pipelines = nullptr;
 
-  RgBufferId m_meshes;
-  RgBufferId m_materials;
-  RgBufferId m_mesh_instances;
-  RgBufferId m_transform_matrices;
-  RgBufferId m_normal_matrices;
+  RgBufferId<glsl::Mesh> m_meshes;
+  RgBufferId<glsl::Material> m_materials;
+  RgBufferId<glsl::MeshInstance> m_mesh_instances;
+  RgBufferId<glm::mat4x3> m_transform_matrices;
+  RgBufferId<glm::mat3> m_normal_matrices;
 
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
@@ -232,9 +236,9 @@ private:
   void build_batches(Batches &batches);
 
   struct RenderPassResources {
-    RgBufferToken meshes;
-    RgBufferToken mesh_instances;
-    RgBufferToken transform_matrices;
+    RgBufferToken<glsl::Mesh> meshes;
+    RgBufferToken<glsl::MeshInstance> mesh_instances;
+    RgBufferToken<glm::mat4x3> transform_matrices;
     glm::mat4 proj_view;
   };
 
@@ -256,7 +260,7 @@ private:
 
 struct OpaqueMeshPassClass::BeginInfo {
   MeshPassClass::BeginInfo base;
-  RgBufferId directional_lights;
+  RgBufferId<glsl::DirLight> directional_lights;
   u32 num_directional_lights = 0;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
@@ -270,12 +274,12 @@ private:
   void build_batches(Batches &batches);
 
   struct RenderPassResources {
-    RgBufferToken meshes;
-    RgBufferToken mesh_instances;
-    RgBufferToken transform_matrices;
-    RgBufferToken normal_matrices;
-    RgBufferToken materials;
-    RgBufferToken directional_lights;
+    RgBufferToken<glsl::Mesh> meshes;
+    RgBufferToken<glsl::MeshInstance> mesh_instances;
+    RgBufferToken<glm::mat4x3> transform_matrices;
+    RgBufferToken<glm::mat3> normal_matrices;
+    RgBufferToken<glsl::Material> materials;
+    RgBufferToken<glsl::DirLight> directional_lights;
     RgTextureToken exposure;
     glm::mat4 proj_view;
     glm::vec3 eye;
@@ -290,7 +294,7 @@ private:
                                          const RenderPassResources &rcs);
 
 private:
-  RgBufferId m_directional_lights;
+  RgBufferId<glsl::DirLight> m_directional_lights;
   u32 m_num_directional_lights = 0;
   RgTextureId m_exposure;
   u32 m_exposure_temporal_layer = 0;

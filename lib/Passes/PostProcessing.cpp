@@ -9,15 +9,14 @@ namespace ren {
 
 namespace {
 
-auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb) -> RgBufferId {
+auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb)
+    -> RgBufferId<glsl::LuminanceHistogram> {
   auto pass = rgb.create_pass({.name = "init-luminance-histogram"});
 
-  RgBufferId histogram = rgb.create_buffer({
-      .heap = BufferHeap::Static,
-      .size = sizeof(glsl::LuminanceHistogram),
-  });
+  auto histogram =
+      rgb.create_buffer<glsl::LuminanceHistogram>({.heap = BufferHeap::Static});
 
-  RgBufferToken histogram_token;
+  RgBufferToken<glsl::LuminanceHistogram> histogram_token;
   std::tie(histogram, histogram_token) = pass.write_buffer(
       "luminance-histogram-empty", histogram, RG_TRANSFER_DST_BUFFER);
 
@@ -32,7 +31,7 @@ struct PostProcessingPassResources {
   Handle<ComputePipeline> pipeline;
   RgTextureToken hdr;
   RgTextureToken sdr;
-  RgBufferToken histogram;
+  RgBufferToken<glsl::LuminanceHistogram> histogram;
   RgTextureToken previous_exposure;
 };
 
@@ -45,8 +44,7 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
   DevicePtr<glsl::LuminanceHistogram> histogram;
   StorageTextureId previous_exposure;
   if (rcs.histogram) {
-    histogram =
-        rg.get_buffer_device_ptr<glsl::LuminanceHistogram>(rcs.histogram),
+    histogram = rg.get_buffer_device_ptr(rcs.histogram);
     previous_exposure =
         rg.get_storage_texture_descriptor(rcs.previous_exposure);
   }
@@ -66,7 +64,7 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
 }
 
 struct PostProcessingPassConfig {
-  NotNull<RgBufferId *> histogram;
+  NotNull<RgBufferId<glsl::LuminanceHistogram> *> histogram;
   RgTextureId hdr;
   RgTextureId exposure;
   NotNull<RgTextureId *> sdr;
@@ -105,7 +103,7 @@ void setup_post_processing_uber_pass(const PassCommonConfig &ccfg,
 
 struct ReduceLuminanceHistogramPassResources {
   Handle<ComputePipeline> pipeline;
-  RgBufferToken histogram;
+  RgBufferToken<glsl::LuminanceHistogram> histogram;
   RgTextureToken exposure;
   float ec;
 };
@@ -116,8 +114,7 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramPassArgs{
-      .histogram =
-          rg.get_buffer_device_ptr<glsl::LuminanceHistogram>(rcs.histogram),
+      .histogram = rg.get_buffer_device_ptr(rcs.histogram),
       .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
       .exposure_compensation = rcs.ec,
   });
@@ -125,7 +122,7 @@ void run_reduce_luminance_histogram_pass(
 }
 
 struct ReduceLuminanceHistogramPassConfig {
-  RgBufferId histogram;
+  RgBufferId<glsl::LuminanceHistogram> histogram;
   RgTextureId exposure;
 };
 
@@ -161,7 +158,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
   ExposureMode exposure_mode = scene.get_exposure_mode();
 
-  RgBufferId histogram;
+  RgBufferId<glsl::LuminanceHistogram> histogram;
   if (exposure_mode == ExposureMode::Automatic) {
     histogram = setup_initialize_luminance_histogram_pass(*ccfg.rgb);
   }
