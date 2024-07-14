@@ -602,7 +602,7 @@ void RgBuilder::alloc_textures() {
       RgPhysicalTextureId physical_texture_id(base_physical_texture_id + i);
       const RgPhysicalTexture &physical_texture =
           m_rgp->m_physical_textures[physical_texture_id];
-      if (!physical_texture.handle) {
+      if (!physical_texture.id) {
         break;
       }
       auto pass = create_pass({
