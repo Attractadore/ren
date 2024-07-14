@@ -5,12 +5,10 @@
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Support/DynamicBitset.hpp"
-#include "Support/FlatSet.hpp"
 #include "Support/GenArray.hpp"
 #include "Support/GenMap.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/NewType.hpp"
-#include "Support/PriorityQueue.hpp"
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
 #include "TextureIdAllocator.hpp"
@@ -310,11 +308,6 @@ struct RgPass {
   SmallVector<RgSemaphoreSignalId> signal_semaphores;
   Variant<Monostate, RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass>
       ext;
-  SmallFlatSet<RgPassId> successors;
-  union {
-    unsigned num_predecessors = 0;
-    int schedule_time;
-  };
 };
 
 struct RgBufferCreateInfo {
@@ -437,9 +430,6 @@ struct RgSemaphoreSignal {
 struct RgBuildData {
   GenArray<RgPass> m_passes;
   Vector<RgPassId> m_schedule;
-  Vector<RgPassId> m_pass_predecessors;
-  Vector<RgPassId> m_pass_successors;
-  MinQueue<std::tuple<int, RgPassId>> m_unscheduled_passes;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
   GenArray<RgBuffer> m_buffers;
@@ -645,8 +635,6 @@ private:
 
   void alloc_buffers(DeviceBumpAllocator &device_allocator,
                      UploadBumpAllocator &upload_allocator);
-
-  auto build_pass_schedule();
 
   void dump_pass_schedule() const;
 

@@ -255,6 +255,7 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer) {
 
   auto &bd = *m_data;
   bd.m_passes.clear();
+  bd.m_schedule.clear();
   bd.m_physical_buffers.clear();
   bd.m_buffers.clear();
   bd.m_buffer_uses.clear();
@@ -274,6 +275,7 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
 #if REN_RG_DEBUG
   m_rt_data->m_pass_names.insert(pass, std::move(create_info.name));
 #endif
+  m_data->m_schedule.push_back(pass);
   return RgPassBuilder(pass, *this);
 }
 
@@ -478,124 +480,6 @@ void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
   m_rgp->m_semaphores[semaphore].handle = handle;
 }
 
-auto RgBuilder::build_pass_schedule() {
-  auto &passes = m_data->m_passes;
-
-  auto add_edge = [&](RgPassId from, RgPassId to) {
-    ren_assert(from != to);
-    auto [it, inserted] = passes[from].successors.insert(to);
-    if (inserted) {
-      passes[to].num_predecessors++;
-    }
-  };
-
-  const auto &buffers = m_data->m_buffers;
-  const auto &buffer_uses = m_data->m_buffer_uses;
-
-  auto get_buffer_def = [&](RgBufferUseId use) {
-    return buffers[buffer_uses[use].buffer].def;
-  };
-
-  auto get_buffer_kill = [&](RgBufferUseId use) {
-    return buffers[buffer_uses[use].buffer].kill;
-  };
-
-  const auto &textures = m_rgp->m_textures;
-  const auto &texture_uses = m_data->m_texture_uses;
-
-  auto get_texture_def = [&](RgTextureUseId use) {
-    return textures[texture_uses[use].texture].def;
-  };
-
-  auto get_texture_kill = [&](RgTextureUseId use) {
-    return textures[texture_uses[use].texture].kill;
-  };
-
-  auto is_null_pass = [](RgPassId pass) -> bool { return !pass; };
-
-  auto get_dependents = [&](RgPassId pass_id, Vector<RgPassId> &dependents) {
-    const RgPass &pass = passes[pass_id];
-    dependents.clear();
-    // Reads must happen before writes
-    dependents.append(pass.read_buffers | map(get_buffer_kill));
-    dependents.append(pass.read_textures | map(get_texture_kill));
-    dependents.erase_if(is_null_pass);
-  };
-
-  auto get_dependencies = [&](RgPassId pass_id,
-                              Vector<RgPassId> &dependencies) {
-    const RgPass &pass = passes[pass_id];
-    dependencies.clear();
-    // Reads must happen after creation
-    dependencies.append(pass.read_buffers | map(get_buffer_def));
-    dependencies.append(pass.read_textures | map(get_texture_def));
-    // Writes must happen after creation
-    dependencies.append(pass.write_buffers | map(get_buffer_def));
-    dependencies.append(pass.write_textures | map(get_texture_def));
-    dependencies.erase_if(is_null_pass);
-  };
-
-  // Schedule passes whose dependencies were scheduled the longest time ago
-  // first
-  auto &unscheduled_passes = m_data->m_unscheduled_passes;
-  ren_assert(unscheduled_passes.empty());
-
-  auto &predecessors = m_data->m_pass_predecessors;
-  predecessors.clear();
-  auto &successors = m_data->m_pass_successors;
-  successors.clear();
-
-  // Build DAG
-  for (const auto &[pass, _] : passes) {
-    get_dependencies(pass, predecessors);
-
-    for (RgPassId p : predecessors) {
-      add_edge(p, pass);
-    }
-
-    if (predecessors.empty()) {
-      // This is a pass with no dependencies and can be scheduled right away
-      unscheduled_passes.push({-1, pass});
-    }
-
-    get_dependents(pass, successors);
-    for (RgPassId s : successors) {
-      add_edge(pass, s);
-    }
-  }
-
-  auto &schedule = m_data->m_schedule;
-  schedule.clear();
-
-  while (not unscheduled_passes.empty()) {
-    auto [dependency_time, pass] = unscheduled_passes.top();
-    unscheduled_passes.pop();
-
-    int time = schedule.size();
-    ren_assert(dependency_time < time);
-    schedule.push_back(pass);
-    ren_assert(passes[pass].num_predecessors == 0);
-    passes[pass].schedule_time = time;
-
-    for (RgPassId s : passes[pass].successors) {
-      ren_assert(passes[s].num_predecessors > 0);
-      if (--passes[s].num_predecessors == 0) {
-        int max_dependency_time = -1;
-        get_dependencies(s, predecessors);
-        if (not predecessors.empty()) {
-          max_dependency_time =
-              std::ranges::max(predecessors | map([&](RgPassId d) {
-                                 return passes[d].schedule_time;
-                               }));
-        }
-        unscheduled_passes.push({max_dependency_time, s});
-      }
-    }
-  }
-
-  ren_assert(schedule.size() == passes.size());
-}
-
 void RgBuilder::dump_pass_schedule() const {
 #if REN_RG_DEBUG
   fmt::println(stderr, "Scheduled passes:");
@@ -710,6 +594,8 @@ void RgBuilder::dump_pass_schedule() const {
 }
 
 void RgBuilder::alloc_textures() {
+  usize num_passes = m_data->m_schedule.size();
+
   for (auto &&[base_physical_texture_id, init_info] :
        m_rgp->m_texture_init_info) {
     for (auto i : range<usize>(1, RG_MAX_TEMPORAL_LAYERS)) {
@@ -829,6 +715,12 @@ void RgBuilder::alloc_textures() {
               m_renderer->get_texture_view(physical_texture->handle));
     }
     physical_texture->state = {};
+  }
+
+  // Schedule copy and init passes before all other passes.
+  if (m_data->m_schedule.size() != num_passes) {
+    std::ranges::rotate(m_data->m_schedule,
+                        m_data->m_schedule.begin() + num_passes);
   }
 }
 
@@ -1268,7 +1160,6 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   alloc_textures();
   alloc_buffers(device_allocator, upload_allocator);
 
-  build_pass_schedule();
   dump_pass_schedule();
 
   init_runtime_passes();
