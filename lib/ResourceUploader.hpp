@@ -1,5 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
+#include "BumpAllocator.hpp"
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
 
@@ -8,7 +9,6 @@
 namespace ren {
 
 class Renderer;
-class ResourceArena;
 class CommandAllocator;
 
 struct Texture;
@@ -28,15 +28,15 @@ class ResourceUploader {
 
 public:
   template <typename T>
-  void stage_buffer(Renderer &renderer, ResourceArena &arena, Span<T> data,
-                    const BufferView &buffer) {
-    stage_buffer(renderer, arena, data.as_bytes(), buffer);
+  void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,
+                    Span<T> data, const BufferView &buffer) {
+    stage_buffer(renderer, allocator, data.as_bytes(), buffer);
   }
 
-  void stage_buffer(Renderer &renderer, ResourceArena &arena,
+  void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,
                     Span<const std::byte> data, const BufferView &buffer);
 
-  void stage_texture(Renderer &renderer, ResourceArena &alloc,
+  void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
                      Span<const std::byte> data, Handle<Texture> texture);
 
   void upload(Renderer &renderer, CommandAllocator &cmd_allocator);

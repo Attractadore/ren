@@ -20,8 +20,7 @@ namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
     : m_cmd_allocator(renderer), m_device_allocator(renderer, 64 * 1024 * 1024),
-      m_upload_allocator(renderer, 64 * 1024 * 1024), m_arena(renderer),
-      m_frame_arena(renderer) {
+      m_upload_allocator(renderer, 64 * 1024 * 1024), m_arena(renderer) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
@@ -187,8 +186,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
           .size = Span(data).size_bytes(),
       });
       buffer = view.buffer;
-      m_resource_uploader.stage_buffer(*m_renderer, m_frame_arena, Span(data),
-                                       view);
+      m_resource_uploader.stage_buffer(*m_renderer, m_upload_allocator,
+                                       Span(data), view);
     }
   };
 
@@ -234,7 +233,7 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   // Upload triangles
 
   m_resource_uploader.stage_buffer(
-      *m_renderer, m_frame_arena, Span(meshlet_triangles),
+      *m_renderer, m_upload_allocator, Span(meshlet_triangles),
       m_renderer->get_buffer_view(index_pool.indices)
           .slice<u8>(base_triangle, num_triangles * 3));
 
@@ -279,7 +278,7 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   usize size = desc.width * desc.height * get_format_size(format);
-  m_resource_uploader.stage_texture(*m_renderer, m_frame_arena,
+  m_resource_uploader.stage_texture(*m_renderer, m_upload_allocator,
                                     Span((const std::byte *)desc.data, size),
                                     texture);
   Handle<Image> h = m_images.insert(texture);
@@ -436,8 +435,6 @@ auto Scene::draw() -> expected<void> {
   render_graph.execute(m_cmd_allocator);
 
   m_swapchain->present(m_present_semaphores.front());
-
-  m_frame_arena.clear();
 
   next_frame();
 

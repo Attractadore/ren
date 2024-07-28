@@ -2,7 +2,6 @@
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "Renderer.hpp"
-#include "ResourceArena.hpp"
 
 namespace ren {
 
@@ -127,41 +126,27 @@ void upload_texture(Renderer &renderer, CommandRecorder &cmd,
 
 } // namespace
 
-void ResourceUploader::stage_buffer(Renderer &renderer, ResourceArena &arena,
+void ResourceUploader::stage_buffer(Renderer &renderer,
+                                    UploadBumpAllocator &allocator,
                                     Span<const std::byte> data,
                                     const BufferView &buffer) {
   usize size = data.size_bytes();
   ren_assert(size <= buffer.size);
-
-  BufferView staging_buffer = arena.create_buffer({
-      .name = "Staging buffer",
-      .heap = BufferHeap::Staging,
-      .size = size,
-  });
-
-  std::byte *ptr = renderer.map_buffer(staging_buffer);
+  auto [ptr, _, staging_buffer] = allocator.allocate(size);
   std::memcpy(ptr, data.data(), size);
-
   m_buffer_copies.push_back({
       .src = staging_buffer,
       .dst = buffer,
   });
 }
 
-void ResourceUploader::stage_texture(Renderer &renderer, ResourceArena &arena,
+void ResourceUploader::stage_texture(Renderer &renderer,
+                                     UploadBumpAllocator &allocator,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
   usize size = data.size_bytes();
-
-  BufferView staging_buffer = arena.create_buffer({
-      .name = "Staging buffer",
-      .heap = BufferHeap::Staging,
-      .size = size,
-  });
-
-  std::byte *ptr = renderer.map_buffer(staging_buffer);
+  auto [ptr, _, staging_buffer] = allocator.allocate(size);
   std::memcpy(ptr, data.data(), size);
-
   m_texture_copies.push_back({
       .src = staging_buffer,
       .dst = texture,

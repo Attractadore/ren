@@ -177,7 +177,6 @@ private:
   GenArray<glsl::DirLight> m_dir_lights;
 
   ResourceArena m_arena;
-  ResourceArena m_frame_arena;
 
   PassPersistentConfig m_pass_cfg;
   PassPersistentResources m_pass_rcs;
