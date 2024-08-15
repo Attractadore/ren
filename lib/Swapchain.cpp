@@ -117,8 +117,10 @@ Swapchain::Swapchain(Renderer &renderer, VkSurfaceKHR surface) {
 }
 
 Swapchain::~Swapchain() {
+  m_renderer->wait_idle();
   destroy();
-  m_renderer->push_to_delete_queue(m_create_info.surface);
+  vkDestroySurfaceKHR(m_renderer->get_instance(), m_create_info.surface,
+                      nullptr);
 }
 
 void Swapchain::create() {
@@ -143,6 +145,7 @@ void Swapchain::create() {
   throw_if_failed(vkCreateSwapchainKHR(m_renderer->get_device(), &m_create_info,
                                        nullptr, &new_swapchain),
                   "Vulkan: Failed to create swapchain");
+  m_renderer->wait_idle();
   destroy();
   m_swapchain = new_swapchain;
 
@@ -168,7 +171,7 @@ void Swapchain::create() {
 }
 
 void Swapchain::destroy() {
-  m_renderer->push_to_delete_queue(m_swapchain);
+  vkDestroySwapchainKHR(m_renderer->get_device(), m_swapchain, nullptr);
   for (Handle<Texture> t : m_textures) {
     m_renderer->destroy(t);
   }

@@ -3,7 +3,6 @@
 #include "Scene.hpp"
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
-#include "Support/Macros.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
 
@@ -46,7 +45,7 @@ void set_debug_name(VkDevice device, T object, const DebugName &name) {
 namespace {
 
 auto create_instance(Span<const char *const> external_extensions)
-    -> UniqueInstance {
+    -> VkInstance {
   VkApplicationInfo application_info = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
       .apiVersion = VK_API_VERSION_1_3,
@@ -79,7 +78,7 @@ auto create_instance(Span<const char *const> external_extensions)
   throw_if_failed(vkCreateInstance(&create_info, nullptr, &instance),
                   "Vulkan: Failed to create VkInstance");
 
-  return UniqueInstance(instance);
+  return instance;
 }
 
 #if REN_VULKAN_VALIDATION
@@ -139,7 +138,7 @@ auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
 }
 
 auto create_device(VkPhysicalDevice adapter,
-                   u32 graphics_queue_family) -> UniqueDevice {
+                   u32 graphics_queue_family) -> VkDevice {
   float queue_priority = 1.0f;
   VkDeviceQueueCreateInfo queue_create_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -222,11 +221,11 @@ auto create_device(VkPhysicalDevice adapter,
   throw_if_failed(vkCreateDevice(adapter, &create_info, nullptr, &device),
                   "Vulkan: Failed to create device");
 
-  return UniqueDevice(device);
+  return device;
 }
 
 auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
-                      VkDevice device) -> UniqueAllocator {
+                      VkDevice device) -> VmaAllocator {
   VmaVulkanFunctions vk = {
       .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
       .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
@@ -272,7 +271,7 @@ auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
   throw_if_failed(vmaCreateAllocator(&allocator_info, &allocator),
                   "VMA: Failed to create allocator");
 
-  return UniqueAllocator(allocator);
+  return allocator;
 }
 
 } // namespace
@@ -285,7 +284,7 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
   volkLoadInstanceOnly(get_instance());
 
 #if REN_VULKAN_VALIDATION
-  m_debug_callback = create_debug_report_callback(m_instance.get());
+  m_debug_callback = create_debug_report_callback(m_instance);
 #endif
 
   m_adapter = find_adapter(get_instance(), adapter);
@@ -305,52 +304,18 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
   volkLoadDevice(get_device());
 
   vkGetDeviceQueue(get_device(), m_graphics_queue_family, 0, &m_graphics_queue);
-  m_graphics_queue_semaphore = create_semaphore({
-      .name = "Device time semaphore",
-      .initial_value = 0,
-  });
 
   m_allocator = create_allocator(get_instance(), m_adapter, get_device());
-} // namespace ren
-
-#define define_device_deleter(T, F)                                            \
-  template <> struct QueueDeleter<T> {                                         \
-    void operator()(Renderer &renderer, T handle) const noexcept {             \
-      F(renderer.get_device(), handle, nullptr);                               \
-    }                                                                          \
-  }
-
-define_device_deleter(VkBuffer, vkDestroyBuffer);
-define_device_deleter(VkDescriptorPool, vkDestroyDescriptorPool);
-define_device_deleter(VkDescriptorSetLayout, vkDestroyDescriptorSetLayout);
-define_device_deleter(VkImage, vkDestroyImage);
-define_device_deleter(VkImageView, vkDestroyImageView);
-define_device_deleter(VkPipeline, vkDestroyPipeline);
-define_device_deleter(VkPipelineLayout, vkDestroyPipelineLayout);
-define_device_deleter(VkSampler, vkDestroySampler);
-define_device_deleter(VkSemaphore, vkDestroySemaphore);
-define_device_deleter(VkSwapchainKHR, vkDestroySwapchainKHR);
-
-#undef define_device_deleter
-
-template <> struct QueueDeleter<VkSurfaceKHR> {
-  void operator()(Renderer &renderer, VkSurfaceKHR handle) const noexcept {
-    vkDestroySurfaceKHR(renderer.get_instance(), handle, nullptr);
-  }
-};
-
-template <> struct QueueDeleter<VmaAllocation> {
-  void operator()(Renderer &renderer, VmaAllocation allocation) const noexcept {
-    vmaFreeMemory(renderer.get_allocator(), allocation);
-  }
-};
+}
 
 Renderer::~Renderer() {
-  destroy(m_graphics_queue_semaphore);
-  flush();
+  wait_idle();
+  vmaDestroyAllocator(m_allocator);
+  vkDestroyDevice(m_device, nullptr);
 #if REN_VULKAN_VALIDATION
-  vkDestroyDebugReportCallbackEXT(m_instance.get(), m_debug_callback, nullptr);
+  vkDestroyDebugReportCallbackEXT(m_instance, m_debug_callback, nullptr);
 #endif
+  vkDestroyInstance(m_instance, nullptr);
 }
 
 auto Renderer::create_scene(ISwapchain &swapchain)
@@ -358,18 +323,9 @@ auto Renderer::create_scene(ISwapchain &swapchain)
   return std::make_unique<Scene>(*this, static_cast<Swapchain &>(swapchain));
 }
 
-void Renderer::flush() {
+void Renderer::wait_idle() {
   throw_if_failed(vkDeviceWaitIdle(get_device()),
                   "Vulkan: Failed to wait for idle device");
-  m_delete_queue.flush(*this);
-}
-
-void Renderer::next_frame() {
-  m_frame_end_times[m_frame_index] = m_graphics_queue_time;
-  m_frame_index = (m_frame_index + 1) % m_frame_end_times.size();
-  wait_for_semaphore(get_semaphore(m_graphics_queue_semaphore),
-                     m_frame_end_times[m_frame_index]);
-  m_delete_queue.next_frame(*this);
 }
 
 auto Renderer::create_descriptor_pool(
@@ -410,8 +366,9 @@ auto Renderer::create_descriptor_pool(
 }
 
 void Renderer::destroy(Handle<DescriptorPool> pool) {
-  m_descriptor_pools.try_pop(pool).map(
-      [&](const DescriptorPool &pool) { push_to_delete_queue(pool.handle); });
+  m_descriptor_pools.try_pop(pool).map([&](const DescriptorPool &pool) {
+    vkDestroyDescriptorPool(m_device, pool.handle, nullptr);
+  });
 }
 
 auto Renderer::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
@@ -483,7 +440,7 @@ auto Renderer::create_descriptor_set_layout(
 void Renderer::destroy(Handle<DescriptorSetLayout> layout) {
   m_descriptor_set_layouts.try_pop(layout).map(
       [&](const DescriptorSetLayout &layout) {
-        push_to_delete_queue(layout.handle);
+        vkDestroyDescriptorSetLayout(m_device, layout.handle, nullptr);
       });
 }
 
@@ -613,8 +570,7 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
 
 void Renderer::destroy(Handle<Buffer> handle) {
   m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
-    push_to_delete_queue(buffer.handle);
-    push_to_delete_queue(buffer.allocation);
+    vmaDestroyBuffer(m_allocator, buffer.handle, buffer.allocation);
   });
 }
 
@@ -710,11 +666,10 @@ auto Renderer::create_swapchain_texture(
 void Renderer::destroy(Handle<Texture> handle) {
   m_textures.try_pop(handle).map([&](const Texture &texture) {
     if (texture.allocation) {
-      push_to_delete_queue(texture.image);
-      push_to_delete_queue(texture.allocation);
+      vmaDestroyImage(m_allocator, texture.image, texture.allocation);
     }
     for (const auto &[_, view] : m_image_views[handle]) {
-      push_to_delete_queue(view);
+      vkDestroyImageView(m_device, view, nullptr);
     }
     m_image_views.erase(handle);
   });
@@ -862,8 +817,9 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
 }
 
 void Renderer::destroy(Handle<Sampler> sampler) {
-  m_samplers.try_pop(sampler).map(
-      [&](const Sampler &sampler) { push_to_delete_queue(sampler.handle); });
+  m_samplers.try_pop(sampler).map([&](const Sampler &sampler) {
+    vkDestroySampler(m_device, sampler.handle, nullptr);
+  });
 }
 
 auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
@@ -895,8 +851,9 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
 }
 
 void Renderer::destroy(Handle<Semaphore> semaphore) {
-  m_semaphores.try_pop(semaphore).map(
-      [&](Semaphore semaphore) { push_to_delete_queue(semaphore.handle); });
+  m_semaphores.try_pop(semaphore).map([&](const Semaphore &semaphore) {
+    vkDestroySemaphore(m_device, semaphore.handle, nullptr);
+  });
 }
 
 auto Renderer::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
@@ -939,15 +896,7 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
 void Renderer::queueSubmit(
     VkQueue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
     TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
-    TempSpan<const VkSemaphoreSubmitInfo> input_signal_semaphores) {
-  SmallVector<VkSemaphoreSubmitInfo, 8> signal_semaphores(
-      input_signal_semaphores);
-  signal_semaphores.push_back({
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = get_semaphore(m_graphics_queue_semaphore).handle,
-      .value = ++m_graphics_queue_time,
-  });
-
+    TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores) {
   VkSubmitInfo2 submit_info = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
       .waitSemaphoreInfoCount = uint32_t(wait_semaphores.size()),
@@ -957,7 +906,6 @@ void Renderer::queueSubmit(
       .signalSemaphoreInfoCount = uint32_t(signal_semaphores.size()),
       .pSignalSemaphoreInfos = signal_semaphores.data(),
   };
-
   throw_if_failed(vkQueueSubmit2(queue, 1, &submit_info, nullptr),
                   "Vulkan: Failed to submit work to queue");
 }
@@ -1165,7 +1113,7 @@ auto Renderer::create_graphics_pipeline(
 void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
   m_graphics_pipelines.try_pop(pipeline).map(
       [&](const GraphicsPipeline &pipeline) {
-        push_to_delete_queue(pipeline.handle);
+        vkDestroyPipeline(m_device, pipeline.handle, nullptr);
       });
 }
 
@@ -1213,7 +1161,7 @@ auto Renderer::create_compute_pipeline(
 void Renderer::destroy(Handle<ComputePipeline> pipeline) {
   m_compute_pipelines.try_pop(pipeline).map(
       [&](const ComputePipeline &pipeline) {
-        push_to_delete_queue(pipeline.handle);
+        vkDestroyPipeline(m_device, pipeline.handle, nullptr);
       });
 }
 
@@ -1260,7 +1208,7 @@ auto Renderer::create_pipeline_layout(
 
 void Renderer::destroy(Handle<PipelineLayout> layout) {
   m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
-    push_to_delete_queue(layout.handle);
+    vkDestroyPipelineLayout(m_device, layout.handle, nullptr);
   });
 }
 
@@ -1276,27 +1224,7 @@ auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
 }
 
 auto Renderer::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
-  VkQueue queue = getGraphicsQueue();
-  VkResult result = vkQueuePresentKHR(queue, &present_info);
-  switch (result) {
-  default:
-    break;
-  case VK_SUCCESS:
-  case VK_SUBOPTIMAL_KHR:
-  case VK_ERROR_OUT_OF_DATE_KHR:
-  case VK_ERROR_SURFACE_LOST_KHR:
-  case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT: {
-#if 1
-    queueSubmit(queue, {});
-#else
-    // NOTE: bad stuff (like a dead lock) will happen if someones tries to
-    // wait for this value before signaling the graphics queue with a higher
-    // value.
-    ++m_graphics_queue_time;
-#endif
-  }
-  }
-  return result;
+  return vkQueuePresentKHR(getGraphicsQueue(), &present_info);
 }
 
 } // namespace ren

@@ -19,12 +19,14 @@ CommandPool::CommandPool(Renderer &renderer) {
 }
 
 CommandPool::CommandPool(CommandPool &&other) noexcept
-    : m_pool(std::exchange(other.m_pool, nullptr)),
+    : m_renderer(other.m_renderer),
+      m_pool(std::exchange(other.m_pool, nullptr)),
       m_cmd_buffers(std::move(other.m_cmd_buffers)),
       m_allocated_count(std::exchange(other.m_allocated_count, 0)) {}
 
 CommandPool &CommandPool::operator=(CommandPool &&other) noexcept {
   destroy();
+  m_renderer = other.m_renderer;
   m_pool = other.m_pool;
   other.m_pool = nullptr;
   m_cmd_buffers = std::move(other.m_cmd_buffers);
@@ -35,15 +37,12 @@ CommandPool &CommandPool::operator=(CommandPool &&other) noexcept {
 
 void CommandPool::destroy() {
   if (m_pool) {
-    m_renderer->push_to_delete_queue(
-        [pool = m_pool,
-         cmd_buffers = std::move(m_cmd_buffers)](Renderer &renderer) {
-          if (not cmd_buffers.empty()) {
-            vkFreeCommandBuffers(renderer.get_device(), pool,
-                                 cmd_buffers.size(), cmd_buffers.data());
-          }
-          vkDestroyCommandPool(renderer.get_device(), pool, nullptr);
-        });
+    m_renderer->wait_idle();
+    if (not m_cmd_buffers.empty()) {
+      vkFreeCommandBuffers(m_renderer->get_device(), m_pool,
+                           m_cmd_buffers.size(), m_cmd_buffers.data());
+    }
+    vkDestroyCommandPool(m_renderer->get_device(), m_pool, nullptr);
   }
 }
 

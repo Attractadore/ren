@@ -23,6 +23,7 @@ using Image = Handle<Texture>;
 class Scene final : public IScene {
 public:
   Scene(Renderer &renderer, Swapchain &swapchain);
+  ~Scene();
 
   auto get_exposure_mode() const -> ExposureMode;
 
@@ -147,6 +148,8 @@ private:
   Swapchain *m_swapchain = nullptr;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
   std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
+  Handle<Semaphore> m_graphics_semaphore;
+  u64 m_graphics_time = 0;
 
   ResourceUploader m_resource_uploader;
   CommandAllocator m_cmd_allocator;

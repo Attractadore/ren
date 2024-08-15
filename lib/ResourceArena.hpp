@@ -89,7 +89,13 @@ public:
     return insert(m_renderer->create_compute_pipeline(std::move(create_info)));
   }
 
-  void clear() { (clear<Ts>(), ...); }
+  void clear() {
+    usize count = (get_type_arena<Ts>().size() + ...);
+    if (count > 0) {
+      m_renderer->wait_idle();
+      (clear<Ts>(), ...);
+    }
+  }
 
 private:
   template <typename T> auto get_type_arena() -> Vector<Handle<T>> & {

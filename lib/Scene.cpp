@@ -23,6 +23,12 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       m_upload_allocator(renderer, 64 * 1024 * 1024), m_arena(renderer) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
+  m_graphics_time = PIPELINE_DEPTH;
+  m_graphics_semaphore = m_arena.create_semaphore({
+      .name = "Graphics queue timeline semaphore",
+      .initial_value = m_graphics_time - 1,
+
+  });
 
   for (auto i : range<usize>(PIPELINE_DEPTH)) {
     m_acquire_semaphores[i] = m_arena.create_semaphore(
@@ -43,6 +49,11 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_texture_allocator);
+}
+
+Scene::~Scene() {
+  m_renderer->wait_idle();
+  m_renderer->destroy(m_graphics_semaphore);
 }
 
 auto Scene::get_exposure_mode() const -> ExposureMode {
@@ -137,7 +148,17 @@ auto Scene::get_meshlet_culling_feature_mask() const -> u32 {
 }
 
 void Scene::next_frame() {
-  m_renderer->next_frame();
+  m_renderer->graphicsQueueSubmit(
+      {}, {},
+      {{
+          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+          .semaphore = m_renderer->get_semaphore(m_graphics_semaphore).handle,
+          .value = m_graphics_time,
+      }});
+  m_graphics_time++;
+  m_renderer->wait_for_semaphore(
+      m_renderer->get_semaphore(m_graphics_semaphore),
+      m_graphics_time - PIPELINE_DEPTH);
   m_cmd_allocator.next_frame();
   m_texture_allocator->next_frame();
   m_device_allocator.next_frame();

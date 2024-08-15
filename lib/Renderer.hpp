@@ -1,6 +1,5 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Config.hpp"
 #include "Descriptors.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
@@ -8,142 +7,30 @@
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
 #include "Support/Optional.hpp"
-#include "Support/Queue.hpp"
 #include "Support/Span.hpp"
-#include "Support/TypeMap.hpp"
 #include "Texture.hpp"
 #include "glsl/DevicePtr.hpp"
 
 #include <volk.h>
 
 #include <chrono>
-#include <functional>
 #include <memory>
 
 namespace ren {
 
 struct SwapchainTextureCreateInfo;
 
-template <typename T, typename... Ts>
-concept IsQueueType = (std::same_as<T, Ts> or ...);
-
-using QueueCustomDeleter = std::function<void(Renderer &)>;
-
-template <typename T> struct QueueDeleter;
-
-template <> struct QueueDeleter<QueueCustomDeleter> {
-  void operator()(Renderer &renderer,
-                  QueueCustomDeleter deleter) const noexcept {
-    std::move(deleter)(renderer);
-  }
-};
-
-namespace detail {
-template <typename... Ts> class DeleteQueueImpl {
-  struct FrameData {
-    TypeMap<unsigned, Ts...> pushed_item_counts;
-  };
-
-  std::tuple<Queue<Ts>...> m_queues;
-  std::array<FrameData, PIPELINE_DEPTH> m_frame_data;
-  unsigned m_frame_idx = 0;
-
-private:
-  template <typename T> Queue<T> &get_queue() {
-    return std::get<Queue<T>>(m_queues);
-  }
-  template <typename T> unsigned &get_frame_pushed_item_count() {
-    return m_frame_data[m_frame_idx].pushed_item_counts.template get<T>();
-  }
-
-  template <typename T> void push_impl(T value) {
-    get_queue<T>().push(std::move(value));
-    get_frame_pushed_item_count<T>()++;
-  }
-
-  template <typename T> void pop(Renderer &renderer, usize count) {
-    auto &queue = get_queue<T>();
-    for (usize i = 0; i < count; ++i) {
-      ren_assert(not queue.empty());
-      QueueDeleter<T>()(renderer, std::move(queue.front()));
-      queue.pop();
-    }
-  }
-
-public:
-  void next_frame(Renderer &renderer) {
-    m_frame_idx = (m_frame_idx + 1) % PIPELINE_DEPTH;
-    (pop<Ts>(renderer, get_frame_pushed_item_count<Ts>()), ...);
-    m_frame_data[m_frame_idx] = {};
-  }
-
-  template <IsQueueType<Ts...> T> void push(T value) {
-    push_impl(std::move(value));
-  }
-
-  template <std::convertible_to<QueueCustomDeleter> F>
-    requires IsQueueType<QueueCustomDeleter, Ts...> and
-             (not std::same_as<QueueCustomDeleter, F>)
-  void push(F callback) {
-    push_impl(QueueCustomDeleter(std::move(callback)));
-  }
-
-  void flush(Renderer &renderer) {
-    (pop<Ts>(renderer, get_queue<Ts>().size()), ...);
-    m_frame_data.fill({});
-  }
-};
-} // namespace detail
-
-using DeleteQueue = detail::DeleteQueueImpl<
-    QueueCustomDeleter, VkBuffer, VkDescriptorPool, VkDescriptorSetLayout,
-    VkImageView, VkImage, VkPipeline, VkPipelineLayout, VkSampler, VkSemaphore,
-    VkSwapchainKHR, // Swapchain must be destroyed before surface
-    VkSurfaceKHR, VmaAllocation>;
-
-struct InstanceDeleter {
-  void operator()(VkInstance instance) const noexcept {
-    vkDestroyInstance(instance, nullptr);
-  }
-};
-
-struct DeviceDeleter {
-  void operator()(VkDevice device) const noexcept {
-    vkDestroyDevice(device, nullptr);
-  }
-};
-
-struct AllocatorDeleter {
-  void operator()(VmaAllocator allocator) const noexcept {
-    vmaDestroyAllocator(allocator);
-  }
-};
-
-template <typename T, typename D>
-using UniqueHandle = std::unique_ptr<std::remove_pointer_t<T>, D>;
-
-using UniqueInstance = UniqueHandle<VkInstance, InstanceDeleter>;
-using UniqueDevice = UniqueHandle<VkDevice, DeviceDeleter>;
-using UniqueAllocator = UniqueHandle<VmaAllocator, AllocatorDeleter>;
-
 class Renderer final : public IRenderer {
-  UniqueInstance m_instance;
+  VkInstance m_instance = nullptr;
 #if REN_VULKAN_VALIDATION
   VkDebugReportCallbackEXT m_debug_callback = nullptr;
 #endif
   VkPhysicalDevice m_adapter = nullptr;
-  UniqueDevice m_device;
-  UniqueAllocator m_allocator;
+  VkDevice m_device = nullptr;
+  VmaAllocator m_allocator = nullptr;
 
   unsigned m_graphics_queue_family = -1;
   VkQueue m_graphics_queue = nullptr;
-  Handle<Semaphore> m_graphics_queue_semaphore;
-  uint64_t m_graphics_queue_time = 0;
-
-  unsigned m_frame_index = 0;
-  std::array<uint64_t, PIPELINE_DEPTH> m_frame_end_times = {};
-
-  DeleteQueue m_delete_queue;
 
   GenArray<Buffer> m_buffers;
 
@@ -176,21 +63,13 @@ public:
   auto create_scene(ISwapchain &swapchain)
       -> expected<std::unique_ptr<IScene>> override;
 
-  void flush();
-
-  void next_frame();
-
-  auto get_instance() const -> VkInstance { return m_instance.get(); }
+  auto get_instance() const -> VkInstance { return m_instance; }
 
   auto get_adapter() const -> VkPhysicalDevice { return m_adapter; }
 
-  auto get_device() const -> VkDevice { return m_device.get(); }
+  auto get_device() const -> VkDevice { return m_device; }
 
-  auto get_allocator() const -> VmaAllocator { return m_allocator.get(); }
-
-  template <typename T> void push_to_delete_queue(T value) {
-    m_delete_queue.push(std::move(value));
-  }
+  auto get_allocator() const -> VmaAllocator { return m_allocator; }
 
   [[nodiscard]] auto create_descriptor_set_layout(
       const DescriptorSetLayoutCreateInfo &&create_info)
@@ -360,6 +239,8 @@ public:
       -> Optional<const Semaphore &>;
 
   auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
+
+  void wait_idle();
 
   [[nodiscard]] auto
   wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
