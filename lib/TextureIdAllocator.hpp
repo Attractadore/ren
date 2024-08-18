@@ -3,6 +3,8 @@
 #include "Support/GenIndex.hpp"
 #include "Support/NewType.hpp"
 
+#include <vulkan/vulkan.h>
+
 namespace ren {
 
 class Renderer;
@@ -38,8 +40,6 @@ public:
                                 const TextureView &view) -> StorageTextureId;
 
   void free_storage_texture(StorageTextureId texture);
-
-  void next_frame();
 };
 
 class TextureIdAllocatorScope {

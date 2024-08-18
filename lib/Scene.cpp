@@ -160,7 +160,6 @@ void Scene::next_frame() {
       m_renderer->get_semaphore(m_graphics_semaphore),
       m_graphics_time - PIPELINE_DEPTH);
   m_cmd_allocator.next_frame();
-  m_texture_allocator->next_frame();
   m_device_allocator.next_frame();
   m_upload_allocator.next_frame();
   rotate_left(m_acquire_semaphores);

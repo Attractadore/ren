@@ -70,12 +70,6 @@ void TextureIdAllocator::free_storage_texture(StorageTextureId texture) {
   m_storage_texture_allocator.free(texture);
 }
 
-void TextureIdAllocator::next_frame() {
-  m_sampler_allocator.next_frame();
-  m_sampled_texture_allocator.next_frame();
-  m_storage_texture_allocator.next_frame();
-}
-
 TextureIdAllocatorScope::TextureIdAllocatorScope(TextureIdAllocator &alloc) {
   m_alloc = &alloc;
 }

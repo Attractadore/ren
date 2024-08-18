@@ -124,6 +124,7 @@ void RgPersistent::reset() {
   m_physical_textures.clear();
   m_persistent_textures.clear();
   m_external_textures.clear();
+  // Wait idle is performed in arena clear.
   m_texture_descriptor_allocator.clear();
   m_textures.clear();
   m_texture_init_info.clear();
@@ -648,6 +649,7 @@ void RgBuilder::alloc_textures() {
   }
 
   std::swap(m_rgp->m_texture_arena, m_rgp->m_prev_texture_arena);
+  m_renderer->wait_idle();
   m_rgp->m_texture_descriptor_allocator.clear();
   m_rgp->m_num_prev_physical_textures = 0;
   usize num_physical_textures = m_rgp->m_physical_textures.size();

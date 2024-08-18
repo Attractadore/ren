@@ -14,13 +14,7 @@ auto FreeListAllocator::allocate() -> unsigned {
 
 void FreeListAllocator::free(unsigned idx) {
   ren_assert(idx);
-  m_frame_freed[m_frame_index].push_back(idx);
-}
-
-void FreeListAllocator::next_frame() {
-  m_frame_index = (m_frame_index + 1) % PIPELINE_DEPTH;
-  m_free_list.append(m_frame_freed[m_frame_index]);
-  m_frame_freed[m_frame_index].clear();
+  m_free_list.push_back(idx);
 }
 
 } // namespace ren
