@@ -1,12 +1,10 @@
 #include "CommandAllocator.hpp"
 #include "Renderer.hpp"
-#include "Support/Algorithm.hpp"
 #include "Support/Errors.hpp"
-#include "Support/Views.hpp"
 
 namespace ren {
 
-CommandPool::CommandPool(Renderer &renderer) {
+CommandAllocator::CommandAllocator(Renderer &renderer) {
   m_renderer = &renderer;
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -18,13 +16,14 @@ CommandPool::CommandPool(Renderer &renderer) {
                   "Vulkan: Failed to create command pool");
 }
 
-CommandPool::CommandPool(CommandPool &&other) noexcept
+CommandAllocator::CommandAllocator(CommandAllocator &&other) noexcept
     : m_renderer(other.m_renderer),
       m_pool(std::exchange(other.m_pool, nullptr)),
       m_cmd_buffers(std::move(other.m_cmd_buffers)),
       m_allocated_count(std::exchange(other.m_allocated_count, 0)) {}
 
-CommandPool &CommandPool::operator=(CommandPool &&other) noexcept {
+CommandAllocator &
+CommandAllocator::operator=(CommandAllocator &&other) noexcept {
   destroy();
   m_renderer = other.m_renderer;
   m_pool = other.m_pool;
@@ -35,7 +34,7 @@ CommandPool &CommandPool::operator=(CommandPool &&other) noexcept {
   return *this;
 }
 
-void CommandPool::destroy() {
+void CommandAllocator::destroy() {
   if (m_pool) {
     m_renderer->wait_idle();
     if (not m_cmd_buffers.empty()) {
@@ -46,9 +45,9 @@ void CommandPool::destroy() {
   }
 }
 
-CommandPool::~CommandPool() { destroy(); }
+CommandAllocator::~CommandAllocator() { destroy(); }
 
-VkCommandBuffer CommandPool::allocate() {
+VkCommandBuffer CommandAllocator::allocate() {
   [[unlikely]] if (m_allocated_count == m_cmd_buffers.size()) {
     auto old_capacity = m_cmd_buffers.size();
     auto new_capacity = std::max<size_t>(2 * old_capacity, 1);
@@ -68,25 +67,10 @@ VkCommandBuffer CommandPool::allocate() {
   return m_cmd_buffers[m_allocated_count++];
 }
 
-void CommandPool::reset() {
+void CommandAllocator::reset() {
   throw_if_failed(vkResetCommandPool(m_renderer->get_device(), m_pool, 0),
                   "Vulkan: Failed to reset command pool");
   m_allocated_count = 0;
-}
-
-CommandAllocator::CommandAllocator(Renderer &renderer) {
-  for (auto i : range(PIPELINE_DEPTH)) {
-    m_frame_pools.emplace_back(renderer);
-  }
-}
-
-void CommandAllocator::next_frame() {
-  rotate_left(m_frame_pools);
-  m_frame_pools.front().reset();
-}
-
-auto CommandAllocator::allocate() -> VkCommandBuffer {
-  return m_frame_pools.front().allocate();
 }
 
 } // namespace ren

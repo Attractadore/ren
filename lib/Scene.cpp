@@ -7,7 +7,6 @@
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Present.hpp"
-#include "Support/Algorithm.hpp"
 #include "Support/Span.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
@@ -19,23 +18,9 @@
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
-    : m_cmd_allocator(renderer), m_device_allocator(renderer, 64 * 1024 * 1024),
-      m_upload_allocator(renderer, 64 * 1024 * 1024), m_arena(renderer) {
+    : m_arena(renderer), m_fif_arena(renderer) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
-  m_graphics_time = PIPELINE_DEPTH;
-  m_graphics_semaphore = m_arena.create_semaphore({
-      .name = "Graphics queue timeline semaphore",
-      .initial_value = m_graphics_time - 1,
-
-  });
-
-  for (auto i : range<usize>(PIPELINE_DEPTH)) {
-    m_acquire_semaphores[i] = m_arena.create_semaphore(
-        {.name = fmt::format("Acquire semaphore {}", i)});
-    m_present_semaphores[i] = m_arena.create_semaphore(
-        {.name = fmt::format("Present semaphore {}", i)});
-  }
 
   m_persistent_descriptor_set_layout =
       create_persistent_descriptor_set_layout(m_arena);
@@ -49,11 +34,8 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_pipelines = load_pipelines(m_arena, m_persistent_descriptor_set_layout);
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_texture_allocator);
-}
 
-Scene::~Scene() {
-  m_renderer->wait_idle();
-  m_renderer->destroy(m_graphics_semaphore);
+  allocate_per_frame_resources();
 }
 
 auto Scene::get_exposure_mode() const -> ExposureMode {
@@ -147,23 +129,56 @@ auto Scene::get_meshlet_culling_feature_mask() const -> u32 {
   return mask;
 }
 
+void Scene::allocate_per_frame_resources() {
+  m_fif_arena.clear();
+  m_per_frame_resources.clear();
+  m_new_num_frames_in_flight = m_num_frames_in_flight;
+  for (auto i : range(m_num_frames_in_flight)) {
+    m_per_frame_resources.emplace_back(FrameResources{
+        .acquire_semaphore = m_fif_arena.create_semaphore({
+            .name = fmt::format("Acquire semaphore {}", i),
+        }),
+        .present_semaphore = m_fif_arena.create_semaphore({
+            .name = fmt::format("Present semaphore {}", i),
+        }),
+        .device_allocator =
+            DeviceBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
+        .upload_allocator =
+            UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
+        .cmd_allocator = CommandAllocator(*m_renderer),
+    });
+  }
+  m_graphics_time = m_num_frames_in_flight;
+  m_graphics_semaphore = m_fif_arena.create_semaphore({
+      .name = "Graphics queue timeline semaphore",
+      .initial_value = m_graphics_time - 1,
+  });
+}
+
+void FrameResources::reset() {
+  device_allocator.reset();
+  upload_allocator.reset();
+  cmd_allocator.reset();
+}
+
 void Scene::next_frame() {
-  m_renderer->graphicsQueueSubmit(
-      {}, {},
-      {{
-          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-          .semaphore = m_renderer->get_semaphore(m_graphics_semaphore).handle,
-          .value = m_graphics_time,
-      }});
-  m_graphics_time++;
-  m_renderer->wait_for_semaphore(
-      m_renderer->get_semaphore(m_graphics_semaphore),
-      m_graphics_time - PIPELINE_DEPTH);
-  m_cmd_allocator.next_frame();
-  m_device_allocator.next_frame();
-  m_upload_allocator.next_frame();
-  rotate_left(m_acquire_semaphores);
-  rotate_left(m_present_semaphores);
+  m_num_frames_in_flight = m_new_num_frames_in_flight;
+  [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
+    allocate_per_frame_resources();
+  } else {
+    m_renderer->graphicsQueueSubmit(
+        {}, {},
+        {{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = m_renderer->get_semaphore(m_graphics_semaphore).handle,
+            .value = m_graphics_time,
+        }});
+    m_graphics_time++;
+    m_renderer->wait_for_semaphore(
+        m_renderer->get_semaphore(m_graphics_semaphore),
+        m_graphics_time - m_num_frames_in_flight);
+    get_frame_resources().reset();
+  }
 }
 
 auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
@@ -206,7 +221,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
           .size = Span(data).size_bytes(),
       });
       buffer = view.buffer;
-      m_resource_uploader.stage_buffer(*m_renderer, m_upload_allocator,
+      m_resource_uploader.stage_buffer(*m_renderer,
+                                       get_frame_resources().upload_allocator,
                                        Span(data), view);
     }
   };
@@ -253,7 +269,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   // Upload triangles
 
   m_resource_uploader.stage_buffer(
-      *m_renderer, m_upload_allocator, Span(meshlet_triangles),
+      *m_renderer, get_frame_resources().upload_allocator,
+      Span(meshlet_triangles),
       m_renderer->get_buffer_view(index_pool.indices)
           .slice<u8>(base_triangle, num_triangles * 3));
 
@@ -298,9 +315,9 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   usize size = desc.width * desc.height * get_format_size(format);
-  m_resource_uploader.stage_texture(*m_renderer, m_upload_allocator,
-                                    Span((const std::byte *)desc.data, size),
-                                    texture);
+  m_resource_uploader.stage_texture(
+      *m_renderer, get_frame_resources().upload_allocator,
+      Span((const std::byte *)desc.data, size), texture);
   Handle<Image> h = m_images.insert(texture);
   return std::bit_cast<ImageId>(h);
 }
@@ -448,13 +465,15 @@ void Scene::set_directional_light(DirectionalLightId light,
 };
 
 auto Scene::draw() -> expected<void> {
-  m_resource_uploader.upload(*m_renderer, m_cmd_allocator);
+  FrameResources &fr = get_frame_resources();
+
+  m_resource_uploader.upload(*m_renderer, fr.cmd_allocator);
 
   RenderGraph render_graph = build_rg();
 
-  render_graph.execute(m_cmd_allocator);
+  render_graph.execute(fr.cmd_allocator);
 
-  m_swapchain->present(m_present_semaphores.front());
+  m_swapchain->present(fr.present_semaphore);
 
   next_frame();
 
@@ -466,6 +485,11 @@ void Scene::draw_imgui() {
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
+      {
+        int fif = m_num_frames_in_flight;
+        ImGui::SliderInt("Frames in flight", &fif, 1, 4);
+        m_new_num_frames_in_flight = fif;
+      }
       {
         int draw_size = m_draw_size;
         ImGui::SliderInt("Maximum indirect draw instance count", &draw_size, 1,
@@ -585,7 +609,7 @@ auto Scene::build_rg() -> RenderGraph {
   PassCommonConfig cfg = {
       .rgp = m_rgp.get(),
       .rgb = &rgb,
-      .allocator = &m_upload_allocator,
+      .allocator = &get_frame_resources().upload_allocator,
       .pipelines = &m_pipelines,
       .scene = this,
       .rcs = &m_pass_rcs,
@@ -618,14 +642,16 @@ auto Scene::build_rg() -> RenderGraph {
   }
 #endif
 
+  FrameResources &fr = get_frame_resources();
+
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,
-                              .acquire_semaphore = m_acquire_semaphores.front(),
-                              .present_semaphore = m_present_semaphores.front(),
+                              .acquire_semaphore = fr.acquire_semaphore,
+                              .present_semaphore = fr.present_semaphore,
                               .swapchain = m_swapchain,
                           });
 
-  return rgb.build(m_device_allocator, m_upload_allocator);
+  return rgb.build(fr.device_allocator, fr.upload_allocator);
 }
 
 } // namespace ren

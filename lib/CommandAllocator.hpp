@@ -1,5 +1,4 @@
 #pragma once
-#include "Config.hpp"
 #include "Support/Vector.hpp"
 
 #include <vulkan/vulkan.h>
@@ -8,7 +7,7 @@ namespace ren {
 
 class Renderer;
 
-class CommandPool {
+class CommandAllocator {
   Renderer *m_renderer = nullptr;
   VkCommandPool m_pool = nullptr;
   Vector<VkCommandBuffer> m_cmd_buffers;
@@ -18,27 +17,16 @@ private:
   void destroy();
 
 public:
-  explicit CommandPool(Renderer &renderer);
-  CommandPool(const CommandPool &) = delete;
-  CommandPool(CommandPool &&other) noexcept;
-  CommandPool &operator=(const CommandPool &) = delete;
-  CommandPool &operator=(CommandPool &&other) noexcept;
-  ~CommandPool();
-
-  VkCommandBuffer allocate();
-  void reset();
-};
-
-class CommandAllocator {
-public:
   explicit CommandAllocator(Renderer &renderer);
-
-  void next_frame();
+  CommandAllocator(const CommandAllocator &) = delete;
+  CommandAllocator(CommandAllocator &&other) noexcept;
+  CommandAllocator &operator=(const CommandAllocator &) = delete;
+  CommandAllocator &operator=(CommandAllocator &&other) noexcept;
+  ~CommandAllocator();
 
   auto allocate() -> VkCommandBuffer;
 
-private:
-  StaticVector<CommandPool, PIPELINE_DEPTH> m_frame_pools;
+  void reset();
 };
 
 } // namespace ren

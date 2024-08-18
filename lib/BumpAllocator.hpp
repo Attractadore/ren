@@ -1,8 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Config.hpp"
-#include "Renderer.hpp"
-#include "Support/Algorithm.hpp"
+#include "ResourceArena.hpp"
 #include "Support/Math.hpp"
 #include "glsl/DevicePtr.h"
 
@@ -15,26 +13,27 @@ public:
   template <typename T = std::byte>
   using Allocation = Policy::template Allocation<T>;
 
-  BumpAllocator(Renderer &renderer, usize block_size) {
+  BumpAllocator(Renderer &renderer, ResourceArena &arena, usize block_size) {
     m_renderer = &renderer;
+    m_arena = &arena;
     m_block_size = block_size;
   }
 
   BumpAllocator(const BumpAllocator &) = delete;
   BumpAllocator(BumpAllocator &&) = default;
 
-  ~BumpAllocator() { destroy(); }
+  ~BumpAllocator() = default;
 
   BumpAllocator &operator=(const BumpAllocator &) = delete;
 
   BumpAllocator &operator=(BumpAllocator &&other) {
-    destroy();
-    m_block_ring = std::move(other.m_block_ring);
+    m_renderer = other.m_renderer;
+    m_arena = other.m_arena;
+    m_blocks = std::move(other.m_blocks);
     m_block_size = other.m_block_size;
     m_block = other.m_block;
-    other.m_block = 0;
     m_block_offset = other.m_block_offset;
-    other.m_block_offset = 0;
+    other.reset();
     return *this;
   }
 
@@ -45,45 +44,32 @@ public:
     usize size = count * sizeof(T);
     ren_assert(size <= m_block_size);
 
-    Vector<Block> &blocks = m_block_ring.front();
-
     [[unlikely]] if (m_block_offset + size > m_block_size ||
-                     m_block >= blocks.size()) {
-      blocks.push_back(Policy::create_block(*m_renderer, m_block_size));
-      m_block = blocks.size() - 1;
+                     m_block >= m_blocks.size()) {
+      m_blocks.push_back(
+          Policy::create_block(*m_renderer, *m_arena, m_block_size));
+      m_block = m_blocks.size() - 1;
       m_block_offset = 0;
     }
 
     Allocation<T> allocation =
-        Policy::template allocate<T>(blocks[m_block], m_block_offset, size);
+        Policy::template allocate<T>(m_blocks[m_block], m_block_offset, size);
 
     m_block_offset += size;
 
     return allocation;
   }
 
-  void next_frame() {
-    rotate_left(m_block_ring);
+  void reset() {
     m_block = 0;
     m_block_offset = 0;
   }
 
 private:
-  void destroy() {
-    for (Vector<Block> &blocks : m_block_ring) {
-      for (const Block &block : blocks) {
-        m_renderer->destroy(block.buffer);
-      }
-      blocks.clear();
-    }
-  }
-
-private:
-  Renderer *m_renderer = nullptr;
-
   using Block = Policy::Block;
-
-  std::array<Vector<Block>, PIPELINE_DEPTH> m_block_ring;
+  Renderer *m_renderer = nullptr;
+  ResourceArena *m_arena = nullptr;
+  SmallVector<Block, 1> m_blocks;
   usize m_block_size = 0;
   usize m_block = 0;
   usize m_block_offset = 0;
@@ -97,17 +83,21 @@ struct DeviceBumpAllocationPolicy {
     Handle<Buffer> buffer;
   };
 
-  static auto create_block(Renderer &renderer, usize size) -> Block {
-    Handle<Buffer> buffer = renderer.create_buffer({
-        .name = "DeviceBumpAllocator block",
-        .heap = BufferHeap::Static,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                 VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                 VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = size,
-    });
+  static auto create_block(Renderer &renderer, ResourceArena &arena,
+                           usize size) -> Block {
+    Handle<Buffer> buffer =
+        arena
+            .create_buffer({
+                .name = "DeviceBumpAllocator block",
+                .heap = BufferHeap::Static,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                .size = size,
+            })
+            .buffer;
     return {
         .ptr = renderer.get_buffer_device_ptr<std::byte>(buffer),
         .buffer = buffer,
@@ -150,17 +140,21 @@ struct UploadBumpAllocationPolicy {
     BufferView view;
   };
 
-  static auto create_block(Renderer &renderer, usize size) -> Block {
-    Handle<Buffer> buffer = renderer.create_buffer({
-        .name = "UploadBumpAllocator block",
-        .heap = BufferHeap::Staging,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                 VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                 VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        .size = size,
-    });
+  static auto create_block(Renderer &renderer, ResourceArena &arena,
+                           usize size) -> Block {
+    Handle<Buffer> buffer =
+        arena
+            .create_buffer({
+                .name = "UploadBumpAllocator block",
+                .heap = BufferHeap::Staging,
+                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                .size = size,
+            })
+            .buffer;
     return {
         .host_ptr = renderer.map_buffer<std::byte>(buffer),
         .device_ptr = renderer.get_buffer_device_ptr<std::byte>(buffer),

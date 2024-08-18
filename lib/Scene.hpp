@@ -20,10 +20,20 @@ namespace ren {
 
 using Image = Handle<Texture>;
 
+struct FrameResources {
+  Handle<Semaphore> acquire_semaphore;
+  Handle<Semaphore> present_semaphore;
+  DeviceBumpAllocator device_allocator;
+  UploadBumpAllocator upload_allocator;
+  CommandAllocator cmd_allocator;
+
+public:
+  void reset();
+};
+
 class Scene final : public IScene {
 public:
   Scene(Renderer &renderer, Swapchain &swapchain);
-  ~Scene();
 
   auto get_exposure_mode() const -> ExposureMode;
 
@@ -132,6 +142,16 @@ public:
 #endif
 
 private:
+  void allocate_per_frame_resources();
+
+  auto get_frame_resources() const -> const FrameResources & {
+    return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
+  }
+
+  auto get_frame_resources() -> FrameResources & {
+    return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
+  }
+
   auto get_camera(CameraId camera) -> Camera &;
 
   [[nodiscard]] auto get_or_create_sampler(
@@ -146,15 +166,8 @@ private:
 private:
   Renderer *m_renderer = nullptr;
   Swapchain *m_swapchain = nullptr;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_acquire_semaphores;
-  std::array<Handle<Semaphore>, PIPELINE_DEPTH> m_present_semaphores;
-  Handle<Semaphore> m_graphics_semaphore;
-  u64 m_graphics_time = 0;
 
   ResourceUploader m_resource_uploader;
-  CommandAllocator m_cmd_allocator;
-  DeviceBumpAllocator m_device_allocator;
-  UploadBumpAllocator m_upload_allocator;
 
   Handle<Camera> m_camera;
   GenArray<Camera> m_cameras;
@@ -180,6 +193,12 @@ private:
   GenArray<glsl::DirLight> m_dir_lights;
 
   ResourceArena m_arena;
+  ResourceArena m_fif_arena;
+  SmallVector<FrameResources, 3> m_per_frame_resources;
+  u64 m_graphics_time = 0;
+  u32 m_num_frames_in_flight = 2;
+  u32 m_new_num_frames_in_flight = 0;
+  Handle<Semaphore> m_graphics_semaphore;
 
   PassPersistentConfig m_pass_cfg;
   PassPersistentResources m_pass_rcs;
