@@ -6,6 +6,8 @@
 
 namespace ren {
 
+class CommandRecorder;
+
 namespace detail {
 
 template <typename Policy> class BumpAllocator {
@@ -180,8 +182,15 @@ struct UploadBumpAllocationPolicy {
 
 }; // namespace detail
 
-using DeviceBumpAllocator =
-    detail::BumpAllocator<detail::DeviceBumpAllocationPolicy>;
+class DeviceBumpAllocator
+    : public detail::BumpAllocator<detail::DeviceBumpAllocationPolicy> {
+  using Base = detail::BumpAllocator<detail::DeviceBumpAllocationPolicy>;
+
+public:
+  using Base::Base;
+
+  void reset(CommandRecorder &cmd);
+};
 
 using UploadBumpAllocator =
     detail::BumpAllocator<detail::UploadBumpAllocationPolicy>;

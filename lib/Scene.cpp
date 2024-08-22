@@ -1,4 +1,5 @@
 #include "Scene.hpp"
+#include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
@@ -18,7 +19,8 @@
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
-    : m_arena(renderer), m_fif_arena(renderer) {
+    : m_arena(renderer), m_fif_arena(renderer),
+      m_device_allocator(renderer, m_arena, 64 * 1024 * 1024) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
@@ -141,8 +143,6 @@ void Scene::allocate_per_frame_resources() {
         .present_semaphore = m_fif_arena.create_semaphore({
             .name = fmt::format("Present semaphore {}", i),
         }),
-        .device_allocator =
-            DeviceBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
         .upload_allocator =
             UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
         .cmd_allocator = CommandAllocator(*m_renderer),
@@ -156,7 +156,6 @@ void Scene::allocate_per_frame_resources() {
 }
 
 void FrameResources::reset() {
-  device_allocator.reset();
   upload_allocator.reset();
   cmd_allocator.reset();
 }
@@ -179,6 +178,16 @@ void Scene::next_frame() {
         m_graphics_time - m_num_frames_in_flight);
     get_frame_resources().reset();
   }
+
+  VkCommandBuffer cmd = get_frame_resources().cmd_allocator.allocate();
+  {
+    CommandRecorder rec(*m_renderer, cmd);
+    m_device_allocator.reset(rec);
+  }
+  m_renderer->graphicsQueueSubmit({{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = cmd,
+  }});
 }
 
 auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
@@ -651,7 +660,7 @@ auto Scene::build_rg() -> RenderGraph {
                               .swapchain = m_swapchain,
                           });
 
-  return rgb.build(fr.device_allocator, fr.upload_allocator);
+  return rgb.build(m_device_allocator, fr.upload_allocator);
 }
 
 } // namespace ren

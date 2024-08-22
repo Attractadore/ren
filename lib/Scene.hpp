@@ -23,7 +23,6 @@ using Image = Handle<Texture>;
 struct FrameResources {
   Handle<Semaphore> acquire_semaphore;
   Handle<Semaphore> present_semaphore;
-  DeviceBumpAllocator device_allocator;
   UploadBumpAllocator upload_allocator;
   CommandAllocator cmd_allocator;
 
@@ -167,6 +166,16 @@ private:
   Renderer *m_renderer = nullptr;
   Swapchain *m_swapchain = nullptr;
 
+  ResourceArena m_arena;
+  ResourceArena m_fif_arena;
+  SmallVector<FrameResources, 3> m_per_frame_resources;
+  u64 m_graphics_time = 0;
+  u32 m_num_frames_in_flight = 2;
+  u32 m_new_num_frames_in_flight = 0;
+  Handle<Semaphore> m_graphics_semaphore;
+
+  DeviceBumpAllocator m_device_allocator;
+  std::unique_ptr<TextureIdAllocator> m_texture_allocator;
   ResourceUploader m_resource_uploader;
 
   Handle<Camera> m_camera;
@@ -176,8 +185,6 @@ private:
   GenArray<Mesh> m_meshes;
 
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
-
-  std::unique_ptr<TextureIdAllocator> m_texture_allocator;
 
   GenArray<Material> m_materials;
 
@@ -191,14 +198,6 @@ private:
   VkDescriptorSet m_persistent_descriptor_set = nullptr;
 
   GenArray<glsl::DirLight> m_dir_lights;
-
-  ResourceArena m_arena;
-  ResourceArena m_fif_arena;
-  SmallVector<FrameResources, 3> m_per_frame_resources;
-  u64 m_graphics_time = 0;
-  u32 m_num_frames_in_flight = 2;
-  u32 m_new_num_frames_in_flight = 0;
-  Handle<Semaphore> m_graphics_semaphore;
 
   PassPersistentConfig m_pass_cfg;
   PassPersistentResources m_pass_rcs;
