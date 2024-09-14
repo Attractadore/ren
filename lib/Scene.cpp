@@ -469,7 +469,7 @@ void Scene::set_directional_light(DirectionalLightId light,
   m_dir_lights[std::bit_cast<Handle<glsl::DirLight>>(light)] = {
       .color = desc.color,
       .illuminance = desc.illuminance,
-      .origin = desc.origin,
+      .origin = glm::normalize(desc.origin),
   };
 };
 
