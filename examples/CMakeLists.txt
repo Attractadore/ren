@@ -1,3 +1,4 @@
+find_package(assimp REQUIRED)
 find_package(Boost REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(cxxopts REQUIRED)
@@ -52,3 +53,6 @@ target_link_libraries(
   cxxopts::cxxopts
   tinygltf)
 copy_dlls(view-gltf)
+
+add_executable(entity-stress-test entity-stress-test.cpp)
+target_link_libraries(entity-stress-test imgui-app assimp::assimp cxxopts::cxxopts)

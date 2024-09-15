@@ -54,6 +54,7 @@
             "sdl2-binding"
           ]
         },
+        "assimp",
         "boost-functional",
         "fmt",
         "glm",
