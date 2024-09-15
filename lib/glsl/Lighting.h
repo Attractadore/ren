@@ -50,7 +50,10 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
 
   const float PI = radians(180.0f);
 
-  return float(nl > 0.0f) * illuminance * (fd + fs) / PI;
+  vec3 direct = float(nl > 0.0f) * illuminance * (fd + fs);
+  vec3 indirect = 0.1f * illuminance * fd;
+
+  return (direct + indirect) / PI;
 }
 
 GLSL_NAMESPACE_END
