@@ -19,6 +19,7 @@ public:
     m_renderer = &renderer;
     m_arena = &arena;
     m_block_size = block_size;
+    reset();
   }
 
   BumpAllocator(const BumpAllocator &) = delete;
@@ -44,13 +45,15 @@ public:
     m_block_offset = pad(m_block_offset, alignof(T));
     m_block_offset = pad(m_block_offset, Policy::ALIGNMENT);
     usize size = count * sizeof(T);
+    ren_assert(size > 0);
     ren_assert(size <= m_block_size);
 
-    [[unlikely]] if (m_block_offset + size > m_block_size ||
-                     m_block >= m_blocks.size()) {
-      m_blocks.push_back(
-          Policy::create_block(*m_renderer, *m_arena, m_block_size));
-      m_block = m_blocks.size() - 1;
+    [[unlikely]] if (m_block_offset + size > m_block_size) {
+      m_block += 1;
+      [[unlikely]] if (m_block == m_blocks.size()) {
+        m_blocks.push_back(
+            Policy::create_block(*m_renderer, *m_arena, m_block_size));
+      }
       m_block_offset = 0;
     }
 
@@ -63,8 +66,8 @@ public:
   }
 
   void reset() {
-    m_block = 0;
-    m_block_offset = 0;
+    m_block = -1;
+    m_block_offset = m_block_size;
   }
 
 private:
