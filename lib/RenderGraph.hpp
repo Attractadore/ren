@@ -310,17 +310,21 @@ struct RgPass {
       ext;
 };
 
+struct RgBufferExternalCreateInfo {};
+
 struct RgBufferCreateInfo {
   /// Memory heap from which to allocate buffer.
   BufferHeap heap = BufferHeap::Dynamic;
   /// Buffer size.
   usize size = 1;
+  Variant<Monostate, RgBufferExternalCreateInfo> ext;
 };
 
 struct RgPhysicalBuffer {
   BufferHeap heap = {};
   usize size = 0;
   BufferView view;
+  RgBufferState state;
 };
 
 struct RgBuffer {
@@ -432,6 +436,7 @@ struct RgBuildData {
   Vector<RgPassId> m_schedule;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
+  DynamicBitset m_external_buffers;
   GenArray<RgBuffer> m_buffers;
   Vector<RgBufferUse> m_buffer_uses;
 
@@ -550,6 +555,9 @@ public:
     return RgBufferId<T>(create_buffer(std::move(create_info)));
   }
 
+  void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
+                           const RgBufferState &usage = {});
+
   void set_external_texture(RgTextureId id, Handle<Texture> texture,
                             const RgTextureState &usage = {});
 
@@ -557,6 +565,8 @@ public:
 
   auto build(DeviceBumpAllocator &device_allocator,
              UploadBumpAllocator &upload_allocator) -> RenderGraph;
+
+  auto get_final_buffer_state(RgUntypedBufferId buffer) const -> RgBufferState;
 
 private:
   friend RgPassBuilder;

@@ -258,6 +258,7 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer) {
   bd.m_passes.clear();
   bd.m_schedule.clear();
   bd.m_physical_buffers.clear();
+  bd.m_external_buffers.clear();
   bd.m_buffers.clear();
   bd.m_buffer_uses.clear();
   bd.m_texture_uses.clear();
@@ -302,6 +303,7 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
     ren_assert(!pass);
     physical_buffer = RgPhysicalBufferId(m_data->m_physical_buffers.size());
     m_data->m_physical_buffers.emplace_back();
+    m_data->m_external_buffers.push_back(false);
   }
 
   RgUntypedBufferId buffer = m_data->m_buffers.insert({
@@ -336,6 +338,12 @@ auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
       .heap = create_info.heap,
       .size = create_info.size,
   };
+  create_info.ext.visit(OverloadSet{
+      [](Monostate) {},
+      [&](const RgBufferExternalCreateInfo &ext) {
+        m_data->m_external_buffers[physical_buffer] = true;
+      },
+  });
   return buffer;
 }
 
@@ -440,6 +448,17 @@ auto RgBuilder::write_texture(RgPassId pass, RgTextureId dst_id,
   RgTextureUseId use = add_texture_use(src_id, usage);
   m_data->m_passes[pass].write_textures.push_back(use);
   return RgTextureToken(use);
+}
+
+void RgBuilder::set_external_buffer(RgUntypedBufferId id,
+                                    const BufferView &view,
+                                    const RgBufferState &state) {
+  RgPhysicalBufferId physical_buffer_id = m_data->m_buffers[id].parent;
+  ren_assert(m_data->m_external_buffers[physical_buffer_id]);
+  RgPhysicalBuffer &physical_buffer =
+      m_data->m_physical_buffers[physical_buffer_id];
+  physical_buffer.view = view;
+  physical_buffer.state = state;
 }
 
 void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle,
@@ -728,7 +747,13 @@ void RgBuilder::alloc_textures() {
 
 void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
                               UploadBumpAllocator &upload_allocator) {
-  for (RgPhysicalBuffer &physical_buffer : m_data->m_physical_buffers) {
+  for (auto i : range(m_data->m_physical_buffers.size())) {
+    RgPhysicalBufferId id(i);
+    RgPhysicalBuffer &physical_buffer = m_data->m_physical_buffers[id];
+    if (m_data->m_external_buffers[id]) {
+      ren_assert(physical_buffer.view.buffer);
+      continue;
+    }
     switch (BufferHeap heap = physical_buffer.heap) {
     default:
       unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
@@ -844,6 +869,19 @@ void RgBuilder::place_barriers_and_semaphores() {
       m_data->m_physical_buffers.size());
   Vector<VkPipelineStageFlags2> buffer_after_read_hazard_src_states(
       m_data->m_physical_buffers.size());
+
+  for (auto i : range(m_data->m_physical_buffers.size())) {
+    RgPhysicalBuffer &physical_buffer = m_data->m_physical_buffers[i];
+    const RgBufferState &state = physical_buffer.state;
+    if (state.access_mask & WRITE_ONLY_ACCESS_MASK) {
+      buffer_after_write_hazard_src_states[i] = {
+          .stage_mask = state.stage_mask,
+          .access_mask = state.access_mask & WRITE_ONLY_ACCESS_MASK,
+      };
+    } else {
+      buffer_after_read_hazard_src_states[i] = state.access_mask;
+    }
+  }
 
   struct TextureUsageWithoutLayout {
     VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
@@ -1137,6 +1175,21 @@ void RgBuilder::place_barriers_and_semaphores() {
     rt_pass.num_signal_semaphores = pass.signal_semaphores.size();
   }
 
+  for (auto i : range(m_data->m_physical_buffers.size())) {
+    RgPhysicalBuffer &physical_buffer = m_data->m_physical_buffers[i];
+    VkPipelineStageFlags2 stage_mask = buffer_after_read_hazard_src_states[i];
+    VkAccessFlags2 access_mask = 0;
+    if (!stage_mask) {
+      const RgBufferState &state = buffer_after_write_hazard_src_states[i];
+      stage_mask = state.stage_mask;
+      access_mask = state.access_mask;
+    }
+    physical_buffer.state = {
+        .stage_mask = stage_mask,
+        .access_mask = access_mask,
+    };
+  }
+
   for (auto i : range(m_rgp->m_physical_textures.size())) {
     RgPhysicalTexture &physical_texture = m_rgp->m_physical_textures[i];
     VkPipelineStageFlags2 stage_mask = texture_after_read_hazard_src_states[i];
@@ -1178,6 +1231,13 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_texture_set = m_rgp->m_texture_descriptor_allocator.get_set();
 
   return rg;
+}
+
+auto RgBuilder::get_final_buffer_state(RgUntypedBufferId buffer) const
+    -> RgBufferState {
+  ren_assert(buffer);
+  RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
+  return m_data->m_physical_buffers[physical_buffer].state;
 }
 
 RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
