@@ -98,15 +98,15 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
         pass.write_buffer("init-meshlet-bucket-commands",
-                          meshlet_bucket_commands, RG_TRANSFER_DST_BUFFER);
+                          meshlet_bucket_commands, TRANSFER_DST_BUFFER);
 
     std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
         pass.write_buffer("init-meshlet-bucket-sizes", meshlet_bucket_sizes,
-                          RG_TRANSFER_DST_BUFFER);
+                          TRANSFER_DST_BUFFER);
 
     std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
         pass.write_buffer("init-meshlet-draw-command-count", *cfg.command_count,
-                          RG_TRANSFER_DST_BUFFER);
+                          TRANSFER_DST_BUFFER);
 
     pass.set_callback([rcs](Renderer &, const RgRuntime &rg,
                             CommandRecorder &cmd) {
@@ -142,10 +142,10 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.pipeline = m_pipelines->instance_culling_and_lod;
 
-    rcs.meshes = pass.read_buffer(m_meshes, RG_CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_transform_matrices, RG_CS_READ_BUFFER);
+        pass.read_buffer(m_transform_matrices, CS_READ_BUFFER);
 
     auto [instance_cull_data, instance_cull_data_ptr, _] =
         m_upload_allocator->allocate<glsl::InstanceCullData>(
@@ -156,14 +156,14 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
         pass.write_buffer("meshlet-bucket-commands", meshlet_bucket_commands,
-                          RG_CS_WRITE_BUFFER);
+                          CS_WRITE_BUFFER);
 
     std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
         pass.write_buffer("meshlet-bucket-sizes", meshlet_bucket_sizes,
-                          RG_CS_WRITE_BUFFER);
+                          CS_WRITE_BUFFER);
 
     std::tie(meshlet_cull_data, rcs.meshlet_cull_data) = pass.write_buffer(
-        "meshlet-cull-data", meshlet_cull_data, RG_CS_WRITE_BUFFER);
+        "meshlet-cull-data", meshlet_cull_data, CS_WRITE_BUFFER);
 
     u32 feature_mask = m_instance_culling_and_lod_settings.feature_mask;
     float num_viewport_triangles =
@@ -228,26 +228,25 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.pipeline = m_pipelines->meshlet_culling;
 
-    rcs.meshes = pass.read_buffer(m_meshes, RG_CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_transform_matrices, RG_CS_READ_BUFFER);
+        pass.read_buffer(m_transform_matrices, CS_READ_BUFFER);
 
     rcs.meshlet_bucket_commands =
-        pass.read_buffer(meshlet_bucket_commands, RG_INDIRECT_COMMAND_BUFFER);
+        pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
 
     rcs.meshlet_bucket_sizes =
-        pass.read_buffer(meshlet_bucket_sizes, RG_CS_READ_BUFFER);
+        pass.read_buffer(meshlet_bucket_sizes, CS_READ_BUFFER);
 
-    rcs.meshlet_cull_data =
-        pass.read_buffer(meshlet_cull_data, RG_CS_READ_BUFFER);
+    rcs.meshlet_cull_data = pass.read_buffer(meshlet_cull_data, CS_READ_BUFFER);
 
     std::tie(*cfg.commands, rcs.meshlet_draw_commands) = pass.write_buffer(
-        "meshlet-draw-commands", *cfg.commands, RG_CS_WRITE_BUFFER);
+        "meshlet-draw-commands", *cfg.commands, CS_WRITE_BUFFER);
 
     std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
         pass.write_buffer("meshlet-draw-command-count", *cfg.command_count,
-                          RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER);
+                          CS_READ_BUFFER | CS_WRITE_BUFFER);
 
     rcs.feature_mask = m_meshlet_culling_feature_mask;
     rcs.bucket_offsets = bucket_offsets;
@@ -321,10 +320,10 @@ auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_meshes, RG_VS_READ_BUFFER);
-  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, RG_VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_meshes, VS_READ_BUFFER);
+  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_transform_matrices, RG_VS_READ_BUFFER);
+      pass.read_buffer(m_transform_matrices, VS_READ_BUFFER);
 
   rcs.proj_view = m_proj_view;
 
@@ -395,16 +394,16 @@ auto OpaqueMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) const -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_meshes, RG_VS_READ_BUFFER);
-  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, RG_VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_meshes, VS_READ_BUFFER);
+  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_transform_matrices, RG_VS_READ_BUFFER);
-  rcs.normal_matrices = pass.read_buffer(m_normal_matrices, RG_VS_READ_BUFFER);
-  rcs.materials = pass.read_buffer(m_materials, RG_FS_READ_BUFFER);
+      pass.read_buffer(m_transform_matrices, VS_READ_BUFFER);
+  rcs.normal_matrices = pass.read_buffer(m_normal_matrices, VS_READ_BUFFER);
+  rcs.materials = pass.read_buffer(m_materials, FS_READ_BUFFER);
   rcs.directional_lights =
-      pass.read_buffer(m_directional_lights, RG_FS_READ_BUFFER);
-  rcs.exposure = pass.read_texture(m_exposure, RG_FS_READ_TEXTURE,
-                                   m_exposure_temporal_layer);
+      pass.read_buffer(m_directional_lights, FS_READ_BUFFER);
+  rcs.exposure =
+      pass.read_texture(m_exposure, FS_READ_TEXTURE, m_exposure_temporal_layer);
 
   rcs.proj_view = m_proj_view;
   rcs.eye = m_eye;

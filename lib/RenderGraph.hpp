@@ -38,136 +38,6 @@ class RgPassBuilder;
 class RenderGraph;
 class RgRuntime;
 
-struct RgBufferState {
-  /// Pipeline stages in which this buffer is accessed
-  VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  /// Memory accesses performed on this buffer
-  VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
-};
-
-constexpr auto operator|(const RgBufferState &lhs,
-                         const RgBufferState &rhs) -> RgBufferState {
-  return {
-      .stage_mask = lhs.stage_mask | rhs.stage_mask,
-      .access_mask = lhs.access_mask | rhs.access_mask,
-  };
-};
-
-constexpr RgBufferState RG_HOST_WRITE_BUFFER = {};
-
-constexpr RgBufferState RG_VS_READ_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-};
-
-constexpr RgBufferState RG_FS_READ_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-};
-
-constexpr RgBufferState RG_TRANSFER_SRC_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-    .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
-};
-
-constexpr RgBufferState RG_TRANSFER_DST_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-    .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-};
-
-constexpr RgBufferState RG_CS_READ_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-};
-
-constexpr RgBufferState RG_CS_WRITE_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-};
-
-constexpr RgBufferState RG_CS_READ_WRITE_BUFFER =
-    RG_CS_READ_BUFFER | RG_CS_WRITE_BUFFER;
-
-constexpr RgBufferState RG_INDEX_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
-    .access_mask = VK_ACCESS_2_INDEX_READ_BIT,
-};
-
-constexpr RgBufferState RG_INDIRECT_COMMAND_BUFFER = {
-    .stage_mask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-    .access_mask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-};
-
-struct RgTextureState {
-  /// Pipeline stages in which the texture is accessed
-  VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
-  /// Types of accesses performed on the texture
-  VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
-  /// Layout of the texture
-  VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-};
-
-constexpr RgTextureState RG_FS_READ_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr RgTextureState RG_CS_READ_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr RgTextureState RG_CS_WRITE_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr RgTextureState RG_CS_READ_WRITE_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr RgTextureState RG_COLOR_ATTACHMENT = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-    .access_mask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-};
-
-constexpr RgTextureState RG_READ_WRITE_DEPTH_ATTACHMENT = {
-    .stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-                  VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-    .access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                   VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-};
-
-constexpr RgTextureState RG_READ_DEPTH_ATTACHMENT = {
-    .stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
-    .access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-};
-
-constexpr RgTextureState RG_TRANSFER_SRC_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-    .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-};
-
-constexpr RgTextureState RG_TRANSFER_DST_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-    .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-};
-
-constexpr RgTextureState RG_PRESENT_TEXTURE = {
-    .layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-};
-
 template <typename F>
 concept CRgHostCallback = std::invocable<F, Renderer &, const RgRuntime &>;
 
@@ -324,7 +194,7 @@ struct RgPhysicalBuffer {
   BufferHeap heap = {};
   usize size = 0;
   BufferView view;
-  RgBufferState state;
+  BufferState state;
 };
 
 struct RgBuffer {
@@ -341,7 +211,7 @@ struct RgBuffer {
 
 struct RgBufferUse {
   RgUntypedBufferId buffer;
-  RgBufferState usage;
+  BufferState usage;
 };
 
 struct RgTextureExternalInfo {
@@ -353,7 +223,7 @@ struct RgTextureTemporalInfo {
   /// Number of temporal layers.
   u32 num_temporal_layers = 0;
   /// Texture usage in init callback.
-  RgTextureState usage;
+  TextureState usage;
   /// Init callback for temporal layers.
   RgTextureInitCallback cb;
 };
@@ -380,7 +250,7 @@ struct RgTextureCreateInfo {
 };
 
 struct RgTextureInitInfo {
-  RgTextureState usage;
+  TextureState usage;
   RgTextureInitCallback cb;
 };
 
@@ -396,7 +266,7 @@ struct RgPhysicalTexture {
   u32 num_array_layers = 1;
   Handle<Texture> handle;
   StorageTextureId storage_descriptor;
-  RgTextureState state;
+  TextureState state;
   RgTextureId init_id;
   RgTextureId id;
 };
@@ -415,7 +285,7 @@ struct RgTexture {
 
 struct RgTextureUse {
   RgTextureId texture;
-  RgTextureState usage;
+  TextureState usage;
 };
 
 struct RgSemaphore {
@@ -556,24 +426,23 @@ public:
   }
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
-                           const RgBufferState &usage = {});
+                           const BufferState &usage = {});
 
   void set_external_texture(RgTextureId id, Handle<Texture> texture,
-                            const RgTextureState &usage = {});
+                            const TextureState &usage = {});
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
   auto build(DeviceBumpAllocator &device_allocator,
              UploadBumpAllocator &upload_allocator) -> RenderGraph;
 
-  auto get_final_buffer_state(RgUntypedBufferId buffer) const -> RgBufferState;
+  auto get_final_buffer_state(RgUntypedBufferId buffer) const -> BufferState;
 
 private:
   friend RgPassBuilder;
 
-  [[nodiscard]] auto
-  add_buffer_use(RgUntypedBufferId buffer,
-                 const RgBufferState &usage) -> RgBufferUseId;
+  [[nodiscard]] auto add_buffer_use(RgUntypedBufferId buffer,
+                                    const BufferState &usage) -> RgBufferUseId;
 
   [[nodiscard]] auto
   create_virtual_buffer(RgPassId pass, RgDebugName name,
@@ -581,31 +450,31 @@ private:
 
   [[nodiscard]] auto
   read_buffer(RgPassId pass, RgUntypedBufferId buffer,
-              const RgBufferState &usage) -> RgUntypedBufferToken;
+              const BufferState &usage) -> RgUntypedBufferToken;
 
   [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
                                   RgUntypedBufferId buffer,
-                                  const RgBufferState &usage)
+                                  const BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto
   add_texture_use(RgTextureId texture,
-                  const RgTextureState &usage) -> RgTextureUseId;
+                  const TextureState &usage) -> RgTextureUseId;
 
   [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
-                                  const RgTextureState &usage,
+                                  const TextureState &usage,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(
       RgPassId pass, RgDebugName name, RgTextureId texture,
-      const RgTextureState &usage) -> std::tuple<RgTextureId, RgTextureToken>;
+      const TextureState &usage) -> std::tuple<RgTextureId, RgTextureToken>;
 
-  [[nodiscard]] auto
-  write_texture(RgPassId pass, RgTextureId dst, RgTextureId texture,
-                const RgTextureState &usage) -> RgTextureToken;
+  [[nodiscard]] auto write_texture(RgPassId pass, RgTextureId dst,
+                                   RgTextureId texture,
+                                   const TextureState &usage) -> RgTextureToken;
 
   [[nodiscard]] auto add_semaphore_signal(RgSemaphoreId semaphore,
                                           VkPipelineStageFlags2 stage_mask,
@@ -667,22 +536,21 @@ class RgPassBuilder {
 public:
   [[nodiscard]] auto
   read_buffer(RgUntypedBufferId buffer,
-              const RgBufferState &usage) -> RgUntypedBufferToken;
+              const BufferState &usage) -> RgUntypedBufferToken;
 
   template <typename T>
-  [[nodiscard]] auto
-  read_buffer(RgBufferId<T> buffer,
-              const RgBufferState &usage) -> RgBufferToken<T> {
+  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer,
+                                 const BufferState &usage) -> RgBufferToken<T> {
     return RgBufferToken<T>(read_buffer(RgUntypedBufferId(buffer), usage));
   }
 
   [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
-                                  const RgBufferState &usage)
+                                  const BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   template <typename T>
   [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  const RgBufferState &usage)
+                                  const BufferState &usage)
       -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
     auto [id, token] =
         write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
@@ -690,11 +558,11 @@ public:
   }
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const RgTextureState &usage,
+                                  const TextureState &usage,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   const RgTextureState &usage)
+                                   const TextureState &usage)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto write_color_attachment(

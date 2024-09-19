@@ -18,7 +18,7 @@ auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb)
 
   RgBufferToken<glsl::LuminanceHistogram> histogram_token;
   std::tie(histogram, histogram_token) = pass.write_buffer(
-      "luminance-histogram-empty", histogram, RG_TRANSFER_DST_BUFFER);
+      "luminance-histogram-empty", histogram, TRANSFER_DST_BUFFER);
 
   pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
     cmd.fill_buffer(rt.get_buffer(histogram_token), 0);
@@ -81,18 +81,17 @@ void setup_post_processing_uber_pass(const PassCommonConfig &ccfg,
 
   auto pass = rgb.create_pass({.name = "post-processing"});
 
-  rcs.hdr = pass.read_texture(cfg.hdr, RG_CS_READ_TEXTURE);
+  rcs.hdr = pass.read_texture(cfg.hdr, CS_READ_TEXTURE);
 
   glm::uvec2 viewport = scene.get_viewport();
 
   std::tie(*cfg.sdr, rcs.sdr) =
-      pass.write_texture("sdr", *cfg.sdr, RG_CS_WRITE_TEXTURE);
+      pass.write_texture("sdr", *cfg.sdr, CS_WRITE_TEXTURE);
 
   if (*cfg.histogram) {
     std::tie(*cfg.histogram, rcs.histogram) = pass.write_buffer(
-        "luminance-histogram", *cfg.histogram, RG_CS_READ_WRITE_BUFFER);
-    rcs.previous_exposure =
-        pass.read_texture(cfg.exposure, RG_CS_READ_TEXTURE, 1);
+        "luminance-histogram", *cfg.histogram, CS_READ_WRITE_BUFFER);
+    rcs.previous_exposure = pass.read_texture(cfg.exposure, CS_READ_TEXTURE, 1);
   }
 
   pass.set_compute_callback(
@@ -135,10 +134,10 @@ void setup_reduce_luminance_histogram_pass(
 
   auto pass = ccfg.rgb->create_pass({.name = "reduce-luminance-histogram"});
 
-  rcs.histogram = pass.read_buffer(cfg.histogram, RG_CS_READ_BUFFER);
+  rcs.histogram = pass.read_buffer(cfg.histogram, CS_READ_BUFFER);
 
   std::tie(std::ignore, rcs.exposure) =
-      pass.write_texture("exposure", cfg.exposure, RG_CS_WRITE_TEXTURE);
+      pass.write_texture("exposure", cfg.exposure, CS_WRITE_TEXTURE);
 
   rcs.ec = ccfg.scene->get_exposure_compensation();
 

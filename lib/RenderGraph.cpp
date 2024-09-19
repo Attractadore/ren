@@ -142,7 +142,7 @@ void RgPersistent::rotate_textures() {
     VkImageUsageFlags usage = physical_texture.usage;
     Handle<Texture> handle = physical_texture.handle;
     StorageTextureId storage_descriptor = physical_texture.storage_descriptor;
-    RgTextureState state = physical_texture.state;
+    TextureState state = physical_texture.state;
     usize last = i + 1;
     for (; last < i + RG_MAX_TEMPORAL_LAYERS; ++last) {
       RgPhysicalTexture &prev_physical_texture = m_physical_textures[last - 1];
@@ -282,7 +282,7 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
 }
 
 auto RgBuilder::add_buffer_use(RgUntypedBufferId buffer,
-                               const RgBufferState &usage) -> RgBufferUseId {
+                               const BufferState &usage) -> RgBufferUseId {
   ren_assert(buffer);
   RgBufferUseId id(m_data->m_buffer_uses.size());
   m_data->m_buffer_uses.push_back({
@@ -348,8 +348,7 @@ auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
 }
 
 auto RgBuilder::read_buffer(RgPassId pass, RgUntypedBufferId buffer,
-                            const RgBufferState &usage)
-    -> RgUntypedBufferToken {
+                            const BufferState &usage) -> RgUntypedBufferToken {
   ren_assert(buffer);
   RgBufferUseId use = add_buffer_use(buffer, usage);
   m_data->m_passes[pass].read_buffers.push_back(use);
@@ -357,7 +356,7 @@ auto RgBuilder::read_buffer(RgPassId pass, RgUntypedBufferId buffer,
 }
 
 auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name,
-                             RgUntypedBufferId src, const RgBufferState &usage)
+                             RgUntypedBufferId src, const BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   ren_assert(src);
   ren_assert(m_data->m_buffers[src].def != pass);
@@ -368,7 +367,7 @@ auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name,
 }
 
 auto RgBuilder::add_texture_use(RgTextureId texture,
-                                const RgTextureState &usage) -> RgTextureUseId {
+                                const TextureState &usage) -> RgTextureUseId {
   ren_assert(texture);
   RgTextureUseId id(m_data->m_texture_uses.size());
   m_data->m_texture_uses.push_back({
@@ -401,7 +400,7 @@ auto RgBuilder::create_virtual_texture(RgPassId pass, RgDebugName name,
 }
 
 auto RgBuilder::read_texture(RgPassId pass, RgTextureId texture,
-                             const RgTextureState &usage,
+                             const TextureState &usage,
                              u32 temporal_layer) -> RgTextureToken {
   ren_assert(texture);
   RgPhysicalTextureId physical_texture = m_rgp->m_textures[texture].parent;
@@ -420,7 +419,7 @@ auto RgBuilder::read_texture(RgPassId pass, RgTextureId texture,
 }
 
 auto RgBuilder::write_texture(RgPassId pass, RgDebugName name, RgTextureId src,
-                              const RgTextureState &usage)
+                              const TextureState &usage)
     -> std::tuple<RgTextureId, RgTextureToken> {
   ren_assert(src);
   ren_assert(m_rgp->m_textures[src].def != pass);
@@ -432,7 +431,7 @@ auto RgBuilder::write_texture(RgPassId pass, RgDebugName name, RgTextureId src,
 
 auto RgBuilder::write_texture(RgPassId pass, RgTextureId dst_id,
                               RgTextureId src_id,
-                              const RgTextureState &usage) -> RgTextureToken {
+                              const TextureState &usage) -> RgTextureToken {
   ren_assert(pass);
   ren_assert(dst_id);
   ren_assert(src_id);
@@ -452,7 +451,7 @@ auto RgBuilder::write_texture(RgPassId pass, RgTextureId dst_id,
 
 void RgBuilder::set_external_buffer(RgUntypedBufferId id,
                                     const BufferView &view,
-                                    const RgBufferState &state) {
+                                    const BufferState &state) {
   RgPhysicalBufferId physical_buffer_id = m_data->m_buffers[id].parent;
   ren_assert(m_data->m_external_buffers[physical_buffer_id]);
   RgPhysicalBuffer &physical_buffer =
@@ -462,7 +461,7 @@ void RgBuilder::set_external_buffer(RgUntypedBufferId id,
 }
 
 void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle,
-                                     const RgTextureState &state) {
+                                     const TextureState &state) {
   RgPhysicalTextureId physical_texture_id = m_rgp->m_textures[id].parent;
   ren_assert(m_rgp->m_external_textures[physical_texture_id]);
   RgPhysicalTexture &physical_texture =
@@ -705,10 +704,10 @@ void RgBuilder::alloc_textures() {
 #endif
       });
       RgTextureToken src = read_texture(pass.m_pass, src_physical_texture.id,
-                                        RG_TRANSFER_SRC_TEXTURE);
+                                        TRANSFER_SRC_TEXTURE);
       RgTextureToken dst =
           write_texture(pass.m_pass, physical_texture->id,
-                        physical_texture->init_id, RG_TRANSFER_DST_TEXTURE);
+                        physical_texture->init_id, TRANSFER_DST_TEXTURE);
       pass.set_callback([src, dst](Renderer &renderer, const RgRuntime &rg,
                                    CommandRecorder &cmd) {
         cmd.copy_texture(rg.get_texture(src), rg.get_texture(dst));
@@ -865,14 +864,14 @@ void RgBuilder::place_barriers_and_semaphores() {
       VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
       VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 
-  Vector<RgBufferState> buffer_after_write_hazard_src_states(
+  Vector<BufferState> buffer_after_write_hazard_src_states(
       m_data->m_physical_buffers.size());
   Vector<VkPipelineStageFlags2> buffer_after_read_hazard_src_states(
       m_data->m_physical_buffers.size());
 
   for (auto i : range(m_data->m_physical_buffers.size())) {
     RgPhysicalBuffer &physical_buffer = m_data->m_physical_buffers[i];
-    const RgBufferState &state = physical_buffer.state;
+    const BufferState &state = physical_buffer.state;
     if (state.access_mask & WRITE_ONLY_ACCESS_MASK) {
       buffer_after_write_hazard_src_states[i] = {
           .stage_mask = state.stage_mask,
@@ -883,12 +882,7 @@ void RgBuilder::place_barriers_and_semaphores() {
     }
   }
 
-  struct TextureUsageWithoutLayout {
-    VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
-    VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
-  };
-
-  Vector<TextureUsageWithoutLayout> texture_after_write_hazard_src_states(
+  Vector<MemoryState> texture_after_write_hazard_src_states(
       m_rgp->m_physical_textures.size());
   Vector<VkPipelineStageFlags2> texture_after_read_hazard_src_states(
       m_rgp->m_physical_textures.size());
@@ -899,7 +893,7 @@ void RgBuilder::place_barriers_and_semaphores() {
     if (!physical_texture.handle) {
       continue;
     }
-    const RgTextureState &state = physical_texture.state;
+    const TextureState &state = physical_texture.state;
     if (state.access_mask & WRITE_ONLY_ACCESS_MASK) {
       texture_after_write_hazard_src_states[i] = {
           .stage_mask = state.stage_mask,
@@ -956,7 +950,7 @@ void RgBuilder::place_barriers_and_semaphores() {
       VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
 
       if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
-        RgBufferState &after_write_state =
+        BufferState &after_write_state =
             buffer_after_write_hazard_src_states[physical_buffer];
         // Reset the source stage mask that the
         // next WAR hazard will use
@@ -999,7 +993,7 @@ void RgBuilder::place_barriers_and_semaphores() {
         // be merged, since if they are issued
         // separately they might cause the
         // cache to be flushed multiple times
-        const RgBufferState &after_write_state =
+        const BufferState &after_write_state =
             buffer_after_write_hazard_src_states[physical_buffer];
         src_stage_mask = after_write_state.stage_mask;
         src_access_mask = after_write_state.access_mask;
@@ -1052,7 +1046,7 @@ void RgBuilder::place_barriers_and_semaphores() {
         VkAccessFlagBits2 src_access_mask = VK_ACCESS_2_NONE;
 
         if (dst_access_mask & WRITE_ONLY_ACCESS_MASK) {
-          TextureUsageWithoutLayout &after_write_state =
+          MemoryState &after_write_state =
               texture_after_write_hazard_src_states[physical_texture];
           src_stage_mask = std::exchange(
               texture_after_read_hazard_src_states[physical_texture],
@@ -1065,7 +1059,7 @@ void RgBuilder::place_barriers_and_semaphores() {
           after_write_state.access_mask =
               dst_access_mask & WRITE_ONLY_ACCESS_MASK;
         } else {
-          const TextureUsageWithoutLayout &after_write_state =
+          const MemoryState &after_write_state =
               texture_after_write_hazard_src_states[physical_texture];
           src_stage_mask = after_write_state.stage_mask;
           src_access_mask = after_write_state.access_mask;
@@ -1088,7 +1082,7 @@ void RgBuilder::place_barriers_and_semaphores() {
         // operations, so only to take care of WAR
         // and WAW hazards in this case
 
-        TextureUsageWithoutLayout &after_write_state =
+        MemoryState &after_write_state =
             texture_after_write_hazard_src_states[physical_texture];
         // If this is a WAR hazard, must wait for
         // all previous reads to finish and make
@@ -1180,7 +1174,7 @@ void RgBuilder::place_barriers_and_semaphores() {
     VkPipelineStageFlags2 stage_mask = buffer_after_read_hazard_src_states[i];
     VkAccessFlags2 access_mask = 0;
     if (!stage_mask) {
-      const RgBufferState &state = buffer_after_write_hazard_src_states[i];
+      const BufferState &state = buffer_after_write_hazard_src_states[i];
       stage_mask = state.stage_mask;
       access_mask = state.access_mask;
     }
@@ -1195,8 +1189,7 @@ void RgBuilder::place_barriers_and_semaphores() {
     VkPipelineStageFlags2 stage_mask = texture_after_read_hazard_src_states[i];
     VkAccessFlags2 access_mask = 0;
     if (!stage_mask) {
-      const TextureUsageWithoutLayout &state =
-          texture_after_write_hazard_src_states[i];
+      const MemoryState &state = texture_after_write_hazard_src_states[i];
       stage_mask = state.stage_mask;
       access_mask = state.access_mask;
     }
@@ -1234,7 +1227,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
 }
 
 auto RgBuilder::get_final_buffer_state(RgUntypedBufferId buffer) const
-    -> RgBufferState {
+    -> BufferState {
   ren_assert(buffer);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
   return m_data->m_physical_buffers[physical_buffer].state;
@@ -1246,25 +1239,24 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
 }
 
 auto RgPassBuilder::read_buffer(RgUntypedBufferId buffer,
-                                const RgBufferState &usage)
+                                const BufferState &usage)
     -> RgUntypedBufferToken {
   return m_builder->read_buffer(m_pass, buffer, usage);
 }
 
 auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
-                                 const RgBufferState &usage)
+                                 const BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   return m_builder->write_buffer(m_pass, std::move(name), buffer, usage);
 }
 
-auto RgPassBuilder::read_texture(RgTextureId texture,
-                                 const RgTextureState &usage,
+auto RgPassBuilder::read_texture(RgTextureId texture, const TextureState &usage,
                                  u32 temporal_layer) -> RgTextureToken {
   return m_builder->read_texture(m_pass, texture, usage, temporal_layer);
 }
 
 auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
-                                  const RgTextureState &usage)
+                                  const TextureState &usage)
     -> std::tuple<RgTextureId, RgTextureToken> {
   return m_builder->write_texture(m_pass, std::move(name), texture, usage);
 }
@@ -1297,7 +1289,7 @@ auto RgPassBuilder::write_color_attachment(
     RgDebugName name, RgTextureId texture, const ColorAttachmentOperations &ops,
     u32 index) -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
-      write_texture(std::move(name), texture, RG_COLOR_ATTACHMENT);
+      write_texture(std::move(name), texture, COLOR_ATTACHMENT);
   add_color_attachment(index, token, ops);
   return {new_texture, token};
 }
@@ -1305,7 +1297,7 @@ auto RgPassBuilder::write_color_attachment(
 auto RgPassBuilder::read_depth_attachment(
     RgTextureId texture, u32 temporal_layer) -> RgTextureToken {
   RgTextureToken token =
-      read_texture(texture, RG_READ_DEPTH_ATTACHMENT, temporal_layer);
+      read_texture(texture, READ_DEPTH_ATTACHMENT, temporal_layer);
   add_depth_attachment(token, {
                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                   .store = VK_ATTACHMENT_STORE_OP_NONE,
@@ -1318,7 +1310,7 @@ auto RgPassBuilder::write_depth_attachment(RgDebugName name,
                                            const DepthAttachmentOperations &ops)
     -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
-      write_texture(std::move(name), texture, RG_READ_WRITE_DEPTH_ATTACHMENT);
+      write_texture(std::move(name), texture, READ_WRITE_DEPTH_ATTACHMENT);
   add_depth_attachment(token, ops);
   return {new_texture, token};
 }

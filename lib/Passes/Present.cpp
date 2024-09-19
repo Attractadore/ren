@@ -35,11 +35,10 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
 
   blit.wait_semaphore(ccfg.rcs->acquire_semaphore);
 
-  RgTextureToken src_token =
-      blit.read_texture(cfg.src, RG_TRANSFER_SRC_TEXTURE);
+  RgTextureToken src_token = blit.read_texture(cfg.src, TRANSFER_SRC_TEXTURE);
 
   auto [final_backbuffer, backbuffer_token] = blit.write_texture(
-      "final-backbuffer", ccfg.rcs->backbuffer, RG_TRANSFER_DST_TEXTURE);
+      "final-backbuffer", ccfg.rcs->backbuffer, TRANSFER_DST_TEXTURE);
 
   blit.set_callback(
       [=](Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
@@ -69,7 +68,7 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
   transition.set_callback(
       [](Renderer &, const RgRuntime &, CommandRecorder &) {});
 
-  (void)transition.read_texture(final_backbuffer, RG_PRESENT_TEXTURE);
+  (void)transition.read_texture(final_backbuffer, PRESENT_SRC_TEXTURE);
 
   transition.signal_semaphore(ccfg.rcs->present_semaphore);
 

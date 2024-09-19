@@ -165,9 +165,9 @@ protected:
     rcs.pipeline = batch.pipeline;
     rcs.indices = batch.index_buffer_view;
 
-    rcs.commands = pass.read_buffer(commands, RG_INDIRECT_COMMAND_BUFFER);
+    rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
     rcs.command_count =
-        pass.read_buffer(command_count, RG_INDIRECT_COMMAND_BUFFER);
+        pass.read_buffer(command_count, INDIRECT_COMMAND_SRC_BUFFER);
 
     rcs.ext = self.get_render_pass_resources(pass);
 

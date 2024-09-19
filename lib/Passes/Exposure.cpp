@@ -29,8 +29,8 @@ void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
   }
 
   RgTextureToken token;
-  std::tie(*cfg.exposure, token) = pass.write_texture(
-      "exposure", ccfg.rcs->exposure, RG_TRANSFER_DST_TEXTURE);
+  std::tie(*cfg.exposure, token) =
+      pass.write_texture("exposure", ccfg.rcs->exposure, TRANSFER_DST_TEXTURE);
   *cfg.temporal_layer = 0;
 
   const Scene &scene = *ccfg.scene;
@@ -56,7 +56,7 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
         .ext =
             RgTextureTemporalInfo{
                 .num_temporal_layers = 2,
-                .usage = RG_TRANSFER_DST_TEXTURE,
+                .usage = TRANSFER_DST_TEXTURE,
                 .cb =
                     [](Handle<Texture> texture, Renderer &,
                        CommandRecorder &cmd) {

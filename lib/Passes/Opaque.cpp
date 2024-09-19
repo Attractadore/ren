@@ -99,7 +99,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.materials, rcs.materials) =
-      pass.write_buffer("materials", *cfg.materials, RG_HOST_WRITE_BUFFER);
+      pass.write_buffer("materials", *cfg.materials, HOST_WRITE_BUFFER);
 
   *cfg.meshes = rgb.create_buffer<glsl::Mesh>({
       .heap = BufferHeap::Dynamic,
@@ -107,7 +107,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.meshes, rcs.meshes) =
-      pass.write_buffer("meshes", *cfg.meshes, RG_HOST_WRITE_BUFFER);
+      pass.write_buffer("meshes", *cfg.meshes, HOST_WRITE_BUFFER);
 
   usize num_mesh_instances = scene.get_mesh_instances().size();
 
@@ -117,7 +117,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.mesh_instances, rcs.mesh_instances) = pass.write_buffer(
-      "mesh-instances", *cfg.mesh_instances, RG_HOST_WRITE_BUFFER);
+      "mesh-instances", *cfg.mesh_instances, HOST_WRITE_BUFFER);
 
   *cfg.transform_matrices = rgb.create_buffer<glm::mat4x3>({
       .heap = BufferHeap::Dynamic,
@@ -125,7 +125,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.transform_matrices, rcs.transform_matrices) = pass.write_buffer(
-      "transform-matrices", *cfg.transform_matrices, RG_HOST_WRITE_BUFFER);
+      "transform-matrices", *cfg.transform_matrices, HOST_WRITE_BUFFER);
 
   *cfg.normal_matrices = rgb.create_buffer<glm::mat3>({
       .heap = BufferHeap::Dynamic,
@@ -133,7 +133,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.normal_matrices, rcs.normal_matrices) = pass.write_buffer(
-      "normal-matrices", *cfg.normal_matrices, RG_HOST_WRITE_BUFFER);
+      "normal-matrices", *cfg.normal_matrices, HOST_WRITE_BUFFER);
 
   *cfg.directional_lights = rgb.create_buffer<glsl::DirLight>({
       .heap = BufferHeap::Dynamic,
@@ -141,7 +141,7 @@ void setup_upload_pass(const PassCommonConfig &ccfg,
   });
 
   std::tie(*cfg.directional_lights, rcs.directional_lights) = pass.write_buffer(
-      "directional-lights", *cfg.directional_lights, RG_HOST_WRITE_BUFFER);
+      "directional-lights", *cfg.directional_lights, HOST_WRITE_BUFFER);
 
   pass.set_host_callback([rcs](Renderer &renderer, const RgRuntime &rg) {
     run_upload_pass(renderer, rg, rcs);

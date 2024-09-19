@@ -39,6 +39,76 @@ struct Texture {
   u32 num_array_layers;
 };
 
+struct TextureState {
+  /// Pipeline stages in which the texture is accessed
+  VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
+  /// Types of accesses performed on the texture
+  VkAccessFlags2 access_mask = VK_ACCESS_2_NONE;
+  /// Layout of the texture
+  VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+};
+
+constexpr TextureState FS_READ_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr TextureState CS_READ_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr TextureState CS_WRITE_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr TextureState CS_READ_WRITE_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_GENERAL,
+};
+
+constexpr TextureState COLOR_ATTACHMENT = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+    .access_mask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+};
+
+constexpr TextureState READ_WRITE_DEPTH_ATTACHMENT = {
+    .stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                  VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+    .access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                   VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+};
+
+constexpr TextureState READ_DEPTH_ATTACHMENT = {
+    .stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT,
+    .access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+};
+
+constexpr TextureState TRANSFER_SRC_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+    .access_mask = VK_ACCESS_2_TRANSFER_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+};
+
+constexpr TextureState TRANSFER_DST_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+    .access_mask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+    .layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+};
+
+constexpr TextureState PRESENT_SRC_TEXTURE = {
+    .layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+};
+
 struct TextureSwizzle {
   VkComponentSwizzle r = VK_COMPONENT_SWIZZLE_IDENTITY;
   VkComponentSwizzle g = VK_COMPONENT_SWIZZLE_IDENTITY;
