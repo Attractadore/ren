@@ -131,7 +131,7 @@ void ResourceUploader::stage_buffer(Renderer &renderer,
                                     Span<const std::byte> data,
                                     const BufferView &buffer) {
   usize size = data.size_bytes();
-  ren_assert(size <= buffer.size);
+  ren_assert(size <= buffer.size_bytes());
   auto [ptr, _, staging_buffer] = allocator.allocate(size);
   std::memcpy(ptr, data.data(), size);
   m_buffer_copies.push_back({

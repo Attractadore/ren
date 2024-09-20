@@ -298,7 +298,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
   for (const IndexPool &pool : scene.get_index_pools()) {
     index_pools.push_back({
         .buffer = pool.indices,
-        .size = sizeof(u8[glsl::INDEX_POOL_SIZE]),
+        .count = sizeof(u8[glsl::INDEX_POOL_SIZE]),
     });
   }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "DebugNames.hpp"
+#include "Support/Assert.hpp"
 #include "Support/GenIndex.hpp"
 #include "Support/Hash.hpp"
 #include "Support/StdDef.hpp"
@@ -20,7 +21,10 @@ struct BufferCreateInfo {
   REN_DEBUG_NAME_FIELD("Buffer");
   BufferHeap heap = BufferHeap::Static;
   VkBufferUsageFlags usage = 0;
-  usize size;
+  union {
+    usize size = 0;
+    usize count;
+  };
 };
 
 struct Buffer {
@@ -94,28 +98,49 @@ constexpr BufferState INDIRECT_COMMAND_SRC_BUFFER = {
     .access_mask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
 };
 
-struct BufferView {
+template <typename T> struct BufferSlice {
   Handle<Buffer> buffer;
   usize offset = 0;
-  usize size = 0;
+  usize count = 0;
 
 public:
-  auto subbuffer(usize offset, usize size) const -> BufferView;
+  bool operator==(const BufferSlice &) const = default;
 
-  auto subbuffer(usize offset) const -> BufferView;
-
-  template <typename T>
-  auto slice(usize start, usize count) const -> BufferView {
-    return subbuffer(sizeof(T) * start, sizeof(T) * count);
+  auto slice(usize start, usize new_count) const -> BufferSlice {
+    ren_assert(start <= count);
+    ren_assert(start + new_count <= count);
+    return {
+        .buffer = buffer,
+        .offset = offset + start * sizeof(T),
+        .count = new_count,
+    };
   }
 
-  template <typename T> auto slice(usize start) const -> BufferView {
-    return subbuffer(sizeof(T) * start);
+  auto slice(usize start) const -> BufferSlice {
+    ren_assert(start <= count);
+    return slice(start, count - start);
   }
 
-  bool operator==(const BufferView &) const = default;
+  auto size_bytes() const -> usize { return count * sizeof(T); }
+
+  template <typename U> explicit operator BufferSlice<U>() const {
+    ren_assert(offset % alignof(U) == 0);
+    ren_assert(size_bytes() % sizeof(U) == 0);
+    return {
+        .buffer = buffer,
+        .offset = offset,
+        .count = size_bytes() / sizeof(U),
+    };
+  }
 };
 
-REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, size);
+using BufferView = BufferSlice<std::byte>;
+
+REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, count);
+
+template <typename T> struct StatefulBufferSlice {
+  BufferSlice<T> slice;
+  BufferState state;
+};
 
 } // namespace ren

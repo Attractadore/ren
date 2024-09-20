@@ -40,8 +40,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
   render_pass.bind_graphics_pipeline(rcs.pipeline);
 
-  static_assert(sizeof(ImDrawIdx) * 8 == 16);
-  render_pass.bind_index_buffer(index_buffer, VK_INDEX_TYPE_UINT16);
+  render_pass.bind_index_buffer(index_buffer);
 
   render_pass.bind_descriptor_sets({rg.get_texture_set()});
 

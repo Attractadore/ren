@@ -222,17 +222,17 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   auto upload_buffer = [&]<typename T>(const Vector<T> &data,
                                        Handle<Buffer> &buffer, DebugName name) {
     if (not data.empty()) {
-      BufferView view = m_arena.create_buffer({
+      BufferSlice<T> slice = m_arena.create_buffer<T>({
           .name = std::move(name),
           .heap = BufferHeap::Static,
           .usage = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR |
                    VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
-          .size = Span(data).size_bytes(),
+          .count = data.size(),
       });
-      buffer = view.buffer;
+      buffer = slice.buffer;
       m_resource_uploader.stage_buffer(*m_renderer,
                                        get_frame_resources().upload_allocator,
-                                       Span(data), view);
+                                       Span(data), slice);
     }
   };
 
@@ -280,8 +280,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   m_resource_uploader.stage_buffer(
       *m_renderer, get_frame_resources().upload_allocator,
       Span(meshlet_triangles),
-      m_renderer->get_buffer_view(index_pool.indices)
-          .slice<u8>(base_triangle, num_triangles * 3));
+      m_renderer->get_buffer_slice<u8>(index_pool.indices)
+          .slice(base_triangle, num_triangles * 3));
 
   Handle<Mesh> h = m_meshes.insert(mesh);
 

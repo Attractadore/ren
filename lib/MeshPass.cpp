@@ -275,8 +275,7 @@ void MeshPassClass::Instance::Instance::record_culling(
                 .proj_view = rcs.proj_view,
             });
             pass.dispatch_indirect(
-                rg.get_buffer(rcs.meshlet_bucket_commands)
-                    .slice<glsl::DispatchIndirectCommand>(bucket));
+                rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));
           }
         });
   }

@@ -25,13 +25,14 @@ public:
     return *this;
   }
 
-  auto create_buffer(const BufferCreateInfo &&create_info) -> BufferView
+  template <typename T = std::byte>
+  auto create_buffer(BufferCreateInfo &&create_info) -> BufferSlice<T>
     requires IsArenaResource<Buffer>
   {
-    usize size = create_info.size;
+    create_info.size = create_info.count * sizeof(T);
     return {
         .buffer = insert(m_renderer->create_buffer(std::move(create_info))),
-        .size = size,
+        .count = create_info.count,
     };
   }
 

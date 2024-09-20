@@ -120,6 +120,18 @@ public:
 
   auto get_buffer_view(Handle<Buffer> buffer) const -> BufferView;
 
+  template <typename T>
+  auto try_get_buffer_slice(Handle<Buffer> buffer) const
+      -> Optional<BufferSlice<T>> {
+    try_get_buffer_view(buffer).map(
+        [](const BufferView &view) { return BufferSlice<T>(view); });
+  }
+
+  template <typename T>
+  auto get_buffer_slice(Handle<Buffer> buffer) const -> BufferSlice<T> {
+    return BufferSlice<T>(get_buffer_view(buffer));
+  }
+
   template <typename T = std::byte>
   auto map_buffer(Handle<Buffer> buffer, usize map_offset = 0) const -> T * {
     auto *ptr = get_buffer(buffer).ptr;
@@ -128,9 +140,9 @@ public:
     return (T *)(ptr + map_offset);
   }
 
-  template <typename T = std::byte>
-  auto map_buffer(const BufferView &view, usize map_offset = 0) const -> T * {
-    return map_buffer<T>(view.buffer, view.offset + map_offset);
+  template <typename T>
+  auto map_buffer(const BufferSlice<T> &slice) const -> T * {
+    return map_buffer<T>(slice.buffer, slice.offset);
   }
 
   template <typename T>
@@ -141,9 +153,9 @@ public:
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(const BufferView &view,
-                             u64 map_offset = 0) const -> DevicePtr<T> {
-    return get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
+  auto
+  get_buffer_device_ptr(const BufferSlice<T> &slice) const -> DevicePtr<T> {
+    return get_buffer_device_ptr<T>(slice.buffer, slice.offset);
   }
 
   template <typename T>
@@ -158,9 +170,9 @@ public:
   }
 
   template <typename T>
-  auto try_get_buffer_device_ptr(const BufferView &view,
-                                 u64 map_offset = 0) const -> DevicePtr<T> {
-    return try_get_buffer_device_ptr<T>(view.buffer, view.offset + map_offset);
+  auto
+  try_get_buffer_device_ptr(const BufferSlice<T> &slice) const -> DevicePtr<T> {
+    return try_get_buffer_device_ptr<T>(slice.buffer, slice.offset);
   }
 
   [[nodiscard]] auto

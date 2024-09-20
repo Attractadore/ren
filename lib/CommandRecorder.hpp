@@ -7,6 +7,7 @@
 #include "Support/Span.hpp"
 #include "Support/Vector.hpp"
 #include "Texture.hpp"
+#include "glsl/Indirect.h"
 
 #include <glm/glm.hpp>
 
@@ -90,6 +91,11 @@ public:
                    TempSpan<const VkBufferCopy> regions);
 
   void copy_buffer(const BufferView &src, const BufferView &dst);
+
+  template <typename T>
+  void copy_buffer(const BufferSlice<T> &src, const BufferSlice<T> &dst) {
+    copy_buffer(BufferView(src), BufferView(dst));
+  }
 
   void copy_buffer_to_texture(Handle<Buffer> src, Handle<Texture> dst,
                               TempSpan<const VkBufferImageCopy> regions);
@@ -204,8 +210,10 @@ public:
 
   void bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
                          u32 offset = 0);
-
-  void bind_index_buffer(const BufferView &buffer, VkIndexType type);
+  void bind_index_buffer(const BufferView &view, VkIndexType type);
+  void bind_index_buffer(const BufferSlice<u8> &slice);
+  void bind_index_buffer(const BufferSlice<u16> &slice);
+  void bind_index_buffer(const BufferSlice<u32> &slice);
 
   void draw(const DrawInfo &&draw_info);
 
@@ -277,6 +285,8 @@ public:
   void dispatch_threads(glm::uvec3 size, glm::uvec3 group_size);
 
   void dispatch_indirect(const BufferView &view);
+  void
+  dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
 };
 
 class DebugRegion {

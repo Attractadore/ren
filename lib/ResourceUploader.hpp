@@ -29,8 +29,9 @@ class ResourceUploader {
 public:
   template <typename T>
   void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,
-                    Span<T> data, const BufferView &buffer) {
-    stage_buffer(renderer, allocator, data.as_bytes(), buffer);
+                    Span<T> data,
+                    const BufferSlice<std::remove_const_t<T>> &slice) {
+    stage_buffer(renderer, allocator, data.as_bytes(), BufferView(slice));
   }
 
   void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,

@@ -46,7 +46,6 @@ target_compile_definitions(
 add_library(
   ren
   ren.cpp
-  Buffer.cpp
   BumpAllocator.cpp
   Camera.cpp
   CommandAllocator.cpp

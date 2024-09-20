@@ -58,7 +58,7 @@ public:
     }
 
     Allocation<T> allocation =
-        Policy::template allocate<T>(m_blocks[m_block], m_block_offset, size);
+        Policy::template allocate<T>(m_blocks[m_block], m_block_offset, count);
 
     m_block_offset += size;
 
@@ -111,19 +111,19 @@ struct DeviceBumpAllocationPolicy {
 
   template <typename T> struct Allocation {
     DevicePtr<T> ptr;
-    BufferView view;
+    BufferSlice<T> slice;
   };
 
   template <typename T>
   static auto allocate(const Block &block, usize offset,
-                       usize size) -> Allocation<T> {
+                       usize count) -> Allocation<T> {
     return {
         .ptr = DevicePtr<T>(block.ptr + offset),
-        .view =
+        .slice =
             {
                 .buffer = block.buffer,
                 .offset = offset,
-                .size = size,
+                .count = count,
             },
     };
   }
@@ -142,7 +142,7 @@ struct UploadBumpAllocationPolicy {
   template <typename T> struct Allocation {
     T *host_ptr = nullptr;
     DevicePtr<T> device_ptr;
-    BufferView view;
+    BufferSlice<T> slice;
   };
 
   static auto create_block(Renderer &renderer, ResourceArena &arena,
@@ -169,15 +169,15 @@ struct UploadBumpAllocationPolicy {
 
   template <typename T>
   static auto allocate(const Block &block, usize offset,
-                       usize size) -> Allocation<T> {
+                       usize count) -> Allocation<T> {
     return {
         .host_ptr = (T *)(block.host_ptr + offset),
         .device_ptr = DevicePtr<T>(block.device_ptr + offset),
-        .view =
+        .slice =
             {
                 .buffer = block.buffer,
                 .offset = offset,
-                .size = size,
+                .count = count,
             },
     };
   }

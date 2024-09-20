@@ -21,7 +21,7 @@ auto setup_initialize_luminance_histogram_pass(RgBuilder &rgb)
       "luminance-histogram-empty", histogram, TRANSFER_DST_BUFFER);
 
   pass.set_callback([=](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
-    cmd.fill_buffer(rt.get_buffer(histogram_token), 0);
+    cmd.fill_buffer(BufferView(rt.get_buffer(histogram_token)), 0);
   });
 
   return histogram;

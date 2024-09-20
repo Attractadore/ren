@@ -180,14 +180,16 @@ struct RgPass {
       ext;
 };
 
-struct RgBufferExternalCreateInfo {};
-
 struct RgBufferCreateInfo {
+  /// Buffer name.
+  REN_RG_DEBUG_NAME_TYPE name;
   /// Memory heap from which to allocate buffer.
   BufferHeap heap = BufferHeap::Dynamic;
   /// Buffer size.
-  usize size = 1;
-  Variant<Monostate, RgBufferExternalCreateInfo> ext;
+  union {
+    usize size = 1;
+    usize count;
+  };
 };
 
 struct RgPhysicalBuffer {
@@ -306,7 +308,6 @@ struct RgBuildData {
   Vector<RgPassId> m_schedule;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
-  DynamicBitset m_external_buffers;
   GenArray<RgBuffer> m_buffers;
   Vector<RgBufferUse> m_buffer_uses;
 
@@ -421,8 +422,21 @@ public:
   template <typename T>
   [[nodiscard]] auto
   create_buffer(RgBufferCreateInfo &&create_info) -> RgBufferId<T> {
-    create_info.size *= sizeof(T);
+    create_info.size = create_info.count * sizeof(T);
     return RgBufferId<T>(create_buffer(std::move(create_info)));
+  }
+
+  template <typename T>
+  [[nodiscard]] auto
+  create_buffer(RgDebugName name,
+                const StatefulBufferSlice<T> &slice) -> RgBufferId<T> {
+    RgBufferId<T> buffer = create_buffer<T>({
+        .name = std::move(name),
+        .heap = m_renderer->get_buffer(slice.slice.buffer).heap,
+        .count = slice.slice.count,
+    });
+    set_external_buffer(buffer, BufferView(slice.slice), slice.state);
+    return buffer;
   }
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
@@ -640,28 +654,31 @@ public:
   auto get_buffer(RgUntypedBufferToken buffer) const -> const BufferView &;
 
   template <typename T>
-  auto get_buffer_device_ptr(RgUntypedBufferToken buffer,
-                             usize offset = 0) const -> DevicePtr<T> {
-    DevicePtr<T> ptr =
-        m_rg->m_renderer->get_buffer_device_ptr<T>(get_buffer(buffer), offset);
+  auto get_buffer(RgBufferToken<T> buffer) const -> BufferSlice<T> {
+    return BufferSlice<T>(get_buffer(RgUntypedBufferToken(buffer)));
+  }
+
+  template <typename T>
+  auto
+  get_buffer_device_ptr(RgUntypedBufferToken buffer) const -> DevicePtr<T> {
+    DevicePtr<T> ptr = m_rg->m_renderer->get_buffer_device_ptr(
+        BufferSlice<T>(get_buffer(buffer)));
     ren_assert(ptr);
     return ptr;
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(RgBufferToken<T> buffer,
-                             usize offset = 0) const -> DevicePtr<T> {
-    return get_buffer_device_ptr<T>(RgUntypedBufferToken(buffer), offset);
+  auto get_buffer_device_ptr(RgBufferToken<T> buffer) const -> DevicePtr<T> {
+    return get_buffer_device_ptr<T>(RgUntypedBufferToken(buffer));
   }
 
   template <typename T>
-  auto map_buffer(RgUntypedBufferToken buffer, usize offset = 0) const -> T * {
-    return m_rg->m_renderer->map_buffer<T>(get_buffer(buffer), offset);
+  auto map_buffer(RgUntypedBufferToken buffer) const -> T * {
+    return m_rg->m_renderer->map_buffer(BufferSlice<T>(get_buffer(buffer)));
   }
 
-  template <typename T>
-  auto map_buffer(RgBufferToken<T> buffer, usize offset = 0) const -> T * {
-    return map_buffer<T>(RgUntypedBufferToken(buffer), offset);
+  template <typename T> auto map_buffer(RgBufferToken<T> buffer) const -> T * {
+    return map_buffer<T>(RgUntypedBufferToken(buffer));
   }
 
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;

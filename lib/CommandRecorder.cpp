@@ -67,12 +67,12 @@ void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
 
 void CommandRecorder::copy_buffer(const BufferView &src,
                                   const BufferView &dst) {
-  ren_assert(src.size <= dst.size);
+  ren_assert(src.size_bytes() <= dst.size_bytes());
   copy_buffer(src.buffer, dst.buffer,
               {{
                   .srcOffset = src.offset,
                   .dstOffset = dst.offset,
-                  .size = src.size,
+                  .size = src.size_bytes(),
               }});
 }
 
@@ -104,18 +104,18 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
 }
 
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
-  ren_assert(view.offset % sizeof(u32) == 0);
-  ren_assert(view.size % sizeof(u32) == 0);
+  ren_assert(view.offset % alignof(u32) == 0);
+  ren_assert(view.size_bytes() % sizeof(u32) == 0);
   vkCmdFillBuffer(m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle,
-                  view.offset, view.size, value);
+                  view.offset, view.size_bytes(), value);
 };
 
 void CommandRecorder::update_buffer(const BufferView &view,
                                     TempSpan<const std::byte> data) {
-  ren_assert(view.size >= data.size());
+  ren_assert(view.size_bytes() >= data.size());
   ren_assert(data.size() % 4 == 0);
   vkCmdUpdateBuffer(m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle,
-                    view.offset, view.size, data.data());
+                    view.offset, view.size_bytes(), data.data());
 }
 
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
@@ -391,6 +391,18 @@ void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
   bind_index_buffer(view.buffer, type, view.offset);
 }
 
+void RenderPass::bind_index_buffer(const BufferSlice<u8> &slice) {
+  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT8_EXT, slice.offset);
+}
+
+void RenderPass::bind_index_buffer(const BufferSlice<u16> &slice) {
+  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT16, slice.offset);
+}
+
+void RenderPass::bind_index_buffer(const BufferSlice<u32> &slice) {
+  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT32, slice.offset);
+}
+
 void RenderPass::draw(const DrawInfo &&draw_info) {
   vkCmdDraw(m_cmd_buffer, draw_info.num_vertices, draw_info.num_instances,
             draw_info.first_vertex, draw_info.first_instance);
@@ -404,7 +416,7 @@ void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
 
 void RenderPass::draw_indirect(const BufferView &view, usize stride) {
   const Buffer &buffer = m_renderer->get_buffer(view.buffer);
-  usize count = (view.size + stride - sizeof(VkDrawIndirectCommand)) /
+  usize count = (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
                 sizeof(VkDrawIndirectCommand);
   vkCmdDrawIndirect(m_cmd_buffer, buffer.handle, view.offset, count, stride);
 }
@@ -413,8 +425,9 @@ void RenderPass::draw_indirect_count(const BufferView &view,
                                      const BufferView &counter, usize stride) {
   const Buffer &buffer = m_renderer->get_buffer(view.buffer);
   const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
-  usize max_count = (view.size + stride - sizeof(VkDrawIndirectCommand)) /
-                    sizeof(VkDrawIndirectCommand);
+  usize max_count =
+      (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
+      sizeof(VkDrawIndirectCommand);
   vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle, view.offset,
                                 count_buffer.handle, counter.offset, max_count,
                                 stride);
@@ -422,8 +435,9 @@ void RenderPass::draw_indirect_count(const BufferView &view,
 
 void RenderPass::draw_indexed_indirect(const BufferView &view, usize stride) {
   const Buffer &buffer = m_renderer->get_buffer(view.buffer);
-  usize count = (view.size + stride - sizeof(VkDrawIndexedIndirectCommand)) /
-                sizeof(VkDrawIndexedIndirectCommand);
+  usize count =
+      (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
+      sizeof(VkDrawIndexedIndirectCommand);
   vkCmdDrawIndexedIndirect(m_cmd_buffer, buffer.handle, view.offset, count,
                            stride);
 }
@@ -434,7 +448,7 @@ void RenderPass::draw_indexed_indirect_count(const BufferView &view,
   const Buffer &buffer = m_renderer->get_buffer(view.buffer);
   const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
   usize max_count =
-      (view.size + stride - sizeof(VkDrawIndexedIndirectCommand)) /
+      (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
       sizeof(VkDrawIndexedIndirectCommand);
   vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle, view.offset,
                                 count_buffer.handle, counter.offset, max_count,
@@ -509,9 +523,14 @@ void ComputePass::dispatch_threads(glm::uvec3 size, glm::uvec3 group_size) {
 }
 
 void ComputePass::dispatch_indirect(const BufferView &view) {
-  ren_assert(view.size >= sizeof(VkDispatchIndirectCommand));
+  ren_assert(view.size_bytes() >= sizeof(VkDispatchIndirectCommand));
   vkCmdDispatchIndirect(
       m_cmd_buffer, m_renderer->get_buffer(view.buffer).handle, view.offset);
+}
+
+void ComputePass::dispatch_indirect(
+    const BufferSlice<glsl::DispatchIndirectCommand> &slice) {
+  dispatch_indirect(BufferView(slice));
 }
 
 DebugRegion::DebugRegion(VkCommandBuffer cmd_buffer, const char *label) {

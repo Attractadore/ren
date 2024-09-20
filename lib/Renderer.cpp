@@ -589,7 +589,7 @@ auto Renderer::try_get_buffer_view(Handle<Buffer> handle) const
   return try_get_buffer(handle).map([&](const Buffer &buffer) -> BufferView {
     return {
         .buffer = handle,
-        .size = buffer.size,
+        .count = buffer.size,
     };
   });
 };
@@ -598,7 +598,7 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   const auto &buffer = get_buffer(handle);
   return {
       .buffer = handle,
-      .size = buffer.size,
+      .count = buffer.size,
   };
 };
 

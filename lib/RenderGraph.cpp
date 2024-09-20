@@ -258,7 +258,6 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer) {
   bd.m_passes.clear();
   bd.m_schedule.clear();
   bd.m_physical_buffers.clear();
-  bd.m_external_buffers.clear();
   bd.m_buffers.clear();
   bd.m_buffer_uses.clear();
   bd.m_texture_uses.clear();
@@ -303,7 +302,6 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
     ren_assert(!pass);
     physical_buffer = RgPhysicalBufferId(m_data->m_physical_buffers.size());
     m_data->m_physical_buffers.emplace_back();
-    m_data->m_external_buffers.push_back(false);
   }
 
   RgUntypedBufferId buffer = m_data->m_buffers.insert({
@@ -332,18 +330,13 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
 
 auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
     -> RgUntypedBufferId {
-  RgUntypedBufferId buffer = create_virtual_buffer(NullHandle, "", NullHandle);
+  RgUntypedBufferId buffer =
+      create_virtual_buffer(NullHandle, create_info.name, NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
   m_data->m_physical_buffers[physical_buffer] = {
       .heap = create_info.heap,
       .size = create_info.size,
   };
-  create_info.ext.visit(OverloadSet{
-      [](Monostate) {},
-      [&](const RgBufferExternalCreateInfo &ext) {
-        m_data->m_external_buffers[physical_buffer] = true;
-      },
-  });
   return buffer;
 }
 
@@ -453,9 +446,9 @@ void RgBuilder::set_external_buffer(RgUntypedBufferId id,
                                     const BufferView &view,
                                     const BufferState &state) {
   RgPhysicalBufferId physical_buffer_id = m_data->m_buffers[id].parent;
-  ren_assert(m_data->m_external_buffers[physical_buffer_id]);
   RgPhysicalBuffer &physical_buffer =
       m_data->m_physical_buffers[physical_buffer_id];
+  ren_assert(!physical_buffer.view.buffer);
   physical_buffer.view = view;
   physical_buffer.state = state;
 }
@@ -749,8 +742,7 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
   for (auto i : range(m_data->m_physical_buffers.size())) {
     RgPhysicalBufferId id(i);
     RgPhysicalBuffer &physical_buffer = m_data->m_physical_buffers[id];
-    if (m_data->m_external_buffers[id]) {
-      ren_assert(physical_buffer.view.buffer);
+    if (physical_buffer.view.buffer) {
       continue;
     }
     switch (BufferHeap heap = physical_buffer.heap) {
@@ -758,12 +750,12 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
       unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
     case BufferHeap::Static: {
       physical_buffer.view =
-          device_allocator.allocate(physical_buffer.size).view;
+          device_allocator.allocate(physical_buffer.size).slice;
     } break;
     case BufferHeap::Dynamic:
     case BufferHeap::Staging: {
       physical_buffer.view =
-          upload_allocator.allocate(physical_buffer.size).view;
+          upload_allocator.allocate(physical_buffer.size).slice;
     } break;
     }
   }
