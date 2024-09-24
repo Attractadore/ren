@@ -55,4 +55,9 @@ glm::mat4 get_projection_matrix(const Camera &camera, glm::uvec2 viewport) {
   return get_projection_matrix(camera, float(viewport.x) / float(viewport.y));
 }
 
+auto get_projection_view_matrix(const Camera &camera,
+                                glm::uvec2 viewport) -> glm::mat4 {
+  return get_projection_matrix(camera, viewport) * get_view_matrix(camera);
+}
+
 } // namespace ren

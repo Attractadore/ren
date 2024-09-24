@@ -2,9 +2,12 @@
 #if REN_IMGUI
 #include "Pass.hpp"
 
+class ImGuiContext;
+
 namespace ren {
 
 struct ImGuiPassConfig {
+  ImGuiContext *ctx = nullptr;
   NotNull<RgTextureId *> sdr;
 };
 

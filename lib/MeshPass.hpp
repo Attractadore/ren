@@ -1,21 +1,27 @@
 #pragma once
 #include "Batch.hpp"
 #include "BumpAllocator.hpp"
+#include "Camera.hpp"
 #include "CommandRecorder.hpp"
-#include "Material.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "Renderer.hpp"
 #include "Support/NotNull.hpp"
 #include "TextureIdAllocator.hpp"
-#include "glsl/InstanceCullingAndLODPass.hpp"
+#include "glsl/Culling.h"
+#include "glsl/Indirect.h"
 
 namespace ren {
 
+struct SceneData;
+
 namespace glsl {
+struct Mesh;
+struct MeshInstance;
+struct Material;
 struct DirLight;
-}
+} // namespace glsl
 
 class MeshPassClass {
 public:
@@ -56,14 +62,11 @@ struct MeshPassClass::BeginInfo {
   DepthAttachmentOperations depth_attachment_ops;
   StringView depth_attachment_name;
 
-  NotNull<const GenArray<Mesh> *> host_meshes;
-  NotNull<const GenArray<Material> *> host_materials;
-  NotNull<const GenArray<MeshInstance> *> host_mesh_instances;
-  Span<const BufferView> index_pools;
   NotNull<const Pipelines *> pipelines;
 
-  u32 draw_size = 0;
-  u32 num_draw_meshlets = 0;
+  NotNull<const SceneData *> scene;
+  Camera camera;
+  glm::uvec2 viewport = {};
 
   RgBufferId<glsl::Mesh> meshes;
   RgBufferId<glsl::Material> materials;
@@ -72,13 +75,6 @@ struct MeshPassClass::BeginInfo {
   RgBufferId<glm::mat3> normal_matrices;
 
   NotNull<UploadBumpAllocator *> upload_allocator;
-
-  InstanceCullingAndLODSettings instance_culling_and_lod_settings;
-  u32 meshlet_culling_feature_mask = 0;
-
-  glm::uvec2 viewport;
-  glm::mat4 proj_view;
-  glm::vec3 eye;
 };
 
 class MeshPassClass::Instance {
@@ -88,8 +84,8 @@ protected:
   Instance(MeshPassClass &cls, const BeginInfo &begin_info);
 
   template <typename Self> void record(this Self &self, RgBuilder &rgb) {
-    ren_assert(self.m_draw_size > 0);
-    ren_assert(self.m_num_draw_meshlets > 0);
+    ren_assert(self.m_scene->settings.draw_size > 0);
+    ren_assert(self.m_scene->settings.num_draw_meshlets > 0);
 
     Batches &batches = self.m_class->m_batches;
 
@@ -156,14 +152,14 @@ protected:
 
     struct {
       Handle<GraphicsPipeline> pipeline;
-      BufferView indices;
+      Handle<Buffer> indices;
       RgUntypedBufferToken commands;
       RgUntypedBufferToken command_count;
       typename Self::RenderPassResources ext;
     } rcs;
 
     rcs.pipeline = batch.pipeline;
-    rcs.indices = batch.index_buffer_view;
+    rcs.indices = batch.index_buffer;
 
     rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
     rcs.command_count =
@@ -184,11 +180,11 @@ protected:
 protected:
   MeshPassClass *m_class = nullptr;
 
-  const GenArray<Mesh> *m_host_meshes = nullptr;
-  const GenArray<Material> *m_host_materials = nullptr;
-  const GenArray<MeshInstance> *m_host_mesh_instances = nullptr;
-  Span<const BufferView> m_index_pools;
   const Pipelines *m_pipelines = nullptr;
+
+  const SceneData *m_scene = nullptr;
+  Camera m_camera;
+  glm::uvec2 m_viewport = {};
 
   RgBufferId<glsl::Mesh> m_meshes;
   RgBufferId<glsl::Material> m_materials;
@@ -198,21 +194,11 @@ protected:
 
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
-  u32 m_draw_size = 0;
-  u32 m_num_draw_meshlets = 0;
-
-  InstanceCullingAndLODSettings m_instance_culling_and_lod_settings;
-  u32 m_meshlet_culling_feature_mask = 0;
-
   StaticVector<NotNull<RgTextureId *>, 8> m_color_attachments;
   StaticVector<ColorAttachmentOperations, 8> m_color_attachment_ops;
 
   RgTextureId *m_depth_attachment = nullptr;
   DepthAttachmentOperations m_depth_attachment_ops;
-
-  glm::uvec2 m_viewport;
-  glm::mat4 m_proj_view;
-  glm::vec3 m_eye;
 };
 
 class DepthOnlyMeshPassClass : public MeshPassClass {
@@ -261,7 +247,6 @@ private:
 struct OpaqueMeshPassClass::BeginInfo {
   MeshPassClass::BeginInfo base;
   RgBufferId<glsl::DirLight> directional_lights;
-  u32 num_directional_lights = 0;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
 };
@@ -295,7 +280,6 @@ private:
 
 private:
   RgBufferId<glsl::DirLight> m_directional_lights;
-  u32 m_num_directional_lights = 0;
   RgTextureId m_exposure;
   u32 m_exposure_temporal_layer = 0;
 };

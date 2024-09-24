@@ -3,6 +3,7 @@
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
 #include "Scene.hpp"
+#include "Swapchain.hpp"
 #include "glsl/ImGuiPass.h"
 
 namespace ren {
@@ -118,12 +119,10 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
                                       .store = VK_ATTACHMENT_STORE_OP_STORE,
                                   });
 
-  const Scene &scene = *ccfg.scene;
-
   ImGuiPassResources rcs = {
-      .ctx = scene.get_imgui_context(),
+      .ctx = cfg.ctx,
       .pipeline = ccfg.pipelines->imgui_pass,
-      .viewport = scene.get_viewport(),
+      .viewport = ccfg.swapchain->get_size(),
   };
 
   pass.set_graphics_callback(

@@ -2,6 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
+#include "Swapchain.hpp"
 #include "glsl/PostProcessingPass.h"
 #include "glsl/ReduceLuminanceHistogramPass.h"
 
@@ -77,13 +78,13 @@ void setup_post_processing_uber_pass(const PassCommonConfig &ccfg,
   rcs.pipeline = ccfg.pipelines->post_processing;
 
   RgBuilder &rgb = *ccfg.rgb;
-  const Scene &scene = *ccfg.scene;
+  const SceneData &scene = *ccfg.scene;
 
   auto pass = rgb.create_pass({.name = "post-processing"});
 
   rcs.hdr = pass.read_texture(cfg.hdr, CS_READ_TEXTURE);
 
-  glm::uvec2 viewport = scene.get_viewport();
+  glm::uvec2 viewport = ccfg.swapchain->get_size();
 
   std::tie(*cfg.sdr, rcs.sdr) =
       pass.write_texture("sdr", *cfg.sdr, CS_WRITE_TEXTURE);
@@ -139,7 +140,7 @@ void setup_reduce_luminance_histogram_pass(
   std::tie(std::ignore, rcs.exposure) =
       pass.write_texture("exposure", cfg.exposure, CS_WRITE_TEXTURE);
 
-  rcs.ec = ccfg.scene->get_exposure_compensation();
+  rcs.ec = ccfg.scene->exposure.ec;
 
   pass.set_compute_callback(
       [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
@@ -153,17 +154,15 @@ void setup_reduce_luminance_histogram_pass(
 
 void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
-  const Scene &scene = *ccfg.scene;
-
-  ExposureMode exposure_mode = scene.get_exposure_mode();
+  const SceneData &scene = *ccfg.scene;
 
   RgBufferId<glsl::LuminanceHistogram> histogram;
-  if (exposure_mode == ExposureMode::Automatic) {
+  if (scene.exposure.mode == ExposureMode::Automatic) {
     histogram = setup_initialize_luminance_histogram_pass(*ccfg.rgb);
   }
 
   if (!ccfg.rcs->sdr) {
-    glm::uvec2 viewport = scene.get_viewport();
+    glm::uvec2 viewport = ccfg.swapchain->get_size();
     ccfg.rcs->sdr = ccfg.rgp->create_texture({
         .name = "sdr",
         .format = SDR_FORMAT,
@@ -180,7 +179,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                             .sdr = cfg.sdr,
                                         });
 
-  if (exposure_mode == ExposureMode::Automatic) {
+  if (scene.exposure.mode == ExposureMode::Automatic) {
     setup_reduce_luminance_histogram_pass(ccfg,
                                           ReduceLuminanceHistogramPassConfig{
                                               .histogram = histogram,

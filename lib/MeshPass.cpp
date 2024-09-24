@@ -1,7 +1,9 @@
 #include "MeshPass.hpp"
 #include "RenderGraph.hpp"
+#include "Scene.hpp"
 #include "Support/Views.hpp"
 #include "glsl/EarlyZPass.h"
+#include "glsl/InstanceCullingAndLODPass.h"
 #include "glsl/MeshletCullingPass.h"
 #include "glsl/OpaquePass.h"
 
@@ -23,14 +25,11 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls,
   m_depth_attachment_ops = begin_info.depth_attachment_ops;
   m_class->m_depth_attachment_name = begin_info.depth_attachment_name;
 
-  m_host_meshes = begin_info.host_meshes;
-  m_host_materials = begin_info.host_materials;
-  m_host_mesh_instances = begin_info.host_mesh_instances;
-  m_index_pools = begin_info.index_pools;
   m_pipelines = begin_info.pipelines;
 
-  m_draw_size = begin_info.draw_size;
-  m_num_draw_meshlets = begin_info.num_draw_meshlets;
+  m_scene = begin_info.scene;
+  m_camera = begin_info.camera;
+  m_viewport = begin_info.viewport;
 
   m_meshes = begin_info.meshes;
   m_materials = begin_info.materials;
@@ -39,14 +38,6 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls,
   m_normal_matrices = begin_info.normal_matrices;
 
   m_upload_allocator = begin_info.upload_allocator;
-
-  m_instance_culling_and_lod_settings =
-      begin_info.instance_culling_and_lod_settings;
-  m_meshlet_culling_feature_mask = begin_info.meshlet_culling_feature_mask;
-
-  m_viewport = begin_info.viewport;
-  m_proj_view = begin_info.proj_view;
-  m_eye = begin_info.eye;
 }
 
 void MeshPassClass::Instance::Instance::record_culling(
@@ -81,7 +72,7 @@ void MeshPassClass::Instance::Instance::record_culling(
 
   *cfg.commands = rgb.create_buffer<glsl::DrawIndexedIndirectCommand>({
       .heap = BufferHeap::Static,
-      .size = m_num_draw_meshlets,
+      .size = usize(m_scene->settings.num_draw_meshlets),
   });
 
   *cfg.command_count = rgb.create_buffer<u32>({.heap = BufferHeap::Static});
@@ -165,12 +156,19 @@ void MeshPassClass::Instance::Instance::record_culling(
     std::tie(meshlet_cull_data, rcs.meshlet_cull_data) = pass.write_buffer(
         "meshlet-cull-data", meshlet_cull_data, CS_WRITE_BUFFER);
 
-    u32 feature_mask = m_instance_culling_and_lod_settings.feature_mask;
+    const SceneGraphicsSettings &settings = m_scene->settings;
+
+    u32 feature_mask = 0;
+    if (settings.instance_frustum_culling) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
+    }
+    if (settings.lod_selection) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
+    }
     float num_viewport_triangles =
-        m_viewport.x * m_viewport.y /
-        m_instance_culling_and_lod_settings.lod_triangle_pixel_count;
+        m_viewport.x * m_viewport.y / settings.lod_triangle_pixels;
     float lod_triangle_density = num_viewport_triangles / 4.0f;
-    i32 lod_bias = m_instance_culling_and_lod_settings.lod_bias;
+    i32 lod_bias = settings.lod_bias;
 
     auto [uniforms, uniforms_ptr, _2] =
         m_upload_allocator->allocate<glsl::InstanceCullingAndLODPassUniforms>(
@@ -178,7 +176,7 @@ void MeshPassClass::Instance::Instance::record_culling(
     *uniforms = {
         .feature_mask = feature_mask,
         .num_instances = num_instances,
-        .proj_view = m_proj_view,
+        .proj_view = get_projection_view_matrix(m_camera, m_viewport),
         .lod_triangle_density = lod_triangle_density,
         .lod_bias = lod_bias,
         .meshlet_bucket_offsets = bucket_offsets,
@@ -248,10 +246,19 @@ void MeshPassClass::Instance::Instance::record_culling(
         pass.write_buffer("meshlet-draw-command-count", *cfg.command_count,
                           CS_READ_BUFFER | CS_WRITE_BUFFER);
 
-    rcs.feature_mask = m_meshlet_culling_feature_mask;
+    const SceneGraphicsSettings &settings = m_scene->settings;
+
+    rcs.feature_mask = 0;
+    if (settings.meshlet_cone_culling) {
+      rcs.feature_mask |= glsl::MESHLET_CULLING_CONE_BIT;
+    }
+    if (settings.meshlet_frustum_culling) {
+      rcs.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
+    }
+
     rcs.bucket_offsets = bucket_offsets;
-    rcs.eye = m_eye;
-    rcs.proj_view = m_proj_view;
+    rcs.eye = m_camera.position;
+    rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
 
     pass.set_compute_callback(
         [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
@@ -289,11 +296,11 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     Batches &batches) {
   Handle<GraphicsPipeline> pipeline = m_pipelines->early_z_pass;
 
-  for (const auto &[h, mesh_instance] : *m_host_mesh_instances) {
-    const Mesh &mesh = m_host_meshes->get(mesh_instance.mesh);
+  for (const auto &[h, mesh_instance] : m_scene->mesh_instances) {
+    const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
     BatchDesc batch = {
         .pipeline = pipeline,
-        .index_buffer_view = m_index_pools[mesh.index_pool],
+        .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
     };
     auto it = batches.find(batch);
     [[unlikely]] if (it == batches.end()) {
@@ -303,8 +310,9 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     auto &batch_draws = it->second;
     [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
     BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->instances.size() == m_draw_size or
-                     draw->num_meshlets + num_meshlets > m_num_draw_meshlets) {
+    [[unlikely]] if (draw->instances.size() == m_scene->settings.draw_size or
+                     draw->num_meshlets + num_meshlets >
+                         m_scene->settings.num_draw_meshlets) {
       draw = &batch_draws.emplace_back();
     }
     draw->num_meshlets += num_meshlets;
@@ -323,8 +331,7 @@ auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
   rcs.mesh_instances = pass.read_buffer(m_mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
       pass.read_buffer(m_transform_matrices, VS_READ_BUFFER);
-
-  rcs.proj_view = m_proj_view;
+  rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
 
   return rcs;
 }
@@ -344,15 +351,14 @@ OpaqueMeshPassClass::Instance::Instance(OpaqueMeshPassClass &cls,
                                         const BeginInfo &begin_info)
     : MeshPassClass::Instance::Instance(cls, begin_info.base) {
   m_directional_lights = begin_info.directional_lights;
-  m_num_directional_lights = begin_info.num_directional_lights;
   m_exposure = begin_info.exposure;
   m_exposure_temporal_layer = begin_info.exposure_temporal_layer;
 }
 
 void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
-  for (const auto &[h, mesh_instance] : *m_host_mesh_instances) {
-    const Mesh &mesh = m_host_meshes->get(mesh_instance.mesh);
-    const Material &material = m_host_materials->get(mesh_instance.material);
+  for (const auto &[h, mesh_instance] : m_scene->mesh_instances) {
+    const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
+    const Material &material = m_scene->materials.get(mesh_instance.material);
 
     MeshAttributeFlags attributes;
     if (material.base_color_texture) {
@@ -367,7 +373,7 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
 
     BatchDesc batch = {
         .pipeline = m_pipelines->opaque_pass[i32(attributes.get())],
-        .index_buffer_view = m_index_pools[mesh.index_pool],
+        .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
     };
     auto it = batches.find(batch);
     [[unlikely]] if (it == batches.end()) {
@@ -377,8 +383,9 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
     auto &batch_draws = it->second;
     [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
     BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->instances.size() == m_draw_size or
-                     draw->num_meshlets + num_meshlets > m_num_draw_meshlets) {
+    [[unlikely]] if (draw->instances.size() == m_scene->settings.draw_size or
+                     draw->num_meshlets + num_meshlets >
+                         m_scene->settings.num_draw_meshlets) {
       draw = &batch_draws.emplace_back();
     }
     draw->num_meshlets += num_meshlets;
@@ -404,9 +411,9 @@ auto OpaqueMeshPassClass::Instance::get_render_pass_resources(
   rcs.exposure =
       pass.read_texture(m_exposure, FS_READ_TEXTURE, m_exposure_temporal_layer);
 
-  rcs.proj_view = m_proj_view;
-  rcs.eye = m_eye;
-  rcs.num_directional_lights = m_num_directional_lights;
+  rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
+  rcs.eye = m_camera.position;
+  rcs.num_directional_lights = m_scene->dir_lights.size();
 
   return rcs;
 };

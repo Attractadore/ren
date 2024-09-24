@@ -32,4 +32,7 @@ glm::mat4 get_projection_matrix(const Camera &camera, float aspect_ratio);
 
 glm::mat4 get_projection_matrix(const Camera &camera, glm::uvec2 viewport);
 
+auto get_projection_view_matrix(const Camera &camera,
+                                glm::uvec2 viewport) -> glm::mat4;
+
 } // namespace ren

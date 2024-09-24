@@ -5,7 +5,7 @@
 
 namespace ren {
 
-class Scene;
+struct SceneData;
 struct Pipelines;
 
 struct PassPersistentConfig {
@@ -29,8 +29,9 @@ struct PassCommonConfig {
   NotNull<RgBuilder *> rgb;
   NotNull<UploadBumpAllocator *> allocator;
   NotNull<const Pipelines *> pipelines;
-  NotNull<const Scene *> scene;
+  NotNull<const SceneData *> scene;
   NotNull<PassPersistentResources *> rcs;
+  NotNull<Swapchain *> swapchain;
 };
 
 } // namespace ren

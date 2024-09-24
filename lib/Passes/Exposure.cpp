@@ -33,9 +33,9 @@ void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
       pass.write_texture("exposure", ccfg.rcs->exposure, TRANSFER_DST_TEXTURE);
   *cfg.temporal_layer = 0;
 
-  const Scene &scene = *ccfg.scene;
-  float exposure = get_camera_exposure(scene.get_camera().params,
-                                       scene.get_exposure_compensation());
+  const SceneData &scene = *ccfg.scene;
+  float exposure =
+      get_camera_exposure(scene.get_camera().params, scene.exposure.ec);
   ren_assert(exposure > 0.0f);
 
   pass.set_callback(
@@ -77,7 +77,7 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
 
 void ren::setup_exposure_pass(const PassCommonConfig &ccfg,
                               const ExposurePassConfig &cfg) {
-  switch (ccfg.scene->get_exposure_mode()) {
+  switch (ccfg.scene->exposure.mode) {
   case ExposureMode::Camera:
     return setup_camera_exposure_pass(ccfg, cfg);
   case ExposureMode::Automatic:
