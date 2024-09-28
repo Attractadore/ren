@@ -165,9 +165,6 @@ private:
 
   auto get_camera(CameraId camera) -> Camera &;
 
-  [[nodiscard]] auto get_or_create_sampler(
-      const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
-
   [[nodiscard]] auto
   get_or_create_texture(Handle<Image> image,
                         const SamplerDesc &sampler_desc) -> SampledTextureId;
@@ -196,7 +193,6 @@ private:
 
   std::unique_ptr<TextureIdAllocator> m_texture_allocator;
   GenArray<Image> m_images;
-  HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
 
   ResourceUploader m_resource_uploader;
 

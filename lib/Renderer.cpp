@@ -310,6 +310,11 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
 
 Renderer::~Renderer() {
   wait_idle();
+
+  for (const auto &[_, sampler] : m_samplers) {
+    vkDestroySampler(m_device, sampler.handle, nullptr);
+  }
+
   vmaDestroyAllocator(m_allocator);
   vkDestroyDevice(m_device, nullptr);
 #if REN_VULKAN_VALIDATION
@@ -795,9 +800,16 @@ static constexpr auto REDUCTION_MODE_MAP = [] {
   return map;
 }();
 
-auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
+auto Renderer::get_sampler(const SamplerCreateInfo &&create_info)
     -> Handle<Sampler> {
+  auto it = m_sampler_cache.find(create_info);
+  [[likely]] if (it != m_sampler_cache.end()) { return it->second; }
+  return m_sampler_cache.insert(it, create_info, create_sampler(create_info))
+      ->second;
+}
 
+auto Renderer::create_sampler(const SamplerCreateInfo &create_info)
+    -> Handle<Sampler> {
   VkSamplerReductionModeCreateInfo reduction_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
       .reductionMode = REDUCTION_MODE_MAP[(int)create_info.reduction_mode],
@@ -829,12 +841,6 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
       .mipmap_mode = create_info.mipmap_mode,
       .address_mode_u = create_info.address_mode_u,
       .address_mode_v = create_info.address_mode_v,
-  });
-}
-
-void Renderer::destroy(Handle<Sampler> sampler) {
-  m_samplers.try_pop(sampler).map([&](const Sampler &sampler) {
-    vkDestroySampler(m_device, sampler.handle, nullptr);
   });
 }
 

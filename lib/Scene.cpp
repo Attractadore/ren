@@ -229,19 +229,10 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   return std::bit_cast<MeshId>(handle);
 }
 
-auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
-    -> Handle<Sampler> {
-  Handle<Sampler> &handle = m_samplers[create_info];
-  if (!handle) {
-    handle = m_arena.create_sampler(std::move(create_info));
-  }
-  return handle;
-}
-
 auto Scene::get_or_create_texture(
     Handle<Image> image, const SamplerDesc &sampler_desc) -> SampledTextureId {
   TextureView view = m_renderer->get_texture_view(m_images[image]);
-  Handle<Sampler> sampler = get_or_create_sampler({
+  Handle<Sampler> sampler = m_renderer->get_sampler({
       .mag_filter = getVkFilter(sampler_desc.mag_filter),
       .min_filter = getVkFilter(sampler_desc.min_filter),
       .mipmap_mode = getVkSamplerMipmapMode(sampler_desc.mipmap_filter),

@@ -40,6 +40,7 @@ class Renderer final : public IRenderer {
       m_image_views;
 
   GenArray<Sampler> m_samplers;
+  HashMap<SamplerCreateInfo, Handle<Sampler>> m_sampler_cache;
 
   GenArray<Semaphore> m_semaphores;
 
@@ -199,9 +200,7 @@ public:
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
   [[nodiscard]] auto
-  create_sampler(const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
-
-  void destroy(Handle<Sampler> sampler);
+  get_sampler(const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
 
   auto
   try_get_sampler(Handle<Sampler> sampler) const -> Optional<const Sampler &>;
@@ -285,6 +284,9 @@ public:
 
 private:
   template <typename H> friend class Handle;
+
+  [[nodiscard]] auto
+  create_sampler(const SamplerCreateInfo &create_info) -> Handle<Sampler>;
 };
 
 } // namespace ren
