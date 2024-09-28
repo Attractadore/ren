@@ -4,6 +4,7 @@
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
 #include "Passes/Exposure.hpp"
+#include "Passes/GpuSceneUpdate.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
@@ -38,6 +39,8 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_texture_allocator);
 
   allocate_per_frame_resources();
+
+  m_gpu_scene = init_gpu_scene(m_arena);
 }
 
 void Scene::allocate_per_frame_resources() {
@@ -70,6 +73,15 @@ void ScenPerFrameResources::reset() {
 }
 
 void Scene::next_frame() {
+  m_data.update_meshes.clear();
+  m_data.mesh_update_data.clear();
+  m_data.update_mesh_instances.clear();
+  m_data.mesh_instance_update_data.clear();
+  m_data.update_materials.clear();
+  m_data.material_update_data.clear();
+  m_data.update_directional_lights.clear();
+  m_data.directional_light_update_data.clear();
+
   m_num_frames_in_flight = m_new_num_frames_in_flight;
   [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
     allocate_per_frame_resources();
@@ -192,9 +204,29 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       m_renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, num_triangles * 3));
 
-  Handle<Mesh> h = m_data.meshes.insert(mesh);
+  Handle<Mesh> handle = m_data.meshes.insert(mesh);
 
-  return std::bit_cast<MeshId>(h);
+  m_data.update_meshes.push_back(handle);
+  m_data.mesh_update_data.push_back({
+      .positions =
+          m_renderer->get_buffer_device_ptr<glsl::Position>(mesh.positions),
+      .normals = m_renderer->get_buffer_device_ptr<glsl::Normal>(mesh.normals),
+      .tangents =
+          m_renderer->try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
+      .uvs = m_renderer->try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
+      .colors = m_renderer->try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
+      .meshlets =
+          m_renderer->get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
+      .meshlet_indices =
+          m_renderer->get_buffer_device_ptr<u32>(mesh.meshlet_indices),
+      .bb = mesh.bb,
+      .uv_bs = mesh.uv_bs,
+      .index_pool = mesh.index_pool,
+      .num_lods = u32(mesh.lods.size()),
+  });
+  std::ranges::copy(mesh.lods, m_data.mesh_update_data.back().lods);
+
+  return std::bit_cast<MeshId>(handle);
 }
 
 auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
@@ -250,7 +282,7 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
     return 0;
   };
 
-  Handle<glsl::Material> h = m_data.materials.insert({
+  Handle<Material> handle = m_data.materials.insert({
       .base_color = desc.base_color_factor,
       .base_color_texture = get_sampled_texture_id(desc.base_color_texture),
       .metallic = desc.metallic_factor,
@@ -260,8 +292,10 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
       .normal_texture = get_sampled_texture_id(desc.normal_texture),
       .normal_scale = desc.normal_texture.scale,
   });
+  m_data.update_materials.push_back(handle);
+  m_data.material_update_data.push_back(m_data.materials[handle]);
 
-  return std::bit_cast<MaterialId>(h);
+  return std::bit_cast<MaterialId>(handle);
   ;
 }
 
@@ -325,17 +359,23 @@ auto Scene::create_mesh_instances(
     std::span<MeshInstanceId> out) -> expected<void> {
   ren_assert(out.size() >= create_info.size());
   for (usize i : range(create_info.size())) {
-    ren_assert(create_info[i].mesh);
-    ren_assert(create_info[i].material);
-    const Mesh &mesh =
-        m_data.meshes[std::bit_cast<Handle<Mesh>>(create_info[i].mesh)];
-    Handle<MeshInstance> mesh_instance = m_data.mesh_instances.insert({
+    auto mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh);
+    ren_assert(mesh);
+    auto material = std::bit_cast<Handle<Material>>(create_info[i].material);
+    ren_assert(material);
+    Handle<MeshInstance> handle = m_data.mesh_instances.insert({
         .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
         .material = std::bit_cast<Handle<Material>>(create_info[i].material),
     });
     m_data.mesh_instance_transforms.insert(
-        mesh_instance, glsl::make_decode_position_matrix(mesh.pos_enc_bb));
-    out[i] = std::bit_cast<MeshInstanceId>(mesh_instance);
+        handle,
+        glsl::make_decode_position_matrix(m_data.meshes[mesh].pos_enc_bb));
+    m_data.update_mesh_instances.push_back(handle);
+    m_data.mesh_instance_update_data.push_back({
+        .mesh = mesh,
+        .material = material,
+    });
+    out[i] = std::bit_cast<MeshInstanceId>(handle);
   }
   return {};
 }
@@ -364,23 +404,28 @@ void Scene::set_mesh_instance_transforms(
 
 auto Scene::create_directional_light(const DirectionalLightDesc &desc)
     -> expected<DirectionalLightId> {
-  Handle<glsl::DirLight> light = m_data.dir_lights.emplace();
+  Handle<glsl::DirectionalLight> light = m_data.directional_lights.emplace();
   auto id = std::bit_cast<DirectionalLightId>(light);
   set_directional_light(id, desc);
   return id;
 };
 
 void Scene::destroy_directional_light(DirectionalLightId light) {
-  m_data.dir_lights.erase(std::bit_cast<Handle<glsl::DirLight>>(light));
+  m_data.directional_lights.erase(
+      std::bit_cast<Handle<glsl::DirectionalLight>>(light));
 }
 
 void Scene::set_directional_light(DirectionalLightId light,
                                   const DirectionalLightDesc &desc) {
-  m_data.dir_lights[std::bit_cast<Handle<glsl::DirLight>>(light)] = {
+  auto handle = std::bit_cast<Handle<glsl::DirectionalLight>>(light);
+  m_data.directional_lights[handle] = {
       .color = desc.color,
       .illuminance = desc.illuminance,
       .origin = glm::normalize(desc.origin),
   };
+  m_data.update_directional_lights.push_back(handle);
+  m_data.directional_light_update_data.push_back(
+      m_data.directional_lights[handle]);
 };
 
 auto Scene::draw() -> expected<void> {
@@ -523,6 +568,10 @@ auto Scene::build_rg() -> RenderGraph {
       .swapchain = m_swapchain,
   };
 
+  RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, m_gpu_scene);
+  setup_gpu_scene_update_pass(
+      cfg, GpuSceneUpdatePassConfig{.gpu_scene = &rg_gpu_scene});
+
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
   setup_exposure_pass(cfg, ExposurePassConfig{
@@ -533,6 +582,7 @@ auto Scene::build_rg() -> RenderGraph {
   RgTextureId hdr;
   setup_opaque_passes(cfg,
                       OpaquePassesConfig{
+                          .gpu_scene = rg_gpu_scene,
                           .exposure = exposure,
                           .exposure_temporal_layer = exposure_temporal_layer,
                           .hdr = &hdr,
@@ -562,7 +612,11 @@ auto Scene::build_rg() -> RenderGraph {
                               .swapchain = m_swapchain,
                           });
 
-  return rgb.build(m_device_allocator, fr.upload_allocator);
+  RenderGraph rg = rgb.build(m_device_allocator, fr.upload_allocator);
+
+  rg_export_gpu_scene(rgb, rg_gpu_scene, &m_gpu_scene);
+
+  return rg;
 }
 
 } // namespace ren

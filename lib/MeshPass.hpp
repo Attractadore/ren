@@ -3,6 +3,7 @@
 #include "BumpAllocator.hpp"
 #include "Camera.hpp"
 #include "CommandRecorder.hpp"
+#include "GpuScene.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
@@ -20,7 +21,7 @@ namespace glsl {
 struct Mesh;
 struct MeshInstance;
 struct Material;
-struct DirLight;
+struct DirectionalLight;
 } // namespace glsl
 
 class MeshPassClass {
@@ -68,11 +69,7 @@ struct MeshPassClass::BeginInfo {
   Camera camera;
   glm::uvec2 viewport = {};
 
-  RgBufferId<glsl::Mesh> meshes;
-  RgBufferId<glsl::Material> materials;
-  RgBufferId<glsl::MeshInstance> mesh_instances;
-  RgBufferId<glm::mat4x3> transform_matrices;
-  RgBufferId<glm::mat3> normal_matrices;
+  RgGpuScene gpu_scene;
 
   NotNull<UploadBumpAllocator *> upload_allocator;
 };
@@ -186,11 +183,7 @@ protected:
   Camera m_camera;
   glm::uvec2 m_viewport = {};
 
-  RgBufferId<glsl::Mesh> m_meshes;
-  RgBufferId<glsl::Material> m_materials;
-  RgBufferId<glsl::MeshInstance> m_mesh_instances;
-  RgBufferId<glm::mat4x3> m_transform_matrices;
-  RgBufferId<glm::mat3> m_normal_matrices;
+  RgGpuScene m_gpu_scene;
 
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
@@ -246,7 +239,6 @@ private:
 
 struct OpaqueMeshPassClass::BeginInfo {
   MeshPassClass::BeginInfo base;
-  RgBufferId<glsl::DirLight> directional_lights;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
 };
@@ -264,7 +256,7 @@ private:
     RgBufferToken<glm::mat4x3> transform_matrices;
     RgBufferToken<glm::mat3> normal_matrices;
     RgBufferToken<glsl::Material> materials;
-    RgBufferToken<glsl::DirLight> directional_lights;
+    RgBufferToken<glsl::DirectionalLight> directional_lights;
     RgTextureToken exposure;
     glm::mat4 proj_view;
     glm::vec3 eye;
@@ -279,7 +271,6 @@ private:
                                          const RenderPassResources &rcs);
 
 private:
-  RgBufferId<glsl::DirLight> m_directional_lights;
   RgTextureId m_exposure;
   u32 m_exposure_temporal_layer = 0;
 };

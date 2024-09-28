@@ -31,11 +31,7 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls,
   m_camera = begin_info.camera;
   m_viewport = begin_info.viewport;
 
-  m_meshes = begin_info.meshes;
-  m_materials = begin_info.materials;
-  m_mesh_instances = begin_info.mesh_instances;
-  m_transform_matrices = begin_info.transform_matrices;
-  m_normal_matrices = begin_info.normal_matrices;
+  m_gpu_scene = begin_info.gpu_scene;
 
   m_upload_allocator = begin_info.upload_allocator;
 }
@@ -133,10 +129,10 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.pipeline = m_pipelines->instance_culling_and_lod;
 
-    rcs.meshes = pass.read_buffer(m_meshes, CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_transform_matrices, CS_READ_BUFFER);
+        pass.read_buffer(m_gpu_scene.transform_matrices, CS_READ_BUFFER);
 
     auto [instance_cull_data, instance_cull_data_ptr, _] =
         m_upload_allocator->allocate<glsl::InstanceCullData>(
@@ -226,10 +222,10 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.pipeline = m_pipelines->meshlet_culling;
 
-    rcs.meshes = pass.read_buffer(m_meshes, CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_transform_matrices, CS_READ_BUFFER);
+        pass.read_buffer(m_gpu_scene.transform_matrices, CS_READ_BUFFER);
 
     rcs.meshlet_bucket_commands =
         pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
@@ -327,10 +323,11 @@ auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_meshes, VS_READ_BUFFER);
-  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, VS_READ_BUFFER);
+  rcs.mesh_instances =
+      pass.read_buffer(m_gpu_scene.mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_transform_matrices, VS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene.transform_matrices, VS_READ_BUFFER);
   rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
 
   return rcs;
@@ -350,7 +347,6 @@ void DepthOnlyMeshPassClass::Instance::bind_render_pass_resources(
 OpaqueMeshPassClass::Instance::Instance(OpaqueMeshPassClass &cls,
                                         const BeginInfo &begin_info)
     : MeshPassClass::Instance::Instance(cls, begin_info.base) {
-  m_directional_lights = begin_info.directional_lights;
   m_exposure = begin_info.exposure;
   m_exposure_temporal_layer = begin_info.exposure_temporal_layer;
 }
@@ -400,20 +396,22 @@ auto OpaqueMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) const -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_meshes, VS_READ_BUFFER);
-  rcs.mesh_instances = pass.read_buffer(m_mesh_instances, VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, VS_READ_BUFFER);
+  rcs.mesh_instances =
+      pass.read_buffer(m_gpu_scene.mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_transform_matrices, VS_READ_BUFFER);
-  rcs.normal_matrices = pass.read_buffer(m_normal_matrices, VS_READ_BUFFER);
-  rcs.materials = pass.read_buffer(m_materials, FS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene.transform_matrices, VS_READ_BUFFER);
+  rcs.normal_matrices =
+      pass.read_buffer(m_gpu_scene.normal_matrices, VS_READ_BUFFER);
+  rcs.materials = pass.read_buffer(m_gpu_scene.materials, FS_READ_BUFFER);
   rcs.directional_lights =
-      pass.read_buffer(m_directional_lights, FS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene.directional_lights, FS_READ_BUFFER);
   rcs.exposure =
       pass.read_texture(m_exposure, FS_READ_TEXTURE, m_exposure_temporal_layer);
 
   rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
   rcs.eye = m_camera.position;
-  rcs.num_directional_lights = m_scene->dir_lights.size();
+  rcs.num_directional_lights = m_scene->directional_lights.size();
 
   return rcs;
 };

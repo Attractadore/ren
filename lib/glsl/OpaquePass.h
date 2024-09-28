@@ -22,7 +22,7 @@ GLSL_DEFINE_PTR_TYPE(OpaquePassUniforms, 8);
 struct OpaquePassArgs {
   GLSL_PTR(OpaquePassUniforms) ub;
   GLSL_PTR(Material) materials;
-  GLSL_PTR(DirLight) directional_lights;
+  GLSL_PTR(DirectionalLight) directional_lights;
   uint num_directional_lights;
   vec3 eye;
   uint exposure_texture;

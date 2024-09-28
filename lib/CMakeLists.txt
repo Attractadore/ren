@@ -53,6 +53,7 @@ add_library(
   Descriptors.cpp
   Formats.cpp
   FreeListAllocator.cpp
+  GpuScene.cpp
   Mesh.cpp
   MeshPass.cpp
   MeshProcessing.cpp

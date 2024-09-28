@@ -1,9 +1,13 @@
 #pragma once
+#include "GpuScene.hpp"
 #include "Pass.hpp"
 
 namespace ren {
 
+struct RgGpuScene;
+
 struct OpaquePassesConfig {
+  RgGpuScene gpu_scene;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
   NotNull<RgTextureId *> hdr;

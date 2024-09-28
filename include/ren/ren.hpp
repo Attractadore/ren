@@ -16,6 +16,11 @@ enum class Error {
 
 template <typename T> using expected = std::expected<T, Error>;
 
+constexpr size_t MAX_NUM_MESHES = 16 * 1024;
+constexpr size_t MAX_NUM_MESH_INSTANCES = 128 * 1024;
+constexpr size_t MAX_NUM_MATERIALS = 16 * 1024;
+constexpr size_t MAX_NUM_DIRECTIONAL_LIGHTS = 1;
+
 namespace detail {
 
 struct NullIdImpl {};
@@ -63,8 +68,8 @@ struct RendererCreateInfo {
 struct IRenderer {
   virtual ~IRenderer() = default;
 
-  [[nodiscard]] virtual auto create_scene(ISwapchain &swapchain)
-      -> expected<std::unique_ptr<IScene>> = 0;
+  [[nodiscard]] virtual auto
+  create_scene(ISwapchain &swapchain) -> expected<std::unique_ptr<IScene>> = 0;
 };
 
 struct ISwapchain {
@@ -72,8 +77,8 @@ struct ISwapchain {
 
   [[nodiscard]] virtual auto get_size() const -> glm::uvec2 = 0;
 
-  [[nodiscard]] virtual auto set_size(unsigned width, unsigned height)
-      -> expected<void> = 0;
+  [[nodiscard]] virtual auto set_size(unsigned width,
+                                      unsigned height) -> expected<void> = 0;
 };
 
 /// Camera perspective projection descriptor.
@@ -270,23 +275,21 @@ struct IScene {
 
   virtual void set_exposure(const ExposureDesc &desc) = 0;
 
-  [[nodiscard]] virtual auto create_mesh(const MeshCreateInfo &create_info)
-      -> expected<MeshId> = 0;
-
-  [[nodiscard]] virtual auto create_image(const ImageCreateInfo &create_info)
-      -> expected<ImageId> = 0;
+  [[nodiscard]] virtual auto
+  create_mesh(const MeshCreateInfo &create_info) -> expected<MeshId> = 0;
 
   [[nodiscard]] virtual auto
-  create_material(const MaterialCreateInfo &create_info)
-      -> expected<MaterialId> = 0;
+  create_image(const ImageCreateInfo &create_info) -> expected<ImageId> = 0;
+
+  [[nodiscard]] virtual auto create_material(
+      const MaterialCreateInfo &create_info) -> expected<MaterialId> = 0;
 
   [[nodiscard]] virtual auto
   create_mesh_instances(std::span<const MeshInstanceCreateInfo> create_info,
                         std::span<MeshInstanceId> out) -> expected<void> = 0;
 
-  [[nodiscard]] auto
-  create_mesh_instance(const MeshInstanceCreateInfo &create_info)
-      -> expected<MeshInstanceId> {
+  [[nodiscard]] auto create_mesh_instance(
+      const MeshInstanceCreateInfo &create_info) -> expected<MeshInstanceId> {
     MeshInstanceId mesh_instance;
     return create_mesh_instances({&create_info, 1}, {&mesh_instance, 1})
         .transform([&] { return mesh_instance; });
@@ -308,9 +311,8 @@ struct IScene {
     set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
   }
 
-  [[nodiscard]] virtual auto
-  create_directional_light(const DirectionalLightDesc &desc)
-      -> expected<DirectionalLightId> = 0;
+  [[nodiscard]] virtual auto create_directional_light(
+      const DirectionalLightDesc &desc) -> expected<DirectionalLightId> = 0;
 
   virtual void destroy_directional_light(DirectionalLightId light) = 0;
 

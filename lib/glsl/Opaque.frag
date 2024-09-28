@@ -53,7 +53,7 @@ void main() {
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);
   vec3 view = normalize(pc.eye - v_position);
   for (int i = 0; i < pc.num_directional_lights; ++i) {
-    DirLight light = DEREF(pc.directional_lights[i]);
+    DirectionalLight light = DEREF(pc.directional_lights[i]);
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
 

@@ -6,13 +6,13 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct DirLight {
+struct DirectionalLight {
   vec3 color;
   float illuminance;
   vec3 origin;
 };
 
-GLSL_DEFINE_PTR_TYPE(DirLight, 4);
+GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
 
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
                      float roughness, vec3 illuminance) {
