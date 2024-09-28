@@ -133,6 +133,13 @@ public:
   bool operator==(const TextureView &) const = default;
 };
 
+enum class SamplerReductionMode {
+  WeightedAverage,
+  Min,
+  Max,
+  Last = Max,
+};
+
 struct SamplerCreateInfo {
   REN_DEBUG_NAME_FIELD("Sampler");
   VkFilter mag_filter = VK_FILTER_LINEAR;
@@ -141,10 +148,15 @@ struct SamplerCreateInfo {
   VkSamplerAddressMode address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
   VkSamplerAddressMode address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
   float anisotropy = 0.0f;
+  SamplerReductionMode reduction_mode = SamplerReductionMode::WeightedAverage;
 
 public:
   bool operator==(const SamplerCreateInfo &) const = default;
 };
+
+REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode,
+                     address_mode_u, address_mode_v, anisotropy,
+                     reduction_mode);
 
 struct Sampler {
   VkSampler handle;
@@ -154,6 +166,7 @@ struct Sampler {
   VkSamplerAddressMode address_mode_u;
   VkSamplerAddressMode address_mode_v;
   float anisotropy;
+  SamplerReductionMode reduction_mode;
 };
 
 auto get_mip_level_count(unsigned width, unsigned height = 1,
@@ -164,8 +177,5 @@ auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level) -> glm::uvec3;
 auto getVkFilter(Filter filter) -> VkFilter;
 auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
 auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
-
-REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode,
-                     address_mode_u, address_mode_v, anisotropy);
 
 } // namespace ren
