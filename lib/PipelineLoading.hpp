@@ -11,6 +11,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
 struct Pipelines {
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
+  Handle<ComputePipeline> hi_z;
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;
@@ -47,7 +48,7 @@ auto load_reduce_luminance_histogram_pipeline(
     -> Handle<ComputePipeline>;
 
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures, VkFormat format)
-    -> Handle<GraphicsPipeline>;
+                         Handle<DescriptorSetLayout> textures,
+                         VkFormat format) -> Handle<GraphicsPipeline>;
 
 } // namespace ren

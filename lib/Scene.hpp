@@ -44,6 +44,7 @@ struct SceneGraphicsSettings {
 
   // Instance culling and LOD
   bool instance_frustum_culling = true;
+  bool instance_occulusion_culling = true;
   bool lod_selection = true;
   float lod_triangle_pixels = 16.0f;
   i32 lod_bias = 0;
@@ -87,6 +88,11 @@ public:
     ren_assert(camera);
     return cameras[camera];
   }
+};
+
+struct Samplers {
+  Handle<Sampler> dflt;
+  Handle<Sampler> hi_z;
 };
 
 class Scene final : public IScene {
@@ -197,8 +203,8 @@ private:
   DeviceBumpAllocator m_device_allocator;
 
   GenArray<Image> m_images;
-  HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
-  Handle<Sampler> m_default_sampler;
+  HashMap<SamplerCreateInfo, Handle<Sampler>> m_sampler_cache;
+  Samplers m_samplers;
 
   ResourceUploader m_resource_uploader;
 

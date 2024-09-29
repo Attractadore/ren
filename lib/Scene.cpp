@@ -5,6 +5,7 @@
 #include "MeshProcessing.hpp"
 #include "Passes/Exposure.hpp"
 #include "Passes/GpuSceneUpdate.hpp"
+#include "Passes/HiZ.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
@@ -34,8 +35,20 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_descriptor_allocator = std::make_unique<DescriptorAllocator>(
       texture_descriptor_set, texture_descriptor_set_layout);
 
-  m_default_sampler = m_arena.create_sampler({.name = "Default Sampler"});
-  m_descriptor_allocator->allocate_sampler(*m_renderer, m_default_sampler,
+  m_samplers = {
+      .dflt = m_arena.create_sampler({.name = "Default Sampler"}),
+      .hi_z = m_arena.create_sampler({
+          .name = "Hi-Z sampler",
+          .mag_filter = VK_FILTER_LINEAR,
+          .min_filter = VK_FILTER_LINEAR,
+          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+          .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .reduction_mode = SamplerReductionMode::Max,
+      }),
+  };
+
+  m_descriptor_allocator->allocate_sampler(*m_renderer, m_samplers.dflt,
                                            glsl::DEFAULT_SAMPLER);
 
   m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
@@ -238,7 +251,7 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 
 auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
     -> Handle<Sampler> {
-  Handle<Sampler> &handle = m_samplers[create_info];
+  Handle<Sampler> &handle = m_sampler_cache[create_info];
   if (!handle) {
     handle = m_arena.create_sampler(std::move(create_info));
   }
@@ -476,6 +489,8 @@ void Scene::draw_imgui() {
       {
         ImGui::Checkbox("Frustum culling## Instance",
                         &settings.instance_frustum_culling);
+        ImGui::Checkbox("Occlusion culling## Instance",
+                        &settings.instance_occulusion_culling);
       }
 
       ImGui::SeparatorText("Level of detail");
@@ -575,6 +590,7 @@ auto Scene::build_rg() -> RenderGraph {
       .rgb = &rgb,
       .allocator = &pfr.upload_allocator,
       .pipelines = &m_pipelines,
+      .samplers = &m_samplers,
       .scene = &m_data,
       .rcs = &m_pass_rcs,
       .swapchain = m_swapchain,
@@ -591,14 +607,25 @@ auto Scene::build_rg() -> RenderGraph {
                                .temporal_layer = &exposure_temporal_layer,
                            });
 
+  RgTextureId depth_buffer;
   RgTextureId hdr;
   setup_opaque_passes(cfg,
                       OpaquePassesConfig{
                           .gpu_scene = rg_gpu_scene,
                           .exposure = exposure,
                           .exposure_temporal_layer = exposure_temporal_layer,
+                          .depth_buffer = &depth_buffer,
                           .hdr = &hdr,
                       });
+
+  RgTextureId hi_z;
+  bool run_hi_z = m_data.settings.instance_occulusion_culling;
+  if (run_hi_z) {
+    setup_hi_z_pass(cfg, HiZPassConfig{
+                             .depth_buffer = depth_buffer,
+                             .hi_z = &hi_z,
+                         });
+  }
 
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{

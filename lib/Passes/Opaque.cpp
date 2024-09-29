@@ -103,12 +103,12 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
         .height = viewport.y,
     });
   }
-  RgTextureId depth_buffer = ccfg.rcs->depth_buffer;
+  *cfg.depth_buffer = ccfg.rcs->depth_buffer;
 
   if (scene.settings.early_z) {
     setup_early_z_pass(ccfg, EarlyZPassConfig{
                                  .gpu_scene = cfg.gpu_scene,
-                                 .depth_buffer = &depth_buffer,
+                                 .depth_buffer = cfg.depth_buffer,
                              });
   }
 
@@ -126,7 +126,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
                     OpaquePassConfig{
                         .gpu_scene = cfg.gpu_scene,
                         .hdr = cfg.hdr,
-                        .depth_buffer = depth_buffer,
+                        .depth_buffer = *cfg.depth_buffer,
                         .exposure = cfg.exposure,
                         .exposure_temporal_layer = cfg.exposure_temporal_layer,
                     });

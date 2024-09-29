@@ -7,6 +7,7 @@ namespace ren {
 
 struct SceneData;
 struct Pipelines;
+struct Samplers;
 
 struct PassPersistentConfig {
   glm::uvec2 viewport;
@@ -18,6 +19,7 @@ struct PassPersistentResources {
   RgTextureId exposure;
   RgTextureId hdr;
   RgTextureId depth_buffer;
+  RgTextureId hi_z;
   RgTextureId sdr;
   RgTextureId backbuffer;
   RgSemaphoreId acquire_semaphore;
@@ -29,6 +31,7 @@ struct PassCommonConfig {
   NotNull<RgBuilder *> rgb;
   NotNull<UploadBumpAllocator *> allocator;
   NotNull<const Pipelines *> pipelines;
+  NotNull<const Samplers *> samplers;
   NotNull<const SceneData *> scene;
   NotNull<PassPersistentResources *> rcs;
   NotNull<Swapchain *> swapchain;

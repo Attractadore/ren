@@ -5,6 +5,7 @@
 #include "glsl/Texture.h"
 
 #include "EarlyZVS.h"
+#include "HiZSpdCS.h"
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
 #include "InstanceCullingAndLODCS.h"
@@ -123,6 +124,9 @@ auto load_pipelines(ResourceArena &arena,
           arena, NullHandle,
           Span(MeshletCullingCS, MeshletCullingCS_count).as_bytes(),
           "Meshlet culling"),
+      .hi_z = load_compute_pipeline(arena, persistent_set_layout,
+                                    Span(HiZSpdCS, HiZSpdCS_count).as_bytes(),
+                                    "Hi-Z SPD"),
       .early_z_pass = load_early_z_pass_pipeline(arena),
       .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
       .post_processing =
