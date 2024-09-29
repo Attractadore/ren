@@ -50,6 +50,7 @@ add_library(
   Camera.cpp
   CommandAllocator.cpp
   CommandRecorder.cpp
+  DescriptorAllocator.cpp
   Descriptors.cpp
   Formats.cpp
   FreeListAllocator.cpp
@@ -66,7 +67,6 @@ add_library(
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
-  TextureIdAllocator.cpp
   VMA.cpp)
 add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES

@@ -16,13 +16,14 @@
 #else
 #include "Keywords.hpp"
 
+#include <concepts>
 #include <cstdint>
 #include <glm/glm.hpp>
 
 #define GLSL_NAMESPACE_BEGIN namespace ren::glsl {
 #define GLSL_NAMESPACE_END }
 
-#define GLSL_IN(T) const T&
+#define GLSL_IN(T) const T &
 #define GLSL_OUT(T) T &
 #define GLSL_INOUT(T) T &
 

@@ -3,16 +3,17 @@
 
 #include "Common.h"
 #include "DevicePtr.h"
+#include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
 struct Material {
   vec4 base_color;
-  uint base_color_texture;
+  SampledTexture2D base_color_texture;
   float metallic;
   float roughness;
-  uint metallic_roughness_texture;
-  uint normal_texture;
+  SampledTexture2D metallic_roughness_texture;
+  SampledTexture2D normal_texture;
   float normal_scale;
 };
 

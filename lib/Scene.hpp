@@ -1,6 +1,7 @@
 #pragma once
 #include "Camera.hpp"
 #include "CommandAllocator.hpp"
+#include "DescriptorAllocator.hpp"
 #include "GpuScene.hpp"
 #include "Light.hpp"
 #include "Material.hpp"
@@ -12,7 +13,6 @@
 #include "Support/GenArray.hpp"
 #include "Support/GenMap.hpp"
 #include "Texture.hpp"
-#include "TextureIdAllocator.hpp"
 #include "ren/ren.hpp"
 
 struct ImGuiContext;
@@ -168,9 +168,9 @@ private:
   [[nodiscard]] auto get_or_create_sampler(
       const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
 
-  [[nodiscard]] auto
-  get_or_create_texture(Handle<Image> image,
-                        const SamplerDesc &sampler_desc) -> SampledTextureId;
+  [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
+                                           const SamplerDesc &sampler_desc)
+      -> glsl::SampledTexture2D;
 
   auto build_rg() -> RenderGraph;
 
@@ -194,9 +194,10 @@ private:
 
   DeviceBumpAllocator m_device_allocator;
 
-  std::unique_ptr<TextureIdAllocator> m_texture_allocator;
+  std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
   GenArray<Image> m_images;
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
+  Handle<Sampler> m_default_sampler;
 
   ResourceUploader m_resource_uploader;
 

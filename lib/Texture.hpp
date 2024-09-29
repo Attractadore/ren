@@ -48,6 +48,12 @@ struct TextureState {
   VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 };
 
+constexpr TextureState CS_SAMPLE_TEXTURE = {
+    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+    .access_mask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+    .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+};
+
 constexpr TextureState FS_READ_TEXTURE = {
     .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
     .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,

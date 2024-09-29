@@ -4,12 +4,13 @@
 #include "Common.h"
 #include "DevicePtr.h"
 #include "LuminanceHistogram.h"
+#include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
 struct ReduceLuminanceHistogramPassArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
-  uint exposure_texture;
+  RWStorageTexture2D exposure;
   float exposure_compensation;
 };
 

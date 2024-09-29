@@ -9,7 +9,7 @@
 
 #define GLSL_DEFINE_PTR_TYPE(Type, alignment) layout(buffer_reference, scalar, buffer_reference_align = alignment) buffer GLSL_PTR(Type) { Type data; }
 
-#define GLSL_IS_NULL(ptr) (uint64_t(ptr) == 0)
+#define IS_NULL_PTR(ptr) (uint64_t(ptr) == 0)
 
 #define DEREF(ref) ((ref).data)
 

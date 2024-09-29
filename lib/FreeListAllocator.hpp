@@ -1,16 +1,19 @@
 #pragma once
+#include "Support/StdDef.hpp"
 #include "Support/Vector.hpp"
 
 namespace ren {
 
 class FreeListAllocator {
-  unsigned m_top = 1;
-  Vector<unsigned> m_free_list;
+  u32 m_top = 1;
+  Vector<u32> m_free_list;
 
 public:
-  auto allocate() -> unsigned;
+  auto allocate() -> u32;
 
-  void free(unsigned idx);
+  auto allocate(u32 idx) -> u32;
+
+  void free(u32 idx);
 };
 
 } // namespace ren

@@ -3,6 +3,7 @@
 
 #include "Common.h"
 #include "DevicePtr.h"
+#include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -18,7 +19,7 @@ struct ImGuiPassArgs {
   GLSL_PTR(ImGuiVertex) vertices;
   vec2 scale;
   vec2 translate;
-  uint tex;
+  SampledTexture2D tex;
 };
 
 GLSL_NAMESPACE_END

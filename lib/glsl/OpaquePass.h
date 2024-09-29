@@ -25,7 +25,7 @@ struct OpaquePassArgs {
   GLSL_PTR(DirectionalLight) directional_lights;
   uint num_directional_lights;
   vec3 eye;
-  uint exposure_texture;
+  StorageTexture2D exposure;
 };
 
 const uint S_OPAQUE_FEATURE_VC = 0;

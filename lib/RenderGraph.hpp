@@ -2,6 +2,7 @@
 #include "Attachments.hpp"
 #include "BumpAllocator.hpp"
 #include "Config.hpp"
+#include "DescriptorAllocator.hpp"
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Support/DynamicBitset.hpp"
@@ -11,7 +12,6 @@
 #include "Support/NewType.hpp"
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
-#include "TextureIdAllocator.hpp"
 
 #include <functional>
 #include <vulkan/vulkan.h>
@@ -267,7 +267,7 @@ struct RgPhysicalTexture {
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
   Handle<Texture> handle;
-  StorageTextureId storage_descriptor;
+  glsl::RWStorageTexture storage_descriptor;
   TextureState state;
   RgTextureId init_id;
   RgTextureId id;
@@ -361,7 +361,7 @@ struct RgRtData {
   Vector<BufferView> m_buffers;
 
   Vector<Handle<Texture>> m_textures;
-  Vector<StorageTextureId> m_texture_storage_descriptors;
+  Vector<glsl::RWStorageTexture> m_texture_storage_descriptors;
 
   Vector<VkMemoryBarrier2> m_memory_barriers;
   Vector<VkImageMemoryBarrier2> m_texture_barriers;
@@ -370,8 +370,7 @@ struct RgRtData {
 
 class RgPersistent {
 public:
-  RgPersistent(Renderer &renderer,
-               TextureIdAllocator &texture_descritptor_allocator);
+  RgPersistent(Renderer &renderer, DescriptorAllocator &descriptor_allocator);
 
   [[nodiscard]] auto
   create_texture(RgTextureCreateInfo &&create_info) -> RgTextureId;
@@ -393,7 +392,7 @@ private:
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
   DynamicBitset m_external_textures;
-  TextureIdAllocatorScope m_texture_descriptor_allocator;
+  DescriptorAllocatorScope m_descriptor_allocator;
   GenArray<RgTexture> m_textures;
 
   HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
@@ -684,7 +683,7 @@ public:
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;
 
   auto get_storage_texture_descriptor(RgTextureToken texture) const
-      -> StorageTextureId;
+      -> glsl::RWStorageTexture;
 
   auto get_texture_set() const -> VkDescriptorSet;
 

@@ -4,7 +4,6 @@
 #extension GL_EXT_debug_printf : require
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_image_load_formatted : require
-#extension GL_KHR_memory_scope_semantics : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
 #extension GL_KHR_shader_subgroup_ballot : require
 

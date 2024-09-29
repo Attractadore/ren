@@ -12,9 +12,9 @@
 namespace ren {
 
 RgPersistent::RgPersistent(Renderer &renderer,
-                           TextureIdAllocator &texture_descriptor_allocator)
+                           DescriptorAllocator &texture_descriptor_allocator)
     : m_texture_arena(renderer), m_prev_texture_arena(renderer),
-      m_texture_descriptor_allocator(texture_descriptor_allocator) {}
+      m_descriptor_allocator(texture_descriptor_allocator) {}
 
 auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
     -> RgTextureId {
@@ -125,7 +125,7 @@ void RgPersistent::reset() {
   m_persistent_textures.clear();
   m_external_textures.clear();
   // Wait idle is performed in arena clear.
-  m_texture_descriptor_allocator.clear();
+  m_descriptor_allocator.clear();
   m_textures.clear();
   m_texture_init_info.clear();
   m_semaphores.clear();
@@ -141,7 +141,8 @@ void RgPersistent::rotate_textures() {
 #endif
     VkImageUsageFlags usage = physical_texture.usage;
     Handle<Texture> handle = physical_texture.handle;
-    StorageTextureId storage_descriptor = physical_texture.storage_descriptor;
+    glsl::RWStorageTexture storage_descriptor =
+        physical_texture.storage_descriptor;
     TextureState state = physical_texture.state;
     usize last = i + 1;
     for (; last < i + RG_MAX_TEMPORAL_LAYERS; ++last) {
@@ -661,7 +662,7 @@ void RgBuilder::alloc_textures() {
 
   std::swap(m_rgp->m_texture_arena, m_rgp->m_prev_texture_arena);
   m_renderer->wait_idle();
-  m_rgp->m_texture_descriptor_allocator.clear();
+  m_rgp->m_descriptor_allocator.clear();
   m_rgp->m_num_prev_physical_textures = 0;
   usize num_physical_textures = m_rgp->m_physical_textures.size();
   for (auto i : range(num_physical_textures)) {
@@ -723,7 +724,7 @@ void RgBuilder::alloc_textures() {
     physical_texture->storage_descriptor = {};
     if (physical_texture->usage & VK_IMAGE_USAGE_STORAGE_BIT) {
       physical_texture->storage_descriptor =
-          m_rgp->m_texture_descriptor_allocator.allocate_storage_texture(
+          m_rgp->m_descriptor_allocator.allocate_storage_texture(
               *m_renderer,
               m_renderer->get_texture_view(physical_texture->handle));
     }
@@ -1213,7 +1214,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_rgp = m_rgp;
   rg.m_data = m_rt_data;
   rg.m_upload_allocator = &upload_allocator;
-  rg.m_texture_set = m_rgp->m_texture_descriptor_allocator.get_set();
+  rg.m_texture_set = m_rgp->m_descriptor_allocator.get_set();
 
   return rg;
 }
@@ -1488,9 +1489,9 @@ auto RgRuntime::get_texture(RgTextureToken texture) const -> Handle<Texture> {
 }
 
 auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture) const
-    -> StorageTextureId {
+    -> glsl::RWStorageTexture {
   ren_assert(texture);
-  StorageTextureId descriptor =
+  glsl::RWStorageTexture descriptor =
       m_rg->m_data->m_texture_storage_descriptors[texture];
   ren_assert(descriptor);
   return descriptor;

@@ -83,7 +83,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
       };
       render_pass.set_scissor_rects({scissor});
 
-      SampledTextureId texture((uintptr_t)cmd.TextureId);
+      glsl::SampledTexture2D texture((uintptr_t)cmd.TextureId);
 
       render_pass.set_push_constants(glsl::ImGuiPassArgs{
           .vertices = DevicePtr<glsl::ImGuiVertex>(vertices_ptr),

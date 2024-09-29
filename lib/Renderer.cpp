@@ -167,6 +167,7 @@ auto create_device(VkPhysicalDevice adapter,
   VkPhysicalDeviceVulkan11Features vulkan11_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
       .storageBuffer16BitAccess = true,
+      .storagePushConstant16 = true,
       .shaderDrawParameters = true,
   };
 

@@ -31,12 +31,16 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       allocate_descriptor_pool_and_set(*m_renderer, m_arena,
                                        texture_descriptor_set_layout);
 
-  m_texture_allocator = std::make_unique<TextureIdAllocator>(
+  m_descriptor_allocator = std::make_unique<DescriptorAllocator>(
       texture_descriptor_set, texture_descriptor_set_layout);
+
+  m_default_sampler = m_arena.create_sampler({.name = "Default Sampler"});
+  m_descriptor_allocator->allocate_sampler(*m_renderer, m_default_sampler,
+                                           glsl::DEFAULT_SAMPLER);
 
   m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
 
-  m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_texture_allocator);
+  m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_descriptor_allocator);
 
   allocate_per_frame_resources();
 
@@ -238,8 +242,9 @@ auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
   return handle;
 }
 
-auto Scene::get_or_create_texture(
-    Handle<Image> image, const SamplerDesc &sampler_desc) -> SampledTextureId {
+auto Scene::get_or_create_texture(Handle<Image> image,
+                                  const SamplerDesc &sampler_desc)
+    -> glsl::SampledTexture2D {
   TextureView view = m_renderer->get_texture_view(m_images[image]);
   Handle<Sampler> sampler = get_or_create_sampler({
       .mag_filter = getVkFilter(sampler_desc.mag_filter),
@@ -249,8 +254,9 @@ auto Scene::get_or_create_texture(
       .address_mode_v = getVkSamplerAddressMode(sampler_desc.wrap_v),
       .anisotropy = 16.0f,
   });
-  return m_texture_allocator->allocate_sampled_texture(*m_renderer, view,
-                                                       sampler);
+  return glsl::SampledTexture2D(
+      m_descriptor_allocator->allocate_sampled_texture(*m_renderer, view,
+                                                       sampler));
 }
 
 auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
@@ -274,12 +280,13 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
 
 auto Scene::create_material(const MaterialCreateInfo &desc)
     -> expected<MaterialId> {
-  auto get_sampled_texture_id = [&](const auto &texture) -> u32 {
+  auto get_sampled_texture_id =
+      [&](const auto &texture) -> glsl::SampledTexture2D {
     if (texture.image) {
       return get_or_create_texture(std::bit_cast<Handle<Image>>(texture.image),
                                    texture.sampler);
     }
-    return 0;
+    return {};
   };
 
   Handle<Material> handle = m_data.materials.insert({
@@ -526,7 +533,7 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
       .wrap_u = WrappingMode::Repeat,
       .wrap_v = WrappingMode::Repeat,
   };
-  SampledTextureId texture =
+  glsl::SampledTexture2D texture =
       get_or_create_texture(std::bit_cast<Handle<Image>>(image), desc);
   // NOTE: texture from old context is leaked. Don't really care since context
   // will probably be set only once

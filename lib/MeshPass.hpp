@@ -9,7 +9,6 @@
 #include "RenderGraph.hpp"
 #include "Renderer.hpp"
 #include "Support/NotNull.hpp"
-#include "TextureIdAllocator.hpp"
 #include "glsl/Culling.h"
 #include "glsl/Indirect.h"
 

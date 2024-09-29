@@ -4,14 +4,15 @@
 #include "Common.h"
 #include "DevicePtr.h"
 #include "LuminanceHistogram.h"
+#include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
 struct PostProcessingPassArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
-  uint previous_exposure_texture;
-  uint hdr_texture;
-  uint sdr_texture;
+  StorageTexture2D previous_exposure;
+  StorageTexture2D hdr;
+  RWStorageTexture2D sdr;
 };
 
 const uint POST_PROCESSING_THREADS_X = 8;

@@ -1,8 +1,6 @@
 #include "PostProcessing.glsl"
 #include "PostProcessingPass.h"
-#include "Textures.glsl"
-
-TEXTURES;
+#include "Texture.glsl"
 
 PUSH_CONSTANTS(PostProcessingPassArgs);
 
@@ -45,21 +43,20 @@ void store_luminance_histogram() {
 
 NUM_THREADS_2D(THREADS_X, THREADS_Y);
 void main() {
-  const ivec2 size = imageSize(g_rimages2d[pc.hdr_texture]);
+  const ivec2 size = image_size(pc.hdr);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);
 
   float exposure;
-  bool enable_automatic_exposure = !GLSL_IS_NULL(pc.histogram);
+  bool enable_automatic_exposure = !IS_NULL_PTR(pc.histogram);
   if (enable_automatic_exposure) {
-    exposure =
-        imageLoad(g_rimages2d[pc.previous_exposure_texture], ivec2(0)).r;
+    exposure = image_load(pc.previous_exposure, ivec2(0)).r;
     init_luminance_histogram();
   }
 
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec4 color = imageLoad(g_rimages2d[pc.hdr_texture], ivec2(x, y));
+      vec4 color = image_load(pc.hdr, ivec2(x, y));
       float luminance = get_luminance(color.rgb);
 
       if (enable_automatic_exposure) {
@@ -69,7 +66,7 @@ void main() {
       // Tone mapping
       color.rgb /= (1.0f + luminance);
 
-      imageStore(g_wimages2d[pc.sdr_texture], ivec2(x, y), color);
+      image_store(pc.sdr, ivec2(x, y), color);
     }
   }
 

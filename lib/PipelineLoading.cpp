@@ -2,7 +2,7 @@
 #include "Mesh.hpp"
 #include "ResourceArena.hpp"
 #include "Support/Errors.hpp"
-#include "glsl/Textures.h"
+#include "glsl/Texture.h"
 
 #include "EarlyZVS.h"
 #include "ImGuiFS.h"
@@ -22,21 +22,26 @@ namespace ren {
 auto create_persistent_descriptor_set_layout(ResourceArena &arena)
     -> Handle<DescriptorSetLayout> {
   std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings = {};
-#if 0
   bindings[glsl::SAMPLERS_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
       .type = VK_DESCRIPTOR_TYPE_SAMPLER,
       .count = glsl::NUM_SAMPLERS,
-      .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
-#endif
+  bindings[glsl::TEXTURES_SLOT] = {
+      .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+               VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+      .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+      .count = glsl::NUM_TEXTURES,
+      .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+  };
   bindings[glsl::SAMPLED_TEXTURES_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
       .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
       .count = glsl::NUM_SAMPLED_TEXTURES,
-      .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .stages = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
   };
   bindings[glsl::STORAGE_TEXTURES_SLOT] = {
       .flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |

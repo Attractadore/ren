@@ -435,7 +435,8 @@ void OpaqueMeshPassClass::Instance::bind_render_pass_resources(
       .directional_lights = rg.get_buffer_device_ptr(rcs.directional_lights),
       .num_directional_lights = rcs.num_directional_lights,
       .eye = rcs.eye,
-      .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
+      .exposure = glsl::StorageTexture2D(
+          rg.get_storage_texture_descriptor(rcs.exposure)),
   });
 }
 

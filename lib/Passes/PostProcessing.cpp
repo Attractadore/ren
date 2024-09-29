@@ -43,18 +43,20 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
   pass.bind_descriptor_sets({rg.get_texture_set()});
 
   DevicePtr<glsl::LuminanceHistogram> histogram;
-  StorageTextureId previous_exposure;
+  glsl::RWStorageTexture2D previous_exposure;
   if (rcs.histogram) {
     histogram = rg.get_buffer_device_ptr(rcs.histogram);
-    previous_exposure =
-        rg.get_storage_texture_descriptor(rcs.previous_exposure);
+    previous_exposure = glsl::RWStorageTexture2D(
+        rg.get_storage_texture_descriptor(rcs.previous_exposure));
   }
 
   pass.set_push_constants(glsl::PostProcessingPassArgs{
       .histogram = histogram,
-      .previous_exposure_texture = previous_exposure,
-      .hdr_texture = rg.get_storage_texture_descriptor(rcs.hdr),
-      .sdr_texture = rg.get_storage_texture_descriptor(rcs.sdr),
+      .previous_exposure = previous_exposure,
+      .hdr =
+          glsl::RWStorageTexture2D(rg.get_storage_texture_descriptor(rcs.hdr)),
+      .sdr =
+          glsl::RWStorageTexture2D(rg.get_storage_texture_descriptor(rcs.sdr)),
   });
 
   // Dispatch 1 thread per 16 work items for optimal performance
@@ -115,7 +117,8 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramPassArgs{
       .histogram = rg.get_buffer_device_ptr(rcs.histogram),
-      .exposure_texture = rg.get_storage_texture_descriptor(rcs.exposure),
+      .exposure = glsl::RWStorageTexture2D(
+          rg.get_storage_texture_descriptor(rcs.exposure)),
       .exposure_compensation = rcs.ec,
   });
   pass.dispatch_groups(1);

@@ -1,9 +1,7 @@
 #include "Lighting.glsl"
 #include "Material.glsl"
 #include "OpaquePass.glsl"
-#include "Textures.glsl"
-
-TEXTURES;
+#include "Texture.glsl"
 
 layout(location = V_POSITION) in vec3 v_position;
 
@@ -26,21 +24,21 @@ void main() {
     color *= v_color;
   }
 
-  if (OPAQUE_FEATURE_UV && material.base_color_texture != 0) {
-    color *= texture(g_textures2d[material.base_color_texture], v_uv);
+  if (OPAQUE_FEATURE_UV && !IS_NULL_DESC(material.base_color_texture)) {
+    color *= texture(material.base_color_texture, v_uv);
   }
 
   float metallic = material.metallic;
   float roughness = material.roughness;
-  if (OPAQUE_FEATURE_UV && material.metallic_roughness_texture != 0) {
-    vec4 tex = texture(g_textures2d[material.metallic_roughness_texture], v_uv);
+  if (OPAQUE_FEATURE_UV && !IS_NULL_DESC(material.metallic_roughness_texture)) {
+    vec4 tex = texture(material.metallic_roughness_texture, v_uv);
     metallic *= tex.b;
     roughness *= tex.g;
   }
 
   vec3 normal = v_normal;
-  if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && material.normal_texture != 0) {
-    vec3 tex = texture(g_textures2d[material.normal_texture], v_uv).xyz;
+  if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {
+    vec3 tex = texture(material.normal_texture, v_uv).xyz;
     tex = 2.0f * tex - 1.0f;
     tex.xy *= material.normal_scale;
     vec3 tangent = v_tangent.xyz;
@@ -57,7 +55,7 @@ void main() {
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
 
-  float exposure = imageLoad(g_rimages2d[pc.exposure_texture], ivec2(0)).r;
+  float exposure = image_load(pc.exposure, ivec2(0)).r;
   result.xyz *= exposure;
 
   f_color = result;
