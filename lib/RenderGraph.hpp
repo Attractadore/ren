@@ -12,6 +12,7 @@
 #include "Support/NewType.hpp"
 #include "Support/String.hpp"
 #include "Support/Variant.hpp"
+#include "Texture.hpp"
 
 #include <functional>
 #include <vulkan/vulkan.h>
@@ -267,7 +268,6 @@ struct RgPhysicalTexture {
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
   Handle<Texture> handle;
-  glsl::RWStorageTexture storage_descriptor;
   TextureState state;
   RgTextureId init_id;
   RgTextureId id;
@@ -287,7 +287,8 @@ struct RgTexture {
 
 struct RgTextureUse {
   RgTextureId texture;
-  TextureState usage;
+  Handle<Sampler> sampler;
+  TextureState state;
 };
 
 struct RgSemaphore {
@@ -348,6 +349,12 @@ struct RgRtPass {
   Variant<RgRtHostPass, RgRtGraphicsPass, RgRtComputePass, RgRtGenericPass> ext;
 };
 
+struct RgTextureDescriptors {
+  glsl::Texture sampled;
+  glsl::SampledTexture combined;
+  glsl::RWStorageTexture *storage = nullptr;
+};
+
 struct RgRtData {
   Vector<RgRtPass> m_passes;
 #if REN_RG_DEBUG
@@ -361,7 +368,8 @@ struct RgRtData {
   Vector<BufferView> m_buffers;
 
   Vector<Handle<Texture>> m_textures;
-  Vector<glsl::RWStorageTexture> m_texture_storage_descriptors;
+  Vector<RgTextureDescriptors> m_texture_descriptors;
+  Vector<glsl::RWStorageTexture> m_storage_texture_descriptors;
 
   Vector<VkMemoryBarrier2> m_memory_barriers;
   Vector<VkImageMemoryBarrier2> m_texture_barriers;
@@ -370,7 +378,7 @@ struct RgRtData {
 
 class RgPersistent {
 public:
-  RgPersistent(Renderer &renderer, DescriptorAllocator &descriptor_allocator);
+  RgPersistent(Renderer &renderer);
 
   [[nodiscard]] auto
   create_texture(RgTextureCreateInfo &&create_info) -> RgTextureId;
@@ -392,7 +400,6 @@ private:
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
   DynamicBitset m_external_textures;
-  DescriptorAllocatorScope m_descriptor_allocator;
   GenArray<RgTexture> m_textures;
 
   HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
@@ -410,7 +417,8 @@ private:
 
 class RgBuilder {
 public:
-  RgBuilder(RgPersistent &rgp, Renderer &renderer);
+  RgBuilder(RgPersistent &rgp, Renderer &renderer,
+            DescriptorAllocatorScope &descriptor_allocator);
 
   [[nodiscard]] auto
   create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder;
@@ -471,15 +479,15 @@ private:
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto
-  add_texture_use(RgTextureId texture,
-                  const TextureState &usage) -> RgTextureUseId;
+  add_texture_use(RgTextureId texture, const TextureState &usage,
+                  Handle<Sampler> sampler = NullHandle) -> RgTextureUseId;
 
   [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
-                                  const TextureState &usage,
-                                  u32 temporal_layer = 0) -> RgTextureToken;
+                                  const TextureState &usage, Handle<Sampler>,
+                                  u32 temporal_layer) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(
       RgPassId pass, RgDebugName name, RgTextureId texture,
@@ -543,6 +551,7 @@ private:
   RgPersistent *m_rgp = nullptr;
   RgBuildData *m_data = nullptr;
   RgRtData *m_rt_data = nullptr;
+  DescriptorAllocatorScope *m_descriptor_allocator = nullptr;
 };
 
 class RgPassBuilder {
@@ -572,6 +581,11 @@ public:
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
                                   const TextureState &usage,
+                                  u32 temporal_layer = 0) -> RgTextureToken;
+
+  [[nodiscard]] auto read_texture(RgTextureId texture,
+                                  const TextureState &usage,
+                                  Handle<Sampler> sampler,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
@@ -682,7 +696,12 @@ public:
 
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;
 
-  auto get_storage_texture_descriptor(RgTextureToken texture) const
+  auto get_texture_descriptor(RgTextureToken texture) const -> glsl::Texture;
+
+  auto get_sampled_texture_descriptor(RgTextureToken texture) const
+      -> glsl::SampledTexture;
+
+  auto get_storage_texture_descriptor(RgTextureToken texture, u32 mip = 0) const
       -> glsl::RWStorageTexture;
 
   auto get_texture_set() const -> VkDescriptorSet;

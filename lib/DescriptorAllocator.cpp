@@ -158,11 +158,11 @@ DescriptorAllocatorScope::DescriptorAllocatorScope(DescriptorAllocator &alloc) {
   m_alloc = &alloc;
 }
 
-DescriptorAllocatorScope::~DescriptorAllocatorScope() { clear(); }
+DescriptorAllocatorScope::~DescriptorAllocatorScope() { reset(); }
 
 DescriptorAllocatorScope &
 DescriptorAllocatorScope::operator=(DescriptorAllocatorScope &&other) noexcept {
-  clear();
+  reset();
   m_alloc = other.m_alloc;
   m_samplers = std::move(other.m_samplers);
   m_textures = std::move(other.m_textures);
@@ -203,7 +203,7 @@ auto DescriptorAllocatorScope::allocate_storage_texture(
       m_alloc->allocate_storage_texture(renderer, view));
 }
 
-void DescriptorAllocatorScope::clear() {
+void DescriptorAllocatorScope::reset() {
   for (glsl::SamplerState sampler : m_samplers) {
     m_alloc->free_sampler(sampler);
   }

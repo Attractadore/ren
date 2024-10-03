@@ -40,7 +40,7 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
 
-  m_rgp = std::make_unique<RgPersistent>(*m_renderer, *m_descriptor_allocator);
+  m_rgp = std::make_unique<RgPersistent>(*m_renderer);
 
   allocate_per_frame_resources();
 
@@ -52,7 +52,7 @@ void Scene::allocate_per_frame_resources() {
   m_per_frame_resources.clear();
   m_new_num_frames_in_flight = m_num_frames_in_flight;
   for (auto i : range(m_num_frames_in_flight)) {
-    m_per_frame_resources.emplace_back(ScenPerFrameResources{
+    m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = m_fif_arena.create_semaphore({
             .name = fmt::format("Acquire semaphore {}", i),
         }),
@@ -62,6 +62,8 @@ void Scene::allocate_per_frame_resources() {
         .upload_allocator =
             UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
         .cmd_allocator = CommandAllocator(*m_renderer),
+        .descriptor_allocator =
+            DescriptorAllocatorScope(*m_descriptor_allocator),
     });
   }
   m_graphics_time = m_num_frames_in_flight;
@@ -71,9 +73,10 @@ void Scene::allocate_per_frame_resources() {
   });
 }
 
-void ScenPerFrameResources::reset() {
+void ScenePerFrameResources::reset() {
   upload_allocator.reset();
   cmd_allocator.reset();
+  descriptor_allocator.reset();
 }
 
 void Scene::next_frame() {
@@ -436,7 +439,7 @@ void Scene::set_directional_light(DirectionalLightId light,
 };
 
 auto Scene::draw() -> expected<void> {
-  ScenPerFrameResources &fr = get_per_frame_resources();
+  ScenePerFrameResources &fr = get_per_frame_resources();
 
   m_resource_uploader.upload(*m_renderer, fr.cmd_allocator);
 
@@ -563,12 +566,14 @@ auto Scene::build_rg() -> RenderGraph {
     m_pass_rcs = {};
   }
 
-  RgBuilder rgb(*m_rgp, *m_renderer);
+  ScenePerFrameResources &pfr = get_per_frame_resources();
+
+  RgBuilder rgb(*m_rgp, *m_renderer, pfr.descriptor_allocator);
 
   PassCommonConfig cfg = {
       .rgp = m_rgp.get(),
       .rgb = &rgb,
-      .allocator = &get_per_frame_resources().upload_allocator,
+      .allocator = &pfr.upload_allocator,
       .pipelines = &m_pipelines,
       .scene = &m_data,
       .rcs = &m_pass_rcs,
@@ -610,7 +615,7 @@ auto Scene::build_rg() -> RenderGraph {
   }
 #endif
 
-  ScenPerFrameResources &fr = get_per_frame_resources();
+  ScenePerFrameResources &fr = get_per_frame_resources();
 
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,

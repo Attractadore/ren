@@ -85,7 +85,7 @@ public:
   auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
       -> glsl::RWStorageTexture;
 
-  void clear();
+  void reset();
 
 private:
   DescriptorAllocator *m_alloc = nullptr;

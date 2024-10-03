@@ -11,10 +11,8 @@
 
 namespace ren {
 
-RgPersistent::RgPersistent(Renderer &renderer,
-                           DescriptorAllocator &texture_descriptor_allocator)
-    : m_texture_arena(renderer), m_prev_texture_arena(renderer),
-      m_descriptor_allocator(texture_descriptor_allocator) {}
+RgPersistent::RgPersistent(Renderer &renderer)
+    : m_texture_arena(renderer), m_prev_texture_arena(renderer) {}
 
 auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
     -> RgTextureId {
@@ -124,8 +122,6 @@ void RgPersistent::reset() {
   m_physical_textures.clear();
   m_persistent_textures.clear();
   m_external_textures.clear();
-  // Wait idle is performed in arena clear.
-  m_descriptor_allocator.clear();
   m_textures.clear();
   m_texture_init_info.clear();
   m_semaphores.clear();
@@ -141,8 +137,6 @@ void RgPersistent::rotate_textures() {
 #endif
     VkImageUsageFlags usage = physical_texture.usage;
     Handle<Texture> handle = physical_texture.handle;
-    glsl::RWStorageTexture storage_descriptor =
-        physical_texture.storage_descriptor;
     TextureState state = physical_texture.state;
     usize last = i + 1;
     for (; last < i + RG_MAX_TEMPORAL_LAYERS; ++last) {
@@ -156,8 +150,6 @@ void RgPersistent::rotate_textures() {
 #endif
       prev_physical_texture.usage = physical_texture.usage;
       prev_physical_texture.handle = physical_texture.handle;
-      prev_physical_texture.storage_descriptor =
-          physical_texture.storage_descriptor;
       prev_physical_texture.state = physical_texture.state;
     }
     RgPhysicalTexture &last_physical_texture = m_physical_textures[last - 1];
@@ -166,7 +158,6 @@ void RgPersistent::rotate_textures() {
 #endif
     last_physical_texture.usage = usage;
     last_physical_texture.handle = handle;
-    last_physical_texture.storage_descriptor = storage_descriptor;
     last_physical_texture.state = state;
   }
 }
@@ -241,11 +232,13 @@ auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
 
 } // namespace
 
-RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer) {
+RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
+                     DescriptorAllocatorScope &descriptor_allocator) {
   m_renderer = &renderer;
   m_rgp = &rgp;
   m_data = &rgp.m_build_data;
   m_rt_data = &rgp.m_rt_data;
+  m_descriptor_allocator = &descriptor_allocator;
 
   for (auto &&[_, texture] : m_rgp->m_textures) {
     texture.def = {};
@@ -360,13 +353,14 @@ auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name,
   return {dst, RgUntypedBufferToken(use)};
 }
 
-auto RgBuilder::add_texture_use(RgTextureId texture,
-                                const TextureState &usage) -> RgTextureUseId {
+auto RgBuilder::add_texture_use(RgTextureId texture, const TextureState &usage,
+                                Handle<Sampler> sampler) -> RgTextureUseId {
   ren_assert(texture);
   RgTextureUseId id(m_data->m_texture_uses.size());
   m_data->m_texture_uses.push_back({
       .texture = texture,
-      .usage = usage,
+      .sampler = sampler,
+      .state = usage,
   });
   return id;
 }
@@ -394,9 +388,13 @@ auto RgBuilder::create_virtual_texture(RgPassId pass, RgDebugName name,
 }
 
 auto RgBuilder::read_texture(RgPassId pass, RgTextureId texture,
-                             const TextureState &usage,
+                             const TextureState &usage, Handle<Sampler> sampler,
                              u32 temporal_layer) -> RgTextureToken {
   ren_assert(texture);
+  if (sampler) {
+    ren_assert_msg(usage.access_mask & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                   "Sampler must be null if texture is not sampled");
+  }
   RgPhysicalTextureId physical_texture = m_rgp->m_textures[texture].parent;
   if (temporal_layer) {
     ren_assert_msg(
@@ -407,7 +405,7 @@ auto RgBuilder::read_texture(RgPassId pass, RgTextureId texture,
     texture = m_rgp->m_physical_textures[physical_texture + temporal_layer].id;
     ren_assert_msg(texture, "Temporal layer index out of range");
   }
-  RgTextureUseId use = add_texture_use(texture, usage);
+  RgTextureUseId use = add_texture_use(texture, usage, sampler);
   m_data->m_passes[pass].read_textures.push_back(use);
   return RgTextureToken(use);
 }
@@ -642,7 +640,7 @@ void RgBuilder::alloc_textures() {
     RgPhysicalTextureId physical_texture_id = texture.parent;
     RgPhysicalTexture &physical_texture =
         m_rgp->m_physical_textures[physical_texture_id];
-    VkImageUsageFlags usage = get_texture_usage_flags(use.usage.access_mask);
+    VkImageUsageFlags usage = get_texture_usage_flags(use.state.access_mask);
     bool needs_usage_update =
         (physical_texture.usage | usage) != physical_texture.usage;
     physical_texture.usage |= usage;
@@ -661,8 +659,6 @@ void RgBuilder::alloc_textures() {
   }
 
   std::swap(m_rgp->m_texture_arena, m_rgp->m_prev_texture_arena);
-  m_renderer->wait_idle();
-  m_rgp->m_descriptor_allocator.clear();
   m_rgp->m_num_prev_physical_textures = 0;
   usize num_physical_textures = m_rgp->m_physical_textures.size();
   for (auto i : range(num_physical_textures)) {
@@ -698,7 +694,7 @@ void RgBuilder::alloc_textures() {
 #endif
       });
       RgTextureToken src = read_texture(pass.m_pass, src_physical_texture.id,
-                                        TRANSFER_SRC_TEXTURE);
+                                        TRANSFER_SRC_TEXTURE, NullHandle, 0);
       RgTextureToken dst =
           write_texture(pass.m_pass, physical_texture->id,
                         physical_texture->init_id, TRANSFER_DST_TEXTURE);
@@ -721,13 +717,6 @@ void RgBuilder::alloc_textures() {
         .num_mip_levels = physical_texture->num_mip_levels,
         .num_array_layers = physical_texture->num_array_layers,
     });
-    physical_texture->storage_descriptor = {};
-    if (physical_texture->usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-      physical_texture->storage_descriptor =
-          m_rgp->m_descriptor_allocator.allocate_storage_texture(
-              *m_renderer,
-              m_renderer->get_texture_view(physical_texture->handle));
-    }
     physical_texture->state = {};
   }
 
@@ -827,18 +816,61 @@ void RgBuilder::init_runtime_buffers() {
 
 void RgBuilder::init_runtime_textures() {
   auto &rt_textures = m_rt_data->m_textures;
-  auto &rt_texture_storage_descriptors =
-      m_rt_data->m_texture_storage_descriptors;
   const auto &texture_uses = m_data->m_texture_uses;
   const auto &physical_textures = m_rgp->m_physical_textures;
+
   rt_textures.resize(texture_uses.size());
-  rt_texture_storage_descriptors.resize(rt_textures.size());
+  usize num_storage_texture_descriptors = 0;
   for (auto i : range(texture_uses.size())) {
+    const RgTextureUse &use = texture_uses[i];
     RgPhysicalTextureId physical_texture_id =
-        m_rgp->m_textures[texture_uses[i].texture].parent;
-    rt_textures[i] = physical_textures[physical_texture_id].handle;
-    rt_texture_storage_descriptors[i] =
-        physical_textures[physical_texture_id].storage_descriptor;
+        m_rgp->m_textures[use.texture].parent;
+    const RgPhysicalTexture &physical_texture =
+        physical_textures[physical_texture_id];
+    rt_textures[i] = physical_texture.handle;
+    num_storage_texture_descriptors +=
+        use.state.access_mask & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)
+            ? physical_texture.num_mip_levels
+            : 0;
+  }
+
+  auto &rt_storage_texture_descriptors =
+      m_rt_data->m_storage_texture_descriptors;
+  rt_storage_texture_descriptors.resize(num_storage_texture_descriptors);
+  auto &rt_texture_descriptors = m_rt_data->m_texture_descriptors;
+  rt_texture_descriptors.resize(texture_uses.size());
+  num_storage_texture_descriptors = 0;
+  for (auto i : range(texture_uses.size())) {
+    const RgTextureUse &use = texture_uses[i];
+    RgPhysicalTextureId physical_texture_id =
+        m_rgp->m_textures[use.texture].parent;
+    const RgPhysicalTexture &physical_texture =
+        physical_textures[physical_texture_id];
+    RgTextureDescriptors &descriptors = rt_texture_descriptors[i];
+
+    TextureView view = m_renderer->get_texture_view(physical_texture.handle);
+    if (use.state.access_mask & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
+      if (use.sampler) {
+        descriptors.combined = m_descriptor_allocator->allocate_sampled_texture(
+            *m_renderer, view, use.sampler);
+      } else {
+        descriptors.sampled =
+            m_descriptor_allocator->allocate_texture(*m_renderer, view);
+      }
+    } else if (use.state.access_mask & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
+      view.num_mip_levels = 1;
+      descriptors.storage =
+          &rt_storage_texture_descriptors[num_storage_texture_descriptors];
+      for (i32 mip = 0; mip < physical_texture.num_mip_levels; ++mip) {
+        view.first_mip_level = mip;
+        descriptors.storage[mip] =
+            m_descriptor_allocator->allocate_storage_texture(*m_renderer, view);
+      }
+
+      num_storage_texture_descriptors += physical_texture.num_mip_levels;
+    }
   }
 }
 
@@ -1019,9 +1051,9 @@ void RgBuilder::place_barriers_and_semaphores() {
       const RgTextureUse &use = m_texture_uses[use_id];
       RgPhysicalTextureId physical_texture = m_textures[use.texture].parent;
 
-      VkPipelineStageFlags2 dst_stage_mask = use.usage.stage_mask;
-      VkAccessFlags2 dst_access_mask = use.usage.access_mask;
-      VkImageLayout dst_layout = use.usage.layout;
+      VkPipelineStageFlags2 dst_stage_mask = use.state.stage_mask;
+      VkAccessFlags2 dst_access_mask = use.state.access_mask;
+      VkImageLayout dst_layout = use.state.layout;
       ren_assert(dst_layout);
       if (dst_layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
         ren_assert(dst_stage_mask);
@@ -1214,7 +1246,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_rgp = m_rgp;
   rg.m_data = m_rt_data;
   rg.m_upload_allocator = &upload_allocator;
-  rg.m_texture_set = m_rgp->m_descriptor_allocator.get_set();
+  rg.m_texture_set = m_descriptor_allocator->get_set();
 
   return rg;
 }
@@ -1245,7 +1277,14 @@ auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
 
 auto RgPassBuilder::read_texture(RgTextureId texture, const TextureState &usage,
                                  u32 temporal_layer) -> RgTextureToken {
-  return m_builder->read_texture(m_pass, texture, usage, temporal_layer);
+  return read_texture(texture, usage, NullHandle, temporal_layer);
+}
+
+auto RgPassBuilder::read_texture(RgTextureId texture, const TextureState &usage,
+                                 Handle<Sampler> sampler,
+                                 u32 temporal_layer) -> RgTextureToken {
+  return m_builder->read_texture(m_pass, texture, usage, sampler,
+                                 temporal_layer);
 }
 
 auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
@@ -1290,7 +1329,7 @@ auto RgPassBuilder::write_color_attachment(
 auto RgPassBuilder::read_depth_attachment(
     RgTextureId texture, u32 temporal_layer) -> RgTextureToken {
   RgTextureToken token =
-      read_texture(texture, READ_DEPTH_ATTACHMENT, temporal_layer);
+      read_texture(texture, READ_DEPTH_ATTACHMENT, NullHandle, temporal_layer);
   add_depth_attachment(token, {
                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                   .store = VK_ATTACHMENT_STORE_OP_NONE,
@@ -1488,11 +1527,32 @@ auto RgRuntime::get_texture(RgTextureToken texture) const -> Handle<Texture> {
   return m_rg->m_data->m_textures[texture];
 }
 
-auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture) const
-    -> glsl::RWStorageTexture {
+auto RgRuntime::get_texture_descriptor(RgTextureToken texture) const
+    -> glsl::Texture {
   ren_assert(texture);
+  glsl::Texture descriptor =
+      m_rg->m_data->m_texture_descriptors[texture].sampled;
+  ren_assert(descriptor);
+  return descriptor;
+}
+
+auto RgRuntime::get_sampled_texture_descriptor(RgTextureToken texture) const
+    -> glsl::SampledTexture {
+  ren_assert(texture);
+  glsl::SampledTexture descriptor =
+      m_rg->m_data->m_texture_descriptors[texture].combined;
+  ren_assert(descriptor);
+  return descriptor;
+}
+
+auto RgRuntime::get_storage_texture_descriptor(
+    RgTextureToken texture, u32 mip) const -> glsl::RWStorageTexture {
+  ren_assert(texture);
+  ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
+  ren_assert(
+      mip < m_rg->m_renderer->get_texture(get_texture(texture)).num_mip_levels);
   glsl::RWStorageTexture descriptor =
-      m_rg->m_data->m_texture_storage_descriptors[texture];
+      m_rg->m_data->m_texture_descriptors[texture].storage[mip];
   ren_assert(descriptor);
   return descriptor;
 }

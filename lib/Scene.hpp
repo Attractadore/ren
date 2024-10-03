@@ -21,11 +21,12 @@ namespace ren {
 
 using Image = Handle<Texture>;
 
-struct ScenPerFrameResources {
+struct ScenePerFrameResources {
   Handle<Semaphore> acquire_semaphore;
   Handle<Semaphore> present_semaphore;
   UploadBumpAllocator upload_allocator;
   CommandAllocator cmd_allocator;
+  DescriptorAllocatorScope descriptor_allocator;
 
 public:
   void reset();
@@ -155,11 +156,11 @@ public:
 private:
   void allocate_per_frame_resources();
 
-  auto get_frame_resources() const -> const ScenPerFrameResources & {
+  auto get_frame_resources() const -> const ScenePerFrameResources & {
     return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
   }
 
-  auto get_per_frame_resources() -> ScenPerFrameResources & {
+  auto get_per_frame_resources() -> ScenePerFrameResources & {
     return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
   }
 
@@ -184,7 +185,8 @@ private:
 
   ResourceArena m_arena;
   ResourceArena m_fif_arena;
-  SmallVector<ScenPerFrameResources, 3> m_per_frame_resources;
+  std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
+  SmallVector<ScenePerFrameResources, 3> m_per_frame_resources;
   u64 m_graphics_time = 0;
   u32 m_num_frames_in_flight = 2;
   u32 m_new_num_frames_in_flight = 0;
@@ -194,7 +196,6 @@ private:
 
   DeviceBumpAllocator m_device_allocator;
 
-  std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
   GenArray<Image> m_images;
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_samplers;
   Handle<Sampler> m_default_sampler;
