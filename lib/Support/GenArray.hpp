@@ -116,6 +116,7 @@ public:
         }
       }
 
+      std::free(m_values);
       m_values = new_values;
       m_capacity = new_capacity;
     }
