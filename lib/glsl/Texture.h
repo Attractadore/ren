@@ -11,26 +11,26 @@
 
 GLSL_NAMESPACE_BEGIN
 
-#define SAMPLER_ID_TYPE uint16_t
-const uint SAMPLER_ID_SIZE = 2;
+#define SAMPLER_ID_TYPE uint32_t
+const uint SAMPLER_ID_SIZE = 4;
 static_assert(SAMPLER_ID_SIZE == sizeof(SAMPLER_ID_TYPE));
 
 const uint NUM_SAMPLERS = 1 << 16;
-static_assert(NUM_SAMPLERS <= std::numeric_limits<SAMPLER_ID_TYPE>::max() + 1);
+static_assert(NUM_SAMPLERS - 1 <= std::numeric_limits<SAMPLER_ID_TYPE>::max());
 
-#define TEXTURE_ID_TYPE uint16_t
-const uint TEXTURE_ID_SIZE = 2;
+#define TEXTURE_ID_TYPE uint32_t
+const uint TEXTURE_ID_SIZE = 4;
 static_assert(TEXTURE_ID_SIZE == sizeof(TEXTURE_ID_TYPE));
 
 const uint NUM_TEXTURES = 1 << 16;
 const uint NUM_SAMPLED_TEXTURES = 1 << 16;
 const uint NUM_STORAGE_TEXTURES = 1 << 16;
 
-static_assert(NUM_TEXTURES <= std::numeric_limits<TEXTURE_ID_TYPE>::max() + 1);
-static_assert(NUM_SAMPLED_TEXTURES <=
-              std::numeric_limits<TEXTURE_ID_TYPE>::max() + 1);
-static_assert(NUM_STORAGE_TEXTURES <=
-              std::numeric_limits<TEXTURE_ID_TYPE>::max() + 1);
+static_assert(NUM_TEXTURES - 1 <= std::numeric_limits<TEXTURE_ID_TYPE>::max());
+static_assert(NUM_SAMPLED_TEXTURES - 1 <=
+              std::numeric_limits<TEXTURE_ID_TYPE>::max());
+static_assert(NUM_STORAGE_TEXTURES - 1 <=
+              std::numeric_limits<TEXTURE_ID_TYPE>::max());
 
 const uint SAMPLERS_SLOT = 0;
 const uint TEXTURES_SLOT = 1;
