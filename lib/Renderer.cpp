@@ -1,5 +1,6 @@
 #include "Renderer.hpp"
 #include "Formats.hpp"
+#include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Support/Array.hpp"
 #include "Support/Errors.hpp"
@@ -914,6 +915,7 @@ void Renderer::queueSubmit(
     VkQueue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
     TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
     TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores) {
+  ren_prof_zone("Renderer::queueSubmit");
   VkSubmitInfo2 submit_info = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
       .waitSemaphoreInfoCount = uint32_t(wait_semaphores.size()),

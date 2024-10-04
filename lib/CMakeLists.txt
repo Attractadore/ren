@@ -8,6 +8,7 @@ option(
   "Enable SDL2 plugin for simpler initialization and swapchain creation when using SDL2"
   OFF)
 option(REN_BUILD_IMGUI_PLUGIN "Enable ImGui plugin for debug UI rendering" OFF)
+option(REN_PROFILER "Enable profiler" OFF)
 
 find_package(
   Boost
@@ -105,6 +106,13 @@ if(REN_BUILD_IMGUI_PLUGIN)
     ren-imgui
     PUBLIC ren::ren imgui::imgui
     PRIVATE ren-common)
+endif()
+
+if(REN_PROFILER)
+  message(STATUS "Enable profiler")
+  find_package(Tracy REQUIRED)
+  target_link_libraries(ren-common INTERFACE Tracy::TracyClient)
+  target_compile_definitions(ren-common INTERFACE REN_PROFILER=1)
 endif()
 
 if(REN_ASSERTIONS)

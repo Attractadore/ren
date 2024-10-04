@@ -10,6 +10,7 @@
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
 #include "Passes/Present.hpp"
+#include "Profiler.hpp"
 #include "Support/Span.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
@@ -55,9 +56,9 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer);
 
-  allocate_per_frame_resources();
-
   m_gpu_scene = init_gpu_scene(m_arena);
+
+  next_frame();
 }
 
 void Scene::allocate_per_frame_resources() {
@@ -93,6 +94,7 @@ void ScenePerFrameResources::reset() {
 }
 
 void Scene::next_frame() {
+  ren_prof_zone("Scene::next_frame");
   m_data.update_meshes.clear();
   m_data.mesh_update_data.clear();
   m_data.update_mesh_instances.clear();
@@ -114,15 +116,21 @@ void Scene::next_frame() {
             .value = m_graphics_time,
         }});
     m_graphics_time++;
-    m_renderer->wait_for_semaphore(
-        m_renderer->get_semaphore(m_graphics_semaphore),
-        m_graphics_time - m_num_frames_in_flight);
-    get_per_frame_resources().reset();
+    {
+      ren_prof_zone("Scene::wait_for_previous_frame");
+      u64 wait_frame = m_graphics_time - m_num_frames_in_flight;
+      ren_prof_zone_text(fmt::format("{}", wait_frame));
+      m_renderer->wait_for_semaphore(
+          m_renderer->get_semaphore(m_graphics_semaphore), wait_frame);
+    }
   }
+  m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
+  m_frcs->reset();
 
-  VkCommandBuffer cmd = get_per_frame_resources().cmd_allocator.allocate();
+  VkCommandBuffer cmd = m_frcs->cmd_allocator.allocate();
   {
     CommandRecorder rec(*m_renderer, cmd);
+    auto _ = rec.debug_region("begin-frame");
     m_device_allocator.reset(rec);
   }
   m_renderer->graphicsQueueSubmit({{
@@ -171,9 +179,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
           .count = data.size(),
       });
       buffer = slice.buffer;
-      m_resource_uploader.stage_buffer(
-          *m_renderer, get_per_frame_resources().upload_allocator, Span(data),
-          slice);
+      m_resource_uploader.stage_buffer(*m_renderer, m_frcs->upload_allocator,
+                                       Span(data), slice);
     }
   };
 
@@ -219,8 +226,7 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   // Upload triangles
 
   m_resource_uploader.stage_buffer(
-      *m_renderer, get_per_frame_resources().upload_allocator,
-      Span(meshlet_triangles),
+      *m_renderer, m_frcs->upload_allocator, Span(meshlet_triangles),
       m_renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, num_triangles * 3));
 
@@ -287,9 +293,9 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
   usize size = desc.width * desc.height * get_format_size(format);
-  m_resource_uploader.stage_texture(
-      *m_renderer, get_per_frame_resources().upload_allocator,
-      Span((const std::byte *)desc.data, size), texture);
+  m_resource_uploader.stage_texture(*m_renderer, m_frcs->upload_allocator,
+                                    Span((const std::byte *)desc.data, size),
+                                    texture);
   Handle<Image> h = m_images.insert(texture);
   return std::bit_cast<ImageId>(h);
 }
@@ -452,15 +458,17 @@ void Scene::set_directional_light(DirectionalLightId light,
 };
 
 auto Scene::draw() -> expected<void> {
-  ScenePerFrameResources &fr = get_per_frame_resources();
+  ren_prof_zone("Scene::draw");
 
-  m_resource_uploader.upload(*m_renderer, fr.cmd_allocator);
+  m_resource_uploader.upload(*m_renderer, m_frcs->cmd_allocator);
 
   RenderGraph render_graph = build_rg();
 
-  render_graph.execute(fr.cmd_allocator);
+  render_graph.execute(m_frcs->cmd_allocator);
 
-  m_swapchain->present(fr.present_semaphore);
+  m_swapchain->present(m_frcs->present_semaphore);
+
+  prof::mark_frame();
 
   next_frame();
 
@@ -469,6 +477,8 @@ auto Scene::draw() -> expected<void> {
 
 #if REN_IMGUI
 void Scene::draw_imgui() {
+  ren_prof_zone("Scene::draw_imgui");
+
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
@@ -560,6 +570,8 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
 #endif
 
 auto Scene::build_rg() -> RenderGraph {
+  ren_prof_zone("Scene::build_rg");
+
   bool dirty = false;
   auto set_if_changed =
       [&]<typename T>(T &config_value,
@@ -581,14 +593,12 @@ auto Scene::build_rg() -> RenderGraph {
     m_pass_rcs = {};
   }
 
-  ScenePerFrameResources &pfr = get_per_frame_resources();
-
-  RgBuilder rgb(*m_rgp, *m_renderer, pfr.descriptor_allocator);
+  RgBuilder rgb(*m_rgp, *m_renderer, m_frcs->descriptor_allocator);
 
   PassCommonConfig cfg = {
       .rgp = m_rgp.get(),
       .rgb = &rgb,
-      .allocator = &pfr.upload_allocator,
+      .allocator = &m_frcs->upload_allocator,
       .pipelines = &m_pipelines,
       .samplers = &m_samplers,
       .scene = &m_data,
@@ -642,16 +652,14 @@ auto Scene::build_rg() -> RenderGraph {
   }
 #endif
 
-  ScenePerFrameResources &fr = get_per_frame_resources();
-
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,
-                              .acquire_semaphore = fr.acquire_semaphore,
-                              .present_semaphore = fr.present_semaphore,
+                              .acquire_semaphore = m_frcs->acquire_semaphore,
+                              .present_semaphore = m_frcs->present_semaphore,
                               .swapchain = m_swapchain,
                           });
 
-  RenderGraph rg = rgb.build(m_device_allocator, fr.upload_allocator);
+  RenderGraph rg = rgb.build(m_device_allocator, m_frcs->upload_allocator);
 
   rg_export_gpu_scene(rgb, rg_gpu_scene, &m_gpu_scene);
 

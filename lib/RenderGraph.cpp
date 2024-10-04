@@ -2,6 +2,7 @@
 #include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
+#include "Profiler.hpp"
 #include "Support/Errors.hpp"
 #include "Support/NotNull.hpp"
 #include "Support/Views.hpp"
@@ -1228,12 +1229,16 @@ void RgBuilder::place_barriers_and_semaphores() {
 
 auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
                       UploadBumpAllocator &upload_allocator) -> RenderGraph {
+  ren_prof_zone("RgBuilder::build");
+
   m_rgp->rotate_textures();
 
   alloc_textures();
   alloc_buffers(device_allocator, upload_allocator);
 
+#if 0
   dump_pass_schedule();
+#endif
 
   init_runtime_passes();
   init_runtime_buffers();
@@ -1358,6 +1363,8 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore,
 }
 
 void RenderGraph::execute(CommandAllocator &cmd_alloc) {
+  ren_prof_zone("RenderGraph::execute");
+
   RgRuntime rt;
   rt.m_rg = this;
 
@@ -1379,6 +1386,10 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
   };
 
   for (const RgRtPass &pass : m_data->m_passes) {
+    ren_prof_zone("RenderGraph::execute_pass");
+#if REN_RG_DEBUG
+    ren_prof_zone_text(m_data->m_pass_names[pass.pass]);
+#endif
     if (pass.num_wait_semaphores > 0) {
       submit_batch();
       batch_wait_semaphores =

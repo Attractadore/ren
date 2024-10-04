@@ -162,14 +162,6 @@ public:
 private:
   void allocate_per_frame_resources();
 
-  auto get_frame_resources() const -> const ScenePerFrameResources & {
-    return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
-  }
-
-  auto get_per_frame_resources() -> ScenePerFrameResources & {
-    return m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
-  }
-
   auto get_camera(CameraId camera) -> Camera &;
 
   [[nodiscard]] auto get_or_create_sampler(
@@ -193,9 +185,10 @@ private:
   ResourceArena m_fif_arena;
   std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
   SmallVector<ScenePerFrameResources, 3> m_per_frame_resources;
+  ScenePerFrameResources *m_frcs = nullptr;
   u64 m_graphics_time = 0;
-  u32 m_num_frames_in_flight = 2;
-  u32 m_new_num_frames_in_flight = 0;
+  u32 m_num_frames_in_flight = 0;
+  u32 m_new_num_frames_in_flight = 2;
   Handle<Semaphore> m_graphics_semaphore;
 
   Pipelines m_pipelines;

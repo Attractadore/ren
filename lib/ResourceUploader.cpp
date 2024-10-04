@@ -164,7 +164,7 @@ void ResourceUploader::upload(Renderer &renderer,
     CommandRecorder cmd(renderer, cmd_buffer);
 
     if (not m_buffer_copies.empty()) {
-      auto _ = cmd.debug_region("Upload buffers");
+      auto _ = cmd.debug_region("upload-buffers");
       for (const auto &[src, dst] : m_buffer_copies) {
         cmd.copy_buffer(src, dst);
       }
@@ -183,7 +183,7 @@ void ResourceUploader::upload(Renderer &renderer,
     }
 
     if (not m_texture_copies.empty()) {
-      auto _ = cmd.debug_region("Upload textures");
+      auto _ = cmd.debug_region("upload-textures");
       for (const auto &[src, dst] : m_texture_copies) {
         upload_texture(renderer, cmd, src, dst);
       }

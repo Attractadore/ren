@@ -36,7 +36,8 @@
       "description": "Development build with debug options and optimizations",
       "inherits": "debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "REN_PROFILER": "ON"
       }
     },
     {
@@ -61,7 +62,8 @@
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
         "REN_BUILD_TESTS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF"
+        "REN_VULKAN_VALIDATION": "OFF",
+        "REN_PROFILER": "OFF"
       },
       "condition": {
         "type": "notEquals",

@@ -38,6 +38,17 @@
         "imgui"
       ]
     },
+    "profiler": {
+      "description": "Enable profiler",
+      "dependencies": [
+        {
+          "name": "tracy",
+          "features": [
+            "gui-tools"
+          ]
+        }
+      ]
+    },
     "examples": {
       "description": "Build example executables",
       "dependencies": [

@@ -151,7 +151,7 @@ public:
   void pipeline_barrier(TempSpan<const VkMemoryBarrier2> barriers,
                         TempSpan<const VkImageMemoryBarrier2> image_barriers);
 
-  auto debug_region(const char *label) -> DebugRegion;
+  [[nodiscard]] auto debug_region(const char *label) -> DebugRegion;
 };
 
 class RenderPass {

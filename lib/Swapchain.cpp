@@ -1,5 +1,6 @@
 #include "Swapchain.hpp"
 #include "Formats.hpp"
+#include "Profiler.hpp"
 #include "Renderer.hpp"
 #include "Support/Errors.hpp"
 
@@ -47,23 +48,12 @@ auto select_composite_alpha(VkCompositeAlphaFlagsKHR composite_alphas)
                                                   ~(composite_alphas - 1));
 }
 
-constexpr VkImageUsageFlags BLIT_STRATEGY_USAGE =
-    VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-constexpr VkImageUsageFlags RENDER_STRATEGY_USAGE =
-    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-auto select_image_usage(VkImageUsageFlags image_usage) -> VkImageUsageFlags {
-  const std::array preferred_order = {
-      BLIT_STRATEGY_USAGE,
-  };
-
-  for (auto usage : preferred_order) {
-    if ((usage & image_usage) == usage) {
-      return usage;
-    }
-  }
-
-  return RENDER_STRATEGY_USAGE;
+auto select_image_usage(VkImageUsageFlags supported_usage)
+    -> VkImageUsageFlags {
+  constexpr VkImageUsageFlags REQUIRED_USAGE =
+      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
+  return REQUIRED_USAGE;
 }
 
 } // namespace
@@ -209,6 +199,7 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
 }
 
 void Swapchain::present(Handle<Semaphore> wait_semaphore) {
+  ren_prof_zone("Swapchain::present");
   VkPresentInfoKHR present_info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
