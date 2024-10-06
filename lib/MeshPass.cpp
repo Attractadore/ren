@@ -214,10 +214,10 @@ void MeshPassClass::Instance::Instance::record_culling(
       RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> meshlet_draw_commands;
       RgBufferToken<u32> meshlet_draw_command_count;
+      DevicePtr<glm::mat4> proj_view;
       u32 feature_mask;
       std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
       glm::vec3 eye;
-      glm::mat4 proj_view;
     } rcs;
 
     rcs.pipeline = m_pipelines->meshlet_culling;
@@ -242,6 +242,11 @@ void MeshPassClass::Instance::Instance::record_culling(
         pass.write_buffer("meshlet-draw-command-count", *cfg.command_count,
                           CS_READ_BUFFER | CS_WRITE_BUFFER);
 
+    auto [proj_view, proj_view_ptr, _] =
+        m_upload_allocator->allocate<glm::mat4>(1);
+    *proj_view = get_projection_view_matrix(m_camera, m_viewport);
+    rcs.proj_view = proj_view_ptr;
+
     const SceneGraphicsSettings &settings = m_scene->settings;
 
     rcs.feature_mask = 0;
@@ -254,7 +259,6 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.bucket_offsets = bucket_offsets;
     rcs.eye = m_camera.position;
-    rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
 
     pass.set_compute_callback(
         [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
@@ -272,10 +276,10 @@ void MeshPassClass::Instance::Instance::record_culling(
                 .commands = rg.get_buffer_device_ptr(rcs.meshlet_draw_commands),
                 .num_commands =
                     rg.get_buffer_device_ptr(rcs.meshlet_draw_command_count),
+                .proj_view = rcs.proj_view,
                 .feature_mask = rcs.feature_mask,
                 .bucket = bucket,
                 .eye = rcs.eye,
-                .proj_view = rcs.proj_view,
             });
             pass.dispatch_indirect(
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));

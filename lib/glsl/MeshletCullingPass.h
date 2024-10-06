@@ -20,11 +20,11 @@ struct MeshletCullingPassArgs {
   GLSL_PTR(uint) bucket_size;
   GLSL_PTR(DrawIndexedIndirectCommand) commands;
   GLSL_PTR(uint) num_commands;
+  GLSL_PTR(mat4) proj_view;
   uint feature_mask;
   /// Current bucket index.
   uint bucket;
   vec3 eye;
-  mat4 proj_view;
 };
 
 GLSL_NAMESPACE_END

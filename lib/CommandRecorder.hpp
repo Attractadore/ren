@@ -21,11 +21,11 @@ struct PipelineLayout;
 
 auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32;
 
-auto get_num_dispatch_groups(glm::uvec2 size,
-                             glm::uvec2 group_size) -> glm::uvec2;
+auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
+    -> glm::uvec2;
 
-auto get_num_dispatch_groups(glm::uvec3 size,
-                             glm::uvec3 group_size) -> glm::uvec3;
+auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
+    -> glm::uvec3;
 
 struct ColorAttachment {
   TextureView texture;
@@ -200,9 +200,8 @@ public:
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
-  void set_push_constants(const T &data, unsigned offset = 0)
     requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
-  {
+  void set_push_constants(const T &data, unsigned offset = 0) {
     ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, m_shader_stages,
                        TempSpan(&data, 1).as_bytes(), offset);
@@ -269,7 +268,9 @@ public:
     set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
   }
 
-  void set_push_constants(const auto &data, unsigned offset = 0) {
+  template <typename T>
+    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+  void set_push_constants(const T &data, unsigned offset = 0) {
     ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
     set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
                        offset);
