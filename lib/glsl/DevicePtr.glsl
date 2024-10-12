@@ -5,7 +5,8 @@
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_scalar_block_layout : require
 
-#define GLSL_PTR(Type) Type ## _Ptr
+#define GLSL_PTR_IMPL(Type) Type ## _Ptr
+#define GLSL_PTR(Type) GLSL_PTR_IMPL(Type)
 
 #define GLSL_DEFINE_PTR_TYPE(Type, alignment) layout(buffer_reference, scalar, buffer_reference_align = alignment) buffer GLSL_PTR(Type) { Type data; }
 

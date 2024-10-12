@@ -7,39 +7,39 @@
 namespace ren {
 
 auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
-  GpuScene gpu_scene;
-  gpu_scene.meshes = {arena.create_buffer<glsl::Mesh>({
-      .name = "Scene meshes",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .count = MAX_NUM_MESHES,
-  })};
-  gpu_scene.mesh_instances = {arena.create_buffer<glsl::MeshInstance>({
-      .name = "Scene mesh instances",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .count = MAX_NUM_MESH_INSTANCES,
-  })};
-  gpu_scene.materials = {arena.create_buffer<glsl::Material>({
-      .name = "Scene materials",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .count = MAX_NUM_MATERIALS,
-  })};
-  gpu_scene.directional_lights = {arena.create_buffer<glsl::DirectionalLight>({
-      .name = "Scene directional lights",
-      .heap = BufferHeap::Static,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .count = MAX_NUM_DIRECTIONAL_LIGHTS,
-  })};
-  return gpu_scene;
+  constexpr BufferHeap HEAP = BufferHeap::Static;
+  constexpr VkBufferUsageFlags USAGE =
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+#define create_buffer(T, n, c)                                                 \
+  StatefulBufferSlice<T> {                                                     \
+    arena.create_buffer<T>({                                                   \
+        .name = n,                                                             \
+        .heap = HEAP,                                                          \
+        .usage = USAGE,                                                        \
+        .count = c,                                                            \
+    })                                                                         \
+  }
+
+  constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(
+      MAX_NUM_MESH_INSTANCES, glsl::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
+
+  return GpuScene{
+      .meshes = create_buffer(glsl::Mesh, "Scene meshes", MAX_NUM_MESHES),
+      .mesh_instances = create_buffer(
+          glsl::MeshInstance, "Scene mesh instances", MAX_NUM_MESH_INSTANCES),
+      .mesh_instance_visibility = create_buffer(
+          MeshInstanceVisibilityMask, "Scene mesh instance visibility",
+          NUM_MESH_INSTANCE_VISIBILITY_MASKS),
+      .materials =
+          create_buffer(glsl::Material, "Scene materials", MAX_NUM_MATERIALS),
+      .directional_lights =
+          create_buffer(glsl::DirectionalLight, "Scene directional lights",
+                        MAX_NUM_DIRECTIONAL_LIGHTS),
+  };
+
+#undef create_buffer
 }
+
 } // namespace ren

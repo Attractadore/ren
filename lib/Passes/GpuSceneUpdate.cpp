@@ -7,8 +7,8 @@
 
 namespace ren {
 
-auto rg_import_gpu_scene(RgBuilder &rgb,
-                         const GpuScene &gpu_scene) -> RgGpuScene {
+auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
+    -> RgGpuScene {
   return {
       .meshes = rgb.create_buffer("meshes", gpu_scene.meshes),
       .mesh_instances =
@@ -21,6 +21,8 @@ auto rg_import_gpu_scene(RgBuilder &rgb,
           .heap = BufferHeap::Static,
           .size = MAX_NUM_MESH_INSTANCES,
       }),
+      .mesh_instance_visibility = rgb.create_buffer(
+          "mesh-instance-visibility", gpu_scene.mesh_instance_visibility),
       .materials = rgb.create_buffer("materials", gpu_scene.materials),
       .directional_lights =
           rgb.create_buffer("directional-lights", gpu_scene.directional_lights),
@@ -32,6 +34,8 @@ void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
   gpu_scene->meshes.state = rgb.get_final_buffer_state(rg_gpu_scene.meshes);
   gpu_scene->mesh_instances.state =
       rgb.get_final_buffer_state(rg_gpu_scene.mesh_instances);
+  gpu_scene->mesh_instance_visibility.state =
+      rgb.get_final_buffer_state(rg_gpu_scene.mesh_instance_visibility);
   gpu_scene->materials.state =
       rgb.get_final_buffer_state(rg_gpu_scene.materials);
   gpu_scene->directional_lights.state =

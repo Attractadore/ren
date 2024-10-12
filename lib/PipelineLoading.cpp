@@ -63,6 +63,7 @@ auto create_pipeline_layout(ResourceArena &arena,
                             TempSpan<const Span<const std::byte>> shaders,
                             StringView name) -> Handle<PipelineLayout> {
   VkPushConstantRange push_constants = {};
+  bool use_textures = false;
 
   for (auto code : shaders) {
     spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
@@ -85,67 +86,62 @@ auto create_pipeline_layout(ResourceArena &arena,
       push_constants.stageFlags |= stage;
       push_constants.size = block_var->padded_size;
     }
+
+    uint32_t num_descriptor_sets = 0;
+    throw_if_failed(
+        shader.EnumerateDescriptorSets(&num_descriptor_sets, nullptr),
+        "SPIRV-Reflect: Failed to enumerate descriptor sets");
+    use_textures = use_textures || num_descriptor_sets > 0;
   }
 
-  SmallVector<Handle<DescriptorSetLayout>> layouts;
-  if (persistent_set_layout) {
-    layouts.push_back(persistent_set_layout);
+  if (use_textures) {
+    ren_assert(persistent_set_layout);
   }
 
   return arena.create_pipeline_layout({
       .name = fmt::format("{} pipeline layout", name),
-      .set_layouts = layouts,
+      .set_layouts = {&persistent_set_layout, use_textures},
       .push_constants = push_constants,
-  });
-}
-
-auto load_compute_pipeline(ResourceArena &arena,
-                           Handle<DescriptorSetLayout> persistent_set_layout,
-                           Span<const std::byte> shader,
-                           StringView name) -> Handle<ComputePipeline> {
-  auto layout =
-      create_pipeline_layout(arena, persistent_set_layout, {shader}, name);
-  return arena.create_compute_pipeline({
-      .name = fmt::format("{} compute pipeline", name),
-      .layout = layout,
-      .shader =
-          {
-              .code = shader,
-          },
   });
 }
 
 auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines {
+  auto load_compute_pipeline = [&](Span<const std::byte> shader,
+                                   StringView name) {
+    auto layout =
+        create_pipeline_layout(arena, persistent_set_layout, {shader}, name);
+    return arena.create_compute_pipeline({
+        .name = fmt::format("{} compute pipeline", name),
+        .layout = layout,
+        .shader =
+            {
+                .code = shader,
+            },
+    });
+  };
+
+#define compute_pipeline(shader, name)                                         \
+  load_compute_pipeline(Span(shader, shader##_count).as_bytes(), name)
+
   return {
-      .instance_culling_and_lod = load_instance_culling_and_lod_pipeline(arena),
-      .meshlet_culling = load_compute_pipeline(
-          arena, NullHandle,
-          Span(MeshletCullingCS, MeshletCullingCS_count).as_bytes(),
-          "Meshlet culling"),
-      .hi_z = load_compute_pipeline(arena, persistent_set_layout,
-                                    Span(HiZSpdCS, HiZSpdCS_count).as_bytes(),
-                                    "Hi-Z SPD"),
+      .instance_culling_and_lod =
+          compute_pipeline(InstanceCullingAndLODCS, "Instance culling and LOD"),
+      .meshlet_culling = compute_pipeline(MeshletCullingCS, "Meshlet culling"),
+      .hi_z = compute_pipeline(HiZSpdCS, "Hi-Z SPD"),
       .early_z_pass = load_early_z_pass_pipeline(arena),
       .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
-      .post_processing =
-          load_post_processing_pipeline(arena, persistent_set_layout),
-      .reduce_luminance_histogram = load_reduce_luminance_histogram_pipeline(
-          arena, persistent_set_layout),
+      .post_processing = compute_pipeline(PostProcessingCS, "Post-processing"),
+      .reduce_luminance_histogram = compute_pipeline(
+          ReduceLuminanceHistogramCS, "Reduce luminance histogram"),
 #if REN_IMGUI
       .imgui_pass =
           load_imgui_pipeline(arena, persistent_set_layout, SDR_FORMAT),
 #endif
   };
-}
 
-auto load_instance_culling_and_lod_pipeline(ResourceArena &arena)
-    -> Handle<ComputePipeline> {
-  return load_compute_pipeline(
-      arena, NullHandle,
-      Span(InstanceCullingAndLODCS, InstanceCullingAndLODCS_count).as_bytes(),
-      "Instance culling");
+#undef compute_pipeline
 }
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
@@ -208,28 +204,9 @@ auto load_opaque_pass_pipelines(
   return pipelines;
 }
 
-auto load_reduce_luminance_histogram_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline> {
-  return load_compute_pipeline(
-      arena, persistent_set_layout,
-      Span(ReduceLuminanceHistogramCS, ReduceLuminanceHistogramCS_count)
-          .as_bytes(),
-      "Reduce luminance histogram");
-}
-
-auto load_post_processing_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline> {
-  return load_compute_pipeline(
-      arena, persistent_set_layout,
-      Span(PostProcessingCS, PostProcessingCS_count).as_bytes(),
-      "Post-processing");
-}
-
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures,
-                         VkFormat format) -> Handle<GraphicsPipeline> {
+                         Handle<DescriptorSetLayout> textures, VkFormat format)
+    -> Handle<GraphicsPipeline> {
   auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
   Handle<PipelineLayout> layout =

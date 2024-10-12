@@ -31,7 +31,7 @@ void load_tile_from_dst(CoherentRWStorageTexture2D dst) {
   uvec2 size = pc.dst_size >> (NUM_TILE_MIPS - 1);
   for (uint x = gl_LocalInvocationID.x; x < TILE_SIZE; x += GROUP_SIZE.x) {
     for (uint y = gl_LocalInvocationID.y; y < TILE_SIZE; y += GROUP_SIZE.y) {
-      float depth = 0.0f;
+      float depth = 1.0f;
       ivec2 pos = ivec2(x, y);
       if (all(lessThan(pos, size))) {
         depth = image_load(dst, pos).r;
@@ -52,14 +52,14 @@ void reduce_tile(RWStorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
       uvec2 dst_pos = uvec2(x, y);
       ivec2 pos = ivec2(base_pos + dst_pos);
 
-      float depth = 0.0f;
+      float depth = 1.0f;
 
       bool store = all(lessThan(dst_pos, tile_size));
       if (store) {
-        depth = max(depth, tile[2 * y + 0][2 * x + 0]);
-        depth = max(depth, tile[2 * y + 0][2 * x + 1]);
-        depth = max(depth, tile[2 * y + 1][2 * x + 0]);
-        depth = max(depth, tile[2 * y + 1][2 * x + 1]);
+        depth = min(depth, tile[2 * y + 0][2 * x + 0]);
+        depth = min(depth, tile[2 * y + 0][2 * x + 1]);
+        depth = min(depth, tile[2 * y + 1][2 * x + 0]);
+        depth = min(depth, tile[2 * y + 1][2 * x + 1]);
         if (tile_mip == NUM_TILE_MIPS - 1) {
           image_store(make_coherent(dst), pos, depth);
         } else {

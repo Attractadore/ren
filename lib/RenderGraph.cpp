@@ -423,8 +423,8 @@ auto RgBuilder::write_texture(RgPassId pass, RgDebugName name, RgTextureId src,
 }
 
 auto RgBuilder::write_texture(RgPassId pass, RgTextureId dst_id,
-                              RgTextureId src_id,
-                              const TextureState &usage) -> RgTextureToken {
+                              RgTextureId src_id, const TextureState &usage)
+    -> RgTextureToken {
   ren_assert(pass);
   ren_assert(dst_id);
   ren_assert(src_id);
@@ -1286,8 +1286,8 @@ auto RgPassBuilder::read_texture(RgTextureId texture, const TextureState &usage,
 }
 
 auto RgPassBuilder::read_texture(RgTextureId texture, const TextureState &usage,
-                                 Handle<Sampler> sampler,
-                                 u32 temporal_layer) -> RgTextureToken {
+                                 Handle<Sampler> sampler, u32 temporal_layer)
+    -> RgTextureToken {
   return m_builder->read_texture(m_pass, texture, usage, sampler,
                                  temporal_layer);
 }
@@ -1322,17 +1322,20 @@ void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
   };
 }
 
-auto RgPassBuilder::write_color_attachment(
-    RgDebugName name, RgTextureId texture, const ColorAttachmentOperations &ops,
-    u32 index) -> std::tuple<RgTextureId, RgTextureToken> {
+auto RgPassBuilder::write_color_attachment(RgDebugName name,
+                                           RgTextureId texture,
+                                           const ColorAttachmentOperations &ops,
+                                           u32 index)
+    -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
       write_texture(std::move(name), texture, COLOR_ATTACHMENT);
   add_color_attachment(index, token, ops);
   return {new_texture, token};
 }
 
-auto RgPassBuilder::read_depth_attachment(
-    RgTextureId texture, u32 temporal_layer) -> RgTextureToken {
+auto RgPassBuilder::read_depth_attachment(RgTextureId texture,
+                                          u32 temporal_layer)
+    -> RgTextureToken {
   RgTextureToken token =
       read_texture(texture, READ_DEPTH_ATTACHMENT, NullHandle, temporal_layer);
   add_depth_attachment(token, {
@@ -1556,8 +1559,20 @@ auto RgRuntime::get_sampled_texture_descriptor(RgTextureToken texture) const
   return descriptor;
 }
 
-auto RgRuntime::get_storage_texture_descriptor(
-    RgTextureToken texture, u32 mip) const -> glsl::RWStorageTexture {
+auto RgRuntime::try_get_sampled_texture_descriptor(RgTextureToken texture) const
+    -> glsl::SampledTexture {
+  if (!texture) {
+    return {};
+  }
+  glsl::SampledTexture descriptor =
+      m_rg->m_data->m_texture_descriptors[texture].combined;
+  ren_assert(descriptor);
+  return descriptor;
+}
+
+auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture,
+                                               u32 mip) const
+    -> glsl::RWStorageTexture {
   ren_assert(texture);
   ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
   ren_assert(

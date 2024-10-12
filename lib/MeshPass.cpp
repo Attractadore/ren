@@ -26,12 +26,23 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls,
   m_class->m_depth_attachment_name = begin_info.depth_attachment_name;
 
   m_pipelines = begin_info.pipelines;
+  m_samplers = begin_info.samplers;
 
   m_scene = begin_info.scene;
   m_camera = begin_info.camera;
   m_viewport = begin_info.viewport;
 
   m_gpu_scene = begin_info.gpu_scene;
+
+  m_occlusion_culling_mode = begin_info.occlusion_culling_mode;
+  m_hi_z = begin_info.hi_z;
+
+  if (m_occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
+    for (ColorAttachmentOperations &ops : m_color_attachment_ops) {
+      ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+    m_depth_attachment_ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+  }
 
   m_upload_allocator = begin_info.upload_allocator;
 }
@@ -111,9 +122,19 @@ void MeshPassClass::Instance::Instance::record_culling(
   }
 
   {
-    auto pass =
-        rgb.create_pass({.name = fmt::format("{}-instance-culling-and-lod",
-                                             m_class->m_pass_name)});
+    RgDebugName pass_name;
+    if (m_occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
+      pass_name = fmt::format("{}-instance-culling-and-lod-first-phase",
+                              m_class->m_pass_name);
+    } else if (m_occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
+      pass_name = fmt::format("{}-instance-culling-and-lod-second-phase",
+                              m_class->m_pass_name);
+    } else {
+      pass_name =
+          fmt::format("{}-instance-culling-and-lod", m_class->m_pass_name);
+    }
+
+    auto pass = rgb.create_pass({.name = std::move(pass_name)});
 
     struct {
       Handle<ComputePipeline> pipeline;
@@ -125,14 +146,16 @@ void MeshPassClass::Instance::Instance::record_culling(
       RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
       RgBufferToken<u32> meshlet_bucket_sizes;
       RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
+      RgBufferToken<MeshInstanceVisibilityMask> mesh_instance_visibility;
+      RgTextureToken hi_z;
     } rcs;
 
     rcs.pipeline = m_pipelines->instance_culling_and_lod;
 
-    rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_gpu_scene->meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_gpu_scene.transform_matrices, CS_READ_BUFFER);
+        pass.read_buffer(m_gpu_scene->transform_matrices, CS_READ_BUFFER);
 
     auto [instance_cull_data, instance_cull_data_ptr, _] =
         m_upload_allocator->allocate<glsl::InstanceCullData>(
@@ -161,6 +184,8 @@ void MeshPassClass::Instance::Instance::record_culling(
     if (settings.lod_selection) {
       feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
     }
+    feature_mask |= (u32)m_occlusion_culling_mode;
+
     float num_viewport_triangles =
         m_viewport.x * m_viewport.y / settings.lod_triangle_pixels;
     float lod_triangle_density = num_viewport_triangles / 4.0f;
@@ -179,9 +204,23 @@ void MeshPassClass::Instance::Instance::record_culling(
     };
     rcs.uniforms = uniforms_ptr;
 
+    if (m_occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
+      ren_assert(m_hi_z);
+      std::tie(m_gpu_scene->mesh_instance_visibility,
+               rcs.mesh_instance_visibility) =
+          pass.write_buffer("new-mesh-instance-visibility",
+                            m_gpu_scene->mesh_instance_visibility,
+                            CS_READ_WRITE_BUFFER);
+      rcs.hi_z = pass.read_texture(m_hi_z, CS_SAMPLE_TEXTURE, m_samplers->hi_z);
+    } else if (m_occlusion_culling_mode != OcclusionCullingMode::Disabled) {
+      rcs.mesh_instance_visibility = pass.read_buffer(
+          m_gpu_scene->mesh_instance_visibility, CS_READ_BUFFER);
+    }
+
     pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
                                     ComputePass &cmd) {
       cmd.bind_compute_pipeline(rcs.pipeline);
+      cmd.bind_descriptor_sets({rg.get_texture_set()});
       ren_assert(rcs.uniforms);
       ren_assert(rcs.instance_cull_data);
       cmd.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
@@ -195,6 +234,10 @@ void MeshPassClass::Instance::Instance::record_culling(
           .meshlet_bucket_sizes =
               rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes),
           .meshlet_cull_data = rg.get_buffer_device_ptr(rcs.meshlet_cull_data),
+          .mesh_instance_visibility =
+              rg.try_get_buffer_device_ptr(rcs.mesh_instance_visibility),
+          .hi_z = glsl::SampledTexture2D(
+              rg.try_get_sampled_texture_descriptor(rcs.hi_z)),
       });
       cmd.dispatch_threads(rcs.num_instances,
                            glsl::INSTANCE_CULLING_AND_LOD_THREADS);
@@ -222,10 +265,10 @@ void MeshPassClass::Instance::Instance::record_culling(
 
     rcs.pipeline = m_pipelines->meshlet_culling;
 
-    rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, CS_READ_BUFFER);
+    rcs.meshes = pass.read_buffer(m_gpu_scene->meshes, CS_READ_BUFFER);
 
     rcs.transform_matrices =
-        pass.read_buffer(m_gpu_scene.transform_matrices, CS_READ_BUFFER);
+        pass.read_buffer(m_gpu_scene->transform_matrices, CS_READ_BUFFER);
 
     rcs.meshlet_bucket_commands =
         pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
@@ -327,11 +370,11 @@ auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_gpu_scene->meshes, VS_READ_BUFFER);
   rcs.mesh_instances =
-      pass.read_buffer(m_gpu_scene.mesh_instances, VS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_gpu_scene.transform_matrices, VS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->transform_matrices, VS_READ_BUFFER);
   rcs.proj_view = get_projection_view_matrix(m_camera, m_viewport);
 
   return rcs;
@@ -400,16 +443,16 @@ auto OpaqueMeshPassClass::Instance::get_render_pass_resources(
     RgPassBuilder &pass) const -> RenderPassResources {
   RenderPassResources rcs;
 
-  rcs.meshes = pass.read_buffer(m_gpu_scene.meshes, VS_READ_BUFFER);
+  rcs.meshes = pass.read_buffer(m_gpu_scene->meshes, VS_READ_BUFFER);
   rcs.mesh_instances =
-      pass.read_buffer(m_gpu_scene.mesh_instances, VS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->mesh_instances, VS_READ_BUFFER);
   rcs.transform_matrices =
-      pass.read_buffer(m_gpu_scene.transform_matrices, VS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->transform_matrices, VS_READ_BUFFER);
   rcs.normal_matrices =
-      pass.read_buffer(m_gpu_scene.normal_matrices, VS_READ_BUFFER);
-  rcs.materials = pass.read_buffer(m_gpu_scene.materials, FS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->normal_matrices, VS_READ_BUFFER);
+  rcs.materials = pass.read_buffer(m_gpu_scene->materials, FS_READ_BUFFER);
   rcs.directional_lights =
-      pass.read_buffer(m_gpu_scene.directional_lights, FS_READ_BUFFER);
+      pass.read_buffer(m_gpu_scene->directional_lights, FS_READ_BUFFER);
   rcs.exposure =
       pass.read_texture(m_exposure, FS_READ_TEXTURE, m_exposure_temporal_layer);
 

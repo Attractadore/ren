@@ -29,9 +29,6 @@ auto load_pipelines(ResourceArena &arena,
                     Handle<DescriptorSetLayout> persistent_set_layout)
     -> Pipelines;
 
-auto load_instance_culling_and_lod_pipeline(ResourceArena &arena)
-    -> Handle<ComputePipeline>;
-
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Handle<GraphicsPipeline>;
 
@@ -39,16 +36,8 @@ auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>;
 
-auto load_post_processing_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline>;
-
-auto load_reduce_luminance_histogram_pipeline(
-    ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
-    -> Handle<ComputePipeline>;
-
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures,
-                         VkFormat format) -> Handle<GraphicsPipeline>;
+                         Handle<DescriptorSetLayout> textures, VkFormat format)
+    -> Handle<GraphicsPipeline>;
 
 } // namespace ren

@@ -11,10 +11,14 @@
 #include "Support/NotNull.hpp"
 #include "glsl/Culling.h"
 #include "glsl/Indirect.h"
+#include "glsl/InstanceCullingAndLODPass.h"
+
+#include <fmt/format.h>
 
 namespace ren {
 
 struct SceneData;
+struct Samplers;
 
 namespace glsl {
 struct Mesh;
@@ -22,6 +26,13 @@ struct MeshInstance;
 struct Material;
 struct DirectionalLight;
 } // namespace glsl
+
+enum class OcclusionCullingMode {
+  Disabled = glsl::INSTANCE_CULLING_AND_LOD_NO_OCCLUSION_CULLING,
+  FirstPhase = glsl::INSTANCE_CULLING_AND_LOD_FIRST_PHASE,
+  SecondPhase = glsl::INSTANCE_CULLING_AND_LOD_SECOND_PHASE,
+  ThirdPhase = glsl::INSTANCE_CULLING_AND_LOD_THIRD_PHASE,
+};
 
 class MeshPassClass {
 public:
@@ -63,12 +74,16 @@ struct MeshPassClass::BeginInfo {
   StringView depth_attachment_name;
 
   NotNull<const Pipelines *> pipelines;
+  NotNull<const Samplers *> samplers;
 
   NotNull<const SceneData *> scene;
   Camera camera;
   glm::uvec2 viewport = {};
 
-  RgGpuScene gpu_scene;
+  NotNull<RgGpuScene *> gpu_scene;
+
+  OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  RgTextureId hi_z;
 
   NotNull<UploadBumpAllocator *> upload_allocator;
 };
@@ -121,7 +136,17 @@ protected:
   void record_render_pass(this Self &self, RgBuilder &rgb,
                           const BatchDesc &batch, RgUntypedBufferId commands,
                           RgUntypedBufferId command_count) {
-    auto pass = rgb.create_pass({.name = self.m_class->m_pass_name});
+    RgDebugName pass_name;
+    if (self.m_occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
+      pass_name = fmt::format("{}-first-phase", self.m_class->m_pass_name);
+    } else if (self.m_occlusion_culling_mode ==
+               OcclusionCullingMode::SecondPhase) {
+      pass_name = fmt::format("{}-second-phase", self.m_class->m_pass_name);
+    } else {
+      pass_name = self.m_class->m_pass_name;
+    }
+
+    auto pass = rgb.create_pass({.name = std::move(pass_name)});
 
     for (usize i = 0; i < self.m_color_attachments.size(); ++i) {
       NotNull<RgTextureId *> color_attachment = self.m_color_attachments[i];
@@ -177,12 +202,13 @@ protected:
   MeshPassClass *m_class = nullptr;
 
   const Pipelines *m_pipelines = nullptr;
+  const Samplers *m_samplers = nullptr;
 
   const SceneData *m_scene = nullptr;
   Camera m_camera;
   glm::uvec2 m_viewport = {};
 
-  RgGpuScene m_gpu_scene;
+  RgGpuScene *m_gpu_scene = nullptr;
 
   UploadBumpAllocator *m_upload_allocator = nullptr;
 
@@ -191,6 +217,10 @@ protected:
 
   RgTextureId *m_depth_attachment = nullptr;
   DepthAttachmentOperations m_depth_attachment_ops;
+
+  OcclusionCullingMode m_occlusion_culling_mode =
+      OcclusionCullingMode::Disabled;
+  RgTextureId m_hi_z;
 };
 
 class DepthOnlyMeshPassClass : public MeshPassClass {
@@ -262,8 +292,8 @@ private:
     u32 num_directional_lights = 0;
   };
 
-  auto
-  get_render_pass_resources(RgPassBuilder &pass) const -> RenderPassResources;
+  auto get_render_pass_resources(RgPassBuilder &pass) const
+      -> RenderPassResources;
 
   static void bind_render_pass_resources(const RgRuntime &rg,
                                          RenderPass &render_pass,

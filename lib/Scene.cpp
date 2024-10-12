@@ -5,7 +5,6 @@
 #include "MeshProcessing.hpp"
 #include "Passes/Exposure.hpp"
 #include "Passes/GpuSceneUpdate.hpp"
-#include "Passes/HiZ.hpp"
 #include "Passes/ImGui.hpp"
 #include "Passes/Opaque.hpp"
 #include "Passes/PostProcessing.hpp"
@@ -42,10 +41,10 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
           .name = "Hi-Z sampler",
           .mag_filter = VK_FILTER_LINEAR,
           .min_filter = VK_FILTER_LINEAR,
-          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
           .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
           .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-          .reduction_mode = SamplerReductionMode::Max,
+          .reduction_mode = SamplerReductionMode::Min,
       }),
   };
 
@@ -621,21 +620,12 @@ auto Scene::build_rg() -> RenderGraph {
   RgTextureId hdr;
   setup_opaque_passes(cfg,
                       OpaquePassesConfig{
-                          .gpu_scene = rg_gpu_scene,
+                          .gpu_scene = &rg_gpu_scene,
                           .exposure = exposure,
                           .exposure_temporal_layer = exposure_temporal_layer,
                           .depth_buffer = &depth_buffer,
                           .hdr = &hdr,
                       });
-
-  RgTextureId hi_z;
-  bool run_hi_z = m_data.settings.instance_occulusion_culling;
-  if (run_hi_z) {
-    setup_hi_z_pass(cfg, HiZPassConfig{
-                             .depth_buffer = depth_buffer,
-                             .hi_z = &hi_z,
-                         });
-  }
 
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{

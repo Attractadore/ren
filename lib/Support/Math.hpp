@@ -5,11 +5,13 @@
 
 namespace ren {
 
-auto ceil_div(std::unsigned_integral auto x, std::unsigned_integral auto over) {
+constexpr auto ceil_div(std::unsigned_integral auto x,
+                        std::unsigned_integral auto over) {
   return x / over + ((x % over) != 0);
 }
 
-auto pad(std::unsigned_integral auto x, std::unsigned_integral auto multiple) {
+constexpr auto pad(std::unsigned_integral auto x,
+                   std::unsigned_integral auto multiple) {
   return ceil_div(x, multiple) * multiple;
 }
 

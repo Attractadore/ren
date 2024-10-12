@@ -45,8 +45,11 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
   }
 
   NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
+  vec2 ndc_min;
+  vec3 ndc_max;
+  get_ndc_bb_min_max(ndc_bb, ndc_min, ndc_max);
 
-  return cull_ndc_bb(ndc_bb);
+  return frustum_cull(ndc_min, ndc_max);
 }
 
 NUM_THREADS(MESHLET_CULLING_THREADS);

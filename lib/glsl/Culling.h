@@ -71,22 +71,20 @@ inline NDCBoundingBox convert_cs_bb_to_ndc(ClipSpaceBoundingBox cs_bb) {
   return ndc_bb;
 }
 
-inline void get_ndc_bb_min_max(NDCBoundingBox ndc_bb, GLSL_OUT(vec3) ndc_min,
+inline void get_ndc_bb_min_max(NDCBoundingBox ndc_bb, GLSL_OUT(vec2) ndc_min,
                                GLSL_OUT(vec3) ndc_max) {
-  ndc_min = ndc_bb.ndc[0];
+  ndc_min = vec2(ndc_bb.ndc[0]);
   ndc_max = ndc_bb.ndc[0];
   for (int i = 1; i < 8; ++i) {
-    ndc_min = min(ndc_min, ndc_bb.ndc[i]);
+    ndc_min = min(ndc_min, vec2(ndc_bb.ndc[i]));
     ndc_max = max(ndc_max, ndc_bb.ndc[i]);
   }
 }
 
 /// Assumes reverse-Z.
-inline bool cull_ndc_bb(NDCBoundingBox ndc_bb) {
-  vec3 ndc_min, ndc_max;
-  get_ndc_bb_min_max(ndc_bb, ndc_min, ndc_max);
+inline bool frustum_cull(vec2 ndc_min, vec3 ndc_max) {
   return any(lessThan(ndc_max, vec3(-1.0f, -1.0f, 0.0f))) ||
-         any(greaterThan(vec2(ndc_min), vec2(1.0f)));
+         any(greaterThan(ndc_min, vec2(1.0f)));
 }
 
 inline float get_ndc_bb_area(NDCBoundingBox ndc_bb) {
