@@ -257,6 +257,7 @@ void MeshPassClass::Instance::Instance::record_culling(
       RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> meshlet_draw_commands;
       RgBufferToken<u32> meshlet_draw_command_count;
+      RgTextureToken hi_z;
       DevicePtr<glm::mat4> proj_view;
       u32 feature_mask;
       std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
@@ -299,6 +300,10 @@ void MeshPassClass::Instance::Instance::record_culling(
     if (settings.meshlet_frustum_culling) {
       rcs.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
     }
+    if (settings.meshlet_occlusion_culling and m_hi_z) {
+      rcs.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
+      rcs.hi_z = pass.read_texture(m_hi_z, CS_SAMPLE_TEXTURE, m_samplers->hi_z);
+    }
 
     rcs.bucket_offsets = bucket_offsets;
     rcs.eye = m_camera.position;
@@ -306,6 +311,7 @@ void MeshPassClass::Instance::Instance::record_culling(
     pass.set_compute_callback(
         [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
           pass.bind_compute_pipeline(rcs.pipeline);
+          pass.bind_descriptor_sets({rg.get_texture_set()});
           for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
             pass.set_push_constants(glsl::MeshletCullingPassArgs{
                 .meshes = rg.get_buffer_device_ptr(rcs.meshes),
@@ -323,6 +329,8 @@ void MeshPassClass::Instance::Instance::record_culling(
                 .feature_mask = rcs.feature_mask,
                 .bucket = bucket,
                 .eye = rcs.eye,
+                .hi_z = glsl::SampledTexture2D(
+                    rg.try_get_sampled_texture_descriptor(rcs.hi_z)),
             });
             pass.dispatch_indirect(
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));

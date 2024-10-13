@@ -52,6 +52,7 @@ struct SceneGraphicsSettings {
   // Meshlet culling
   bool meshlet_cone_culling = true;
   bool meshlet_frustum_culling = true;
+  bool meshlet_occlusion_culling = true;
 
   // Opaque pass
   bool early_z = true;

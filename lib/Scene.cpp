@@ -530,6 +530,10 @@ void Scene::draw_imgui() {
         ImGui::Checkbox("Cone culling", &settings.meshlet_cone_culling);
         ImGui::Checkbox("Frustum culling## Meshlet",
                         &settings.meshlet_frustum_culling);
+        ImGui::BeginDisabled(!settings.instance_occulusion_culling);
+        ImGui::Checkbox("Occlusion culling## Meshlet",
+                        &settings.meshlet_occlusion_culling);
+        ImGui::EndDisabled();
       }
 
       ImGui::SeparatorText("Opaque pass");

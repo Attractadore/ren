@@ -1,4 +1,5 @@
 #include "MeshletCullingPass.h"
+#include "Culling.glsl"
 #include "Vertex.h"
 
 PUSH_CONSTANTS(MeshletCullingPassArgs);
@@ -6,8 +7,9 @@ PUSH_CONSTANTS(MeshletCullingPassArgs);
 bool cull(Meshlet meshlet, uint mesh_instance) {
   const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
   const bool frustum_culling = bool(pc.feature_mask & MESHLET_CULLING_FRUSTUM_BIT);
+  const bool occlusion_culling = bool(pc.feature_mask & MESHLET_CULLING_OCCLUSION_BIT);
 
-  if (!cone_culling && !frustum_culling) {
+  if (!cone_culling && !frustum_culling && !occlusion_culling) {
     return false;
   }
 
@@ -21,7 +23,7 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
     }
   }
 
-  if (!frustum_culling) {
+  if (!frustum_culling && !occlusion_culling) {
     return false;
   }
 
@@ -49,7 +51,15 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
   vec3 ndc_max;
   get_ndc_bb_min_max(ndc_bb, ndc_min, ndc_max);
 
-  return frustum_cull(ndc_min, ndc_max);
+  if (frustum_culling && frustum_cull(ndc_min, ndc_max)) {
+    return true;
+  }
+
+  if (occlusion_culling && occlusion_cull(pc.hi_z, ndc_min, ndc_max)) {
+    return true;
+  }
+
+  return false;
 }
 
 NUM_THREADS(MESHLET_CULLING_THREADS);

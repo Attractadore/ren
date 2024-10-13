@@ -5,11 +5,13 @@
 #include "Culling.h"
 #include "Indirect.h"
 #include "Mesh.h"
+#include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
 const uint MESHLET_CULLING_CONE_BIT = 1 << 0;
 const uint MESHLET_CULLING_FRUSTUM_BIT = 1 << 1;
+const uint MESHLET_CULLING_OCCLUSION_BIT = 1 << 2;
 
 struct MeshletCullingPassArgs {
   GLSL_PTR(Mesh) meshes;
@@ -25,6 +27,7 @@ struct MeshletCullingPassArgs {
   /// Current bucket index.
   uint bucket;
   vec3 eye;
+  SampledTexture2D hi_z;
 };
 
 GLSL_NAMESPACE_END
