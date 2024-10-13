@@ -13,7 +13,8 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   glm::uvec2 size = {std::bit_floor(viewport.x), std::bit_floor(viewport.y)};
   u32 num_mips =
       std::max(std::countr_zero(size.x), std::countr_zero(size.y)) + 1;
-  ren_assert(size.x < glsl::HI_Z_SPD_MAX_SIZE and size.y < glsl::HI_Z_SPD_MAX_SIZE);
+  ren_assert(size.x < glsl::HI_Z_SPD_MAX_SIZE and
+             size.y < glsl::HI_Z_SPD_MAX_SIZE);
 
   if (!ccfg.rcs->hi_z) {
     ccfg.rcs->hi_z = ccfg.rgp->create_texture({
@@ -55,7 +56,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   rcs.pipeline = ccfg.pipelines->hi_z;
 
   rcs.depth_buffer = pass.read_texture(cfg.depth_buffer, CS_SAMPLE_TEXTURE,
-                                       ccfg.samplers->hi_z);
+                                       ccfg.samplers->hi_z_gen);
 
   std::tie(*cfg.hi_z, rcs.hi_z) =
       pass.write_texture("hi-z", ccfg.rcs->hi_z, CS_WRITE_TEXTURE);
