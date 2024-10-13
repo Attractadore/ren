@@ -37,14 +37,22 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   m_samplers = {
       .dflt = m_arena.create_sampler({.name = "Default Sampler"}),
-      .hi_z = m_arena.create_sampler({
-          .name = "Hi-Z sampler",
+      .hi_z_gen = m_arena.create_sampler({
+          .name = "Hi-Z generation sampler",
           .mag_filter = VK_FILTER_LINEAR,
           .min_filter = VK_FILTER_LINEAR,
           .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
           .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
           .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
           .reduction_mode = SamplerReductionMode::Min,
+      }),
+      .hi_z = m_arena.create_sampler({
+          .name = "Hi-Z generation sampler",
+          .mag_filter = VK_FILTER_NEAREST,
+          .min_filter = VK_FILTER_NEAREST,
+          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+          .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       }),
   };
 

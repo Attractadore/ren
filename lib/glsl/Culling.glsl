@@ -11,7 +11,11 @@ bool occlusion_cull(SampledTexture2D hi_z, vec2 ndc_min, vec3 ndc_max) {
   vec2 box_size = texture_size(hi_z) * (uv_max - uv_min);
   float l = max(box_size.x, box_size.y);
   float mip = ceil(log2(max(l, 1.0f)));
-  float hi_z_depth = texture_lod(hi_z, (uv_min + uv_max) * 0.5f, mip).r;
+  float hi_z_depth = 1.0f;
+  hi_z_depth = min(hi_z_depth, texture_lod(hi_z, vec2(uv_min.x, uv_min.y), mip).r);
+  hi_z_depth = min(hi_z_depth, texture_lod(hi_z, vec2(uv_min.x, uv_max.y), mip).r);
+  hi_z_depth = min(hi_z_depth, texture_lod(hi_z, vec2(uv_max.x, uv_min.y), mip).r);
+  hi_z_depth = min(hi_z_depth, texture_lod(hi_z, vec2(uv_max.x, uv_max.y), mip).r);
   return hi_z_depth > ndc_max.z;
 }
 
