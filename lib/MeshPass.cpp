@@ -49,6 +49,8 @@ MeshPassClass::Instance::Instance(MeshPassClass &cls,
 
 void MeshPassClass::Instance::Instance::record_culling(
     RgBuilder &rgb, const CullingConfig &cfg) {
+  ren_prof_zone("Record culling");
+
   u32 num_instances = cfg.draw->instances.size();
 
   u32 buckets_size = 0;

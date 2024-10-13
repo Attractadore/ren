@@ -1,5 +1,6 @@
 #include "GpuSceneUpdate.hpp"
 #include "CommandRecorder.hpp"
+#include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Support/Views.hpp"
 
@@ -88,6 +89,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
   pass.set_callback([=](Renderer &renderer, const RgRuntime &rg,
                         CommandRecorder &cmd) {
     if (meshes) {
+      ren_prof_zone("Update meshes");
       BufferSlice<glsl::Mesh> buffer = rg.get_buffer(meshes);
       auto [ptr, _, staging_buffer] =
           rg.allocate<glsl::Mesh>(scene->update_meshes.size());
@@ -99,6 +101,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     if (mesh_instances) {
+      ren_prof_zone("Update mesh instances");
       BufferSlice<glsl::MeshInstance> buffer = rg.get_buffer(mesh_instances);
       auto [ptr, _, staging_buffer] =
           rg.allocate<glsl::MeshInstance>(scene->update_mesh_instances.size());
@@ -109,22 +112,26 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       }
     }
 
-    auto [transforms_ptr, _0, transforms_staging_buffer] =
-        ccfg.allocator->allocate<glm::mat4x3>(
-            scene->mesh_instance_transforms.size());
-    auto [normals_ptr, _1, normals_staging_buffer] =
-        ccfg.allocator->allocate<glm::mat3>(
-            scene->mesh_instance_transforms.size());
-    for (const auto &[h, _] : scene->mesh_instances) {
-      glm::mat4 transform = scene->mesh_instance_transforms[h];
-      transforms_ptr[h] = transform;
-      normals_ptr[h] = glm::inverse(glm::transpose(transform));
+    {
+      ren_prof_zone("Update mesh instance transforms");
+      auto [transforms_ptr, _0, transforms_staging_buffer] =
+          ccfg.allocator->allocate<glm::mat4x3>(
+              scene->mesh_instance_transforms.size());
+      auto [normals_ptr, _1, normals_staging_buffer] =
+          ccfg.allocator->allocate<glm::mat3>(
+              scene->mesh_instance_transforms.size());
+      for (const auto &[h, _] : scene->mesh_instances) {
+        glm::mat4 transform = scene->mesh_instance_transforms[h];
+        transforms_ptr[h] = transform;
+        normals_ptr[h] = glm::inverse(glm::transpose(transform));
+      }
+      cmd.copy_buffer(transforms_staging_buffer,
+                      rg.get_buffer(transform_matrices));
+      cmd.copy_buffer(normals_staging_buffer, rg.get_buffer(normal_matrices));
     }
-    cmd.copy_buffer(transforms_staging_buffer,
-                    rg.get_buffer(transform_matrices));
-    cmd.copy_buffer(normals_staging_buffer, rg.get_buffer(normal_matrices));
 
     if (materials) {
+      ren_prof_zone("Update materials");
       BufferSlice<glsl::Material> buffer = rg.get_buffer(materials);
       auto [ptr, _, staging_buffer] =
           rg.allocate<glsl::Material>(scene->update_materials.size());
@@ -136,6 +143,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     if (directional_lights) {
+      ren_prof_zone("Update directional_lights");
       BufferSlice<glsl::DirectionalLight> buffer =
           rg.get_buffer(directional_lights);
       auto [ptr, _, staging_buffer] = rg.allocate<glsl::DirectionalLight>(

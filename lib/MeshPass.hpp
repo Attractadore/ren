@@ -6,6 +6,7 @@
 #include "GpuScene.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
+#include "Profiler.hpp"
 #include "RenderGraph.hpp"
 #include "Renderer.hpp"
 #include "Support/NotNull.hpp"
@@ -95,6 +96,9 @@ protected:
   Instance(MeshPassClass &cls, const BeginInfo &begin_info);
 
   template <typename Self> void record(this Self &self, RgBuilder &rgb) {
+    ren_prof_zone("MeshPass::record");
+    ren_prof_zone_text(self.m_class->m_pass_name);
+
     ren_assert(self.m_scene->settings.draw_size > 0);
     ren_assert(self.m_scene->settings.num_draw_meshlets > 0);
 
@@ -103,23 +107,30 @@ protected:
     for (auto &[_, draws] : batches) {
       draws.clear();
     }
-    self.build_batches(batches);
+    {
+      ren_prof_zone("Build batches");
+      self.build_batches(batches);
+    }
 
     u32 num_draws = 0;
     for (const auto &[_, draws] : batches) {
       num_draws += draws.size();
     }
 
-    for (const auto &[batch, draws] : batches) {
-      for (const BatchDraw &draw : draws) {
-        RgBufferId<glsl::DrawIndexedIndirectCommand> commands;
-        RgBufferId<u32> command_count;
-        self.record_culling(rgb, CullingConfig{
-                                     .draw = &draw,
-                                     .commands = &commands,
-                                     .command_count = &command_count,
-                                 });
-        self.record_render_pass(rgb, batch, commands, command_count);
+    {
+      ren_prof_zone("Record batches");
+
+      for (const auto &[batch, draws] : batches) {
+        for (const BatchDraw &draw : draws) {
+          RgBufferId<glsl::DrawIndexedIndirectCommand> commands;
+          RgBufferId<u32> command_count;
+          self.record_culling(rgb, CullingConfig{
+                                       .draw = &draw,
+                                       .commands = &commands,
+                                       .command_count = &command_count,
+                                   });
+          self.record_render_pass(rgb, batch, commands, command_count);
+        }
       }
     }
   };
@@ -136,6 +147,8 @@ protected:
   void record_render_pass(this Self &self, RgBuilder &rgb,
                           const BatchDesc &batch, RgUntypedBufferId commands,
                           RgUntypedBufferId command_count) {
+    ren_prof_zone("Record render pass");
+
     RgDebugName pass_name;
     if (self.m_occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
       pass_name = fmt::format("{}-first-phase", self.m_class->m_pass_name);

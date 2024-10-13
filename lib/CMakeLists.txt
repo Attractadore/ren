@@ -62,6 +62,7 @@ add_library(
   MeshSimplification.cpp
   Pipeline.cpp
   PipelineLoading.cpp
+  Profiler.cpp
   RenderGraph.cpp
   Renderer.cpp
   ResourceUploader.cpp
