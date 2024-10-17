@@ -497,8 +497,6 @@ void Scene::draw_imgui() {
 
       SceneGraphicsSettings &settings = m_data.settings;
 
-      ImGui::SliderInt("Maximum indirect draw instance count",
-                       &settings.draw_size, 1, 128 * 1024);
       ImGui::SliderInt("Maximum indirect draw meshlet count",
                        &settings.num_draw_meshlets, 1, 1024 * 1024);
 

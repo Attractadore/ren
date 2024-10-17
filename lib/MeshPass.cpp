@@ -363,9 +363,8 @@ void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
     auto &batch_draws = it->second;
     [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
     BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->instances.size() == m_scene->settings.draw_size or
-                     draw->num_meshlets + num_meshlets >
-                         m_scene->settings.num_draw_meshlets) {
+    [[unlikely]] if (draw->num_meshlets + num_meshlets >
+                     m_scene->settings.num_draw_meshlets) {
       draw = &batch_draws.emplace_back();
     }
     draw->num_meshlets += num_meshlets;
@@ -436,9 +435,8 @@ void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
     auto &batch_draws = it->second;
     [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
     BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->instances.size() == m_scene->settings.draw_size or
-                     draw->num_meshlets + num_meshlets >
-                         m_scene->settings.num_draw_meshlets) {
+    [[unlikely]] if (draw->num_meshlets + num_meshlets >
+                     m_scene->settings.num_draw_meshlets) {
       draw = &batch_draws.emplace_back();
     }
     draw->num_meshlets += num_meshlets;

@@ -99,7 +99,6 @@ protected:
     ren_prof_zone("MeshPass::record");
     ren_prof_zone_text(self.m_class->m_pass_name);
 
-    ren_assert(self.m_scene->settings.draw_size > 0);
     ren_assert(self.m_scene->settings.num_draw_meshlets > 0);
 
     Batches &batches = self.m_class->m_batches;

@@ -39,7 +39,6 @@ struct SceneExposureSettings {
 
 struct SceneGraphicsSettings {
   // Batching
-  i32 draw_size = 8 * 1024;
   i32 num_draw_meshlets = 1024 * 1024;
 
   // Instance culling and LOD
