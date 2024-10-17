@@ -114,17 +114,21 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
 
     {
       ren_prof_zone("Update mesh instance transforms");
+      usize count = scene->mesh_instances.raw_size();
+
       auto [transforms_ptr, _0, transforms_staging_buffer] =
-          ccfg.allocator->allocate<glm::mat4x3>(
-              scene->mesh_instance_transforms.size());
+          ccfg.allocator->allocate<glm::mat4x3>(count);
       auto [normals_ptr, _1, normals_staging_buffer] =
-          ccfg.allocator->allocate<glm::mat3>(
-              scene->mesh_instance_transforms.size());
-      for (const auto &[h, _] : scene->mesh_instances) {
-        glm::mat4 transform = scene->mesh_instance_transforms[h];
-        transforms_ptr[h] = transform;
-        normals_ptr[h] = glm::inverse(glm::transpose(transform));
+          ccfg.allocator->allocate<glm::mat3>(count);
+
+      const glm::mat4x3 *transforms =
+          scene->mesh_instance_transforms.raw_data();
+      for (auto i : range(count)) {
+        glm::mat4x3 transform = transforms[i];
+        transforms_ptr[i] = transform;
+        normals_ptr[i] = glm::inverse(glm::transpose(glm::mat3(transform)));
       }
+
       cmd.copy_buffer(transforms_staging_buffer,
                       rg.get_buffer(transform_matrices));
       cmd.copy_buffer(normals_staging_buffer, rg.get_buffer(normal_matrices));

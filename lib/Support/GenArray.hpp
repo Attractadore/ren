@@ -74,7 +74,16 @@ public:
     return {self.m_indices.end(), &self.m_values[0]};
   }
 
+  template <typename Self>
+  auto raw_data(this Self &self) -> ConstLikeT<T, Self> *
+    requires std::is_trivially_copyable_v<T>
+  {
+    return self.m_values;
+  }
+
   auto size() const -> usize { return m_indices.size(); }
+
+  auto raw_size() const -> usize { return m_indices.raw_size(); }
 
   auto empty() const { return size() == 0; }
 

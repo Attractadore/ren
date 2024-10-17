@@ -82,6 +82,13 @@ public:
   }
 
   template <typename Self>
+  auto raw_data(this Self &self) -> ConstLikeT<T, Self> *
+    requires std::is_trivially_copyable_v<T>
+  {
+    return self.m_values;
+  }
+
+  template <typename Self>
   auto get(this Self &self, K key) -> ConstLikeT<T, Self> & {
     ren_assert(self.contains(key));
     return self.m_values[key];

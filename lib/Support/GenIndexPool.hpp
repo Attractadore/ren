@@ -64,6 +64,8 @@ public:
     return m_generations.size() - m_free_list.size();
   }
 
+  auto raw_size() const -> usize { return m_generations.size(); }
+
   auto empty() const { return size() == 0; }
 
   bool contains(K key) const {
