@@ -36,8 +36,7 @@
       "description": "Development build with debug options and optimizations",
       "inherits": "debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "REN_PROFILER": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
@@ -53,6 +52,16 @@
         "REN_VULKAN_DEBUG_NAMES": "OFF",
         "REN_RENDER_GRAPH_DEBUG": "OFF",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
+      }
+    },
+    {
+      "name": "prof",
+      "displayName": "Profiling Config",
+      "description": "Profiling build with optimizations",
+      "inherits": "release",
+      "cacheVariables": {
+        "REN_PROFILER": "ON",
+        "REN_RENDER_GRAPH_DEBUG": "ON"
       }
     },
     {
