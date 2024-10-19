@@ -30,6 +30,8 @@ auto throw_error(std::string err) -> std::string {
 
 AppBase::AppBase(const char *app_name) {
   [&] -> Result<void> {
+    m_app_name = app_name;
+
     OK(m_renderer, ren::sdl2::create_renderer());
 
     m_window.reset(SDL_CreateWindow(
@@ -61,6 +63,10 @@ auto AppBase::loop() -> Result<void> {
     auto now = chrono::steady_clock::now();
     chrono::nanoseconds dt = now - last_time;
     last_time = now;
+
+    float fps = 1e9f / dt.count();
+    auto title = fmt::format("{} @ {:.1f} FPS", m_app_name, fps);
+    SDL_SetWindowTitle(m_window.get(), title.c_str());
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {

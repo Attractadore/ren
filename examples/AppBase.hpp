@@ -54,6 +54,8 @@ class AppBase {
   std::unique_ptr<ren::IScene> m_scene;
   ren::CameraId m_camera;
 
+  std::string m_app_name;
+
 protected:
   AppBase(const char *app_name);
 
