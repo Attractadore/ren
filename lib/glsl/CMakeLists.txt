@@ -13,6 +13,8 @@ macro(add_embedded_shader source target)
   target_link_libraries(ren PRIVATE ${target})
 endmacro()
 
+add_embedded_shader(CalculateNormalMatrices.comp CalculateNormalMatricesCS)
+
 add_embedded_shader(EarlyZ.vert EarlyZVS)
 
 add_embedded_shader(HiZSpd.comp HiZSpdCS)

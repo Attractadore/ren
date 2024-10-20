@@ -3,6 +3,7 @@
 #include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Support/Views.hpp"
+#include "glsl/CalculateNormalMatricesPass.h"
 
 #include <algorithm>
 
@@ -43,6 +44,43 @@ void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
       rgb.get_final_buffer_state(rg_gpu_scene.directional_lights);
 }
 
+void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
+                                          NotNull<RgGpuScene *> gpu_scene) {
+
+  RgBuilder &rgb = *ccfg.rgb;
+  NotNull<const SceneData *> scene = ccfg.scene;
+
+  auto pass = rgb.create_pass({"gpu-scene-calculate-normal-matrices"});
+
+  struct Resources {
+    Handle<ComputePipeline> pipeline;
+    u32 num_mesh_instances;
+    RgBufferToken<glm::mat4x3> transforms;
+    RgBufferToken<glm::mat3> normals;
+  } rcs;
+
+  rcs.pipeline = ccfg.pipelines->calculate_normal_matrices;
+
+  rcs.num_mesh_instances = ccfg.scene->mesh_instances.raw_size();
+
+  rcs.transforms =
+      pass.read_buffer(gpu_scene->transform_matrices, CS_READ_BUFFER);
+
+  std::tie(gpu_scene->normal_matrices, rcs.normals) = pass.write_buffer(
+      "normal-matrices", gpu_scene->normal_matrices, CS_WRITE_BUFFER);
+
+  pass.set_compute_callback(
+      [rcs](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
+        cmd.bind_compute_pipeline(rcs.pipeline);
+        cmd.set_push_constants(glsl::CalculateNormalMatricesPassArgs{
+            .transforms = rg.get_buffer_device_ptr(rcs.transforms),
+            .normals = rg.get_buffer_device_ptr(rcs.normals),
+        });
+        cmd.dispatch_threads(rcs.num_mesh_instances,
+                             glsl::CALCULATE_NORMAL_MATRICES_THREADS);
+      });
+}
+
 void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
                                  const GpuSceneUpdatePassConfig &cfg) {
   RgBuilder &rgb = *ccfg.rgb;
@@ -67,10 +105,6 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
   std::tie(cfg.gpu_scene->transform_matrices, transform_matrices) =
       pass.write_buffer("transform-matrices", cfg.gpu_scene->transform_matrices,
                         TRANSFER_DST_BUFFER);
-
-  RgBufferToken<glm::mat3> normal_matrices;
-  std::tie(cfg.gpu_scene->normal_matrices, normal_matrices) = pass.write_buffer(
-      "normal-matrices", cfg.gpu_scene->normal_matrices, TRANSFER_DST_BUFFER);
 
   RgBufferToken<glsl::Material> materials;
   if (not scene->update_materials.empty()) {
@@ -116,22 +150,14 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       ren_prof_zone("Update mesh instance transforms");
       usize count = scene->mesh_instances.raw_size();
 
-      auto [transforms_ptr, _0, transforms_staging_buffer] =
+      auto [transforms, _0, transforms_staging_buffer] =
           ccfg.allocator->allocate<glm::mat4x3>(count);
-      auto [normals_ptr, _1, normals_staging_buffer] =
-          ccfg.allocator->allocate<glm::mat3>(count);
 
-      const glm::mat4x3 *transforms =
-          scene->mesh_instance_transforms.raw_data();
-      for (auto i : range(count)) {
-        glm::mat4x3 transform = transforms[i];
-        transforms_ptr[i] = transform;
-        normals_ptr[i] = glm::inverse(glm::transpose(glm::mat3(transform)));
-      }
+      std::ranges::copy_n(scene->mesh_instance_transforms.raw_data(), count,
+                          transforms);
 
       cmd.copy_buffer(transforms_staging_buffer,
                       rg.get_buffer(transform_matrices));
-      cmd.copy_buffer(normals_staging_buffer, rg.get_buffer(normal_matrices));
     }
 
     if (materials) {
@@ -159,6 +185,8 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       }
     }
   });
+
+  setup_calculate_normal_matrices_pass(ccfg, cfg.gpu_scene);
 }
 
 } // namespace ren

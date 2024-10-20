@@ -9,6 +9,7 @@ auto create_persistent_descriptor_set_layout(ResourceArena &arena)
     -> Handle<DescriptorSetLayout>;
 
 struct Pipelines {
+  Handle<ComputePipeline> calculate_normal_matrices;
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
   Handle<ComputePipeline> hi_z;

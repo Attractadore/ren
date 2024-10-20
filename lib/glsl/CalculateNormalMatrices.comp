@@ -1,0 +1,9 @@
+#include "CalculateNormalMatricesPass.h"
+
+PUSH_CONSTANTS(CalculateNormalMatricesPassArgs);
+
+NUM_THREADS(CALCULATE_NORMAL_MATRICES_THREADS);
+void main() {
+  mat3 transform = mat3(DEREF(pc.transforms[gl_GlobalInvocationID.x]));
+  DEREF(pc.normals[gl_GlobalInvocationID.x]) = inverse(transpose(transform));
+}
