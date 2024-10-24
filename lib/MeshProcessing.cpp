@@ -452,7 +452,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
     opts.mesh->lods[l] = {
         .base_meshlet = base_meshlet,
         .num_meshlets = num_lod_meshlets,
-        .num_triangles = lod.num_indices * 3,
+        .num_triangles = lod.num_indices / 3,
     };
 
     u32 num_lod_triangles = 0;
