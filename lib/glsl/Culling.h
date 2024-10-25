@@ -10,6 +10,7 @@ GLSL_NAMESPACE_BEGIN
 struct InstanceCullData {
   uint mesh;
   uint mesh_instance;
+  uint batch;
 };
 
 GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
@@ -17,6 +18,7 @@ GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
 struct MeshletCullData {
   uint mesh;
   uint mesh_instance;
+  uint batch;
   uint base_meshlet;
 };
 

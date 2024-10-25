@@ -231,6 +231,10 @@ public:
   void draw_indexed_indirect_count(
       const BufferView &view, const BufferView &counter,
       usize stride = sizeof(VkDrawIndexedIndirectCommand));
+
+  void draw_indexed_indirect_count(
+      const BufferSlice<glsl::DrawIndexedIndirectCommand> &commands,
+      const BufferSlice<u32> &counter);
 };
 
 class ComputePass {

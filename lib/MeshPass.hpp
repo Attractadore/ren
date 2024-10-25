@@ -49,14 +49,12 @@ public:
 protected:
   class Instance;
 
-  struct BatchDraw {
+  struct Batch {
+    BatchDesc desc;
     u32 num_meshlets = 0;
-    Vector<glsl::InstanceCullData> instances;
   };
 
-  using Batches = HashMap<BatchDesc, Vector<BatchDraw>>;
-
-  Batches m_batches;
+  Vector<Batch> m_batches;
 
   String m_pass_name;
   StaticVector<String, 8> m_color_attachment_names;
@@ -99,53 +97,64 @@ protected:
     ren_prof_zone("MeshPass::record");
     ren_prof_zone_text(self.m_class->m_pass_name);
 
-    ren_assert(self.m_scene->settings.num_draw_meshlets > 0);
+    self.m_instance_cull_data =
+        self.m_upload_allocator->template allocate<glsl::InstanceCullData>(
+            self.m_scene->mesh_instances.size());
 
-    Batches &batches = self.m_class->m_batches;
+    self.build_batches();
 
-    for (auto &[_, draws] : batches) {
-      draws.clear();
-    }
-    {
-      ren_prof_zone("Build batches");
-      self.build_batches(batches);
-    }
+    RgBufferId<glsl::DrawIndexedIndirectCommand> commands;
+    RgBufferId<u32> command_counts;
+    self.record_culling(rgb, CullingConfig{
+                                 .commands = &commands,
+                                 .command_counts = &command_counts,
+                             });
 
-    u32 num_draws = 0;
-    for (const auto &[_, draws] : batches) {
-      num_draws += draws.size();
-    }
+    self.record_render_pass(rgb, commands, command_counts);
+  }
 
-    {
-      ren_prof_zone("Record batches");
+  template <typename Self> void build_batches(this Self &self) {
+    ren_prof_zone("Build batches");
+    auto &batches = self.m_class->m_batches;
+    batches.clear();
+    usize i = 0;
+    for (const auto &[h, mesh_instance] : self.m_scene->mesh_instances) {
+      BatchDesc batch_desc = self.get_batch_desc(mesh_instance);
 
-      for (const auto &[batch, draws] : batches) {
-        for (const BatchDraw &draw : draws) {
-          RgBufferId<glsl::DrawIndexedIndirectCommand> commands;
-          RgBufferId<u32> command_count;
-          self.record_culling(rgb, CullingConfig{
-                                       .draw = &draw,
-                                       .commands = &commands,
-                                       .command_count = &command_count,
-                                   });
-          self.record_render_pass(rgb, batch, commands, command_count);
-        }
+      auto it = std::ranges::find_if(batches, [&](const Batch &batch) {
+        return batch.desc == batch_desc;
+      });
+
+      Batch *batch;
+      [[unlikely]] if (it == batches.end()) {
+        batch = &batches.emplace_back(Batch{batch_desc});
+      } else {
+        batch = &*it;
       }
+
+      const Mesh &mesh = self.m_scene->meshes.get(mesh_instance.mesh);
+      u32 num_meshlets = mesh.lods[0].num_meshlets;
+      batch->num_meshlets += num_meshlets;
+
+      self.m_instance_cull_data.host_ptr[i++] = {
+          .mesh = mesh_instance.mesh,
+          .mesh_instance = h,
+          .batch = u32(batch - batches.data()),
+      };
     }
-  };
+  }
 
   struct CullingConfig {
-    NotNull<const BatchDraw *> draw;
     NotNull<RgBufferId<glsl::DrawIndexedIndirectCommand> *> commands;
-    NotNull<RgBufferId<u32> *> command_count;
+    NotNull<RgBufferId<u32> *> command_counts;
   };
 
   void record_culling(RgBuilder &rgb, const CullingConfig &cfg);
 
   template <typename Self>
   void record_render_pass(this Self &self, RgBuilder &rgb,
-                          const BatchDesc &batch, RgUntypedBufferId commands,
-                          RgUntypedBufferId command_count) {
+                          RgBufferId<glsl::DrawIndexedIndirectCommand> commands,
+                          RgBufferId<u32> command_counts) {
     ren_prof_zone("Record render pass");
 
     RgDebugName pass_name;
@@ -165,10 +174,9 @@ protected:
       if (!*color_attachment) {
         continue;
       }
-      ColorAttachmentOperations &ops = self.m_color_attachment_ops[i];
       std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
-          self.m_class->m_color_attachment_names[i], *color_attachment, ops);
-      ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+          self.m_class->m_color_attachment_names[i], *color_attachment,
+          self.m_color_attachment_ops[i]);
     }
 
     if (*self.m_depth_attachment) {
@@ -179,34 +187,37 @@ protected:
             pass.write_depth_attachment(self.m_class->m_depth_attachment_name,
                                         *self.m_depth_attachment,
                                         self.m_depth_attachment_ops);
-        self.m_depth_attachment_ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
       }
     }
 
     struct {
-      Handle<GraphicsPipeline> pipeline;
-      Handle<Buffer> indices;
-      RgUntypedBufferToken commands;
-      RgUntypedBufferToken command_count;
+      Vector<Batch> batches;
+      RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
+      RgBufferToken<u32> command_counts;
       typename Self::RenderPassResources ext;
     } rcs;
 
-    rcs.pipeline = batch.pipeline;
-    rcs.indices = batch.index_buffer;
-
+    rcs.batches = std::move(self.m_class->m_batches);
     rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
-    rcs.command_count =
-        pass.read_buffer(command_count, INDIRECT_COMMAND_SRC_BUFFER);
-
+    rcs.command_counts =
+        pass.read_buffer(command_counts, INDIRECT_COMMAND_SRC_BUFFER);
     rcs.ext = self.get_render_pass_resources(pass);
 
     pass.set_graphics_callback([rcs](Renderer &, const RgRuntime &rg,
                                      RenderPass &render_pass) {
-      render_pass.bind_graphics_pipeline(rcs.pipeline);
-      render_pass.bind_index_buffer(rcs.indices, VK_INDEX_TYPE_UINT8_EXT);
-      Self::bind_render_pass_resources(rg, render_pass, rcs.ext);
-      render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
-                                              rg.get_buffer(rcs.command_count));
+      BufferSlice<glsl::DrawIndexedIndirectCommand> commands =
+          rg.get_buffer(rcs.commands);
+      BufferSlice<u32> command_counts = rg.get_buffer(rcs.command_counts);
+      for (const Batch &batch : rcs.batches) {
+        render_pass.bind_graphics_pipeline(batch.desc.pipeline);
+        render_pass.bind_index_buffer(batch.desc.index_buffer,
+                                      VK_INDEX_TYPE_UINT8_EXT);
+        Self::bind_render_pass_resources(rg, render_pass, rcs.ext);
+        render_pass.draw_indexed_indirect_count(
+            commands.slice(0, batch.num_meshlets), command_counts.slice(0, 1));
+        commands = commands.slice(batch.num_meshlets);
+        command_counts = command_counts.slice(1);
+      }
     });
   }
 
@@ -233,6 +244,8 @@ protected:
   OcclusionCullingMode m_occlusion_culling_mode =
       OcclusionCullingMode::Disabled;
   RgTextureId m_hi_z;
+
+  UploadBumpAllocation<glsl::InstanceCullData> m_instance_cull_data;
 };
 
 class DepthOnlyMeshPassClass : public MeshPassClass {
@@ -253,7 +266,7 @@ private:
   friend class MeshPassClass;
   Instance(DepthOnlyMeshPassClass &cls, const BeginInfo &begin_info);
 
-  void build_batches(Batches &batches);
+  auto get_batch_desc(const MeshInstance &mesh_instance) -> BatchDesc;
 
   struct RenderPassResources {
     RgBufferToken<glsl::Mesh> meshes;
@@ -289,7 +302,7 @@ private:
   friend class MeshPassClass;
   Instance(OpaqueMeshPassClass &cls, const BeginInfo &begin_info);
 
-  void build_batches(Batches &batches);
+  auto get_batch_desc(const MeshInstance &mesh_instance) -> BatchDesc;
 
   struct RenderPassResources {
     RgBufferToken<glsl::Mesh> meshes;

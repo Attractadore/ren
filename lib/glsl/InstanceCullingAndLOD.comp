@@ -118,6 +118,7 @@ void main() {
       MeshletCullData meshlet_cull_data;
       meshlet_cull_data.mesh = cull_data.mesh;
       meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
+      meshlet_cull_data.batch = cull_data.batch;
       meshlet_cull_data.base_meshlet = base_meshlet;
 
       base_meshlet += bucket_stride;

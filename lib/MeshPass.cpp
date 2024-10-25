@@ -51,15 +51,21 @@ void MeshPassClass::Instance::Instance::record_culling(
     RgBuilder &rgb, const CullingConfig &cfg) {
   ren_prof_zone("Record culling");
 
-  u32 num_instances = cfg.draw->instances.size();
+  u32 num_instances = m_scene->mesh_instances.size();
+
+  const auto &batches = m_class->m_batches;
+
+  u32 num_meshlets = 0;
+  for (const Batch &batch : batches) {
+    num_meshlets += batch.num_meshlets;
+  }
 
   u32 buckets_size = 0;
   std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
   for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
     bucket_offsets[bucket] = buckets_size;
     u32 bucket_stride = 1 << bucket;
-    u32 bucket_size =
-        std::min(num_instances, cfg.draw->num_meshlets / bucket_stride);
+    u32 bucket_size = std::min(num_instances, num_meshlets / bucket_stride);
     buckets_size += bucket_size;
   }
 
@@ -81,10 +87,13 @@ void MeshPassClass::Instance::Instance::record_culling(
 
   *cfg.commands = rgb.create_buffer<glsl::DrawIndexedIndirectCommand>({
       .heap = BufferHeap::Static,
-      .size = usize(m_scene->settings.num_draw_meshlets),
+      .count = num_meshlets,
   });
 
-  *cfg.command_count = rgb.create_buffer<u32>({.heap = BufferHeap::Static});
+  *cfg.command_counts = rgb.create_buffer<u32>({
+      .heap = BufferHeap::Static,
+      .count = batches.size(),
+  });
 
   {
     auto pass = rgb.create_pass(
@@ -93,7 +102,7 @@ void MeshPassClass::Instance::Instance::record_culling(
     struct {
       RgUntypedBufferToken meshlet_bucket_commands;
       RgUntypedBufferToken meshlet_bucket_sizes;
-      RgUntypedBufferToken meshlet_draw_command_count;
+      RgUntypedBufferToken meshlet_draw_command_counts;
     } rcs;
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
@@ -104,9 +113,9 @@ void MeshPassClass::Instance::Instance::record_culling(
         pass.write_buffer("init-meshlet-bucket-sizes", meshlet_bucket_sizes,
                           TRANSFER_DST_BUFFER);
 
-    std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
-        pass.write_buffer("init-meshlet-draw-command-count", *cfg.command_count,
-                          TRANSFER_DST_BUFFER);
+    std::tie(*cfg.command_counts, rcs.meshlet_draw_command_counts) =
+        pass.write_buffer("init-meshlet-draw-command-count",
+                          *cfg.command_counts, TRANSFER_DST_BUFFER);
 
     pass.set_callback([rcs](Renderer &, const RgRuntime &rg,
                             CommandRecorder &cmd) {
@@ -119,7 +128,7 @@ void MeshPassClass::Instance::Instance::record_culling(
 
       cmd.fill_buffer(rg.get_buffer(rcs.meshlet_bucket_sizes), 0);
 
-      cmd.fill_buffer(rg.get_buffer(rcs.meshlet_draw_command_count), 0);
+      cmd.fill_buffer(rg.get_buffer(rcs.meshlet_draw_command_counts), 0);
     });
   }
 
@@ -159,11 +168,7 @@ void MeshPassClass::Instance::Instance::record_culling(
     rcs.transform_matrices =
         pass.read_buffer(m_gpu_scene->transform_matrices, CS_READ_BUFFER);
 
-    auto [instance_cull_data, instance_cull_data_ptr, _] =
-        m_upload_allocator->allocate<glsl::InstanceCullData>(
-            cfg.draw->instances.size());
-    std::ranges::copy(cfg.draw->instances, instance_cull_data);
-    rcs.instance_cull_data = instance_cull_data_ptr;
+    rcs.instance_cull_data = m_instance_cull_data.device_ptr;
     rcs.num_instances = num_instances;
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
@@ -258,7 +263,8 @@ void MeshPassClass::Instance::Instance::record_culling(
       RgBufferToken<u32> meshlet_bucket_sizes;
       RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> meshlet_draw_commands;
-      RgBufferToken<u32> meshlet_draw_command_count;
+      DevicePtr<u32> meshlet_draw_command_offsets;
+      RgBufferToken<u32> meshlet_draw_command_counts;
       RgTextureToken hi_z;
       DevicePtr<glm::mat4> proj_view;
       u32 feature_mask;
@@ -276,6 +282,15 @@ void MeshPassClass::Instance::Instance::record_culling(
     rcs.meshlet_bucket_commands =
         pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
 
+    auto meshlet_draw_command_offsets =
+        m_upload_allocator->allocate<u32>(batches.size());
+    usize offset = 0;
+    for (auto i : range(batches.size())) {
+      meshlet_draw_command_offsets.host_ptr[i] = offset;
+      offset += batches[i].num_meshlets;
+    }
+    rcs.meshlet_draw_command_offsets = meshlet_draw_command_offsets.device_ptr;
+
     rcs.meshlet_bucket_sizes =
         pass.read_buffer(meshlet_bucket_sizes, CS_READ_BUFFER);
 
@@ -284,8 +299,8 @@ void MeshPassClass::Instance::Instance::record_culling(
     std::tie(*cfg.commands, rcs.meshlet_draw_commands) = pass.write_buffer(
         "meshlet-draw-commands", *cfg.commands, CS_WRITE_BUFFER);
 
-    std::tie(*cfg.command_count, rcs.meshlet_draw_command_count) =
-        pass.write_buffer("meshlet-draw-command-count", *cfg.command_count,
+    std::tie(*cfg.command_counts, rcs.meshlet_draw_command_counts) =
+        pass.write_buffer("meshlet-draw-command-counts", *cfg.command_counts,
                           CS_READ_BUFFER | CS_WRITE_BUFFER);
 
     auto [proj_view, proj_view_ptr, _] =
@@ -325,8 +340,9 @@ void MeshPassClass::Instance::Instance::record_culling(
                 .bucket_size =
                     rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes) + bucket,
                 .commands = rg.get_buffer_device_ptr(rcs.meshlet_draw_commands),
-                .num_commands =
-                    rg.get_buffer_device_ptr(rcs.meshlet_draw_command_count),
+                .command_offsets = rcs.meshlet_draw_command_offsets,
+                .command_counts =
+                    rg.get_buffer_device_ptr(rcs.meshlet_draw_command_counts),
                 .proj_view = rcs.proj_view,
                 .feature_mask = rcs.feature_mask,
                 .bucket = bucket,
@@ -345,34 +361,13 @@ DepthOnlyMeshPassClass::Instance::Instance(DepthOnlyMeshPassClass &cls,
                                            const BeginInfo &begin_info)
     : MeshPassClass::Instance::Instance(cls, begin_info.base) {}
 
-void DepthOnlyMeshPassClass::Instance::Instance::build_batches(
-    Batches &batches) {
-  Handle<GraphicsPipeline> pipeline = m_pipelines->early_z_pass;
-
-  for (const auto &[h, mesh_instance] : m_scene->mesh_instances) {
-    const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
-    BatchDesc batch = {
-        .pipeline = pipeline,
-        .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
-    };
-    auto it = batches.find(batch);
-    [[unlikely]] if (it == batches.end()) {
-      it = batches.insert(it, batch, {});
-    }
-    u32 num_meshlets = mesh.lods[0].num_meshlets;
-    auto &batch_draws = it->second;
-    [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
-    BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->num_meshlets + num_meshlets >
-                     m_scene->settings.num_draw_meshlets) {
-      draw = &batch_draws.emplace_back();
-    }
-    draw->num_meshlets += num_meshlets;
-    draw->instances.push_back({
-        .mesh = mesh_instance.mesh,
-        .mesh_instance = h,
-    });
-  }
+auto DepthOnlyMeshPassClass::Instance::Instance::get_batch_desc(
+    const MeshInstance &mesh_instance) -> BatchDesc {
+  const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
+  return {
+      .pipeline = m_pipelines->early_z_pass,
+      .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
+  };
 }
 
 auto DepthOnlyMeshPassClass::Instance::get_render_pass_resources(
@@ -407,44 +402,26 @@ OpaqueMeshPassClass::Instance::Instance(OpaqueMeshPassClass &cls,
   m_exposure_temporal_layer = begin_info.exposure_temporal_layer;
 }
 
-void OpaqueMeshPassClass::Instance::build_batches(Batches &batches) {
-  for (const auto &[h, mesh_instance] : m_scene->mesh_instances) {
-    const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
-    const Material &material = m_scene->materials.get(mesh_instance.material);
+auto OpaqueMeshPassClass::Instance::get_batch_desc(
+    const MeshInstance &mesh_instance) -> BatchDesc {
+  const Mesh &mesh = m_scene->meshes.get(mesh_instance.mesh);
+  const Material &material = m_scene->materials.get(mesh_instance.material);
 
-    MeshAttributeFlags attributes;
-    if (material.base_color_texture) {
-      attributes |= MeshAttribute::UV;
-    }
-    if (material.normal_texture) {
-      attributes |= MeshAttribute::UV | MeshAttribute::Tangent;
-    }
-    if (mesh.colors) {
-      attributes |= MeshAttribute::Color;
-    }
-
-    BatchDesc batch = {
-        .pipeline = m_pipelines->opaque_pass[i32(attributes.get())],
-        .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
-    };
-    auto it = batches.find(batch);
-    [[unlikely]] if (it == batches.end()) {
-      it = batches.insert(it, batch, {});
-    }
-    u32 num_meshlets = mesh.lods[0].num_meshlets;
-    auto &batch_draws = it->second;
-    [[unlikely]] if (batch_draws.empty()) { batch_draws.emplace_back(); }
-    BatchDraw *draw = &batch_draws.back();
-    [[unlikely]] if (draw->num_meshlets + num_meshlets >
-                     m_scene->settings.num_draw_meshlets) {
-      draw = &batch_draws.emplace_back();
-    }
-    draw->num_meshlets += num_meshlets;
-    draw->instances.push_back({
-        .mesh = mesh_instance.mesh,
-        .mesh_instance = h,
-    });
+  MeshAttributeFlags attributes;
+  if (material.base_color_texture) {
+    attributes |= MeshAttribute::UV;
   }
+  if (material.normal_texture) {
+    attributes |= MeshAttribute::UV | MeshAttribute::Tangent;
+  }
+  if (mesh.colors) {
+    attributes |= MeshAttribute::Color;
+  }
+
+  return {
+      .pipeline = m_pipelines->opaque_pass[i32(attributes.get())],
+      .index_buffer = m_scene->index_pools[mesh.index_pool].indices,
+  };
 }
 
 auto OpaqueMeshPassClass::Instance::get_render_pass_resources(

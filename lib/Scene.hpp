@@ -38,9 +38,6 @@ struct SceneExposureSettings {
 };
 
 struct SceneGraphicsSettings {
-  // Batching
-  i32 num_draw_meshlets = 1024 * 1024;
-
   // Instance culling and LOD
   bool instance_frustum_culling = true;
   bool instance_occulusion_culling = true;

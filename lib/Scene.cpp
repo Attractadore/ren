@@ -20,7 +20,7 @@ namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
     : m_arena(renderer), m_fif_arena(renderer),
-      m_device_allocator(renderer, m_arena, 64 * 1024 * 1024) {
+      m_device_allocator(renderer, m_arena, 256 * 1024 * 1024) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
@@ -496,9 +496,6 @@ void Scene::draw_imgui() {
       }
 
       SceneGraphicsSettings &settings = m_data.settings;
-
-      ImGui::SliderInt("Maximum indirect draw meshlet count",
-                       &settings.num_draw_meshlets, 1, 1024 * 1024);
 
       ImGui::SeparatorText("Instance culling");
       {

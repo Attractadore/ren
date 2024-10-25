@@ -26,15 +26,15 @@ auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32 {
   return num_groups;
 }
 
-auto get_num_dispatch_groups(glm::uvec2 size,
-                             glm::uvec2 group_size) -> glm::uvec2 {
+auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
+    -> glm::uvec2 {
   auto num_groups = size / group_size +
                     glm::uvec2(glm::notEqual(size % group_size, glm::uvec2(0)));
   return num_groups;
 }
 
-auto get_num_dispatch_groups(glm::uvec3 size,
-                             glm::uvec3 group_size) -> glm::uvec3 {
+auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
+    -> glm::uvec3 {
   auto num_groups = size / group_size +
                     glm::uvec3(glm::notEqual(size % group_size, glm::uvec3(0)));
   return num_groups;
@@ -453,6 +453,13 @@ void RenderPass::draw_indexed_indirect_count(const BufferView &view,
   vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle, view.offset,
                                 count_buffer.handle, counter.offset, max_count,
                                 stride);
+}
+
+void RenderPass::draw_indexed_indirect_count(
+    const BufferSlice<glsl::DrawIndexedIndirectCommand> &commands,
+    const BufferSlice<u32> &counter) {
+  ren_assert(counter.count > 0);
+  draw_indexed_indirect_count(BufferView(commands), BufferView(counter));
 }
 
 ComputePass::ComputePass(Renderer &renderer, VkCommandBuffer cmd_buffer) {
