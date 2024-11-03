@@ -1,4 +1,5 @@
 #pragma once
+#include "DrawSet.hpp"
 #include "Material.hpp"
 #include "Support/Flags.hpp"
 #include "Support/GenIndex.hpp"
@@ -48,6 +49,8 @@ auto create_index_pool(ResourceArena &arena) -> IndexPool;
 struct MeshInstance {
   Handle<Mesh> mesh;
   Handle<Material> material;
+  DrawSetFlags draw_sets;
+  std::array<DrawSetId, NUM_DRAW_SETS> draw_set_ids;
 };
 
 } // namespace ren

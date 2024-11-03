@@ -2,6 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "Profiler.hpp"
 #include "Scene.hpp"
+#include "Support/Errors.hpp"
 #include "Support/Views.hpp"
 #include "glsl/CalculateNormalMatricesPass.h"
 
@@ -11,7 +12,7 @@ namespace ren {
 
 auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
     -> RgGpuScene {
-  return {
+  RgGpuScene rg_gpu_scene = {
       .meshes = rgb.create_buffer("meshes", gpu_scene.meshes),
       .mesh_instances =
           rgb.create_buffer("mesh-instances", gpu_scene.mesh_instances),
@@ -29,6 +30,17 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
       .directional_lights =
           rgb.create_buffer("directional-lights", gpu_scene.directional_lights),
   };
+
+  for (auto i : range(NUM_DRAW_SETS)) {
+    const DrawSetData &ds = gpu_scene.draw_sets[i];
+    rg_gpu_scene.draw_sets[i] = {
+        .cull_data = rgb.create_buffer(
+            fmt::format("{}-draw-set", get_draw_set_name((DrawSet)(1 << i))),
+            ds.cull_data),
+    };
+  }
+
+  return rg_gpu_scene;
 }
 
 void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
@@ -38,6 +50,10 @@ void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
       rgb.get_final_buffer_state(rg_gpu_scene.mesh_instances);
   gpu_scene->mesh_instance_visibility.state =
       rgb.get_final_buffer_state(rg_gpu_scene.mesh_instance_visibility);
+  for (auto i : range(NUM_DRAW_SETS)) {
+    gpu_scene->draw_sets[i].cull_data.state =
+        rgb.get_final_buffer_state(rg_gpu_scene.draw_sets[i].cull_data);
+  }
   gpu_scene->materials.state =
       rgb.get_final_buffer_state(rg_gpu_scene.materials);
   gpu_scene->directional_lights.state =
@@ -84,109 +100,161 @@ void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
 void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
                                  const GpuSceneUpdatePassConfig &cfg) {
   RgBuilder &rgb = *ccfg.rgb;
-  NotNull<const SceneData *> scene = ccfg.scene;
 
   auto pass = rgb.create_pass({"gpu-scene-update"});
 
-  RgBufferToken<glsl::Mesh> meshes;
-  if (not scene->update_meshes.empty()) {
-    std::tie(cfg.gpu_scene->meshes, meshes) = pass.write_buffer(
-        "meshes-updated", cfg.gpu_scene->meshes, TRANSFER_DST_BUFFER);
+  struct {
+    const SceneData *scene = nullptr;
+    GpuScene *gpu_scene = nullptr;
+    RgBufferToken<glsl::Mesh> meshes;
+    RgBufferToken<glsl::MeshInstance> mesh_instances;
+    std::array<RgBufferToken<glsl::InstanceCullData>, NUM_DRAW_SETS> draw_sets;
+    RgBufferToken<glm::mat4x3> transform_matrices;
+    RgBufferToken<glsl::Material> materials;
+    RgBufferToken<glsl::DirectionalLight> directional_lights;
+  } rcs;
+
+  rcs.scene = ccfg.scene;
+  rcs.gpu_scene = cfg.gpu_scene;
+
+  if (not cfg.gpu_scene->update_meshes.empty()) {
+    std::tie(cfg.rg_gpu_scene->meshes, rcs.meshes) = pass.write_buffer(
+        "meshes-updated", cfg.rg_gpu_scene->meshes, TRANSFER_DST_BUFFER);
   }
 
-  RgBufferToken<glsl::MeshInstance> mesh_instances;
-  if (not scene->update_mesh_instances.empty()) {
-    std::tie(cfg.gpu_scene->mesh_instances, mesh_instances) =
+  if (not cfg.gpu_scene->update_mesh_instances.empty()) {
+    std::tie(cfg.rg_gpu_scene->mesh_instances, rcs.mesh_instances) =
         pass.write_buffer("mesh-instances-updated",
-                          cfg.gpu_scene->mesh_instances, TRANSFER_DST_BUFFER);
-  }
-
-  RgBufferToken<glm::mat4x3> transform_matrices;
-  std::tie(cfg.gpu_scene->transform_matrices, transform_matrices) =
-      pass.write_buffer("transform-matrices", cfg.gpu_scene->transform_matrices,
-                        TRANSFER_DST_BUFFER);
-
-  RgBufferToken<glsl::Material> materials;
-  if (not scene->update_materials.empty()) {
-    std::tie(cfg.gpu_scene->materials, materials) = pass.write_buffer(
-        "materials-updated", cfg.gpu_scene->materials, TRANSFER_DST_BUFFER);
-  }
-
-  RgBufferToken<glsl::DirectionalLight> directional_lights;
-  if (not scene->update_directional_lights.empty()) {
-    std::tie(cfg.gpu_scene->directional_lights, directional_lights) =
-        pass.write_buffer("directional-lights-updated",
-                          cfg.gpu_scene->directional_lights,
+                          cfg.rg_gpu_scene->mesh_instances,
                           TRANSFER_DST_BUFFER);
   }
 
-  pass.set_callback([=](Renderer &renderer, const RgRuntime &rg,
-                        CommandRecorder &cmd) {
-    if (meshes) {
+  for (auto i : range(NUM_DRAW_SETS)) {
+    const DrawSetData &ds = cfg.gpu_scene->draw_sets[i];
+    if (not ds.update_ids.empty()) {
+      std::tie(cfg.rg_gpu_scene->draw_sets[i].cull_data, rcs.draw_sets[i]) =
+          pass.write_buffer(fmt::format("{}-draw-set-updated",
+                                        get_draw_set_name((DrawSet)(1 << i))),
+                            cfg.rg_gpu_scene->draw_sets[i].cull_data,
+                            TRANSFER_DST_BUFFER);
+    }
+  }
+
+  std::tie(cfg.rg_gpu_scene->transform_matrices, rcs.transform_matrices) =
+      pass.write_buffer("transform-matrices",
+                        cfg.rg_gpu_scene->transform_matrices,
+                        TRANSFER_DST_BUFFER);
+
+  if (not cfg.gpu_scene->update_materials.empty()) {
+    std::tie(cfg.rg_gpu_scene->materials, rcs.materials) = pass.write_buffer(
+        "materials-updated", cfg.rg_gpu_scene->materials, TRANSFER_DST_BUFFER);
+  }
+
+  if (not cfg.gpu_scene->update_directional_lights.empty()) {
+    std::tie(cfg.rg_gpu_scene->directional_lights, rcs.directional_lights) =
+        pass.write_buffer("directional-lights-updated",
+                          cfg.rg_gpu_scene->directional_lights,
+                          TRANSFER_DST_BUFFER);
+  }
+
+  pass.set_callback([rcs](Renderer &renderer, const RgRuntime &rg,
+                          CommandRecorder &cmd) {
+    if (rcs.meshes) {
       ren_prof_zone("Update meshes");
-      BufferSlice<glsl::Mesh> buffer = rg.get_buffer(meshes);
-      auto [ptr, _, staging_buffer] =
-          rg.allocate<glsl::Mesh>(scene->update_meshes.size());
-      std::ranges::copy(scene->mesh_update_data, ptr);
-      for (auto i : range(scene->update_meshes.size())) {
-        cmd.copy_buffer(staging_buffer.slice(i, 1),
-                        buffer.slice(scene->update_meshes[i], 1));
+      auto update_meshes =
+          rg.allocate<glsl::Mesh>(rcs.gpu_scene->update_meshes.size());
+      std::ranges::copy(rcs.gpu_scene->mesh_update_data,
+                        update_meshes.host_ptr);
+      BufferSlice<glsl::Mesh> meshes = rg.get_buffer(rcs.meshes);
+      for (auto i : range(rcs.gpu_scene->update_meshes.size())) {
+        cmd.copy_buffer(update_meshes.slice.slice(i, 1),
+                        meshes.slice(rcs.gpu_scene->update_meshes[i], 1));
       }
+      rcs.gpu_scene->update_meshes.clear();
+      rcs.gpu_scene->mesh_update_data.clear();
     }
 
-    if (mesh_instances) {
+    if (rcs.mesh_instances) {
       ren_prof_zone("Update mesh instances");
-      BufferSlice<glsl::MeshInstance> buffer = rg.get_buffer(mesh_instances);
-      auto [ptr, _, staging_buffer] =
-          rg.allocate<glsl::MeshInstance>(scene->update_mesh_instances.size());
-      std::ranges::copy(scene->mesh_instance_update_data, ptr);
-      for (auto i : range(scene->update_mesh_instances.size())) {
-        cmd.copy_buffer(staging_buffer.slice(i, 1),
-                        buffer.slice(scene->update_mesh_instances[i], 1));
+      auto update_mesh_instances = rg.allocate<glsl::MeshInstance>(
+          rcs.gpu_scene->update_mesh_instances.size());
+      std::ranges::copy(rcs.gpu_scene->mesh_instance_update_data,
+                        update_mesh_instances.host_ptr);
+      BufferSlice<glsl::MeshInstance> buffer =
+          rg.get_buffer(rcs.mesh_instances);
+      for (auto i : range(rcs.gpu_scene->update_mesh_instances.size())) {
+        cmd.copy_buffer(
+            update_mesh_instances.slice.slice(i, 1),
+            buffer.slice(rcs.gpu_scene->update_mesh_instances[i], 1));
       }
+      rcs.gpu_scene->update_mesh_instances.clear();
+      rcs.gpu_scene->mesh_instance_update_data.clear();
     }
 
     {
       ren_prof_zone("Update mesh instance transforms");
-      usize count = scene->mesh_instances.raw_size();
-
-      auto [transforms, _0, transforms_staging_buffer] =
-          ccfg.allocator->allocate<glm::mat4x3>(count);
-
-      std::ranges::copy_n(scene->mesh_instance_transforms.raw_data(), count,
-                          transforms);
-
-      cmd.copy_buffer(transforms_staging_buffer,
-                      rg.get_buffer(transform_matrices));
+      usize count = rcs.scene->mesh_instances.raw_size();
+      auto transforms = rg.allocate<glm::mat4x3>(count);
+      std::ranges::copy_n(rcs.scene->mesh_instance_transforms.raw_data(), count,
+                          transforms.host_ptr);
+      cmd.copy_buffer(transforms.slice, rg.get_buffer(rcs.transform_matrices));
     }
 
-    if (materials) {
+    for (auto i : range(NUM_DRAW_SETS)) {
+      DrawSetData &ds = rcs.gpu_scene->draw_sets[i];
+      if (not ds.delete_ids.empty()) {
+        todo("Deletion from draw sets is not implemented");
+      }
+      if (rcs.draw_sets[i]) {
+        ren_prof_zone("Update draw set");
+        auto update_cull_data =
+            rg.allocate<glsl::InstanceCullData>(ds.update_cull_data.size());
+        std::ranges::copy(ds.update_cull_data, update_cull_data.host_ptr);
+        BufferSlice<glsl::InstanceCullData> cull_data =
+            rg.get_buffer(rcs.draw_sets[i]);
+        for (auto i : range(ds.update_ids.size())) {
+          cmd.copy_buffer(update_cull_data.slice.slice(i, 1),
+                          cull_data.slice(ds.update_ids[i], 1));
+        }
+        ds.update_ids.clear();
+        ds.update_cull_data.clear();
+      }
+    }
+
+    if (rcs.materials) {
       ren_prof_zone("Update materials");
-      BufferSlice<glsl::Material> buffer = rg.get_buffer(materials);
-      auto [ptr, _, staging_buffer] =
-          rg.allocate<glsl::Material>(scene->update_materials.size());
-      std::ranges::copy(scene->material_update_data, ptr);
-      for (auto i : range(scene->update_materials.size())) {
-        cmd.copy_buffer(staging_buffer.slice(i, 1),
-                        buffer.slice(scene->update_materials[i], 1));
+      auto update_materials =
+          rg.allocate<glsl::Material>(rcs.gpu_scene->update_materials.size());
+      std::ranges::copy(rcs.gpu_scene->material_update_data,
+                        update_materials.host_ptr);
+      BufferSlice<glsl::Material> materials = rg.get_buffer(rcs.materials);
+      for (auto i : range(rcs.gpu_scene->update_materials.size())) {
+        cmd.copy_buffer(update_materials.slice.slice(i, 1),
+                        materials.slice(rcs.gpu_scene->update_materials[i], 1));
       }
+      rcs.gpu_scene->update_materials.clear();
+      rcs.gpu_scene->material_update_data.clear();
     }
 
-    if (directional_lights) {
+    if (rcs.directional_lights) {
       ren_prof_zone("Update directional_lights");
+      auto update_directional_lights = rg.allocate<glsl::DirectionalLight>(
+          rcs.gpu_scene->update_directional_lights.size());
+      std::ranges::copy(rcs.gpu_scene->directional_light_update_data,
+                        update_directional_lights.host_ptr);
       BufferSlice<glsl::DirectionalLight> buffer =
-          rg.get_buffer(directional_lights);
-      auto [ptr, _, staging_buffer] = rg.allocate<glsl::DirectionalLight>(
-          scene->update_directional_lights.size());
-      std::ranges::copy(scene->directional_light_update_data, ptr);
-      for (auto i : range(scene->update_directional_lights.size())) {
-        cmd.copy_buffer(staging_buffer.slice(i, 1),
-                        buffer.slice(scene->update_directional_lights[i], 1));
+          rg.get_buffer(rcs.directional_lights);
+      for (auto i : range(rcs.gpu_scene->update_directional_lights.size())) {
+        cmd.copy_buffer(
+            update_directional_lights.slice.slice(i, 1),
+            buffer.slice(rcs.gpu_scene->update_directional_lights[i], 1));
       }
+      rcs.gpu_scene->update_directional_lights.clear();
+      rcs.gpu_scene->directional_light_update_data.clear();
     }
   });
 
-  setup_calculate_normal_matrices_pass(ccfg, cfg.gpu_scene);
+  setup_calculate_normal_matrices_pass(ccfg, cfg.rg_gpu_scene);
 }
 
 } // namespace ren
