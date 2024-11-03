@@ -38,7 +38,7 @@ auto load_opaque_pass_pipelines(
     -> std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>;
 
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures, VkFormat format)
-    -> Handle<GraphicsPipeline>;
+                         Handle<DescriptorSetLayout> textures,
+                         TinyImageFormat format) -> Handle<GraphicsPipeline>;
 
 } // namespace ren

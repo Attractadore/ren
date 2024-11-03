@@ -126,34 +126,34 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
 }
 
 auto get_image_format(unsigned components, int pixel_type, bool srgb)
-    -> Result<ren::Format> {
-  using enum ren::Format;
+    -> Result<TinyImageFormat> {
   if (pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
     if (components == 1) {
-      return srgb ? R8_SRGB : R8_UNORM;
+      return srgb ? TinyImageFormat_R8_SRGB : TinyImageFormat_R8_UNORM;
     }
     if (components == 2) {
-      return srgb ? RG8_SRGB : RG8_UNORM;
+      return srgb ? TinyImageFormat_R8G8_SRGB : TinyImageFormat_R8G8_UNORM;
     }
     if (components == 3) {
-      return srgb ? RGB8_SRGB : RGB8_UNORM;
+      return srgb ? TinyImageFormat_R8G8B8_SRGB : TinyImageFormat_R8G8B8_UNORM;
     }
     if (components == 4) {
-      return srgb ? RGBA8_SRGB : RGBA8_UNORM;
+      return srgb ? TinyImageFormat_R8G8B8A8_SRGB
+                  : TinyImageFormat_R8G8B8A8_UNORM;
     }
   }
   if (pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT and not srgb) {
     if (components == 1) {
-      return R16_UNORM;
+      return TinyImageFormat_R16_UNORM;
     }
     if (components == 2) {
-      return RG16_UNORM;
+      return TinyImageFormat_R16G16_UNORM;
     }
     if (components == 3) {
-      return RGB16_UNORM;
+      return TinyImageFormat_R16G16B16_UNORM;
     }
     if (components == 4) {
-      return RGBA16_UNORM;
+      return TinyImageFormat_R16G16B16A16_UNORM;
     }
   }
   bail("Unknown format: {}/{}, sRGB: {}", components, pixel_type, srgb);
@@ -532,7 +532,7 @@ private:
     const tinygltf::Image &image = m_model.images[desc.index];
     assert(image.image.size() ==
            image.width * image.height * image.component * image.bits / 8);
-    OK(ren::Format format,
+    OK(TinyImageFormat format,
        get_image_format(image.component, image.pixel_type, desc.srgb));
 
     return m_scene

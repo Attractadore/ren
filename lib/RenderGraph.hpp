@@ -237,7 +237,7 @@ struct RgTextureCreateInfo {
   /// Texture type
   VkImageType type = VK_IMAGE_TYPE_2D;
   /// Texture format
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   /// Texture width
   u32 width = 0;
   /// Texture height
@@ -262,7 +262,7 @@ struct RgPhysicalTexture {
   String name;
 #endif
   VkImageType type = VK_IMAGE_TYPE_2D;
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   VkImageUsageFlags usage = 0;
   glm::uvec3 size = {};
   u32 num_mip_levels = 1;

@@ -9,7 +9,7 @@ class Renderer;
 
 struct SwapchainTextureCreateInfo {
   VkImage image = nullptr;
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   VkImageUsageFlags usage = 0;
   u32 width = 0;
   u32 height = 1;
@@ -47,7 +47,10 @@ public:
 
   void set_present_mode(VkPresentModeKHR);
 
-  auto get_format() const -> VkFormat { return m_create_info.imageFormat; }
+  auto get_format() const -> TinyImageFormat {
+    return TinyImageFormat_FromVkFormat(
+        (TinyImageFormat_VkFormat)m_create_info.imageFormat);
+  }
 
   auto get_usage() const -> VkImageUsageFlags {
     return m_create_info.imageUsage;

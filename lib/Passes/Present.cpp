@@ -8,16 +8,12 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
 
   if (!ccfg.rcs->backbuffer) {
     glm::uvec2 size = cfg.swapchain->get_size();
-    VkFormat format = cfg.swapchain->get_format();
     ccfg.rcs->backbuffer = ccfg.rgp->create_texture({
         .name = "backbuffer",
-        .format = format,
+        .format = cfg.swapchain->get_format(),
         .width = size.x,
         .height = size.y,
-        .ext =
-            RgTextureExternalInfo{
-                .usage = cfg.swapchain->get_usage(),
-            },
+        .ext = RgTextureExternalInfo{.usage = cfg.swapchain->get_usage()},
     });
   }
 

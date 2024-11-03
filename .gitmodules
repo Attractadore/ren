@@ -1,0 +1,3 @@
+[submodule "external/tiny_imageformat"]
+	path = external/tiny_imageformat
+	url = https://github.com/DeanoC/tiny_imageformat

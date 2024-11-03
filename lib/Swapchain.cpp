@@ -1,5 +1,4 @@
 #include "Swapchain.hpp"
-#include "Formats.hpp"
 #include "Profiler.hpp"
 #include "Renderer.hpp"
 #include "Support/Errors.hpp"
@@ -23,9 +22,13 @@ auto get_surface_formats(VkPhysicalDevice adapter, VkSurfaceKHR surface) {}
 
 auto select_surface_format(Span<const VkSurfaceFormatKHR> surface_formats)
     -> VkSurfaceFormatKHR {
-  auto it = std::find_if(
-      surface_formats.begin(), surface_formats.end(),
-      [](const VkSurfaceFormatKHR &sf) { return isSRGBFormat(sf.format); });
+  auto it =
+      std::find_if(surface_formats.begin(), surface_formats.end(),
+                   [](const VkSurfaceFormatKHR &surface_format) {
+                     TinyImageFormat format = TinyImageFormat_FromVkFormat(
+                         (TinyImageFormat_VkFormat)surface_format.format);
+                     return TinyImageFormat_IsSRGB(format);
+                   });
   return it != surface_formats.end() ? *it : surface_formats.front();
 };
 
@@ -152,7 +155,8 @@ void Swapchain::create() {
   for (usize i = 0; i < num_images; ++i) {
     m_textures[i] = m_renderer->create_swapchain_texture({
         .image = images[i],
-        .format = m_create_info.imageFormat,
+        .format = TinyImageFormat_FromVkFormat(
+            (TinyImageFormat_VkFormat)m_create_info.imageFormat),
         .usage = m_create_info.imageUsage,
         .width = m_create_info.imageExtent.width,
         .height = m_create_info.imageExtent.height,

@@ -138,8 +138,8 @@ auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
   return None;
 }
 
-auto create_device(VkPhysicalDevice adapter,
-                   u32 graphics_queue_family) -> VkDevice {
+auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
+    -> VkDevice {
   float queue_priority = 1.0f;
   VkDeviceQueueCreateInfo queue_create_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -615,7 +615,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = create_info.type,
-      .format = create_info.format,
+      .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .extent = {create_info.width, create_info.height, create_info.depth},
       .mipLevels = create_info.num_mip_levels,
       .arrayLayers = create_info.num_array_layers,
@@ -687,9 +687,9 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-static auto
-get_texture_default_view_type(VkImageType type,
-                              u16 num_array_layers) -> VkImageViewType {
+static auto get_texture_default_view_type(VkImageType type,
+                                          u16 num_array_layers)
+    -> VkImageViewType {
   if (num_array_layers > 1) {
     switch (type) {
     default:
@@ -761,7 +761,7 @@ auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = get_texture(view.texture).image,
       .viewType = view.type,
-      .format = view.format,
+      .format = (VkFormat)TinyImageFormat_ToVkFormat(view.format),
       .components =
           {
               .r = view.swizzle.r,
@@ -1005,7 +1005,7 @@ auto Renderer::create_graphics_pipeline(
   auto color_attachment_formats =
       create_info.color_attachments |
       map([&](const ColorAttachmentInfo &attachment) {
-        return attachment.format;
+        return (VkFormat)TinyImageFormat_ToVkFormat(attachment.format);
       }) |
       std::ranges::to<StaticVector<VkFormat, MAX_COLOR_ATTACHMENTS>>();
 
@@ -1046,7 +1046,8 @@ auto Renderer::create_graphics_pipeline(
   };
 
   create_info.depth_test.map([&](const DepthTestInfo &depth_test) {
-    rendering_info.depthAttachmentFormat = depth_test.format;
+    rendering_info.depthAttachmentFormat =
+        (VkFormat)TinyImageFormat_ToVkFormat(depth_test.format);
     depth_stencil_info.depthTestEnable = true;
     depth_stencil_info.depthWriteEnable = depth_test.write_depth;
     depth_test.compare_op.visit(OverloadSet{

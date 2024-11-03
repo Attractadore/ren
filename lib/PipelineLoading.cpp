@@ -208,7 +208,7 @@ auto load_opaque_pass_pipelines(
 }
 
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures, VkFormat format)
+                         Handle<DescriptorSetLayout> textures, TinyImageFormat format)
     -> Handle<GraphicsPipeline> {
   auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
