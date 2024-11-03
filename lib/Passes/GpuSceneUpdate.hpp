@@ -10,7 +10,8 @@ void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
                          NotNull<GpuScene *> gpu_scene);
 
 struct GpuSceneUpdatePassConfig {
-  NotNull<RgGpuScene *> gpu_scene;
+  NotNull<GpuScene *> gpu_scene;
+  NotNull<RgGpuScene *> rg_gpu_scene;
 };
 
 void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,

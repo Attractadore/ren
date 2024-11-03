@@ -7,7 +7,8 @@ namespace ren {
 struct RgGpuScene;
 
 struct OpaquePassesConfig {
-  NotNull<RgGpuScene *> gpu_scene;
+  NotNull<const GpuScene *> gpu_scene;
+  NotNull<RgGpuScene *> rg_gpu_scene;
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
   NotNull<RgTextureId *> depth_buffer;

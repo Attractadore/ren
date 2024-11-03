@@ -8,7 +8,8 @@
 namespace ren {
 
 struct EarlyZPassConfig {
-  NotNull<RgGpuScene *> gpu_scene;
+  NotNull<const GpuScene *> gpu_scene;
+  NotNull<RgGpuScene *> rg_gpu_scene;
   OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
@@ -16,37 +17,32 @@ struct EarlyZPassConfig {
 
 void setup_early_z_pass(const PassCommonConfig &ccfg,
                         const EarlyZPassConfig &cfg) {
-  const SceneData &scene = *ccfg.scene;
-  DepthOnlyMeshPassClass mesh_pass;
-  mesh_pass.record(
-      *ccfg.rgb,
-      DepthOnlyMeshPassClass::BeginInfo{
-          .base =
-              {
-                  .pass_name = "early-z",
-                  .depth_attachment = cfg.depth_buffer,
-                  .depth_attachment_ops =
-                      {
-                          .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                          .store = VK_ATTACHMENT_STORE_OP_STORE,
-                      },
-                  .depth_attachment_name = "depth-buffer",
-                  .pipelines = ccfg.pipelines,
-                  .samplers = ccfg.samplers,
-                  .scene = ccfg.scene,
-                  .camera = ccfg.scene->get_camera(),
-                  .viewport = ccfg.swapchain->get_size(),
-                  .gpu_scene = cfg.gpu_scene,
-                  .occlusion_culling_mode = cfg.occlusion_culling_mode,
-                  .hi_z = cfg.hi_z,
-                  .upload_allocator = ccfg.allocator,
-              },
+  record_mesh_pass(
+      ccfg, DepthOnlyMeshPassInfo{
+                .base =
+                    {
+                        .pass_name = "early-z",
+                        .depth_attachment = cfg.depth_buffer,
+                        .depth_attachment_ops =
+                            {
+                                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                            },
+                        .depth_attachment_name = "depth-buffer",
+                        .camera = ccfg.scene->get_camera(),
+                        .viewport = ccfg.swapchain->get_size(),
+                        .gpu_scene = cfg.gpu_scene,
+                        .rg_gpu_scene = cfg.rg_gpu_scene,
+                        .occlusion_culling_mode = cfg.occlusion_culling_mode,
+                        .hi_z = cfg.hi_z,
+                    },
 
-      });
+            });
 }
 
 struct OpaquePassConfig {
-  NotNull<RgGpuScene *> gpu_scene;
+  NotNull<const GpuScene *> gpu_scene;
+  NotNull<RgGpuScene *> rg_gpu_scene;
   OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
   NotNull<RgTextureId *> hdr;
   NotNull<RgTextureId *> depth_buffer;
@@ -57,11 +53,8 @@ struct OpaquePassConfig {
 
 void setup_opaque_pass(const PassCommonConfig &ccfg,
                        const OpaquePassConfig &cfg) {
-  const SceneData &scene = *ccfg.scene;
-  OpaqueMeshPassClass mesh_pass;
-  mesh_pass
-      .record(*ccfg.rgb,
-              OpaqueMeshPassClass::BeginInfo{
+  record_mesh_pass(ccfg,
+              OpaqueMeshPassInfo{
                   .base =
                       {
                           .pass_name = "opaque",
@@ -73,7 +66,7 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                           }},
                           .color_attachment_names = {"hdr"},
                           .depth_attachment = cfg.depth_buffer,
-                          .depth_attachment_ops = scene.settings.early_z ?
+                          .depth_attachment_ops = ccfg.scene->settings.early_z ?
                            DepthAttachmentOperations {
                                 .load = VK_ATTACHMENT_LOAD_OP_LOAD,
                                 .store = VK_ATTACHMENT_STORE_OP_NONE,
@@ -83,15 +76,12 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                                .store = VK_ATTACHMENT_STORE_OP_STORE,
                            },
                           .depth_attachment_name = "depth-buffer",
-                          .pipelines = ccfg.pipelines,
-                          .samplers = ccfg.samplers,
-                          .scene = ccfg.scene,
                           .camera = ccfg.scene->get_camera(),
                           .viewport = ccfg.swapchain->get_size(),
                           .gpu_scene = cfg.gpu_scene,
+                          .rg_gpu_scene = cfg.rg_gpu_scene,
                           .occlusion_culling_mode = cfg.occlusion_culling_mode,
                           .hi_z = cfg.hi_z,
-                          .upload_allocator = ccfg.allocator,
                       },
                   .exposure = cfg.exposure,
                   .exposure_temporal_layer = cfg.exposure_temporal_layer,
@@ -131,6 +121,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
     setup_early_z_pass(ccfg,
                        EarlyZPassConfig{
                            .gpu_scene = cfg.gpu_scene,
+                           .rg_gpu_scene = cfg.rg_gpu_scene,
                            .occlusion_culling_mode = occlusion_culling_mode,
                            .depth_buffer = cfg.depth_buffer,
                        });
@@ -139,6 +130,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
       setup_early_z_pass(
           ccfg, EarlyZPassConfig{
                     .gpu_scene = cfg.gpu_scene,
+                    .rg_gpu_scene = cfg.rg_gpu_scene,
                     .occlusion_culling_mode = OcclusionCullingMode::SecondPhase,
                     .depth_buffer = cfg.depth_buffer,
                     .hi_z = hi_z,
@@ -160,6 +152,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
   setup_opaque_pass(ccfg,
                     OpaquePassConfig{
                         .gpu_scene = cfg.gpu_scene,
+                        .rg_gpu_scene = cfg.rg_gpu_scene,
                         .occlusion_culling_mode = occlusion_culling_mode,
                         .hdr = cfg.hdr,
                         .depth_buffer = cfg.depth_buffer,
@@ -172,6 +165,7 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
     setup_opaque_pass(
         ccfg, OpaquePassConfig{
                   .gpu_scene = cfg.gpu_scene,
+                  .rg_gpu_scene = cfg.rg_gpu_scene,
                   .occlusion_culling_mode = OcclusionCullingMode::SecondPhase,
                   .hdr = cfg.hdr,
                   .depth_buffer = cfg.depth_buffer,

@@ -7,8 +7,9 @@
     BaseType m_value = {};                                                     \
                                                                                \
   public:                                                                      \
-    NewType() = default;                                                       \
-    explicit NewType(BaseType value) noexcept : m_value(std::move(value)) {}   \
+    constexpr NewType() = default;                                             \
+    constexpr explicit NewType(BaseType value) noexcept                        \
+        : m_value(std::move(value)) {}                                         \
                                                                                \
     operator BaseType() const noexcept { return m_value; }                     \
   };                                                                           \

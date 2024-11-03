@@ -48,6 +48,12 @@ public:
     return *this = *this | mask;
   }
 
+  constexpr Flags &reset(Flags mask) noexcept {
+    m_value = static_cast<Enum>(static_cast<Underlying>(m_value) &
+                                ~static_cast<Underlying>(mask.m_value));
+    return *this;
+  }
+
   constexpr bool is_set(Enum bit) const noexcept {
     return static_cast<Underlying>(*this & bit);
   }

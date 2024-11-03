@@ -102,14 +102,6 @@ void ScenePerFrameResources::reset() {
 
 void Scene::next_frame() {
   ren_prof_zone("Scene::next_frame");
-  m_data.update_meshes.clear();
-  m_data.mesh_update_data.clear();
-  m_data.update_mesh_instances.clear();
-  m_data.mesh_instance_update_data.clear();
-  m_data.update_materials.clear();
-  m_data.material_update_data.clear();
-  m_data.update_directional_lights.clear();
-  m_data.directional_light_update_data.clear();
 
   m_num_frames_in_flight = m_new_num_frames_in_flight;
   [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
@@ -239,8 +231,8 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 
   Handle<Mesh> handle = m_data.meshes.insert(mesh);
 
-  m_data.update_meshes.push_back(handle);
-  m_data.mesh_update_data.push_back({
+  m_gpu_scene.update_meshes.push_back(handle);
+  m_gpu_scene.mesh_update_data.push_back({
       .positions =
           m_renderer->get_buffer_device_ptr<glsl::Position>(mesh.positions),
       .normals = m_renderer->get_buffer_device_ptr<glsl::Normal>(mesh.normals),
@@ -257,7 +249,7 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       .index_pool = mesh.index_pool,
       .num_lods = u32(mesh.lods.size()),
   });
-  std::ranges::copy(mesh.lods, m_data.mesh_update_data.back().lods);
+  std::ranges::copy(mesh.lods, m_gpu_scene.mesh_update_data.back().lods);
 
   return std::bit_cast<MeshId>(handle);
 }
@@ -328,8 +320,8 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
       .normal_texture = get_sampled_texture_id(desc.normal_texture),
       .normal_scale = desc.normal_texture.scale,
   });
-  m_data.update_materials.push_back(handle);
-  m_data.material_update_data.push_back(m_data.materials[handle]);
+  m_gpu_scene.update_materials.push_back(handle);
+  m_gpu_scene.material_update_data.push_back(m_data.materials[handle]);
 
   return std::bit_cast<MaterialId>(handle);
   ;
@@ -403,11 +395,15 @@ auto Scene::create_mesh_instances(
         .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
         .material = std::bit_cast<Handle<Material>>(create_info[i].material),
     });
+    for (auto i : range(NUM_DRAW_SETS)) {
+      DrawSet set = (DrawSet)(1 << i);
+      add_to_draw_set(m_data, m_gpu_scene, m_pipelines, handle, set);
+    }
     m_data.mesh_instance_transforms.insert(
         handle,
         glsl::make_decode_position_matrix(m_data.meshes[mesh].pos_enc_bb));
-    m_data.update_mesh_instances.push_back(handle);
-    m_data.mesh_instance_update_data.push_back({
+    m_gpu_scene.update_mesh_instances.push_back(handle);
+    m_gpu_scene.mesh_instance_update_data.push_back({
         .mesh = mesh,
         .material = material,
     });
@@ -419,8 +415,12 @@ auto Scene::create_mesh_instances(
 void Scene::destroy_mesh_instances(
     std::span<const MeshInstanceId> mesh_instances) {
   for (MeshInstanceId mesh_instance : mesh_instances) {
-    m_data.mesh_instances.erase(
-        std::bit_cast<Handle<MeshInstance>>(mesh_instance));
+    auto handle = std::bit_cast<Handle<MeshInstance>>(mesh_instance);
+    for (auto i : range(NUM_DRAW_SETS)) {
+      DrawSet set = (DrawSet)(1 << i);
+      remove_from_draw_set(m_data, m_gpu_scene, m_pipelines, handle, set);
+    }
+    m_data.mesh_instances.erase(handle);
   }
 }
 
@@ -459,8 +459,8 @@ void Scene::set_directional_light(DirectionalLightId light,
       .illuminance = desc.illuminance,
       .origin = glm::normalize(desc.origin),
   };
-  m_data.update_directional_lights.push_back(handle);
-  m_data.directional_light_update_data.push_back(
+  m_gpu_scene.update_directional_lights.push_back(handle);
+  m_gpu_scene.directional_light_update_data.push_back(
       m_data.directional_lights[handle]);
 };
 
@@ -613,8 +613,10 @@ auto Scene::build_rg() -> RenderGraph {
   };
 
   RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, m_gpu_scene);
-  setup_gpu_scene_update_pass(
-      cfg, GpuSceneUpdatePassConfig{.gpu_scene = &rg_gpu_scene});
+  setup_gpu_scene_update_pass(cfg, GpuSceneUpdatePassConfig{
+                                       .gpu_scene = &m_gpu_scene,
+                                       .rg_gpu_scene = &rg_gpu_scene,
+                                   });
 
   RgTextureId exposure;
   u32 exposure_temporal_layer = 0;
@@ -627,7 +629,8 @@ auto Scene::build_rg() -> RenderGraph {
   RgTextureId hdr;
   setup_opaque_passes(cfg,
                       OpaquePassesConfig{
-                          .gpu_scene = &rg_gpu_scene,
+                          .gpu_scene = &m_gpu_scene,
+                          .rg_gpu_scene = &rg_gpu_scene,
                           .exposure = exposure,
                           .exposure_temporal_layer = exposure_temporal_layer,
                           .depth_buffer = &depth_buffer,

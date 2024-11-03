@@ -64,21 +64,13 @@ struct SceneData {
 
   IndexPoolList index_pools;
   GenArray<Mesh> meshes;
-  Vector<Handle<Mesh>> update_meshes;
-  Vector<glsl::Mesh> mesh_update_data;
 
   GenArray<MeshInstance> mesh_instances;
   GenMap<glm::mat4x3, Handle<MeshInstance>> mesh_instance_transforms;
-  Vector<Handle<MeshInstance>> update_mesh_instances;
-  Vector<glsl::MeshInstance> mesh_instance_update_data;
 
   GenArray<Material> materials;
-  Vector<Handle<Material>> update_materials;
-  Vector<glsl::Material> material_update_data;
 
   GenArray<DirectionalLight> directional_lights;
-  Vector<Handle<DirectionalLight>> update_directional_lights;
-  Vector<glsl::DirectionalLight> directional_light_update_data;
 
 public:
   const Camera &get_camera() const {
@@ -121,12 +113,12 @@ public:
 
   auto create_image(const ImageCreateInfo &desc) -> expected<ImageId> override;
 
-  auto
-  create_material(const MaterialCreateInfo &) -> expected<MaterialId> override;
+  auto create_material(const MaterialCreateInfo &)
+      -> expected<MaterialId> override;
 
-  auto
-  create_mesh_instances(std::span<const MeshInstanceCreateInfo> descs,
-                        std::span<MeshInstanceId>) -> expected<void> override;
+  auto create_mesh_instances(std::span<const MeshInstanceCreateInfo> descs,
+                             std::span<MeshInstanceId>)
+      -> expected<void> override;
 
   void destroy_mesh_instances(
       std::span<const MeshInstanceId> mesh_instances) override;
@@ -162,8 +154,9 @@ private:
 
   auto get_camera(CameraId camera) -> Camera &;
 
-  [[nodiscard]] auto get_or_create_sampler(
-      const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
+  [[nodiscard]] auto
+  get_or_create_sampler(const SamplerCreateInfo &&create_info)
+      -> Handle<Sampler>;
 
   [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
                                            const SamplerDesc &sampler_desc)
