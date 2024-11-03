@@ -19,7 +19,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   if (!ccfg.rcs->hi_z) {
     ccfg.rcs->hi_z = ccfg.rgp->create_texture({
         .name = "hi-z",
-        .format = VK_FORMAT_R32_SFLOAT,
+        .format = TinyImageFormat_R32_SFLOAT,
         .width = size.x,
         .height = size.y,
         .num_mip_levels = num_mips,

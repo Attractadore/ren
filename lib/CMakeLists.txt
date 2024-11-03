@@ -35,6 +35,7 @@ target_link_libraries(
             fmt::fmt
             meshoptimizer::meshoptimizer
             mikktspace::mikktspace
+            tiny_imageformat
             tl::optional
             unofficial::spirv-reflect
             volk::volk)
@@ -75,7 +76,7 @@ target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(
   ren
-  PUBLIC glm::glm
+  PUBLIC glm::glm tiny_imageformat
   PRIVATE ren-common)
 target_compile_features(ren PUBLIC cxx_std_23)
 

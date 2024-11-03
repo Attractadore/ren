@@ -1,6 +1,5 @@
 #include "Scene.hpp"
 #include "CommandRecorder.hpp"
-#include "Formats.hpp"
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
 #include "Passes/Exposure.hpp"
@@ -281,21 +280,28 @@ auto Scene::get_or_create_texture(Handle<Image> image,
 }
 
 auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
-  auto format = getVkFormat(desc.format);
   auto texture = m_arena.create_texture({
       .type = VK_IMAGE_TYPE_2D,
-      .format = format,
+      .format = desc.format,
       .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
       .width = desc.width,
       .height = desc.height,
       .num_mip_levels = get_mip_level_count(desc.width, desc.height),
   });
-  usize size = desc.width * desc.height * get_format_size(format);
+
+  usize block_bits = TinyImageFormat_BitSizeOfBlock(desc.format);
+  usize block_width = TinyImageFormat_WidthOfBlock(desc.format);
+  usize block_height = TinyImageFormat_HeightOfBlock(desc.format);
+  usize width_in_blocks = ceil_div(desc.width, block_width);
+  usize height_in_blocks = ceil_div(desc.height, block_height);
+  usize size = width_in_blocks * height_in_blocks * block_bits / 8;
+
   m_resource_uploader.stage_texture(*m_renderer, m_frcs->upload_allocator,
                                     Span((const std::byte *)desc.data, size),
                                     texture);
   Handle<Image> h = m_images.insert(texture);
+
   return std::bit_cast<ImageId>(h);
 }
 
@@ -553,13 +559,14 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
   u8 *data;
   i32 width, height;
   io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
-  ren::ImageId image = create_image({
-                                        .width = u32(width),
-                                        .height = u32(height),
-                                        .format = Format::RGBA8_UNORM,
-                                        .data = data,
-                                    })
-                           .value();
+  ren::ImageId image =
+      create_image({
+                       .width = u32(width),
+                       .height = u32(height),
+                       .format = TinyImageFormat_R8G8B8A8_UNORM,
+                       .data = data,
+                   })
+          .value();
   SamplerDesc desc = {
       .mag_filter = Filter::Linear,
       .min_filter = Filter::Linear,

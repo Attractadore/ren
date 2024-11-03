@@ -51,7 +51,7 @@ struct MultisampleInfo {
 };
 
 struct DepthTestInfo {
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   bool write_depth = true;
   Variant<VkCompareOp, DynamicState> compare_op = DYNAMIC;
 };
@@ -66,7 +66,7 @@ struct ColorBlendAttachmentInfo {
 };
 
 struct ColorAttachmentInfo {
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   Optional<ColorBlendAttachmentInfo> blending;
   VkColorComponentFlags write_mask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |

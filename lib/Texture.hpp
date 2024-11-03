@@ -12,7 +12,7 @@ namespace ren {
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
   VkImageType type = VK_IMAGE_TYPE_2D;
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   VkImageUsageFlags usage = 0;
   u32 width = 0;
   u32 height = 1;
@@ -25,7 +25,7 @@ struct Texture {
   VkImage image;
   VmaAllocation allocation;
   VkImageType type;
-  VkFormat format;
+  TinyImageFormat format;
   VkImageUsageFlags usage;
   union {
     struct {
@@ -140,7 +140,7 @@ public:
 struct TextureView {
   Handle<Texture> texture;
   VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
-  VkFormat format = VK_FORMAT_UNDEFINED;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
   TextureSwizzle swizzle;
   u32 first_mip_level = 0;
   u32 num_mip_levels = 0;

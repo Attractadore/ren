@@ -22,7 +22,7 @@ void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
   if (!ccfg.rcs->exposure) {
     ccfg.rcs->exposure = ccfg.rgp->create_texture({
         .name = "exposure",
-        .format = VK_FORMAT_R32_SFLOAT,
+        .format = TinyImageFormat_R32_SFLOAT,
         .width = 1,
         .height = 1,
     });
@@ -50,7 +50,7 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
   if (!ccfg.rcs->exposure) {
     ccfg.rcs->exposure = ccfg.rgp->create_texture({
         .name = "exposure",
-        .format = VK_FORMAT_R32_SFLOAT,
+        .format = TinyImageFormat_R32_SFLOAT,
         .width = 1,
         .height = 1,
         .ext =

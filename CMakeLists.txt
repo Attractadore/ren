@@ -55,6 +55,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 set(REN_TARGETS_EXPORT_NAME ${PROJECT_NAME}-targets)
 
+add_subdirectory(external)
 add_subdirectory(lib)
 
 if(REN_BUILD_TESTS)
