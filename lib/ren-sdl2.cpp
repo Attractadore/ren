@@ -40,7 +40,12 @@ auto ren::sdl2::create_swapchain(IRenderer &irenderer, SDL_Window *window)
   if (!SDL_Vulkan_CreateSurface(window, renderer.get_instance(), &surface)) {
     return std::unexpected(Error::Vulkan);
   }
-
-  return lippincott(
-      [&] { return std::make_unique<Swapchain>(renderer, surface); });
+  return lippincott([&] {
+    auto swapchain = std::make_unique<Swapchain>();
+    int w, h;
+    SDL_Vulkan_GetDrawableSize(window, &w, &h);
+    swapchain->set_size(w, h);
+    swapchain->init(renderer, surface);
+    return swapchain;
+  });
 }

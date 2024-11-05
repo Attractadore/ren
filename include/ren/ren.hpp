@@ -78,8 +78,7 @@ struct ISwapchain {
 
   [[nodiscard]] virtual auto get_size() const -> glm::uvec2 = 0;
 
-  [[nodiscard]] virtual auto set_size(unsigned width, unsigned height)
-      -> expected<void> = 0;
+  virtual void set_size(unsigned width, unsigned height) = 0;
 };
 
 /// Camera perspective projection descriptor.
