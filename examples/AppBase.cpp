@@ -81,7 +81,7 @@ auto AppBase::loop() -> Result<void> {
     {
       int w, h;
       SDL_Vulkan_GetDrawableSize(m_window.get(), &w, &h);
-      TRY_TO(m_swapchain->set_size(w, h));
+      m_swapchain->set_size(w, h);
     }
 
     TRY_TO(begin_frame());
