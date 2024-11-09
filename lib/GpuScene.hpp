@@ -31,7 +31,6 @@ struct Batch {
 struct DrawSetData {
   Vector<Handle<MeshInstance>> mesh_instances;
   StatefulBufferSlice<glsl::InstanceCullData> cull_data;
-  Vector<DrawSetId> update_ids;
   Vector<glsl::InstanceCullData> update_cull_data;
   Vector<DrawSetId> delete_ids;
   Vector<Batch> batches;

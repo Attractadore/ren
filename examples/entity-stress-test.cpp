@@ -113,27 +113,18 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
   return transform;
 }
 
-auto place_entities(std::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
-                    ren::MaterialId material,
-                    unsigned num_entities) -> Result<void> {
+auto place_entities(std::mt19937 &rg, ren::IScene &scene,
+                    std::vector<glm::mat4x3> &transforms) -> Result<void> {
+  unsigned num_entities = transforms.size();
+
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;
 
-  std::vector<ren::MeshInstanceCreateInfo> create_info(num_entities);
-  std::vector<ren::MeshInstanceId> entities(num_entities);
-  std::vector<glm::mat4x3> transforms(num_entities);
-  for (size_t i = 0; i < num_entities; ++i) {
-    create_info[i] = {
-        .mesh = mesh,
-        .material = material,
-    };
-    transforms[i] =
+  for (glm::mat4x3 &transform : transforms) {
+    transform =
         random_transform(rg, min_trans, max_trans, min_scale, max_scale);
   }
-
-  TRY_TO(scene.create_mesh_instances(create_info, entities));
-  scene.set_mesh_instance_transforms(entities, transforms);
 
   return {};
 }
@@ -179,7 +170,13 @@ public:
       OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
       OK(ren::MaterialId material, create_material(scene));
       auto rg = init_random(seed);
-      TRY_TO(place_entities(rg, scene, mesh, material, num_entities));
+      m_create_info.resize(num_entities);
+      std::ranges::fill(m_create_info, ren::MeshInstanceCreateInfo{
+                                           .mesh = mesh,
+                                           .material = material,
+                                       });
+      m_transforms.resize(num_entities);
+      TRY_TO(place_entities(rg, scene, m_transforms));
       TRY_TO(place_light(scene));
       set_camera(scene, camera, num_entities);
       return {};
@@ -188,10 +185,29 @@ public:
                  .value();
   }
 
+  auto process_frame(std::chrono::nanoseconds) -> Result<void> override {
+    ren::IScene &scene = get_scene();
+
+    if (not m_entities.empty()) {
+      scene.destroy_mesh_instances(m_entities);
+    }
+
+    m_entities.resize(m_create_info.size());
+    TRY_TO(scene.create_mesh_instances(m_create_info, m_entities));
+    scene.set_mesh_instance_transforms(m_entities, m_transforms);
+
+    return {};
+  }
+
   [[nodiscard]] static auto run(const char *mesh_path, unsigned num_entities,
                                 unsigned seed) -> int {
     return AppBase::run<EntityStressTestApp>(mesh_path, num_entities, seed);
   }
+
+private:
+  std::vector<ren::MeshInstanceCreateInfo> m_create_info;
+  std::vector<ren::MeshInstanceId> m_entities;
+  std::vector<glm::mat4x3> m_transforms;
 };
 
 int main(int argc, const char *argv[]) {

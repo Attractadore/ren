@@ -131,12 +131,12 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
 
   for (auto i : range(NUM_DRAW_SETS)) {
     const DrawSetData &ds = cfg.gpu_scene->draw_sets[i];
-    if (not ds.update_ids.empty()) {
+    if (not ds.update_cull_data.empty() or not ds.delete_ids.empty()) {
       std::tie(cfg.rg_gpu_scene->draw_sets[i].cull_data, rcs.draw_sets[i]) =
           pass.write_buffer(fmt::format("{}-draw-set-updated",
                                         get_draw_set_name((DrawSet)(1 << i))),
                             cfg.rg_gpu_scene->draw_sets[i].cull_data,
-                            TRANSFER_DST_BUFFER);
+                            TRANSFER_SRC_BUFFER | TRANSFER_DST_BUFFER);
     }
   }
 
@@ -200,25 +200,58 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       cmd.copy_buffer(transforms.slice, rg.get_buffer(rcs.transform_matrices));
     }
 
-    for (auto i : range(NUM_DRAW_SETS)) {
-      DrawSetData &ds = rcs.gpu_scene->draw_sets[i];
-      if (not ds.delete_ids.empty()) {
-        todo("Deletion from draw sets is not implemented");
+    for (auto s : range(NUM_DRAW_SETS)) {
+      if (!rcs.draw_sets[s]) {
+        continue;
       }
-      if (rcs.draw_sets[i]) {
-        ren_prof_zone("Update draw set");
-        auto update_cull_data =
-            rg.allocate<glsl::InstanceCullData>(ds.update_cull_data.size());
-        std::ranges::copy(ds.update_cull_data, update_cull_data.host_ptr);
-        BufferSlice<glsl::InstanceCullData> cull_data =
-            rg.get_buffer(rcs.draw_sets[i]);
-        for (auto i : range(ds.update_ids.size())) {
-          cmd.copy_buffer(update_cull_data.slice.slice(i, 1),
-                          cull_data.slice(ds.update_ids[i], 1));
+
+      DrawSetData &ds = rcs.gpu_scene->draw_sets[s];
+
+      auto update_cull_data =
+          rg.allocate<glsl::InstanceCullData>(ds.update_cull_data.size());
+      std::ranges::copy(ds.update_cull_data, update_cull_data.host_ptr);
+      BufferSlice<glsl::InstanceCullData> cull_data =
+          rg.get_buffer(rcs.draw_sets[s]);
+
+      usize num_add = ds.update_cull_data.size();
+      usize num_delete = ds.delete_ids.size();
+
+      DrawSetId base_add_id(ds.mesh_instances.size() - num_add);
+
+      // Copy added items into holes from deleted items.
+      usize num_replace = std::min(num_add, num_delete);
+      for (auto i : range(num_replace)) {
+        DrawSetId add_id(base_add_id + i);
+        DrawSetId delete_id = ds.delete_ids[i];
+        ds.mesh_instances[delete_id] = ds.mesh_instances[add_id];
+        MeshInstance &add_ms =
+            (MeshInstance &)
+                rcs.scene->mesh_instances[ds.mesh_instances[delete_id]];
+        add_ms.draw_set_ids[s] = delete_id;
+        cmd.copy_buffer(update_cull_data.slice.slice(i, 1),
+                        cull_data.slice(delete_id));
+      }
+
+      if (num_delete > num_replace) {
+        todo();
+      } else if (num_add > num_replace) {
+        // Copy leftover new items to the end.
+        cmd.copy_buffer(update_cull_data.slice.slice(num_replace),
+                        cull_data.slice(base_add_id));
+        for (auto i : range(num_replace, num_add)) {
+          DrawSetId old_add_id(base_add_id + i);
+          DrawSetId new_add_id(old_add_id - num_replace);
+          ds.mesh_instances[new_add_id] = ds.mesh_instances[old_add_id];
+          MeshInstance &add_ms =
+              (MeshInstance &)
+                  rcs.scene->mesh_instances[ds.mesh_instances[new_add_id]];
+          add_ms.draw_set_ids[s] = new_add_id;
         }
-        ds.update_ids.clear();
-        ds.update_cull_data.clear();
       }
+
+      ds.mesh_instances.resize(ds.mesh_instances.size() - num_delete);
+      ds.update_cull_data.clear();
+      ds.delete_ids.clear();
     }
 
     if (rcs.materials) {

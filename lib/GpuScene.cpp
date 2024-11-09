@@ -125,7 +125,6 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
 
   DrawSetId id(ds.mesh_instances.size());
   ds.mesh_instances.push_back(handle);
-  ds.update_ids.push_back(id);
   ds.update_cull_data.push_back(glsl::InstanceCullData{
       .mesh = mesh_instance.mesh,
       .mesh_instance = handle,
@@ -134,7 +133,6 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
 
   ren_assert(not mesh_instance.draw_sets.is_set(set));
   mesh_instance.draw_sets |= set;
-  mesh_instance.draw_set_ids[ds_idx] = id;
 }
 
 void remove_from_draw_set(SceneData &scene, GpuScene &gpu_scene,
