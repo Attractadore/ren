@@ -173,7 +173,7 @@ public:
       : ImGuiApp(
             fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
                 .c_str()) {
-    [&] -> Result<> {
+    [&]() -> Result<> {
       ren::IScene &scene = get_scene();
       ren::CameraId camera = get_camera();
       OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
@@ -184,8 +184,8 @@ public:
       set_camera(scene, camera, num_entities);
       return {};
     }()
-               .transform_error(throw_error)
-               .value();
+                 .transform_error(throw_error)
+                 .value();
   }
 
   [[nodiscard]] static auto run(const char *mesh_path, unsigned num_entities,

@@ -25,7 +25,7 @@ constexpr inline struct {
 
 #define TRY_RESULT CAT(res, __LINE__)
 
-#define bail(msg, ...) return Err(fmt::format(msg __VA_OPT__(, ) __VA_ARGS__))
+#define bail(msg, ...) return Err(fmt::format(msg __VA_OPT__(,) __VA_ARGS__))
 
 #define OK(name, ...)                                                          \
   auto TRY_RESULT = (__VA_ARGS__).transform_error(get_error_string);           \
@@ -43,7 +43,7 @@ constexpr inline struct {
 
 class AppBase {
   struct WindowDeleter {
-    static void operator()(SDL_Window *window) noexcept {
+    void operator()(SDL_Window *window) const noexcept {
       SDL_DestroyWindow(window);
     }
   };
@@ -78,25 +78,25 @@ protected:
 
   template <class App, typename... Args>
   [[nodiscard]] static auto run(Args &&...args) -> int {
-    auto rc = [&] -> Result<void> {
+    auto rc = [&]() -> Result<void> {
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
 
-      return [&] -> Result<App> {
+      return [&]() -> Result<App> {
         try {
           return App(std::forward<Args>(args)...);
         } catch (std::exception &err) {
           bail("{}", err.what());
         }
       }()
-                        .and_then(&AppBase::loop);
+                          .and_then(&AppBase::loop);
     }()
-                         .transform_error([](std::string_view err) {
-                           fmt::println(stderr, "{}", err);
-                           return -1;
-                         })
-                         .error_or(0);
+                           .transform_error([](std::string_view err) {
+                             fmt::println(stderr, "{}", err);
+                             return -1;
+                           })
+                           .error_or(0);
     SDL_Quit();
     return rc;
   }

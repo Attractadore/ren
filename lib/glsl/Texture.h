@@ -5,6 +5,7 @@
 #include "DevicePtr.h"
 
 #if !GL_core_profile
+#include <boost/predef/compiler.h>
 #include <boost/preprocessor.hpp>
 #include <limits>
 #endif
@@ -115,7 +116,12 @@ GLSL_DEFINE_PTR_TYPE(SamplerState, SAMPLER_ID_SIZE);
 const SamplerState DEFAULT_SAMPLER = SamplerState(SAMPLER_ID_TYPE(1));
 
 // clang-format off
-//
+
+#if BOOST_COMP_MSVC
+#pragma warning(push)
+#pragma warning(disable: 4003)
+#endif
+
 DEFINE_TEXTURE_DESCRIPTOR(Texture, , ); 
 
 DEFINE_TEXTURE_DESCRIPTOR(Texture2D, (Texture), );
@@ -136,6 +142,10 @@ GLSL_DEFINE_PTR_TYPE(RWStorageTexture2D, TEXTURE_ID_SIZE);
 
 DEFINE_TEXTURE_DESCRIPTOR(CoherentRWStorageTexture2D, (RWStorageTexture)(RWStorageTexture2D), (StorageTexture)(StorageTexture2D));
 GLSL_DEFINE_PTR_TYPE(CoherentRWStorageTexture2D, TEXTURE_ID_SIZE);
+
+#if BOOST_COMP_MSVC
+#pragma warning(pop)
+#endif
 
 // clang-format on
 

@@ -1,10 +1,11 @@
 #include "ImGuiApp.hpp"
 #include "ren/ren-imgui.hpp"
 
+#include <algorithm>
 #include <imgui_impl_sdl2.h>
 
 ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
-  [&] -> Result<void> {
+  [&]() -> Result<void> {
     if (!IMGUI_CHECKVERSION()) {
       bail("ImGui: failed to check version");
     }
@@ -54,10 +55,10 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
     ren::imgui::set_context(get_scene(), m_imgui_context.get());
     return {};
   }()
-             .transform_error(throw_error);
+               .transform_error(throw_error);
 }
 
-void ImGuiApp::Deleter::operator()(ImGuiContext *context) noexcept {
+void ImGuiApp::Deleter::operator()(ImGuiContext *context) const noexcept {
   if (context) {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext(context);

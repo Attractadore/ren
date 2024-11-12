@@ -95,6 +95,7 @@ auto get_batch_desc(const SceneData &scene, const Pipelines &pipelines,
   case DrawSet::Opaque:
     return get_opaque_batch_desc(scene, pipelines, mesh_instance);
   }
+  std::unreachable();
 }
 
 void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,

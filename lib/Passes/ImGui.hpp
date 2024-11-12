@@ -2,7 +2,7 @@
 #if REN_IMGUI
 #include "Pass.hpp"
 
-class ImGuiContext;
+#include <imgui.h>
 
 namespace ren {
 

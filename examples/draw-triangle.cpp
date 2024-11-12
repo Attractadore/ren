@@ -1,11 +1,12 @@
 #include "AppBase.hpp"
 
+#include <array>
 #include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {
 public:
   DrawTriangleApp() : AppBase("Draw Triangle") {
-    [&] -> Result<void> {
+    [&]() -> Result<void> {
       ren::IScene &scene = get_scene();
 
       std::array<glm::vec3, 3> positions = {{
@@ -68,8 +69,8 @@ public:
 
       return {};
     }()
-               .transform_error(throw_error)
-               .value();
+                 .transform_error(throw_error)
+                 .value();
   }
 
   [[nodiscard]] static auto run() -> int {
