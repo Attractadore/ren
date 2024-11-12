@@ -1,4 +1,5 @@
 #pragma once
+#include <compare>
 #include <type_traits>
 
 namespace ren {

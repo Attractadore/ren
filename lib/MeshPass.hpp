@@ -28,7 +28,7 @@ enum class OcclusionCullingMode {
 };
 
 struct MeshPassBaseInfo {
-  RgDebugName pass_name;
+  StringView pass_name;
 
   TempSpan<const NotNull<RgTextureId *>> color_attachments;
   TempSpan<const ColorAttachmentOperations> color_attachment_ops;

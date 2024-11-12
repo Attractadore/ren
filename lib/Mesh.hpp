@@ -7,6 +7,7 @@
 #include "Support/Vector.hpp"
 #include "glsl/Mesh.h"
 
+#include <array>
 #include <glm/glm.hpp>
 
 namespace ren {

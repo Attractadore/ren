@@ -1030,7 +1030,7 @@ auto Renderer::create_graphics_pipeline(
 
   VkPipelineRasterizationStateCreateInfo rasterization_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .cullMode = create_info.rasterization.cull_mode,
+      .cullMode = (VkCullModeFlags)create_info.rasterization.cull_mode,
       .frontFace = create_info.rasterization.front_face,
       .lineWidth = 1.0f,
   };

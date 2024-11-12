@@ -77,8 +77,8 @@ void draw_camera_imgui(CameraParams &params) {
   }
 }
 
-#define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
-#define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
+#define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(,) __VA_ARGS__)
+#define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(,) __VA_ARGS__)
 
 auto duration_as_float(chrono::nanoseconds time) -> float {
   return chrono::duration_cast<chrono::duration<float>>(time).count();
@@ -233,7 +233,7 @@ struct GltfMeshDesc {
 };
 
 template <> struct std::hash<GltfMeshDesc> {
-  static auto operator()(const GltfMeshDesc &desc) -> size_t {
+  auto operator()(const GltfMeshDesc &desc) const -> size_t {
     size_t seed = 0;
     boost::hash_combine(seed, desc.positions);
     boost::hash_combine(seed, desc.normals);
@@ -253,7 +253,7 @@ struct GltfImageDesc {
 };
 
 template <> struct std::hash<GltfImageDesc> {
-  static auto operator()(const GltfImageDesc &desc) -> size_t {
+  auto operator()(const GltfImageDesc &desc) const -> size_t {
     size_t seed = 0;
     boost::hash_combine(seed, desc.index);
     boost::hash_combine(seed, desc.srgb);
@@ -377,7 +377,7 @@ private:
       tangents_data = get_accessor_data<glm::vec4>(*tangents);
     }
 
-    OK(auto colors_data, [&] -> Result<std::vector<glm::vec4>> {
+    OK(auto colors_data, [&]() -> Result<std::vector<glm::vec4>> {
       if (!colors) {
         return {};
       }
@@ -424,7 +424,7 @@ private:
            colors->componentType, colors->type, colors->normalized);
     }());
 
-    OK(auto tex_coords_data, [&] -> Result<std::vector<glm::vec2>> {
+    OK(auto tex_coords_data, [&]() -> Result<std::vector<glm::vec2>> {
       if (!uvs) {
         return {};
       }
@@ -451,7 +451,7 @@ private:
            uvs->componentType, uvs->type, uvs->normalized);
     }());
 
-    OK(auto indices_data, [&] -> Result<std::vector<uint32_t>> {
+    OK(auto indices_data, [&]() -> Result<std::vector<uint32_t>> {
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
           return get_accessor_data<uint8_t>(

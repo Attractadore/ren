@@ -20,7 +20,7 @@ protected:
 
 private:
   struct Deleter {
-    static void operator()(ImGuiContext *context) noexcept;
+    void operator()(ImGuiContext *context) const noexcept;
   };
 
   std::unique_ptr<ImGuiContext, Deleter> m_imgui_context;

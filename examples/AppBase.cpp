@@ -29,7 +29,7 @@ auto throw_error(std::string err) -> std::string {
 }
 
 AppBase::AppBase(const char *app_name) {
-  [&] -> Result<void> {
+  [&]() -> Result<void> {
     m_app_name = app_name;
 
     OK(m_renderer, ren::sdl2::create_renderer());
@@ -51,8 +51,8 @@ AppBase::AppBase(const char *app_name) {
 
     return {};
   }()
-             .transform_error(throw_error)
-             .value();
+               .transform_error(throw_error)
+               .value();
 }
 
 auto AppBase::loop() -> Result<void> {
