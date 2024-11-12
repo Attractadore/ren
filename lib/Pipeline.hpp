@@ -1,6 +1,7 @@
 #pragma once
 #include "Config.hpp"
 #include "DebugNames.hpp"
+#include "Formats.hpp"
 #include "Support/GenIndex.hpp"
 #include "Support/Optional.hpp"
 #include "Support/Span.hpp"

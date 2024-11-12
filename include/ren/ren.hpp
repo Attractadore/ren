@@ -1,9 +1,10 @@
 #pragma once
+#include "tiny_imageformat.h"
+
 #include <expected>
 #include <glm/glm.hpp>
 #include <memory>
 #include <span>
-#include <tiny_imageformat/tinyimageformat.h>
 
 namespace ren {
 
