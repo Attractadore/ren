@@ -22,28 +22,73 @@
       }
     },
     {
+      "name": "windows",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "mingw",
+      "hidden": true,
+      "inherits": "windows",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+      }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-mingw",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
+        "REN_BUILD_TESTS": "OFF",
+        "REN_VULKAN_VALIDATION": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "linux"
+      }
+    },
+    {
       "name": "debug",
-      "displayName": "Debug Config",
-      "description": "Debug build with debug options",
       "inherits": "base",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
       "name": "dev",
-      "displayName": "Development Config",
-      "description": "Development build with debug options and optimizations",
       "inherits": "debug",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
     },
     {
       "name": "release",
-      "displayName": "Release Config",
-      "description": "Release build with optimizations",
       "inherits": "base",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "REN_BUILD_TESTS": "OFF",
@@ -56,8 +101,6 @@
     },
     {
       "name": "prof",
-      "displayName": "Profiling Config",
-      "description": "Profiling build with optimizations",
       "inherits": "release",
       "cacheVariables": {
         "REN_PROFILER": "ON",
@@ -65,24 +108,84 @@
       }
     },
     {
-      "name": "linux-mingw",
-      "hidden": true,
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
-        "REN_BUILD_TESTS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF",
-        "REN_PROFILER": "OFF"
-      },
-      "condition": {
-        "type": "notEquals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
+      "name": "windows-debug",
+      "inherits": [
+        "windows",
+        "debug"
+      ]
+    },
+    {
+      "name": "windows-dev",
+      "inherits": [
+        "windows",
+        "dev"
+      ]
+    },
+    {
+      "name": "windows-release",
+      "inherits": [
+        "windows",
+        "release"
+      ]
+    },
+    {
+      "name": "windows-prof",
+      "inherits": [
+        "windows",
+        "prof"
+      ]
+    },
+    {
+      "name": "mingw-debug",
+      "inherits": [
+        "mingw",
+        "debug"
+      ]
+    },
+    {
+      "name": "mingw-dev",
+      "inherits": [
+        "mingw",
+        "dev"
+      ]
+    },
+    {
+      "name": "mingw-release",
+      "inherits": [
+        "mingw",
+        "release"
+      ]
+    },
+    {
+      "name": "linux-debug",
+      "inherits": [
+        "linux",
+        "debug"
+      ]
+    },
+    {
+      "name": "linux-dev",
+      "inherits": [
+        "linux",
+        "dev"
+      ]
+    },
+    {
+      "name": "linux-release",
+      "inherits": [
+        "linux",
+        "release"
+      ]
+    },
+    {
+      "name": "linux-prof",
+      "inherits": [
+        "linux",
+        "prof"
+      ]
     },
     {
       "name": "linux-mingw-debug",
-      "displayName": "Debug Config for MinGW on Linux",
       "inherits": [
         "linux-mingw",
         "debug"
@@ -90,7 +193,6 @@
     },
     {
       "name": "linux-mingw-dev",
-      "displayName": "Development Config for MinGW on Linux",
       "inherits": [
         "linux-mingw",
         "dev"
@@ -98,7 +200,6 @@
     },
     {
       "name": "linux-mingw-release",
-      "displayName": "Release Config for MinGW on Linux",
       "inherits": [
         "linux-mingw",
         "release"
