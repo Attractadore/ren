@@ -1,7 +1,5 @@
 #include "Formats.hpp"
 
-#include <tiny_imageformat/tinyimageformat.h>
-
 namespace ren {
 
 auto getVkImageAspectFlags(TinyImageFormat format) -> VkImageAspectFlags {
