@@ -3,6 +3,8 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <boost/random.hpp>
+#include <boost/random/random_device.hpp>
 #include <cmath>
 #include <cstdlib>
 #include <cxxopts.hpp>
@@ -10,7 +12,6 @@
 #include <fmt/format.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <numbers>
-#include <random>
 
 namespace fs = std::filesystem;
 
@@ -76,17 +77,19 @@ auto get_scene_bounds(unsigned num_entities) -> std::tuple<float, float> {
   return {-s, s};
 }
 
-auto init_random(unsigned seed) -> std::mt19937 {
-  return std::mt19937(seed ? seed : std::random_device()());
+auto init_random(unsigned seed) -> boost::random::mt19937 {
+  return boost::random::mt19937(seed ? seed : boost::random::random_device()());
 }
 
-auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
+auto random_transform(boost::random::mt19937 &rg, float min_trans, float max_trans,
                       float min_scale, float max_scale) -> glm::mat4x3 {
-  std::uniform_real_distribution<float> trans_dist(min_trans, max_trans);
-  std::uniform_int_distribution<int> axis_dist(INT_MIN, INT_MAX);
-  std::uniform_real_distribution<float> angle_dist(0.0f,
-                                                   2.0f * std::numbers::pi);
-  std::uniform_real_distribution<float> scale_dist(min_scale, max_scale);
+  boost::random::uniform_real_distribution<float> trans_dist(min_trans,
+                                                             max_trans);
+  boost::random::uniform_int_distribution<int> axis_dist(INT_MIN, INT_MAX);
+  boost::random::uniform_real_distribution<float> angle_dist(
+      0.0f, 2.0f * std::numbers::pi);
+  boost::random::uniform_real_distribution<float> scale_dist(min_scale,
+                                                             max_scale);
 
   glm::vec3 translate;
   for (int i = 0; i < 3; ++i) {
@@ -113,9 +116,9 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
   return transform;
 }
 
-auto place_entities(std::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
-                    ren::MaterialId material,
-                    unsigned num_entities) -> Result<void> {
+auto place_entities(boost::random::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
+                    ren::MaterialId material, unsigned num_entities)
+    -> Result<void> {
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;

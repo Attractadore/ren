@@ -68,6 +68,7 @@
         },
         "assimp",
         "boost-functional",
+        "boost-random",
         "fmt",
         "glm",
         "sdl2",

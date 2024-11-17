@@ -1,5 +1,5 @@
 find_package(assimp REQUIRED)
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED COMPONENTS random)
 find_package(SDL2 REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
@@ -41,4 +41,4 @@ target_link_libraries(
   tinygltf)
 
 add_executable(entity-stress-test entity-stress-test.cpp)
-target_link_libraries(entity-stress-test imgui-app assimp::assimp cxxopts::cxxopts)
+target_link_libraries(entity-stress-test imgui-app assimp::assimp cxxopts::cxxopts Boost::random)
