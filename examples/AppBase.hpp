@@ -2,6 +2,7 @@
 #include "ren/ren.hpp"
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_hints.h>
 #include <chrono>
 #include <fmt/format.h>
 
@@ -79,6 +80,7 @@ protected:
   template <class App, typename... Args>
   [[nodiscard]] static auto run(Args &&...args) -> int {
     auto rc = [&]() -> Result<void> {
+      SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
       if (SDL_Init(SDL_INIT_EVERYTHING)) {
         bail("{}", SDL_GetError());
       }
