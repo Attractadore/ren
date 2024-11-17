@@ -20,13 +20,10 @@ auto get_surface_capabilities(VkPhysicalDevice adapter, VkSurfaceKHR surface)
 
 auto select_surface_format(Span<const VkSurfaceFormatKHR> surface_formats)
     -> VkSurfaceFormatKHR {
-  auto it =
-      std::find_if(surface_formats.begin(), surface_formats.end(),
-                   [](const VkSurfaceFormatKHR &surface_format) {
-                     TinyImageFormat format = TinyImageFormat_FromVkFormat(
-                         (TinyImageFormat_VkFormat)surface_format.format);
-                     return TinyImageFormat_IsSRGB(format);
-                   });
+  auto it = std::ranges::find_if(
+      surface_formats, [](const VkSurfaceFormatKHR &surface_format) {
+        return surface_format.format == VK_FORMAT_B8G8R8A8_SRGB;
+      });
   return it != surface_formats.end() ? *it : surface_formats.front();
 };
 
