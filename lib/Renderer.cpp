@@ -119,6 +119,9 @@ auto find_adapter(VkInstance instance, u32 adapter) -> VkPhysicalDevice {
       vkEnumeratePhysicalDevices(instance, &num_adapters, adapters.data()),
       "Vulkan: Failed to enumerate physical device");
   adapters.resize(num_adapters);
+  if (adapter == DEFAULT_ADAPTER) {
+    return adapters[0];
+  }
   if (adapter < adapters.size()) {
     return adapters[adapter];
   }
@@ -290,7 +293,11 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
 #endif
 
   m_adapter = find_adapter(get_instance(), adapter);
-  if (!m_adapter) {
+  if (m_adapter) {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(m_adapter, &props);
+    fmt::println("Running on {}", props.deviceName);
+  } else {
     throw std::runtime_error("Vulkan: Failed to find requested adapter");
   }
 

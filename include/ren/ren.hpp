@@ -56,12 +56,14 @@ struct IRenderer;
 struct ISwapchain;
 struct IScene;
 
+constexpr unsigned DEFAULT_ADAPTER = -1;
+
 /// Renderer description.
 struct RendererCreateInfo {
   /// Additional Vulkan extensions to enable.
   std::span<const char *const> vk_instance_extensions;
   /// Index of adapter to use as returned by vkEnumeratePhysicalDevices.
-  unsigned adapter = 0;
+  unsigned adapter = DEFAULT_ADAPTER;
 };
 
 [[nodiscard]] auto create_renderer(const RendererCreateInfo &create_info)

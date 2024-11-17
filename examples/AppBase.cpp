@@ -32,7 +32,17 @@ AppBase::AppBase(const char *app_name) {
   [&]() -> Result<void> {
     m_app_name = app_name;
 
-    OK(m_renderer, ren::sdl2::create_renderer());
+    unsigned adapter = ren::DEFAULT_ADAPTER;
+    const char *user_adapter = std::getenv("REN_ADAPTER");
+    if (user_adapter) {
+      char *end;
+      adapter = std::strtol(user_adapter, &end, 10);
+      if (end != user_adapter + std::strlen(user_adapter)) {
+        adapter = ren::DEFAULT_ADAPTER;
+      }
+    }
+
+    OK(m_renderer, ren::sdl2::create_renderer(adapter));
 
     m_window.reset(SDL_CreateWindow(
         app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
