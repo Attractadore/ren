@@ -1,9 +1,14 @@
 #include "ImGuiApp.hpp"
 #include "ren/ren-imgui.hpp"
 
+#include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 #include <algorithm>
 #include <imgui_impl_sdl2.h>
+#ifdef SDL_VIDEO_DRIVER_X11
+#include <X11/Xresource.h>
+#include <dlfcn.h>
+#endif
 
 // Taken from imgui_impl_sdl2.cpp
 struct ImGui_ImplSDL2_Data {
@@ -40,12 +45,53 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
 
     ImGui::StyleColorsDark();
 
-    std::string_view drv = SDL_GetCurrentVideoDriver();
-    if (drv == "x11") {
-      // SDL2 doesn't support HiDPI on X11.
-      // TODO: Set UI scale to Xft.dpi / 96.
-      m_ui_scale = 2.0f;
-    } else {
+    SDL_SysWMinfo sys_wm_info = {};
+    SDL_VERSION(&sys_wm_info.version);
+    bool result = SDL_GetWindowWMInfo(get_window(), &sys_wm_info);
+    if (!result) {
+      bail("SDL2: failed to get WM info: {}", SDL_GetError());
+    }
+
+    switch (sys_wm_info.subsystem) {
+    case SDL_SYSWM_X11: {
+#ifdef SDL_VIDEO_DRIVER_X11
+      // SDL2 doesn't support HiDPI on X11. Set UI scale to Xft.dpi / 96.
+
+      void *xlib_so = SDL_LoadObject(SDL_VIDEO_DRIVER_X11_DYNAMIC);
+      if (!xlib_so) {
+        bail("SDL2: failed to load {}", SDL_VIDEO_DRIVER_X11_DYNAMIC);
+      }
+
+#define load_function(name)                                                    \
+  auto *pfn##name = (decltype(name) *)SDL_LoadFunction(xlib_so, #name);        \
+  if (!pfn##name) {                                                            \
+    bail("SDL2: failed to load {}", #name);                                    \
+  }
+
+      load_function(XResourceManagerString);
+      load_function(XrmGetStringDatabase);
+      load_function(XrmGetResource);
+
+#undef load_function
+
+      const char *resource_string =
+          pfnXResourceManagerString(sys_wm_info.info.x11.display);
+      XrmDatabase db = pfnXrmGetStringDatabase(resource_string);
+      char *type;
+      XrmValue value;
+      if (pfnXrmGetResource(db, "Xft.dpi", "String", &type, &value) &&
+          value.addr) {
+        char *end;
+        float dpi = std::strtof(value.addr, &end);
+        if (end == value.addr + std::strlen(value.addr)) {
+          m_ui_scale = dpi / 96.0f;
+        }
+      }
+
+      SDL_UnloadObject(xlib_so);
+#endif
+    } break;
+    default: {
       // On Win32 and Wayland, set scaling factor to ratio between framebuffer
       // and window size.
       int w, h;
@@ -54,6 +100,7 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
       SDL_Vulkan_GetDrawableSize(get_window(), &dw, &dh);
       m_ui_scale = (float)dw / (float)w;
       m_mouse_scale = m_ui_scale;
+    } break;
     }
 
     fmt::println("ImGui UI scale: {}, ImGui mouse scale: {}", m_ui_scale,
