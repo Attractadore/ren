@@ -662,6 +662,7 @@ private:
   RgRtData *m_data = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
   VkDescriptorSet m_texture_set = nullptr;
+  const GenArray<RgSemaphore> *m_semaphores = nullptr;
 };
 
 class RgRuntime {
@@ -735,6 +736,8 @@ public:
   auto allocate(usize count = 1) const -> UploadBumpAllocation<T> {
     return get_allocator().allocate<T>(count);
   }
+
+  auto get_semaphore(RgSemaphoreId semaphore) const -> Handle<Semaphore>;
 
 private:
   friend RenderGraph;

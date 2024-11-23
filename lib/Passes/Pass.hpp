@@ -21,7 +21,6 @@ struct PassPersistentResources {
   RgTextureId depth_buffer;
   RgTextureId hi_z;
   RgTextureId sdr;
-  RgTextureId backbuffer;
   RgSemaphoreId acquire_semaphore;
   RgSemaphoreId present_semaphore;
 };

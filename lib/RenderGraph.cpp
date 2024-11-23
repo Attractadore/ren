@@ -1252,6 +1252,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_data = m_rt_data;
   rg.m_upload_allocator = &upload_allocator;
   rg.m_texture_set = m_descriptor_allocator->get_set();
+  rg.m_semaphores = &m_rgp->m_semaphores;
 
   return rg;
 }
@@ -1589,6 +1590,11 @@ auto RgRuntime::get_texture_set() const -> VkDescriptorSet {
 
 auto RgRuntime::get_allocator() const -> UploadBumpAllocator & {
   return *m_rg->m_upload_allocator;
+}
+
+auto RgRuntime::get_semaphore(RgSemaphoreId semaphore) const
+    -> Handle<Semaphore> {
+  return m_rg->m_semaphores->get(semaphore).handle;
 }
 
 } // namespace ren
