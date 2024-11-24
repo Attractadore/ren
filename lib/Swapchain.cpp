@@ -47,10 +47,38 @@ auto select_composite_alpha(VkCompositeAlphaFlagsKHR composite_alpha_flags)
 
 auto select_image_usage(VkImageUsageFlags supported_usage)
     -> VkImageUsageFlags {
-  constexpr VkImageUsageFlags REQUIRED_USAGE =
-      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  constexpr VkImageUsageFlags REQUIRED_USAGE = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
   return REQUIRED_USAGE;
+}
+
+auto get_optimal_image_count(WindowingSystem ws, VkPresentModeKHR pm,
+                             bool is_fullscreen, u32 num_frames_in_flight)
+    -> u32 {
+  switch (ws) {
+  case WindowingSystem::Unknown:
+    return 3;
+  case WindowingSystem::X11:
+  case WindowingSystem::Wayland: {
+    // On Linux, acquire is synchronous. We need the following images:
+    // 1. One for presenting.
+    // 2. One for drawing into.
+    // 3. One less than the number of frames in flight to record commands for.
+    // 4. For mailbox, one queued for present.
+    u32 num_images = num_frames_in_flight + 1;
+    if (pm == VK_PRESENT_MODE_MAILBOX_KHR or
+        (pm == VK_PRESENT_MODE_IMMEDIATE_KHR and not is_fullscreen)) {
+      return num_images + 1;
+    }
+    return num_images;
+  } break;
+  case WindowingSystem::Win32: {
+    // On Windows, acquire is asynchronous. We need the following images:
+    // 1. One for presenting.
+    // 2. One for drawing into.
+    return 2;
+  } break;
+  }
 }
 
 } // namespace
@@ -61,17 +89,62 @@ Swapchain::~Swapchain() {
   vkDestroySurfaceKHR(m_renderer->get_instance(), m_surface, nullptr);
 }
 
-void Swapchain::init(Renderer &renderer, VkSurfaceKHR surface) {
+void Swapchain::init(Renderer &renderer, VkSurfaceKHR surface,
+                     const SurfaceCallbacks &cb, void *usrptr) {
+  m_cb = cb;
+  m_usrptr = usrptr;
   m_renderer = &renderer;
   m_surface = surface;
+  m_size = m_cb.get_size(m_usrptr);
+  m_fullscreen = m_cb.is_fullscreen(m_usrptr);
   recreate();
+}
+
+void Swapchain::set_vsync(VSync vsync) {
+  if (m_vsync != vsync) {
+    m_vsync = vsync;
+    m_dirty = true;
+  }
+}
+
+void Swapchain::set_frames_in_flight(u32 num_frames_in_flight) {
+  if (m_num_frames_in_flight != num_frames_in_flight) {
+    m_num_frames_in_flight = num_frames_in_flight;
+    m_dirty = true;
+  }
 }
 
 void Swapchain::recreate() {
   VkSurfaceCapabilitiesKHR capabilities =
       get_surface_capabilities(m_renderer->get_adapter(), m_surface);
 
-  auto num_images = std::max<u32>(capabilities.minImageCount, m_num_images);
+  u32 num_present_modes = 0;
+  vkGetPhysicalDeviceSurfacePresentModesKHR(
+      m_renderer->get_adapter(), m_surface, &num_present_modes, nullptr);
+  SmallVector<VkPresentModeKHR> present_modes(num_present_modes);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(m_renderer->get_adapter(),
+                                            m_surface, &num_present_modes,
+                                            present_modes.data());
+
+  VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+  if (m_vsync == VSync::Off) {
+    bool have_immediate =
+        std::ranges::find(present_modes, VK_PRESENT_MODE_IMMEDIATE_KHR) !=
+        present_modes.end();
+    bool have_mailbox =
+        std::ranges::find(present_modes, VK_PRESENT_MODE_MAILBOX_KHR) !=
+        present_modes.end();
+    if (have_immediate) {
+      present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    } else if (have_mailbox) {
+      present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+  }
+
+  u32 num_images =
+      get_optimal_image_count(m_cb.get_windowing_system(m_usrptr), present_mode,
+                              m_fullscreen, m_num_frames_in_flight);
+  num_images = std::max<u32>(capabilities.minImageCount, num_images);
   if (capabilities.maxImageCount) {
     num_images = std::min<u32>(capabilities.maxImageCount, num_images);
   }
@@ -110,6 +183,10 @@ void Swapchain::recreate() {
   VkCompositeAlphaFlagBitsKHR composite_alpha =
       select_composite_alpha(capabilities.supportedCompositeAlpha);
 
+  fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
+               m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
+               num_images);
+
   VkSwapchainCreateInfoKHR create_info = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
       .surface = m_surface,
@@ -122,7 +199,7 @@ void Swapchain::recreate() {
       .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
       .preTransform = capabilities.currentTransform,
       .compositeAlpha = composite_alpha,
-      .presentMode = m_present_mode,
+      .presentMode = present_mode,
       .clipped = true,
       .oldSwapchain = m_swapchain,
   };
@@ -143,7 +220,6 @@ void Swapchain::recreate() {
                                           &num_images, images.data()),
                   "Vulkan: Failed to get swapchain images");
 
-  m_num_images = num_images;
   m_textures.resize(num_images);
   for (usize i = 0; i < num_images; ++i) {
     m_textures[i] = m_renderer->create_swapchain_texture({
@@ -166,42 +242,35 @@ void Swapchain::destroy() {
   m_textures.clear();
 }
 
-void Swapchain::set_size(unsigned width, unsigned height) {
-  if (m_size.x != width or m_size.y != height) {
-    m_size = {width, height};
-    // Reset image count when changing size to save some memory if we don't need
-    // as many images as previously (e.g when switching from windowed to
-    // fullscreen, we need 1 less image since the compositor is disabled).
-    m_num_images = 0;
-    m_dirty = true;
-  }
-}
-
-void Swapchain::set_present_mode(VkPresentModeKHR present_mode) { todo(); }
-
 auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
     -> Handle<Texture> {
   ren_prof_zone("Swapchain::acquire_texture");
+
+  glm::uvec2 size = m_cb.get_size(m_usrptr);
+  if (m_size != size) {
+    m_size = size;
+    m_dirty = true;
+  }
+
+  bool fullscreen = m_cb.is_fullscreen(m_usrptr);
+  if (m_fullscreen != fullscreen) {
+    m_fullscreen = fullscreen;
+    m_dirty = true;
+  }
+
   if (m_dirty) {
     recreate();
   }
+
   while (true) {
-    constexpr u64 TIMEOUT = 500'000;
     VkResult result = vkAcquireNextImageKHR(
-        m_renderer->get_device(), m_swapchain, TIMEOUT,
+        m_renderer->get_device(), m_swapchain, UINT64_MAX,
         m_renderer->get_semaphore(signal_semaphore).handle, nullptr,
         &m_image_index);
     switch (result) {
     case VK_SUCCESS:
     case VK_SUBOPTIMAL_KHR:
       return m_textures[m_image_index];
-    case VK_NOT_READY:
-    case VK_TIMEOUT:
-      // We are blocked by the presentation engine. Try to use more images to
-      // fix this.
-      m_num_images++;
-      recreate();
-      continue;
     case VK_ERROR_OUT_OF_DATE_KHR:
       recreate();
       continue;

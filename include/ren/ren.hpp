@@ -76,12 +76,32 @@ struct IRenderer {
       -> expected<std::unique_ptr<IScene>> = 0;
 };
 
+enum class WindowingSystem {
+  Unknown,
+  Win32,
+  X11,
+  Wayland,
+};
+
+using GetSurfaceSizeCB = glm::uvec2(void *);
+using IsSurfaceFullscreenCB = bool(void *);
+using GetSurfaceWindowingSystem = WindowingSystem(void *);
+
+struct SurfaceCallbacks {
+  GetSurfaceSizeCB *get_size = nullptr;
+  IsSurfaceFullscreenCB *is_fullscreen = nullptr;
+  GetSurfaceWindowingSystem *get_windowing_system = nullptr;
+};
+
+enum class VSync {
+  Off,
+  On,
+};
+
 struct ISwapchain {
   virtual ~ISwapchain() = default;
 
-  [[nodiscard]] virtual auto get_size() const -> glm::uvec2 = 0;
-
-  virtual void set_size(unsigned width, unsigned height) = 0;
+  virtual void set_vsync(VSync vsync) = 0;
 };
 
 /// Camera perspective projection descriptor.

@@ -91,6 +91,7 @@ void Scene::allocate_per_frame_resources() {
       .name = "Graphics queue timeline semaphore",
       .initial_value = m_graphics_time - 1,
   });
+  m_swapchain->set_frames_in_flight(m_num_frames_in_flight);
 }
 
 void ScenePerFrameResources::reset() {

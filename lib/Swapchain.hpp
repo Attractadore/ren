@@ -25,17 +25,14 @@ public:
   Swapchain &operator=(const Swapchain &) = delete;
   Swapchain &operator=(Swapchain &&) noexcept;
 
-  void init(Renderer &renderer, VkSurfaceKHR surface);
+  void init(Renderer &renderer, VkSurfaceKHR surface,
+            const SurfaceCallbacks &cb, void *usrptr);
 
-  auto get_size() const -> glm::uvec2 override { return m_size; }
+  void set_vsync(VSync vsync) override;
 
-  void set_size(unsigned width, unsigned height) override;
+  void set_frames_in_flight(u32 num_frames_in_flight);
 
-  auto get_num_textures() const { return m_textures.size(); }
-
-  auto get_present_mode() const -> VkPresentModeKHR { return m_present_mode; }
-
-  void set_present_mode(VkPresentModeKHR);
+  auto get_size() const -> glm::uvec2 { return m_size; }
 
   auto get_format() const -> TinyImageFormat { return m_format; }
 
@@ -52,17 +49,20 @@ private:
   void destroy();
 
 private:
+  SurfaceCallbacks m_cb;
+  void *m_usrptr = nullptr;
   Renderer *m_renderer = nullptr;
   VkSurfaceKHR m_surface = nullptr;
   VkSwapchainKHR m_swapchain = nullptr;
   SmallVector<Handle<Texture>> m_textures;
   glm::uvec2 m_size = {};
-  VkPresentModeKHR m_present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+  VSync m_vsync = VSync::Off;
+  bool m_fullscreen = false;
   TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
   VkColorSpaceKHR m_color_space = {};
   VkImageUsageFlags m_usage = 0;
   u32 m_image_index = -1;
-  u8 m_num_images = 0;
+  u32 m_num_frames_in_flight = 2;
   bool m_dirty = true;
 };
 

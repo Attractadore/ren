@@ -4,6 +4,7 @@
 #include "Support/Vector.hpp"
 #include "Swapchain.hpp"
 
+#include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 
 auto ren::sdl2::create_renderer(unsigned adapter)
@@ -42,10 +43,39 @@ auto ren::sdl2::create_swapchain(IRenderer &irenderer, SDL_Window *window)
   }
   return lippincott([&] {
     auto swapchain = std::make_unique<Swapchain>();
-    int w, h;
-    SDL_Vulkan_GetDrawableSize(window, &w, &h);
-    swapchain->set_size(w, h);
-    swapchain->init(renderer, surface);
+    swapchain->init(
+        renderer, surface,
+        {
+            .get_size = [](void *window) -> glm::uvec2 {
+              int w, h;
+              SDL_Vulkan_GetDrawableSize((SDL_Window *)window, &w, &h);
+              return {w, h};
+            },
+            .is_fullscreen = [](void *window) -> bool {
+              int w, h;
+              SDL_GetWindowSize((SDL_Window *)window, &w, &h);
+              int display = SDL_GetWindowDisplayIndex((SDL_Window *)window);
+              SDL_DisplayMode mode;
+              SDL_GetDesktopDisplayMode(display, &mode);
+              return mode.w == w and mode.h == h;
+            },
+            .get_windowing_system = [](void *window) -> WindowingSystem {
+              SDL_SysWMinfo info;
+              SDL_VERSION(&info.version);
+              SDL_GetWindowWMInfo((SDL_Window *)window, &info);
+              switch (info.subsystem) {
+              default:
+                return WindowingSystem::Unknown;
+              case SDL_SYSWM_WINDOWS:
+                return WindowingSystem::Win32;
+              case SDL_SYSWM_X11:
+                return WindowingSystem::X11;
+              case SDL_SYSWM_WAYLAND:
+                return WindowingSystem::Wayland;
+              }
+            },
+        },
+        window);
     return swapchain;
   });
 }
