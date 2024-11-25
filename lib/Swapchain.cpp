@@ -56,28 +56,41 @@ auto get_optimal_image_count(WindowingSystem ws, VkPresentModeKHR pm,
                              bool is_fullscreen, u32 num_frames_in_flight)
     -> u32 {
   switch (ws) {
-  case WindowingSystem::Unknown:
+  default:
     return 3;
   case WindowingSystem::X11:
   case WindowingSystem::Wayland: {
-    // On Linux, acquire is synchronous. We need the following images:
+    // On Linux, we need the following images:
     // 1. One for presenting.
-    // 2. One for drawing into.
-    // 3. One less than the number of frames in flight to record commands for.
-    // 4. For mailbox, one queued for present.
+    // 2. For mailbox, one queued for present.
+    // 3. One for drawing into.
+    // 4. One less than the number of frames in flight to record commands for
+    // due to synchronous acquire.
     u32 num_images = num_frames_in_flight + 1;
+    // Tearing is only allowed in fullscreen on Linux.
     if (pm == VK_PRESENT_MODE_MAILBOX_KHR or
         (pm == VK_PRESENT_MODE_IMMEDIATE_KHR and not is_fullscreen)) {
       return num_images + 1;
     }
     return num_images;
-  } break;
+  }
   case WindowingSystem::Win32: {
-    // On Windows, acquire is asynchronous. We need the following images:
+    // On Windows, we need the following images:
     // 1. One for presenting.
-    // 2. One for drawing into.
-    return 2;
-  } break;
+    // 2. For mailbox, 1 or 2 queued for present. DWM can only returns images
+    // that for queued for present, but were not presented, back to the swap
+    // chain on the next vblank, which caps the maximum frame rate in mailbox to
+    // refresh rate * (number of swap chain images - 1). flight count.
+    // 3. One for drawing into.
+    // 4. One less than the number of frames in flight to record commands for
+    // due to synchronous acquire.
+    u32 num_images = num_frames_in_flight + 1;
+    // On Windows, tearing is allowed in windowed mode if MPOs are supported.
+    if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
+      return num_images + 1;
+    }
+    return num_images;
+  }
   }
 }
 
