@@ -166,7 +166,7 @@ auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
     ren::imgui::set_context(get_scene(),
                             m_imgui_enabled ? m_imgui_context.get() : nullptr);
   }
-  return {};
+  return AppBase::process_event(event);
 }
 
 auto ImGuiApp::begin_frame() -> Result<void> {

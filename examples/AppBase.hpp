@@ -66,9 +66,7 @@ protected:
 
   auto get_camera() const -> ren::CameraId { return m_camera; }
 
-  [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void> {
-    return {};
-  }
+  [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void>;
 
   [[nodiscard]] virtual auto begin_frame() -> Result<void>;
 

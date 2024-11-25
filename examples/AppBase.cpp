@@ -97,6 +97,17 @@ auto AppBase::loop() -> Result<void> {
   return {};
 }
 
+auto AppBase::process_event(const SDL_Event &event) -> Result<void> {
+  if (event.type == SDL_KEYDOWN and
+      event.key.keysym.scancode == SDL_SCANCODE_F11) {
+    bool is_fullscreen =
+        SDL_GetWindowFlags(m_window.get()) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+    SDL_SetWindowFullscreen(m_window.get(),
+                            is_fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+  }
+  return {};
+}
+
 auto AppBase::begin_frame() -> Result<void> { return {}; }
 
 auto AppBase::process_frame(chrono::nanoseconds) -> Result<void> { return {}; }
