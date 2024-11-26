@@ -64,6 +64,9 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   m_gpu_scene = init_gpu_scene(m_arena);
 
+  m_data.settings.amd_anti_lag =
+      m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
+
   next_frame();
 }
 
@@ -103,6 +106,8 @@ void ScenePerFrameResources::reset() {
 void Scene::next_frame() {
   ren_prof_zone("Scene::next_frame");
 
+  m_frame_index++;
+
   m_num_frames_in_flight = m_new_num_frames_in_flight;
   [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
     allocate_per_frame_resources();
@@ -117,10 +122,11 @@ void Scene::next_frame() {
     m_graphics_time++;
     {
       ren_prof_zone("Scene::wait_for_previous_frame");
-      u64 wait_frame = m_graphics_time - m_num_frames_in_flight;
-      ren_prof_zone_text(fmt::format("{}", wait_frame));
+      ren_prof_zone_text(
+          fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
+      u64 wait_time = m_graphics_time - m_num_frames_in_flight;
       m_renderer->wait_for_semaphore(
-          m_renderer->get_semaphore(m_graphics_semaphore), wait_frame);
+          m_renderer->get_semaphore(m_graphics_semaphore), wait_time);
     }
   }
   m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
@@ -471,6 +477,22 @@ void Scene::set_directional_light(DirectionalLightId light,
       m_data.directional_lights[handle]);
 };
 
+auto Scene::delay_input() -> expected<void> {
+  if (is_amd_anti_lag_enabled()) {
+    m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_INPUT_AMD);
+  }
+  return {};
+}
+
+bool Scene::is_amd_anti_lag_available() {
+  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag) and
+         m_num_frames_in_flight <= 2;
+}
+
+bool Scene::is_amd_anti_lag_enabled() {
+  return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
+}
+
 auto Scene::draw() -> expected<void> {
   ren_prof_zone("Scene::draw");
 
@@ -479,6 +501,10 @@ auto Scene::draw() -> expected<void> {
   RenderGraph render_graph = build_rg();
 
   render_graph.execute(m_frcs->cmd_allocator);
+
+  if (is_amd_anti_lag_enabled()) {
+    m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_PRESENT_AMD);
+  }
 
   m_swapchain->present(m_frcs->present_semaphore);
 
@@ -496,13 +522,17 @@ void Scene::draw_imgui() {
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
+      SceneGraphicsSettings &settings = m_data.settings;
+
+      ImGui::SeparatorText("Latency");
       {
         int fif = m_num_frames_in_flight;
         ImGui::SliderInt("Frames in flight", &fif, 1, 4);
         m_new_num_frames_in_flight = fif;
+        ImGui::BeginDisabled(!is_amd_anti_lag_available());
+        ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
+        ImGui::EndDisabled();
       }
-
-      SceneGraphicsSettings &settings = m_data.settings;
 
       ImGui::SeparatorText("Instance culling");
       {

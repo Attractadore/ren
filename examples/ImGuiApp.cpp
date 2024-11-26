@@ -13,6 +13,7 @@
 // Taken from imgui_impl_sdl2.cpp
 struct ImGui_ImplSDL2_Data {
   SDL_Window *Window;
+  Uint32 WindowID;
   SDL_Renderer *Renderer;
   Uint64 Time;
   char *ClipboardTextData;
@@ -30,7 +31,7 @@ struct ImGui_ImplSDL2_Data {
   ImGui_ImplSDL2_GamepadMode GamepadMode;
   bool WantUpdateGamepadsList;
 };
-static_assert(IMGUI_VERSION_NUM == 19070);
+static_assert(IMGUI_VERSION_NUM == 19150);
 
 ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
   [&]() -> Result<void> {

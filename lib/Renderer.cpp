@@ -141,15 +141,43 @@ auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
   return None;
 }
 
-auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
-    -> VkDevice {
-  float queue_priority = 1.0f;
-  VkDeviceQueueCreateInfo queue_create_info = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = graphics_queue_family,
-      .queueCount = 1,
-      .pQueuePriorities = &queue_priority,
+} // namespace
+
+void Renderer::create_device() {
+  u32 num_supported_extensions;
+  vkEnumerateDeviceExtensionProperties(m_adapter, nullptr,
+                                       &num_supported_extensions, nullptr);
+  Vector<VkExtensionProperties> supported_extensions(num_supported_extensions);
+  vkEnumerateDeviceExtensionProperties(m_adapter, nullptr,
+                                       &num_supported_extensions,
+                                       supported_extensions.data());
+
+  auto is_extension_supported = [&](const char *ext) {
+    return std::ranges::find_if(supported_extensions,
+                                [&](const VkExtensionProperties &ext_props) {
+                                  return std::strcmp(
+                                             ext, ext_props.extensionName) == 0;
+                                }) != supported_extensions.end();
   };
+
+  std::array required_extensions = {
+      VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+      VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+  };
+
+  std::array optional_extensions = {
+      VK_AMD_ANTI_LAG_EXTENSION_NAME,
+  };
+
+  Vector<const char *> extensions;
+  extensions.reserve(required_extensions.size() + optional_extensions.size());
+  extensions = required_extensions;
+  for (const char *ext : optional_extensions) {
+    if (is_extension_supported(ext)) {
+      fmt::println("Found optional extension {}", ext);
+      extensions.push_back(ext);
+    }
+  }
 
   void *pnext = nullptr;
   auto add_features = [&](auto &features) {
@@ -157,6 +185,27 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
     features.pNext = pnext;
     pnext = &features;
   };
+
+  // Query optional feature support.
+
+  VkPhysicalDeviceAntiLagFeaturesAMD amd_anti_lag_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD,
+  };
+
+  add_features(amd_anti_lag_features);
+
+  {
+    VkPhysicalDeviceFeatures2 features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = pnext,
+    };
+    vkGetPhysicalDeviceFeatures2(m_adapter, &features);
+  }
+
+  // Add required features.
+  // TODO: check that they are supported.
+
+  pnext = nullptr;
 
   VkPhysicalDeviceFeatures2 vulkan10_features = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -208,9 +257,20 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
 
   add_features(uint8_features);
 
-  std::array extensions = {
-      VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-      VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+  // Add supported optional features.
+
+  if (amd_anti_lag_features.antiLag) {
+    fmt::println("Enable AMD Anti-Lag feature");
+    add_features(amd_anti_lag_features);
+    m_features.set((usize)RendererFeature::AmdAntiLag);
+  }
+
+  float queue_priority = 1.0f;
+  VkDeviceQueueCreateInfo queue_create_info = {
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .queueFamilyIndex = m_graphics_queue_family,
+      .queueCount = 1,
+      .pQueuePriorities = &queue_priority,
   };
 
   VkDeviceCreateInfo create_info = {
@@ -222,12 +282,11 @@ auto create_device(VkPhysicalDevice adapter, u32 graphics_queue_family)
       .ppEnabledExtensionNames = extensions.data(),
   };
 
-  VkDevice device;
-  throw_if_failed(vkCreateDevice(adapter, &create_info, nullptr, &device),
+  throw_if_failed(vkCreateDevice(m_adapter, &create_info, nullptr, &m_device),
                   "Vulkan: Failed to create device");
-
-  return device;
 }
+
+namespace {
 
 auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
                       VkDevice device) -> VmaAllocator {
@@ -308,7 +367,7 @@ Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
     throw std::runtime_error("Vulkan: Failed to find graphics queue");
   }
 
-  m_device = create_device(m_adapter, m_graphics_queue_family);
+  create_device();
 
   volkLoadDevice(get_device());
 
@@ -1250,8 +1309,31 @@ auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
   return m_pipeline_layouts[layout];
 }
 
+bool Renderer::is_feature_supported(RendererFeature feature) const {
+  auto i = (usize)feature;
+  ren_assert(i <= (usize)RendererFeature::Last);
+  return m_features[i];
+}
+
 auto Renderer::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
   return vkQueuePresentKHR(getGraphicsQueue(), &present_info);
+}
+
+void Renderer::amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps,
+                            VkAntiLagModeAMD mode) {
+  ren_prof_zone("AMD Anti-Lag");
+  VkAntiLagPresentationInfoAMD present_info = {
+      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD,
+      .stage = stage,
+      .frameIndex = frame,
+  };
+  VkAntiLagDataAMD anti_lag_data = {
+      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD,
+      .mode = mode,
+      .maxFPS = max_fps,
+      .pPresentationInfo = &present_info,
+  };
+  vkAntiLagUpdateAMD(m_device, &anti_lag_data);
 }
 
 } // namespace ren

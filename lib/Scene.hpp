@@ -52,6 +52,8 @@ struct SceneGraphicsSettings {
 
   // Opaque pass
   bool early_z = true;
+
+  bool amd_anti_lag = true;
 };
 
 struct SceneData {
@@ -135,6 +137,12 @@ public:
   void set_directional_light(DirectionalLightId light,
                              const DirectionalLightDesc &desc) override;
 
+  auto delay_input() -> expected<void> override;
+
+  bool is_amd_anti_lag_available();
+
+  bool is_amd_anti_lag_enabled();
+
   auto draw() -> expected<void> override;
 
   void next_frame();
@@ -177,6 +185,7 @@ private:
   std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
   SmallVector<ScenePerFrameResources, 3> m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
+  u64 m_frame_index = 0;
   u64 m_graphics_time = 0;
   u32 m_num_frames_in_flight = 0;
   u32 m_new_num_frames_in_flight = 2;

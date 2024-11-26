@@ -3,6 +3,7 @@
 #include "Descriptors.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
+#include "Support/BitSet.hpp"
 #include "Support/GenArray.hpp"
 #include "Support/HashMap.hpp"
 #include "Support/LinearMap.hpp"
@@ -20,6 +21,13 @@ namespace ren {
 
 struct SwapchainTextureCreateInfo;
 
+enum class RendererFeature {
+  AmdAntiLag,
+  Last = AmdAntiLag,
+};
+
+constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
+
 class Renderer final : public IRenderer {
   VkInstance m_instance = nullptr;
 #if REN_VULKAN_VALIDATION
@@ -31,6 +39,8 @@ class Renderer final : public IRenderer {
 
   unsigned m_graphics_queue_family = -1;
   VkQueue m_graphics_queue = nullptr;
+
+  BitSet<NUM_RENDERER_FEAUTURES> m_features;
 
   GenArray<Buffer> m_buffers;
 
@@ -83,8 +93,9 @@ public:
   auto get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
       -> const DescriptorSetLayout &;
 
-  [[nodiscard]] auto create_descriptor_pool(
-      const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool>;
+  [[nodiscard]] auto
+  create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
+      -> Handle<DescriptorPool>;
 
   void destroy(Handle<DescriptorPool>);
 
@@ -100,15 +111,16 @@ public:
   allocate_descriptor_sets(Handle<DescriptorPool> pool,
                            TempSpan<const Handle<DescriptorSetLayout>> layouts,
                            VkDescriptorSet *sets) const -> bool;
-  [[nodiscard]] auto allocate_descriptor_set(
-      Handle<DescriptorPool> pool,
-      Handle<DescriptorSetLayout> layout) const -> Optional<VkDescriptorSet>;
+  [[nodiscard]] auto
+  allocate_descriptor_set(Handle<DescriptorPool> pool,
+                          Handle<DescriptorSetLayout> layout) const
+      -> Optional<VkDescriptorSet>;
 
   void
   write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
-  [[nodiscard]] auto
-  create_buffer(const BufferCreateInfo &&create_info) -> Handle<Buffer>;
+  [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
+      -> Handle<Buffer>;
 
   void destroy(Handle<Buffer> buffer);
 
@@ -146,15 +158,15 @@ public:
   }
 
   template <typename T>
-  auto get_buffer_device_ptr(Handle<Buffer> buffer,
-                             u64 map_offset = 0) const -> DevicePtr<T> {
+  auto get_buffer_device_ptr(Handle<Buffer> buffer, u64 map_offset = 0) const
+      -> DevicePtr<T> {
     auto addr = get_buffer(buffer).address;
     return DevicePtr<T>(addr ? (addr + map_offset) : 0);
   }
 
   template <typename T>
-  auto
-  get_buffer_device_ptr(const BufferSlice<T> &slice) const -> DevicePtr<T> {
+  auto get_buffer_device_ptr(const BufferSlice<T> &slice) const
+      -> DevicePtr<T> {
     return get_buffer_device_ptr<T>(slice.buffer, slice.offset);
   }
 
@@ -170,26 +182,27 @@ public:
   }
 
   template <typename T>
-  auto
-  try_get_buffer_device_ptr(const BufferSlice<T> &slice) const -> DevicePtr<T> {
+  auto try_get_buffer_device_ptr(const BufferSlice<T> &slice) const
+      -> DevicePtr<T> {
     return try_get_buffer_device_ptr<T>(slice.buffer, slice.offset);
   }
 
-  [[nodiscard]] auto
-  create_texture(const TextureCreateInfo &&create_info) -> Handle<Texture>;
+  [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
+      -> Handle<Texture>;
 
   void destroy(Handle<Texture> texture);
 
-  [[nodiscard]] auto create_swapchain_texture(
-      const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture>;
+  [[nodiscard]] auto
+  create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
+      -> Handle<Texture>;
 
-  auto
-  try_get_texture(Handle<Texture> texture) const -> Optional<const Texture &>;
+  auto try_get_texture(Handle<Texture> texture) const
+      -> Optional<const Texture &>;
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto
-  try_get_texture_view(Handle<Texture> texture) const -> Optional<TextureView>;
+  auto try_get_texture_view(Handle<Texture> texture) const
+      -> Optional<TextureView>;
 
   auto get_texture_view(Handle<Texture> texture) const -> TextureView;
 
@@ -198,18 +211,19 @@ public:
 
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
-  [[nodiscard]] auto
-  create_sampler(const SamplerCreateInfo &&create_info) -> Handle<Sampler>;
+  [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
+      -> Handle<Sampler>;
 
   void destroy(Handle<Sampler> sampler);
 
-  auto
-  try_get_sampler(Handle<Sampler> sampler) const -> Optional<const Sampler &>;
+  auto try_get_sampler(Handle<Sampler> sampler) const
+      -> Optional<const Sampler &>;
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
 
-  [[nodiscard]] auto create_pipeline_layout(
-      const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout>;
+  [[nodiscard]] auto
+  create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
+      -> Handle<PipelineLayout>;
 
   void destroy(Handle<PipelineLayout> layout);
 
@@ -231,8 +245,9 @@ public:
   auto get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> const GraphicsPipeline &;
 
-  [[nodiscard]] auto create_compute_pipeline(
-      const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline>;
+  [[nodiscard]] auto
+  create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
+      -> Handle<ComputePipeline>;
 
   void destroy(Handle<ComputePipeline> pipeline);
 
@@ -254,9 +269,10 @@ public:
 
   void wait_idle();
 
-  [[nodiscard]] auto
-  wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
-                     std::chrono::nanoseconds timeout) const -> VkResult;
+  [[nodiscard]] auto wait_for_semaphore(const Semaphore &semaphore,
+                                        uint64_t value,
+                                        std::chrono::nanoseconds timeout) const
+      -> VkResult;
 
   void wait_for_semaphore(const Semaphore &semaphore, uint64_t value) const;
 
@@ -280,8 +296,16 @@ public:
               TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
               TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
-  [[nodiscard]] auto
-  queue_present(const VkPresentInfoKHR &present_info) -> VkResult;
+  [[nodiscard]] auto queue_present(const VkPresentInfoKHR &present_info)
+      -> VkResult;
+
+  bool is_feature_supported(RendererFeature feature) const;
+
+  void amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps = 0,
+                    VkAntiLagModeAMD = VK_ANTI_LAG_MODE_ON_AMD);
+
+private:
+  void create_device();
 
 private:
   template <typename H> friend class Handle;

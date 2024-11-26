@@ -324,6 +324,9 @@ struct IScene {
   virtual void set_directional_light(DirectionalLightId light,
                                      const DirectionalLightDesc &desc) = 0;
 
+  // Call to use graphics driver low-latency APIs.
+  [[nodiscard]] virtual auto delay_input() -> expected<void> = 0;
+
   [[nodiscard]] virtual auto draw() -> expected<void> = 0;
 };
 
