@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
-#include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -77,8 +76,8 @@ void draw_camera_imgui(CameraParams &params) {
   }
 }
 
-#define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(,) __VA_ARGS__)
-#define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(,) __VA_ARGS__)
+#define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
+#define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
 
 auto duration_as_float(chrono::nanoseconds time) -> float {
   return chrono::duration_cast<chrono::duration<float>>(time).count();
@@ -91,7 +90,7 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   std::string warn;
 
   if (not fs::exists(path)) {
-    bail("Failed to open file {}: doesn't exist", path);
+    bail("Failed to open file {}: doesn't exist", path.c_str());
   }
 
   log("Load scene...");
@@ -103,8 +102,8 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   } else if (path.extension() == ".glb") {
     ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
   } else {
-    bail("Failed to load glTF file {}: invalid extension {}", path,
-         path.extension());
+    bail("Failed to load glTF file {}: invalid extension {}", path.c_str(),
+         path.extension().c_str());
   }
 
   auto end = chrono::steady_clock::now();
@@ -768,7 +767,7 @@ private:
 class ViewGlTFApp : public ImGuiApp {
 public:
   ViewGlTFApp(const fs::path &path, unsigned scene)
-      : ImGuiApp(fmt::format("View glTF: {}", path).c_str()) {
+      : ImGuiApp(fmt::format("View glTF: {}", path.c_str()).c_str()) {
     [&]() -> Result<void> {
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
