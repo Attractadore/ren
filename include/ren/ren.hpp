@@ -19,7 +19,7 @@ enum class Error {
 template <typename T> using expected = std::expected<T, Error>;
 
 constexpr size_t MAX_NUM_MESHES = 16 * 1024;
-constexpr size_t MAX_NUM_MESH_INSTANCES = 128 * 1024;
+constexpr size_t MAX_NUM_MESH_INSTANCES = 1024 * 1024;
 constexpr size_t MAX_NUM_MATERIALS = 16 * 1024;
 constexpr size_t MAX_NUM_DIRECTIONAL_LIGHTS = 1;
 
