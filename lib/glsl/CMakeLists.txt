@@ -15,17 +15,18 @@ endmacro()
 
 add_embedded_shader(CalculateNormalMatrices.comp CalculateNormalMatricesCS)
 
-add_embedded_shader(EarlyZ.vert EarlyZVS)
-
-add_embedded_shader(HiZSpd.comp HiZSpdCS)
-
 add_embedded_shader(InstanceCullingAndLOD.comp InstanceCullingAndLODCS)
 add_embedded_shader(MeshletCulling.comp MeshletCullingCS)
+add_embedded_shader(MeshletSorting.comp MeshletSortingCS)
+add_embedded_shader(ExclusiveScanUint32.comp ExclusiveScanUint32CS)
+add_embedded_shader(PrepareBatch.comp PrepareBatchCS)
+
+add_embedded_shader(EarlyZ.vert EarlyZVS)
 add_embedded_shader(Opaque.vert OpaqueVS)
 add_embedded_shader(Opaque.frag OpaqueFS)
-
-add_embedded_shader(PostProcessing.comp PostProcessingCS)
-add_embedded_shader(ReduceLuminanceHistogram.comp ReduceLuminanceHistogramCS)
-
 add_embedded_shader(ImGui.vert ImGuiVS)
 add_embedded_shader(ImGui.frag ImGuiFS)
+
+add_embedded_shader(HiZSpd.comp HiZSpdCS)
+add_embedded_shader(PostProcessing.comp PostProcessingCS)
+add_embedded_shader(ReduceLuminanceHistogram.comp ReduceLuminanceHistogramCS)

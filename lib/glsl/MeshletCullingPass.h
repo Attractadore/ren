@@ -20,9 +20,12 @@ struct MeshletCullingPassArgs {
   GLSL_PTR(MeshletCullData) bucket_cull_data;
   /// Pointer to current bucket's size.
   GLSL_PTR(uint) bucket_size;
-  GLSL_PTR(DrawIndexedIndirectCommand) commands;
-  GLSL_PTR(uint) command_offsets;
-  GLSL_PTR(uint) command_counts;
+  GLSL_PTR(uint) batch_sizes;
+  GLSL_PTR(DispatchIndirectCommand) batch_prepare_commands;
+  GLSL_PTR(MeshletDrawCommand) commands;
+  GLSL_PTR(BatchId) command_batch_ids;
+  GLSL_PTR(uint) num_commands;
+  GLSL_PTR(DispatchIndirectCommand) sort_command;
   GLSL_PTR(mat4) proj_view;
   uint feature_mask;
   /// Current bucket index.

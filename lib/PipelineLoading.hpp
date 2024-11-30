@@ -12,6 +12,9 @@ struct Pipelines {
   Handle<ComputePipeline> calculate_normal_matrices;
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
+  Handle<ComputePipeline> exclusive_scan_uint32;
+  Handle<ComputePipeline> meshlet_sorting;
+  Handle<ComputePipeline> prepare_batch;
   Handle<ComputePipeline> hi_z;
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>

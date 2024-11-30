@@ -133,7 +133,7 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
   ds.update_cull_data.push_back(glsl::InstanceCullData{
       .mesh = mesh_instance.mesh,
       .mesh_instance = handle,
-      .batch = u32(batch - ds.batches.data()),
+      .batch = BatchId(batch - ds.batches.data()),
   });
 
   ren_assert(not mesh_instance.draw_sets.is_set(set));

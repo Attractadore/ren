@@ -1,5 +1,7 @@
-#include "MeshletCullingPass.h"
 #include "Culling.glsl"
+#include "MeshletCullingPass.h"
+#include "MeshletSorting.h"
+#include "PrepareBatch.h"
 #include "Vertex.h"
 
 PUSH_CONSTANTS(MeshletCullingPassArgs);
@@ -82,14 +84,41 @@ void main() {
     return;
   }
 
-  DrawIndexedIndirectCommand command;
-  command.num_indices = meshlet.num_triangles * 3;
-  command.num_instances = 1;
-  command.base_index = meshlet.base_triangle;
-  command.base_vertex = meshlet.base_index;
-  command.base_instance = cull_data.mesh_instance;
+  uint num_active = subgroupAdd(1);
 
-  uint command_offset = DEREF(pc.command_offsets[cull_data.batch]) + atomicAdd(DEREF(pc.command_counts[cull_data.batch]), 1);
+  uint command_offset;
+  if (subgroupElect()) {
+    command_offset = atomicAdd(DEREF(pc.num_commands), num_active);
+    uint old_command_count = command_offset;
+    uint old_wg_count = (old_command_count + MESHLET_SORTING_THREADS - 1) / MESHLET_SORTING_THREADS;
+    uint new_command_count = min(old_command_count + num_active, MAX_DRAW_MESHLETS);
+    uint new_wg_count = (new_command_count + MESHLET_SORTING_THREADS - 1) / MESHLET_SORTING_THREADS;
+    if (old_wg_count != new_wg_count) {
+      atomicMax(DEREF(pc.sort_command).x, new_wg_count);
+    }
+  }
+  command_offset = subgroupBroadcastFirst(command_offset) + subgroupExclusiveAdd(1);
+
+  if (command_offset >= MAX_DRAW_MESHLETS) {
+    return;
+  }
+
+  MeshletDrawCommand command;
+  command.num_triangles = meshlet.num_triangles;
+  command.base_triangle = meshlet.base_triangle;
+  command.base_index = meshlet.base_index;
+  command.mesh_instance = cull_data.mesh_instance;
+
+  BatchId batch = cull_data.batch;
 
   DEREF(pc.commands[command_offset]) = command;
+  DEREF(pc.command_batch_ids[command_offset]) = batch;
+
+  uint old_batch_size = atomicAdd(DEREF(pc.batch_sizes[batch]), 1);
+  uint old_batch_wg_count = (old_batch_size + PREPARE_BATCH_THREADS - 1) / PREPARE_BATCH_THREADS;
+  uint new_batch_size = old_batch_size + 1;
+  uint new_batch_wg_count = (new_batch_size + PREPARE_BATCH_THREADS - 1) / PREPARE_BATCH_THREADS;
+  if (old_batch_wg_count != new_batch_wg_count) {
+    atomicMax(DEREF(pc.batch_prepare_commands[batch]).x, new_batch_wg_count);
+  }
 }

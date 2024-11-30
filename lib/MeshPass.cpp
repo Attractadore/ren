@@ -7,7 +7,10 @@
 #include "Support/Views.hpp"
 #include "glsl/EarlyZPass.h"
 #include "glsl/MeshletCullingPass.h"
+#include "glsl/MeshletSorting.h"
 #include "glsl/OpaquePass.h"
+#include "glsl/PrepareBatch.h"
+#include "glsl/StreamScan.h"
 
 #include <fmt/format.h>
 
@@ -17,8 +20,10 @@ namespace {
 
 struct CullingInfo {
   u32 draw_set = -1;
-  NotNull<RgBufferId<glsl::DrawIndexedIndirectCommand> *> batch_commands;
+  NotNull<RgBufferId<glsl::MeshletDrawCommand> *> batch_commands;
+  NotNull<RgBufferId<u32> *> batch_offsets;
   NotNull<RgBufferId<u32> *> batch_sizes;
+  NotNull<RgBufferId<glsl::DispatchIndirectCommand> *> batch_prepare_commands;
 };
 
 void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
@@ -31,9 +36,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   u32 num_instances = ds.size();
 
   u32 num_meshlets = 0;
-  auto batch_command_offsets = ccfg.allocator->allocate<u32>(ds.batches.size());
   for (auto i : range(ds.batches.size())) {
-    batch_command_offsets.host_ptr[i] = num_meshlets;
     num_meshlets += ds.batches[i].num_meshlets;
   }
 
@@ -62,24 +65,47 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
       .size = buckets_size,
   });
 
-  *cfg.batch_commands = rgb.create_buffer<glsl::DrawIndexedIndirectCommand>({
-      .heap = BufferHeap::Static,
-      .count = num_meshlets,
-  });
+  u32 num_batches = ds.batches.size();
 
   *cfg.batch_sizes = rgb.create_buffer<u32>({
       .heap = BufferHeap::Static,
-      .count = ds.batches.size(),
+      .count = num_batches,
   });
 
+  *cfg.batch_prepare_commands =
+      rgb.create_buffer<glsl::DispatchIndirectCommand>({
+          .heap = BufferHeap::Static,
+          .count = num_batches,
+      });
+
+  RgBufferId<u32> num_commands =
+      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
+
+  RgBufferId<glsl::DispatchIndirectCommand> sort_command =
+      rgb.create_buffer<glsl::DispatchIndirectCommand>({
+          .heap = BufferHeap::Static,
+          .count = 1,
+      });
+
+  RgBufferId<u32> scan_num_started =
+      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
+
+  RgBufferId<u32> scan_num_finished =
+      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
+
   {
-    auto pass = rgb.create_pass(
-        {.name = fmt::format("{}-init-culling", info.pass_name)});
+    auto pass = rgb.create_pass({"init-culling"});
 
     struct {
       RgUntypedBufferToken meshlet_bucket_commands;
       RgUntypedBufferToken meshlet_bucket_sizes;
-      RgUntypedBufferToken batch_command_counts;
+      RgBufferToken<u32> batch_sizes;
+      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
+      RgBufferToken<u32> num_commands;
+      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
+      RgBufferToken<u32> scan_num_started;
+      RgBufferToken<u32> scan_num_finished;
+      u32 num_batches = 0;
     } rcs;
 
     std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
@@ -90,8 +116,24 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         pass.write_buffer("init-meshlet-bucket-sizes", meshlet_bucket_sizes,
                           TRANSFER_DST_BUFFER);
 
-    std::tie(*cfg.batch_sizes, rcs.batch_command_counts) = pass.write_buffer(
-        "init-batch-command-counts", *cfg.batch_sizes, TRANSFER_DST_BUFFER);
+    std::tie(*cfg.batch_sizes, rcs.batch_sizes) = pass.write_buffer(
+        "init-batch-sizes", *cfg.batch_sizes, TRANSFER_DST_BUFFER);
+
+    std::tie(*cfg.batch_prepare_commands, rcs.batch_prepare_commands) =
+        pass.write_buffer("init-batch-prepare-commands",
+                          *cfg.batch_prepare_commands, TRANSFER_DST_BUFFER);
+
+    std::tie(num_commands, rcs.num_commands) = pass.write_buffer(
+        "init-command-count", num_commands, TRANSFER_DST_BUFFER);
+    std::tie(sort_command, rcs.sort_command) = pass.write_buffer(
+        "init-sort-command", sort_command, TRANSFER_DST_BUFFER);
+
+    std::tie(scan_num_started, rcs.scan_num_started) = pass.write_buffer(
+        "init-scan-num-started", scan_num_started, TRANSFER_DST_BUFFER);
+    std::tie(scan_num_finished, rcs.scan_num_finished) = pass.write_buffer(
+        "init-scan-num-finished", scan_num_finished, TRANSFER_DST_BUFFER);
+
+    rcs.num_batches = num_batches;
 
     pass.set_callback([rcs](Renderer &, const RgRuntime &rg,
                             CommandRecorder &cmd) {
@@ -104,24 +146,27 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
       cmd.fill_buffer(rg.get_buffer(rcs.meshlet_bucket_sizes), 0);
 
-      cmd.fill_buffer(rg.get_buffer(rcs.batch_command_counts), 0);
+      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.batch_sizes)), 0);
+
+      auto batch_prepare_commands =
+          rg.allocate<glsl::DispatchIndirectCommand>(rcs.num_batches);
+      std::ranges::fill_n(
+          batch_prepare_commands.host_ptr, rcs.num_batches,
+          glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
+      cmd.copy_buffer(batch_prepare_commands.slice,
+                      rg.get_buffer(rcs.batch_prepare_commands));
+
+      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.num_commands)), 0);
+      cmd.update_buffer(BufferView(rg.get_buffer(rcs.sort_command)),
+                        glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
+
+      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.scan_num_started)), 0);
+      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.scan_num_finished)), 0);
     });
   }
 
   {
-    RgDebugName pass_name;
-    if (info.occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
-      pass_name = fmt::format("{}-instance-culling-and-lod-first-phase",
-                              info.pass_name);
-    } else if (info.occlusion_culling_mode ==
-               OcclusionCullingMode::SecondPhase) {
-      pass_name = fmt::format("{}-instance-culling-and-lod-second-phase",
-                              info.pass_name);
-    } else {
-      pass_name = fmt::format("{}-instance-culling-and-lod", info.pass_name);
-    }
-
-    auto pass = rgb.create_pass({.name = std::move(pass_name)});
+    auto pass = rgb.create_pass({"instance-culling-and-lod"});
 
     struct {
       Handle<ComputePipeline> pipeline;
@@ -227,20 +272,34 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     });
   }
 
+  RgBufferId<glsl::MeshletDrawCommand> unsorted_batch_commands =
+      rgb.create_buffer<glsl::MeshletDrawCommand>({
+          .heap = BufferHeap::Static,
+          .count = glsl::MAX_DRAW_MESHLETS,
+      });
+
+  RgBufferId<BatchId> unsorted_batch_command_batch_ids =
+      rgb.create_buffer<BatchId>({
+          .heap = BufferHeap::Static,
+          .count = glsl::MAX_DRAW_MESHLETS,
+      });
+
   {
-    auto pass = rgb.create_pass(
-        {.name = fmt::format("{}-meshlet-culling", info.pass_name)});
+    auto pass = rgb.create_pass({"meshlet-culling"});
 
     struct {
       Handle<ComputePipeline> pipeline;
       RgBufferToken<glsl::Mesh> meshes;
       RgBufferToken<glm::mat4x3> transform_matrices;
       RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
-      RgBufferToken<u32> meshlet_bucket_sizes;
       RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
-      RgBufferToken<glsl::DrawIndexedIndirectCommand> batch_commands;
-      DevicePtr<u32> batch_command_offsets;
+      RgBufferToken<u32> meshlet_bucket_sizes;
       RgBufferToken<u32> batch_sizes;
+      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
+      RgBufferToken<BatchId> command_batch_ids;
+      RgBufferToken<glsl::MeshletDrawCommand> commands;
+      RgBufferToken<u32> num_commands;
+      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
       RgTextureToken hi_z;
       DevicePtr<glm::mat4> proj_view;
       u32 feature_mask;
@@ -258,18 +317,26 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     rcs.meshlet_bucket_commands =
         pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
 
+    rcs.meshlet_cull_data = pass.read_buffer(meshlet_cull_data, CS_READ_BUFFER);
+
     rcs.meshlet_bucket_sizes =
         pass.read_buffer(meshlet_bucket_sizes, CS_READ_BUFFER);
 
-    rcs.meshlet_cull_data = pass.read_buffer(meshlet_cull_data, CS_READ_BUFFER);
+    std::tie(*cfg.batch_sizes, rcs.batch_sizes) =
+        pass.write_buffer("batch-sizes", *cfg.batch_sizes, CS_ATOMIC_BUFFER);
+    std::tie(*cfg.batch_prepare_commands, rcs.batch_prepare_commands) =
+        pass.write_buffer("batch-prepare-commands", *cfg.batch_prepare_commands,
+                          CS_ATOMIC_BUFFER);
 
-    std::tie(*cfg.batch_commands, rcs.batch_commands) = pass.write_buffer(
-        "batch-commands", *cfg.batch_commands, CS_WRITE_BUFFER);
-
-    rcs.batch_command_offsets = batch_command_offsets.device_ptr;
-
-    std::tie(*cfg.batch_sizes, rcs.batch_sizes) = pass.write_buffer(
-        "batch-sizes", *cfg.batch_sizes, CS_READ_BUFFER | CS_WRITE_BUFFER);
+    std::tie(unsorted_batch_commands, rcs.commands) = pass.write_buffer(
+        "unsorted-batch-commands", unsorted_batch_commands, CS_WRITE_BUFFER);
+    std::tie(unsorted_batch_command_batch_ids, rcs.command_batch_ids) =
+        pass.write_buffer("unsorted-batch-command-batch-ids",
+                          unsorted_batch_command_batch_ids, CS_WRITE_BUFFER);
+    std::tie(num_commands, rcs.num_commands) = pass.write_buffer(
+        "unsorted-batch-command-count", num_commands, CS_ATOMIC_BUFFER);
+    std::tie(sort_command, rcs.sort_command) =
+        pass.write_buffer("sort-command", sort_command, CS_ATOMIC_BUFFER);
 
     auto [proj_view, proj_view_ptr, _] = ccfg.allocator->allocate<glm::mat4>(1);
     *proj_view = get_projection_view_matrix(info.camera, info.viewport);
@@ -307,9 +374,14 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                     rcs.bucket_offsets[bucket],
                 .bucket_size =
                     rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes) + bucket,
-                .commands = rg.get_buffer_device_ptr(rcs.batch_commands),
-                .command_offsets = rcs.batch_command_offsets,
-                .command_counts = rg.get_buffer_device_ptr(rcs.batch_sizes),
+                .batch_sizes = rg.get_buffer_device_ptr(rcs.batch_sizes),
+                .batch_prepare_commands =
+                    rg.get_buffer_device_ptr(rcs.batch_prepare_commands),
+                .commands = rg.get_buffer_device_ptr(rcs.commands),
+                .command_batch_ids =
+                    rg.get_buffer_device_ptr(rcs.command_batch_ids),
+                .num_commands = rg.get_buffer_device_ptr(rcs.num_commands),
+                .sort_command = rg.get_buffer_device_ptr(rcs.sort_command),
                 .proj_view = rcs.proj_view,
                 .feature_mask = rcs.feature_mask,
                 .bucket = bucket,
@@ -321,6 +393,130 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));
           }
         });
+  }
+
+  *cfg.batch_offsets = rgb.create_buffer<u32>({
+      .heap = BufferHeap::Static,
+      .count = num_batches,
+  });
+
+  {
+    auto pass = rgb.create_pass({"batch-sizes-scan"});
+
+    struct {
+      Handle<ComputePipeline> pipeline;
+      RgBufferToken<u32> batch_sizes;
+      RgBufferToken<u32> block_sums;
+      RgBufferToken<u32> batch_offsets;
+      RgBufferToken<u32> num_started;
+      RgBufferToken<u32> num_finished;
+      u32 num_batches = 0;
+    } rcs;
+
+    rcs.pipeline = ccfg.pipelines->exclusive_scan_uint32;
+
+    rcs.batch_sizes = pass.read_buffer(*cfg.batch_sizes, CS_READ_BUFFER);
+
+    RgBufferId<u32> block_sums = rgb.create_buffer<u32>({
+        .heap = BufferHeap::Static,
+        .count = glsl::get_stream_scan_block_sum_count(num_batches),
+    });
+
+    std::tie(std::ignore, rcs.block_sums) =
+        pass.write_buffer("scan-block-sums", block_sums, CS_READ_WRITE_BUFFER);
+
+    std::tie(*cfg.batch_offsets, rcs.batch_offsets) =
+        pass.write_buffer("batch-offsets", *cfg.batch_offsets, CS_WRITE_BUFFER);
+
+    std::tie(std::ignore, rcs.num_started) = pass.write_buffer(
+        "scan-num-started", scan_num_started, CS_ATOMIC_BUFFER);
+    std::tie(std::ignore, rcs.num_finished) = pass.write_buffer(
+        "scan-num-finished", scan_num_finished, CS_ATOMIC_BUFFER);
+
+    rcs.num_batches = num_batches;
+
+    pass.set_compute_callback(
+        [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+          pass.bind_compute_pipeline(rcs.pipeline);
+          pass.set_push_constants(glsl::StreamScanArgs<u32>{
+              .src = rg.get_buffer_device_ptr(rcs.batch_sizes),
+              .block_sums = rg.get_buffer_device_ptr(rcs.block_sums),
+              .dst = rg.get_buffer_device_ptr(rcs.batch_offsets),
+              .num_started = rg.get_buffer_device_ptr(rcs.num_started),
+              .num_finished = rg.get_buffer_device_ptr(rcs.num_finished),
+              .count = rcs.num_batches,
+          });
+          pass.dispatch_threads(rcs.num_batches, glsl::SCAN_BLOCK_ELEMS);
+        });
+  }
+
+  RgBufferId<u32> batch_out_offsets = rgb.create_buffer<u32>({
+      .heap = BufferHeap::Static,
+      .count = num_batches,
+  });
+
+  {
+    auto pass = rgb.create_pass({"init-meshlet-sorting"});
+
+    struct {
+      RgBufferToken<u32> src;
+      RgBufferToken<u32> dst;
+    } rcs;
+
+    rcs.src = pass.read_buffer(*cfg.batch_offsets, TRANSFER_SRC_BUFFER);
+    std::tie(batch_out_offsets, rcs.dst) = pass.write_buffer(
+        "init-batch-out-offsets", batch_out_offsets, TRANSFER_DST_BUFFER);
+
+    pass.set_callback(
+        [rcs](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
+          cmd.copy_buffer(rg.get_buffer(rcs.src), rg.get_buffer(rcs.dst));
+        });
+  }
+
+  {
+    auto pass = rgb.create_pass({"meshlet-sorting"});
+
+    *cfg.batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>({
+        .heap = BufferHeap::Static,
+        .count = glsl::MAX_DRAW_MESHLETS,
+    });
+
+    struct {
+      Handle<ComputePipeline> pipeline;
+      RgBufferToken<u32> num_commands;
+      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
+      RgBufferToken<u32> batch_out_offsets;
+      RgBufferToken<glsl::MeshletDrawCommand> unsorted_commands;
+      RgBufferToken<BatchId> unsorted_command_batch_ids;
+      RgBufferToken<glsl::MeshletDrawCommand> commands;
+    } rcs;
+
+    rcs.pipeline = ccfg.pipelines->meshlet_sorting;
+    rcs.num_commands = pass.read_buffer(num_commands, CS_READ_BUFFER);
+    rcs.sort_command =
+        pass.read_buffer(sort_command, INDIRECT_COMMAND_SRC_BUFFER);
+    std::tie(std::ignore, rcs.batch_out_offsets) = pass.write_buffer(
+        "batch-out-offsets", batch_out_offsets, CS_ATOMIC_BUFFER);
+    rcs.unsorted_commands =
+        pass.read_buffer(unsorted_batch_commands, CS_READ_BUFFER);
+    rcs.unsorted_command_batch_ids =
+        pass.read_buffer(unsorted_batch_command_batch_ids, CS_READ_BUFFER);
+    std::tie(*cfg.batch_commands, rcs.commands) = pass.write_buffer(
+        "batch-commands", *cfg.batch_commands, CS_WRITE_BUFFER);
+
+    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
+                                    ComputePass &pass) {
+      pass.bind_compute_pipeline(rcs.pipeline);
+      pass.set_push_constants(glsl::MeshletSortingArgs{
+          .num_commands = rg.get_buffer_device_ptr(rcs.num_commands),
+          .batch_out_offsets = rg.get_buffer_device_ptr(rcs.batch_out_offsets),
+          .unsorted_commands = rg.get_buffer_device_ptr(rcs.unsorted_commands),
+          .unsorted_command_batch_ids =
+              rg.get_buffer_device_ptr(rcs.unsorted_command_batch_ids),
+          .commands = rg.get_buffer_device_ptr(rcs.commands),
+      });
+      pass.dispatch_indirect(rg.get_buffer(rcs.sort_command));
+    });
   }
 }
 
@@ -432,8 +628,10 @@ void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
 }
 
 struct RenderPassInfo {
-  RgBufferId<glsl::DrawIndexedIndirectCommand> batch_commands;
+  RgBufferId<glsl::MeshletDrawCommand> batch_commands;
+  RgBufferId<u32> batch_offsets;
   RgBufferId<u32> batch_sizes;
+  RgBufferId<glsl::DispatchIndirectCommand> batch_prepare_commands;
 };
 
 template <DrawSet S>
@@ -444,78 +642,125 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
   u32 draw_set = get_draw_set_index(S);
 
-  const RgDrawSetData &ds = info.base.rg_gpu_scene->draw_sets[draw_set];
+  const DrawSetData &ds = info.base.gpu_scene->draw_sets[draw_set];
+  const RgDrawSetData &rg_ds = info.base.rg_gpu_scene->draw_sets[draw_set];
 
-  RgDebugName pass_name;
+  const char *pass_type = "";
   if (info.base.occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
-    pass_name = fmt::format("{}-first-phase", info.base.pass_name);
+    pass_type = "-first-phase";
   } else if (info.base.occlusion_culling_mode ==
              OcclusionCullingMode::SecondPhase) {
-    pass_name = fmt::format("{}-second-phase", info.base.pass_name);
-  } else {
-    pass_name = info.base.pass_name;
+    pass_type = "-second-phase";
   }
 
-  auto pass = ccfg.rgb->create_pass({.name = std::move(pass_name)});
+  RgBufferId<glsl::DrawIndexedIndirectCommand> commands =
+      ccfg.rgb->create_buffer<glsl::DrawIndexedIndirectCommand>({
+          .heap = BufferHeap::Static,
+          .count = glsl::MAX_DRAW_MESHLETS,
+      });
 
-  for (usize i = 0; i < info.base.color_attachments.size(); ++i) {
-    NotNull<RgTextureId *> color_attachment = info.base.color_attachments[i];
-    if (!*color_attachment) {
-      continue;
-    }
-    ColorAttachmentOperations ops = info.base.color_attachment_ops[i];
-    if (info.base.occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
-      ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
-    }
-    std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
-        info.base.color_attachment_names[i], *color_attachment, ops);
-  }
+  for (BatchId b : range(ds.batches.size())) {
+    {
+      auto pass = ccfg.rgb->create_pass({fmt::format(
+          "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, b)});
 
-  if (*info.base.depth_attachment) {
-    if (info.base.depth_attachment_ops.store == VK_ATTACHMENT_STORE_OP_NONE) {
-      pass.read_depth_attachment(*info.base.depth_attachment);
-    } else {
-      DepthAttachmentOperations ops = info.base.depth_attachment_ops;
+      struct {
+        Handle<ComputePipeline> pipeline;
+        RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
+        RgBufferToken<u32> batch_offsets;
+        RgBufferToken<u32> batch_sizes;
+        RgBufferToken<glsl::MeshletDrawCommand> command_descs;
+        RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
+        BatchId batch;
+      } rcs;
+
+      rcs.pipeline = ccfg.pipelines->prepare_batch;
+      rcs.batch_prepare_commands = pass.read_buffer(
+          cfg.batch_prepare_commands, INDIRECT_COMMAND_SRC_BUFFER);
+      rcs.batch_offsets = pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER);
+      rcs.batch_sizes = pass.read_buffer(cfg.batch_sizes, CS_READ_BUFFER);
+      rcs.command_descs = pass.read_buffer(cfg.batch_commands, CS_READ_BUFFER);
+      std::tie(commands, rcs.commands) =
+          pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
+                                        info.base.pass_name, pass_type, b),
+                            commands, CS_WRITE_BUFFER);
+      rcs.batch = b;
+
+      pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
+                                      ComputePass &pass) {
+        pass.bind_compute_pipeline(rcs.pipeline);
+        pass.set_push_constants(glsl::PrepareBatchArgs{
+            .batch_offset =
+                rg.get_buffer_device_ptr(rcs.batch_offsets) + rcs.batch,
+            .batch_size = rg.get_buffer_device_ptr(rcs.batch_sizes) + rcs.batch,
+            .command_descs = rg.get_buffer_device_ptr(rcs.command_descs),
+            .commands = rg.get_buffer_device_ptr(rcs.commands),
+        });
+        pass.dispatch_indirect(
+            rg.get_buffer(rcs.batch_prepare_commands).slice(rcs.batch, 1));
+      });
+    }
+
+    auto pass = ccfg.rgb->create_pass(
+        {fmt::format("{}{}-batch-{}", info.base.pass_name, pass_type, b)});
+
+    for (usize i = 0; i < info.base.color_attachments.size(); ++i) {
+      NotNull<RgTextureId *> color_attachment = info.base.color_attachments[i];
+      if (!*color_attachment) {
+        continue;
+      }
+      ColorAttachmentOperations ops = info.base.color_attachment_ops[i];
       if (info.base.occlusion_culling_mode ==
-          OcclusionCullingMode::SecondPhase) {
+              OcclusionCullingMode::SecondPhase or
+          b > 0) {
         ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
       }
-      std::tie(*info.base.depth_attachment, std::ignore) =
-          pass.write_depth_attachment(info.base.depth_attachment_name,
-                                      *info.base.depth_attachment, ops);
+      std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
+          info.base.color_attachment_names[i], *color_attachment, ops);
     }
-  }
 
-  struct {
-    Span<const Batch> batches;
-    RgBufferToken<glsl::DrawIndexedIndirectCommand> batch_commands;
-    RgBufferToken<u32> batch_sizes;
-    RenderPassResources<S> ext;
-  } rcs;
+    if (*info.base.depth_attachment) {
+      if (info.base.depth_attachment_ops.store == VK_ATTACHMENT_STORE_OP_NONE) {
+        pass.read_depth_attachment(*info.base.depth_attachment);
+      } else {
+        DepthAttachmentOperations ops = info.base.depth_attachment_ops;
+        if (info.base.occlusion_culling_mode ==
+                OcclusionCullingMode::SecondPhase or
+            b > 0) {
+          ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+        }
+        std::tie(*info.base.depth_attachment, std::ignore) =
+            pass.write_depth_attachment(info.base.depth_attachment_name,
+                                        *info.base.depth_attachment, ops);
+      }
+    }
 
-  rcs.batches = info.base.gpu_scene->draw_sets[draw_set].batches;
-  rcs.batch_commands =
-      pass.read_buffer(cfg.batch_commands, INDIRECT_COMMAND_SRC_BUFFER);
-  rcs.batch_sizes =
-      pass.read_buffer(cfg.batch_sizes, INDIRECT_COMMAND_SRC_BUFFER);
-  rcs.ext = get_render_pass_resources(*ccfg.scene, info, pass);
+    struct {
+      BatchId batch_id;
+      BatchDesc batch;
+      RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
+      RgBufferToken<u32> batch_sizes;
+      RenderPassResources<S> ext;
+    } rcs;
 
-  pass.set_graphics_callback([rcs](Renderer &, const RgRuntime &rg,
-                                   RenderPass &render_pass) {
-    BufferSlice<glsl::DrawIndexedIndirectCommand> batch_commands =
-        rg.get_buffer(rcs.batch_commands);
-    BufferSlice<u32> batch_sizes = rg.get_buffer(rcs.batch_sizes);
-    for (const Batch &batch : rcs.batches) {
-      render_pass.bind_graphics_pipeline(batch.desc.pipeline);
-      render_pass.bind_index_buffer(batch.desc.index_buffer,
+    rcs.batch_id = b;
+    rcs.batch = info.base.gpu_scene->draw_sets[draw_set].batches[b].desc;
+    rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
+    rcs.batch_sizes =
+        pass.read_buffer(cfg.batch_sizes, INDIRECT_COMMAND_SRC_BUFFER);
+    rcs.ext = get_render_pass_resources(*ccfg.scene, info, pass);
+
+    pass.set_graphics_callback([rcs](Renderer &, const RgRuntime &rg,
+                                     RenderPass &render_pass) {
+      render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
+      render_pass.bind_index_buffer(rcs.batch.index_buffer,
                                     VK_INDEX_TYPE_UINT8_EXT);
       bind_render_pass_resources(rg, render_pass, rcs.ext);
       render_pass.draw_indexed_indirect_count(
-          batch_commands.slice(0, batch.num_meshlets), batch_sizes.slice(0, 1));
-      batch_commands = batch_commands.slice(batch.num_meshlets);
-      batch_sizes = batch_sizes.slice(1);
-    }
-  });
+          BufferView(rg.get_buffer(rcs.commands)),
+          BufferView(rg.get_buffer(rcs.batch_sizes).slice(rcs.batch_id, 1)));
+    });
+  }
 }
 
 } // namespace
@@ -528,19 +773,24 @@ void record_mesh_pass(const PassCommonConfig &ccfg,
   ren_prof_zone_text(info.base.pass_name);
 #endif
 
-  RgBufferId<glsl::DrawIndexedIndirectCommand> batch_commands;
-  RgBufferId<u32> batch_sizes;
+  RgBufferId<glsl::MeshletDrawCommand> batch_commands;
+  RgBufferId<u32> batch_offsets, batch_sizes;
+  RgBufferId<glsl::DispatchIndirectCommand> batch_prepare_commands;
   record_culling(ccfg, info.base, *ccfg.rgb,
                  CullingInfo{
                      .draw_set = get_draw_set_index(S),
                      .batch_commands = &batch_commands,
+                     .batch_offsets = &batch_offsets,
                      .batch_sizes = &batch_sizes,
+                     .batch_prepare_commands = &batch_prepare_commands,
                  });
 
   record_render_pass(ccfg, info,
                      RenderPassInfo{
                          .batch_commands = batch_commands,
+                         .batch_offsets = batch_offsets,
                          .batch_sizes = batch_sizes,
+                         .batch_prepare_commands = batch_prepare_commands,
                      });
 }
 

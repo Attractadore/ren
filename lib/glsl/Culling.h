@@ -1,16 +1,19 @@
 #ifndef REN_GLSL_CULLING_H
 #define REN_GLSL_CULLING_H
 
+#include "Batch.h"
 #include "Common.h"
 #include "DevicePtr.h"
 #include "Mesh.h"
 
 GLSL_NAMESPACE_BEGIN
 
+const uint MAX_DRAW_MESHLETS = 4 * 1024 * 1024;
+
 struct InstanceCullData {
   uint mesh;
   uint mesh_instance;
-  uint batch;
+  BatchId batch;
 };
 
 GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
@@ -18,11 +21,20 @@ GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
 struct MeshletCullData {
   uint mesh;
   uint mesh_instance;
-  uint batch;
+  BatchId batch;
   uint base_meshlet;
 };
 
 GLSL_DEFINE_PTR_TYPE(MeshletCullData, 4);
+
+struct MeshletDrawCommand {
+  uint num_triangles;
+  uint base_triangle;
+  uint base_index;
+  uint mesh_instance;
+};
+
+GLSL_DEFINE_PTR_TYPE(MeshletDrawCommand, 4);
 
 struct ClipSpaceBoundingBox {
   vec4 p[8];

@@ -6,14 +6,17 @@
 
 #include "CalculateNormalMatricesCS.h"
 #include "EarlyZVS.h"
+#include "ExclusiveScanUint32CS.h"
 #include "HiZSpdCS.h"
 #include "ImGuiFS.h"
 #include "ImGuiVS.h"
 #include "InstanceCullingAndLODCS.h"
 #include "MeshletCullingCS.h"
+#include "MeshletSortingCS.h"
 #include "OpaqueFS.h"
 #include "OpaqueVS.h"
 #include "PostProcessingCS.h"
+#include "PrepareBatchCS.h"
 #include "ReduceLuminanceHistogramCS.h"
 #include "glsl/OpaquePass.h"
 
@@ -132,6 +135,10 @@ auto load_pipelines(ResourceArena &arena,
       .instance_culling_and_lod =
           compute_pipeline(InstanceCullingAndLODCS, "Instance culling and LOD"),
       .meshlet_culling = compute_pipeline(MeshletCullingCS, "Meshlet culling"),
+      .exclusive_scan_uint32 =
+          compute_pipeline(ExclusiveScanUint32CS, "Exclusive scan uint32"),
+      .meshlet_sorting = compute_pipeline(MeshletSortingCS, "Meshlet soring"),
+      .prepare_batch = compute_pipeline(PrepareBatchCS, "Prepare batch"),
       .hi_z = compute_pipeline(HiZSpdCS, "Hi-Z SPD"),
       .early_z_pass = load_early_z_pass_pipeline(arena),
       .opaque_pass = load_opaque_pass_pipelines(arena, persistent_set_layout),
@@ -208,8 +215,8 @@ auto load_opaque_pass_pipelines(
 }
 
 auto load_imgui_pipeline(ResourceArena &arena,
-                         Handle<DescriptorSetLayout> textures, TinyImageFormat format)
-    -> Handle<GraphicsPipeline> {
+                         Handle<DescriptorSetLayout> textures,
+                         TinyImageFormat format) -> Handle<GraphicsPipeline> {
   auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
   Handle<PipelineLayout> layout =
