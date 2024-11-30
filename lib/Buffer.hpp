@@ -88,6 +88,8 @@ constexpr BufferState CS_WRITE_BUFFER = {
 
 constexpr BufferState CS_READ_WRITE_BUFFER = CS_READ_BUFFER | CS_WRITE_BUFFER;
 
+constexpr BufferState CS_ATOMIC_BUFFER = CS_READ_WRITE_BUFFER;
+
 constexpr BufferState INDEX_SRC_BUFFER = {
     .stage_mask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT,
     .access_mask = VK_ACCESS_2_INDEX_READ_BIT,
