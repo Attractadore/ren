@@ -104,7 +104,15 @@
       "inherits": "release",
       "hidden": true,
       "cacheVariables": {
-        "REN_PROFILER": "ON",
+        "REN_PROFILER": "ON"
+      }
+    },
+    {
+      "name": "gpu-prof",
+      "inherits": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "REN_VULKAN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON"
       }
     },
@@ -134,6 +142,13 @@
       "inherits": [
         "windows",
         "prof"
+      ]
+    },
+    {
+      "name": "windows-gpu-prof",
+      "inherits": [
+        "windows",
+        "gpu-prof"
       ]
     },
     {
@@ -183,6 +198,13 @@
       "inherits": [
         "linux",
         "prof"
+      ]
+    },
+    {
+      "name": "linux-gpu-prof",
+      "inherits": [
+        "linux",
+        "gpu-prof"
       ]
     },
     {
