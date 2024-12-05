@@ -593,7 +593,7 @@ auto get_render_pass_resources(const SceneData &scene,
   rcs.materials = pass.read_buffer(gpu_scene.materials, FS_READ_BUFFER);
   rcs.directional_lights =
       pass.read_buffer(gpu_scene.directional_lights, FS_READ_BUFFER);
-  rcs.exposure = pass.read_texture(info.exposure, FS_READ_TEXTURE,
+  rcs.exposure = pass.read_texture(info.exposure, FS_SAMPLE_TEXTURE,
                                    info.exposure_temporal_layer);
 
   rcs.proj_view =
@@ -622,8 +622,7 @@ void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
       .directional_lights = rg.get_buffer_device_ptr(rcs.directional_lights),
       .num_directional_lights = rcs.num_directional_lights,
       .eye = rcs.eye,
-      .exposure = glsl::StorageTexture2D(
-          rg.get_storage_texture_descriptor(rcs.exposure)),
+      .exposure = glsl::Texture2D(rg.get_texture_descriptor(rcs.exposure)),
   });
 }
 

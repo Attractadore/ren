@@ -66,25 +66,7 @@ constexpr TextureState CS_SAMPLE_TEXTURE = {
     .layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 };
 
-constexpr TextureState FS_READ_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr TextureState CS_READ_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr TextureState CS_WRITE_TEXTURE = {
-    .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-    .access_mask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-    .layout = VK_IMAGE_LAYOUT_GENERAL,
-};
-
-constexpr TextureState CS_READ_WRITE_TEXTURE = {
+constexpr TextureState CS_UAV_TEXTURE = {
     .stage_mask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
     .access_mask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                    VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,

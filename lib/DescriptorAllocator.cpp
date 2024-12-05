@@ -16,8 +16,9 @@ auto DescriptorAllocator::get_set_layout() const
   return m_layout;
 }
 
-auto DescriptorAllocator::allocate_sampler(
-    Renderer &renderer, Handle<Sampler> sampler) -> glsl::SamplerState {
+auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
+                                           Handle<Sampler> sampler)
+    -> glsl::SamplerState {
   u32 index = m_samplers.allocate();
   ren_assert(index < glsl::NUM_SAMPLERS);
 
@@ -37,9 +38,10 @@ auto DescriptorAllocator::allocate_sampler(
   return glsl::SamplerState(index);
 };
 
-auto DescriptorAllocator::try_allocate_sampler(
-    Renderer &renderer, Handle<Sampler> sampler,
-    glsl::SamplerState id) -> glsl::SamplerState {
+auto DescriptorAllocator::try_allocate_sampler(Renderer &renderer,
+                                               Handle<Sampler> sampler,
+                                               glsl::SamplerState id)
+    -> glsl::SamplerState {
   u32 index = m_samplers.allocate(u32(id));
   if (!index) {
     return {};
@@ -62,9 +64,10 @@ auto DescriptorAllocator::try_allocate_sampler(
   return id;
 };
 
-auto DescriptorAllocator::allocate_sampler(
-    Renderer &renderer, Handle<Sampler> sampler,
-    glsl::SamplerState id) -> glsl::SamplerState {
+auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
+                                           Handle<Sampler> sampler,
+                                           glsl::SamplerState id)
+    -> glsl::SamplerState {
   glsl::SamplerState new_id = try_allocate_sampler(renderer, sampler, id);
   ren_assert(new_id == id);
   return id;
@@ -74,8 +77,9 @@ void DescriptorAllocator::free_sampler(glsl::SamplerState sampler) {
   m_samplers.free(u32(sampler));
 }
 
-auto DescriptorAllocator::allocate_texture(
-    Renderer &renderer, const TextureView &view) -> glsl::Texture {
+auto DescriptorAllocator::allocate_texture(Renderer &renderer,
+                                           const TextureView &view)
+    -> glsl::Texture {
   u32 index = m_textures.allocate();
   ren_assert(index < glsl::NUM_TEXTURES);
 
@@ -100,9 +104,10 @@ void DescriptorAllocator::free_texture(glsl::Texture texture) {
   m_textures.free(u32(texture));
 }
 
-auto DescriptorAllocator::allocate_sampled_texture(
-    Renderer &renderer, const TextureView &view,
-    Handle<Sampler> sampler) -> glsl::SampledTexture {
+auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
+                                                   const TextureView &view,
+                                                   Handle<Sampler> sampler)
+    -> glsl::SampledTexture {
   u32 index = m_sampled_textures.allocate();
   ren_assert(index < glsl::NUM_SAMPLED_TEXTURES);
 
@@ -128,8 +133,9 @@ void DescriptorAllocator::free_sampled_texture(glsl::SampledTexture texture) {
   m_sampled_textures.free(unsigned(texture));
 }
 
-auto DescriptorAllocator::allocate_storage_texture(
-    Renderer &renderer, const TextureView &view) -> glsl::RWStorageTexture {
+auto DescriptorAllocator::allocate_storage_texture(Renderer &renderer,
+                                                   const TextureView &view)
+    -> glsl::StorageTexture {
   u32 index = m_storage_textures.allocate();
   ren_assert(index < glsl::NUM_STORAGE_TEXTURES);
 
@@ -147,10 +153,10 @@ auto DescriptorAllocator::allocate_storage_texture(
       .pImageInfo = &image,
   }});
 
-  return glsl::RWStorageTexture(index);
+  return glsl::StorageTexture(index);
 };
 
-void DescriptorAllocator::free_storage_texture(glsl::RWStorageTexture texture) {
+void DescriptorAllocator::free_storage_texture(glsl::StorageTexture texture) {
   m_storage_textures.free(unsigned(texture));
 }
 
@@ -180,25 +186,29 @@ auto DescriptorAllocatorScope::get_set_layout() const
   return m_alloc->get_set_layout();
 }
 
-auto DescriptorAllocatorScope::allocate_sampler(
-    Renderer &renderer, Handle<Sampler> sampler) -> glsl::SamplerState {
+auto DescriptorAllocatorScope::allocate_sampler(Renderer &renderer,
+                                                Handle<Sampler> sampler)
+    -> glsl::SamplerState {
   return m_samplers.emplace_back(m_alloc->allocate_sampler(renderer, sampler));
 }
 
-auto DescriptorAllocatorScope::allocate_texture(
-    Renderer &renderer, const TextureView &view) -> glsl::Texture {
+auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer,
+                                                const TextureView &view)
+    -> glsl::Texture {
   return m_textures.emplace_back(m_alloc->allocate_texture(renderer, view));
 }
 
-auto DescriptorAllocatorScope::allocate_sampled_texture(
-    Renderer &renderer, const TextureView &view,
-    Handle<Sampler> sampler) -> glsl::SampledTexture {
+auto DescriptorAllocatorScope::allocate_sampled_texture(Renderer &renderer,
+                                                        const TextureView &view,
+                                                        Handle<Sampler> sampler)
+    -> glsl::SampledTexture {
   return m_sampled_textures.emplace_back(
       m_alloc->allocate_sampled_texture(renderer, view, sampler));
 }
 
-auto DescriptorAllocatorScope::allocate_storage_texture(
-    Renderer &renderer, const TextureView &view) -> glsl::RWStorageTexture {
+auto DescriptorAllocatorScope::allocate_storage_texture(Renderer &renderer,
+                                                        const TextureView &view)
+    -> glsl::StorageTexture {
   return m_storage_textures.emplace_back(
       m_alloc->allocate_storage_texture(renderer, view));
 }
@@ -214,7 +224,7 @@ void DescriptorAllocatorScope::reset() {
     m_alloc->free_sampled_texture(texture);
   }
   m_sampled_textures.clear();
-  for (glsl::RWStorageTexture texture : m_storage_textures) {
+  for (glsl::StorageTexture texture : m_storage_textures) {
     m_alloc->free_storage_texture(texture);
   }
   m_storage_textures.clear();

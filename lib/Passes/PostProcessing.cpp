@@ -43,20 +43,18 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
   pass.bind_descriptor_sets({rg.get_texture_set()});
 
   DevicePtr<glsl::LuminanceHistogram> histogram;
-  glsl::RWStorageTexture2D previous_exposure;
+  glsl::Texture2D previous_exposure;
   if (rcs.histogram) {
     histogram = rg.get_buffer_device_ptr(rcs.histogram);
-    previous_exposure = glsl::RWStorageTexture2D(
-        rg.get_storage_texture_descriptor(rcs.previous_exposure));
+    previous_exposure =
+        glsl::Texture2D(rg.get_texture_descriptor(rcs.previous_exposure));
   }
 
   pass.set_push_constants(glsl::PostProcessingPassArgs{
       .histogram = histogram,
       .previous_exposure = previous_exposure,
-      .hdr =
-          glsl::RWStorageTexture2D(rg.get_storage_texture_descriptor(rcs.hdr)),
-      .sdr =
-          glsl::RWStorageTexture2D(rg.get_storage_texture_descriptor(rcs.sdr)),
+      .hdr = glsl::Texture2D(rg.get_texture_descriptor(rcs.hdr)),
+      .sdr = glsl::StorageTexture2D(rg.get_storage_texture_descriptor(rcs.sdr)),
   });
 
   // Dispatch 1 thread per 16 work items for optimal performance
@@ -84,17 +82,18 @@ void setup_post_processing_uber_pass(const PassCommonConfig &ccfg,
 
   auto pass = rgb.create_pass({.name = "post-processing"});
 
-  rcs.hdr = pass.read_texture(cfg.hdr, CS_READ_TEXTURE);
+  rcs.hdr = pass.read_texture(cfg.hdr, CS_SAMPLE_TEXTURE);
 
   glm::uvec2 viewport = ccfg.swapchain->get_size();
 
   std::tie(*cfg.sdr, rcs.sdr) =
-      pass.write_texture("sdr", *cfg.sdr, CS_WRITE_TEXTURE);
+      pass.write_texture("sdr", *cfg.sdr, CS_UAV_TEXTURE);
 
   if (*cfg.histogram) {
     std::tie(*cfg.histogram, rcs.histogram) = pass.write_buffer(
         "luminance-histogram", *cfg.histogram, CS_READ_WRITE_BUFFER);
-    rcs.previous_exposure = pass.read_texture(cfg.exposure, CS_READ_TEXTURE, 1);
+    rcs.previous_exposure =
+        pass.read_texture(cfg.exposure, CS_SAMPLE_TEXTURE, 1);
   }
 
   pass.set_compute_callback(
@@ -117,7 +116,7 @@ void run_reduce_luminance_histogram_pass(
   pass.bind_descriptor_sets({rg.get_texture_set()});
   pass.set_push_constants(glsl::ReduceLuminanceHistogramPassArgs{
       .histogram = rg.get_buffer_device_ptr(rcs.histogram),
-      .exposure = glsl::RWStorageTexture2D(
+      .exposure = glsl::StorageTexture2D(
           rg.get_storage_texture_descriptor(rcs.exposure)),
       .exposure_compensation = rcs.ec,
   });
@@ -141,7 +140,7 @@ void setup_reduce_luminance_histogram_pass(
   rcs.histogram = pass.read_buffer(cfg.histogram, CS_READ_BUFFER);
 
   std::tie(std::ignore, rcs.exposure) =
-      pass.write_texture("exposure", cfg.exposure, CS_WRITE_TEXTURE);
+      pass.write_texture("exposure", cfg.exposure, CS_UAV_TEXTURE);
 
   rcs.ec = ccfg.scene->exposure.ec;
 

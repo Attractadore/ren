@@ -352,7 +352,7 @@ struct RgRtPass {
 struct RgTextureDescriptors {
   glsl::Texture sampled;
   glsl::SampledTexture combined;
-  glsl::RWStorageTexture *storage = nullptr;
+  glsl::StorageTexture *storage = nullptr;
 };
 
 struct RgRtData {
@@ -369,7 +369,7 @@ struct RgRtData {
 
   Vector<Handle<Texture>> m_textures;
   Vector<RgTextureDescriptors> m_texture_descriptors;
-  Vector<glsl::RWStorageTexture> m_storage_texture_descriptors;
+  Vector<glsl::StorageTexture> m_storage_texture_descriptors;
 
   Vector<VkMemoryBarrier2> m_memory_barriers;
   Vector<VkImageMemoryBarrier2> m_texture_barriers;
@@ -726,7 +726,7 @@ public:
       -> glsl::SampledTexture;
 
   auto get_storage_texture_descriptor(RgTextureToken texture, u32 mip = 0) const
-      -> glsl::RWStorageTexture;
+      -> glsl::StorageTexture;
 
   auto get_texture_set() const -> VkDescriptorSet;
 

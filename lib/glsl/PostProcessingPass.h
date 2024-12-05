@@ -10,9 +10,9 @@ GLSL_NAMESPACE_BEGIN
 
 struct PostProcessingPassArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
-  StorageTexture2D previous_exposure;
-  StorageTexture2D hdr;
-  RWStorageTexture2D sdr;
+  Texture2D previous_exposure;
+  Texture2D hdr;
+  StorageTexture2D sdr;
 };
 
 const uint POST_PROCESSING_THREADS_X = 8;

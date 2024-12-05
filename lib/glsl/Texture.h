@@ -133,15 +133,12 @@ DEFINE_TEXTURE_DESCRIPTOR(SampledTexture2D, (SampledTexture), );
 GLSL_DEFINE_PTR_TYPE(SampledTexture2D, TEXTURE_ID_SIZE);
 
 DEFINE_TEXTURE_DESCRIPTOR(StorageTexture, , ); 
-DEFINE_TEXTURE_DESCRIPTOR(RWStorageTexture, , (StorageTexture)); 
 
 DEFINE_TEXTURE_DESCRIPTOR(StorageTexture2D, (StorageTexture), ); 
 GLSL_DEFINE_PTR_TYPE(StorageTexture2D, TEXTURE_ID_SIZE);
-DEFINE_TEXTURE_DESCRIPTOR(RWStorageTexture2D, (RWStorageTexture), (StorageTexture)(StorageTexture2D)); 
-GLSL_DEFINE_PTR_TYPE(RWStorageTexture2D, TEXTURE_ID_SIZE);
 
-DEFINE_TEXTURE_DESCRIPTOR(CoherentRWStorageTexture2D, (RWStorageTexture)(RWStorageTexture2D), (StorageTexture)(StorageTexture2D));
-GLSL_DEFINE_PTR_TYPE(CoherentRWStorageTexture2D, TEXTURE_ID_SIZE);
+DEFINE_TEXTURE_DESCRIPTOR(CoherentStorageTexture2D, (StorageTexture)(StorageTexture2D),);
+GLSL_DEFINE_PTR_TYPE(CoherentStorageTexture2D, TEXTURE_ID_SIZE);
 
 #if BOOST_COMP_MSVC
 #pragma warning(pop)

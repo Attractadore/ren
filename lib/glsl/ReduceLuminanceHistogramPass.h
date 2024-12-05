@@ -10,7 +10,7 @@ GLSL_NAMESPACE_BEGIN
 
 struct ReduceLuminanceHistogramPassArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
-  RWStorageTexture2D exposure;
+  StorageTexture2D exposure;
   float exposure_compensation;
 };
 

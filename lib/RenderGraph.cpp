@@ -1573,12 +1573,12 @@ auto RgRuntime::try_get_sampled_texture_descriptor(RgTextureToken texture) const
 
 auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture,
                                                u32 mip) const
-    -> glsl::RWStorageTexture {
+    -> glsl::StorageTexture {
   ren_assert(texture);
   ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
   ren_assert(
       mip < m_rg->m_renderer->get_texture(get_texture(texture)).num_mip_levels);
-  glsl::RWStorageTexture descriptor =
+  glsl::StorageTexture descriptor =
       m_rg->m_data->m_texture_descriptors[texture].storage[mip];
   ren_assert(descriptor);
   return descriptor;

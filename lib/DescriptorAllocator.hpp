@@ -28,8 +28,8 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampler(Renderer &renderer,
-                        Handle<Sampler> sampler) -> glsl::SamplerState;
+  auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
+      -> glsl::SamplerState;
 
   auto try_allocate_sampler(Renderer &renderer, Handle<Sampler> sampler,
                             glsl::SamplerState id) -> glsl::SamplerState;
@@ -39,21 +39,21 @@ public:
 
   void free_sampler(glsl::SamplerState sampler);
 
-  auto allocate_texture(Renderer &renderer,
-                        const TextureView &view) -> glsl::Texture;
+  auto allocate_texture(Renderer &renderer, const TextureView &view)
+      -> glsl::Texture;
 
   void free_texture(glsl::Texture texture);
 
-  auto
-  allocate_sampled_texture(Renderer &renderer, const TextureView &view,
-                           Handle<Sampler> sampler) -> glsl::SampledTexture;
+  auto allocate_sampled_texture(Renderer &renderer, const TextureView &view,
+                                Handle<Sampler> sampler)
+      -> glsl::SampledTexture;
 
   void free_sampled_texture(glsl::SampledTexture texture);
 
   auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::RWStorageTexture;
+      -> glsl::StorageTexture;
 
-  void free_storage_texture(glsl::RWStorageTexture texture);
+  void free_storage_texture(glsl::StorageTexture texture);
 };
 
 class DescriptorAllocatorScope {
@@ -72,18 +72,18 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampler(Renderer &renderer,
-                        Handle<Sampler> sampler) -> glsl::SamplerState;
+  auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
+      -> glsl::SamplerState;
 
-  auto allocate_texture(Renderer &renderer,
-                        const TextureView &view) -> glsl::Texture;
+  auto allocate_texture(Renderer &renderer, const TextureView &view)
+      -> glsl::Texture;
 
-  auto
-  allocate_sampled_texture(Renderer &renderer, const TextureView &view,
-                           Handle<Sampler> sampler) -> glsl::SampledTexture;
+  auto allocate_sampled_texture(Renderer &renderer, const TextureView &view,
+                                Handle<Sampler> sampler)
+      -> glsl::SampledTexture;
 
   auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::RWStorageTexture;
+      -> glsl::StorageTexture;
 
   void reset();
 
@@ -92,7 +92,7 @@ private:
   Vector<glsl::SamplerState> m_samplers;
   Vector<glsl::Texture> m_textures;
   Vector<glsl::SampledTexture> m_sampled_textures;
-  Vector<glsl::RWStorageTexture> m_storage_textures;
+  Vector<glsl::StorageTexture> m_storage_textures;
 };
 
 }; // namespace ren
