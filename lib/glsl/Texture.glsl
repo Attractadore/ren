@@ -4,6 +4,8 @@
 #include "Common.h"
 #include "Texture.h"
 
+#extension GL_EXT_samplerless_texture_functions : require
+
 #define IS_NULL_DESC(descriptor) ((descriptor).id == 0)
 
 // clang-format off
@@ -28,11 +30,11 @@ vec4 texture_lod(SamplerState s, Texture2D t, vec2 uv, float lod) {
 }
 
 vec4 texel_fetch(Texture2D t, ivec2 pos, int lod) {
-  return texelFetch(MAKE_SAMPLER_2D(DEFAULT_SAMPLER, t), pos, lod);
+  return texelFetch(g_textures_2d[t.id], pos, lod);
 }
 
 ivec2 texture_size(Texture2D t) {
-  return textureSize(MAKE_SAMPLER_2D(DEFAULT_SAMPLER, t), 0);
+  return textureSize(g_textures_2d[t.id], 0);
 }
 
 #undef MAKE_SAMPLER_2D

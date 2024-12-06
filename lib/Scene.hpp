@@ -82,7 +82,6 @@ public:
 };
 
 struct Samplers {
-  Handle<Sampler> dflt;
   Handle<Sampler> hi_z_gen;
   Handle<Sampler> hi_z;
 };
