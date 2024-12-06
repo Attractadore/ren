@@ -113,8 +113,6 @@ public:                                                                        \
 
 GLSL_DEFINE_PTR_TYPE(SamplerState, SAMPLER_ID_SIZE);
 
-const SamplerState DEFAULT_SAMPLER = SamplerState(SAMPLER_ID_TYPE(1));
-
 // clang-format off
 
 #if BOOST_COMP_MSVC

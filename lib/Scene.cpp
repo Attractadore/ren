@@ -35,7 +35,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       texture_descriptor_set, texture_descriptor_set_layout);
 
   m_samplers = {
-      .dflt = m_arena.create_sampler({.name = "Default Sampler"}),
       .hi_z_gen = m_arena.create_sampler({
           .name = "Hi-Z generation sampler",
           .mag_filter = VK_FILTER_LINEAR,
@@ -54,9 +53,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
           .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
       }),
   };
-
-  m_descriptor_allocator->allocate_sampler(*m_renderer, m_samplers.dflt,
-                                           glsl::DEFAULT_SAMPLER);
 
   m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
 
