@@ -1,10 +1,10 @@
 #if REN_IMGUI
 #include "ImGui.hpp"
-#include "CommandRecorder.hpp"
-#include "ImGuiConfig.hpp"
-#include "Scene.hpp"
-#include "Swapchain.hpp"
-#include "glsl/ImGui.h"
+#include "../CommandRecorder.hpp"
+#include "../ImGuiConfig.hpp"
+#include "../Scene.hpp"
+#include "../Swapchain.hpp"
+#include "../glsl/ImGui.h"
 
 namespace ren {
 

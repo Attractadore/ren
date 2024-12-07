@@ -1,9 +1,9 @@
 #include "Opaque.hpp"
+#include "../MeshPass.hpp"
+#include "../RenderGraph.hpp"
+#include "../Scene.hpp"
+#include "../Swapchain.hpp"
 #include "HiZ.hpp"
-#include "MeshPass.hpp"
-#include "RenderGraph.hpp"
-#include "Scene.hpp"
-#include "Swapchain.hpp"
 
 namespace ren {
 

@@ -1,6 +1,6 @@
 #include "Present.hpp"
-#include "CommandRecorder.hpp"
-#include "Swapchain.hpp"
+#include "../CommandRecorder.hpp"
+#include "../Swapchain.hpp"
 
 void ren::setup_present_pass(const PassCommonConfig &ccfg,
                              const PresentPassConfig &cfg) {

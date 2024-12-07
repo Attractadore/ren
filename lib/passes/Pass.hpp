@@ -1,7 +1,7 @@
 #pragma once
-#include "BumpAllocator.hpp"
-#include "RenderGraph.hpp"
-#include "core/NotNull.hpp"
+#include "../BumpAllocator.hpp"
+#include "../RenderGraph.hpp"
+#include "../core/NotNull.hpp"
 
 namespace ren {
 
