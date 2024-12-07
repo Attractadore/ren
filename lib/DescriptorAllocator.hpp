@@ -1,6 +1,6 @@
 #pragma once
 #include "FreeListAllocator.hpp"
-#include "Support/GenIndex.hpp"
+#include "core/GenIndex.hpp"
 #include "glsl/Texture.h"
 
 #include <vulkan/vulkan.h>

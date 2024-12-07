@@ -2,7 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "Profiler.hpp"
 #include "Scene.hpp"
-#include "Support/Views.hpp"
+#include "core/Views.hpp"
 #include "glsl/CalculateNormalMatrices.h"
 
 #include <algorithm>

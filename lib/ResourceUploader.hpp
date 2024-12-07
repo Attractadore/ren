@@ -1,8 +1,8 @@
 #pragma once
 #include "Buffer.hpp"
 #include "BumpAllocator.hpp"
-#include "Support/Span.hpp"
-#include "Support/Vector.hpp"
+#include "core/Span.hpp"
+#include "core/Vector.hpp"
 
 #include <cstring>
 

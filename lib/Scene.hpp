@@ -9,9 +9,9 @@
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
-#include "Support/GenArray.hpp"
-#include "Support/GenMap.hpp"
 #include "Texture.hpp"
+#include "core/GenArray.hpp"
+#include "core/GenMap.hpp"
 #include "passes/Pass.hpp"
 #include "ren/ren.hpp"
 

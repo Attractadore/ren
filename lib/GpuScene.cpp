@@ -1,7 +1,7 @@
 #include "GpuScene.hpp"
 #include "Mesh.hpp"
 #include "Scene.hpp"
-#include "Support/Views.hpp"
+#include "core/Views.hpp"
 #include "glsl/Lighting.h"
 #include "glsl/Material.h"
 #include "glsl/Mesh.h"

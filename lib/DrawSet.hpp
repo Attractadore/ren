@@ -1,7 +1,7 @@
 #pragma once
-#include "Support/Flags.hpp"
-#include "Support/NewType.hpp"
-#include "Support/StdDef.hpp"
+#include "core/Flags.hpp"
+#include "core/NewType.hpp"
+#include "core/StdDef.hpp"
 
 #include <bit>
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Support/Optional.hpp"
-#include "Support/StdDef.hpp"
+#include "core/Optional.hpp"
+#include "core/StdDef.hpp"
 
 #include <vulkan/vulkan.h>
 

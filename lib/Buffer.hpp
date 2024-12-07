@@ -1,9 +1,9 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Support/Assert.hpp"
-#include "Support/GenIndex.hpp"
-#include "Support/Hash.hpp"
-#include "Support/StdDef.hpp"
+#include "core/Assert.hpp"
+#include "core/GenIndex.hpp"
+#include "core/Hash.hpp"
+#include "core/StdDef.hpp"
 
 #include <vk_mem_alloc.h>
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "ResourceArena.hpp"
-#include "Support/GenIndex.hpp"
+#include "core/GenIndex.hpp"
 #include "glsl/Mesh.h"
 
 namespace ren {

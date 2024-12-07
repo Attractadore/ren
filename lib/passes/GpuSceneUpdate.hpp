@@ -1,7 +1,7 @@
 #pragma once
 #include "GpuScene.hpp"
 #include "Pass.hpp"
-#include "Support/NotNull.hpp"
+#include "core/NotNull.hpp"
 
 namespace ren {
 

@@ -2,10 +2,10 @@
 #include "Formats.hpp"
 #include "Profiler.hpp"
 #include "Scene.hpp"
-#include "Support/Array.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Views.hpp"
 #include "Swapchain.hpp"
+#include "core/Array.hpp"
+#include "core/Errors.hpp"
+#include "core/Views.hpp"
 
 #include <volk.h>
 

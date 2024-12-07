@@ -1,7 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
-#include "Support/GenIndex.hpp"
-#include "Support/Hash.hpp"
+#include "core/GenIndex.hpp"
+#include "core/Hash.hpp"
 
 namespace ren {
 

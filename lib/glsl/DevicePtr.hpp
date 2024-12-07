@@ -1,6 +1,6 @@
 #pragma once
-#include "../Support/Assert.hpp"
-#include "../Support/StdDef.hpp"
+#include "../core/Assert.hpp"
+#include "../core/StdDef.hpp"
 
 namespace ren {
 

@@ -1,9 +1,9 @@
 #pragma once
 #include "Mesh.hpp"
 #include "MeshSimplification.hpp"
-#include "Support/NotNull.hpp"
-#include "Support/Span.hpp"
-#include "Support/Vector.hpp"
+#include "core/NotNull.hpp"
+#include "core/Span.hpp"
+#include "core/Vector.hpp"
 #include "glsl/Vertex.h"
 
 #include <glm/glm.hpp>

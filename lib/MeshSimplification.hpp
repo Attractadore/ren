@@ -1,6 +1,6 @@
 #pragma once
-#include "Support/NotNull.hpp"
-#include "Support/Vector.hpp"
+#include "core/NotNull.hpp"
+#include "core/Vector.hpp"
 #include "glsl/Mesh.h"
 
 #include <glm/glm.hpp>

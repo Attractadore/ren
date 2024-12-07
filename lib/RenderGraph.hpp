@@ -5,14 +5,14 @@
 #include "DescriptorAllocator.hpp"
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
-#include "Support/DynamicBitset.hpp"
-#include "Support/GenArray.hpp"
-#include "Support/GenMap.hpp"
-#include "Support/HashMap.hpp"
-#include "Support/NewType.hpp"
-#include "Support/String.hpp"
-#include "Support/Variant.hpp"
 #include "Texture.hpp"
+#include "core/DynamicBitset.hpp"
+#include "core/GenArray.hpp"
+#include "core/GenMap.hpp"
+#include "core/HashMap.hpp"
+#include "core/NewType.hpp"
+#include "core/String.hpp"
+#include "core/Variant.hpp"
 
 #include <functional>
 #include <vulkan/vulkan.h>

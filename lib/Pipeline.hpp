@@ -2,11 +2,11 @@
 #include "Config.hpp"
 #include "DebugNames.hpp"
 #include "Formats.hpp"
-#include "Support/GenIndex.hpp"
-#include "Support/Optional.hpp"
-#include "Support/Span.hpp"
-#include "Support/Variant.hpp"
-#include "Support/Vector.hpp"
+#include "core/GenIndex.hpp"
+#include "core/Optional.hpp"
+#include "core/Span.hpp"
+#include "core/Variant.hpp"
+#include "core/Vector.hpp"
 
 namespace ren {
 
