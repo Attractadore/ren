@@ -1,10 +1,10 @@
 #pragma once
-#include "Camera.hpp"
-#include "GpuScene.hpp"
-#include "RenderGraph.hpp"
-#include "core/NotNull.hpp"
-#include "glsl/InstanceCullingAndLOD.h"
-#include "passes/Pass.hpp"
+#include "../Camera.hpp"
+#include "../GpuScene.hpp"
+#include "../RenderGraph.hpp"
+#include "../core/NotNull.hpp"
+#include "../glsl/InstanceCullingAndLOD.h"
+#include "../passes/Pass.hpp"
 
 #include <fmt/format.h>
 

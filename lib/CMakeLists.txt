@@ -48,7 +48,6 @@ add_library(ren
   FreeListAllocator.cpp
   GpuScene.cpp
   Mesh.cpp
-  MeshPass.cpp
   MeshProcessing.cpp
   MeshSimplification.cpp
   Pipeline.cpp
@@ -65,6 +64,7 @@ add_library(ren
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp
   passes/ImGui.cpp
+  passes/MeshPass.cpp
   passes/Opaque.cpp
   passes/PostProcessing.cpp
   passes/Present.cpp)
