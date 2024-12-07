@@ -13,7 +13,6 @@
         "REN_BUILD_IMGUI_PLUGIN": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
-        "REN_PCH": "OFF",
         "REN_ASSERTIONS": "ON",
         "REN_VULKAN_VALIDATION": "ON",
         "REN_VULKAN_DEBUG_NAMES": "ON",

@@ -43,9 +43,6 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(REN_MASTER_PROJECT ON)
 endif()
 
-if(BUILD_SHARED_LIBS)
-  option(REN_INSTALL "Generate the install target" ${REN_MASTER_PROJECT})
-endif()
 option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
 option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 
@@ -66,18 +63,4 @@ endif()
 if(REN_BUILD_EXAMPLES)
   message(STATUS "Build examples")
   add_subdirectory(examples)
-endif()
-
-if(REN_INSTALL)
-  include(CMakePackageConfigHelpers)
-  include(GNUInstallDirs)
-  set(CONFIG_CMAKE ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake)
-  set(CONFIG_VERSION
-      ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake)
-  file(WRITE ${CONFIG_CMAKE}
-       "include(\${CMAKE_CURRENT_LIST_DIR}/${REN_TARGETS_EXPORT_NAME}.cmake)")
-  write_basic_package_version_file(${CONFIG_VERSION}
-                                   COMPATIBILITY SameMinorVersion)
-  install(FILES ${CONFIG_CMAKE} ${CONFIG_VERSION}
-          DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 endif()

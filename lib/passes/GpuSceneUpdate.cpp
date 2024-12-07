@@ -1,9 +1,9 @@
 #include "GpuSceneUpdate.hpp"
-#include "CommandRecorder.hpp"
-#include "Profiler.hpp"
-#include "Scene.hpp"
-#include "core/Views.hpp"
-#include "glsl/CalculateNormalMatrices.h"
+#include "../CommandRecorder.hpp"
+#include "../Profiler.hpp"
+#include "../Scene.hpp"
+#include "../core/Views.hpp"
+#include "../glsl/CalculateNormalMatrices.h"
 
 #include <algorithm>
 #include <fmt/format.h>

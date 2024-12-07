@@ -1,8 +1,8 @@
 #include "Exposure.hpp"
-#include "CommandRecorder.hpp"
-#include "RenderGraph.hpp"
-#include "Scene.hpp"
-#include "glsl/LuminanceHistogram.h"
+#include "../CommandRecorder.hpp"
+#include "../RenderGraph.hpp"
+#include "../Scene.hpp"
+#include "../glsl/LuminanceHistogram.h"
 
 namespace ren {
 

@@ -1,6 +1,6 @@
 #pragma once
+#include "../core/StdDef.hpp"
 #include "Pass.hpp"
-#include "core/StdDef.hpp"
 
 namespace ren {
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "GpuScene.hpp"
+#include "../GpuScene.hpp"
 #include "Pass.hpp"
 
 namespace ren {

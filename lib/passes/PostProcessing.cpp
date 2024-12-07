@@ -1,10 +1,10 @@
 #include "PostProcessing.hpp"
-#include "CommandRecorder.hpp"
-#include "RenderGraph.hpp"
-#include "Scene.hpp"
-#include "Swapchain.hpp"
-#include "glsl/PostProcessing.h"
-#include "glsl/ReduceLuminanceHistogram.h"
+#include "../CommandRecorder.hpp"
+#include "../RenderGraph.hpp"
+#include "../Scene.hpp"
+#include "../Swapchain.hpp"
+#include "../glsl/PostProcessing.h"
+#include "../glsl/ReduceLuminanceHistogram.h"
 
 namespace ren {
 

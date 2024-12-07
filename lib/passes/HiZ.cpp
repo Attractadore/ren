@@ -1,8 +1,8 @@
 #include "HiZ.hpp"
-#include "CommandRecorder.hpp"
-#include "Scene.hpp"
-#include "Swapchain.hpp"
-#include "glsl/HiZSpd.h"
+#include "../CommandRecorder.hpp"
+#include "../Scene.hpp"
+#include "../Swapchain.hpp"
+#include "../glsl/HiZSpd.h"
 
 #include <bit>
 
