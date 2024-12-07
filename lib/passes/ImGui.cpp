@@ -4,7 +4,7 @@
 #include "ImGuiConfig.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
-#include "glsl/ImGuiPass.h"
+#include "glsl/ImGui.h"
 
 namespace ren {
 
@@ -85,7 +85,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
       glsl::SampledTexture2D texture((uintptr_t)cmd.TextureId);
 
-      render_pass.set_push_constants(glsl::ImGuiPassArgs{
+      render_pass.set_push_constants(glsl::ImGuiArgs{
           .vertices = DevicePtr<glsl::ImGuiVertex>(vertices_ptr),
           .scale = scale,
           .translate = translate,

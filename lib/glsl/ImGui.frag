@@ -1,4 +1,4 @@
-#include "ImGuiPass.glsl"
+#include "ImGui.glsl"
 #include "Texture.glsl"
 
 layout(location = V_COLOR) in vec4 v_color;

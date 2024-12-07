@@ -1,7 +1,7 @@
-#include "HiZSpdPass.h"
+#include "HiZSpd.h"
 #include "Texture.glsl"
 
-PUSH_CONSTANTS(HiZSpdPassArgs);
+PUSH_CONSTANTS(HiZSpdArgs);
 
 const uvec2 GROUP_SIZE = uvec2(HI_Z_SPD_THREADS_X, HI_Z_SPD_THREADS_Y);
 const uvec2 THREAD_SIZE =

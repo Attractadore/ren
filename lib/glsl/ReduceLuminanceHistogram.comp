@@ -1,7 +1,7 @@
-#include "ReduceLuminanceHistogramPass.h"
+#include "ReduceLuminanceHistogram.h"
 #include "Texture.glsl"
 
-PUSH_CONSTANTS(ReduceLuminanceHistogramPassArgs);
+PUSH_CONSTANTS(ReduceLuminanceHistogramArgs);
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 

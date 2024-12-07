@@ -1,4 +1,4 @@
-#include "Passes/Exposure.hpp"
+#include "Exposure.hpp"
 #include "CommandRecorder.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"

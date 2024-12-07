@@ -45,8 +45,7 @@ target_compile_definitions(
   INTERFACE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=0
             VMA_STATS_STRING_ENABLED=0 VK_NO_PROTOTYPES)
 
-add_library(
-  ren
+add_library(ren
   ren.cpp
   BumpAllocator.cpp
   Camera.cpp
@@ -70,7 +69,15 @@ add_library(
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
-  VMA.cpp)
+  VMA.cpp
+  passes/Exposure.cpp
+  passes/GpuSceneUpdate.cpp
+  passes/HiZ.cpp
+  passes/ImGui.cpp
+  passes/Opaque.cpp
+  passes/PostProcessing.cpp
+  passes/Present.cpp
+)
 add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES
                           ${REN_INCLUDE}/ren/ren.hpp)
@@ -173,7 +180,6 @@ if(REN_PCH)
 endif()
 
 add_subdirectory(glsl)
-add_subdirectory(Passes)
 
 if(REN_INSTALL)
   include(GNUInstallDirs)

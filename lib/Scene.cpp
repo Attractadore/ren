@@ -2,16 +2,16 @@
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
 #include "MeshProcessing.hpp"
-#include "Passes/Exposure.hpp"
-#include "Passes/GpuSceneUpdate.hpp"
-#include "Passes/ImGui.hpp"
-#include "Passes/Opaque.hpp"
-#include "Passes/PostProcessing.hpp"
-#include "Passes/Present.hpp"
 #include "Profiler.hpp"
 #include "Support/Span.hpp"
 #include "Support/Views.hpp"
 #include "Swapchain.hpp"
+#include "passes/Exposure.hpp"
+#include "passes/GpuSceneUpdate.hpp"
+#include "passes/ImGui.hpp"
+#include "passes/Opaque.hpp"
+#include "passes/PostProcessing.hpp"
+#include "passes/Present.hpp"
 
 #include <fmt/format.h>
 

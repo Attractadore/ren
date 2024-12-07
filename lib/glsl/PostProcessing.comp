@@ -1,13 +1,17 @@
 #include "PostProcessing.glsl"
-#include "PostProcessingPass.h"
+#include "PostProcessing.h"
 #include "Texture.glsl"
 
-PUSH_CONSTANTS(PostProcessingPassArgs);
+PUSH_CONSTANTS(PostProcessingArgs);
 
 const uint THREADS_X = POST_PROCESSING_THREADS_X;
 const uint THREADS_Y = POST_PROCESSING_THREADS_Y;
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+
+float get_luminance(vec3 color) {
+  return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
+}
 
 void init_luminance_histogram() {
   uint i = gl_LocalInvocationIndex;

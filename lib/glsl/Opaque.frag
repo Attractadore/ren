@@ -1,6 +1,6 @@
 #include "Lighting.glsl"
 #include "Material.glsl"
-#include "OpaquePass.glsl"
+#include "Opaque.glsl"
 #include "Texture.glsl"
 
 layout(location = V_POSITION) in vec3 v_position;
