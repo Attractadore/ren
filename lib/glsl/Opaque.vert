@@ -1,4 +1,4 @@
-#include "OpaquePass.glsl"
+#include "Opaque.glsl"
 
 layout(location = V_POSITION) out vec3 v_position;
 
@@ -12,13 +12,11 @@ layout(location = V_COLOR) out vec4 v_color;
 layout(location = V_MATERIAL) out flat uint v_material;
 
 void main() {
-  OpaquePassUniforms ub = DEREF(pc.ub);
+  MeshInstance mesh_instance = DEREF(pc.mesh_instances[gl_BaseInstance]);
+  mat4x3 transform_matrix = DEREF(pc.transform_matrices[gl_BaseInstance]);
+  mat3 normal_matrix = DEREF(pc.normal_matrices[gl_BaseInstance]);
 
-  MeshInstance mesh_instance = DEREF(ub.mesh_instances[gl_BaseInstance]);
-  mat4x3 transform_matrix = DEREF(ub.transform_matrices[gl_BaseInstance]);
-  mat3 normal_matrix = DEREF(ub.normal_matrices[gl_BaseInstance]);
-
-  Mesh mesh = DEREF(ub.meshes[mesh_instance.mesh]);
+  Mesh mesh = DEREF(pc.meshes[mesh_instance.mesh]);
 
   uint vertex = DEREF(mesh.meshlet_indices[gl_VertexIndex]);
 
@@ -26,7 +24,7 @@ void main() {
 
   position = transform_matrix * vec4(position, 1.0f);
   v_position = position;
-  gl_Position = ub.proj_view * vec4(position, 1.0f);
+  gl_Position = pc.proj_view * vec4(position, 1.0f);
 
   vec3 normal = decode_normal(DEREF(mesh.normals[vertex]));
   if (OPAQUE_FEATURE_TS) {

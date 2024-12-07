@@ -18,7 +18,7 @@
 #include "PostProcessingCS.h"
 #include "PrepareBatchCS.h"
 #include "ReduceLuminanceHistogramCS.h"
-#include "glsl/OpaquePass.h"
+#include "glsl/Opaque.h"
 
 #include <spirv_reflect.h>
 

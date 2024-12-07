@@ -1,6 +1,6 @@
-#include "Passes/Opaque.hpp"
+#include "Opaque.hpp"
+#include "HiZ.hpp"
 #include "MeshPass.hpp"
-#include "Passes/HiZ.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"

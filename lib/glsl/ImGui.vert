@@ -1,4 +1,4 @@
-#include "ImGuiPass.glsl"
+#include "ImGui.glsl"
 
 layout(location = V_COLOR) out vec4 v_color;
 layout(location = V_UV) out vec2 v_uv;

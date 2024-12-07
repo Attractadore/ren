@@ -1,6 +1,6 @@
-#include "CalculateNormalMatricesPass.h"
+#include "CalculateNormalMatrices.h"
 
-PUSH_CONSTANTS(CalculateNormalMatricesPassArgs);
+PUSH_CONSTANTS(CalculateNormalMatricesArgs);
 
 NUM_THREADS(CALCULATE_NORMAL_MATRICES_THREADS);
 void main() {

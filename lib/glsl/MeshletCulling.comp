@@ -1,10 +1,10 @@
 #include "Culling.glsl"
-#include "MeshletCullingPass.h"
+#include "MeshletCulling.h"
 #include "MeshletSorting.h"
 #include "PrepareBatch.h"
 #include "Vertex.h"
 
-PUSH_CONSTANTS(MeshletCullingPassArgs);
+PUSH_CONSTANTS(MeshletCullingArgs);
 
 bool cull(Meshlet meshlet, uint mesh_instance) {
   const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);

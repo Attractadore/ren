@@ -1,10 +1,10 @@
-#include "Passes/PostProcessing.hpp"
+#include "PostProcessing.hpp"
 #include "CommandRecorder.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
-#include "glsl/PostProcessingPass.h"
-#include "glsl/ReduceLuminanceHistogramPass.h"
+#include "glsl/PostProcessing.h"
+#include "glsl/ReduceLuminanceHistogram.h"
 
 namespace ren {
 
@@ -50,7 +50,7 @@ void run_post_processing_uber_pass(Renderer &renderer, const RgRuntime &rg,
         glsl::Texture2D(rg.get_texture_descriptor(rcs.previous_exposure));
   }
 
-  pass.set_push_constants(glsl::PostProcessingPassArgs{
+  pass.set_push_constants(glsl::PostProcessingArgs{
       .histogram = histogram,
       .previous_exposure = previous_exposure,
       .hdr = glsl::Texture2D(rg.get_texture_descriptor(rcs.hdr)),
@@ -114,7 +114,7 @@ void run_reduce_luminance_histogram_pass(
     const ReduceLuminanceHistogramPassResources &rcs) {
   pass.bind_compute_pipeline(rcs.pipeline);
   pass.bind_descriptor_sets({rg.get_texture_set()});
-  pass.set_push_constants(glsl::ReduceLuminanceHistogramPassArgs{
+  pass.set_push_constants(glsl::ReduceLuminanceHistogramArgs{
       .histogram = rg.get_buffer_device_ptr(rcs.histogram),
       .exposure = glsl::StorageTexture2D(
           rg.get_storage_texture_descriptor(rcs.exposure)),

@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_PASS_H
-#define REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_PASS_H
+#ifndef REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H
+#define REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H
 
 #include "Common.h"
 #include "DevicePtr.h"
@@ -8,7 +8,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct ReduceLuminanceHistogramPassArgs {
+struct ReduceLuminanceHistogramArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
   StorageTexture2D exposure;
   float exposure_compensation;
@@ -18,4 +18,4 @@ const uint REDUCE_LUMINANCE_HISTOGRAM_THREADS_X = NUM_LUMINANCE_HISTOGRAM_BINS;
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_PASS_H
+#endif // REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H

@@ -6,13 +6,13 @@
 #include "Light.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
-#include "Passes/Pass.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
 #include "Support/GenArray.hpp"
 #include "Support/GenMap.hpp"
 #include "Texture.hpp"
+#include "passes/Pass.hpp"
 #include "ren/ren.hpp"
 
 struct ImGuiContext;

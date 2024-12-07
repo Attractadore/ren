@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_EARLY_Z_PASS_H
-#define REN_GLSL_EARLY_Z_PASS_H
+#ifndef REN_GLSL_EARLY_Z_H
+#define REN_GLSL_EARLY_Z_H
 
 #include "Common.h"
 #include "DevicePtr.h"
@@ -7,7 +7,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-struct EarlyZPassArgs {
+struct EarlyZArgs {
   GLSL_PTR(Mesh) meshes;
   GLSL_PTR(MeshInstance) mesh_instances;
   GLSL_PTR(mat4x3) transform_matrices;
@@ -16,4 +16,4 @@ struct EarlyZPassArgs {
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_EARLY_Z_PASS_H
+#endif // REN_GLSL_EARLY_Z_H

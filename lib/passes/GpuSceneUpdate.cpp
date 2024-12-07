@@ -3,7 +3,7 @@
 #include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Support/Views.hpp"
-#include "glsl/CalculateNormalMatricesPass.h"
+#include "glsl/CalculateNormalMatrices.h"
 
 #include <algorithm>
 #include <fmt/format.h>
@@ -88,7 +88,7 @@ void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
   pass.set_compute_callback(
       [rcs](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
         cmd.bind_compute_pipeline(rcs.pipeline);
-        cmd.set_push_constants(glsl::CalculateNormalMatricesPassArgs{
+        cmd.set_push_constants(glsl::CalculateNormalMatricesArgs{
             .transforms = rg.get_buffer_device_ptr(rcs.transforms),
             .normals = rg.get_buffer_device_ptr(rcs.normals),
         });

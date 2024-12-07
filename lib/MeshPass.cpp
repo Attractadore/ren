@@ -5,10 +5,10 @@
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
 #include "Support/Views.hpp"
-#include "glsl/EarlyZPass.h"
-#include "glsl/MeshletCullingPass.h"
+#include "glsl/EarlyZ.h"
+#include "glsl/MeshletCulling.h"
 #include "glsl/MeshletSorting.h"
-#include "glsl/OpaquePass.h"
+#include "glsl/Opaque.h"
 #include "glsl/PrepareBatch.h"
 #include "glsl/StreamScan.h"
 
@@ -170,7 +170,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     struct {
       Handle<ComputePipeline> pipeline;
-      DevicePtr<glsl::InstanceCullingAndLODPassUniforms> uniforms;
+      glsl::InstanceCullingAndLODArgs args;
       RgBufferToken<glsl::Mesh> meshes;
       RgBufferToken<glm::mat4x3> transform_matrices;
       RgBufferToken<glsl::InstanceCullData> instance_cull_data;
@@ -219,17 +219,17 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     float lod_triangle_density = num_viewport_triangles / 4.0f;
     i32 lod_bias = settings.lod_bias;
 
-    auto [uniforms, uniforms_ptr, _2] =
-        ccfg.allocator->allocate<glsl::InstanceCullingAndLODPassUniforms>(1);
-    *uniforms = {
+    auto meshlet_bucket_offsets = ccfg.allocator->allocate<u32>(bucket_offsets.size());
+    std::ranges::copy(bucket_offsets, meshlet_bucket_offsets.host_ptr);
+
+    rcs.args = {
+        .meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
         .feature_mask = feature_mask,
         .num_instances = num_instances,
         .proj_view = get_projection_view_matrix(info.camera, info.viewport),
         .lod_triangle_density = lod_triangle_density,
         .lod_bias = lod_bias,
-        .meshlet_bucket_offsets = bucket_offsets,
     };
-    rcs.uniforms = uniforms_ptr;
 
     if (info.occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
       ren_assert(info.hi_z);
@@ -249,24 +249,22 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                                     ComputePass &cmd) {
       cmd.bind_compute_pipeline(rcs.pipeline);
       cmd.bind_descriptor_sets({rg.get_texture_set()});
-      ren_assert(rcs.uniforms);
       ren_assert(rcs.instance_cull_data);
-      cmd.set_push_constants(glsl::InstanceCullingAndLODPassArgs{
-          .ub = rcs.uniforms,
-          .meshes = rg.get_buffer_device_ptr(rcs.meshes),
-          .transform_matrices =
-              rg.get_buffer_device_ptr(rcs.transform_matrices),
-          .cull_data = rg.get_buffer_device_ptr(rcs.instance_cull_data),
-          .meshlet_bucket_commands =
-              rg.get_buffer_device_ptr(rcs.meshlet_bucket_commands),
-          .meshlet_bucket_sizes =
-              rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes),
-          .meshlet_cull_data = rg.get_buffer_device_ptr(rcs.meshlet_cull_data),
-          .mesh_instance_visibility =
-              rg.try_get_buffer_device_ptr(rcs.mesh_instance_visibility),
-          .hi_z = glsl::SampledTexture2D(
-              rg.try_get_sampled_texture_descriptor(rcs.hi_z)),
-      });
+      glsl::InstanceCullingAndLODArgs args = rcs.args;
+      args.meshes = rg.get_buffer_device_ptr(rcs.meshes);
+      args.transform_matrices =
+          rg.get_buffer_device_ptr(rcs.transform_matrices);
+      args.cull_data = rg.get_buffer_device_ptr(rcs.instance_cull_data);
+      args.meshlet_bucket_commands =
+          rg.get_buffer_device_ptr(rcs.meshlet_bucket_commands);
+      args.meshlet_bucket_sizes =
+          rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes);
+      args.meshlet_cull_data = rg.get_buffer_device_ptr(rcs.meshlet_cull_data);
+      args.mesh_instance_visibility =
+          rg.try_get_buffer_device_ptr(rcs.mesh_instance_visibility);
+      args.hi_z = glsl::SampledTexture2D(
+          rg.try_get_sampled_texture_descriptor(rcs.hi_z));
+      cmd.set_push_constants(args);
       cmd.dispatch_threads(rcs.num_instances,
                            glsl::INSTANCE_CULLING_AND_LOD_THREADS);
     });
@@ -365,7 +363,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
           pass.bind_compute_pipeline(rcs.pipeline);
           pass.bind_descriptor_sets({rg.get_texture_set()});
           for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
-            pass.set_push_constants(glsl::MeshletCullingPassArgs{
+            pass.set_push_constants(glsl::MeshletCullingArgs{
                 .meshes = rg.get_buffer_device_ptr(rcs.meshes),
                 .transform_matrices =
                     rg.get_buffer_device_ptr(rcs.transform_matrices),
@@ -552,7 +550,7 @@ auto get_render_pass_resources(const SceneData &,
 
 void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
                                 const DepthOnlyRenderPassResources &rcs) {
-  render_pass.set_push_constants(glsl::EarlyZPassArgs{
+  render_pass.set_push_constants(glsl::EarlyZArgs{
       .meshes = rg.get_buffer_device_ptr(rcs.meshes),
       .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
       .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
@@ -607,20 +605,15 @@ auto get_render_pass_resources(const SceneData &scene,
 void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
                                 const OpaqueRenderPassResources &rcs) {
   render_pass.bind_descriptor_sets({rg.get_texture_set()});
-  auto [uniforms_host_ptr, uniforms_device_ptr, _] =
-      rg.allocate<glsl::OpaquePassUniforms>();
-  *uniforms_host_ptr = {
+  render_pass.set_push_constants(glsl::OpaqueArgs{
       .meshes = rg.get_buffer_device_ptr(rcs.meshes),
       .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
       .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
       .normal_matrices = rg.get_buffer_device_ptr(rcs.normal_matrices),
-      .proj_view = rcs.proj_view,
-  };
-  render_pass.set_push_constants(glsl::OpaquePassArgs{
-      .ub = uniforms_device_ptr,
       .materials = rg.get_buffer_device_ptr(rcs.materials),
       .directional_lights = rg.get_buffer_device_ptr(rcs.directional_lights),
       .num_directional_lights = rcs.num_directional_lights,
+      .proj_view = rcs.proj_view,
       .eye = rcs.eye,
       .exposure = glsl::Texture2D(rg.get_texture_descriptor(rcs.exposure)),
   });

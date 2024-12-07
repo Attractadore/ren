@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_MESHLET_CULLING_PASS_H
-#define REN_GLSL_MESHLET_CULLING_PASS_H
+#ifndef REN_GLSL_MESHLET_CULLING_H
+#define REN_GLSL_MESHLET_CULLING_H
 
 #include "Common.h"
 #include "Culling.h"
@@ -13,7 +13,7 @@ const uint MESHLET_CULLING_CONE_BIT = 1 << 0;
 const uint MESHLET_CULLING_FRUSTUM_BIT = 1 << 1;
 const uint MESHLET_CULLING_OCCLUSION_BIT = 1 << 2;
 
-struct MeshletCullingPassArgs {
+struct MeshletCullingArgs {
   GLSL_PTR(Mesh) meshes;
   GLSL_PTR(mat4x3) transform_matrices;
   /// Pointer to current bucket's cull data.
@@ -36,4 +36,4 @@ struct MeshletCullingPassArgs {
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_MESHLET_CULLING_PASS_H
+#endif // REN_GLSL_MESHLET_CULLING_H

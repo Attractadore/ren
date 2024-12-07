@@ -2,7 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
-#include "glsl/HiZSpdPass.h"
+#include "glsl/HiZSpd.h"
 
 #include <bit>
 
@@ -75,7 +75,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
       descriptors[mip] = glsl::StorageTexture2D(
           rg.get_storage_texture_descriptor(rcs.hi_z, mip));
     }
-    cmd.set_push_constants(glsl::HiZSpdPassArgs{
+    cmd.set_push_constants(glsl::HiZSpdArgs{
         .counter = rg.get_buffer_device_ptr(rcs.counter),
         .dsts = descriptors_ptr,
         .dst_size = size,

@@ -1,8 +1,8 @@
-#include "InstanceCullingAndLODPass.h"
+#include "InstanceCullingAndLOD.h"
 #include "Culling.glsl"
 #include "Math.h"
 
-PUSH_CONSTANTS(InstanceCullingAndLODPassArgs);
+PUSH_CONSTANTS(InstanceCullingAndLODArgs);
 
 bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_bb, NDCBoundingBox ndc_bb, inout int lod) {
   // TODO: support finite far plane.
@@ -37,9 +37,9 @@ bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_
   return false;
 }
 
-int select_lod(InstanceCullingAndLODPassUniforms ub, Mesh mesh, NDCBoundingBox ndc_bb) {
+int select_lod(Mesh mesh, NDCBoundingBox ndc_bb) {
   float area = get_ndc_bb_area(ndc_bb);
-  uint num_triangles = uint(area * ub.lod_triangle_density);
+  uint num_triangles = uint(area * pc.lod_triangle_density);
 
   int l = 0;
   for (; l < mesh.num_lods - 1; ++l) {
@@ -54,16 +54,14 @@ int select_lod(InstanceCullingAndLODPassUniforms ub, Mesh mesh, NDCBoundingBox n
 NUM_THREADS(INSTANCE_CULLING_AND_LOD_THREADS);
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
-  InstanceCullingAndLODPassUniforms ub = DEREF(pc.ub);
+  for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {
+    const bool first_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_FIRST_PHASE;
+    const bool second_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_SECOND_PHASE;
+    const bool third_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_THIRD_PHASE;
 
-  for (uint t = gl_GlobalInvocationID.x; t < ub.num_instances; t += STRIDE) {
-    const bool first_phase = (ub.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_FIRST_PHASE;
-    const bool second_phase = (ub.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_SECOND_PHASE;
-    const bool third_phase = (ub.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_THIRD_PHASE;
-
-    const bool frustum_culling =  bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+    const bool frustum_culling =  bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
     const bool occlusion_culling = second_phase;
-    const bool lod_selection = bool(ub.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+    const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
 
     InstanceCullData cull_data = DEREF(pc.cull_data[t]);
 
@@ -78,7 +76,7 @@ void main() {
       visible = bool(DEREF(pc.mesh_instance_visibility[vis_idx]) & vis_mask);
     }
 
-    mat4 pvm = ub.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
+    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
     ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
     NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
 
@@ -103,9 +101,9 @@ void main() {
     }
 
     if (l < 0) {
-      l = lod_selection ? select_lod(ub, mesh, ndc_bb) : 0;
+      l = lod_selection ? select_lod(mesh, ndc_bb) : 0;
     }
-    l = clamp(l - ub.lod_bias, 0, int(mesh.num_lods - 1));
+    l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
 
     MeshLOD lod = mesh.lods[l];
 
@@ -124,7 +122,7 @@ void main() {
       base_meshlet += bucket_stride;
       num_meshlets &= ~bucket_stride;
 
-      uint bucket_offset = ub.meshlet_bucket_offsets[bucket];
+      uint bucket_offset = DEREF(pc.meshlet_bucket_offsets[bucket]);
       uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1);
       uint bucket_size = offset + 1;
       DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;

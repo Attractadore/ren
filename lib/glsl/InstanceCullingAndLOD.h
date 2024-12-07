@@ -37,26 +37,20 @@ const uint INSTANCE_CULLING_AND_LOD_THIRD_PHASE =
     INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT |
     INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
 
-struct InstanceCullingAndLODPassUniforms {
+struct InstanceCullingAndLODArgs {
+  GLSL_PTR(Mesh) meshes;
+  GLSL_PTR(mat4x3) transform_matrices;
+  GLSL_PTR(InstanceCullData) cull_data;
+  GLSL_PTR(DispatchIndirectCommand) meshlet_bucket_commands;
+  GLSL_PTR(uint) meshlet_bucket_offsets;
+  GLSL_PTR(uint) meshlet_bucket_sizes;
+  GLSL_PTR(MeshletCullData) meshlet_cull_data;
+  GLSL_PTR(GLSL_MESH_INSTANCE_VISIBILITY_MASK) mesh_instance_visibility;
   uint feature_mask;
   uint num_instances;
   mat4 proj_view;
   float lod_triangle_density;
   int lod_bias;
-  GLSL_ARRAY(uint, meshlet_bucket_offsets, NUM_MESHLET_CULLING_BUCKETS);
-};
-
-GLSL_DEFINE_PTR_TYPE(InstanceCullingAndLODPassUniforms, 4);
-
-struct InstanceCullingAndLODPassArgs {
-  GLSL_PTR(InstanceCullingAndLODPassUniforms) ub;
-  GLSL_PTR(Mesh) meshes;
-  GLSL_PTR(mat4x3) transform_matrices;
-  GLSL_PTR(InstanceCullData) cull_data;
-  GLSL_PTR(DispatchIndirectCommand) meshlet_bucket_commands;
-  GLSL_PTR(uint) meshlet_bucket_sizes;
-  GLSL_PTR(MeshletCullData) meshlet_cull_data;
-  GLSL_PTR(GLSL_MESH_INSTANCE_VISIBILITY_MASK) mesh_instance_visibility;
   SampledTexture2D hi_z;
 };
 

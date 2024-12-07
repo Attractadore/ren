@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_HI_Z_SPD_PASS_H
-#define REN_GLSL_HI_Z_SPD_PASS_H
+#ifndef REN_GLSL_HI_Z_SPD_H
+#define REN_GLSL_HI_Z_SPD_H
 
 #include "Common.h"
 #include "DevicePtr.h"
@@ -25,7 +25,7 @@ static_assert((1 << (HI_Z_SPD_NUM_TILE_MIPS - 1)) == HI_Z_SPD_TILE_SIZE);
 
 const uint HI_Z_SPD_MAX_SIZE = HI_Z_SPD_TILE_SIZE * HI_Z_SPD_TILE_SIZE;
 
-struct HiZSpdPassArgs {
+struct HiZSpdArgs {
   /// SPD counter, initialize to 0.
   GLSL_PTR(uint) counter;
   /// Destination descriptors.
@@ -40,4 +40,4 @@ struct HiZSpdPassArgs {
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_HI_Z_SPD_PASS_H
+#endif // REN_GLSL_HI_Z_SPD_H

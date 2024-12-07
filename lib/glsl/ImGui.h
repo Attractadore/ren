@@ -1,5 +1,5 @@
-#ifndef REN_GLSL_IMGUI_PASS_H
-#define REN_GLSL_IMGUI_PASS_H
+#ifndef REN_GLSL_IMGUI_H
+#define REN_GLSL_IMGUI_H
 
 #include "Common.h"
 #include "DevicePtr.h"
@@ -15,7 +15,7 @@ struct ImGuiVertex {
 
 GLSL_DEFINE_PTR_TYPE(ImGuiVertex, 4);
 
-struct ImGuiPassArgs {
+struct ImGuiArgs {
   GLSL_PTR(ImGuiVertex) vertices;
   vec2 scale;
   vec2 translate;
@@ -24,4 +24,4 @@ struct ImGuiPassArgs {
 
 GLSL_NAMESPACE_END
 
-#endif // REN_GLSL_IMGUI_PASS_H
+#endif // REN_GLSL_IMGUI_H
