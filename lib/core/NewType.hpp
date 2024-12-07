@@ -1,6 +1,6 @@
 #pragma once
-#include "Support/Hash.hpp"
-#include "Support/StdDef.hpp"
+#include "Hash.hpp"
+#include "StdDef.hpp"
 
 #define REN_NEW_TYPE(NewType, BaseType)                                        \
   class NewType {                                                              \

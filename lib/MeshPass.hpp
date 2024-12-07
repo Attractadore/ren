@@ -2,7 +2,7 @@
 #include "Camera.hpp"
 #include "GpuScene.hpp"
 #include "RenderGraph.hpp"
-#include "Support/NotNull.hpp"
+#include "core/NotNull.hpp"
 #include "glsl/InstanceCullingAndLOD.h"
 #include "passes/Pass.hpp"
 

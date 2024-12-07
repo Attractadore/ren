@@ -21,8 +21,8 @@ template <std::ranges::contiguous_range R>
 Span(R &&r) -> Span<std::remove_reference_t<std::ranges::range_reference_t<R>>>;
 
 template <std::contiguous_iterator Iter>
-Span(Iter first,
-     usize count) -> Span<std::remove_reference_t<std::iter_reference_t<Iter>>>;
+Span(Iter first, usize count)
+    -> Span<std::remove_reference_t<std::iter_reference_t<Iter>>>;
 
 template <typename T> struct TempSpan : Span<T> {
   using Span<T>::Span;

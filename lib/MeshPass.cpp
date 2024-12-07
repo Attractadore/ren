@@ -4,7 +4,7 @@
 #include "Profiler.hpp"
 #include "RenderGraph.hpp"
 #include "Scene.hpp"
-#include "Support/Views.hpp"
+#include "core/Views.hpp"
 #include "glsl/EarlyZ.h"
 #include "glsl/MeshletCulling.h"
 #include "glsl/MeshletSorting.h"

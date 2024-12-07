@@ -1,5 +1,5 @@
 #pragma once
-#include "Support/StdDef.hpp"
+#include "core/StdDef.hpp"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>

@@ -2,11 +2,11 @@
 #include "Attachments.hpp"
 #include "Buffer.hpp"
 #include "Config.hpp"
-#include "Support/Assert.hpp"
-#include "Support/Optional.hpp"
-#include "Support/Span.hpp"
-#include "Support/Vector.hpp"
 #include "Texture.hpp"
+#include "core/Assert.hpp"
+#include "core/Optional.hpp"
+#include "core/Span.hpp"
+#include "core/Vector.hpp"
 #include "glsl/Indirect.h"
 
 #include <glm/glm.hpp>

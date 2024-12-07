@@ -1,8 +1,8 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Renderer.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Views.hpp"
+#include "core/Errors.hpp"
+#include "core/Views.hpp"
 
 #include <ranges>
 

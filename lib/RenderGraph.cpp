@@ -3,9 +3,9 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Profiler.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Views.hpp"
 #include "Swapchain.hpp"
+#include "core/Errors.hpp"
+#include "core/Views.hpp"
 
 #include <fmt/format.h>
 

@@ -1,6 +1,6 @@
 #include "Texture.hpp"
-#include "Support/Errors.hpp"
-#include "Support/Math.hpp"
+#include "core/Errors.hpp"
+#include "core/Math.hpp"
 
 namespace ren {
 

@@ -1,6 +1,6 @@
 #pragma once
-#include "Support/StdDef.hpp"
-#include "Support/Vector.hpp"
+#include "core/StdDef.hpp"
+#include "core/Vector.hpp"
 
 namespace ren {
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "Support/GenIndex.hpp"
-#include "Support/StdDef.hpp"
+#include "core/GenIndex.hpp"
+#include "core/StdDef.hpp"
 #include "ren/ren.hpp"
 
 #include <glm/glm.hpp>

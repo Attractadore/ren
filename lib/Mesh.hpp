@@ -1,10 +1,10 @@
 #pragma once
 #include "DrawSet.hpp"
 #include "Material.hpp"
-#include "Support/Flags.hpp"
-#include "Support/GenIndex.hpp"
-#include "Support/StdDef.hpp"
-#include "Support/Vector.hpp"
+#include "core/Flags.hpp"
+#include "core/GenIndex.hpp"
+#include "core/StdDef.hpp"
+#include "core/Vector.hpp"
 #include "glsl/Mesh.h"
 
 #include <array>

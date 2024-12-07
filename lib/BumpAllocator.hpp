@@ -1,7 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
 #include "ResourceArena.hpp"
-#include "Support/Math.hpp"
+#include "core/Math.hpp"
 #include "glsl/DevicePtr.h"
 
 namespace ren {

@@ -1,7 +1,7 @@
 #include "PipelineLoading.hpp"
 #include "Mesh.hpp"
 #include "ResourceArena.hpp"
-#include "Support/Errors.hpp"
+#include "core/Errors.hpp"
 #include "glsl/Texture.h"
 
 #include "CalculateNormalMatricesCS.h"
