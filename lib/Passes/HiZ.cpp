@@ -59,7 +59,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
                                        ccfg.samplers->hi_z_gen);
 
   std::tie(*cfg.hi_z, rcs.hi_z) =
-      pass.write_texture("hi-z", ccfg.rcs->hi_z, CS_WRITE_TEXTURE);
+      pass.write_texture("hi-z", ccfg.rcs->hi_z, CS_UAV_TEXTURE);
 
   std::tie(counter, rcs.counter) =
       pass.write_buffer("hi-z-spd-counter", counter, CS_READ_WRITE_BUFFER);
@@ -70,9 +70,9 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
     cmd.bind_compute_pipeline(rcs.pipeline);
     cmd.bind_descriptor_sets({rg.get_texture_set()});
     auto [descriptors, descriptors_ptr, _] =
-        rg.allocate<glsl::RWStorageTexture2D>(num_mips);
+        rg.allocate<glsl::StorageTexture2D>(num_mips);
     for (i32 mip = 0; mip < num_mips; ++mip) {
-      descriptors[mip] = glsl::RWStorageTexture2D(
+      descriptors[mip] = glsl::StorageTexture2D(
           rg.get_storage_texture_descriptor(rcs.hi_z, mip));
     }
     cmd.set_push_constants(glsl::HiZSpdPassArgs{

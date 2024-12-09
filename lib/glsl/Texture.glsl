@@ -13,9 +13,8 @@ layout(binding = TEXTURES_SLOT) uniform texture2D g_textures_2d[NUM_TEXTURES];
 
 layout(binding = SAMPLED_TEXTURES_SLOT) uniform sampler2D g_sampled_textures_2d[NUM_SAMPLED_TEXTURES];
 
-layout(binding = STORAGE_TEXTURES_SLOT) restrict readonly uniform image2D g_storage_textures_2d[NUM_STORAGE_TEXTURES];
-layout(binding = STORAGE_TEXTURES_SLOT) restrict uniform image2D g_rw_storage_textures_2d[NUM_STORAGE_TEXTURES];
-layout(binding = STORAGE_TEXTURES_SLOT) coherent restrict uniform image2D g_coherent_rw_storage_textures_2d[NUM_STORAGE_TEXTURES];
+layout(binding = STORAGE_TEXTURES_SLOT) restrict uniform image2D g_storage_textures_2d[NUM_STORAGE_TEXTURES];
+layout(binding = STORAGE_TEXTURES_SLOT) coherent restrict uniform image2D g_coherent_storage_textures_2d[NUM_STORAGE_TEXTURES];
 // clang-format on
 
 #define MAKE_SAMPLER_2D(s, t) sampler2D(g_textures_2d[t.id], g_samplers[s.id])
@@ -54,14 +53,13 @@ ivec2 texture_size(SampledTexture2D t) {
   return textureSize(g_sampled_textures_2d[t.id], 0);
 }
 
-#define DEFINE_R_STORAGE_TEXTURE_2D_IMPL(ImageType, images)                    \
+#define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images)                    \
   ivec2 image_size(ImageType img) { return imageSize(images[img.id]); }        \
                                                                                \
   vec4 image_load(ImageType img, ivec2 pos) {                                  \
     return imageLoad(images[img.id], pos);                                     \
-  }
-
-#define DEFINE_W_STORAGE_TEXTURE_2D_IMPL(ImageType, images)                    \
+  } \
+  \
   void image_store(ImageType img, ivec2 pos, float data) {                     \
     imageStore(images[img.id], pos, vec4(data));                               \
   }                                                                            \
@@ -70,21 +68,13 @@ ivec2 texture_size(SampledTexture2D t) {
     imageStore(images[img.id], pos, data);                                     \
   }
 
-DEFINE_R_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d)
+DEFINE_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d)
+DEFINE_STORAGE_TEXTURE_2D_IMPL(CoherentStorageTexture2D, g_coherent_storage_textures_2d);
 
-DEFINE_R_STORAGE_TEXTURE_2D_IMPL(RWStorageTexture2D, g_rw_storage_textures_2d)
-DEFINE_W_STORAGE_TEXTURE_2D_IMPL(RWStorageTexture2D, g_rw_storage_textures_2d)
+#undef DEFINE_STORAGE_TEXTURE_2D_IMPL
 
-DEFINE_R_STORAGE_TEXTURE_2D_IMPL(CoherentRWStorageTexture2D,
-                                 g_coherent_rw_storage_textures_2d);
-DEFINE_W_STORAGE_TEXTURE_2D_IMPL(CoherentRWStorageTexture2D,
-                                 g_coherent_rw_storage_textures_2d);
-
-#undef DEFINE_R_STORAGE_TEXTURE_2D_IMPL
-#undef DEFINE_W_STORAGE_TEXTURE_2D_IMPL
-
-CoherentRWStorageTexture2D make_coherent(RWStorageTexture2D img) {
-  return CoherentRWStorageTexture2D(img.id);
+CoherentStorageTexture2D make_coherent(StorageTexture2D img) {
+  return CoherentStorageTexture2D(img.id);
 }
 
 #endif // REN_GLSL_TEXTURE_GLSL

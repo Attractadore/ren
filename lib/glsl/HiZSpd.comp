@@ -12,7 +12,7 @@ const uint NUM_TILE_MIPS = HI_Z_SPD_NUM_TILE_MIPS;
 shared float tile[TILE_SIZE][TILE_SIZE + 1];
 shared bool quit;
 
-void load_tile_from_src(RWStorageTexture2D dst, uvec2 tile_pos) {
+void load_tile_from_src(StorageTexture2D dst, uvec2 tile_pos) {
   vec2 dst_pixel_size = 1.0f / pc.dst_size;
   uvec2 base_pos = tile_pos * uvec2(TILE_SIZE);
   for (uint x = gl_LocalInvocationID.x; x < TILE_SIZE; x += GROUP_SIZE.x) {
@@ -27,7 +27,7 @@ void load_tile_from_src(RWStorageTexture2D dst, uvec2 tile_pos) {
   barrier();
 }
 
-void load_tile_from_dst(CoherentRWStorageTexture2D dst) {
+void load_tile_from_dst(CoherentStorageTexture2D dst) {
   uvec2 size = pc.dst_size >> (NUM_TILE_MIPS - 1);
   for (uint x = gl_LocalInvocationID.x; x < TILE_SIZE; x += GROUP_SIZE.x) {
     for (uint y = gl_LocalInvocationID.y; y < TILE_SIZE; y += GROUP_SIZE.y) {
@@ -42,7 +42,7 @@ void load_tile_from_dst(CoherentRWStorageTexture2D dst) {
   barrier();
 }
 
-void reduce_tile(RWStorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
+void reduce_tile(StorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
   uvec2 tile_size = uvec2(TILE_SIZE >> tile_mip);
   uvec2 size = max(tile_size, GROUP_SIZE);
   uvec2 base_pos = tile_pos * tile_size;

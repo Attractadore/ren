@@ -29,7 +29,7 @@ struct HiZSpdPassArgs {
   /// SPD counter, initialize to 0.
   GLSL_PTR(uint) counter;
   /// Destination descriptors.
-  GLSL_PTR(RWStorageTexture2D) dsts;
+  GLSL_PTR(StorageTexture2D) dsts;
   /// Each destination side length must be the next smallest power-of-two after
   /// each source side's length.
   uvec2 dst_size;

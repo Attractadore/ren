@@ -51,9 +51,9 @@ public:
   void free_sampled_texture(glsl::SampledTexture texture);
 
   auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::RWStorageTexture;
+      -> glsl::StorageTexture;
 
-  void free_storage_texture(glsl::RWStorageTexture texture);
+  void free_storage_texture(glsl::StorageTexture texture);
 };
 
 class DescriptorAllocatorScope {
@@ -83,7 +83,7 @@ public:
                            Handle<Sampler> sampler) -> glsl::SampledTexture;
 
   auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::RWStorageTexture;
+      -> glsl::StorageTexture;
 
   void reset();
 
@@ -92,7 +92,7 @@ private:
   Vector<glsl::SamplerState> m_samplers;
   Vector<glsl::Texture> m_textures;
   Vector<glsl::SampledTexture> m_sampled_textures;
-  Vector<glsl::RWStorageTexture> m_storage_textures;
+  Vector<glsl::StorageTexture> m_storage_textures;
 };
 
 }; // namespace ren

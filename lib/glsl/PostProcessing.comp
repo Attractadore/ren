@@ -43,20 +43,20 @@ void store_luminance_histogram() {
 
 NUM_THREADS_2D(THREADS_X, THREADS_Y);
 void main() {
-  const ivec2 size = image_size(pc.hdr);
+  const ivec2 size = texture_size(pc.hdr);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);
 
   float exposure;
   bool enable_automatic_exposure = !IS_NULL_PTR(pc.histogram);
   if (enable_automatic_exposure) {
-    exposure = image_load(pc.previous_exposure, ivec2(0)).r;
+    exposure = texel_fetch(pc.previous_exposure, ivec2(0), 0).r;
     init_luminance_histogram();
   }
 
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec4 color = image_load(pc.hdr, ivec2(x, y));
+      vec4 color = texel_fetch(pc.hdr, ivec2(x, y), 0);
       float luminance = get_luminance(color.rgb);
 
       if (enable_automatic_exposure) {

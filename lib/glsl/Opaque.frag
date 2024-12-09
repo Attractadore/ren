@@ -55,7 +55,7 @@ void main() {
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
 
-  float exposure = image_load(pc.exposure, ivec2(0)).r;
+  float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
   result.xyz *= exposure;
 
   f_color = result;
