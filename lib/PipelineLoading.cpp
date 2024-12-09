@@ -4,20 +4,20 @@
 #include "core/Errors.hpp"
 #include "glsl/Texture.h"
 
-#include "CalculateNormalMatricesCS.h"
-#include "EarlyZVS.h"
-#include "ExclusiveScanUint32CS.h"
-#include "HiZSpdCS.h"
-#include "ImGuiFS.h"
-#include "ImGuiVS.h"
-#include "InstanceCullingAndLODCS.h"
-#include "MeshletCullingCS.h"
-#include "MeshletSortingCS.h"
-#include "OpaqueFS.h"
-#include "OpaqueVS.h"
-#include "PostProcessingCS.h"
-#include "PrepareBatchCS.h"
-#include "ReduceLuminanceHistogramCS.h"
+#include "CalculateNormalMatrices.comp.hpp"
+#include "EarlyZ.vert.hpp"
+#include "ExclusiveScanUint32.comp.hpp"
+#include "HiZSpd.comp.hpp"
+#include "ImGui.frag.hpp"
+#include "ImGui.vert.hpp"
+#include "InstanceCullingAndLOD.comp.hpp"
+#include "MeshletCulling.comp.hpp"
+#include "MeshletSorting.comp.hpp"
+#include "Opaque.frag.hpp"
+#include "Opaque.vert.hpp"
+#include "PostProcessing.comp.hpp"
+#include "PrepareBatch.comp.hpp"
+#include "ReduceLuminanceHistogram.comp.hpp"
 #include "glsl/Opaque.h"
 
 #include <spirv_reflect.h>
@@ -127,7 +127,7 @@ auto load_pipelines(ResourceArena &arena,
   };
 
 #define compute_pipeline(shader, name)                                         \
-  load_compute_pipeline(Span(shader, shader##_count).as_bytes(), name)
+  load_compute_pipeline(Span(shader, shader##Size).as_bytes(), name)
 
   return {
       .calculate_normal_matrices = compute_pipeline(
@@ -156,7 +156,7 @@ auto load_pipelines(ResourceArena &arena,
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Handle<GraphicsPipeline> {
-  auto vs = Span(EarlyZVS, EarlyZVS_count).as_bytes();
+  auto vs = Span(EarlyZVS, EarlyZVSSize).as_bytes();
   auto layout = create_pipeline_layout(arena, Handle<DescriptorSetLayout>(),
                                        {vs}, "Early Z pass");
   return arena.create_graphics_pipeline({
@@ -174,8 +174,8 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
 auto load_opaque_pass_pipelines(
     ResourceArena &arena, Handle<DescriptorSetLayout> persistent_set_layout)
     -> std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS> {
-  auto vs = Span(OpaqueVS, OpaqueVS_count).as_bytes();
-  auto fs = Span(OpaqueFS, OpaqueFS_count).as_bytes();
+  auto vs = Span(OpaqueVS, OpaqueVSSize).as_bytes();
+  auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
   auto layout = create_pipeline_layout(arena, persistent_set_layout, {vs, fs},
                                        "Opaque pass");
   std::array color_attachments = {ColorAttachmentInfo{
@@ -217,8 +217,8 @@ auto load_opaque_pass_pipelines(
 auto load_imgui_pipeline(ResourceArena &arena,
                          Handle<DescriptorSetLayout> textures,
                          TinyImageFormat format) -> Handle<GraphicsPipeline> {
-  auto vs = Span(ImGuiVS, ImGuiVS_count).as_bytes();
-  auto fs = Span(ImGuiFS, ImGuiFS_count).as_bytes();
+  auto vs = Span(ImGuiVS, ImGuiVSSize).as_bytes();
+  auto fs = Span(ImGuiFS, ImGuiFSSize).as_bytes();
   Handle<PipelineLayout> layout =
       create_pipeline_layout(arena, textures, {vs, fs}, "ImGui pass");
   std::array color_attachments = {ColorAttachmentInfo{

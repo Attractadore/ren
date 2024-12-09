@@ -21,15 +21,30 @@
     "vulkan-memory-allocator"
   ],
   "features": {
-    "sdl2": {
-      "description": "Enable SDL2 plugin",
+    "examples": {
+      "description": "Build example executables",
       "dependencies": [
+        "assimp",
+        "boost-functional",
+        "boost-random",
+        "cxxopts",
+        "fmt",
+        "glm",
         {
-          "name": "sdl2",
+          "name": "imgui",
           "features": [
-            "vulkan"
+            "sdl2-binding"
           ]
-        }
+        },
+        {
+          "name": "ren",
+          "features": [
+            "imgui",
+            "sdl2"
+          ]
+        },
+        "sdl2",
+        "tinygltf"
       ]
     },
     "imgui": {
@@ -50,30 +65,21 @@
         }
       ]
     },
-    "examples": {
-      "description": "Build example executables",
+    "sdl2": {
+      "description": "Enable SDL2 plugin",
       "dependencies": [
         {
-          "name": "ren",
+          "name": "sdl2",
           "features": [
-            "sdl2",
-            "imgui"
+            "vulkan"
           ]
-        },
-        {
-          "name": "imgui",
-          "features": [
-            "sdl2-binding"
-          ]
-        },
-        "assimp",
-        "boost-functional",
-        "boost-random",
-        "fmt",
-        "glm",
-        "sdl2",
-        "cxxopts",
-        "tinygltf"
+        }
+      ]
+    },
+    "shader-compiler": {
+      "description": "Build shader compiler",
+      "dependencies": [
+        "glslang"
       ]
     },
     "tests": {
