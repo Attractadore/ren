@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
+option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
+option(REN_BUILD_IMGUI_PLUGIN "Enable ImGui plugin for debug UI rendering" OFF)
+option(REN_BUILD_SDL2_PLUGIN "Enable SDL2 plugin for simpler initialization and swapchain creation when using SDL2" OFF)
+option(REN_BUILD_SHADER_COMPILER "Build shader compiler" ON)
+option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
+option(REN_PROFILER "Enable profiler" OFF)
+
 if(REN_BUILD_SDL2_PLUGIN)
   list(APPEND VCPKG_MANIFEST_FEATURES sdl2)
 endif()
@@ -46,9 +53,6 @@ set(REN_MASTER_PROJECT OFF)
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
   set(REN_MASTER_PROJECT ON)
 endif()
-
-option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
-option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)

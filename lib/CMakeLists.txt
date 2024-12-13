@@ -1,8 +1,4 @@
 option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
-option(REN_BUILD_SDL2_PLUGIN "Enable SDL2 plugin for simpler initialization and swapchain creation when using SDL2" OFF)
-option(REN_BUILD_IMGUI_PLUGIN "Enable ImGui plugin for debug UI rendering" OFF)
-option(REN_BUILD_SHADER_COMPILER "Build shader compiler" ON)
-option(REN_PROFILER "Enable profiler" OFF)
 option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
 option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
