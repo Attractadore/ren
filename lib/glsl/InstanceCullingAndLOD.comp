@@ -122,7 +122,7 @@ void main() {
       base_meshlet += bucket_stride;
       num_meshlets &= ~bucket_stride;
 
-      uint bucket_offset = DEREF(pc.meshlet_bucket_offsets[bucket]);
+      uint bucket_offset = DEREF(pc.raw_meshlet_bucket_offsets[bucket]);
       uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1);
       uint bucket_size = offset + 1;
       DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;

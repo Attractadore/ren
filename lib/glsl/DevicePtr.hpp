@@ -11,8 +11,10 @@ public:
   DevicePtr(std::nullptr_t) : DevicePtr() {}
 
   explicit DevicePtr(u64 ptr) {
-    ren_assert_msg(ptr % alignof(T) == 0,
-                   "Device pointer is improperly aligned");
+    if constexpr (not std::is_void_v<T>) {
+      ren_assert_msg(ptr % alignof(T) == 0,
+                     "Device pointer is improperly aligned");
+    }
     m_ptr = ptr;
   }
 
@@ -25,20 +27,34 @@ public:
 
   explicit operator u64() const { return m_ptr; }
 
-  auto operator+=(i64 offset) -> DevicePtr & {
+  operator DevicePtr<void>() const { return DevicePtr<void>(m_ptr); }
+
+  auto operator+=(i64 offset) -> DevicePtr &
+    requires(not std::is_void_v<T>)
+  {
     m_ptr += offset * sizeof(T);
     return *this;
   }
 
-  auto operator+(i64 offset) const -> DevicePtr {
+  auto operator+(i64 offset) const -> DevicePtr
+    requires(not std::is_void_v<T>)
+  {
     DevicePtr copy = *this;
     copy += offset;
     return copy;
   }
 
-  auto operator-=(i64 offset) -> DevicePtr & { return *this += -offset; }
+  auto operator-=(i64 offset) -> DevicePtr &
+    requires(not std::is_void_v<T>)
+  {
+    return *this += -offset;
+  }
 
-  auto operator-(i64 offset) const -> DevicePtr { return (*this) + (-offset); }
+  auto operator-(i64 offset) const -> DevicePtr
+    requires(not std::is_void_v<T>)
+  {
+    return (*this) + (-offset);
+  }
 
 private:
   u64 m_ptr = 0;

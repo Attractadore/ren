@@ -1,6 +1,7 @@
 #pragma once
 #include "Attachments.hpp"
 #include "BumpAllocator.hpp"
+#include "CommandRecorder.hpp"
 #include "Config.hpp"
 #include "DescriptorAllocator.hpp"
 #include "Renderer.hpp"
@@ -11,6 +12,7 @@
 #include "core/GenMap.hpp"
 #include "core/HashMap.hpp"
 #include "core/NewType.hpp"
+#include "core/NotNull.hpp"
 #include "core/String.hpp"
 #include "core/Variant.hpp"
 
@@ -298,6 +300,77 @@ struct RgSemaphore {
   Handle<Semaphore> handle;
 };
 
+namespace detail {
+
+template <typename T> struct RgPushConstantImpl {
+  using type = T;
+};
+
+template <typename T> struct RgPushConstantImpl<DevicePtr<T>> {
+  using type = RgBufferToken<T>;
+};
+
+template <> struct RgPushConstantImpl<DevicePtr<void>> {
+  using type = RgUntypedBufferToken;
+};
+
+template <typename T> struct IsDevicePtrPCImpl : std::false_type {};
+template <typename T>
+struct IsDevicePtrPCImpl<DevicePtr<T>> : std::true_type {};
+template <typename T>
+concept CIsDevicePtrPC = IsDevicePtrPCImpl<T>::value;
+
+template <typename T> struct IsTexturePCImpl : std::false_type {};
+template <typename T>
+concept CIsTexturePC = IsTexturePCImpl<T>::value;
+
+template <typename T> struct IsSampledTexturePCImpl : std::false_type {};
+template <typename T>
+concept CIsSampledTexturePC = IsSampledTexturePCImpl<T>::value;
+
+template <typename T> struct IsStorageTexturePCImpl : std::false_type {};
+template <typename T>
+concept CIsStorageTexturePC = IsStorageTexturePCImpl<T>::value;
+
+#define define_base_texture_pc(Type)                                           \
+  template <> struct RgPushConstantImpl<Type> {                                \
+    using type = RgTextureToken;                                               \
+  }
+
+#define define_texture_pc(Type)                                                \
+  define_base_texture_pc(Type);                                                \
+  template <> struct IsTexturePCImpl<Type> : std::true_type {}
+
+#define define_sampled_texture_pc(Type)                                        \
+  define_base_texture_pc(Type);                                                \
+  template <> struct IsSampledTexturePCImpl<Type> : std::true_type {}
+
+#define define_storage_texture_pc(Type)                                        \
+  define_base_texture_pc(Type);                                                \
+  template <> struct IsStorageTexturePCImpl<Type> : std::true_type {}
+
+define_texture_pc(glsl::Texture2D);
+define_sampled_texture_pc(glsl::SampledTexture2D);
+define_storage_texture_pc(glsl::StorageTexture2D);
+
+#undef define_base_texture_pc
+
+template <CIsStorageTexturePC T, usize N>
+struct RgPushConstantImpl<std::array<T, N>> {
+  using type = RgTextureToken;
+};
+
+template <typename T> struct IsStorageTextureArrayPCImpl : std::false_type {};
+template <CIsStorageTexturePC T, usize N>
+struct IsStorageTextureArrayPCImpl<std::array<T, N>> : std::true_type {};
+template <typename T>
+concept CIsStorageTextureArrayPC = IsStorageTextureArrayPCImpl<T>::value;
+
+}; // namespace detail
+
+template <typename T>
+using RgPushConstant = detail::RgPushConstantImpl<T>::type;
+
 struct RgSemaphoreSignal {
   RgSemaphoreId semaphore;
   VkPipelineStageFlagBits2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
@@ -350,6 +423,7 @@ struct RgRtPass {
 };
 
 struct RgTextureDescriptors {
+  u32 num_mips = 0;
   glsl::Texture sampled;
   glsl::SampledTexture combined;
   glsl::StorageTexture *storage = nullptr;
@@ -578,6 +652,25 @@ public:
     return {RgBufferId<T>(id), RgBufferToken<T>(token)};
   }
 
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
+                                  RgBufferId<T> *new_buffer,
+                                  const BufferState &usage)
+      -> RgBufferToken<T> {
+    ren_assert(new_buffer);
+    RgBufferToken<T> token;
+    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
+    return token;
+  }
+
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> *buffer,
+                                  const BufferState &usage)
+      -> RgBufferToken<T> {
+    ren_assert(buffer);
+    return write_buffer(std::move(name), *buffer, buffer, usage);
+  }
+
   [[nodiscard]] auto read_texture(RgTextureId texture,
                                   const TextureState &usage,
                                   u32 temporal_layer = 0) -> RgTextureToken;
@@ -590,6 +683,14 @@ public:
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
                                    const TextureState &usage)
       -> std::tuple<RgTextureId, RgTextureToken>;
+
+  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
+                                   NotNull<RgTextureId *> new_texture,
+                                   const TextureState &usage) -> RgTextureToken;
+
+  [[nodiscard]] auto write_texture(RgDebugName name,
+                                   NotNull<RgTextureId *> texture,
+                                   const TextureState &usage) -> RgTextureToken;
 
   [[nodiscard]] auto
   write_color_attachment(RgDebugName name, RgTextureId texture,
@@ -716,6 +817,9 @@ public:
 
   auto get_texture_descriptor(RgTextureToken texture) const -> glsl::Texture;
 
+  auto try_get_texture_descriptor(RgTextureToken texture) const
+      -> glsl::Texture;
+
   auto get_sampled_texture_descriptor(RgTextureToken texture) const
       -> glsl::SampledTexture;
 
@@ -723,6 +827,10 @@ public:
       -> glsl::SampledTexture;
 
   auto get_storage_texture_descriptor(RgTextureToken texture, u32 mip = 0) const
+      -> glsl::StorageTexture;
+
+  auto try_get_storage_texture_descriptor(RgTextureToken texture,
+                                          u32 mip = 0) const
       -> glsl::StorageTexture;
 
   auto get_texture_set() const -> VkDescriptorSet;
@@ -735,6 +843,54 @@ public:
   }
 
   auto get_semaphore(RgSemaphoreId semaphore) const -> Handle<Semaphore>;
+
+  template <typename T> static auto to_push_constant(const T &data) -> T {
+    return data;
+  }
+
+  template <detail::CIsDevicePtrPC P>
+  auto to_push_constant(RgPushConstant<P> buffer) const -> P {
+    return try_get_buffer_device_ptr(buffer);
+  }
+
+  auto to_push_constant(RgUntypedBufferToken buffer) const -> DevicePtr<void> {
+    return try_get_buffer_device_ptr(buffer);
+  }
+
+  template <detail::CIsTexturePC T>
+  auto to_push_constant(RgTextureToken texture) const -> T {
+    return T(try_get_texture_descriptor(texture));
+  }
+
+  template <detail::CIsSampledTexturePC T>
+  auto to_push_constant(RgTextureToken texture) const -> T {
+    return T(try_get_sampled_texture_descriptor(texture));
+  }
+
+  template <detail::CIsStorageTexturePC T>
+  auto to_push_constant(RgTextureToken texture) const -> T {
+    return T(try_get_storage_texture_descriptor(texture));
+  }
+
+  template <detail::CIsStorageTextureArrayPC A>
+  auto to_push_constant(RgTextureToken texture) const -> A {
+    A pc = {};
+    for (usize i = 0; i < pc.size(); ++i) {
+      pc[i] = typename A::value_type(
+          try_get_storage_texture_descriptor(texture, i));
+    }
+    return pc;
+  }
+
+  template <typename PassArgs>
+  void set_push_constants(RenderPass &render_pass, const PassArgs &args) const {
+    render_pass.set_push_constants(to_push_constants(*this, args));
+  }
+
+  template <typename PassArgs>
+  void set_push_constants(ComputePass &cmd, const PassArgs &args) const {
+    cmd.set_push_constants(to_push_constants(*this, args));
+  }
 
 private:
   friend RenderGraph;

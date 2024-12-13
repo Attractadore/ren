@@ -18,13 +18,10 @@ inline uint get_stream_scan_block_sum_count(uint count) {
   return num_groups + 1;
 }
 
-#ifdef __cplusplus
-template <typename scan_t>
-#endif
 struct StreamScanArgs {
-  GLSL_PTR(scan_t) src;
-  GLSL_PTR(scan_t) block_sums;
-  GLSL_PTR(scan_t) dst;
+  GLSL_PTR(void) src;
+  GLSL_PTR(void) block_sums;
+  GLSL_PTR(void) dst;
   GLSL_PTR(uint) num_started;
   GLSL_PTR(uint) num_finished;
   uint count;

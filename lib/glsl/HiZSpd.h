@@ -1,6 +1,7 @@
 #ifndef REN_GLSL_HI_Z_SPD_H
 #define REN_GLSL_HI_Z_SPD_H
 
+#include "Array.h"
 #include "Common.h"
 #include "DevicePtr.h"
 #include "Texture.h"
@@ -24,12 +25,14 @@ const uint HI_Z_SPD_NUM_TILE_MIPS = 7;
 static_assert((1 << (HI_Z_SPD_NUM_TILE_MIPS - 1)) == HI_Z_SPD_TILE_SIZE);
 
 const uint HI_Z_SPD_MAX_SIZE = HI_Z_SPD_TILE_SIZE * HI_Z_SPD_TILE_SIZE;
+const uint HI_Z_SPD_MAX_NUM_MIPS = 2 * HI_Z_SPD_NUM_TILE_MIPS - 1;
+static_assert((1 << (HI_Z_SPD_MAX_NUM_MIPS - 1)) == HI_Z_SPD_MAX_SIZE);
 
 struct HiZSpdArgs {
   /// SPD counter, initialize to 0.
   GLSL_PTR(uint) counter;
   /// Destination descriptors.
-  GLSL_PTR(StorageTexture2D) dsts;
+  GLSL_ARRAY(StorageTexture2D, dsts, HI_Z_SPD_MAX_NUM_MIPS);
   /// Each destination side length must be the next smallest power-of-two after
   /// each source side's length.
   uvec2 dst_size;

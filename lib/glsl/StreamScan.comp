@@ -17,6 +17,10 @@ NUM_THREADS(BLOCK_SIZE);
 void main() {
   uint lid = gl_LocalInvocationIndex;
 
+  restrict readonly GLSL_PTR(scan_t) src = GLSL_PTR(scan_t)(pc.src);
+  restrict coherent GLSL_PTR(scan_t) block_sums = GLSL_PTR(scan_t)(pc.block_sums);
+  restrict writeonly GLSL_PTR(scan_t) dst = GLSL_PTR(scan_t)(pc.dst);
+
   if (lid == 0) {
     bid = atomicAdd(DEREF(pc.num_started), 1);
   }
@@ -27,7 +31,7 @@ void main() {
     uint gidx = bid * BLOCK_ELEMS + lid * ELEMS + i;
     scan_t v;
 #if SCAN_TYPE == SCAN_TYPE_EXSCLUSIVE
-    v = gidx > 0 && gidx < pc.count ? DEREF(pc.src[gidx - 1]) : scan_t(0);
+    v = gidx > 0 && gidx < pc.count ? DEREF(src[gidx - 1]) : scan_t(0);
 #elif SCAN_TYPE == SCAN_TYPE_INCLUSIVE
     v = gidx < n ? DEREF(src[gidx]) : scan_t(0);
 #else
@@ -57,12 +61,12 @@ void main() {
   if (lid == 0) {
     while (atomicAdd(DEREF(pc.num_finished), 0) != bid) {}
     scan_t block_sum = scan_shm[BLOCK_SIZE - 1];
-    block_exc_sum = bid > 0 ? DEREF(pc.block_sums[bid]) : scan_t(0);
-    DEREF(pc.block_sums[bid + 1]) = block_exc_sum + block_sum;
+    block_exc_sum = bid > 0 ? DEREF(block_sums[bid]) : scan_t(0);
+    DEREF(block_sums[bid + 1]) = block_exc_sum + block_sum;
+    memoryBarrierBuffer();
     atomicAdd(DEREF(pc.num_finished), 1);
   }
   barrier();
-
 
   scan_t s = block_exc_sum + (lid > 0 ? scan_shm[lid - 1] : scan_t(0));
   for (uint i = 0; i < ELEMS; ++i) {
@@ -70,7 +74,7 @@ void main() {
 
     uint gidx = bid * BLOCK_ELEMS + lid * ELEMS + i;
     if (gidx < pc.count) {
-      DEREF(pc.dst[gidx]) = s;
+      DEREF(dst[gidx]) = s;
     }
   }
 }

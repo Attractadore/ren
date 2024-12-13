@@ -69,15 +69,15 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
                                                   ComputePass &cmd) {
     cmd.bind_compute_pipeline(rcs.pipeline);
     cmd.bind_descriptor_sets({rg.get_texture_set()});
-    auto [descriptors, descriptors_ptr, _] =
-        rg.allocate<glsl::StorageTexture2D>(num_mips);
+    std::array<glsl::StorageTexture2D, glsl::HI_Z_SPD_MAX_NUM_MIPS>
+        descriptors = {};
     for (i32 mip = 0; mip < num_mips; ++mip) {
       descriptors[mip] = glsl::StorageTexture2D(
           rg.get_storage_texture_descriptor(rcs.hi_z, mip));
     }
     cmd.set_push_constants(glsl::HiZSpdArgs{
         .counter = rg.get_buffer_device_ptr(rcs.counter),
-        .dsts = descriptors_ptr,
+        .dsts = descriptors,
         .dst_size = size,
         .num_dst_mips = num_mips,
         .src = glsl::SampledTexture2D(

@@ -42,7 +42,8 @@ struct InstanceCullingAndLODArgs {
   GLSL_PTR(mat4x3) transform_matrices;
   GLSL_PTR(InstanceCullData) cull_data;
   GLSL_PTR(DispatchIndirectCommand) meshlet_bucket_commands;
-  GLSL_PTR(uint) meshlet_bucket_offsets;
+  // These can't be push constants because they are indexed dynamically.
+  GLSL_PTR(uint) raw_meshlet_bucket_offsets;
   GLSL_PTR(uint) meshlet_bucket_sizes;
   GLSL_PTR(MeshletCullData) meshlet_cull_data;
   GLSL_PTR(GLSL_MESH_INSTANCE_VISIBILITY_MASK) mesh_instance_visibility;

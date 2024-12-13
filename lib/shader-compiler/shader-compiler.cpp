@@ -2,6 +2,7 @@
 #include "../core/Span.hpp"
 #include "../core/String.hpp"
 #include "../core/Vector.hpp"
+#include "../core/Views.hpp"
 
 #include <cxxopts.hpp>
 #include <filesystem>
@@ -17,6 +18,31 @@ namespace fs = std::filesystem;
 
 namespace ren {
 
+enum class ShaderStage {
+  Unknown,
+  Vertex,
+  Fragment,
+  Compute,
+};
+
+struct CompileOptions {
+  fs::path project_src_dir;
+  fs::path src;
+  fs::path dst_dir;
+  fs::path deps;
+  bool debug = false;
+  String ns = "ren";
+};
+
+struct Member {
+  String type;
+  String name;
+};
+
+} // namespace ren
+
+using namespace ren;
+
 namespace {
 
 void read_file(const fs::path &p, Vector<char> &buffer) {
@@ -24,13 +50,6 @@ void read_file(const fs::path &p, Vector<char> &buffer) {
   std::ifstream f(p, std::ios::binary);
   f.read(buffer.data(), buffer.size());
 }
-
-enum class ShaderStage {
-  Unknown,
-  Vertex,
-  Fragment,
-  Compute,
-};
 
 auto get_file_shader_stage(const fs::path &p) -> ShaderStage {
   using enum ShaderStage;
@@ -60,13 +79,166 @@ auto get_stage_short_name(ShaderStage stage) -> const char * {
   }
 }
 
-struct CompileOptions {
-  fs::path src;
-  fs::path dst_dir;
-  fs::path deps;
-  bool debug = false;
-  String ns = "ren";
-};
+auto gen_rg_args(const CompileOptions &opts,
+                 const spv_reflect::ShaderModule &sm, String &hpp, String &cpp)
+    -> int {
+  hpp.clear();
+  cpp.clear();
+
+  SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
+
+  const SpvReflectBlockVariable *pc =
+      &sm.GetPushConstantBlock(0, &result)->members[0];
+  if (result) {
+    fmt::println(stderr, "Failed to get push constant block: {}", (int)result);
+    return -1;
+  }
+  if (StringView(pc->name) != "pc") {
+    fmt::println(stderr, "Unknown push constants name: {}", pc->name);
+    return -1;
+  }
+
+  const SpvReflectTypeDescription *type = pc->type_description;
+
+  String element_type;
+  String scalar_type;
+
+  Vector<Member> members(type->member_count);
+  for (usize i : range(type->member_count)) {
+    Member &member = members[i];
+    const SpvReflectArrayTraits &array = type->members[i].traits.array;
+    SpvReflectTypeFlags type_flags = type->members[i].type_flags;
+    element_type.clear();
+    if (type->members[i].type_name) {
+      StringView member_type = type->members[i].type_name;
+      constexpr StringView PTR_SUFFIX = "_Ptr";
+      if (member_type.ends_with(PTR_SUFFIX)) {
+        member_type.remove_suffix(PTR_SUFFIX.size());
+        fmt::format_to(
+            std::back_inserter(element_type), "GLSL_PTR({}{})",
+            member_type == "void" ? "" : "::ren::glsl::", member_type);
+      } else {
+        fmt::format_to(std::back_inserter(element_type), "::ren::glsl::{}",
+                       type->members[i].type_name);
+      }
+    } else {
+      scalar_type.clear();
+      const SpvReflectNumericTraits &numeric = type->members[i].traits.numeric;
+      const SpvReflectNumericTraits::Scalar &scalar = numeric.scalar;
+      if (type_flags & SPV_REFLECT_TYPE_FLAG_BOOL) {
+        fmt::println(stderr, "Booleans in push constants are not supported");
+        return -1;
+      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_INT) {
+        fmt::format_to(std::back_inserter(scalar_type), "{}int{}_t",
+                       scalar.signedness ? "" : "u", scalar.width);
+      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_FLOAT) {
+        if (scalar.width == 32) {
+          scalar_type = "float";
+        } else if (scalar.width == 64) {
+          scalar_type = "double";
+        } else {
+          fmt::println(stderr,
+                       "Unknown float type of {}::{}: width: {}, signed: {}",
+                       type->type_name, type->members[i].struct_member_name,
+                       scalar.width, scalar.signedness);
+          return -1;
+        }
+      } else {
+        fmt::println(stderr, "Failed to identify scalar type of {}::{}",
+                     type->type_name, type->members[i].struct_member_name);
+        return -1;
+      }
+
+      if (type_flags & SPV_REFLECT_TYPE_FLAG_MATRIX) {
+        fmt::format_to(std::back_inserter(element_type), "glm::mat<{}, {}, {}>",
+                       numeric.matrix.column_count, numeric.matrix.row_count,
+                       scalar_type);
+      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_VECTOR) {
+        fmt::format_to(std::back_inserter(element_type), "glm::vec<{}, {}>",
+                       numeric.vector.component_count, scalar_type);
+      } else {
+        element_type = scalar_type;
+      }
+    }
+    if (type_flags & SPV_REFLECT_TYPE_FLAG_ARRAY) {
+      if (array.dims_count > 1) {
+        fmt::println(
+            stderr,
+            "Multidimensional arrays are not supported in push constants");
+        return -1;
+      }
+      member.type =
+          fmt::format("std::array<{}, {}>", element_type, array.dims[0]);
+    } else {
+      member.type = element_type;
+    }
+    member.name = type->members[i].struct_member_name;
+  }
+
+  constexpr StringView RAW_PREFIX = "raw_";
+
+  String member_declarations;
+  for (const Member &member : members) {
+    StringView member_name = member.name;
+    if (member_name.starts_with(RAW_PREFIX)) {
+      member_name.remove_prefix(RAW_PREFIX.size());
+      member_declarations +=
+          fmt::format("  {} {};\n", member.type, member_name);
+    } else {
+      member_declarations += fmt::format("  ::ren::RgPushConstant<{}> {};\n",
+                                         member.type, member_name);
+    }
+  }
+
+  String member_conversions;
+  for (const Member &member : members) {
+    if (member.name.starts_with(RAW_PREFIX)) {
+      StringView member_name = member.name;
+      member_name.remove_prefix(RAW_PREFIX.size());
+      member_conversions +=
+          fmt::format("    .{0} = from.{1},\n", member.name, member_name);
+    } else {
+      member_conversions +=
+          fmt::format("    .{0} = rg.to_push_constant<{1}>(from.{0}),\n",
+                      member.name, member.type);
+    }
+  }
+
+  fs::path shader_header = fs::absolute(opts.src).replace_extension(".h");
+  String shader_header_include;
+  if (fs::exists(shader_header)) {
+    shader_header_include = fmt::format(R"(#include "{}")", shader_header);
+  }
+
+  fmt::format_to(std::back_inserter(hpp), R"(
+#ifndef RG_{1}_DEFINED
+#define RG_{1}_DEFINED
+
+#include "{4}/lib/RenderGraph.hpp"
+{5}
+
+#include <cstdint>
+
+namespace {0} {{
+
+struct Rg{1} {{
+{2}}};
+
+inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{1}& from) -> ::ren::glsl::{1} {{
+  return {{
+{3}  }};
+}}
+
+}}
+
+#endif // RG_{1}_DEFINED
+)",
+                 opts.ns, type->type_name, member_declarations,
+                 member_conversions, fs::absolute(opts.project_src_dir),
+                 shader_header_include);
+
+  return 0;
+}
 
 auto glslang_compile(const CompileOptions &opts) -> int {
   ShaderStage stage = get_file_shader_stage(opts.src);
@@ -170,7 +342,14 @@ auto glslang_compile(const CompileOptions &opts) -> int {
 
   std::vector<unsigned int> spirv;
   glslang::GlslangToSpv(*program.getIntermediate(language), spirv, &spv_opts);
-  usize spirv_size = Span(spirv).size_bytes();
+
+  spv_reflect::ShaderModule sm(spirv, SPV_REFLECT_MODULE_FLAG_NO_COPY);
+
+  String rg_hpp, rg_cpp;
+  if (int ret = gen_rg_args(opts, sm, rg_hpp, rg_cpp)) {
+    return ret;
+  }
+
   String var_name =
       fmt::format("{}{}", opts.src.stem(), get_stage_short_name(stage));
 
@@ -186,7 +365,7 @@ auto glslang_compile(const CompileOptions &opts) -> int {
     if (!f) {
       fmt::println("Failed to open {} for writing", spv_dst);
     }
-    f.write((const char *)spirv.data(), spirv_size);
+    f.write((const char *)spirv.data(), Span(spirv).size_bytes());
   }
 
   {
@@ -201,8 +380,10 @@ extern const uint32_t {}[];
 extern const size_t {}Size;
 
 }}
+
+{}
 )",
-                                opts.ns, var_name, var_name);
+                                opts.ns, var_name, var_name, rg_hpp);
     std::ofstream f(hpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
@@ -222,9 +403,11 @@ const uint32_t {}[] = {{
 }};
 const size_t {}Size = sizeof({}) / sizeof(uint32_t);
 }}
+
+{}
 )",
                                 fs::absolute(hpp_dst), opts.ns, var_name, code,
-                                var_name, var_name);
+                                var_name, var_name, rg_cpp);
     std::ofstream f(cpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
@@ -264,10 +447,6 @@ const size_t {}Size = sizeof({}) / sizeof(uint32_t);
 
 } // namespace
 
-} // namespace ren
-
-using namespace ren;
-
 int main(int argc, const char *argv[]) {
   CompileOptions opts;
   cxxopts::Options cmd_opts("shader-compiler", "ren shader compiler tool");
@@ -278,18 +457,20 @@ int main(int argc, const char *argv[]) {
       ("g", "generate debug info")
       ("namespace", "namespace to define variables in", cxxopts::value<String>()->default_value(opts.ns))
       ("depfile", "write dependency file", cxxopts::value<fs::path>())
+      ("project-src-dir", "value of PROJECT_SOURCE_DIR", cxxopts::value<fs::path>())
       ("h,help", "show this message")
   ;
   // clang-format on
   cmd_opts.parse_positional({"file"});
   cmd_opts.positional_help("file");
   cxxopts::ParseResult result = cmd_opts.parse(argc, argv);
-  if (result.count("help") or not result.count("file") or
-      not result.count("output-dir")) {
+  if (result.count("help") or !result.count("file") or
+      !result.count("output-dir") or !result.count("project-src-dir")) {
     fmt::println("{}", cmd_opts.help());
-    return 0;
+    return -1;
   }
 
+  opts.project_src_dir = result["project-src-dir"].as<fs::path>();
   opts.src = result["file"].as<fs::path>();
   opts.dst_dir = result["output-dir"].as<fs::path>();
   if (result.count("depfile")) {

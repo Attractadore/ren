@@ -25,14 +25,13 @@ function(add_shader shader_glsl)
   add_custom_command(
     OUTPUT ${shader_spv} ${shader_hpp} ${shader_cpp}
     DEPENDS ${shader_glsl} $<TARGET_FILE:ren::shader-compiler>
-    COMMAND $<TARGET_FILE:ren::shader-compiler> ${SHADER_FLAGS} -o ${CMAKE_CURRENT_BINARY_DIR} --depfile ${shader_dep} ${shader_glsl} 
+    COMMAND $<TARGET_FILE:ren::shader-compiler> ${SHADER_FLAGS} -o ${CMAKE_CURRENT_BINARY_DIR} --depfile ${shader_dep} --project-src-dir "${PROJECT_SOURCE_DIR}" ${shader_glsl}
     DEPFILE ${shader_dep}
     COMMAND_EXPAND_LISTS VERBATIM)
-  add_custom_target(${shader_target}-gen DEPENDS ${shader_hpp} ${shader_cpp})
+  add_custom_target(${shader_target} DEPENDS ${shader_hpp} ${shader_cpp})
 
-  add_library(${shader_target} STATIC ${shader_hpp} ${shader_cpp})
-  target_include_directories(${shader_target} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-  target_link_libraries(ren PRIVATE ${shader_target})
+  target_sources(ren PRIVATE ${shader_hpp} ${shader_cpp})
+  target_include_directories(ren PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 endfunction()
 
 add_shader(CalculateNormalMatrices.comp)

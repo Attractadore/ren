@@ -823,9 +823,10 @@ void RgBuilder::init_runtime_textures() {
     } else if (use.state.access_mask & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
       view.num_mip_levels = 1;
+      descriptors.num_mips = physical_texture.num_mip_levels;
       descriptors.storage =
           &rt_storage_texture_descriptors[num_storage_texture_descriptors];
-      for (i32 mip = 0; mip < physical_texture.num_mip_levels; ++mip) {
+      for (i32 mip = 0; mip < descriptors.num_mips; ++mip) {
         view.first_mip_level = mip;
         descriptors.storage[mip] =
             m_descriptor_allocator->allocate_storage_texture(*m_renderer, view);
@@ -1260,6 +1261,21 @@ auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
   return m_builder->write_texture(m_pass, std::move(name), texture, usage);
 }
 
+auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
+                                  NotNull<RgTextureId *> new_texture,
+                                  const TextureState &usage) -> RgTextureToken {
+  RgTextureToken token;
+  std::tie(*new_texture, token) =
+      write_texture(std::move(name), texture, usage);
+  return token;
+}
+
+auto RgPassBuilder::write_texture(RgDebugName name,
+                                  NotNull<RgTextureId *> texture,
+                                  const TextureState &usage) -> RgTextureToken {
+  return write_texture(std::move(name), *texture, texture, usage);
+}
+
 void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,
                                          const ColorAttachmentOperations &ops) {
   auto &color_attachments = m_builder->m_data->m_passes[m_pass]
@@ -1507,6 +1523,17 @@ auto RgRuntime::get_texture_descriptor(RgTextureToken texture) const
   return descriptor;
 }
 
+auto RgRuntime::try_get_texture_descriptor(RgTextureToken texture) const
+    -> glsl::Texture {
+  if (!texture) {
+    return {};
+  }
+  glsl::Texture descriptor =
+      m_rg->m_data->m_texture_descriptors[texture].sampled;
+  ren_assert(descriptor);
+  return descriptor;
+}
+
 auto RgRuntime::get_sampled_texture_descriptor(RgTextureToken texture) const
     -> glsl::SampledTexture {
   ren_assert(texture);
@@ -1532,10 +1559,27 @@ auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture,
     -> glsl::StorageTexture {
   ren_assert(texture);
   ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
-  ren_assert(
-      mip < m_rg->m_renderer->get_texture(get_texture(texture)).num_mip_levels);
-  glsl::StorageTexture descriptor =
-      m_rg->m_data->m_texture_descriptors[texture].storage[mip];
+  const RgTextureDescriptors &descriptors =
+      m_rg->m_data->m_texture_descriptors[texture];
+  ren_assert(mip < descriptors.num_mips);
+  glsl::StorageTexture descriptor = descriptors.storage[mip];
+  ren_assert(descriptor);
+  return descriptor;
+}
+
+auto RgRuntime::try_get_storage_texture_descriptor(RgTextureToken texture,
+                                                   u32 mip) const
+    -> glsl::StorageTexture {
+  if (!texture) {
+    return {};
+  }
+  ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
+  const RgTextureDescriptors &descriptors =
+      m_rg->m_data->m_texture_descriptors[texture];
+  if (mip >= descriptors.num_mips) {
+    return {};
+  }
+  glsl::StorageTexture descriptor = descriptors.storage[mip];
   ren_assert(descriptor);
   return descriptor;
 }

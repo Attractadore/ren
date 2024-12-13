@@ -14,4 +14,6 @@
 
 #define DEREF(ref) ((ref).data)
 
+layout(buffer_reference, scalar, buffer_reference_align = 1) buffer GLSL_PTR(void) { uint8_t no_data; };
+
 #endif // REN_GLSL_DEVICE_PTR_GLSL

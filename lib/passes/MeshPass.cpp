@@ -219,11 +219,12 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     float lod_triangle_density = num_viewport_triangles / 4.0f;
     i32 lod_bias = settings.lod_bias;
 
-    auto meshlet_bucket_offsets = ccfg.allocator->allocate<u32>(bucket_offsets.size());
+    auto meshlet_bucket_offsets =
+        ccfg.allocator->allocate<u32>(bucket_offsets.size());
     std::ranges::copy(bucket_offsets, meshlet_bucket_offsets.host_ptr);
 
     rcs.args = {
-        .meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
+        .raw_meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
         .feature_mask = feature_mask,
         .num_instances = num_instances,
         .proj_view = get_projection_view_matrix(info.camera, info.viewport),
@@ -436,7 +437,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     pass.set_compute_callback(
         [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
           pass.bind_compute_pipeline(rcs.pipeline);
-          pass.set_push_constants(glsl::StreamScanArgs<u32>{
+          pass.set_push_constants(glsl::StreamScanArgs{
               .src = rg.get_buffer_device_ptr(rcs.batch_sizes),
               .block_sums = rg.get_buffer_device_ptr(rcs.block_sums),
               .dst = rg.get_buffer_device_ptr(rcs.batch_offsets),

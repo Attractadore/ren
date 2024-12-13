@@ -80,12 +80,12 @@ void reduce_tile(StorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
 
 NUM_THREADS_2D(GROUP_SIZE.x, GROUP_SIZE.y);
 void main() {
-  load_tile_from_src(DEREF(pc.dsts[0]), gl_WorkGroupID.xy);
+  load_tile_from_src(pc.dsts[0], gl_WorkGroupID.xy);
   for (uint mip = 1; mip < NUM_TILE_MIPS; ++mip) {
     if (mip == pc.num_dst_mips) {
       break;
     }
-    reduce_tile(DEREF(pc.dsts[mip]), gl_WorkGroupID.xy, mip);
+    reduce_tile(pc.dsts[mip], gl_WorkGroupID.xy, mip);
   }
 
   // If destination fits in one tile, early out.
@@ -107,13 +107,13 @@ void main() {
     return;
   }
 
-  load_tile_from_dst(make_coherent(DEREF(pc.dsts[NUM_TILE_MIPS - 1])));
+  load_tile_from_dst(make_coherent(pc.dsts[NUM_TILE_MIPS - 1]));
   for (uint tile_mip = 1; tile_mip < NUM_TILE_MIPS; ++tile_mip) {
     uint mip = tile_mip + NUM_TILE_MIPS - 1;
     if (mip == pc.num_dst_mips) {
       break;
     }
-    reduce_tile(DEREF(pc.dsts[mip]), uvec2(0, 0), tile_mip);
+    reduce_tile(pc.dsts[mip], uvec2(0, 0), tile_mip);
   }
 
   if (gl_LocalInvocationIndex == 0) {
