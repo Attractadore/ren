@@ -1,5 +1,7 @@
 #include "StreamScan.h"
 
+#extension GL_KHR_memory_scope_semantics : require
+
 PUSH_CONSTANTS(StreamScanArgs);
 
 const uint BLOCK_SIZE = SCAN_BLOCK_SIZE;
@@ -22,7 +24,7 @@ void main() {
   restrict writeonly GLSL_PTR(scan_t) dst = GLSL_PTR(scan_t)(pc.dst);
 
   if (lid == 0) {
-    bid = atomicAdd(DEREF(pc.num_started), 1);
+    bid = atomicAdd(DEREF(pc.num_started), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
   }
   barrier();
 
@@ -59,12 +61,12 @@ void main() {
   }
 
   if (lid == 0) {
-    while (atomicAdd(DEREF(pc.num_finished), 0) != bid) {}
+    while (atomicLoad(DEREF(pc.num_finished), gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed) != bid) {}
+    memoryBarrier(gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsAcquire);
     scan_t block_sum = scan_shm[BLOCK_SIZE - 1];
     block_exc_sum = bid > 0 ? DEREF(block_sums[bid]) : scan_t(0);
     DEREF(block_sums[bid + 1]) = block_exc_sum + block_sum;
-    memoryBarrierBuffer();
-    atomicAdd(DEREF(pc.num_finished), 1);
+    atomicAdd(DEREF(pc.num_finished), 1, gl_ScopeQueueFamily, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
   }
   barrier();
 

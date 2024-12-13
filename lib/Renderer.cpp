@@ -238,7 +238,6 @@ void Renderer::create_device() {
       .timelineSemaphore = true,
       .bufferDeviceAddress = true,
       .vulkanMemoryModel = true,
-      .vulkanMemoryModelDeviceScope = true,
   };
 
   add_features(vulkan12_features);
