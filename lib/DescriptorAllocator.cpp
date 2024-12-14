@@ -213,10 +213,12 @@ void DescriptorAllocatorScope::reset() {
   for (glsl::SampledTexture texture : m_sampled_textures) {
     m_alloc->free_sampled_texture(texture);
   }
-  m_sampled_textures.clear();
   for (glsl::StorageTexture texture : m_storage_textures) {
     m_alloc->free_storage_texture(texture);
   }
+  m_samplers.clear();
+  m_textures.clear();
+  m_sampled_textures.clear();
   m_storage_textures.clear();
 }
 
