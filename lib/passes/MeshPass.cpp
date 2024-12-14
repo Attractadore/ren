@@ -5,12 +5,16 @@
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
-#include "../glsl/EarlyZ.h"
 #include "../glsl/MeshletCulling.h"
-#include "../glsl/MeshletSorting.h"
-#include "../glsl/Opaque.h"
 #include "../glsl/PrepareBatch.h"
 #include "../glsl/StreamScan.h"
+#include "EarlyZ.vert.hpp"
+#include "ExclusiveScanUint32.comp.hpp"
+#include "InstanceCullingAndLOD.comp.hpp"
+#include "MeshletCulling.comp.hpp"
+#include "MeshletSorting.comp.hpp"
+#include "Opaque.frag.hpp"
+#include "PrepareBatch.comp.hpp"
 
 #include <fmt/format.h>
 
@@ -170,38 +174,11 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     struct {
       Handle<ComputePipeline> pipeline;
-      glsl::InstanceCullingAndLODArgs args;
-      RgBufferToken<glsl::Mesh> meshes;
-      RgBufferToken<glm::mat4x3> transform_matrices;
-      RgBufferToken<glsl::InstanceCullData> instance_cull_data;
-      u32 num_instances;
-      RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
-      RgBufferToken<u32> meshlet_bucket_sizes;
-      RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
-      RgBufferToken<MeshInstanceVisibilityMask> mesh_instance_visibility;
-      RgTextureToken hi_z;
+      uint num_instances;
     } rcs;
 
     rcs.pipeline = ccfg.pipelines->instance_culling_and_lod;
-
-    rcs.meshes = pass.read_buffer(info.rg_gpu_scene->meshes, CS_READ_BUFFER);
-
-    rcs.transform_matrices =
-        pass.read_buffer(info.rg_gpu_scene->transform_matrices, CS_READ_BUFFER);
-
-    rcs.instance_cull_data = pass.read_buffer(rg_ds.cull_data, CS_READ_BUFFER);
     rcs.num_instances = num_instances;
-
-    std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
-        pass.write_buffer("meshlet-bucket-commands", meshlet_bucket_commands,
-                          CS_WRITE_BUFFER);
-
-    std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
-        pass.write_buffer("meshlet-bucket-sizes", meshlet_bucket_sizes,
-                          CS_WRITE_BUFFER);
-
-    std::tie(meshlet_cull_data, rcs.meshlet_cull_data) = pass.write_buffer(
-        "meshlet-cull-data", meshlet_cull_data, CS_WRITE_BUFFER);
 
     const SceneGraphicsSettings &settings = ccfg.scene->settings;
 
@@ -217,58 +194,51 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     float num_viewport_triangles =
         info.viewport.x * info.viewport.y / settings.lod_triangle_pixels;
     float lod_triangle_density = num_viewport_triangles / 4.0f;
-    i32 lod_bias = settings.lod_bias;
 
     auto meshlet_bucket_offsets =
         ccfg.allocator->allocate<u32>(bucket_offsets.size());
     std::ranges::copy(bucket_offsets, meshlet_bucket_offsets.host_ptr);
 
-    rcs.args = {
-        .raw_meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
+    RgInstanceCullingAndLODArgs args = {
+        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes, CS_READ_BUFFER),
+        .transform_matrices = pass.read_buffer(
+            info.rg_gpu_scene->transform_matrices, CS_READ_BUFFER),
+        .cull_data = pass.read_buffer(rg_ds.cull_data, CS_READ_BUFFER),
+        .meshlet_bucket_commands =
+            pass.write_buffer("meshlet-bucket-commands",
+                              &meshlet_bucket_commands, CS_WRITE_BUFFER),
+        .meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
+        .meshlet_bucket_sizes = pass.write_buffer(
+            "meshlet-bucket-sizes", &meshlet_bucket_sizes, CS_WRITE_BUFFER),
+        .meshlet_cull_data = pass.write_buffer(
+            "meshlet-cull-data", &meshlet_cull_data, CS_WRITE_BUFFER),
         .feature_mask = feature_mask,
         .num_instances = num_instances,
         .proj_view = get_projection_view_matrix(info.camera, info.viewport),
         .lod_triangle_density = lod_triangle_density,
-        .lod_bias = lod_bias,
+        .lod_bias = settings.lod_bias,
     };
 
     if (info.occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
       ren_assert(info.hi_z);
-      std::tie(info.rg_gpu_scene->mesh_instance_visibility,
-               rcs.mesh_instance_visibility) =
-          pass.write_buffer("new-mesh-instance-visibility",
-                            info.rg_gpu_scene->mesh_instance_visibility,
-                            CS_READ_WRITE_BUFFER);
-      rcs.hi_z =
+      args.mesh_instance_visibility = pass.write_buffer(
+          "new-mesh-instance-visibility",
+          &info.rg_gpu_scene->mesh_instance_visibility, CS_READ_WRITE_BUFFER);
+      args.hi_z =
           pass.read_texture(info.hi_z, CS_SAMPLE_TEXTURE, ccfg.samplers->hi_z);
     } else if (info.occlusion_culling_mode != OcclusionCullingMode::Disabled) {
-      rcs.mesh_instance_visibility = pass.read_buffer(
+      args.mesh_instance_visibility = pass.read_buffer(
           info.rg_gpu_scene->mesh_instance_visibility, CS_READ_BUFFER);
     }
 
-    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
-                                    ComputePass &cmd) {
-      cmd.bind_compute_pipeline(rcs.pipeline);
-      cmd.bind_descriptor_sets({rg.get_texture_set()});
-      ren_assert(rcs.instance_cull_data);
-      glsl::InstanceCullingAndLODArgs args = rcs.args;
-      args.meshes = rg.get_buffer_device_ptr(rcs.meshes);
-      args.transform_matrices =
-          rg.get_buffer_device_ptr(rcs.transform_matrices);
-      args.cull_data = rg.get_buffer_device_ptr(rcs.instance_cull_data);
-      args.meshlet_bucket_commands =
-          rg.get_buffer_device_ptr(rcs.meshlet_bucket_commands);
-      args.meshlet_bucket_sizes =
-          rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes);
-      args.meshlet_cull_data = rg.get_buffer_device_ptr(rcs.meshlet_cull_data);
-      args.mesh_instance_visibility =
-          rg.try_get_buffer_device_ptr(rcs.mesh_instance_visibility);
-      args.hi_z = glsl::SampledTexture2D(
-          rg.try_get_sampled_texture_descriptor(rcs.hi_z));
-      cmd.set_push_constants(args);
-      cmd.dispatch_threads(rcs.num_instances,
-                           glsl::INSTANCE_CULLING_AND_LOD_THREADS);
-    });
+    pass.set_compute_callback(
+        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &cmd) {
+          cmd.bind_compute_pipeline(rcs.pipeline);
+          cmd.bind_descriptor_sets({rg.get_texture_set()});
+          rg.set_push_constants(cmd, args);
+          cmd.dispatch_threads(rcs.num_instances,
+                               glsl::INSTANCE_CULLING_AND_LOD_THREADS);
+        });
   }
 
   RgBufferId<glsl::MeshletDrawCommand> unsorted_batch_commands =
@@ -288,106 +258,66 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     struct {
       Handle<ComputePipeline> pipeline;
-      RgBufferToken<glsl::Mesh> meshes;
-      RgBufferToken<glm::mat4x3> transform_matrices;
       RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
-      RgBufferToken<glsl::MeshletCullData> meshlet_cull_data;
-      RgBufferToken<u32> meshlet_bucket_sizes;
-      RgBufferToken<u32> batch_sizes;
-      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
-      RgBufferToken<BatchId> command_batch_ids;
-      RgBufferToken<glsl::MeshletDrawCommand> commands;
-      RgBufferToken<u32> num_commands;
-      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
-      RgTextureToken hi_z;
-      DevicePtr<glm::mat4> proj_view;
-      u32 feature_mask;
       std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
-      glm::vec3 eye;
     } rcs;
 
     rcs.pipeline = ccfg.pipelines->meshlet_culling;
-
-    rcs.meshes = pass.read_buffer(info.rg_gpu_scene->meshes, CS_READ_BUFFER);
-
-    rcs.transform_matrices =
-        pass.read_buffer(info.rg_gpu_scene->transform_matrices, CS_READ_BUFFER);
-
     rcs.meshlet_bucket_commands =
         pass.read_buffer(meshlet_bucket_commands, INDIRECT_COMMAND_SRC_BUFFER);
+    rcs.bucket_offsets = bucket_offsets;
 
-    rcs.meshlet_cull_data = pass.read_buffer(meshlet_cull_data, CS_READ_BUFFER);
-
-    rcs.meshlet_bucket_sizes =
-        pass.read_buffer(meshlet_bucket_sizes, CS_READ_BUFFER);
-
-    std::tie(*cfg.batch_sizes, rcs.batch_sizes) =
-        pass.write_buffer("batch-sizes", *cfg.batch_sizes, CS_ATOMIC_BUFFER);
-    std::tie(*cfg.batch_prepare_commands, rcs.batch_prepare_commands) =
-        pass.write_buffer("batch-prepare-commands", *cfg.batch_prepare_commands,
-                          CS_ATOMIC_BUFFER);
-
-    std::tie(unsorted_batch_commands, rcs.commands) = pass.write_buffer(
-        "unsorted-batch-commands", unsorted_batch_commands, CS_WRITE_BUFFER);
-    std::tie(unsorted_batch_command_batch_ids, rcs.command_batch_ids) =
-        pass.write_buffer("unsorted-batch-command-batch-ids",
-                          unsorted_batch_command_batch_ids, CS_WRITE_BUFFER);
-    std::tie(num_commands, rcs.num_commands) = pass.write_buffer(
-        "unsorted-batch-command-count", num_commands, CS_ATOMIC_BUFFER);
-    std::tie(sort_command, rcs.sort_command) =
-        pass.write_buffer("sort-command", sort_command, CS_ATOMIC_BUFFER);
-
-    auto [proj_view, proj_view_ptr, _] = ccfg.allocator->allocate<glm::mat4>(1);
-    *proj_view = get_projection_view_matrix(info.camera, info.viewport);
-    rcs.proj_view = proj_view_ptr;
+    RgMeshletCullingArgs args = {
+        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes, CS_READ_BUFFER),
+        .transform_matrices = pass.read_buffer(
+            info.rg_gpu_scene->transform_matrices, CS_READ_BUFFER),
+        .bucket_cull_data = pass.read_buffer(meshlet_cull_data, CS_READ_BUFFER),
+        .bucket_size = pass.read_buffer(meshlet_bucket_sizes, CS_READ_BUFFER),
+        .batch_sizes = pass.write_buffer("batch-sizes", cfg.batch_sizes.get(),
+                                         CS_ATOMIC_BUFFER),
+        .batch_prepare_commands = pass.write_buffer(
+            "batch-prepare-commands", cfg.batch_prepare_commands.get(),
+            CS_ATOMIC_BUFFER),
+        .commands =
+            pass.write_buffer("unsorted-batch-commands",
+                              &unsorted_batch_commands, CS_WRITE_BUFFER),
+        .command_batch_ids = pass.write_buffer(
+            "unsorted-batch-command-batch-ids",
+            &unsorted_batch_command_batch_ids, CS_WRITE_BUFFER),
+        .num_commands = pass.write_buffer("unsorted-batch-command-count",
+                                          &num_commands, CS_ATOMIC_BUFFER),
+        .sort_command =
+            pass.write_buffer("sort-command", &sort_command, CS_ATOMIC_BUFFER),
+        .proj_view = get_projection_view_matrix(info.camera, info.viewport),
+        .eye = info.camera.position,
+    };
 
     const SceneGraphicsSettings &settings = ccfg.scene->settings;
 
-    rcs.feature_mask = 0;
     if (settings.meshlet_cone_culling) {
-      rcs.feature_mask |= glsl::MESHLET_CULLING_CONE_BIT;
+      args.feature_mask |= glsl::MESHLET_CULLING_CONE_BIT;
     }
     if (settings.meshlet_frustum_culling) {
-      rcs.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
+      args.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
     }
     if (settings.meshlet_occlusion_culling and info.hi_z) {
-      rcs.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
-      rcs.hi_z =
+      args.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
+      args.hi_z =
           pass.read_texture(info.hi_z, CS_SAMPLE_TEXTURE, ccfg.samplers->hi_z);
     }
 
-    rcs.bucket_offsets = bucket_offsets;
-    rcs.eye = info.camera.position;
-
     pass.set_compute_callback(
-        [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
           pass.bind_compute_pipeline(rcs.pipeline);
           pass.bind_descriptor_sets({rg.get_texture_set()});
+          auto pc = to_push_constants(rg, args);
+          DevicePtr<glsl::MeshletCullData> base_cull_data = pc.bucket_cull_data;
+          DevicePtr<u32> base_bucket_size = pc.bucket_size;
           for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
-            pass.set_push_constants(glsl::MeshletCullingArgs{
-                .meshes = rg.get_buffer_device_ptr(rcs.meshes),
-                .transform_matrices =
-                    rg.get_buffer_device_ptr(rcs.transform_matrices),
-                .bucket_cull_data =
-                    rg.get_buffer_device_ptr(rcs.meshlet_cull_data) +
-                    rcs.bucket_offsets[bucket],
-                .bucket_size =
-                    rg.get_buffer_device_ptr(rcs.meshlet_bucket_sizes) + bucket,
-                .batch_sizes = rg.get_buffer_device_ptr(rcs.batch_sizes),
-                .batch_prepare_commands =
-                    rg.get_buffer_device_ptr(rcs.batch_prepare_commands),
-                .commands = rg.get_buffer_device_ptr(rcs.commands),
-                .command_batch_ids =
-                    rg.get_buffer_device_ptr(rcs.command_batch_ids),
-                .num_commands = rg.get_buffer_device_ptr(rcs.num_commands),
-                .sort_command = rg.get_buffer_device_ptr(rcs.sort_command),
-                .proj_view = rcs.proj_view,
-                .feature_mask = rcs.feature_mask,
-                .bucket = bucket,
-                .eye = rcs.eye,
-                .hi_z = glsl::SampledTexture2D(
-                    rg.try_get_sampled_texture_descriptor(rcs.hi_z)),
-            });
+            pc.bucket_cull_data = base_cull_data + rcs.bucket_offsets[bucket];
+            pc.bucket_size = base_bucket_size + bucket;
+            pc.bucket = bucket;
+            pass.set_push_constants(pc);
             pass.dispatch_indirect(
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));
           }
@@ -402,50 +332,30 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   {
     auto pass = rgb.create_pass({"batch-sizes-scan"});
 
-    struct {
-      Handle<ComputePipeline> pipeline;
-      RgBufferToken<u32> batch_sizes;
-      RgBufferToken<u32> block_sums;
-      RgBufferToken<u32> batch_offsets;
-      RgBufferToken<u32> num_started;
-      RgBufferToken<u32> num_finished;
-      u32 num_batches = 0;
-    } rcs;
-
-    rcs.pipeline = ccfg.pipelines->exclusive_scan_uint32;
-
-    rcs.batch_sizes = pass.read_buffer(*cfg.batch_sizes, CS_READ_BUFFER);
-
     RgBufferId<u32> block_sums = rgb.create_buffer<u32>({
         .heap = BufferHeap::Static,
         .count = glsl::get_stream_scan_block_sum_count(num_batches),
     });
 
-    std::tie(std::ignore, rcs.block_sums) =
-        pass.write_buffer("scan-block-sums", block_sums, CS_READ_WRITE_BUFFER);
-
-    std::tie(*cfg.batch_offsets, rcs.batch_offsets) =
-        pass.write_buffer("batch-offsets", *cfg.batch_offsets, CS_WRITE_BUFFER);
-
-    std::tie(std::ignore, rcs.num_started) = pass.write_buffer(
-        "scan-num-started", scan_num_started, CS_ATOMIC_BUFFER);
-    std::tie(std::ignore, rcs.num_finished) = pass.write_buffer(
-        "scan-num-finished", scan_num_finished, CS_ATOMIC_BUFFER);
-
-    rcs.num_batches = num_batches;
+    RgStreamScanArgs args = {
+        .src = pass.read_buffer(*cfg.batch_sizes, CS_READ_BUFFER),
+        .block_sums = pass.write_buffer("scan-block-sums", &block_sums,
+                                        CS_READ_WRITE_BUFFER),
+        .dst = pass.write_buffer("batch-offsets", cfg.batch_offsets.get(),
+                                 CS_WRITE_BUFFER),
+        .num_started = pass.write_buffer("scan-num-started", &scan_num_started,
+                                         CS_ATOMIC_BUFFER),
+        .num_finished = pass.write_buffer("scan-num-finished",
+                                          &scan_num_finished, CS_ATOMIC_BUFFER),
+        .count = num_batches,
+    };
 
     pass.set_compute_callback(
-        [rcs](Renderer &, const RgRuntime &rg, ComputePass &pass) {
-          pass.bind_compute_pipeline(rcs.pipeline);
-          pass.set_push_constants(glsl::StreamScanArgs{
-              .src = rg.get_buffer_device_ptr(rcs.batch_sizes),
-              .block_sums = rg.get_buffer_device_ptr(rcs.block_sums),
-              .dst = rg.get_buffer_device_ptr(rcs.batch_offsets),
-              .num_started = rg.get_buffer_device_ptr(rcs.num_started),
-              .num_finished = rg.get_buffer_device_ptr(rcs.num_finished),
-              .count = rcs.num_batches,
-          });
-          pass.dispatch_threads(rcs.num_batches, glsl::SCAN_BLOCK_ELEMS);
+        [pipeline = ccfg.pipelines->exclusive_scan_uint32,
+         args](Renderer &, const RgRuntime &rg, ComputePass &cmd) {
+          cmd.bind_compute_pipeline(pipeline);
+          rg.set_push_constants(cmd, args);
+          cmd.dispatch_threads(args.count, glsl::SCAN_BLOCK_ELEMS);
         });
   }
 
@@ -482,142 +392,69 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     struct {
       Handle<ComputePipeline> pipeline;
-      RgBufferToken<u32> num_commands;
       RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
-      RgBufferToken<u32> batch_out_offsets;
-      RgBufferToken<glsl::MeshletDrawCommand> unsorted_commands;
-      RgBufferToken<BatchId> unsorted_command_batch_ids;
-      RgBufferToken<glsl::MeshletDrawCommand> commands;
     } rcs;
 
     rcs.pipeline = ccfg.pipelines->meshlet_sorting;
-    rcs.num_commands = pass.read_buffer(num_commands, CS_READ_BUFFER);
     rcs.sort_command =
         pass.read_buffer(sort_command, INDIRECT_COMMAND_SRC_BUFFER);
-    std::tie(std::ignore, rcs.batch_out_offsets) = pass.write_buffer(
-        "batch-out-offsets", batch_out_offsets, CS_ATOMIC_BUFFER);
-    rcs.unsorted_commands =
-        pass.read_buffer(unsorted_batch_commands, CS_READ_BUFFER);
-    rcs.unsorted_command_batch_ids =
-        pass.read_buffer(unsorted_batch_command_batch_ids, CS_READ_BUFFER);
-    std::tie(*cfg.batch_commands, rcs.commands) = pass.write_buffer(
-        "batch-commands", *cfg.batch_commands, CS_WRITE_BUFFER);
 
-    pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
-                                    ComputePass &pass) {
-      pass.bind_compute_pipeline(rcs.pipeline);
-      pass.set_push_constants(glsl::MeshletSortingArgs{
-          .num_commands = rg.get_buffer_device_ptr(rcs.num_commands),
-          .batch_out_offsets = rg.get_buffer_device_ptr(rcs.batch_out_offsets),
-          .unsorted_commands = rg.get_buffer_device_ptr(rcs.unsorted_commands),
-          .unsorted_command_batch_ids =
-              rg.get_buffer_device_ptr(rcs.unsorted_command_batch_ids),
-          .commands = rg.get_buffer_device_ptr(rcs.commands),
-      });
-      pass.dispatch_indirect(rg.get_buffer(rcs.sort_command));
-    });
+    RgMeshletSortingArgs args = {
+        .num_commands = pass.read_buffer(num_commands, CS_READ_BUFFER),
+        .batch_out_offsets = pass.write_buffer(
+            "batch-out-offsets", &batch_out_offsets, CS_ATOMIC_BUFFER),
+        .unsorted_commands =
+            pass.read_buffer(unsorted_batch_commands, CS_READ_BUFFER),
+        .unsorted_command_batch_ids =
+            pass.read_buffer(unsorted_batch_command_batch_ids, CS_READ_BUFFER),
+        .commands = pass.write_buffer(
+            "batch-commands", cfg.batch_commands.get(), CS_WRITE_BUFFER),
+    };
+
+    pass.set_compute_callback(
+        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+          pass.bind_compute_pipeline(rcs.pipeline);
+          rg.set_push_constants(pass, args);
+          pass.dispatch_indirect(rg.get_buffer(rcs.sort_command));
+        });
   }
-}
+} // namespace
 
-template <DrawSet S> struct RenderPassResources;
-
-template <> struct RenderPassResources<DrawSet::DepthOnly> {
-  RgBufferToken<glsl::Mesh> meshes;
-  RgBufferToken<glsl::MeshInstance> mesh_instances;
-  RgBufferToken<glm::mat4x3> transform_matrices;
-  glm::mat4 proj_view;
-};
-
-using DepthOnlyRenderPassResources = RenderPassResources<DrawSet::DepthOnly>;
-
-auto get_render_pass_resources(const SceneData &,
-                               const DepthOnlyMeshPassInfo &info,
-                               RgPassBuilder &pass)
-    -> DepthOnlyRenderPassResources {
-  DepthOnlyRenderPassResources rcs;
-
+auto get_render_pass_args(const SceneData &, const DepthOnlyMeshPassInfo &info,
+                          RgPassBuilder &pass) {
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
-
-  rcs.meshes = pass.read_buffer(gpu_scene.meshes, VS_READ_BUFFER);
-  rcs.mesh_instances =
-      pass.read_buffer(gpu_scene.mesh_instances, VS_READ_BUFFER);
-  rcs.transform_matrices =
-      pass.read_buffer(gpu_scene.transform_matrices, VS_READ_BUFFER);
-  rcs.proj_view =
-      get_projection_view_matrix(info.base.camera, info.base.viewport);
-
-  return rcs;
+  return RgEarlyZArgs{
+      .meshes = pass.read_buffer(gpu_scene.meshes, VS_READ_BUFFER),
+      .mesh_instances =
+          pass.read_buffer(gpu_scene.mesh_instances, VS_READ_BUFFER),
+      .transform_matrices =
+          pass.read_buffer(gpu_scene.transform_matrices, VS_READ_BUFFER),
+      .proj_view =
+          get_projection_view_matrix(info.base.camera, info.base.viewport),
+  };
 }
 
-void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
-                                const DepthOnlyRenderPassResources &rcs) {
-  render_pass.set_push_constants(glsl::EarlyZArgs{
-      .meshes = rg.get_buffer_device_ptr(rcs.meshes),
-      .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
-      .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
-      .proj_view = rcs.proj_view,
-  });
-}
-
-template <> struct RenderPassResources<DrawSet::Opaque> {
-  RgBufferToken<glsl::Mesh> meshes;
-  RgBufferToken<glsl::MeshInstance> mesh_instances;
-  RgBufferToken<glm::mat4x3> transform_matrices;
-  RgBufferToken<glm::mat3> normal_matrices;
-  RgBufferToken<glsl::Material> materials;
-  RgBufferToken<glsl::DirectionalLight> directional_lights;
-  RgTextureToken exposure;
-  glm::mat4 proj_view;
-  glm::vec3 eye;
-  u32 num_directional_lights = 0;
-};
-
-using OpaqueRenderPassResources = RenderPassResources<DrawSet::Opaque>;
-
-auto get_render_pass_resources(const SceneData &scene,
-                               const OpaqueMeshPassInfo &info,
-                               RgPassBuilder &pass)
-    -> OpaqueRenderPassResources {
-  OpaqueRenderPassResources rcs;
-
+auto get_render_pass_args(const SceneData &scene,
+                          const OpaqueMeshPassInfo &info, RgPassBuilder &pass) {
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
-
-  rcs.meshes = pass.read_buffer(gpu_scene.meshes, VS_READ_BUFFER);
-  rcs.mesh_instances =
-      pass.read_buffer(gpu_scene.mesh_instances, VS_READ_BUFFER);
-  rcs.transform_matrices =
-      pass.read_buffer(gpu_scene.transform_matrices, VS_READ_BUFFER);
-  rcs.normal_matrices =
-      pass.read_buffer(gpu_scene.normal_matrices, VS_READ_BUFFER);
-  rcs.materials = pass.read_buffer(gpu_scene.materials, FS_READ_BUFFER);
-  rcs.directional_lights =
-      pass.read_buffer(gpu_scene.directional_lights, FS_READ_BUFFER);
-  rcs.exposure = pass.read_texture(info.exposure, FS_SAMPLE_TEXTURE,
-                                   info.exposure_temporal_layer);
-
-  rcs.proj_view =
-      get_projection_view_matrix(info.base.camera, info.base.viewport);
-  rcs.eye = info.base.camera.position;
-  rcs.num_directional_lights = scene.directional_lights.size();
-
-  return rcs;
-};
-
-void bind_render_pass_resources(const RgRuntime &rg, RenderPass &render_pass,
-                                const OpaqueRenderPassResources &rcs) {
-  render_pass.bind_descriptor_sets({rg.get_texture_set()});
-  render_pass.set_push_constants(glsl::OpaqueArgs{
-      .meshes = rg.get_buffer_device_ptr(rcs.meshes),
-      .mesh_instances = rg.get_buffer_device_ptr(rcs.mesh_instances),
-      .transform_matrices = rg.get_buffer_device_ptr(rcs.transform_matrices),
-      .normal_matrices = rg.get_buffer_device_ptr(rcs.normal_matrices),
-      .materials = rg.get_buffer_device_ptr(rcs.materials),
-      .directional_lights = rg.get_buffer_device_ptr(rcs.directional_lights),
-      .num_directional_lights = rcs.num_directional_lights,
-      .proj_view = rcs.proj_view,
-      .eye = rcs.eye,
-      .exposure = glsl::Texture2D(rg.get_texture_descriptor(rcs.exposure)),
-  });
+  return RgOpaqueArgs{
+      .meshes = pass.read_buffer(gpu_scene.meshes, VS_READ_BUFFER),
+      .mesh_instances =
+          pass.read_buffer(gpu_scene.mesh_instances, VS_READ_BUFFER),
+      .transform_matrices =
+          pass.read_buffer(gpu_scene.transform_matrices, VS_READ_BUFFER),
+      .normal_matrices =
+          pass.read_buffer(gpu_scene.normal_matrices, VS_READ_BUFFER),
+      .materials = pass.read_buffer(gpu_scene.materials, FS_READ_BUFFER),
+      .directional_lights =
+          pass.read_buffer(gpu_scene.directional_lights, FS_READ_BUFFER),
+      .num_directional_lights = u32(scene.directional_lights.size()),
+      .proj_view =
+          get_projection_view_matrix(info.base.camera, info.base.viewport),
+      .eye = info.base.camera.position,
+      .exposure = pass.read_texture(info.exposure, FS_SAMPLE_TEXTURE,
+                                    info.exposure_temporal_layer),
+  };
 }
 
 struct RenderPassInfo {
@@ -652,50 +489,40 @@ void record_render_pass(const PassCommonConfig &ccfg,
           .count = glsl::MAX_DRAW_MESHLETS,
       });
 
-  for (BatchId b : range(ds.batches.size())) {
+  for (BatchId batch : range(ds.batches.size())) {
     {
       auto pass = ccfg.rgb->create_pass({fmt::format(
-          "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, b)});
+          "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});
 
-      struct {
-        Handle<ComputePipeline> pipeline;
-        RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
-        RgBufferToken<u32> batch_offsets;
-        RgBufferToken<u32> batch_sizes;
-        RgBufferToken<glsl::MeshletDrawCommand> command_descs;
-        RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
-        BatchId batch;
-      } rcs;
+      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands =
+          pass.read_buffer(cfg.batch_prepare_commands,
+                           INDIRECT_COMMAND_SRC_BUFFER);
 
-      rcs.pipeline = ccfg.pipelines->prepare_batch;
-      rcs.batch_prepare_commands = pass.read_buffer(
-          cfg.batch_prepare_commands, INDIRECT_COMMAND_SRC_BUFFER);
-      rcs.batch_offsets = pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER);
-      rcs.batch_sizes = pass.read_buffer(cfg.batch_sizes, CS_READ_BUFFER);
-      rcs.command_descs = pass.read_buffer(cfg.batch_commands, CS_READ_BUFFER);
-      std::tie(commands, rcs.commands) =
-          pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
-                                        info.base.pass_name, pass_type, b),
-                            commands, CS_WRITE_BUFFER);
-      rcs.batch = b;
+      RgPrepareBatchArgs args = {
+          .batch_offset = pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER),
+          .batch_size = pass.read_buffer(cfg.batch_sizes, CS_READ_BUFFER),
+          .command_descs = pass.read_buffer(cfg.batch_commands, CS_READ_BUFFER),
+          .commands = pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
+                                                    info.base.pass_name,
+                                                    pass_type, batch),
+                                        &commands, CS_WRITE_BUFFER),
+      };
 
-      pass.set_compute_callback([rcs](Renderer &, const RgRuntime &rg,
-                                      ComputePass &pass) {
-        pass.bind_compute_pipeline(rcs.pipeline);
-        pass.set_push_constants(glsl::PrepareBatchArgs{
-            .batch_offset =
-                rg.get_buffer_device_ptr(rcs.batch_offsets) + rcs.batch,
-            .batch_size = rg.get_buffer_device_ptr(rcs.batch_sizes) + rcs.batch,
-            .command_descs = rg.get_buffer_device_ptr(rcs.command_descs),
-            .commands = rg.get_buffer_device_ptr(rcs.commands),
-        });
-        pass.dispatch_indirect(
-            rg.get_buffer(rcs.batch_prepare_commands).slice(rcs.batch, 1));
-      });
+      pass.set_compute_callback(
+          [pipeline = ccfg.pipelines->prepare_batch, batch_prepare_commands,
+           batch, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
+            pass.bind_compute_pipeline(pipeline);
+            auto pc = to_push_constants(rg, args);
+            pc.batch_offset += batch;
+            pc.batch_size += batch;
+            pass.set_push_constants(pc);
+            pass.dispatch_indirect(
+                rg.get_buffer(batch_prepare_commands).slice(batch, 1));
+          });
     }
 
     auto pass = ccfg.rgb->create_pass(
-        {fmt::format("{}{}-batch-{}", info.base.pass_name, pass_type, b)});
+        {fmt::format("{}{}-batch-{}", info.base.pass_name, pass_type, batch)});
 
     for (usize i = 0; i < info.base.color_attachments.size(); ++i) {
       NotNull<RgTextureId *> color_attachment = info.base.color_attachments[i];
@@ -705,7 +532,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
       ColorAttachmentOperations ops = info.base.color_attachment_ops[i];
       if (info.base.occlusion_culling_mode ==
               OcclusionCullingMode::SecondPhase or
-          b > 0) {
+          batch > 0) {
         ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
       }
       std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
@@ -719,7 +546,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
         DepthAttachmentOperations ops = info.base.depth_attachment_ops;
         if (info.base.occlusion_culling_mode ==
                 OcclusionCullingMode::SecondPhase or
-            b > 0) {
+            batch > 0) {
           ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
         std::tie(*info.base.depth_attachment, std::ignore) =
@@ -733,22 +560,25 @@ void record_render_pass(const PassCommonConfig &ccfg,
       BatchDesc batch;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
-      RenderPassResources<S> ext;
     } rcs;
 
-    rcs.batch_id = b;
-    rcs.batch = info.base.gpu_scene->draw_sets[draw_set].batches[b].desc;
+    rcs.batch_id = batch;
+    rcs.batch = info.base.gpu_scene->draw_sets[draw_set].batches[batch].desc;
     rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
     rcs.batch_sizes =
         pass.read_buffer(cfg.batch_sizes, INDIRECT_COMMAND_SRC_BUFFER);
-    rcs.ext = get_render_pass_resources(*ccfg.scene, info, pass);
 
-    pass.set_graphics_callback([rcs](Renderer &, const RgRuntime &rg,
-                                     RenderPass &render_pass) {
+    auto args = get_render_pass_args(*ccfg.scene, info, pass);
+
+    pass.set_graphics_callback([rcs, args](Renderer &, const RgRuntime &rg,
+                                           RenderPass &render_pass) {
       render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
+      if (S == DrawSet::Opaque) {
+        render_pass.bind_descriptor_sets({rg.get_texture_set()});
+      }
       render_pass.bind_index_buffer(rcs.batch.index_buffer,
                                     VK_INDEX_TYPE_UINT8_EXT);
-      bind_render_pass_resources(rg, render_pass, rcs.ext);
+      rg.set_push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(
           BufferView(rg.get_buffer(rcs.commands)),
           BufferView(rg.get_buffer(rcs.batch_sizes).slice(rcs.batch_id, 1)));

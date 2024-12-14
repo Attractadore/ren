@@ -2,7 +2,7 @@
 #include "../CommandRecorder.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"
-#include "../glsl/HiZSpd.h"
+#include "HiZSpd.comp.hpp"
 
 #include <bit>
 
@@ -26,14 +26,13 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
     });
   }
 
-  RgBufferId<glsl::uint> counter;
+  RgBufferId<glsl::uint> counter = ccfg.rgb->create_buffer<glsl::uint>({
+      .heap = BufferHeap::Static,
+      .count = 1,
+  });
+
   {
     auto init_pass = ccfg.rgb->create_pass({.name = "hi-z-init"});
-
-    counter = ccfg.rgb->create_buffer<glsl::uint>(RgBufferCreateInfo{
-        .heap = BufferHeap::Static,
-        .count = 1,
-    });
 
     RgBufferToken<glsl::uint> rcs;
     std::tie(counter, rcs) = init_pass.write_buffer(
@@ -48,41 +47,27 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
 
   struct Resources {
     Handle<ComputePipeline> pipeline;
-    RgTextureToken depth_buffer;
-    RgTextureToken hi_z;
-    RgBufferToken<glsl::uint> counter;
   } rcs;
 
   rcs.pipeline = ccfg.pipelines->hi_z;
 
-  rcs.depth_buffer = pass.read_texture(cfg.depth_buffer, CS_SAMPLE_TEXTURE,
-                                       ccfg.samplers->hi_z_gen);
+  RgHiZSpdArgs args = {
+      .counter =
+          pass.write_buffer("hi-z-spd-counter", &counter, CS_READ_WRITE_BUFFER),
+      .dsts =
+          pass.write_texture("hi-z", ccfg.rcs->hi_z, cfg.hi_z, CS_UAV_TEXTURE),
+      .dst_size = size,
+      .num_dst_mips = num_mips,
+      .src = pass.read_texture(cfg.depth_buffer, CS_SAMPLE_TEXTURE,
+                               ccfg.samplers->hi_z_gen),
+  };
 
-  std::tie(*cfg.hi_z, rcs.hi_z) =
-      pass.write_texture("hi-z", ccfg.rcs->hi_z, CS_UAV_TEXTURE);
-
-  std::tie(counter, rcs.counter) =
-      pass.write_buffer("hi-z-spd-counter", counter, CS_READ_WRITE_BUFFER);
-
-  pass.set_compute_callback([rcs, size, num_mips](Renderer &renderer,
-                                                  const RgRuntime &rg,
-                                                  ComputePass &cmd) {
+  pass.set_compute_callback([rcs, size, args](Renderer &renderer,
+                                              const RgRuntime &rg,
+                                              ComputePass &cmd) {
     cmd.bind_compute_pipeline(rcs.pipeline);
     cmd.bind_descriptor_sets({rg.get_texture_set()});
-    std::array<glsl::StorageTexture2D, glsl::HI_Z_SPD_MAX_NUM_MIPS>
-        descriptors = {};
-    for (i32 mip = 0; mip < num_mips; ++mip) {
-      descriptors[mip] = glsl::StorageTexture2D(
-          rg.get_storage_texture_descriptor(rcs.hi_z, mip));
-    }
-    cmd.set_push_constants(glsl::HiZSpdArgs{
-        .counter = rg.get_buffer_device_ptr(rcs.counter),
-        .dsts = descriptors,
-        .dst_size = size,
-        .num_dst_mips = num_mips,
-        .src = glsl::SampledTexture2D(
-            rg.get_sampled_texture_descriptor(rcs.depth_buffer)),
-    });
+    rg.set_push_constants(cmd, args);
     cmd.dispatch_threads(
         size, {glsl::HI_Z_SPD_THREADS_X * glsl::HI_Z_SPD_THREAD_ELEMS_X,
                glsl::HI_Z_SPD_THREADS_Y * glsl::HI_Z_SPD_THREAD_ELEMS_Y});

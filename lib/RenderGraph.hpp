@@ -685,7 +685,7 @@ public:
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   NotNull<RgTextureId *> new_texture,
+                                   RgTextureId *new_texture,
                                    const TextureState &usage) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgDebugName name,
@@ -884,12 +884,14 @@ public:
 
   template <typename PassArgs>
   void set_push_constants(RenderPass &render_pass, const PassArgs &args) const {
-    render_pass.set_push_constants(to_push_constants(*this, args));
+    auto pc = to_push_constants(*this, args);
+    render_pass.set_push_constants(pc);
   }
 
   template <typename PassArgs>
   void set_push_constants(ComputePass &cmd, const PassArgs &args) const {
-    cmd.set_push_constants(to_push_constants(*this, args));
+    auto pc = to_push_constants(*this, args);
+    cmd.set_push_constants(pc);
   }
 
 private:

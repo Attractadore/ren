@@ -1262,18 +1262,25 @@ auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
 }
 
 auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
-                                  NotNull<RgTextureId *> new_texture,
+                                  RgTextureId *new_texture,
                                   const TextureState &usage) -> RgTextureToken {
   RgTextureToken token;
-  std::tie(*new_texture, token) =
-      write_texture(std::move(name), texture, usage);
+  if (new_texture) {
+    std::tie(*new_texture, token) =
+        write_texture(std::move(name), texture, usage);
+  } else {
+    std::tie(std::ignore, token) =
+        write_texture(std::move(name), texture, usage);
+  }
   return token;
 }
 
 auto RgPassBuilder::write_texture(RgDebugName name,
                                   NotNull<RgTextureId *> texture,
                                   const TextureState &usage) -> RgTextureToken {
-  return write_texture(std::move(name), *texture, texture, usage);
+  RgTextureToken token;
+  std::tie(*texture, token) = write_texture(std::move(name), *texture, usage);
+  return token;
 }
 
 void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,

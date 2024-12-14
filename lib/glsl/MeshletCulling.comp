@@ -29,7 +29,7 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
     return false;
   }
 
-  mat4 pvm = DEREF(pc.proj_view) * mat4(transform_matrix);
+  mat4 pvm = pc.proj_view * mat4(transform_matrix);
   ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, meshlet.bb);
 
   // TODO: support finite far plane.

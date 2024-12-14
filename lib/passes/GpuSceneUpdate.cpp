@@ -4,6 +4,7 @@
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
 #include "../glsl/CalculateNormalMatrices.h"
+#include "CalculateNormalMatrices.comp.hpp"
 
 #include <algorithm>
 #include <fmt/format.h>
@@ -64,36 +65,23 @@ void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
                                           NotNull<RgGpuScene *> gpu_scene) {
 
   RgBuilder &rgb = *ccfg.rgb;
-  NotNull<const SceneData *> scene = ccfg.scene;
 
   auto pass = rgb.create_pass({"gpu-scene-calculate-normal-matrices"});
 
-  struct Resources {
-    Handle<ComputePipeline> pipeline;
-    u32 num_mesh_instances;
-    RgBufferToken<glm::mat4x3> transforms;
-    RgBufferToken<glm::mat3> normals;
-  } rcs;
-
-  rcs.pipeline = ccfg.pipelines->calculate_normal_matrices;
-
-  rcs.num_mesh_instances = ccfg.scene->mesh_instances.raw_size();
-
-  rcs.transforms =
-      pass.read_buffer(gpu_scene->transform_matrices, CS_READ_BUFFER);
-
-  std::tie(gpu_scene->normal_matrices, rcs.normals) = pass.write_buffer(
-      "normal-matrices", gpu_scene->normal_matrices, CS_WRITE_BUFFER);
+  RgCalculateNormalMatricesArgs args = {
+      .transforms =
+          pass.read_buffer(gpu_scene->transform_matrices, CS_READ_BUFFER),
+      .normals = pass.write_buffer(
+          "normal-matrices", &gpu_scene->normal_matrices, CS_WRITE_BUFFER),
+  };
 
   pass.set_compute_callback(
-      [rcs](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
-        cmd.bind_compute_pipeline(rcs.pipeline);
-        cmd.set_push_constants(glsl::CalculateNormalMatricesArgs{
-            .transforms = rg.get_buffer_device_ptr(rcs.transforms),
-            .normals = rg.get_buffer_device_ptr(rcs.normals),
-        });
-        cmd.dispatch_threads(rcs.num_mesh_instances,
-                             glsl::CALCULATE_NORMAL_MATRICES_THREADS);
+      [pipeline = ccfg.pipelines->calculate_normal_matrices,
+       count = ccfg.scene->mesh_instances.raw_size(),
+       args](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
+        cmd.bind_compute_pipeline(pipeline);
+        rg.set_push_constants(cmd, args);
+        cmd.dispatch_threads(count, glsl::CALCULATE_NORMAL_MATRICES_THREADS);
       });
 }
 

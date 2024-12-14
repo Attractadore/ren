@@ -26,11 +26,11 @@ struct MeshletCullingArgs {
   GLSL_PTR(BatchId) command_batch_ids;
   GLSL_PTR(uint) num_commands;
   GLSL_PTR(DispatchIndirectCommand) sort_command;
-  GLSL_PTR(mat4) proj_view;
+  mat4 proj_view;
+  vec3 eye;
   uint feature_mask;
   /// Current bucket index.
   uint bucket;
-  vec3 eye;
   SampledTexture2D hi_z;
 };
 
