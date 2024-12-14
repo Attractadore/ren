@@ -8,6 +8,8 @@
 #include "core/Variant.hpp"
 #include "core/Vector.hpp"
 
+#include <glm/glm.hpp>
+
 namespace ren {
 
 struct DescriptorSetLayout;
@@ -105,6 +107,7 @@ struct ComputePipelineCreateInfo {
 struct ComputePipeline {
   VkPipeline handle;
   Handle<PipelineLayout> layout;
+  glm::uvec3 local_size;
 };
 
 } // namespace ren

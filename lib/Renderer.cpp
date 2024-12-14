@@ -7,6 +7,7 @@
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
 
+#include <spirv_reflect.h>
 #include <volk.h>
 
 namespace ren {
@@ -1217,8 +1218,19 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 
 auto Renderer::create_compute_pipeline(
     const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
-  VkShaderModule module =
-      create_shader_module(get_device(), create_info.shader.code);
+  Span<const std::byte> code = create_info.shader.code;
+
+  spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
+                                   SPV_REFLECT_MODULE_FLAG_NO_COPY);
+  throw_if_failed(shader.GetResult(),
+                  "SPIRV-Reflect: Failed to create shader module");
+  const SpvReflectEntryPoint *entry_point = spvReflectGetEntryPoint(
+      &shader.GetShaderModule(), create_info.shader.entry_point);
+  throw_if_failed(entry_point,
+                  "SPIRV-Reflect: Failed to find entry point in shader module");
+  SpvReflectEntryPoint::LocalSize local_size = entry_point->local_size;
+
+  VkShaderModule module = create_shader_module(get_device(), code);
 
   VkComputePipelineCreateInfo pipeline_info = {
       .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -1242,6 +1254,7 @@ auto Renderer::create_compute_pipeline(
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
       .layout = create_info.layout,
+      .local_size = {local_size.x, local_size.y, local_size.z},
   });
 }
 
