@@ -1,7 +1,5 @@
 #include "EarlyZ.h"
 
-PUSH_CONSTANTS(EarlyZArgs);
-
 void main() {
   MeshInstance mesh_instance = DEREF(pc.mesh_instances[gl_BaseInstance]);
   mat4x3 transform_matrix = DEREF(pc.transform_matrices[gl_BaseInstance]);

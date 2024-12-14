@@ -36,7 +36,7 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
       .mesh_instances = create_buffer(
           glsl::MeshInstance, "Scene mesh instances", MAX_NUM_MESH_INSTANCES),
       .mesh_instance_visibility = create_buffer(
-          MeshInstanceVisibilityMask, "Scene mesh instance visibility",
+          glsl_MeshInstanceVisibilityMask, "Scene mesh instance visibility",
           NUM_MESH_INSTANCE_VISIBILITY_MASKS),
       .materials =
           create_buffer(glsl::Material, "Scene materials", MAX_NUM_MATERIALS),
@@ -133,7 +133,7 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
   ds.update_cull_data.push_back(glsl::InstanceCullData{
       .mesh = mesh_instance.mesh,
       .mesh_instance = handle,
-      .batch = BatchId(batch - ds.batches.data()),
+      .batch = glsl_BatchId(batch - ds.batches.data()),
   });
 
   ren_assert(not mesh_instance.draw_sets.is_set(set));

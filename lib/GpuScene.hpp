@@ -42,15 +42,13 @@ public:
   }
 };
 
-using MeshInstanceVisibilityMask = GLSL_MESH_INSTANCE_VISIBILITY_MASK;
-
 struct GpuScene {
   StatefulBufferSlice<glsl::Mesh> meshes;
   Vector<Handle<Mesh>> update_meshes;
   Vector<glsl::Mesh> mesh_update_data;
 
   StatefulBufferSlice<glsl::MeshInstance> mesh_instances;
-  StatefulBufferSlice<MeshInstanceVisibilityMask> mesh_instance_visibility;
+  StatefulBufferSlice<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
   Vector<Handle<MeshInstance>> update_mesh_instances;
   Vector<glsl::MeshInstance> mesh_instance_update_data;
   std::array<DrawSetData, NUM_DRAW_SETS> draw_sets;
@@ -75,7 +73,7 @@ struct RgGpuScene {
   RgBufferId<glsl::MeshInstance> mesh_instances;
   RgBufferId<glm::mat4x3> transform_matrices;
   RgBufferId<glm::mat3> normal_matrices;
-  RgBufferId<MeshInstanceVisibilityMask> mesh_instance_visibility;
+  RgBufferId<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
   std::array<RgDrawSetData, NUM_DRAW_SETS> draw_sets;
   RgBufferId<glsl::Material> materials;
   RgBufferId<glsl::DirectionalLight> directional_lights;

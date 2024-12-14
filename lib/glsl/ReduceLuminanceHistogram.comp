@@ -1,11 +1,9 @@
 #include "ReduceLuminanceHistogram.h"
 #include "Texture.glsl"
 
-PUSH_CONSTANTS(ReduceLuminanceHistogramArgs);
-
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
-NUM_THREADS(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X);
+LOCAL_SIZE(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X);
 void main() {
   uint index = gl_LocalInvocationIndex;
 

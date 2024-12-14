@@ -1,7 +1,7 @@
-#include "ImGui.glsl"
+#include "ImGui.h"
 
-layout(location = V_COLOR) out vec4 v_color;
-layout(location = V_UV) out vec2 v_uv;
+layout(location = A_COLOR) out vec4 a_color;
+layout(location = A_UV) out vec2 a_uv;
 
 vec4 decode_color(uint32_t color) {
   uint r = (color & 0x000000FF) >>  0;
@@ -14,7 +14,7 @@ vec4 decode_color(uint32_t color) {
 void main()
 {
     ImGuiVertex vertex = DEREF(pc.vertices[gl_VertexIndex]);
-    v_color = decode_color(vertex.color);
-    v_uv = vertex.uv;
+    a_color = decode_color(vertex.color);
+    a_uv = vertex.uv;
     gl_Position = vec4(vertex.position * pc.scale + pc.translate, 0.0f, 1.0f);
 }

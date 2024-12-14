@@ -1,13 +1,13 @@
 #ifndef REN_GLSL_GPU_SCENE_H
 #define REN_GLSL_GPU_SCENE_H
 
-#include "Common.h"
+#include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
 
-#define GLSL_MESH_INSTANCE_VISIBILITY_MASK uint32_t
+#define glsl_MeshInstanceVisibilityMask uint32_t
 const uint MESH_INSTANCE_VISIBILITY_MASK_SIZE = 4;
-static_assert(sizeof(GLSL_MESH_INSTANCE_VISIBILITY_MASK) ==
+static_assert(sizeof(glsl_MeshInstanceVisibilityMask) ==
               MESH_INSTANCE_VISIBILITY_MASK_SIZE);
 const uint MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE =
     MESH_INSTANCE_VISIBILITY_MASK_SIZE * 8;

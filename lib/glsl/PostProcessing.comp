@@ -1,8 +1,5 @@
-#include "PostProcessing.glsl"
 #include "PostProcessing.h"
 #include "Texture.glsl"
-
-PUSH_CONSTANTS(PostProcessingArgs);
 
 const uint THREADS_X = POST_PROCESSING_THREADS_X;
 const uint THREADS_Y = POST_PROCESSING_THREADS_Y;
@@ -45,7 +42,7 @@ void store_luminance_histogram() {
   }
 }
 
-NUM_THREADS_2D(THREADS_X, THREADS_Y);
+LOCAL_SIZE_2D(THREADS_X, THREADS_Y);
 void main() {
   const ivec2 size = texture_size(pc.hdr);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);

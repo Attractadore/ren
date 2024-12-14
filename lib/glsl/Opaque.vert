@@ -1,15 +1,15 @@
-#include "Opaque.glsl"
+#include "Opaque.h"
 
-layout(location = V_POSITION) out vec3 v_position;
+layout(location = A_POSITION) out vec3 a_position;
 
-layout(location = V_NORMAL) out vec3 v_normal;
-layout(location = V_TANGENT) out vec4 v_tangent;
+layout(location = A_NORMAL) out vec3 a_normal;
+layout(location = A_TANGENT) out vec4 a_tangent;
 
-layout(location = V_UV) out vec2 v_uv;
+layout(location = A_UV) out vec2 a_uv;
 
-layout(location = V_COLOR) out vec4 v_color;
+layout(location = A_COLOR) out vec4 a_color;
 
-layout(location = V_MATERIAL) out flat uint v_material;
+layout(location = A_MATERIAL) out flat uint a_material;
 
 void main() {
   MeshInstance mesh_instance = DEREF(pc.mesh_instances[gl_BaseInstance]);
@@ -23,7 +23,7 @@ void main() {
   vec3 position = decode_position(DEREF(mesh.positions[vertex]));
 
   position = transform_matrix * vec4(position, 1.0f);
-  v_position = position;
+  a_position = position;
   gl_Position = pc.proj_view * vec4(position, 1.0f);
 
   vec3 normal = decode_normal(DEREF(mesh.normals[vertex]));
@@ -31,19 +31,19 @@ void main() {
     vec4 tangent = decode_tangent(DEREF(mesh.tangents[vertex]), normal);
     normal = normalize(normal_matrix * normal);
     tangent.xyz = normalize(transform_matrix * vec4(tangent.xyz, 0.0f));
-    v_tangent = tangent;
+    a_tangent = tangent;
   } else {
     normal = normalize(normal_matrix * normal);
   }
-  v_normal = normal;
+  a_normal = normal;
 
   if (OPAQUE_FEATURE_UV) {
-    v_uv = decode_uv(DEREF(mesh.uvs[vertex]), mesh.uv_bs);
+    a_uv = decode_uv(DEREF(mesh.uvs[vertex]), mesh.uv_bs);
   }
 
   if (OPAQUE_FEATURE_VC) {
-    v_color = decode_color(DEREF(mesh.colors[vertex]));
+    a_color = decode_color(DEREF(mesh.colors[vertex]));
   }
 
-  v_material = mesh_instance.material;
+  a_material = mesh_instance.material;
 }

@@ -2,8 +2,6 @@
 #include "Culling.glsl"
 #include "Math.h"
 
-PUSH_CONSTANTS(InstanceCullingAndLODArgs);
-
 bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_bb, NDCBoundingBox ndc_bb, inout int lod) {
   // TODO: support finite far plane.
   float n = cs_bb.p[0].z;
@@ -51,7 +49,7 @@ int select_lod(Mesh mesh, NDCBoundingBox ndc_bb) {
   return l;
 }
 
-NUM_THREADS(INSTANCE_CULLING_AND_LOD_THREADS);
+LOCAL_SIZE(INSTANCE_CULLING_AND_LOD_THREADS);
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
   for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {
@@ -69,7 +67,7 @@ void main() {
 
     uint vis_idx = cull_data.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
     uint vis_bit = cull_data.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
-    GLSL_MESH_INSTANCE_VISIBILITY_MASK vis_mask = GLSL_MESH_INSTANCE_VISIBILITY_MASK(1) << vis_bit;
+    glsl_MeshInstanceVisibilityMask vis_mask = glsl_MeshInstanceVisibilityMask(1) << vis_bit;
 
     bool visible = true;
     if (first_phase || third_phase) {

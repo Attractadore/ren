@@ -2,8 +2,8 @@
 #define REN_GLSL_HI_Z_SPD_H
 
 #include "Array.h"
-#include "Common.h"
 #include "DevicePtr.h"
+#include "Std.h"
 #include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -28,7 +28,7 @@ const uint HI_Z_SPD_MAX_SIZE = HI_Z_SPD_TILE_SIZE * HI_Z_SPD_TILE_SIZE;
 const uint HI_Z_SPD_MAX_NUM_MIPS = 2 * HI_Z_SPD_NUM_TILE_MIPS - 1;
 static_assert((1 << (HI_Z_SPD_MAX_NUM_MIPS - 1)) == HI_Z_SPD_MAX_SIZE);
 
-struct HiZSpdArgs {
+GLSL_PUSH_CONSTANTS HiZSpdArgs {
   /// SPD counter, initialize to 0.
   GLSL_PTR(uint) counter;
   /// Destination descriptors.
@@ -39,7 +39,8 @@ struct HiZSpdArgs {
   uint num_dst_mips;
   /// Source descriptor.
   SampledTexture2D src;
-};
+}
+GLSL_PC;
 
 GLSL_NAMESPACE_END
 

@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_STREAM_SCAN_H
 #define REN_GLSL_STREAM_SCAN_H
 
-#include "Common.h"
 #include "DevicePtr.h"
+#include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -18,14 +18,15 @@ inline uint get_stream_scan_block_sum_count(uint count) {
   return num_groups + 1;
 }
 
-struct StreamScanArgs {
+GLSL_PUSH_CONSTANTS StreamScanArgs {
   GLSL_PTR(void) src;
   GLSL_PTR(void) block_sums;
   GLSL_PTR(void) dst;
   GLSL_PTR(uint) num_started;
   GLSL_PTR(uint) num_finished;
   uint count;
-};
+}
+GLSL_PC;
 
 GLSL_NAMESPACE_END
 

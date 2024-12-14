@@ -1,8 +1,6 @@
 #include "HiZSpd.h"
 #include "Texture.glsl"
 
-PUSH_CONSTANTS(HiZSpdArgs);
-
 const uvec2 GROUP_SIZE = uvec2(HI_Z_SPD_THREADS_X, HI_Z_SPD_THREADS_Y);
 const uvec2 THREAD_SIZE =
     uvec2(HI_Z_SPD_THREAD_ELEMS_X, HI_Z_SPD_THREAD_ELEMS_X);
@@ -78,7 +76,7 @@ void reduce_tile(StorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
   barrier();
 }
 
-NUM_THREADS_2D(GROUP_SIZE.x, GROUP_SIZE.y);
+LOCAL_SIZE_2D(GROUP_SIZE.x, GROUP_SIZE.y);
 void main() {
   load_tile_from_src(pc.dsts[0], gl_WorkGroupID.xy);
   for (uint mip = 1; mip < NUM_TILE_MIPS; ++mip) {

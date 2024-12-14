@@ -1,9 +1,5 @@
 #include "StreamScan.h"
 
-#extension GL_KHR_memory_scope_semantics : require
-
-PUSH_CONSTANTS(StreamScanArgs);
-
 const uint BLOCK_SIZE = SCAN_BLOCK_SIZE;
 const uint ELEMS = SCAN_THREAD_ELEMS;
 const uint BLOCK_ELEMS = BLOCK_SIZE * ELEMS;
@@ -15,13 +11,13 @@ shared scan_t scan_shm[BLOCK_SIZE];
 shared uint bid;
 shared scan_t block_exc_sum;
 
-NUM_THREADS(BLOCK_SIZE);
+LOCAL_SIZE(BLOCK_SIZE);
 void main() {
   uint lid = gl_LocalInvocationIndex;
 
-  restrict readonly GLSL_PTR(scan_t) src = GLSL_PTR(scan_t)(pc.src);
-  restrict coherent GLSL_PTR(scan_t) block_sums = GLSL_PTR(scan_t)(pc.block_sums);
-  restrict writeonly GLSL_PTR(scan_t) dst = GLSL_PTR(scan_t)(pc.dst);
+  readonly GLSL_PTR(scan_t) src = GLSL_UNQUALIFIED_PTR(scan_t)(pc.src);
+  coherent GLSL_PTR(scan_t) block_sums = GLSL_UNQUALIFIED_PTR(scan_t)(pc.block_sums);
+  writeonly GLSL_PTR(scan_t) dst = GLSL_UNQUALIFIED_PTR(scan_t)(pc.dst);
 
   if (lid == 0) {
     bid = atomicAdd(DEREF(pc.num_started), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);

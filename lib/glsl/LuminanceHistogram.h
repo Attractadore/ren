@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_LUMINANCE_HISTOGRAM_H
 #define REN_GLSL_LUMINANCE_HISTOGRAM_H
 
-#include "Common.h"
 #include "DevicePtr.h"
+#include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
 

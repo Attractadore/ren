@@ -1,7 +1,7 @@
 #ifndef REN_GLSL_TEXTURE_GLSL
 #define REN_GLSL_TEXTURE_GLSL
 
-#include "Common.h"
+#include "Std.h"
 #include "Texture.h"
 
 #extension GL_EXT_samplerless_texture_functions : require

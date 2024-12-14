@@ -2,9 +2,9 @@
 #define REN_GLSL_CULLING_H
 
 #include "Batch.h"
-#include "Common.h"
 #include "DevicePtr.h"
 #include "Mesh.h"
+#include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -13,7 +13,7 @@ const uint MAX_DRAW_MESHLETS = 4 * 1024 * 1024;
 struct InstanceCullData {
   uint mesh;
   uint mesh_instance;
-  BatchId batch;
+  glsl_BatchId batch;
 };
 
 GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
@@ -21,7 +21,7 @@ GLSL_DEFINE_PTR_TYPE(InstanceCullData, 4);
 struct MeshletCullData {
   uint mesh;
   uint mesh_instance;
-  BatchId batch;
+  glsl_BatchId batch;
   uint base_meshlet;
 };
 
@@ -131,6 +131,8 @@ inline float get_ndc_bb_area(NDCBoundingBox ndc_bb) {
 }
 
 const uint MESHLET_CULLING_THREADS = 128;
+const uint MESHLET_SORTING_THREADS = 128;
+const uint PREPARE_BATCH_THREADS = 128;
 
 const uint NUM_MESHLET_CULLING_BUCKETS = MESH_MESHLET_COUNT_BITS;
 

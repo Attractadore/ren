@@ -87,8 +87,7 @@ auto gen_rg_args(const CompileOptions &opts,
 
   SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
 
-  const SpvReflectBlockVariable *pc =
-      &sm.GetPushConstantBlock(0, &result)->members[0];
+  const SpvReflectBlockVariable *pc = sm.GetPushConstantBlock(0, &result);
   if (result) {
     fmt::println(stderr, "Failed to get push constant block: {}", (int)result);
     return -1;
@@ -115,7 +114,7 @@ auto gen_rg_args(const CompileOptions &opts,
       if (member_type.ends_with(PTR_SUFFIX)) {
         member_type.remove_suffix(PTR_SUFFIX.size());
         fmt::format_to(
-            std::back_inserter(element_type), "GLSL_PTR({}{})",
+            std::back_inserter(element_type), "GLSL_UNQUALIFIED_PTR({}{})",
             member_type == "void" ? "" : "::ren::glsl::", member_type);
       } else {
         fmt::format_to(std::back_inserter(element_type), "::ren::glsl::{}",

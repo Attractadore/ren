@@ -1,13 +1,12 @@
 #ifndef REN_GLSL_INSTANCE_CULLING_AND_LOD_H
 #define REN_GLSL_INSTANCE_CULLING_AND_LOD_H
 
-#include "Array.h"
-#include "Common.h"
 #include "Culling.h"
 #include "DevicePtr.h"
 #include "GpuScene.h"
 #include "Indirect.h"
 #include "Mesh.h"
+#include "Std.h"
 #include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -37,23 +36,24 @@ const uint INSTANCE_CULLING_AND_LOD_THIRD_PHASE =
     INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT |
     INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
 
-struct InstanceCullingAndLODArgs {
-  GLSL_PTR(Mesh) meshes;
-  GLSL_PTR(mat4x3) transform_matrices;
-  GLSL_PTR(InstanceCullData) cull_data;
+GLSL_PUSH_CONSTANTS InstanceCullingAndLODArgs {
+  GLSL_READONLY GLSL_PTR(Mesh) meshes;
+  GLSL_READONLY GLSL_PTR(mat4x3) transform_matrices;
+  GLSL_READONLY GLSL_PTR(InstanceCullData) cull_data;
   GLSL_PTR(DispatchIndirectCommand) meshlet_bucket_commands;
   // These can't be push constants because they are indexed dynamically.
-  GLSL_PTR(uint) raw_meshlet_bucket_offsets;
+  GLSL_READONLY GLSL_PTR(uint) raw_meshlet_bucket_offsets;
   GLSL_PTR(uint) meshlet_bucket_sizes;
-  GLSL_PTR(MeshletCullData) meshlet_cull_data;
-  GLSL_PTR(GLSL_MESH_INSTANCE_VISIBILITY_MASK) mesh_instance_visibility;
+  GLSL_WRITEONLY GLSL_PTR(MeshletCullData) meshlet_cull_data;
+  GLSL_PTR(glsl_MeshInstanceVisibilityMask) mesh_instance_visibility;
   uint feature_mask;
   uint num_instances;
   mat4 proj_view;
   float lod_triangle_density;
   int lod_bias;
   SampledTexture2D hi_z;
-};
+}
+GLSL_PC;
 
 GLSL_NAMESPACE_END
 

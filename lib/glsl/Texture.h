@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_TEXTURE_H
 #define REN_GLSL_TEXTURE_H
 
-#include "Common.h"
 #include "DevicePtr.h"
+#include "Std.h"
 
 #if !GL_core_profile
 #include <boost/predef/compiler.h>

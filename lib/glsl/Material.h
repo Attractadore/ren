@@ -1,8 +1,8 @@
 #ifndef REN_GLSL_MATERIAL_H
 #define REN_GLSL_MATERIAL_H
 
-#include "Common.h"
 #include "DevicePtr.h"
+#include "Std.h"
 #include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN

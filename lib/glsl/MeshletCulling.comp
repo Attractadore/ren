@@ -1,10 +1,7 @@
-#include "Culling.glsl"
 #include "MeshletCulling.h"
-#include "MeshletSorting.h"
-#include "PrepareBatch.h"
+#include "Culling.glsl"
+#include "Math.h"
 #include "Vertex.h"
-
-PUSH_CONSTANTS(MeshletCullingArgs);
 
 bool cull(Meshlet meshlet, uint mesh_instance) {
   const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
@@ -64,7 +61,7 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
   return false;
 }
 
-NUM_THREADS(MESHLET_CULLING_THREADS);
+LOCAL_SIZE(MESHLET_CULLING_THREADS);
 void main() {
   const uint bucket_size = DEREF(pc.bucket_size);
   const uint bucket_stride = 1 << pc.bucket;
@@ -90,9 +87,9 @@ void main() {
   if (subgroupElect()) {
     command_offset = atomicAdd(DEREF(pc.num_commands), num_active);
     uint old_command_count = command_offset;
-    uint old_wg_count = (old_command_count + MESHLET_SORTING_THREADS - 1) / MESHLET_SORTING_THREADS;
+    uint old_wg_count = ceil_div(old_command_count, MESHLET_SORTING_THREADS);
     uint new_command_count = min(old_command_count + num_active, MAX_DRAW_MESHLETS);
-    uint new_wg_count = (new_command_count + MESHLET_SORTING_THREADS - 1) / MESHLET_SORTING_THREADS;
+    uint new_wg_count = ceil_div(new_command_count, MESHLET_SORTING_THREADS);
     if (old_wg_count != new_wg_count) {
       atomicMax(DEREF(pc.sort_command).x, new_wg_count);
     }
@@ -109,15 +106,15 @@ void main() {
   command.base_index = meshlet.base_index;
   command.mesh_instance = cull_data.mesh_instance;
 
-  BatchId batch = cull_data.batch;
+  glsl_BatchId batch = cull_data.batch;
 
   DEREF(pc.commands[command_offset]) = command;
   DEREF(pc.command_batch_ids[command_offset]) = batch;
 
   uint old_batch_size = atomicAdd(DEREF(pc.batch_sizes[batch]), 1);
-  uint old_batch_wg_count = (old_batch_size + PREPARE_BATCH_THREADS - 1) / PREPARE_BATCH_THREADS;
+  uint old_batch_wg_count = ceil_div(old_batch_size, PREPARE_BATCH_THREADS);
   uint new_batch_size = old_batch_size + 1;
-  uint new_batch_wg_count = (new_batch_size + PREPARE_BATCH_THREADS - 1) / PREPARE_BATCH_THREADS;
+  uint new_batch_wg_count = ceil_div(new_batch_size, PREPARE_BATCH_THREADS);
   if (old_batch_wg_count != new_batch_wg_count) {
     atomicMax(DEREF(pc.batch_prepare_commands[batch]).x, new_batch_wg_count);
   }

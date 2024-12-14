@@ -1,7 +1,7 @@
 #ifndef REN_GLSL_MESH_H
 #define REN_GLSL_MESH_H
 
-#include "Common.h"
+#include "Std.h"
 #include "Vertex.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -47,13 +47,13 @@ struct MeshLOD {
 };
 
 struct Mesh {
-  GLSL_PTR(Position) positions;
-  GLSL_PTR(Normal) normals;
-  GLSL_PTR(Tangent) tangents;
-  GLSL_PTR(UV) uvs;
-  GLSL_PTR(Color) colors;
-  GLSL_PTR(Meshlet) meshlets;
-  GLSL_PTR(uint) meshlet_indices;
+  GLSL_UNQUALIFIED_PTR(Position) positions;
+  GLSL_UNQUALIFIED_PTR(Normal) normals;
+  GLSL_UNQUALIFIED_PTR(Tangent) tangents;
+  GLSL_UNQUALIFIED_PTR(UV) uvs;
+  GLSL_UNQUALIFIED_PTR(Color) colors;
+  GLSL_UNQUALIFIED_PTR(Meshlet) meshlets;
+  GLSL_UNQUALIFIED_PTR(uint) meshlet_indices;
   PositionBoundingBox bb;
   BoundingSquare uv_bs;
   uint index_pool;

@@ -246,8 +246,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
           .count = glsl::MAX_DRAW_MESHLETS,
       });
 
-  RgBufferId<BatchId> unsorted_batch_command_batch_ids =
-      rgb.create_buffer<BatchId>({
+  RgBufferId<glsl_BatchId> unsorted_batch_command_batch_ids =
+      rgb.create_buffer<glsl_BatchId>({
           .heap = BufferHeap::Static,
           .count = glsl::MAX_DRAW_MESHLETS,
       });
@@ -488,7 +488,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
           .count = glsl::MAX_DRAW_MESHLETS,
       });
 
-  for (BatchId batch : range(ds.batches.size())) {
+  for (glsl_BatchId batch : range(ds.batches.size())) {
     {
       auto pass = ccfg.rgb->create_pass({fmt::format(
           "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});

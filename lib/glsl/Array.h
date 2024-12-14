@@ -1,7 +1,7 @@
 #ifndef REN_GLSL_ARRAY_H
 #define REN_GLSL_ARRAY_H
 
-#ifdef GL_core_profile
+#if GL_core_profile
 
 #define GLSL_ARRAY(T, name, SIZE) T name[SIZE]
 

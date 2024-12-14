@@ -60,11 +60,9 @@ private:
   u64 m_ptr = 0;
 };
 
-#define GLSL_PTR(Type) ren::DevicePtr<Type>
+#define GLSL_UNQUALIFIED_PTR(Type) ren::DevicePtr<Type>
 
 #define GLSL_DEFINE_PTR_TYPE(Type, alignment)                                  \
   static_assert(alignof(Type) == alignment)
-
-#define GLSL_IS_NULL(ptr) (ptr.is_null())
 
 } // namespace ren
