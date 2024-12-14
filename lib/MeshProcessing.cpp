@@ -1,5 +1,6 @@
 #include "MeshProcessing.hpp"
 #include "MeshSimplification.hpp"
+#include "glsl/Transforms.h"
 
 #include <glm/gtc/type_ptr.hpp>
 #include <meshoptimizer.h>
@@ -337,8 +338,7 @@ auto mesh_encode_normals(Span<const glm::vec3> normals,
                          const glm::vec3 &pos_enc_bb) -> Vector<glsl::Normal> {
   glm::mat3 encode_transform_matrix =
       glsl::make_encode_position_matrix(pos_enc_bb);
-  glm::mat3 encode_normal_matrix =
-      glm::inverse(glm::transpose(encode_transform_matrix));
+  glm::mat3 encode_normal_matrix = glsl::normal(encode_transform_matrix);
 
   Vector<glsl::Normal> enc_normals(normals.size());
   for (usize i = 0; i < normals.size(); ++i) {
@@ -349,9 +349,10 @@ auto mesh_encode_normals(Span<const glm::vec3> normals,
   return enc_normals;
 }
 
-auto mesh_encode_tangents(
-    Span<const glm::vec4> tangents, const glm::vec3 &pos_enc_bb,
-    Span<const glsl::Normal> enc_normals) -> Vector<glsl::Tangent> {
+auto mesh_encode_tangents(Span<const glm::vec4> tangents,
+                          const glm::vec3 &pos_enc_bb,
+                          Span<const glsl::Normal> enc_normals)
+    -> Vector<glsl::Tangent> {
   glm::mat3 encode_transform_matrix =
       glsl::make_encode_position_matrix(pos_enc_bb);
 
@@ -406,8 +407,8 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
   return enc_uvs;
 }
 
-[[nodiscard]] auto
-mesh_encode_colors(Span<const glm::vec4> colors) -> Vector<glsl::Color> {
+[[nodiscard]] auto mesh_encode_colors(Span<const glm::vec4> colors)
+    -> Vector<glsl::Color> {
   Vector<glsl::Color> enc_colors(colors.size());
   for (usize i = 0; i < colors.size(); ++i) {
     enc_colors[i] = glsl::encode_color(colors[i]);
