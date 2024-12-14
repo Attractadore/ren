@@ -11,7 +11,6 @@ const uint CALCULATE_NORMAL_MATRICES_THREADS = 128;
 struct CalculateNormalMatricesArgs {
   GLSL_PTR(mat4x3) transforms;
   GLSL_PTR(mat3) normals;
-  int pad;
 };
 
 GLSL_NAMESPACE_END

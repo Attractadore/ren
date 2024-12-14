@@ -16,7 +16,6 @@ struct MeshletSortingArgs {
   GLSL_PTR(MeshletDrawCommand) unsorted_commands;
   GLSL_PTR(BatchId) unsorted_command_batch_ids;
   GLSL_PTR(MeshletDrawCommand) commands;
-  int pad;
 };
 
 GLSL_NAMESPACE_END

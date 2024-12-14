@@ -14,7 +14,6 @@ struct PrepareBatchArgs {
   GLSL_PTR(uint) batch_size;
   GLSL_PTR(MeshletDrawCommand) command_descs;
   GLSL_PTR(DrawIndexedIndirectCommand) commands;
-  int pad;
 };
 
 GLSL_NAMESPACE_END
