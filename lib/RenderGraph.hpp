@@ -216,6 +216,7 @@ struct RgBuffer {
 
 struct RgBufferUse {
   RgUntypedBufferId buffer;
+  u32 offset = 0;
   BufferState usage;
 };
 
@@ -534,14 +535,15 @@ private:
   friend RgPassBuilder;
 
   [[nodiscard]] auto add_buffer_use(RgUntypedBufferId buffer,
-                                    const BufferState &usage) -> RgBufferUseId;
+                                    const BufferState &usage, u32 offset = 0)
+      -> RgBufferUseId;
 
   [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
                                            RgUntypedBufferId parent)
       -> RgUntypedBufferId;
 
   [[nodiscard]] auto read_buffer(RgPassId pass, RgUntypedBufferId buffer,
-                                 const BufferState &usage)
+                                 const BufferState &usage, u32 offset)
       -> RgUntypedBufferToken;
 
   [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
@@ -630,13 +632,14 @@ private:
 class RgPassBuilder {
 public:
   [[nodiscard]] auto read_buffer(RgUntypedBufferId buffer,
-                                 const BufferState &usage)
+                                 const BufferState &usage, u32 offset = 0)
       -> RgUntypedBufferToken;
 
   template <typename T>
-  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, const BufferState &usage)
-      -> RgBufferToken<T> {
-    return RgBufferToken<T>(read_buffer(RgUntypedBufferId(buffer), usage));
+  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, const BufferState &usage,
+                                 u32 offset = 0) -> RgBufferToken<T> {
+    return RgBufferToken<T>(
+        read_buffer(RgUntypedBufferId(buffer), usage, offset * sizeof(T)));
   }
 
   [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,

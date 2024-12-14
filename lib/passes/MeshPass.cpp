@@ -6,7 +6,6 @@
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
 #include "../glsl/MeshletCulling.h"
-#include "../glsl/PrepareBatch.h"
 #include "../glsl/StreamScan.h"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
@@ -496,11 +495,13 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
       RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands =
           pass.read_buffer(cfg.batch_prepare_commands,
-                           INDIRECT_COMMAND_SRC_BUFFER);
+                           INDIRECT_COMMAND_SRC_BUFFER, batch);
 
       RgPrepareBatchArgs args = {
-          .batch_offset = pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER),
-          .batch_size = pass.read_buffer(cfg.batch_sizes, CS_READ_BUFFER),
+          .batch_offset =
+              pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER, batch),
+          .batch_size =
+              pass.read_buffer(cfg.batch_sizes, CS_READ_BUFFER, batch),
           .command_descs = pass.read_buffer(cfg.batch_commands, CS_READ_BUFFER),
           .commands = pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
                                                     info.base.pass_name,
@@ -512,12 +513,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
           [pipeline = ccfg.pipelines->prepare_batch, batch_prepare_commands,
            batch, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
             pass.bind_compute_pipeline(pipeline);
-            auto pc = to_push_constants(rg, args);
-            pc.batch_offset += batch;
-            pc.batch_size += batch;
-            pass.set_push_constants(pc);
-            pass.dispatch_indirect(
-                rg.get_buffer(batch_prepare_commands).slice(batch, 1));
+            rg.set_push_constants(pass, args);
+            pass.dispatch_indirect(rg.get_buffer(batch_prepare_commands));
           });
     }
 
@@ -556,17 +553,15 @@ void record_render_pass(const PassCommonConfig &ccfg,
     }
 
     struct {
-      BatchId batch_id;
       BatchDesc batch;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
     } rcs;
 
-    rcs.batch_id = batch;
     rcs.batch = info.base.gpu_scene->draw_sets[draw_set].batches[batch].desc;
     rcs.commands = pass.read_buffer(commands, INDIRECT_COMMAND_SRC_BUFFER);
     rcs.batch_sizes =
-        pass.read_buffer(cfg.batch_sizes, INDIRECT_COMMAND_SRC_BUFFER);
+        pass.read_buffer(cfg.batch_sizes, INDIRECT_COMMAND_SRC_BUFFER, batch);
 
     auto args = get_render_pass_args(*ccfg.scene, info, pass);
 
@@ -579,9 +574,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
       render_pass.bind_index_buffer(rcs.batch.index_buffer,
                                     VK_INDEX_TYPE_UINT8_EXT);
       rg.set_push_constants(render_pass, args);
-      render_pass.draw_indexed_indirect_count(
-          BufferView(rg.get_buffer(rcs.commands)),
-          BufferView(rg.get_buffer(rcs.batch_sizes).slice(rcs.batch_id, 1)));
+      render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
+                                              rg.get_buffer(rcs.batch_sizes));
     });
   }
 }

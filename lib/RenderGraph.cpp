@@ -274,11 +274,13 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
 }
 
 auto RgBuilder::add_buffer_use(RgUntypedBufferId buffer,
-                               const BufferState &usage) -> RgBufferUseId {
+                               const BufferState &usage, u32 offset)
+    -> RgBufferUseId {
   ren_assert(buffer);
   RgBufferUseId id(m_data->m_buffer_uses.size());
   m_data->m_buffer_uses.push_back({
       .buffer = buffer,
+      .offset = offset,
       .usage = usage,
   });
   m_rt_data->m_buffers.resize(m_data->m_buffer_uses.size());
@@ -334,9 +336,10 @@ auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
 }
 
 auto RgBuilder::read_buffer(RgPassId pass, RgUntypedBufferId buffer,
-                            const BufferState &usage) -> RgUntypedBufferToken {
+                            const BufferState &usage, u32 offset)
+    -> RgUntypedBufferToken {
   ren_assert(buffer);
-  RgBufferUseId use = add_buffer_use(buffer, usage);
+  RgBufferUseId use = add_buffer_use(buffer, usage, offset);
   m_data->m_passes[pass].read_buffers.push_back(use);
   return RgUntypedBufferToken(use);
 }
@@ -772,7 +775,8 @@ void RgBuilder::init_runtime_buffers() {
   for (auto i : range(buffer_uses.size())) {
     RgPhysicalBufferId physical_buffer_id =
         m_data->m_buffers[buffer_uses[i].buffer].parent;
-    rt_buffers[i] = m_data->m_physical_buffers[physical_buffer_id].view;
+    rt_buffers[i] = m_data->m_physical_buffers[physical_buffer_id].view.slice(
+        buffer_uses[i].offset);
   }
 }
 
@@ -1232,9 +1236,9 @@ RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
 }
 
 auto RgPassBuilder::read_buffer(RgUntypedBufferId buffer,
-                                const BufferState &usage)
+                                const BufferState &usage, u32 offset)
     -> RgUntypedBufferToken {
-  return m_builder->read_buffer(m_pass, buffer, usage);
+  return m_builder->read_buffer(m_pass, buffer, usage, offset);
 }
 
 auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
