@@ -85,13 +85,13 @@ void main() {
 
   uint command_offset;
   if (subgroupElect()) {
-    command_offset = atomicAdd(DEREF(pc.num_commands), num_active);
+    command_offset = atomicAdd(DEREF(pc.num_commands), num_active, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
     uint old_command_count = command_offset;
     uint old_wg_count = ceil_div(old_command_count, MESHLET_SORTING_THREADS);
     uint new_command_count = min(old_command_count + num_active, MAX_DRAW_MESHLETS);
     uint new_wg_count = ceil_div(new_command_count, MESHLET_SORTING_THREADS);
     if (old_wg_count != new_wg_count) {
-      atomicMax(DEREF(pc.sort_command).x, new_wg_count);
+      atomicMax(DEREF(pc.sort_command).x, new_wg_count, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
     }
   }
   command_offset = subgroupBroadcastFirst(command_offset) + subgroupExclusiveAdd(1);
@@ -111,11 +111,11 @@ void main() {
   DEREF(pc.commands[command_offset]) = command;
   DEREF(pc.command_batch_ids[command_offset]) = batch;
 
-  uint old_batch_size = atomicAdd(DEREF(pc.batch_sizes[batch]), 1);
+  uint old_batch_size = atomicAdd(DEREF(pc.batch_sizes[batch]), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
   uint old_batch_wg_count = ceil_div(old_batch_size, PREPARE_BATCH_THREADS);
   uint new_batch_size = old_batch_size + 1;
   uint new_batch_wg_count = ceil_div(new_batch_size, PREPARE_BATCH_THREADS);
   if (old_batch_wg_count != new_batch_wg_count) {
-    atomicMax(DEREF(pc.batch_prepare_commands[batch]).x, new_batch_wg_count);
+    atomicMax(DEREF(pc.batch_prepare_commands[batch]).x, new_batch_wg_count, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
   }
 }

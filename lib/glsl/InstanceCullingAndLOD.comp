@@ -87,10 +87,10 @@ void main() {
 
     if (second_phase) {
       if (visible) {
-        bool was_visible = bool(atomicOr(DEREF(pc.mesh_instance_visibility[vis_idx]), vis_mask) & vis_mask);
+        bool was_visible = bool(vis_mask & atomicOr(DEREF(pc.mesh_instance_visibility[vis_idx]), vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed));
         draw = !was_visible;
       } else {
-        atomicAnd(DEREF(pc.mesh_instance_visibility[vis_idx]), ~vis_mask);
+        atomicAnd(DEREF(pc.mesh_instance_visibility[vis_idx]), ~vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
       }
     } 
 
@@ -121,7 +121,7 @@ void main() {
       num_meshlets &= ~bucket_stride;
 
       uint bucket_offset = DEREF(pc.raw_meshlet_bucket_offsets[bucket]);
-      uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1);
+      uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
       uint bucket_size = offset + 1;
       DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;
 
@@ -130,7 +130,7 @@ void main() {
       uint num_bucket_threads = bucket_size * bucket_stride;
       uint num_bucket_work_groups = ceil_div(num_bucket_threads, MESHLET_CULLING_THREADS);
       if (old_num_bucket_work_groups != num_bucket_work_groups) {
-        atomicMax(DEREF(pc.meshlet_bucket_commands[bucket]).x, num_bucket_work_groups);
+        atomicMax(DEREF(pc.meshlet_bucket_commands[bucket]).x, num_bucket_work_groups, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
       }
     }
   }

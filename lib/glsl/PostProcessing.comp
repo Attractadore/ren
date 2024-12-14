@@ -26,7 +26,7 @@ void add_to_luminance_histogram(float luminance) {
   int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
   // Ignore bin 0
   if (bin > 0) {
-    atomicAdd(histogram[bin], 1);
+    atomicAdd(histogram[bin], 1, gl_ScopeWorkgroup, 0, gl_SemanticsRelaxed);
   }
 }
 
@@ -37,7 +37,7 @@ void store_luminance_histogram() {
   for (; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += stride) {
     // Ignore bin 0 and zero-valued bins
     if (i > 0 && histogram[i] > 0) {
-      atomicAdd(DEREF(pc.histogram).bins[i], histogram[i]);
+      atomicAdd(DEREF(pc.histogram).bins[i], histogram[i], gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
     }
   }
 }

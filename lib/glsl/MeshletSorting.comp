@@ -7,6 +7,6 @@ void main() {
     return;
   }
   glsl_BatchId batch = DEREF(pc.unsorted_command_batch_ids[gl_GlobalInvocationID.x]);
-  uint offset = atomicAdd(DEREF(pc.batch_out_offsets[batch]), 1);
+  uint offset = atomicAdd(DEREF(pc.batch_out_offsets[batch]), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
   DEREF(pc.commands[offset]) = DEREF(pc.unsorted_commands[gl_GlobalInvocationID.x]);
 }

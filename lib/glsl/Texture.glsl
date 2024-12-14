@@ -33,9 +33,7 @@ vec4 texel_fetch(Texture2D t, ivec2 pos, int lod) {
   return texelFetch(g_textures_2d[t.id], pos, lod);
 }
 
-ivec2 texture_size(Texture2D t) {
-  return textureSize(g_textures_2d[t.id], 0);
-}
+ivec2 texture_size(Texture2D t) { return textureSize(g_textures_2d[t.id], 0); }
 
 #undef MAKE_SAMPLER_2D
 
@@ -55,28 +53,32 @@ ivec2 texture_size(SampledTexture2D t) {
   return textureSize(g_sampled_textures_2d[t.id], 0);
 }
 
-#define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images)                    \
+#define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images, coherent_images)     \
   ivec2 image_size(ImageType img) { return imageSize(images[img.id]); }        \
                                                                                \
   vec4 image_load(ImageType img, ivec2 pos) {                                  \
     return imageLoad(images[img.id], pos);                                     \
-  } \
-  \
+  }                                                                            \
+                                                                               \
+  vec4 image_coherent_load(ImageType img, ivec2 pos) {                         \
+    return imageLoad(coherent_images[img.id], pos);                            \
+  }                                                                            \
+                                                                               \
   void image_store(ImageType img, ivec2 pos, float data) {                     \
     imageStore(images[img.id], pos, vec4(data));                               \
+  }                                                                            \
+                                                                               \
+  void image_coherent_store(ImageType img, ivec2 pos, float data) {            \
+    imageStore(coherent_images[img.id], pos, vec4(data));                      \
   }                                                                            \
                                                                                \
   void image_store(ImageType img, ivec2 pos, vec4 data) {                      \
     imageStore(images[img.id], pos, data);                                     \
   }
 
-DEFINE_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d)
-DEFINE_STORAGE_TEXTURE_2D_IMPL(CoherentStorageTexture2D, g_coherent_storage_textures_2d);
+DEFINE_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d,
+                               g_coherent_storage_textures_2d)
 
 #undef DEFINE_STORAGE_TEXTURE_2D_IMPL
-
-CoherentStorageTexture2D make_coherent(StorageTexture2D img) {
-  return CoherentStorageTexture2D(img.id);
-}
 
 #endif // REN_GLSL_TEXTURE_GLSL

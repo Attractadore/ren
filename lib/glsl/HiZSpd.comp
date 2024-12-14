@@ -25,14 +25,14 @@ void load_tile_from_src(StorageTexture2D dst, uvec2 tile_pos) {
   barrier();
 }
 
-void load_tile_from_dst(CoherentStorageTexture2D dst) {
+void load_tile_from_dst(StorageTexture2D dst) {
   uvec2 size = pc.dst_size >> (NUM_TILE_MIPS - 1);
   for (uint x = gl_LocalInvocationID.x; x < TILE_SIZE; x += GROUP_SIZE.x) {
     for (uint y = gl_LocalInvocationID.y; y < TILE_SIZE; y += GROUP_SIZE.y) {
       float depth = 1.0f;
       ivec2 pos = ivec2(x, y);
       if (all(lessThan(pos, size))) {
-        depth = image_load(dst, pos).r;
+        depth = image_coherent_load(dst, pos).r;
       }
       tile[y][x] = depth;
     }
@@ -59,7 +59,7 @@ void reduce_tile(StorageTexture2D dst, uvec2 tile_pos, uint tile_mip) {
         depth = min(depth, tile[2 * y + 1][2 * x + 0]);
         depth = min(depth, tile[2 * y + 1][2 * x + 1]);
         if (tile_mip == NUM_TILE_MIPS - 1) {
-          image_store(make_coherent(dst), pos, depth);
+          image_coherent_store(dst, pos, depth);
         } else {
           image_store(dst, pos, depth);
         }
@@ -91,11 +91,9 @@ void main() {
     return;
   }
 
-  memoryBarrierImage();
-
   if (gl_LocalInvocationIndex == 0) {
     const uint num_groups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
-    uint num_finished = atomicAdd(DEREF(pc.counter), 1) + 1;
+    uint num_finished = 1 + atomicAdd(DEREF(pc.counter), 1, gl_ScopeQueueFamily, gl_StorageSemanticsImage, gl_SemanticsRelease);
     quit = num_finished < num_groups;
   }
 
@@ -105,7 +103,9 @@ void main() {
     return;
   }
 
-  load_tile_from_dst(make_coherent(pc.dsts[NUM_TILE_MIPS - 1]));
+  memoryBarrier(gl_ScopeQueueFamily, gl_StorageSemanticsImage, gl_SemanticsAcquire);
+
+  load_tile_from_dst(pc.dsts[NUM_TILE_MIPS - 1]);
   for (uint tile_mip = 1; tile_mip < NUM_TILE_MIPS; ++tile_mip) {
     uint mip = tile_mip + NUM_TILE_MIPS - 1;
     if (mip == pc.num_dst_mips) {
