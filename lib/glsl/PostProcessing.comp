@@ -1,8 +1,8 @@
 #include "PostProcessing.h"
 #include "Texture.glsl"
 
-const uint THREADS_X = POST_PROCESSING_THREADS_X;
-const uint THREADS_Y = POST_PROCESSING_THREADS_Y;
+const uint THREADS_X = 8;
+const uint THREADS_Y = 8;
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 

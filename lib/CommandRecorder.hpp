@@ -19,14 +19,6 @@ struct ComputePipeline;
 struct GraphicsPipeline;
 struct PipelineLayout;
 
-auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32;
-
-auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
-    -> glm::uvec2;
-
-auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
-    -> glm::uvec3;
-
 struct ColorAttachment {
   TextureView texture;
   ColorAttachmentOperations ops;
@@ -240,6 +232,7 @@ public:
 class ComputePass {
   Renderer *m_renderer = nullptr;
   VkCommandBuffer m_cmd_buffer = nullptr;
+  Handle<ComputePipeline> m_pipeline;
   Handle<PipelineLayout> m_pipeline_layout;
 
   friend class CommandRecorder;
@@ -280,14 +273,14 @@ public:
                        offset);
   }
 
-  void dispatch_groups(u32 num_groups_x, u32 num_groups_y = 1,
-                       u32 num_groups_z = 1);
-  void dispatch_groups(glm::uvec2 num_groups);
-  void dispatch_groups(glm::uvec3 num_groups);
+  void dispatch(u32 num_groups_x, u32 num_groups_y = 1, u32 num_groups_z = 1);
+  void dispatch(glm::uvec2 num_groups);
+  void dispatch(glm::uvec3 num_groups);
 
-  void dispatch_threads(u32 size, u32 group_size);
-  void dispatch_threads(glm::uvec2 size, glm::uvec2 group_size);
-  void dispatch_threads(glm::uvec3 size, glm::uvec3 group_size);
+  void dispatch_grid(u32 size, u32 group_size_mult = 1);
+  void dispatch_grid_2d(glm::uvec2 size, glm::uvec2 group_size_mult = {1, 1});
+  void dispatch_grid_3d(glm::uvec3 size,
+                        glm::uvec3 group_size_mult = {1, 1, 1});
 
   void dispatch_indirect(const BufferView &view);
   void

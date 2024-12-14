@@ -68,9 +68,8 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
     cmd.bind_compute_pipeline(rcs.pipeline);
     cmd.bind_descriptor_sets({rg.get_texture_set()});
     rg.set_push_constants(cmd, args);
-    cmd.dispatch_threads(
-        size, {glsl::HI_Z_SPD_THREADS_X * glsl::HI_Z_SPD_THREAD_ELEMS_X,
-               glsl::HI_Z_SPD_THREADS_Y * glsl::HI_Z_SPD_THREAD_ELEMS_Y});
+    cmd.dispatch_grid_2d(
+        size, {glsl::HI_Z_SPD_THREAD_ELEMS_X, glsl::HI_Z_SPD_THREAD_ELEMS_Y});
   });
 }
 

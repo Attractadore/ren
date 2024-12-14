@@ -3,7 +3,6 @@
 #include "../Profiler.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
-#include "../glsl/CalculateNormalMatrices.h"
 #include "CalculateNormalMatrices.comp.hpp"
 
 #include <algorithm>
@@ -81,7 +80,7 @@ void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
        args](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
         cmd.bind_compute_pipeline(pipeline);
         rg.set_push_constants(cmd, args);
-        cmd.dispatch_threads(count, glsl::CALCULATE_NORMAL_MATRICES_THREADS);
+        cmd.dispatch_grid(count);
       });
 }
 

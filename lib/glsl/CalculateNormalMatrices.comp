@@ -1,7 +1,7 @@
 #include "CalculateNormalMatrices.h"
 #include "Transforms.h"
 
-LOCAL_SIZE(CALCULATE_NORMAL_MATRICES_THREADS);
+LOCAL_SIZE(128);
 void main() {
   mat3 transform = mat3(DEREF(pc.transforms[gl_GlobalInvocationID.x]));
   DEREF(pc.normals[gl_GlobalInvocationID.x]) = normal(transform);

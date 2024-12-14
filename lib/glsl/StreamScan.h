@@ -2,6 +2,7 @@
 #define REN_GLSL_STREAM_SCAN_H
 
 #include "DevicePtr.h"
+#include "Math.h"
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -14,7 +15,7 @@ const uint SCAN_TYPE_EXCLUSIVE = 0;
 const uint SCAN_TYPE_INCLUSIVE = 1;
 
 inline uint get_stream_scan_block_sum_count(uint count) {
-  uint num_groups = (count + SCAN_BLOCK_ELEMS - 1) / SCAN_BLOCK_ELEMS;
+  uint num_groups = ceil_div(count, SCAN_BLOCK_ELEMS);
   return num_groups + 1;
 }
 

@@ -49,7 +49,7 @@ int select_lod(Mesh mesh, NDCBoundingBox ndc_bb) {
   return l;
 }
 
-LOCAL_SIZE(INSTANCE_CULLING_AND_LOD_THREADS);
+LOCAL_SIZE(128);
 void main() {
   const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
   for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {

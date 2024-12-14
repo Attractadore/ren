@@ -2,6 +2,7 @@
 #include "Formats.hpp"
 #include "Renderer.hpp"
 #include "core/Errors.hpp"
+#include "core/Math.hpp"
 #include "core/Views.hpp"
 
 #include <ranges>
@@ -20,25 +21,6 @@ auto get_layout_for_attachment_ops(VkAttachmentLoadOp load,
 }
 
 } // namespace
-
-auto get_num_dispatch_groups(u32 size, u32 group_size) -> u32 {
-  auto num_groups = size / group_size + ((size % group_size) != 0);
-  return num_groups;
-}
-
-auto get_num_dispatch_groups(glm::uvec2 size, glm::uvec2 group_size)
-    -> glm::uvec2 {
-  auto num_groups = size / group_size +
-                    glm::uvec2(glm::notEqual(size % group_size, glm::uvec2(0)));
-  return num_groups;
-}
-
-auto get_num_dispatch_groups(glm::uvec3 size, glm::uvec3 group_size)
-    -> glm::uvec3 {
-  auto num_groups = size / group_size +
-                    glm::uvec3(glm::notEqual(size % group_size, glm::uvec3(0)));
-  return num_groups;
-}
 
 CommandRecorder::CommandRecorder(Renderer &renderer,
                                  VkCommandBuffer cmd_buffer) {
@@ -471,6 +453,7 @@ ComputePass::~ComputePass() {}
 
 void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
   const auto &pipeline = m_renderer->get_compute_pipeline(handle);
+  m_pipeline = handle;
   m_pipeline_layout = pipeline.layout;
   vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                     pipeline.handle);
@@ -504,29 +487,37 @@ void ComputePass::set_push_constants(TempSpan<const std::byte> data,
   set_push_constants(m_pipeline_layout, data, offset);
 }
 
-void ComputePass::dispatch_groups(u32 num_groups_x, u32 num_groups_y,
-                                  u32 num_groups_z) {
+void ComputePass::dispatch(u32 num_groups_x, u32 num_groups_y,
+                           u32 num_groups_z) {
   vkCmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
 }
 
-void ComputePass::dispatch_groups(glm::uvec2 num_groups) {
-  dispatch_groups(num_groups.x, num_groups.y);
+void ComputePass::dispatch(glm::uvec2 num_groups) {
+  dispatch(num_groups.x, num_groups.y);
 }
 
-void ComputePass::dispatch_groups(glm::uvec3 num_groups) {
-  dispatch_groups(num_groups.x, num_groups.y, num_groups.z);
+void ComputePass::dispatch(glm::uvec3 num_groups) {
+  dispatch(num_groups.x, num_groups.y, num_groups.z);
 }
 
-void ComputePass::dispatch_threads(u32 size, u32 group_size) {
-  dispatch_groups(get_num_dispatch_groups(size, group_size));
+void ComputePass::dispatch_grid(u32 size, u32 group_size_mult) {
+  dispatch_grid_3d({size, 1, 1}, {group_size_mult, 1, 1});
 }
 
-void ComputePass::dispatch_threads(glm::uvec2 size, glm::uvec2 group_size) {
-  dispatch_groups(get_num_dispatch_groups(size, group_size));
+void ComputePass::dispatch_grid_2d(glm::uvec2 size,
+                                   glm::uvec2 group_size_mult) {
+  dispatch_grid_3d({size, 1}, {group_size_mult, 1});
 }
 
-void ComputePass::dispatch_threads(glm::uvec3 size, glm::uvec3 group_size) {
-  dispatch_groups(get_num_dispatch_groups(size, group_size));
+void ComputePass::dispatch_grid_3d(glm::uvec3 size,
+                                   glm::uvec3 group_size_mult) {
+  glm::uvec3 block_size =
+      m_renderer->get_compute_pipeline(m_pipeline).local_size * group_size_mult;
+  glm::uvec3 num_groups;
+  for (int i = 0; i < num_groups.length(); ++i) {
+    num_groups[i] = ceil_div(size[i], block_size[i]);
+  }
+  dispatch(num_groups);
 }
 
 void ComputePass::dispatch_indirect(const BufferView &view) {

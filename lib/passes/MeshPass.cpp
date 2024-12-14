@@ -235,8 +235,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
           cmd.bind_compute_pipeline(rcs.pipeline);
           cmd.bind_descriptor_sets({rg.get_texture_set()});
           rg.set_push_constants(cmd, args);
-          cmd.dispatch_threads(rcs.num_instances,
-                               glsl::INSTANCE_CULLING_AND_LOD_THREADS);
+          cmd.dispatch_grid(rcs.num_instances);
         });
   }
 
@@ -354,7 +353,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
          args](Renderer &, const RgRuntime &rg, ComputePass &cmd) {
           cmd.bind_compute_pipeline(pipeline);
           rg.set_push_constants(cmd, args);
-          cmd.dispatch_threads(args.count, glsl::SCAN_BLOCK_ELEMS);
+          cmd.dispatch_grid(args.count, glsl::SCAN_THREAD_ELEMS);
         });
   }
 

@@ -62,10 +62,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
       pass.bind_descriptor_sets({rg.get_texture_set()});
       rg.set_push_constants(pass, args);
       // Dispatch 1 thread per 16 work items for optimal performance
-      pass.dispatch_threads(
-          glm::uvec2(renderer.get_texture(rg.get_texture(args.hdr)).size) /
-              glm::uvec2(4),
-          {glsl::POST_PROCESSING_THREADS_X, glsl::POST_PROCESSING_THREADS_Y});
+      pass.dispatch_grid_2d(renderer.get_texture(rg.get_texture(args.hdr)).size,
+                            {4, 4});
     });
   }
 
@@ -85,7 +83,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           pass.bind_compute_pipeline(pipeline);
           pass.bind_descriptor_sets({rg.get_texture_set()});
           rg.set_push_constants(pass, args);
-          pass.dispatch_groups(1);
+          pass.dispatch(1);
         });
   }
 }
