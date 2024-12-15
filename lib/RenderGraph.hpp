@@ -629,126 +629,6 @@ private:
   DescriptorAllocatorScope *m_descriptor_allocator = nullptr;
 };
 
-class RgPassBuilder {
-public:
-  [[nodiscard]] auto read_buffer(RgUntypedBufferId buffer,
-                                 const BufferState &usage, u32 offset = 0)
-      -> RgUntypedBufferToken;
-
-  template <typename T>
-  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, const BufferState &usage,
-                                 u32 offset = 0) -> RgBufferToken<T> {
-    return RgBufferToken<T>(
-        read_buffer(RgUntypedBufferId(buffer), usage, offset * sizeof(T)));
-  }
-
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
-                                  const BufferState &usage)
-      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
-
-  template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  const BufferState &usage)
-      -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
-    auto [id, token] =
-        write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
-    return {RgBufferId<T>(id), RgBufferToken<T>(token)};
-  }
-
-  template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  RgBufferId<T> *new_buffer,
-                                  const BufferState &usage)
-      -> RgBufferToken<T> {
-    ren_assert(new_buffer);
-    RgBufferToken<T> token;
-    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
-    return token;
-  }
-
-  template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> *buffer,
-                                  const BufferState &usage)
-      -> RgBufferToken<T> {
-    ren_assert(buffer);
-    return write_buffer(std::move(name), *buffer, buffer, usage);
-  }
-
-  [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const TextureState &usage,
-                                  u32 temporal_layer = 0) -> RgTextureToken;
-
-  [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const TextureState &usage,
-                                  Handle<Sampler> sampler,
-                                  u32 temporal_layer = 0) -> RgTextureToken;
-
-  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   const TextureState &usage)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   RgTextureId *new_texture,
-                                   const TextureState &usage) -> RgTextureToken;
-
-  [[nodiscard]] auto write_texture(RgDebugName name,
-                                   NotNull<RgTextureId *> texture,
-                                   const TextureState &usage) -> RgTextureToken;
-
-  [[nodiscard]] auto
-  write_color_attachment(RgDebugName name, RgTextureId texture,
-                         const ColorAttachmentOperations &ops, u32 index = 0)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  auto read_depth_attachment(RgTextureId texture, u32 temporal_layer = 0)
-      -> RgTextureToken;
-
-  auto write_depth_attachment(RgDebugName name, RgTextureId texture,
-                              const DepthAttachmentOperations &ops)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  void
-  wait_semaphore(RgSemaphoreId semaphore,
-                 VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                 u64 value = 0);
-
-  void
-  signal_semaphore(RgSemaphoreId semaphore,
-                   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                   u64 value = 0);
-
-  void set_host_callback(CRgHostCallback auto cb) {
-    m_builder->set_host_callback(m_pass, std::move(cb));
-  }
-
-  void set_graphics_callback(CRgGraphicsCallback auto cb) {
-    m_builder->set_graphics_callback(m_pass, std::move(cb));
-  }
-
-  void set_compute_callback(CRgComputeCallback auto cb) {
-    m_builder->set_compute_callback(m_pass, std::move(cb));
-  }
-
-  void set_callback(CRgCallback auto cb) {
-    m_builder->set_callback(m_pass, std::move(cb));
-  }
-
-private:
-  friend class RgBuilder;
-
-  RgPassBuilder(RgPassId pass, RgBuilder &builder);
-
-  void add_color_attachment(u32 index, RgTextureToken texture,
-                            const ColorAttachmentOperations &ops);
-
-  void add_depth_attachment(RgTextureToken texture,
-                            const DepthAttachmentOperations &ops);
-
-private:
-  RgPassId m_pass;
-  RgBuilder *m_builder = nullptr;
-};
-
 class RenderGraph {
 public:
   void execute(CommandAllocator &cmd_allocator);
@@ -902,6 +782,172 @@ private:
 
 private:
   RenderGraph *m_rg = nullptr;
+};
+
+class RgPassBuilder {
+public:
+  [[nodiscard]] auto read_buffer(RgUntypedBufferId buffer,
+                                 const BufferState &usage, u32 offset = 0)
+      -> RgUntypedBufferToken;
+
+  template <typename T>
+  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, const BufferState &usage,
+                                 u32 offset = 0) -> RgBufferToken<T> {
+    return RgBufferToken<T>(
+        read_buffer(RgUntypedBufferId(buffer), usage, offset * sizeof(T)));
+  }
+
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+                                  const BufferState &usage)
+      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
+
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
+                                  const BufferState &usage)
+      -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
+    auto [id, token] =
+        write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
+    return {RgBufferId<T>(id), RgBufferToken<T>(token)};
+  }
+
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
+                                  RgBufferId<T> *new_buffer,
+                                  const BufferState &usage)
+      -> RgBufferToken<T> {
+    ren_assert(new_buffer);
+    RgBufferToken<T> token;
+    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
+    return token;
+  }
+
+  template <typename T>
+  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> *buffer,
+                                  const BufferState &usage)
+      -> RgBufferToken<T> {
+    ren_assert(buffer);
+    return write_buffer(std::move(name), *buffer, buffer, usage);
+  }
+
+  [[nodiscard]] auto read_texture(RgTextureId texture,
+                                  const TextureState &usage,
+                                  u32 temporal_layer = 0) -> RgTextureToken;
+
+  [[nodiscard]] auto read_texture(RgTextureId texture,
+                                  const TextureState &usage,
+                                  Handle<Sampler> sampler,
+                                  u32 temporal_layer = 0) -> RgTextureToken;
+
+  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
+                                   const TextureState &usage)
+      -> std::tuple<RgTextureId, RgTextureToken>;
+
+  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
+                                   RgTextureId *new_texture,
+                                   const TextureState &usage) -> RgTextureToken;
+
+  [[nodiscard]] auto write_texture(RgDebugName name,
+                                   NotNull<RgTextureId *> texture,
+                                   const TextureState &usage) -> RgTextureToken;
+
+  [[nodiscard]] auto
+  write_color_attachment(RgDebugName name, RgTextureId texture,
+                         const ColorAttachmentOperations &ops, u32 index = 0)
+      -> std::tuple<RgTextureId, RgTextureToken>;
+
+  auto read_depth_attachment(RgTextureId texture, u32 temporal_layer = 0)
+      -> RgTextureToken;
+
+  auto write_depth_attachment(RgDebugName name, RgTextureId texture,
+                              const DepthAttachmentOperations &ops)
+      -> std::tuple<RgTextureId, RgTextureToken>;
+
+  void
+  wait_semaphore(RgSemaphoreId semaphore,
+                 VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
+                 u64 value = 0);
+
+  void
+  signal_semaphore(RgSemaphoreId semaphore,
+                   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
+                   u64 value = 0);
+
+  void set_host_callback(CRgHostCallback auto cb) {
+    m_builder->set_host_callback(m_pass, std::move(cb));
+  }
+
+  void set_graphics_callback(CRgGraphicsCallback auto cb) {
+    m_builder->set_graphics_callback(m_pass, std::move(cb));
+  }
+
+  void set_compute_callback(CRgComputeCallback auto cb) {
+    m_builder->set_compute_callback(m_pass, std::move(cb));
+  }
+
+  void set_callback(CRgCallback auto cb) {
+    m_builder->set_callback(m_pass, std::move(cb));
+  }
+
+  void dispatch_grid(Handle<ComputePipeline> pipeline, const auto &args,
+                     u32 size, u32 block_size_mult = 1) {
+    dispatch_grid_3d(pipeline, args, {size, 1, 1}, {block_size_mult, 1, 1});
+  }
+
+  void dispatch_grid_2d(Handle<ComputePipeline> pipeline, const auto &args,
+                        glm::uvec2 size, glm::uvec2 block_size_mult = {1, 1}) {
+    dispatch_grid_3d(pipeline, args, {size, 1}, {block_size_mult, 1});
+  }
+
+  void dispatch_grid_3d(Handle<ComputePipeline> pipeline, const auto &args,
+                        glm::uvec3 size,
+                        glm::uvec3 block_size_mult = {1, 1, 1}) {
+    set_compute_callback(
+        [pipeline, args, size, block_size_mult](
+            Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
+          cmd.bind_compute_pipeline(pipeline);
+          Handle<PipelineLayout> layout =
+              renderer.get_compute_pipeline(pipeline).layout;
+          if (!renderer.get_pipeline_layout(layout).set_layouts.empty()) {
+            cmd.bind_descriptor_sets({rg.get_texture_set()});
+          }
+          rg.set_push_constants(cmd, args);
+          cmd.dispatch_grid_3d(size, block_size_mult);
+        });
+  }
+
+  void dispatch_indirect(Handle<ComputePipeline> pipeline, const auto &args,
+                         RgBufferId<glsl::DispatchIndirectCommand> command,
+                         u32 offset = 0) {
+    RgBufferToken<glsl::DispatchIndirectCommand> token =
+        read_buffer(command, INDIRECT_COMMAND_SRC_BUFFER, offset);
+    set_compute_callback([pipeline, args, token](Renderer &renderer,
+                                                 const RgRuntime &rg,
+                                                 ComputePass &cmd) {
+      cmd.bind_compute_pipeline(pipeline);
+      Handle<PipelineLayout> layout =
+          renderer.get_compute_pipeline(pipeline).layout;
+      if (!renderer.get_pipeline_layout(layout).set_layouts.empty()) {
+        cmd.bind_descriptor_sets({rg.get_texture_set()});
+      }
+      rg.set_push_constants(cmd, args);
+      cmd.dispatch_indirect(rg.get_buffer(token));
+    });
+  }
+
+private:
+  friend class RgBuilder;
+
+  RgPassBuilder(RgPassId pass, RgBuilder &builder);
+
+  void add_color_attachment(u32 index, RgTextureToken texture,
+                            const ColorAttachmentOperations &ops);
+
+  void add_depth_attachment(RgTextureToken texture,
+                            const DepthAttachmentOperations &ops);
+
+private:
+  RgPassId m_pass;
+  RgBuilder *m_builder = nullptr;
 };
 
 } // namespace ren

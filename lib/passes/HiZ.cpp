@@ -45,12 +45,6 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
 
   auto pass = ccfg.rgb->create_pass({.name = "hi-z-spd"});
 
-  struct Resources {
-    Handle<ComputePipeline> pipeline;
-  } rcs;
-
-  rcs.pipeline = ccfg.pipelines->hi_z;
-
   RgHiZSpdArgs args = {
       .counter =
           pass.write_buffer("hi-z-spd-counter", &counter, CS_READ_WRITE_BUFFER),
@@ -62,15 +56,9 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
                                ccfg.samplers->hi_z_gen),
   };
 
-  pass.set_compute_callback([rcs, size, args](Renderer &renderer,
-                                              const RgRuntime &rg,
-                                              ComputePass &cmd) {
-    cmd.bind_compute_pipeline(rcs.pipeline);
-    cmd.bind_descriptor_sets({rg.get_texture_set()});
-    rg.set_push_constants(cmd, args);
-    cmd.dispatch_grid_2d(
-        size, {glsl::HI_Z_SPD_THREAD_ELEMS_X, glsl::HI_Z_SPD_THREAD_ELEMS_Y});
-  });
+  pass.dispatch_grid_2d(
+      ccfg.pipelines->hi_z, args, size,
+      {glsl::HI_Z_SPD_THREAD_ELEMS_X, glsl::HI_Z_SPD_THREAD_ELEMS_Y});
 }
 
 } // namespace ren

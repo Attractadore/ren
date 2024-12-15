@@ -171,14 +171,6 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   {
     auto pass = rgb.create_pass({"instance-culling-and-lod"});
 
-    struct {
-      Handle<ComputePipeline> pipeline;
-      uint num_instances;
-    } rcs;
-
-    rcs.pipeline = ccfg.pipelines->instance_culling_and_lod;
-    rcs.num_instances = num_instances;
-
     const SceneGraphicsSettings &settings = ccfg.scene->settings;
 
     u32 feature_mask = 0;
@@ -230,13 +222,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
           info.rg_gpu_scene->mesh_instance_visibility, CS_READ_BUFFER);
     }
 
-    pass.set_compute_callback(
-        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &cmd) {
-          cmd.bind_compute_pipeline(rcs.pipeline);
-          cmd.bind_descriptor_sets({rg.get_texture_set()});
-          rg.set_push_constants(cmd, args);
-          cmd.dispatch_grid(rcs.num_instances);
-        });
+    pass.dispatch_grid(ccfg.pipelines->instance_culling_and_lod, args,
+                       num_instances);
   }
 
   RgBufferId<glsl::MeshletDrawCommand> unsorted_batch_commands =
@@ -348,13 +335,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         .count = num_batches,
     };
 
-    pass.set_compute_callback(
-        [pipeline = ccfg.pipelines->exclusive_scan_uint32,
-         args](Renderer &, const RgRuntime &rg, ComputePass &cmd) {
-          cmd.bind_compute_pipeline(pipeline);
-          rg.set_push_constants(cmd, args);
-          cmd.dispatch_grid(args.count, glsl::SCAN_THREAD_ELEMS);
-        });
+    pass.dispatch_grid(ccfg.pipelines->exclusive_scan_uint32, args,
+                       num_batches);
   }
 
   RgBufferId<u32> batch_out_offsets = rgb.create_buffer<u32>({
@@ -388,15 +370,6 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         .count = glsl::MAX_DRAW_MESHLETS,
     });
 
-    struct {
-      Handle<ComputePipeline> pipeline;
-      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
-    } rcs;
-
-    rcs.pipeline = ccfg.pipelines->meshlet_sorting;
-    rcs.sort_command =
-        pass.read_buffer(sort_command, INDIRECT_COMMAND_SRC_BUFFER);
-
     RgMeshletSortingArgs args = {
         .num_commands = pass.read_buffer(num_commands, CS_READ_BUFFER),
         .batch_out_offsets = pass.write_buffer(
@@ -409,12 +382,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
             "batch-commands", cfg.batch_commands.get(), CS_WRITE_BUFFER),
     };
 
-    pass.set_compute_callback(
-        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
-          pass.bind_compute_pipeline(rcs.pipeline);
-          rg.set_push_constants(pass, args);
-          pass.dispatch_indirect(rg.get_buffer(rcs.sort_command));
-        });
+    pass.dispatch_indirect(ccfg.pipelines->meshlet_sorting, args, sort_command);
   }
 } // namespace
 
@@ -492,10 +460,6 @@ void record_render_pass(const PassCommonConfig &ccfg,
       auto pass = ccfg.rgb->create_pass({fmt::format(
           "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});
 
-      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands =
-          pass.read_buffer(cfg.batch_prepare_commands,
-                           INDIRECT_COMMAND_SRC_BUFFER, batch);
-
       RgPrepareBatchArgs args = {
           .batch_offset =
               pass.read_buffer(cfg.batch_offsets, CS_READ_BUFFER, batch),
@@ -508,13 +472,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
                                         &commands, CS_WRITE_BUFFER),
       };
 
-      pass.set_compute_callback(
-          [pipeline = ccfg.pipelines->prepare_batch, batch_prepare_commands,
-           batch, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
-            pass.bind_compute_pipeline(pipeline);
-            rg.set_push_constants(pass, args);
-            pass.dispatch_indirect(rg.get_buffer(batch_prepare_commands));
-          });
+      pass.dispatch_indirect(ccfg.pipelines->prepare_batch, args,
+                             cfg.batch_prepare_commands, batch);
     }
 
     auto pass = ccfg.rgb->create_pass(

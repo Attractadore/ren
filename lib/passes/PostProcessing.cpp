@@ -3,7 +3,6 @@
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"
-#include "../glsl/PostProcessing.h"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
 
@@ -29,8 +28,9 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         });
   }
 
+  glm::uvec2 viewport = ccfg.swapchain->get_size();
+
   if (!ccfg.rcs->sdr) {
-    glm::uvec2 viewport = ccfg.swapchain->get_size();
     ccfg.rcs->sdr = ccfg.rgp->create_texture({
         .name = "sdr",
         .format = SDR_FORMAT,
@@ -55,16 +55,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           pass.read_texture(cfg.exposure, CS_SAMPLE_TEXTURE, 1);
     }
 
-    pass.set_compute_callback([pipeline = ccfg.pipelines->post_processing,
-                               args](Renderer &renderer, const RgRuntime &rg,
-                                     ComputePass &pass) {
-      pass.bind_compute_pipeline(pipeline);
-      pass.bind_descriptor_sets({rg.get_texture_set()});
-      rg.set_push_constants(pass, args);
-      // Dispatch 1 thread per 16 work items for optimal performance
-      pass.dispatch_grid_2d(renderer.get_texture(rg.get_texture(args.hdr)).size,
-                            {4, 4});
-    });
+    pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, viewport,
+                          {4, 4});
   }
 
   if (scene.exposure.mode == ExposureMode::Automatic) {
@@ -77,13 +69,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .exposure_compensation = ccfg.scene->exposure.ec,
     };
 
-    pass.set_compute_callback(
-        [pipeline = ccfg.pipelines->reduce_luminance_histogram,
-         args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
-          pass.bind_compute_pipeline(pipeline);
-          pass.bind_descriptor_sets({rg.get_texture_set()});
-          rg.set_push_constants(pass, args);
-          pass.dispatch(1);
-        });
+    pass.dispatch_grid(ccfg.pipelines->reduce_luminance_histogram, args,
+                       glsl::NUM_LUMINANCE_HISTOGRAM_BINS);
   }
 }

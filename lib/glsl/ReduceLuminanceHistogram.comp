@@ -3,7 +3,7 @@
 
 shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
-LOCAL_SIZE(REDUCE_LUMINANCE_HISTOGRAM_THREADS_X);
+LOCAL_SIZE(NUM_LUMINANCE_HISTOGRAM_BINS);
 void main() {
   uint index = gl_LocalInvocationIndex;
 
