@@ -3,7 +3,6 @@
 #include "../Profiler.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
-#include "CalculateNormalMatrices.comp.hpp"
 
 #include <algorithm>
 #include <fmt/format.h>
@@ -17,10 +16,6 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
       .mesh_instances =
           rgb.create_buffer("mesh-instances", gpu_scene.mesh_instances),
       .transform_matrices = rgb.create_buffer<glm::mat4x3>({
-          .heap = BufferHeap::Static,
-          .count = MAX_NUM_MESH_INSTANCES,
-      }),
-      .normal_matrices = rgb.create_buffer<glm::mat3>({
           .heap = BufferHeap::Static,
           .count = MAX_NUM_MESH_INSTANCES,
       }),
@@ -58,30 +53,6 @@ void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
       rgb.get_final_buffer_state(rg_gpu_scene.materials);
   gpu_scene->directional_lights.state =
       rgb.get_final_buffer_state(rg_gpu_scene.directional_lights);
-}
-
-void setup_calculate_normal_matrices_pass(const PassCommonConfig &ccfg,
-                                          NotNull<RgGpuScene *> gpu_scene) {
-
-  RgBuilder &rgb = *ccfg.rgb;
-
-  auto pass = rgb.create_pass({"gpu-scene-calculate-normal-matrices"});
-
-  RgCalculateNormalMatricesArgs args = {
-      .transforms =
-          pass.read_buffer(gpu_scene->transform_matrices, CS_READ_BUFFER),
-      .normals = pass.write_buffer(
-          "normal-matrices", &gpu_scene->normal_matrices, CS_WRITE_BUFFER),
-  };
-
-  pass.set_compute_callback(
-      [pipeline = ccfg.pipelines->calculate_normal_matrices,
-       count = ccfg.scene->mesh_instances.raw_size(),
-       args](Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
-        cmd.bind_compute_pipeline(pipeline);
-        rg.set_push_constants(cmd, args);
-        cmd.dispatch_grid(count);
-      });
 }
 
 void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
@@ -286,8 +257,6 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       rcs.gpu_scene->directional_light_update_data.clear();
     }
   });
-
-  setup_calculate_normal_matrices_pass(ccfg, cfg.rg_gpu_scene);
 }
 
 } // namespace ren

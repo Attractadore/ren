@@ -307,8 +307,6 @@ auto get_render_pass_args(const SceneData &scene,
           pass.read_buffer(gpu_scene.mesh_instances, VS_READ_BUFFER),
       .transform_matrices =
           pass.read_buffer(gpu_scene.transform_matrices, VS_READ_BUFFER),
-      .normal_matrices =
-          pass.read_buffer(gpu_scene.normal_matrices, VS_READ_BUFFER),
       .materials = pass.read_buffer(gpu_scene.materials, FS_READ_BUFFER),
       .directional_lights =
           pass.read_buffer(gpu_scene.directional_lights, FS_READ_BUFFER),

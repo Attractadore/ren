@@ -13,7 +13,6 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   GLSL_READONLY GLSL_PTR(Mesh) meshes;
   GLSL_READONLY GLSL_PTR(MeshInstance) mesh_instances;
   GLSL_READONLY GLSL_PTR(mat4x3) transform_matrices;
-  GLSL_READONLY GLSL_PTR(mat3) normal_matrices;
   GLSL_READONLY GLSL_PTR(Material) materials;
   GLSL_READONLY GLSL_PTR(DirectionalLight) directional_lights;
   uint num_directional_lights;

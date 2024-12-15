@@ -4,7 +4,6 @@
 #include "core/Errors.hpp"
 #include "glsl/Texture.h"
 
-#include "CalculateNormalMatrices.comp.hpp"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
 #include "HiZSpd.comp.hpp"
@@ -130,8 +129,6 @@ auto load_pipelines(ResourceArena &arena,
   load_compute_pipeline(Span(shader, shader##Size).as_bytes(), name)
 
   return {
-      .calculate_normal_matrices = compute_pipeline(
-          CalculateNormalMatricesCS, "Calculate normal matrices"),
       .instance_culling_and_lod =
           compute_pipeline(InstanceCullingAndLODCS, "Instance culling and LOD"),
       .meshlet_culling = compute_pipeline(MeshletCullingCS, "Meshlet culling"),

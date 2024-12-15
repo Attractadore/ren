@@ -72,7 +72,6 @@ struct RgGpuScene {
   RgBufferId<glsl::Mesh> meshes;
   RgBufferId<glsl::MeshInstance> mesh_instances;
   RgBufferId<glm::mat4x3> transform_matrices;
-  RgBufferId<glm::mat3> normal_matrices;
   RgBufferId<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
   std::array<RgDrawSetData, NUM_DRAW_SETS> draw_sets;
   RgBufferId<glsl::Material> materials;

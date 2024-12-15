@@ -35,8 +35,6 @@ function(add_shader shader_glsl)
   add_dependencies(ren ${shader_target})
 endfunction()
 
-add_shader(CalculateNormalMatrices.comp)
-
 add_shader(InstanceCullingAndLOD.comp)
 add_shader(MeshletCulling.comp)
 add_shader(MeshletSorting.comp)

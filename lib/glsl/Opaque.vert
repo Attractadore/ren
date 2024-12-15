@@ -1,4 +1,5 @@
 #include "Opaque.h"
+#include "Transforms.h"
 
 layout(location = A_POSITION) out vec3 a_position;
 
@@ -14,7 +15,7 @@ layout(location = A_MATERIAL) out flat uint a_material;
 void main() {
   MeshInstance mesh_instance = DEREF(pc.mesh_instances[gl_BaseInstance]);
   mat4x3 transform_matrix = DEREF(pc.transform_matrices[gl_BaseInstance]);
-  mat3 normal_matrix = DEREF(pc.normal_matrices[gl_BaseInstance]);
+  mat3 normal_matrix = normal(mat3(transform_matrix));
 
   Mesh mesh = DEREF(pc.meshes[mesh_instance.mesh]);
 
