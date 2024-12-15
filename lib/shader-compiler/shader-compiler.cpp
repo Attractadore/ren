@@ -392,21 +392,22 @@ extern const size_t {}Size;
 
   {
     String code = fmt::format("{:#010x}", fmt::join(spirv, ",\n  "));
-    String source = fmt::format(R"(
-#include "{}"
+    String source =
+        fmt::format(R"(
+#include <cstddef>
+#include <cstdint>
 
 namespace {} {{
 
-const uint32_t {}[] = {{
+const extern uint32_t {}[] = {{
   {}
 }};
-const size_t {}Size = sizeof({}) / sizeof(uint32_t);
+const extern size_t {}Size = sizeof({}) / sizeof(uint32_t);
 }}
 
 {}
 )",
-                                fs::absolute(hpp_dst), opts.ns, var_name, code,
-                                var_name, var_name, rg_cpp);
+                    opts.ns, var_name, code, var_name, var_name, rg_cpp);
     std::ofstream f(cpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
