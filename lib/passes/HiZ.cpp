@@ -1,5 +1,4 @@
 #include "HiZ.hpp"
-#include "../CommandRecorder.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"
 #include "HiZSpd.comp.hpp"
@@ -26,22 +25,8 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
     });
   }
 
-  RgBufferId<glsl::uint> counter = ccfg.rgb->create_buffer<glsl::uint>({
-      .heap = BufferHeap::Static,
-      .count = 1,
-  });
-
-  {
-    auto init_pass = ccfg.rgb->create_pass({.name = "hi-z-init"});
-
-    RgBufferToken<glsl::uint> rcs;
-    std::tie(counter, rcs) = init_pass.write_buffer(
-        "hi-z-spd-counter-zero", counter, TRANSFER_DST_BUFFER);
-    init_pass.set_callback(
-        [rcs](Renderer &renderer, const RgRuntime &rg, CommandRecorder &cmd) {
-          cmd.fill_buffer(BufferView(rg.get_buffer(rcs)), 0);
-        });
-  }
+  auto counter = ccfg.rgb->create_buffer<u32>(
+      {.name = "hi-z-spd-counter-zero", .init = 0});
 
   auto pass = ccfg.rgb->create_pass({.name = "hi-z-spd"});
 

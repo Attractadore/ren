@@ -99,8 +99,8 @@ public:
 
   template <typename T>
     requires(sizeof(T) == sizeof(u32))
-  void fill_buffer(const BufferView &buffer, T value) {
-    fill_buffer(buffer, std::bit_cast<u32>(value));
+  void fill_buffer(const BufferSlice<T> &buffer, T value) {
+    fill_buffer(BufferView(buffer), std::bit_cast<u32>(value));
   }
 
   template <typename T>

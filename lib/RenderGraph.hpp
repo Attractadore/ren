@@ -183,16 +183,15 @@ struct RgPass {
       ext;
 };
 
-struct RgBufferCreateInfo {
+template <typename T> struct RgBufferCreateInfo {
   /// Buffer name.
   REN_RG_DEBUG_NAME_TYPE name;
   /// Memory heap from which to allocate buffer.
-  BufferHeap heap = BufferHeap::Dynamic;
+  BufferHeap heap = BufferHeap::Static;
   /// Buffer size.
-  union {
-    usize size = 1;
-    usize count;
-  };
+  usize count = 1;
+  /// Optional default value.
+  Optional<T> init;
 };
 
 struct RgPhysicalBuffer {
@@ -495,15 +494,12 @@ public:
   [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
       -> RgPassBuilder;
 
-  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info)
-      -> RgUntypedBufferId;
+  [[nodiscard]] auto create_buffer(RgDebugName name, BufferHeap heap,
+                                   usize size) -> RgUntypedBufferId;
 
   template <typename T>
-  [[nodiscard]] auto create_buffer(RgBufferCreateInfo &&create_info)
-      -> RgBufferId<T> {
-    create_info.size = create_info.count * sizeof(T);
-    return RgBufferId<T>(create_buffer(std::move(create_info)));
-  }
+  [[nodiscard]] auto create_buffer(RgBufferCreateInfo<T> &&create_info)
+      -> RgBufferId<T>;
 
   template <typename T>
   [[nodiscard]] auto create_buffer(RgDebugName name,
@@ -517,6 +513,15 @@ public:
     set_external_buffer(buffer, BufferView(slice.slice), slice.state);
     return buffer;
   }
+
+  template <typename T>
+  void fill_buffer(RgDebugName name, RgBufferId<T> *buffer, const T &value);
+
+  template <typename T>
+  void copy_buffer(RgBufferId<T> src, RgDebugName name, RgBufferId<T> *dst);
+
+  void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+                     const glm::vec4 &value);
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
                            const BufferState &usage = {});
@@ -949,5 +954,46 @@ private:
   RgPassId m_pass;
   RgBuilder *m_builder = nullptr;
 };
+
+template <typename T>
+[[nodiscard]] auto RgBuilder::create_buffer(RgBufferCreateInfo<T> &&create_info)
+    -> RgBufferId<T> {
+  RgBufferId<T> buffer(
+      create_buffer("", create_info.heap, create_info.count * sizeof(T)));
+  if (create_info.init) {
+    fill_buffer(std::move(create_info.name), &buffer, *create_info.init);
+  }
+  return buffer;
+}
+
+template <typename T>
+void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
+                            const T &value) {
+  auto pass = create_pass({"fill-buffer"});
+  auto token = pass.write_buffer(std::move(name), buffer, TRANSFER_DST_BUFFER);
+  pass.set_callback(
+      [token, value](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
+        BufferSlice<T> buffer = rg.get_buffer(token);
+        if constexpr (sizeof(T) == sizeof(u32)) {
+          cmd.fill_buffer(buffer, value);
+        } else {
+          auto data = rg.allocate<T>(buffer.count);
+          std::ranges::fill_n(data.host_ptr, buffer.count, value);
+          cmd.copy_buffer(data.slice, buffer);
+        }
+      });
+}
+
+template <typename T>
+void RgBuilder::copy_buffer(RgBufferId<T> src, RgDebugName name,
+                            RgBufferId<T> *dst) {
+  auto pass = create_pass({"copy-buffer"});
+  auto src_token = pass.read_buffer(src, TRANSFER_SRC_BUFFER);
+  auto dst_token = pass.write_buffer(std::move(name), dst, TRANSFER_DST_BUFFER);
+  pass.set_callback([src_token, dst_token](Renderer &, const RgRuntime &rg,
+                                           CommandRecorder &cmd) {
+    cmd.copy_buffer(rg.get_buffer(src_token), rg.get_buffer(dst_token));
+  });
+}
 
 } // namespace ren

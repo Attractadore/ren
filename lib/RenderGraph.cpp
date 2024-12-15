@@ -323,14 +323,14 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
   return buffer;
 }
 
-auto RgBuilder::create_buffer(RgBufferCreateInfo &&create_info)
+auto RgBuilder::create_buffer(RgDebugName name, BufferHeap heap, usize size)
     -> RgUntypedBufferId {
   RgUntypedBufferId buffer =
-      create_virtual_buffer(NullHandle, create_info.name, NullHandle);
+      create_virtual_buffer(NullHandle, std::move(name), NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
   m_data->m_physical_buffers[physical_buffer] = {
-      .heap = create_info.heap,
-      .size = create_info.size,
+      .heap = heap,
+      .size = size,
   };
   return buffer;
 }
@@ -353,6 +353,17 @@ auto RgBuilder::write_buffer(RgPassId pass, RgDebugName name,
   m_data->m_passes[pass].write_buffers.push_back(use);
   RgUntypedBufferId dst = create_virtual_buffer(pass, std::move(name), src);
   return {dst, RgUntypedBufferToken(use)};
+}
+
+void RgBuilder::clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+                              const glm::vec4 &value) {
+  auto pass = create_pass({"clear-texture"});
+  auto token =
+      pass.write_texture(std::move(name), texture, TRANSFER_DST_TEXTURE);
+  pass.set_callback(
+      [token, value](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
+        cmd.clear_texture(rg.get_texture(token), value);
+      });
 }
 
 auto RgBuilder::add_texture_use(RgTextureId texture, const TextureState &usage,

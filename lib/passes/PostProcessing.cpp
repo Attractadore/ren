@@ -1,5 +1,4 @@
 #include "PostProcessing.hpp"
-#include "../CommandRecorder.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"
@@ -12,20 +11,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
   RgBufferId<glsl::LuminanceHistogram> histogram;
   if (scene.exposure.mode == ExposureMode::Automatic) {
-    histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>({
-        .heap = BufferHeap::Static,
-        .count = 1,
-    });
-
-    auto pass = ccfg.rgb->create_pass({.name = "init-luminance-histogram"});
-
-    RgBufferToken<glsl::LuminanceHistogram> token = pass.write_buffer(
-        "luminance-histogram-empty", &histogram, TRANSFER_DST_BUFFER);
-
-    pass.set_callback(
-        [token](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
-          cmd.fill_buffer(BufferView(rt.get_buffer(token)), 0);
-        });
+    histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>(
+        {.init = glsl::LuminanceHistogram()});
   }
 
   glm::uvec2 viewport = ccfg.swapchain->get_size();

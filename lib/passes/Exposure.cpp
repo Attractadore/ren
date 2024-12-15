@@ -17,8 +17,6 @@ auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
 
 void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
                                 const ExposurePassConfig &cfg) {
-  auto pass = ccfg.rgb->create_pass({.name = "camera-exposure"});
-
   if (!ccfg.rcs->exposure) {
     ccfg.rcs->exposure = ccfg.rgp->create_texture({
         .name = "exposure",
@@ -27,22 +25,14 @@ void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
         .height = 1,
     });
   }
-
-  RgTextureToken token;
-  std::tie(*cfg.exposure, token) =
-      pass.write_texture("exposure", ccfg.rcs->exposure, TRANSFER_DST_TEXTURE);
+  *cfg.exposure = ccfg.rcs->exposure;
   *cfg.temporal_layer = 0;
 
-  const SceneData &scene = *ccfg.scene;
-  float exposure =
-      get_camera_exposure(scene.get_camera().params, scene.exposure.ec);
+  float exposure = get_camera_exposure(ccfg.scene->get_camera().params,
+                                       ccfg.scene->exposure.ec);
   ren_assert(exposure > 0.0f);
 
-  pass.set_callback(
-      [exposure, token](Renderer &, const RgRuntime &rt, CommandRecorder &cmd) {
-        cmd.clear_texture(rt.get_texture(token),
-                          glm::vec4(exposure, 0.0f, 0.0f, 0.0f));
-      });
+  ccfg.rgb->clear_texture("exposure", cfg.exposure, {exposure, 0, 0, 0});
 }
 
 void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,

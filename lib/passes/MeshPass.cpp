@@ -36,6 +36,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   const DrawSetData &ds = info.gpu_scene->draw_sets[cfg.draw_set];
   const RgDrawSetData &rg_ds = info.rg_gpu_scene->draw_sets[cfg.draw_set];
 
+  u32 num_batches = ds.batches.size();
+
   u32 num_instances = ds.size();
 
   u32 num_meshlets = 0;
@@ -54,119 +56,39 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
   auto meshlet_bucket_commands =
       rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .heap = BufferHeap::Static,
-          .size = glsl::NUM_MESHLET_CULLING_BUCKETS,
+          .name = "meshlet-bucket-commands-empty",
+          .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
+          .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
       });
 
   auto meshlet_bucket_sizes = rgb.create_buffer<u32>({
-      .heap = BufferHeap::Static,
-      .size = glsl::NUM_MESHLET_CULLING_BUCKETS,
+      .name = "meshlet-bucket-sizes-zero",
+      .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
+      .init = 0,
   });
 
-  auto meshlet_cull_data = rgb.create_buffer<glsl::MeshletCullData>({
-      .heap = BufferHeap::Static,
-      .size = buckets_size,
-  });
-
-  u32 num_batches = ds.batches.size();
+  auto meshlet_cull_data =
+      rgb.create_buffer<glsl::MeshletCullData>({.count = buckets_size});
 
   *cfg.batch_sizes = rgb.create_buffer<u32>({
-      .heap = BufferHeap::Static,
+      .name = "batch-sizes-zero",
       .count = num_batches,
+      .init = 0,
   });
 
   *cfg.batch_prepare_commands =
       rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .heap = BufferHeap::Static,
+          .name = "batch-prepare-commands-empty",
           .count = num_batches,
+          .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
       });
 
-  RgBufferId<u32> num_commands =
-      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
+  auto num_commands = rgb.create_buffer<u32>({.init = 0});
 
-  RgBufferId<glsl::DispatchIndirectCommand> sort_command =
-      rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .heap = BufferHeap::Static,
-          .count = 1,
-      });
-
-  RgBufferId<u32> scan_num_started =
-      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
-
-  RgBufferId<u32> scan_num_finished =
-      rgb.create_buffer<u32>({.heap = BufferHeap::Static, .count = 1});
-
-  {
-    auto pass = rgb.create_pass({"init-culling"});
-
-    struct {
-      RgUntypedBufferToken meshlet_bucket_commands;
-      RgUntypedBufferToken meshlet_bucket_sizes;
-      RgBufferToken<u32> batch_sizes;
-      RgBufferToken<glsl::DispatchIndirectCommand> batch_prepare_commands;
-      RgBufferToken<u32> num_commands;
-      RgBufferToken<glsl::DispatchIndirectCommand> sort_command;
-      RgBufferToken<u32> scan_num_started;
-      RgBufferToken<u32> scan_num_finished;
-      u32 num_batches = 0;
-    } rcs;
-
-    std::tie(meshlet_bucket_commands, rcs.meshlet_bucket_commands) =
-        pass.write_buffer("init-meshlet-bucket-commands",
-                          meshlet_bucket_commands, TRANSFER_DST_BUFFER);
-
-    std::tie(meshlet_bucket_sizes, rcs.meshlet_bucket_sizes) =
-        pass.write_buffer("init-meshlet-bucket-sizes", meshlet_bucket_sizes,
-                          TRANSFER_DST_BUFFER);
-
-    std::tie(*cfg.batch_sizes, rcs.batch_sizes) = pass.write_buffer(
-        "init-batch-sizes", *cfg.batch_sizes, TRANSFER_DST_BUFFER);
-
-    std::tie(*cfg.batch_prepare_commands, rcs.batch_prepare_commands) =
-        pass.write_buffer("init-batch-prepare-commands",
-                          *cfg.batch_prepare_commands, TRANSFER_DST_BUFFER);
-
-    std::tie(num_commands, rcs.num_commands) = pass.write_buffer(
-        "init-command-count", num_commands, TRANSFER_DST_BUFFER);
-    std::tie(sort_command, rcs.sort_command) = pass.write_buffer(
-        "init-sort-command", sort_command, TRANSFER_DST_BUFFER);
-
-    std::tie(scan_num_started, rcs.scan_num_started) = pass.write_buffer(
-        "init-scan-num-started", scan_num_started, TRANSFER_DST_BUFFER);
-    std::tie(scan_num_finished, rcs.scan_num_finished) = pass.write_buffer(
-        "init-scan-num-finished", scan_num_finished, TRANSFER_DST_BUFFER);
-
-    rcs.num_batches = num_batches;
-
-    pass.set_callback([rcs](Renderer &, const RgRuntime &rg,
-                            CommandRecorder &cmd) {
-      std::array<glsl::DispatchIndirectCommand,
-                 glsl::NUM_MESHLET_CULLING_BUCKETS>
-          commands;
-      std::ranges::fill(commands,
-                        glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
-      cmd.update_buffer(rg.get_buffer(rcs.meshlet_bucket_commands), commands);
-
-      cmd.fill_buffer(rg.get_buffer(rcs.meshlet_bucket_sizes), 0);
-
-      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.batch_sizes)), 0);
-
-      auto batch_prepare_commands =
-          rg.allocate<glsl::DispatchIndirectCommand>(rcs.num_batches);
-      std::ranges::fill_n(
-          batch_prepare_commands.host_ptr, rcs.num_batches,
-          glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
-      cmd.copy_buffer(batch_prepare_commands.slice,
-                      rg.get_buffer(rcs.batch_prepare_commands));
-
-      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.num_commands)), 0);
-      cmd.update_buffer(BufferView(rg.get_buffer(rcs.sort_command)),
-                        glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1});
-
-      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.scan_num_started)), 0);
-      cmd.fill_buffer(BufferView(rg.get_buffer(rcs.scan_num_finished)), 0);
-    });
-  }
+  auto sort_command = rgb.create_buffer<glsl::DispatchIndirectCommand>({
+      .name = "sort-command-empty",
+      .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
+  });
 
   {
     auto pass = rgb.create_pass({"instance-culling-and-lod"});
@@ -226,17 +148,11 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                        num_instances);
   }
 
-  RgBufferId<glsl::MeshletDrawCommand> unsorted_batch_commands =
-      rgb.create_buffer<glsl::MeshletDrawCommand>({
-          .heap = BufferHeap::Static,
-          .count = glsl::MAX_DRAW_MESHLETS,
-      });
+  auto unsorted_batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>(
+      {.count = glsl::MAX_DRAW_MESHLETS});
 
-  RgBufferId<glsl_BatchId> unsorted_batch_command_batch_ids =
-      rgb.create_buffer<glsl_BatchId>({
-          .heap = BufferHeap::Static,
-          .count = glsl::MAX_DRAW_MESHLETS,
-      });
+  auto unsorted_batch_command_batch_ids =
+      rgb.create_buffer<glsl_BatchId>({.count = glsl::MAX_DRAW_MESHLETS});
 
   {
     auto pass = rgb.create_pass({"meshlet-culling"});
@@ -309,18 +225,19 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         });
   }
 
-  *cfg.batch_offsets = rgb.create_buffer<u32>({
-      .heap = BufferHeap::Static,
-      .count = num_batches,
-  });
+  *cfg.batch_offsets = rgb.create_buffer<u32>({.count = num_batches});
 
   {
-    auto pass = rgb.create_pass({"batch-sizes-scan"});
+    auto block_sums = rgb.create_buffer<u32>(
+        {.count = glsl::get_stream_scan_block_sum_count(num_batches)});
 
-    RgBufferId<u32> block_sums = rgb.create_buffer<u32>({
-        .heap = BufferHeap::Static,
-        .count = glsl::get_stream_scan_block_sum_count(num_batches),
-    });
+    auto scan_num_started =
+        rgb.create_buffer<u32>({.name = "scan-num-started-zero", .init = 0});
+
+    auto scan_num_finished =
+        rgb.create_buffer<u32>({.name = "scan-num-finished-zero", .init = 0});
+
+    auto pass = rgb.create_pass({"batch-sizes-scan"});
 
     RgStreamScanArgs args = {
         .src = pass.read_buffer(*cfg.batch_sizes, CS_READ_BUFFER),
@@ -339,36 +256,17 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                        num_batches);
   }
 
-  RgBufferId<u32> batch_out_offsets = rgb.create_buffer<u32>({
-      .heap = BufferHeap::Static,
-      .count = num_batches,
-  });
+  *cfg.batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>(
+      {.count = glsl::MAX_DRAW_MESHLETS});
 
   {
-    auto pass = rgb.create_pass({"init-meshlet-sorting"});
+    RgBufferId<u32> batch_out_offsets =
+        rgb.create_buffer<u32>({.count = num_batches});
 
-    struct {
-      RgBufferToken<u32> src;
-      RgBufferToken<u32> dst;
-    } rcs;
+    rgb.copy_buffer(*cfg.batch_offsets, "init-batch-out-offsets",
+                    &batch_out_offsets);
 
-    rcs.src = pass.read_buffer(*cfg.batch_offsets, TRANSFER_SRC_BUFFER);
-    std::tie(batch_out_offsets, rcs.dst) = pass.write_buffer(
-        "init-batch-out-offsets", batch_out_offsets, TRANSFER_DST_BUFFER);
-
-    pass.set_callback(
-        [rcs](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
-          cmd.copy_buffer(rg.get_buffer(rcs.src), rg.get_buffer(rcs.dst));
-        });
-  }
-
-  {
     auto pass = rgb.create_pass({"meshlet-sorting"});
-
-    *cfg.batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>({
-        .heap = BufferHeap::Static,
-        .count = glsl::MAX_DRAW_MESHLETS,
-    });
 
     RgMeshletSortingArgs args = {
         .num_commands = pass.read_buffer(num_commands, CS_READ_BUFFER),
@@ -450,10 +348,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
   }
 
   RgBufferId<glsl::DrawIndexedIndirectCommand> commands =
-      ccfg.rgb->create_buffer<glsl::DrawIndexedIndirectCommand>({
-          .heap = BufferHeap::Static,
-          .count = glsl::MAX_DRAW_MESHLETS,
-      });
+      ccfg.rgb->create_buffer<glsl::DrawIndexedIndirectCommand>(
+          {.count = glsl::MAX_DRAW_MESHLETS});
 
   for (glsl_BatchId batch : range(ds.batches.size())) {
     {
