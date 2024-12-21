@@ -10,7 +10,7 @@ auto get_error_string_impl(std::string err) -> std::string { return err; }
 
 auto get_error_string_impl(ren::Error err) -> std::string {
   switch (err) {
-  case ren::Error::Vulkan:
+  case ren::Error::RHI:
     return "ren: Vulkan error";
   case ren::Error::System:
     return "ren: System error";

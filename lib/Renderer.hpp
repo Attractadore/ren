@@ -11,6 +11,7 @@
 #include "core/Optional.hpp"
 #include "core/Span.hpp"
 #include "glsl/DevicePtr.hpp"
+#include "rhi.hpp"
 
 #include <volk.h>
 
@@ -29,16 +30,9 @@ enum class RendererFeature {
 constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
 
 class Renderer final : public IRenderer {
-  VkInstance m_instance = nullptr;
-#if REN_VULKAN_VALIDATION
-  VkDebugReportCallbackEXT m_debug_callback = nullptr;
-#endif
-  VkPhysicalDevice m_adapter = nullptr;
-  VkDevice m_device = nullptr;
-  VmaAllocator m_allocator = nullptr;
-
-  unsigned m_graphics_queue_family = -1;
-  VkQueue m_graphics_queue = nullptr;
+  rhi::Adapter m_adapter;
+  rhi::Device m_device;
+  rhi::Queue m_graphics_queue;
 
   BitSet<NUM_RENDERER_FEAUTURES> m_features;
 
@@ -63,23 +57,31 @@ class Renderer final : public IRenderer {
   GenArray<ComputePipeline> m_compute_pipelines;
 
 public:
-  Renderer(Span<const char *const> extensions, u32 adapter);
+  Renderer() = default;
   Renderer(const Renderer &) = delete;
   Renderer(Renderer &&);
   Renderer &operator=(const Renderer &) = delete;
   Renderer &operator=(Renderer &&);
   ~Renderer();
 
+  auto init(u32 adapter) -> Result<void, Error>;
+
   auto create_scene(ISwapchain &swapchain)
       -> expected<std::unique_ptr<IScene>> override;
 
-  auto get_instance() const -> VkInstance { return m_instance; }
+  auto get_instance() const -> VkInstance { return rhi::vk::get_vk_instance(); }
 
-  auto get_adapter() const -> VkPhysicalDevice { return m_adapter; }
+  auto get_adapter() const -> VkPhysicalDevice {
+    return rhi::vk::get_vk_physical_device(m_adapter);
+  }
 
-  auto get_device() const -> VkDevice { return m_device; }
+  auto get_device() const -> VkDevice {
+    return rhi::vk::get_vk_device(m_device);
+  }
 
-  auto get_allocator() const -> VmaAllocator { return m_allocator; }
+  auto get_allocator() const -> VmaAllocator {
+    return rhi::vk::get_vma_allocator(m_device);
+  }
 
   [[nodiscard]] auto create_descriptor_set_layout(
       const DescriptorSetLayoutCreateInfo &&create_info)
@@ -276,10 +278,11 @@ public:
 
   void wait_for_semaphore(const Semaphore &semaphore, uint64_t value) const;
 
-  auto getGraphicsQueue() const -> VkQueue { return m_graphics_queue; }
+  auto getGraphicsQueue() const -> rhi::Queue { return m_graphics_queue; }
 
   auto get_graphics_queue_family() const -> unsigned {
-    return m_graphics_queue_family;
+    return rhi::vk::get_queue_family_index(m_adapter,
+                                           rhi::QueueFamily::Graphics);
   }
 
   void graphicsQueueSubmit(
@@ -291,7 +294,7 @@ public:
   }
 
   void
-  queueSubmit(VkQueue queue,
+  queueSubmit(rhi::Queue queue,
               TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
               TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
               TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});

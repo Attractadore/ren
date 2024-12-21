@@ -1,18 +1,12 @@
 option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
 option(REN_ASSERTIONS "Enable assertions" OFF)
-option(REN_VULKAN_VALIDATION "Enable Vulkan validation layer" OFF)
-option(REN_VULKAN_DEBUG_NAMES "Enable Vulkan object debug names" OFF)
+option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
+option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
 
 find_package(Boost COMPONENTS container REQUIRED)
-find_package(VulkanHeaders REQUIRED)
-find_package(VulkanMemoryAllocator REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
-find_package(meshoptimizer REQUIRED)
-find_package(mikktspace REQUIRED)
 find_package(tl-optional REQUIRED)
-find_package(unofficial-spirv-reflect REQUIRED)
-find_package(volk REQUIRED)
 
 add_library(ren-core INTERFACE)
 target_link_libraries(ren-core INTERFACE
@@ -21,19 +15,35 @@ target_link_libraries(ren-core INTERFACE
   Boost::container
   fmt::fmt
   tl::optional)
+target_compile_features(ren-core INTERFACE cxx_std_23)
+
+find_package(VulkanHeaders REQUIRED)
+find_package(VulkanMemoryAllocator REQUIRED)
+find_package(unofficial-spirv-reflect REQUIRED)
+find_package(volk REQUIRED)
+
+add_library(ren-rhi rhi-vk.cpp)
+target_link_libraries(ren-rhi PUBLIC 
+  ren-core
+  GPUOpen::VulkanMemoryAllocator
+  unofficial::spirv-reflect
+  volk::volk)
+target_compile_definitions(ren-rhi PUBLIC
+  REN_RHI_VULKAN=1
+  VMA_STATIC_VULKAN_FUNCTIONS=0
+  VMA_DYNAMIC_VULKAN_FUNCTIONS=1
+  VMA_STATS_STRING_ENABLED=0
+  VK_NO_PROTOTYPES)
+
+find_package(meshoptimizer REQUIRED)
+find_package(mikktspace REQUIRED)
 
 add_library(ren-gfx INTERFACE)
 target_link_libraries(ren-gfx INTERFACE
   ren-core
-  GPUOpen::VulkanMemoryAllocator
+  ren-rhi
   meshoptimizer::meshoptimizer
-  mikktspace::mikktspace
-  unofficial::spirv-reflect
-  volk::volk)
-target_compile_definitions(ren-gfx INTERFACE
-  VMA_STATIC_VULKAN_FUNCTIONS=0
-  VMA_DYNAMIC_VULKAN_FUNCTIONS=0
-  VMA_STATS_STRING_ENABLED=0 VK_NO_PROTOTYPES)
+  mikktspace::mikktspace)
 
 add_library(ren
   ren.cpp
@@ -108,12 +118,12 @@ if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
   target_compile_definitions(ren-gfx INTERFACE REN_ASSERTIONS)
 endif()
-if(REN_VULKAN_VALIDATION)
-  message(STATUS "Enable Vulkan validation layer")
-  target_compile_definitions(ren-gfx INTERFACE REN_VULKAN_VALIDATION)
+if(REN_DEBUG_LAYER)
+  message(STATUS "Enable RHI debug layer")
+  target_compile_definitions(ren-gfx INTERFACE REN_DEBUG_LAYER)
 endif()
-if(REN_VULKAN_DEBUG_NAMES)
-  message(STATUS "Enable Vulkan object debug names")
+if(REN_DEBUG_NAMES)
+  message(STATUS "Enable RHI object debug names")
   target_compile_definitions(ren-gfx INTERFACE REN_DEBUG_NAMES)
 endif()
 if(REN_RENDER_GRAPH_DEBUG)

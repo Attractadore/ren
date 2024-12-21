@@ -3,7 +3,6 @@
 #include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
-#include "core/Array.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
 
@@ -44,348 +43,52 @@ void set_debug_name(VkDevice device, T object, const DebugName &name) {
 
 } // namespace
 
-namespace {
+auto Renderer::init(u32 adapter) -> Result<void, Error> {
+  rhi::Result<rhi::Features> features = rhi::get_supported_features();
+  if (!features) {
+    return Failed(Error::RHI);
+  }
 
-auto create_instance(Span<const char *const> external_extensions)
-    -> VkInstance {
-  VkApplicationInfo application_info = {
-      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .apiVersion = VK_API_VERSION_1_3,
-  };
-
-  auto layers = make_array<const char *>(
-#if REN_VULKAN_VALIDATION
-      "VK_LAYER_KHRONOS_validation"
-#endif
-  );
-
-  SmallVector<const char *> extensions(external_extensions);
-#if REN_DEBUG_NAMES
-  extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif
-#if REN_VULKAN_VALIDATION
-  extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#if !REN_DEBUG_NAMES
+  features->debug_names = false;
 #endif
 
-  VkInstanceCreateInfo create_info = {
-      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      .pApplicationInfo = &application_info,
-      .enabledLayerCount = static_cast<uint32_t>(layers.size()),
-      .ppEnabledLayerNames = layers.data(),
-      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-      .ppEnabledExtensionNames = extensions.data(),
-  };
-
-  VkInstance instance;
-  throw_if_failed(vkCreateInstance(&create_info, nullptr, &instance),
-                  "Vulkan: Failed to create VkInstance");
-
-  return instance;
-}
-
-#if REN_VULKAN_VALIDATION
-auto create_debug_report_callback(VkInstance instance)
-    -> VkDebugReportCallbackEXT {
-  VkDebugReportCallbackCreateInfoEXT create_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
-      .flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
-      .pfnCallback = [](VkDebugReportFlagsEXT flags,
-                        VkDebugReportObjectTypeEXT objectType, uint64_t object,
-                        size_t location, int32_t messageCode,
-                        const char *pLayerPrefix, const char *pMessage,
-                        void *pUserData) -> VkBool32 {
-        fmt::println(stderr, "{}", pMessage);
-#if 0
-        if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT) {
-          ren_trap();
-        }
-#endif
-        return false;
-      },
-  };
-  VkDebugReportCallbackEXT cb = nullptr;
-  throw_if_failed(
-      vkCreateDebugReportCallbackEXT(instance, &create_info, nullptr, &cb),
-      "Vulkan: Failed to create VkDebugReportCallbackEXT");
-  return cb;
-}
+#if !REN_DEBUG_LAYER
+  features->debug_layer = false;
 #endif
 
-auto find_adapter(VkInstance instance, u32 adapter) -> VkPhysicalDevice {
-  uint32_t num_adapters = 0;
-  throw_if_failed(vkEnumeratePhysicalDevices(instance, &num_adapters, nullptr),
-                  "Vulkan: Failed to enumerate physical device");
-  SmallVector<VkPhysicalDevice> adapters(num_adapters);
-  throw_if_failed(
-      vkEnumeratePhysicalDevices(instance, &num_adapters, adapters.data()),
-      "Vulkan: Failed to enumerate physical device");
-  adapters.resize(num_adapters);
+  if (!rhi::init({.features = *features})) {
+    return Failed(Error::RHI);
+  }
+
   if (adapter == DEFAULT_ADAPTER) {
-    return adapters[0];
-  }
-  if (adapter < adapters.size()) {
-    return adapters[adapter];
-  }
-  return nullptr;
-}
-
-auto find_graphics_queue_family(VkPhysicalDevice adapter) -> Optional<usize> {
-  uint32_t num_queues = 0;
-  vkGetPhysicalDeviceQueueFamilyProperties(adapter, &num_queues, nullptr);
-  SmallVector<VkQueueFamilyProperties, 4> queues(num_queues);
-  vkGetPhysicalDeviceQueueFamilyProperties(adapter, &num_queues, queues.data());
-  for (usize i = 0; i < num_queues; ++i) {
-    if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-      return i;
-    }
-  }
-  return None;
-}
-
-} // namespace
-
-void Renderer::create_device() {
-  u32 num_supported_extensions;
-  vkEnumerateDeviceExtensionProperties(m_adapter, nullptr,
-                                       &num_supported_extensions, nullptr);
-  Vector<VkExtensionProperties> supported_extensions(num_supported_extensions);
-  vkEnumerateDeviceExtensionProperties(m_adapter, nullptr,
-                                       &num_supported_extensions,
-                                       supported_extensions.data());
-
-  auto is_extension_supported = [&](const char *ext) {
-    return std::ranges::find_if(supported_extensions,
-                                [&](const VkExtensionProperties &ext_props) {
-                                  return std::strcmp(
-                                             ext, ext_props.extensionName) == 0;
-                                }) != supported_extensions.end();
-  };
-
-  std::array required_extensions = {
-      VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-      VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
-  };
-
-  std::array optional_extensions = {
-      VK_AMD_ANTI_LAG_EXTENSION_NAME,
-  };
-
-  Vector<const char *> extensions;
-  extensions.reserve(required_extensions.size() + optional_extensions.size());
-  extensions = required_extensions;
-  for (const char *ext : optional_extensions) {
-    if (is_extension_supported(ext)) {
-      fmt::println("Found optional extension {}", ext);
-      extensions.push_back(ext);
-    }
-  }
-
-  void *pnext = nullptr;
-  auto add_features = [&](auto &features) {
-    ren_assert(!features.pNext);
-    features.pNext = pnext;
-    pnext = &features;
-  };
-
-  // Query optional feature support.
-
-  VkPhysicalDeviceAntiLagFeaturesAMD amd_anti_lag_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD,
-  };
-
-  add_features(amd_anti_lag_features);
-
-  {
-    VkPhysicalDeviceFeatures2 features = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = pnext,
-    };
-    vkGetPhysicalDeviceFeatures2(m_adapter, &features);
-  }
-
-  // Add required features.
-  // TODO: check that they are supported.
-
-  pnext = nullptr;
-
-  VkPhysicalDeviceFeatures2 vulkan10_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-      .features = {
-          .samplerAnisotropy = true,
-          .shaderInt64 = true,
-          .shaderInt16 = true,
-      }};
-
-  add_features(vulkan10_features);
-
-  VkPhysicalDeviceVulkan11Features vulkan11_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-      .storageBuffer16BitAccess = true,
-      .shaderDrawParameters = true,
-  };
-
-  add_features(vulkan11_features);
-
-  VkPhysicalDeviceVulkan12Features vulkan12_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-      .drawIndirectCount = true,
-      .storageBuffer8BitAccess = true,
-      .shaderInt8 = true,
-      .descriptorBindingSampledImageUpdateAfterBind = true,
-      .descriptorBindingStorageImageUpdateAfterBind = true,
-      .descriptorBindingPartiallyBound = true,
-      .samplerFilterMinmax = true,
-      .scalarBlockLayout = true,
-      .timelineSemaphore = true,
-      .bufferDeviceAddress = true,
-      .vulkanMemoryModel = true,
-  };
-
-  add_features(vulkan12_features);
-
-  VkPhysicalDeviceVulkan13Features vulkan13_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-      .synchronization2 = true,
-      .dynamicRendering = true,
-      .maintenance4 = true,
-  };
-
-  add_features(vulkan13_features);
-
-  VkPhysicalDeviceIndexTypeUint8FeaturesEXT uint8_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES_EXT,
-      .indexTypeUint8 = true,
-  };
-
-  add_features(uint8_features);
-
-  // Add supported optional features.
-
-  if (amd_anti_lag_features.antiLag) {
-    fmt::println("Enable AMD Anti-Lag feature");
-    add_features(amd_anti_lag_features);
-    m_features.set((usize)RendererFeature::AmdAntiLag);
-  }
-
-  float queue_priority = 1.0f;
-  VkDeviceQueueCreateInfo queue_create_info = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = m_graphics_queue_family,
-      .queueCount = 1,
-      .pQueuePriorities = &queue_priority,
-  };
-
-  VkDeviceCreateInfo create_info = {
-      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-      .pNext = pnext,
-      .queueCreateInfoCount = 1,
-      .pQueueCreateInfos = &queue_create_info,
-      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-      .ppEnabledExtensionNames = extensions.data(),
-  };
-
-  throw_if_failed(vkCreateDevice(m_adapter, &create_info, nullptr, &m_device),
-                  "Vulkan: Failed to create device");
-}
-
-namespace {
-
-auto create_allocator(VkInstance instance, VkPhysicalDevice adapter,
-                      VkDevice device) -> VmaAllocator {
-  VmaVulkanFunctions vk = {
-      .vkGetInstanceProcAddr = vkGetInstanceProcAddr,
-      .vkGetDeviceProcAddr = vkGetDeviceProcAddr,
-      .vkGetPhysicalDeviceProperties = vkGetPhysicalDeviceProperties,
-      .vkGetPhysicalDeviceMemoryProperties =
-          vkGetPhysicalDeviceMemoryProperties,
-      .vkAllocateMemory = vkAllocateMemory,
-      .vkFreeMemory = vkFreeMemory,
-      .vkMapMemory = vkMapMemory,
-      .vkUnmapMemory = vkUnmapMemory,
-      .vkFlushMappedMemoryRanges = vkFlushMappedMemoryRanges,
-      .vkInvalidateMappedMemoryRanges = vkInvalidateMappedMemoryRanges,
-      .vkBindBufferMemory = vkBindBufferMemory,
-      .vkBindImageMemory = vkBindImageMemory,
-      .vkGetBufferMemoryRequirements = vkGetBufferMemoryRequirements,
-      .vkGetImageMemoryRequirements = vkGetImageMemoryRequirements,
-      .vkCreateBuffer = vkCreateBuffer,
-      .vkDestroyBuffer = vkDestroyBuffer,
-      .vkCreateImage = vkCreateImage,
-      .vkDestroyImage = vkDestroyImage,
-      .vkCmdCopyBuffer = vkCmdCopyBuffer,
-      .vkGetBufferMemoryRequirements2KHR = vkGetBufferMemoryRequirements2,
-      .vkGetImageMemoryRequirements2KHR = vkGetImageMemoryRequirements2,
-      .vkBindBufferMemory2KHR = vkBindBufferMemory2,
-      .vkBindImageMemory2KHR = vkBindImageMemory2,
-      .vkGetPhysicalDeviceMemoryProperties2KHR =
-          vkGetPhysicalDeviceMemoryProperties2,
-      .vkGetDeviceBufferMemoryRequirements =
-          vkGetDeviceBufferMemoryRequirements,
-      .vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements,
-  };
-
-  VmaAllocatorCreateInfo allocator_info = {
-      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
-      .physicalDevice = adapter,
-      .device = device,
-      .pVulkanFunctions = &vk,
-      .instance = instance,
-      .vulkanApiVersion = VK_API_VERSION_1_3,
-  };
-
-  VmaAllocator allocator;
-  throw_if_failed(vmaCreateAllocator(&allocator_info, &allocator),
-                  "VMA: Failed to create allocator");
-
-  return allocator;
-}
-
-} // namespace
-
-Renderer::Renderer(Span<const char *const> extensions, u32 adapter) {
-  throw_if_failed(volkInitialize(), "Volk: failed to initialize");
-
-  m_instance = create_instance(extensions);
-
-  volkLoadInstanceOnly(get_instance());
-
-#if REN_VULKAN_VALIDATION
-  m_debug_callback = create_debug_report_callback(m_instance);
-#endif
-
-  m_adapter = find_adapter(get_instance(), adapter);
-  if (m_adapter) {
-    VkPhysicalDeviceProperties props;
-    vkGetPhysicalDeviceProperties(m_adapter, &props);
-    fmt::println("Running on {}", props.deviceName);
+    m_adapter =
+        rhi::get_adapter_by_preference(rhi::AdapterPreference::HighPerformance);
   } else {
-    throw std::runtime_error("Vulkan: Failed to find requested adapter");
+    if (adapter >= rhi::get_adapter_count()) {
+      throw std::runtime_error("Vulkan: Failed to find requested adapter");
+    }
+    m_adapter = rhi::get_adapter(adapter);
   }
 
-  Optional<usize> graphics_queue_family = find_graphics_queue_family(m_adapter);
-  if (graphics_queue_family) {
-    m_graphics_queue_family = *graphics_queue_family;
-  } else {
-    throw std::runtime_error("Vulkan: Failed to find graphics queue");
+  rhi::Result<rhi::Device> device = rhi::create_device({
+      .adapter = m_adapter,
+      .features = rhi::get_adapter_features(m_adapter),
+  });
+  if (!device) {
+    return Failed(Error::RHI);
   }
+  m_device = *device;
 
-  create_device();
+  m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
 
-  volkLoadDevice(get_device());
-
-  vkGetDeviceQueue(get_device(), m_graphics_queue_family, 0, &m_graphics_queue);
-
-  m_allocator = create_allocator(get_instance(), m_adapter, get_device());
+  return {};
 }
 
 Renderer::~Renderer() {
   wait_idle();
-  vmaDestroyAllocator(m_allocator);
-  vkDestroyDevice(m_device, nullptr);
-#if REN_VULKAN_VALIDATION
-  vkDestroyDebugReportCallbackEXT(m_instance, m_debug_callback, nullptr);
-#endif
-  vkDestroyInstance(m_instance, nullptr);
+  rhi::destroy_device(m_device);
+  rhi::exit();
 }
 
 auto Renderer::create_scene(ISwapchain &swapchain)
@@ -437,7 +140,7 @@ auto Renderer::create_descriptor_pool(
 
 void Renderer::destroy(Handle<DescriptorPool> pool) {
   m_descriptor_pools.try_pop(pool).map([&](const DescriptorPool &pool) {
-    vkDestroyDescriptorPool(m_device, pool.handle, nullptr);
+    vkDestroyDescriptorPool(get_device(), pool.handle, nullptr);
   });
 }
 
@@ -510,7 +213,7 @@ auto Renderer::create_descriptor_set_layout(
 void Renderer::destroy(Handle<DescriptorSetLayout> layout) {
   m_descriptor_set_layouts.try_pop(layout).map(
       [&](const DescriptorSetLayout &layout) {
-        vkDestroyDescriptorSetLayout(m_device, layout.handle, nullptr);
+        vkDestroyDescriptorSetLayout(get_device(), layout.handle, nullptr);
       });
 }
 
@@ -640,7 +343,7 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
 
 void Renderer::destroy(Handle<Buffer> handle) {
   m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
-    vmaDestroyBuffer(m_allocator, buffer.handle, buffer.allocation);
+    vmaDestroyBuffer(get_allocator(), buffer.handle, buffer.allocation);
   });
 }
 
@@ -736,10 +439,10 @@ auto Renderer::create_swapchain_texture(
 void Renderer::destroy(Handle<Texture> handle) {
   m_textures.try_pop(handle).map([&](const Texture &texture) {
     if (texture.allocation) {
-      vmaDestroyImage(m_allocator, texture.image, texture.allocation);
+      vmaDestroyImage(get_allocator(), texture.image, texture.allocation);
     }
     for (const auto &[_, view] : m_image_views[handle]) {
-      vkDestroyImageView(m_device, view, nullptr);
+      vkDestroyImageView(get_device(), view, nullptr);
     }
     m_image_views.erase(handle);
   });
@@ -904,7 +607,7 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
 
 void Renderer::destroy(Handle<Sampler> sampler) {
   m_samplers.try_pop(sampler).map([&](const Sampler &sampler) {
-    vkDestroySampler(m_device, sampler.handle, nullptr);
+    vkDestroySampler(get_device(), sampler.handle, nullptr);
   });
 }
 
@@ -938,7 +641,7 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
 
 void Renderer::destroy(Handle<Semaphore> semaphore) {
   m_semaphores.try_pop(semaphore).map([&](const Semaphore &semaphore) {
-    vkDestroySemaphore(m_device, semaphore.handle, nullptr);
+    vkDestroySemaphore(get_device(), semaphore.handle, nullptr);
   });
 }
 
@@ -980,7 +683,7 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
 }
 
 void Renderer::queueSubmit(
-    VkQueue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
+    rhi::Queue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
     TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
     TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores) {
   ren_prof_zone("Renderer::queueSubmit");
@@ -993,7 +696,7 @@ void Renderer::queueSubmit(
       .signalSemaphoreInfoCount = uint32_t(signal_semaphores.size()),
       .pSignalSemaphoreInfos = signal_semaphores.data(),
   };
-  throw_if_failed(vkQueueSubmit2(queue, 1, &submit_info, nullptr),
+  throw_if_failed(vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr),
                   "Vulkan: Failed to submit work to queue");
 }
 
@@ -1201,7 +904,7 @@ auto Renderer::create_graphics_pipeline(
 void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
   m_graphics_pipelines.try_pop(pipeline).map(
       [&](const GraphicsPipeline &pipeline) {
-        vkDestroyPipeline(m_device, pipeline.handle, nullptr);
+        vkDestroyPipeline(get_device(), pipeline.handle, nullptr);
       });
 }
 
@@ -1261,7 +964,7 @@ auto Renderer::create_compute_pipeline(
 void Renderer::destroy(Handle<ComputePipeline> pipeline) {
   m_compute_pipelines.try_pop(pipeline).map(
       [&](const ComputePipeline &pipeline) {
-        vkDestroyPipeline(m_device, pipeline.handle, nullptr);
+        vkDestroyPipeline(get_device(), pipeline.handle, nullptr);
       });
 }
 
@@ -1308,7 +1011,7 @@ auto Renderer::create_pipeline_layout(
 
 void Renderer::destroy(Handle<PipelineLayout> layout) {
   m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
-    vkDestroyPipelineLayout(m_device, layout.handle, nullptr);
+    vkDestroyPipelineLayout(get_device(), layout.handle, nullptr);
   });
 }
 
@@ -1330,7 +1033,7 @@ bool Renderer::is_feature_supported(RendererFeature feature) const {
 }
 
 auto Renderer::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
-  return vkQueuePresentKHR(getGraphicsQueue(), &present_info);
+  return vkQueuePresentKHR(getGraphicsQueue().handle, &present_info);
 }
 
 void Renderer::amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps,
@@ -1347,7 +1050,7 @@ void Renderer::amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps,
       .maxFPS = max_fps,
       .pPresentationInfo = &present_info,
   };
-  vkAntiLagUpdateAMD(m_device, &anti_lag_data);
+  vkAntiLagUpdateAMD(get_device(), &anti_lag_data);
 }
 
 } // namespace ren

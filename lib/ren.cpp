@@ -1,14 +1,13 @@
 #include "ren/ren.hpp"
-#include "Lippincott.hpp"
 #include "Renderer.hpp"
 
 namespace ren {
 
 auto create_renderer(const RendererCreateInfo &desc)
     -> expected<std::unique_ptr<IRenderer>> {
-  return lippincott([&] {
-    return std::make_unique<Renderer>(desc.vk_instance_extensions,
-                                      desc.adapter);
+  auto renderer = std::make_unique<Renderer>();
+  return renderer->init(desc.adapter).transform([&] {
+    return std::move(renderer);
   });
 }
 

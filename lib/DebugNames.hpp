@@ -1,10 +1,6 @@
 #pragma once
 #include "core/String.hpp"
 
-#ifndef REN_DEBUG_NAMES
-#define REN_DEBUG_NAMES 0
-#endif
-
 namespace ren {
 
 #if REN_DEBUG_NAMES

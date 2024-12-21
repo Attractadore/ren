@@ -21,7 +21,7 @@ auto lippincott(F &&f) noexcept -> expected<std::invoke_result_t<F>> {
     return std::unexpected(Error::System);
   } catch (const std::runtime_error &e) {
     if (StringView(e.what()).starts_with("Vulkan")) {
-      return std::unexpected(Error::Vulkan);
+      return std::unexpected(Error::RHI);
     }
     return std::unexpected(Error::Runtime);
   } catch (...) {

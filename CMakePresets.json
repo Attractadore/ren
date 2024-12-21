@@ -14,8 +14,8 @@
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",
         "REN_ASSERTIONS": "ON",
-        "REN_VULKAN_VALIDATION": "ON",
-        "REN_VULKAN_DEBUG_NAMES": "ON",
+        "REN_DEBUG_NAMES": "ON",
+        "REN_DEBUG_LAYER": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON"
       }
@@ -59,8 +59,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
-        "REN_BUILD_TESTS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF"
+        "REN_BUILD_TESTS": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -92,8 +91,8 @@
         "CMAKE_BUILD_TYPE": "Release",
         "REN_BUILD_TESTS": "OFF",
         "REN_ASSERTIONS": "OFF",
-        "REN_VULKAN_VALIDATION": "OFF",
-        "REN_VULKAN_DEBUG_NAMES": "OFF",
+        "REN_DEBUG_LAYER": "OFF",
+        "REN_DEBUG_NAMES": "OFF",
         "REN_RENDER_GRAPH_DEBUG": "OFF",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
       }
@@ -111,7 +110,7 @@
       "inherits": "release",
       "hidden": true,
       "cacheVariables": {
-        "REN_VULKAN_DEBUG_NAMES": "ON",
+        "REN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON"
       }
     },
