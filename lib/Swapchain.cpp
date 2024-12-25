@@ -115,7 +115,12 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  return update_textures();
+  ren_try_to(update_textures());
+
+  fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
+               m_size.x, m_size.y, (int)*present_mode, m_textures.size());
+
+  return {};
 }
 
 void Swapchain::set_vsync(VSync vsync) {
@@ -255,6 +260,9 @@ auto Swapchain::update() -> Result<void, Error> {
   ren_try_to(update_textures());
 
   m_dirty = false;
+
+  fmt::println("Updated swap chain: {}x{}, present mode: {}, {} images",
+               m_size.x, m_size.y, (int)*present_mode, m_textures.size());
 
   return {};
 }

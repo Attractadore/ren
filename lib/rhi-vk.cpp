@@ -154,6 +154,8 @@ auto init(const InitInfo &init_info) -> Result<void> {
     return Failed(Error::Unknown);
   }
 
+  extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+
   if (features.debug_names) {
     fmt::println("vk: Enable debug names");
     extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -166,6 +168,11 @@ auto init(const InitInfo &init_info) -> Result<void> {
       fmt::println("vk: Enable debug callback");
       extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
+  }
+
+  if (is_extension_supported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) {
+    fmt::println("vk: Enable {}", VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
 
   if (not layers.empty()) {
@@ -865,11 +872,24 @@ namespace {
 auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
                          VkPresentModeKHR present_mode) -> Result<void> {
   Device device = swap_chain->device;
-  VkSurfaceCapabilitiesKHR capabilities;
-  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-          device->physical_device, swap_chain->surface, &capabilities)) {
+  VkSurfacePresentModeEXT present_mode_info = {
+      .sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT,
+      .presentMode = present_mode,
+  };
+  VkPhysicalDeviceSurfaceInfo2KHR surface_info = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+      .pNext = &present_mode_info,
+      .surface = swap_chain->surface,
+  };
+  VkSurfaceCapabilities2KHR capabilities2 = {
+      .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+  };
+  if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+          device->physical_device, &surface_info, &capabilities2)) {
     return Failed(Error::Unknown);
   }
+  const VkSurfaceCapabilitiesKHR capabilities =
+      capabilities2.surfaceCapabilities;
   size = adjust_swap_chain_size(size, capabilities),
   num_images = adjust_swap_chain_image_count(num_images, capabilities);
   VkSwapchainKHR old_swap_chain = swap_chain->handle;
