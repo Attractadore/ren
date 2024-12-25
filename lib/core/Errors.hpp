@@ -1,4 +1,5 @@
 #pragma once
+#include "Macros.hpp"
 #include "String.hpp"
 
 #include <fmt/format.h>
@@ -25,7 +26,7 @@ template <typename... Ts>
                                      Ts &&...args) {
   fmt::print(stderr, "{}\n",
              fmt::format(std::move(fmt_str), std::forward<Ts>(args)...));
-  std::unreachable();
+  ren_trap();
 }
 
 [[noreturn]] inline void
