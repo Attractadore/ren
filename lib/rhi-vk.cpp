@@ -1029,7 +1029,9 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       return Failed(Error::OutOfDate);
     }
-    return Failed(Error::Unknown);
+    if (result != VK_SUBOPTIMAL_KHR) {
+      return Failed(Error::Unknown);
+    }
   }
   return {};
 }
