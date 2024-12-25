@@ -10,7 +10,16 @@ namespace ren {
 REN_BEGIN_FLAGS_ENUM(DrawSet){
     REN_FLAG(DepthOnly),
     REN_FLAG(Opaque),
+    Last = Opaque,
 } REN_END_FLAGS_ENUM(DrawSet);
+
+}
+
+REN_ENABLE_FLAGS(ren::DrawSet);
+
+namespace ren {
+
+using DrawSetFlags = Flags<DrawSet>;
 
 constexpr inline auto get_draw_set_name(DrawSet set) -> const char * {
   switch (set) {
@@ -26,7 +35,7 @@ constexpr inline auto get_draw_set_index(DrawSet set) -> usize {
   return std::countr_zero((usize)set);
 }
 
-constexpr usize NUM_DRAW_SETS = get_draw_set_index(DrawSet::Opaque) + 1;
+constexpr usize NUM_DRAW_SETS = get_draw_set_index(DrawSet::Last) + 1;
 
 REN_NEW_TYPE(DrawSetId, u32);
 constexpr DrawSetId InvalidDrawSetId(-1);

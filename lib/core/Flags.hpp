@@ -100,10 +100,6 @@ template <CFlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
   return r | l;
 }
 
-#define REN_ENABLE_ENUM_FLAGS(E)                                               \
-  template <> inline constexpr bool ENABLE_ENUM_FLAGS<E> = true;               \
-  using E##Flags = Flags<E>
-
 #define REN_BEGIN_FLAGS_ENUM(E)                                                \
   namespace detail::E##Impl {                                                  \
     constexpr auto FIRST = __LINE__;                                           \
@@ -114,7 +110,9 @@ template <CFlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
 #define REN_END_FLAGS_ENUM(E)                                                  \
   ;                                                                            \
   }                                                                            \
-  using E = detail::E##Impl::E;                                                \
-  REN_ENABLE_ENUM_FLAGS(E)
+  using E = detail::E##Impl::E;
+
+#define REN_ENABLE_FLAGS(E)                                                    \
+  template <> constexpr inline bool ::ren::ENABLE_ENUM_FLAGS<E> = true
 
 } // namespace ren

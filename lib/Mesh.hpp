@@ -21,7 +21,14 @@ enum class MeshAttribute {
   Tangent = glsl::MESH_ATTRIBUTE_TANGENT_BIT,
   Color = glsl::MESH_ATTRIBUTE_COLOR_BIT,
 };
-REN_ENABLE_ENUM_FLAGS(MeshAttribute);
+
+} // namespace ren
+
+REN_ENABLE_FLAGS(ren::MeshAttribute);
+
+namespace ren {
+
+using MeshAttributeFlags = Flags<MeshAttribute>;
 
 struct Mesh {
   Handle<Buffer> positions;
