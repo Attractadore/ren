@@ -2,18 +2,11 @@
 #include "Semaphore.hpp"
 #include "Texture.hpp"
 #include "core/Vector.hpp"
+#include "rhi.hpp"
 
 namespace ren {
 
 class Renderer;
-
-struct SwapchainTextureCreateInfo {
-  VkImage image = nullptr;
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  VkImageUsageFlags usage = 0;
-  u32 width = 0;
-  u32 height = 1;
-};
 
 class Swapchain final : public ISwapchain {
 public:
@@ -25,8 +18,9 @@ public:
   Swapchain &operator=(const Swapchain &) = delete;
   Swapchain &operator=(Swapchain &&) noexcept;
 
-  void init(Renderer &renderer, VkSurfaceKHR surface,
-            const SurfaceCallbacks &cb, void *usrptr);
+  auto init(Renderer &renderer, SDL_Window *window,
+            rhi::QueueFamily queue_family = rhi::QueueFamily::Graphics)
+      -> Result<void, Error>;
 
   void set_vsync(VSync vsync) override;
 
@@ -38,32 +32,31 @@ public:
 
   auto get_usage() const -> VkImageUsageFlags { return m_usage; }
 
-  auto get_surface() const -> VkSurfaceKHR { return m_surface; }
+  auto acquire_texture(Handle<Semaphore> signal_semaphore)
+      -> Result<Handle<Texture>, Error>;
 
-  auto acquire_texture(Handle<Semaphore> signal_semaphore) -> Handle<Texture>;
-
-  void present(Handle<Semaphore> wait_semaphore);
-
-private:
-  void recreate();
-  void destroy();
+  auto present(Handle<Semaphore> wait_semaphore) -> Result<void, Error>;
 
 private:
-  SurfaceCallbacks m_cb;
-  void *m_usrptr = nullptr;
+  auto select_present_mode() -> Result<rhi::PresentMode, Error>;
+  auto select_image_count(rhi::PresentMode present_mode) -> Result<u32, Error>;
+  auto update_textures() -> Result<void, Error>;
+  auto update() -> Result<void, Error>;
+
+private:
   Renderer *m_renderer = nullptr;
-  VkSurfaceKHR m_surface = nullptr;
-  VkSwapchainKHR m_swapchain = nullptr;
+  SDL_Window *m_window = nullptr;
+  rhi::Surface m_surface = {};
+  rhi::SwapChain m_swap_chain = {};
   SmallVector<Handle<Texture>> m_textures;
-  glm::uvec2 m_size = {};
+  TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
+  VkImageUsageFlags m_usage = 0;
+  glm::ivec2 m_size = {};
   VSync m_vsync = VSync::Off;
   bool m_fullscreen = false;
-  TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
-  VkColorSpaceKHR m_color_space = {};
-  VkImageUsageFlags m_usage = 0;
   u32 m_image_index = -1;
   u32 m_num_frames_in_flight = 2;
-  bool m_dirty = true;
+  bool m_dirty = false;
 };
 
 } // namespace ren

@@ -419,20 +419,19 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
   });
 }
 
-auto Renderer::create_swapchain_texture(
-    const SwapchainTextureCreateInfo &&create_info) -> Handle<Texture> {
-  set_debug_name(get_device(), create_info.image, "Swapchain image");
-
+auto Renderer::create_external_texture(
+    const ExternalTextureCreateInfo &&create_info) -> Handle<Texture> {
+  set_debug_name(get_device(), create_info.image, create_info.name);
   return m_textures.emplace(Texture{
       .image = create_info.image,
-      .type = VK_IMAGE_TYPE_2D,
+      .type = create_info.type,
       .format = create_info.format,
       .usage = create_info.usage,
       .width = create_info.width,
       .height = create_info.height,
-      .depth = 1,
-      .num_mip_levels = 1,
-      .num_array_layers = 1,
+      .depth = create_info.depth,
+      .num_mip_levels = create_info.num_mip_levels,
+      .num_array_layers = create_info.num_array_layers,
   });
 }
 

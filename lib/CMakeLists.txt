@@ -26,6 +26,7 @@ add_library(ren-rhi rhi-vk.cpp)
 target_link_libraries(ren-rhi PUBLIC 
   ren-core
   GPUOpen::VulkanMemoryAllocator
+  tiny_imageformat
   unofficial::spirv-reflect
   volk::volk)
 target_compile_definitions(ren-rhi PUBLIC
@@ -80,20 +81,9 @@ add_library(ren
 add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(ren
-  PUBLIC glm::glm tiny_imageformat
+  PUBLIC glm::glm tiny_imageformat SDL2::SDL2
   PRIVATE ren-gfx)
 target_compile_features(ren PUBLIC cxx_std_23)
-
-if(REN_BUILD_SDL2_PLUGIN)
-  message(STATUS "Enable SDL2 plugin")
-  find_package(SDL2 REQUIRED)
-  add_library(ren-sdl2 ren-sdl2.cpp)
-  add_library(ren::sdl2 ALIAS ren-sdl2)
-  target_sources(ren-sdl2 PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren-sdl2.hpp)
-  target_link_libraries(ren-sdl2
-    PUBLIC ren::ren SDL2::SDL2
-    PRIVATE ren-gfx)
-endif()
 
 if(REN_BUILD_IMGUI_PLUGIN)
   message(STATUS "Enable ImGui plugin")

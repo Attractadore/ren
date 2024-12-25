@@ -9,7 +9,6 @@
       "cacheVariables": {
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_BUILD_SDL2_PLUGIN": "ON",
         "REN_BUILD_IMGUI_PLUGIN": "ON",
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_TESTS": "ON",

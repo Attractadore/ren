@@ -14,13 +14,9 @@ enum class QueueFamily;
 
 namespace vk {
 
-auto get_vk_instance() -> VkInstance;
-
 struct Adapter {
   u32 index = -1;
 };
-
-auto get_vk_physical_device(Adapter adapter) -> VkPhysicalDevice;
 
 auto get_queue_family_index(Adapter adapter, QueueFamily family) -> u32;
 
@@ -32,13 +28,13 @@ auto get_vk_device(Device device) -> VkDevice;
 
 auto get_vma_allocator(Device device) -> VmaAllocator;
 
-struct Surface {
-  VkSurfaceKHR handle = nullptr;
-};
-
 struct Queue {
   VkQueue handle = nullptr;
   const VolkDeviceTable *vk = nullptr;
+};
+
+struct Semaphore {
+  VkSemaphore handle = nullptr;
 };
 
 struct Allocation {
@@ -48,6 +44,18 @@ struct Allocation {
 struct Buffer {
   VkBuffer handle = nullptr;
 };
+
+struct Image {
+  VkImage handle = nullptr;
+};
+
+struct Surface {
+  VkSurfaceKHR handle = nullptr;
+};
+
+struct SwapChainData;
+
+using SwapChain = SwapChainData *;
 
 } // namespace vk
 

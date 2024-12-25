@@ -35,15 +35,16 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
 
         Handle<Semaphore> acquire_semaphore =
             rg.get_semaphore(rcs.acquire_semaphore);
-        Handle<Texture> backbuffer =
+        Result<Handle<Texture>, Error> backbuffer =
             rcs.swapchain->acquire_texture(acquire_semaphore);
+        ren_assert(backbuffer);
 
         VkImageMemoryBarrier2 barrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
             .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
             .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .image = renderer.get_texture(backbuffer).image,
+            .image = renderer.get_texture(*backbuffer).image,
             .subresourceRange =
                 {
                     .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -68,10 +69,10 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         };
         glm::uvec3 src_size = renderer.get_texture(src).size;
         std::memcpy(&region.srcOffsets[1], &src_size, sizeof(src_size));
-        glm::uvec3 backbuffer_size = renderer.get_texture(backbuffer).size;
+        glm::uvec3 backbuffer_size = renderer.get_texture(*backbuffer).size;
         std::memcpy(&region.dstOffsets[1], &backbuffer_size,
                     sizeof(backbuffer_size));
-        cmd.blit(src, backbuffer, {region}, VK_FILTER_LINEAR);
+        cmd.blit(src, *backbuffer, {region}, VK_FILTER_LINEAR);
 
         barrier.srcStageMask = barrier.dstStageMask;
         barrier.srcAccessMask = barrier.dstAccessMask;

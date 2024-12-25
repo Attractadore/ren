@@ -6,6 +6,8 @@
 #include <memory>
 #include <span>
 
+struct SDL_Window;
+
 namespace ren {
 
 enum class Error {
@@ -58,13 +60,7 @@ struct IScene;
 
 constexpr unsigned DEFAULT_ADAPTER = -1;
 
-/// Renderer description.
-struct RendererCreateInfo {
-  /// Index of adapter to use as returned by vkEnumeratePhysicalDevices.
-  unsigned adapter = DEFAULT_ADAPTER;
-};
-
-[[nodiscard]] auto create_renderer(const RendererCreateInfo &create_info)
+[[nodiscard]] auto create_renderer(unsigned adapter = DEFAULT_ADAPTER)
     -> expected<std::unique_ptr<IRenderer>>;
 
 struct IRenderer {
@@ -72,23 +68,6 @@ struct IRenderer {
 
   [[nodiscard]] virtual auto create_scene(ISwapchain &swapchain)
       -> expected<std::unique_ptr<IScene>> = 0;
-};
-
-enum class WindowingSystem {
-  Unknown,
-  Win32,
-  X11,
-  Wayland,
-};
-
-using GetSurfaceSizeCB = glm::uvec2(void *);
-using IsSurfaceFullscreenCB = bool(void *);
-using GetSurfaceWindowingSystem = WindowingSystem(void *);
-
-struct SurfaceCallbacks {
-  GetSurfaceSizeCB *get_size = nullptr;
-  IsSurfaceFullscreenCB *is_fullscreen = nullptr;
-  GetSurfaceWindowingSystem *get_windowing_system = nullptr;
 };
 
 enum class VSync {
@@ -101,6 +80,11 @@ struct ISwapchain {
 
   virtual void set_vsync(VSync vsync) = 0;
 };
+
+auto get_sdl_window_flags(IRenderer &renderer) -> uint32_t;
+
+[[nodiscard]] auto create_swapchain(IRenderer &renderer, SDL_Window *window)
+    -> expected<std::unique_ptr<ISwapchain>>;
 
 /// Camera perspective projection descriptor.
 struct CameraPerspectiveProjectionDesc {

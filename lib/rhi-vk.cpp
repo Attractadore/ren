@@ -1,13 +1,14 @@
 #if REN_RHI_VULKAN
 #include "core/Assert.hpp"
-#include "core/Macros.hpp"
 #include "core/Span.hpp"
 #include "core/String.hpp"
 #include "core/Vector.hpp"
 #include "core/Views.hpp"
 #include "rhi.hpp"
 
+#include <SDL2/SDL_vulkan.h>
 #include <fmt/format.h>
+#include <glm/glm.hpp>
 #include <volk.h>
 
 namespace ren::rhi {
@@ -17,6 +18,9 @@ namespace {
 auto load_vulkan() -> ren::Result<void, VkResult> {
   static VkResult result = [&] {
     fmt::println("vk: Load Vulkan");
+    if (SDL_Vulkan_LoadLibrary(nullptr)) {
+      return VK_ERROR_UNKNOWN;
+    }
     return volkInitialize();
   }();
   if (result) {
@@ -137,10 +141,17 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
   SmallVector<const char *> layers;
   SmallVector<const char *> extensions;
-  for (const VkExtensionProperties &props : supported_extensions) {
-    if (StringView(props.extensionName).ends_with("_surface")) {
-      extensions.push_back(props.extensionName);
-    }
+
+  fmt::println("vk: Enable SDL2 required extensions");
+  u32 num_sdl_extensions = 0;
+  if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
+                                        nullptr)) {
+    return Failed(Error::Unknown);
+  }
+  extensions.resize(num_sdl_extensions);
+  if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
+                                        extensions.data())) {
+    return Failed(Error::Unknown);
   }
 
   if (features.debug_names) {
@@ -414,30 +425,11 @@ auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool {
          0;
 }
 
-auto is_queue_family_present_supported(Adapter handle, QueueFamily family,
-                                       Surface surface) -> bool {
-  ren_assert(instance.handle);
-  ren_assert(handle.index < instance.adapters.size());
-  ren_assert(surface.handle);
-  VkResult result = VK_SUCCESS;
-  if (!is_queue_family_supported(handle, family)) {
-    return false;
-  }
-  const AdapterData &adapter = instance.adapters[handle.index];
-  VkBool32 supported = false;
-  result = vkGetPhysicalDeviceSurfaceSupportKHR(
-      adapter.physical_device, adapter.queue_family_indices[(usize)family],
-      surface.handle, &supported);
-  if (result) {
-    return false;
-  }
-  return supported;
-}
-
 namespace vk {
 
 struct DeviceData {
   VkDevice handle = nullptr;
+  VkPhysicalDevice physical_device = nullptr;
   VmaAllocator allocator = nullptr;
   std::array<Queue, QUEUE_FAMILY_COUNT> queues;
   VolkDeviceTable vk = {};
@@ -569,6 +561,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   };
 
   DeviceData *device = new DeviceData;
+  device->physical_device = handle;
 
   result = vkCreateDevice(handle, &device_info, nullptr, &device->handle);
   if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
@@ -623,17 +616,405 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   Queue queue = device->queues[(usize)family];
   ren_assert(queue.handle);
   return queue;
-};
+}
 
 namespace vk {
 
-auto get_vk_instance() -> VkInstance { return instance.handle; }
+constexpr auto IMAGE_USAGE_MAP = [] {
+  using enum ImageUsage;
+  std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
+#define map(from, to) map[std::countr_zero((usize)from)] = to;
+  map(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+  map(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  map(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
+  map(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+#undef map
+  return map;
+}();
 
-auto get_vk_physical_device(Adapter adapter) -> VkPhysicalDevice {
-  ren_assert(instance.handle);
-  ren_assert(adapter.index < instance.adapters.size());
-  return instance.adapters[adapter.index].physical_device;
+auto to_vk_image_usage_flags(ImageUsageFlags flags) -> VkImageUsageFlags {
+  VkImageUsageFlags vk_flags = 0;
+  for (usize bit : range(IMAGE_USAGE_COUNT)) {
+    auto usage = (ImageUsage)(1 << bit);
+    if (flags.is_set(usage)) {
+      vk_flags |= IMAGE_USAGE_MAP[bit];
+    }
+  }
+  return vk_flags;
 }
+
+auto from_vk_image_usage_flags(VkImageUsageFlags vk_flags) -> ImageUsageFlags {
+  ImageUsageFlags flags;
+  for (usize bit : range(IMAGE_USAGE_COUNT)) {
+    VkImageUsageFlagBits vk_usage = IMAGE_USAGE_MAP[bit];
+    if (vk_flags & vk_usage) {
+      auto usage = (ImageUsage)(1 << bit);
+      flags |= usage;
+    }
+  }
+  return flags;
+}
+
+} // namespace vk
+
+extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
+
+auto create_surface(SDL_Window *window) -> Result<Surface> {
+  Surface surface;
+  if (!SDL_Vulkan_CreateSurface(window, instance.handle, &surface.handle)) {
+    return Failed(Error::Unknown);
+  }
+  return surface;
+}
+
+void destroy_surface(Surface surface) {
+  vkDestroySurfaceKHR(instance.handle, surface.handle, nullptr);
+}
+
+auto is_queue_family_present_supported(Adapter handle, QueueFamily family,
+                                       Surface surface) -> bool {
+  ren_assert(instance.handle);
+  ren_assert(handle.index < instance.adapters.size());
+  ren_assert(surface.handle);
+  VkResult result = VK_SUCCESS;
+  if (!is_queue_family_supported(handle, family)) {
+    return false;
+  }
+  const AdapterData &adapter = instance.adapters[handle.index];
+  VkBool32 supported = false;
+  result = vkGetPhysicalDeviceSurfaceSupportKHR(
+      adapter.physical_device, adapter.queue_family_indices[(usize)family],
+      surface.handle, &supported);
+  if (result) {
+    return false;
+  }
+  return supported;
+}
+
+namespace {
+
+constexpr auto PRESENT_MODE_MAP = [] {
+  using enum PresentMode;
+  std::array<VkPresentModeKHR, PRESENT_MODE_COUNT> map = {};
+  std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
+#define map(from, to) map[(usize)from] = to
+  map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
+  map(Mailbox, VK_PRESENT_MODE_FIFO_KHR);
+  map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
+  map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
+#undef map
+  return map;
+}();
+
+auto to_vk_present_mode(PresentMode present_mode) -> VkPresentModeKHR {
+  return PRESENT_MODE_MAP[(usize)present_mode];
+}
+
+auto from_vk_present_mode(VkPresentModeKHR present_mode) -> PresentMode {
+  auto it = std::ranges::find(PRESENT_MODE_MAP, present_mode);
+  ren_assert(it != PRESENT_MODE_MAP.end());
+  return (PresentMode)(it - PRESENT_MODE_MAP.begin());
+}
+
+} // namespace
+
+auto get_surface_present_modes(Adapter adapter, Surface surface,
+                               u32 *num_present_modes,
+                               PresentMode *present_modes) -> Result<void> {
+  VkPresentModeKHR vk_present_modes[PRESENT_MODE_COUNT];
+  u32 num_vk_present_modes = std::size(vk_present_modes);
+  VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(
+      instance.adapters[adapter.index].physical_device, surface.handle,
+      &num_vk_present_modes, vk_present_modes);
+  if (result) {
+    ren_assert(result != VK_INCOMPLETE);
+    return Failed(Error::Unknown);
+  }
+  if (present_modes) {
+    for (usize i : range(std::min(*num_present_modes, num_vk_present_modes))) {
+      present_modes[i] = from_vk_present_mode(vk_present_modes[i]);
+    }
+    if (*num_present_modes < num_vk_present_modes) {
+      return Failed(Error::Incomplete);
+    }
+  }
+  *num_present_modes = num_vk_present_modes;
+  return {};
+}
+
+auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
+                         TinyImageFormat *formats) -> Result<void> {
+  VkResult result = VK_SUCCESS;
+  VkPhysicalDevice physical_device =
+      instance.adapters[adapter.index].physical_device;
+  u32 num_vk_formats = 0;
+  result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
+                                                &num_vk_formats, nullptr);
+  if (result) {
+    return Failed(Error::Unknown);
+  }
+  Vector<VkSurfaceFormatKHR> vk_formats(num_vk_formats);
+  result = vkGetPhysicalDeviceSurfaceFormatsKHR(
+      physical_device, surface.handle, &num_vk_formats, vk_formats.data());
+  if (result) {
+    return Failed(Error::Unknown);
+  }
+  vk_formats.erase_if([](const VkSurfaceFormatKHR &vk_format) {
+    return !TinyImageFormat_FromVkFormat(
+        (TinyImageFormat_VkFormat)vk_format.format);
+  });
+  num_vk_formats = vk_formats.size();
+
+  if (formats) {
+    for (usize i : range(std::min(*num_formats, num_vk_formats))) {
+      formats[i] = TinyImageFormat_FromVkFormat(
+          (TinyImageFormat_VkFormat)vk_formats[i].format);
+    }
+    if (*num_formats < num_vk_formats) {
+      return Failed(Error::Incomplete);
+    }
+  }
+  *num_formats = num_vk_formats;
+  return {};
+}
+
+auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
+    -> Result<Flags<ImageUsage>> {
+  VkPhysicalDevice physical_device =
+      instance.adapters[adapter.index].physical_device;
+  VkSurfaceCapabilitiesKHR capabilities;
+  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface.handle,
+                                                &capabilities)) {
+    return Failed(Error::Unknown);
+  }
+  return from_vk_image_usage_flags(capabilities.supportedUsageFlags);
+}
+
+namespace vk {
+
+constexpr u32 SWAP_CHAIN_IMAGE_NOT_ACQUIRED = -1;
+
+struct SwapChainData {
+  Device device = nullptr;
+  VkQueue queue = nullptr;
+  VkSurfaceKHR surface = nullptr;
+  VkSwapchainKHR handle = nullptr;
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  VkImageUsageFlags usage = 0;
+  glm::uvec2 size = {};
+  u32 num_images = 0;
+  VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+  u32 image = SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
+};
+
+} // namespace vk
+
+namespace {
+
+auto adjust_swap_chain_image_count(u32 num_images,
+                                   const VkSurfaceCapabilitiesKHR &capabilities)
+    -> u32 {
+  num_images = std::clamp(num_images, capabilities.minImageCount,
+                          MAX_SWAP_CHAIN_IMAGE_COUNT);
+  if (capabilities.maxImageCount) {
+    num_images = std::min(num_images, capabilities.maxImageCount);
+  }
+  return num_images;
+}
+
+auto adjust_swap_chain_size(glm::uvec2 size,
+                            const VkSurfaceCapabilitiesKHR &capabilities)
+    -> glm::uvec2 {
+  glm::uvec2 current_size = {capabilities.currentExtent.width,
+                             capabilities.currentExtent.height};
+  glm::uvec2 min_size = {capabilities.minImageExtent.width,
+                         capabilities.minImageExtent.height};
+  glm::uvec2 max_size = {capabilities.maxImageExtent.width,
+                         capabilities.maxImageExtent.height};
+  if (glm::all(glm::notEqual(current_size, glm::uvec2(-1)))) {
+    size = current_size;
+  }
+  size = glm::max(size, min_size);
+  size = glm::min(size, max_size);
+  return size;
+}
+
+auto select_swap_chain_composite_alpha(
+    const VkSurfaceCapabilitiesKHR &capabilities)
+    -> VkCompositeAlphaFlagBitsKHR {
+  constexpr std::array PREFERRED_ORDER = {
+      VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+      VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+      VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+      VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+  };
+  for (VkCompositeAlphaFlagBitsKHR composite_alpha : PREFERRED_ORDER) {
+    if (capabilities.supportedCompositeAlpha & composite_alpha) {
+      return composite_alpha;
+    }
+  }
+  std::unreachable();
+}
+
+} // namespace
+
+namespace {
+
+auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                         VkPresentModeKHR present_mode) -> Result<void> {
+  Device device = swap_chain->device;
+  VkSurfaceCapabilitiesKHR capabilities;
+  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+          device->physical_device, swap_chain->surface, &capabilities)) {
+    return Failed(Error::Unknown);
+  }
+  size = adjust_swap_chain_size(size, capabilities),
+  num_images = adjust_swap_chain_image_count(num_images, capabilities);
+  VkSwapchainKHR old_swap_chain = swap_chain->handle;
+  VkSwapchainCreateInfoKHR vk_create_info = {
+      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+      .surface = swap_chain->surface,
+      .minImageCount = num_images,
+      .imageFormat = swap_chain->format,
+      .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
+      .imageExtent = {size.x, size.y},
+      .imageArrayLayers = 1,
+      .imageUsage = swap_chain->usage,
+      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .preTransform = capabilities.currentTransform,
+      .compositeAlpha = select_swap_chain_composite_alpha(capabilities),
+      .presentMode = present_mode,
+      .clipped = true,
+      .oldSwapchain = old_swap_chain,
+  };
+  if (device->vk.vkCreateSwapchainKHR(device->handle, &vk_create_info, nullptr,
+                                      &swap_chain->handle)) {
+    return Failed(Error::Unknown);
+  }
+  device->vk.vkDestroySwapchainKHR(device->handle, old_swap_chain, nullptr);
+  swap_chain->size = size;
+  swap_chain->num_images = num_images;
+  swap_chain->present_mode = present_mode;
+  return {};
+}
+
+} // namespace
+
+auto create_swap_chain(const SwapChainCreateInfo &create_info)
+    -> Result<SwapChain> {
+  SwapChain swap_chain = new (SwapChainData){
+      .device = create_info.device,
+      .queue = create_info.queue.handle,
+      .surface = create_info.surface.handle,
+      .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
+      .usage = to_vk_image_usage_flags(create_info.usage),
+      .size = {create_info.width, create_info.height},
+      .num_images = create_info.num_images,
+      .present_mode = to_vk_present_mode(create_info.present_mode),
+  };
+  Result<void> result =
+      recreate_swap_chain(swap_chain, swap_chain->size, swap_chain->num_images,
+                          swap_chain->present_mode);
+  if (!result) {
+    destroy_swap_chain(swap_chain);
+    return Failed(result.error());
+  }
+  return swap_chain;
+}
+
+void destroy_swap_chain(SwapChain swap_chain) {
+  if (swap_chain) {
+    swap_chain->device->vk.vkDestroySwapchainKHR(swap_chain->device->handle,
+                                                 swap_chain->handle, nullptr);
+    delete swap_chain;
+  }
+}
+
+auto get_swap_chain_size(SwapChain swap_chain) -> glm::uvec2 {
+  return swap_chain->size;
+}
+
+auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
+    -> Result<void> {
+  VkImage vk_images[MAX_SWAP_CHAIN_IMAGE_COUNT];
+  u32 num_vk_images = std::size(vk_images);
+  VkResult result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
+      swap_chain->device->handle, swap_chain->handle, &num_vk_images,
+      vk_images);
+  if (result) {
+    ren_assert(result != VK_INCOMPLETE);
+    return Failed(Error::Unknown);
+  }
+  if (images) {
+    for (usize i : range(std::min(*num_images, num_vk_images))) {
+      images[i] = {.handle = vk_images[i]};
+    }
+    if (*num_images < num_vk_images) {
+      return Failed(Error::Incomplete);
+    }
+  }
+  *num_images = num_vk_images;
+  return {};
+}
+
+auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images)
+    -> Result<void> {
+  return recreate_swap_chain(swap_chain, size, num_images,
+                             swap_chain->present_mode);
+}
+
+auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
+    -> Result<void> {
+  return recreate_swap_chain(swap_chain, swap_chain->size,
+                             swap_chain->num_images,
+                             to_vk_present_mode(present_mode));
+}
+
+auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32> {
+  ren_assert(swap_chain);
+  ren_assert(swap_chain->image == vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED);
+  Device device = swap_chain->device;
+  VkResult result = device->vk.vkAcquireNextImageKHR(
+      device->handle, swap_chain->handle, UINT64_MAX, semaphore.handle, nullptr,
+      &swap_chain->image);
+  if (result) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+      return Failed(Error::OutOfDate);
+    }
+    if (result != VK_SUBOPTIMAL_KHR) {
+      return Failed(Error::Unknown);
+    }
+  }
+  return swap_chain->image;
+}
+
+auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
+  ren_assert(swap_chain);
+  ren_assert(swap_chain->image != vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED);
+  Device device = swap_chain->device;
+  VkPresentInfoKHR present_info = {
+      .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &semaphore.handle,
+      .swapchainCount = 1,
+      .pSwapchains = &swap_chain->handle,
+      .pImageIndices = &swap_chain->image,
+  };
+  VkResult result =
+      device->vk.vkQueuePresentKHR(swap_chain->queue, &present_info);
+  swap_chain->image = vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
+  if (result) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+      return Failed(Error::OutOfDate);
+    }
+    return Failed(Error::Unknown);
+  }
+  return {};
+}
+
+namespace vk {
 
 auto get_queue_family_index(Adapter adapter, QueueFamily family) -> u32 {
   ren_assert(instance.handle);

@@ -15,7 +15,20 @@ struct TextureCreateInfo {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   VkImageUsageFlags usage = 0;
   u32 width = 0;
-  u32 height = 1;
+  u32 height = 0;
+  u32 depth = 1;
+  u32 num_mip_levels = 1;
+  u32 num_array_layers = 1;
+};
+
+struct ExternalTextureCreateInfo {
+  REN_DEBUG_NAME_FIELD("External Texture");
+  VkImage image = nullptr;
+  VkImageType type = VK_IMAGE_TYPE_2D;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  VkImageUsageFlags usage = 0;
+  u32 width = 0;
+  u32 height = 0;
   u32 depth = 1;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;

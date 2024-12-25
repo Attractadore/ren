@@ -1,7 +1,5 @@
 #include "AppBase.hpp"
-#include "ren/ren-sdl2.hpp"
 
-#include <SDL2/SDL_vulkan.h>
 #include <utility>
 
 namespace chrono = std::chrono;
@@ -42,17 +40,17 @@ AppBase::AppBase(const char *app_name) {
       }
     }
 
-    OK(m_renderer, ren::sdl2::create_renderer(adapter));
+    OK(m_renderer, ren::create_renderer(adapter));
 
     m_window.reset(SDL_CreateWindow(
         app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
         SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
-            ren::sdl2::get_required_window_flags(*m_renderer)));
+            ren::get_sdl_window_flags(*m_renderer)));
     if (!m_window) {
       bail("{}", SDL_GetError());
     }
 
-    OK(m_swapchain, ren::sdl2::create_swapchain(*m_renderer, m_window.get()));
+    OK(m_swapchain, ren::create_swapchain(*m_renderer, m_window.get()));
 
     OK(m_scene, m_renderer->create_scene(*m_swapchain));
 

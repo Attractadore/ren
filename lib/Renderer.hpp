@@ -20,8 +20,6 @@
 
 namespace ren {
 
-struct SwapchainTextureCreateInfo;
-
 enum class RendererFeature {
   AmdAntiLag,
   Last = AmdAntiLag,
@@ -69,11 +67,9 @@ public:
   auto create_scene(ISwapchain &swapchain)
       -> expected<std::unique_ptr<IScene>> override;
 
-  auto get_instance() const -> VkInstance { return rhi::vk::get_vk_instance(); }
+  auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 
-  auto get_adapter() const -> VkPhysicalDevice {
-    return rhi::vk::get_vk_physical_device(m_adapter);
-  }
+  auto get_rhi_device() const -> rhi::Device { return m_device; }
 
   auto get_device() const -> VkDevice {
     return rhi::vk::get_vk_device(m_device);
@@ -195,7 +191,7 @@ public:
   void destroy(Handle<Texture> texture);
 
   [[nodiscard]] auto
-  create_swapchain_texture(const SwapchainTextureCreateInfo &&create_info)
+  create_external_texture(const ExternalTextureCreateInfo &&create_info)
       -> Handle<Texture>;
 
   auto try_get_texture(Handle<Texture> texture) const
