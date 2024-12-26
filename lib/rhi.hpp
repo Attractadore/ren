@@ -1,11 +1,13 @@
 #pragma once
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
+#include "core/Span.hpp"
 #include "core/String.hpp"
 #include "ren/ren.hpp"
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
 
+#include <chrono>
 #include <glm/vec2.hpp>
 
 struct SDL_Window;
@@ -98,6 +100,39 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device>;
 void destroy_device(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
+
+enum class SemaphoreType {
+  Binary,
+  Timeline,
+  Last = Timeline,
+};
+constexpr usize SEMAPHORE_TYPE_COUNT = (usize)SemaphoreType::Last + 1;
+
+struct SemaphoreCreateInfo {
+  Device device = {};
+  SemaphoreType type = SemaphoreType::Timeline;
+  u64 initial_value = 0;
+};
+
+auto create_semaphore(const SemaphoreCreateInfo &create_info)
+    -> Result<Semaphore>;
+
+void destroy_semaphore(Device device, Semaphore semaphore);
+
+enum class WaitResult {
+  Success,
+  Timeout,
+};
+
+struct SemaphoreWaitInfo {
+  Semaphore semaphore;
+  u64 value = 0;
+};
+
+auto wait_for_semaphores(Device device,
+                         TempSpan<const SemaphoreWaitInfo> wait_infos,
+                         std::chrono::nanoseconds timeout)
+    -> Result<WaitResult>;
 
 // clang-format off
 REN_BEGIN_FLAGS_ENUM(ImageUsage) {

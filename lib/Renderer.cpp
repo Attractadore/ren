@@ -607,58 +607,36 @@ auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
 }
 
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
-    -> Handle<Semaphore> {
-  VkSemaphoreTypeCreateInfo semaphore_type_info = {
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-  };
-  create_info.initial_value.map([&](u64 initial_value) {
-    semaphore_type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    semaphore_type_info.initialValue = initial_value;
-  });
-  VkSemaphoreCreateInfo semaphore_info = {
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-      .pNext = &semaphore_type_info,
-  };
-
-  VkSemaphore semaphore;
-  throw_if_failed(
-      vkCreateSemaphore(get_device(), &semaphore_info, nullptr, &semaphore),
-      "Vulkan: Failed to create semaphore");
-  set_debug_name(get_device(), semaphore, create_info.name);
-
+    -> Result<Handle<Semaphore>, Error> {
+  ren_try(rhi::Semaphore semaphore,
+          rhi::create_semaphore({
+              .device = m_device,
+              .type = create_info.type,
+              .initial_value = create_info.initial_value,
+          }));
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
 void Renderer::destroy(Handle<Semaphore> semaphore) {
   m_semaphores.try_pop(semaphore).map([&](const Semaphore &semaphore) {
-    vkDestroySemaphore(get_device(), semaphore.handle, nullptr);
+    rhi::destroy_semaphore(m_device, semaphore.handle);
   });
 }
 
-auto Renderer::wait_for_semaphore(const Semaphore &semaphore, uint64_t value,
+auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                   std::chrono::nanoseconds timeout) const
-    -> VkResult {
-  VkSemaphoreWaitInfo wait_info = {
-      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-      .semaphoreCount = 1,
-      .pSemaphores = &semaphore.handle,
-      .pValues = &value,
-  };
-  auto result = vkWaitSemaphores(get_device(), &wait_info, timeout.count());
-  switch (result) {
-  case VK_SUCCESS:
-  case VK_TIMEOUT:
-    return result;
-  default:
-    throw std::runtime_error{"Vulkan: Failed to wait for semaphore"};
-  };
+    -> Result<rhi::WaitResult, Error> {
+  return rhi::wait_for_semaphores(
+      m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
 }
 
-void Renderer::wait_for_semaphore(const Semaphore &semaphore,
-                                  uint64_t value) const {
-  auto result = wait_for_semaphore(semaphore, value,
-                                   std::chrono::nanoseconds(UINT64_MAX));
-  ren_assert(result == VK_SUCCESS);
+auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
+    -> Result<void, Error> {
+  ren_try(rhi::WaitResult wait_result,
+          wait_for_semaphore(semaphore, value,
+                             std::chrono::nanoseconds(UINT64_MAX)));
+  ren_assert(wait_result == rhi::WaitResult::Success);
+  return {};
 }
 
 auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const

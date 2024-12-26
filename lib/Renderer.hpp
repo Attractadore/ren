@@ -256,7 +256,7 @@ public:
       -> const ComputePipeline &;
 
   [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
-      -> Handle<Semaphore>;
+      -> Result<Handle<Semaphore>, Error>;
 
   void destroy(Handle<Semaphore> semaphore);
 
@@ -267,12 +267,12 @@ public:
 
   void wait_idle();
 
-  [[nodiscard]] auto wait_for_semaphore(const Semaphore &semaphore,
-                                        uint64_t value,
+  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                         std::chrono::nanoseconds timeout) const
-      -> VkResult;
+      -> Result<rhi::WaitResult, Error>;
 
-  void wait_for_semaphore(const Semaphore &semaphore, uint64_t value) const;
+  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
+      -> Result<void, Error>;
 
   auto getGraphicsQueue() const -> rhi::Queue { return m_graphics_queue; }
 

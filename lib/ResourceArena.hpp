@@ -48,8 +48,8 @@ public:
     return insert(m_renderer->create_sampler(std::move(create_info)));
   }
 
-  auto
-  create_semaphore(const SemaphoreCreateInfo &&create_info) -> Handle<Semaphore>
+  auto create_semaphore(const SemaphoreCreateInfo &&create_info)
+      -> Result<Handle<Semaphore>, Error>
     requires IsArenaResource<Semaphore>
   {
     return insert(m_renderer->create_semaphore(std::move(create_info)));
@@ -105,6 +105,13 @@ private:
 
   template <typename T> auto insert(Handle<T> handle) -> Handle<T> {
     return get_type_arena<T>().emplace_back(std::move(handle));
+  }
+
+  template <typename T>
+  auto insert(Result<Handle<T>, Error> handle) -> Result<Handle<T>, Error> {
+    return handle.transform([&](Handle<T> handle) {
+      return get_type_arena<T>().emplace_back(std::move(handle));
+    });
   }
 
   template <typename T> void clear() {

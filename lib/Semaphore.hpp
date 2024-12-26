@@ -2,18 +2,18 @@
 #include "DebugNames.hpp"
 #include "core/Optional.hpp"
 #include "core/StdDef.hpp"
-
-#include <vulkan/vulkan.h>
+#include "rhi.hpp"
 
 namespace ren {
 
 struct SemaphoreCreateInfo {
   REN_DEBUG_NAME_FIELD("Semaphore");
-  Optional<u64> initial_value;
+  rhi::SemaphoreType type = rhi::SemaphoreType::Timeline;
+  u64 initial_value = 0;
 };
 
 struct Semaphore {
-  VkSemaphore handle;
+  rhi::Semaphore handle;
 };
 
 }; // namespace ren

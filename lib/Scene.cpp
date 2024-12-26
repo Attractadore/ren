@@ -63,21 +63,27 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_data.settings.amd_anti_lag =
       m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
-  next_frame();
+  next_frame().value();
 }
 
-void Scene::allocate_per_frame_resources() {
+auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
   m_fif_arena.clear();
   m_per_frame_resources.clear();
   m_new_num_frames_in_flight = m_num_frames_in_flight;
   for (auto i : range(m_num_frames_in_flight)) {
+    ren_try(Handle<Semaphore> acquire_semaphore,
+            m_fif_arena.create_semaphore({
+                .name = fmt::format("Acquire semaphore {}", i),
+                .type = rhi::SemaphoreType::Binary,
+            }));
+    ren_try(Handle<Semaphore> present_semaphore,
+            m_fif_arena.create_semaphore({
+                .name = fmt::format("Present semaphore {}", i),
+                .type = rhi::SemaphoreType::Binary,
+            }));
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
-        .acquire_semaphore = m_fif_arena.create_semaphore({
-            .name = fmt::format("Acquire semaphore {}", i),
-        }),
-        .present_semaphore = m_fif_arena.create_semaphore({
-            .name = fmt::format("Present semaphore {}", i),
-        }),
+        .acquire_semaphore = acquire_semaphore,
+        .present_semaphore = present_semaphore,
         .upload_allocator =
             UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
         .cmd_allocator = CommandAllocator(*m_renderer),
@@ -86,11 +92,12 @@ void Scene::allocate_per_frame_resources() {
     });
   }
   m_graphics_time = m_num_frames_in_flight;
-  m_graphics_semaphore = m_fif_arena.create_semaphore({
-      .name = "Graphics queue timeline semaphore",
-      .initial_value = m_graphics_time - 1,
-  });
+  ren_try(m_graphics_semaphore, m_fif_arena.create_semaphore({
+                                    .name = "Graphics queue timeline semaphore",
+                                    .initial_value = m_graphics_time - 1,
+                                }));
   m_swapchain->set_frames_in_flight(m_num_frames_in_flight);
+  return {};
 }
 
 void ScenePerFrameResources::reset() {
@@ -99,20 +106,21 @@ void ScenePerFrameResources::reset() {
   descriptor_allocator.reset();
 }
 
-void Scene::next_frame() {
+auto Scene::next_frame() -> Result<void, Error> {
   ren_prof_zone("Scene::next_frame");
 
   m_frame_index++;
 
   m_num_frames_in_flight = m_new_num_frames_in_flight;
   [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
-    allocate_per_frame_resources();
+    ren_try_to(allocate_per_frame_resources());
   } else {
     m_renderer->graphicsQueueSubmit(
         {}, {},
         {{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore = m_renderer->get_semaphore(m_graphics_semaphore).handle,
+            .semaphore =
+                m_renderer->get_semaphore(m_graphics_semaphore).handle.handle,
             .value = m_graphics_time,
         }});
     m_graphics_time++;
@@ -121,8 +129,8 @@ void Scene::next_frame() {
       ren_prof_zone_text(
           fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
       u64 wait_time = m_graphics_time - m_num_frames_in_flight;
-      m_renderer->wait_for_semaphore(
-          m_renderer->get_semaphore(m_graphics_semaphore), wait_time);
+      ren_try_to(
+          m_renderer->wait_for_semaphore(m_graphics_semaphore, wait_time));
     }
   }
   m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
@@ -138,6 +146,7 @@ void Scene::next_frame() {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
       .commandBuffer = cmd,
   }});
+  return {};
 }
 
 auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
@@ -502,13 +511,11 @@ auto Scene::draw() -> expected<void> {
     m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_PRESENT_AMD);
   }
 
-  m_swapchain->present(m_frcs->present_semaphore);
+  ren_try_to(m_swapchain->present(m_frcs->present_semaphore));
 
   prof::mark_frame();
 
-  next_frame();
-
-  return {};
+  return next_frame();
 }
 
 #if REN_IMGUI

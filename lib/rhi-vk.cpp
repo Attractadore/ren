@@ -644,6 +644,71 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
+namespace {
+
+constexpr auto SEMAPHORE_TYPE_MAP = [] {
+  std::array<VkSemaphoreType, SEMAPHORE_TYPE_COUNT> map;
+#define map(from, to) map[(usize)from] = to;
+  map(SemaphoreType::Binary, VK_SEMAPHORE_TYPE_BINARY);
+  map(SemaphoreType::Timeline, VK_SEMAPHORE_TYPE_TIMELINE);
+#undef map
+  return map;
+}();
+
+} // namespace
+
+auto create_semaphore(const SemaphoreCreateInfo &create_info)
+    -> Result<Semaphore> {
+  Device device = create_info.device;
+  VkSemaphoreTypeCreateInfo type_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+      .semaphoreType = SEMAPHORE_TYPE_MAP[(usize)create_info.type],
+      .initialValue = create_info.initial_value,
+  };
+  VkSemaphoreCreateInfo vk_create_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+      .pNext = &type_info,
+  };
+  Semaphore semaphore;
+  VkResult result = device->vk.vkCreateSemaphore(
+      device->handle, &vk_create_info, nullptr, &semaphore.handle);
+  if (result) {
+    return fail(result);
+  }
+  return semaphore;
+}
+
+void destroy_semaphore(Device device, Semaphore semaphore) {
+  device->vk.vkDestroySemaphore(device->handle, semaphore.handle, nullptr);
+}
+
+auto wait_for_semaphores(Device device,
+                         TempSpan<const SemaphoreWaitInfo> wait_infos,
+                         std::chrono::nanoseconds timeout)
+    -> Result<WaitResult> {
+  SmallVector<VkSemaphore> semaphores(wait_infos.size());
+  SmallVector<u64> values(wait_infos.size());
+  for (usize i : range(wait_infos.size())) {
+    semaphores[i] = wait_infos[i].semaphore.handle;
+    values[i] = wait_infos[i].value;
+  }
+  VkSemaphoreWaitInfo vk_wait_info = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+      .semaphoreCount = (u32)wait_infos.size(),
+      .pSemaphores = semaphores.data(),
+      .pValues = values.data(),
+  };
+  VkResult result = device->vk.vkWaitSemaphores(device->handle, &vk_wait_info,
+                                                timeout.count());
+  if (result == VK_SUCCESS) {
+    return WaitResult::Success;
+  }
+  if (result == VK_TIMEOUT) {
+    return WaitResult::Timeout;
+  }
+  return fail(result);
+}
+
 namespace vk {
 
 constexpr auto IMAGE_USAGE_MAP = [] {

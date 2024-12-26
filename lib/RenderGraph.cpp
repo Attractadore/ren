@@ -1147,7 +1147,7 @@ void RgBuilder::place_barriers_and_semaphores() {
           .semaphore =
               m_renderer
                   ->get_semaphore(m_rgp->m_semaphores[signal.semaphore].handle)
-                  .handle,
+                  .handle.handle,
           .value = signal.value,
           .stageMask = signal.stage_mask,
       });

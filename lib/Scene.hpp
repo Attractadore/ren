@@ -144,7 +144,7 @@ public:
 
   auto draw() -> expected<void> override;
 
-  void next_frame();
+  auto next_frame() -> Result<void, Error>;
 
 #if REN_IMGUI
   void set_imgui_context(ImGuiContext *context) noexcept;
@@ -157,7 +157,7 @@ public:
 #endif
 
 private:
-  void allocate_per_frame_resources();
+  auto allocate_per_frame_resources() -> Result<void, Error>;
 
   auto get_camera(CameraId camera) -> Camera &;
 
