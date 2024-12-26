@@ -44,10 +44,7 @@ void set_debug_name(VkDevice device, T object, const DebugName &name) {
 } // namespace
 
 auto Renderer::init(u32 adapter) -> Result<void, Error> {
-  rhi::Result<rhi::Features> features = rhi::get_supported_features();
-  if (!features) {
-    return Failed(Error::RHI);
-  }
+  ren_try(rhi::Features features, rhi::get_supported_features());
 
 #if !REN_DEBUG_NAMES
   features->debug_names = false;
@@ -57,9 +54,7 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
   features->debug_layer = false;
 #endif
 
-  if (!rhi::init({.features = *features})) {
-    return Failed(Error::RHI);
-  }
+  ren_try_to(rhi::init({.features = features}));
 
   if (adapter == DEFAULT_ADAPTER) {
     m_adapter =
@@ -71,14 +66,10 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
     m_adapter = rhi::get_adapter(adapter);
   }
 
-  rhi::Result<rhi::Device> device = rhi::create_device({
-      .adapter = m_adapter,
-      .features = rhi::get_adapter_features(m_adapter),
-  });
-  if (!device) {
-    return Failed(Error::RHI);
-  }
-  m_device = *device;
+  ren_try(m_device, rhi::create_device({
+                        .adapter = m_adapter,
+                        .features = rhi::get_adapter_features(m_adapter),
+                    }));
 
   m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
 

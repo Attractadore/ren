@@ -41,11 +41,7 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
   m_renderer = &renderer;
   m_window = window;
 
-  rhi::Result<rhi::Surface> surface = rhi::create_surface(m_window);
-  if (!surface) {
-    return Failed(Error::RHI);
-  }
-  m_surface = *surface;
+  ren_try(m_surface, rhi::create_surface(m_window));
 
   SDL_GetWindowSizeInPixels(m_window, &m_size.x, &m_size.y);
   m_fullscreen = get_fullscreen_state(m_window);
@@ -53,26 +49,16 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
   rhi::Adapter adapter = m_renderer->get_adapter();
   rhi::Device device = m_renderer->get_rhi_device();
 
-  auto present_mode = select_present_mode();
-  if (!present_mode) {
-    return Failed(present_mode.error());
-  }
-
-  auto num_images = select_image_count(*present_mode);
-  if (!num_images) {
-    return Failed(num_images.error());
-  }
+  ren_try(rhi::PresentMode present_mode, select_present_mode());
+  ren_try(u32 num_images, select_image_count(present_mode));
 
   {
     u32 num_formats = 0;
-    if (!rhi::get_surface_formats(adapter, m_surface, &num_formats, nullptr)) {
-      return Failed(Error::RHI);
-    }
+    ren_try_to(
+        rhi::get_surface_formats(adapter, m_surface, &num_formats, nullptr));
     SmallVector<TinyImageFormat> formats(num_formats);
-    if (!rhi::get_surface_formats(adapter, m_surface, &num_formats,
-                                  formats.data())) {
-      return Failed(Error::RHI);
-    }
+    ren_try_to(rhi::get_surface_formats(adapter, m_surface, &num_formats,
+                                        formats.data()));
     auto it = std::ranges::find_if(formats, [](TinyImageFormat format) {
       return format == TinyImageFormat_B8G8R8A8_SRGB;
     });
@@ -81,44 +67,37 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
 
   rhi::ImageUsageFlags usage;
   {
-    rhi::Result<Flags<rhi::ImageUsage>> supported_usage =
-        rhi::get_surface_supported_image_usage(adapter, m_surface);
-    if (!supported_usage) {
-      return Failed(Error::RHI);
-    }
+    ren_try(rhi::ImageUsageFlags supported_usage,
+            rhi::get_surface_supported_image_usage(adapter, m_surface));
     constexpr Flags<rhi::ImageUsage> REQUIRED_USAGE =
         rhi::ImageUsage::TransferDst;
-    ren_assert((*supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
+    ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
     usage = REQUIRED_USAGE;
     m_usage = rhi::vk::to_vk_image_usage_flags(usage);
   }
 
   fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
-               *num_images);
+               num_images);
 
-  rhi::Result<rhi::SwapChain> swap_chain = rhi::create_swap_chain({
-      .device = device,
-      .surface = m_surface,
-      .queue = rhi::get_queue(device, queue_family),
-      .width = (u32)m_size.x,
-      .height = (u32)m_size.y,
-      .format = m_format,
-      .usage = usage,
-      .num_images = *num_images,
-      .present_mode = *present_mode,
-  });
-  if (!swap_chain) {
-    return Failed(Error::RHI);
-  }
-  m_swap_chain = *swap_chain;
+  ren_try(m_swap_chain, rhi::create_swap_chain({
+                            .device = device,
+                            .surface = m_surface,
+                            .queue = rhi::get_queue(device, queue_family),
+                            .width = (u32)m_size.x,
+                            .height = (u32)m_size.y,
+                            .format = m_format,
+                            .usage = usage,
+                            .num_images = num_images,
+                            .present_mode = present_mode,
+                        }));
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
   ren_try_to(update_textures());
 
   fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
-               m_size.x, m_size.y, (int)*present_mode, m_textures.size());
+               m_size.x, m_size.y, (int)present_mode, m_textures.size());
 
   return {};
 }
@@ -142,10 +121,9 @@ auto Swapchain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   if (m_vsync == VSync::Off) {
     rhi::PresentMode present_modes[rhi::PRESENT_MODE_COUNT];
     u32 num_present_modes = std::size(present_modes);
-    if (!rhi::get_surface_present_modes(m_renderer->get_adapter(), m_surface,
-                                        &num_present_modes, present_modes)) {
-      return Failed(Error::RHI);
-    }
+    ren_try_to(rhi::get_surface_present_modes(m_renderer->get_adapter(),
+                                              m_surface, &num_present_modes,
+                                              present_modes));
     bool have_immediate = false;
     bool have_mailbox = false;
     for (usize i : range(num_present_modes)) {
@@ -167,7 +145,7 @@ auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   SDL_SysWMinfo wm_info;
   SDL_VERSION(&wm_info.version);
   if (!SDL_GetWindowWMInfo(m_window, &wm_info)) {
-    return Failed(Error::SDL2);
+    return Failure(Error::SDL2);
   }
   switch (wm_info.subsystem) {
   default:
@@ -211,9 +189,7 @@ auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
 auto Swapchain::update_textures() -> Result<void, Error> {
   rhi::Image images[rhi::MAX_SWAP_CHAIN_IMAGE_COUNT];
   u32 num_images = std::size(images);
-  if (!rhi::get_swap_chain_images(m_swap_chain, &num_images, images)) {
-    return Failed(Error::RHI);
-  }
+  ren_try_to(rhi::get_swap_chain_images(m_swap_chain, &num_images, images));
   m_textures.resize(num_images);
   for (usize i : range(num_images)) {
     m_textures[i] = m_renderer->create_external_texture({
@@ -234,24 +210,20 @@ auto Swapchain::update() -> Result<void, Error> {
 
   auto present_mode = select_present_mode();
   if (!present_mode) {
-    return Failed(present_mode.error());
+    return Failure(present_mode.error());
   }
 
   auto num_images = select_image_count(*present_mode);
   if (!num_images) {
-    return Failed(num_images.error());
+    return Failure(num_images.error());
   }
 
   fmt::println("Update swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
                *num_images);
 
-  if (!rhi::set_present_mode(m_swap_chain, *present_mode)) {
-    return Failed(Error::RHI);
-  }
-  if (!rhi::resize_swap_chain(m_swap_chain, m_size, *num_images)) {
-    return Failed(Error::RHI);
-  }
+  ren_try_to(rhi::set_present_mode(m_swap_chain, *present_mode));
+  ren_try_to(rhi::resize_swap_chain(m_swap_chain, m_size, *num_images));
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
   for (Handle<Texture> t : m_textures) {
@@ -299,7 +271,7 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
       ren_try_to(update());
       continue;
     }
-    return Failed(Error::RHI);
+    return Failure(image.error());
   }
 }
 
@@ -313,7 +285,7 @@ auto Swapchain::present(Handle<Semaphore> wait_semaphore)
     if (result.error() == rhi::Error::OutOfDate) {
       return update();
     }
-    return Failed(Error::RHI);
+    return Failure(result.error());
   }
   return {};
 }

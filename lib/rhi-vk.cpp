@@ -15,6 +15,25 @@ namespace ren::rhi {
 
 namespace {
 
+inline auto fail(VkResult result, String description = "") -> Failure<Error> {
+  Error::Code code = Error::Unknown;
+  ren_assert(result);
+  switch (result) {
+  default:
+    break;
+  case VK_ERROR_FEATURE_NOT_PRESENT:
+    code = Error::FeatureNotPresent;
+    break;
+  case VK_ERROR_OUT_OF_DATE_KHR:
+    code = Error::OutOfDate;
+    break;
+  case VK_INCOMPLETE:
+    code = Error::Incomplete;
+    break;
+  }
+  return Failure(Error(code, std::move(description)));
+}
+
 auto load_vulkan() -> ren::Result<void, VkResult> {
   static VkResult result = [&] {
     fmt::println("vk: Load Vulkan");
@@ -24,7 +43,7 @@ auto load_vulkan() -> ren::Result<void, VkResult> {
     return volkInitialize();
   }();
   if (result) {
-    return Failed(result);
+    return Failure(result);
   }
   return {};
 }
@@ -55,7 +74,7 @@ constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
 
 auto get_supported_features() -> Result<Features> {
   if (!load_vulkan()) {
-    return Failed(Error::Unsupported);
+    return fail(Error::Unsupported);
   }
 
   VkResult result = VK_SUCCESS;
@@ -64,13 +83,13 @@ auto get_supported_features() -> Result<Features> {
   result =
       vkEnumerateInstanceExtensionProperties(nullptr, &num_extensions, nullptr);
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(result);
   }
   Vector<VkExtensionProperties> extensions(num_extensions);
   result = vkEnumerateInstanceExtensionProperties(nullptr, &num_extensions,
                                                   extensions.data());
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   auto is_extension_supported = [&](StringView extension) {
@@ -84,12 +103,12 @@ auto get_supported_features() -> Result<Features> {
   uint32_t num_layers = 0;
   result = vkEnumerateInstanceLayerProperties(&num_layers, nullptr);
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   Vector<VkLayerProperties> layers(num_layers);
   result = vkEnumerateInstanceLayerProperties(&num_layers, layers.data());
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   auto is_layer_supported = [&](StringView layer) {
@@ -109,7 +128,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
   ren_assert(!instance.handle);
 
   if (!load_vulkan()) {
-    return Failed(Error::Unsupported);
+    return fail(Error::Unsupported);
   }
 
   VkResult result = VK_SUCCESS;
@@ -120,13 +139,13 @@ auto init(const InitInfo &init_info) -> Result<void> {
   result = vkEnumerateInstanceExtensionProperties(
       nullptr, &num_supported_extensions, nullptr);
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   Vector<VkExtensionProperties> supported_extensions(num_supported_extensions);
   result = vkEnumerateInstanceExtensionProperties(
       nullptr, &num_supported_extensions, supported_extensions.data());
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   auto is_extension_supported = [&](StringView extension) {
@@ -146,12 +165,12 @@ auto init(const InitInfo &init_info) -> Result<void> {
   u32 num_sdl_extensions = 0;
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
                                         nullptr)) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   extensions.resize(num_sdl_extensions);
   if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
                                         extensions.data())) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
@@ -205,7 +224,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
   result = vkCreateInstance(&create_info, nullptr, &instance.handle);
   if (result) {
     exit();
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   // TODO: replace this with volkLoadInstanceOnly when everything is migrated to
@@ -245,11 +264,11 @@ auto init(const InitInfo &init_info) -> Result<void> {
                                       physical_devices);
   if (result) {
     exit();
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   if (num_physical_devices == 0) {
     exit();
-    return Failed(Error::Unsupported);
+    return fail(Error::Unsupported);
   }
 
   Vector<VkExtensionProperties> extension_properties;
@@ -267,14 +286,14 @@ auto init(const InitInfo &init_info) -> Result<void> {
                                                   &num_extensions, nullptr);
     if (result) {
       exit();
-      return Failed(Error::Unknown);
+      return fail(Error::Unknown);
     }
     extension_properties.resize(num_extensions);
     result = vkEnumerateDeviceExtensionProperties(
         handle, nullptr, &num_extensions, extension_properties.data());
     if (result) {
       exit();
-      return Failed(Error::Unknown);
+      return fail(Error::Unknown);
     }
 
     auto is_extension_supported = [&](StringView extension) {
@@ -360,7 +379,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
   if (instance.adapters.empty()) {
     exit();
-    return Failed(Error::Unsupported);
+    return fail(Error::Unsupported);
   }
 
   return {};
@@ -572,9 +591,9 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   result = vkCreateDevice(handle, &device_info, nullptr, &device->handle);
   if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
-    return Failed(Error::FeatureNotPresent);
+    return fail(Error::FeatureNotPresent);
   } else if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   volkLoadDeviceTable(&device->vk, device->handle);
@@ -604,7 +623,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   result = vmaCreateAllocator(&allocator_info, &device->allocator);
   if (result) {
     destroy_device(device);
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
 
   return device;
@@ -671,7 +690,7 @@ extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 auto create_surface(SDL_Window *window) -> Result<Surface> {
   Surface surface;
   if (!SDL_Vulkan_CreateSurface(window, instance.handle, &surface.handle)) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   return surface;
 }
@@ -737,14 +756,14 @@ auto get_surface_present_modes(Adapter adapter, Surface surface,
       &num_vk_present_modes, vk_present_modes);
   if (result) {
     ren_assert(result != VK_INCOMPLETE);
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   if (present_modes) {
     for (usize i : range(std::min(*num_present_modes, num_vk_present_modes))) {
       present_modes[i] = from_vk_present_mode(vk_present_modes[i]);
     }
     if (*num_present_modes < num_vk_present_modes) {
-      return Failed(Error::Incomplete);
+      return fail(Error::Incomplete);
     }
   }
   *num_present_modes = num_vk_present_modes;
@@ -760,13 +779,13 @@ auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
                                                 &num_vk_formats, nullptr);
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   Vector<VkSurfaceFormatKHR> vk_formats(num_vk_formats);
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(
       physical_device, surface.handle, &num_vk_formats, vk_formats.data());
   if (result) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   vk_formats.erase_if([](const VkSurfaceFormatKHR &vk_format) {
     return !TinyImageFormat_FromVkFormat(
@@ -780,7 +799,7 @@ auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
           (TinyImageFormat_VkFormat)vk_formats[i].format);
     }
     if (*num_formats < num_vk_formats) {
-      return Failed(Error::Incomplete);
+      return fail(Error::Incomplete);
     }
   }
   *num_formats = num_vk_formats;
@@ -794,7 +813,7 @@ auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
   VkSurfaceCapabilitiesKHR capabilities;
   if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface.handle,
                                                 &capabilities)) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   return from_vk_image_usage_flags(capabilities.supportedUsageFlags);
 }
@@ -886,7 +905,7 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
   };
   if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(
           device->physical_device, &surface_info, &capabilities2)) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   const VkSurfaceCapabilitiesKHR capabilities =
       capabilities2.surfaceCapabilities;
@@ -911,7 +930,7 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
   };
   if (device->vk.vkCreateSwapchainKHR(device->handle, &vk_create_info, nullptr,
                                       &swap_chain->handle)) {
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   device->vk.vkDestroySwapchainKHR(device->handle, old_swap_chain, nullptr);
   swap_chain->size = size;
@@ -939,7 +958,7 @@ auto create_swap_chain(const SwapChainCreateInfo &create_info)
                           swap_chain->present_mode);
   if (!result) {
     destroy_swap_chain(swap_chain);
-    return Failed(result.error());
+    return Failure(result.error());
   }
   return swap_chain;
 }
@@ -965,14 +984,14 @@ auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
       vk_images);
   if (result) {
     ren_assert(result != VK_INCOMPLETE);
-    return Failed(Error::Unknown);
+    return fail(Error::Unknown);
   }
   if (images) {
     for (usize i : range(std::min(*num_images, num_vk_images))) {
       images[i] = {.handle = vk_images[i]};
     }
     if (*num_images < num_vk_images) {
-      return Failed(Error::Incomplete);
+      return fail(Error::Incomplete);
     }
   }
   *num_images = num_vk_images;
@@ -999,13 +1018,8 @@ auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32> {
   VkResult result = device->vk.vkAcquireNextImageKHR(
       device->handle, swap_chain->handle, UINT64_MAX, semaphore.handle, nullptr,
       &swap_chain->image);
-  if (result) {
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-      return Failed(Error::OutOfDate);
-    }
-    if (result != VK_SUBOPTIMAL_KHR) {
-      return Failed(Error::Unknown);
-    }
+  if (result and result != VK_SUBOPTIMAL_KHR) {
+    return fail(result);
   }
   return swap_chain->image;
 }
@@ -1025,13 +1039,8 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
   VkResult result =
       device->vk.vkQueuePresentKHR(swap_chain->queue, &present_info);
   swap_chain->image = vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
-  if (result) {
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-      return Failed(Error::OutOfDate);
-    }
-    if (result != VK_SUBOPTIMAL_KHR) {
-      return Failed(Error::Unknown);
-    }
+  if (result and result != VK_SUBOPTIMAL_KHR) {
+    return fail(result);
   }
   return {};
 }

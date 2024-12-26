@@ -1,6 +1,8 @@
 #pragma once
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
+#include "core/String.hpp"
+#include "ren/ren.hpp"
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
 
@@ -10,13 +12,37 @@ struct SDL_Window;
 
 namespace ren::rhi {
 
-enum class Error {
-  Unknown,
-  Unsupported,
-  FeatureNotPresent,
-  OutOfDate,
-  Incomplete,
+struct Error {
+  enum Code {
+    Unknown,
+    Unsupported,
+    FeatureNotPresent,
+    OutOfDate,
+    Incomplete,
+  };
+  Code code = {};
+  String description;
+
+  Error() = default;
+  Error(Code code, String description = "") {
+    this->code = code;
+    this->description = std::move(description);
+  }
+
+  operator ren::Error() const { return ren::Error::RHI; }
 };
+
+inline auto fail(Error::Code code, String description = "") -> Failure<Error> {
+  return Failure(Error(code, std::move(description)));
+}
+
+inline bool operator==(const Error &error, Error::Code code) {
+  return error.code == code;
+}
+
+inline bool operator==(Error::Code code, const Error &error) {
+  return error == code;
+}
 
 template <typename T> using Result = Result<T, Error>;
 
