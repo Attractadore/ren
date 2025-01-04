@@ -47,11 +47,11 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
   ren_try(rhi::Features features, rhi::get_supported_features());
 
 #if !REN_DEBUG_NAMES
-  features->debug_names = false;
+  features.debug_names = false;
 #endif
 
 #if !REN_DEBUG_LAYER
-  features->debug_layer = false;
+  features.debug_layer = false;
 #endif
 
   ren_try_to(rhi::init({.features = features}));
