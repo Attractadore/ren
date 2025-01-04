@@ -179,30 +179,32 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
   // Upload vertices
 
   auto upload_buffer = [&]<typename T>(const Vector<T> &data,
-                                       Handle<Buffer> &buffer, DebugName name) {
+                                       Handle<Buffer> &buffer,
+                                       DebugName name) -> Result<void, Error> {
     if (not data.empty()) {
-      BufferSlice<T> slice = m_arena.create_buffer<T>({
-          .name = std::move(name),
-          .heap = BufferHeap::Static,
-          .usage = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR |
-                   VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
-          .count = data.size(),
-      });
+      ren_try(BufferSlice<T> slice, m_arena.create_buffer<T>({
+                                        .name = std::move(name),
+                                        .heap = rhi::MemoryHeap::Default,
+                                        .count = data.size(),
+                                    }));
       buffer = slice.buffer;
       m_resource_uploader.stage_buffer(*m_renderer, m_frcs->upload_allocator,
                                        Span(data), slice);
     }
+    return {};
   };
 
   u32 index = m_data.meshes.size();
 
-  upload_buffer(positions, mesh.positions,
-                fmt::format("Mesh {} positions", index));
-  upload_buffer(normals, mesh.normals, fmt::format("Mesh {} normals", index));
-  upload_buffer(tangents, mesh.tangents,
-                fmt::format("Mesh {} tangents", index));
-  upload_buffer(uvs, mesh.uvs, fmt::format("Mesh {} uvs", index));
-  upload_buffer(colors, mesh.colors, fmt::format("Mesh {} colors", index));
+  ren_try_to(upload_buffer(positions, mesh.positions,
+                           fmt::format("Mesh {} positions", index)));
+  ren_try_to(upload_buffer(normals, mesh.normals,
+                           fmt::format("Mesh {} normals", index)));
+  ren_try_to(upload_buffer(tangents, mesh.tangents,
+                           fmt::format("Mesh {} tangents", index)));
+  ren_try_to(upload_buffer(uvs, mesh.uvs, fmt::format("Mesh {} uvs", index)));
+  ren_try_to(
+      upload_buffer(colors, mesh.colors, fmt::format("Mesh {} colors", index)));
 
   // Find or allocate index pool
 
@@ -228,10 +230,10 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 
   // Upload meshlets
 
-  upload_buffer(meshlets, mesh.meshlets,
-                fmt::format("Mesh {} meshlets", index));
-  upload_buffer(meshlet_indices, mesh.meshlet_indices,
-                fmt::format("Mesh {} meshlet indices", index));
+  ren_try_to(upload_buffer(meshlets, mesh.meshlets,
+                           fmt::format("Mesh {} meshlets", index)));
+  ren_try_to(upload_buffer(meshlet_indices, mesh.meshlet_indices,
+                           fmt::format("Mesh {} meshlet indices", index)));
 
   // Upload triangles
 

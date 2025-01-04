@@ -15,10 +15,8 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
       .meshes = rgb.create_buffer("meshes", gpu_scene.meshes),
       .mesh_instances =
           rgb.create_buffer("mesh-instances", gpu_scene.mesh_instances),
-      .transform_matrices = rgb.create_buffer<glm::mat4x3>({
-          .heap = BufferHeap::Static,
-          .count = MAX_NUM_MESH_INSTANCES,
-      }),
+      .transform_matrices =
+          rgb.create_buffer<glm::mat4x3>({.count = MAX_NUM_MESH_INSTANCES}),
       .mesh_instance_visibility = rgb.create_buffer(
           "mesh-instance-visibility", gpu_scene.mesh_instance_visibility),
       .materials = rgb.create_buffer("materials", gpu_scene.materials),

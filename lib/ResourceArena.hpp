@@ -26,13 +26,17 @@ public:
   }
 
   template <typename T = std::byte>
-  auto create_buffer(BufferCreateInfo &&create_info) -> BufferSlice<T>
+  auto create_buffer(BufferCreateInfo &&create_info)
+      -> Result<BufferSlice<T>, Error>
     requires IsArenaResource<Buffer>
   {
+    usize count = create_info.count;
     create_info.size = create_info.count * sizeof(T);
-    return {
-        .buffer = insert(m_renderer->create_buffer(std::move(create_info))),
-        .count = create_info.count,
+    ren_try(Handle<Buffer> buffer,
+            m_renderer->create_buffer(std::move(create_info)));
+    return BufferSlice<T>{
+        .buffer = insert(buffer),
+        .count = count,
     };
   }
 

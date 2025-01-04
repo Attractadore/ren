@@ -43,6 +43,7 @@ struct Allocation {
 
 struct Buffer {
   VkBuffer handle = nullptr;
+  Allocation allocation = {};
 };
 
 struct Image {

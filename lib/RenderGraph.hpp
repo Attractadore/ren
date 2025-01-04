@@ -187,7 +187,7 @@ template <typename T> struct RgBufferCreateInfo {
   /// Buffer name.
   REN_RG_DEBUG_NAME_TYPE name;
   /// Memory heap from which to allocate buffer.
-  BufferHeap heap = BufferHeap::Static;
+  rhi::MemoryHeap heap = rhi::MemoryHeap::Default;
   /// Buffer size.
   usize count = 1;
   /// Optional default value.
@@ -195,7 +195,7 @@ template <typename T> struct RgBufferCreateInfo {
 };
 
 struct RgPhysicalBuffer {
-  BufferHeap heap = {};
+  rhi::MemoryHeap heap = {};
   usize size = 0;
   BufferView view;
   BufferState state;
@@ -494,7 +494,7 @@ public:
   [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
       -> RgPassBuilder;
 
-  [[nodiscard]] auto create_buffer(RgDebugName name, BufferHeap heap,
+  [[nodiscard]] auto create_buffer(RgDebugName name, rhi::MemoryHeap heap,
                                    usize size) -> RgUntypedBufferId;
 
   template <typename T>

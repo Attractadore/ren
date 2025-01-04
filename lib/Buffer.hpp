@@ -4,23 +4,13 @@
 #include "core/GenIndex.hpp"
 #include "core/Hash.hpp"
 #include "core/StdDef.hpp"
-
-#include <vk_mem_alloc.h>
+#include "rhi.hpp"
 
 namespace ren {
 
-enum class BufferHeap {
-  Static,
-  Dynamic,
-  Staging,
-  Readback,
-};
-constexpr usize NUM_BUFFER_HEAPS = 4;
-
 struct BufferCreateInfo {
   REN_DEBUG_NAME_FIELD("Buffer");
-  BufferHeap heap = BufferHeap::Static;
-  VkBufferUsageFlags usage = 0;
+  rhi::MemoryHeap heap = rhi::MemoryHeap::Default;
   union {
     usize size = 0;
     usize count;
@@ -28,13 +18,11 @@ struct BufferCreateInfo {
 };
 
 struct Buffer {
-  VkBuffer handle;
-  VmaAllocation allocation;
-  std::byte *ptr;
-  u64 address;
-  usize size;
-  BufferHeap heap;
-  VkBufferUsageFlags usage;
+  rhi::Buffer handle = {};
+  std::byte *ptr = nullptr;
+  u64 address = 0;
+  usize size = 0;
+  rhi::MemoryHeap heap = rhi::MemoryHeap::Default;
 };
 
 struct BufferState {
@@ -46,8 +34,8 @@ struct BufferState {
 
 using MemoryState = BufferState;
 
-constexpr auto operator|(const BufferState &lhs,
-                         const BufferState &rhs) -> BufferState {
+constexpr auto operator|(const BufferState &lhs, const BufferState &rhs)
+    -> BufferState {
   return {
       .stage_mask = lhs.stage_mask | rhs.stage_mask,
       .access_mask = lhs.access_mask | rhs.access_mask,

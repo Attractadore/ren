@@ -9,11 +9,10 @@ auto create_index_pool(ResourceArena &arena) -> IndexPool {
   pool.indices = arena
                      .create_buffer({
                          .name = "Mesh vertex indices pool",
-                         .heap = BufferHeap::Static,
-                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                                  VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                         .heap = rhi::MemoryHeap::Default,
                          .size = sizeof(u8) * pool.num_free_indices,
                      })
+                     .value()
                      .buffer;
 
   return pool;

@@ -323,8 +323,8 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
   return buffer;
 }
 
-auto RgBuilder::create_buffer(RgDebugName name, BufferHeap heap, usize size)
-    -> RgUntypedBufferId {
+auto RgBuilder::create_buffer(RgDebugName name, rhi::MemoryHeap heap,
+                              usize size) -> RgUntypedBufferId {
   RgUntypedBufferId buffer =
       create_virtual_buffer(NullHandle, std::move(name), NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
@@ -711,15 +711,15 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
     if (physical_buffer.view.buffer) {
       continue;
     }
-    switch (BufferHeap heap = physical_buffer.heap) {
+    switch (rhi::MemoryHeap heap = physical_buffer.heap) {
     default:
       unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
-    case BufferHeap::Static: {
+    case rhi::MemoryHeap::Default: {
       physical_buffer.view =
           device_allocator.allocate(physical_buffer.size).slice;
     } break;
-    case BufferHeap::Dynamic:
-    case BufferHeap::Staging: {
+    case rhi::MemoryHeap::Upload:
+    case rhi::MemoryHeap::DeviceUpload: {
       physical_buffer.view =
           upload_allocator.allocate(physical_buffer.size).slice;
     } break;

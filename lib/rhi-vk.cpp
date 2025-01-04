@@ -55,6 +55,7 @@ struct AdapterData {
   AdapterFeatures features;
   int queue_family_indices[QUEUE_FAMILY_COUNT] = {};
   VkPhysicalDeviceProperties properties;
+  MemoryHeapProperties heap_properties[MEMORY_HEAP_COUNT] = {};
 };
 
 constexpr usize MAX_PHYSICAL_DEVICES = 4;
@@ -372,6 +373,51 @@ auto init(const InitInfo &init_info) -> Result<void> {
       continue;
     }
 
+    if (adapter.properties.deviceType ==
+        VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+      adapter.heap_properties[(usize)MemoryHeap::Default] = {
+          .heap_type = MemoryHeap::Default,
+          .host_page_property = HostPageProperty::WriteCombined,
+          .memory_pool = MemoryPool::L0,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::Upload] = {
+          .heap_type = MemoryHeap::Upload,
+          .host_page_property = HostPageProperty::WriteCombined,
+          .memory_pool = MemoryPool::L0,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::DeviceUpload] = {
+          .heap_type = MemoryHeap::DeviceUpload,
+          .host_page_property = HostPageProperty::WriteCombined,
+          .memory_pool = MemoryPool::L0,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::Readback] = {
+          .heap_type = MemoryHeap::Readback,
+          .host_page_property = HostPageProperty::WriteBack,
+          .memory_pool = MemoryPool::L0,
+      };
+    } else {
+      adapter.heap_properties[(usize)MemoryHeap::Default] = {
+          .heap_type = MemoryHeap::Default,
+          .host_page_property = HostPageProperty::NotAvailable,
+          .memory_pool = MemoryPool::L1,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::Upload] = {
+          .heap_type = MemoryHeap::Upload,
+          .host_page_property = HostPageProperty::WriteCombined,
+          .memory_pool = MemoryPool::L0,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::DeviceUpload] = {
+          .heap_type = MemoryHeap::DeviceUpload,
+          .host_page_property = HostPageProperty::WriteCombined,
+          .memory_pool = MemoryPool::L1,
+      };
+      adapter.heap_properties[(usize)MemoryHeap::Readback] = {
+          .heap_type = MemoryHeap::Readback,
+          .host_page_property = HostPageProperty::WriteBack,
+          .memory_pool = MemoryPool::L0,
+      };
+    }
+
     fmt::println("vk: Found device {}", device_name);
 
     instance.adapters.push_back(adapter);
@@ -451,12 +497,17 @@ auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool {
          0;
 }
 
+auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
+    -> MemoryHeapProperties {
+  return instance.adapters[adapter.index].heap_properties[(usize)heap];
+}
+
 namespace vk {
 
 struct DeviceData {
   VkDevice handle = nullptr;
-  VkPhysicalDevice physical_device = nullptr;
   VmaAllocator allocator = nullptr;
+  Adapter adapter = {};
   std::array<Queue, QUEUE_FAMILY_COUNT> queues;
   VolkDeviceTable vk = {};
 };
@@ -587,7 +638,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   };
 
   DeviceData *device = new DeviceData;
-  device->physical_device = handle;
+  device->adapter = create_info.adapter;
 
   result = vkCreateDevice(handle, &device_info, nullptr, &device->handle);
   if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
@@ -642,6 +693,77 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   Queue queue = device->queues[(usize)family];
   ren_assert(queue.handle);
   return queue;
+}
+
+auto map(Device device, Allocation allocation) -> void * {
+  VmaAllocationInfo allocation_info;
+  vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
+  return allocation_info.pMappedData;
+}
+
+auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
+  Device device = create_info.device;
+  const MemoryHeapProperties &heap_props =
+      instance.adapters[device->adapter.index]
+          .heap_properties[(usize)create_info.heap];
+
+  VkBufferCreateInfo buffer_info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = create_info.size,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+               VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+  };
+
+  VmaAllocationCreateInfo allocation_info = {
+      .usage = VMA_MEMORY_USAGE_AUTO,
+  };
+
+  if (heap_props.memory_pool == MemoryPool::L1) {
+    allocation_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+  }
+
+  switch (heap_props.host_page_property) {
+  case HostPageProperty::NotAvailable:
+    break;
+  case HostPageProperty::WriteCombined: {
+    allocation_info.flags =
+        VMA_ALLOCATION_CREATE_MAPPED_BIT |
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+  } break;
+  case HostPageProperty::WriteBack: {
+    allocation_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
+                            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+  } break;
+  }
+
+  Buffer buffer;
+  VkResult result =
+      vmaCreateBuffer(device->allocator, &buffer_info, &allocation_info,
+                      &buffer.handle, &buffer.allocation.handle, nullptr);
+  if (result) {
+    return fail(result);
+  }
+
+  return buffer;
+}
+
+void destroy_buffer(Device device, Buffer buffer) {
+  vmaDestroyBuffer(device->allocator, buffer.handle, buffer.allocation.handle);
+}
+
+auto get_allocation(Device, Buffer buffer) -> Allocation {
+  return buffer.allocation;
+}
+
+auto get_device_ptr(Device device, Buffer buffer) -> u64 {
+  VkBufferDeviceAddressInfo address_info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .buffer = buffer.handle,
+  };
+  return device->vk.vkGetBufferDeviceAddress(device->handle, &address_info);
 }
 
 namespace {
@@ -956,6 +1078,7 @@ namespace {
 auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
                          VkPresentModeKHR present_mode) -> Result<void> {
   Device device = swap_chain->device;
+  const AdapterData &adapter = instance.adapters[device->adapter.index];
   VkSurfacePresentModeEXT present_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT,
       .presentMode = present_mode,
@@ -969,7 +1092,7 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
   };
   if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(
-          device->physical_device, &surface_info, &capabilities2)) {
+          adapter.physical_device, &surface_info, &capabilities2)) {
     return fail(Error::Unknown);
   }
   const VkSurfaceCapabilitiesKHR capabilities =

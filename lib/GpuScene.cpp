@@ -13,19 +13,18 @@
 namespace ren {
 
 auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
-  constexpr BufferHeap HEAP = BufferHeap::Static;
-  constexpr VkBufferUsageFlags USAGE =
-      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+  constexpr rhi::MemoryHeap HEAP = rhi::MemoryHeap::Default;
 
 #define create_buffer(T, n, c)                                                 \
   StatefulBufferSlice<T> {                                                     \
-    arena.create_buffer<T>({                                                   \
-        .name = n,                                                             \
-        .heap = HEAP,                                                          \
-        .usage = USAGE,                                                        \
-        .count = c,                                                            \
-    })                                                                         \
+    /* FIXME: check for errors. */                                             \
+    arena                                                                      \
+        .create_buffer<T>({                                                    \
+            .name = n,                                                         \
+            .heap = HEAP,                                                      \
+            .count = c,                                                        \
+        })                                                                     \
+        .value()                                                               \
   }
 
   constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(

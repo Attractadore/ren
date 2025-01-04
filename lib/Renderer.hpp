@@ -118,7 +118,7 @@ public:
   write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
-      -> Handle<Buffer>;
+      -> Result<Handle<Buffer>, Error>;
 
   void destroy(Handle<Buffer> buffer);
 

@@ -90,6 +90,35 @@ constexpr usize QUEUE_FAMILY_COUNT = (usize)QueueFamily::Last + 1;
 
 auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool;
 
+enum class MemoryHeap {
+  Default,
+  Upload,
+  DeviceUpload,
+  Readback,
+  Last = Readback
+};
+constexpr usize MEMORY_HEAP_COUNT = (usize)MemoryHeap::Last + 1;
+
+enum class HostPageProperty {
+  NotAvailable,
+  WriteCombined,
+  WriteBack,
+};
+
+enum class MemoryPool {
+  L0,
+  L1,
+};
+
+struct MemoryHeapProperties {
+  MemoryHeap heap_type = {};
+  HostPageProperty host_page_property = {};
+  MemoryPool memory_pool = {};
+};
+
+auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
+    -> MemoryHeapProperties;
+
 struct DeviceCreateInfo {
   Adapter adapter;
   AdapterFeatures features;
@@ -100,6 +129,35 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device>;
 void destroy_device(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
+
+auto map(Device device, Allocation allocation) -> void *;
+
+// This is empty for now because buffers are just memory. RADV only treats
+// acceleration structures and descriptor buffers differently, otherwise usage
+// flags are ignored.
+// clang-format off
+REN_BEGIN_FLAGS_ENUM(BufferUsage) {
+} REN_END_FLAGS_ENUM(BufferUsage);
+// clang-format on
+
+struct BufferCreateInfo {
+  Device device = {};
+  usize size = 0;
+  BufferUsage usage = {};
+  MemoryHeap heap = MemoryHeap::Default;
+};
+
+auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer>;
+
+void destroy_buffer(Device device, Buffer buffer);
+
+auto get_allocation(Device device, Buffer buffer) -> Allocation;
+
+auto get_device_ptr(Device device, Buffer buffer) -> u64;
+
+inline auto map(Device device, Buffer buffer) -> void * {
+  return map(device, get_allocation(device, buffer));
+}
 
 enum class SemaphoreType {
   Binary,

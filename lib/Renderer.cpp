@@ -267,74 +267,26 @@ void Renderer::write_descriptor_sets(
 }
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
-    -> Handle<Buffer> {
+    -> Result<Handle<Buffer>, Error> {
   ren_assert(create_info.size > 0);
-
-  VkBufferCreateInfo buffer_info = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = create_info.size,
-      .usage = create_info.usage,
-  };
-
-  VmaAllocationCreateInfo alloc_info = {
-      .usage = VMA_MEMORY_USAGE_AUTO,
-  };
-
-  switch (create_info.heap) {
-    using enum BufferHeap;
-  default:
-    unreachable("Unknown BufferHeap");
-  case Static:
-    break;
-  case Dynamic: {
-    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-  } break;
-  case Staging: {
-    buffer_info.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                       VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-    alloc_info.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
-  } break;
-  case Readback: {
-    buffer_info.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    alloc_info.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT |
-                       VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-  } break;
-  };
-
-  VkBuffer buffer;
-  VmaAllocation allocation;
-  VmaAllocationInfo map_info;
-  throw_if_failed(vmaCreateBuffer(get_allocator(), &buffer_info, &alloc_info,
-                                  &buffer, &allocation, &map_info),
-                  "VMA: Failed to create buffer");
-  set_debug_name(get_device(), buffer, create_info.name);
-
-  uint64_t address = 0;
-  if (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-    VkBufferDeviceAddressInfo buffer_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = buffer,
-    };
-    address = vkGetBufferDeviceAddress(get_device(), &buffer_info);
-  }
-
+  ren_try(rhi::Buffer buffer, rhi::create_buffer({
+                                  .device = m_device,
+                                  .size = create_info.size,
+                                  .heap = create_info.heap,
+                              }));
+  set_debug_name(get_device(), buffer.handle, create_info.name);
   return m_buffers.emplace(Buffer{
       .handle = buffer,
-      .allocation = allocation,
-      .ptr = (std::byte *)map_info.pMappedData,
-      .address = address,
+      .ptr = (std::byte *)rhi::map(m_device, buffer),
+      .address = rhi::get_device_ptr(m_device, buffer),
       .size = create_info.size,
       .heap = create_info.heap,
-      .usage = create_info.usage,
   });
 }
 
 void Renderer::destroy(Handle<Buffer> handle) {
   m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
-    vmaDestroyBuffer(get_allocator(), buffer.handle, buffer.allocation);
+    rhi::destroy_buffer(m_device, buffer.handle);
   });
 }
 

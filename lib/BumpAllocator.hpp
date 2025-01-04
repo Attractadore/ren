@@ -51,8 +51,9 @@ public:
     [[unlikely]] if (m_block_offset + size > m_block_size) {
       m_block += 1;
       [[unlikely]] if (m_block == m_blocks.size()) {
+        // FIXME: check for error.
         m_blocks.push_back(
-            Policy::create_block(*m_renderer, *m_arena, m_block_size));
+            Policy::create_block(*m_renderer, *m_arena, m_block_size).value());
       }
       m_block_offset = 0;
     }
@@ -88,24 +89,16 @@ struct DeviceBumpAllocationPolicy {
     Handle<Buffer> buffer;
   };
 
-  static auto create_block(Renderer &renderer, ResourceArena &arena,
-                           usize size) -> Block {
-    Handle<Buffer> buffer =
-        arena
-            .create_buffer({
-                .name = "DeviceBumpAllocator block",
-                .heap = BufferHeap::Static,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                .size = size,
-            })
-            .buffer;
-    return {
-        .ptr = renderer.get_buffer_device_ptr<std::byte>(buffer),
-        .buffer = buffer,
+  static auto create_block(Renderer &renderer, ResourceArena &arena, usize size)
+      -> Result<Block, Error> {
+    ren_try(BufferView view, arena.create_buffer({
+                                 .name = "DeviceBumpAllocator block",
+                                 .heap = rhi::MemoryHeap::Default,
+                                 .size = size,
+                             }));
+    return Block{
+        .ptr = renderer.get_buffer_device_ptr(view),
+        .buffer = view.buffer,
     };
   };
 
@@ -115,8 +108,8 @@ struct DeviceBumpAllocationPolicy {
   };
 
   template <typename T>
-  static auto allocate(const Block &block, usize offset,
-                       usize count) -> Allocation<T> {
+  static auto allocate(const Block &block, usize offset, usize count)
+      -> Allocation<T> {
     return {
         .ptr = DevicePtr<T>(block.ptr + offset),
         .slice =
@@ -145,31 +138,23 @@ struct UploadBumpAllocationPolicy {
     BufferSlice<T> slice;
   };
 
-  static auto create_block(Renderer &renderer, ResourceArena &arena,
-                           usize size) -> Block {
-    Handle<Buffer> buffer =
-        arena
-            .create_buffer({
-                .name = "UploadBumpAllocator block",
-                .heap = BufferHeap::Staging,
-                .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                         VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-                         VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                .size = size,
-            })
-            .buffer;
-    return {
-        .host_ptr = renderer.map_buffer<std::byte>(buffer),
-        .device_ptr = renderer.get_buffer_device_ptr<std::byte>(buffer),
-        .buffer = buffer,
+  static auto create_block(Renderer &renderer, ResourceArena &arena, usize size)
+      -> Result<Block, Error> {
+    ren_try(BufferView view, arena.create_buffer({
+                                 .name = "UploadBumpAllocator block",
+                                 .heap = rhi::MemoryHeap::Upload,
+                                 .size = size,
+                             }));
+    return Block{
+        .host_ptr = renderer.map_buffer(view),
+        .device_ptr = renderer.get_buffer_device_ptr(view),
+        .buffer = view.buffer,
     };
   };
 
   template <typename T>
-  static auto allocate(const Block &block, usize offset,
-                       usize count) -> Allocation<T> {
+  static auto allocate(const Block &block, usize offset, usize count)
+      -> Allocation<T> {
     return {
         .host_ptr = (T *)(block.host_ptr + offset),
         .device_ptr = DevicePtr<T>(block.device_ptr + offset),
