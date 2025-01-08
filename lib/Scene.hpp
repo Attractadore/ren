@@ -169,7 +169,7 @@ private:
                                            const SamplerDesc &sampler_desc)
       -> glsl::SampledTexture2D;
 
-  auto build_rg() -> RenderGraph;
+  auto build_rg() -> Result<RenderGraph, Error>;
 
 private:
   Renderer *m_renderer = nullptr;

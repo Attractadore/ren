@@ -23,7 +23,7 @@ void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = texture.image,
+        .image = texture.handle.handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -67,7 +67,7 @@ void upload_texture(Renderer &renderer, CommandRecorder &cmd,
         .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
         .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = texture.image,
+        .image = texture.handle.handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -92,7 +92,7 @@ void upload_texture(Renderer &renderer, CommandRecorder &cmd,
       .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
       .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
       .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-      .image = texture.image,
+      .image = texture.handle.handle,
       .subresourceRange =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -112,7 +112,7 @@ void upload_texture(Renderer &renderer, CommandRecorder &cmd,
         .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-        .image = texture.image,
+        .image = texture.handle.handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,

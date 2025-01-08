@@ -25,7 +25,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
   m_persistent_textures.resize(m_physical_textures.size());
   m_external_textures.resize(m_physical_textures.size());
 
-  VkImageUsageFlags usage = 0;
+  rhi::ImageUsageFlags usage = {};
   u32 num_temporal_layers = 1;
   bool is_external = false;
 
@@ -38,8 +38,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
       },
       [&](const RgTextureTemporalInfo &ext) {
         ren_assert(ext.num_temporal_layers > 1);
-        usage =
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        usage = rhi::ImageUsage::TransferSrc | rhi::ImageUsage::TransferDst;
         num_temporal_layers = ext.num_temporal_layers;
         m_texture_init_info[physical_texture_id] = {
             .usage = ext.usage,
@@ -81,11 +80,10 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
       });
     }
 
-    m_physical_textures[id] = {
+    m_physical_textures[id] = RgPhysicalTexture{
 #if REN_RG_DEBUG
         .name = std::move(handle_name),
 #endif
-        .type = create_info.type,
         .format = create_info.format,
         .usage = usage,
         .size = {create_info.width, create_info.height, create_info.depth},
@@ -134,7 +132,7 @@ void RgPersistent::rotate_textures() {
 #if REN_RG_DEBUG
     String name = std::move(physical_texture.name);
 #endif
-    VkImageUsageFlags usage = physical_texture.usage;
+    rhi::ImageUsageFlags usage = physical_texture.usage;
     Handle<Texture> handle = physical_texture.handle;
     TextureState state = physical_texture.state;
     usize last = i + 1;
@@ -194,36 +192,33 @@ auto get_buffer_usage_flags(VkAccessFlags2 accesses) -> VkBufferUsageFlags {
   return flags;
 }
 
-auto get_texture_usage_flags(VkAccessFlags2 accesses) -> VkImageUsageFlags {
+auto get_texture_usage_flags(VkAccessFlags2 accesses) -> rhi::ImageUsageFlags {
   ren_assert((accesses & VK_ACCESS_2_MEMORY_READ_BIT) == 0);
   ren_assert((accesses & VK_ACCESS_2_MEMORY_WRITE_BIT) == 0);
   ren_assert((accesses & VK_ACCESS_2_SHADER_READ_BIT) == 0);
   ren_assert((accesses & VK_ACCESS_2_SHADER_WRITE_BIT) == 0);
 
-  VkImageUsageFlags flags = 0;
-  if (accesses & VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT) {
-    flags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-  }
+  rhi::ImageUsageFlags flags = {};
   if (accesses & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
-    flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    flags |= rhi::ImageUsage::Sampled;
   }
   if (accesses & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                   VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
-    flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+    flags |= rhi::ImageUsage::Storage;
   }
   if (accesses & (VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
                   VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT)) {
-    flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    flags |= rhi::ImageUsage::ColorAttachment;
   }
   if (accesses & (VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                   VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)) {
-    flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    flags |= rhi::ImageUsage::DepthAttachment;
   }
   if (accesses & VK_ACCESS_2_TRANSFER_READ_BIT) {
-    flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    flags |= rhi::ImageUsage::TransferSrc;
   }
   if (accesses & VK_ACCESS_2_TRANSFER_WRITE_BIT) {
-    flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    flags |= rhi::ImageUsage::TransferDst;
   }
 
   return flags;
@@ -617,7 +612,7 @@ void RgBuilder::dump_pass_schedule() const {
 #endif
 }
 
-void RgBuilder::alloc_textures() {
+auto RgBuilder::alloc_textures() -> Result<void, Error> {
   bool need_alloc = false;
   auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
     const RgTextureUse &use = m_data->m_texture_uses[use_id];
@@ -625,7 +620,7 @@ void RgBuilder::alloc_textures() {
     RgPhysicalTextureId physical_texture_id = texture.parent;
     RgPhysicalTexture &physical_texture =
         m_rgp->m_physical_textures[physical_texture_id];
-    VkImageUsageFlags usage = get_texture_usage_flags(use.state.access_mask);
+    rhi::ImageUsageFlags usage = get_texture_usage_flags(use.state.access_mask);
     bool needs_usage_update =
         (physical_texture.usage | usage) != physical_texture.usage;
     physical_texture.usage |= usage;
@@ -643,7 +638,7 @@ void RgBuilder::alloc_textures() {
   }
 
   if (not need_alloc) {
-    return;
+    return {};
   }
 
   usize num_passes = m_data->m_schedule.size();
@@ -680,19 +675,19 @@ void RgBuilder::alloc_textures() {
     if (!physical_texture.usage or m_rgp->m_external_textures[i]) {
       continue;
     }
-    physical_texture.handle = m_rgp->m_texture_arena.create_texture({
+    ren_try(physical_texture.handle,
+            m_rgp->m_texture_arena.create_texture({
 #if REN_RG_DEBUG
-        .name = physical_texture.name,
+                .name = physical_texture.name,
 #endif
-        .type = physical_texture.type,
-        .format = physical_texture.format,
-        .usage = physical_texture.usage,
-        .width = physical_texture.size.x,
-        .height = physical_texture.size.y,
-        .depth = physical_texture.size.z,
-        .num_mip_levels = physical_texture.num_mip_levels,
-        .num_array_layers = physical_texture.num_array_layers,
-    });
+                .format = physical_texture.format,
+                .usage = physical_texture.usage,
+                .width = physical_texture.size.x,
+                .height = physical_texture.size.y,
+                .depth = physical_texture.size.z,
+                .num_mip_levels = physical_texture.num_mip_levels,
+                .num_array_layers = physical_texture.num_array_layers,
+            }));
     physical_texture.state = {};
   }
 
@@ -701,6 +696,8 @@ void RgBuilder::alloc_textures() {
     std::ranges::rotate(m_data->m_schedule,
                         m_data->m_schedule.begin() + num_passes);
   }
+
+  return {};
 }
 
 void RgBuilder::alloc_buffers(DeviceBumpAllocator &device_allocator,
@@ -1123,7 +1120,7 @@ void RgBuilder::place_barriers_and_semaphores() {
             .dstAccessMask = dst_access_mask,
             .oldLayout = src_layout,
             .newLayout = dst_layout,
-            .image = texture.image,
+            .image = texture.handle.handle,
             .subresourceRange =
                 {
                     .aspectMask = getVkImageAspectFlags(texture.format),
@@ -1205,12 +1202,12 @@ void RgBuilder::place_barriers_and_semaphores() {
 }
 
 auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
-                      UploadBumpAllocator &upload_allocator) -> RenderGraph {
+                      UploadBumpAllocator &upload_allocator) -> Result<RenderGraph, Error> {
   ren_prof_zone("RgBuilder::build");
 
   m_rgp->rotate_textures();
 
-  alloc_textures();
+  ren_try_to(alloc_textures());
   alloc_buffers(device_allocator, upload_allocator);
 
 #if 0

@@ -319,39 +319,26 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
 };
 
 auto Renderer::create_texture(const TextureCreateInfo &&create_info)
-    -> Handle<Texture> {
+    -> Result<Handle<Texture>, Error> {
   ren_assert(create_info.width > 0);
-  ren_assert(create_info.height > 0);
-  ren_assert(create_info.depth > 0);
   ren_assert(create_info.num_mip_levels > 0);
   ren_assert(create_info.num_array_layers > 0);
 
-  VkImageCreateInfo image_info = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = create_info.type,
-      .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
-      .extent = {create_info.width, create_info.height, create_info.depth},
-      .mipLevels = create_info.num_mip_levels,
-      .arrayLayers = create_info.num_array_layers,
-      .samples = VK_SAMPLE_COUNT_1_BIT,
-      .tiling = VK_IMAGE_TILING_OPTIMAL,
-      .usage = create_info.usage,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-  };
-
-  VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
-
-  VkImage image;
-  VmaAllocation allocation;
-  throw_if_failed(vmaCreateImage(get_allocator(), &image_info, &alloc_info,
-                                 &image, &allocation, nullptr),
-                  "VMA: Failed to create image");
-  set_debug_name(get_device(), image, create_info.name);
+  ren_try(rhi::Image image,
+          rhi::create_image({
+              .device = m_device,
+              .format = create_info.format,
+              .width = create_info.width,
+              .height = create_info.height,
+              .depth = create_info.depth,
+              .num_mip_levels = create_info.num_mip_levels,
+              .num_array_layers = create_info.num_array_layers,
+              .usage = create_info.usage,
+          }));
+  set_debug_name(get_device(), image.handle, create_info.name);
 
   return m_textures.emplace(Texture{
-      .image = image,
-      .allocation = allocation,
-      .type = create_info.type,
+      .handle = image,
       .format = create_info.format,
       .usage = create_info.usage,
       .width = create_info.width,
@@ -364,10 +351,9 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
 
 auto Renderer::create_external_texture(
     const ExternalTextureCreateInfo &&create_info) -> Handle<Texture> {
-  set_debug_name(get_device(), create_info.image, create_info.name);
+  set_debug_name(get_device(), create_info.handle.handle, create_info.name);
   return m_textures.emplace(Texture{
-      .image = create_info.image,
-      .type = create_info.type,
+      .handle = create_info.handle,
       .format = create_info.format,
       .usage = create_info.usage,
       .width = create_info.width,
@@ -380,8 +366,8 @@ auto Renderer::create_external_texture(
 
 void Renderer::destroy(Handle<Texture> handle) {
   m_textures.try_pop(handle).map([&](const Texture &texture) {
-    if (texture.allocation) {
-      vmaDestroyImage(get_allocator(), texture.image, texture.allocation);
+    if (rhi::get_allocation(m_device, texture.handle)) {
+      rhi::destroy_image(m_device, texture.handle);
     }
     for (const auto &[_, view] : m_image_views[handle]) {
       vkDestroyImageView(get_device(), view, nullptr);
@@ -400,33 +386,27 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-static auto get_texture_default_view_type(VkImageType type,
-                                          u16 num_array_layers)
+namespace {
+
+static auto get_texture_default_view_type(const Texture &texture)
     -> VkImageViewType {
-  if (num_array_layers > 1) {
-    switch (type) {
-    default:
-      break;
-    case VK_IMAGE_TYPE_1D:
-      return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
-    case VK_IMAGE_TYPE_2D:
+  if (texture.num_array_layers > 1) {
+    if (texture.height > 0) {
       return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
     }
-  } else {
-    switch (type) {
-    default:
-      break;
-    case VK_IMAGE_TYPE_1D:
-      return VK_IMAGE_VIEW_TYPE_1D;
-    case VK_IMAGE_TYPE_2D:
-      return VK_IMAGE_VIEW_TYPE_2D;
-    case VK_IMAGE_TYPE_3D:
-      return VK_IMAGE_VIEW_TYPE_3D;
-    }
+    ren_assert(texture.depth == 0);
+    return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
   }
-  unreachable("Invalid VkImageType/num_array_layers combination:", int(type),
-              num_array_layers);
+  if (texture.depth > 0) {
+    return VK_IMAGE_VIEW_TYPE_3D;
+  }
+  if (texture.height > 0) {
+    return VK_IMAGE_VIEW_TYPE_2D;
+  }
+  return VK_IMAGE_VIEW_TYPE_1D;
 }
+
+} // namespace
 
 auto Renderer::try_get_texture_view(Handle<Texture> handle) const
     -> Optional<TextureView> {
@@ -434,8 +414,7 @@ auto Renderer::try_get_texture_view(Handle<Texture> handle) const
       [&](const Texture &texture) -> TextureView {
         return {
             .texture = handle,
-            .type = get_texture_default_view_type(texture.type,
-                                                  texture.num_array_layers),
+            .type = get_texture_default_view_type(texture),
             .format = texture.format,
             .num_mip_levels = texture.num_mip_levels,
             .num_array_layers = texture.num_array_layers,
@@ -447,8 +426,7 @@ auto Renderer::get_texture_view(Handle<Texture> handle) const -> TextureView {
   const auto &texture = get_texture(handle);
   return {
       .texture = handle,
-      .type =
-          get_texture_default_view_type(texture.type, texture.num_array_layers),
+      .type = get_texture_default_view_type(texture),
       .format = texture.format,
       .num_mip_levels = texture.num_mip_levels,
       .num_array_layers = texture.num_array_layers,
@@ -472,7 +450,7 @@ auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
 
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = get_texture(view.texture).image,
+      .image = get_texture(view.texture).handle.handle,
       .viewType = view.type,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(view.format),
       .components =

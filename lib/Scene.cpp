@@ -294,15 +294,15 @@ auto Scene::get_or_create_texture(Handle<Image> image,
 }
 
 auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
-  auto texture = m_arena.create_texture({
-      .type = VK_IMAGE_TYPE_2D,
-      .format = desc.format,
-      .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-               VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-      .width = desc.width,
-      .height = desc.height,
-      .num_mip_levels = get_mip_level_count(desc.width, desc.height),
-  });
+  ren_try(auto texture,
+          m_arena.create_texture({
+              .format = desc.format,
+              .usage = rhi::ImageUsage::Sampled | rhi::ImageUsage::TransferSrc |
+                       rhi::ImageUsage::TransferDst,
+              .width = desc.width,
+              .height = desc.height,
+              .num_mip_levels = get_mip_level_count(desc.width, desc.height),
+          }));
 
   usize block_bits = TinyImageFormat_BitSizeOfBlock(desc.format);
   usize block_width = TinyImageFormat_WidthOfBlock(desc.format);
@@ -505,7 +505,7 @@ auto Scene::draw() -> expected<void> {
 
   m_resource_uploader.upload(*m_renderer, m_frcs->cmd_allocator);
 
-  RenderGraph render_graph = build_rg();
+  ren_try(RenderGraph render_graph, build_rg());
 
   render_graph.execute(m_frcs->cmd_allocator);
 
@@ -618,7 +618,7 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
 }
 #endif
 
-auto Scene::build_rg() -> RenderGraph {
+auto Scene::build_rg() -> Result<RenderGraph, Error> {
   ren_prof_zone("Scene::build_rg");
 
   bool dirty = false;
@@ -702,7 +702,8 @@ auto Scene::build_rg() -> RenderGraph {
                               .swapchain = m_swapchain,
                           });
 
-  RenderGraph rg = rgb.build(m_device_allocator, m_frcs->upload_allocator);
+  ren_try(RenderGraph rg,
+          rgb.build(m_device_allocator, m_frcs->upload_allocator));
 
   rg_export_gpu_scene(rgb, rg_gpu_scene, &m_gpu_scene);
 

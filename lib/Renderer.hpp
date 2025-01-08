@@ -186,7 +186,7 @@ public:
   }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
-      -> Handle<Texture>;
+      -> Result<Handle<Texture>, Error>;
 
   void destroy(Handle<Texture> texture);
 

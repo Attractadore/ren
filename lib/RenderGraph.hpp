@@ -221,7 +221,7 @@ struct RgBufferUse {
 
 struct RgTextureExternalInfo {
   /// Texture usage
-  VkImageUsageFlags usage = 0;
+  rhi::ImageUsageFlags usage = {};
 };
 
 struct RgTextureTemporalInfo {
@@ -236,16 +236,14 @@ struct RgTextureTemporalInfo {
 struct RgTextureCreateInfo {
   /// Texture name
   REN_RG_DEBUG_NAME_TYPE name;
-  /// Texture type
-  VkImageType type = VK_IMAGE_TYPE_2D;
   /// Texture format
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   /// Texture width
   u32 width = 0;
   /// Texture height
-  u32 height = 1;
+  u32 height = 0;
   /// Texture depth
-  u32 depth = 1;
+  u32 depth = 0;
   /// Number of mip levels
   u32 num_mip_levels = 1;
   /// Number of array layers
@@ -263,9 +261,8 @@ struct RgPhysicalTexture {
 #if REN_RG_DEBUG
   String name;
 #endif
-  VkImageType type = VK_IMAGE_TYPE_2D;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  VkImageUsageFlags usage = 0;
+  rhi::ImageUsageFlags usage = {};
   glm::uvec3 size = {};
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
@@ -532,7 +529,7 @@ public:
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
   auto build(DeviceBumpAllocator &device_allocator,
-             UploadBumpAllocator &upload_allocator) -> RenderGraph;
+             UploadBumpAllocator &upload_allocator) -> Result<RenderGraph, Error>;
 
   auto get_final_buffer_state(RgUntypedBufferId buffer) const -> BufferState;
 
@@ -611,7 +608,7 @@ private:
     pass.ext = RgGenericPass{.cb = std::move(cb)};
   }
 
-  void alloc_textures();
+  auto alloc_textures() -> Result<void, Error>;
 
   void alloc_buffers(DeviceBumpAllocator &device_allocator,
                      UploadBumpAllocator &upload_allocator);

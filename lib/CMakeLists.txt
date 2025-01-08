@@ -22,19 +22,14 @@ find_package(VulkanMemoryAllocator REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 find_package(volk REQUIRED)
 
-add_library(ren-rhi rhi-vk.cpp)
+add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
 target_link_libraries(ren-rhi PUBLIC 
   ren-core
   GPUOpen::VulkanMemoryAllocator
   tiny_imageformat
   unofficial::spirv-reflect
   volk::volk)
-target_compile_definitions(ren-rhi PUBLIC
-  REN_RHI_VULKAN=1
-  VMA_STATIC_VULKAN_FUNCTIONS=0
-  VMA_DYNAMIC_VULKAN_FUNCTIONS=1
-  VMA_STATS_STRING_ENABLED=0
-  VK_NO_PROTOTYPES)
+target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1 VK_NO_PROTOTYPES)
 
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
@@ -69,7 +64,6 @@ add_library(ren
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
-  VMA.cpp
   passes/Exposure.cpp
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp

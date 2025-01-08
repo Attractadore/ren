@@ -40,7 +40,8 @@ public:
     };
   }
 
-  auto create_texture(const TextureCreateInfo &&create_info) -> Handle<Texture>
+  auto create_texture(const TextureCreateInfo &&create_info)
+      -> Result<Handle<Texture>, Error>
     requires IsArenaResource<Texture>
   {
     return insert(m_renderer->create_texture(std::move(create_info)));

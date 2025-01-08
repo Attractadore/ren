@@ -4,6 +4,9 @@
 
 #include <vulkan/vulkan.h>
 // Include after vulkan.h
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+#define VMA_STATS_STRING_ENABLED 0
 #include <vk_mem_alloc.h>
 
 struct VolkDeviceTable;
@@ -39,6 +42,9 @@ struct Semaphore {
 
 struct Allocation {
   VmaAllocation handle = nullptr;
+
+public:
+  explicit operator bool() const { return handle; }
 };
 
 struct Buffer {
@@ -48,6 +54,7 @@ struct Buffer {
 
 struct Image {
   VkImage handle = nullptr;
+  Allocation allocation = {};
 };
 
 struct Surface {

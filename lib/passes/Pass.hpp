@@ -12,7 +12,7 @@ struct Samplers;
 struct PassPersistentConfig {
   glm::uvec2 viewport;
   ExposureMode exposure = {};
-  VkImageUsageFlags backbuffer_usage = 0;
+  rhi::ImageUsageFlags backbuffer_usage = {};
 };
 
 struct PassPersistentResources {

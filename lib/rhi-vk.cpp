@@ -768,6 +768,98 @@ auto get_device_ptr(Device device, Buffer buffer) -> u64 {
 
 namespace {
 
+constexpr auto IMAGE_USAGE_MAP = [] {
+  using enum ImageUsage;
+  std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
+#define map(from, to) map[std::countr_zero((usize)from)] = to;
+  map(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+  map(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  map(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
+  map(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+#undef map
+  return map;
+}();
+
+auto to_vk_image_usage_flags(ImageUsageFlags flags) -> VkImageUsageFlags {
+  VkImageUsageFlags vk_flags = 0;
+  for (usize bit : range(IMAGE_USAGE_COUNT)) {
+    auto usage = (ImageUsage)(1 << bit);
+    if (flags.is_set(usage)) {
+      vk_flags |= IMAGE_USAGE_MAP[bit];
+    }
+  }
+  return vk_flags;
+}
+
+auto from_vk_image_usage_flags(VkImageUsageFlags vk_flags) -> ImageUsageFlags {
+  ImageUsageFlags flags;
+  for (usize bit : range(IMAGE_USAGE_COUNT)) {
+    VkImageUsageFlagBits vk_usage = IMAGE_USAGE_MAP[bit];
+    if (vk_flags & vk_usage) {
+      auto usage = (ImageUsage)(1 << bit);
+      flags |= usage;
+    }
+  }
+  return flags;
+}
+
+} // namespace
+
+auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
+  Device device = create_info.device;
+
+  u32 width = create_info.width;
+  ren_assert(width > 0);
+  u32 height = create_info.height;
+  u32 depth = create_info.depth;
+  VkImageType image_type = VK_IMAGE_TYPE_1D;
+  if (height > 0) {
+    image_type = VK_IMAGE_TYPE_2D;
+  }
+  if (depth > 0) {
+    image_type = VK_IMAGE_TYPE_3D;
+  }
+  height = std::max(height, 1u);
+  depth = std::max(depth, 1u);
+
+  VkImageCreateInfo image_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .imageType = image_type,
+      .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
+      .extent = {width, height, depth},
+      .mipLevels = create_info.num_mip_levels,
+      .arrayLayers = create_info.num_array_layers,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = VK_IMAGE_TILING_OPTIMAL,
+      .usage = to_vk_image_usage_flags(create_info.usage),
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+
+  VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
+
+  Image image;
+  VkResult result =
+      vmaCreateImage(device->allocator, &image_info, &alloc_info, &image.handle,
+                     &image.allocation.handle, nullptr);
+  if (result) {
+    return fail(result);
+  }
+
+  return image;
+}
+
+void destroy_image(Device device, Image image) {
+  vmaDestroyImage(device->allocator, image.handle, image.allocation.handle);
+}
+
+auto get_allocation(Device, Image image) -> Allocation {
+  return image.allocation;
+}
+
+namespace {
+
 constexpr auto SEMAPHORE_TYPE_MAP = [] {
   std::array<VkSemaphoreType, SEMAPHORE_TYPE_COUNT> map;
 #define map(from, to) map[(usize)from] = to;
@@ -830,47 +922,6 @@ auto wait_for_semaphores(Device device,
   }
   return fail(result);
 }
-
-namespace vk {
-
-constexpr auto IMAGE_USAGE_MAP = [] {
-  using enum ImageUsage;
-  std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
-#define map(from, to) map[std::countr_zero((usize)from)] = to;
-  map(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-  map(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-  map(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
-  map(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
-  map(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-  map(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-#undef map
-  return map;
-}();
-
-auto to_vk_image_usage_flags(ImageUsageFlags flags) -> VkImageUsageFlags {
-  VkImageUsageFlags vk_flags = 0;
-  for (usize bit : range(IMAGE_USAGE_COUNT)) {
-    auto usage = (ImageUsage)(1 << bit);
-    if (flags.is_set(usage)) {
-      vk_flags |= IMAGE_USAGE_MAP[bit];
-    }
-  }
-  return vk_flags;
-}
-
-auto from_vk_image_usage_flags(VkImageUsageFlags vk_flags) -> ImageUsageFlags {
-  ImageUsageFlags flags;
-  for (usize bit : range(IMAGE_USAGE_COUNT)) {
-    VkImageUsageFlagBits vk_usage = IMAGE_USAGE_MAP[bit];
-    if (vk_flags & vk_usage) {
-      auto usage = (ImageUsage)(1 << bit);
-      flags |= usage;
-    }
-  }
-  return flags;
-}
-
-} // namespace vk
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 

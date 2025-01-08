@@ -10,10 +10,6 @@
 
 namespace ren {
 
-namespace rhi::vk {
-auto to_vk_image_usage_flags(Flags<ImageUsage> usage) -> VkImageUsageFlags;
-}
-
 namespace {
 
 auto get_fullscreen_state(SDL_Window *window) -> bool {
@@ -65,15 +61,13 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
     m_format = it != formats.end() ? *it : formats.front();
   }
 
-  rhi::ImageUsageFlags usage;
   {
     ren_try(rhi::ImageUsageFlags supported_usage,
             rhi::get_surface_supported_image_usage(adapter, m_surface));
     constexpr Flags<rhi::ImageUsage> REQUIRED_USAGE =
         rhi::ImageUsage::TransferDst;
     ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
-    usage = REQUIRED_USAGE;
-    m_usage = rhi::vk::to_vk_image_usage_flags(usage);
+    m_usage = REQUIRED_USAGE;
   }
 
   fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
@@ -87,7 +81,7 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
                             .width = (u32)m_size.x,
                             .height = (u32)m_size.y,
                             .format = m_format,
-                            .usage = usage,
+                            .usage = m_usage,
                             .num_images = num_images,
                             .present_mode = present_mode,
                         }));
@@ -194,8 +188,7 @@ auto Swapchain::update_textures() -> Result<void, Error> {
   for (usize i : range(num_images)) {
     m_textures[i] = m_renderer->create_external_texture({
         .name = fmt::format("Swap Chain Texture {}", i),
-        .image = images[i].handle,
-        .type = VK_IMAGE_TYPE_2D,
+        .handle = images[i],
         .format = m_format,
         .usage = m_usage,
         .width = (u32)m_size.x,

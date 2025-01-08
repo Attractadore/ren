@@ -159,6 +159,44 @@ inline auto map(Device device, Buffer buffer) -> void * {
   return map(device, get_allocation(device, buffer));
 }
 
+// clang-format off
+REN_BEGIN_FLAGS_ENUM(ImageUsage) {
+  REN_FLAG(TransferSrc),
+  REN_FLAG(TransferDst),
+  REN_FLAG(Sampled),
+  REN_FLAG(Storage),
+  REN_FLAG(ColorAttachment),
+  REN_FLAG(DepthAttachment),
+  Last = DepthAttachment,
+} REN_END_FLAGS_ENUM(ImageUsage);
+// clang-format on
+constexpr u32 IMAGE_USAGE_COUNT = std::countr_zero((usize)ImageUsage::Last) + 1;
+
+} // namespace ren::rhi
+
+REN_ENABLE_FLAGS(ren::rhi::ImageUsage);
+
+namespace ren::rhi {
+
+using ImageUsageFlags = Flags<rhi::ImageUsage>;
+
+struct ImageCreateInfo {
+  Device device = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  u32 width = 0;
+  u32 height = 0;
+  u32 depth = 0;
+  u32 num_mip_levels = 1;
+  u32 num_array_layers = 1;
+  ImageUsageFlags usage;
+};
+
+auto create_image(const ImageCreateInfo &create_info) -> Result<Image>;
+
+void destroy_image(Device device, Image image);
+
+auto get_allocation(Device device, Image image) -> Allocation;
+
 enum class SemaphoreType {
   Binary,
   Timeline,
@@ -191,27 +229,6 @@ auto wait_for_semaphores(Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
                          std::chrono::nanoseconds timeout)
     -> Result<WaitResult>;
-
-// clang-format off
-REN_BEGIN_FLAGS_ENUM(ImageUsage) {
-  REN_FLAG(TransferSrc),
-  REN_FLAG(TransferDst),
-  REN_FLAG(Sampled),
-  REN_FLAG(Storage),
-  REN_FLAG(ColorAttachment),
-  REN_FLAG(DepthAttachment),
-  Last = DepthAttachment,
-} REN_END_FLAGS_ENUM(ImageUsage);
-// clang-format on
-constexpr u32 IMAGE_USAGE_COUNT = std::countr_zero((usize)ImageUsage::Last) + 1;
-
-} // namespace ren::rhi
-
-REN_ENABLE_FLAGS(ren::rhi::ImageUsage);
-
-namespace ren::rhi {
-
-using ImageUsageFlags = Flags<rhi::ImageUsage>;
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 

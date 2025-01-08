@@ -30,7 +30,7 @@ public:
 
   auto get_format() const -> TinyImageFormat { return m_format; }
 
-  auto get_usage() const -> VkImageUsageFlags { return m_usage; }
+  auto get_usage() const -> rhi::ImageUsageFlags { return m_usage; }
 
   auto acquire_texture(Handle<Semaphore> signal_semaphore)
       -> Result<Handle<Texture>, Error>;
@@ -50,7 +50,7 @@ private:
   rhi::SwapChain m_swap_chain = {};
   SmallVector<Handle<Texture>> m_textures;
   TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
-  VkImageUsageFlags m_usage = 0;
+  rhi::ImageUsageFlags m_usage = {};
   glm::ivec2 m_size = {};
   VSync m_vsync = VSync::Off;
   bool m_fullscreen = false;

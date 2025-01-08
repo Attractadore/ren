@@ -63,8 +63,8 @@ void CommandRecorder::copy_buffer_to_texture(
     TempSpan<const VkBufferImageCopy> regions) {
   vkCmdCopyBufferToImage(
       m_cmd_buffer, m_renderer->get_buffer(src).handle.handle,
-      m_renderer->get_texture(dst).image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      regions.size(), regions.data());
+      m_renderer->get_texture(dst).handle.handle,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(), regions.data());
 }
 
 void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
@@ -105,9 +105,9 @@ void CommandRecorder::update_buffer(const BufferView &view,
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                            TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {
-  vkCmdBlitImage(m_cmd_buffer, m_renderer->get_texture(src).image,
+  vkCmdBlitImage(m_cmd_buffer, m_renderer->get_texture(src).handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                 m_renderer->get_texture(dst).image,
+                 m_renderer->get_texture(dst).handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
                  regions.data(), filter);
 }
@@ -116,7 +116,8 @@ void CommandRecorder::clear_texture(
     Handle<Texture> texture, TempSpan<const VkClearColorValue> clear_colors,
     TempSpan<const VkImageSubresourceRange> clear_ranges) {
   auto count = std::min<usize>(clear_colors.size(), clear_ranges.size());
-  vkCmdClearColorImage(m_cmd_buffer, m_renderer->get_texture(texture).image,
+  vkCmdClearColorImage(m_cmd_buffer,
+                       m_renderer->get_texture(texture).handle.handle,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                        clear_colors.data(), count, clear_ranges.data());
 }
@@ -129,7 +130,7 @@ void CommandRecorder::clear_texture(Handle<Texture> htexture,
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  vkCmdClearColorImage(m_cmd_buffer, texture.image,
+  vkCmdClearColorImage(m_cmd_buffer, texture.handle.handle,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1,
                        &clear_range);
 }
@@ -148,7 +149,7 @@ void CommandRecorder::clear_texture(
   auto count =
       std::min<usize>(clear_depth_stencils.size(), clear_ranges.size());
   vkCmdClearDepthStencilImage(
-      m_cmd_buffer, m_renderer->get_texture(texture).image,
+      m_cmd_buffer, m_renderer->get_texture(texture).handle.handle,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, clear_depth_stencils.data(), count,
       clear_ranges.data());
 }
@@ -162,7 +163,7 @@ void CommandRecorder::clear_texture(
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  vkCmdClearDepthStencilImage(m_cmd_buffer, texture.image,
+  vkCmdClearDepthStencilImage(m_cmd_buffer, texture.handle.handle,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                               &clear_depth_stencil, 1, &clear_range);
 }
@@ -172,8 +173,9 @@ void CommandRecorder::copy_texture(Handle<Texture> hsrc, Handle<Texture> hdst) {
   const Texture &dst = m_renderer->get_texture(hdst);
   ren_assert(src.size == dst.size);
   VkImageCopy region = {.extent = {src.size.x, src.size.y, src.size.z}};
-  vkCmdCopyImage(m_cmd_buffer, src.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                 dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+  vkCmdCopyImage(m_cmd_buffer, src.handle.handle,
+                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.handle.handle,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
 void CommandRecorder::pipeline_barrier(

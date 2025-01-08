@@ -3,53 +3,49 @@
 #include "core/GenIndex.hpp"
 #include "core/StdDef.hpp"
 #include "ren/ren.hpp"
+#include "rhi.hpp"
 
 #include <glm/glm.hpp>
-#include <vk_mem_alloc.h>
 
 namespace ren {
 
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
-  VkImageType type = VK_IMAGE_TYPE_2D;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  VkImageUsageFlags usage = 0;
+  rhi::ImageUsageFlags usage;
   u32 width = 0;
   u32 height = 0;
-  u32 depth = 1;
+  u32 depth = 0;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
 };
 
 struct ExternalTextureCreateInfo {
   REN_DEBUG_NAME_FIELD("External Texture");
-  VkImage image = nullptr;
-  VkImageType type = VK_IMAGE_TYPE_2D;
+  rhi::Image handle = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  VkImageUsageFlags usage = 0;
+  rhi::ImageUsageFlags usage;
   u32 width = 0;
   u32 height = 0;
-  u32 depth = 1;
+  u32 depth = 0;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
 };
 
 struct Texture {
-  VkImage image;
-  VmaAllocation allocation;
-  VkImageType type;
-  TinyImageFormat format;
-  VkImageUsageFlags usage;
+  rhi::Image handle = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ImageUsageFlags usage;
   union {
     struct {
       u32 width;
       u32 height;
       u32 depth;
     };
-    glm::uvec3 size;
+    glm::uvec3 size = {0, 0, 0};
   };
-  u32 num_mip_levels;
-  u32 num_array_layers;
+  u32 num_mip_levels = 0;
+  u32 num_array_layers = 0;
 };
 
 struct TextureState {
