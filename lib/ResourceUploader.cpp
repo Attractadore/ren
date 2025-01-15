@@ -10,7 +10,7 @@ namespace {
 void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
                       Handle<Texture> handle) {
   const auto &texture = renderer.get_texture(handle);
-  auto src_size = texture.size;
+  auto src_size = glm::max(texture.size, {1, 1, 1});
   for (unsigned dst_level = 1; dst_level < texture.num_mip_levels;
        ++dst_level) {
     auto src_level = dst_level - 1;
@@ -34,7 +34,7 @@ void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
     };
     cmd.pipeline_barrier({}, {barrier});
 
-    auto dst_size = glm::max(src_size / 2u, glm::uvec3(1));
+    auto dst_size = glm::max(src_size / 2u, {1, 1, 1});
     VkImageBlit region = {
         .srcSubresource =
             {

@@ -71,6 +71,7 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
                                              Handle<Texture> dst, u32 level) {
   const Texture &texture = m_renderer->get_texture(dst);
   ren_assert(level < texture.num_mip_levels);
+  glm::uvec3 size = glm::max(texture.size, {1, 1, 1});
   copy_buffer_to_texture(
       src.buffer, dst,
       {{
@@ -81,7 +82,7 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
                   .mipLevel = level,
                   .layerCount = texture.num_array_layers,
               },
-          .imageExtent = {texture.size.x, texture.size.y, texture.size.z},
+          .imageExtent = {size.x, size.y, size.z},
       }});
 }
 
