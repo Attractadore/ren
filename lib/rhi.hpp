@@ -197,6 +197,59 @@ void destroy_image(Device device, Image image);
 
 auto get_allocation(Device device, Image image) -> Allocation;
 
+enum class Filter {
+  Nearest,
+  Linear,
+  Last = Linear,
+};
+constexpr usize FILTER_COUNT = (usize)Filter::Last + 1;
+
+enum class SamplerMipmapMode {
+  Nearest,
+  Linear,
+  Last = Linear,
+};
+constexpr usize SAMPLER_MIPMAP_MODE_COUNT = (usize)SamplerMipmapMode::Last + 1;
+
+enum class SamplerAddressMode {
+  Repeat,
+  MirroredRepeat,
+  ClampToEdge,
+  Last = ClampToEdge,
+};
+constexpr usize SAMPLER_ADDRESS_MODE_COUNT =
+    (usize)SamplerAddressMode::Last + 1;
+
+constexpr float LOD_CLAMP_NONE = 1000.0f;
+
+enum class SamplerReductionMode {
+  WeightedAverage,
+  Min,
+  Max,
+  Last = Max,
+};
+constexpr usize SAMPLER_REDUCTION_MODE_COUNT =
+    (usize)SamplerReductionMode::Last + 1;
+
+struct SamplerCreateInfo {
+  Device device = {};
+  Filter mag_filter = Filter::Nearest;
+  Filter min_filter = Filter::Nearest;
+  SamplerMipmapMode mipmap_mode = SamplerMipmapMode::Nearest;
+  SamplerAddressMode address_mode_u = SamplerAddressMode::Repeat;
+  SamplerAddressMode address_mode_v = SamplerAddressMode::Repeat;
+  SamplerAddressMode address_mode_w = SamplerAddressMode::Repeat;
+  SamplerReductionMode reduction_mode = SamplerReductionMode::WeightedAverage;
+  float mip_lod_bias = 0.0f;
+  float max_anisotropy = 0.0f;
+  float min_lod = 0.0f;
+  float max_lod = LOD_CLAMP_NONE;
+};
+
+auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler>;
+
+void destroy_sampler(Device device, Sampler sampler);
+
 enum class SemaphoreType {
   Binary,
   Timeline,

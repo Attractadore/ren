@@ -163,11 +163,11 @@ private:
 
   [[nodiscard]] auto
   get_or_create_sampler(const SamplerCreateInfo &&create_info)
-      -> Handle<Sampler>;
+      -> Result<Handle<Sampler>, Error>;
 
   [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
                                            const SamplerDesc &sampler_desc)
-      -> glsl::SampledTexture2D;
+      -> Result<glsl::SampledTexture2D, Error>;
 
   auto build_rg() -> Result<RenderGraph, Error>;
 

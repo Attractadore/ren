@@ -479,42 +479,21 @@ auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
   return image_view;
 }
 
-static constexpr auto REDUCTION_MODE_MAP = [] {
-  using enum SamplerReductionMode;
-  std::array<VkSamplerReductionMode, (int)Last + 1> map = {};
-  map[(int)WeightedAverage] = VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
-  map[(int)Min] = VK_SAMPLER_REDUCTION_MODE_MIN;
-  map[(int)Max] = VK_SAMPLER_REDUCTION_MODE_MAX;
-  return map;
-}();
-
 auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
-    -> Handle<Sampler> {
-
-  VkSamplerReductionModeCreateInfo reduction_mode_info = {
-      .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
-      .reductionMode = REDUCTION_MODE_MAP[(int)create_info.reduction_mode],
-  };
-
-  VkSamplerCreateInfo sampler_info = {
-      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-      .pNext = &reduction_mode_info,
-      .magFilter = create_info.mag_filter,
-      .minFilter = create_info.min_filter,
-      .mipmapMode = create_info.mipmap_mode,
-      .addressModeU = create_info.address_mode_u,
-      .addressModeV = create_info.address_mode_v,
-      .anisotropyEnable = create_info.anisotropy > 0.0f,
-      .maxAnisotropy = create_info.anisotropy,
-      .maxLod = VK_LOD_CLAMP_NONE,
-  };
-
-  VkSampler sampler;
-  throw_if_failed(
-      vkCreateSampler(get_device(), &sampler_info, nullptr, &sampler),
-      "Vulkan: Failed to create sampler");
-  set_debug_name(get_device(), sampler, create_info.name);
-
+    -> Result<Handle<Sampler>, Error> {
+  ren_try(rhi::Sampler sampler,
+          rhi::create_sampler(rhi::SamplerCreateInfo{
+              .device = m_device,
+              .mag_filter = create_info.mag_filter,
+              .min_filter = create_info.min_filter,
+              .mipmap_mode = create_info.mipmap_mode,
+              .address_mode_u = create_info.address_mode_u,
+              .address_mode_v = create_info.address_mode_v,
+              .address_mode_w = create_info.address_mode_w,
+              .reduction_mode = create_info.reduction_mode,
+              .max_anisotropy = create_info.anisotropy,
+          }));
+  set_debug_name(get_device(), sampler.handle, create_info.name);
   return m_samplers.emplace(Sampler{
       .handle = sampler,
       .mag_filter = create_info.mag_filter,
@@ -522,12 +501,15 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
       .mipmap_mode = create_info.mipmap_mode,
       .address_mode_u = create_info.address_mode_u,
       .address_mode_v = create_info.address_mode_v,
+      .address_mode_w = create_info.address_mode_w,
+      .reduction_mode = create_info.reduction_mode,
+      .anisotropy = create_info.anisotropy,
   });
 }
 
 void Renderer::destroy(Handle<Sampler> sampler) {
   m_samplers.try_pop(sampler).map([&](const Sampler &sampler) {
-    vkDestroySampler(get_device(), sampler.handle, nullptr);
+    rhi::destroy_sampler(m_device, sampler.handle);
   });
 }
 

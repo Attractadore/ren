@@ -57,6 +57,10 @@ struct Image {
   Allocation allocation = {};
 };
 
+struct Sampler {
+  VkSampler handle = nullptr;
+};
+
 struct Surface {
   VkSurfaceKHR handle = nullptr;
 };

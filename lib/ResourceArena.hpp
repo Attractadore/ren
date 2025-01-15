@@ -47,7 +47,8 @@ public:
     return insert(m_renderer->create_texture(std::move(create_info)));
   }
 
-  auto create_sampler(const SamplerCreateInfo &&create_info) -> Handle<Sampler>
+  auto create_sampler(const SamplerCreateInfo &&create_info)
+      -> Result<Handle<Sampler>, Error>
     requires IsArenaResource<Sampler>
   {
     return insert(m_renderer->create_sampler(std::move(create_info)));

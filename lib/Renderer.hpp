@@ -210,7 +210,7 @@ public:
   auto getVkImageView(const TextureView &view) -> VkImageView;
 
   [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
-      -> Handle<Sampler>;
+      -> Result<Handle<Sampler>, Error>;
 
   void destroy(Handle<Sampler> sampler);
 

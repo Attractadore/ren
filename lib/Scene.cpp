@@ -35,23 +35,28 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       texture_descriptor_set, texture_descriptor_set_layout);
 
   m_samplers = {
-      .hi_z_gen = m_arena.create_sampler({
-          .name = "Hi-Z generation sampler",
-          .mag_filter = VK_FILTER_LINEAR,
-          .min_filter = VK_FILTER_LINEAR,
-          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-          .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-          .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-          .reduction_mode = SamplerReductionMode::Min,
-      }),
-      .hi_z = m_arena.create_sampler({
-          .name = "Hi-Z generation sampler",
-          .mag_filter = VK_FILTER_NEAREST,
-          .min_filter = VK_FILTER_NEAREST,
-          .mipmap_mode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
-          .address_mode_u = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-          .address_mode_v = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-      }),
+      .hi_z_gen =
+          m_arena
+              .create_sampler({
+                  .name = "Hi-Z generation sampler",
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                  .reduction_mode = rhi::SamplerReductionMode::Min,
+              })
+              .value(),
+      .hi_z = m_arena
+                  .create_sampler({
+                      .name = "Hi-Z generation sampler",
+                      .mag_filter = rhi::Filter::Nearest,
+                      .min_filter = rhi::Filter::Nearest,
+                      .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                      .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                      .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                  })
+                  .value(),
   };
 
   m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
@@ -268,26 +273,28 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 }
 
 auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
-    -> Handle<Sampler> {
+    -> Result<Handle<Sampler>, Error> {
   Handle<Sampler> &handle = m_sampler_cache[create_info];
   if (!handle) {
-    handle = m_arena.create_sampler(std::move(create_info));
+    ren_try(handle, m_arena.create_sampler(std::move(create_info)));
   }
   return handle;
 }
 
 auto Scene::get_or_create_texture(Handle<Image> image,
                                   const SamplerDesc &sampler_desc)
-    -> glsl::SampledTexture2D {
+    -> Result<glsl::SampledTexture2D, Error> {
   TextureView view = m_renderer->get_texture_view(m_images[image]);
-  Handle<Sampler> sampler = get_or_create_sampler({
-      .mag_filter = getVkFilter(sampler_desc.mag_filter),
-      .min_filter = getVkFilter(sampler_desc.min_filter),
-      .mipmap_mode = getVkSamplerMipmapMode(sampler_desc.mipmap_filter),
-      .address_mode_u = getVkSamplerAddressMode(sampler_desc.wrap_u),
-      .address_mode_v = getVkSamplerAddressMode(sampler_desc.wrap_v),
-      .anisotropy = 16.0f,
-  });
+  ren_try(
+      Handle<Sampler> sampler,
+      get_or_create_sampler({
+          .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
+          .min_filter = get_rhi_Filter(sampler_desc.min_filter),
+          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
+          .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
+          .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
+          .anisotropy = 16.0f,
+      }));
   return glsl::SampledTexture2D(
       m_descriptor_allocator->allocate_sampled_texture(*m_renderer, view,
                                                        sampler));
@@ -322,7 +329,7 @@ auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
 auto Scene::create_material(const MaterialCreateInfo &desc)
     -> expected<MaterialId> {
   auto get_sampled_texture_id =
-      [&](const auto &texture) -> glsl::SampledTexture2D {
+      [&](const auto &texture) -> Result<glsl::SampledTexture2D, Error> {
     if (texture.image) {
       return get_or_create_texture(std::bit_cast<Handle<Image>>(texture.image),
                                    texture.sampler);
@@ -330,14 +337,19 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
     return {};
   };
 
+  ren_try(auto base_color_texture,
+          get_sampled_texture_id(desc.base_color_texture));
+  ren_try(auto metallic_roughness_texture,
+          get_sampled_texture_id(desc.metallic_roughness_texture));
+  ren_try(auto normal_texture, get_sampled_texture_id(desc.normal_texture));
+
   Handle<Material> handle = m_data.materials.insert({
       .base_color = desc.base_color_factor,
-      .base_color_texture = get_sampled_texture_id(desc.base_color_texture),
+      .base_color_texture = base_color_texture,
       .metallic = desc.metallic_factor,
       .roughness = desc.roughness_factor,
-      .metallic_roughness_texture =
-          get_sampled_texture_id(desc.metallic_roughness_texture),
-      .normal_texture = get_sampled_texture_id(desc.normal_texture),
+      .metallic_roughness_texture = metallic_roughness_texture,
+      .normal_texture = normal_texture,
       .normal_scale = desc.normal_texture.scale,
   });
   m_gpu_scene.update_materials.push_back(handle);
@@ -611,7 +623,7 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
       .wrap_v = WrappingMode::Repeat,
   };
   glsl::SampledTexture2D texture =
-      get_or_create_texture(std::bit_cast<Handle<Image>>(image), desc);
+      get_or_create_texture(std::bit_cast<Handle<Image>>(image), desc).value();
   // NOTE: texture from old context is leaked. Don't really care since context
   // will probably be set only once
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);

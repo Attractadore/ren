@@ -142,22 +142,17 @@ public:
   bool operator==(const TextureView &) const = default;
 };
 
-enum class SamplerReductionMode {
-  WeightedAverage,
-  Min,
-  Max,
-  Last = Max,
-};
-
 struct SamplerCreateInfo {
   REN_DEBUG_NAME_FIELD("Sampler");
-  VkFilter mag_filter = VK_FILTER_LINEAR;
-  VkFilter min_filter = VK_FILTER_LINEAR;
-  VkSamplerMipmapMode mipmap_mode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  VkSamplerAddressMode address_mode_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-  VkSamplerAddressMode address_mode_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  rhi::Filter mag_filter = rhi::Filter::Linear;
+  rhi::Filter min_filter = rhi::Filter::Linear;
+  rhi::SamplerMipmapMode mipmap_mode = rhi::SamplerMipmapMode::Linear;
+  rhi::SamplerAddressMode address_mode_u = rhi::SamplerAddressMode::Repeat;
+  rhi::SamplerAddressMode address_mode_v = rhi::SamplerAddressMode::Repeat;
+  rhi::SamplerAddressMode address_mode_w = rhi::SamplerAddressMode::Repeat;
+  rhi::SamplerReductionMode reduction_mode =
+      rhi::SamplerReductionMode::WeightedAverage;
   float anisotropy = 0.0f;
-  SamplerReductionMode reduction_mode = SamplerReductionMode::WeightedAverage;
 
 public:
   bool operator==(const SamplerCreateInfo &) const = default;
@@ -168,14 +163,15 @@ REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode,
                      reduction_mode);
 
 struct Sampler {
-  VkSampler handle;
-  VkFilter mag_filter;
-  VkFilter min_filter;
-  VkSamplerMipmapMode mipmap_mode;
-  VkSamplerAddressMode address_mode_u;
-  VkSamplerAddressMode address_mode_v;
-  float anisotropy;
-  SamplerReductionMode reduction_mode;
+  rhi::Sampler handle = {};
+  rhi::Filter mag_filter = {};
+  rhi::Filter min_filter = {};
+  rhi::SamplerMipmapMode mipmap_mode = {};
+  rhi::SamplerAddressMode address_mode_u = {};
+  rhi::SamplerAddressMode address_mode_v = {};
+  rhi::SamplerAddressMode address_mode_w = {};
+  rhi::SamplerReductionMode reduction_mode = {};
+  float anisotropy = 0.0f;
 };
 
 auto get_mip_level_count(unsigned width, unsigned height = 1,
@@ -183,8 +179,8 @@ auto get_mip_level_count(unsigned width, unsigned height = 1,
 
 auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level) -> glm::uvec3;
 
-auto getVkFilter(Filter filter) -> VkFilter;
-auto getVkSamplerMipmapMode(Filter filter) -> VkSamplerMipmapMode;
-auto getVkSamplerAddressMode(WrappingMode wrap) -> VkSamplerAddressMode;
+auto get_rhi_Filter(Filter filter) -> rhi::Filter;
+auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode;
+auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode;
 
 } // namespace ren

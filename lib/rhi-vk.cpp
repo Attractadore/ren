@@ -860,12 +860,83 @@ auto get_allocation(Device, Image image) -> Allocation {
 
 namespace {
 
+constexpr auto FILTER_MAP = [] {
+  std::array<VkFilter, FILTER_COUNT> map = {};
+#define map(from, to) map[(usize)from] = to
+  map(Filter::Nearest, VK_FILTER_NEAREST);
+  map(Filter::Linear, VK_FILTER_LINEAR);
+  return map;
+}();
+
+constexpr auto SAMPLER_MIPMAP_MODE_MAP = [] {
+  std::array<VkSamplerMipmapMode, SAMPLER_MIPMAP_MODE_COUNT> map = {};
+  map(SamplerMipmapMode::Nearest, VK_SAMPLER_MIPMAP_MODE_NEAREST);
+  map(SamplerMipmapMode::Linear, VK_SAMPLER_MIPMAP_MODE_LINEAR);
+  return map;
+}();
+
+constexpr auto SAMPLER_ADDRESS_MODE_MAP = [] {
+  std::array<VkSamplerAddressMode, SAMPLER_ADDRESS_MODE_COUNT> map = {};
+  map(SamplerAddressMode::Repeat, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+  map(SamplerAddressMode::MirroredRepeat,
+      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT);
+  map(SamplerAddressMode::ClampToEdge, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+  return map;
+}();
+
+constexpr auto SAMPLER_REDUCTION_MODE_MAP = [] {
+  std::array<VkSamplerReductionMode, SAMPLER_REDUCTION_MODE_COUNT> map = {};
+  map(SamplerReductionMode::WeightedAverage,
+      VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+  map(SamplerReductionMode::Min, VK_SAMPLER_REDUCTION_MODE_MIN);
+  map(SamplerReductionMode::Max, VK_SAMPLER_REDUCTION_MODE_MAX);
+  return map;
+}();
+
+} // namespace
+
+auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler> {
+  Device device = create_info.device;
+  VkSamplerReductionModeCreateInfo reduction_mode_info = {
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+      .reductionMode =
+          SAMPLER_REDUCTION_MODE_MAP[(usize)create_info.reduction_mode],
+  };
+  VkSamplerCreateInfo sampler_info = {
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .pNext = &reduction_mode_info,
+      .magFilter = FILTER_MAP[(usize)create_info.mag_filter],
+      .minFilter = FILTER_MAP[(usize)create_info.min_filter],
+      .mipmapMode = SAMPLER_MIPMAP_MODE_MAP[(usize)create_info.mipmap_mode],
+      .addressModeU =
+          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_u],
+      .addressModeV =
+          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_v],
+      .addressModeW =
+          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_w],
+      .anisotropyEnable = create_info.max_anisotropy > 0.0f,
+      .maxAnisotropy = create_info.max_anisotropy,
+      .maxLod = VK_LOD_CLAMP_NONE,
+  };
+  Sampler sampler;
+  VkResult result = device->vk.vkCreateSampler(device->handle, &sampler_info,
+                                               nullptr, &sampler.handle);
+  if (result) {
+    return fail(result);
+  }
+  return sampler;
+}
+
+void destroy_sampler(Device device, Sampler sampler) {
+  device->vk.vkDestroySampler(device->handle, sampler.handle, nullptr);
+}
+
+namespace {
+
 constexpr auto SEMAPHORE_TYPE_MAP = [] {
   std::array<VkSemaphoreType, SEMAPHORE_TYPE_COUNT> map;
-#define map(from, to) map[(usize)from] = to;
   map(SemaphoreType::Binary, VK_SEMAPHORE_TYPE_BINARY);
   map(SemaphoreType::Timeline, VK_SEMAPHORE_TYPE_TIMELINE);
-#undef map
   return map;
 }();
 
