@@ -153,8 +153,7 @@ struct RgColorAttachment {
 
 struct RgDepthStencilAttachment {
   RgTextureToken texture;
-  Optional<DepthAttachmentOperations> depth_ops;
-  Optional<StencilAttachmentOperations> stencil_ops;
+  DepthAttachmentOperations ops;
 };
 
 struct RgGraphicsPass {
@@ -529,7 +528,8 @@ public:
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
   auto build(DeviceBumpAllocator &device_allocator,
-             UploadBumpAllocator &upload_allocator) -> Result<RenderGraph, Error>;
+             UploadBumpAllocator &upload_allocator)
+      -> Result<RenderGraph, Error>;
 
   auto get_final_buffer_state(RgUntypedBufferId buffer) const -> BufferState;
 
@@ -619,7 +619,7 @@ private:
 
   void init_runtime_buffers();
 
-  void init_runtime_textures();
+  auto init_runtime_textures() -> Result<void, Error>;
 
   void place_barriers_and_semaphores();
 

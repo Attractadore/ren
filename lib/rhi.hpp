@@ -197,6 +197,91 @@ void destroy_image(Device device, Image image);
 
 auto get_allocation(Device device, Image image) -> Allocation;
 
+enum class ImageViewType {
+  SRV,
+  UAV,
+  RTV,
+};
+
+union ImageView {
+  SRV srv;
+  UAV uav;
+  RTV rtv;
+};
+
+enum class ImageViewDimension {
+  e1D,
+  e2D,
+  eCube,
+  e3D,
+  Last = e3D,
+};
+constexpr usize IMAGE_VIEW_DIMENSION_COUNT =
+    (usize)ImageViewDimension::Last + 1;
+
+enum class ComponentSwizzle : u8 {
+  Identity,
+  Zero,
+  One,
+  R,
+  G,
+  B,
+  A,
+  Last = A,
+};
+constexpr usize COMPONENT_SWIZZLE_COUNT = (usize)ComponentSwizzle::Last + 1;
+
+struct ComponentMapping {
+  ComponentSwizzle r : 4 = ComponentSwizzle::Identity;
+  ComponentSwizzle g : 4 = ComponentSwizzle::Identity;
+  ComponentSwizzle b : 4 = ComponentSwizzle::Identity;
+  ComponentSwizzle a : 4 = ComponentSwizzle::Identity;
+
+public:
+  bool operator==(const ComponentMapping &) const = default;
+};
+
+struct SrvCreateInfo {
+  Image image = {};
+  ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  ComponentMapping components;
+  u32 first_mip_level = 0;
+  u32 num_mip_levels = 1;
+  u32 first_array_layer = 0;
+  u32 num_array_layers = 1;
+};
+
+auto create_srv(Device device, const SrvCreateInfo &create_info) -> Result<SRV>;
+
+void destroy_srv(Device device, SRV srv);
+
+struct UavCreateInfo {
+  Image image = {};
+  ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  u32 mip_level = 0;
+  u32 first_array_layer = 0;
+  u32 num_array_layers = 1;
+};
+
+auto create_uav(Device device, const UavCreateInfo &create_info) -> Result<UAV>;
+
+void destroy_uav(Device device, UAV uav);
+
+struct RtvCreateInfo {
+  Image image = {};
+  ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  u32 mip_level = 0;
+  u32 first_array_layer = 0;
+  u32 num_array_layers = 1;
+};
+
+auto create_rtv(Device device, const RtvCreateInfo &create_info) -> Result<RTV>;
+
+void destroy_rtv(Device device, RTV rtv);
+
 enum class Filter {
   Nearest,
   Linear,

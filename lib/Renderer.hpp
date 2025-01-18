@@ -27,6 +27,18 @@ enum class RendererFeature {
 
 constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
 
+struct ImageViewDesc {
+  rhi::ImageViewType type = {};
+  rhi::ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ComponentMapping components;
+  u32 first_mip_level = 0;
+  u32 num_mip_levels = 0;
+
+public:
+  bool operator==(const ImageViewDesc &) const = default;
+};
+
 class Renderer final : public IRenderer {
   rhi::Adapter m_adapter;
   rhi::Device m_device;
@@ -38,7 +50,7 @@ class Renderer final : public IRenderer {
 
   GenArray<Texture> m_textures;
 
-  HashMap<Handle<Texture>, SmallLinearMap<TextureView, VkImageView, 3>>
+  HashMap<Handle<Texture>, SmallLinearMap<ImageViewDesc, rhi::ImageView, 3>>
       m_image_views;
 
   GenArray<Sampler> m_samplers;
@@ -199,15 +211,14 @@ public:
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto try_get_texture_view(Handle<Texture> texture) const
-      -> Optional<TextureView>;
+  auto get_srv(SrvDesc srv) -> Result<rhi::SRV, Error>;
 
-  auto get_texture_view(Handle<Texture> texture) const -> TextureView;
+  auto get_uav(UavDesc uav) -> Result<rhi::UAV, Error>;
 
-  auto get_texture_view_size(const TextureView &view,
-                             u32 mip_level_offset = 0) const -> glm::uvec3;
+  auto get_rtv(RtvDesc rtv) -> Result<rhi::RTV, Error>;
 
-  auto getVkImageView(const TextureView &view) -> VkImageView;
+  auto get_image_view(Handle<Texture> texture, ImageViewDesc view)
+      -> Result<rhi::ImageView, Error>;
 
   [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
       -> Result<Handle<Sampler>, Error>;

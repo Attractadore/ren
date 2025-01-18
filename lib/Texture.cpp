@@ -1,18 +1,22 @@
 #include "Texture.hpp"
+#include "Renderer.hpp"
 #include "core/Errors.hpp"
 #include "core/Math.hpp"
 
 namespace ren {
 
-auto get_mip_level_count(unsigned width, unsigned height, unsigned depth)
-    -> u16 {
+auto get_mip_level_count(u32 width, u32 height, u32 depth) -> u32 {
   auto size = std::max({width, height, depth});
   return ilog2(size) + 1;
 }
 
-auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level)
-    -> glm::uvec3 {
+auto get_mip_size(glm::uvec3 size, u32 mip_level) -> glm::uvec3 {
   return glm::max(size >> glm::uvec3(mip_level), 1u);
+}
+
+auto get_texture_size(Renderer &renderer, Handle<Texture> texture,
+                      u32 mip_level) -> glm::uvec3 {
+  return get_mip_size(renderer.get_texture(texture).size, mip_level);
 }
 
 auto get_rhi_Filter(Filter filter) -> rhi::Filter {

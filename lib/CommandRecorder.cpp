@@ -222,8 +222,6 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
 
   glm::uvec2 max_size = {-1, -1};
   glm::uvec2 size = max_size;
-  u32 max_layers = -1;
-  u32 layers = max_layers;
 
   auto color_attachments =
       begin_info.color_attachments |
@@ -232,7 +230,7 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
             [&](const ColorAttachment &att) {
               VkRenderingAttachmentInfo info = {
                   .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                  .imageView = m_renderer->getVkImageView(att.texture),
+                  .imageView = m_renderer->get_rtv(att.rtv)->handle,
                   .imageLayout = get_layout_for_attachment_ops(att.ops.load,
                                                                att.ops.store),
                   .loadOp = att.ops.load,
@@ -242,10 +240,8 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
                             sizeof(att.ops.clear_color));
               std::memcpy(info.clearValue.color.float32, &att.ops.clear_color,
                           sizeof(att.ops.clear_color));
-              size = glm::min(
-                  size,
-                  glm::uvec2(m_renderer->get_texture_view_size(att.texture)));
-              layers = glm::min(layers, att.texture.num_array_layers);
+              size = glm::min(size, glm::uvec2(get_texture_size(
+                                        *m_renderer, att.rtv.texture)));
               return info;
             },
             VkRenderingAttachmentInfo{
@@ -257,54 +253,31 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
   VkRenderingAttachmentInfo depth_attachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
 
-  VkRenderingAttachmentInfo stencil_attachment = {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-
   begin_info.depth_stencil_attachment.map(
       [&](const DepthStencilAttachment &att) {
-        VkImageView view = nullptr;
-
-        att.depth_ops.map([&](const DepthAttachmentOperations &ops) {
-          view = m_renderer->getVkImageView(att.texture);
-          depth_attachment = {
-              .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-              .imageView = view,
-              .imageLayout = get_layout_for_attachment_ops(ops.load, ops.store),
-              .loadOp = ops.load,
-              .storeOp = ops.store,
-              .clearValue = {.depthStencil = {.depth = ops.clear_depth}},
-          };
-        });
-
-        att.stencil_ops.map([&](const StencilAttachmentOperations &ops) {
-          view = view ? view : m_renderer->getVkImageView(att.texture);
-          stencil_attachment = {
-              .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-              .imageView = view,
-              .imageLayout = get_layout_for_attachment_ops(ops.load, ops.store),
-              .loadOp = ops.load,
-              .storeOp = ops.store,
-              .clearValue = {.depthStencil = {.stencil = ops.clear_stencil}},
-          };
-        });
-
+        depth_attachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = m_renderer->get_rtv(att.dsv)->handle,
+            .imageLayout =
+                get_layout_for_attachment_ops(att.ops.load, att.ops.store),
+            .loadOp = att.ops.load,
+            .storeOp = att.ops.store,
+            .clearValue = {.depthStencil = {.depth = att.ops.clear_depth}},
+        };
         size = glm::min(
-            size, glm::uvec2(m_renderer->get_texture_view_size(att.texture)));
-        layers = glm::min(layers, att.texture.num_array_layers);
+            size, glm::uvec2(get_texture_size(*m_renderer, att.dsv.texture)));
       });
 
   ren_assert_msg(size != max_size, "At least one attachment must be provided");
-  ren_assert_msg(layers != max_layers,
-                 "At least one attachment must be provided");
 
   VkRenderingInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .renderArea = {.extent = {size.x, size.y}},
-      .layerCount = layers,
+      .layerCount = 1,
       .colorAttachmentCount = u32(color_attachments.size()),
       .pColorAttachments = color_attachments.data(),
       .pDepthAttachment = &depth_attachment,
-      .pStencilAttachment = &stencil_attachment,
+      .pStencilAttachment = nullptr,
   };
 
   vkCmdBeginRendering(m_cmd_buffer, &rendering_info);

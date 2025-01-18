@@ -788,7 +788,7 @@ void RgBuilder::init_runtime_buffers() {
   }
 }
 
-void RgBuilder::init_runtime_textures() {
+auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
   auto &rt_textures = m_rt_data->m_textures;
   const auto &texture_uses = m_data->m_texture_uses;
   const auto &physical_textures = m_rgp->m_physical_textures;
@@ -823,30 +823,39 @@ void RgBuilder::init_runtime_textures() {
         physical_textures[physical_texture_id];
     RgTextureDescriptors &descriptors = rt_texture_descriptors[i];
 
-    TextureView view = m_renderer->get_texture_view(physical_texture.handle);
     if (use.state.access_mask & VK_ACCESS_2_SHADER_SAMPLED_READ_BIT) {
+      SrvDesc srv = {
+          .texture = physical_texture.handle,
+          .dimension = rhi::ImageViewDimension::e2D,
+      };
       if (use.sampler) {
-        descriptors.combined = m_descriptor_allocator->allocate_sampled_texture(
-            *m_renderer, view, use.sampler);
+        ren_try(descriptors.combined,
+                m_descriptor_allocator->allocate_sampled_texture(
+                    *m_renderer, srv, use.sampler));
       } else {
-        descriptors.sampled =
-            m_descriptor_allocator->allocate_texture(*m_renderer, view);
+        ren_try(descriptors.sampled,
+                m_descriptor_allocator->allocate_texture(*m_renderer, srv));
       }
     } else if (use.state.access_mask & (VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
                                         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT)) {
-      view.num_mip_levels = 1;
       descriptors.num_mips = physical_texture.num_mip_levels;
       descriptors.storage =
           &rt_storage_texture_descriptors[num_storage_texture_descriptors];
-      for (i32 mip = 0; mip < descriptors.num_mips; ++mip) {
-        view.first_mip_level = mip;
-        descriptors.storage[mip] =
-            m_descriptor_allocator->allocate_storage_texture(*m_renderer, view);
+      for (u32 mip : range(descriptors.num_mips)) {
+        ren_try(descriptors.storage[mip],
+                m_descriptor_allocator->allocate_storage_texture(
+                    *m_renderer, {
+                                     .texture = physical_texture.handle,
+                                     .dimension = rhi::ImageViewDimension::e2D,
+                                     .mip_level = mip,
+                                 }));
       }
 
       num_storage_texture_descriptors += physical_texture.num_mip_levels;
     }
   }
+
+  return {};
 }
 
 void RgBuilder::place_barriers_and_semaphores() {
@@ -1202,7 +1211,8 @@ void RgBuilder::place_barriers_and_semaphores() {
 }
 
 auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
-                      UploadBumpAllocator &upload_allocator) -> Result<RenderGraph, Error> {
+                      UploadBumpAllocator &upload_allocator)
+    -> Result<RenderGraph, Error> {
   ren_prof_zone("RgBuilder::build");
 
   m_rgp->rotate_textures();
@@ -1216,7 +1226,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
 
   init_runtime_passes();
   init_runtime_buffers();
-  init_runtime_textures();
+  ren_try_to(init_runtime_textures());
 
   place_barriers_and_semaphores();
 
@@ -1315,7 +1325,7 @@ void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
       .ext.get_or_emplace<RgGraphicsPass>()
       .depth_stencil_attachment = RgDepthStencilAttachment{
       .texture = texture,
-      .depth_ops = ops,
+      .ops = ops,
   };
 }
 
@@ -1445,13 +1455,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                         -> Optional<ColorAttachment> {
                   return att.map(
                       [&](const RgColorAttachment &att) -> ColorAttachment {
-                        TextureView view = m_renderer->get_texture_view(
-                            rt.get_texture(att.texture));
-                        viewport = m_renderer->get_texture_view_size(view);
-                        return {
-                            .texture = view,
-                            .ops = att.ops,
-                        };
+                        Handle<Texture> texture = rt.get_texture(att.texture);
+                        viewport = get_texture_size(*m_renderer, texture);
+                        return {.rtv = {texture}, .ops = att.ops};
                       });
                 }) |
                 std::ranges::to<StaticVector<Optional<ColorAttachment>,
@@ -1461,14 +1467,9 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                 [&](u32 index) -> DepthStencilAttachment {
                   const RgDepthStencilAttachment &att =
                       m_data->m_depth_stencil_attachments[index];
-                  TextureView view =
-                      m_renderer->get_texture_view(rt.get_texture(att.texture));
-                  viewport = m_renderer->get_texture_view_size(view);
-                  return {
-                      .texture = view,
-                      .depth_ops = att.depth_ops,
-                      .stencil_ops = att.stencil_ops,
-                  };
+                  Handle<Texture> texture = rt.get_texture(att.texture);
+                  viewport = get_texture_size(*m_renderer, texture);
+                  return {.dsv = {texture}, .ops = att.ops};
                 });
 
             RenderPass render_pass = get_command_recorder().render_pass({

@@ -11,6 +11,9 @@
 #include <glm/glm.hpp>
 #include <volk.h>
 
+#define map(from, to) map[(usize)from] = to
+#define map_bit(from, to) map[std::countr_zero((usize)from)] = to;
+
 namespace ren::rhi {
 
 namespace {
@@ -695,12 +698,6 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
-auto map(Device device, Allocation allocation) -> void * {
-  VmaAllocationInfo allocation_info;
-  vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
-  return allocation_info.pMappedData;
-}
-
 auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
   Device device = create_info.device;
   const MemoryHeapProperties &heap_props =
@@ -771,14 +768,12 @@ namespace {
 constexpr auto IMAGE_USAGE_MAP = [] {
   using enum ImageUsage;
   std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
-#define map(from, to) map[std::countr_zero((usize)from)] = to;
-  map(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-  map(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-  map(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
-  map(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
-  map(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-  map(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-#undef map
+  map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+  map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  map_bit(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map_bit(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
+  map_bit(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map_bit(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
   return map;
 }();
 
@@ -860,9 +855,139 @@ auto get_allocation(Device, Image image) -> Allocation {
 
 namespace {
 
+constexpr auto VIEW_TYPE_MAP = [] {
+  std::array<VkImageViewType, IMAGE_VIEW_DIMENSION_COUNT> map = {};
+  map(ImageViewDimension::e1D, VK_IMAGE_VIEW_TYPE_1D);
+  map(ImageViewDimension::e2D, VK_IMAGE_VIEW_TYPE_2D);
+  map(ImageViewDimension::eCube, VK_IMAGE_VIEW_TYPE_CUBE);
+  map(ImageViewDimension::e3D, VK_IMAGE_VIEW_TYPE_3D);
+  return map;
+}();
+
+constexpr auto COMPONENT_SWIZZLE_MAP = [] {
+  std::array<VkComponentSwizzle, COMPONENT_SWIZZLE_COUNT> map = {};
+  map(ComponentSwizzle::Identity, VK_COMPONENT_SWIZZLE_IDENTITY);
+  map(ComponentSwizzle::Zero, VK_COMPONENT_SWIZZLE_ZERO);
+  map(ComponentSwizzle::One, VK_COMPONENT_SWIZZLE_ONE);
+  map(ComponentSwizzle::R, VK_COMPONENT_SWIZZLE_R);
+  map(ComponentSwizzle::G, VK_COMPONENT_SWIZZLE_G);
+  map(ComponentSwizzle::B, VK_COMPONENT_SWIZZLE_B);
+  map(ComponentSwizzle::A, VK_COMPONENT_SWIZZLE_A);
+  return map;
+}();
+
+auto toVkFormat(TinyImageFormat format) -> VkFormat {
+  return (VkFormat)TinyImageFormat_ToVkFormat(format);
+}
+
+auto get_format_aspect_mask(TinyImageFormat format) -> VkImageAspectFlags {
+  if (TinyImageFormat_IsDepthOnly(format) or
+      TinyImageFormat_IsDepthAndStencil(format)) {
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  }
+  return VK_IMAGE_ASPECT_COLOR_BIT;
+}
+
+} // namespace
+
+auto create_srv(Device device, const SrvCreateInfo &create_info)
+    -> Result<SRV> {
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = create_info.image.handle,
+      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
+      .format = toVkFormat(create_info.format),
+      .components =
+          {
+              .r = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.r],
+              .g = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.g],
+              .b = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.b],
+              .a = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.a],
+          },
+      .subresourceRange =
+          {
+              .aspectMask = get_format_aspect_mask(create_info.format),
+              .baseMipLevel = create_info.first_mip_level,
+              .levelCount = create_info.num_mip_levels,
+              .baseArrayLayer = create_info.first_array_layer,
+              .layerCount = create_info.num_array_layers,
+          },
+  };
+  SRV srv;
+  VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
+                                                 nullptr, &srv.handle);
+  if (result) {
+    return fail(result);
+  }
+  return srv;
+}
+
+void destroy_srv(Device device, SRV srv) {
+  device->vk.vkDestroyImageView(device->handle, srv.handle, nullptr);
+}
+
+auto create_uav(Device device, const UavCreateInfo &create_info)
+    -> Result<UAV> {
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = create_info.image.handle,
+      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
+      .format = toVkFormat(create_info.format),
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = create_info.mip_level,
+              .levelCount = 1,
+              .baseArrayLayer = create_info.first_array_layer,
+              .layerCount = create_info.num_array_layers,
+          },
+  };
+  UAV uav;
+  VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
+                                                 nullptr, &uav.handle);
+  if (result) {
+    return fail(result);
+  }
+  return uav;
+}
+
+void destroy_uav(Device device, UAV uav) {
+  device->vk.vkDestroyImageView(device->handle, uav.handle, nullptr);
+}
+
+auto create_rtv(Device device, const RtvCreateInfo &create_info)
+    -> Result<RTV> {
+  VkImageViewCreateInfo view_info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = create_info.image.handle,
+      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
+      .format = toVkFormat(create_info.format),
+      .subresourceRange =
+          {
+              .aspectMask = get_format_aspect_mask(create_info.format),
+              .baseMipLevel = create_info.mip_level,
+              .levelCount = 1,
+              .baseArrayLayer = create_info.first_array_layer,
+              .layerCount = create_info.num_array_layers,
+          },
+  };
+  RTV rtv;
+  VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
+                                                 nullptr, &rtv.handle);
+  if (result) {
+    return fail(result);
+  }
+  return rtv;
+}
+
+void destroy_rtv(Device device, RTV rtv) {
+  device->vk.vkDestroyImageView(device->handle, rtv.handle, nullptr);
+}
+
+namespace {
+
 constexpr auto FILTER_MAP = [] {
   std::array<VkFilter, FILTER_COUNT> map = {};
-#define map(from, to) map[(usize)from] = to
   map(Filter::Nearest, VK_FILTER_NEAREST);
   map(Filter::Linear, VK_FILTER_LINEAR);
   return map;
@@ -1034,12 +1159,10 @@ constexpr auto PRESENT_MODE_MAP = [] {
   using enum PresentMode;
   std::array<VkPresentModeKHR, PRESENT_MODE_COUNT> map = {};
   std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
-#define map(from, to) map[(usize)from] = to
   map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
   map(Mailbox, VK_PRESENT_MODE_FIFO_KHR);
   map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
   map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
-#undef map
   return map;
 }();
 
@@ -1353,6 +1476,13 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
     return fail(result);
   }
   return {};
+}
+
+#undef map
+auto map(Device device, Allocation allocation) -> void * {
+  VmaAllocationInfo allocation_info;
+  vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
+  return allocation_info.pMappedData;
 }
 
 namespace vk {

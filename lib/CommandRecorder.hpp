@@ -20,14 +20,13 @@ struct GraphicsPipeline;
 struct PipelineLayout;
 
 struct ColorAttachment {
-  TextureView texture;
+  RtvDesc rtv;
   ColorAttachmentOperations ops;
 };
 
 struct DepthStencilAttachment {
-  TextureView texture;
-  Optional<DepthAttachmentOperations> depth_ops;
-  Optional<StencilAttachmentOperations> stencil_ops;
+  RtvDesc dsv;
+  DepthAttachmentOperations ops;
 };
 
 struct RenderPassBeginInfo {

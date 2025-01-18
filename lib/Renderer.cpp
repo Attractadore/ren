@@ -1,5 +1,4 @@
 #include "Renderer.hpp"
-#include "Formats.hpp"
 #include "Profiler.hpp"
 #include "Scene.hpp"
 #include "Swapchain.hpp"
@@ -369,8 +368,18 @@ void Renderer::destroy(Handle<Texture> handle) {
     if (rhi::get_allocation(m_device, texture.handle)) {
       rhi::destroy_image(m_device, texture.handle);
     }
-    for (const auto &[_, view] : m_image_views[handle]) {
-      vkDestroyImageView(get_device(), view, nullptr);
+    for (const auto &[desc, view] : m_image_views[handle]) {
+      switch (desc.type) {
+      case rhi::ImageViewType::SRV: {
+        rhi::destroy_srv(m_device, view.srv);
+      } break;
+      case rhi::ImageViewType::UAV: {
+        rhi::destroy_uav(m_device, view.uav);
+      } break;
+      case rhi::ImageViewType::RTV: {
+        rhi::destroy_rtv(m_device, view.rtv);
+      } break;
+      }
     }
     m_image_views.erase(handle);
   });
@@ -386,97 +395,96 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-namespace {
+auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::SRV, Error> {
+  ren_try(
+      rhi::ImageView view,
+      get_image_view(srv.texture, ImageViewDesc{
+                                      .type = rhi::ImageViewType::SRV,
+                                      .dimension = srv.dimension,
+                                      .format = srv.format,
+                                      .components = srv.components,
+                                      .first_mip_level = srv.first_mip_level,
+                                      .num_mip_levels = srv.num_mip_levels,
+                                  }));
+  return view.srv;
+}
 
-static auto get_texture_default_view_type(const Texture &texture)
-    -> VkImageViewType {
-  if (texture.num_array_layers > 1) {
-    if (texture.height > 0) {
-      return VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-    }
-    ren_assert(texture.depth == 0);
-    return VK_IMAGE_VIEW_TYPE_1D_ARRAY;
+auto Renderer::get_uav(UavDesc uav) -> Result<rhi::UAV, Error> {
+  ren_try(rhi::ImageView view,
+          get_image_view(uav.texture, ImageViewDesc{
+                                          .type = rhi::ImageViewType::UAV,
+                                          .dimension = uav.dimension,
+                                          .format = uav.format,
+                                          .first_mip_level = uav.mip_level,
+                                          .num_mip_levels = 1,
+                                      }));
+  return view.uav;
+}
+
+auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::RTV, Error> {
+  ren_try(rhi::ImageView view,
+          get_image_view(rtv.texture, ImageViewDesc{
+                                          .type = rhi::ImageViewType::RTV,
+                                          .dimension = rtv.dimension,
+                                          .format = rtv.format,
+                                          .first_mip_level = rtv.mip_level,
+                                          .num_mip_levels = 1,
+                                      }));
+  return view.rtv;
+}
+
+auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
+    -> Result<rhi::ImageView, Error> {
+  const Texture &texture = get_texture(handle);
+  if (desc.format == TinyImageFormat_UNDEFINED) {
+    desc.format = texture.format;
   }
-  if (texture.depth > 0) {
-    return VK_IMAGE_VIEW_TYPE_3D;
+  if (desc.num_mip_levels == ALL_MIP_LEVELS) {
+    desc.num_mip_levels = texture.num_mip_levels;
   }
-  if (texture.height > 0) {
-    return VK_IMAGE_VIEW_TYPE_2D;
-  }
-  return VK_IMAGE_VIEW_TYPE_1D;
-}
 
-} // namespace
+  auto &image_views = m_image_views[handle];
 
-auto Renderer::try_get_texture_view(Handle<Texture> handle) const
-    -> Optional<TextureView> {
-  return try_get_texture(handle).map(
-      [&](const Texture &texture) -> TextureView {
-        return {
-            .texture = handle,
-            .type = get_texture_default_view_type(texture),
-            .format = texture.format,
-            .num_mip_levels = texture.num_mip_levels,
-            .num_array_layers = texture.num_array_layers,
-        };
-      });
-}
-
-auto Renderer::get_texture_view(Handle<Texture> handle) const -> TextureView {
-  const auto &texture = get_texture(handle);
-  return {
-      .texture = handle,
-      .type = get_texture_default_view_type(texture),
-      .format = texture.format,
-      .num_mip_levels = texture.num_mip_levels,
-      .num_array_layers = texture.num_array_layers,
-  };
-}
-
-auto Renderer::get_texture_view_size(const TextureView &view,
-                                     u32 mip_level_offset) const -> glm::uvec3 {
-  const Texture &texture = get_texture(view.texture);
-  ren_assert(view.first_mip_level + mip_level_offset < texture.num_mip_levels);
-  return get_size_at_mip_level(texture.size,
-                               view.first_mip_level + mip_level_offset);
-}
-
-auto Renderer::getVkImageView(const TextureView &view) -> VkImageView {
-  auto &image_views = m_image_views[view.texture];
-
-  [[likely]] if (Optional<VkImageView> image_view = image_views.get(view)) {
+  [[likely]] if (Optional<rhi::ImageView> image_view = image_views.get(desc)) {
     return *image_view;
   }
 
-  VkImageViewCreateInfo view_info = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = get_texture(view.texture).handle.handle,
-      .viewType = view.type,
-      .format = (VkFormat)TinyImageFormat_ToVkFormat(view.format),
-      .components =
-          {
-              .r = view.swizzle.r,
-              .g = view.swizzle.g,
-              .b = view.swizzle.b,
-              .a = view.swizzle.a,
-          },
-      .subresourceRange =
-          {
-              .aspectMask = getVkImageAspectFlags(view.format),
-              .baseMipLevel = view.first_mip_level,
-              .levelCount = view.num_mip_levels,
-              .baseArrayLayer = view.first_array_layer,
-              .layerCount = view.num_array_layers,
-          },
-  };
-  VkImageView image_view;
-  throw_if_failed(
-      vkCreateImageView(get_device(), &view_info, nullptr, &image_view),
-      "Vulkan: Failed to create image view");
+  rhi::ImageView view = {};
+  switch (desc.type) {
+  case rhi::ImageViewType::SRV: {
+    ren_try(view.srv, rhi::create_srv(
+                          m_device, {
+                                        .image = texture.handle,
+                                        .dimension = desc.dimension,
+                                        .format = desc.format,
+                                        .components = desc.components,
+                                        .first_mip_level = desc.first_mip_level,
+                                        .num_mip_levels = desc.num_mip_levels,
+                                    }));
+  } break;
+  case rhi::ImageViewType::UAV: {
+    ren_try(view.uav,
+            rhi::create_uav(m_device, {
+                                          .image = texture.handle,
+                                          .dimension = desc.dimension,
+                                          .format = desc.format,
+                                          .mip_level = desc.first_mip_level,
+                                      }));
+  } break;
+  case rhi::ImageViewType::RTV: {
+    ren_try(view.rtv,
+            rhi::create_rtv(m_device, {
+                                          .image = texture.handle,
+                                          .dimension = desc.dimension,
+                                          .format = desc.format,
+                                          .mip_level = desc.first_mip_level,
+                                      }));
+  } break;
+  }
 
-  image_views.insert(view, image_view);
+  image_views.insert(desc, view);
 
-  return image_view;
+  return view;
 }
 
 auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)

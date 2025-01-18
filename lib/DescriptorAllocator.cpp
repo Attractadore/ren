@@ -77,14 +77,14 @@ void DescriptorAllocator::free_sampler(glsl::SamplerState sampler) {
   m_samplers.free(u32(sampler));
 }
 
-auto DescriptorAllocator::allocate_texture(Renderer &renderer,
-                                           const TextureView &view)
-    -> glsl::Texture {
+auto DescriptorAllocator::allocate_texture(Renderer &renderer, SrvDesc desc)
+    -> Result<glsl::Texture, Error> {
   u32 index = m_textures.allocate();
   ren_assert(index < glsl::NUM_TEXTURES);
 
+  ren_try(rhi::SRV srv, renderer.get_srv(desc));
   VkDescriptorImageInfo image = {
-      .imageView = renderer.getVkImageView(view),
+      .imageView = srv.handle,
       .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
   };
   renderer.write_descriptor_sets({{
@@ -105,15 +105,16 @@ void DescriptorAllocator::free_texture(glsl::Texture texture) {
 }
 
 auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
-                                                   const TextureView &view,
+                                                   SrvDesc desc,
                                                    Handle<Sampler> sampler)
-    -> glsl::SampledTexture {
+    -> Result<glsl::SampledTexture, Error> {
   u32 index = m_sampled_textures.allocate();
   ren_assert(index < glsl::NUM_SAMPLED_TEXTURES);
 
+  ren_try(rhi::SRV srv, renderer.get_srv(desc));
   VkDescriptorImageInfo image = {
       .sampler = renderer.get_sampler(sampler).handle.handle,
-      .imageView = renderer.getVkImageView(view),
+      .imageView = srv.handle,
       .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
   };
   renderer.write_descriptor_sets({{
@@ -134,13 +135,14 @@ void DescriptorAllocator::free_sampled_texture(glsl::SampledTexture texture) {
 }
 
 auto DescriptorAllocator::allocate_storage_texture(Renderer &renderer,
-                                                   const TextureView &view)
-    -> glsl::StorageTexture {
+                                                   UavDesc desc)
+    -> Result<glsl::StorageTexture, Error> {
   u32 index = m_storage_textures.allocate();
   ren_assert(index < glsl::NUM_STORAGE_TEXTURES);
 
+  ren_try(rhi::UAV uav, renderer.get_uav(desc));
   VkDescriptorImageInfo image = {
-      .imageView = renderer.getVkImageView(view),
+      .imageView = uav.handle,
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
   };
   renderer.write_descriptor_sets({{
@@ -192,25 +194,27 @@ auto DescriptorAllocatorScope::allocate_sampler(Renderer &renderer,
   return m_samplers.emplace_back(m_alloc->allocate_sampler(renderer, sampler));
 }
 
-auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer,
-                                                const TextureView &view)
-    -> glsl::Texture {
-  return m_textures.emplace_back(m_alloc->allocate_texture(renderer, view));
+auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer, SrvDesc srv)
+    -> Result<glsl::Texture, Error> {
+  ren_try(glsl::Texture texture, m_alloc->allocate_texture(renderer, srv));
+  return m_textures.emplace_back(texture);
 }
 
 auto DescriptorAllocatorScope::allocate_sampled_texture(Renderer &renderer,
-                                                        const TextureView &view,
+                                                        SrvDesc srv,
                                                         Handle<Sampler> sampler)
-    -> glsl::SampledTexture {
-  return m_sampled_textures.emplace_back(
-      m_alloc->allocate_sampled_texture(renderer, view, sampler));
+    -> Result<glsl::SampledTexture, Error> {
+  ren_try(glsl::SampledTexture texture,
+          m_alloc->allocate_sampled_texture(renderer, srv, sampler));
+  return m_sampled_textures.emplace_back(texture);
 }
 
 auto DescriptorAllocatorScope::allocate_storage_texture(Renderer &renderer,
-                                                        const TextureView &view)
-    -> glsl::StorageTexture {
-  return m_storage_textures.emplace_back(
-      m_alloc->allocate_storage_texture(renderer, view));
+                                                        UavDesc uav)
+    -> Result<glsl::StorageTexture, Error> {
+  ren_try(glsl::StorageTexture texture,
+          m_alloc->allocate_storage_texture(renderer, uav));
+  return m_storage_textures.emplace_back(texture);
 }
 
 void DescriptorAllocatorScope::reset() {

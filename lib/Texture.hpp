@@ -9,6 +9,8 @@
 
 namespace ren {
 
+class Renderer;
+
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
@@ -118,28 +120,29 @@ constexpr TextureState PRESENT_SRC_TEXTURE = {
     .layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 };
 
-struct TextureSwizzle {
-  VkComponentSwizzle r = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle g = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle b = VK_COMPONENT_SWIZZLE_IDENTITY;
-  VkComponentSwizzle a = VK_COMPONENT_SWIZZLE_IDENTITY;
+constexpr u32 ALL_MIP_LEVELS = -1;
 
-public:
-  bool operator==(const TextureSwizzle &) const = default;
+struct SrvDesc {
+  Handle<Texture> texture;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ComponentMapping components;
+  rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
+  u32 first_mip_level = 0;
+  u32 num_mip_levels = ALL_MIP_LEVELS;
 };
 
-struct TextureView {
+struct UavDesc {
   Handle<Texture> texture;
-  VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  TextureSwizzle swizzle;
-  u32 first_mip_level = 0;
-  u32 num_mip_levels = 0;
-  u32 first_array_layer = 0;
-  u32 num_array_layers = 0;
+  rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
+  u32 mip_level = 0;
+};
 
-public:
-  bool operator==(const TextureView &) const = default;
+struct RtvDesc {
+  Handle<Texture> texture;
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
+  u32 mip_level = 0;
 };
 
 struct SamplerCreateInfo {
@@ -174,10 +177,12 @@ struct Sampler {
   float anisotropy = 0.0f;
 };
 
-auto get_mip_level_count(unsigned width, unsigned height = 1,
-                         unsigned depth = 1) -> u16;
+auto get_mip_level_count(u32 width, u32 height = 1, u32 depth = 1) -> u32;
 
-auto get_size_at_mip_level(const glm::uvec3 &size, u16 mip_level) -> glm::uvec3;
+auto get_mip_size(glm::uvec3 base_size, u32 mip_level) -> glm::uvec3;
+
+auto get_texture_size(Renderer &renderer, Handle<Texture> texture,
+                      u32 mip_level = 0) -> glm::uvec3;
 
 auto get_rhi_Filter(Filter filter) -> rhi::Filter;
 auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode;

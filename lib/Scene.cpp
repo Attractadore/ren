@@ -284,7 +284,6 @@ auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
 auto Scene::get_or_create_texture(Handle<Image> image,
                                   const SamplerDesc &sampler_desc)
     -> Result<glsl::SampledTexture2D, Error> {
-  TextureView view = m_renderer->get_texture_view(m_images[image]);
   ren_try(
       Handle<Sampler> sampler,
       get_or_create_sampler({
@@ -295,9 +294,10 @@ auto Scene::get_or_create_texture(Handle<Image> image,
           .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
           .anisotropy = 16.0f,
       }));
-  return glsl::SampledTexture2D(
-      m_descriptor_allocator->allocate_sampled_texture(*m_renderer, view,
-                                                       sampler));
+  ren_try(glsl::SampledTexture texture,
+          m_descriptor_allocator->allocate_sampled_texture(
+              *m_renderer, SrvDesc{m_images[image]}, sampler));
+  return glsl::SampledTexture2D(texture);
 }
 
 auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {

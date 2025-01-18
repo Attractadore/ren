@@ -1,7 +1,9 @@
 #pragma once
 #include "FreeListAllocator.hpp"
 #include "core/GenIndex.hpp"
+#include "core/Result.hpp"
 #include "glsl/Texture.h"
+#include "ren/ren.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -11,7 +13,8 @@ class Renderer;
 
 struct DescriptorSetLayout;
 struct Sampler;
-struct TextureView;
+struct SrvDesc;
+struct UavDesc;
 
 class DescriptorAllocator {
   VkDescriptorSet m_set = nullptr;
@@ -28,8 +31,8 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampler(Renderer &renderer,
-                        Handle<Sampler> sampler) -> glsl::SamplerState;
+  auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
+      -> glsl::SamplerState;
 
   auto try_allocate_sampler(Renderer &renderer, Handle<Sampler> sampler,
                             glsl::SamplerState id) -> glsl::SamplerState;
@@ -39,19 +42,19 @@ public:
 
   void free_sampler(glsl::SamplerState sampler);
 
-  auto allocate_texture(Renderer &renderer,
-                        const TextureView &view) -> glsl::Texture;
+  auto allocate_texture(Renderer &renderer, SrvDesc srv)
+      -> Result<glsl::Texture, Error>;
 
   void free_texture(glsl::Texture texture);
 
-  auto
-  allocate_sampled_texture(Renderer &renderer, const TextureView &view,
-                           Handle<Sampler> sampler) -> glsl::SampledTexture;
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
+                                Handle<Sampler> sampler)
+      -> Result<glsl::SampledTexture, Error>;
 
   void free_sampled_texture(glsl::SampledTexture texture);
 
-  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::StorageTexture;
+  auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
+      -> Result<glsl::StorageTexture, Error>;
 
   void free_storage_texture(glsl::StorageTexture texture);
 };
@@ -72,18 +75,18 @@ public:
 
   auto get_set_layout() const -> Handle<DescriptorSetLayout>;
 
-  auto allocate_sampler(Renderer &renderer,
-                        Handle<Sampler> sampler) -> glsl::SamplerState;
+  auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
+      -> glsl::SamplerState;
 
-  auto allocate_texture(Renderer &renderer,
-                        const TextureView &view) -> glsl::Texture;
+  auto allocate_texture(Renderer &renderer, SrvDesc srv)
+      -> Result<glsl::Texture, Error>;
 
-  auto
-  allocate_sampled_texture(Renderer &renderer, const TextureView &view,
-                           Handle<Sampler> sampler) -> glsl::SampledTexture;
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
+                                Handle<Sampler> sampler)
+      -> Result<glsl::SampledTexture, Error>;
 
-  auto allocate_storage_texture(Renderer &renderer, const TextureView &view)
-      -> glsl::StorageTexture;
+  auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
+      -> Result<glsl::StorageTexture, Error>;
 
   void reset();
 
