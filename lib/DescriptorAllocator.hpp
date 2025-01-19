@@ -1,36 +1,38 @@
 #pragma once
+#include "Descriptors.hpp"
 #include "FreeListAllocator.hpp"
-#include "PipelineLoading.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Result.hpp"
-#include "core/Span.hpp"
 #include "glsl/Texture.h"
 #include "ren/ren.hpp"
-
-#include <vulkan/vulkan.h>
 
 namespace ren {
 
 class Renderer;
 
-struct DescriptorSetLayout;
+class ResourceArena;
 struct Sampler;
 struct SrvDesc;
 struct UavDesc;
 
 class DescriptorAllocator {
-  std::array<VkDescriptorSet, 4> m_sets = {};
-  PersistentDescriptorSetLayouts m_layouts = {};
-  FreeListAllocator m_srvs;
-  FreeListAllocator m_ciss;
-  FreeListAllocator m_uavs;
-  FreeListAllocator m_samplers;
+  Handle<ResourceDescriptorHeap> m_resource_descriptor_heap;
+  Handle<SamplerDescriptorHeap> m_sampler_descriptor_heap;
+  FreeListAllocator m_srv_allocator;
+  FreeListAllocator m_cis_allocator;
+  FreeListAllocator m_uav_allocator;
+  FreeListAllocator m_sampler_allocator;
 
 public:
-  DescriptorAllocator(Span<const VkDescriptorSet> sets,
-                      const PersistentDescriptorSetLayouts &layouts);
+  auto init(ResourceArena &arena) -> Result<void, Error>;
 
-  auto get_sets() const -> Span<const VkDescriptorSet>;
+  auto get_resource_heap() const -> Handle<ResourceDescriptorHeap> {
+    return m_resource_descriptor_heap;
+  }
+
+  auto get_sampler_heap() const -> Handle<SamplerDescriptorHeap> {
+    return m_sampler_descriptor_heap;
+  }
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;
@@ -72,7 +74,13 @@ public:
   DescriptorAllocatorScope &
   operator=(DescriptorAllocatorScope &&other) noexcept;
 
-  auto get_sets() const -> Span<const VkDescriptorSet>;
+  auto get_resource_descriptor_heap() const -> Handle<ResourceDescriptorHeap> {
+    return m_alloc->get_resource_heap();
+  }
+
+  auto get_sampler_descriptor_heap() const -> Handle<SamplerDescriptorHeap> {
+    return m_alloc->get_sampler_heap();
+  }
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;
@@ -91,10 +99,10 @@ public:
 
 private:
   DescriptorAllocator *m_alloc = nullptr;
-  Vector<glsl::Texture> m_srvs;
-  Vector<glsl::SampledTexture> m_ciss;
-  Vector<glsl::StorageTexture> m_uavs;
-  Vector<glsl::SamplerState> m_samplers;
+  Vector<glsl::Texture> m_srv;
+  Vector<glsl::SampledTexture> m_cis;
+  Vector<glsl::StorageTexture> m_uav;
+  Vector<glsl::SamplerState> m_sampler;
 };
 
 }; // namespace ren

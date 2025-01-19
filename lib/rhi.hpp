@@ -130,6 +130,39 @@ void destroy_device(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
+enum class SemaphoreType {
+  Binary,
+  Timeline,
+  Last = Timeline,
+};
+constexpr usize SEMAPHORE_TYPE_COUNT = (usize)SemaphoreType::Last + 1;
+
+struct SemaphoreCreateInfo {
+  Device device = {};
+  SemaphoreType type = SemaphoreType::Timeline;
+  u64 initial_value = 0;
+};
+
+auto create_semaphore(const SemaphoreCreateInfo &create_info)
+    -> Result<Semaphore>;
+
+void destroy_semaphore(Device device, Semaphore semaphore);
+
+enum class WaitResult {
+  Success,
+  Timeout,
+};
+
+struct SemaphoreWaitInfo {
+  Semaphore semaphore;
+  u64 value = 0;
+};
+
+auto wait_for_semaphores(Device device,
+                         TempSpan<const SemaphoreWaitInfo> wait_infos,
+                         std::chrono::nanoseconds timeout)
+    -> Result<WaitResult>;
+
 auto map(Device device, Allocation allocation) -> void *;
 
 // This is empty for now because buffers are just memory. RADV only treats
@@ -335,38 +368,73 @@ auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler>;
 
 void destroy_sampler(Device device, Sampler sampler);
 
-enum class SemaphoreType {
-  Binary,
-  Timeline,
-  Last = Timeline,
-};
-constexpr usize SEMAPHORE_TYPE_COUNT = (usize)SemaphoreType::Last + 1;
-
-struct SemaphoreCreateInfo {
-  Device device = {};
-  SemaphoreType type = SemaphoreType::Timeline;
-  u64 initial_value = 0;
+struct ResourceDescriptorHeapCreateInfo {
+  union {
+    struct {
+      u32 num_srv_descriptors = 0;
+      u32 num_cis_descriptors = 0;
+      u32 num_uav_descriptors = 0;
+    };
+    std::array<u32, 3> num_descriptors;
+  };
 };
 
-auto create_semaphore(const SemaphoreCreateInfo &create_info)
-    -> Result<Semaphore>;
+auto create_resource_descriptor_heap(
+    Device device, const ResourceDescriptorHeapCreateInfo &create_info)
+    -> Result<ResourceDescriptorHeap>;
 
-void destroy_semaphore(Device device, Semaphore semaphore);
+void destroy_resource_descriptor_heap(Device device,
+                                      ResourceDescriptorHeap heap);
 
-enum class WaitResult {
-  Success,
-  Timeout,
+void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
+                                    TempSpan<const SRV> srvs, u32 index);
+
+void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
+                                    TempSpan<const SRV> srvs,
+                                    TempSpan<const Sampler> samplers,
+                                    u32 index);
+
+void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
+                                    TempSpan<const UAV> uavs, u32 index);
+
+auto create_sampler_descriptor_heap(Device device)
+    -> Result<SamplerDescriptorHeap>;
+
+void destroy_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap);
+
+void write_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap,
+                                   TempSpan<const Sampler> samplers, u32 index);
+
+enum class PushDescriptorType {
+  SRV,
+  UAV,
+  CBV,
 };
 
-struct SemaphoreWaitInfo {
-  Semaphore semaphore;
-  u64 value = 0;
+struct PushDescriptor {
+  PushDescriptorType type = {};
+  u32 binding = 0;
 };
 
-auto wait_for_semaphores(Device device,
-                         TempSpan<const SemaphoreWaitInfo> wait_infos,
-                         std::chrono::nanoseconds timeout)
-    -> Result<WaitResult>;
+struct PipelineLayoutCreateInfo {
+  bool use_resource_heap = false;
+  bool use_sampler_heap = false;
+  TempSpan<const PushDescriptor> push_descriptors = {};
+  u32 push_constants_size = 0;
+};
+
+auto create_pipeline_layout(Device device,
+                            const PipelineLayoutCreateInfo &create_info)
+    -> Result<PipelineLayout>;
+
+void destroy_pipeline_layout(Device device, PipelineLayout layout);
+
+enum class PipelineBindPoint {
+  Graphics,
+  Compute,
+  Last = Compute,
+};
+constexpr usize PIPELINE_BIND_POINT_COUNT = (usize)PipelineBindPoint::Last + 1;
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 

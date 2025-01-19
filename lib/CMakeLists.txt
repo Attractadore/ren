@@ -48,7 +48,6 @@ add_library(ren
   CommandAllocator.cpp
   CommandRecorder.cpp
   DescriptorAllocator.cpp
-  Descriptors.cpp
   Formats.cpp
   FreeListAllocator.cpp
   GpuScene.cpp

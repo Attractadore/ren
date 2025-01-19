@@ -305,59 +305,32 @@ void RenderPass::set_depth_compare_op(VkCompareOp op) {
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
   const auto &pipeline = m_renderer->get_graphics_pipeline(handle);
   m_pipeline_layout = pipeline.layout;
-  m_shader_stages = pipeline.stages;
   vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.handle);
 }
 
-namespace {
-
-void bind_descriptor_sets(Renderer &renderer, VkCommandBuffer cmd_buffer,
-                          VkPipelineBindPoint bind_point,
-                          Handle<PipelineLayout> handle,
-                          TempSpan<const VkDescriptorSet> sets, u32 first_set) {
-  const PipelineLayout &layout = renderer.get_pipeline_layout(handle);
-  i32 last_set = std::min(first_set + sets.size(), layout.set_layouts.size());
-  i32 num_sets = last_set - first_set;
-  for (i32 i = 0; i < num_sets; ++i) {
-    if (layout.set_layouts[i + first_set]) {
-      vkCmdBindDescriptorSets(cmd_buffer, bind_point, layout.handle,
-                              first_set + i, 1, &sets[i], 0, nullptr);
-    }
-  }
-}
-
-} // namespace
-
-void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
-                                      TempSpan<const VkDescriptorSet> sets,
-                                      unsigned first_set) {
-  ren::bind_descriptor_sets(*m_renderer, m_cmd_buffer,
-                            VK_PIPELINE_BIND_POINT_GRAPHICS, layout, sets,
-                            first_set);
+void RenderPass::set_descriptor_heaps(
+    Handle<ResourceDescriptorHeap> resource_heap,
+    Handle<SamplerDescriptorHeap> sampler_heap) {
+  rhi::vk::cmd_set_descriptor_heaps(
+      m_renderer->get_rhi_device(), m_cmd_buffer,
+      rhi::PipelineBindPoint::Graphics,
+      m_renderer->get_resource_descriptor_heap(resource_heap).handle,
+      m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
 }
 
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
-                                    VkShaderStageFlags stages,
                                     TempSpan<const std::byte> data,
                                     unsigned offset) {
-  ren_assert_msg((stages & VK_SHADER_STAGE_ALL_GRAPHICS) == stages,
-                 "Only graphics shader stages must be used");
   vkCmdPushConstants(m_cmd_buffer,
-                     m_renderer->get_pipeline_layout(layout).handle, stages,
-                     offset, data.size(), data.data());
-}
-
-void RenderPass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
-                                      unsigned first_set) {
-  ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
-  bind_descriptor_sets(m_pipeline_layout, sets, first_set);
+                     m_renderer->get_pipeline_layout(layout).handle.handle,
+                     VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
 }
 
 void RenderPass::set_push_constants(TempSpan<const std::byte> data,
                                     unsigned offset) {
   ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
-  set_push_constants(m_pipeline_layout, m_shader_stages, data, offset);
+  set_push_constants(m_pipeline_layout, data, offset);
 }
 
 void RenderPass::bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
@@ -457,26 +430,22 @@ void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
                     pipeline.handle);
 }
 
-void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
-                                       TempSpan<const VkDescriptorSet> sets,
-                                       unsigned first_set) {
-  ren::bind_descriptor_sets(*m_renderer, m_cmd_buffer,
-                            VK_PIPELINE_BIND_POINT_COMPUTE, layout, sets,
-                            first_set);
-}
-
-void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
-                                       unsigned first_set) {
-  ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
-  bind_descriptor_sets(m_pipeline_layout, sets, first_set);
+void ComputePass::set_descriptor_heaps(
+    Handle<ResourceDescriptorHeap> resource_heap,
+    Handle<SamplerDescriptorHeap> sampler_heap) {
+  rhi::vk::cmd_set_descriptor_heaps(
+      m_renderer->get_rhi_device(), m_cmd_buffer,
+      rhi::PipelineBindPoint::Compute,
+      m_renderer->get_resource_descriptor_heap(resource_heap).handle,
+      m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
 }
 
 void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
                                      TempSpan<const std::byte> data,
                                      unsigned offset) {
-  vkCmdPushConstants(
-      m_cmd_buffer, m_renderer->get_pipeline_layout(layout).handle,
-      VK_SHADER_STAGE_COMPUTE_BIT, offset, data.size(), data.data());
+  vkCmdPushConstants(m_cmd_buffer,
+                     m_renderer->get_pipeline_layout(layout).handle.handle,
+                     VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
 }
 
 void ComputePass::set_push_constants(TempSpan<const std::byte> data,

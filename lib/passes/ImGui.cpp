@@ -39,11 +39,11 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
     indices += cmd_list->IdxBuffer.Size;
   }
 
+  render_pass.set_descriptor_heaps(rg.get_resource_descriptor_heap(), rg.get_sampler_descriptor_heap());
+
   render_pass.bind_graphics_pipeline(rcs.pipeline);
 
   render_pass.bind_index_buffer(index_buffer);
-
-  render_pass.bind_descriptor_sets(rg.get_sets());
 
   glm::vec2 clip_offset = {draw_data->DisplayPos.x, draw_data->DisplayPos.y};
   glm::vec2 clip_scale = {draw_data->FramebufferScale.x,

@@ -181,7 +181,7 @@ private:
 
   ResourceArena m_arena;
   ResourceArena m_fif_arena;
-  std::unique_ptr<DescriptorAllocator> m_descriptor_allocator;
+  DescriptorAllocator m_descriptor_allocator;
   SmallVector<ScenePerFrameResources, 3> m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
   u64 m_frame_index = 0;

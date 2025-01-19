@@ -1,4 +1,5 @@
 #include "Opaque.hpp"
+#include "../Formats.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"

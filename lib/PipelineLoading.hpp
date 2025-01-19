@@ -5,16 +5,6 @@
 
 namespace ren {
 
-struct PersistentDescriptorSetLayouts {
-  Handle<DescriptorSetLayout> srv;
-  Handle<DescriptorSetLayout> cis;
-  Handle<DescriptorSetLayout> uav;
-  Handle<DescriptorSetLayout> sampler;
-};
-
-auto create_persistent_descriptor_set_layout(ResourceArena &arena)
-    -> PersistentDescriptorSetLayouts;
-
 struct Pipelines {
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
@@ -30,8 +20,6 @@ struct Pipelines {
   Handle<GraphicsPipeline> imgui_pass;
 };
 
-auto load_pipelines(
-    ResourceArena &arena,
-    const PersistentDescriptorSetLayouts &persistent_set_layouts) -> Pipelines;
+auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error>;
 
 } // namespace ren

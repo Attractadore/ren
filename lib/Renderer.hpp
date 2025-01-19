@@ -57,10 +57,8 @@ class Renderer final : public IRenderer {
 
   GenArray<Semaphore> m_semaphores;
 
-  GenArray<DescriptorPool> m_descriptor_pools;
-
-  GenArray<DescriptorSetLayout> m_descriptor_set_layouts;
-  VkDescriptorSetLayout m_empty_set_layout;
+  GenArray<ResourceDescriptorHeap> m_resource_descriptor_heaps;
+  GenArray<SamplerDescriptorHeap> m_sampler_descriptor_heaps;
 
   GenArray<PipelineLayout> m_pipeline_layouts;
 
@@ -91,44 +89,6 @@ public:
   auto get_allocator() const -> VmaAllocator {
     return rhi::vk::get_vma_allocator(m_device);
   }
-
-  [[nodiscard]] auto create_descriptor_set_layout(
-      const DescriptorSetLayoutCreateInfo &&create_info)
-      -> Handle<DescriptorSetLayout>;
-
-  void destroy(Handle<DescriptorSetLayout> layout);
-
-  auto try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
-      -> Optional<const DescriptorSetLayout &>;
-
-  auto get_descriptor_set_layout(Handle<DescriptorSetLayout> layout) const
-      -> const DescriptorSetLayout &;
-
-  [[nodiscard]] auto
-  create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
-      -> Handle<DescriptorPool>;
-
-  void destroy(Handle<DescriptorPool>);
-
-  auto try_get_descriptor_pool(Handle<DescriptorPool> layout) const
-      -> Optional<const DescriptorPool &>;
-
-  auto get_descriptor_pool(Handle<DescriptorPool> layout) const
-      -> const DescriptorPool &;
-
-  void reset_descriptor_pool(Handle<DescriptorPool> pool) const;
-
-  [[nodiscard]] auto
-  allocate_descriptor_sets(Handle<DescriptorPool> pool,
-                           TempSpan<const Handle<DescriptorSetLayout>> layouts,
-                           VkDescriptorSet *sets) const -> bool;
-  [[nodiscard]] auto
-  allocate_descriptor_set(Handle<DescriptorPool> pool,
-                          Handle<DescriptorSetLayout> layout) const
-      -> Optional<VkDescriptorSet>;
-
-  void
-  write_descriptor_sets(TempSpan<const VkWriteDescriptorSet> configs) const;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> Result<Handle<Buffer>, Error>;
@@ -231,9 +191,27 @@ public:
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
 
+  [[nodiscard]] auto create_resource_descriptor_heap(
+      const ResourceDescriptorHeapCreateInfo &&create_info)
+      -> Result<Handle<ResourceDescriptorHeap>, Error>;
+
+  void destroy(Handle<ResourceDescriptorHeap> heap);
+
+  auto get_resource_descriptor_heap(Handle<ResourceDescriptorHeap> heap) const
+      -> const ResourceDescriptorHeap &;
+
+  [[nodiscard]] auto create_sampler_descriptor_heap(
+      const SamplerDescriptorHeapCreateInfo &&create_info)
+      -> Result<Handle<SamplerDescriptorHeap>, Error>;
+
+  void destroy(Handle<SamplerDescriptorHeap> heap);
+
+  auto get_sampler_descriptor_heap(Handle<SamplerDescriptorHeap> heap) const
+      -> const SamplerDescriptorHeap &;
+
   [[nodiscard]] auto
   create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
-      -> Handle<PipelineLayout>;
+      -> Result<Handle<PipelineLayout>, Error>;
 
   void destroy(Handle<PipelineLayout> layout);
 

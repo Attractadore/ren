@@ -23,20 +23,7 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
-  PersistentDescriptorSetLayouts layouts =
-      create_persistent_descriptor_set_layout(m_arena);
-
-  VkDescriptorSet sets[4] = {};
-  std::tie(std::ignore, sets[glsl::SRV_SET]) =
-      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.srv);
-  std::tie(std::ignore, sets[glsl::CIS_SET]) =
-      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.cis);
-  std::tie(std::ignore, sets[glsl::UAV_SET]) =
-      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.uav);
-  std::tie(std::ignore, sets[glsl::SAMPLER_SET]) =
-      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.sampler);
-
-  m_descriptor_allocator = std::make_unique<DescriptorAllocator>(sets, layouts);
+  m_descriptor_allocator.init(m_arena).value();
 
   m_samplers = {
       .hi_z_gen =
@@ -63,7 +50,7 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
                   .value(),
   };
 
-  m_pipelines = load_pipelines(m_arena, layouts);
+  m_pipelines = load_pipelines(m_arena).value();
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer);
 
@@ -97,7 +84,7 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
             UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
         .cmd_allocator = CommandAllocator(*m_renderer),
         .descriptor_allocator =
-            DescriptorAllocatorScope(*m_descriptor_allocator),
+            DescriptorAllocatorScope(m_descriptor_allocator),
     });
   }
   m_graphics_time = m_num_frames_in_flight;
@@ -299,7 +286,7 @@ auto Scene::get_or_create_texture(Handle<Image> image,
           .anisotropy = 16.0f,
       }));
   ren_try(glsl::SampledTexture texture,
-          m_descriptor_allocator->allocate_sampled_texture(
+          m_descriptor_allocator.allocate_sampled_texture(
               *m_renderer, SrvDesc{m_images[image]}, sampler));
   return glsl::SampledTexture2D(texture);
 }

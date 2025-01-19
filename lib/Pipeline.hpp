@@ -1,12 +1,12 @@
 #pragma once
 #include "Config.hpp"
 #include "DebugNames.hpp"
-#include "Formats.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Optional.hpp"
 #include "core/Span.hpp"
 #include "core/Variant.hpp"
 #include "core/Vector.hpp"
+#include "rhi.hpp"
 
 #include <glm/glm.hpp>
 
@@ -19,14 +19,18 @@ constexpr DynamicState DYNAMIC;
 
 struct PipelineLayoutCreateInfo {
   REN_DEBUG_NAME_FIELD("Pipeline layout");
-  TempSpan<const Handle<DescriptorSetLayout>> set_layouts;
-  VkPushConstantRange push_constants;
+  bool use_resource_heap = false;
+  bool use_sampler_heap = false;
+  TempSpan<const rhi::PushDescriptor> push_descriptors = {};
+  u32 push_constants_size = 0;
 };
 
 struct PipelineLayout {
-  VkPipelineLayout handle;
-  StaticVector<Handle<DescriptorSetLayout>, MAX_DESCRIPTOR_SETS> set_layouts;
-  VkPushConstantRange push_constants;
+  rhi::PipelineLayout handle;
+  bool use_resource_heap = false;
+  bool use_sampler_heap = false;
+  Vector<rhi::PushDescriptor> push_descriptors;
+  u32 push_constants_size = 0;
 };
 
 struct SpecConstant {

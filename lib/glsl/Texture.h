@@ -19,16 +19,17 @@ static_assert(TEXTURE_ID_SIZE == sizeof(TEXTURE_ID_TYPE));
 const uint SAMPLER_ID_SIZE = 4;
 static_assert(SAMPLER_ID_SIZE == sizeof(SAMPLER_ID_TYPE));
 
-// FIXME: minimum required maxPerStageUpdateAfterBindResources value required by
+// FIXME: minimum maxPerStageUpdateAfterBindResources value required by
 // Vulkan spec. Fetch dynamically based on device and clamp to some value
 // instead.
 const uint MAX_NUM_RESOURCES = 500 * 1000;
-const uint NUM_SAMPLERS = 2048;
+const uint MAX_NUM_SAMPLERS = 2048;
 
 const uint SRV_SET = 0;
 const uint CIS_SET = 1;
 const uint UAV_SET = 2;
 const uint SAMPLER_SET = 3;
+const uint BUFFER_SET = 4;
 
 #if GL_core_profile
 

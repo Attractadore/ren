@@ -17,7 +17,7 @@ layout(binding = 0, set = CIS_SET) uniform sampler2D g_sampled_textures_2d[];
 layout(binding = 0, set = UAV_SET) restrict uniform image2D g_storage_textures_2d[];
 layout(binding = 0, set = UAV_SET) coherent restrict uniform image2D g_coherent_storage_textures_2d[];
 
-layout(binding = 0, set = SAMPLER_SET) uniform sampler g_samplers[NUM_SAMPLERS];
+layout(binding = 0, set = SAMPLER_SET) uniform sampler g_samplers[MAX_NUM_SAMPLERS];
 // clang-format on
 
 #define MAKE_SAMPLER_2D(s, t) sampler2D(g_textures_2d[t.id], g_samplers[s.id])

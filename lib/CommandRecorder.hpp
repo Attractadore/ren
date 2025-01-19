@@ -2,6 +2,7 @@
 #include "Attachments.hpp"
 #include "Buffer.hpp"
 #include "Config.hpp"
+#include "Descriptors.hpp"
 #include "Texture.hpp"
 #include "core/Assert.hpp"
 #include "core/Optional.hpp"
@@ -149,7 +150,6 @@ class RenderPass {
   Renderer *m_renderer = nullptr;
   VkCommandBuffer m_cmd_buffer = nullptr;
   Handle<PipelineLayout> m_pipeline_layout;
-  VkShaderStageFlags m_shader_stages = 0;
 
   friend class CommandRecorder;
   RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
@@ -171,31 +171,27 @@ public:
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
-  void bind_descriptor_sets(Handle<PipelineLayout> layout,
-                            TempSpan<const VkDescriptorSet> sets,
-                            unsigned first_set = 0);
-
-  void bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
-                            unsigned first_set = 0);
+  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
+                            Handle<SamplerDescriptorHeap> sampler_heap);
 
   void set_push_constants(Handle<PipelineLayout> layout,
-                          VkShaderStageFlags stages,
                           TempSpan<const std::byte> data, unsigned offset = 0);
-
-  void set_push_constants(Handle<PipelineLayout> layout,
-                          VkShaderStageFlags stages, const auto &data,
-                          unsigned offset = 0) {
-    set_push_constants(layout, stages, TempSpan(&data, 1).as_bytes(), offset);
-  }
 
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
     requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
+                          unsigned offset = 0) {
+    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
+  }
+
+  template <typename T>
+    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
   void set_push_constants(const T &data, unsigned offset = 0) {
     ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
-    set_push_constants(m_pipeline_layout, m_shader_stages,
-                       TempSpan(&data, 1).as_bytes(), offset);
+    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
+                       offset);
   }
 
   void bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
@@ -247,19 +243,17 @@ public:
 
   void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
 
-  void bind_descriptor_sets(Handle<PipelineLayout> layout,
-                            TempSpan<const VkDescriptorSet> sets,
-                            unsigned first_set = 0);
-
-  void bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,
-                            unsigned first_set = 0);
+  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
+                            Handle<SamplerDescriptorHeap> sampler_heap);
 
   void set_push_constants(Handle<PipelineLayout> layout,
                           TempSpan<const std::byte> data, unsigned offset = 0);
 
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
-  void set_push_constants(Handle<PipelineLayout> layout, const auto &data,
+  template <typename T>
+    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
                           unsigned offset = 0) {
     set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
   }

@@ -1235,7 +1235,10 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_rgp = m_rgp;
   rg.m_data = m_rt_data;
   rg.m_upload_allocator = &upload_allocator;
-  std::ranges::copy(m_descriptor_allocator->get_sets(), rg.m_sets.data());
+  rg.m_resource_descriptor_heap =
+      m_descriptor_allocator->get_resource_descriptor_heap();
+  rg.m_sampler_descriptor_heap =
+      m_descriptor_allocator->get_sampler_descriptor_heap();
   rg.m_semaphores = &m_rgp->m_semaphores;
 
   return rg;
@@ -1602,10 +1605,6 @@ auto RgRuntime::try_get_storage_texture_descriptor(RgTextureToken texture,
   glsl::StorageTexture descriptor = descriptors.storage[mip];
   ren_assert(descriptor);
   return descriptor;
-}
-
-auto RgRuntime::get_sets() const -> Span<const VkDescriptorSet> {
-  return m_rg->m_sets;
 }
 
 auto RgRuntime::get_allocator() const -> UploadBumpAllocator & {

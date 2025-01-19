@@ -18,6 +18,7 @@ constexpr VkObjectType ObjectType = VK_OBJECT_TYPE_UNKNOWN;
 define_object_type(VkBuffer, VK_OBJECT_TYPE_BUFFER);
 define_object_type(VkDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL);
 define_object_type(VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT);
+define_object_type(VkDescriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET);
 define_object_type(VkImage, VK_OBJECT_TYPE_IMAGE);
 define_object_type(VkPipeline, VK_OBJECT_TYPE_PIPELINE);
 define_object_type(VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT);
@@ -72,20 +73,10 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
 
   m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
 
-  {
-    VkDescriptorSetLayoutCreateInfo layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    };
-    throw_if_failed(vkCreateDescriptorSetLayout(get_device(), &layout_info,
-                                                nullptr, &m_empty_set_layout),
-                    "Vulkan: failed to create descriptor set layout");
-  }
-
   return {};
 }
 
 Renderer::~Renderer() {
-  vkDestroyDescriptorSetLayout(get_device(), m_empty_set_layout, nullptr);
   wait_idle();
   rhi::destroy_device(m_device);
   rhi::exit();
@@ -99,199 +90,6 @@ auto Renderer::create_scene(ISwapchain &swapchain)
 void Renderer::wait_idle() {
   throw_if_failed(vkDeviceWaitIdle(get_device()),
                   "Vulkan: Failed to wait for idle device");
-}
-
-auto Renderer::create_descriptor_pool(
-    const DescriptorPoolCreateInfo &&create_info) -> Handle<DescriptorPool> {
-  StaticVector<VkDescriptorPoolSize, MAX_DESCIPTOR_BINDINGS> pool_sizes;
-
-  for (int i = 0; i < DESCRIPTOR_TYPE_COUNT; ++i) {
-    auto type = static_cast<VkDescriptorType>(i);
-    auto count = create_info.pool_sizes[type];
-    if (count > 0) {
-      pool_sizes.push_back({
-          .type = type,
-          .descriptorCount = count,
-      });
-    }
-  }
-
-  VkDescriptorPoolCreateInfo pool_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .flags = create_info.flags,
-      .maxSets = create_info.set_count,
-      .poolSizeCount = unsigned(pool_sizes.size()),
-      .pPoolSizes = pool_sizes.data(),
-  };
-
-  VkDescriptorPool pool;
-  throw_if_failed(
-      vkCreateDescriptorPool(get_device(), &pool_info, nullptr, &pool),
-      "Vulkan: Failed to create descriptor pool");
-  set_debug_name(get_device(), pool, create_info.name);
-
-  return (m_descriptor_pools.emplace(DescriptorPool{
-      .handle = pool,
-      .flags = create_info.flags,
-      .set_count = create_info.set_count,
-      .pool_sizes = create_info.pool_sizes,
-  }));
-}
-
-void Renderer::destroy(Handle<DescriptorPool> pool) {
-  m_descriptor_pools.try_pop(pool).map([&](const DescriptorPool &pool) {
-    vkDestroyDescriptorPool(get_device(), pool.handle, nullptr);
-  });
-}
-
-auto Renderer::try_get_descriptor_pool(Handle<DescriptorPool> pool) const
-    -> Optional<const DescriptorPool &> {
-  return m_descriptor_pools.try_get(pool);
-}
-
-auto Renderer::get_descriptor_pool(Handle<DescriptorPool> pool) const
-    -> const DescriptorPool & {
-  ren_assert(m_descriptor_pools.contains(pool));
-  return m_descriptor_pools[pool];
-}
-
-void Renderer::reset_descriptor_pool(Handle<DescriptorPool> pool) const {
-  throw_if_failed(
-      vkResetDescriptorPool(get_device(), get_descriptor_pool(pool).handle, 0),
-      "Vulkan: Failed to reset descriptor pool");
-}
-
-auto Renderer::create_descriptor_set_layout(
-    const DescriptorSetLayoutCreateInfo &&create_info)
-    -> Handle<DescriptorSetLayout> {
-
-  StaticVector<VkDescriptorBindingFlags, MAX_DESCIPTOR_BINDINGS> binding_flags;
-  StaticVector<VkDescriptorSetLayoutBinding, MAX_DESCIPTOR_BINDINGS> bindings;
-
-  for (const auto &[index, binding] :
-       create_info.bindings | std::views::enumerate) {
-    if (binding.count == 0) {
-      continue;
-    }
-    binding_flags.push_back(binding.flags);
-    bindings.push_back({
-        .binding = unsigned(index),
-        .descriptorType = binding.type,
-        .descriptorCount = binding.count,
-        .stageFlags = binding.stages,
-    });
-  }
-
-  VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
-      .sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-      .bindingCount = unsigned(binding_flags.size()),
-      .pBindingFlags = binding_flags.data(),
-  };
-
-  VkDescriptorSetLayoutCreateInfo layout_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .pNext = &binding_flags_info,
-      .flags = create_info.flags,
-      .bindingCount = unsigned(bindings.size()),
-      .pBindings = bindings.data(),
-  };
-
-  VkDescriptorSetLayout layout;
-  throw_if_failed(
-      vkCreateDescriptorSetLayout(get_device(), &layout_info, nullptr, &layout),
-      "Vulkann: Failed to create descriptor set layout");
-  set_debug_name(get_device(), layout, create_info.name);
-
-  return m_descriptor_set_layouts.emplace(DescriptorSetLayout{
-      .handle = layout,
-      .flags = create_info.flags,
-      .bindings = create_info.bindings,
-  });
-}
-
-void Renderer::destroy(Handle<DescriptorSetLayout> layout) {
-  m_descriptor_set_layouts.try_pop(layout).map(
-      [&](const DescriptorSetLayout &layout) {
-        vkDestroyDescriptorSetLayout(get_device(), layout.handle, nullptr);
-      });
-}
-
-auto Renderer::try_get_descriptor_set_layout(Handle<DescriptorSetLayout> layout)
-    const -> Optional<const DescriptorSetLayout &> {
-  return m_descriptor_set_layouts.try_get(layout);
-}
-
-auto Renderer::get_descriptor_set_layout(
-    Handle<DescriptorSetLayout> layout) const -> const DescriptorSetLayout & {
-  ren_assert(m_descriptor_set_layouts.contains(layout));
-  return m_descriptor_set_layouts[layout];
-}
-
-auto Renderer::allocate_descriptor_sets(
-    Handle<DescriptorPool> pool,
-    TempSpan<const Handle<DescriptorSetLayout>> layouts,
-    VkDescriptorSet *sets) const -> bool {
-  SmallVector<VkDescriptorSetLayout> vk_layouts(layouts.size());
-  SmallVector<u32> counts(layouts.size());
-  for (usize i : range(layouts.size())) {
-    const DescriptorSetLayout &layout = get_descriptor_set_layout(layouts[i]);
-    vk_layouts[i] = layout.handle;
-    auto it = std::ranges::find_if(
-        layout.bindings, [](const DescriptorBinding &binding) {
-          return binding.flags &
-                 VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
-        });
-    if (it != layout.bindings.end()) {
-      counts[i] = it->count;
-    }
-  }
-
-  // TODO: add option to allocate only as many as needed.
-  VkDescriptorSetVariableDescriptorCountAllocateInfo variable_count_info = {
-      .sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
-      .descriptorSetCount = (u32)layouts.size(),
-      .pDescriptorCounts = counts.data(),
-  };
-
-  VkDescriptorSetAllocateInfo alloc_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .pNext = &variable_count_info,
-      .descriptorPool = get_descriptor_pool(pool).handle,
-      .descriptorSetCount = unsigned(vk_layouts.size()),
-      .pSetLayouts = vk_layouts.data(),
-  };
-
-  auto result = vkAllocateDescriptorSets(get_device(), &alloc_info, sets);
-  switch (result) {
-  default: {
-    throw_if_failed(result, "Vulkan: Failed to allocate descriptor sets");
-  }
-  case VK_SUCCESS: {
-    return true;
-  }
-  case VK_ERROR_FRAGMENTED_POOL:
-  case VK_ERROR_OUT_OF_POOL_MEMORY: {
-    return false;
-  }
-  }
-}
-
-auto Renderer::allocate_descriptor_set(Handle<DescriptorPool> pool,
-                                       Handle<DescriptorSetLayout> layout) const
-    -> Optional<VkDescriptorSet> {
-  VkDescriptorSet set;
-  if (allocate_descriptor_sets(pool, {&layout, 1}, &set)) {
-    return set;
-  }
-  return None;
-}
-
-void Renderer::write_descriptor_sets(
-    TempSpan<const VkWriteDescriptorSet> configs) const {
-  vkUpdateDescriptorSets(get_device(), configs.size(), configs.data(), 0,
-                         nullptr);
 }
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
@@ -555,6 +353,58 @@ auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
   return m_samplers[sampler];
 }
 
+auto Renderer::create_resource_descriptor_heap(
+    const ResourceDescriptorHeapCreateInfo &&create_info)
+    -> Result<Handle<ResourceDescriptorHeap>, Error> {
+  ren_try(rhi::ResourceDescriptorHeap heap,
+          rhi::create_resource_descriptor_heap(
+              m_device, {.num_descriptors = create_info.num_descriptors}));
+  set_debug_name(get_device(), heap.pool, create_info.name);
+  for (VkDescriptorSet set : heap.sets) {
+    set_debug_name(get_device(), set, create_info.name);
+  }
+  return m_resource_descriptor_heaps.emplace(ResourceDescriptorHeap{
+      .handle = heap,
+      .num_descriptors = create_info.num_descriptors,
+  });
+}
+
+void Renderer::destroy(Handle<ResourceDescriptorHeap> heap) {
+  m_resource_descriptor_heaps.try_pop(heap).transform(
+      [&](const ResourceDescriptorHeap &heap) {
+        rhi::destroy_resource_descriptor_heap(m_device, heap.handle);
+      });
+}
+
+auto Renderer::get_resource_descriptor_heap(Handle<ResourceDescriptorHeap> heap)
+    const -> const ResourceDescriptorHeap & {
+  return m_resource_descriptor_heaps[heap];
+}
+
+auto Renderer::create_sampler_descriptor_heap(
+    const SamplerDescriptorHeapCreateInfo &&create_info)
+    -> Result<Handle<SamplerDescriptorHeap>, Error> {
+  ren_try(rhi::SamplerDescriptorHeap heap,
+          rhi::create_sampler_descriptor_heap(m_device));
+  set_debug_name(get_device(), heap.pool, create_info.name);
+  set_debug_name(get_device(), heap.set, create_info.name);
+  return m_sampler_descriptor_heaps.emplace(SamplerDescriptorHeap{
+      .handle = heap,
+  });
+}
+
+void Renderer::destroy(Handle<SamplerDescriptorHeap> heap) {
+  m_sampler_descriptor_heaps.try_pop(heap).transform(
+      [&](const SamplerDescriptorHeap &heap) {
+        rhi::destroy_sampler_descriptor_heap(m_device, heap.handle);
+      });
+}
+
+auto Renderer::get_sampler_descriptor_heap(
+    Handle<SamplerDescriptorHeap> heap) const -> const SamplerDescriptorHeap & {
+  return m_sampler_descriptor_heaps[heap];
+}
+
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
     -> Result<Handle<Semaphore>, Error> {
   ren_try(rhi::Semaphore semaphore,
@@ -795,7 +645,7 @@ auto Renderer::create_graphics_pipeline(
       .pDepthStencilState = &depth_stencil_info,
       .pColorBlendState = &blend_info,
       .pDynamicState = &dynamic_state_info,
-      .layout = get_pipeline_layout(create_info.layout).handle,
+      .layout = get_pipeline_layout(create_info.layout).handle.handle,
   };
 
   VkPipeline pipeline;
@@ -861,7 +711,7 @@ auto Renderer::create_compute_pipeline(
               .module = module,
               .pName = create_info.shader.entry_point,
           },
-      .layout = get_pipeline_layout(create_info.layout).handle,
+      .layout = get_pipeline_layout(create_info.layout).handle.handle,
   };
 
   VkPipeline pipeline;
@@ -897,41 +747,30 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
 }
 
 auto Renderer::create_pipeline_layout(
-    const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout> {
-  VkDescriptorSetLayout set_layouts[MAX_DESCRIPTOR_SETS] = {};
-  for (usize i : range(create_info.set_layouts.size())) {
-    if (Optional<DescriptorSetLayout> set_layout =
-            try_get_descriptor_set_layout(create_info.set_layouts[i])) {
-      set_layouts[i] = set_layout->handle;
-    } else {
-      set_layouts[i] = m_empty_set_layout;
-    }
-  }
-
-  VkPipelineLayoutCreateInfo layout_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = (u32)create_info.set_layouts.size(),
-      .pSetLayouts = set_layouts,
-      .pushConstantRangeCount = create_info.push_constants.size > 0 ? 1u : 0u,
-      .pPushConstantRanges = &create_info.push_constants,
-  };
-
-  VkPipelineLayout layout;
-  throw_if_failed(
-      vkCreatePipelineLayout(get_device(), &layout_info, nullptr, &layout),
-      "Vulkan: Failed to create pipeline layout");
-  set_debug_name(get_device(), layout, create_info.name);
-
+    const PipelineLayoutCreateInfo &&create_info)
+    -> Result<Handle<PipelineLayout>, Error> {
+  ren_try(
+      rhi::PipelineLayout layout,
+      rhi::create_pipeline_layout(
+          m_device, {
+                        .use_resource_heap = create_info.use_resource_heap,
+                        .use_sampler_heap = create_info.use_sampler_heap,
+                        .push_descriptors = create_info.push_descriptors,
+                        .push_constants_size = create_info.push_constants_size,
+                    }));
+  set_debug_name(get_device(), layout.handle, create_info.name);
   return m_pipeline_layouts.emplace(PipelineLayout{
       .handle = layout,
-      .set_layouts{create_info.set_layouts},
-      .push_constants = create_info.push_constants,
+      .use_resource_heap = create_info.use_resource_heap,
+      .use_sampler_heap = create_info.use_sampler_heap,
+      .push_descriptors = create_info.push_descriptors,
+      .push_constants_size = create_info.push_constants_size,
   });
 }
 
 void Renderer::destroy(Handle<PipelineLayout> layout) {
   m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
-    vkDestroyPipelineLayout(get_device(), layout.handle, nullptr);
+    rhi::destroy_pipeline_layout(m_device, layout.handle);
   });
 }
 

@@ -1,52 +1,39 @@
 #pragma once
-#include "Config.hpp"
 #include "DebugNames.hpp"
-#include "core/GenIndex.hpp"
-
-#include <array>
-#include <vulkan/vulkan.h>
+#include "rhi.hpp"
 
 namespace ren {
 
-class Renderer;
-class ResourceArena;
-
-struct DescriptorPoolCreateInfo {
-  REN_DEBUG_NAME_FIELD("Descriptor pool");
-  VkDescriptorPoolCreateFlags flags;
-  unsigned set_count;
-  std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
+struct ResourceDescriptorHeapCreateInfo {
+  REN_DEBUG_NAME_FIELD("Resource descriptor heap");
+  union {
+    struct {
+      u32 num_srv_descriptors = 0;
+      u32 num_cis_descriptors = 0;
+      u32 num_uav_descriptors = 0;
+    };
+    std::array<u32, 3> num_descriptors;
+  };
 };
 
-struct DescriptorPool {
-  VkDescriptorPool handle;
-  VkDescriptorPoolCreateFlags flags;
-  unsigned set_count;
-  std::array<unsigned, DESCRIPTOR_TYPE_COUNT> pool_sizes;
+struct SamplerDescriptorHeapCreateInfo {
+  REN_DEBUG_NAME_FIELD("Sampler descriptor heap");
 };
 
-struct DescriptorBinding {
-  VkDescriptorBindingFlags flags;
-  VkDescriptorType type;
-  unsigned count;
-  VkShaderStageFlags stages;
+struct ResourceDescriptorHeap {
+  rhi::ResourceDescriptorHeap handle;
+  union {
+    struct {
+      u32 num_srv_descriptors = 0;
+      u32 num_cis_descriptors = 0;
+      u32 num_uav_descriptors = 0;
+    };
+    std::array<u32, 3> num_descriptors;
+  };
 };
 
-struct DescriptorSetLayoutCreateInfo {
-  REN_DEBUG_NAME_FIELD("Descriptor set layout");
-  VkDescriptorSetLayoutCreateFlags flags;
-  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
+struct SamplerDescriptorHeap {
+  rhi::SamplerDescriptorHeap handle;
 };
-
-struct DescriptorSetLayout {
-  VkDescriptorSetLayout handle;
-  VkDescriptorSetLayoutCreateFlags flags;
-  std::array<DescriptorBinding, MAX_DESCIPTOR_BINDINGS> bindings;
-};
-
-[[nodiscard]] auto
-allocate_descriptor_pool_and_set(Renderer &renderer, ResourceArena &arena,
-                                 Handle<DescriptorSetLayout> layout)
-    -> std::tuple<Handle<DescriptorPool>, VkDescriptorSet>;
 
 } // namespace ren

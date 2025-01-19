@@ -61,22 +61,24 @@ public:
     return insert(m_renderer->create_semaphore(std::move(create_info)));
   }
 
-  auto create_descriptor_pool(const DescriptorPoolCreateInfo &&create_info)
-    requires IsArenaResource<DescriptorPool>
-  {
-    return insert(m_renderer->create_descriptor_pool(std::move(create_info)));
-  }
-
-  auto create_descriptor_set_layout(
-      const DescriptorSetLayoutCreateInfo &&create_info)
-    requires IsArenaResource<DescriptorSetLayout>
+  auto create_resource_descriptor_heap(
+      const ResourceDescriptorHeapCreateInfo &&create_info)
+    requires IsArenaResource<ResourceDescriptorHeap>
   {
     return insert(
-        m_renderer->create_descriptor_set_layout(std::move(create_info)));
+        m_renderer->create_resource_descriptor_heap(std::move(create_info)));
+  }
+
+  auto create_sampler_descriptor_heap(
+      const SamplerDescriptorHeapCreateInfo &&create_info)
+    requires IsArenaResource<SamplerDescriptorHeap>
+  {
+    return insert(
+        m_renderer->create_sampler_descriptor_heap(std::move(create_info)));
   }
 
   auto create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
-      -> Handle<PipelineLayout>
+      -> Result<Handle<PipelineLayout>, Error>
     requires IsArenaResource<PipelineLayout>
   {
     return insert(m_renderer->create_pipeline_layout(std::move(create_info)));
@@ -134,8 +136,8 @@ private:
 };
 
 using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, ComputePipeline, DescriptorPool,
-                      DescriptorSetLayout, GraphicsPipeline, PipelineLayout,
+    ResourceArenaImpl<Buffer, ComputePipeline, ResourceDescriptorHeap,
+                      SamplerDescriptorHeap, GraphicsPipeline, PipelineLayout,
                       Sampler, Semaphore, Texture>;
 
 } // namespace detail

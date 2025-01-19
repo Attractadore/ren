@@ -14,6 +14,7 @@ struct VolkDeviceTable;
 namespace ren::rhi {
 
 enum class QueueFamily;
+enum class PipelineBindPoint;
 
 namespace vk {
 
@@ -72,6 +73,27 @@ struct RTV {
 struct Sampler {
   VkSampler handle = nullptr;
 };
+
+#define REN_RHI_MUTABLE_DESCRIPTORS 0
+
+struct ResourceDescriptorHeap {
+  VkDescriptorPool pool = nullptr;
+  VkDescriptorSet sets[3] = {};
+};
+
+struct SamplerDescriptorHeap {
+  VkDescriptorPool pool = nullptr;
+  VkDescriptorSet set = nullptr;
+};
+
+struct PipelineLayout {
+  VkPipelineLayout handle = nullptr;
+};
+
+void cmd_set_descriptor_heaps(Device device, VkCommandBuffer cmd_buffer,
+                              PipelineBindPoint bind_point,
+                              ResourceDescriptorHeap resource_heap,
+                              SamplerDescriptorHeap sampler_heap);
 
 struct Surface {
   VkSurfaceKHR handle = nullptr;

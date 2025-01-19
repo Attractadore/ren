@@ -644,7 +644,8 @@ private:
   RgPersistent *m_rgp = nullptr;
   RgRtData *m_data = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
-  std::array<VkDescriptorSet, 4> m_sets = {};
+  Handle<ResourceDescriptorHeap> m_resource_descriptor_heap;
+  Handle<SamplerDescriptorHeap> m_sampler_descriptor_heap;
   const GenArray<RgSemaphore> *m_semaphores = nullptr;
 };
 
@@ -718,7 +719,13 @@ public:
                                           u32 mip = 0) const
       -> glsl::StorageTexture;
 
-  auto get_sets() const -> Span<const VkDescriptorSet>;
+  auto get_resource_descriptor_heap() const -> Handle<ResourceDescriptorHeap> {
+    return m_rg->m_resource_descriptor_heap;
+  }
+
+  auto get_sampler_descriptor_heap() const -> Handle<SamplerDescriptorHeap> {
+    return m_rg->m_sampler_descriptor_heap;
+  }
 
   auto get_allocator() const -> UploadBumpAllocator &;
 
@@ -906,8 +913,9 @@ public:
     set_compute_callback(
         [pipeline, args, size, block_size_mult](
             Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
+          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                                   rg.get_sampler_descriptor_heap());
           cmd.bind_compute_pipeline(pipeline);
-          cmd.bind_descriptor_sets(rg.get_sets());
           rg.set_push_constants(cmd, args);
           cmd.dispatch_grid_3d(size, block_size_mult);
         });
@@ -921,8 +929,9 @@ public:
     set_compute_callback([pipeline, args, token](Renderer &renderer,
                                                  const RgRuntime &rg,
                                                  ComputePass &cmd) {
+      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                               rg.get_sampler_descriptor_heap());
       cmd.bind_compute_pipeline(pipeline);
-      cmd.bind_descriptor_sets(rg.get_sets());
       rg.set_push_constants(cmd, args);
       cmd.dispatch_indirect(rg.get_buffer(token));
     });
