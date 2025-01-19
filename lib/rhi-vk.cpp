@@ -571,6 +571,8 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
       .descriptorBindingSampledImageUpdateAfterBind = true,
       .descriptorBindingStorageImageUpdateAfterBind = true,
       .descriptorBindingPartiallyBound = true,
+      .descriptorBindingVariableDescriptorCount = true,
+      .runtimeDescriptorArray = true,
       .samplerFilterMinmax = true,
       .scalarBlockLayout = true,
       .timelineSemaphore = true,

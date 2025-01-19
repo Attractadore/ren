@@ -644,7 +644,7 @@ private:
   RgPersistent *m_rgp = nullptr;
   RgRtData *m_data = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
-  VkDescriptorSet m_texture_set = nullptr;
+  std::array<VkDescriptorSet, 4> m_sets = {};
   const GenArray<RgSemaphore> *m_semaphores = nullptr;
 };
 
@@ -718,7 +718,7 @@ public:
                                           u32 mip = 0) const
       -> glsl::StorageTexture;
 
-  auto get_texture_set() const -> VkDescriptorSet;
+  auto get_sets() const -> Span<const VkDescriptorSet>;
 
   auto get_allocator() const -> UploadBumpAllocator &;
 
@@ -907,11 +907,7 @@ public:
         [pipeline, args, size, block_size_mult](
             Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
           cmd.bind_compute_pipeline(pipeline);
-          Handle<PipelineLayout> layout =
-              renderer.get_compute_pipeline(pipeline).layout;
-          if (!renderer.get_pipeline_layout(layout).set_layouts.empty()) {
-            cmd.bind_descriptor_sets({rg.get_texture_set()});
-          }
+          cmd.bind_descriptor_sets(rg.get_sets());
           rg.set_push_constants(cmd, args);
           cmd.dispatch_grid_3d(size, block_size_mult);
         });
@@ -926,11 +922,7 @@ public:
                                                  const RgRuntime &rg,
                                                  ComputePass &cmd) {
       cmd.bind_compute_pipeline(pipeline);
-      Handle<PipelineLayout> layout =
-          renderer.get_compute_pipeline(pipeline).layout;
-      if (!renderer.get_pipeline_layout(layout).set_layouts.empty()) {
-        cmd.bind_descriptor_sets({rg.get_texture_set()});
-      }
+      cmd.bind_descriptor_sets(rg.get_sets());
       rg.set_push_constants(cmd, args);
       cmd.dispatch_indirect(rg.get_buffer(token));
     });

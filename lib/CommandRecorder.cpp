@@ -310,12 +310,31 @@ void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
                     pipeline.handle);
 }
 
+namespace {
+
+void bind_descriptor_sets(Renderer &renderer, VkCommandBuffer cmd_buffer,
+                          VkPipelineBindPoint bind_point,
+                          Handle<PipelineLayout> handle,
+                          TempSpan<const VkDescriptorSet> sets, u32 first_set) {
+  const PipelineLayout &layout = renderer.get_pipeline_layout(handle);
+  i32 last_set = std::min(first_set + sets.size(), layout.set_layouts.size());
+  i32 num_sets = last_set - first_set;
+  for (i32 i = 0; i < num_sets; ++i) {
+    if (layout.set_layouts[i + first_set]) {
+      vkCmdBindDescriptorSets(cmd_buffer, bind_point, layout.handle,
+                              first_set + i, 1, &sets[i], 0, nullptr);
+    }
+  }
+}
+
+} // namespace
+
 void RenderPass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                       TempSpan<const VkDescriptorSet> sets,
                                       unsigned first_set) {
-  vkCmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          m_renderer->get_pipeline_layout(layout).handle,
-                          first_set, sets.size(), sets.data(), 0, nullptr);
+  ren::bind_descriptor_sets(*m_renderer, m_cmd_buffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS, layout, sets,
+                            first_set);
 }
 
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
@@ -441,9 +460,9 @@ void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
 void ComputePass::bind_descriptor_sets(Handle<PipelineLayout> layout,
                                        TempSpan<const VkDescriptorSet> sets,
                                        unsigned first_set) {
-  vkCmdBindDescriptorSets(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                          m_renderer->get_pipeline_layout(layout).handle,
-                          first_set, sets.size(), sets.data(), 0, nullptr);
+  ren::bind_descriptor_sets(*m_renderer, m_cmd_buffer,
+                            VK_PIPELINE_BIND_POINT_COMPUTE, layout, sets,
+                            first_set);
 }
 
 void ComputePass::bind_descriptor_sets(TempSpan<const VkDescriptorSet> sets,

@@ -23,16 +23,20 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
-  Handle<DescriptorSetLayout> texture_descriptor_set_layout =
+  PersistentDescriptorSetLayouts layouts =
       create_persistent_descriptor_set_layout(m_arena);
 
-  VkDescriptorSet texture_descriptor_set;
-  std::tie(std::ignore, texture_descriptor_set) =
-      allocate_descriptor_pool_and_set(*m_renderer, m_arena,
-                                       texture_descriptor_set_layout);
+  VkDescriptorSet sets[4] = {};
+  std::tie(std::ignore, sets[glsl::SRV_SET]) =
+      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.srv);
+  std::tie(std::ignore, sets[glsl::CIS_SET]) =
+      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.cis);
+  std::tie(std::ignore, sets[glsl::UAV_SET]) =
+      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.uav);
+  std::tie(std::ignore, sets[glsl::SAMPLER_SET]) =
+      allocate_descriptor_pool_and_set(*m_renderer, m_arena, layouts.sampler);
 
-  m_descriptor_allocator = std::make_unique<DescriptorAllocator>(
-      texture_descriptor_set, texture_descriptor_set_layout);
+  m_descriptor_allocator = std::make_unique<DescriptorAllocator>(sets, layouts);
 
   m_samplers = {
       .hi_z_gen =
@@ -59,7 +63,7 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
                   .value(),
   };
 
-  m_pipelines = load_pipelines(m_arena, texture_descriptor_set_layout);
+  m_pipelines = load_pipelines(m_arena, layouts);
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer);
 

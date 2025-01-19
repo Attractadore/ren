@@ -4,19 +4,20 @@
 #include "Std.h"
 #include "Texture.h"
 
+#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_samplerless_texture_functions : require
 
 #define IS_NULL_DESC(descriptor) ((descriptor).id == 0)
 
 // clang-format off
-layout(binding = SAMPLERS_SLOT) uniform sampler g_samplers[NUM_SAMPLERS];
+layout(binding = 0, set = SRV_SET) uniform texture2D g_textures_2d[];
 
-layout(binding = TEXTURES_SLOT) uniform texture2D g_textures_2d[NUM_TEXTURES];
+layout(binding = 0, set = CIS_SET) uniform sampler2D g_sampled_textures_2d[];
 
-layout(binding = SAMPLED_TEXTURES_SLOT) uniform sampler2D g_sampled_textures_2d[NUM_SAMPLED_TEXTURES];
+layout(binding = 0, set = UAV_SET) restrict uniform image2D g_storage_textures_2d[];
+layout(binding = 0, set = UAV_SET) coherent restrict uniform image2D g_coherent_storage_textures_2d[];
 
-layout(binding = STORAGE_TEXTURES_SLOT) restrict uniform image2D g_storage_textures_2d[NUM_STORAGE_TEXTURES];
-layout(binding = STORAGE_TEXTURES_SLOT) coherent restrict uniform image2D g_coherent_storage_textures_2d[NUM_STORAGE_TEXTURES];
+layout(binding = 0, set = SAMPLER_SET) uniform sampler g_samplers[NUM_SAMPLERS];
 // clang-format on
 
 #define MAKE_SAMPLER_2D(s, t) sampler2D(g_textures_2d[t.id], g_samplers[s.id])

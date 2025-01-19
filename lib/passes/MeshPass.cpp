@@ -210,7 +210,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     pass.set_compute_callback(
         [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
           pass.bind_compute_pipeline(rcs.pipeline);
-          pass.bind_descriptor_sets({rg.get_texture_set()});
+          pass.bind_descriptor_sets(rg.get_sets());
           auto pc = to_push_constants(rg, args);
           DevicePtr<glsl::MeshletCullData> base_cull_data = pc.bucket_cull_data;
           DevicePtr<u32> base_bucket_size = pc.bucket_size;
@@ -421,7 +421,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
                                            RenderPass &render_pass) {
       render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
       if (S == DrawSet::Opaque) {
-        render_pass.bind_descriptor_sets({rg.get_texture_set()});
+        render_pass.bind_descriptor_sets(rg.get_sets());
       }
       render_pass.bind_index_buffer(rcs.batch.index_buffer,
                                     VK_INDEX_TYPE_UINT8_EXT);

@@ -1,7 +1,9 @@
 #pragma once
 #include "FreeListAllocator.hpp"
+#include "PipelineLoading.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Result.hpp"
+#include "core/Span.hpp"
 #include "glsl/Texture.h"
 #include "ren/ren.hpp"
 
@@ -17,19 +19,18 @@ struct SrvDesc;
 struct UavDesc;
 
 class DescriptorAllocator {
-  VkDescriptorSet m_set = nullptr;
-  Handle<DescriptorSetLayout> m_layout;
+  std::array<VkDescriptorSet, 4> m_sets = {};
+  PersistentDescriptorSetLayouts m_layouts = {};
+  FreeListAllocator m_srvs;
+  FreeListAllocator m_ciss;
+  FreeListAllocator m_uavs;
   FreeListAllocator m_samplers;
-  FreeListAllocator m_textures;
-  FreeListAllocator m_sampled_textures;
-  FreeListAllocator m_storage_textures;
 
 public:
-  DescriptorAllocator(VkDescriptorSet set, Handle<DescriptorSetLayout> layout);
+  DescriptorAllocator(Span<const VkDescriptorSet> sets,
+                      const PersistentDescriptorSetLayouts &layouts);
 
-  auto get_set() const -> VkDescriptorSet;
-
-  auto get_set_layout() const -> Handle<DescriptorSetLayout>;
+  auto get_sets() const -> Span<const VkDescriptorSet>;
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;
@@ -71,9 +72,7 @@ public:
   DescriptorAllocatorScope &
   operator=(DescriptorAllocatorScope &&other) noexcept;
 
-  auto get_set() const -> VkDescriptorSet;
-
-  auto get_set_layout() const -> Handle<DescriptorSetLayout>;
+  auto get_sets() const -> Span<const VkDescriptorSet>;
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;
@@ -92,10 +91,10 @@ public:
 
 private:
   DescriptorAllocator *m_alloc = nullptr;
+  Vector<glsl::Texture> m_srvs;
+  Vector<glsl::SampledTexture> m_ciss;
+  Vector<glsl::StorageTexture> m_uavs;
   Vector<glsl::SamplerState> m_samplers;
-  Vector<glsl::Texture> m_textures;
-  Vector<glsl::SampledTexture> m_sampled_textures;
-  Vector<glsl::StorageTexture> m_storage_textures;
 };
 
 }; // namespace ren

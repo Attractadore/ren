@@ -72,10 +72,20 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
 
   m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
 
+  {
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    };
+    throw_if_failed(vkCreateDescriptorSetLayout(get_device(), &layout_info,
+                                                nullptr, &m_empty_set_layout),
+                    "Vulkan: failed to create descriptor set layout");
+  }
+
   return {};
 }
 
 Renderer::~Renderer() {
+  vkDestroyDescriptorSetLayout(get_device(), m_empty_set_layout, nullptr);
   wait_idle();
   rhi::destroy_device(m_device);
   rhi::exit();
@@ -222,13 +232,32 @@ auto Renderer::allocate_descriptor_sets(
     Handle<DescriptorPool> pool,
     TempSpan<const Handle<DescriptorSetLayout>> layouts,
     VkDescriptorSet *sets) const -> bool {
-  auto vk_layouts = layouts | map([&](Handle<DescriptorSetLayout> layout) {
-                      return get_descriptor_set_layout(layout).handle;
-                    }) |
-                    std::ranges::to<SmallVector<VkDescriptorSetLayout>>();
+  SmallVector<VkDescriptorSetLayout> vk_layouts(layouts.size());
+  SmallVector<u32> counts(layouts.size());
+  for (usize i : range(layouts.size())) {
+    const DescriptorSetLayout &layout = get_descriptor_set_layout(layouts[i]);
+    vk_layouts[i] = layout.handle;
+    auto it = std::ranges::find_if(
+        layout.bindings, [](const DescriptorBinding &binding) {
+          return binding.flags &
+                 VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+        });
+    if (it != layout.bindings.end()) {
+      counts[i] = it->count;
+    }
+  }
+
+  // TODO: add option to allocate only as many as needed.
+  VkDescriptorSetVariableDescriptorCountAllocateInfo variable_count_info = {
+      .sType =
+          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+      .descriptorSetCount = (u32)layouts.size(),
+      .pDescriptorCounts = counts.data(),
+  };
 
   VkDescriptorSetAllocateInfo alloc_info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+      .pNext = &variable_count_info,
       .descriptorPool = get_descriptor_pool(pool).handle,
       .descriptorSetCount = unsigned(vk_layouts.size()),
       .pSetLayouts = vk_layouts.data(),
@@ -869,17 +898,20 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
 
 auto Renderer::create_pipeline_layout(
     const PipelineLayoutCreateInfo &&create_info) -> Handle<PipelineLayout> {
-  auto layouts =
-      create_info.set_layouts | map([&](Handle<DescriptorSetLayout> layout) {
-        return get_descriptor_set_layout(layout).handle;
-      }) |
-      std::ranges::to<
-          StaticVector<VkDescriptorSetLayout, MAX_DESCRIPTOR_SETS>>();
+  VkDescriptorSetLayout set_layouts[MAX_DESCRIPTOR_SETS] = {};
+  for (usize i : range(create_info.set_layouts.size())) {
+    if (Optional<DescriptorSetLayout> set_layout =
+            try_get_descriptor_set_layout(create_info.set_layouts[i])) {
+      set_layouts[i] = set_layout->handle;
+    } else {
+      set_layouts[i] = m_empty_set_layout;
+    }
+  }
 
   VkPipelineLayoutCreateInfo layout_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = unsigned(layouts.size()),
-      .pSetLayouts = layouts.data(),
+      .setLayoutCount = (u32)create_info.set_layouts.size(),
+      .pSetLayouts = set_layouts,
       .pushConstantRangeCount = create_info.push_constants.size > 0 ? 1u : 0u,
       .pPushConstantRanges = &create_info.push_constants,
   };

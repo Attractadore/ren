@@ -60,6 +60,7 @@ class Renderer final : public IRenderer {
   GenArray<DescriptorPool> m_descriptor_pools;
 
   GenArray<DescriptorSetLayout> m_descriptor_set_layouts;
+  VkDescriptorSetLayout m_empty_set_layout;
 
   GenArray<PipelineLayout> m_pipeline_layouts;
 

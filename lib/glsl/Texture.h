@@ -7,36 +7,28 @@
 #if !GL_core_profile
 #include <boost/predef/compiler.h>
 #include <boost/preprocessor.hpp>
-#include <limits>
 #endif
 
 GLSL_NAMESPACE_BEGIN
-
-#define SAMPLER_ID_TYPE uint32_t
-const uint SAMPLER_ID_SIZE = 4;
-static_assert(SAMPLER_ID_SIZE == sizeof(SAMPLER_ID_TYPE));
-
-const uint NUM_SAMPLERS = 1 << 16;
-static_assert(NUM_SAMPLERS - 1 <= std::numeric_limits<SAMPLER_ID_TYPE>::max());
 
 #define TEXTURE_ID_TYPE uint32_t
 const uint TEXTURE_ID_SIZE = 4;
 static_assert(TEXTURE_ID_SIZE == sizeof(TEXTURE_ID_TYPE));
 
-const uint NUM_TEXTURES = 1 << 16;
-const uint NUM_SAMPLED_TEXTURES = 1 << 16;
-const uint NUM_STORAGE_TEXTURES = 1 << 16;
+#define SAMPLER_ID_TYPE uint32_t
+const uint SAMPLER_ID_SIZE = 4;
+static_assert(SAMPLER_ID_SIZE == sizeof(SAMPLER_ID_TYPE));
 
-static_assert(NUM_TEXTURES - 1 <= std::numeric_limits<TEXTURE_ID_TYPE>::max());
-static_assert(NUM_SAMPLED_TEXTURES - 1 <=
-              std::numeric_limits<TEXTURE_ID_TYPE>::max());
-static_assert(NUM_STORAGE_TEXTURES - 1 <=
-              std::numeric_limits<TEXTURE_ID_TYPE>::max());
+// FIXME: minimum required maxPerStageUpdateAfterBindResources value required by
+// Vulkan spec. Fetch dynamically based on device and clamp to some value
+// instead.
+const uint MAX_NUM_RESOURCES = 500 * 1000;
+const uint NUM_SAMPLERS = 2048;
 
-const uint SAMPLERS_SLOT = 0;
-const uint TEXTURES_SLOT = 1;
-const uint SAMPLED_TEXTURES_SLOT = 2;
-const uint STORAGE_TEXTURES_SLOT = 3;
+const uint SRV_SET = 0;
+const uint CIS_SET = 1;
+const uint UAV_SET = 2;
+const uint SAMPLER_SET = 3;
 
 #if GL_core_profile
 

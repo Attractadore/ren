@@ -43,7 +43,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
   render_pass.bind_index_buffer(index_buffer);
 
-  render_pass.bind_descriptor_sets({rg.get_texture_set()});
+  render_pass.bind_descriptor_sets(rg.get_sets());
 
   glm::vec2 clip_offset = {draw_data->DisplayPos.x, draw_data->DisplayPos.y};
   glm::vec2 clip_scale = {draw_data->FramebufferScale.x,
