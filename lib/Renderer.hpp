@@ -285,9 +285,6 @@ public:
               TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
               TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
 
-  [[nodiscard]] auto queue_present(const VkPresentInfoKHR &present_info)
-      -> VkResult;
-
   bool is_feature_supported(RendererFeature feature) const;
 
   void amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps = 0,

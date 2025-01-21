@@ -791,10 +791,6 @@ bool Renderer::is_feature_supported(RendererFeature feature) const {
   return m_features[i];
 }
 
-auto Renderer::queue_present(const VkPresentInfoKHR &present_info) -> VkResult {
-  return vkQueuePresentKHR(getGraphicsQueue().handle, &present_info);
-}
-
 void Renderer::amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps,
                             VkAntiLagModeAMD mode) {
   ren_prof_zone("AMD Anti-Lag");
