@@ -87,10 +87,7 @@ auto Renderer::create_scene(ISwapchain &swapchain)
   return std::make_unique<Scene>(*this, static_cast<Swapchain &>(swapchain));
 }
 
-void Renderer::wait_idle() {
-  throw_if_failed(vkDeviceWaitIdle(get_device()),
-                  "Vulkan: Failed to wait for idle device");
-}
+void Renderer::wait_idle() { rhi::queue_wait_idle(m_graphics_queue).value(); }
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Result<Handle<Buffer>, Error> {

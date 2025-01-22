@@ -818,6 +818,14 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
+auto queue_wait_idle(Queue queue) -> Result<void> {
+  VkResult result = queue.vk->vkQueueWaitIdle(queue.handle);
+  if (result) {
+    return fail(result);
+  }
+  return {};
+}
+
 namespace {
 
 constexpr auto SEMAPHORE_TYPE_MAP = [] {

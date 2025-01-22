@@ -130,6 +130,8 @@ void destroy_device(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
+auto queue_wait_idle(Queue queue) -> Result<void>;
+
 enum class SemaphoreType {
   Binary,
   Timeline,
