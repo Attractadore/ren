@@ -1,10 +1,7 @@
 #pragma once
-#include "Config.hpp"
 #include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
-#include "core/Optional.hpp"
 #include "core/Span.hpp"
-#include "core/Variant.hpp"
 #include "core/Vector.hpp"
 #include "rhi.hpp"
 
@@ -33,85 +30,48 @@ struct PipelineLayout {
   u32 push_constants_size = 0;
 };
 
-struct SpecConstant {
-  u32 id = -1;
+struct SpecializationConstant {
+  u32 id = 0;
   u32 value = 0;
 };
 
 struct ShaderInfo {
   Span<const std::byte> code;
   const char *entry_point = "main";
-  Span<const SpecConstant> spec_constants;
-};
-
-struct InputAssemblyInfo {
-  VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-};
-
-struct RasterizationInfo {
-  VkCullModeFlagBits cull_mode = VK_CULL_MODE_BACK_BIT;
-  VkFrontFace front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-};
-
-struct MultisampleInfo {
-  u32 samples = 1;
-};
-
-struct DepthTestInfo {
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  bool write_depth = true;
-  Variant<VkCompareOp, DynamicState> compare_op = DYNAMIC;
-};
-
-struct ColorBlendAttachmentInfo {
-  VkBlendFactor src_color_blend_factor = VK_BLEND_FACTOR_SRC_ALPHA;
-  VkBlendFactor dst_color_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-  VkBlendOp color_blend_op = VK_BLEND_OP_ADD;
-  VkBlendFactor src_alpha_blend_factor = VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dst_alpha_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-  VkBlendOp alpha_blend_op = VK_BLEND_OP_ADD;
-};
-
-struct ColorAttachmentInfo {
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  Optional<ColorBlendAttachmentInfo> blending;
-  VkColorComponentFlags write_mask =
-      VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+  TempSpan<const SpecializationConstant> specialization_constants;
 };
 
 struct GraphicsPipelineCreateInfo {
   REN_DEBUG_NAME_FIELD("Graphics pipeline");
   Handle<PipelineLayout> layout;
-  ShaderInfo vertex_shader;
-  Optional<ShaderInfo> fragment_shader;
-  InputAssemblyInfo input_assembly;
-  RasterizationInfo rasterization;
-  MultisampleInfo multisample;
-  Optional<DepthTestInfo> depth_test;
-  TempSpan<const ColorAttachmentInfo> color_attachments;
+  ShaderInfo ts;
+  ShaderInfo ms;
+  ShaderInfo vs;
+  ShaderInfo fs;
+  rhi::InputAssemblyStateInfo input_assembly_state;
+  rhi::RasterizationStateInfo rasterization_state;
+  rhi::MultisamplingStateInfo multisampling_state;
+  rhi::DepthStencilStateInfo depth_stencil_state;
+  TinyImageFormat rtv_formats[rhi::MAX_NUM_RENDER_TARGETS] = {};
+  TinyImageFormat dsv_format = TinyImageFormat_UNDEFINED;
+  rhi::BlendStateInfo blend_state;
 };
 
 struct GraphicsPipeline {
-  VkPipeline handle;
+  rhi::Pipeline handle;
   Handle<PipelineLayout> layout;
-  VkShaderStageFlags stages = 0;
-  InputAssemblyInfo input_assembly;
-  MultisampleInfo multisample;
-  Optional<DepthTestInfo> depth_test;
-  StaticVector<ColorAttachmentInfo, MAX_COLOR_ATTACHMENTS> color_attachments;
 };
 
 struct ComputePipelineCreateInfo {
   REN_DEBUG_NAME_FIELD("Compute pipeline");
   Handle<PipelineLayout> layout;
-  ShaderInfo shader;
+  ShaderInfo cs;
 };
 
 struct ComputePipeline {
-  VkPipeline handle;
+  rhi::Pipeline handle;
   Handle<PipelineLayout> layout;
-  glm::uvec3 local_size;
+  glm::uvec3 local_size = {};
 };
 
 } // namespace ren

@@ -223,7 +223,7 @@ public:
 
   [[nodiscard]] auto
   create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
-      -> Handle<GraphicsPipeline>;
+      -> Result<Handle<GraphicsPipeline>, Error>;
 
   void destroy(Handle<GraphicsPipeline> pipeline);
 
@@ -235,7 +235,7 @@ public:
 
   [[nodiscard]] auto
   create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
-      -> Handle<ComputePipeline>;
+      -> Result<Handle<ComputePipeline>, Error>;
 
   void destroy(Handle<ComputePipeline> pipeline);
 

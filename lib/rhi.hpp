@@ -431,6 +431,231 @@ auto create_pipeline_layout(Device device,
 
 void destroy_pipeline_layout(Device device, PipelineLayout layout);
 
+struct SpecializationConstant {
+  u32 id = 0;
+  u32 offset = 0;
+  u32 size = 0;
+};
+
+struct SpecializationInfo {
+  Span<const SpecializationConstant> constants;
+  Span<const std::byte> data;
+};
+
+struct ShaderInfo {
+  Span<const std::byte> code;
+  const char *entry_point = "main";
+  SpecializationInfo specialization;
+};
+
+enum class PrimitiveTopology {
+  PointList,
+  LineList,
+  TriangleList,
+  Last = TriangleList,
+};
+constexpr usize PRIMITIVE_TOPOLOGY_COUNT = (usize)PrimitiveTopology::Last + 1;
+
+struct InputAssemblyStateInfo {
+  PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+};
+
+enum class FillMode {
+  Fill,
+  Wireframe,
+  Last = Wireframe,
+};
+constexpr usize FILL_MODE_COUNT = (usize)FillMode::Last + 1;
+
+enum class CullMode {
+  None,
+  Front,
+  Back,
+  Last = Back,
+};
+constexpr usize CULL_MODE_COUNT = (usize)CullMode::Last + 1;
+
+enum class FrontFace {
+  CCW,
+  CW,
+  Last = CW,
+};
+constexpr usize FRONT_FACE_COUNT = (usize)FrontFace::Last + 1;
+
+struct RasterizationStateInfo {
+  FillMode fill_mode = FillMode::Fill;
+  CullMode cull_mode = CullMode::None;
+  FrontFace front_face = FrontFace::CCW;
+  bool depth_bias_enable = false;
+  i32 depth_bias_constant_factor = 0;
+  float depth_bias_clamp = 0.0f;
+  float depth_bias_slope_factor = 0.0f;
+  // Disable depth clip and enable depth clamp.
+  bool depth_clamp_enable = false;
+};
+
+enum class SampleCount {
+  e1 = 1,
+  e2 = 2,
+  e4 = 4,
+  e8 = 8,
+};
+
+struct MultisamplingStateInfo {
+  SampleCount sample_count = SampleCount::e1;
+  u32 sample_mask = -1;
+  bool alpha_to_coverage_enable = false;
+};
+
+enum class CompareOp {
+  Never,
+  Less,
+  Equal,
+  LessOrEqual,
+  Greater,
+  NotEqual,
+  GreaterOrEqual,
+  Always,
+  Last = Always,
+};
+constexpr usize COMPARE_OP_COUNT = (usize)CompareOp::Last + 1;
+
+struct DepthStencilStateInfo {
+  bool depth_test_enable = false;
+  bool depth_write_enable = true;
+  CompareOp depth_compare_op = CompareOp::GreaterOrEqual;
+  bool depth_bounds_test_enable = false;
+  float min_depth_bounds = 0.0f;
+  float max_depth_bounds = 1.0f;
+};
+
+constexpr usize MAX_NUM_RENDER_TARGETS = 8;
+
+enum class BlendFactor {
+  Zero,
+  One,
+  SrcColor,
+  OneMinusSrcColor,
+  DstColor,
+  OneMinusDstColor,
+  SrcAlpha,
+  OneMinusSrcAlpha,
+  DstAlpha,
+  OneMinusDstAlpha,
+  ConstantColor,
+  OneMinusConstantColor,
+  ConstantAlpha,
+  OneMinusConstantAlpha,
+  SrcAlphaSaturate,
+  Src1Color,
+  OneMinusSrc1Color,
+  Src1Alpha,
+  OneMinusSrc1Alpha,
+  Last = OneMinusSrc1Alpha,
+};
+constexpr usize BLEND_FACTOR_COUNT = (usize)BlendFactor::Last + 1;
+
+enum class BlendOp {
+  Add,
+  Subtract,
+  ReverseSubtract,
+  Min,
+  Max,
+  Last = Max,
+};
+constexpr usize BLEND_OP_COUNT = (usize)BlendOp::Last + 1;
+
+// clang-format off
+REN_BEGIN_FLAGS_ENUM(ColorComponent) {
+  REN_FLAG(R),
+  REN_FLAG(G),
+  REN_FLAG(B),
+  REN_FLAG(A),
+  Last = A,
+} REN_END_FLAGS_ENUM(ColorComponent);
+// clang-format on
+constexpr usize COLOR_COMPONENT_COUNT =
+    std::countr_zero((usize)ColorComponent::Last) + 1;
+
+} // namespace ren::rhi
+
+REN_ENABLE_FLAGS(ren::rhi::ColorComponent);
+
+namespace ren::rhi {
+
+using ColorComponentMask = Flags<ColorComponent>;
+
+struct RenderTargetBlendInfo {
+  bool blend_enable = false;
+  BlendFactor src_color_blend_factor = {};
+  BlendFactor dst_color_blend_factor = {};
+  BlendOp color_blend_op = {};
+  BlendFactor src_alpha_blend_factor = {};
+  BlendFactor dst_alpha_blend_factor = {};
+  BlendOp alpha_blend_op = {};
+  ColorComponentMask color_write_mask = ColorComponent::R | ColorComponent::G |
+                                        ColorComponent::B | ColorComponent::A;
+};
+
+enum class LogicOp {
+  Clear,
+  And,
+  AndReverse,
+  Copy,
+  AndInverted,
+  NoOp,
+  Xor,
+  Or,
+  Nor,
+  Equivalent,
+  Invert,
+  OrReverse,
+  CopyInverted,
+  OrInverted,
+  Nand,
+  Set,
+  Last = Set,
+};
+constexpr usize LOGIC_OP_COUNT = (usize)LogicOp::Last + 1;
+
+struct BlendStateInfo {
+  bool logic_op_enable = false;
+  LogicOp logic_op = {};
+  RenderTargetBlendInfo targets[MAX_NUM_RENDER_TARGETS] = {};
+  glm::vec4 blend_constants = {};
+};
+
+struct GraphicsPipelineCreateInfo {
+  PipelineLayout layout;
+  ShaderInfo ts;
+  ShaderInfo ms;
+  ShaderInfo vs;
+  ShaderInfo fs;
+  InputAssemblyStateInfo input_assembly_state;
+  RasterizationStateInfo rasterization_state;
+  MultisamplingStateInfo multisampling_state;
+  DepthStencilStateInfo depth_stencil_state;
+  u32 num_render_targets = 0;
+  TinyImageFormat rtv_formats[MAX_NUM_RENDER_TARGETS] = {};
+  TinyImageFormat dsv_format = TinyImageFormat_UNDEFINED;
+  BlendStateInfo blend_state;
+};
+
+struct ComputePipelineCreateInfo {
+  PipelineLayout layout;
+  ShaderInfo cs;
+};
+
+auto create_graphics_pipeline(Device device,
+                              const GraphicsPipelineCreateInfo &create_info)
+    -> Result<Pipeline>;
+
+auto create_compute_pipeline(Device device,
+                             const ComputePipelineCreateInfo &create_info)
+    -> Result<Pipeline>;
+
+void destroy_pipeline(Device device, Pipeline pipeline);
+
 enum class PipelineBindPoint {
   Graphics,
   Compute,

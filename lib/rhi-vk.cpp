@@ -72,8 +72,9 @@ struct InstanceData {
 } instance;
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+    VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
 } // namespace
@@ -607,6 +608,13 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   };
 
   add_features(uint8_features);
+
+  VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR,
+      .maintenance5 = true,
+  };
+
+  add_features(maintenance5_features);
 
   // Add optional features.
   // TODO: check that they are supported.
@@ -1507,6 +1515,381 @@ auto create_pipeline_layout(Device device,
 
 void destroy_pipeline_layout(Device device, PipelineLayout layout) {
   device->vk.vkDestroyPipelineLayout(device->handle, layout.handle, nullptr);
+}
+
+namespace {
+
+constexpr auto PRIMITIVE_TOPOLOGY_MAP = [] {
+  std::array<VkPrimitiveTopology, PRIMITIVE_TOPOLOGY_COUNT> map = {};
+  map(PrimitiveTopology::PointList, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+  map(PrimitiveTopology::LineList, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+  map(PrimitiveTopology::TriangleList, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  return map;
+}();
+
+constexpr auto FILL_MODE_MAP = [] {
+  std::array<VkPolygonMode, FILL_MODE_COUNT> map = {};
+  map(FillMode::Fill, VK_POLYGON_MODE_FILL);
+  map(FillMode::Wireframe, VK_POLYGON_MODE_LINE);
+  return map;
+}();
+
+constexpr auto CULL_MODE_MAP = [] {
+  std::array<VkCullModeFlagBits, CULL_MODE_COUNT> map = {};
+  map(CullMode::None, VK_CULL_MODE_NONE);
+  map(CullMode::Front, VK_CULL_MODE_FRONT_BIT);
+  map(CullMode::Back, VK_CULL_MODE_BACK_BIT);
+  return map;
+}();
+
+constexpr auto COMPARE_OP_MAP = [] {
+  std::array<VkCompareOp, COMPARE_OP_COUNT> map = {};
+  map(CompareOp::Never, VK_COMPARE_OP_NEVER);
+  map(CompareOp::Less, VK_COMPARE_OP_LESS);
+  map(CompareOp::Equal, VK_COMPARE_OP_EQUAL);
+  map(CompareOp::LessOrEqual, VK_COMPARE_OP_LESS_OR_EQUAL);
+  map(CompareOp::Greater, VK_COMPARE_OP_GREATER);
+  map(CompareOp::NotEqual, VK_COMPARE_OP_NOT_EQUAL);
+  map(CompareOp::GreaterOrEqual, VK_COMPARE_OP_GREATER_OR_EQUAL);
+  map(CompareOp::Always, VK_COMPARE_OP_ALWAYS);
+  return map;
+}();
+
+constexpr auto BLEND_FACTOR_MAP = [] {
+  std::array<VkBlendFactor, BLEND_FACTOR_COUNT> map = {};
+  map(BlendFactor::Zero, VK_BLEND_FACTOR_ZERO);
+  map(BlendFactor::One, VK_BLEND_FACTOR_ONE);
+  map(BlendFactor::SrcColor, VK_BLEND_FACTOR_SRC_COLOR);
+  map(BlendFactor::OneMinusSrcColor, VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR);
+  map(BlendFactor::DstColor, VK_BLEND_FACTOR_DST_COLOR);
+  map(BlendFactor::OneMinusDstColor, VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR);
+  map(BlendFactor::SrcAlpha, VK_BLEND_FACTOR_SRC_ALPHA);
+  map(BlendFactor::OneMinusSrcAlpha, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+  map(BlendFactor::DstAlpha, VK_BLEND_FACTOR_DST_ALPHA);
+  map(BlendFactor::OneMinusDstAlpha, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA);
+  map(BlendFactor::ConstantColor, VK_BLEND_FACTOR_CONSTANT_COLOR);
+  map(BlendFactor::OneMinusConstantColor,
+      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR);
+  map(BlendFactor::ConstantAlpha, VK_BLEND_FACTOR_CONSTANT_ALPHA);
+  map(BlendFactor::OneMinusConstantAlpha,
+      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA);
+  map(BlendFactor::SrcAlphaSaturate, VK_BLEND_FACTOR_SRC_ALPHA_SATURATE);
+  map(BlendFactor::Src1Color, VK_BLEND_FACTOR_SRC1_COLOR);
+  map(BlendFactor::OneMinusSrc1Color, VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR);
+  map(BlendFactor::Src1Alpha, VK_BLEND_FACTOR_SRC1_ALPHA);
+  map(BlendFactor::OneMinusSrc1Alpha, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA);
+  return map;
+}();
+
+constexpr auto BLEND_OP_MAP = [] {
+  std::array<VkBlendOp, BLEND_OP_COUNT> map = {};
+  map(BlendOp::Add, VK_BLEND_OP_ADD);
+  map(BlendOp::Subtract, VK_BLEND_OP_SUBTRACT);
+  map(BlendOp::ReverseSubtract, VK_BLEND_OP_REVERSE_SUBTRACT);
+  map(BlendOp::Min, VK_BLEND_OP_MIN);
+  map(BlendOp::Max, VK_BLEND_OP_MAX);
+  return map;
+}();
+
+constexpr auto LOGIC_OP_MAP = [] {
+  std::array<VkLogicOp, LOGIC_OP_COUNT> map = {};
+  map(LogicOp::Clear, VK_LOGIC_OP_CLEAR);
+  map(LogicOp::And, VK_LOGIC_OP_AND);
+  map(LogicOp::AndReverse, VK_LOGIC_OP_AND_REVERSE);
+  map(LogicOp::Copy, VK_LOGIC_OP_COPY);
+  map(LogicOp::AndInverted, VK_LOGIC_OP_AND_INVERTED);
+  map(LogicOp::NoOp, VK_LOGIC_OP_NO_OP);
+  map(LogicOp::Xor, VK_LOGIC_OP_XOR);
+  map(LogicOp::Or, VK_LOGIC_OP_OR);
+  map(LogicOp::Nor, VK_LOGIC_OP_NOR);
+  map(LogicOp::Equivalent, VK_LOGIC_OP_EQUIVALENT);
+  map(LogicOp::Invert, VK_LOGIC_OP_INVERT);
+  map(LogicOp::OrReverse, VK_LOGIC_OP_OR_REVERSE);
+  map(LogicOp::CopyInverted, VK_LOGIC_OP_COPY_INVERTED);
+  map(LogicOp::OrInverted, VK_LOGIC_OP_OR_INVERTED);
+  map(LogicOp::Nand, VK_LOGIC_OP_NAND);
+  map(LogicOp::Set, VK_LOGIC_OP_SET);
+  return map;
+}();
+
+constexpr auto COLOR_COMPONENT_MAP = [] {
+  using enum ImageUsage;
+  std::array<VkColorComponentFlagBits, COLOR_COMPONENT_COUNT> map = {};
+  map_bit(ColorComponent::R, VK_COLOR_COMPONENT_R_BIT);
+  map_bit(ColorComponent::G, VK_COLOR_COMPONENT_G_BIT);
+  map_bit(ColorComponent::B, VK_COLOR_COMPONENT_B_BIT);
+  map_bit(ColorComponent::A, VK_COLOR_COMPONENT_A_BIT);
+  return map;
+}();
+
+auto to_vk_color_component_mask(ColorComponentMask mask)
+    -> VkColorComponentFlags {
+  VkColorComponentFlags vk_mask = 0;
+  for (usize bit : range(COLOR_COMPONENT_COUNT)) {
+    auto comp = (ColorComponent)(1 << bit);
+    if (mask.is_set(comp)) {
+      vk_mask |= COLOR_COMPONENT_MAP[bit];
+    }
+  }
+  return vk_mask;
+}
+
+} // namespace
+
+auto create_graphics_pipeline(Device device,
+                              const GraphicsPipelineCreateInfo &create_info)
+    -> Result<Pipeline> {
+  const ShaderInfo *shaders[] = {
+      &create_info.ts,
+      &create_info.ms,
+      &create_info.vs,
+      &create_info.fs,
+  };
+  constexpr usize MAX_NUM_STAGES = std::size(shaders);
+  constexpr VkShaderStageFlagBits stage_bits[] = {
+      VK_SHADER_STAGE_TASK_BIT_EXT,
+      VK_SHADER_STAGE_MESH_BIT_EXT,
+      VK_SHADER_STAGE_VERTEX_BIT,
+      VK_SHADER_STAGE_FRAGMENT_BIT,
+  };
+  VkShaderModuleCreateInfo module_info[MAX_NUM_STAGES] = {};
+  VkPipelineShaderStageCreateInfo stage_info[MAX_NUM_STAGES] = {};
+  VkSpecializationInfo specialization_info[MAX_NUM_STAGES] = {};
+
+  SmallVector<VkSpecializationMapEntry> specialization_map;
+  {
+    u32 specialization_map_size = 0;
+    for (const ShaderInfo *shader : shaders) {
+      specialization_map_size += shader->specialization.constants.size();
+    }
+    specialization_map.resize(specialization_map_size);
+  }
+
+  u32 num_stages = 0;
+  u32 specialization_map_offset = 0;
+  for (usize i : range(MAX_NUM_STAGES)) {
+    const ShaderInfo &shader = *shaders[i];
+    if (shader.code.empty()) {
+      continue;
+    }
+    u32 num_specialization_constants = shader.specialization.constants.size();
+    for (usize j : range(num_specialization_constants)) {
+      const SpecializationConstant &c = shader.specialization.constants[j];
+      specialization_map[specialization_map_offset + j] = {
+          .constantID = c.id,
+          .offset = c.offset,
+          .size = c.size,
+      };
+    }
+    module_info[num_stages] = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = shader.code.size(),
+        .pCode = (const u32 *)shader.code.data(),
+    };
+    specialization_info[num_stages] = {
+        .mapEntryCount = num_specialization_constants,
+        .pMapEntries = &specialization_map[specialization_map_offset],
+        .dataSize = shader.specialization.data.size(),
+        .pData = shader.specialization.data.data(),
+    };
+    specialization_map_offset += num_specialization_constants;
+    stage_info[num_stages] = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = &module_info[num_stages],
+        .stage = stage_bits[i],
+        .pName = shader.entry_point,
+        .pSpecializationInfo = &specialization_info[num_stages],
+    };
+    num_stages++;
+  }
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+  };
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+      .topology = PRIMITIVE_TOPOLOGY_MAP[(usize)create_info.input_assembly_state
+                                             .topology],
+  };
+
+  VkPipelineViewportStateCreateInfo viewport_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+  };
+
+  VkPipelineRasterizationStateCreateInfo rasterization_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .depthClampEnable = create_info.rasterization_state.depth_clamp_enable,
+      .polygonMode =
+          FILL_MODE_MAP[(usize)create_info.rasterization_state.fill_mode],
+      .cullMode =
+          CULL_MODE_MAP[(usize)create_info.rasterization_state.cull_mode],
+      .frontFace = create_info.rasterization_state.front_face == FrontFace::CCW
+                       ? VK_FRONT_FACE_COUNTER_CLOCKWISE
+                       : VK_FRONT_FACE_CLOCKWISE,
+      .depthBiasEnable = create_info.rasterization_state.depth_bias_enable,
+      .depthBiasConstantFactor =
+          (float)create_info.rasterization_state.depth_bias_constant_factor,
+      .depthBiasClamp = create_info.rasterization_state.depth_bias_clamp,
+      .depthBiasSlopeFactor =
+          create_info.rasterization_state.depth_bias_slope_factor,
+      .lineWidth = 1.0f,
+  };
+
+  VkPipelineMultisampleStateCreateInfo multisample_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+      .rasterizationSamples =
+          (VkSampleCountFlagBits)create_info.multisampling_state.sample_count,
+      .pSampleMask = &create_info.multisampling_state.sample_mask,
+      .alphaToCoverageEnable =
+          create_info.multisampling_state.alpha_to_coverage_enable,
+  };
+
+  VkPipelineDepthStencilStateCreateInfo depth_stencil_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+      .depthTestEnable = create_info.depth_stencil_state.depth_test_enable,
+      .depthWriteEnable = create_info.depth_stencil_state.depth_write_enable,
+      .depthCompareOp = COMPARE_OP_MAP[(usize)create_info.depth_stencil_state
+                                           .depth_compare_op],
+      .depthBoundsTestEnable =
+          create_info.depth_stencil_state.depth_bounds_test_enable,
+      .minDepthBounds = create_info.depth_stencil_state.min_depth_bounds,
+      .maxDepthBounds = create_info.depth_stencil_state.max_depth_bounds,
+  };
+
+  VkFormat color_formats[MAX_NUM_RENDER_TARGETS] = {};
+  for (usize i : range(MAX_NUM_RENDER_TARGETS)) {
+    color_formats[i] = toVkFormat(create_info.rtv_formats[i]);
+  }
+
+  VkPipelineRenderingCreateInfo rendering_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+      .colorAttachmentCount = create_info.num_render_targets,
+      .pColorAttachmentFormats = color_formats,
+      .depthAttachmentFormat = toVkFormat(create_info.dsv_format),
+  };
+
+  VkPipelineColorBlendAttachmentState
+      attachment_blend_info[MAX_NUM_RENDER_TARGETS] = {};
+  for (usize i : range(create_info.num_render_targets)) {
+    const RenderTargetBlendInfo &target = create_info.blend_state.targets[i];
+    attachment_blend_info[i] = {
+        .blendEnable = target.blend_enable,
+        .srcColorBlendFactor =
+            BLEND_FACTOR_MAP[(usize)target.src_color_blend_factor],
+        .dstColorBlendFactor =
+            BLEND_FACTOR_MAP[(usize)target.dst_color_blend_factor],
+        .colorBlendOp = BLEND_OP_MAP[(usize)target.color_blend_op],
+        .srcAlphaBlendFactor =
+            BLEND_FACTOR_MAP[(usize)target.src_alpha_blend_factor],
+        .dstAlphaBlendFactor =
+            BLEND_FACTOR_MAP[(usize)target.dst_alpha_blend_factor],
+        .alphaBlendOp = BLEND_OP_MAP[(usize)target.alpha_blend_op],
+        .colorWriteMask = to_vk_color_component_mask(target.color_write_mask),
+    };
+  }
+
+  VkPipelineColorBlendStateCreateInfo blend_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+      .logicOpEnable = create_info.blend_state.logic_op_enable,
+      .logicOp = LOGIC_OP_MAP[(usize)create_info.blend_state.logic_op],
+      .attachmentCount = create_info.num_render_targets,
+      .pAttachments = attachment_blend_info,
+  };
+  std::memcpy(blend_info.blendConstants,
+              &create_info.blend_state.blend_constants,
+              sizeof(blend_info.blendConstants));
+
+  VkDynamicState dynamic_states[] = {
+      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+  };
+
+  VkPipelineDynamicStateCreateInfo dynamic_state_info = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+      .dynamicStateCount = std::size(dynamic_states),
+      .pDynamicStates = dynamic_states,
+  };
+
+  VkGraphicsPipelineCreateInfo pipeline_info = {
+      .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+      .pNext = &rendering_info,
+      .stageCount = num_stages,
+      .pStages = stage_info,
+      .pVertexInputState = &vertex_input_info,
+      .pInputAssemblyState = &input_assembly_info,
+      .pViewportState = &viewport_info,
+      .pRasterizationState = &rasterization_info,
+      .pMultisampleState = &multisample_info,
+      .pDepthStencilState = &depth_stencil_info,
+      .pColorBlendState = &blend_info,
+      .pDynamicState = &dynamic_state_info,
+      .layout = create_info.layout.handle,
+  };
+
+  Pipeline pipeline;
+  VkResult result = device->vk.vkCreateGraphicsPipelines(
+      device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  if (result) {
+    return fail(result);
+  }
+
+  return pipeline;
+}
+
+auto create_compute_pipeline(Device device,
+                             const ComputePipelineCreateInfo &create_info)
+    -> Result<Pipeline> {
+  const ShaderInfo &cs = create_info.cs;
+
+  VkShaderModuleCreateInfo module_info = {
+      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+      .codeSize = cs.code.size(),
+      .pCode = (const u32 *)cs.code.data(),
+  };
+
+  SmallVector<VkSpecializationMapEntry> specialization_map(
+      cs.specialization.constants.size());
+  for (usize i : range(cs.specialization.constants.size())) {
+    const SpecializationConstant &c = cs.specialization.constants[i];
+    specialization_map[i] = {
+        .constantID = c.id,
+        .offset = c.offset,
+        .size = c.size,
+    };
+  }
+  VkSpecializationInfo specialization_info = {
+      .mapEntryCount = (u32)specialization_map.size(),
+      .pMapEntries = specialization_map.data(),
+      .dataSize = cs.specialization.data.size(),
+      .pData = cs.specialization.data.data(),
+  };
+
+  VkComputePipelineCreateInfo pipeline_info = {
+      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+      .stage =
+          {
+              .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+              .pNext = &module_info,
+              .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+              .pName = cs.entry_point,
+              .pSpecializationInfo = &specialization_info,
+          },
+      .layout = create_info.layout.handle,
+  };
+
+  Pipeline pipeline;
+  VkResult result = device->vk.vkCreateComputePipelines(
+      device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  if (result) {
+    return fail(result);
+  }
+
+  return pipeline;
+}
+
+void destroy_pipeline(Device device, Pipeline pipeline) {
+  device->vk.vkDestroyPipeline(device->handle, pipeline.handle, nullptr);
 }
 
 namespace {

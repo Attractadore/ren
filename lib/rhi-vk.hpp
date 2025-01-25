@@ -90,6 +90,10 @@ struct PipelineLayout {
   VkPipelineLayout handle = nullptr;
 };
 
+struct Pipeline {
+  VkPipeline handle = nullptr;
+};
+
 void cmd_set_descriptor_heaps(Device device, VkCommandBuffer cmd_buffer,
                               PipelineBindPoint bind_point,
                               ResourceDescriptorHeap resource_heap,

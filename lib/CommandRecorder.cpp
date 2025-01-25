@@ -306,7 +306,7 @@ void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
   const auto &pipeline = m_renderer->get_graphics_pipeline(handle);
   m_pipeline_layout = pipeline.layout;
   vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    pipeline.handle);
+                    pipeline.handle.handle);
 }
 
 void RenderPass::set_descriptor_heaps(
@@ -427,7 +427,7 @@ void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
   m_pipeline = handle;
   m_pipeline_layout = pipeline.layout;
   vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-                    pipeline.handle);
+                    pipeline.handle.handle);
 }
 
 void ComputePass::set_descriptor_heaps(

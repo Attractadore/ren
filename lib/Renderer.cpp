@@ -480,195 +480,93 @@ static auto create_shader_module(VkDevice device,
 
 auto Renderer::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
-    -> Handle<GraphicsPipeline> {
-  constexpr size_t MAX_GRAPHICS_SHADER_STAGES = 2;
-
-  StaticVector<VkShaderModule, MAX_GRAPHICS_SHADER_STAGES> shader_modules;
-  StaticVector<Vector<u32>, MAX_GRAPHICS_SHADER_STAGES> spec_data;
-  StaticVector<Vector<VkSpecializationMapEntry>, MAX_GRAPHICS_SHADER_STAGES>
-      spec_map;
-  StaticVector<VkSpecializationInfo, MAX_GRAPHICS_SHADER_STAGES> spec_infos;
-  StaticVector<VkPipelineShaderStageCreateInfo, MAX_GRAPHICS_SHADER_STAGES>
-      shaders;
-
-  StaticVector<VkDynamicState, 3> dynamic_states = {
-      VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-      VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-  };
-
-  VkShaderStageFlags stages = 0;
-
-  auto add_shader = [&](VkShaderStageFlagBits stage, const ShaderInfo &shader) {
-    auto module = create_shader_module(get_device(), shader.code);
-
-    Vector<u32> &data = spec_data.emplace_back();
-    Vector<VkSpecializationMapEntry> &map = spec_map.emplace_back();
-    data.reserve(shader.spec_constants.size());
-    map.reserve(shader.spec_constants.size());
-    for (const SpecConstant &c : shader.spec_constants) {
-      map.push_back({
-          .constantID = c.id,
-          .offset = u32(data.size() * sizeof(c.value)),
-          .size = sizeof(c.value),
-      });
-      data.push_back(c.value);
+    -> Result<Handle<GraphicsPipeline>, Error> {
+  u32 num_render_targets = 0;
+  for (usize i : range(rhi::MAX_NUM_RENDER_TARGETS)) {
+    if (create_info.rtv_formats[i]) {
+      num_render_targets = i + 1;
     }
-    VkSpecializationInfo &spec_info = spec_infos.emplace_back();
-    spec_info = {
-        .mapEntryCount = u32(map.size()),
-        .pMapEntries = map.data(),
-        .dataSize = Span(data).size_bytes(),
-        .pData = data.data(),
-    };
-
-    shaders.push_back({
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .stage = stage,
-        .module = module,
-        .pName = shader.entry_point,
-        .pSpecializationInfo = &spec_info,
-    });
-    shader_modules.push_back(module);
-    stages |= stage;
-  };
-
-  add_shader(VK_SHADER_STAGE_VERTEX_BIT, create_info.vertex_shader);
-  create_info.fragment_shader.map([&](const ShaderInfo &shader) {
-    add_shader(VK_SHADER_STAGE_FRAGMENT_BIT, shader);
-  });
-
-  auto color_attachment_formats =
-      create_info.color_attachments |
-      map([&](const ColorAttachmentInfo &attachment) {
-        return (VkFormat)TinyImageFormat_ToVkFormat(attachment.format);
-      }) |
-      std::ranges::to<StaticVector<VkFormat, MAX_COLOR_ATTACHMENTS>>();
-
-  VkPipelineRenderingCreateInfo rendering_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-      .colorAttachmentCount = u32(color_attachment_formats.size()),
-      .pColorAttachmentFormats = color_attachment_formats.data(),
-  };
-
-  VkPipelineVertexInputStateCreateInfo vertex_input_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-  };
-
-  VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = create_info.input_assembly.topology,
-  };
-
-  VkPipelineViewportStateCreateInfo viewport_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-  };
-
-  VkPipelineRasterizationStateCreateInfo rasterization_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-      .cullMode = (VkCullModeFlags)create_info.rasterization.cull_mode,
-      .frontFace = create_info.rasterization.front_face,
-      .lineWidth = 1.0f,
-  };
-
-  VkPipelineMultisampleStateCreateInfo multisample_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-      .rasterizationSamples =
-          static_cast<VkSampleCountFlagBits>(create_info.multisample.samples),
-  };
-
-  VkPipelineDepthStencilStateCreateInfo depth_stencil_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-  };
-
-  create_info.depth_test.map([&](const DepthTestInfo &depth_test) {
-    rendering_info.depthAttachmentFormat =
-        (VkFormat)TinyImageFormat_ToVkFormat(depth_test.format);
-    depth_stencil_info.depthTestEnable = true;
-    depth_stencil_info.depthWriteEnable = depth_test.write_depth;
-    depth_test.compare_op.visit(OverloadSet{
-        [&](DynamicState) {
-          dynamic_states.push_back(VK_DYNAMIC_STATE_DEPTH_COMPARE_OP);
-        },
-        [&](VkCompareOp op) { depth_stencil_info.depthCompareOp = op; },
-    });
-  });
-
-  auto color_attachments =
-      create_info.color_attachments |
-      map([&](const ColorAttachmentInfo &attachment) {
-        return attachment.blending.map_or(
-            [&](const ColorBlendAttachmentInfo &blending)
-                -> VkPipelineColorBlendAttachmentState {
-              return {
-                  .blendEnable = true,
-                  .srcColorBlendFactor = blending.src_color_blend_factor,
-                  .dstColorBlendFactor = blending.dst_color_blend_factor,
-                  .colorBlendOp = blending.color_blend_op,
-                  .srcAlphaBlendFactor = blending.src_alpha_blend_factor,
-                  .dstAlphaBlendFactor = blending.dst_alpha_blend_factor,
-                  .alphaBlendOp = blending.alpha_blend_op,
-                  .colorWriteMask = attachment.write_mask,
-              };
-            },
-            VkPipelineColorBlendAttachmentState{
-                .colorWriteMask = attachment.write_mask,
-            });
-      }) |
-      std::ranges::to<StaticVector<VkPipelineColorBlendAttachmentState,
-                                   MAX_COLOR_ATTACHMENTS>>();
-
-  VkPipelineColorBlendStateCreateInfo blend_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-      .attachmentCount = u32(color_attachments.size()),
-      .pAttachments = color_attachments.data(),
-  };
-
-  VkPipelineDynamicStateCreateInfo dynamic_state_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-      .dynamicStateCount = u32(dynamic_states.size()),
-      .pDynamicStates = dynamic_states.data(),
-  };
-
-  VkGraphicsPipelineCreateInfo pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-      .pNext = &rendering_info,
-      .stageCount = u32(shaders.size()),
-      .pStages = shaders.data(),
-      .pVertexInputState = &vertex_input_info,
-      .pInputAssemblyState = &input_assembly_info,
-      .pViewportState = &viewport_info,
-      .pRasterizationState = &rasterization_info,
-      .pMultisampleState = &multisample_info,
-      .pDepthStencilState = &depth_stencil_info,
-      .pColorBlendState = &blend_info,
-      .pDynamicState = &dynamic_state_info,
-      .layout = get_pipeline_layout(create_info.layout).handle.handle,
-  };
-
-  VkPipeline pipeline;
-  throw_if_failed(vkCreateGraphicsPipelines(get_device(), nullptr, 1,
-                                            &pipeline_info, nullptr, &pipeline),
-                  "Vulkan: Failed to create graphics pipeline");
-  set_debug_name(get_device(), pipeline, create_info.name);
-  for (VkShaderModule module : shader_modules) {
-    vkDestroyShaderModule(get_device(), module, nullptr);
   }
+  rhi::GraphicsPipelineCreateInfo pipeline_info = {
+      .layout = get_pipeline_layout(create_info.layout).handle,
+      .input_assembly_state = create_info.input_assembly_state,
+      .rasterization_state = create_info.rasterization_state,
+      .multisampling_state = create_info.multisampling_state,
+      .depth_stencil_state = create_info.depth_stencil_state,
+      .num_render_targets = num_render_targets,
+      .dsv_format = create_info.dsv_format,
+      .blend_state = create_info.blend_state,
+  };
+  std::ranges::copy(create_info.rtv_formats, pipeline_info.rtv_formats);
+
+  const ShaderInfo *shaders[] = {
+      &create_info.ts,
+      &create_info.ms,
+      &create_info.vs,
+      &create_info.fs,
+  };
+
+  rhi::ShaderInfo *rhi_shaders[] = {
+      &pipeline_info.ts,
+      &pipeline_info.ms,
+      &pipeline_info.vs,
+      &pipeline_info.fs,
+  };
+
+  SmallVector<rhi::SpecializationConstant> specialization_constants;
+  SmallVector<u32> specialization_data;
+  {
+    u32 num_specialization_constants = 0;
+    for (const ShaderInfo *shader : shaders) {
+      num_specialization_constants += shader->specialization_constants.size();
+    }
+    specialization_constants.resize(num_specialization_constants);
+    specialization_data.resize(num_specialization_constants);
+  }
+
+  u32 specialization_offset = 0;
+  for (usize i : range(std::size(shaders))) {
+    const ShaderInfo &shader = *shaders[i];
+    u32 num_specialization_constants = shader.specialization_constants.size();
+    for (usize j : range(num_specialization_constants)) {
+      const SpecializationConstant &c = shader.specialization_constants[j];
+      specialization_constants[specialization_offset + j] = {
+          .id = c.id,
+          .offset = u32(sizeof(u32) * j),
+          .size = sizeof(u32),
+      };
+      specialization_data[specialization_offset + j] = c.value;
+    }
+    *rhi_shaders[i] = {
+        .code = shader.code,
+        .entry_point = shader.entry_point,
+        .specialization =
+            {
+                .constants =
+                    Span(&specialization_constants[specialization_offset],
+                         num_specialization_constants),
+                .data = Span(&specialization_data[specialization_offset],
+                             num_specialization_constants)
+                            .as_bytes(),
+            },
+    };
+    specialization_offset += num_specialization_constants;
+  }
+
+  ren_try(rhi::Pipeline pipeline,
+          rhi::create_graphics_pipeline(m_device, pipeline_info));
+  set_debug_name(get_device(), pipeline.handle, create_info.name);
 
   return m_graphics_pipelines.emplace(GraphicsPipeline{
       .handle = pipeline,
       .layout = create_info.layout,
-      .stages = stages,
-      .input_assembly = create_info.input_assembly,
-      .multisample = create_info.multisample,
-      .depth_test = create_info.depth_test,
-      .color_attachments = create_info.color_attachments,
   });
 }
 
 void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
   m_graphics_pipelines.try_pop(pipeline).map(
       [&](const GraphicsPipeline &pipeline) {
-        vkDestroyPipeline(get_device(), pipeline.handle, nullptr);
+        rhi::destroy_pipeline(m_device, pipeline.handle);
       });
 }
 
@@ -684,39 +582,52 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 }
 
 auto Renderer::create_compute_pipeline(
-    const ComputePipelineCreateInfo &&create_info) -> Handle<ComputePipeline> {
-  Span<const std::byte> code = create_info.shader.code;
+    const ComputePipelineCreateInfo &&create_info)
+    -> Result<Handle<ComputePipeline>, Error> {
+  Span<const std::byte> code = create_info.cs.code;
 
   spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
                                    SPV_REFLECT_MODULE_FLAG_NO_COPY);
   throw_if_failed(shader.GetResult(),
                   "SPIRV-Reflect: Failed to create shader module");
   const SpvReflectEntryPoint *entry_point = spvReflectGetEntryPoint(
-      &shader.GetShaderModule(), create_info.shader.entry_point);
+      &shader.GetShaderModule(), create_info.cs.entry_point);
   throw_if_failed(entry_point,
                   "SPIRV-Reflect: Failed to find entry point in shader module");
   SpvReflectEntryPoint::LocalSize local_size = entry_point->local_size;
 
-  VkShaderModule module = create_shader_module(get_device(), code);
+  const ShaderInfo &cs = create_info.cs;
 
-  VkComputePipelineCreateInfo pipeline_info = {
-      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-      .stage =
-          {
-              .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-              .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-              .module = module,
-              .pName = create_info.shader.entry_point,
-          },
-      .layout = get_pipeline_layout(create_info.layout).handle.handle,
-  };
+  SmallVector<rhi::SpecializationConstant> specialization_constants(
+      cs.specialization_constants.size());
+  SmallVector<u32> specialization_data(cs.specialization_constants.size());
+  for (usize i : range(cs.specialization_constants.size())) {
+    const SpecializationConstant &c = cs.specialization_constants[i];
+    specialization_constants[i] = {
+        .id = c.id,
+        .offset = u32(sizeof(u32) * i),
+        .size = sizeof(u32),
+    };
+    specialization_data[i] = c.value;
+  }
 
-  VkPipeline pipeline;
-  throw_if_failed(vkCreateComputePipelines(get_device(), nullptr, 1,
-                                           &pipeline_info, nullptr, &pipeline),
-                  "Vulkan: Failed to create compute pipeline");
-  set_debug_name(get_device(), pipeline, create_info.name);
-  vkDestroyShaderModule(get_device(), module, nullptr);
+  ren_try(rhi::Pipeline pipeline,
+          rhi::create_compute_pipeline(
+              m_device,
+              {
+                  .layout = get_pipeline_layout(create_info.layout).handle,
+                  .cs =
+                      {
+                          .code = create_info.cs.code,
+                          .entry_point = create_info.cs.entry_point,
+                          .specialization =
+                              {
+                                  .constants = specialization_constants,
+                                  .data = Span(specialization_data).as_bytes(),
+                              },
+                      },
+              }));
+  set_debug_name(get_device(), pipeline.handle, create_info.name);
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
@@ -728,7 +639,7 @@ auto Renderer::create_compute_pipeline(
 void Renderer::destroy(Handle<ComputePipeline> pipeline) {
   m_compute_pipelines.try_pop(pipeline).map(
       [&](const ComputePipeline &pipeline) {
-        vkDestroyPipeline(get_device(), pipeline.handle, nullptr);
+        rhi::destroy_pipeline(m_device, pipeline.handle);
       });
 }
 

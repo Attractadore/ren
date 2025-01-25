@@ -85,17 +85,23 @@ public:
   }
 
   auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
-      -> Handle<GraphicsPipeline>
+      -> Result<Handle<GraphicsPipeline>, Error>
     requires IsArenaResource<GraphicsPipeline>
   {
     return insert(m_renderer->create_graphics_pipeline(std::move(create_info)));
   }
 
   auto create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
-      -> Handle<ComputePipeline>
+      -> Result<Handle<ComputePipeline>, Error>
     requires IsArenaResource<ComputePipeline>
   {
     return insert(m_renderer->create_compute_pipeline(std::move(create_info)));
+  }
+
+  template <typename H>
+    requires IsArenaResource<H>
+  void destroy(Handle<H> handle) {
+    m_renderer->destroy(handle);
   }
 
   void clear() {

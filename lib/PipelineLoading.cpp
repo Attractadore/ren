@@ -64,15 +64,17 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
   auto vs = Span(EarlyZVS, EarlyZVSSize).as_bytes();
   ren_try(Handle<PipelineLayout> layout,
           create_pipeline_layout(arena, {vs}, "Early Z pass"));
-  return arena.create_graphics_pipeline({
+  return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
       .name = "Early Z pass graphics pipeline",
       .layout = layout,
-      .vertex_shader = {vs},
-      .depth_test =
-          DepthTestInfo{
-              .format = DEPTH_FORMAT,
-              .compare_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
+      .vs = {vs},
+      .rasterization_state = {.cull_mode = rhi::CullMode::Back},
+      .depth_stencil_state =
+          {
+              .depth_test_enable = true,
+              .depth_compare_op = rhi::CompareOp::GreaterOrEqual,
           },
+      .dsv_format = DEPTH_FORMAT,
   });
 }
 
@@ -83,38 +85,45 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
   auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
   ren_try(Handle<PipelineLayout> layout,
           create_pipeline_layout(arena, {vs, fs}, "Opaque pass"));
-  std::array color_attachments = {ColorAttachmentInfo{
-      .format = HDR_FORMAT,
-  }};
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       pipelines;
   for (int i = 0; i < glsl::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
     MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
-    std::array<SpecConstant, 3> spec_constants = {{
+    std::array<SpecializationConstant, 3> specialization_constants = {{
         {glsl::S_OPAQUE_FEATURE_VC, flags.is_set(MeshAttribute::Color)},
         {glsl::S_OPAQUE_FEATURE_TS, flags.is_set(MeshAttribute::Tangent)},
         {glsl::S_OPAQUE_FEATURE_UV, flags.is_set(MeshAttribute::UV)},
     }};
-    pipelines[i] = arena.create_graphics_pipeline({
-        .name = fmt::format("Opaque pass graphics pipeline {}", i),
-        .layout = layout,
-        .vertex_shader =
-            {
-                .code = vs,
-                .spec_constants = spec_constants,
-            },
-        .fragment_shader =
-            ShaderInfo{
-                .code = fs,
-                .spec_constants = spec_constants,
-            },
-        .depth_test =
-            DepthTestInfo{
-                .format = DEPTH_FORMAT,
-                .compare_op = VK_COMPARE_OP_GREATER_OR_EQUAL,
-            },
-        .color_attachments = color_attachments,
-    });
+    Result<Handle<GraphicsPipeline>, Error> result =
+        arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
+            .name = fmt::format("Opaque pass graphics pipeline {}", i),
+            .layout = layout,
+            .vs =
+                {
+                    .code = vs,
+                    .specialization_constants = specialization_constants,
+                },
+            .fs =
+                {
+                    .code = fs,
+                    .specialization_constants = specialization_constants,
+                },
+            .rasterization_state = {.cull_mode = rhi::CullMode::Back},
+            .depth_stencil_state =
+                {
+                    .depth_test_enable = true,
+                    .depth_compare_op = rhi::CompareOp::GreaterOrEqual,
+                },
+            .rtv_formats = {HDR_FORMAT},
+            .dsv_format = DEPTH_FORMAT,
+        });
+    if (!result) {
+      for (Handle<GraphicsPipeline> pipeline : Span(pipelines).subspan(0, i)) {
+        arena.destroy(pipeline);
+      }
+      return Failure(result.error());
+    }
+    pipelines[i] = *result;
   };
   return pipelines;
 }
@@ -125,27 +134,25 @@ auto load_imgui_pipeline(ResourceArena &arena, TinyImageFormat format)
   auto fs = Span(ImGuiFS, ImGuiFSSize).as_bytes();
   ren_try(Handle<PipelineLayout> layout,
           create_pipeline_layout(arena, {vs, fs}, "ImGui pass"));
-  std::array color_attachments = {ColorAttachmentInfo{
-      .format = format,
-      .blending =
-          ColorBlendAttachmentInfo{
-              .src_color_blend_factor = VK_BLEND_FACTOR_SRC_ALPHA,
-              .dst_color_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-              .color_blend_op = VK_BLEND_OP_ADD,
-              .src_alpha_blend_factor = VK_BLEND_FACTOR_ONE,
-              .dst_alpha_blend_factor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-              .alpha_blend_op = VK_BLEND_OP_ADD,
-          },
-  }};
   return arena.create_graphics_pipeline({
       .name = "ImGui pass graphics pipeline",
       .layout = layout,
-      .vertex_shader = {vs},
-      .fragment_shader = ShaderInfo{fs},
-      .rasterization = {.cull_mode = VK_CULL_MODE_NONE},
-      .color_attachments = color_attachments,
+      .vs = {vs},
+      .fs = {fs},
+      .rtv_formats = {format},
+      .blend_state =
+          {
+              .targets = {{
+                  .blend_enable = true,
+                  .src_color_blend_factor = rhi::BlendFactor::SrcAlpha,
+                  .dst_color_blend_factor = rhi::BlendFactor::OneMinusSrcAlpha,
+                  .color_blend_op = rhi::BlendOp::Add,
+                  .src_alpha_blend_factor = rhi::BlendFactor::One,
+                  .dst_alpha_blend_factor = rhi::BlendFactor::OneMinusSrcAlpha,
+                  .alpha_blend_op = rhi::BlendOp::Add,
+              }},
+          },
   });
-  return {};
 }
 
 auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
@@ -157,10 +164,7 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
     return arena.create_compute_pipeline({
         .name = fmt::format("{} compute pipeline", name),
         .layout = layout,
-        .shader =
-            {
-                .code = shader,
-            },
+        .cs = {shader},
     });
   };
 
