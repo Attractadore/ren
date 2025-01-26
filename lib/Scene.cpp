@@ -78,7 +78,10 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
                 .type = rhi::SemaphoreType::Binary,
             }));
     ren_try(Handle<CommandPool> cmd_pool,
-            m_fif_arena.create_command_pool({rhi::QueueFamily::Graphics}));
+            m_fif_arena.create_command_pool({
+                .name = fmt::format("Command pool {}", i),
+                .queue_family = rhi::QueueFamily::Graphics,
+            }));
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = acquire_semaphore,
         .present_semaphore = present_semaphore,

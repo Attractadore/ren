@@ -24,6 +24,7 @@ define_object_type(VkPipeline, VK_OBJECT_TYPE_PIPELINE);
 define_object_type(VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT);
 define_object_type(VkSampler, VK_OBJECT_TYPE_SAMPLER);
 define_object_type(VkSemaphore, VK_OBJECT_TYPE_SEMAPHORE);
+define_object_type(VkCommandPool, VK_OBJECT_TYPE_COMMAND_POOL);
 #undef define_object_type
 
 template <typename T>
@@ -451,6 +452,7 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   ren_try(rhi::CommandPool pool,
           rhi::create_command_pool(m_device,
                                    {.queue_family = create_info.queue_family}));
+  set_debug_name(get_device(), *((VkCommandPool *)pool), create_info.name);
   return m_command_pools.emplace(CommandPool{
       .handle = pool,
       .queue_family = create_info.queue_family,
