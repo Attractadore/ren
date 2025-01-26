@@ -1,7 +1,6 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Renderer.hpp"
-#include "core/Errors.hpp"
 #include "core/Math.hpp"
 #include "core/Views.hpp"
 
@@ -22,27 +21,23 @@ auto get_layout_for_attachment_ops(VkAttachmentLoadOp load,
 
 } // namespace
 
-CommandRecorder::CommandRecorder(Renderer &renderer,
-                                 VkCommandBuffer cmd_buffer) {
-  ren_assert(cmd_buffer);
+auto CommandRecorder::begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
+    -> Result<void, Error> {
   m_renderer = &renderer;
-  m_cmd_buffer = cmd_buffer;
-  VkCommandBufferBeginInfo begin_info = {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-  };
-  throw_if_failed(vkBeginCommandBuffer(m_cmd_buffer, &begin_info),
-                  "Vulkan: Failed to begin command buffer");
+  ren_try(m_cmd, rhi::begin_command_buffer(
+                     renderer.get_rhi_device(),
+                     renderer.get_command_pool(cmd_pool).handle));
+  return {};
 }
 
-CommandRecorder::~CommandRecorder() {
-  throw_if_failed(vkEndCommandBuffer(m_cmd_buffer),
-                  "Vulkan: Failed to end command buffer");
+auto CommandRecorder::end() -> Result<rhi::CommandBuffer, Error> {
+  ren_try_to(rhi::end_command_buffer(m_cmd));
+  return std::exchange(m_cmd, {});
 }
 
 void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                                   TempSpan<const VkBufferCopy> regions) {
-  vkCmdCopyBuffer(m_cmd_buffer, m_renderer->get_buffer(src).handle.handle,
+  vkCmdCopyBuffer(m_cmd.handle, m_renderer->get_buffer(src).handle.handle,
                   m_renderer->get_buffer(dst).handle.handle, regions.size(),
                   regions.data());
 }
@@ -62,7 +57,7 @@ void CommandRecorder::copy_buffer_to_texture(
     Handle<Buffer> src, Handle<Texture> dst,
     TempSpan<const VkBufferImageCopy> regions) {
   vkCmdCopyBufferToImage(
-      m_cmd_buffer, m_renderer->get_buffer(src).handle.handle,
+      m_cmd.handle, m_renderer->get_buffer(src).handle.handle,
       m_renderer->get_texture(dst).handle.handle,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(), regions.data());
 }
@@ -89,7 +84,7 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
   ren_assert(view.offset % alignof(u32) == 0);
   ren_assert(view.size_bytes() % sizeof(u32) == 0);
-  vkCmdFillBuffer(m_cmd_buffer,
+  vkCmdFillBuffer(m_cmd.handle,
                   m_renderer->get_buffer(view.buffer).handle.handle,
                   view.offset, view.size_bytes(), value);
 };
@@ -98,7 +93,7 @@ void CommandRecorder::update_buffer(const BufferView &view,
                                     TempSpan<const std::byte> data) {
   ren_assert(view.size_bytes() >= data.size());
   ren_assert(data.size() % 4 == 0);
-  vkCmdUpdateBuffer(m_cmd_buffer,
+  vkCmdUpdateBuffer(m_cmd.handle,
                     m_renderer->get_buffer(view.buffer).handle.handle,
                     view.offset, view.size_bytes(), data.data());
 }
@@ -106,7 +101,7 @@ void CommandRecorder::update_buffer(const BufferView &view,
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                            TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {
-  vkCmdBlitImage(m_cmd_buffer, m_renderer->get_texture(src).handle.handle,
+  vkCmdBlitImage(m_cmd.handle, m_renderer->get_texture(src).handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                  m_renderer->get_texture(dst).handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
@@ -117,7 +112,7 @@ void CommandRecorder::clear_texture(
     Handle<Texture> texture, TempSpan<const VkClearColorValue> clear_colors,
     TempSpan<const VkImageSubresourceRange> clear_ranges) {
   auto count = std::min<usize>(clear_colors.size(), clear_ranges.size());
-  vkCmdClearColorImage(m_cmd_buffer,
+  vkCmdClearColorImage(m_cmd.handle,
                        m_renderer->get_texture(texture).handle.handle,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                        clear_colors.data(), count, clear_ranges.data());
@@ -131,7 +126,7 @@ void CommandRecorder::clear_texture(Handle<Texture> htexture,
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  vkCmdClearColorImage(m_cmd_buffer, texture.handle.handle,
+  vkCmdClearColorImage(m_cmd.handle, texture.handle.handle,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1,
                        &clear_range);
 }
@@ -150,7 +145,7 @@ void CommandRecorder::clear_texture(
   auto count =
       std::min<usize>(clear_depth_stencils.size(), clear_ranges.size());
   vkCmdClearDepthStencilImage(
-      m_cmd_buffer, m_renderer->get_texture(texture).handle.handle,
+      m_cmd.handle, m_renderer->get_texture(texture).handle.handle,
       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, clear_depth_stencils.data(), count,
       clear_ranges.data());
 }
@@ -164,7 +159,7 @@ void CommandRecorder::clear_texture(
       .levelCount = texture.num_mip_levels,
       .layerCount = texture.num_array_layers,
   };
-  vkCmdClearDepthStencilImage(m_cmd_buffer, texture.handle.handle,
+  vkCmdClearDepthStencilImage(m_cmd.handle, texture.handle.handle,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                               &clear_depth_stencil, 1, &clear_range);
 }
@@ -174,7 +169,7 @@ void CommandRecorder::copy_texture(Handle<Texture> hsrc, Handle<Texture> hdst) {
   const Texture &dst = m_renderer->get_texture(hdst);
   ren_assert(src.size == dst.size);
   VkImageCopy region = {.extent = {src.size.x, src.size.y, src.size.z}};
-  vkCmdCopyImage(m_cmd_buffer, src.handle.handle,
+  vkCmdCopyImage(m_cmd.handle, src.handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.handle.handle,
                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
@@ -186,7 +181,7 @@ void CommandRecorder::pipeline_barrier(
       !dependency_info.imageMemoryBarrierCount) {
     return;
   }
-  vkCmdPipelineBarrier2(m_cmd_buffer, &dependency_info);
+  vkCmdPipelineBarrier2(m_cmd.handle, &dependency_info);
 }
 
 void CommandRecorder::pipeline_barrier(
@@ -204,21 +199,21 @@ void CommandRecorder::pipeline_barrier(
 
 auto CommandRecorder::render_pass(const RenderPassBeginInfo &&begin_info)
     -> RenderPass {
-  return RenderPass(*m_renderer, m_cmd_buffer, std::move(begin_info));
+  return RenderPass(*m_renderer, m_cmd, std::move(begin_info));
 }
 
 auto CommandRecorder::compute_pass() -> ComputePass {
-  return ComputePass(*m_renderer, m_cmd_buffer);
+  return ComputePass(*m_renderer, m_cmd);
 }
 
 auto CommandRecorder::debug_region(const char *label) -> DebugRegion {
-  return DebugRegion(m_cmd_buffer, label);
+  return DebugRegion(m_cmd, label);
 }
 
-RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
+RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
                        const RenderPassBeginInfo &&begin_info) {
   m_renderer = &renderer;
-  m_cmd_buffer = cmd_buffer;
+  m_cmd = cmd;
 
   glm::uvec2 max_size = {-1, -1};
   glm::uvec2 size = max_size;
@@ -280,10 +275,19 @@ RenderPass::RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
       .pStencilAttachment = nullptr,
   };
 
-  vkCmdBeginRendering(m_cmd_buffer, &rendering_info);
+  vkCmdBeginRendering(m_cmd.handle, &rendering_info);
 }
 
-RenderPass::~RenderPass() { vkCmdEndRendering(m_cmd_buffer); }
+RenderPass::~RenderPass() {
+  if (m_cmd) {
+    end();
+  }
+}
+
+void RenderPass::end() {
+  vkCmdEndRendering(m_cmd.handle);
+  m_cmd = {};
+}
 
 void RenderPass::set_viewports(
     StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports) {
@@ -291,29 +295,29 @@ void RenderPass::set_viewports(
     viewport.y += viewport.height;
     viewport.height = -viewport.height;
   }
-  vkCmdSetViewportWithCount(m_cmd_buffer, viewports.size(), viewports.data());
+  vkCmdSetViewportWithCount(m_cmd.handle, viewports.size(), viewports.data());
 }
 
 void RenderPass::set_scissor_rects(TempSpan<const VkRect2D> rects) {
-  vkCmdSetScissorWithCount(m_cmd_buffer, rects.size(), rects.data());
+  vkCmdSetScissorWithCount(m_cmd.handle, rects.size(), rects.data());
 }
 
 void RenderPass::set_depth_compare_op(VkCompareOp op) {
-  vkCmdSetDepthCompareOp(m_cmd_buffer, op);
+  vkCmdSetDepthCompareOp(m_cmd.handle, op);
 }
 
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
   const auto &pipeline = m_renderer->get_graphics_pipeline(handle);
   m_pipeline_layout = pipeline.layout;
-  vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+  vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.handle.handle);
 }
 
 void RenderPass::set_descriptor_heaps(
     Handle<ResourceDescriptorHeap> resource_heap,
     Handle<SamplerDescriptorHeap> sampler_heap) {
-  rhi::vk::cmd_set_descriptor_heaps(
-      m_renderer->get_rhi_device(), m_cmd_buffer,
+  rhi::cmd_set_descriptor_heaps(
+      {m_cmd.handle, m_renderer->get_rhi_device()},
       rhi::PipelineBindPoint::Graphics,
       m_renderer->get_resource_descriptor_heap(resource_heap).handle,
       m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
@@ -322,7 +326,7 @@ void RenderPass::set_descriptor_heaps(
 void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
                                     TempSpan<const std::byte> data,
                                     unsigned offset) {
-  vkCmdPushConstants(m_cmd_buffer,
+  vkCmdPushConstants(m_cmd.handle,
                      m_renderer->get_pipeline_layout(layout).handle.handle,
                      VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
 }
@@ -336,7 +340,7 @@ void RenderPass::set_push_constants(TempSpan<const std::byte> data,
 void RenderPass::bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
                                    u32 offset) {
   vkCmdBindIndexBuffer(
-      m_cmd_buffer, m_renderer->get_buffer(buffer).handle.handle, offset, type);
+      m_cmd.handle, m_renderer->get_buffer(buffer).handle.handle, offset, type);
 }
 
 void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
@@ -356,12 +360,12 @@ void RenderPass::bind_index_buffer(const BufferSlice<u32> &slice) {
 }
 
 void RenderPass::draw(const DrawInfo &&draw_info) {
-  vkCmdDraw(m_cmd_buffer, draw_info.num_vertices, draw_info.num_instances,
+  vkCmdDraw(m_cmd.handle, draw_info.num_vertices, draw_info.num_instances,
             draw_info.first_vertex, draw_info.first_instance);
 }
 
 void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
-  vkCmdDrawIndexed(m_cmd_buffer, draw_info.num_indices, draw_info.num_instances,
+  vkCmdDrawIndexed(m_cmd.handle, draw_info.num_indices, draw_info.num_instances,
                    draw_info.first_index, draw_info.vertex_offset,
                    draw_info.first_instance);
 }
@@ -370,7 +374,7 @@ void RenderPass::draw_indirect(const BufferView &view, usize stride) {
   const Buffer &buffer = m_renderer->get_buffer(view.buffer);
   usize count = (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
                 sizeof(VkDrawIndirectCommand);
-  vkCmdDrawIndirect(m_cmd_buffer, buffer.handle.handle, view.offset, count,
+  vkCmdDrawIndirect(m_cmd.handle, buffer.handle.handle, view.offset, count,
                     stride);
 }
 
@@ -381,7 +385,7 @@ void RenderPass::draw_indirect_count(const BufferView &view,
   usize max_count =
       (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
       sizeof(VkDrawIndirectCommand);
-  vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle.handle, view.offset,
+  vkCmdDrawIndexedIndirectCount(m_cmd.handle, buffer.handle.handle, view.offset,
                                 count_buffer.handle.handle, counter.offset,
                                 max_count, stride);
 }
@@ -391,7 +395,7 @@ void RenderPass::draw_indexed_indirect(const BufferView &view, usize stride) {
   usize count =
       (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
       sizeof(VkDrawIndexedIndirectCommand);
-  vkCmdDrawIndexedIndirect(m_cmd_buffer, buffer.handle.handle, view.offset,
+  vkCmdDrawIndexedIndirect(m_cmd.handle, buffer.handle.handle, view.offset,
                            count, stride);
 }
 
@@ -403,7 +407,7 @@ void RenderPass::draw_indexed_indirect_count(const BufferView &view,
   usize max_count =
       (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
       sizeof(VkDrawIndexedIndirectCommand);
-  vkCmdDrawIndexedIndirectCount(m_cmd_buffer, buffer.handle.handle, view.offset,
+  vkCmdDrawIndexedIndirectCount(m_cmd.handle, buffer.handle.handle, view.offset,
                                 count_buffer.handle.handle, counter.offset,
                                 max_count, stride);
 }
@@ -415,26 +419,24 @@ void RenderPass::draw_indexed_indirect_count(
   draw_indexed_indirect_count(BufferView(commands), BufferView(counter));
 }
 
-ComputePass::ComputePass(Renderer &renderer, VkCommandBuffer cmd_buffer) {
+ComputePass::ComputePass(Renderer &renderer, rhi::CommandBuffer cmd) {
   m_renderer = &renderer;
-  m_cmd_buffer = cmd_buffer;
+  m_cmd = cmd;
 }
-
-ComputePass::~ComputePass() {}
 
 void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
   const auto &pipeline = m_renderer->get_compute_pipeline(handle);
   m_pipeline = handle;
   m_pipeline_layout = pipeline.layout;
-  vkCmdBindPipeline(m_cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+  vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_COMPUTE,
                     pipeline.handle.handle);
 }
 
 void ComputePass::set_descriptor_heaps(
     Handle<ResourceDescriptorHeap> resource_heap,
     Handle<SamplerDescriptorHeap> sampler_heap) {
-  rhi::vk::cmd_set_descriptor_heaps(
-      m_renderer->get_rhi_device(), m_cmd_buffer,
+  rhi::cmd_set_descriptor_heaps(
+      {m_cmd.handle, m_renderer->get_rhi_device()},
       rhi::PipelineBindPoint::Compute,
       m_renderer->get_resource_descriptor_heap(resource_heap).handle,
       m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
@@ -443,7 +445,7 @@ void ComputePass::set_descriptor_heaps(
 void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
                                      TempSpan<const std::byte> data,
                                      unsigned offset) {
-  vkCmdPushConstants(m_cmd_buffer,
+  vkCmdPushConstants(m_cmd.handle,
                      m_renderer->get_pipeline_layout(layout).handle.handle,
                      VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
 }
@@ -456,7 +458,7 @@ void ComputePass::set_push_constants(TempSpan<const std::byte> data,
 
 void ComputePass::dispatch(u32 num_groups_x, u32 num_groups_y,
                            u32 num_groups_z) {
-  vkCmdDispatch(m_cmd_buffer, num_groups_x, num_groups_y, num_groups_z);
+  vkCmdDispatch(m_cmd.handle, num_groups_x, num_groups_y, num_groups_z);
 }
 
 void ComputePass::dispatch(glm::uvec2 num_groups) {
@@ -489,7 +491,7 @@ void ComputePass::dispatch_grid_3d(glm::uvec3 size,
 
 void ComputePass::dispatch_indirect(const BufferView &view) {
   ren_assert(view.size_bytes() >= sizeof(VkDispatchIndirectCommand));
-  vkCmdDispatchIndirect(m_cmd_buffer,
+  vkCmdDispatchIndirect(m_cmd.handle,
                         m_renderer->get_buffer(view.buffer).handle.handle,
                         view.offset);
 }
@@ -499,28 +501,29 @@ void ComputePass::dispatch_indirect(
   dispatch_indirect(BufferView(slice));
 }
 
-DebugRegion::DebugRegion(VkCommandBuffer cmd_buffer, const char *label) {
-  m_cmd_buffer = cmd_buffer;
+DebugRegion::DebugRegion(rhi::CommandBuffer cmd, const char *label) {
+  m_cmd = cmd;
 #if REN_DEBUG_NAMES
   ren_assert(label);
   VkDebugUtilsLabelEXT label_info = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pLabelName = label,
   };
-  vkCmdBeginDebugUtilsLabelEXT(m_cmd_buffer, &label_info);
+  vkCmdBeginDebugUtilsLabelEXT(m_cmd.handle, &label_info);
 #endif
-}
-
-DebugRegion::DebugRegion(DebugRegion &&other) {
-  m_cmd_buffer = std::exchange(other.m_cmd_buffer, nullptr);
 }
 
 DebugRegion::~DebugRegion() {
-#if REN_DEBUG_NAMES
-  if (m_cmd_buffer) {
-    vkCmdEndDebugUtilsLabelEXT(m_cmd_buffer);
+  if (m_cmd) {
+    end();
   }
+}
+
+void DebugRegion::end() {
+#if REN_DEBUG_NAMES
+  vkCmdEndDebugUtilsLabelEXT(m_cmd.handle);
 #endif
+  m_cmd = {};
 }
 
 } // namespace ren

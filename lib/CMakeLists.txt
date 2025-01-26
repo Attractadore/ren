@@ -45,7 +45,6 @@ add_library(ren
   ren.cpp
   BumpAllocator.cpp
   Camera.cpp
-  CommandAllocator.cpp
   CommandRecorder.cpp
   DescriptorAllocator.cpp
   Formats.cpp

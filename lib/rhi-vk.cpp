@@ -819,6 +819,18 @@ void destroy_device(Device device) {
   delete device;
 }
 
+namespace {
+
+auto get_adapter(Adapter adapter) -> const AdapterData & {
+  return instance.adapters[adapter.index];
+}
+
+auto get_adapter(Device device) -> const AdapterData & {
+  return get_adapter(device->adapter);
+}
+
+} // namespace
+
 auto get_queue(Device device, QueueFamily family) -> Queue {
   ren_assert(device);
   Queue queue = device->queues[(usize)family];
@@ -1892,6 +1904,98 @@ void destroy_pipeline(Device device, Pipeline pipeline) {
   device->vk.vkDestroyPipeline(device->handle, pipeline.handle, nullptr);
 }
 
+namespace vk {
+
+struct CommandPoolData {
+  VkCommandPool handle = nullptr;
+  SmallVector<VkCommandBuffer> cmd_buffers;
+  usize cmd_index = 0;
+};
+
+} // namespace vk
+
+auto create_command_pool(Device device,
+                         const CommandPoolCreateInfo &create_info)
+    -> Result<CommandPool> {
+  const AdapterData &adapter = get_adapter(device);
+  CommandPool pool = new CommandPoolData;
+  VkCommandPoolCreateInfo pool_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+      .queueFamilyIndex =
+          (u32)adapter.queue_family_indices[(usize)create_info.queue_family],
+  };
+  VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
+                                                   nullptr, &pool->handle);
+  if (result) {
+    return fail(result);
+  }
+  return pool;
+}
+
+void destroy_command_pool(Device device, CommandPool pool) {
+  if (pool) {
+    device->vk.vkDestroyCommandPool(device->handle, pool->handle, nullptr);
+    delete pool;
+  }
+}
+
+auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
+  VkResult result =
+      device->vk.vkResetCommandPool(device->handle, pool->handle, 0);
+  if (result) {
+    return fail(result);
+  }
+  pool->cmd_index = 0;
+  return {};
+}
+
+auto begin_command_buffer(Device device, CommandPool pool)
+    -> Result<CommandBuffer> {
+  VkResult result = VK_SUCCESS;
+
+  [[unlikely]] if (pool->cmd_index == pool->cmd_buffers.size()) {
+    u32 old_size = pool->cmd_buffers.size();
+    u32 new_size = std::max(old_size * 3 / 2 + 1, 1u);
+    pool->cmd_buffers.resize(new_size);
+    VkCommandBufferAllocateInfo allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = pool->handle,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = new_size - old_size,
+    };
+    result = device->vk.vkAllocateCommandBuffers(device->handle, &allocate_info,
+                                                 &pool->cmd_buffers[old_size]);
+    if (result) {
+      return fail(result);
+    }
+  }
+
+  CommandBuffer cmd = {
+      .handle = pool->cmd_buffers[pool->cmd_index++],
+      .device = device,
+  };
+
+  VkCommandBufferBeginInfo begin_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  result = device->vk.vkBeginCommandBuffer(cmd.handle, &begin_info);
+  if (result) {
+    return fail(result);
+  }
+
+  return cmd;
+}
+
+auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
+  VkResult result = cmd.device->vk.vkEndCommandBuffer(cmd.handle);
+  if (result) {
+    return fail(result);
+  }
+  return {};
+}
+
 namespace {
 
 constexpr auto PIPELINE_BIND_POINT_MAP = [] {
@@ -1903,16 +2007,15 @@ constexpr auto PIPELINE_BIND_POINT_MAP = [] {
 
 } // namespace
 
-void vk::cmd_set_descriptor_heaps(Device device, VkCommandBuffer cmd_buffer,
-                                  PipelineBindPoint bind_point,
-                                  ResourceDescriptorHeap resource_heap,
-                                  SamplerDescriptorHeap sampler_heap) {
+void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
+                              ResourceDescriptorHeap resource_heap,
+                              SamplerDescriptorHeap sampler_heap) {
   VkDescriptorSet sets[4] = {};
   std::ranges::copy(resource_heap.sets, sets);
   sets[glsl::SAMPLER_SET] = sampler_heap.set;
-  device->vk.vkCmdBindDescriptorSets(
-      cmd_buffer, PIPELINE_BIND_POINT_MAP[(usize)bind_point],
-      device->common_pipeline_layout, 0, std::size(sets), sets, 0, nullptr);
+  cmd.device->vk.vkCmdBindDescriptorSets(
+      cmd.handle, PIPELINE_BIND_POINT_MAP[(usize)bind_point],
+      cmd.device->common_pipeline_layout, 0, std::size(sets), sets, 0, nullptr);
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
@@ -2282,13 +2385,6 @@ auto map(Device device, Allocation allocation) -> void * {
 }
 
 namespace vk {
-
-auto get_queue_family_index(Adapter adapter, QueueFamily family) -> u32 {
-  ren_assert(instance.handle);
-  ren_assert(adapter.index < instance.adapters.size());
-  ren_assert(is_queue_family_supported(adapter, family));
-  return instance.adapters[adapter.index].queue_family_indices[(usize)family];
-}
 
 auto get_vk_device(Device device) -> VkDevice {
   ren_assert(device);

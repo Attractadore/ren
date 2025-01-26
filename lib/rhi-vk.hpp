@@ -22,8 +22,6 @@ struct Adapter {
   u32 index = -1;
 };
 
-auto get_queue_family_index(Adapter adapter, QueueFamily family) -> u32;
-
 struct DeviceData;
 
 using Device = const DeviceData *;
@@ -94,10 +92,17 @@ struct Pipeline {
   VkPipeline handle = nullptr;
 };
 
-void cmd_set_descriptor_heaps(Device device, VkCommandBuffer cmd_buffer,
-                              PipelineBindPoint bind_point,
-                              ResourceDescriptorHeap resource_heap,
-                              SamplerDescriptorHeap sampler_heap);
+struct CommandPoolData;
+
+using CommandPool = CommandPoolData *;
+
+struct CommandBuffer {
+  VkCommandBuffer handle = nullptr;
+  Device device = {};
+
+public:
+  explicit operator bool() const { return handle; }
+};
 
 struct Surface {
   VkSurfaceKHR handle = nullptr;

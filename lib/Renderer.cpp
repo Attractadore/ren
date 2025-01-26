@@ -446,6 +446,33 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
   return m_semaphores[semaphore];
 }
 
+auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
+    -> Result<Handle<CommandPool>, Error> {
+  ren_try(rhi::CommandPool pool,
+          rhi::create_command_pool(m_device,
+                                   {.queue_family = create_info.queue_family}));
+  return m_command_pools.emplace(CommandPool{
+      .handle = pool,
+      .queue_family = create_info.queue_family,
+  });
+}
+
+void Renderer::destroy(Handle<CommandPool> pool) {
+  m_command_pools.try_pop(pool).map([&](const CommandPool &pool) {
+    rhi::destroy_command_pool(m_device, pool.handle);
+  });
+}
+
+auto Renderer::get_command_pool(Handle<CommandPool> pool)
+    -> const CommandPool & {
+  return m_command_pools[pool];
+}
+
+auto Renderer::reset_command_pool(Handle<CommandPool> pool)
+    -> Result<void, Error> {
+  return rhi::reset_command_pool(m_device, get_command_pool(pool).handle);
+}
+
 void Renderer::queueSubmit(
     rhi::Queue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
     TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,

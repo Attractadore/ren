@@ -1,5 +1,4 @@
 #include "ResourceUploader.hpp"
-#include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "Renderer.hpp"
 
@@ -153,48 +152,50 @@ void ResourceUploader::stage_texture(Renderer &renderer,
   });
 }
 
-void ResourceUploader::upload(Renderer &renderer,
-                              CommandAllocator &cmd_allocator) {
+auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
+    -> Result<void, Error> {
   if (m_buffer_copies.empty() and m_texture_copies.empty()) {
-    return;
+    return {};
   }
 
-  auto cmd_buffer = cmd_allocator.allocate();
-  {
-    CommandRecorder cmd(renderer, cmd_buffer);
+  CommandRecorder cmd;
+  ren_try_to(cmd.begin(renderer, pool));
 
-    if (not m_buffer_copies.empty()) {
-      auto _ = cmd.debug_region("upload-buffers");
-      for (const auto &[src, dst] : m_buffer_copies) {
-        cmd.copy_buffer(src, dst);
-      }
-      VkMemoryBarrier2 barrier = {
-          .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-          .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-          .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-          .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-                          VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                          VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-          .dstAccessMask =
-              VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-      };
-      cmd.pipeline_barrier({barrier}, {});
-      m_buffer_copies.clear();
+  if (not m_buffer_copies.empty()) {
+    auto _ = cmd.debug_region("upload-buffers");
+    for (const auto &[src, dst] : m_buffer_copies) {
+      cmd.copy_buffer(src, dst);
     }
-
-    if (not m_texture_copies.empty()) {
-      auto _ = cmd.debug_region("upload-textures");
-      for (const auto &[src, dst] : m_texture_copies) {
-        upload_texture(renderer, cmd, src, dst);
-      }
-      m_texture_copies.clear();
-    }
+    VkMemoryBarrier2 barrier = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
+        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        .dstAccessMask =
+            VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+    };
+    cmd.pipeline_barrier({barrier}, {});
+    m_buffer_copies.clear();
   }
+
+  if (not m_texture_copies.empty()) {
+    auto _ = cmd.debug_region("upload-textures");
+    for (const auto &[src, dst] : m_texture_copies) {
+      upload_texture(renderer, cmd, src, dst);
+    }
+    m_texture_copies.clear();
+  }
+
+  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
 
   renderer.graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd_buffer,
+      .commandBuffer = cmd_buffer.handle,
   }});
+
+  return {};
 }
 
 } // namespace ren

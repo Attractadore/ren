@@ -29,7 +29,6 @@ using RgDebugName = DummyString;
 
 #define REN_RG_DEBUG_NAME_TYPE [[no_unique_address]] RgDebugName
 
-class CommandAllocator;
 class CommandRecorder;
 class Swapchain;
 class RenderPass;
@@ -430,7 +429,6 @@ struct RgRtData {
 #if REN_RG_DEBUG
   GenMap<String, RgPassId> m_pass_names;
 #endif
-  Vector<VkCommandBufferSubmitInfo> m_batch_cmd_buffers;
 
   Vector<Optional<RgColorAttachment>> m_color_attachments;
   Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
@@ -633,7 +631,7 @@ private:
 
 class RenderGraph {
 public:
-  void execute(CommandAllocator &cmd_allocator);
+  auto execute(Handle<CommandPool> cmd_pool) -> Result<void, Error>;
 
 private:
   friend RgBuilder;

@@ -15,7 +15,7 @@
 namespace ren {
 
 class Renderer;
-
+struct CommandPool;
 struct ComputePipeline;
 struct GraphicsPipeline;
 struct PipelineLayout;
@@ -63,17 +63,19 @@ class ComputePass;
 class DebugRegion;
 
 class CommandRecorder {
-  Renderer *m_renderer = nullptr;
-  VkCommandBuffer m_cmd_buffer = nullptr;
-
 public:
-  CommandRecorder(Renderer &renderer, VkCommandBuffer cmd_buffer);
+  CommandRecorder() = default;
   CommandRecorder(const CommandRecorder &) = delete;
-  CommandRecorder(CommandRecorder &&) = delete;
-  ~CommandRecorder();
-
   CommandRecorder &operator=(const CommandRecorder &) = delete;
+  CommandRecorder(CommandRecorder &&) = delete;
   CommandRecorder &operator=(CommandRecorder &&) = delete;
+
+  auto begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
+      -> Result<void, Error>;
+
+  auto end() -> Result<rhi::CommandBuffer, Error>;
+
+  explicit operator bool() const { return !!m_cmd; }
 
   auto render_pass(const RenderPassBeginInfo &&begin_info) -> RenderPass;
 
@@ -144,24 +146,21 @@ public:
                         TempSpan<const VkImageMemoryBarrier2> image_barriers);
 
   [[nodiscard]] auto debug_region(const char *label) -> DebugRegion;
+
+public:
+  Renderer *m_renderer = nullptr;
+  rhi::CommandBuffer m_cmd = {};
 };
 
 class RenderPass {
-  Renderer *m_renderer = nullptr;
-  VkCommandBuffer m_cmd_buffer = nullptr;
-  Handle<PipelineLayout> m_pipeline_layout;
-
-  friend class CommandRecorder;
-  RenderPass(Renderer &renderer, VkCommandBuffer cmd_buffer,
-             const RenderPassBeginInfo &&begin_info);
-
 public:
   RenderPass(const RenderPass &) = delete;
+  RenderPass &operator=(const RenderPass &) = delete;
   RenderPass(RenderPass &&) = delete;
+  RenderPass &operator=(RenderPass &&) = delete;
   ~RenderPass();
 
-  RenderPass &operator=(const RenderPass &) = delete;
-  RenderPass &operator=(RenderPass &&) = delete;
+  void end();
 
   void set_viewports(StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports);
 
@@ -222,23 +221,23 @@ public:
   void draw_indexed_indirect_count(
       const BufferSlice<glsl::DrawIndexedIndirectCommand> &commands,
       const BufferSlice<u32> &counter);
+
+private:
+  friend class CommandRecorder;
+  RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
+             const RenderPassBeginInfo &&begin_info);
+
+private:
+  Renderer *m_renderer = nullptr;
+  rhi::CommandBuffer m_cmd = {};
+  Handle<PipelineLayout> m_pipeline_layout;
 };
 
 class ComputePass {
-  Renderer *m_renderer = nullptr;
-  VkCommandBuffer m_cmd_buffer = nullptr;
-  Handle<ComputePipeline> m_pipeline;
-  Handle<PipelineLayout> m_pipeline_layout;
-
-  friend class CommandRecorder;
-  ComputePass(Renderer &renderer, VkCommandBuffer cmd_buffer);
-
 public:
   ComputePass(const ComputePass &) = delete;
-  ComputePass(ComputePass &&) = delete;
-  ~ComputePass();
-
   ComputePass &operator=(const ComputePass &) = delete;
+  ComputePass(ComputePass &&) = delete;
   ComputePass &operator=(ComputePass &&) = delete;
 
   void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
@@ -278,21 +277,34 @@ public:
   void dispatch_indirect(const BufferView &view);
   void
   dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
+
+private:
+  friend class CommandRecorder;
+  ComputePass(Renderer &renderer, rhi::CommandBuffer cmd);
+
+private:
+  Renderer *m_renderer = nullptr;
+  rhi::CommandBuffer m_cmd = {};
+  Handle<ComputePipeline> m_pipeline;
+  Handle<PipelineLayout> m_pipeline_layout;
 };
 
 class DebugRegion {
-  VkCommandBuffer m_cmd_buffer = nullptr;
-
-  friend class CommandRecorder;
-  DebugRegion(VkCommandBuffer cmd_buffer, const char *label);
-
 public:
   DebugRegion(const DebugRegion &) = delete;
-  DebugRegion(DebugRegion &&);
+  DebugRegion &operator=(const DebugRegion &) = delete;
+  DebugRegion(DebugRegion &&) = delete;
+  DebugRegion &operator=(DebugRegion &&) = delete;
   ~DebugRegion();
 
-  DebugRegion &operator=(const DebugRegion &) = delete;
-  DebugRegion &operator=(DebugRegion &&) = delete;
+  void end();
+
+private:
+  friend class CommandRecorder;
+  DebugRegion(rhi::CommandBuffer cmd_buffer, const char *label);
+
+private:
+  rhi::CommandBuffer m_cmd = {};
 };
 
 } // namespace ren

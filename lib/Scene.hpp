@@ -1,6 +1,5 @@
 #pragma once
 #include "Camera.hpp"
-#include "CommandAllocator.hpp"
 #include "DescriptorAllocator.hpp"
 #include "GpuScene.hpp"
 #include "Light.hpp"
@@ -25,11 +24,11 @@ struct ScenePerFrameResources {
   Handle<Semaphore> acquire_semaphore;
   Handle<Semaphore> present_semaphore;
   UploadBumpAllocator upload_allocator;
-  CommandAllocator cmd_allocator;
+  Handle<CommandPool> cmd_pool;
   DescriptorAllocatorScope descriptor_allocator;
 
 public:
-  void reset();
+  auto reset(Renderer &renderer) -> Result<void, Error>;
 };
 
 struct SceneExposureSettings {

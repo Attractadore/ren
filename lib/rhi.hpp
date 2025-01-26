@@ -656,12 +656,33 @@ auto create_compute_pipeline(Device device,
 
 void destroy_pipeline(Device device, Pipeline pipeline);
 
+struct CommandPoolCreateInfo {
+  QueueFamily queue_family = {};
+};
+
+auto create_command_pool(Device device,
+                         const CommandPoolCreateInfo &create_info)
+    -> Result<CommandPool>;
+
+void destroy_command_pool(Device device, CommandPool pool);
+
+auto reset_command_pool(Device device, CommandPool pool) -> Result<void>;
+
+auto begin_command_buffer(Device device, CommandPool pool)
+    -> Result<CommandBuffer>;
+
+auto end_command_buffer(CommandBuffer cmd) -> Result<void>;
+
 enum class PipelineBindPoint {
   Graphics,
   Compute,
   Last = Compute,
 };
 constexpr usize PIPELINE_BIND_POINT_COUNT = (usize)PipelineBindPoint::Last + 1;
+
+void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
+                              ResourceDescriptorHeap resource_heap,
+                              SamplerDescriptorHeap sampler_heap);
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 

@@ -77,12 +77,14 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
                 .name = fmt::format("Present semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
+    ren_try(Handle<CommandPool> cmd_pool,
+            m_fif_arena.create_command_pool({rhi::QueueFamily::Graphics}));
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = acquire_semaphore,
         .present_semaphore = present_semaphore,
         .upload_allocator =
             UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
-        .cmd_allocator = CommandAllocator(*m_renderer),
+        .cmd_pool = cmd_pool,
         .descriptor_allocator =
             DescriptorAllocatorScope(m_descriptor_allocator),
     });
@@ -96,10 +98,11 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
   return {};
 }
 
-void ScenePerFrameResources::reset() {
+auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
   upload_allocator.reset();
-  cmd_allocator.reset();
+  ren_try_to(renderer.reset_command_pool(cmd_pool));
   descriptor_allocator.reset();
+  return {};
 }
 
 auto Scene::next_frame() -> Result<void, Error> {
@@ -130,17 +133,18 @@ auto Scene::next_frame() -> Result<void, Error> {
     }
   }
   m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
-  m_frcs->reset();
+  ren_try_to(m_frcs->reset(*m_renderer));
 
-  VkCommandBuffer cmd = m_frcs->cmd_allocator.allocate();
+  CommandRecorder cmd;
+  ren_try_to(cmd.begin(*m_renderer, m_frcs->cmd_pool));
   {
-    CommandRecorder rec(*m_renderer, cmd);
-    auto _ = rec.debug_region("begin-frame");
-    m_device_allocator.reset(rec);
+    auto _ = cmd.debug_region("begin-frame");
+    m_device_allocator.reset(cmd);
   }
+  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
   m_renderer->graphicsQueueSubmit({{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd,
+      .commandBuffer = cmd_buffer.handle,
   }});
   return {};
 }
@@ -506,11 +510,11 @@ bool Scene::is_amd_anti_lag_enabled() {
 auto Scene::draw() -> expected<void> {
   ren_prof_zone("Scene::draw");
 
-  m_resource_uploader.upload(*m_renderer, m_frcs->cmd_allocator);
+  ren_try_to(m_resource_uploader.upload(*m_renderer, m_frcs->cmd_pool));
 
   ren_try(RenderGraph render_graph, build_rg());
 
-  render_graph.execute(m_frcs->cmd_allocator);
+  ren_try_to(render_graph.execute(m_frcs->cmd_pool));
 
   if (is_amd_anti_lag_enabled()) {
     m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_PRESENT_AMD);

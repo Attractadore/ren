@@ -98,6 +98,12 @@ public:
     return insert(m_renderer->create_compute_pipeline(std::move(create_info)));
   }
 
+  auto create_command_pool(const CommandPoolCreateInfo &create_info)
+    requires IsArenaResource<CommandPool>
+  {
+    return insert(m_renderer->create_command_pool(std::move(create_info)));
+  }
+
   template <typename H>
     requires IsArenaResource<H>
   void destroy(Handle<H> handle) {
@@ -144,7 +150,7 @@ private:
 using ResourceArenaBase =
     ResourceArenaImpl<Buffer, ComputePipeline, ResourceDescriptorHeap,
                       SamplerDescriptorHeap, GraphicsPipeline, PipelineLayout,
-                      Sampler, Semaphore, Texture>;
+                      Sampler, Semaphore, Texture, CommandPool>;
 
 } // namespace detail
 

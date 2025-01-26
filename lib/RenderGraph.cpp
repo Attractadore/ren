@@ -1,5 +1,4 @@
 #include "RenderGraph.hpp"
-#include "CommandAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "Profiler.hpp"
@@ -1375,27 +1374,32 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore,
   m_builder->signal_semaphore(m_pass, semaphore, stages, value);
 }
 
-void RenderGraph::execute(CommandAllocator &cmd_alloc) {
+auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
   ren_prof_zone("RenderGraph::execute");
 
   RgRuntime rt;
   rt.m_rg = this;
 
-  auto &batch_cmd_buffers = m_data->m_batch_cmd_buffers;
-  batch_cmd_buffers.clear();
+  CommandRecorder cmd;
   Span<const VkSemaphoreSubmitInfo> batch_wait_semaphores;
   Span<const VkSemaphoreSubmitInfo> batch_signal_semaphores;
 
-  auto submit_batch = [&] {
-    if (batch_cmd_buffers.empty() and batch_wait_semaphores.empty() and
+  auto submit_batch = [&] -> Result<void, Error> {
+    if (!cmd and batch_wait_semaphores.empty() and
         batch_signal_semaphores.empty()) {
-      return;
+      return {};
     }
-    m_renderer->graphicsQueueSubmit(batch_cmd_buffers, batch_wait_semaphores,
-                                    batch_signal_semaphores);
-    batch_cmd_buffers.clear();
+    ren_assert(cmd);
+    ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
+    m_renderer->graphicsQueueSubmit(
+        {{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = cmd_buffer.handle,
+        }},
+        batch_wait_semaphores, batch_signal_semaphores);
     batch_wait_semaphores = {};
     batch_signal_semaphores = {};
+    return {};
   };
 
   for (const RgRtPass &pass : m_data->m_passes) {
@@ -1404,27 +1408,21 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
     ren_prof_zone_text(m_data->m_pass_names[pass.pass]);
 #endif
     if (pass.num_wait_semaphores > 0) {
-      submit_batch();
+      ren_try_to(submit_batch());
       batch_wait_semaphores =
           Span(m_data->m_semaphore_submit_info)
               .subspan(pass.base_wait_semaphore, pass.num_wait_semaphores);
     }
 
-    VkCommandBuffer cmd_buffer = nullptr;
+    if (!cmd) {
+      ren_try_to(cmd.begin(*m_renderer, cmd_pool));
+    }
+
     {
-      Optional<CommandRecorder> cmd_recorder;
-      Optional<DebugRegion> debug_region;
-      auto get_command_recorder = [&]() -> CommandRecorder & {
-        if (!cmd_recorder) {
-          cmd_buffer = cmd_alloc.allocate();
-          cmd_recorder.emplace(*m_renderer, cmd_buffer);
 #if REN_RG_DEBUG
-          debug_region.emplace(cmd_recorder->debug_region(
-              m_data->m_pass_names[pass.pass].c_str()));
+      DebugRegion debug_region =
+          cmd.debug_region(m_data->m_pass_names[pass.pass].c_str());
 #endif
-        }
-        return *cmd_recorder;
-      };
 
       if (pass.num_memory_barriers > 0 or pass.num_texture_barriers > 0) {
         auto memory_barriers =
@@ -1433,8 +1431,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
         auto texture_barriers =
             Span(m_data->m_texture_barriers)
                 .subspan(pass.base_texture_barrier, pass.num_texture_barriers);
-        get_command_recorder().pipeline_barrier(memory_barriers,
-                                                texture_barriers);
+        cmd.pipeline_barrier(memory_barriers, texture_barriers);
       }
 
       pass.ext.visit(OverloadSet{
@@ -1475,7 +1472,7 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
                   return {.dsv = {texture}, .ops = att.ops};
                 });
 
-            RenderPass render_pass = get_command_recorder().render_pass({
+            RenderPass render_pass = cmd.render_pass({
                 .color_attachments = color_attachments,
                 .depth_stencil_attachment = depth_stencil_attachment,
             });
@@ -1491,22 +1488,15 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
           },
           [&](const RgRtComputePass &compute_pass) {
             if (compute_pass.cb) {
-              ComputePass comp = get_command_recorder().compute_pass();
+              ComputePass comp = cmd.compute_pass();
               compute_pass.cb(*m_renderer, rt, comp);
             }
           },
           [&](const RgRtGenericPass &pass) {
             if (pass.cb) {
-              pass.cb(*m_renderer, rt, get_command_recorder());
+              pass.cb(*m_renderer, rt, cmd);
             }
           },
-      });
-    }
-
-    if (cmd_buffer) {
-      batch_cmd_buffers.push_back({
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-          .commandBuffer = cmd_buffer,
       });
     }
 
@@ -1514,16 +1504,18 @@ void RenderGraph::execute(CommandAllocator &cmd_alloc) {
       batch_signal_semaphores =
           Span(m_data->m_semaphore_submit_info)
               .subspan(pass.base_signal_semaphore, pass.num_signal_semaphores);
-      submit_batch();
+      ren_try_to(submit_batch());
     }
   }
 
-  submit_batch();
+  ren_try_to(submit_batch());
 
   for (RgTextureId texture : m_rgp->m_frame_textures) {
     m_rgp->m_textures.erase(texture);
   }
   m_rgp->m_frame_textures.clear();
+
+  return {};
 }
 
 auto RgRuntime::get_buffer(RgUntypedBufferToken buffer) const

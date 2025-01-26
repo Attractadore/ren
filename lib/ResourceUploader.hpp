@@ -9,7 +9,6 @@
 namespace ren {
 
 class Renderer;
-class CommandAllocator;
 
 struct Texture;
 
@@ -40,7 +39,8 @@ public:
   void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
                      Span<const std::byte> data, Handle<Texture> texture);
 
-  void upload(Renderer &renderer, CommandAllocator &cmd_allocator);
+  auto upload(Renderer &renderer, Handle<CommandPool> cmd_pool)
+      -> Result<void, Error>;
 };
 
 } // namespace ren

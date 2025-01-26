@@ -1,5 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
+#include "CommandPool.hpp"
 #include "Descriptors.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
@@ -64,6 +65,8 @@ class Renderer final : public IRenderer {
 
   GenArray<GraphicsPipeline> m_graphics_pipelines;
   GenArray<ComputePipeline> m_compute_pipelines;
+
+  GenArray<CommandPool> m_command_pools;
 
 public:
   Renderer() = default;
@@ -264,12 +267,16 @@ public:
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
       -> Result<void, Error>;
 
-  auto getGraphicsQueue() const -> rhi::Queue { return m_graphics_queue; }
+  auto create_command_pool(const CommandPoolCreateInfo &create_info)
+      -> Result<Handle<CommandPool>, Error>;
 
-  auto get_graphics_queue_family() const -> unsigned {
-    return rhi::vk::get_queue_family_index(m_adapter,
-                                           rhi::QueueFamily::Graphics);
-  }
+  void destroy(Handle<CommandPool> pool);
+
+  auto get_command_pool(Handle<CommandPool> pool) -> const CommandPool &;
+
+  auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
+
+  auto getGraphicsQueue() const -> rhi::Queue { return m_graphics_queue; }
 
   void graphicsQueueSubmit(
       TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
