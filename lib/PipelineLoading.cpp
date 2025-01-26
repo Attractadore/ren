@@ -36,8 +36,6 @@ auto create_pipeline_layout(ResourceArena &arena,
     throw_if_failed(shader.GetResult(),
                     "SPIRV-Reflect: Failed to create shader module");
 
-    auto stage = static_cast<VkShaderStageFlagBits>(shader.GetShaderStage());
-
     u32 num_pc_blocks = 0;
     throw_if_failed(shader.EnumeratePushConstantBlocks(&num_pc_blocks, nullptr),
                     "SPIRV-Reflect: Failed to enumerate push constants");

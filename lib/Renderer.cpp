@@ -491,20 +491,6 @@ void Renderer::queueSubmit(
                   "Vulkan: Failed to submit work to queue");
 }
 
-static auto create_shader_module(VkDevice device,
-                                 std::span<const std::byte> code) {
-  ren_assert(code.size() % sizeof(u32) == 0);
-  VkShaderModuleCreateInfo module_info = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = code.size(),
-      .pCode = reinterpret_cast<const u32 *>(code.data()),
-  };
-  VkShaderModule module;
-  throw_if_failed(vkCreateShaderModule(device, &module_info, nullptr, &module),
-                  "Vulkan: Failed to create shader module");
-  return module;
-}
-
 auto Renderer::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
     -> Result<Handle<GraphicsPipeline>, Error> {
