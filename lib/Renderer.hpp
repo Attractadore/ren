@@ -89,10 +89,6 @@ public:
     return rhi::vk::get_vk_device(m_device);
   }
 
-  auto get_allocator() const -> VmaAllocator {
-    return rhi::vk::get_vma_allocator(m_device);
-  }
-
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> Result<Handle<Buffer>, Error>;
 

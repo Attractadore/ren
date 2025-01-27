@@ -2391,11 +2391,6 @@ auto get_vk_device(Device device) -> VkDevice {
   return device->handle;
 }
 
-auto get_vma_allocator(Device device) -> VmaAllocator {
-  ren_assert(device);
-  return device->allocator;
-}
-
 } // namespace vk
 
 } // namespace ren::rhi
