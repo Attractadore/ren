@@ -65,17 +65,62 @@ struct AdapterData {
 
 constexpr usize MAX_PHYSICAL_DEVICES = 4;
 
+auto set_debug_name_stub(Device device, VkObjectType type, void *object,
+                         const char *name) -> Result<void> {
+  return {};
+}
+
 struct InstanceData {
   VkInstance handle = nullptr;
   VkDebugReportCallbackEXT debug_callback = nullptr;
   StaticVector<AdapterData, MAX_PHYSICAL_DEVICES> adapters;
-} instance;
+  decltype(&set_debug_name_stub) set_debug_name = set_debug_name_stub;
+} g_instance;
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
     VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
+
+} // namespace
+
+namespace vk {
+
+struct DeviceData {
+  VkDevice handle = nullptr;
+  VmaAllocator allocator = nullptr;
+  Adapter adapter = {};
+  std::array<Queue, QUEUE_FAMILY_COUNT> queues;
+  union {
+    struct {
+      VkDescriptorSetLayout resource_heap_layouts[3] = {};
+      VkDescriptorSetLayout sampler_heap_layout = nullptr;
+    };
+    VkDescriptorSetLayout heap_layouts[4];
+  };
+  VkPipelineLayout common_pipeline_layout = nullptr;
+  VolkDeviceTable vk = {};
+};
+
+} // namespace vk
+
+namespace {
+
+auto set_debug_name_real(Device device, VkObjectType type, void *object,
+                         const char *name) -> Result<void> {
+  VkDebugUtilsObjectNameInfoEXT name_info = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+      .objectType = type,
+      .objectHandle = (u64)object,
+      .pObjectName = name,
+  };
+  VkResult result = vkSetDebugUtilsObjectNameEXT(device->handle, &name_info);
+  if (result) {
+    return fail(result);
+  }
+  return {};
+}
 
 } // namespace
 
@@ -132,7 +177,7 @@ auto get_supported_features() -> Result<Features> {
 }
 
 auto init(const InitInfo &init_info) -> Result<void> {
-  ren_assert(!instance.handle);
+  ren_assert(!g_instance.handle);
 
   if (!load_vulkan()) {
     return fail(Error::Unsupported);
@@ -228,7 +273,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
       .ppEnabledExtensionNames = extensions.data(),
   };
 
-  result = vkCreateInstance(&create_info, nullptr, &instance.handle);
+  result = vkCreateInstance(&create_info, nullptr, &g_instance.handle);
   if (result) {
     exit();
     return fail(Error::Unknown);
@@ -236,7 +281,11 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
   // TODO: replace this with volkLoadInstanceOnly when everything is migrated to
   // the RHI API.
-  volkLoadInstance(instance.handle);
+  volkLoadInstance(g_instance.handle);
+
+  if (features.debug_names) {
+    g_instance.set_debug_name = set_debug_name_real;
+  }
 
   if (features.debug_layer and
       is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
@@ -261,13 +310,13 @@ auto init(const InitInfo &init_info) -> Result<void> {
         },
     };
 
-    vkCreateDebugReportCallbackEXT(instance.handle, &cb_create_info, nullptr,
-                                   &instance.debug_callback);
+    vkCreateDebugReportCallbackEXT(g_instance.handle, &cb_create_info, nullptr,
+                                   &g_instance.debug_callback);
   }
 
   VkPhysicalDevice physical_devices[MAX_PHYSICAL_DEVICES];
   uint32_t num_physical_devices = std::size(physical_devices);
-  result = vkEnumeratePhysicalDevices(instance.handle, &num_physical_devices,
+  result = vkEnumeratePhysicalDevices(g_instance.handle, &num_physical_devices,
                                       physical_devices);
   if (result) {
     exit();
@@ -426,10 +475,10 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
     fmt::println("vk: Found device {}", device_name);
 
-    instance.adapters.push_back(adapter);
+    g_instance.adapters.push_back(adapter);
   }
 
-  if (instance.adapters.empty()) {
+  if (g_instance.adapters.empty()) {
     exit();
     return fail(Error::Unsupported);
   }
@@ -438,28 +487,28 @@ auto init(const InitInfo &init_info) -> Result<void> {
 }
 
 void exit() {
-  if (instance.debug_callback) {
-    vkDestroyDebugReportCallbackEXT(instance.handle, instance.debug_callback,
-                                    nullptr);
+  if (g_instance.debug_callback) {
+    vkDestroyDebugReportCallbackEXT(g_instance.handle,
+                                    g_instance.debug_callback, nullptr);
   }
-  if (instance.handle) {
-    vkDestroyInstance(instance.handle, nullptr);
+  if (g_instance.handle) {
+    vkDestroyInstance(g_instance.handle, nullptr);
   }
-  instance = {};
+  g_instance = {};
 }
 
 auto get_adapter_count() -> u32 {
-  ren_assert(instance.handle);
-  return instance.adapters.size();
+  ren_assert(g_instance.handle);
+  return g_instance.adapters.size();
 }
 
 auto get_adapter(u32 adapter) -> Adapter {
-  ren_assert(adapter < instance.adapters.size());
+  ren_assert(adapter < g_instance.adapters.size());
   return {adapter};
 }
 
 auto get_adapter_by_preference(AdapterPreference preference) -> Adapter {
-  ren_assert(instance.handle);
+  ren_assert(g_instance.handle);
 
   VkPhysicalDeviceType preferred_type;
   if (preference == AdapterPreference::LowPower) {
@@ -471,16 +520,16 @@ auto get_adapter_by_preference(AdapterPreference preference) -> Adapter {
     return {0};
   }
 
-  for (u32 adapter : range(instance.adapters.size())) {
-    if (instance.adapters[adapter].properties.deviceType == preferred_type) {
+  for (u32 adapter : range(g_instance.adapters.size())) {
+    if (g_instance.adapters[adapter].properties.deviceType == preferred_type) {
       return {adapter};
     }
   }
 
   if (preference == AdapterPreference::HighPerformance) {
     // Search again for an integrated GPU.
-    for (u32 adapter : range(instance.adapters.size())) {
-      if (instance.adapters[adapter].properties.deviceType ==
+    for (u32 adapter : range(g_instance.adapters.size())) {
+      if (g_instance.adapters[adapter].properties.deviceType ==
           VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
         return {adapter};
       }
@@ -491,48 +540,28 @@ auto get_adapter_by_preference(AdapterPreference preference) -> Adapter {
 }
 
 auto get_adapter_features(Adapter adapter) -> AdapterFeatures {
-  ren_assert(instance.handle);
-  ren_assert(adapter.index < instance.adapters.size());
-  return instance.adapters[adapter.index].features;
+  ren_assert(g_instance.handle);
+  ren_assert(adapter.index < g_instance.adapters.size());
+  return g_instance.adapters[adapter.index].features;
 }
 
 auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool {
-  ren_assert(instance.handle);
-  ren_assert(adapter.index < instance.adapters.size());
-  return instance.adapters[adapter.index].queue_family_indices[(usize)family] >=
-         0;
+  ren_assert(g_instance.handle);
+  ren_assert(adapter.index < g_instance.adapters.size());
+  return g_instance.adapters[adapter.index]
+             .queue_family_indices[(usize)family] >= 0;
 }
 
 auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
     -> MemoryHeapProperties {
-  return instance.adapters[adapter.index].heap_properties[(usize)heap];
+  return g_instance.adapters[adapter.index].heap_properties[(usize)heap];
 }
-
-namespace vk {
-
-struct DeviceData {
-  VkDevice handle = nullptr;
-  VmaAllocator allocator = nullptr;
-  Adapter adapter = {};
-  std::array<Queue, QUEUE_FAMILY_COUNT> queues;
-  union {
-    struct {
-      VkDescriptorSetLayout resource_heap_layouts[3] = {};
-      VkDescriptorSetLayout sampler_heap_layout = nullptr;
-    };
-    VkDescriptorSetLayout heap_layouts[4];
-  };
-  VkPipelineLayout common_pipeline_layout = nullptr;
-  VolkDeviceTable vk = {};
-};
-
-} // namespace vk
 
 auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   VkResult result = VK_SUCCESS;
 
-  ren_assert(create_info.adapter.index < instance.adapters.size());
-  const AdapterData &adapter = instance.adapters[create_info.adapter.index];
+  ren_assert(create_info.adapter.index < g_instance.adapters.size());
+  const AdapterData &adapter = g_instance.adapters[create_info.adapter.index];
   VkPhysicalDevice handle = adapter.physical_device;
   ren_assert(handle);
   const AdapterFeatures &features = create_info.features;
@@ -690,7 +719,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
       .physicalDevice = handle,
       .device = device->handle,
       .pVulkanFunctions = &vk,
-      .instance = instance.handle,
+      .instance = g_instance.handle,
       .vulkanApiVersion = VK_API_VERSION_1_3,
   };
 
@@ -822,7 +851,7 @@ void destroy_device(Device device) {
 namespace {
 
 auto get_adapter(Adapter adapter) -> const AdapterData & {
-  return instance.adapters[adapter.index];
+  return g_instance.adapters[adapter.index];
 }
 
 auto get_adapter(Device device) -> const AdapterData & {
@@ -957,7 +986,7 @@ auto wait_for_semaphores(Device device,
 auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
   Device device = create_info.device;
   const MemoryHeapProperties &heap_props =
-      instance.adapters[device->adapter.index]
+      g_instance.adapters[device->adapter.index]
           .heap_properties[(usize)create_info.heap];
 
   VkBufferCreateInfo buffer_info = {
@@ -1005,6 +1034,12 @@ auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
 
 void destroy_buffer(Device device, Buffer buffer) {
   vmaDestroyBuffer(device->allocator, buffer.handle, buffer.allocation.handle);
+}
+
+auto set_debug_name(Device device, Buffer buffer, const char *name)
+    -> Result<void> {
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_BUFFER, buffer.handle,
+                                   name);
 }
 
 auto get_allocation(Device, Buffer buffer) -> Allocation {
@@ -1103,6 +1138,12 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
 
 void destroy_image(Device device, Image image) {
   vmaDestroyImage(device->allocator, image.handle, image.allocation.handle);
+}
+
+auto set_debug_name(Device device, Image image, const char *name)
+    -> Result<void> {
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_IMAGE, image.handle,
+                                   name);
 }
 
 auto get_allocation(Device, Image image) -> Allocation {
@@ -1438,6 +1479,17 @@ void destroy_resource_descriptor_heap(Device device,
   device->vk.vkDestroyDescriptorPool(device->handle, heap.pool, nullptr);
 }
 
+auto set_debug_name(Device device, ResourceDescriptorHeap heap,
+                    const char *name) -> Result<void> {
+  ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL,
+                                       heap.pool, name));
+  for (VkDescriptorSet set : heap.sets) {
+    ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_SET,
+                                         set, name));
+  }
+  return {};
+}
+
 auto create_sampler_descriptor_heap(Device device)
     -> Result<SamplerDescriptorHeap> {
   VkResult result = VK_SUCCESS;
@@ -1481,6 +1533,14 @@ auto create_sampler_descriptor_heap(Device device)
 void destroy_sampler_descriptor_heap(Device device,
                                      SamplerDescriptorHeap heap) {
   device->vk.vkDestroyDescriptorPool(device->handle, heap.pool, nullptr);
+}
+
+auto set_debug_name(Device device, SamplerDescriptorHeap heap, const char *name)
+    -> Result<void> {
+  ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL,
+                                       heap.pool, name));
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_SET,
+                                   heap.set, name);
 }
 
 void write_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap,
@@ -1572,6 +1632,12 @@ auto create_pipeline_layout(Device device,
 
 void destroy_pipeline_layout(Device device, PipelineLayout layout) {
   device->vk.vkDestroyPipelineLayout(device->handle, layout.handle, nullptr);
+}
+
+auto set_debug_name(Device device, PipelineLayout layout, const char *name)
+    -> Result<void> {
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_PIPELINE_LAYOUT,
+                                   layout.handle, name);
 }
 
 namespace {
@@ -1949,6 +2015,12 @@ void destroy_pipeline(Device device, Pipeline pipeline) {
   device->vk.vkDestroyPipeline(device->handle, pipeline.handle, nullptr);
 }
 
+auto set_debug_name(Device device, Pipeline pipeline, const char *name)
+    -> Result<void> {
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_PIPELINE,
+                                   pipeline.handle, name);
+}
+
 namespace vk {
 
 struct CommandPoolData {
@@ -1983,6 +2055,12 @@ void destroy_command_pool(Device device, CommandPool pool) {
     device->vk.vkDestroyCommandPool(device->handle, pool->handle, nullptr);
     delete pool;
   }
+}
+
+auto set_debug_name(Device device, CommandPool pool, const char *name)
+    -> Result<void> {
+  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL,
+                                   pool->handle, name);
 }
 
 auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
@@ -2067,26 +2145,26 @@ extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
 auto create_surface(SDL_Window *window) -> Result<Surface> {
   Surface surface;
-  if (!SDL_Vulkan_CreateSurface(window, instance.handle, &surface.handle)) {
+  if (!SDL_Vulkan_CreateSurface(window, g_instance.handle, &surface.handle)) {
     return fail(Error::Unknown);
   }
   return surface;
 }
 
 void destroy_surface(Surface surface) {
-  vkDestroySurfaceKHR(instance.handle, surface.handle, nullptr);
+  vkDestroySurfaceKHR(g_instance.handle, surface.handle, nullptr);
 }
 
 auto is_queue_family_present_supported(Adapter handle, QueueFamily family,
                                        Surface surface) -> bool {
-  ren_assert(instance.handle);
-  ren_assert(handle.index < instance.adapters.size());
+  ren_assert(g_instance.handle);
+  ren_assert(handle.index < g_instance.adapters.size());
   ren_assert(surface.handle);
   VkResult result = VK_SUCCESS;
   if (!is_queue_family_supported(handle, family)) {
     return false;
   }
-  const AdapterData &adapter = instance.adapters[handle.index];
+  const AdapterData &adapter = g_instance.adapters[handle.index];
   VkBool32 supported = false;
   result = vkGetPhysicalDeviceSurfaceSupportKHR(
       adapter.physical_device, adapter.queue_family_indices[(usize)family],
@@ -2128,7 +2206,7 @@ auto get_surface_present_modes(Adapter adapter, Surface surface,
   VkPresentModeKHR vk_present_modes[PRESENT_MODE_COUNT];
   u32 num_vk_present_modes = std::size(vk_present_modes);
   VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(
-      instance.adapters[adapter.index].physical_device, surface.handle,
+      g_instance.adapters[adapter.index].physical_device, surface.handle,
       &num_vk_present_modes, vk_present_modes);
   if (result) {
     ren_assert(result != VK_INCOMPLETE);
@@ -2150,7 +2228,7 @@ auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
                          TinyImageFormat *formats) -> Result<void> {
   VkResult result = VK_SUCCESS;
   VkPhysicalDevice physical_device =
-      instance.adapters[adapter.index].physical_device;
+      g_instance.adapters[adapter.index].physical_device;
   u32 num_vk_formats = 0;
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
                                                 &num_vk_formats, nullptr);
@@ -2185,7 +2263,7 @@ auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
 auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
     -> Result<Flags<ImageUsage>> {
   VkPhysicalDevice physical_device =
-      instance.adapters[adapter.index].physical_device;
+      g_instance.adapters[adapter.index].physical_device;
   VkSurfaceCapabilitiesKHR capabilities;
   if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface.handle,
                                                 &capabilities)) {
@@ -2267,7 +2345,7 @@ namespace {
 auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
                          VkPresentModeKHR present_mode) -> Result<void> {
   Device device = swap_chain->device;
-  const AdapterData &adapter = instance.adapters[device->adapter.index];
+  const AdapterData &adapter = g_instance.adapters[device->adapter.index];
   VkSurfacePresentModeEXT present_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SURFACE_PRESENT_MODE_EXT,
       .presentMode = present_mode,

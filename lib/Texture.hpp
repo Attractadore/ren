@@ -146,7 +146,6 @@ struct RtvDesc {
 };
 
 struct SamplerCreateInfo {
-  REN_DEBUG_NAME_FIELD("Sampler");
   rhi::Filter mag_filter = rhi::Filter::Linear;
   rhi::Filter min_filter = rhi::Filter::Linear;
   rhi::SamplerMipmapMode mipmap_mode = rhi::SamplerMipmapMode::Linear;

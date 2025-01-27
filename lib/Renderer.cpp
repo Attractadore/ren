@@ -6,43 +6,8 @@
 #include "core/Views.hpp"
 
 #include <spirv_reflect.h>
-#include <volk.h>
 
 namespace ren {
-namespace {
-
-template <typename T>
-constexpr VkObjectType ObjectType = VK_OBJECT_TYPE_UNKNOWN;
-#define define_object_type(T, type)                                            \
-  template <> inline constexpr VkObjectType ObjectType<T> = type
-define_object_type(VkBuffer, VK_OBJECT_TYPE_BUFFER);
-define_object_type(VkDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL);
-define_object_type(VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT);
-define_object_type(VkDescriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET);
-define_object_type(VkImage, VK_OBJECT_TYPE_IMAGE);
-define_object_type(VkPipeline, VK_OBJECT_TYPE_PIPELINE);
-define_object_type(VkPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT);
-define_object_type(VkSampler, VK_OBJECT_TYPE_SAMPLER);
-define_object_type(VkSemaphore, VK_OBJECT_TYPE_SEMAPHORE);
-define_object_type(VkCommandPool, VK_OBJECT_TYPE_COMMAND_POOL);
-#undef define_object_type
-
-template <typename T>
-void set_debug_name(VkDevice device, T object, const DebugName &name) {
-#if REN_DEBUG_NAMES
-  static_assert(ObjectType<T>);
-  VkDebugUtilsObjectNameInfoEXT name_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-      .objectType = ObjectType<T>,
-      .objectHandle = (uint64_t)object,
-      .pObjectName = name.c_str(),
-  };
-  throw_if_failed(vkSetDebugUtilsObjectNameEXT(device, &name_info),
-                  "Vulkan: Failed to set object debug name");
-#endif
-}
-
-} // namespace
 
 auto Renderer::init(u32 adapter) -> Result<void, Error> {
   ren_try(rhi::Features features, rhi::get_supported_features());
@@ -98,7 +63,7 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
                                   .size = create_info.size,
                                   .heap = create_info.heap,
                               }));
-  set_debug_name(get_device(), buffer.handle, create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, buffer, create_info.name.c_str()));
   return m_buffers.emplace(Buffer{
       .handle = buffer,
       .ptr = (std::byte *)rhi::map(m_device, buffer),
@@ -159,8 +124,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
               .num_array_layers = create_info.num_array_layers,
               .usage = create_info.usage,
           }));
-  set_debug_name(get_device(), image.handle, create_info.name);
-
+  ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
   return m_textures.emplace(Texture{
       .handle = image,
       .format = create_info.format,
@@ -175,7 +139,8 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
 
 auto Renderer::create_external_texture(
     const ExternalTextureCreateInfo &&create_info) -> Handle<Texture> {
-  set_debug_name(get_device(), create_info.handle.handle, create_info.name);
+  std::ignore = rhi::set_debug_name(m_device, create_info.handle,
+                                    create_info.name.c_str());
   return m_textures.emplace(Texture{
       .handle = create_info.handle,
       .format = create_info.format,
@@ -326,7 +291,6 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
               .reduction_mode = create_info.reduction_mode,
               .max_anisotropy = create_info.anisotropy,
           }));
-  set_debug_name(get_device(), sampler.handle, create_info.name);
   return m_samplers.emplace(Sampler{
       .handle = sampler,
       .mag_filter = create_info.mag_filter,
@@ -357,10 +321,7 @@ auto Renderer::create_resource_descriptor_heap(
   ren_try(rhi::ResourceDescriptorHeap heap,
           rhi::create_resource_descriptor_heap(
               m_device, {.num_descriptors = create_info.num_descriptors}));
-  set_debug_name(get_device(), heap.pool, create_info.name);
-  for (VkDescriptorSet set : heap.sets) {
-    set_debug_name(get_device(), set, create_info.name);
-  }
+  ren_try_to(rhi::set_debug_name(m_device, heap, create_info.name.c_str()));
   return m_resource_descriptor_heaps.emplace(ResourceDescriptorHeap{
       .handle = heap,
       .num_descriptors = create_info.num_descriptors,
@@ -384,8 +345,7 @@ auto Renderer::create_sampler_descriptor_heap(
     -> Result<Handle<SamplerDescriptorHeap>, Error> {
   ren_try(rhi::SamplerDescriptorHeap heap,
           rhi::create_sampler_descriptor_heap(m_device));
-  set_debug_name(get_device(), heap.pool, create_info.name);
-  set_debug_name(get_device(), heap.set, create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, heap, create_info.name.c_str()));
   return m_sampler_descriptor_heaps.emplace(SamplerDescriptorHeap{
       .handle = heap,
   });
@@ -452,7 +412,7 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   ren_try(rhi::CommandPool pool,
           rhi::create_command_pool(m_device,
                                    {.queue_family = create_info.queue_family}));
-  set_debug_name(get_device(), *((VkCommandPool *)pool), create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, pool, create_info.name.c_str()));
   return m_command_pools.emplace(CommandPool{
       .handle = pool,
       .queue_family = create_info.queue_family,
@@ -552,7 +512,7 @@ auto Renderer::create_graphics_pipeline(
 
   ren_try(rhi::Pipeline pipeline,
           rhi::create_graphics_pipeline(m_device, pipeline_info));
-  set_debug_name(get_device(), pipeline.handle, create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
 
   return m_graphics_pipelines.emplace(GraphicsPipeline{
       .handle = pipeline,
@@ -624,7 +584,7 @@ auto Renderer::create_compute_pipeline(
                               },
                       },
               }));
-  set_debug_name(get_device(), pipeline.handle, create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
@@ -663,7 +623,7 @@ auto Renderer::create_pipeline_layout(
                         .push_descriptors = create_info.push_descriptors,
                         .push_constants_size = create_info.push_constants_size,
                     }));
-  set_debug_name(get_device(), layout.handle, create_info.name);
+  ren_try_to(rhi::set_debug_name(m_device, layout, create_info.name.c_str()));
   return m_pipeline_layouts.emplace(PipelineLayout{
       .handle = layout,
       .use_resource_heap = create_info.use_resource_heap,

@@ -16,6 +16,8 @@ struct DummyString {
   DummyString(StringView) {}
 
   bool operator==(const DummyString &) const = default;
+
+  const char *c_str() const { return nullptr; }
 };
 
 struct StringHash {

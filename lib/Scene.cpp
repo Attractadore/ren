@@ -29,7 +29,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       .hi_z_gen =
           m_arena
               .create_sampler({
-                  .name = "Hi-Z generation sampler",
                   .mag_filter = rhi::Filter::Linear,
                   .min_filter = rhi::Filter::Linear,
                   .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
@@ -40,7 +39,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
               .value(),
       .hi_z = m_arena
                   .create_sampler({
-                      .name = "Hi-Z generation sampler",
                       .mag_filter = rhi::Filter::Nearest,
                       .min_filter = rhi::Filter::Nearest,
                       .mipmap_mode = rhi::SamplerMipmapMode::Nearest,

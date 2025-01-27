@@ -160,6 +160,9 @@ auto create_semaphore(const SemaphoreCreateInfo &create_info)
 
 void destroy_semaphore(Device device, Semaphore semaphore);
 
+auto set_debug_name(Device device, Semaphore semaphore, const char *name)
+    -> Result<void>;
+
 enum class WaitResult {
   Success,
   Timeout,
@@ -195,6 +198,9 @@ struct BufferCreateInfo {
 auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer>;
 
 void destroy_buffer(Device device, Buffer buffer);
+
+auto set_debug_name(Device device, Buffer buffer, const char *name)
+    -> Result<void>;
 
 auto get_allocation(Device device, Buffer buffer) -> Allocation;
 
@@ -239,6 +245,9 @@ struct ImageCreateInfo {
 auto create_image(const ImageCreateInfo &create_info) -> Result<Image>;
 
 void destroy_image(Device device, Image image);
+
+auto set_debug_name(Device device, Image image, const char *name)
+    -> Result<void>;
 
 auto get_allocation(Device device, Image image) -> Allocation;
 
@@ -398,6 +407,9 @@ auto create_resource_descriptor_heap(
 void destroy_resource_descriptor_heap(Device device,
                                       ResourceDescriptorHeap heap);
 
+auto set_debug_name(Device device, ResourceDescriptorHeap heap,
+                    const char *name) -> Result<void>;
+
 void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
                                     TempSpan<const SRV> srvs, u32 index);
 
@@ -413,6 +425,9 @@ auto create_sampler_descriptor_heap(Device device)
     -> Result<SamplerDescriptorHeap>;
 
 void destroy_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap);
+
+auto set_debug_name(Device device, SamplerDescriptorHeap heap, const char *name)
+    -> Result<void>;
 
 void write_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap,
                                    TempSpan<const Sampler> samplers, u32 index);
@@ -440,6 +455,9 @@ auto create_pipeline_layout(Device device,
     -> Result<PipelineLayout>;
 
 void destroy_pipeline_layout(Device device, PipelineLayout layout);
+
+auto set_debug_name(Device device, PipelineLayout layout, const char *name)
+    -> Result<void>;
 
 struct SpecializationConstant {
   u32 id = 0;
@@ -666,6 +684,9 @@ auto create_compute_pipeline(Device device,
 
 void destroy_pipeline(Device device, Pipeline pipeline);
 
+auto set_debug_name(Device device, Pipeline pipeline, const char *name)
+    -> Result<void>;
+
 struct CommandPoolCreateInfo {
   QueueFamily queue_family = {};
 };
@@ -675,6 +696,9 @@ auto create_command_pool(Device device,
     -> Result<CommandPool>;
 
 void destroy_command_pool(Device device, CommandPool pool);
+
+auto set_debug_name(Device device, CommandPool pool, const char *name)
+    -> Result<void>;
 
 auto reset_command_pool(Device device, CommandPool pool) -> Result<void>;
 
