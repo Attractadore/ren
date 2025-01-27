@@ -475,24 +475,6 @@ auto Renderer::reset_command_pool(Handle<CommandPool> pool)
   return rhi::reset_command_pool(m_device, get_command_pool(pool).handle);
 }
 
-void Renderer::queueSubmit(
-    rhi::Queue queue, TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
-    TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores,
-    TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores) {
-  ren_prof_zone("Renderer::queueSubmit");
-  VkSubmitInfo2 submit_info = {
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-      .waitSemaphoreInfoCount = uint32_t(wait_semaphores.size()),
-      .pWaitSemaphoreInfos = wait_semaphores.data(),
-      .commandBufferInfoCount = uint32_t(cmd_buffers.size()),
-      .pCommandBufferInfos = cmd_buffers.data(),
-      .signalSemaphoreInfoCount = uint32_t(signal_semaphores.size()),
-      .pSignalSemaphoreInfos = signal_semaphores.data(),
-  };
-  throw_if_failed(vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr),
-                  "Vulkan: Failed to submit work to queue");
-}
-
 auto Renderer::create_graphics_pipeline(
     const GraphicsPipelineCreateInfo &&create_info)
     -> Result<Handle<GraphicsPipeline>, Error> {
@@ -706,6 +688,31 @@ auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
     -> const PipelineLayout & {
   ren_assert(m_pipeline_layouts.contains(layout));
   return m_pipeline_layouts[layout];
+}
+
+auto Renderer::submit(rhi::QueueFamily queue_family,
+                      TempSpan<const rhi::CommandBuffer> cmd_buffers,
+                      TempSpan<const SemaphoreState> wait_semaphores,
+                      TempSpan<const SemaphoreState> signal_semaphores)
+    -> Result<void, Error> {
+  SmallVector<rhi::SemaphoreState> semaphore_states(wait_semaphores.size() +
+                                                    signal_semaphores.size());
+  for (usize i : range(wait_semaphores.size())) {
+    semaphore_states[i] = {
+        .semaphore = get_semaphore(wait_semaphores[i].semaphore).handle,
+        .value = wait_semaphores[i].value,
+    };
+  }
+  for (usize i : range(signal_semaphores.size())) {
+    semaphore_states[wait_semaphores.size() + i] = {
+        .semaphore = get_semaphore(signal_semaphores[i].semaphore).handle,
+        .value = signal_semaphores[i].value,
+    };
+  }
+  return rhi::queue_submit(rhi::get_queue(m_device, queue_family), cmd_buffers,
+                           Span(&semaphore_states[0], wait_semaphores.size()),
+                           Span(&semaphore_states[wait_semaphores.size()],
+                                signal_semaphores.size()));
 }
 
 bool Renderer::is_feature_supported(RendererFeature feature) const {

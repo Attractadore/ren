@@ -130,6 +130,16 @@ void destroy_device(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
+struct SemaphoreState {
+  rhi::Semaphore semaphore;
+  u64 value = 0;
+};
+
+auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
+                  TempSpan<const rhi::SemaphoreState> wait_semaphores,
+                  TempSpan<const rhi::SemaphoreState> signal_semaphores)
+    -> Result<void>;
+
 auto queue_wait_idle(Queue queue) -> Result<void>;
 
 enum class SemaphoreType {

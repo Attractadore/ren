@@ -248,7 +248,7 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
   bd.m_buffers.clear();
   bd.m_buffer_uses.clear();
   bd.m_texture_uses.clear();
-  bd.m_semaphore_signals.clear();
+  bd.m_semaphore_states.clear();
 
   auto &gd = *m_rt_data;
 #if REN_RG_DEBUG
@@ -469,28 +469,26 @@ void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle,
   physical_texture.state = state;
 }
 
-auto RgBuilder::add_semaphore_signal(RgSemaphoreId semaphore,
-                                     VkPipelineStageFlags2 stage_mask,
-                                     u64 value) -> RgSemaphoreSignalId {
-  RgSemaphoreSignalId id(m_data->m_semaphore_signals.size());
-  m_data->m_semaphore_signals.push_back({
+auto RgBuilder::add_semaphore_state(RgSemaphoreId semaphore, u64 value)
+    -> RgSemaphoreStateId {
+  RgSemaphoreStateId id(m_data->m_semaphore_states.size());
+  m_data->m_semaphore_states.push_back({
       .semaphore = semaphore,
-      .stage_mask = stage_mask,
       .value = value,
   });
   return id;
 }
 
 void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
-                               VkPipelineStageFlags2 stage_mask, u64 value) {
+                               u64 value) {
   m_data->m_passes[pass].wait_semaphores.push_back(
-      add_semaphore_signal(semaphore, stage_mask, value));
+      add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
-                                 VkPipelineStageFlags2 stage_mask, u64 value) {
+                                 u64 value) {
   m_data->m_passes[pass].signal_semaphores.push_back(
-      add_semaphore_signal(semaphore, stage_mask, value));
+      add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
@@ -588,20 +586,20 @@ void RgBuilder::dump_pass_schedule() const {
     }
 
     const auto &semaphores = m_rgp->m_semaphores;
-    const auto &semaphore_signals = m_data->m_semaphore_signals;
+    const auto &semaphore_states = m_data->m_semaphore_states;
 
     if (not pass.wait_semaphores.empty()) {
       fmt::println(stderr, "    Waits for semaphores:");
-      for (RgSemaphoreSignalId signal : pass.wait_semaphores) {
-        RgSemaphoreId semaphore = semaphore_signals[signal].semaphore;
+      for (RgSemaphoreStateId state : pass.wait_semaphores) {
+        RgSemaphoreId semaphore = semaphore_states[state].semaphore;
         fmt::println(stderr, "      - {}", semaphores[semaphore].name);
       }
     }
 
     if (not pass.signal_semaphores.empty()) {
       fmt::println(stderr, "    Signals semaphores:");
-      for (RgSemaphoreSignalId signal : pass.signal_semaphores) {
-        RgSemaphoreId semaphore = semaphore_signals[signal].semaphore;
+      for (RgSemaphoreStateId state : pass.signal_semaphores) {
+        RgSemaphoreId semaphore = semaphore_states[state].semaphore;
         fmt::println(stderr, "      - {}", semaphores[semaphore].name);
       }
     }
@@ -1145,16 +1143,11 @@ void RgBuilder::place_barriers_and_semaphores() {
     std::ranges::for_each(pass.read_textures, maybe_place_barrier_for_texture);
     std::ranges::for_each(pass.write_textures, maybe_place_barrier_for_texture);
 
-    auto place_semaphore = [&](RgSemaphoreSignalId id) {
-      const RgSemaphoreSignal &signal = m_data->m_semaphore_signals[id];
+    auto place_semaphore = [&](RgSemaphoreStateId id) {
+      const RgSemaphoreSignal &signal = m_data->m_semaphore_states[id];
       m_semaphore_submit_info.push_back({
-          .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-          .semaphore =
-              m_renderer
-                  ->get_semaphore(m_rgp->m_semaphores[signal.semaphore].handle)
-                  .handle.handle,
+          .semaphore = m_rgp->m_semaphores[signal.semaphore].handle,
           .value = signal.value,
-          .stageMask = signal.stage_mask,
       });
     };
 
@@ -1364,14 +1357,12 @@ auto RgPassBuilder::write_depth_attachment(RgDebugName name,
   return {new_texture, token};
 }
 
-void RgPassBuilder::wait_semaphore(RgSemaphoreId semaphore,
-                                   VkPipelineStageFlags2 stages, u64 value) {
-  m_builder->wait_semaphore(m_pass, semaphore, stages, value);
+void RgPassBuilder::wait_semaphore(RgSemaphoreId semaphore, u64 value) {
+  m_builder->wait_semaphore(m_pass, semaphore, value);
 }
 
-void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore,
-                                     VkPipelineStageFlags2 stages, u64 value) {
-  m_builder->signal_semaphore(m_pass, semaphore, stages, value);
+void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
+  m_builder->signal_semaphore(m_pass, semaphore, value);
 }
 
 auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
@@ -1381,8 +1372,8 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
   rt.m_rg = this;
 
   CommandRecorder cmd;
-  Span<const VkSemaphoreSubmitInfo> batch_wait_semaphores;
-  Span<const VkSemaphoreSubmitInfo> batch_signal_semaphores;
+  Span<const SemaphoreState> batch_wait_semaphores;
+  Span<const SemaphoreState> batch_signal_semaphores;
 
   auto submit_batch = [&] -> Result<void, Error> {
     if (!cmd and batch_wait_semaphores.empty() and
@@ -1391,12 +1382,9 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
     }
     ren_assert(cmd);
     ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-    m_renderer->graphicsQueueSubmit(
-        {{
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-            .commandBuffer = cmd_buffer.handle,
-        }},
-        batch_wait_semaphores, batch_signal_semaphores);
+    ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer},
+                                  batch_wait_semaphores,
+                                  batch_signal_semaphores));
     batch_wait_semaphores = {};
     batch_signal_semaphores = {};
     return {};

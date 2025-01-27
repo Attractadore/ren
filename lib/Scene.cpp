@@ -117,14 +117,9 @@ auto Scene::next_frame() -> Result<void, Error> {
   [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
     ren_try_to(allocate_per_frame_resources());
   } else {
-    m_renderer->graphicsQueueSubmit(
-        {}, {},
-        {{
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-            .semaphore =
-                m_renderer->get_semaphore(m_graphics_semaphore).handle.handle,
-            .value = m_graphics_time,
-        }});
+    ren_try_to(m_renderer->submit(
+        rhi::QueueFamily::Graphics, {}, {},
+        {{.semaphore = m_graphics_semaphore, .value = m_graphics_time}}));
     m_graphics_time++;
     {
       ren_prof_zone("Scene::wait_for_previous_frame");
@@ -145,10 +140,7 @@ auto Scene::next_frame() -> Result<void, Error> {
     m_device_allocator.reset(cmd);
   }
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-  m_renderer->graphicsQueueSubmit({{
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd_buffer.handle,
-  }});
+  ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
   return {};
 }
 

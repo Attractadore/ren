@@ -1,6 +1,6 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "core/Optional.hpp"
+#include "core/GenIndex.hpp"
 #include "core/StdDef.hpp"
 #include "rhi.hpp"
 
@@ -14,6 +14,11 @@ struct SemaphoreCreateInfo {
 
 struct Semaphore {
   rhi::Semaphore handle;
+};
+
+struct SemaphoreState {
+  Handle<Semaphore> semaphore;
+  u64 value = 0;
 };
 
 }; // namespace ren

@@ -190,10 +190,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
 
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
 
-  renderer.graphicsQueueSubmit({{
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-      .commandBuffer = cmd_buffer.handle,
-  }});
+  ren_try_to(renderer.submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
 
   return {};
 }

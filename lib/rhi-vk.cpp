@@ -838,6 +838,51 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
+auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
+                  TempSpan<const rhi::SemaphoreState> wait_semaphores,
+                  TempSpan<const rhi::SemaphoreState> signal_semaphores)
+    -> Result<void> {
+  SmallVector<VkCommandBufferSubmitInfo> command_buffer_infos(
+      cmd_buffers.size());
+  for (usize i : range(cmd_buffers.size())) {
+    command_buffer_infos[i] = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+        .commandBuffer = cmd_buffers[i].handle,
+    };
+  }
+  SmallVector<VkSemaphoreSubmitInfo> semaphore_submit_infos(
+      wait_semaphores.size() + signal_semaphores.size());
+  for (usize i : range(wait_semaphores.size())) {
+    semaphore_submit_infos[i] = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = wait_semaphores[i].semaphore.handle,
+        .value = wait_semaphores[i].value,
+    };
+  }
+  for (usize i : range(signal_semaphores.size())) {
+    semaphore_submit_infos[wait_semaphores.size() + i] = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+        .semaphore = signal_semaphores[i].semaphore.handle,
+        .value = signal_semaphores[i].value,
+    };
+  }
+  VkSubmitInfo2 submit_info = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+      .waitSemaphoreInfoCount = (u32)wait_semaphores.size(),
+      .pWaitSemaphoreInfos = semaphore_submit_infos.data(),
+      .commandBufferInfoCount = (u32)cmd_buffers.size(),
+      .pCommandBufferInfos = command_buffer_infos.data(),
+      .signalSemaphoreInfoCount = (u32)signal_semaphores.size(),
+      .pSignalSemaphoreInfos = &semaphore_submit_infos[wait_semaphores.size()],
+  };
+  VkResult result =
+      queue.vk->vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr);
+  if (result) {
+    return fail(result);
+  }
+  return {};
+}
+
 auto queue_wait_idle(Queue queue) -> Result<void> {
   VkResult result = queue.vk->vkQueueWaitIdle(queue.handle);
   if (result) {

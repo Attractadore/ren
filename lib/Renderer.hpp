@@ -272,21 +272,11 @@ public:
 
   auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
 
-  auto getGraphicsQueue() const -> rhi::Queue { return m_graphics_queue; }
-
-  void graphicsQueueSubmit(
-      TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
-      TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
-      TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {}) {
-    queueSubmit(getGraphicsQueue(), cmd_buffers, wait_semaphores,
-                signal_semaphores);
-  }
-
-  void
-  queueSubmit(rhi::Queue queue,
-              TempSpan<const VkCommandBufferSubmitInfo> cmd_buffers,
-              TempSpan<const VkSemaphoreSubmitInfo> wait_semaphores = {},
-              TempSpan<const VkSemaphoreSubmitInfo> signal_semaphores = {});
+  auto submit(rhi::QueueFamily queue_family,
+              TempSpan<const rhi::CommandBuffer> cmd_buffers,
+              TempSpan<const SemaphoreState> wait_semaphores = {},
+              TempSpan<const SemaphoreState> signal_semaphores = {})
+      -> Result<void, Error>;
 
   bool is_feature_supported(RendererFeature feature) const;
 

@@ -135,7 +135,7 @@ REN_NEW_TYPE(RgTextureUseId, u32);
 struct RgSemaphore;
 using RgSemaphoreId = Handle<RgSemaphore>;
 
-REN_NEW_TYPE(RgSemaphoreSignalId, u32);
+REN_NEW_TYPE(RgSemaphoreStateId, u32);
 
 struct RgPassCreateInfo {
   REN_RG_DEBUG_NAME_TYPE name;
@@ -175,8 +175,8 @@ struct RgPass {
   SmallVector<RgBufferUseId> write_buffers;
   SmallVector<RgTextureUseId> read_textures;
   SmallVector<RgTextureUseId> write_textures;
-  SmallVector<RgSemaphoreSignalId> wait_semaphores;
-  SmallVector<RgSemaphoreSignalId> signal_semaphores;
+  SmallVector<RgSemaphoreStateId> wait_semaphores;
+  SmallVector<RgSemaphoreStateId> signal_semaphores;
   Variant<Monostate, RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass>
       ext;
 };
@@ -368,7 +368,6 @@ using RgPushConstant = detail::RgPushConstantImpl<T>::type;
 
 struct RgSemaphoreSignal {
   RgSemaphoreId semaphore;
-  VkPipelineStageFlagBits2 stage_mask = VK_PIPELINE_STAGE_2_NONE;
   u64 value = 0;
 };
 
@@ -382,7 +381,7 @@ struct RgBuildData {
 
   Vector<RgTextureUse> m_texture_uses;
 
-  Vector<RgSemaphoreSignal> m_semaphore_signals;
+  Vector<RgSemaphoreSignal> m_semaphore_states;
 };
 
 struct RgRtHostPass {
@@ -441,7 +440,7 @@ struct RgRtData {
 
   Vector<VkMemoryBarrier2> m_memory_barriers;
   Vector<VkImageMemoryBarrier2> m_texture_barriers;
-  Vector<VkSemaphoreSubmitInfo> m_semaphore_submit_info;
+  Vector<SemaphoreState> m_semaphore_submit_info;
 };
 
 class RgPersistent {
@@ -572,15 +571,12 @@ private:
                                    RgTextureId texture,
                                    const TextureState &usage) -> RgTextureToken;
 
-  [[nodiscard]] auto add_semaphore_signal(RgSemaphoreId semaphore,
-                                          VkPipelineStageFlags2 stage_mask,
-                                          u64 value) -> RgSemaphoreSignalId;
+  [[nodiscard]] auto add_semaphore_state(RgSemaphoreId semaphore, u64 value)
+      -> RgSemaphoreStateId;
 
-  void wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
-                      VkPipelineStageFlags2 stage_mask, u64 value);
+  void wait_semaphore(RgPassId pass, RgSemaphoreId semaphore, u64 value);
 
-  void signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
-                        VkPipelineStageFlags2 stage_mask, u64 value);
+  void signal_semaphore(RgPassId pass, RgSemaphoreId semaphore, u64 value);
 
   void set_host_callback(RgPassId id, CRgHostCallback auto cb) {
     RgPass &pass = m_data->m_passes[id];
@@ -869,15 +865,9 @@ public:
                               const DepthAttachmentOperations &ops)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
-  void
-  wait_semaphore(RgSemaphoreId semaphore,
-                 VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                 u64 value = 0);
+  void wait_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 
-  void
-  signal_semaphore(RgSemaphoreId semaphore,
-                   VkPipelineStageFlags2 stage_mask = VK_PIPELINE_STAGE_2_NONE,
-                   u64 value = 0);
+  void signal_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 
   void set_host_callback(CRgHostCallback auto cb) {
     m_builder->set_host_callback(m_pass, std::move(cb));
