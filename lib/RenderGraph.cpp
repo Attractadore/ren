@@ -1449,7 +1449,7 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
                       });
                 }) |
                 std::ranges::to<StaticVector<Optional<ColorAttachment>,
-                                             MAX_COLOR_ATTACHMENTS>>();
+                                             rhi::MAX_NUM_RENDER_TARGETS>>();
 
             auto depth_stencil_attachment = graphics_pass.depth_attachment.map(
                 [&](u32 index) -> DepthStencilAttachment {

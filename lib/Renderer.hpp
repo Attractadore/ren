@@ -85,10 +85,6 @@ public:
 
   auto get_rhi_device() const -> rhi::Device { return m_device; }
 
-  auto get_device() const -> VkDevice {
-    return rhi::vk::get_vk_device(m_device);
-  }
-
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> Result<Handle<Buffer>, Error>;
 

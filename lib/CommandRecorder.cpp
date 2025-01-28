@@ -290,7 +290,7 @@ void RenderPass::end() {
 }
 
 void RenderPass::set_viewports(
-    StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports) {
+    StaticVector<VkViewport, rhi::MAX_NUM_RENDER_TARGETS> viewports) {
   for (auto &viewport : viewports) {
     viewport.y += viewport.height;
     viewport.height = -viewport.height;

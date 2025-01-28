@@ -2,7 +2,6 @@
 #include "Attachments.hpp"
 #include "BumpAllocator.hpp"
 #include "CommandRecorder.hpp"
-#include "Config.hpp"
 #include "DescriptorAllocator.hpp"
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
@@ -156,7 +155,7 @@ struct RgDepthStencilAttachment {
 };
 
 struct RgGraphicsPass {
-  StaticVector<Optional<RgColorAttachment>, MAX_COLOR_ATTACHMENTS>
+  StaticVector<Optional<RgColorAttachment>, rhi::MAX_NUM_RENDER_TARGETS>
       color_attachments;
   Optional<RgDepthStencilAttachment> depth_stencil_attachment;
   RgGraphicsCallback cb;

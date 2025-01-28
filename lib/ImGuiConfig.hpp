@@ -1,5 +1,4 @@
 #pragma once
-#include "Config.hpp"
 #if REN_IMGUI
 #include "core/Macros.hpp"
 

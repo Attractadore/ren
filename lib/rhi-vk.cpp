@@ -1,5 +1,4 @@
 #if REN_RHI_VULKAN
-#include "Config.hpp"
 #include "core/Assert.hpp"
 #include "core/Span.hpp"
 #include "core/String.hpp"
@@ -2536,15 +2535,6 @@ auto map(Device device, Allocation allocation) -> void * {
   vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
   return allocation_info.pMappedData;
 }
-
-namespace vk {
-
-auto get_vk_device(Device device) -> VkDevice {
-  ren_assert(device);
-  return device->handle;
-}
-
-} // namespace vk
 
 } // namespace ren::rhi
 

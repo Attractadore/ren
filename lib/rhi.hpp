@@ -707,6 +707,8 @@ auto begin_command_buffer(Device device, CommandPool pool)
 
 auto end_command_buffer(CommandBuffer cmd) -> Result<void>;
 
+constexpr usize MAX_PUSH_CONSTANTS_SIZE = 256;
+
 enum class PipelineBindPoint {
   Graphics,
   Compute,

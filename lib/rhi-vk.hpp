@@ -26,8 +26,6 @@ struct DeviceData;
 
 using Device = const DeviceData *;
 
-auto get_vk_device(Device device) -> VkDevice;
-
 struct Queue {
   VkQueue handle = nullptr;
   const VolkDeviceTable *vk = nullptr;

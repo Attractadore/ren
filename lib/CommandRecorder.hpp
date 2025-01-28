@@ -1,7 +1,6 @@
 #pragma once
 #include "Attachments.hpp"
 #include "Buffer.hpp"
-#include "Config.hpp"
 #include "Descriptors.hpp"
 #include "Texture.hpp"
 #include "core/Assert.hpp"
@@ -162,7 +161,8 @@ public:
 
   void end();
 
-  void set_viewports(StaticVector<VkViewport, MAX_COLOR_ATTACHMENTS> viewports);
+  void set_viewports(
+      StaticVector<VkViewport, rhi::MAX_NUM_RENDER_TARGETS> viewports);
 
   void set_scissor_rects(TempSpan<const VkRect2D> rects);
 
@@ -179,14 +179,14 @@ public:
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
-    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
   void set_push_constants(Handle<PipelineLayout> layout, const T &data,
                           unsigned offset = 0) {
     set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
   }
 
   template <typename T>
-    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
   void set_push_constants(const T &data, unsigned offset = 0) {
     ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
     set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
@@ -251,14 +251,14 @@ public:
   void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
-    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
   void set_push_constants(Handle<PipelineLayout> layout, const T &data,
                           unsigned offset = 0) {
     set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
   }
 
   template <typename T>
-    requires(sizeof(T) <= MAX_PUSH_CONSTANTS_SIZE)
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
   void set_push_constants(const T &data, unsigned offset = 0) {
     ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
     set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
