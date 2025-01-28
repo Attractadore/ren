@@ -780,4 +780,10 @@ auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32>;
 
 auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void>;
 
+auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
+    -> Result<void>;
+
+auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
+    -> Result<void>;
+
 } // namespace ren::rhi

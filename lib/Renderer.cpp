@@ -681,21 +681,16 @@ bool Renderer::is_feature_supported(RendererFeature feature) const {
   return m_features[i];
 }
 
-void Renderer::amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps,
-                            VkAntiLagModeAMD mode) {
-  ren_prof_zone("AMD Anti-Lag");
-  VkAntiLagPresentationInfoAMD present_info = {
-      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD,
-      .stage = stage,
-      .frameIndex = frame,
-  };
-  VkAntiLagDataAMD anti_lag_data = {
-      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD,
-      .mode = mode,
-      .maxFPS = max_fps,
-      .pPresentationInfo = &present_info,
-  };
-  vkAntiLagUpdateAMD(get_device(), &anti_lag_data);
+auto Renderer::amd_anti_lag_input(u64 frame, bool enable, u32 max_fps)
+    -> Result<void, Error> {
+  ren_prof_zone("AMD Anti-Lag (Input)");
+  return rhi::amd_anti_lag_input(m_device, frame, enable, max_fps);
+}
+
+auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
+    -> Result<void, Error> {
+  ren_prof_zone("AMD Anti-Lag (Present)");
+  return rhi::amd_anti_lag_present(m_device, frame, enable, max_fps);
 }
 
 } // namespace ren

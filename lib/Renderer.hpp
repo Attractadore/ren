@@ -280,8 +280,11 @@ public:
 
   bool is_feature_supported(RendererFeature feature) const;
 
-  void amd_anti_lag(u64 frame, VkAntiLagStageAMD stage, u32 max_fps = 0,
-                    VkAntiLagModeAMD = VK_ANTI_LAG_MODE_ON_AMD);
+  auto amd_anti_lag_input(u64 frame, bool enable = true, u32 max_fps = 0)
+      -> Result<void, Error>;
+
+  auto amd_anti_lag_present(u64 frame, bool enable = true, u32 max_fps = 0)
+      -> Result<void, Error>;
 
 private:
   void create_device();

@@ -569,9 +569,6 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
   Vector<const char *> extensions = REQUIRED_DEVICE_EXTENSIONS;
-  if (features.amd_anti_lag) {
-    extensions.push_back(VK_AMD_ANTI_LAG_EXTENSION_NAME);
-  }
 
   void *pnext = nullptr;
   auto add_features = [&](auto &features) {
@@ -2498,6 +2495,39 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
     return fail(result);
   }
   return {};
+}
+
+namespace {
+
+auto amd_anti_lag(Device device, u64 frame, VkAntiLagStageAMD stage,
+                  bool enable, u32 max_fps) -> Result<void> {
+  VkAntiLagPresentationInfoAMD present_info = {
+      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD,
+      .stage = stage,
+      .frameIndex = frame,
+  };
+  VkAntiLagDataAMD anti_lag_data = {
+      .sType = VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD,
+      .mode = enable ? VK_ANTI_LAG_MODE_ON_AMD : VK_ANTI_LAG_MODE_OFF_AMD,
+      .maxFPS = max_fps,
+      .pPresentationInfo = &present_info,
+  };
+  vkAntiLagUpdateAMD(device->handle, &anti_lag_data);
+  return {};
+}
+
+} // namespace
+
+auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
+    -> Result<void> {
+  return amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_INPUT_AMD, enable,
+                      max_fps);
+}
+
+auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
+    -> Result<void> {
+  return amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_PRESENT_AMD, enable,
+                      max_fps);
 }
 
 #undef map

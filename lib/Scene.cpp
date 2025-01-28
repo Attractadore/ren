@@ -486,7 +486,7 @@ void Scene::set_directional_light(DirectionalLightId light,
 
 auto Scene::delay_input() -> expected<void> {
   if (is_amd_anti_lag_enabled()) {
-    m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_INPUT_AMD);
+    return m_renderer->amd_anti_lag_input(m_frame_index);
   }
   return {};
 }
@@ -510,7 +510,7 @@ auto Scene::draw() -> expected<void> {
   ren_try_to(render_graph.execute(m_frcs->cmd_pool));
 
   if (is_amd_anti_lag_enabled()) {
-    m_renderer->amd_anti_lag(m_frame_index, VK_ANTI_LAG_STAGE_PRESENT_AMD);
+    ren_try_to(m_renderer->amd_anti_lag_present(m_frame_index));
   }
 
   ren_try_to(m_swapchain->present(m_frcs->present_semaphore));
