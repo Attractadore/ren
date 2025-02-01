@@ -1,5 +1,4 @@
 #include "CommandRecorder.hpp"
-#include "Formats.hpp"
 #include "Renderer.hpp"
 #include "core/Math.hpp"
 #include "core/Views.hpp"
@@ -9,6 +8,25 @@
 namespace ren {
 
 namespace {
+
+auto getVkImageAspectFlags(TinyImageFormat format) -> VkImageAspectFlags {
+  if (TinyImageFormat_IsDepthAndStencil(format)) {
+    return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+  } else if (TinyImageFormat_IsDepthOnly(format)) {
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  } else if (TinyImageFormat_IsStencilOnly(format)) {
+    return VK_IMAGE_ASPECT_STENCIL_BIT;
+  }
+  return VK_IMAGE_ASPECT_COLOR_BIT;
+}
+
+auto get_format_aspect_mask(TinyImageFormat format) -> rhi::ImageAspectMask {
+  if (TinyImageFormat_IsDepthAndStencil(format) or
+      TinyImageFormat_IsDepthOnly(format)) {
+    return rhi::ImageAspect::Depth;
+  }
+  return rhi::ImageAspect::Color;
+}
 
 auto get_layout_for_attachment_ops(VkAttachmentLoadOp load,
                                    VkAttachmentStoreOp store) -> VkImageLayout {
@@ -175,26 +193,32 @@ void CommandRecorder::copy_texture(Handle<Texture> hsrc, Handle<Texture> hdst) {
 }
 
 void CommandRecorder::pipeline_barrier(
-    const VkDependencyInfo &dependency_info) {
-  if (!dependency_info.memoryBarrierCount and
-      !dependency_info.bufferMemoryBarrierCount and
-      !dependency_info.imageMemoryBarrierCount) {
-    return;
+    TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    TempSpan<const TextureBarrier> texture_barriers) {
+  SmallVector<rhi::ImageBarrier, 16> image_barriers(texture_barriers.size());
+  for (usize i : range(texture_barriers.size())) {
+    const TextureBarrier &barrier = texture_barriers[i];
+    const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
+    image_barriers[i] = {
+        .image = texture.handle,
+        .range =
+            {
+                .aspect_mask = get_format_aspect_mask(texture.format),
+                .first_mip_level = barrier.resource.first_mip_level,
+                .num_mip_levels = barrier.resource.num_mip_levels,
+                .num_array_layers = 1,
+            },
+        .src_stage_mask = barrier.src_stage_mask,
+        .src_access_mask = barrier.src_access_mask,
+        .src_layout = barrier.src_layout,
+        .src_queue_family = barrier.src_queue_family,
+        .dst_stage_mask = barrier.dst_stage_mask,
+        .dst_access_mask = barrier.dst_access_mask,
+        .dst_layout = barrier.dst_layout,
+        .dst_queue_family = barrier.dst_queue_family,
+    };
   }
-  vkCmdPipelineBarrier2(m_cmd.handle, &dependency_info);
-}
-
-void CommandRecorder::pipeline_barrier(
-    TempSpan<const VkMemoryBarrier2> barriers,
-    TempSpan<const VkImageMemoryBarrier2> image_barriers) {
-  VkDependencyInfo dependency = {
-      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = unsigned(barriers.size()),
-      .pMemoryBarriers = barriers.data(),
-      .imageMemoryBarrierCount = unsigned(image_barriers.size()),
-      .pImageMemoryBarriers = image_barriers.data(),
-  };
-  pipeline_barrier(dependency);
+  rhi::cmd_pipeline_barrier(m_cmd, memory_barriers, image_barriers);
 }
 
 auto CommandRecorder::render_pass(const RenderPassBeginInfo &&begin_info)

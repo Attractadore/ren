@@ -47,7 +47,6 @@ add_library(ren
   Camera.cpp
   CommandRecorder.cpp
   DescriptorAllocator.cpp
-  Formats.cpp
   FreeListAllocator.cpp
   GpuScene.cpp
   Mesh.cpp

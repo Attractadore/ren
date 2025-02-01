@@ -289,15 +289,16 @@ auto Scene::get_or_create_texture(Handle<Image> image,
 }
 
 auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
-  ren_try(auto texture,
-          m_arena.create_texture({
-              .format = desc.format,
-              .usage = rhi::ImageUsage::Sampled | rhi::ImageUsage::TransferSrc |
-                       rhi::ImageUsage::TransferDst,
-              .width = desc.width,
-              .height = desc.height,
-              .num_mip_levels = get_mip_level_count(desc.width, desc.height),
-          }));
+  ren_try(
+      auto texture,
+      m_arena.create_texture({
+          .format = desc.format,
+          .usage = rhi::ImageUsage::ShaderResource |
+                   rhi::ImageUsage::TransferSrc | rhi::ImageUsage::TransferDst,
+          .width = desc.width,
+          .height = desc.height,
+          .num_mip_levels = get_mip_level_count(desc.width, desc.height),
+      }));
 
   usize block_bits = TinyImageFormat_BitSizeOfBlock(desc.format);
   usize block_width = TinyImageFormat_WidthOfBlock(desc.format);

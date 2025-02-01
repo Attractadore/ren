@@ -14,24 +14,20 @@ void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
        ++dst_level) {
     auto src_level = dst_level - 1;
 
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .image = texture.handle.handle,
-        .subresourceRange =
+    cmd.texture_barrier({
+        .resource =
             {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = src_level,
-                .levelCount = 1,
-                .layerCount = texture.num_array_layers,
+                .handle = handle,
+                .first_mip_level = src_level,
+                .num_mip_levels = 1,
             },
-    };
-    cmd.pipeline_barrier({}, {barrier});
+        .src_stage_mask = rhi::PipelineStage::Transfer,
+        .src_access_mask = rhi::Access::TransferWrite,
+        .src_layout = rhi::ImageLayout::TransferDst,
+        .dst_stage_mask = rhi::PipelineStage::Transfer,
+        .dst_access_mask = rhi::Access::TransferRead,
+        .dst_layout = rhi::ImageLayout::TransferSrc,
+    });
 
     auto dst_size = glm::max(src_size / 2u, {1, 1, 1});
     VkImageBlit region = {
@@ -57,70 +53,45 @@ void generate_mipmaps(Renderer &renderer, CommandRecorder &cmd,
 
 void upload_texture(Renderer &renderer, CommandRecorder &cmd,
                     const BufferView &src, Handle<Texture> dst) {
-  const auto &texture = renderer.get_texture(dst);
-
-  {
-    // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = texture.handle.handle,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = texture.num_mip_levels,
-                .layerCount = texture.num_array_layers,
-            },
-    };
-    cmd.pipeline_barrier({}, {barrier});
-  }
+  // Transfer all mip levels to TRANSFER_DST for upload + mipmap generation
+  cmd.texture_barrier({
+      .resource = {dst},
+      .dst_stage_mask = rhi::PipelineStage::Transfer,
+      .dst_access_mask = rhi::Access::TransferWrite,
+      .dst_layout = rhi::ImageLayout::TransferDst,
+  });
 
   cmd.copy_buffer_to_texture(src, dst);
 
   generate_mipmaps(renderer, cmd, dst);
 
-  // Transfer last mip level from TRANSFER_DST to READ_ONLY after copy or mipmap
-  // generation
-  StaticVector<VkImageMemoryBarrier2, 2> barriers = {{
-      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-      .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-      .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-      .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-      .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-      .image = texture.handle.handle,
-      .subresourceRange =
+  // Transfer last mip level from transfer destination to transfer source after
+  // copy or mipmap generation.
+  cmd.texture_barrier({
+      .resource =
           {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .baseMipLevel = texture.num_mip_levels - 1,
-              .levelCount = 1,
-              .layerCount = texture.num_array_layers,
+              .handle = dst,
+              .first_mip_level = renderer.get_texture(dst).num_mip_levels - 1,
+              .num_mip_levels = 1,
           },
-  }};
-  if (texture.num_mip_levels > 1) {
-    // Transfer every mip level except the last one from TRANSFER_SRC to
-    // READ_ONLY after mipmap generation
-    barriers.push_back({
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-        .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-        .image = texture.handle.handle,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = texture.num_mip_levels - 1,
-                .layerCount = texture.num_array_layers,
-            },
-    });
-  }
-  cmd.pipeline_barrier({}, barriers);
+      .src_stage_mask = rhi::PipelineStage::Transfer,
+      .src_access_mask = rhi::Access::TransferWrite,
+      .src_layout = rhi::ImageLayout::TransferDst,
+      .dst_stage_mask = rhi::PipelineStage::Transfer,
+      .dst_access_mask = rhi::Access::TransferRead,
+      .dst_layout = rhi::ImageLayout::TransferSrc,
+  });
+
+  // Transfer from transfer source to shader resource after mipmap generation.
+  cmd.texture_barrier({
+      .resource = {dst},
+      .src_stage_mask = rhi::PipelineStage::Transfer,
+      .src_access_mask = rhi::Access::TransferRead,
+      .src_layout = rhi::ImageLayout::TransferSrc,
+      .dst_stage_mask = rhi::PipelineStage::FragmentShader,
+      .dst_access_mask = rhi::Access::ShaderImageRead,
+      .dst_layout = rhi::ImageLayout::ShaderResource,
+  });
 }
 
 } // namespace
@@ -166,18 +137,13 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     for (const auto &[src, dst] : m_buffer_copies) {
       cmd.copy_buffer(src, dst);
     }
-    VkMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-        .srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT,
-        .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
-                        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-                        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-        .dstAccessMask =
-            VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-    };
-    cmd.pipeline_barrier({barrier}, {});
     m_buffer_copies.clear();
+    cmd.memory_barrier({
+        .src_stage_mask = rhi::PipelineStage::Transfer,
+        .src_access_mask = rhi::Access::TransferWrite,
+        .dst_stage_mask = rhi::PipelineStage::All,
+        .dst_access_mask = rhi::Access::MemoryRead,
+    });
   }
 
   if (not m_texture_copies.empty()) {

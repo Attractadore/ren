@@ -139,10 +139,16 @@ public:
 
   void copy_texture(Handle<Texture> src, Handle<Texture> dst);
 
-  void pipeline_barrier(const VkDependencyInfo &dependency_info);
+  void pipeline_barrier(TempSpan<const rhi::MemoryBarrier> memory_barriers,
+                        TempSpan<const TextureBarrier> texture_barriers);
 
-  void pipeline_barrier(TempSpan<const VkMemoryBarrier2> barriers,
-                        TempSpan<const VkImageMemoryBarrier2> image_barriers);
+  void memory_barrier(const rhi::MemoryBarrier &barrier) {
+    pipeline_barrier({&barrier, 1}, {});
+  }
+
+  void texture_barrier(const TextureBarrier &barrier) {
+    pipeline_barrier({}, {&barrier, 1});
+  }
 
   [[nodiscard]] auto debug_region(const char *label) -> DebugRegion;
 

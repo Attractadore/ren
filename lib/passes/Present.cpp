@@ -27,7 +27,7 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
   rcs.swapchain = cfg.swapchain;
   present.wait_semaphore(ccfg.rcs->acquire_semaphore);
   rcs.acquire_semaphore = ccfg.rcs->acquire_semaphore;
-  rcs.src = present.read_texture(cfg.src, TRANSFER_SRC_TEXTURE);
+  rcs.src = present.read_texture(cfg.src, rhi::TRANSFER_SRC_IMAGE);
 
   present.set_callback([rcs](Renderer &renderer, const RgRuntime &rg,
                              CommandRecorder &cmd) {
@@ -39,21 +39,12 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         rcs.swapchain->acquire_texture(acquire_semaphore);
     ren_assert(backbuffer);
 
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
-        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .image = renderer.get_texture(*backbuffer).handle.handle,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .levelCount = 1,
-                .layerCount = 1,
-            },
-    };
-
-    cmd.pipeline_barrier({}, {barrier});
+    cmd.texture_barrier({
+        .resource = {*backbuffer},
+        .dst_stage_mask = rhi::PipelineStage::Transfer,
+        .dst_access_mask = rhi::Access::TransferWrite,
+        .dst_layout = rhi::ImageLayout::TransferDst,
+    });
 
     VkImageBlit region = {
         .srcSubresource =
@@ -75,14 +66,13 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
                 sizeof(backbuffer_size));
     cmd.blit(src, *backbuffer, {region}, VK_FILTER_LINEAR);
 
-    barrier.srcStageMask = barrier.dstStageMask;
-    barrier.srcAccessMask = barrier.dstAccessMask;
-    barrier.dstStageMask = 0;
-    barrier.dstAccessMask = 0;
-    barrier.oldLayout = barrier.newLayout;
-    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-    cmd.pipeline_barrier({}, {barrier});
+    cmd.texture_barrier({
+        .resource = {*backbuffer},
+        .src_stage_mask = rhi::PipelineStage::Transfer,
+        .src_access_mask = rhi::Access::TransferWrite,
+        .src_layout = rhi::ImageLayout::TransferDst,
+        .dst_layout = rhi::ImageLayout::Present,
+    });
   });
 
   present.signal_semaphore(ccfg.rcs->present_semaphore);

@@ -75,14 +75,14 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
 
   if (not cfg.gpu_scene->update_meshes.empty()) {
     std::tie(cfg.rg_gpu_scene->meshes, rcs.meshes) = pass.write_buffer(
-        "meshes-updated", cfg.rg_gpu_scene->meshes, TRANSFER_DST_BUFFER);
+        "meshes-updated", cfg.rg_gpu_scene->meshes, rhi::TRANSFER_DST_BUFFER);
   }
 
   if (not cfg.gpu_scene->update_mesh_instances.empty()) {
     std::tie(cfg.rg_gpu_scene->mesh_instances, rcs.mesh_instances) =
         pass.write_buffer("mesh-instances-updated",
                           cfg.rg_gpu_scene->mesh_instances,
-                          TRANSFER_DST_BUFFER);
+                          rhi::TRANSFER_DST_BUFFER);
   }
 
   for (auto i : range(NUM_DRAW_SETS)) {
@@ -92,25 +92,27 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
           pass.write_buffer(fmt::format("{}-draw-set-updated",
                                         get_draw_set_name((DrawSet)(1 << i))),
                             cfg.rg_gpu_scene->draw_sets[i].cull_data,
-                            TRANSFER_SRC_BUFFER | TRANSFER_DST_BUFFER);
+                            rhi::TRANSFER_SRC_BUFFER |
+                                rhi::TRANSFER_DST_BUFFER);
     }
   }
 
   std::tie(cfg.rg_gpu_scene->transform_matrices, rcs.transform_matrices) =
       pass.write_buffer("transform-matrices",
                         cfg.rg_gpu_scene->transform_matrices,
-                        TRANSFER_DST_BUFFER);
+                        rhi::TRANSFER_DST_BUFFER);
 
   if (not cfg.gpu_scene->update_materials.empty()) {
-    std::tie(cfg.rg_gpu_scene->materials, rcs.materials) = pass.write_buffer(
-        "materials-updated", cfg.rg_gpu_scene->materials, TRANSFER_DST_BUFFER);
+    std::tie(cfg.rg_gpu_scene->materials, rcs.materials) =
+        pass.write_buffer("materials-updated", cfg.rg_gpu_scene->materials,
+                          rhi::TRANSFER_DST_BUFFER);
   }
 
   if (not cfg.gpu_scene->update_directional_lights.empty()) {
     std::tie(cfg.rg_gpu_scene->directional_lights, rcs.directional_lights) =
         pass.write_buffer("directional-lights-updated",
                           cfg.rg_gpu_scene->directional_lights,
-                          TRANSFER_DST_BUFFER);
+                          rhi::TRANSFER_DST_BUFFER);
   }
 
   pass.set_callback([rcs](Renderer &renderer, const RgRuntime &rg,

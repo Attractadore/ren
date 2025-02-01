@@ -46,7 +46,7 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
         .ext =
             RgTextureTemporalInfo{
                 .num_temporal_layers = 2,
-                .usage = TRANSFER_DST_TEXTURE,
+                .usage = rhi::TRANSFER_DST_IMAGE,
                 .cb =
                     [](Handle<Texture> texture, Renderer &,
                        CommandRecorder &cmd) {

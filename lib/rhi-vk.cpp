@@ -854,6 +854,10 @@ auto get_adapter(Device device) -> const AdapterData & {
   return get_adapter(device->adapter);
 }
 
+auto get_queue_family_index(Adapter adapter, QueueFamily queue_family) -> u32 {
+  return get_adapter(adapter).queue_family_indices[(usize)queue_family];
+}
+
 } // namespace
 
 auto get_queue(Device device, QueueFamily family) -> Queue {
@@ -1057,10 +1061,10 @@ constexpr auto IMAGE_USAGE_MAP = [] {
   std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
   map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
   map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-  map_bit(Sampled, VK_IMAGE_USAGE_SAMPLED_BIT);
-  map_bit(Storage, VK_IMAGE_USAGE_STORAGE_BIT);
-  map_bit(ColorAttachment, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-  map_bit(DepthAttachment, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+  map_bit(ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map_bit(UnorderedAccess, VK_IMAGE_USAGE_STORAGE_BIT);
+  map_bit(RenderTarget, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map_bit(DepthStencilTarget, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
   return map;
 }();
 
@@ -2117,6 +2121,104 @@ auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
 
 namespace {
 
+template <typename E>
+  requires std::is_scoped_enum_v<E>
+constexpr usize ENUM_SIZE = [] consteval -> usize {
+  if (CFlagsEnum<E>) {
+    return std::countr_zero((usize)E::Last) + 1;
+  }
+  return (usize)E::Last + 1;
+}();
+
+template <typename From> constexpr auto MAP = nullptr;
+
+template <typename From>
+  requires std::is_scoped_enum_v<From>
+auto to_vk(From e) {
+  return MAP<From>[(usize)e];
+};
+
+template <CFlagsEnum From> auto to_vk(Flags<From> mask) {
+  typename decltype(MAP<From>)::value_type vk_mask = 0;
+  for (usize bit : range(ENUM_SIZE<From>)) {
+    if (mask.is_set((From)(1ull << bit))) {
+      vk_mask |= MAP<From>[bit];
+    }
+  }
+  return vk_mask;
+};
+
+template <>
+constexpr auto MAP<ImageAspect> = [] {
+  std::array<VkImageAspectFlags, ENUM_SIZE<ImageAspect>> map = {};
+  map_bit(ImageAspect::Color, VK_IMAGE_ASPECT_COLOR_BIT);
+  map_bit(ImageAspect::Depth, VK_IMAGE_ASPECT_DEPTH_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<PipelineStage> = [] {
+  std::array<VkPipelineStageFlagBits2, ENUM_SIZE<PipelineStage>> map = {};
+  map_bit(PipelineStage::ExecuteIndirect,
+          VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
+  map_bit(PipelineStage::TaskShader, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+  map_bit(PipelineStage::MeshShader, VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT);
+  map_bit(PipelineStage::IndexInput, VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT);
+  map_bit(PipelineStage::VertexShader, VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+  map_bit(PipelineStage::EarlyFragmentTests,
+          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT);
+  map_bit(PipelineStage::FragmentShader,
+          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  map_bit(PipelineStage::LateFragmentTests,
+          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+  map_bit(PipelineStage::RenderTargetOutput,
+          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+  map_bit(PipelineStage::ComputeShader, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+  map_bit(PipelineStage::Transfer, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT);
+  map_bit(PipelineStage::All, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<Access> = [] {
+  std::array<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
+  map_bit(Access::IndirectCommandRead, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+  map_bit(Access::IndexRead, VK_ACCESS_2_INDEX_READ_BIT);
+  map_bit(Access::UniformRead, VK_ACCESS_2_UNIFORM_READ_BIT);
+  map_bit(Access::ShaderBufferRead, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+  map_bit(Access::ShaderImageRead, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+  map_bit(Access::UnorderedAccess, VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                       VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+  map_bit(Access::RenderTarget, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  map_bit(Access::DepthStencilRead,
+          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+  map_bit(Access::DepthStencilWrite,
+          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+  map_bit(Access::TransferRead, VK_ACCESS_2_TRANSFER_READ_BIT);
+  map_bit(Access::TransferWrite, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+  map_bit(Access::MemoryRead, VK_ACCESS_2_MEMORY_READ_BIT);
+  map_bit(Access::MemoryWrite, VK_ACCESS_2_MEMORY_WRITE_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ImageLayout> = [] {
+  std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
+  map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
+  map(ImageLayout::ShaderResource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  map(ImageLayout::UnorderedAccess, VK_IMAGE_LAYOUT_GENERAL);
+  map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  map(ImageLayout::DepthStencilRead,
+      VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+  map(ImageLayout::DepthStencilWrite,
+      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+  map(ImageLayout::TransferSrc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  map(ImageLayout::TransferDst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  map(ImageLayout::Present, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  return map;
+}();
+
 constexpr auto PIPELINE_BIND_POINT_MAP = [] {
   std::array<VkPipelineBindPoint, PIPELINE_BIND_POINT_COUNT> map = {};
   map(PipelineBindPoint::Graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
@@ -2125,6 +2227,58 @@ constexpr auto PIPELINE_BIND_POINT_MAP = [] {
 }();
 
 } // namespace
+
+void cmd_pipeline_barrier(CommandBuffer cmd,
+                          TempSpan<const MemoryBarrier> memory_barriers,
+                          TempSpan<const ImageBarrier> image_barriers) {
+  Adapter adapter = cmd.device->adapter;
+  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  for (usize i : range(memory_barriers.size())) {
+    const MemoryBarrier &barrier = memory_barriers[i];
+    vk_memory_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+    };
+  }
+  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
+      image_barriers.size());
+  for (usize i : range(image_barriers.size())) {
+    const ImageBarrier &barrier = image_barriers[i];
+    vk_image_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+        .oldLayout = to_vk(barrier.src_layout),
+        .newLayout = to_vk(barrier.dst_layout),
+        .srcQueueFamilyIndex =
+            get_queue_family_index(adapter, barrier.src_queue_family),
+        .dstQueueFamilyIndex =
+            get_queue_family_index(adapter, barrier.dst_queue_family),
+        .image = barrier.image.handle,
+        .subresourceRange =
+            {
+                .aspectMask = to_vk(barrier.range.aspect_mask),
+                .baseMipLevel = barrier.range.first_mip_level,
+                .levelCount = barrier.range.num_mip_levels,
+                .baseArrayLayer = barrier.range.first_array_layer,
+                .layerCount = barrier.range.num_array_layers,
+            },
+    };
+  }
+  VkDependencyInfo dependency_info = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers.data(),
+      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers.data(),
+  };
+  cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
+}
 
 void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
                               ResourceDescriptorHeap resource_heap,

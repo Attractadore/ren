@@ -214,11 +214,11 @@ inline auto map(Device device, Buffer buffer) -> void * {
 REN_BEGIN_FLAGS_ENUM(ImageUsage) {
   REN_FLAG(TransferSrc),
   REN_FLAG(TransferDst),
-  REN_FLAG(Sampled),
-  REN_FLAG(Storage),
-  REN_FLAG(ColorAttachment),
-  REN_FLAG(DepthAttachment),
-  Last = DepthAttachment,
+  REN_FLAG(ShaderResource),
+  REN_FLAG(UnorderedAccess),
+  REN_FLAG(RenderTarget),
+  REN_FLAG(DepthStencilTarget),
+  Last = DepthStencilTarget,
 } REN_END_FLAGS_ENUM(ImageUsage);
 // clang-format on
 constexpr u32 IMAGE_USAGE_COUNT = std::countr_zero((usize)ImageUsage::Last) + 1;
@@ -245,6 +245,28 @@ struct ImageCreateInfo {
 auto create_image(const ImageCreateInfo &create_info) -> Result<Image>;
 
 void destroy_image(Device device, Image image);
+
+REN_BEGIN_FLAGS_ENUM(ImageAspect){
+    REN_FLAG(Color),
+    REN_FLAG(Depth),
+    Last = Depth,
+} REN_END_FLAGS_ENUM(ImageAspect);
+
+} // namespace ren::rhi
+
+REN_ENABLE_FLAGS(ren::rhi::ImageAspect);
+
+namespace ren::rhi {
+
+using ImageAspectMask = Flags<ImageAspect>;
+
+struct ImageSubresourceRange {
+  ImageAspectMask aspect_mask;
+  u32 first_mip_level = 0;
+  u32 num_mip_levels = 0;
+  u32 first_array_layer = 0;
+  u32 num_array_layers = 0;
+};
 
 auto set_debug_name(Device device, Image image, const char *name)
     -> Result<void>;
@@ -715,6 +737,220 @@ enum class PipelineBindPoint {
   Last = Compute,
 };
 constexpr usize PIPELINE_BIND_POINT_COUNT = (usize)PipelineBindPoint::Last + 1;
+
+// clang-format off
+REN_BEGIN_FLAGS_ENUM(PipelineStage){
+    REN_FLAG(ExecuteIndirect),
+    REN_FLAG(TaskShader),
+    REN_FLAG(MeshShader),
+    REN_FLAG(IndexInput),
+    REN_FLAG(VertexShader),
+    REN_FLAG(EarlyFragmentTests),
+    REN_FLAG(FragmentShader),
+    REN_FLAG(LateFragmentTests),
+    REN_FLAG(RenderTargetOutput),
+    REN_FLAG(ComputeShader),
+    REN_FLAG(Transfer),
+    REN_FLAG(All),
+    Last = All,
+} REN_END_FLAGS_ENUM(PipelineStage);
+// clang-format on
+
+// clang-format off
+REN_BEGIN_FLAGS_ENUM(Access){
+    REN_FLAG(IndirectCommandRead),
+    REN_FLAG(IndexRead),
+    REN_FLAG(UniformRead),
+    REN_FLAG(ShaderBufferRead),
+    REN_FLAG(ShaderImageRead),
+    REN_FLAG(UnorderedAccess),
+    REN_FLAG(RenderTarget),
+    REN_FLAG(DepthStencilRead),
+    REN_FLAG(DepthStencilWrite),
+    REN_FLAG(TransferRead),
+    REN_FLAG(TransferWrite),
+    REN_FLAG(MemoryRead),
+    REN_FLAG(MemoryWrite),
+    Last = MemoryWrite,
+} REN_END_FLAGS_ENUM(Access);
+// clang-format on
+
+} // namespace ren::rhi
+
+REN_ENABLE_FLAGS(ren::rhi::PipelineStage);
+REN_ENABLE_FLAGS(ren::rhi::Access);
+
+namespace ren::rhi {
+
+using PipelineStageMask = Flags<PipelineStage>;
+using AccessMask = Flags<Access>;
+
+constexpr AccessMask READ_ONLY_ACCESS_MASK =
+    Access::IndirectCommandRead | Access::IndexRead | Access::UniformRead |
+    Access::ShaderBufferRead | Access::ShaderImageRead |
+    Access::DepthStencilRead | Access::TransferRead;
+
+constexpr AccessMask WRITE_ONLY_ACCESS_MASK =
+    Access::UnorderedAccess | Access::RenderTarget | Access::DepthStencilWrite |
+    Access::TransferWrite;
+
+enum class ImageLayout {
+  Undefined,
+  ShaderResource,
+  UnorderedAccess,
+  RenderTarget,
+  DepthStencilRead,
+  DepthStencilWrite,
+  TransferSrc,
+  TransferDst,
+  Present,
+  Last = Present,
+};
+
+struct MemoryState {
+  PipelineStageMask stage_mask;
+  AccessMask access_mask;
+
+public:
+  auto operator|(const MemoryState &other) const -> MemoryState {
+    return {
+        .stage_mask = stage_mask | other.stage_mask,
+        .access_mask = access_mask | other.access_mask,
+    };
+  };
+};
+
+using BufferState = MemoryState;
+
+constexpr BufferState INDIRECT_COMMAND_BUFFER = {
+    .stage_mask = PipelineStage::ExecuteIndirect,
+    .access_mask = Access::IndirectCommandRead,
+};
+
+constexpr BufferState INDEX_BUFFER = {
+    .stage_mask = PipelineStage::IndexInput,
+    .access_mask = Access::IndexRead,
+};
+
+constexpr BufferState VS_RESOURCE_BUFFER = {
+    .stage_mask = PipelineStage::VertexShader,
+    .access_mask = Access::ShaderBufferRead,
+};
+
+constexpr BufferState FS_RESOURCE_BUFFER = {
+    .stage_mask = PipelineStage::FragmentShader,
+    .access_mask = Access::ShaderBufferRead,
+};
+
+constexpr BufferState CS_RESOURCE_BUFFER = {
+    .stage_mask = PipelineStage::ComputeShader,
+    .access_mask = Access::ShaderBufferRead,
+};
+
+constexpr BufferState CS_UNORDERED_ACCESS_BUFFER = {
+    .stage_mask = PipelineStage::ComputeShader,
+    .access_mask = Access::UnorderedAccess,
+};
+
+constexpr BufferState CS_ATOMIC_BUFFER = CS_UNORDERED_ACCESS_BUFFER;
+
+constexpr BufferState TRANSFER_SRC_BUFFER = {
+    .stage_mask = PipelineStage::Transfer,
+    .access_mask = Access::TransferRead,
+};
+
+constexpr BufferState TRANSFER_DST_BUFFER = {
+    .stage_mask = PipelineStage::Transfer,
+    .access_mask = Access::TransferWrite,
+};
+
+struct ImageState {
+  PipelineStageMask stage_mask;
+  AccessMask access_mask;
+  ImageLayout layout = ImageLayout::Undefined;
+};
+
+constexpr ImageState VS_SAMPLED_IMAGE = {
+    .stage_mask = PipelineStage::VertexShader,
+    .access_mask = Access::ShaderImageRead,
+    .layout = ImageLayout::ShaderResource,
+};
+constexpr ImageState READ_DEPTH_STENCIL_TARGET = {
+    .stage_mask = PipelineStage::EarlyFragmentTests,
+    .access_mask = Access::DepthStencilRead,
+    .layout = ImageLayout::DepthStencilRead,
+};
+
+constexpr ImageState FS_RESOURCE_IMAGE = {
+    .stage_mask = PipelineStage::FragmentShader,
+    .access_mask = Access::ShaderImageRead,
+    .layout = ImageLayout::ShaderResource,
+};
+
+constexpr ImageState RENDER_TARGET = {
+    .stage_mask = PipelineStage::RenderTargetOutput,
+    .access_mask = Access::RenderTarget,
+    .layout = ImageLayout::RenderTarget,
+};
+
+constexpr ImageState DEPTH_STENCIL_TARGET = {
+    .stage_mask =
+        PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
+    .access_mask = Access::DepthStencilRead | Access::DepthStencilWrite,
+    .layout = ImageLayout::DepthStencilWrite,
+};
+
+constexpr ImageState CS_RESOURCE_IMAGE = {
+    .stage_mask = PipelineStage::ComputeShader,
+    .access_mask = Access::ShaderImageRead,
+    .layout = ImageLayout::ShaderResource,
+};
+
+constexpr ImageState CS_UNORDERED_ACCESS_IMAGE = {
+    .stage_mask = PipelineStage::ComputeShader,
+    .access_mask = Access::UnorderedAccess,
+    .layout = ImageLayout::UnorderedAccess,
+};
+
+constexpr ImageState TRANSFER_SRC_IMAGE = {
+    .stage_mask = PipelineStage::Transfer,
+    .access_mask = Access::TransferRead,
+    .layout = ImageLayout::TransferSrc,
+};
+
+constexpr ImageState TRANSFER_DST_IMAGE = {
+    .stage_mask = PipelineStage::Transfer,
+    .access_mask = Access::TransferWrite,
+    .layout = ImageLayout::TransferDst,
+};
+
+constexpr ImageState PRESENT_IMAGE = {
+    .layout = ImageLayout::Present,
+};
+
+struct MemoryBarrier {
+  PipelineStageMask src_stage_mask;
+  AccessMask src_access_mask;
+  PipelineStageMask dst_stage_mask;
+  AccessMask dst_access_mask;
+};
+
+struct ImageBarrier {
+  Image image;
+  ImageSubresourceRange range;
+  PipelineStageMask src_stage_mask;
+  AccessMask src_access_mask;
+  ImageLayout src_layout = ImageLayout::Undefined;
+  QueueFamily src_queue_family = {};
+  PipelineStageMask dst_stage_mask;
+  AccessMask dst_access_mask;
+  ImageLayout dst_layout = ImageLayout::Undefined;
+  QueueFamily dst_queue_family = {};
+};
+
+void cmd_pipeline_barrier(CommandBuffer cmd,
+                          TempSpan<const MemoryBarrier> memory_barriers,
+                          TempSpan<const ImageBarrier> image_barriers);
 
 void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
                               ResourceDescriptorHeap resource_heap,

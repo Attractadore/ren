@@ -195,7 +195,7 @@ struct RgPhysicalBuffer {
   rhi::MemoryHeap heap = {};
   usize size = 0;
   BufferView view;
-  BufferState state;
+  rhi::BufferState state;
 };
 
 struct RgBuffer {
@@ -213,7 +213,7 @@ struct RgBuffer {
 struct RgBufferUse {
   RgUntypedBufferId buffer;
   u32 offset = 0;
-  BufferState usage;
+  rhi::BufferState usage;
 };
 
 struct RgTextureExternalInfo {
@@ -225,7 +225,7 @@ struct RgTextureTemporalInfo {
   /// Number of temporal layers.
   u32 num_temporal_layers = 0;
   /// Texture usage in init callback.
-  TextureState usage;
+  rhi::ImageState usage;
   /// Init callback for temporal layers.
   RgTextureInitCallback cb;
 };
@@ -250,7 +250,7 @@ struct RgTextureCreateInfo {
 };
 
 struct RgTextureInitInfo {
-  TextureState usage;
+  rhi::ImageState usage;
   RgTextureInitCallback cb;
 };
 
@@ -264,7 +264,7 @@ struct RgPhysicalTexture {
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
   Handle<Texture> handle;
-  TextureState state;
+  rhi::ImageState state;
   RgTextureId init_id;
   RgTextureId id;
 };
@@ -284,7 +284,7 @@ struct RgTexture {
 struct RgTextureUse {
   RgTextureId texture;
   Handle<Sampler> sampler;
-  TextureState state;
+  rhi::ImageState state;
 };
 
 struct RgSemaphore {
@@ -437,8 +437,8 @@ struct RgRtData {
   Vector<RgTextureDescriptors> m_texture_descriptors;
   Vector<glsl::StorageTexture> m_storage_texture_descriptors;
 
-  Vector<VkMemoryBarrier2> m_memory_barriers;
-  Vector<VkImageMemoryBarrier2> m_texture_barriers;
+  Vector<rhi::MemoryBarrier> m_memory_barriers;
+  Vector<TextureBarrier> m_texture_barriers;
   Vector<SemaphoreState> m_semaphore_submit_info;
 };
 
@@ -516,10 +516,10 @@ public:
                      const glm::vec4 &value);
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
-                           const BufferState &usage = {});
+                           const rhi::BufferState &usage = {});
 
   void set_external_texture(RgTextureId id, Handle<Texture> texture,
-                            const TextureState &usage = {});
+                            const rhi::ImageState &usage = {});
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
@@ -527,30 +527,31 @@ public:
              UploadBumpAllocator &upload_allocator)
       -> Result<RenderGraph, Error>;
 
-  auto get_final_buffer_state(RgUntypedBufferId buffer) const -> BufferState;
+  auto get_final_buffer_state(RgUntypedBufferId buffer) const
+      -> rhi::BufferState;
 
 private:
   friend RgPassBuilder;
 
   [[nodiscard]] auto add_buffer_use(RgUntypedBufferId buffer,
-                                    const BufferState &usage, u32 offset = 0)
-      -> RgBufferUseId;
+                                    const rhi::BufferState &usage,
+                                    u32 offset = 0) -> RgBufferUseId;
 
   [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
                                            RgUntypedBufferId parent)
       -> RgUntypedBufferId;
 
   [[nodiscard]] auto read_buffer(RgPassId pass, RgUntypedBufferId buffer,
-                                 const BufferState &usage, u32 offset)
+                                 const rhi::BufferState &usage, u32 offset)
       -> RgUntypedBufferToken;
 
   [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
                                   RgUntypedBufferId buffer,
-                                  const BufferState &usage)
+                                  const rhi::BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto add_texture_use(RgTextureId texture,
-                                     const TextureState &usage,
+                                     const rhi::ImageState &usage,
                                      Handle<Sampler> sampler = NullHandle)
       -> RgTextureUseId;
 
@@ -558,17 +559,18 @@ private:
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
-                                  const TextureState &usage, Handle<Sampler>,
+                                  const rhi::ImageState &usage, Handle<Sampler>,
                                   u32 temporal_layer) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
                                    RgTextureId texture,
-                                   const TextureState &usage)
+                                   const rhi::ImageState &usage)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto write_texture(RgPassId pass, RgTextureId dst,
                                    RgTextureId texture,
-                                   const TextureState &usage) -> RgTextureToken;
+                                   const rhi::ImageState &usage)
+      -> RgTextureToken;
 
   [[nodiscard]] auto add_semaphore_state(RgSemaphoreId semaphore, u64 value)
       -> RgSemaphoreStateId;
@@ -789,23 +791,24 @@ private:
 class RgPassBuilder {
 public:
   [[nodiscard]] auto read_buffer(RgUntypedBufferId buffer,
-                                 const BufferState &usage, u32 offset = 0)
+                                 const rhi::BufferState &usage, u32 offset = 0)
       -> RgUntypedBufferToken;
 
   template <typename T>
-  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, const BufferState &usage,
-                                 u32 offset = 0) -> RgBufferToken<T> {
+  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer,
+                                 const rhi::BufferState &usage, u32 offset = 0)
+      -> RgBufferToken<T> {
     return RgBufferToken<T>(
         read_buffer(RgUntypedBufferId(buffer), usage, offset * sizeof(T)));
   }
 
   [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
-                                  const BufferState &usage)
+                                  const rhi::BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   template <typename T>
   [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  const BufferState &usage)
+                                  const rhi::BufferState &usage)
       -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
     auto [id, token] =
         write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
@@ -815,7 +818,7 @@ public:
   template <typename T>
   [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
                                   RgBufferId<T> *new_buffer,
-                                  const BufferState &usage)
+                                  const rhi::BufferState &usage)
       -> RgBufferToken<T> {
     ren_assert(new_buffer);
     RgBufferToken<T> token;
@@ -825,32 +828,34 @@ public:
 
   template <typename T>
   [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> *buffer,
-                                  const BufferState &usage)
+                                  const rhi::BufferState &usage)
       -> RgBufferToken<T> {
     ren_assert(buffer);
     return write_buffer(std::move(name), *buffer, buffer, usage);
   }
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const TextureState &usage,
+                                  const rhi::ImageState &usage,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const TextureState &usage,
+                                  const rhi::ImageState &usage,
                                   Handle<Sampler> sampler,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   const TextureState &usage)
+                                   const rhi::ImageState &usage)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
                                    RgTextureId *new_texture,
-                                   const TextureState &usage) -> RgTextureToken;
+                                   const rhi::ImageState &usage)
+      -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgDebugName name,
                                    NotNull<RgTextureId *> texture,
-                                   const TextureState &usage) -> RgTextureToken;
+                                   const rhi::ImageState &usage)
+      -> RgTextureToken;
 
   [[nodiscard]] auto
   write_color_attachment(RgDebugName name, RgTextureId texture,
@@ -912,7 +917,7 @@ public:
                          RgBufferId<glsl::DispatchIndirectCommand> command,
                          u32 offset = 0) {
     RgBufferToken<glsl::DispatchIndirectCommand> token =
-        read_buffer(command, INDIRECT_COMMAND_SRC_BUFFER, offset);
+        read_buffer(command, rhi::INDIRECT_COMMAND_BUFFER, offset);
     set_compute_callback([pipeline, args, token](Renderer &renderer,
                                                  const RgRuntime &rg,
                                                  ComputePass &cmd) {
@@ -955,7 +960,8 @@ template <typename T>
 void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
                             const T &value) {
   auto pass = create_pass({"fill-buffer"});
-  auto token = pass.write_buffer(std::move(name), buffer, TRANSFER_DST_BUFFER);
+  auto token =
+      pass.write_buffer(std::move(name), buffer, rhi::TRANSFER_DST_BUFFER);
   pass.set_callback(
       [token, value](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
         BufferSlice<T> buffer = rg.get_buffer(token);
@@ -973,8 +979,9 @@ template <typename T>
 void RgBuilder::copy_buffer(RgBufferId<T> src, RgDebugName name,
                             RgBufferId<T> *dst) {
   auto pass = create_pass({"copy-buffer"});
-  auto src_token = pass.read_buffer(src, TRANSFER_SRC_BUFFER);
-  auto dst_token = pass.write_buffer(std::move(name), dst, TRANSFER_DST_BUFFER);
+  auto src_token = pass.read_buffer(src, rhi::TRANSFER_SRC_BUFFER);
+  auto dst_token =
+      pass.write_buffer(std::move(name), dst, rhi::TRANSFER_DST_BUFFER);
   pass.set_callback([src_token, dst_token](Renderer &, const RgRuntime &rg,
                                            CommandRecorder &cmd) {
     cmd.copy_buffer(rg.get_buffer(src_token), rg.get_buffer(dst_token));
