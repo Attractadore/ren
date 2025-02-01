@@ -36,6 +36,7 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
                      rhi::QueueFamily queue_family) -> Result<void, Error> {
   m_renderer = &renderer;
   m_window = window;
+  m_queue_family = queue_family;
 
   ren_try(m_surface, rhi::create_surface(m_window));
 
