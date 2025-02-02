@@ -57,8 +57,6 @@ struct DrawIndirectCountInfo {
   u32 max_count;
 };
 
-class ComputePass;
-
 class DebugRegion;
 
 class CommandRecorder {
@@ -78,7 +76,43 @@ public:
 
   auto render_pass(const RenderPassBeginInfo &&begin_info) -> RenderPass;
 
-  auto compute_pass() -> ComputePass;
+  void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
+
+  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
+                            Handle<SamplerDescriptorHeap> sampler_heap);
+
+  void set_push_constants(Handle<PipelineLayout> layout,
+                          TempSpan<const std::byte> data, unsigned offset = 0);
+
+  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
+
+  template <typename T>
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
+  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
+                          unsigned offset = 0) {
+    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
+  }
+
+  template <typename T>
+    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
+  void set_push_constants(const T &data, unsigned offset = 0) {
+    ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
+    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
+                       offset);
+  }
+
+  void dispatch(u32 num_groups_x, u32 num_groups_y = 1, u32 num_groups_z = 1);
+  void dispatch(glm::uvec2 num_groups);
+  void dispatch(glm::uvec3 num_groups);
+
+  void dispatch_grid(u32 size, u32 group_size_mult = 1);
+  void dispatch_grid_2d(glm::uvec2 size, glm::uvec2 group_size_mult = {1, 1});
+  void dispatch_grid_3d(glm::uvec3 size,
+                        glm::uvec3 group_size_mult = {1, 1, 1});
+
+  void dispatch_indirect(const BufferView &view);
+  void
+  dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
 
   void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
                    TempSpan<const VkBufferCopy> regions);
@@ -152,9 +186,11 @@ public:
 
   [[nodiscard]] auto debug_region(const char *label) -> DebugRegion;
 
-public:
+private:
   Renderer *m_renderer = nullptr;
   rhi::CommandBuffer m_cmd = {};
+  Handle<ComputePipeline> m_pipeline;
+  Handle<PipelineLayout> m_pipeline_layout;
 };
 
 class RenderPass {
@@ -236,62 +272,6 @@ private:
 private:
   Renderer *m_renderer = nullptr;
   rhi::CommandBuffer m_cmd = {};
-  Handle<PipelineLayout> m_pipeline_layout;
-};
-
-class ComputePass {
-public:
-  ComputePass(const ComputePass &) = delete;
-  ComputePass &operator=(const ComputePass &) = delete;
-  ComputePass(ComputePass &&) = delete;
-  ComputePass &operator=(ComputePass &&) = delete;
-
-  void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
-
-  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
-                            Handle<SamplerDescriptorHeap> sampler_heap);
-
-  void set_push_constants(Handle<PipelineLayout> layout,
-                          TempSpan<const std::byte> data, unsigned offset = 0);
-
-  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
-
-  template <typename T>
-    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
-                          unsigned offset = 0) {
-    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
-  }
-
-  template <typename T>
-    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(const T &data, unsigned offset = 0) {
-    ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
-    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
-                       offset);
-  }
-
-  void dispatch(u32 num_groups_x, u32 num_groups_y = 1, u32 num_groups_z = 1);
-  void dispatch(glm::uvec2 num_groups);
-  void dispatch(glm::uvec3 num_groups);
-
-  void dispatch_grid(u32 size, u32 group_size_mult = 1);
-  void dispatch_grid_2d(glm::uvec2 size, glm::uvec2 group_size_mult = {1, 1});
-  void dispatch_grid_3d(glm::uvec3 size,
-                        glm::uvec3 group_size_mult = {1, 1, 1});
-
-  void dispatch_indirect(const BufferView &view);
-  void
-  dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
-
-private:
-  friend class CommandRecorder;
-  ComputePass(Renderer &renderer, rhi::CommandBuffer cmd);
-
-private:
-  Renderer *m_renderer = nullptr;
-  rhi::CommandBuffer m_cmd = {};
-  Handle<ComputePipeline> m_pipeline;
   Handle<PipelineLayout> m_pipeline_layout;
 };
 

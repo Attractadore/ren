@@ -113,21 +113,17 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     std::ranges::copy(bucket_offsets, meshlet_bucket_offsets.host_ptr);
 
     RgInstanceCullingAndLODArgs args = {
-        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes,
-                                   rhi::CS_RESOURCE_BUFFER),
-        .transform_matrices = pass.read_buffer(
-            info.rg_gpu_scene->transform_matrices, rhi::CS_RESOURCE_BUFFER),
-        .cull_data = pass.read_buffer(rg_ds.cull_data, rhi::CS_RESOURCE_BUFFER),
-        .meshlet_bucket_commands = pass.write_buffer(
-            "meshlet-bucket-commands", &meshlet_bucket_commands,
-            rhi::CS_UNORDERED_ACCESS_BUFFER),
+        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes),
+        .transform_matrices =
+            pass.read_buffer(info.rg_gpu_scene->transform_matrices),
+        .cull_data = pass.read_buffer(rg_ds.cull_data),
+        .meshlet_bucket_commands = pass.write_buffer("meshlet-bucket-commands",
+                                                     &meshlet_bucket_commands),
         .meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
         .meshlet_bucket_sizes =
-            pass.write_buffer("meshlet-bucket-sizes", &meshlet_bucket_sizes,
-                              rhi::CS_UNORDERED_ACCESS_BUFFER),
+            pass.write_buffer("meshlet-bucket-sizes", &meshlet_bucket_sizes),
         .meshlet_cull_data =
-            pass.write_buffer("meshlet-cull-data", &meshlet_cull_data,
-                              rhi::CS_UNORDERED_ACCESS_BUFFER),
+            pass.write_buffer("meshlet-cull-data", &meshlet_cull_data),
         .feature_mask = feature_mask,
         .num_instances = num_instances,
         .proj_view = get_projection_view_matrix(info.camera, info.viewport),
@@ -139,13 +135,11 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
       ren_assert(info.hi_z);
       args.mesh_instance_visibility =
           pass.write_buffer("new-mesh-instance-visibility",
-                            &info.rg_gpu_scene->mesh_instance_visibility,
-                            rhi::CS_UNORDERED_ACCESS_BUFFER);
-      args.hi_z = pass.read_texture(info.hi_z, rhi::CS_RESOURCE_IMAGE,
-                                    ccfg.samplers->hi_z);
+                            &info.rg_gpu_scene->mesh_instance_visibility);
+      args.hi_z = pass.read_texture(info.hi_z, ccfg.samplers->hi_z);
     } else if (info.occlusion_culling_mode != OcclusionCullingMode::Disabled) {
-      args.mesh_instance_visibility = pass.read_buffer(
-          info.rg_gpu_scene->mesh_instance_visibility, rhi::CS_RESOURCE_BUFFER);
+      args.mesh_instance_visibility =
+          pass.read_buffer(info.rg_gpu_scene->mesh_instance_visibility);
     }
 
     pass.dispatch_grid(ccfg.pipelines->instance_culling_and_lod, args,
@@ -173,29 +167,22 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     rcs.bucket_offsets = bucket_offsets;
 
     RgMeshletCullingArgs args = {
-        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes,
-                                   rhi::CS_RESOURCE_BUFFER),
-        .transform_matrices = pass.read_buffer(
-            info.rg_gpu_scene->transform_matrices, rhi::CS_RESOURCE_BUFFER),
-        .bucket_cull_data =
-            pass.read_buffer(meshlet_cull_data, rhi::CS_RESOURCE_BUFFER),
-        .bucket_size =
-            pass.read_buffer(meshlet_bucket_sizes, rhi::CS_RESOURCE_BUFFER),
-        .batch_sizes = pass.write_buffer("batch-sizes", cfg.batch_sizes.get(),
-                                         rhi::CS_ATOMIC_BUFFER),
+        .meshes = pass.read_buffer(info.rg_gpu_scene->meshes),
+        .transform_matrices =
+            pass.read_buffer(info.rg_gpu_scene->transform_matrices),
+        .bucket_cull_data = pass.read_buffer(meshlet_cull_data),
+        .bucket_size = pass.read_buffer(meshlet_bucket_sizes),
+        .batch_sizes = pass.write_buffer("batch-sizes", cfg.batch_sizes.get()),
         .batch_prepare_commands = pass.write_buffer(
-            "batch-prepare-commands", cfg.batch_prepare_commands.get(),
-            rhi::CS_ATOMIC_BUFFER),
+            "batch-prepare-commands", cfg.batch_prepare_commands.get()),
         .commands = pass.write_buffer("unsorted-batch-commands",
-                                      &unsorted_batch_commands,
-                                      rhi::CS_UNORDERED_ACCESS_BUFFER),
-        .command_batch_ids = pass.write_buffer(
-            "unsorted-batch-command-batch-ids",
-            &unsorted_batch_command_batch_ids, rhi::CS_UNORDERED_ACCESS_BUFFER),
-        .num_commands = pass.write_buffer("unsorted-batch-command-count",
-                                          &num_commands, rhi::CS_ATOMIC_BUFFER),
-        .sort_command = pass.write_buffer("sort-command", &sort_command,
-                                          rhi::CS_ATOMIC_BUFFER),
+                                      &unsorted_batch_commands),
+        .command_batch_ids =
+            pass.write_buffer("unsorted-batch-command-batch-ids",
+                              &unsorted_batch_command_batch_ids),
+        .num_commands =
+            pass.write_buffer("unsorted-batch-command-count", &num_commands),
+        .sort_command = pass.write_buffer("sort-command", &sort_command),
         .proj_view = get_projection_view_matrix(info.camera, info.viewport),
         .eye = info.camera.position,
     };
@@ -210,15 +197,14 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     }
     if (settings.meshlet_occlusion_culling and info.hi_z) {
       args.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
-      args.hi_z = pass.read_texture(info.hi_z, rhi::CS_RESOURCE_IMAGE,
-                                    ccfg.samplers->hi_z);
+      args.hi_z = pass.read_texture(info.hi_z, ccfg.samplers->hi_z);
     }
 
-    pass.set_compute_callback(
-        [rcs, args](Renderer &, const RgRuntime &rg, ComputePass &pass) {
-          pass.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                                    rg.get_sampler_descriptor_heap());
-          pass.bind_compute_pipeline(rcs.pipeline);
+    pass.set_callback(
+        [rcs, args](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
+          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                                   rg.get_sampler_descriptor_heap());
+          cmd.bind_compute_pipeline(rcs.pipeline);
           auto pc = to_push_constants(rg, args);
           DevicePtr<glsl::MeshletCullData> base_cull_data = pc.bucket_cull_data;
           DevicePtr<u32> base_bucket_size = pc.bucket_size;
@@ -226,8 +212,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
             pc.bucket_cull_data = base_cull_data + rcs.bucket_offsets[bucket];
             pc.bucket_size = base_bucket_size + bucket;
             pc.bucket = bucket;
-            pass.set_push_constants(pc);
-            pass.dispatch_indirect(
+            cmd.set_push_constants(pc);
+            cmd.dispatch_indirect(
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));
           }
         });
@@ -248,15 +234,12 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     auto pass = rgb.create_pass({"batch-sizes-scan"});
 
     RgStreamScanArgs args = {
-        .src = pass.read_buffer(*cfg.batch_sizes, rhi::CS_RESOURCE_BUFFER),
-        .block_sums = pass.write_buffer("scan-block-sums", &block_sums,
-                                        rhi::CS_UNORDERED_ACCESS_BUFFER),
-        .dst = pass.write_buffer("batch-offsets", cfg.batch_offsets.get(),
-                                 rhi::CS_UNORDERED_ACCESS_BUFFER),
-        .num_started = pass.write_buffer("scan-num-started", &scan_num_started,
-                                         rhi::CS_ATOMIC_BUFFER),
-        .num_finished = pass.write_buffer(
-            "scan-num-finished", &scan_num_finished, rhi::CS_ATOMIC_BUFFER),
+        .src = pass.read_buffer(*cfg.batch_sizes),
+        .block_sums = pass.write_buffer("scan-block-sums", &block_sums),
+        .dst = pass.write_buffer("batch-offsets", cfg.batch_offsets.get()),
+        .num_started = pass.write_buffer("scan-num-started", &scan_num_started),
+        .num_finished =
+            pass.write_buffer("scan-num-finished", &scan_num_finished),
         .count = num_batches,
     };
 
@@ -277,16 +260,14 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     auto pass = rgb.create_pass({"meshlet-sorting"});
 
     RgMeshletSortingArgs args = {
-        .num_commands = pass.read_buffer(num_commands, rhi::CS_RESOURCE_BUFFER),
-        .batch_out_offsets = pass.write_buffer(
-            "batch-out-offsets", &batch_out_offsets, rhi::CS_ATOMIC_BUFFER),
-        .unsorted_commands =
-            pass.read_buffer(unsorted_batch_commands, rhi::CS_RESOURCE_BUFFER),
-        .unsorted_command_batch_ids = pass.read_buffer(
-            unsorted_batch_command_batch_ids, rhi::CS_RESOURCE_BUFFER),
+        .num_commands = pass.read_buffer(num_commands),
+        .batch_out_offsets =
+            pass.write_buffer("batch-out-offsets", &batch_out_offsets),
+        .unsorted_commands = pass.read_buffer(unsorted_batch_commands),
+        .unsorted_command_batch_ids =
+            pass.read_buffer(unsorted_batch_command_batch_ids),
         .commands =
-            pass.write_buffer("batch-commands", cfg.batch_commands.get(),
-                              rhi::CS_UNORDERED_ACCESS_BUFFER),
+            pass.write_buffer("batch-commands", cfg.batch_commands.get()),
     };
 
     pass.dispatch_indirect(ccfg.pipelines->meshlet_sorting, args, sort_command);
@@ -365,16 +346,13 @@ void record_render_pass(const PassCommonConfig &ccfg,
           "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});
 
       RgPrepareBatchArgs args = {
-          .batch_offset = pass.read_buffer(cfg.batch_offsets,
-                                           rhi::CS_RESOURCE_BUFFER, batch),
-          .batch_size =
-              pass.read_buffer(cfg.batch_sizes, rhi::CS_RESOURCE_BUFFER, batch),
-          .command_descs =
-              pass.read_buffer(cfg.batch_commands, rhi::CS_RESOURCE_BUFFER),
-          .commands = pass.write_buffer(
-              fmt::format("{}{}-batch-{}-commands", info.base.pass_name,
-                          pass_type, batch),
-              &commands, rhi::CS_UNORDERED_ACCESS_BUFFER),
+          .batch_offset = pass.read_buffer(cfg.batch_offsets, batch),
+          .batch_size = pass.read_buffer(cfg.batch_sizes, batch),
+          .command_descs = pass.read_buffer(cfg.batch_commands),
+          .commands = pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
+                                                    info.base.pass_name,
+                                                    pass_type, batch),
+                                        &commands),
       };
 
       pass.dispatch_indirect(ccfg.pipelines->prepare_batch, args,
@@ -395,13 +373,13 @@ void record_render_pass(const PassCommonConfig &ccfg,
           batch > 0) {
         ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
       }
-      std::tie(*color_attachment, std::ignore) = pass.write_color_attachment(
+      std::tie(*color_attachment, std::ignore) = pass.write_render_target(
           info.base.color_attachment_names[i], *color_attachment, ops);
     }
 
     if (*info.base.depth_attachment) {
       if (info.base.depth_attachment_ops.store == VK_ATTACHMENT_STORE_OP_NONE) {
-        pass.read_depth_attachment(*info.base.depth_attachment);
+        pass.read_depth_stencil_target(*info.base.depth_attachment);
       } else {
         DepthAttachmentOperations ops = info.base.depth_attachment_ops;
         if (info.base.occlusion_culling_mode ==
@@ -410,8 +388,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
           ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
         }
         std::tie(*info.base.depth_attachment, std::ignore) =
-            pass.write_depth_attachment(info.base.depth_attachment_name,
-                                        *info.base.depth_attachment, ops);
+            pass.write_depth_stencil_target(info.base.depth_attachment_name,
+                                            *info.base.depth_attachment, ops);
       }
     }
 
@@ -428,8 +406,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
     auto args = get_render_pass_args(*ccfg.scene, info, pass);
 
-    pass.set_graphics_callback([rcs, args](Renderer &, const RgRuntime &rg,
-                                           RenderPass &render_pass) {
+    pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
+                                              RenderPass &render_pass) {
       render_pass.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
                                        rg.get_sampler_descriptor_heap());
       render_pass.bind_graphics_pipeline(rcs.batch.pipeline);

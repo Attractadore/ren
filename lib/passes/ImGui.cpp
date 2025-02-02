@@ -113,11 +113,11 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
   auto pass = ccfg.rgb->create_pass({.name = "imgui"});
 
   std::tie(*cfg.sdr, std::ignore) =
-      pass.write_color_attachment("sdr-imgui", *cfg.sdr,
-                                  {
-                                      .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                      .store = VK_ATTACHMENT_STORE_OP_STORE,
-                                  });
+      pass.write_render_target("sdr-imgui", *cfg.sdr,
+                               {
+                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
+                               });
 
   ImGuiPassResources rcs = {
       .ctx = cfg.ctx,
@@ -125,7 +125,7 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
       .viewport = ccfg.swapchain->get_size(),
   };
 
-  pass.set_graphics_callback(
+  pass.set_render_pass_callback(
       [rcs](Renderer &renderer, const RgRuntime &rt, RenderPass &render_pass) {
         run_imgui_pass(renderer, rt, render_pass, rcs);
       });

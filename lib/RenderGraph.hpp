@@ -31,7 +31,6 @@ using RgDebugName = DummyString;
 class CommandRecorder;
 class Swapchain;
 class RenderPass;
-class ComputePass;
 
 class RgPersistent;
 class RgBuilder;
@@ -40,26 +39,12 @@ class RenderGraph;
 class RgRuntime;
 
 template <typename F>
-concept CRgHostCallback = std::invocable<F, Renderer &, const RgRuntime &>;
-
-using RgHostCallback = std::function<void(Renderer &, const RgRuntime &)>;
-static_assert(CRgHostCallback<RgHostCallback>);
-
-template <typename F>
-concept CRgGraphicsCallback =
+concept CRgRenderPassCallback =
     std::invocable<F, Renderer &, const RgRuntime &, RenderPass &>;
 
-using RgGraphicsCallback =
+using RgRenderPassCallback =
     std::function<void(Renderer &, const RgRuntime &, RenderPass &)>;
-static_assert(CRgGraphicsCallback<RgGraphicsCallback>);
-
-template <typename F>
-concept CRgComputeCallback =
-    std::invocable<F, Renderer &, const RgRuntime &, ComputePass &>;
-
-using RgComputeCallback =
-    std::function<void(Renderer &, const RgRuntime &, ComputePass &)>;
-static_assert(CRgComputeCallback<RgComputeCallback>);
+static_assert(CRgRenderPassCallback<RgRenderPassCallback>);
 
 template <typename F>
 concept CRgCallback =
@@ -136,48 +121,42 @@ using RgSemaphoreId = Handle<RgSemaphore>;
 
 REN_NEW_TYPE(RgSemaphoreStateId, u32);
 
+enum class RgQueue {
+  Graphics,
+  Compute,
+};
+
 struct RgPassCreateInfo {
   REN_RG_DEBUG_NAME_TYPE name;
+  RgQueue queue = RgQueue::Graphics;
 };
 
-struct RgHostPass {
-  RgHostCallback cb;
-};
-
-struct RgColorAttachment {
+struct RgRenderTarget {
   RgTextureToken texture;
   ColorAttachmentOperations ops;
 };
 
-struct RgDepthStencilAttachment {
+struct RgDepthStencilTarget {
   RgTextureToken texture;
   DepthAttachmentOperations ops;
 };
 
-struct RgGraphicsPass {
-  StaticVector<Optional<RgColorAttachment>, rhi::MAX_NUM_RENDER_TARGETS>
-      color_attachments;
-  Optional<RgDepthStencilAttachment> depth_stencil_attachment;
-  RgGraphicsCallback cb;
-};
-
-struct RgComputePass {
-  RgComputeCallback cb;
-};
-
-struct RgGenericPass {
-  RgCallback cb;
+struct RgRenderPass {
+  StaticVector<Optional<RgRenderTarget>, rhi::MAX_NUM_RENDER_TARGETS>
+      render_targets;
+  Optional<RgDepthStencilTarget> depth_stencil_target;
+  RgRenderPassCallback cb;
 };
 
 struct RgPass {
+  RgQueue queue = {};
   SmallVector<RgBufferUseId> read_buffers;
   SmallVector<RgBufferUseId> write_buffers;
   SmallVector<RgTextureUseId> read_textures;
   SmallVector<RgTextureUseId> write_textures;
   SmallVector<RgSemaphoreStateId> wait_semaphores;
   SmallVector<RgSemaphoreStateId> signal_semaphores;
-  Variant<Monostate, RgHostPass, RgGraphicsPass, RgComputePass, RgGenericPass>
-      ext;
+  Variant<Monostate, RgRenderPass, RgCallback> ext;
 };
 
 template <typename T> struct RgBufferCreateInfo {
@@ -383,23 +362,11 @@ struct RgBuildData {
   Vector<RgSemaphoreSignal> m_semaphore_states;
 };
 
-struct RgRtHostPass {
-  RgHostCallback cb;
-};
-
-struct RgRtGraphicsPass {
-  u32 base_color_attachment = 0;
-  u32 num_color_attachments = 0;
-  Optional<u32> depth_attachment;
-  RgGraphicsCallback cb;
-};
-
-struct RgRtComputePass {
-  RgComputeCallback cb;
-};
-
-struct RgRtGenericPass {
-  RgCallback cb;
+struct RgRtRenderPass {
+  u32 base_render_target = 0;
+  u32 num_render_targets = 0;
+  Optional<u32> depth_stencil_target;
+  RgRenderPassCallback cb;
 };
 
 struct RgRtPass {
@@ -412,7 +379,7 @@ struct RgRtPass {
   u32 num_wait_semaphores = 0;
   u32 base_signal_semaphore = 0;
   u32 num_signal_semaphores = 0;
-  Variant<RgRtHostPass, RgRtGraphicsPass, RgRtComputePass, RgRtGenericPass> ext;
+  Variant<RgRtRenderPass, RgCallback> ext;
 };
 
 struct RgTextureDescriptors {
@@ -428,8 +395,8 @@ struct RgRtData {
   GenMap<String, RgPassId> m_pass_names;
 #endif
 
-  Vector<Optional<RgColorAttachment>> m_color_attachments;
-  Vector<RgDepthStencilAttachment> m_depth_stencil_attachments;
+  Vector<Optional<RgRenderTarget>> m_render_targets;
+  Vector<RgDepthStencilTarget> m_depth_stencil_targets;
 
   Vector<BufferView> m_buffers;
 
@@ -579,28 +546,17 @@ private:
 
   void signal_semaphore(RgPassId pass, RgSemaphoreId semaphore, u64 value);
 
-  void set_host_callback(RgPassId id, CRgHostCallback auto cb) {
+  void set_render_pass_callback(RgPassId id, CRgRenderPassCallback auto cb) {
     RgPass &pass = m_data->m_passes[id];
-    ren_assert(!pass.ext);
-    pass.ext = RgHostPass{.cb = std::move(cb)};
-  }
-
-  void set_graphics_callback(RgPassId id, CRgGraphicsCallback auto cb) {
-    RgPass &pass = m_data->m_passes[id];
-    ren_assert(!pass.ext or pass.ext.get<RgGraphicsPass>());
-    pass.ext.get_or_emplace<RgGraphicsPass>().cb = std::move(cb);
-  }
-
-  void set_compute_callback(RgPassId id, CRgComputeCallback auto cb) {
-    RgPass &pass = m_data->m_passes[id];
-    ren_assert(!pass.ext);
-    pass.ext = RgComputePass{.cb = std::move(cb)};
+    ren_assert(pass.queue == RgQueue::Graphics);
+    ren_assert(!pass.ext or pass.ext.get<RgRenderPass>());
+    pass.ext.get_or_emplace<RgRenderPass>().cb = std::move(cb);
   }
 
   void set_callback(RgPassId id, CRgCallback auto cb) {
     RgPass &pass = m_data->m_passes[id];
     ren_assert(!pass.ext);
-    pass.ext = RgGenericPass{.cb = std::move(cb)};
+    pass.ext = RgCallback(std::move(cb));
   }
 
   auto alloc_textures() -> Result<void, Error>;
@@ -776,7 +732,7 @@ public:
   }
 
   template <typename PassArgs>
-  void set_push_constants(ComputePass &cmd, const PassArgs &args) const {
+  void set_push_constants(CommandRecorder &cmd, const PassArgs &args) const {
     auto pc = to_push_constants(*this, args);
     cmd.set_push_constants(pc);
   }
@@ -791,24 +747,33 @@ private:
 class RgPassBuilder {
 public:
   [[nodiscard]] auto read_buffer(RgUntypedBufferId buffer,
-                                 const rhi::BufferState &usage, u32 offset = 0)
+                                 const rhi::BufferState &usage, u32 offset)
       -> RgUntypedBufferToken;
 
   template <typename T>
-  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer,
-                                 const rhi::BufferState &usage, u32 offset = 0)
-      -> RgBufferToken<T> {
+  [[nodiscard]] auto
+  read_buffer(RgBufferId<T> buffer,
+              const rhi::BufferState &usage = rhi::CS_RESOURCE_BUFFER,
+              u32 offset = 0) -> RgBufferToken<T> {
     return RgBufferToken<T>(
         read_buffer(RgUntypedBufferId(buffer), usage, offset * sizeof(T)));
   }
 
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgUntypedBufferId buffer,
-                                  const rhi::BufferState &usage)
+  template <typename T>
+  [[nodiscard]] auto read_buffer(RgBufferId<T> buffer, u32 offset)
+      -> RgBufferToken<T> {
+    return read_buffer(buffer, rhi::CS_RESOURCE_BUFFER, offset);
+  }
+
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  const rhi::BufferState &usage)
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgBufferId<T> buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
     auto [id, token] =
         write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
@@ -816,9 +781,10 @@ public:
   }
 
   template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> buffer,
-                                  RgBufferId<T> *new_buffer,
-                                  const rhi::BufferState &usage)
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgBufferId<T> buffer,
+               RgBufferId<T> *new_buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgBufferToken<T> {
     ren_assert(new_buffer);
     RgBufferToken<T> token;
@@ -827,62 +793,68 @@ public:
   }
 
   template <typename T>
-  [[nodiscard]] auto write_buffer(RgDebugName name, RgBufferId<T> *buffer,
-                                  const rhi::BufferState &usage)
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgBufferId<T> *buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgBufferToken<T> {
     ren_assert(buffer);
     return write_buffer(std::move(name), *buffer, buffer, usage);
   }
 
-  [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const rhi::ImageState &usage,
-                                  u32 temporal_layer = 0) -> RgTextureToken;
+  [[nodiscard]] auto
+  read_texture(RgTextureId texture,
+               const rhi::ImageState &usage = rhi::CS_RESOURCE_IMAGE,
+               u32 temporal_layer = 0) -> RgTextureToken;
+
+  [[nodiscard]] auto read_texture(RgTextureId texture, u32 temporal_layer)
+      -> RgTextureToken {
+    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, temporal_layer);
+  }
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
                                   const rhi::ImageState &usage,
                                   Handle<Sampler> sampler,
                                   u32 temporal_layer = 0) -> RgTextureToken;
 
-  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   const rhi::ImageState &usage)
+  [[nodiscard]] auto read_texture(RgTextureId texture, Handle<Sampler> sampler,
+                                  u32 temporal_layer = 0) -> RgTextureToken {
+    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler,
+                        temporal_layer);
+  }
+
+  [[nodiscard]] auto
+  write_texture(RgDebugName name, RgTextureId texture,
+                const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
-  [[nodiscard]] auto write_texture(RgDebugName name, RgTextureId texture,
-                                   RgTextureId *new_texture,
-                                   const rhi::ImageState &usage)
-      -> RgTextureToken;
-
-  [[nodiscard]] auto write_texture(RgDebugName name,
-                                   NotNull<RgTextureId *> texture,
-                                   const rhi::ImageState &usage)
+  [[nodiscard]] auto
+  write_texture(RgDebugName name, RgTextureId texture, RgTextureId *new_texture,
+                const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
   [[nodiscard]] auto
-  write_color_attachment(RgDebugName name, RgTextureId texture,
-                         const ColorAttachmentOperations &ops, u32 index = 0)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  auto read_depth_attachment(RgTextureId texture, u32 temporal_layer = 0)
+  write_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+                const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
-  auto write_depth_attachment(RgDebugName name, RgTextureId texture,
-                              const DepthAttachmentOperations &ops)
+  [[nodiscard]] auto write_render_target(RgDebugName name, RgTextureId texture,
+                                         const ColorAttachmentOperations &ops,
+                                         u32 index = 0)
+      -> std::tuple<RgTextureId, RgTextureToken>;
+
+  auto read_depth_stencil_target(RgTextureId texture, u32 temporal_layer = 0)
+      -> RgTextureToken;
+
+  auto write_depth_stencil_target(RgDebugName name, RgTextureId texture,
+                                  const DepthAttachmentOperations &ops)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   void wait_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 
   void signal_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 
-  void set_host_callback(CRgHostCallback auto cb) {
-    m_builder->set_host_callback(m_pass, std::move(cb));
-  }
-
-  void set_graphics_callback(CRgGraphicsCallback auto cb) {
-    m_builder->set_graphics_callback(m_pass, std::move(cb));
-  }
-
-  void set_compute_callback(CRgComputeCallback auto cb) {
-    m_builder->set_compute_callback(m_pass, std::move(cb));
+  void set_render_pass_callback(CRgRenderPassCallback auto cb) {
+    m_builder->set_render_pass_callback(m_pass, std::move(cb));
   }
 
   void set_callback(CRgCallback auto cb) {
@@ -902,15 +874,15 @@ public:
   void dispatch_grid_3d(Handle<ComputePipeline> pipeline, const auto &args,
                         glm::uvec3 size,
                         glm::uvec3 block_size_mult = {1, 1, 1}) {
-    set_compute_callback(
-        [pipeline, args, size, block_size_mult](
-            Renderer &renderer, const RgRuntime &rg, ComputePass &cmd) {
-          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                                   rg.get_sampler_descriptor_heap());
-          cmd.bind_compute_pipeline(pipeline);
-          rg.set_push_constants(cmd, args);
-          cmd.dispatch_grid_3d(size, block_size_mult);
-        });
+    set_callback([pipeline, args, size, block_size_mult](Renderer &renderer,
+                                                         const RgRuntime &rg,
+                                                         CommandRecorder &cmd) {
+      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                               rg.get_sampler_descriptor_heap());
+      cmd.bind_compute_pipeline(pipeline);
+      rg.set_push_constants(cmd, args);
+      cmd.dispatch_grid_3d(size, block_size_mult);
+    });
   }
 
   void dispatch_indirect(Handle<ComputePipeline> pipeline, const auto &args,
@@ -918,9 +890,9 @@ public:
                          u32 offset = 0) {
     RgBufferToken<glsl::DispatchIndirectCommand> token =
         read_buffer(command, rhi::INDIRECT_COMMAND_BUFFER, offset);
-    set_compute_callback([pipeline, args, token](Renderer &renderer,
-                                                 const RgRuntime &rg,
-                                                 ComputePass &cmd) {
+    set_callback([pipeline, args, token](Renderer &renderer,
+                                         const RgRuntime &rg,
+                                         CommandRecorder &cmd) {
       cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
                                rg.get_sampler_descriptor_heap());
       cmd.bind_compute_pipeline(pipeline);
@@ -934,11 +906,11 @@ private:
 
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 
-  void add_color_attachment(u32 index, RgTextureToken texture,
-                            const ColorAttachmentOperations &ops);
+  void add_render_target(u32 index, RgTextureToken texture,
+                         const ColorAttachmentOperations &ops);
 
-  void add_depth_attachment(RgTextureToken texture,
-                            const DepthAttachmentOperations &ops);
+  void add_depth_stencil_target(RgTextureToken texture,
+                                const DepthAttachmentOperations &ops);
 
 private:
   RgPassId m_pass;

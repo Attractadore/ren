@@ -31,14 +31,11 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   auto pass = ccfg.rgb->create_pass({.name = "hi-z-spd"});
 
   RgHiZSpdArgs args = {
-      .counter = pass.write_buffer("hi-z-spd-counter", &counter,
-                                   rhi::CS_ATOMIC_BUFFER),
-      .dsts = pass.write_texture("hi-z", ccfg.rcs->hi_z, cfg.hi_z,
-                                 rhi::CS_UNORDERED_ACCESS_IMAGE),
+      .counter = pass.write_buffer("hi-z-spd-counter", &counter),
+      .dsts = pass.write_texture("hi-z", ccfg.rcs->hi_z, cfg.hi_z),
       .dst_size = size,
       .num_dst_mips = num_mips,
-      .src = pass.read_texture(cfg.depth_buffer, rhi::CS_RESOURCE_IMAGE,
-                               ccfg.samplers->hi_z_gen),
+      .src = pass.read_texture(cfg.depth_buffer, ccfg.samplers->hi_z_gen),
   };
 
   pass.dispatch_grid_2d(

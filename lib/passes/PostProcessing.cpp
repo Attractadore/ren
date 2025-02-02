@@ -32,16 +32,13 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     auto pass = ccfg.rgb->create_pass({.name = "post-processing"});
 
     RgPostProcessingArgs args = {
-        .hdr = pass.read_texture(cfg.hdr, rhi::CS_RESOURCE_IMAGE),
-        .sdr = pass.write_texture("sdr", cfg.sdr.get(),
-                                  rhi::CS_UNORDERED_ACCESS_IMAGE),
+        .hdr = pass.read_texture(cfg.hdr),
+        .sdr = pass.write_texture("sdr", cfg.sdr.get()),
     };
 
     if (histogram) {
-      args.histogram = pass.write_buffer("luminance-histogram", &histogram,
-                                         rhi::CS_UNORDERED_ACCESS_BUFFER);
-      args.previous_exposure =
-          pass.read_texture(cfg.exposure, rhi::CS_RESOURCE_IMAGE, 1);
+      args.histogram = pass.write_buffer("luminance-histogram", &histogram);
+      args.previous_exposure = pass.read_texture(cfg.exposure, 1);
     }
 
     pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, viewport,
@@ -52,9 +49,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     auto pass = ccfg.rgb->create_pass({.name = "reduce-luminance-histogram"});
 
     RgReduceLuminanceHistogramArgs args = {
-        .histogram = pass.read_buffer(histogram, rhi::CS_RESOURCE_BUFFER),
-        .exposure = pass.write_texture("exposure", cfg.exposure, nullptr,
-                                       rhi::CS_UNORDERED_ACCESS_IMAGE),
+        .histogram = pass.read_buffer(histogram),
+        .exposure = pass.write_texture("exposure", cfg.exposure, nullptr),
         .exposure_compensation = ccfg.scene->exposure.ec,
     };
 

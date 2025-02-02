@@ -245,12 +245,12 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
 #if REN_RG_DEBUG
   gd.m_pass_names.clear();
 #endif
-  gd.m_color_attachments.clear();
-  gd.m_depth_stencil_attachments.clear();
+  gd.m_render_targets.clear();
+  gd.m_depth_stencil_targets.clear();
 }
 
 auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
-  RgPassId pass = m_data->m_passes.emplace();
+  RgPassId pass = m_data->m_passes.emplace(RgPass{.queue = create_info.queue});
 #if REN_RG_DEBUG
   m_rt_data->m_pass_names.insert(pass, std::move(create_info.name));
 #endif
@@ -735,34 +735,23 @@ void RgBuilder::init_runtime_passes() {
 #endif
           );
         },
-        [&](RgHostPass &host_pass) {
-          rt_pass.ext = RgRtHostPass{.cb = std::move(host_pass.cb)};
-        },
-        [&](RgGraphicsPass &graphics_pass) {
-          rt_pass.ext = RgRtGraphicsPass{
-              .base_color_attachment =
-                  u32(m_rt_data->m_color_attachments.size()),
-              .num_color_attachments =
-                  u32(graphics_pass.color_attachments.size()),
-              .depth_attachment = graphics_pass.depth_stencil_attachment.map(
-                  [&](const RgDepthStencilAttachment &) -> u32 {
-                    return m_rt_data->m_depth_stencil_attachments.size();
+        [&](RgRenderPass &graphics_pass) {
+          rt_pass.ext = RgRtRenderPass{
+              .base_render_target = u32(m_rt_data->m_render_targets.size()),
+              .num_render_targets = u32(graphics_pass.render_targets.size()),
+              .depth_stencil_target = graphics_pass.depth_stencil_target.map(
+                  [&](const RgDepthStencilTarget &) -> u32 {
+                    return m_rt_data->m_depth_stencil_targets.size();
                   }),
               .cb = std::move(graphics_pass.cb),
           };
-          m_rt_data->m_color_attachments.append(
-              graphics_pass.color_attachments);
-          graphics_pass.depth_stencil_attachment.map(
-              [&](const RgDepthStencilAttachment &att) {
-                m_rt_data->m_depth_stencil_attachments.push_back(att);
+          m_rt_data->m_render_targets.append(graphics_pass.render_targets);
+          graphics_pass.depth_stencil_target.map(
+              [&](const RgDepthStencilTarget &att) {
+                m_rt_data->m_depth_stencil_targets.push_back(att);
               });
         },
-        [&](RgComputePass &compute_pass) {
-          rt_pass.ext = RgRtComputePass{.cb = std::move(compute_pass.cb)};
-        },
-        [&](RgGenericPass &pass) {
-          rt_pass.ext = RgRtGenericPass{.cb = std::move(pass.cb)};
-        },
+        [&](RgCallback &cb) { rt_pass.ext = std::move(cb); },
     });
   }
 }
@@ -1264,60 +1253,58 @@ auto RgPassBuilder::write_texture(RgDebugName name,
   return token;
 }
 
-void RgPassBuilder::add_color_attachment(u32 index, RgTextureToken texture,
-                                         const ColorAttachmentOperations &ops) {
-  auto &color_attachments = m_builder->m_data->m_passes[m_pass]
-                                .ext.get_or_emplace<RgGraphicsPass>()
-                                .color_attachments;
-  if (color_attachments.size() <= index) {
-    color_attachments.resize(index + 1);
+void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
+                                      const ColorAttachmentOperations &ops) {
+  auto &render_targets = m_builder->m_data->m_passes[m_pass]
+                             .ext.get_or_emplace<RgRenderPass>()
+                             .render_targets;
+  if (render_targets.size() <= index) {
+    render_targets.resize(index + 1);
   }
-  color_attachments[index] = {
+  render_targets[index] = {
       .texture = texture,
       .ops = ops,
   };
 }
 
-void RgPassBuilder::add_depth_attachment(RgTextureToken texture,
-                                         const DepthAttachmentOperations &ops) {
+void RgPassBuilder::add_depth_stencil_target(
+    RgTextureToken texture, const DepthAttachmentOperations &ops) {
   m_builder->m_data->m_passes[m_pass]
-      .ext.get_or_emplace<RgGraphicsPass>()
-      .depth_stencil_attachment = RgDepthStencilAttachment{
+      .ext.get_or_emplace<RgRenderPass>()
+      .depth_stencil_target = RgDepthStencilTarget{
       .texture = texture,
       .ops = ops,
   };
 }
 
-auto RgPassBuilder::write_color_attachment(RgDebugName name,
-                                           RgTextureId texture,
-                                           const ColorAttachmentOperations &ops,
-                                           u32 index)
+auto RgPassBuilder::write_render_target(RgDebugName name, RgTextureId texture,
+                                        const ColorAttachmentOperations &ops,
+                                        u32 index)
     -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
       write_texture(std::move(name), texture, rhi::RENDER_TARGET);
-  add_color_attachment(index, token, ops);
+  add_render_target(index, token, ops);
   return {new_texture, token};
 }
 
-auto RgPassBuilder::read_depth_attachment(RgTextureId texture,
-                                          u32 temporal_layer)
+auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture,
+                                              u32 temporal_layer)
     -> RgTextureToken {
   RgTextureToken token = read_texture(texture, rhi::READ_DEPTH_STENCIL_TARGET,
                                       NullHandle, temporal_layer);
-  add_depth_attachment(token, {
-                                  .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                  .store = VK_ATTACHMENT_STORE_OP_NONE,
-                              });
+  add_depth_stencil_target(token, {
+                                      .load = VK_ATTACHMENT_LOAD_OP_LOAD,
+                                      .store = VK_ATTACHMENT_STORE_OP_NONE,
+                                  });
   return token;
 }
 
-auto RgPassBuilder::write_depth_attachment(RgDebugName name,
-                                           RgTextureId texture,
-                                           const DepthAttachmentOperations &ops)
+auto RgPassBuilder::write_depth_stencil_target(
+    RgDebugName name, RgTextureId texture, const DepthAttachmentOperations &ops)
     -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
       write_texture(std::move(name), texture, rhi::DEPTH_STENCIL_TARGET);
-  add_depth_attachment(token, ops);
+  add_depth_stencil_target(token, ops);
   return {new_texture, token};
 }
 
@@ -1387,26 +1374,16 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
       }
 
       pass.ext.visit(OverloadSet{
-          [&](const RgRtHostPass &host_pass) {
-            if (host_pass.cb) {
-              host_pass.cb(*m_renderer, rt);
-            }
-          },
-          [&](const RgRtGraphicsPass &graphics_pass) {
-            if (!graphics_pass.cb) {
-              return;
-            }
-
+          [&](const RgRtRenderPass &pass) {
             glm::uvec2 viewport = {-1, -1};
 
-            auto color_attachments =
-                Span(m_data->m_color_attachments)
-                    .subspan(graphics_pass.base_color_attachment,
-                             graphics_pass.num_color_attachments) |
-                map([&](const Optional<RgColorAttachment> &att)
+            auto render_targets =
+                Span(m_data->m_render_targets)
+                    .subspan(pass.base_render_target, pass.num_render_targets) |
+                map([&](const Optional<RgRenderTarget> &att)
                         -> Optional<ColorAttachment> {
                   return att.map(
-                      [&](const RgColorAttachment &att) -> ColorAttachment {
+                      [&](const RgRenderTarget &att) -> ColorAttachment {
                         Handle<Texture> texture = rt.get_texture(att.texture);
                         viewport = get_texture_size(*m_renderer, texture);
                         return {.rtv = {texture}, .ops = att.ops};
@@ -1415,18 +1392,18 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
                 std::ranges::to<StaticVector<Optional<ColorAttachment>,
                                              rhi::MAX_NUM_RENDER_TARGETS>>();
 
-            auto depth_stencil_attachment = graphics_pass.depth_attachment.map(
+            auto depth_stencil_target = pass.depth_stencil_target.map(
                 [&](u32 index) -> DepthStencilAttachment {
-                  const RgDepthStencilAttachment &att =
-                      m_data->m_depth_stencil_attachments[index];
+                  const RgDepthStencilTarget &att =
+                      m_data->m_depth_stencil_targets[index];
                   Handle<Texture> texture = rt.get_texture(att.texture);
                   viewport = get_texture_size(*m_renderer, texture);
                   return {.dsv = {texture}, .ops = att.ops};
                 });
 
             RenderPass render_pass = cmd.render_pass({
-                .color_attachments = color_attachments,
-                .depth_stencil_attachment = depth_stencil_attachment,
+                .color_attachments = render_targets,
+                .depth_stencil_attachment = depth_stencil_target,
             });
             render_pass.set_viewports({{
                 .width = float(viewport.x),
@@ -1436,19 +1413,9 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
             render_pass.set_scissor_rects(
                 {{.extent = {viewport.x, viewport.y}}});
 
-            graphics_pass.cb(*m_renderer, rt, render_pass);
+            pass.cb(*m_renderer, rt, render_pass);
           },
-          [&](const RgRtComputePass &compute_pass) {
-            if (compute_pass.cb) {
-              ComputePass comp = cmd.compute_pass();
-              compute_pass.cb(*m_renderer, rt, comp);
-            }
-          },
-          [&](const RgRtGenericPass &pass) {
-            if (pass.cb) {
-              pass.cb(*m_renderer, rt, cmd);
-            }
-          },
+          [&](const RgCallback &cb) { cb(*m_renderer, rt, cmd); },
       });
     }
 

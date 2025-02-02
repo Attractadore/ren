@@ -226,14 +226,6 @@ auto CommandRecorder::render_pass(const RenderPassBeginInfo &&begin_info)
   return RenderPass(*m_renderer, m_cmd, std::move(begin_info));
 }
 
-auto CommandRecorder::compute_pass() -> ComputePass {
-  return ComputePass(*m_renderer, m_cmd);
-}
-
-auto CommandRecorder::debug_region(const char *label) -> DebugRegion {
-  return DebugRegion(m_cmd, label);
-}
-
 RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
                        const RenderPassBeginInfo &&begin_info) {
   m_renderer = &renderer;
@@ -443,12 +435,7 @@ void RenderPass::draw_indexed_indirect_count(
   draw_indexed_indirect_count(BufferView(commands), BufferView(counter));
 }
 
-ComputePass::ComputePass(Renderer &renderer, rhi::CommandBuffer cmd) {
-  m_renderer = &renderer;
-  m_cmd = cmd;
-}
-
-void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
+void CommandRecorder::bind_compute_pipeline(Handle<ComputePipeline> handle) {
   const auto &pipeline = m_renderer->get_compute_pipeline(handle);
   m_pipeline = handle;
   m_pipeline_layout = pipeline.layout;
@@ -456,7 +443,7 @@ void ComputePass::bind_compute_pipeline(Handle<ComputePipeline> handle) {
                     pipeline.handle.handle);
 }
 
-void ComputePass::set_descriptor_heaps(
+void CommandRecorder::set_descriptor_heaps(
     Handle<ResourceDescriptorHeap> resource_heap,
     Handle<SamplerDescriptorHeap> sampler_heap) {
   rhi::cmd_set_descriptor_heaps(
@@ -466,44 +453,44 @@ void ComputePass::set_descriptor_heaps(
       m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
 }
 
-void ComputePass::set_push_constants(Handle<PipelineLayout> layout,
-                                     TempSpan<const std::byte> data,
-                                     unsigned offset) {
+void CommandRecorder::set_push_constants(Handle<PipelineLayout> layout,
+                                         TempSpan<const std::byte> data,
+                                         unsigned offset) {
   vkCmdPushConstants(m_cmd.handle,
                      m_renderer->get_pipeline_layout(layout).handle.handle,
                      VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
 }
 
-void ComputePass::set_push_constants(TempSpan<const std::byte> data,
-                                     unsigned offset) {
+void CommandRecorder::set_push_constants(TempSpan<const std::byte> data,
+                                         unsigned offset) {
   ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
   set_push_constants(m_pipeline_layout, data, offset);
 }
 
-void ComputePass::dispatch(u32 num_groups_x, u32 num_groups_y,
-                           u32 num_groups_z) {
+void CommandRecorder::dispatch(u32 num_groups_x, u32 num_groups_y,
+                               u32 num_groups_z) {
   vkCmdDispatch(m_cmd.handle, num_groups_x, num_groups_y, num_groups_z);
 }
 
-void ComputePass::dispatch(glm::uvec2 num_groups) {
+void CommandRecorder::dispatch(glm::uvec2 num_groups) {
   dispatch(num_groups.x, num_groups.y);
 }
 
-void ComputePass::dispatch(glm::uvec3 num_groups) {
+void CommandRecorder::dispatch(glm::uvec3 num_groups) {
   dispatch(num_groups.x, num_groups.y, num_groups.z);
 }
 
-void ComputePass::dispatch_grid(u32 size, u32 group_size_mult) {
+void CommandRecorder::dispatch_grid(u32 size, u32 group_size_mult) {
   dispatch_grid_3d({size, 1, 1}, {group_size_mult, 1, 1});
 }
 
-void ComputePass::dispatch_grid_2d(glm::uvec2 size,
-                                   glm::uvec2 group_size_mult) {
+void CommandRecorder::dispatch_grid_2d(glm::uvec2 size,
+                                       glm::uvec2 group_size_mult) {
   dispatch_grid_3d({size, 1}, {group_size_mult, 1});
 }
 
-void ComputePass::dispatch_grid_3d(glm::uvec3 size,
-                                   glm::uvec3 group_size_mult) {
+void CommandRecorder::dispatch_grid_3d(glm::uvec3 size,
+                                       glm::uvec3 group_size_mult) {
   glm::uvec3 block_size =
       m_renderer->get_compute_pipeline(m_pipeline).local_size * group_size_mult;
   glm::uvec3 num_groups;
@@ -513,16 +500,20 @@ void ComputePass::dispatch_grid_3d(glm::uvec3 size,
   dispatch(num_groups);
 }
 
-void ComputePass::dispatch_indirect(const BufferView &view) {
+void CommandRecorder::dispatch_indirect(const BufferView &view) {
   ren_assert(view.size_bytes() >= sizeof(VkDispatchIndirectCommand));
   vkCmdDispatchIndirect(m_cmd.handle,
                         m_renderer->get_buffer(view.buffer).handle.handle,
                         view.offset);
 }
 
-void ComputePass::dispatch_indirect(
+void CommandRecorder::dispatch_indirect(
     const BufferSlice<glsl::DispatchIndirectCommand> &slice) {
   dispatch_indirect(BufferView(slice));
+}
+
+auto CommandRecorder::debug_region(const char *label) -> DebugRegion {
+  return DebugRegion(m_cmd, label);
 }
 
 DebugRegion::DebugRegion(rhi::CommandBuffer cmd, const char *label) {
