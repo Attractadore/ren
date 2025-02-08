@@ -211,11 +211,9 @@ void CommandRecorder::pipeline_barrier(
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,
         .src_layout = barrier.src_layout,
-        .src_queue_family = barrier.src_queue_family,
         .dst_stage_mask = barrier.dst_stage_mask,
         .dst_access_mask = barrier.dst_access_mask,
         .dst_layout = barrier.dst_layout,
-        .dst_queue_family = barrier.dst_queue_family,
     };
   }
   rhi::cmd_pipeline_barrier(m_cmd, memory_barriers, image_barriers);

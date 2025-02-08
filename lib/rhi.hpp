@@ -84,7 +84,8 @@ auto get_adapter_features(Adapter adapter) -> AdapterFeatures;
 enum class QueueFamily {
   Graphics,
   Compute,
-  Last = Compute,
+  Transfer,
+  Last = Transfer,
 };
 constexpr usize QUEUE_FAMILY_COUNT = (usize)QueueFamily::Last + 1;
 
@@ -941,11 +942,9 @@ struct ImageBarrier {
   PipelineStageMask src_stage_mask;
   AccessMask src_access_mask;
   ImageLayout src_layout = ImageLayout::Undefined;
-  QueueFamily src_queue_family = {};
   PipelineStageMask dst_stage_mask;
   AccessMask dst_access_mask;
   ImageLayout dst_layout = ImageLayout::Undefined;
-  QueueFamily dst_queue_family = {};
 };
 
 void cmd_pipeline_barrier(CommandBuffer cmd,

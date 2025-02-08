@@ -54,10 +54,12 @@ auto load_vulkan() -> ren::Result<void, VkResult> {
 
 const char *VK_LAYER_KHRONOS_VALIDATION_NAME = "VK_LAYER_KHRONOS_validation";
 
+constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
+
 struct AdapterData {
   VkPhysicalDevice physical_device = nullptr;
   AdapterFeatures features;
-  int queue_family_indices[QUEUE_FAMILY_COUNT] = {};
+  u32 queue_family_indices[QUEUE_FAMILY_COUNT] = {};
   VkPhysicalDeviceProperties properties;
   MemoryHeapProperties heap_properties[MEMORY_HEAP_COUNT] = {};
 };
@@ -398,7 +400,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
             amd_anti_lag_features.antiLag,
     };
 
-    std::ranges::fill(adapter.queue_family_indices, -1);
+    std::ranges::fill(adapter.queue_family_indices, QUEUE_FAMILY_UNAVAILABLE);
 
     uint32_t num_queues = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, nullptr);
@@ -407,21 +409,29 @@ auto init(const InitInfo &init_info) -> Result<void> {
                                              queues.data());
 
     for (int i : range(num_queues)) {
-      VkQueueFlags flags = queues[i].queueFlags;
-      if (flags & VK_QUEUE_GRAPHICS_BIT) {
+      VkQueueFlags queue_flags = queues[i].queueFlags;
+      if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
         adapter.queue_family_indices[(usize)QueueFamily::Graphics] = i;
         continue;
       }
-      if (flags & VK_QUEUE_COMPUTE_BIT) {
-        flags |= VK_QUEUE_TRANSFER_BIT;
+      if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
+        queue_flags |= VK_QUEUE_TRANSFER_BIT;
       }
-      if (flags == (flags & (VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT))) {
+      if (queue_flags ==
+          (queue_flags & (VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT))) {
         adapter.queue_family_indices[(usize)QueueFamily::Compute] = i;
+        continue;
+      }
+      if (queue_flags == VK_QUEUE_TRANSFER_BIT and
+          adapter.properties.deviceType ==
+              VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        adapter.queue_family_indices[(usize)QueueFamily::Transfer] = i;
         continue;
       }
     }
 
-    if (adapter.queue_family_indices[(usize)QueueFamily::Graphics] < 0) {
+    if (adapter.queue_family_indices[(usize)QueueFamily::Graphics] ==
+        QUEUE_FAMILY_UNAVAILABLE) {
       fmt::println("vk: Disable device {}: doesn't have a graphics queue",
                    device_name);
       continue;
@@ -548,7 +558,7 @@ auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool {
   ren_assert(g_instance.handle);
   ren_assert(adapter.index < g_instance.adapters.size());
   return g_instance.adapters[adapter.index]
-             .queue_family_indices[(usize)family] >= 0;
+             .queue_family_indices[(usize)family] != QUEUE_FAMILY_UNAVAILABLE;
 }
 
 auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
@@ -659,7 +669,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   StaticVector<VkDeviceQueueCreateInfo, QUEUE_FAMILY_COUNT> queue_create_info;
   for (u32 i : range(QUEUE_FAMILY_COUNT)) {
-    if (adapter.queue_family_indices[i] >= 0) {
+    if (adapter.queue_family_indices[i] != QUEUE_FAMILY_UNAVAILABLE) {
       queue_create_info.push_back({
           .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
           .queueFamilyIndex = i,
@@ -698,9 +708,10 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   volkLoadDeviceTable(&device->vk, device->handle);
 
   for (usize i : range(QUEUE_FAMILY_COUNT)) {
-    i32 qfi = adapter.queue_family_indices[i];
-    if (qfi >= 0) {
-      vkGetDeviceQueue(device->handle, qfi, 0, &device->queues[i].handle);
+    u32 qfi = adapter.queue_family_indices[i];
+    if (qfi != QUEUE_FAMILY_UNAVAILABLE) {
+      device->vk.vkGetDeviceQueue(device->handle, qfi, 0,
+                                  &device->queues[i].handle);
       device->queues[i].vk = &device->vk;
     }
   }
@@ -854,10 +865,6 @@ auto get_adapter(Device device) -> const AdapterData & {
   return get_adapter(device->adapter);
 }
 
-auto get_queue_family_index(Adapter adapter, QueueFamily queue_family) -> u32 {
-  return get_adapter(adapter).queue_family_indices[(usize)queue_family];
-}
-
 } // namespace
 
 auto get_queue(Device device, QueueFamily family) -> Queue {
@@ -989,6 +996,10 @@ auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
       g_instance.adapters[device->adapter.index]
           .heap_properties[(usize)create_info.heap];
 
+  StaticVector<u32, QUEUE_FAMILY_COUNT> queue_family_indices(
+      get_adapter(device).queue_family_indices);
+  queue_family_indices.erase(QUEUE_FAMILY_UNAVAILABLE);
+
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = create_info.size,
@@ -997,6 +1008,9 @@ auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
                VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+      .sharingMode = VK_SHARING_MODE_CONCURRENT,
+      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
+      .pQueueFamilyIndices = queue_family_indices.data(),
   };
 
   VmaAllocationCreateInfo allocation_info = {
@@ -1110,6 +1124,22 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
   height = std::max(height, 1u);
   depth = std::max(depth, 1u);
 
+  ImageUsageFlags usage = create_info.usage;
+
+  StaticVector<u32, QUEUE_FAMILY_COUNT> queue_family_indices(
+      get_adapter(device).queue_family_indices);
+  if (!usage.is_any_set(ImageUsage::TransferSrc | ImageUsage::TransferDst)) {
+    queue_family_indices[(usize)QueueFamily::Transfer] =
+        QUEUE_FAMILY_UNAVAILABLE;
+  }
+  if (!usage.is_any_set(ImageUsage::ShaderResource |
+                        ImageUsage::UnorderedAccess)) {
+    queue_family_indices[(usize)QueueFamily::Compute] =
+        QUEUE_FAMILY_UNAVAILABLE;
+  }
+  queue_family_indices.erase(QUEUE_FAMILY_UNAVAILABLE);
+  ren_assert(not queue_family_indices.empty());
+
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = image_type,
@@ -1120,7 +1150,9 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = to_vk_image_usage_flags(create_info.usage),
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .sharingMode = VK_SHARING_MODE_CONCURRENT,
+      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
+      .pQueueFamilyIndices = queue_family_indices.data(),
   };
 
   VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
@@ -2040,7 +2072,7 @@ auto create_command_pool(Device device,
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
       .queueFamilyIndex =
-          (u32)adapter.queue_family_indices[(usize)create_info.queue_family],
+          adapter.queue_family_indices[(usize)create_info.queue_family],
   };
   VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
                                                    nullptr, &pool->handle);
@@ -2255,10 +2287,6 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
         .dstAccessMask = to_vk(barrier.dst_access_mask),
         .oldLayout = to_vk(barrier.src_layout),
         .newLayout = to_vk(barrier.dst_layout),
-        .srcQueueFamilyIndex =
-            get_queue_family_index(adapter, barrier.src_queue_family),
-        .dstQueueFamilyIndex =
-            get_queue_family_index(adapter, barrier.dst_queue_family),
         .image = barrier.image.handle,
         .subresourceRange =
             {

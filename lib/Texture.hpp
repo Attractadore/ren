@@ -128,11 +128,9 @@ struct TextureBarrier {
   rhi::PipelineStageMask src_stage_mask;
   rhi::AccessMask src_access_mask;
   rhi::ImageLayout src_layout = rhi::ImageLayout::Undefined;
-  rhi::QueueFamily src_queue_family = {};
   rhi::PipelineStageMask dst_stage_mask;
   rhi::AccessMask dst_access_mask;
   rhi::ImageLayout dst_layout = rhi::ImageLayout::Undefined;
-  rhi::QueueFamily dst_queue_family = {};
 };
 
 } // namespace ren
