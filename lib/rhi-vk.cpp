@@ -2693,7 +2693,7 @@ auto amd_anti_lag(Device device, u64 frame, VkAntiLagStageAMD stage,
       .maxFPS = max_fps,
       .pPresentationInfo = &present_info,
   };
-  vkAntiLagUpdateAMD(device->handle, &anti_lag_data);
+  device->vk.vkAntiLagUpdateAMD(device->handle, &anti_lag_data);
   return {};
 }
 

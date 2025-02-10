@@ -32,10 +32,16 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
     m_adapter = rhi::get_adapter(adapter);
   }
 
+  rhi::AdapterFeatures adapter_features = rhi::get_adapter_features(m_adapter);
+
   ren_try(m_device, rhi::create_device({
                         .adapter = m_adapter,
-                        .features = rhi::get_adapter_features(m_adapter),
+                        .features = adapter_features,
                     }));
+
+  if (adapter_features.amd_anti_lag) {
+    m_features[(usize)RendererFeature::AmdAntiLag] = true;
+  }
 
   m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
 
