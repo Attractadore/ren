@@ -95,10 +95,10 @@ struct DeviceData {
   std::array<Queue, QUEUE_FAMILY_COUNT> queues;
   union {
     struct {
-      VkDescriptorSetLayout resource_heap_layouts[3] = {};
-      VkDescriptorSetLayout sampler_heap_layout = nullptr;
+      VkDescriptorSetLayout resource_heap_layouts[3];
+      VkDescriptorSetLayout sampler_heap_layout;
     };
-    VkDescriptorSetLayout heap_layouts[4];
+    VkDescriptorSetLayout heap_layouts[4] = {};
   };
   VkPipelineLayout common_pipeline_layout = nullptr;
   VolkDeviceTable vk = {};
@@ -1877,7 +1877,7 @@ auto create_graphics_pipeline(Device device,
       .depthClampEnable = create_info.rasterization_state.depth_clamp_enable,
       .polygonMode =
           FILL_MODE_MAP[(usize)create_info.rasterization_state.fill_mode],
-      .cullMode =
+      .cullMode = (VkCullModeFlags)
           CULL_MODE_MAP[(usize)create_info.rasterization_state.cull_mode],
       .frontFace = create_info.rasterization_state.front_face == FrontFace::CCW
                        ? VK_FRONT_FACE_COUNTER_CLOCKWISE
@@ -2155,7 +2155,7 @@ namespace {
 
 template <typename E>
   requires std::is_scoped_enum_v<E>
-constexpr usize ENUM_SIZE = [] consteval -> usize {
+constexpr usize ENUM_SIZE = []() -> usize {
   if (CFlagsEnum<E>) {
     return std::countr_zero((usize)E::Last) + 1;
   }

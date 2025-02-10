@@ -666,11 +666,16 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
     if (!physical_texture.usage or m_rgp->m_external_textures[i]) {
       continue;
     }
+    // Preprocessor statement inside function-like macro is UB
+#if REN_RG_DEBUG
+#define name_eq_physical_texture_name .name = physical_texture.name,
+#else
+#define name_eq_physical_texture_name
+#endif
     ren_try(physical_texture.handle,
             m_rgp->m_texture_arena.create_texture({
-#if REN_RG_DEBUG
-                .name = physical_texture.name,
-#endif
+                // clang-format off
+                name_eq_physical_texture_name
                 .format = physical_texture.format,
                 .usage = physical_texture.usage,
                 .width = physical_texture.size.x,
@@ -678,6 +683,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
                 .depth = physical_texture.size.z,
                 .num_mip_levels = physical_texture.num_mip_levels,
                 .num_array_layers = physical_texture.num_array_layers,
+                // clang-format on
             }));
     physical_texture.state = {};
   }
@@ -1326,7 +1332,7 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
   Span<const SemaphoreState> batch_wait_semaphores;
   Span<const SemaphoreState> batch_signal_semaphores;
 
-  auto submit_batch = [&] -> Result<void, Error> {
+  auto submit_batch = [&]() -> Result<void, Error> {
     if (!cmd and batch_wait_semaphores.empty() and
         batch_signal_semaphores.empty()) {
       return {};
@@ -1437,7 +1443,7 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
   return {};
 }
 
-auto RgRuntime::get_buffer(RgUntypedBufferToken buffer) const
+auto RgRuntime::get_untyped_buffer(RgUntypedBufferToken buffer) const
     -> const BufferView & {
   ren_assert(buffer);
   return m_rg->m_data->m_buffers[buffer];

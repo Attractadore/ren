@@ -19,7 +19,7 @@ enum class PipelineBindPoint;
 namespace vk {
 
 struct Adapter {
-  u32 index = -1;
+  u32 index = u32(-1);
 };
 
 struct DeviceData;

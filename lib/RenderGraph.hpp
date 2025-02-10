@@ -602,35 +602,18 @@ private:
 
 class RgRuntime {
 public:
-  auto get_buffer(RgUntypedBufferToken buffer) const -> const BufferView &;
+  auto get_untyped_buffer(RgUntypedBufferToken buffer) const
+      -> const BufferView &;
 
   template <typename T>
   auto get_buffer(RgBufferToken<T> buffer) const -> BufferSlice<T> {
-    return BufferSlice<T>(get_buffer(RgUntypedBufferToken(buffer)));
-  }
-
-  template <typename T>
-  auto get_buffer_device_ptr(RgUntypedBufferToken buffer) const
-      -> DevicePtr<T> {
-    DevicePtr<T> ptr = m_rg->m_renderer->get_buffer_device_ptr(
-        BufferSlice<T>(get_buffer(buffer)));
-    ren_assert(ptr);
-    return ptr;
+    return BufferSlice<T>(get_untyped_buffer(RgUntypedBufferToken(buffer)));
   }
 
   template <typename T>
   auto get_buffer_device_ptr(RgBufferToken<T> buffer) const -> DevicePtr<T> {
-    return get_buffer_device_ptr<T>(RgUntypedBufferToken(buffer));
-  }
-
-  template <typename T>
-  auto try_get_buffer_device_ptr(RgUntypedBufferToken buffer) const
-      -> DevicePtr<T> {
-    if (!buffer) {
-      return {};
-    }
-    DevicePtr<T> ptr = m_rg->m_renderer->get_buffer_device_ptr(
-        BufferSlice<T>(get_buffer(buffer)));
+    DevicePtr<T> ptr =
+        m_rg->m_renderer->get_buffer_device_ptr(get_buffer(buffer));
     ren_assert(ptr);
     return ptr;
   }
@@ -638,16 +621,17 @@ public:
   template <typename T>
   auto try_get_buffer_device_ptr(RgBufferToken<T> buffer) const
       -> DevicePtr<T> {
-    return try_get_buffer_device_ptr<T>(RgUntypedBufferToken(buffer));
-  }
-
-  template <typename T>
-  auto map_buffer(RgUntypedBufferToken buffer) const -> T * {
-    return m_rg->m_renderer->map_buffer(BufferSlice<T>(get_buffer(buffer)));
+    if (!buffer) {
+      return {};
+    }
+    DevicePtr<T> ptr =
+        m_rg->m_renderer->get_buffer_device_ptr(get_buffer(buffer));
+    ren_assert(ptr);
+    return ptr;
   }
 
   template <typename T> auto map_buffer(RgBufferToken<T> buffer) const -> T * {
-    return map_buffer<T>(RgUntypedBufferToken(buffer));
+    return m_rg->m_renderer->map_buffer(get_buffer(buffer));
   }
 
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;

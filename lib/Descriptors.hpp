@@ -2,17 +2,19 @@
 #include "DebugNames.hpp"
 #include "rhi.hpp"
 
+#include <array>
+
 namespace ren {
 
 struct ResourceDescriptorHeapCreateInfo {
   REN_DEBUG_NAME_FIELD("Resource descriptor heap");
   union {
     struct {
-      u32 num_srv_descriptors = 0;
-      u32 num_cis_descriptors = 0;
-      u32 num_uav_descriptors = 0;
+      u32 num_srv_descriptors;
+      u32 num_cis_descriptors;
+      u32 num_uav_descriptors;
     };
-    std::array<u32, 3> num_descriptors;
+    std::array<u32, 3> num_descriptors = {};
   };
 };
 
@@ -24,11 +26,11 @@ struct ResourceDescriptorHeap {
   rhi::ResourceDescriptorHeap handle;
   union {
     struct {
-      u32 num_srv_descriptors = 0;
-      u32 num_cis_descriptors = 0;
-      u32 num_uav_descriptors = 0;
+      u32 num_srv_descriptors;
+      u32 num_cis_descriptors;
+      u32 num_uav_descriptors;
     };
-    std::array<u32, 3> num_descriptors;
+    std::array<u32, 3> num_descriptors = {};
   };
 };
 

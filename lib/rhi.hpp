@@ -7,6 +7,7 @@
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
 
+#include <array>
 #include <chrono>
 #include <glm/vec2.hpp>
 
@@ -415,11 +416,11 @@ void destroy_sampler(Device device, Sampler sampler);
 struct ResourceDescriptorHeapCreateInfo {
   union {
     struct {
-      u32 num_srv_descriptors = 0;
-      u32 num_cis_descriptors = 0;
-      u32 num_uav_descriptors = 0;
+      u32 num_srv_descriptors;
+      u32 num_cis_descriptors;
+      u32 num_uav_descriptors;
     };
-    std::array<u32, 3> num_descriptors;
+    std::array<u32, 3> num_descriptors = {};
   };
 };
 
@@ -554,7 +555,7 @@ enum class SampleCount {
 
 struct MultisamplingStateInfo {
   SampleCount sample_count = SampleCount::e1;
-  u32 sample_mask = -1;
+  u32 sample_mask = u32(-1);
   bool alpha_to_coverage_enable = false;
 };
 

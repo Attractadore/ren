@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
+#include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -90,7 +91,7 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   std::string warn;
 
   if (not fs::exists(path)) {
-    bail("Failed to open file {}: doesn't exist", path.c_str());
+    bail("Failed to open file {}: doesn't exist", path);
   }
 
   log("Load scene...");
@@ -102,8 +103,8 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
   } else if (path.extension() == ".glb") {
     ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
   } else {
-    bail("Failed to load glTF file {}: invalid extension {}", path.c_str(),
-         path.extension().c_str());
+    bail("Failed to load glTF file {}: invalid extension {}", path,
+         path.extension());
   }
 
   auto end = chrono::steady_clock::now();
@@ -767,7 +768,7 @@ private:
 class ViewGlTFApp : public ImGuiApp {
 public:
   ViewGlTFApp(const fs::path &path, unsigned scene)
-      : ImGuiApp(fmt::format("View glTF: {}", path.c_str()).c_str()) {
+      : ImGuiApp(fmt::format("View glTF: {}", path).c_str()) {
     [&]() -> Result<void> {
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());

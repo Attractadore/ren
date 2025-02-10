@@ -42,6 +42,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   endif()
 endif()
 
+if(MSVC)
+  set(msvc_flags "/Zc:preprocessor")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Zc:__cplusplus ${msvc_flags}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__STDC__ ${msvc_flags}")
+endif()
+
 include(CTest)
 
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
