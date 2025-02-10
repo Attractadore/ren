@@ -170,6 +170,13 @@
       ]
     },
     {
+      "name": "mingw-gpu-prof",
+      "inherits": [
+        "mingw",
+        "gpu-prof"
+      ]
+    },
+    {
       "name": "linux-debug",
       "inherits": [
         "linux",
@@ -223,6 +230,13 @@
       "inherits": [
         "linux-mingw",
         "release"
+      ]
+    },
+    {
+      "name": "linux-mingw-gpu-prof",
+      "inherits": [
+        "linux-mingw",
+        "gpu-prof"
       ]
     }
   ]
