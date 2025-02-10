@@ -505,10 +505,10 @@ auto Renderer::create_graphics_pipeline(
         .entry_point = shader.entry_point,
         .specialization =
             {
-                .constants =
-                    Span(&specialization_constants[specialization_offset],
-                         num_specialization_constants),
-                .data = Span(&specialization_data[specialization_offset],
+                .constants = Span(specialization_constants.data() +
+                                      specialization_offset,
+                                  num_specialization_constants),
+                .data = Span(specialization_data.data() + specialization_offset,
                              num_specialization_constants)
                             .as_bytes(),
             },
@@ -675,10 +675,11 @@ auto Renderer::submit(rhi::QueueFamily queue_family,
         .value = signal_semaphores[i].value,
     };
   }
-  return rhi::queue_submit(rhi::get_queue(m_device, queue_family), cmd_buffers,
-                           Span(&semaphore_states[0], wait_semaphores.size()),
-                           Span(&semaphore_states[wait_semaphores.size()],
-                                signal_semaphores.size()));
+  return rhi::queue_submit(
+      rhi::get_queue(m_device, queue_family), cmd_buffers,
+      Span(semaphore_states.data(), wait_semaphores.size()),
+      Span(semaphore_states.data() + wait_semaphores.size(),
+           signal_semaphores.size()));
 }
 
 bool Renderer::is_feature_supported(RendererFeature feature) const {

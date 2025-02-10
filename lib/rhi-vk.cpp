@@ -909,7 +909,8 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
       .commandBufferInfoCount = (u32)cmd_buffers.size(),
       .pCommandBufferInfos = command_buffer_infos.data(),
       .signalSemaphoreInfoCount = (u32)signal_semaphores.size(),
-      .pSignalSemaphoreInfos = &semaphore_submit_infos[wait_semaphores.size()],
+      .pSignalSemaphoreInfos =
+          semaphore_submit_infos.data() + wait_semaphores.size(),
   };
   VkResult result =
       queue.vk->vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr);
@@ -1843,7 +1844,7 @@ auto create_graphics_pipeline(Device device,
     };
     specialization_info[num_stages] = {
         .mapEntryCount = num_specialization_constants,
-        .pMapEntries = &specialization_map[specialization_map_offset],
+        .pMapEntries = specialization_map.data() + specialization_map_offset,
         .dataSize = shader.specialization.data.size(),
         .pData = shader.specialization.data.data(),
     };
