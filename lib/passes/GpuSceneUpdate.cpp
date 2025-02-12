@@ -36,23 +36,6 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
   return rg_gpu_scene;
 }
 
-void rg_export_gpu_scene(const RgBuilder &rgb, const RgGpuScene &rg_gpu_scene,
-                         NotNull<GpuScene *> gpu_scene) {
-  gpu_scene->meshes.state = rgb.get_final_buffer_state(rg_gpu_scene.meshes);
-  gpu_scene->mesh_instances.state =
-      rgb.get_final_buffer_state(rg_gpu_scene.mesh_instances);
-  gpu_scene->mesh_instance_visibility.state =
-      rgb.get_final_buffer_state(rg_gpu_scene.mesh_instance_visibility);
-  for (auto i : range(NUM_DRAW_SETS)) {
-    gpu_scene->draw_sets[i].cull_data.state =
-        rgb.get_final_buffer_state(rg_gpu_scene.draw_sets[i].cull_data);
-  }
-  gpu_scene->materials.state =
-      rgb.get_final_buffer_state(rg_gpu_scene.materials);
-  gpu_scene->directional_lights.state =
-      rgb.get_final_buffer_state(rg_gpu_scene.directional_lights);
-}
-
 void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
                                  const GpuSceneUpdatePassConfig &cfg) {
   RgBuilder &rgb = *ccfg.rgb;

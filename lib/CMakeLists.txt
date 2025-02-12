@@ -43,7 +43,6 @@ target_link_libraries(ren-gfx INTERFACE
 
 add_library(ren
   ren.cpp
-  BumpAllocator.cpp
   Camera.cpp
   CommandRecorder.cpp
   DescriptorAllocator.cpp

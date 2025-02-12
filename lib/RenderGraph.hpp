@@ -462,14 +462,14 @@ public:
 
   template <typename T>
   [[nodiscard]] auto create_buffer(RgDebugName name,
-                                   const StatefulBufferSlice<T> &slice)
+                                   const BufferSlice<T> &slice)
       -> RgBufferId<T> {
     RgBufferId<T> buffer = create_buffer<T>({
         .name = std::move(name),
-        .heap = m_renderer->get_buffer(slice.slice.buffer).heap,
-        .count = slice.slice.count,
+        .heap = m_renderer->get_buffer(slice.buffer).heap,
+        .count = slice.count,
     });
-    set_external_buffer(buffer, BufferView(slice.slice), slice.state);
+    set_external_buffer(buffer, BufferView(slice), {});
     return buffer;
   }
 
@@ -493,9 +493,6 @@ public:
   auto build(DeviceBumpAllocator &device_allocator,
              UploadBumpAllocator &upload_allocator)
       -> Result<RenderGraph, Error>;
-
-  auto get_final_buffer_state(RgUntypedBufferId buffer) const
-      -> rhi::BufferState;
 
 private:
   friend RgPassBuilder;

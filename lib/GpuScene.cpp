@@ -16,16 +16,13 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
   constexpr rhi::MemoryHeap HEAP = rhi::MemoryHeap::Default;
 
 #define create_buffer(T, n, c)                                                 \
-  StatefulBufferSlice<T> {                                                     \
-    /* FIXME: check for errors. */                                             \
-    arena                                                                      \
-        .create_buffer<T>({                                                    \
-            .name = n,                                                         \
-            .heap = HEAP,                                                      \
-            .count = c,                                                        \
-        })                                                                     \
-        .value()                                                               \
-  }
+  arena                                                                        \
+      .create_buffer<T>({                                                      \
+          .name = n,                                                           \
+          .heap = HEAP,                                                        \
+          .count = c,                                                          \
+      })                                                                       \
+      .value()
 
   constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(
       MAX_NUM_MESH_INSTANCES, glsl::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);

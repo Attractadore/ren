@@ -1191,13 +1191,6 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   return rg;
 }
 
-auto RgBuilder::get_final_buffer_state(RgUntypedBufferId buffer) const
-    -> rhi::BufferState {
-  ren_assert(buffer);
-  RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
-  return m_data->m_physical_buffers[physical_buffer].state;
-}
-
 RgPassBuilder::RgPassBuilder(RgPassId pass, RgBuilder &builder) {
   m_pass = pass;
   m_builder = &builder;

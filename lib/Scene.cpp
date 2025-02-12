@@ -130,15 +130,22 @@ auto Scene::next_frame() -> Result<void, Error> {
   }
   m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
   ren_try_to(m_frcs->reset(*m_renderer));
+  m_device_allocator.reset();
 
   CommandRecorder cmd;
   ren_try_to(cmd.begin(*m_renderer, m_frcs->cmd_pool));
   {
     auto _ = cmd.debug_region("begin-frame");
-    m_device_allocator.reset(cmd);
+    cmd.memory_barrier({
+        .src_stage_mask = rhi::PipelineStage::All,
+        .src_access_mask = rhi::Access::MemoryWrite,
+        .dst_stage_mask = rhi::PipelineStage::All,
+        .dst_access_mask = rhi::Access::MemoryRead | rhi::Access::MemoryWrite,
+    });
   }
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
   ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
+
   return {};
 }
 
@@ -703,12 +710,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                               .swapchain = m_swapchain,
                           });
 
-  ren_try(RenderGraph rg,
-          rgb.build(m_device_allocator, m_frcs->upload_allocator));
-
-  rg_export_gpu_scene(rgb, rg_gpu_scene, &m_gpu_scene);
-
-  return rg;
+  return rgb.build(m_device_allocator, m_frcs->upload_allocator);
 }
 
 } // namespace ren

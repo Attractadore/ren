@@ -31,7 +31,7 @@ struct Batch {
 struct DrawSetData {
 public:
   Vector<Handle<MeshInstance>> mesh_instances;
-  StatefulBufferSlice<glsl::InstanceCullData> cull_data;
+  BufferSlice<glsl::InstanceCullData> cull_data;
   Vector<glsl::InstanceCullData> update_cull_data;
   Vector<DrawSetId> delete_ids;
   Vector<Batch> batches;
@@ -43,21 +43,21 @@ public:
 };
 
 struct GpuScene {
-  StatefulBufferSlice<glsl::Mesh> meshes;
+  BufferSlice<glsl::Mesh> meshes;
   Vector<Handle<Mesh>> update_meshes;
   Vector<glsl::Mesh> mesh_update_data;
 
-  StatefulBufferSlice<glsl::MeshInstance> mesh_instances;
-  StatefulBufferSlice<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
+  BufferSlice<glsl::MeshInstance> mesh_instances;
+  BufferSlice<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
   Vector<Handle<MeshInstance>> update_mesh_instances;
   Vector<glsl::MeshInstance> mesh_instance_update_data;
   std::array<DrawSetData, NUM_DRAW_SETS> draw_sets;
 
-  StatefulBufferSlice<glsl::Material> materials;
+  BufferSlice<glsl::Material> materials;
   Vector<Handle<Material>> update_materials;
   Vector<glsl::Material> material_update_data;
 
-  StatefulBufferSlice<glsl::DirectionalLight> directional_lights;
+  BufferSlice<glsl::DirectionalLight> directional_lights;
   Vector<Handle<DirectionalLight>> update_directional_lights;
   Vector<glsl::DirectionalLight> directional_light_update_data;
 };

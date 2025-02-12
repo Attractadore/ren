@@ -170,15 +170,8 @@ struct UploadBumpAllocationPolicy {
 
 }; // namespace detail
 
-class DeviceBumpAllocator
-    : public detail::BumpAllocator<detail::DeviceBumpAllocationPolicy> {
-  using Base = detail::BumpAllocator<detail::DeviceBumpAllocationPolicy>;
-
-public:
-  using Base::Base;
-
-  void reset(CommandRecorder &cmd);
-};
+using DeviceBumpAllocator =
+    detail::BumpAllocator<detail::DeviceBumpAllocationPolicy>;
 
 using UploadBumpAllocator =
     detail::BumpAllocator<detail::UploadBumpAllocationPolicy>;

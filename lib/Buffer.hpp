@@ -65,9 +65,4 @@ using BufferView = BufferSlice<std::byte>;
 
 REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, count);
 
-template <typename T> struct StatefulBufferSlice {
-  BufferSlice<T> slice;
-  rhi::BufferState state;
-};
-
 } // namespace ren
