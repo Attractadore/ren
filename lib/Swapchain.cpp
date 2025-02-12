@@ -1,6 +1,7 @@
 #include "Swapchain.hpp"
 #include "Profiler.hpp"
 #include "Renderer.hpp"
+#include "Scene.hpp"
 #include "core/Views.hpp"
 
 #include <SDL2/SDL.h>
@@ -110,13 +111,6 @@ void Swapchain::set_vsync(VSync vsync) {
   }
 }
 
-void Swapchain::set_frames_in_flight(u32 num_frames_in_flight) {
-  if (m_num_frames_in_flight != num_frames_in_flight) {
-    m_num_frames_in_flight = num_frames_in_flight;
-    m_dirty = true;
-  }
-}
-
 auto Swapchain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
@@ -159,7 +153,7 @@ auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
     // 3. One for drawing into.
     // 4. One less than the number of frames in flight to record commands for
     // due to synchronous acquire.
-    u32 num_images = m_num_frames_in_flight + 1;
+    u32 num_images = NUM_FRAMES_IN_FLIGHT + 1;
     // Tearing is only allowed in fullscreen on Linux.
     if (pm == rhi::PresentMode::Mailbox or
         (pm == rhi::PresentMode::Immediate and not m_fullscreen)) {
@@ -177,7 +171,7 @@ auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
     // 3. One for drawing into.
     // 4. One less than the number of frames in flight to record commands for
     // due to synchronous acquire.
-    u32 num_images = m_num_frames_in_flight + 1;
+    u32 num_images = NUM_FRAMES_IN_FLIGHT + 1;
     // On Windows, tearing is allowed in windowed mode if MPOs are supported.
     if (pm == rhi::PresentMode::Mailbox) {
       return num_images + 1;

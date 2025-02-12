@@ -22,8 +22,6 @@ public:
 
   void set_vsync(VSync vsync) override;
 
-  void set_frames_in_flight(u32 num_frames_in_flight);
-
   auto get_size() const -> glm::uvec2 { return m_size; }
 
   auto get_format() const -> TinyImageFormat { return m_format; }
@@ -56,7 +54,6 @@ private:
   VSync m_vsync = VSync::Off;
   bool m_fullscreen = false;
   u32 m_image_index = -1;
-  u32 m_num_frames_in_flight = 2;
   bool m_dirty = false;
 };
 

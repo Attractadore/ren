@@ -20,6 +20,8 @@ namespace ren {
 
 using Image = Handle<Texture>;
 
+constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
+
 struct ScenePerFrameResources {
   Handle<Semaphore> acquire_semaphore;
   Handle<Semaphore> present_semaphore;
@@ -179,14 +181,12 @@ private:
 #endif
 
   ResourceArena m_arena;
-  ResourceArena m_fif_arena;
   DescriptorAllocator m_descriptor_allocator;
-  SmallVector<ScenePerFrameResources, 3> m_per_frame_resources;
+  StaticVector<ScenePerFrameResources, NUM_FRAMES_IN_FLIGHT>
+      m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
-  u64 m_frame_index = 0;
+  u64 m_frame_index = u64(-1);
   u64 m_graphics_time = 0;
-  u32 m_num_frames_in_flight = 0;
-  u32 m_new_num_frames_in_flight = 2;
   Handle<Semaphore> m_graphics_semaphore;
 
   Pipelines m_pipelines;

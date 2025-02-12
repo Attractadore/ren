@@ -18,7 +18,7 @@
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
-    : m_arena(renderer), m_fif_arena(renderer),
+    : m_arena(renderer),
       m_device_allocator(renderer, m_arena, 256 * 1024 * 1024) {
   m_renderer = &renderer;
   m_swapchain = &swapchain;
@@ -57,26 +57,25 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_data.settings.amd_anti_lag =
       m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
+  allocate_per_frame_resources().value();
+
   next_frame().value();
 }
 
 auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
-  m_fif_arena.clear();
-  m_per_frame_resources.clear();
-  m_new_num_frames_in_flight = m_num_frames_in_flight;
-  for (auto i : range(m_num_frames_in_flight)) {
+  for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
     ren_try(Handle<Semaphore> acquire_semaphore,
-            m_fif_arena.create_semaphore({
+            m_arena.create_semaphore({
                 .name = fmt::format("Acquire semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
     ren_try(Handle<Semaphore> present_semaphore,
-            m_fif_arena.create_semaphore({
+            m_arena.create_semaphore({
                 .name = fmt::format("Present semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
     ren_try(Handle<CommandPool> cmd_pool,
-            m_fif_arena.create_command_pool({
+            m_arena.create_command_pool({
                 .name = fmt::format("Command pool {}", i),
                 .queue_family = rhi::QueueFamily::Graphics,
             }));
@@ -84,18 +83,17 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
         .acquire_semaphore = acquire_semaphore,
         .present_semaphore = present_semaphore,
         .upload_allocator =
-            UploadBumpAllocator(*m_renderer, m_fif_arena, 64 * 1024 * 1024),
+            UploadBumpAllocator(*m_renderer, m_arena, 64 * 1024 * 1024),
         .cmd_pool = cmd_pool,
         .descriptor_allocator =
             DescriptorAllocatorScope(m_descriptor_allocator),
     });
   }
-  m_graphics_time = m_num_frames_in_flight;
-  ren_try(m_graphics_semaphore, m_fif_arena.create_semaphore({
+  m_graphics_time = NUM_FRAMES_IN_FLIGHT;
+  ren_try(m_graphics_semaphore, m_arena.create_semaphore({
                                     .name = "Graphics queue timeline semaphore",
                                     .initial_value = m_graphics_time - 1,
                                 }));
-  m_swapchain->set_frames_in_flight(m_num_frames_in_flight);
   return {};
 }
 
@@ -111,24 +109,19 @@ auto Scene::next_frame() -> Result<void, Error> {
 
   m_frame_index++;
 
-  m_num_frames_in_flight = m_new_num_frames_in_flight;
-  [[unlikely]] if (m_per_frame_resources.size() != m_num_frames_in_flight) {
-    ren_try_to(allocate_per_frame_resources());
-  } else {
-    ren_try_to(m_renderer->submit(
-        rhi::QueueFamily::Graphics, {}, {},
-        {{.semaphore = m_graphics_semaphore, .value = m_graphics_time}}));
-    m_graphics_time++;
-    {
-      ren_prof_zone("Scene::wait_for_previous_frame");
-      ren_prof_zone_text(
-          fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
-      u64 wait_time = m_graphics_time - m_num_frames_in_flight;
-      ren_try_to(
-          m_renderer->wait_for_semaphore(m_graphics_semaphore, wait_time));
-    }
+  ren_try_to(m_renderer->submit(
+      rhi::QueueFamily::Graphics, {}, {},
+      {{.semaphore = m_graphics_semaphore, .value = m_graphics_time}}));
+  m_graphics_time++;
+  {
+    ren_prof_zone("Scene::wait_for_previous_frame");
+    ren_prof_zone_text(
+        fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
+    u64 wait_time = m_graphics_time - NUM_FRAMES_IN_FLIGHT;
+    ren_try_to(m_renderer->wait_for_semaphore(m_graphics_semaphore, wait_time));
   }
-  m_frcs = &m_per_frame_resources[m_graphics_time % m_num_frames_in_flight];
+
+  m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
   ren_try_to(m_frcs->reset(*m_renderer));
   m_device_allocator.reset();
 
@@ -500,8 +493,7 @@ auto Scene::delay_input() -> expected<void> {
 }
 
 bool Scene::is_amd_anti_lag_available() {
-  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag) and
-         m_num_frames_in_flight <= 2;
+  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 }
 
 bool Scene::is_amd_anti_lag_enabled() {
@@ -539,9 +531,6 @@ void Scene::draw_imgui() {
 
       ImGui::SeparatorText("Latency");
       {
-        int fif = m_num_frames_in_flight;
-        ImGui::SliderInt("Frames in flight", &fif, 1, 4);
-        m_new_num_frames_in_flight = fif;
         ImGui::BeginDisabled(!is_amd_anti_lag_available());
         ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
         ImGui::EndDisabled();
