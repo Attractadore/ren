@@ -43,13 +43,10 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
     m_features[(usize)RendererFeature::AmdAntiLag] = true;
   }
 
-  m_graphics_queue = rhi::get_queue(m_device, rhi::QueueFamily::Graphics);
-
   return {};
 }
 
 Renderer::~Renderer() {
-  wait_idle();
   rhi::destroy_device(m_device);
   rhi::exit();
 }
@@ -59,7 +56,14 @@ auto Renderer::create_scene(ISwapchain &swapchain)
   return std::make_unique<Scene>(*this, static_cast<Swapchain &>(swapchain));
 }
 
-void Renderer::wait_idle() { rhi::queue_wait_idle(m_graphics_queue).value(); }
+auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
+    -> bool {
+  return rhi::is_queue_family_supported(m_adapter, queue_family);
+}
+
+void Renderer::wait_idle(rhi::QueueFamily queue_family) {
+  rhi::queue_wait_idle(rhi::get_queue(m_device, queue_family)).value();
+}
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Result<Handle<Buffer>, Error> {

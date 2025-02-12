@@ -410,21 +410,22 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
     for (int i : range(num_queues)) {
       VkQueueFlags queue_flags = queues[i].queueFlags;
-      if (queue_flags & VK_QUEUE_GRAPHICS_BIT) {
+      VkQueueFlags graphics_queue_flags =
+          VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+      if ((queue_flags & (graphics_queue_flags)) == graphics_queue_flags) {
+        fmt::println("vk: {}: found graphics queue", device_name);
         adapter.queue_family_indices[(usize)QueueFamily::Graphics] = i;
         continue;
       }
       if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
-        queue_flags |= VK_QUEUE_TRANSFER_BIT;
-      }
-      if (queue_flags ==
-          (queue_flags & (VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT))) {
+        fmt::println("vk: {}: found compute queue", device_name);
         adapter.queue_family_indices[(usize)QueueFamily::Compute] = i;
         continue;
       }
-      if (queue_flags == VK_QUEUE_TRANSFER_BIT and
+      if ((queue_flags & VK_QUEUE_TRANSFER_BIT) and
           adapter.properties.deviceType ==
               VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        fmt::println("vk: {}: found transfer queue", device_name);
         adapter.queue_family_indices[(usize)QueueFamily::Transfer] = i;
         continue;
       }
@@ -432,7 +433,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
     if (adapter.queue_family_indices[(usize)QueueFamily::Graphics] ==
         QUEUE_FAMILY_UNAVAILABLE) {
-      fmt::println("vk: Disable device {}: doesn't have a graphics queue",
+      fmt::println("vk: {}: disable, doesn't have a graphics queue",
                    device_name);
       continue;
     }
@@ -482,7 +483,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
       };
     }
 
-    fmt::println("vk: Found device {}", device_name);
+    fmt::println("vk: {}: enable", device_name);
 
     g_instance.adapters.push_back(adapter);
   }
@@ -893,6 +894,7 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = wait_semaphores[i].semaphore.handle,
         .value = wait_semaphores[i].value,
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     };
   }
   for (usize i : range(signal_semaphores.size())) {
@@ -900,6 +902,7 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = signal_semaphores[i].semaphore.handle,
         .value = signal_semaphores[i].value,
+        .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     };
   }
   VkSubmitInfo2 submit_info = {
@@ -2457,7 +2460,7 @@ constexpr u32 SWAP_CHAIN_IMAGE_NOT_ACQUIRED = -1;
 
 struct SwapChainData {
   Device device = nullptr;
-  VkQueue queue = nullptr;
+  QueueFamily queue_family = {};
   VkSurfaceKHR surface = nullptr;
   VkSwapchainKHR handle = nullptr;
   VkFormat format = VK_FORMAT_UNDEFINED;
@@ -2545,6 +2548,13 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       capabilities2.surfaceCapabilities;
   size = adjust_swap_chain_size(size, capabilities),
   num_images = adjust_swap_chain_image_count(num_images, capabilities);
+  StaticVector<u32, 2> queue_family_indices = {
+      adapter.queue_family_indices[(usize)QueueFamily::Graphics]};
+  if (swap_chain->queue_family == QueueFamily::Compute) {
+    u32 index = adapter.queue_family_indices[(usize)QueueFamily::Compute];
+    ren_assert(index != QUEUE_FAMILY_UNAVAILABLE);
+    queue_family_indices.push_back(index);
+  }
   VkSwapchainKHR old_swap_chain = swap_chain->handle;
   VkSwapchainCreateInfoKHR vk_create_info = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -2555,7 +2565,9 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       .imageExtent = {size.x, size.y},
       .imageArrayLayers = 1,
       .imageUsage = swap_chain->usage,
-      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .imageSharingMode = VK_SHARING_MODE_CONCURRENT,
+      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
+      .pQueueFamilyIndices = queue_family_indices.data(),
       .preTransform = capabilities.currentTransform,
       .compositeAlpha = select_swap_chain_composite_alpha(capabilities),
       .presentMode = present_mode,
@@ -2579,7 +2591,7 @@ auto create_swap_chain(const SwapChainCreateInfo &create_info)
     -> Result<SwapChain> {
   SwapChain swap_chain = new (SwapChainData){
       .device = create_info.device,
-      .queue = create_info.queue.handle,
+      .queue_family = create_info.queue_family,
       .surface = create_info.surface.handle,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .usage = to_vk_image_usage_flags(create_info.usage),
@@ -2670,8 +2682,9 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
       .pSwapchains = &swap_chain->handle,
       .pImageIndices = &swap_chain->image,
   };
-  VkResult result =
-      device->vk.vkQueuePresentKHR(swap_chain->queue, &present_info);
+  VkResult result = device->vk.vkQueuePresentKHR(
+      get_queue(swap_chain->device, swap_chain->queue_family).handle,
+      &present_info);
   swap_chain->image = vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
   if (result and result != VK_SUBOPTIMAL_KHR) {
     return fail(result);

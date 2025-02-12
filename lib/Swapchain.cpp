@@ -24,7 +24,7 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 } // namespace
 
 Swapchain::~Swapchain() {
-  m_renderer->wait_idle();
+  m_renderer->wait_idle(m_queue_family);
   for (Handle<Texture> t : m_textures) {
     m_renderer->destroy(t);
   }
@@ -32,13 +32,18 @@ Swapchain::~Swapchain() {
   rhi::destroy_surface(m_surface);
 }
 
-auto Swapchain::init(Renderer &renderer, SDL_Window *window,
-                     rhi::QueueFamily queue_family) -> Result<void, Error> {
+auto Swapchain::init(Renderer &renderer, SDL_Window *window)
+    -> Result<void, Error> {
   m_renderer = &renderer;
   m_window = window;
-  m_queue_family = queue_family;
 
   ren_try(m_surface, rhi::create_surface(m_window));
+
+  m_queue_family = rhi::QueueFamily::Graphics;
+  if (rhi::is_queue_family_present_supported(
+          m_renderer->get_adapter(), rhi::QueueFamily::Compute, m_surface)) {
+    m_queue_family = rhi::QueueFamily::Compute;
+  }
 
   SDL_GetWindowSizeInPixels(m_window, &m_size.x, &m_size.y);
   m_fullscreen = get_fullscreen_state(m_window);
@@ -71,14 +76,15 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window,
     m_usage = REQUIRED_USAGE;
   }
 
-  fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
+  fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} "
+               "images, present from compute: {}",
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
-               num_images);
+               num_images, m_queue_family == rhi::QueueFamily::Compute);
 
   ren_try(m_swap_chain, rhi::create_swap_chain({
                             .device = device,
                             .surface = m_surface,
-                            .queue = rhi::get_queue(device, queue_family),
+                            .queue_family = m_queue_family,
                             .width = (u32)m_size.x,
                             .height = (u32)m_size.y,
                             .format = m_format,
@@ -200,7 +206,7 @@ auto Swapchain::update_textures() -> Result<void, Error> {
 }
 
 auto Swapchain::update() -> Result<void, Error> {
-  m_renderer->wait_idle();
+  m_renderer->wait_idle(m_queue_family);
 
   auto present_mode = select_present_mode();
   if (!present_mode) {

@@ -987,7 +987,7 @@ auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
 struct SwapChainCreateInfo {
   rhi::Device device = {};
   rhi::Surface surface;
-  rhi::Queue queue;
+  rhi::QueueFamily queue_family;
   u32 width = 0;
   u32 height = 0;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;

@@ -18,9 +18,7 @@ public:
   Swapchain &operator=(const Swapchain &) = delete;
   Swapchain &operator=(Swapchain &&) noexcept;
 
-  auto init(Renderer &renderer, SDL_Window *window,
-            rhi::QueueFamily queue_family = rhi::QueueFamily::Graphics)
-      -> Result<void, Error>;
+  auto init(Renderer &renderer, SDL_Window *window) -> Result<void, Error>;
 
   void set_vsync(VSync vsync) override;
 

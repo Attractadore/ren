@@ -43,7 +43,6 @@ public:
 class Renderer final : public IRenderer {
   rhi::Adapter m_adapter;
   rhi::Device m_device;
-  rhi::Queue m_graphics_queue;
 
   BitSet<NUM_RENDERER_FEAUTURES> m_features;
 
@@ -84,6 +83,8 @@ public:
   auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 
   auto get_rhi_device() const -> rhi::Device { return m_device; }
+
+  auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
       -> Result<Handle<Buffer>, Error>;
@@ -250,7 +251,7 @@ public:
 
   auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
 
-  void wait_idle();
+  void wait_idle(rhi::QueueFamily queue_family);
 
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                         std::chrono::nanoseconds timeout) const
