@@ -18,8 +18,9 @@
 namespace ren {
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
-    : m_arena(renderer),
-      m_device_allocator(renderer, m_arena, 256 * 1024 * 1024) {
+    : m_arena(renderer)
+
+{
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
@@ -59,6 +60,14 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   allocate_per_frame_resources().value();
 
+  m_gfx_allocator.init(renderer, m_arena, 256 * MiB);
+  if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+    m_async_allocator.init(renderer, m_arena, 16 * MiB);
+    for (DeviceBumpAllocator &allocator : m_shared_allocators) {
+      allocator.init(renderer, m_arena, 16 * MiB);
+    }
+  }
+
   next_frame().value();
 }
 
@@ -74,32 +83,40 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
                 .name = fmt::format("Present semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
-    ren_try(Handle<CommandPool> cmd_pool,
-            m_arena.create_command_pool({
-                .name = fmt::format("Command pool {}", i),
-                .queue_family = rhi::QueueFamily::Graphics,
-            }));
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = acquire_semaphore,
         .present_semaphore = present_semaphore,
-        .upload_allocator =
-            UploadBumpAllocator(*m_renderer, m_arena, 64 * 1024 * 1024),
-        .cmd_pool = cmd_pool,
         .descriptor_allocator =
             DescriptorAllocatorScope(m_descriptor_allocator),
     });
+    ScenePerFrameResources &frcs = m_per_frame_resources.back();
+    ren_try(frcs.gfx_cmd_pool, m_arena.create_command_pool({
+                                   .name = fmt::format("Command pool {}", i),
+                                   .queue_family = rhi::QueueFamily::Graphics,
+                               }));
+    if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+      ren_try(frcs.async_cmd_pool,
+              m_arena.create_command_pool({
+                  .name = fmt::format("Command pool {}", i),
+                  .queue_family = rhi::QueueFamily::Compute,
+              }));
+    }
+    frcs.upload_allocator.init(*m_renderer, m_arena, 64 * MiB);
   }
-  m_graphics_time = NUM_FRAMES_IN_FLIGHT;
-  ren_try(m_graphics_semaphore, m_arena.create_semaphore({
-                                    .name = "Graphics queue timeline semaphore",
-                                    .initial_value = m_graphics_time - 1,
-                                }));
+  m_time = NUM_FRAMES_IN_FLIGHT;
+  ren_try(m_semaphore, m_arena.create_semaphore({
+                           .name = "Timeline semaphore",
+                           .initial_value = m_time - 1,
+                       }));
   return {};
 }
 
 auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
   upload_allocator.reset();
-  ren_try_to(renderer.reset_command_pool(cmd_pool));
+  ren_try_to(renderer.reset_command_pool(gfx_cmd_pool));
+  if (async_cmd_pool) {
+    ren_try_to(renderer.reset_command_pool(async_cmd_pool));
+  }
   descriptor_allocator.reset();
   return {};
 }
@@ -109,35 +126,43 @@ auto Scene::next_frame() -> Result<void, Error> {
 
   m_frame_index++;
 
-  ren_try_to(m_renderer->submit(
-      rhi::QueueFamily::Graphics, {}, {},
-      {{.semaphore = m_graphics_semaphore, .value = m_graphics_time}}));
-  m_graphics_time++;
+  ren_try_to(m_renderer->submit(m_swapchain->get_queue_family(), {}, {},
+                                {{.semaphore = m_semaphore, .value = m_time}}));
+  m_time++;
   {
     ren_prof_zone("Scene::wait_for_previous_frame");
     ren_prof_zone_text(
         fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
-    u64 wait_time = m_graphics_time - NUM_FRAMES_IN_FLIGHT;
-    ren_try_to(m_renderer->wait_for_semaphore(m_graphics_semaphore, wait_time));
+    u64 wait_time = m_time - NUM_FRAMES_IN_FLIGHT;
+    ren_try_to(m_renderer->wait_for_semaphore(m_semaphore, wait_time));
   }
 
   m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
   ren_try_to(m_frcs->reset(*m_renderer));
-  m_device_allocator.reset();
 
+  m_gfx_allocator.reset();
   CommandRecorder cmd;
-  ren_try_to(cmd.begin(*m_renderer, m_frcs->cmd_pool));
+  ren_try_to(cmd.begin(*m_renderer, m_frcs->gfx_cmd_pool));
   {
     auto _ = cmd.debug_region("begin-frame");
-    cmd.memory_barrier({
-        .src_stage_mask = rhi::PipelineStage::All,
-        .src_access_mask = rhi::Access::MemoryWrite,
-        .dst_stage_mask = rhi::PipelineStage::All,
-        .dst_access_mask = rhi::Access::MemoryRead | rhi::Access::MemoryWrite,
-    });
+    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
   }
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
   ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
+
+  if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+    m_async_allocator.reset();
+    std::swap(m_shared_allocators[0], m_shared_allocators[1]);
+    m_shared_allocators[0].reset();
+    CommandRecorder cmd;
+    ren_try_to(cmd.begin(*m_renderer, m_frcs->async_cmd_pool));
+    {
+      auto _ = cmd.debug_region("begin-frame");
+      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+    }
+    ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
+    ren_try_to(m_renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer}));
+  }
 
   return {};
 }
@@ -503,11 +528,14 @@ bool Scene::is_amd_anti_lag_enabled() {
 auto Scene::draw() -> expected<void> {
   ren_prof_zone("Scene::draw");
 
-  ren_try_to(m_resource_uploader.upload(*m_renderer, m_frcs->cmd_pool));
+  ren_try_to(m_resource_uploader.upload(*m_renderer, m_frcs->gfx_cmd_pool));
 
   ren_try(RenderGraph render_graph, build_rg());
 
-  ren_try_to(render_graph.execute(m_frcs->cmd_pool));
+  ren_try_to(render_graph.execute({
+      .gfx_cmd_pool = m_frcs->gfx_cmd_pool,
+      .async_cmd_pool = m_frcs->async_cmd_pool,
+  }));
 
   if (is_amd_anti_lag_enabled()) {
     ren_try_to(m_renderer->amd_anti_lag_present(m_frame_index));
@@ -699,7 +727,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                               .swapchain = m_swapchain,
                           });
 
-  return rgb.build(m_device_allocator, m_frcs->upload_allocator);
+  return rgb.build({
+      .gfx_allocator = &m_gfx_allocator,
+      .async_allocator = &m_async_allocator,
+      .shared_allocator = &m_shared_allocators[0],
+      .upload_allocator = &m_frcs->upload_allocator,
+  });
 }
 
 } // namespace ren

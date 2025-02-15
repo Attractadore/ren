@@ -15,7 +15,9 @@ public:
   template <typename T = std::byte>
   using Allocation = Policy::template Allocation<T>;
 
-  BumpAllocator(Renderer &renderer, ResourceArena &arena, usize block_size) {
+  BumpAllocator() = default;
+
+  void init(Renderer &renderer, ResourceArena &arena, usize block_size) {
     m_renderer = &renderer;
     m_arena = &arena;
     m_block_size = block_size;
@@ -23,7 +25,8 @@ public:
   }
 
   BumpAllocator(const BumpAllocator &) = delete;
-  BumpAllocator(BumpAllocator &&) = default;
+
+  BumpAllocator(BumpAllocator &&other) { *this = std::move(other); }
 
   ~BumpAllocator() = default;
 
@@ -181,5 +184,9 @@ using DeviceBumpAllocation = DeviceBumpAllocator::Allocation<T>;
 
 template <typename T>
 using UploadBumpAllocation = UploadBumpAllocator::Allocation<T>;
+
+constexpr usize KiB = 1024;
+
+constexpr usize MiB = 1024 * KiB;
 
 } // namespace ren

@@ -26,7 +26,8 @@ struct ScenePerFrameResources {
   Handle<Semaphore> acquire_semaphore;
   Handle<Semaphore> present_semaphore;
   UploadBumpAllocator upload_allocator;
-  Handle<CommandPool> cmd_pool;
+  Handle<CommandPool> gfx_cmd_pool;
+  Handle<CommandPool> async_cmd_pool;
   DescriptorAllocatorScope descriptor_allocator;
 
 public:
@@ -186,12 +187,14 @@ private:
       m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
   u64 m_frame_index = u64(-1);
-  u64 m_graphics_time = 0;
-  Handle<Semaphore> m_graphics_semaphore;
+  u64 m_time = 0;
+  Handle<Semaphore> m_semaphore;
 
   Pipelines m_pipelines;
 
-  DeviceBumpAllocator m_device_allocator;
+  DeviceBumpAllocator m_gfx_allocator;
+  DeviceBumpAllocator m_async_allocator;
+  std::array<DeviceBumpAllocator, 2> m_shared_allocators;
 
   GenArray<Image> m_images;
   HashMap<SamplerCreateInfo, Handle<Sampler>> m_sampler_cache;

@@ -445,6 +445,13 @@ private:
   RgRtData m_rt_data;
 };
 
+struct RgBuildInfo {
+  NotNull<DeviceBumpAllocator *> gfx_allocator;
+  NotNull<DeviceBumpAllocator *> async_allocator;
+  NotNull<DeviceBumpAllocator *> shared_allocator;
+  NotNull<UploadBumpAllocator *> upload_allocator;
+};
+
 class RgBuilder {
 public:
   RgBuilder(RgPersistent &rgp, Renderer &renderer,
@@ -490,9 +497,7 @@ public:
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
-  auto build(DeviceBumpAllocator &device_allocator,
-             UploadBumpAllocator &upload_allocator)
-      -> Result<RenderGraph, Error>;
+  auto build(const RgBuildInfo &build_info) -> Result<RenderGraph, Error>;
 
 private:
   friend RgPassBuilder;
@@ -579,9 +584,14 @@ private:
   DescriptorAllocatorScope *m_descriptor_allocator = nullptr;
 };
 
+struct RgExecuteInfo {
+  Handle<CommandPool> gfx_cmd_pool;
+  Handle<CommandPool> async_cmd_pool;
+};
+
 class RenderGraph {
 public:
-  auto execute(Handle<CommandPool> cmd_pool) -> Result<void, Error>;
+  auto execute(const RgExecuteInfo &execute_info) -> Result<void, Error>;
 
 private:
   friend RgBuilder;

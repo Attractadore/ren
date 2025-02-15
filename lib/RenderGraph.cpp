@@ -1157,15 +1157,14 @@ void RgBuilder::place_barriers_and_semaphores() {
   }
 }
 
-auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
-                      UploadBumpAllocator &upload_allocator)
+auto RgBuilder::build(const RgBuildInfo &build_info)
     -> Result<RenderGraph, Error> {
   ren_prof_zone("RgBuilder::build");
 
   m_rgp->rotate_textures();
 
   ren_try_to(alloc_textures());
-  alloc_buffers(device_allocator, upload_allocator);
+  alloc_buffers(*build_info.gfx_allocator, *build_info.upload_allocator);
 
 #if 0
   dump_pass_schedule();
@@ -1181,7 +1180,7 @@ auto RgBuilder::build(DeviceBumpAllocator &device_allocator,
   rg.m_renderer = m_renderer;
   rg.m_rgp = m_rgp;
   rg.m_data = m_rt_data;
-  rg.m_upload_allocator = &upload_allocator;
+  rg.m_upload_allocator = build_info.upload_allocator;
   rg.m_resource_descriptor_heap =
       m_descriptor_allocator->get_resource_descriptor_heap();
   rg.m_sampler_descriptor_heap =
@@ -1315,7 +1314,8 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
   m_builder->signal_semaphore(m_pass, semaphore, value);
 }
 
-auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
+auto RenderGraph::execute(const RgExecuteInfo &exec_info)
+    -> Result<void, Error> {
   ren_prof_zone("RenderGraph::execute");
 
   RgRuntime rt;
@@ -1353,7 +1353,7 @@ auto RenderGraph::execute(Handle<CommandPool> cmd_pool) -> Result<void, Error> {
     }
 
     if (!cmd) {
-      ren_try_to(cmd.begin(*m_renderer, cmd_pool));
+      ren_try_to(cmd.begin(*m_renderer, exec_info.gfx_cmd_pool));
     }
 
     {

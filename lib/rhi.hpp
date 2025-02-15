@@ -937,6 +937,13 @@ struct MemoryBarrier {
   AccessMask dst_access_mask;
 };
 
+constexpr MemoryBarrier ALL_MEMORY_BARRIER = {
+    .src_stage_mask = rhi::PipelineStage::All,
+    .src_access_mask = rhi::Access::MemoryWrite,
+    .dst_stage_mask = rhi::PipelineStage::All,
+    .dst_access_mask = rhi::Access::MemoryRead | rhi::Access::MemoryWrite,
+};
+
 struct ImageBarrier {
   Image image;
   ImageSubresourceRange range;
