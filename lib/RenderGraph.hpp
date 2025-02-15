@@ -366,7 +366,8 @@ struct RgSemaphoreSignal {
 
 struct RgBuildData {
   GenArray<RgPass> m_passes;
-  Vector<RgPassId> m_schedule;
+  Vector<RgPassId> m_gfx_schedule;
+  Vector<RgPassId> m_async_schedule;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
   GenArray<RgBuffer> m_buffers;
@@ -405,7 +406,8 @@ struct RgTextureDescriptors {
 };
 
 struct RgRtData {
-  Vector<RgRtPass> m_passes;
+  Vector<RgRtPass> m_gfx_passes;
+  Vector<RgRtPass> m_async_passes;
 #if REN_RG_DEBUG
   GenMap<String, RgPassId> m_pass_names;
 #endif
@@ -520,6 +522,8 @@ public:
 
 private:
   friend RgPassBuilder;
+
+  [[nodiscard]] auto get_queue_family(RgQueue queue) const -> rhi::QueueFamily;
 
   [[nodiscard]] auto add_buffer_use(const RgBufferUse &use) -> RgBufferUseId;
 
