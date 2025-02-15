@@ -29,7 +29,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   *cfg.sdr = ccfg.rcs->sdr;
 
   {
-    auto pass = ccfg.rgb->create_pass({.name = "post-processing"});
+    auto pass = ccfg.rgb->create_pass({
+        .name = "post-processing",
+        .queue = RgQueue::AsyncCompute,
+    });
 
     RgPostProcessingArgs args = {
         .hdr = pass.read_texture(cfg.hdr),
@@ -46,7 +49,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   }
 
   if (scene.exposure.mode == ExposureMode::Automatic) {
-    auto pass = ccfg.rgb->create_pass({.name = "reduce-luminance-histogram"});
+    auto pass = ccfg.rgb->create_pass({
+        .name = "reduce-luminance-histogram",
+        .queue = RgQueue::AsyncCompute,
+    });
 
     RgReduceLuminanceHistogramArgs args = {
         .histogram = pass.read_buffer(histogram),

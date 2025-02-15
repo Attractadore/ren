@@ -7,6 +7,7 @@
 #include "ResourceArena.hpp"
 #include "Texture.hpp"
 #include "core/DynamicBitset.hpp"
+#include "core/Flags.hpp"
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
 #include "core/HashMap.hpp"
@@ -121,10 +122,19 @@ using RgSemaphoreId = Handle<RgSemaphore>;
 
 REN_NEW_TYPE(RgSemaphoreStateId, u32);
 
-enum class RgQueue {
-  Graphics,
-  Compute,
-};
+REN_BEGIN_FLAGS_ENUM(RgQueue){
+    REN_FLAG(Graphics),
+    REN_FLAG(AsyncCompute),
+    None = 0,
+} REN_END_FLAGS_ENUM(RgQueue);
+
+} // namespace ren
+
+REN_ENABLE_FLAGS(ren::RgQueue);
+
+namespace ren {
+
+using RgQueueMask = Flags<RgQueue>;
 
 struct RgPassCreateInfo {
   REN_RG_DEBUG_NAME_TYPE name;
@@ -150,6 +160,7 @@ struct RgRenderPass {
 
 struct RgPass {
   RgQueue queue = {};
+  u64 time = 0;
   SmallVector<RgBufferUseId> read_buffers;
   SmallVector<RgBufferUseId> write_buffers;
   SmallVector<RgTextureUseId> read_textures;
@@ -171,10 +182,10 @@ template <typename T> struct RgBufferCreateInfo {
 };
 
 struct RgPhysicalBuffer {
+  RgQueueMask queues;
   rhi::MemoryHeap heap = {};
   usize size = 0;
   BufferView view;
-  rhi::BufferState state;
 };
 
 struct RgBuffer {
@@ -193,6 +204,7 @@ struct RgBufferUse {
   RgUntypedBufferId buffer;
   u32 offset = 0;
   rhi::BufferState usage;
+  RgQueue queue = {};
 };
 
 struct RgTextureExternalInfo {
@@ -244,6 +256,8 @@ struct RgPhysicalTexture {
   u32 num_array_layers = 1;
   Handle<Texture> handle;
   rhi::ImageState state;
+  RgQueue queue = RgQueue::None;
+  u64 time = 0;
   RgTextureId init_id;
   RgTextureId id;
 };
@@ -264,6 +278,7 @@ struct RgTextureUse {
   RgTextureId texture;
   Handle<Sampler> sampler;
   rhi::ImageState state;
+  RgQueue queue = {};
 };
 
 struct RgSemaphore {
@@ -424,12 +439,12 @@ public:
 private:
   friend class RgBuilder;
   friend class RenderGraph;
-  using TextureArena = detail::ResourceArenaImpl<Texture>;
 
   void rotate_textures();
 
 private:
-  TextureArena m_texture_arena;
+  Renderer *m_renderer = nullptr;
+  ResourceArena m_arena;
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
   DynamicBitset m_external_textures;
@@ -440,6 +455,11 @@ private:
   Vector<RgTextureId> m_frame_textures;
 
   GenArray<RgSemaphore> m_semaphores;
+
+  Handle<Semaphore> m_gfx_semaphore;
+  Handle<Semaphore> m_async_semaphore;
+  u64 m_gfx_time = 0;
+  u64 m_async_time = 0;
 
   RgBuildData m_build_data;
   RgRtData m_rt_data;
@@ -476,7 +496,7 @@ public:
         .heap = m_renderer->get_buffer(slice.buffer).heap,
         .count = slice.count,
     });
-    set_external_buffer(buffer, BufferView(slice), {});
+    set_external_buffer(buffer, BufferView(slice));
     return buffer;
   }
 
@@ -489,8 +509,7 @@ public:
   void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
                      const glm::vec4 &value);
 
-  void set_external_buffer(RgUntypedBufferId id, const BufferView &view,
-                           const rhi::BufferState &usage = {});
+  void set_external_buffer(RgUntypedBufferId id, const BufferView &view);
 
   void set_external_texture(RgTextureId id, Handle<Texture> texture,
                             const rhi::ImageState &usage = {});
@@ -502,9 +521,7 @@ public:
 private:
   friend RgPassBuilder;
 
-  [[nodiscard]] auto add_buffer_use(RgUntypedBufferId buffer,
-                                    const rhi::BufferState &usage,
-                                    u32 offset = 0) -> RgBufferUseId;
+  [[nodiscard]] auto add_buffer_use(const RgBufferUse &use) -> RgBufferUseId;
 
   [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
                                            RgUntypedBufferId parent)
@@ -519,10 +536,7 @@ private:
                                   const rhi::BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
-  [[nodiscard]] auto add_texture_use(RgTextureId texture,
-                                     const rhi::ImageState &usage,
-                                     Handle<Sampler> sampler = NullHandle)
-      -> RgTextureUseId;
+  [[nodiscard]] auto add_texture_use(const RgTextureUse &use) -> RgTextureUseId;
 
   [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
                                             RgTextureId parent) -> RgTextureId;
@@ -563,7 +577,9 @@ private:
 
   auto alloc_textures() -> Result<void, Error>;
 
-  void alloc_buffers(DeviceBumpAllocator &device_allocator,
+  void alloc_buffers(DeviceBumpAllocator &gfx_allocator,
+                     DeviceBumpAllocator &async_allocator,
+                     DeviceBumpAllocator &shared_allocator,
                      UploadBumpAllocator &upload_allocator);
 
   void dump_pass_schedule() const;

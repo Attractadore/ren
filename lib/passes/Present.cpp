@@ -16,7 +16,10 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         ccfg.rgp->create_external_semaphore("present-semaphore");
   }
 
-  auto present = ccfg.rgb->create_pass({.name = "present"});
+  auto present = ccfg.rgb->create_pass({
+      .name = "present",
+      .queue = RgQueue::AsyncCompute,
+  });
 
   struct Resources {
     Swapchain *swapchain = nullptr;
