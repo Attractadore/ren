@@ -6,7 +6,6 @@ namespace ren {
 
 struct ExposurePassConfig {
   NotNull<RgTextureId *> exposure;
-  NotNull<u32 *> temporal_layer;
 };
 
 void setup_exposure_pass(const PassCommonConfig &ccfg,

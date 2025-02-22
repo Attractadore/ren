@@ -26,7 +26,6 @@ void setup_camera_exposure_pass(const PassCommonConfig &ccfg,
     });
   }
   *cfg.exposure = ccfg.rcs->exposure;
-  *cfg.temporal_layer = 0;
 
   float exposure = get_camera_exposure(ccfg.scene->get_camera().params,
                                        ccfg.scene->exposure.ec);
@@ -44,8 +43,7 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
         .width = 1,
         .height = 1,
         .ext =
-            RgTextureTemporalInfo{
-                .num_temporal_layers = 2,
+            RgTexturePersistentInfo{
                 .usage = rhi::TRANSFER_DST_IMAGE,
                 .cb =
                     [](Handle<Texture> texture, Renderer &,
@@ -58,7 +56,6 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
     });
   }
   *cfg.exposure = ccfg.rcs->exposure;
-  *cfg.temporal_layer = 1;
 }
 
 } // namespace

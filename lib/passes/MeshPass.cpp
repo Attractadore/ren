@@ -305,8 +305,7 @@ auto get_render_pass_args(const SceneData &scene,
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
       .eye = info.base.camera.position,
-      .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE,
-                                    info.exposure_temporal_layer),
+      .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
   };
 }
 

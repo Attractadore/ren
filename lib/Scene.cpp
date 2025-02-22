@@ -687,23 +687,19 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                    });
 
   RgTextureId exposure;
-  u32 exposure_temporal_layer = 0;
   setup_exposure_pass(cfg, ExposurePassConfig{
                                .exposure = &exposure,
-                               .temporal_layer = &exposure_temporal_layer,
                            });
 
   RgTextureId depth_buffer;
   RgTextureId hdr;
-  setup_opaque_passes(cfg,
-                      OpaquePassesConfig{
-                          .gpu_scene = &m_gpu_scene,
-                          .rg_gpu_scene = &rg_gpu_scene,
-                          .exposure = exposure,
-                          .exposure_temporal_layer = exposure_temporal_layer,
-                          .depth_buffer = &depth_buffer,
-                          .hdr = &hdr,
-                      });
+  setup_opaque_passes(cfg, OpaquePassesConfig{
+                               .gpu_scene = &m_gpu_scene,
+                               .rg_gpu_scene = &rg_gpu_scene,
+                               .exposure = exposure,
+                               .depth_buffer = &depth_buffer,
+                               .hdr = &hdr,
+                           });
 
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{

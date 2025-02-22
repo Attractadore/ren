@@ -49,7 +49,6 @@ struct OpaquePassConfig {
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
   RgTextureId exposure;
-  u32 exposure_temporal_layer = 0;
 };
 
 void setup_opaque_pass(const PassCommonConfig &ccfg,
@@ -85,7 +84,6 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                           .hi_z = cfg.hi_z,
                       },
                   .exposure = cfg.exposure,
-                  .exposure_temporal_layer = cfg.exposure_temporal_layer,
               });
 }
 
@@ -150,17 +148,15 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
   }
   *cfg.hdr = ccfg.rcs->hdr;
 
-  setup_opaque_pass(ccfg,
-                    OpaquePassConfig{
-                        .gpu_scene = cfg.gpu_scene,
-                        .rg_gpu_scene = cfg.rg_gpu_scene,
-                        .occlusion_culling_mode = occlusion_culling_mode,
-                        .hdr = cfg.hdr,
-                        .depth_buffer = cfg.depth_buffer,
-                        .hi_z = hi_z,
-                        .exposure = cfg.exposure,
-                        .exposure_temporal_layer = cfg.exposure_temporal_layer,
-                    });
+  setup_opaque_pass(ccfg, OpaquePassConfig{
+                              .gpu_scene = cfg.gpu_scene,
+                              .rg_gpu_scene = cfg.rg_gpu_scene,
+                              .occlusion_culling_mode = occlusion_culling_mode,
+                              .hdr = cfg.hdr,
+                              .depth_buffer = cfg.depth_buffer,
+                              .hi_z = hi_z,
+                              .exposure = cfg.exposure,
+                          });
   if (occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
     setup_hi_z_pass();
     setup_opaque_pass(
@@ -172,7 +168,6 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
                   .depth_buffer = cfg.depth_buffer,
                   .hi_z = hi_z,
                   .exposure = cfg.exposure,
-                  .exposure_temporal_layer = cfg.exposure_temporal_layer,
               });
   }
 }
