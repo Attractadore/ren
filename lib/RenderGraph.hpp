@@ -221,6 +221,13 @@ struct RgTextureTemporalInfo {
   RgTextureInitCallback cb;
 };
 
+struct RgTexturePersistentInfo {
+  /// Texture usage in init callback.
+  rhi::ImageState usage;
+  /// Init callback.
+  RgTextureInitCallback cb;
+};
+
 struct RgTextureCreateInfo {
   /// Texture name
   REN_RG_DEBUG_NAME_TYPE name;
@@ -237,7 +244,7 @@ struct RgTextureCreateInfo {
   /// Number of array layers
   u32 num_array_layers = 1;
   /// Additional create info.
-  Variant<Monostate, RgTextureTemporalInfo, RgTextureExternalInfo> ext;
+  Variant<Monostate, RgTextureTemporalInfo, RgTextureExternalInfo, RgTexturePersistentInfo> ext;
 };
 
 struct RgTextureInitInfo {

@@ -25,6 +25,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
 
   rhi::ImageUsageFlags usage = {};
   u32 num_temporal_layers = 1;
+  u32 first_preserved_layer = 1;
   bool is_external = false;
 
   create_info.ext.visit(OverloadSet{
@@ -43,7 +44,14 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
             .cb = std::move(ext.cb),
         };
       },
-  });
+      [&](RgTexturePersistentInfo &ext) {
+        usage = rhi::ImageUsage::TransferSrc | rhi::ImageUsage::TransferDst;
+        first_preserved_layer = 0;
+        m_texture_init_info[physical_texture_id] = {
+            .usage = ext.usage,
+            .cb = std::move(ext.cb),
+        };
+      }});
 
   for (usize i : range(num_temporal_layers)) {
     RgPhysicalTextureId id(physical_texture_id + i);
@@ -96,7 +104,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
         }),
     };
 
-    m_persistent_textures[id] = i > 0;
+    m_persistent_textures[id] = i >= first_preserved_layer;
     m_external_textures[id] = is_external;
   }
 
