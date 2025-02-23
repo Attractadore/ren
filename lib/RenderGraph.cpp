@@ -216,24 +216,19 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
   gd.m_depth_stencil_targets.clear();
 }
 
-auto RgBuilder::get_queue_family(RgQueue queue) const -> rhi::QueueFamily {
-  if (queue == RgQueue::AsyncCompute and
-      m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    return rhi::QueueFamily::Compute;
-  }
-  return rhi::QueueFamily::Graphics;
-}
-
 auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
-  RgPassId pass_id =
-      m_data->m_passes.emplace(RgPass{.queue = create_info.queue});
+  RgQueue queue = create_info.queue;
+  if (!m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+    queue = RgQueue::Graphics;
+  }
+  RgPassId pass_id = m_data->m_passes.emplace(RgPass{.queue = queue});
 #if REN_RG_DEBUG
   m_rt_data->m_pass_names.insert(pass_id, std::move(create_info.name));
 #endif
-  if (get_queue_family(create_info.queue) == rhi::QueueFamily::Graphics) {
-    m_data->m_gfx_schedule.push_back(pass_id);
-  } else {
+  if (queue == RgQueue::AsyncCompute) {
     m_data->m_async_schedule.push_back(pass_id);
+  } else {
+    m_data->m_gfx_schedule.push_back(pass_id);
   }
   return RgPassBuilder(pass_id, *this);
 }
@@ -686,28 +681,28 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
     physical_texture.layout = rhi::ImageLayout::Undefined;
   }
 
+  ren_try(m_rgp->m_gfx_semaphore,
+          m_rgp->m_arena.create_semaphore({
+              .name = "Render graph graphics queue timeline",
+              .type = rhi::SemaphoreType::Timeline,
+              .initial_value = m_rgp->m_gfx_time,
+          }));
+  if (!m_rgp->m_gfx_semaphore_id) {
+    m_rgp->m_gfx_semaphore_id =
+        m_rgp->create_external_semaphore("gfx-queue-timeline");
+  }
+  set_external_semaphore(m_rgp->m_gfx_semaphore_id, m_rgp->m_gfx_semaphore);
   if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    ren_try(m_rgp->m_gfx_semaphore,
-            m_rgp->m_arena.create_semaphore({
-                .name = "Render graph graphics queue timeline",
-                .type = rhi::SemaphoreType::Timeline,
-                .initial_value = m_rgp->m_gfx_time,
-            }));
     ren_try(m_rgp->m_async_semaphore,
             m_rgp->m_arena.create_semaphore({
                 .name = "Render graph async compute queue timeline",
                 .type = rhi::SemaphoreType::Timeline,
                 .initial_value = m_rgp->m_async_time,
             }));
-    if (!m_rgp->m_gfx_semaphore_id) {
-      m_rgp->m_gfx_semaphore_id =
-          m_rgp->create_external_semaphore("gfx-queue-timeline");
-    }
     if (!m_rgp->m_async_semaphore_id) {
       m_rgp->m_async_semaphore_id =
           m_rgp->create_external_semaphore("async-queue-timeline");
     }
-    set_external_semaphore(m_rgp->m_gfx_semaphore_id, m_rgp->m_gfx_semaphore);
     set_external_semaphore(m_rgp->m_async_semaphore_id,
                            m_rgp->m_async_semaphore);
   }
@@ -736,8 +731,7 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
       unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
     case rhi::MemoryHeap::Default: {
       DeviceBumpAllocator *allocator = &gfx_allocator;
-      if (get_queue_family(RgQueue::AsyncCompute) ==
-          rhi::QueueFamily::Compute) {
+      if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
         if (physical_buffer.queues == RgQueue::Graphics) {
           allocator = &gfx_allocator;
         } else if (physical_buffer.queues == RgQueue::AsyncCompute) {
@@ -808,10 +802,6 @@ void RgBuilder::init_runtime_passes() {
 }
 
 void RgBuilder::add_inter_queue_semaphores() {
-  if (m_data->m_async_schedule.empty()) {
-    return;
-  }
-
   usize new_gfx_time = m_rgp->m_gfx_time;
   usize new_async_time = m_rgp->m_async_time;
 
@@ -951,7 +941,9 @@ void RgBuilder::add_inter_queue_semaphores() {
         signal_pass.signal = true;
       }
     }
-    m_data->m_passes[schedule.back()].signal = true;
+    if (not schedule.empty()) {
+      m_data->m_passes[schedule.back()].signal = true;
+    }
   }
 
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::AsyncCompute}) {

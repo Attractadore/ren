@@ -1012,7 +1012,9 @@ auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
                VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .sharingMode = VK_SHARING_MODE_CONCURRENT,
+      .sharingMode = queue_family_indices.size() > 1
+                         ? VK_SHARING_MODE_CONCURRENT
+                         : VK_SHARING_MODE_EXCLUSIVE,
       .queueFamilyIndexCount = (u32)queue_family_indices.size(),
       .pQueueFamilyIndices = queue_family_indices.data(),
   };
@@ -1154,7 +1156,9 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = to_vk_image_usage_flags(create_info.usage),
-      .sharingMode = VK_SHARING_MODE_CONCURRENT,
+      .sharingMode = queue_family_indices.size() > 1
+                         ? VK_SHARING_MODE_CONCURRENT
+                         : VK_SHARING_MODE_EXCLUSIVE,
       .queueFamilyIndexCount = (u32)queue_family_indices.size(),
       .pQueueFamilyIndices = queue_family_indices.data(),
   };
@@ -2565,7 +2569,9 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       .imageExtent = {size.x, size.y},
       .imageArrayLayers = 1,
       .imageUsage = swap_chain->usage,
-      .imageSharingMode = VK_SHARING_MODE_CONCURRENT,
+      .imageSharingMode = queue_family_indices.size() > 1
+                              ? VK_SHARING_MODE_CONCURRENT
+                              : VK_SHARING_MODE_EXCLUSIVE,
       .queueFamilyIndexCount = (u32)queue_family_indices.size(),
       .pQueueFamilyIndices = queue_family_indices.data(),
       .preTransform = capabilities.currentTransform,

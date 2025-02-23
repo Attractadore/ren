@@ -529,8 +529,6 @@ public:
 private:
   friend RgPassBuilder;
 
-  [[nodiscard]] auto get_queue_family(RgQueue queue) const -> rhi::QueueFamily;
-
   [[nodiscard]] auto add_buffer_use(const RgBufferUse &use) -> RgBufferUseId;
 
   [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
