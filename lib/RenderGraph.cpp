@@ -1666,6 +1666,14 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
   }
   m_rgp->m_frame_textures.clear();
 
+  if (m_rgp->m_async_semaphore) {
+    *exec_info.frame_end_semaphore = m_rgp->m_async_semaphore;
+    *exec_info.frame_end_time = m_rgp->m_async_time;
+  } else {
+    *exec_info.frame_end_semaphore = m_rgp->m_gfx_semaphore;
+    *exec_info.frame_end_time = m_rgp->m_gfx_time;
+  }
+
   return {};
 }
 

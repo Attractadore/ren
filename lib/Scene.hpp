@@ -29,6 +29,8 @@ struct ScenePerFrameResources {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
   DescriptorAllocatorScope descriptor_allocator;
+  Handle<Semaphore> end_semaphore;
+  u64 end_time = 0;
 
 public:
   auto reset(Renderer &renderer) -> Result<void, Error>;
@@ -187,8 +189,6 @@ private:
       m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
   u64 m_frame_index = u64(-1);
-  u64 m_time = 0;
-  Handle<Semaphore> m_semaphore;
 
   Pipelines m_pipelines;
 

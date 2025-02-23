@@ -615,6 +615,8 @@ private:
 struct RgExecuteInfo {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
+  NotNull<Handle<Semaphore> *> frame_end_semaphore;
+  NotNull<u64 *> frame_end_time;
 };
 
 class RenderGraph {

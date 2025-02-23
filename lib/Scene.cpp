@@ -103,11 +103,6 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
     }
     frcs.upload_allocator.init(*m_renderer, m_arena, 64 * MiB);
   }
-  m_time = NUM_FRAMES_IN_FLIGHT;
-  ren_try(m_semaphore, m_arena.create_semaphore({
-                           .name = "Timeline semaphore",
-                           .initial_value = m_time - 1,
-                       }));
   return {};
 }
 
@@ -118,6 +113,8 @@ auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
     ren_try_to(renderer.reset_command_pool(async_cmd_pool));
   }
   descriptor_allocator.reset();
+  end_semaphore = {};
+  end_time = 0;
   return {};
 }
 
@@ -125,19 +122,18 @@ auto Scene::next_frame() -> Result<void, Error> {
   ren_prof_zone("Scene::next_frame");
 
   m_frame_index++;
+  m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
 
-  ren_try_to(m_renderer->submit(m_swapchain->get_queue_family(), {}, {},
-                                {{.semaphore = m_semaphore, .value = m_time}}));
-  m_time++;
   {
     ren_prof_zone("Scene::wait_for_previous_frame");
     ren_prof_zone_text(
         fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
-    u64 wait_time = m_time - NUM_FRAMES_IN_FLIGHT;
-    ren_try_to(m_renderer->wait_for_semaphore(m_semaphore, wait_time));
+    if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
+      ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
+                                                m_frcs->end_time));
+    }
   }
 
-  m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
   ren_try_to(m_frcs->reset(*m_renderer));
 
   m_gfx_allocator.reset();
@@ -535,6 +531,8 @@ auto Scene::draw() -> expected<void> {
   ren_try_to(render_graph.execute({
       .gfx_cmd_pool = m_frcs->gfx_cmd_pool,
       .async_cmd_pool = m_frcs->async_cmd_pool,
+      .frame_end_semaphore = &m_frcs->end_semaphore,
+      .frame_end_time = &m_frcs->end_time,
   }));
 
   if (is_amd_anti_lag_enabled()) {
