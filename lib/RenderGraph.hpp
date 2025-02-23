@@ -17,7 +17,6 @@
 #include "core/Variant.hpp"
 
 #include <functional>
-#include <vulkan/vulkan.h>
 
 namespace ren {
 
@@ -160,7 +159,10 @@ struct RgRenderPass {
 
 struct RgPass {
   RgQueue queue = {};
-  u64 time = 0;
+  bool signal = false;
+  bool wait = false;
+  u64 signal_time = 0;
+  u64 wait_time = 0;
   SmallVector<RgBufferUseId> read_buffers;
   SmallVector<RgBufferUseId> write_buffers;
   SmallVector<RgTextureUseId> read_textures;
@@ -179,6 +181,8 @@ template <typename T> struct RgBufferCreateInfo {
   usize count = 1;
   /// Optional default value.
   Optional<T> init;
+  /// Queue on which to perform fill with default value.
+  RgQueue init_queue = RgQueue::Graphics;
 };
 
 struct RgPhysicalBuffer {
@@ -204,12 +208,6 @@ struct RgBufferUse {
   RgUntypedBufferId buffer;
   u32 offset = 0;
   rhi::BufferState usage;
-  RgQueue queue = {};
-};
-
-struct RgTextureExternalInfo {
-  /// Texture usage
-  rhi::ImageUsageFlags usage = {};
 };
 
 struct RgTextureTemporalInfo {
@@ -244,7 +242,7 @@ struct RgTextureCreateInfo {
   /// Number of array layers
   u32 num_array_layers = 1;
   /// Additional create info.
-  Variant<Monostate, RgTextureTemporalInfo, RgTextureExternalInfo, RgTexturePersistentInfo> ext;
+  Variant<Monostate, RgTextureTemporalInfo, RgTexturePersistentInfo> ext;
 };
 
 struct RgTextureInitInfo {
@@ -262,11 +260,13 @@ struct RgPhysicalTexture {
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
   Handle<Texture> handle;
-  rhi::ImageState state;
-  RgQueue queue = RgQueue::None;
-  u64 time = 0;
+  rhi::ImageLayout layout = rhi::ImageLayout::Undefined;
   RgTextureId init_id;
   RgTextureId id;
+  RgQueue last_queue = RgQueue::None;
+  RgQueue queue = RgQueue::None;
+  u64 last_time = 0;
+  u64 time = 0;
 };
 
 struct RgTexture {
@@ -276,16 +276,13 @@ struct RgTexture {
   RgPhysicalTextureId parent;
   RgPassId def;
   RgPassId kill;
-#if REN_RG_DEBUG
   RgTextureId child;
-#endif
 };
 
 struct RgTextureUse {
   RgTextureId texture;
   Handle<Sampler> sampler;
   rhi::ImageState state;
-  RgQueue queue = {};
 };
 
 struct RgSemaphore {
@@ -366,7 +363,7 @@ concept CIsStorageTextureArrayPC = IsStorageTextureArrayPCImpl<T>::value;
 template <typename T>
 using RgPushConstant = detail::RgPushConstantImpl<T>::type;
 
-struct RgSemaphoreSignal {
+struct RgSemaphoreState {
   RgSemaphoreId semaphore;
   u64 value = 0;
 };
@@ -382,7 +379,7 @@ struct RgBuildData {
 
   Vector<RgTextureUse> m_texture_uses;
 
-  Vector<RgSemaphoreSignal> m_semaphore_states;
+  Vector<RgSemaphoreState> m_semaphore_states;
 };
 
 struct RgRtRenderPass {
@@ -452,11 +449,9 @@ private:
   void rotate_textures();
 
 private:
-  Renderer *m_renderer = nullptr;
   ResourceArena m_arena;
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
-  DynamicBitset m_external_textures;
   GenArray<RgTexture> m_textures;
 
   HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
@@ -467,6 +462,8 @@ private:
 
   Handle<Semaphore> m_gfx_semaphore;
   Handle<Semaphore> m_async_semaphore;
+  RgSemaphoreId m_gfx_semaphore_id = {};
+  RgSemaphoreId m_async_semaphore_id = {};
   u64 m_gfx_time = 0;
   u64 m_async_time = 0;
 
@@ -510,13 +507,15 @@ public:
   }
 
   template <typename T>
-  void fill_buffer(RgDebugName name, RgBufferId<T> *buffer, const T &value);
+  void fill_buffer(RgDebugName name, RgBufferId<T> *buffer, const T &value,
+                   RgQueue queue = RgQueue::Graphics);
 
   template <typename T>
-  void copy_buffer(RgBufferId<T> src, RgDebugName name, RgBufferId<T> *dst);
+  void copy_buffer(RgBufferId<T> src, RgDebugName name, RgBufferId<T> *dst,
+                   RgQueue queue = RgQueue::Graphics);
 
   void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
-                     const glm::vec4 &value);
+                     const glm::vec4 &value, RgQueue queue = RgQueue::Graphics);
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view);
 
@@ -592,6 +591,8 @@ private:
                      DeviceBumpAllocator &async_allocator,
                      DeviceBumpAllocator &shared_allocator,
                      UploadBumpAllocator &upload_allocator);
+
+  void add_inter_queue_semaphores();
 
   void dump_pass_schedule() const;
 
@@ -941,15 +942,16 @@ template <typename T>
   RgBufferId<T> buffer(
       create_buffer("", create_info.heap, create_info.count * sizeof(T)));
   if (create_info.init) {
-    fill_buffer(std::move(create_info.name), &buffer, *create_info.init);
+    fill_buffer(std::move(create_info.name), &buffer, *create_info.init,
+                create_info.init_queue);
   }
   return buffer;
 }
 
 template <typename T>
 void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
-                            const T &value) {
-  auto pass = create_pass({"fill-buffer"});
+                            const T &value, RgQueue queue) {
+  auto pass = create_pass({.name = "fill-buffer", .queue = queue});
   auto token =
       pass.write_buffer(std::move(name), buffer, rhi::TRANSFER_DST_BUFFER);
   pass.set_callback(
@@ -967,8 +969,8 @@ void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
 
 template <typename T>
 void RgBuilder::copy_buffer(RgBufferId<T> src, RgDebugName name,
-                            RgBufferId<T> *dst) {
-  auto pass = create_pass({"copy-buffer"});
+                            RgBufferId<T> *dst, RgQueue queue) {
+  auto pass = create_pass({.name = "copy-buffer", .queue = queue});
   auto src_token = pass.read_buffer(src, rhi::TRANSFER_SRC_BUFFER);
   auto dst_token =
       pass.write_buffer(std::move(name), dst, rhi::TRANSFER_DST_BUFFER);

@@ -12,8 +12,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
   RgBufferId<glsl::LuminanceHistogram> histogram;
   if (scene.exposure.mode == ExposureMode::Automatic) {
-    histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>(
-        {.init = glsl::LuminanceHistogram()});
+    histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>({
+        .init = glsl::LuminanceHistogram(),
+        .init_queue = RgQueue::AsyncCompute,
+    });
   }
 
   glm::uvec2 viewport = ccfg.swapchain->get_size();

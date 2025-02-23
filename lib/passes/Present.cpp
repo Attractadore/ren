@@ -49,6 +49,7 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         .dst_layout = rhi::ImageLayout::TransferDst,
     });
 
+#if 0
     VkImageBlit region = {
         .srcSubresource =
             {
@@ -68,6 +69,8 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
     std::memcpy(&region.dstOffsets[1], &backbuffer_size,
                 sizeof(backbuffer_size));
     cmd.blit(src, *backbuffer, {region}, VK_FILTER_LINEAR);
+#endif
+    cmd.copy_texture(src, *backbuffer);
 
     cmd.texture_barrier({
         .resource = {*backbuffer},
