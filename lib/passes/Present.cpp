@@ -18,7 +18,7 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
 
   auto present = ccfg.rgb->create_pass({
       .name = "present",
-      .queue = RgQueue::AsyncCompute,
+      .queue = RgQueue::Async,
   });
 
   struct Resources {

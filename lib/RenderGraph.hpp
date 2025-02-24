@@ -123,7 +123,7 @@ REN_NEW_TYPE(RgSemaphoreStateId, u32);
 
 REN_BEGIN_FLAGS_ENUM(RgQueue){
     REN_FLAG(Graphics),
-    REN_FLAG(AsyncCompute),
+    REN_FLAG(Async),
     None = 0,
 } REN_END_FLAGS_ENUM(RgQueue);
 

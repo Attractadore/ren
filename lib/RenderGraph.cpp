@@ -225,7 +225,7 @@ auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
 #if REN_RG_DEBUG
   m_rt_data->m_pass_names.insert(pass_id, std::move(create_info.name));
 #endif
-  if (queue == RgQueue::AsyncCompute) {
+  if (queue == RgQueue::Async) {
     m_data->m_async_schedule.push_back(pass_id);
   } else {
     m_data->m_gfx_schedule.push_back(pass_id);
@@ -469,11 +469,9 @@ void RgBuilder::dump_pass_schedule() const {
   SmallVector<RgTextureId> create_textures;
   SmallVector<RgTextureId> write_textures;
 
-  for (rhi::QueueFamily queue_family :
-       {rhi::QueueFamily::Graphics, rhi::QueueFamily::Compute}) {
-
+  for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
-    if (queue_family == rhi::QueueFamily::Graphics) {
+    if (queue == RgQueue::Graphics) {
       fmt::println(stderr, "Graphics queue passes:");
     } else {
       schedule = m_data->m_async_schedule;
@@ -687,25 +685,22 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
               .type = rhi::SemaphoreType::Timeline,
               .initial_value = m_rgp->m_gfx_time,
           }));
+  ren_try(m_rgp->m_async_semaphore,
+          m_rgp->m_arena.create_semaphore({
+              .name = "Render graph async compute queue timeline",
+              .type = rhi::SemaphoreType::Timeline,
+              .initial_value = m_rgp->m_async_time,
+          }));
   if (!m_rgp->m_gfx_semaphore_id) {
     m_rgp->m_gfx_semaphore_id =
         m_rgp->create_external_semaphore("gfx-queue-timeline");
   }
-  set_external_semaphore(m_rgp->m_gfx_semaphore_id, m_rgp->m_gfx_semaphore);
-  if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    ren_try(m_rgp->m_async_semaphore,
-            m_rgp->m_arena.create_semaphore({
-                .name = "Render graph async compute queue timeline",
-                .type = rhi::SemaphoreType::Timeline,
-                .initial_value = m_rgp->m_async_time,
-            }));
-    if (!m_rgp->m_async_semaphore_id) {
-      m_rgp->m_async_semaphore_id =
-          m_rgp->create_external_semaphore("async-queue-timeline");
-    }
-    set_external_semaphore(m_rgp->m_async_semaphore_id,
-                           m_rgp->m_async_semaphore);
+  if (!m_rgp->m_async_semaphore_id) {
+    m_rgp->m_async_semaphore_id =
+        m_rgp->create_external_semaphore("async-queue-timeline");
   }
+  set_external_semaphore(m_rgp->m_gfx_semaphore_id, m_rgp->m_gfx_semaphore);
+  set_external_semaphore(m_rgp->m_async_semaphore_id, m_rgp->m_async_semaphore);
 
   // Schedule init passes before all other passes.
   if (m_data->m_gfx_schedule.size() != num_gfx_passes) {
@@ -730,15 +725,14 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
     default:
       unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
     case rhi::MemoryHeap::Default: {
-      DeviceBumpAllocator *allocator = &gfx_allocator;
-      if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-        if (physical_buffer.queues == RgQueue::Graphics) {
-          allocator = &gfx_allocator;
-        } else if (physical_buffer.queues == RgQueue::AsyncCompute) {
-          allocator = &async_allocator;
-        } else {
-          allocator = &shared_allocator;
-        }
+      DeviceBumpAllocator *allocator = nullptr;
+      if (physical_buffer.queues == RgQueue::Graphics) {
+        allocator = &gfx_allocator;
+      } else if (physical_buffer.queues == RgQueue::Async) {
+        allocator = &async_allocator;
+      } else {
+        ren_assert(physical_buffer.queues != RgQueue::None);
+        allocator = &shared_allocator;
       }
       physical_buffer.view = allocator->allocate(physical_buffer.size).slice;
     } break;
@@ -752,11 +746,10 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
 }
 
 void RgBuilder::init_runtime_passes() {
-  for (rhi::QueueFamily queue_family :
-       {rhi::QueueFamily::Graphics, rhi::QueueFamily::Compute}) {
+  for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
     auto *rt_passes = &m_rt_data->m_gfx_passes;
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
-    if (queue_family == rhi::QueueFamily::Compute) {
+    if (queue == RgQueue::Async) {
       rt_passes = &m_rt_data->m_async_passes;
       schedule = m_data->m_async_schedule;
     }
@@ -899,11 +892,11 @@ void RgBuilder::add_inter_queue_semaphores() {
     }
   }
 
-  for (RgQueue queue : {RgQueue::Graphics, RgQueue::AsyncCompute}) {
+  for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
     Span<const RgPassId> other_schedule = m_data->m_async_schedule;
     usize first_signaled_time = m_rgp->m_async_time + 1;
-    if (queue == RgQueue::AsyncCompute) {
+    if (queue == RgQueue::Async) {
       schedule = m_data->m_async_schedule;
       other_schedule = m_data->m_gfx_schedule;
       first_signaled_time = m_rgp->m_gfx_time + 1;
@@ -946,11 +939,11 @@ void RgBuilder::add_inter_queue_semaphores() {
     }
   }
 
-  for (RgQueue queue : {RgQueue::Graphics, RgQueue::AsyncCompute}) {
+  for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
     RgSemaphoreId semaphore = m_rgp->m_gfx_semaphore_id;
     RgSemaphoreId other_semaphore = m_rgp->m_async_semaphore_id;
-    if (queue == RgQueue::AsyncCompute) {
+    if (queue == RgQueue::Async) {
       schedule = m_data->m_async_schedule;
       semaphore = m_rgp->m_async_semaphore_id;
       other_semaphore = m_rgp->m_gfx_semaphore_id;

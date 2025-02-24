@@ -14,7 +14,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   if (scene.exposure.mode == ExposureMode::Automatic) {
     histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>({
         .init = glsl::LuminanceHistogram(),
-        .init_queue = RgQueue::AsyncCompute,
+        .init_queue = RgQueue::Async,
     });
   }
 
@@ -33,7 +33,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   {
     auto pass = ccfg.rgb->create_pass({
         .name = "post-processing",
-        .queue = RgQueue::AsyncCompute,
+        .queue = RgQueue::Async,
     });
 
     RgPostProcessingArgs args = {
@@ -53,7 +53,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   if (scene.exposure.mode == ExposureMode::Automatic) {
     auto pass = ccfg.rgb->create_pass({
         .name = "reduce-luminance-histogram",
-        .queue = RgQueue::AsyncCompute,
+        .queue = RgQueue::Async,
     });
 
     RgReduceLuminanceHistogramArgs args = {
