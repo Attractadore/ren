@@ -25,8 +25,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
     });
   }
 
-  auto counter = ccfg.rgb->create_buffer<u32>(
-      {.name = "hi-z-spd-counter-zero", .init = 0});
+  auto counter = ccfg.rgb->create_buffer<u32>({.init = 0});
 
   auto pass = ccfg.rgb->create_pass({.name = "hi-z-spd"});
 

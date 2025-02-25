@@ -56,13 +56,11 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
   auto meshlet_bucket_commands =
       rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .name = "meshlet-bucket-commands-empty",
           .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
           .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
       });
 
   auto meshlet_bucket_sizes = rgb.create_buffer<u32>({
-      .name = "meshlet-bucket-sizes-zero",
       .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
       .init = 0,
   });
@@ -70,15 +68,10 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   auto meshlet_cull_data =
       rgb.create_buffer<glsl::MeshletCullData>({.count = buckets_size});
 
-  *cfg.batch_sizes = rgb.create_buffer<u32>({
-      .name = "batch-sizes-zero",
-      .count = num_batches,
-      .init = 0,
-  });
+  *cfg.batch_sizes = rgb.create_buffer<u32>({.count = num_batches, .init = 0});
 
   *cfg.batch_prepare_commands =
       rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .name = "batch-prepare-commands-empty",
           .count = num_batches,
           .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
       });
@@ -86,7 +79,6 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   auto num_commands = rgb.create_buffer<u32>({.init = 0});
 
   auto sort_command = rgb.create_buffer<glsl::DispatchIndirectCommand>({
-      .name = "sort-command-empty",
       .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
   });
 
@@ -146,8 +138,9 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                        num_instances);
   }
 
-  auto unsorted_batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>(
-      {.count = glsl::MAX_DRAW_MESHLETS});
+  auto unsorted_batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>({
+      .count = glsl::MAX_DRAW_MESHLETS,
+  });
 
   auto unsorted_batch_command_batch_ids =
       rgb.create_buffer<glsl_BatchId>({.count = glsl::MAX_DRAW_MESHLETS});
@@ -225,11 +218,9 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     auto block_sums = rgb.create_buffer<u32>(
         {.count = glsl::get_stream_scan_block_sum_count(num_batches)});
 
-    auto scan_num_started =
-        rgb.create_buffer<u32>({.name = "scan-num-started-zero", .init = 0});
+    auto scan_num_started = rgb.create_buffer<u32>({.init = 0});
 
-    auto scan_num_finished =
-        rgb.create_buffer<u32>({.name = "scan-num-finished-zero", .init = 0});
+    auto scan_num_finished = rgb.create_buffer<u32>({.init = 0});
 
     auto pass = rgb.create_pass({"batch-sizes-scan"});
 
@@ -254,8 +245,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     RgBufferId<u32> batch_out_offsets =
         rgb.create_buffer<u32>({.count = num_batches});
 
-    rgb.copy_buffer(*cfg.batch_offsets, "init-batch-out-offsets",
-                    &batch_out_offsets);
+    rgb.copy_buffer(*cfg.batch_offsets, &batch_out_offsets);
 
     auto pass = rgb.create_pass({"meshlet-sorting"});
 

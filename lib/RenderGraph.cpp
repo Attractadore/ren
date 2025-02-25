@@ -308,15 +308,21 @@ auto RgBuilder::write_buffer(RgPassId pass_id, RgDebugName name,
                              const rhi::BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   ren_assert(src);
-  ren_assert(m_data->m_buffers[src].def != pass_id);
+  RgBuffer &src_buffer = m_data->m_buffers[src];
+  ren_assert(src_buffer.def != pass_id);
   RgPass &pass = m_data->m_passes[pass_id];
-  m_data->m_physical_buffers[m_data->m_buffers[src].parent].queues |=
-      pass.queue;
+  m_data->m_physical_buffers[src_buffer.parent].queues |= pass.queue;
   RgBufferUseId use = add_buffer_use({
       .buffer = src,
       .usage = usage,
   });
   pass.write_buffers.push_back(use);
+#if REN_RG_DEBUG
+  if (src_buffer.name == "rg#") {
+    ren_assert(not name.empty());
+    src_buffer.name = fmt::format("rg#{}", name);
+  }
+#endif
   RgUntypedBufferId dst = create_virtual_buffer(pass_id, std::move(name), src);
   return {dst, RgUntypedBufferToken(use)};
 }

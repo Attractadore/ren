@@ -514,6 +514,12 @@ public:
   void copy_buffer(RgBufferId<T> src, RgDebugName name, RgBufferId<T> *dst,
                    RgQueue queue = RgQueue::Graphics);
 
+  template <typename T>
+  void copy_buffer(RgBufferId<T> src, RgBufferId<T> *dst,
+                   RgQueue queue = RgQueue::Graphics) {
+    copy_buffer(src, "rg#", dst, queue);
+  }
+
   void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
                      const glm::vec4 &value, RgQueue queue = RgQueue::Graphics);
 
@@ -939,12 +945,21 @@ private:
 template <typename T>
 [[nodiscard]] auto RgBuilder::create_buffer(RgBufferCreateInfo<T> &&create_info)
     -> RgBufferId<T> {
+  if (!create_info.init) {
+    return RgBufferId<T>(create_buffer(std::move(create_info.name),
+                                       create_info.heap,
+                                       create_info.count * sizeof(T)));
+  }
   RgBufferId<T> buffer(
       create_buffer("", create_info.heap, create_info.count * sizeof(T)));
-  if (create_info.init) {
-    fill_buffer(std::move(create_info.name), &buffer, *create_info.init,
-                create_info.init_queue);
+  RgDebugName name = std::move(create_info.name);
+#if REN_RG_DEBUG
+  if (name.empty()) {
+    name = "rg#";
   }
+#endif
+  fill_buffer(std::move(name), &buffer, *create_info.init,
+              create_info.init_queue);
   return buffer;
 }
 
