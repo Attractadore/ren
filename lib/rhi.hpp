@@ -1015,8 +1015,8 @@ auto get_swap_chain_size(SwapChain swap_chain) -> glm::uvec2;
 auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
     -> Result<void>;
 
-auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images)
-    -> Result<void>;
+auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                       ImageUsageFlags usage = {}) -> Result<void>;
 
 auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
     -> Result<void>;

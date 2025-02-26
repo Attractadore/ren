@@ -437,8 +437,9 @@ public:
   [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
       -> RgTextureId;
 
-  [[nodiscard]] auto create_external_semaphore(RgDebugName name)
-      -> RgSemaphoreId;
+  [[nodiscard]] auto create_texture(RgDebugName name) -> RgTextureId;
+
+  [[nodiscard]] auto create_semaphore(RgDebugName name) -> RgSemaphoreId;
 
   void reset();
 
@@ -452,6 +453,7 @@ private:
   ResourceArena m_arena;
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
+  DynamicBitset m_external_textures;
   GenArray<RgTexture> m_textures;
 
   HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
@@ -525,8 +527,7 @@ public:
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view);
 
-  void set_external_texture(RgTextureId id, Handle<Texture> texture,
-                            const rhi::ImageState &usage = {});
+  void set_external_texture(RgTextureId id, Handle<Texture> texture);
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 

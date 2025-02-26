@@ -2650,8 +2650,13 @@ auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
   return {};
 }
 
-auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images)
-    -> Result<void> {
+auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                       ImageUsageFlags usage) -> Result<void> {
+  VkImageUsageFlags vk_usage = to_vk_image_usage_flags(usage);
+  if (!vk_usage) {
+    vk_usage = swap_chain->usage;
+  }
+  swap_chain->usage = vk_usage;
   return recreate_swap_chain(swap_chain, size, num_images,
                              swap_chain->present_mode);
 }

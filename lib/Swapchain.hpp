@@ -28,6 +28,8 @@ public:
 
   auto get_usage() const -> rhi::ImageUsageFlags { return m_usage; }
 
+  void set_usage(rhi::ImageUsageFlags usage);
+
   auto get_queue_family() const -> rhi::QueueFamily { return m_queue_family; }
 
   auto acquire_texture(Handle<Semaphore> signal_semaphore)

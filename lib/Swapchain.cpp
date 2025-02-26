@@ -1,4 +1,5 @@
 #include "Swapchain.hpp"
+#include "Formats.hpp"
 #include "Profiler.hpp"
 #include "Renderer.hpp"
 #include "Scene.hpp"
@@ -63,7 +64,7 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
     ren_try_to(rhi::get_surface_formats(adapter, m_surface, &num_formats,
                                         formats.data()));
     auto it = std::ranges::find_if(formats, [](TinyImageFormat format) {
-      return format == TinyImageFormat_B8G8R8A8_SRGB;
+      return format == SWAP_CHAIN_FORMAT;
     });
     m_format = it != formats.end() ? *it : formats.front();
   }
@@ -71,8 +72,8 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
   {
     ren_try(rhi::ImageUsageFlags supported_usage,
             rhi::get_surface_supported_image_usage(adapter, m_surface));
-    constexpr Flags<rhi::ImageUsage> REQUIRED_USAGE =
-        rhi::ImageUsage::TransferDst;
+    constexpr rhi::ImageUsageFlags REQUIRED_USAGE =
+        rhi::ImageUsage::UnorderedAccess;
     ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
     m_usage = REQUIRED_USAGE;
   }
@@ -107,6 +108,13 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
 void Swapchain::set_vsync(VSync vsync) {
   if (m_vsync != vsync) {
     m_vsync = vsync;
+    m_dirty = true;
+  }
+}
+
+void Swapchain::set_usage(rhi::ImageUsageFlags usage) {
+  if (m_usage != usage) {
+    m_usage = usage;
     m_dirty = true;
   }
 }
@@ -217,7 +225,12 @@ auto Swapchain::update() -> Result<void, Error> {
                *num_images);
 
   ren_try_to(rhi::set_present_mode(m_swap_chain, *present_mode));
-  ren_try_to(rhi::resize_swap_chain(m_swap_chain, m_size, *num_images));
+  ren_try(rhi::ImageUsageFlags supported_usage,
+          rhi::get_surface_supported_image_usage(m_renderer->get_adapter(),
+                                                 m_surface));
+  ren_assert(m_usage & supported_usage);
+  ren_try_to(
+      rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
   for (Handle<Texture> t : m_textures) {

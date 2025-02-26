@@ -1,5 +1,4 @@
 #include "PostProcessing.hpp"
-#include "../Formats.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../Swapchain.hpp"
@@ -20,14 +19,6 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
   glm::uvec2 viewport = ccfg.swapchain->get_size();
 
-  if (!ccfg.rcs->sdr) {
-    ccfg.rcs->sdr = ccfg.rgp->create_texture({
-        .name = "sdr",
-        .format = SDR_FORMAT,
-        .width = viewport.x,
-        .height = viewport.y,
-    });
-  }
   *cfg.sdr = ccfg.rcs->sdr;
 
   {
@@ -35,6 +26,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .name = "post-processing",
         .queue = RgQueue::Async,
     });
+
+    pass.wait_semaphore(ccfg.rcs->acquire_semaphore);
 
     RgPostProcessingArgs args = {
         .hdr = pass.read_texture(cfg.hdr),

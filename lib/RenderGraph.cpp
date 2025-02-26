@@ -21,6 +21,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
   m_physical_textures.resize(m_physical_textures.size() +
                              RG_MAX_TEMPORAL_LAYERS);
   m_persistent_textures.resize(m_physical_textures.size());
+  m_external_textures.resize(m_physical_textures.size());
 
   rhi::ImageUsageFlags usage = {};
   u32 num_temporal_layers = 1;
@@ -98,8 +99,39 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
   return m_physical_textures[physical_texture_id].id;
 }
 
-auto RgPersistent::create_external_semaphore(RgDebugName name)
-    -> RgSemaphoreId {
+auto RgPersistent::create_texture(RgDebugName name) -> RgTextureId {
+#if REN_RG_DEBUG
+  ren_assert(not name.empty());
+#endif
+
+  RgPhysicalTextureId id(m_physical_textures.size());
+  m_physical_textures.resize(m_physical_textures.size() +
+                             RG_MAX_TEMPORAL_LAYERS);
+  m_persistent_textures.resize(m_physical_textures.size());
+  m_external_textures.resize(m_physical_textures.size());
+  m_external_textures[id] = true;
+
+#if REN_RG_DEBUG
+  String handle_name = std::move(name);
+  name = fmt::format("rg#{}", handle_name);
+#endif
+
+  m_physical_textures[id] = {
+#if REN_RG_DEBUG
+      .name = std::move(handle_name),
+#endif
+      .id = m_textures.insert({
+#if REN_RG_DEBUG
+          .name = std::move(name),
+#endif
+          .parent = id,
+      }),
+  };
+
+  return m_physical_textures[id].id;
+}
+
+auto RgPersistent::create_semaphore(RgDebugName name) -> RgSemaphoreId {
   RgSemaphoreId semaphore = m_semaphores.emplace();
 #if REN_RG_DEBUG
   m_semaphores[semaphore].name = std::move(name);
@@ -111,6 +143,7 @@ void RgPersistent::reset() {
   m_arena.clear();
   m_physical_textures.clear();
   m_persistent_textures.clear();
+  m_external_textures.clear();
   m_textures.clear();
   m_texture_init_info.clear();
   m_semaphores.clear();
@@ -440,6 +473,31 @@ void RgBuilder::set_external_buffer(RgUntypedBufferId id,
   physical_buffer.view = view;
 }
 
+void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle) {
+  const Texture &texture = m_renderer->get_texture(handle);
+  RgPhysicalTextureId ptex_id = m_rgp->m_textures[id].parent;
+  ren_assert(m_rgp->m_external_textures[ptex_id]);
+  RgPhysicalTexture &ptex = m_rgp->m_physical_textures[ptex_id];
+  ptex = {
+#if REN_RG_DEBUG
+      .name = std::move(ptex.name),
+#endif
+      .format = texture.format,
+      .usage = texture.usage,
+      .size = texture.size,
+      .num_mip_levels = texture.num_mip_levels,
+      .num_array_layers = texture.num_array_layers,
+      .handle = handle,
+      .layout = ptex.layout,
+      .init_id = ptex.init_id,
+      .id = ptex.id,
+      .last_queue = RgQueue::None,
+      .queue = RgQueue::None,
+      .last_time = 0,
+      .time = 0,
+  };
+}
+
 auto RgBuilder::add_semaphore_state(RgSemaphoreId semaphore, u64 value)
     -> RgSemaphoreStateId {
   RgSemaphoreStateId id(m_data->m_semaphore_states.size());
@@ -609,15 +667,17 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
   auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
     const RgTextureUse &use = m_data->m_texture_uses[use_id];
     const RgTexture &texture = m_rgp->m_textures[use.texture];
-    RgPhysicalTextureId physical_texture_id = texture.parent;
-    RgPhysicalTexture &physical_texture =
-        m_rgp->m_physical_textures[physical_texture_id];
+    RgPhysicalTextureId ptex_id = texture.parent;
+    RgPhysicalTexture &ptex = m_rgp->m_physical_textures[ptex_id];
     rhi::ImageUsageFlags usage = get_texture_usage_flags(use.state.access_mask);
-    bool needs_usage_update =
-        (physical_texture.usage | usage) != physical_texture.usage;
-    physical_texture.usage |= usage;
-    if (!physical_texture.handle or needs_usage_update) {
-      need_alloc = true;
+    if (m_rgp->m_external_textures[ptex_id]) {
+      ren_assert((ptex.usage & usage) == usage);
+    } else {
+      bool needs_usage_update = (ptex.usage | usage) != ptex.usage;
+      ptex.usage |= usage;
+      if (!ptex.handle or needs_usage_update) {
+        need_alloc = true;
+      }
     }
   };
   for (const auto &[_, pass] : m_data->m_passes) {
@@ -659,8 +719,8 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
   m_rgp->m_arena.clear();
   for (auto i : range(m_rgp->m_physical_textures.size())) {
     RgPhysicalTexture &physical_texture = m_rgp->m_physical_textures[i];
-    // Skip unused temporal textures.
-    if (!physical_texture.usage) {
+    // Skip unused temporal or external textures.
+    if (!physical_texture.usage or m_rgp->m_external_textures[i]) {
       continue;
     }
     // Preprocessor statement inside function-like macro is UB
@@ -698,12 +758,11 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
               .initial_value = m_rgp->m_async_time,
           }));
   if (!m_rgp->m_gfx_semaphore_id) {
-    m_rgp->m_gfx_semaphore_id =
-        m_rgp->create_external_semaphore("gfx-queue-timeline");
+    m_rgp->m_gfx_semaphore_id = m_rgp->create_semaphore("gfx-queue-timeline");
   }
   if (!m_rgp->m_async_semaphore_id) {
     m_rgp->m_async_semaphore_id =
-        m_rgp->create_external_semaphore("async-queue-timeline");
+        m_rgp->create_semaphore("async-queue-timeline");
   }
   set_external_semaphore(m_rgp->m_gfx_semaphore_id, m_rgp->m_gfx_semaphore);
   set_external_semaphore(m_rgp->m_async_semaphore_id, m_rgp->m_async_semaphore);

@@ -663,6 +663,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   if (dirty) {
     m_rgp->reset();
     m_pass_rcs = {};
+    m_pass_rcs.backbuffer = m_rgp->create_texture("backbuffer");
+    m_pass_rcs.sdr = m_pass_rcs.backbuffer;
   }
 
   RgBuilder rgb(*m_rgp, *m_renderer, m_frcs->descriptor_allocator);
@@ -699,6 +701,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                .hdr = &hdr,
                            });
 
+  if (!cfg.rcs->acquire_semaphore) {
+    cfg.rcs->acquire_semaphore = m_rgp->create_semaphore("acquire-semaphore");
+  }
+
+  rhi::ImageUsageFlags swap_chain_usage = rhi::ImageUsage::UnorderedAccess;
+
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{
                                         .hdr = hdr,
@@ -707,12 +715,15 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                     });
 #if REN_IMGUI
   if (m_imgui_context) {
+    swap_chain_usage |= rhi::ImageUsage::RenderTarget;
     setup_imgui_pass(cfg, ImGuiPassConfig{
                               .ctx = m_imgui_context,
                               .sdr = &sdr,
                           });
   }
 #endif
+
+  m_swapchain->set_usage(swap_chain_usage);
 
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,

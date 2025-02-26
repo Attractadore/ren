@@ -67,6 +67,9 @@ void main() {
       // Tone mapping
       color.rgb /= (1.0f + luminance);
 
+      // Gamma correction.
+      color.rgb = pow(color.rgb, vec3(1.0f / 2.4f));
+
       image_store(pc.sdr, ivec2(x, y), color);
     }
   }
