@@ -55,6 +55,11 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   m_gpu_scene = init_gpu_scene(m_arena);
 
+  m_data.settings.async_compute =
+      m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
+  m_data.settings.present_from_compute =
+      m_swapchain->is_queue_family_supported(rhi::QueueFamily::Compute);
+
   m_data.settings.amd_anti_lag =
       m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
@@ -146,7 +151,7 @@ auto Scene::next_frame() -> Result<void, Error> {
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
   ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
 
-  if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+  if (m_data.settings.async_compute) {
     m_async_allocator.reset();
     std::swap(m_shared_allocators[0], m_shared_allocators[1]);
     m_shared_allocators[0].reset();
@@ -539,7 +544,10 @@ auto Scene::draw() -> expected<void> {
     ren_try_to(m_renderer->amd_anti_lag_present(m_frame_index));
   }
 
-  ren_try_to(m_swapchain->present(m_frcs->present_semaphore));
+  auto present_qf = m_data.settings.present_from_compute
+                        ? rhi::QueueFamily::Compute
+                        : rhi::QueueFamily::Graphics;
+  ren_try_to(m_swapchain->present(present_qf, m_frcs->present_semaphore));
 
   prof::mark_frame();
 
@@ -554,6 +562,21 @@ void Scene::draw_imgui() {
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
       SceneGraphicsSettings &settings = m_data.settings;
+
+      ImGui::SeparatorText("Async compute");
+      {
+        ImGui::BeginDisabled(
+            !m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute));
+
+        ImGui::Checkbox("Async compute", &settings.async_compute);
+
+        ImGui::BeginDisabled(
+            !m_swapchain->is_queue_family_supported(rhi::QueueFamily::Compute));
+        ImGui::Checkbox("Present from compute", &settings.present_from_compute);
+        ImGui::EndDisabled();
+
+        ImGui::EndDisabled();
+      }
 
       ImGui::SeparatorText("Latency");
       {
@@ -654,6 +677,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
         }
       };
 
+  set_if_changed(m_pass_cfg.async_compute, m_data.settings.async_compute);
+
   set_if_changed(m_pass_cfg.exposure, m_data.exposure.mode);
 
   set_if_changed(m_pass_cfg.viewport, m_swapchain->get_size());
@@ -662,6 +687,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   if (dirty) {
     m_rgp->reset();
+    m_rgp->set_async_compute_enabled(m_pass_cfg.async_compute);
     m_pass_rcs = {};
     m_pass_rcs.backbuffer = m_rgp->create_texture("backbuffer");
     m_pass_rcs.sdr = m_pass_rcs.backbuffer;

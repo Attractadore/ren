@@ -10,6 +10,7 @@ struct Pipelines;
 struct Samplers;
 
 struct PassPersistentConfig {
+  bool async_compute = true;
   glm::uvec2 viewport;
   ExposureMode exposure = {};
   rhi::ImageUsageFlags backbuffer_usage = {};

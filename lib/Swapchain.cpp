@@ -26,7 +26,7 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 } // namespace
 
 Swapchain::~Swapchain() {
-  m_renderer->wait_idle(m_queue_family);
+  m_renderer->wait_idle();
   for (Handle<Texture> t : m_textures) {
     m_renderer->destroy(t);
   }
@@ -40,12 +40,6 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
   m_window = window;
 
   ren_try(m_surface, rhi::create_surface(m_window));
-
-  m_queue_family = rhi::QueueFamily::Graphics;
-  if (rhi::is_queue_family_present_supported(
-          m_renderer->get_adapter(), rhi::QueueFamily::Compute, m_surface)) {
-    m_queue_family = rhi::QueueFamily::Compute;
-  }
 
   SDL_GetWindowSizeInPixels(m_window, &m_size.x, &m_size.y);
   m_fullscreen = get_fullscreen_state(m_window);
@@ -79,14 +73,13 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
   }
 
   fmt::println("Create swap chain: {}x{}, fullscreen: {}, vsync: {}, {} "
-               "images, present from compute: {}",
+               "images",
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
-               num_images, m_queue_family == rhi::QueueFamily::Compute);
+               num_images);
 
   ren_try(m_swap_chain, rhi::create_swap_chain({
                             .device = device,
                             .surface = m_surface,
-                            .queue_family = m_queue_family,
                             .width = (u32)m_size.x,
                             .height = (u32)m_size.y,
                             .format = m_format,
@@ -208,7 +201,7 @@ auto Swapchain::update_textures() -> Result<void, Error> {
 }
 
 auto Swapchain::update() -> Result<void, Error> {
-  m_renderer->wait_idle(m_queue_family);
+  m_renderer->wait_idle();
 
   auto present_mode = select_present_mode();
   if (!present_mode) {
@@ -282,12 +275,12 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
   }
 }
 
-auto Swapchain::present(Handle<Semaphore> wait_semaphore)
+auto Swapchain::present(rhi::QueueFamily qf, Handle<Semaphore> wait_semaphore)
     -> Result<void, Error> {
   ren_prof_zone("Swapchain::present");
-  auto result = rhi::present(
-      m_swap_chain,
-      rhi::Semaphore{m_renderer->get_semaphore(wait_semaphore).handle});
+  auto result = rhi::present(rhi::get_queue(m_renderer->get_rhi_device(), qf),
+                             m_swap_chain,
+                             m_renderer->get_semaphore(wait_semaphore).handle);
   if (!result) {
     if (result.error() == rhi::Error::OutOfDate) {
       return update();
@@ -295,6 +288,11 @@ auto Swapchain::present(Handle<Semaphore> wait_semaphore)
     return Failure(result.error());
   }
   return {};
+}
+
+auto Swapchain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {
+  return rhi::is_queue_family_present_supported(m_renderer->get_adapter(), qf,
+                                                m_surface);
 }
 
 } // namespace ren

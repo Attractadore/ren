@@ -130,6 +130,8 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device>;
 
 void destroy_device(Device device);
 
+auto device_wait_idle(Device device) -> Result<void>;
+
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
 struct SemaphoreState {
@@ -994,7 +996,6 @@ auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
 struct SwapChainCreateInfo {
   rhi::Device device = {};
   rhi::Surface surface;
-  rhi::QueueFamily queue_family;
   u32 width = 0;
   u32 height = 0;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
@@ -1023,7 +1024,8 @@ auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
 
 auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32>;
 
-auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void>;
+auto present(Queue queue, SwapChain swap_chain, Semaphore semaphore)
+    -> Result<void>;
 
 auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
     -> Result<void>;

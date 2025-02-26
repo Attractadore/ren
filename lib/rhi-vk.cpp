@@ -856,6 +856,14 @@ void destroy_device(Device device) {
   delete device;
 }
 
+auto device_wait_idle(Device device) -> Result<void> {
+  VkResult result = device->vk.vkDeviceWaitIdle(device->handle);
+  if (result < 0) {
+    return fail(result);
+  }
+  return {};
+}
+
 namespace {
 
 auto get_adapter(Adapter adapter) -> const AdapterData & {
@@ -2464,8 +2472,7 @@ constexpr u32 SWAP_CHAIN_IMAGE_NOT_ACQUIRED = -1;
 
 struct SwapChainData {
   Device device = nullptr;
-  QueueFamily queue_family = {};
-  VkSurfaceKHR surface = nullptr;
+  Surface surface = {};
   VkSwapchainKHR handle = nullptr;
   VkFormat format = VK_FORMAT_UNDEFINED;
   VkImageUsageFlags usage = 0;
@@ -2539,7 +2546,7 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
   VkPhysicalDeviceSurfaceInfo2KHR surface_info = {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
       .pNext = &present_mode_info,
-      .surface = swap_chain->surface,
+      .surface = swap_chain->surface.handle,
   };
   VkSurfaceCapabilities2KHR capabilities2 = {
       .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
@@ -2554,15 +2561,15 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
   num_images = adjust_swap_chain_image_count(num_images, capabilities);
   StaticVector<u32, 2> queue_family_indices = {
       adapter.queue_family_indices[(usize)QueueFamily::Graphics]};
-  if (swap_chain->queue_family == QueueFamily::Compute) {
-    u32 index = adapter.queue_family_indices[(usize)QueueFamily::Compute];
-    ren_assert(index != QUEUE_FAMILY_UNAVAILABLE);
-    queue_family_indices.push_back(index);
+  if (is_queue_family_present_supported(device->adapter, QueueFamily::Compute,
+                                        swap_chain->surface)) {
+    queue_family_indices.push_back(
+        adapter.queue_family_indices[(usize)QueueFamily::Compute]);
   }
   VkSwapchainKHR old_swap_chain = swap_chain->handle;
   VkSwapchainCreateInfoKHR vk_create_info = {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-      .surface = swap_chain->surface,
+      .surface = swap_chain->surface.handle,
       .minImageCount = num_images,
       .imageFormat = swap_chain->format,
       .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
@@ -2597,8 +2604,7 @@ auto create_swap_chain(const SwapChainCreateInfo &create_info)
     -> Result<SwapChain> {
   SwapChain swap_chain = new (SwapChainData){
       .device = create_info.device,
-      .queue_family = create_info.queue_family,
-      .surface = create_info.surface.handle,
+      .surface = create_info.surface,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .usage = to_vk_image_usage_flags(create_info.usage),
       .size = {create_info.width, create_info.height},
@@ -2681,7 +2687,8 @@ auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32> {
   return swap_chain->image;
 }
 
-auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
+auto present(Queue queue, SwapChain swap_chain, Semaphore semaphore)
+    -> Result<void> {
   ren_assert(swap_chain);
   ren_assert(swap_chain->image != vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED);
   Device device = swap_chain->device;
@@ -2693,9 +2700,7 @@ auto present(SwapChain swap_chain, Semaphore semaphore) -> Result<void> {
       .pSwapchains = &swap_chain->handle,
       .pImageIndices = &swap_chain->image,
   };
-  VkResult result = device->vk.vkQueuePresentKHR(
-      get_queue(swap_chain->device, swap_chain->queue_family).handle,
-      &present_info);
+  VkResult result = device->vk.vkQueuePresentKHR(queue.handle, &present_info);
   swap_chain->image = vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
   if (result and result != VK_SUBOPTIMAL_KHR) {
     return fail(result);

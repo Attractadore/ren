@@ -441,6 +441,8 @@ public:
 
   [[nodiscard]] auto create_semaphore(RgDebugName name) -> RgSemaphoreId;
 
+  void set_async_compute_enabled(bool enabled);
+
   void reset();
 
 private:
@@ -461,6 +463,8 @@ private:
   Vector<RgTextureId> m_frame_textures;
 
   GenArray<RgSemaphore> m_semaphores;
+
+  bool m_async_compute = true;
 
   Handle<Semaphore> m_gfx_semaphore;
   Handle<Semaphore> m_async_semaphore;

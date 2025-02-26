@@ -42,6 +42,9 @@ struct SceneExposureSettings {
 };
 
 struct SceneGraphicsSettings {
+  bool async_compute = true;
+  bool present_from_compute = true;
+
   // Instance culling and LOD
   bool instance_frustum_culling = true;
   bool instance_occulusion_culling = true;

@@ -113,10 +113,7 @@ public:
   void clear() {
     usize count = (get_type_arena<Ts>().size() + ...);
     if (count > 0) {
-      m_renderer->wait_idle(rhi::QueueFamily::Graphics);
-      if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-        m_renderer->wait_idle(rhi::QueueFamily::Compute);
-      }
+      m_renderer->wait_idle();
       (clear<Ts>(), ...);
     }
   }

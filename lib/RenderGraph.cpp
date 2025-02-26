@@ -139,6 +139,10 @@ auto RgPersistent::create_semaphore(RgDebugName name) -> RgSemaphoreId {
   return semaphore;
 }
 
+void RgPersistent::set_async_compute_enabled(bool enabled) {
+  m_async_compute = enabled;
+}
+
 void RgPersistent::reset() {
   m_arena.clear();
   m_physical_textures.clear();
@@ -251,7 +255,7 @@ RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
 
 auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
   RgQueue queue = create_info.queue;
-  if (!m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+  if (!m_rgp->m_async_compute) {
     queue = RgQueue::Graphics;
   }
   RgPassId pass_id = m_data->m_passes.emplace(RgPass{.queue = queue});
@@ -811,6 +815,10 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
 }
 
 void RgBuilder::init_runtime_passes() {
+  if (not m_rgp->m_async_compute) {
+    ren_assert(m_data->m_async_schedule.empty());
+  }
+
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
     auto *rt_passes = &m_rt_data->m_gfx_passes;
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
@@ -1716,7 +1724,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
   }
   m_rgp->m_frame_textures.clear();
 
-  if (m_rgp->m_async_semaphore) {
+  if (m_rgp->m_async_compute) {
     *exec_info.frame_end_semaphore = m_rgp->m_async_semaphore;
     *exec_info.frame_end_time = m_rgp->m_async_time;
   } else {

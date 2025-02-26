@@ -61,9 +61,7 @@ auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
   return rhi::is_queue_family_supported(m_adapter, queue_family);
 }
 
-void Renderer::wait_idle(rhi::QueueFamily queue_family) {
-  rhi::queue_wait_idle(rhi::get_queue(m_device, queue_family)).value();
-}
+void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Result<Handle<Buffer>, Error> {

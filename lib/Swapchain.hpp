@@ -30,12 +30,13 @@ public:
 
   void set_usage(rhi::ImageUsageFlags usage);
 
-  auto get_queue_family() const -> rhi::QueueFamily { return m_queue_family; }
-
   auto acquire_texture(Handle<Semaphore> signal_semaphore)
       -> Result<Handle<Texture>, Error>;
 
-  auto present(Handle<Semaphore> wait_semaphore) -> Result<void, Error>;
+  auto present(rhi::QueueFamily queue_family, Handle<Semaphore> wait_semaphore)
+      -> Result<void, Error>;
+
+  auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
 private:
   auto select_present_mode() -> Result<rhi::PresentMode, Error>;
@@ -48,7 +49,6 @@ private:
   SDL_Window *m_window = nullptr;
   rhi::Surface m_surface = {};
   rhi::SwapChain m_swap_chain = {};
-  rhi::QueueFamily m_queue_family = {};
   SmallVector<Handle<Texture>> m_textures;
   TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags m_usage = {};

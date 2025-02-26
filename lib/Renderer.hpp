@@ -251,7 +251,7 @@ public:
 
   auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
 
-  void wait_idle(rhi::QueueFamily queue_family);
+  void wait_idle();
 
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                         std::chrono::nanoseconds timeout) const
