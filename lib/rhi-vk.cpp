@@ -80,7 +80,6 @@ struct InstanceData {
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
-    VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -644,13 +643,6 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   };
 
   add_features(uint8_features);
-
-  VkPhysicalDeviceMaintenance5FeaturesKHR maintenance5_features = {
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_5_FEATURES_KHR,
-      .maintenance5 = true,
-  };
-
-  add_features(maintenance5_features);
 
   // Add optional features.
   // TODO: check that they are supported.
@@ -1810,6 +1802,8 @@ auto to_vk_color_component_mask(ColorComponentMask mask)
 auto create_graphics_pipeline(Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline> {
+  VkResult result = VK_SUCCESS;
+
   const ShaderInfo *shaders[] = {
       &create_info.ts,
       &create_info.ms,
@@ -1823,7 +1817,7 @@ auto create_graphics_pipeline(Device device,
       VK_SHADER_STAGE_VERTEX_BIT,
       VK_SHADER_STAGE_FRAGMENT_BIT,
   };
-  VkShaderModuleCreateInfo module_info[MAX_NUM_STAGES] = {};
+  VkShaderModule modules[MAX_NUM_STAGES] = {};
   VkPipelineShaderStageCreateInfo stage_info[MAX_NUM_STAGES] = {};
   VkSpecializationInfo specialization_info[MAX_NUM_STAGES] = {};
 
@@ -1852,11 +1846,19 @@ auto create_graphics_pipeline(Device device,
           .size = c.size,
       };
     }
-    module_info[num_stages] = {
+    VkShaderModuleCreateInfo module_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = shader.code.size(),
         .pCode = (const u32 *)shader.code.data(),
     };
+    result = device->vk.vkCreateShaderModule(device->handle, &module_info,
+                                             nullptr, &modules[num_stages]);
+    if (result) {
+      for (VkShaderModule module : modules) {
+        device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
+      }
+      return fail(result);
+    }
     specialization_info[num_stages] = {
         .mapEntryCount = num_specialization_constants,
         .pMapEntries = specialization_map.data() + specialization_map_offset,
@@ -1866,8 +1868,8 @@ auto create_graphics_pipeline(Device device,
     specialization_map_offset += num_specialization_constants;
     stage_info[num_stages] = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = &module_info[num_stages],
         .stage = stage_bits[i],
+        .module = modules[num_stages],
         .pName = shader.entry_point,
         .pSpecializationInfo = &specialization_info[num_stages],
     };
@@ -1999,8 +2001,11 @@ auto create_graphics_pipeline(Device device,
   };
 
   Pipeline pipeline;
-  VkResult result = device->vk.vkCreateGraphicsPipelines(
+  result = device->vk.vkCreateGraphicsPipelines(
       device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  for (VkShaderModule module : modules) {
+    device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
+  }
   if (result) {
     return fail(result);
   }
@@ -2011,6 +2016,8 @@ auto create_graphics_pipeline(Device device,
 auto create_compute_pipeline(Device device,
                              const ComputePipelineCreateInfo &create_info)
     -> Result<Pipeline> {
+  VkResult result = VK_SUCCESS;
+
   const ShaderInfo &cs = create_info.cs;
 
   VkShaderModuleCreateInfo module_info = {
@@ -2018,6 +2025,12 @@ auto create_compute_pipeline(Device device,
       .codeSize = cs.code.size(),
       .pCode = (const u32 *)cs.code.data(),
   };
+  VkShaderModule module;
+  result = device->vk.vkCreateShaderModule(device->handle, &module_info,
+                                           nullptr, &module);
+  if (result) {
+    return fail(result);
+  }
 
   SmallVector<VkSpecializationMapEntry> specialization_map(
       cs.specialization.constants.size());
@@ -2041,8 +2054,8 @@ auto create_compute_pipeline(Device device,
       .stage =
           {
               .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-              .pNext = &module_info,
               .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+              .module = module,
               .pName = cs.entry_point,
               .pSpecializationInfo = &specialization_info,
           },
@@ -2050,8 +2063,9 @@ auto create_compute_pipeline(Device device,
   };
 
   Pipeline pipeline;
-  VkResult result = device->vk.vkCreateComputePipelines(
+  result = device->vk.vkCreateComputePipelines(
       device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
   if (result) {
     return fail(result);
   }
