@@ -8,6 +8,7 @@
 #include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/color_space.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tiny_gltf.h>
@@ -767,17 +768,20 @@ private:
 
 class ViewGlTFApp : public ImGuiApp {
 public:
-  ViewGlTFApp(const fs::path &path, unsigned scene)
+  ViewGlTFApp(const fs::path &path, unsigned scene_idx)
       : ImGuiApp(fmt::format("View glTF: {}", path).c_str()) {
     [&]() -> Result<void> {
       OK(tinygltf::Model model, load_gltf(path));
       SceneWalker scene_walker(std::move(model), get_scene());
-      TRY_TO(scene_walker.walk(scene));
-      OK(auto directional_light, get_scene().create_directional_light({
+      TRY_TO(scene_walker.walk(scene_idx));
+      ren::IScene &scene = get_scene();
+      OK(auto directional_light, scene.create_directional_light({
                                      .color = {1.0f, 1.0f, 1.0f},
                                      .illuminance = 100'000.0f,
                                      .origin = {0.0f, 0.0f, 1.0f},
                                  }));
+      scene.set_environment_color(
+          glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
       return {};
     }()
                  .transform_error(throw_error)
