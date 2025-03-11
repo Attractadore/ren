@@ -6,6 +6,7 @@
 namespace ren {
 
 struct Pipelines {
+  Handle<ComputePipeline> compute_dhr_lut;
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
   Handle<ComputePipeline> exclusive_scan_uint32;
@@ -15,6 +16,7 @@ struct Pipelines {
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;
+  Handle<GraphicsPipeline> skybox_pass;
   Handle<ComputePipeline> post_processing;
   Handle<ComputePipeline> reduce_luminance_histogram;
   Handle<GraphicsPipeline> imgui_pass;

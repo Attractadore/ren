@@ -54,6 +54,7 @@ void main() {
     DirectionalLight light = DEREF(pc.directional_lights[i]);
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
+  result.xyz += const_env_lighting(normal, view, color.xyz, metallic, roughness, pc.env_luminance, pc.dhr_lut);
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
   result.xyz *= exposure;

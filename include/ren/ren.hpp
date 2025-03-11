@@ -306,6 +306,8 @@ struct IScene {
   virtual void set_directional_light(DirectionalLightId light,
                                      const DirectionalLightDesc &desc) = 0;
 
+  virtual void set_environment_color(const glm::vec3 &luminance) = 0;
+
   // Call to use graphics driver low-latency APIs.
   [[nodiscard]] virtual auto delay_input() -> expected<void> = 0;
 

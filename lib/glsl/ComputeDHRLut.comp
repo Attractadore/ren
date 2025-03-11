@@ -1,0 +1,102 @@
+#include "ComputeDHRLut.h"
+#include "Lighting.h"
+
+const uint NUM_THREADS = 256;
+
+const uint NUM_SAMPLES = 1024;
+const uint NUM_THREAD_SAMPLES = NUM_SAMPLES / NUM_THREADS;
+
+shared float s_a[NUM_THREADS];
+shared float s_b[NUM_THREADS];
+
+// Calculate the Directional-Hemispherical Reflectance R(v) function's
+// coefficients, used for IBL and energy-conserving diffuse, as described in
+// "Real Shading in Unreal Engine 4":
+// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+// clang-format off
+// R(v) is defined as:
+// R(v) = \int f_spec(l, v) dot(n, l) dl
+// We can factor F_0 outside the integral:
+// R(v) = \int f_spec(l, v) / F(h, l) * F(h, l) dot(n, l) dl
+// F(h, l) = F_0 + (1 - F_0) * (1 - dot(h, l))^5 = F_0 * (1 - (1 - dot(h, l))^5) + (1 - dot(h, l))^5 = F_0 * (1 - F_c(h, l)) + F_c(h, l)
+// R(v) = \int f_spec / F * (F_0 * (1 - F_c) + F_c) dot(n, l) dl
+// R(v) = F_0 \int f_spec / F * (1 - F_c) dot(n, l) dl + \int f_spec / F * F_c dot(n, l) dl
+// R(v) is a scale and offset applied to F_0:
+// R(v) = F_0 * a + b
+// clang-format on
+// a and b can be precomputed and stored in a 2D LUT.
+vec2 integrate_dhr_coefs(float roughness, float nv, uint first_sample, uint last_sample) {
+  float a = 0.0f;
+  float b = 0.0f;
+
+  vec3 v = vec3(sqrt(1.0f - nv * nv), 0.0f, nv);
+  vec3 n = vec3(0.0f, 0.0f, 1.0f);
+
+  // Solve both integrals using Monte-Carlo integration with importance
+  // sampling:
+  // clang-format off
+  // b = \int f_spec / F * F_c dot(n, l) dl
+  // b = \int F_c GD / (4 * dot(n, v)) dl
+  // b ~= 1 / N \sum_0^(N-1) F_c GD / (4 * dot(n, v) * pdf(l))
+  // The GGX PDF is:
+  // pdf(h) = D dot(h, n)
+  // 1 / pdf(l) = (1 / pdf(h)) det(dl / dh) = 1 / (pdf(h) * det(dh / dl))
+  // pdf(l) = pdf(h) * det(dh / dl)
+  // det(dh / dl) is derived in e.g. "Notes on the Ward BRDF":
+  // https://www.graphics.cornell.edu/pubs/2005/Wal05.pdf
+  // pdf(l) = D dot(h, n) / (4 * dot(h, v))
+  // b ~= 1 / N \sum_0^(N-1) F_c G dot(h, v) / (dot(h, n) * dot(n, v))
+  // a ~= 1 / N \sum_0^(N-1) (1 - F_c) G dot(h, v) / (dot(h, n) * dot(n, v))
+  // clang-format on
+  for (uint i = first_sample; i < last_sample; ++i) {
+    vec2 xy = hammersley(i, NUM_SAMPLES);
+    vec3 h = importance_sample_ggx(xy, roughness, n);
+    float hv = dot(h, v);
+    float hn = dot(h, n);
+    vec3 l = 2.0f * hv * n - v;
+    float nl = dot(n, l);
+    // Ignore light directions bellow the horizon.
+    if (nl > 0.0f) {
+      float g = g_smith(roughness, nl, nv) * hv / (nv * hn);
+      float fc = pow(1.0f - hv, 5.0f);
+      a += (1 - fc) * g;
+      b += fc * g;
+    }
+  }
+
+  return vec2(a, b);
+}
+
+LOCAL_SIZE(NUM_THREADS);
+void main()
+{
+  vec2 uv = (gl_WorkGroupID.xy + 0.5f) / vec2(image_size(pc.lut));
+  float roughness = uv.x;
+  float nv = uv.y;
+
+  uint first_sample = gl_LocalInvocationIndex * NUM_THREAD_SAMPLES;
+  uint last_sample = first_sample + NUM_THREAD_SAMPLES;
+  vec2 ab = integrate_dhr_coefs(roughness, nv, first_sample, last_sample);
+  ab = subgroupAdd(ab);
+
+  if (subgroupElect()) {
+    s_a[gl_SubgroupID] = ab.x;
+    s_b[gl_SubgroupID] = ab.y;
+  }
+  barrier();
+
+  if (gl_SubgroupID != 0) {
+    return;
+  }
+  
+  ab = vec2(0.0f, 0.0f);
+  for (uint i = gl_SubgroupInvocationID; i < gl_NumSubgroups; i += gl_SubgroupSize) {
+    ab.x += s_a[i];
+    ab.y += s_b[i];
+  }
+  ab = subgroupAdd(ab) / NUM_SAMPLES;
+
+  if (subgroupElect()) {
+    image_store(pc.lut, ivec2(gl_WorkGroupID.xy), vec4(ab, 0.0f, 0.0f));
+  }
+}

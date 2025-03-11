@@ -891,6 +891,19 @@ public:
     m_builder->set_callback(m_pass, std::move(cb));
   }
 
+  void dispatch(Handle<ComputePipeline> pipeline, const auto &args,
+                u32 num_groups_x, u32 num_groups_y = 1, u32 num_groups_z = 1) {
+    set_callback([pipeline, args, num_groups_x, num_groups_y,
+                  num_groups_z](Renderer &renderer, const RgRuntime &rg,
+                                CommandRecorder &cmd) {
+      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                               rg.get_sampler_descriptor_heap());
+      cmd.bind_compute_pipeline(pipeline);
+      rg.set_push_constants(cmd, args);
+      cmd.dispatch(num_groups_x, num_groups_y, num_groups_z);
+    });
+  }
+
   void dispatch_grid(Handle<ComputePipeline> pipeline, const auto &args,
                      u32 size, u32 block_size_mult = 1) {
     dispatch_grid_3d(pipeline, args, {size, 1, 1}, {block_size_mult, 1, 1});

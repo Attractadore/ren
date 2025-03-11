@@ -60,6 +60,7 @@ add_library(ren
   Scene.cpp
   Swapchain.cpp
   Texture.cpp
+  passes/ComputeDHRLut.cpp
   passes/Exposure.cpp
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp
@@ -67,7 +68,8 @@ add_library(ren
   passes/MeshPass.cpp
   passes/Opaque.cpp
   passes/PostProcessing.cpp
-  passes/Present.cpp)
+  passes/Present.cpp
+  passes/Skybox.cpp)
 add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(ren

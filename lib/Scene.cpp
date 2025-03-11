@@ -6,12 +6,14 @@
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
+#include "passes/ComputeDHRLut.hpp"
 #include "passes/Exposure.hpp"
 #include "passes/GpuSceneUpdate.hpp"
 #include "passes/ImGui.hpp"
 #include "passes/Opaque.hpp"
 #include "passes/PostProcessing.hpp"
 #include "passes/Present.hpp"
+#include "passes/Skybox.hpp"
 
 #include <fmt/format.h>
 
@@ -47,6 +49,15 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
                       .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
                   })
                   .value(),
+      .mip_nearest_clamp =
+          m_arena
+              .create_sampler({
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              })
+              .value(),
   };
 
   m_pipelines = load_pipelines(m_arena).value();
@@ -717,15 +728,25 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                .exposure = &exposure,
                            });
 
+  RgTextureId dhr_lut;
+  setup_compute_dhr_lut_pass(cfg, {.dhr_lut = &dhr_lut});
+
   RgTextureId depth_buffer;
   RgTextureId hdr;
   setup_opaque_passes(cfg, OpaquePassesConfig{
                                .gpu_scene = &m_gpu_scene,
                                .rg_gpu_scene = &rg_gpu_scene,
                                .exposure = exposure,
+                               .dhr_lut = dhr_lut,
                                .depth_buffer = &depth_buffer,
                                .hdr = &hdr,
                            });
+
+  setup_skybox_pass(cfg, SkyboxPassConfig{
+                             .exposure = exposure,
+                             .hdr = &hdr,
+                             .depth_buffer = depth_buffer,
+                         });
 
   if (!cfg.rcs->acquire_semaphore) {
     cfg.rcs->acquire_semaphore = m_rgp->create_semaphore("acquire-semaphore");

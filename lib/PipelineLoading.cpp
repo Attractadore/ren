@@ -5,6 +5,7 @@
 #include "core/Errors.hpp"
 #include "glsl/Opaque.h"
 
+#include "ComputeDHRLut.comp.hpp"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
 #include "HiZSpd.comp.hpp"
@@ -18,6 +19,8 @@
 #include "PostProcessing.comp.hpp"
 #include "PrepareBatch.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
+#include "Skybox.frag.hpp"
+#include "Skybox.vert.hpp"
 
 #include <spirv_reflect.h>
 
@@ -126,6 +129,27 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
   return pipelines;
 }
 
+auto load_skybox_pass_pipeline(ResourceArena &arena)
+    -> Result<Handle<GraphicsPipeline>, Error> {
+  auto vs = Span(SkyboxVS, SkyboxVSSize).as_bytes();
+  auto fs = Span(SkyboxFS, SkyboxFSSize).as_bytes();
+  ren_try(Handle<PipelineLayout> layout,
+          create_pipeline_layout(arena, {vs, fs}, "Skybox pass"));
+  return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
+      .name = "Skybox pass graphics pipeline",
+      .layout = layout,
+      .vs = {vs},
+      .fs = {fs},
+      .depth_stencil_state =
+          {
+              .depth_test_enable = true,
+              .depth_compare_op = rhi::CompareOp::Equal,
+          },
+      .rtv_formats = {HDR_FORMAT},
+      .dsv_format = DEPTH_FORMAT,
+  });
+}
+
 auto load_imgui_pipeline(ResourceArena &arena, TinyImageFormat format)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(ImGuiVS, ImGuiVSSize).as_bytes();
@@ -170,6 +194,8 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   load_compute_pipeline(Span(shader, shader##Size).as_bytes(), name)
 
   Pipelines pipelines;
+  ren_try(pipelines.compute_dhr_lut,
+          compute_pipeline(ComputeDHRLutCS, "Compute DHR LUT"));
   ren_try(
       pipelines.instance_culling_and_lod,
       compute_pipeline(InstanceCullingAndLODCS, "Instance culling and LOD"));
@@ -184,6 +210,7 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.hi_z, compute_pipeline(HiZSpdCS, "Hi-Z SPD"));
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
+  ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
   ren_try(pipelines.post_processing,
           compute_pipeline(PostProcessingCS, "Post-processing"));
   ren_try(pipelines.reduce_luminance_histogram,

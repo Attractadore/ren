@@ -35,6 +35,8 @@ function(add_shader shader_glsl)
   add_dependencies(ren ${shader_target})
 endfunction()
 
+add_shader(ComputeDHRLut.comp)
+
 add_shader(InstanceCullingAndLOD.comp)
 add_shader(MeshletCulling.comp)
 add_shader(MeshletSorting.comp)
@@ -44,6 +46,8 @@ add_shader(PrepareBatch.comp)
 add_shader(EarlyZ.vert)
 add_shader(Opaque.vert)
 add_shader(Opaque.frag)
+add_shader(Skybox.vert)
+add_shader(Skybox.frag)
 add_shader(ImGui.vert)
 add_shader(ImGui.frag)
 

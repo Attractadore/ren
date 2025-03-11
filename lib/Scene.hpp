@@ -81,6 +81,8 @@ struct SceneData {
 
   GenArray<DirectionalLight> directional_lights;
 
+  glm::vec3 env_luminance = {};
+
 public:
   const Camera &get_camera() const {
     ren_assert(camera);
@@ -91,6 +93,7 @@ public:
 struct Samplers {
   Handle<Sampler> hi_z_gen;
   Handle<Sampler> hi_z;
+  Handle<Sampler> mip_nearest_clamp;
 };
 
 class Scene final : public IScene {
@@ -142,6 +145,10 @@ public:
 
   void set_directional_light(DirectionalLightId light,
                              const DirectionalLightDesc &desc) override;
+
+  void set_environment_color(const glm::vec3 &luminance) override {
+    m_data.env_luminance = luminance;
+  }
 
   auto delay_input() -> expected<void> override;
 

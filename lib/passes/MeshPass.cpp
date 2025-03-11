@@ -264,7 +264,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   }
 } // namespace
 
-auto get_render_pass_args(const SceneData &, const DepthOnlyMeshPassInfo &info,
+auto get_render_pass_args(const PassCommonConfig &cfg,
+                          const DepthOnlyMeshPassInfo &info,
                           RgPassBuilder &pass) {
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
   return RgEarlyZArgs{
@@ -278,7 +279,7 @@ auto get_render_pass_args(const SceneData &, const DepthOnlyMeshPassInfo &info,
   };
 }
 
-auto get_render_pass_args(const SceneData &scene,
+auto get_render_pass_args(const PassCommonConfig &cfg,
                           const OpaqueMeshPassInfo &info, RgPassBuilder &pass) {
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
   return RgOpaqueArgs{
@@ -291,11 +292,14 @@ auto get_render_pass_args(const SceneData &scene,
           pass.read_buffer(gpu_scene.materials, rhi::FS_RESOURCE_BUFFER),
       .directional_lights = pass.read_buffer(gpu_scene.directional_lights,
                                              rhi::FS_RESOURCE_BUFFER),
-      .num_directional_lights = u32(scene.directional_lights.size()),
+      .num_directional_lights = u32(cfg.scene->directional_lights.size()),
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
       .eye = info.base.camera.position,
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
+      .env_luminance = info.env_luminance,
+      .dhr_lut = pass.read_texture(info.dhr_lut, rhi::FS_RESOURCE_IMAGE,
+                                   cfg.samplers->mip_nearest_clamp),
   };
 }
 
@@ -393,7 +397,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
     rcs.batch_sizes =
         pass.read_buffer(cfg.batch_sizes, rhi::INDIRECT_COMMAND_BUFFER, batch);
 
-    auto args = get_render_pass_args(*ccfg.scene, info, pass);
+    auto args = get_render_pass_args(ccfg, info, pass);
 
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
