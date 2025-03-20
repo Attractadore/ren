@@ -388,9 +388,9 @@ auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
   return std::bit_cast<ImageId>(h);
 }
 
-auto Scene::create_material(const MaterialCreateInfo &desc)
+auto Scene::create_material(const MaterialCreateInfo &info)
     -> expected<MaterialId> {
-  auto get_sampled_texture_id =
+  auto get_descriptor =
       [&](const auto &texture) -> Result<glsl::SampledTexture2D, Error> {
     if (texture.image) {
       return get_or_create_texture(std::bit_cast<Handle<Image>>(texture.image),
@@ -399,20 +399,19 @@ auto Scene::create_material(const MaterialCreateInfo &desc)
     return {};
   };
 
-  ren_try(auto base_color_texture,
-          get_sampled_texture_id(desc.base_color_texture));
-  ren_try(auto metallic_roughness_texture,
-          get_sampled_texture_id(desc.metallic_roughness_texture));
-  ren_try(auto normal_texture, get_sampled_texture_id(desc.normal_texture));
+  ren_try(auto base_color_texture, get_descriptor(info.base_color_texture));
+  ren_try(auto orm_texture, get_descriptor(info.orm_texture));
+  ren_try(auto normal_texture, get_descriptor(info.normal_texture));
 
   Handle<Material> handle = m_data.materials.insert({
-      .base_color = desc.base_color_factor,
+      .base_color = info.base_color_factor,
       .base_color_texture = base_color_texture,
-      .metallic = desc.metallic_factor,
-      .roughness = desc.roughness_factor,
-      .metallic_roughness_texture = metallic_roughness_texture,
+      .occlusion_strength = info.orm_texture.strength,
+      .roughness = info.roughness_factor,
+      .metallic = info.metallic_factor,
+      .orm_texture = orm_texture,
+      .normal_scale = info.normal_texture.scale,
       .normal_texture = normal_texture,
-      .normal_scale = desc.normal_texture.scale,
   });
   m_gpu_scene.update_materials.push_back(handle);
   m_gpu_scene.material_update_data.push_back(m_data.materials[handle]);

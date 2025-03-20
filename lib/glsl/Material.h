@@ -10,11 +10,12 @@ GLSL_NAMESPACE_BEGIN
 struct Material {
   vec4 base_color;
   SampledTexture2D base_color_texture;
-  float metallic;
+  float occlusion_strength;
   float roughness;
-  SampledTexture2D metallic_roughness_texture;
-  SampledTexture2D normal_texture;
+  float metallic;
+  SampledTexture2D orm_texture;
   float normal_scale;
+  SampledTexture2D normal_texture;
 };
 
 GLSL_DEFINE_PTR_TYPE(Material, 4);

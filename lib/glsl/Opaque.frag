@@ -28,12 +28,14 @@ void main() {
     color *= texture(material.base_color_texture, a_uv);
   }
 
-  float metallic = material.metallic;
+  float occlusion = 1.0f;
   float roughness = material.roughness;
-  if (OPAQUE_FEATURE_UV && !IS_NULL_DESC(material.metallic_roughness_texture)) {
-    vec4 tex = texture(material.metallic_roughness_texture, a_uv);
-    metallic *= tex.b;
-    roughness *= tex.g;
+  float metallic = material.metallic;
+  if (OPAQUE_FEATURE_UV && !IS_NULL_DESC(material.orm_texture)) {
+    vec4 orm = texture(material.orm_texture, a_uv);
+    occlusion = 1.0f - material.occlusion_strength * (1.0f - orm.r);
+    roughness *= orm.g;
+    metallic *= orm.b;
   }
 
   vec3 normal = a_normal;
@@ -54,7 +56,7 @@ void main() {
     DirectionalLight light = DEREF(pc.directional_lights[i]);
     result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
   }
-  result.xyz += const_env_lighting(normal, view, color.xyz, metallic, roughness, pc.env_luminance, pc.dhr_lut);
+  result.xyz += occlusion * const_env_lighting(normal, view, color.xyz, metallic, roughness, pc.env_luminance, pc.dhr_lut);
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
   result.xyz *= exposure;

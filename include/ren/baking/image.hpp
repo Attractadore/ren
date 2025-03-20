@@ -23,10 +23,12 @@ auto bake_normal_map_to_file(const TextureInfo &info, FILE *out)
 auto bake_normal_map_to_memory(const TextureInfo &info)
     -> expected<std::tuple<void *, size_t>>;
 
-auto bake_metallic_roughness_map_to_file(const TextureInfo &info, FILE *out)
+auto bake_orm_map_to_file(const TextureInfo &roughness_metallic_info,
+                          const TextureInfo &occlusion_info, FILE *out)
     -> expected<void>;
 
-auto bake_metallic_roughness_map_to_memory(const TextureInfo &info)
+auto bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
+                            const TextureInfo &occlusion_info = {})
     -> expected<std::tuple<void *, size_t>>;
 
 } // namespace ren

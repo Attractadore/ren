@@ -38,8 +38,8 @@ public:
       std::free(blob_data);
 
       OK(ren::MaterialId material, scene.create_material({
-                                       .metallic_factor = 1.0f,
                                        .roughness_factor = 0.5f,
+                                       .metallic_factor = 1.0f,
                                    }));
 
       OK(ren::MeshInstanceId model, scene.create_mesh_instance({

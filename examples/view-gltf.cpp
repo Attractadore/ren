@@ -251,7 +251,7 @@ template <> struct std::hash<GltfMeshDesc> {
 enum class GltfImageType {
   Color,
   Normal,
-  MetallicRoughness,
+  ORM,
 };
 
 struct GltfImageDesc {
@@ -561,8 +561,8 @@ private:
       OK(blob, ren::bake_color_map_to_memory(info));
     } else if (desc.type == GltfImageType::Normal) {
       OK(blob, ren::bake_normal_map_to_memory(info));
-    } else if (desc.type == GltfImageType::MetallicRoughness) {
-      OK(blob, ren::bake_metallic_roughness_map_to_memory(info));
+    } else if (desc.type == GltfImageType::ORM) {
+      OK(blob, ren::bake_orm_map_to_memory(info));
     }
     auto [blob_data, blob_size] = blob;
     OK(ren::ImageId image, m_scene->create_image(blob_data, blob_size));
@@ -632,12 +632,16 @@ private:
           bail("Unsupported metallic-roughness texture coordinate set {}",
                metallic_roughness_texture.texCoord);
         }
-        OK(desc.metallic_roughness_texture.image,
+        OK(desc.orm_texture.image,
            get_or_create_texture_image(metallic_roughness_texture.index,
-                                       GltfImageType::MetallicRoughness));
-        OK(desc.metallic_roughness_texture.sampler,
+                                       GltfImageType::ORM));
+        OK(desc.orm_texture.sampler,
            get_texture_sampler(metallic_roughness_texture.index));
       }
+    }
+
+    if (material.occlusionTexture.index >= 0) {
+      warn("Occlusion textures and indirect lighting not implemented");
     }
 
     {
@@ -655,10 +659,6 @@ private:
            get_texture_sampler(normal_texture.index));
         desc.normal_texture.scale = normal_texture.scale;
       }
-    }
-
-    if (material.occlusionTexture.index >= 0) {
-      warn("Occlusion textures and indirect lighting not implemented");
     }
 
     if (material.emissiveTexture.index >= 0 or

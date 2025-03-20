@@ -175,17 +175,19 @@ struct MaterialCreateInfo {
     ImageId image;
     SamplerDesc sampler;
   } base_color_texture;
-  /// Metallic factor, multiplied with channel B of the metallic-roughness
-  /// texture (if present, otherwise with 1.0). Must be between 0 and 1
-  float metallic_factor = 1.0f;
   /// Roughness factor, multiplied with channel G of the metallic-roughness
   /// texture (if present, otherwise with 1.0). Must be between 0 and 1
   float roughness_factor = 1.0f;
-  /// Optional: metallic-roughness texture
+  /// Metallic factor, multiplied with channel B of the metallic-roughness
+  /// texture (if present, otherwise with 1.0). Must be between 0 and 1
+  float metallic_factor = 1.0f;
+  /// Optional: occlusion-roughness-metallic texture
   struct {
     ImageId image;
     SamplerDesc sampler;
-  } metallic_roughness_texture;
+    /// Controls occlusion effect strength
+    float strength = 1.0f;
+  } orm_texture;
   /// Optional: normal texture
   struct {
     ImageId image;
