@@ -248,28 +248,6 @@ template <> struct std::hash<GltfMeshDesc> {
   }
 };
 
-enum class GltfImageType {
-  Color,
-  Normal,
-  ORM,
-};
-
-struct GltfImageDesc {
-  int index = -1;
-  GltfImageType type = {};
-
-  auto operator<=>(const GltfImageDesc &) const = default;
-};
-
-template <> struct std::hash<GltfImageDesc> {
-  auto operator()(const GltfImageDesc &desc) const -> size_t {
-    size_t seed = 0;
-    boost::hash_combine(seed, desc.index);
-    boost::hash_combine(seed, desc.type);
-    return seed;
-  }
-};
-
 template <typename T>
 auto deindex_attibute(std::span<const T> attribute,
                       std::span<const uint32_t> indices, std::span<T> out) {
@@ -542,51 +520,20 @@ private:
     return mesh;
   }
 
-  auto create_image(const GltfImageDesc &desc) -> Result<ren::ImageId> {
-    const tinygltf::Image &gltf_image = m_model.images[desc.index];
+  auto get_image_info(int image, bool srgb = false)
+      -> Result<ren::TextureInfo> {
+    const tinygltf::Image &gltf_image = m_model.images[image];
     assert(gltf_image.image.size() == gltf_image.width * gltf_image.height *
                                           gltf_image.component *
                                           gltf_image.bits / 8);
     OK(TinyImageFormat format,
-       get_image_format(gltf_image.component, gltf_image.pixel_type,
-                        desc.type == GltfImageType::Color));
-    ren::TextureInfo info = {
+       get_image_format(gltf_image.component, gltf_image.pixel_type, srgb));
+    return {{
         .format = format,
         .width = unsigned(gltf_image.width),
         .height = unsigned(gltf_image.height),
         .data = gltf_image.image.data(),
-    };
-    std::tuple<void *, size_t> blob = {};
-    if (desc.type == GltfImageType::Color) {
-      OK(blob, ren::bake_color_map_to_memory(info));
-    } else if (desc.type == GltfImageType::Normal) {
-      OK(blob, ren::bake_normal_map_to_memory(info));
-    } else if (desc.type == GltfImageType::ORM) {
-      OK(blob, ren::bake_orm_map_to_memory(info));
-    }
-    auto [blob_data, blob_size] = blob;
-    OK(ren::ImageId image, m_scene->create_image(blob_data, blob_size));
-    std::free(blob_data);
-    return image;
-  }
-
-  auto get_or_create_image(int index, GltfImageType type)
-      -> Result<ren::ImageId> {
-    GltfImageDesc desc = {
-        .index = index,
-        .type = type,
-    };
-    ren::ImageId &image = m_image_cache[desc];
-    if (!image) {
-      OK(image, create_image(desc));
-    }
-    return image;
-  }
-
-  auto get_or_create_texture_image(int index, GltfImageType type)
-      -> Result<ren::ImageId> {
-    int image = m_model.textures[index].source;
-    return get_or_create_image(image, type);
+    }};
   }
 
   auto get_texture_sampler(int texture) const -> Result<ren::SamplerDesc> {
@@ -613,9 +560,16 @@ private:
           bail("Unsupported base color texture coordinate set {}",
                base_color_texture.texCoord);
         }
-        OK(desc.base_color_texture.image,
-           get_or_create_texture_image(base_color_texture.index,
-                                       GltfImageType::Color));
+        int src = m_model.textures[base_color_texture.index].source;
+        ren::ImageId &image = m_color_image_cache[src];
+        if (!image) {
+          OK(ren::TextureInfo texture_info, get_image_info(src, true));
+          OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
+          auto [blob_data, blob_size] = blob;
+          OK(image, m_scene->create_image(blob_data, blob_size));
+          std::free(blob_data);
+        }
+        desc.base_color_texture.image = image;
         OK(desc.base_color_texture.sampler,
            get_texture_sampler(base_color_texture.index));
       }
@@ -627,21 +581,52 @@ private:
     {
       const tinygltf::TextureInfo &metallic_roughness_texture =
           material.pbrMetallicRoughness.metallicRoughnessTexture;
+      const tinygltf::OcclusionTextureInfo &occlusion_texture =
+          material.occlusionTexture;
       if (metallic_roughness_texture.index >= 0) {
         if (metallic_roughness_texture.texCoord > 0) {
           bail("Unsupported metallic-roughness texture coordinate set {}",
                metallic_roughness_texture.texCoord);
         }
-        OK(desc.orm_texture.image,
-           get_or_create_texture_image(metallic_roughness_texture.index,
-                                       GltfImageType::ORM));
+        int roughness_metallic_src =
+            m_model.textures[metallic_roughness_texture.index].source;
+        int occlusion_src = -1;
+        if (occlusion_texture.index >= 0) {
+          if (occlusion_texture.texCoord > 0) {
+            bail("Unsupported occlusion texture coordinate set {}",
+                 occlusion_texture.texCoord);
+          }
+          occlusion_src = m_model.textures[occlusion_texture.index].source;
+        }
+        auto it = std::ranges::find_if(
+            m_orm_image_cache, [&](std::tuple<int, int, ren::ImageId> t) {
+              auto [rm, o, i] = t;
+              return rm == roughness_metallic_src and o == occlusion_src;
+            });
+        if (it != m_orm_image_cache.end()) {
+          desc.orm_texture.image = std::get<2>(*it);
+        } else {
+          OK(ren::TextureInfo roughness_metallic_info,
+             get_image_info(roughness_metallic_src));
+          ren::TextureInfo occlusion_info;
+          if (occlusion_src >= 0) {
+            OK(occlusion_info, get_image_info(occlusion_src));
+          }
+          OK(auto blob, ren::bake_orm_map_to_memory(roughness_metallic_info,
+                                                    occlusion_info));
+          auto [blob_data, blob_size] = blob;
+          OK(desc.orm_texture.image,
+             m_scene->create_image(blob_data, blob_size));
+          std::free(blob_data);
+          m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
+                                         desc.orm_texture.image);
+        }
         OK(desc.orm_texture.sampler,
            get_texture_sampler(metallic_roughness_texture.index));
+      } else if (occlusion_texture.index >= 0) {
+        warn("Occlusion textures without a metallic-roughness texture are not "
+             "supported");
       }
-    }
-
-    if (material.occlusionTexture.index >= 0) {
-      warn("Occlusion textures and indirect lighting not implemented");
     }
 
     {
@@ -652,9 +637,16 @@ private:
           bail("Unsupported normal texture coordinate set {}",
                normal_texture.texCoord);
         }
-        OK(desc.normal_texture.image,
-           get_or_create_texture_image(normal_texture.index,
-                                       GltfImageType::Normal));
+        int src = m_model.textures[normal_texture.index].source;
+        ren::ImageId &image = m_normal_image_cache[src];
+        if (!image) {
+          OK(ren::TextureInfo texture_info, get_image_info(src));
+          OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
+          auto [blob_data, blob_size] = blob;
+          OK(image, m_scene->create_image(blob_data, blob_size));
+          std::free(blob_data);
+        }
+        desc.normal_texture.image = image;
         OK(desc.normal_texture.sampler,
            get_texture_sampler(normal_texture.index));
         desc.normal_texture.scale = normal_texture.scale;
@@ -789,7 +781,9 @@ private:
   tinygltf::Model m_model;
   ren::IScene *m_scene = nullptr;
   std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
-  std::unordered_map<GltfImageDesc, ren::ImageId> m_image_cache;
+  std::unordered_map<int, ren::ImageId> m_color_image_cache;
+  std::vector<std::tuple<int, int, ren::ImageId>> m_orm_image_cache;
+  std::unordered_map<int, ren::ImageId> m_normal_image_cache;
   std::vector<ren::MaterialId> m_material_cache;
 };
 
