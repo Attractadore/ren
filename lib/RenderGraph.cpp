@@ -1444,7 +1444,7 @@ auto RgBuilder::build(const RgBuildInfo &build_info)
 
   add_inter_queue_semaphores();
 
-#if 1
+#if 0
   dump_pass_schedule();
 #endif
 
