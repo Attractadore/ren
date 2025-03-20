@@ -120,9 +120,11 @@ public:
 
   void set_exposure(const ExposureDesc &desc) override;
 
-  auto create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> override;
+  auto create_mesh(std::span<const std::byte> blob)
+      -> expected<MeshId> override;
 
-  auto create_image(const ImageCreateInfo &desc) -> expected<ImageId> override;
+  auto create_image(std::span<const std::byte> blob)
+      -> expected<ImageId> override;
 
   auto create_material(const MaterialCreateInfo &)
       -> expected<MaterialId> override;

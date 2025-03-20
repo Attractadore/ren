@@ -1,148 +1,27 @@
-#include "MeshProcessing.hpp"
+#include "Mesh.hpp"
 #include "MeshSimplification.hpp"
+#include "core/Math.hpp"
+#include "core/Result.hpp"
+#include "core/Span.hpp"
 #include "glsl/Transforms.h"
+#include "ren/baking/mesh.hpp"
 
+#include <cstdio>
 #include <glm/gtc/type_ptr.hpp>
 #include <meshoptimizer.h>
 #include <mikktspace.h>
 
 namespace ren {
 
-auto mesh_process(const MeshProcessingOptions &opts) -> Mesh {
-  Vector<glm::vec3> positions = opts.positions;
-  Vector<glm::vec3> normals = opts.normals;
-  Vector<glm::vec4> tangents = opts.tangents;
-  Vector<glm::vec2> uvs = opts.uvs;
-  Vector<glm::vec4> colors = opts.colors;
-  Vector<u32> indices = opts.indices;
-
-  ren_assert(positions.size() > 0);
-  ren_assert(normals.size() == positions.size());
-  if (not tangents.empty()) {
-    ren_assert(tangents.size() == positions.size());
-  }
-  if (not uvs.empty()) {
-    ren_assert(uvs.size() == positions.size());
-  }
-  if (not colors.empty()) {
-    ren_assert(colors.size() == positions.size());
-  }
-  if (not indices.empty()) {
-    ren_assert(indices.size() % 3 == 0);
-  } else {
-    ren_assert(positions.size() % 3 == 0);
-  }
-
-  Mesh mesh;
-
-  // (Re)generate index buffer to remove duplicate vertices for LOD generation
-  // to work correctly
-
-  mesh_generate_indices({
-      .positions = &positions,
-      .normals = &normals,
-      .tangents = tangents.size() ? &tangents : nullptr,
-      .uvs = uvs.size() ? &uvs : nullptr,
-      .colors = colors.size() ? &colors : nullptr,
-      .indices = &indices,
-  });
-
-  // Generate tangents
-
-  if (not uvs.empty() and tangents.empty()) {
-    mesh_generate_tangents({
-        .positions = &positions,
-        .normals = &normals,
-        .tangents = &tangents,
-        .uvs = &uvs,
-        .colors = colors.size() ? &colors : nullptr,
-        .indices = &indices,
-    });
-  }
-
-  // Generate LODs
-
-  StaticVector<LOD, glsl::MAX_NUM_LODS> lods;
-  mesh_simplify({
-      .positions = &positions,
-      .normals = &normals,
-      .tangents = tangents.size() ? &tangents : nullptr,
-      .uvs = uvs.size() ? &uvs : nullptr,
-      .colors = colors.size() ? &colors : nullptr,
-      .indices = &indices,
-      .lods = &lods,
-  });
-
-  u32 num_vertices = positions.size();
-  u32 num_indices = indices.size();
-
-  // Optimize each LOD separately
-
-  for (const LOD &lod : lods) {
-    meshopt_optimizeVertexCache(&indices[lod.base_index],
-                                &indices[lod.base_index], lod.num_indices,
-                                num_vertices);
-  }
-
-#if 0
-  // Optimize all LODs together.
-
-  {
-    Vector<u32> remap(num_vertices);
-    num_vertices = meshopt_optimizeVertexFetchRemap(
-        remap.data(), indices.data(), num_indices, num_vertices);
-    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
-                             remap.data());
-    mesh_remap_vertex_streams({
-        .positions = &positions,
-        .normals = &normals,
-        .tangents = tangents.size() ? &tangents : nullptr,
-        .uvs = uvs.size() ? &uvs : nullptr,
-        .colors = colors.size() ? &colors : nullptr,
-        .num_vertices = num_vertices,
-        .remap = remap,
-    });
-  }
-#endif
-
-  // Compute bounds.
-
-  mesh_compute_bounds(positions, &mesh.bb, &mesh.pos_enc_bb);
-
-  // Generate meshlets
-
-  mesh_generate_meshlets({
-      .positions = positions,
-      .indices = indices,
-      .lods = lods,
-      .meshlets = opts.meshlets,
-      .meshlet_indices = opts.meshlet_indices,
-      .meshlet_triangles = opts.meshlet_triangles,
-      .mesh = &mesh,
-      .cone_weight = 1.0f,
-  });
-
-  // Encode vertex attributes
-
-  *opts.enc_positions = mesh_encode_positions(positions, mesh.pos_enc_bb);
-
-  *opts.enc_normals = mesh_encode_normals(normals, mesh.pos_enc_bb);
-
-  if (not tangents.empty()) {
-    *opts.enc_tangents =
-        mesh_encode_tangents(tangents, mesh.pos_enc_bb, *opts.enc_normals);
-  }
-
-  if (not uvs.empty()) {
-    *opts.enc_uvs = mesh_encode_uvs(uvs, &mesh.uv_bs);
-  }
-
-  if (not colors.empty()) {
-    *opts.enc_colors = mesh_encode_colors(colors);
-  }
-
-  return mesh;
-}
+struct MeshRemapVertexStreamsOptions {
+  NotNull<Vector<glm::vec3> *> positions;
+  NotNull<Vector<glm::vec3> *> normals;
+  Vector<glm::vec4> *tangents = nullptr;
+  Vector<glm::vec2> *uvs = nullptr;
+  Vector<glm::vec4> *colors = nullptr;
+  u32 num_vertices = 0;
+  Span<const u32> remap;
+};
 
 void mesh_remap_vertex_streams(const MeshRemapVertexStreamsOptions &opts) {
   auto remap_stream = [&]<typename T>(Vector<T> *stream) {
@@ -158,6 +37,15 @@ void mesh_remap_vertex_streams(const MeshRemapVertexStreamsOptions &opts) {
   remap_stream(opts.uvs);
   remap_stream(opts.colors);
 }
+
+struct MeshGenerateIndicesOptions {
+  NotNull<Vector<glm::vec3> *> positions;
+  NotNull<Vector<glm::vec3> *> normals;
+  Vector<glm::vec4> *tangents = nullptr;
+  Vector<glm::vec2> *uvs = nullptr;
+  Vector<glm::vec4> *colors = nullptr;
+  NotNull<Vector<u32> *> indices;
+};
 
 void mesh_generate_indices(const MeshGenerateIndicesOptions &opts) {
   StaticVector<meshopt_Stream, 5> streams;
@@ -199,6 +87,15 @@ void mesh_generate_indices(const MeshGenerateIndicesOptions &opts) {
       .remap = remap,
   });
 }
+
+struct MeshGenerateTangentsOptions {
+  NotNull<Vector<glm::vec3> *> positions;
+  NotNull<Vector<glm::vec3> *> normals;
+  NotNull<Vector<glm::vec4> *> tangents;
+  NotNull<Vector<glm::vec2> *> uvs;
+  Vector<glm::vec4> *colors = nullptr;
+  NotNull<Vector<u32> *> indices;
+};
 
 void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts) {
   u32 num_vertices = opts.indices->size();
@@ -416,12 +313,23 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
   return enc_colors;
 }
 
+struct MeshGenerateMeshletsOptions {
+  Span<const glm::vec3> positions;
+  Span<const u32> indices;
+  Span<const LOD> lods;
+  NotNull<Vector<glsl::Meshlet> *> meshlets;
+  NotNull<Vector<u32> *> meshlet_indices;
+  NotNull<Vector<u8> *> meshlet_triangles;
+  NotNull<MeshPackageHeader *> header;
+  float cone_weight = 0.0f;
+};
+
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
-  ren_assert(opts.mesh->pos_enc_bb != glm::vec3(0.0f));
+  ren_assert(opts.header->pos_enc_bb != glm::vec3(0.0f));
 
   SmallVector<u32, glsl::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
 
-  opts.mesh->lods.resize(opts.lods.size());
+  opts.header->num_lods = opts.lods.size();
   Vector<meshopt_Meshlet> lod_meshlets;
   for (isize l = opts.lods.size() - 1; l >= 0; --l) {
     const LOD &lod = opts.lods[l];
@@ -450,7 +358,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
 
     opts.meshlets->resize(base_meshlet + num_lod_meshlets);
 
-    opts.mesh->lods[l] = {
+    opts.header->lods[l] = {
         .base_meshlet = base_meshlet,
         .num_meshlets = num_lod_meshlets,
         .num_triangles = lod.num_indices / 3,
@@ -500,9 +408,9 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
       glm::vec3 cone_axis = glm::make_vec3(bounds.cone_axis);
 
       meshlet.cone_apex =
-          glsl::encode_position(cone_apex, opts.mesh->pos_enc_bb),
+          glsl::encode_position(cone_apex, opts.header->pos_enc_bb),
       meshlet.cone_axis =
-          glsl::encode_position(cone_axis, opts.mesh->pos_enc_bb),
+          glsl::encode_position(cone_axis, opts.header->pos_enc_bb),
       meshlet.cone_cutoff = bounds.cone_cutoff;
 
       glsl::BoundingBox bb = {
@@ -517,7 +425,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
         bb.max = glm::max(bb.max, position);
       }
 
-      meshlet.bb = glsl::encode_bounding_box(bb, opts.mesh->pos_enc_bb);
+      meshlet.bb = glsl::encode_bounding_box(bb, opts.header->pos_enc_bb);
 
       (*opts.meshlets)[base_meshlet + m] = meshlet;
 
@@ -532,6 +440,241 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
   }
 
   ren_assert(opts.meshlet_triangles->size() == opts.indices.size());
+}
+
+struct BakedMesh {
+  MeshPackageHeader header;
+  usize size = 0;
+  Vector<glsl::Position> positions;
+  Vector<glsl::Normal> normals;
+  Vector<glsl::Tangent> tangents;
+  Vector<glsl::UV> uvs;
+  Vector<glsl::Color> colors;
+  Vector<glsl::Meshlet> meshlets;
+  Vector<u32> indices;
+  Vector<u8> triangles;
+};
+
+auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
+  Vector<glm::vec3> positions = Span(info.positions, info.num_vertices);
+  Vector<glm::vec3> normals = Span(info.normals, info.num_vertices);
+  Vector<glm::vec4> tangents =
+      Span(info.tangents, info.tangents ? info.num_vertices : 0);
+  Vector<glm::vec2> uvs = Span(info.uvs, info.uvs ? info.num_vertices : 0);
+  Vector<glm::vec4> colors =
+      Span(info.colors, info.colors ? info.num_vertices : 0);
+  Vector<u32> mesh_indices = Span(info.indices, info.num_indices);
+
+  ren_assert(positions.size() > 0);
+  ren_assert(normals.size() == positions.size());
+  if (not tangents.empty()) {
+    ren_assert(tangents.size() == positions.size());
+  }
+  if (not uvs.empty()) {
+    ren_assert(uvs.size() == positions.size());
+  }
+  if (not colors.empty()) {
+    ren_assert(colors.size() == positions.size());
+  }
+  if (not mesh_indices.empty()) {
+    ren_assert(mesh_indices.size() % 3 == 0);
+  } else {
+    ren_assert(positions.size() % 3 == 0);
+  }
+
+  BakedMesh mesh;
+
+  // (Re)generate index buffer to remove duplicate vertices for LOD generation
+  // to work correctly
+
+  mesh_generate_indices({
+      .positions = &positions,
+      .normals = &normals,
+      .tangents = tangents.size() ? &tangents : nullptr,
+      .uvs = uvs.size() ? &uvs : nullptr,
+      .colors = colors.size() ? &colors : nullptr,
+      .indices = &mesh_indices,
+  });
+
+  // Generate tangents
+
+  if (not uvs.empty() and tangents.empty()) {
+    mesh_generate_tangents({
+        .positions = &positions,
+        .normals = &normals,
+        .tangents = &tangents,
+        .uvs = &uvs,
+        .colors = colors.size() ? &colors : nullptr,
+        .indices = &mesh_indices,
+    });
+  }
+
+  // Generate LODs
+
+  StaticVector<LOD, glsl::MAX_NUM_LODS> lods;
+  mesh_simplify({
+      .positions = &positions,
+      .normals = &normals,
+      .tangents = tangents.size() ? &tangents : nullptr,
+      .uvs = uvs.size() ? &uvs : nullptr,
+      .colors = colors.size() ? &colors : nullptr,
+      .indices = &mesh_indices,
+      .lods = &lods,
+  });
+
+  // Optimize each LOD separately
+
+  for (const LOD &lod : lods) {
+    meshopt_optimizeVertexCache(&mesh_indices[lod.base_index],
+                                &mesh_indices[lod.base_index], lod.num_indices,
+                                positions.size());
+  }
+
+#if 0
+  // Optimize all LODs together.
+
+  {
+    Vector<u32> remap(num_vertices);
+    num_vertices = meshopt_optimizeVertexFetchRemap(
+        remap.data(), indices.data(), num_indices, num_vertices);
+    meshopt_remapIndexBuffer(indices.data(), indices.data(), num_indices,
+                             remap.data());
+    mesh_remap_vertex_streams({
+        .positions = &positions,
+        .normals = &normals,
+        .tangents = tangents.size() ? &tangents : nullptr,
+        .uvs = uvs.size() ? &uvs : nullptr,
+        .colors = colors.size() ? &colors : nullptr,
+        .num_vertices = num_vertices,
+        .remap = remap,
+    });
+  }
+#endif
+
+  // Compute bounds.
+
+  mesh_compute_bounds(positions, &mesh.header.bb, &mesh.header.pos_enc_bb);
+
+  // Generate meshlets
+
+  mesh_generate_meshlets({
+      .positions = positions,
+      .indices = mesh_indices,
+      .lods = lods,
+      .meshlets = &mesh.meshlets,
+      .meshlet_indices = &mesh.indices,
+      .meshlet_triangles = &mesh.triangles,
+      .header = &mesh.header,
+      .cone_weight = 1.0f,
+  });
+
+  // Encode vertex attributes
+
+  mesh.positions = mesh_encode_positions(positions, mesh.header.pos_enc_bb);
+
+  mesh.normals = mesh_encode_normals(normals, mesh.header.pos_enc_bb);
+
+  if (not tangents.empty()) {
+    mesh.tangents =
+        mesh_encode_tangents(tangents, mesh.header.pos_enc_bb, mesh.normals);
+  }
+
+  if (not uvs.empty()) {
+    mesh.uvs = mesh_encode_uvs(uvs, &mesh.header.uv_bs);
+  }
+
+  if (not colors.empty()) {
+    mesh.colors = mesh_encode_colors(colors);
+  }
+
+  mesh.header.num_vertices = mesh.positions.size();
+  mesh.header.num_meshlets = mesh.meshlets.size();
+  mesh.header.num_indices = mesh.indices.size();
+  mesh.header.num_triangles = mesh.triangles.size() / 3;
+
+  usize align = 8;
+
+  u64 end = pad(sizeof(mesh.header), align);
+
+#define set_offset(data)                                                       \
+  [&] {                                                                        \
+    mesh.header.data##_offset = mesh.data.empty() ? 0 : end;                   \
+    end = pad(end + Span(mesh.data).size_bytes(), align);                      \
+  }()
+  set_offset(positions);
+  set_offset(normals);
+  set_offset(tangents);
+  set_offset(uvs);
+  set_offset(colors);
+  set_offset(meshlets);
+  set_offset(indices);
+  set_offset(triangles);
+#undef set_offset
+
+  mesh.size = end;
+
+  return mesh;
+}
+
+auto bake_mesh_to_file(const MeshInfo &info, FILE *out) -> expected<void> {
+  ren_try(BakedMesh mesh, bake_mesh(info));
+
+  usize file_start = std::ftell(out);
+
+  bool success = [&]() {
+    if (std::fwrite(&mesh.header, sizeof(mesh.header), 1, out) != 1) {
+      return false;
+    }
+
+#define write_array(arr)                                                       \
+  do {                                                                         \
+    if (!std::fseek(out, file_start + mesh.header.arr##_offset, SEEK_SET)) {   \
+      return false;                                                            \
+    }                                                                          \
+    usize size = Span(mesh.arr).size_bytes();                                  \
+    if (std::fwrite(mesh.arr.data(), 1, size, out) != size) {                  \
+      return false;                                                            \
+    }                                                                          \
+  } while (0)
+    write_array(positions);
+    write_array(normals);
+    write_array(tangents);
+    write_array(uvs);
+    write_array(colors);
+    write_array(meshlets);
+    write_array(indices);
+    write_array(triangles);
+#undef write_array
+
+    return true;
+  }();
+
+  if (!success) {
+    std::fseek(out, file_start, SEEK_SET);
+    return std::unexpected(Error::IO);
+  }
+
+  return {};
+}
+
+auto bake_mesh_to_memory(const MeshInfo &info)
+    -> expected<std::tuple<void *, size_t>> {
+  ren_try(BakedMesh mesh, bake_mesh(info));
+  std::byte *buffer = (std::byte *)std::malloc(mesh.size);
+  std::memcpy(buffer, &mesh.header, sizeof(mesh.header));
+#define write_array(arr)                                                       \
+  std::memcpy(&buffer[mesh.header.arr##_offset], mesh.arr.data(),              \
+              Span(mesh.arr).size_bytes())
+  write_array(positions);
+  write_array(normals);
+  write_array(tangents);
+  write_array(uvs);
+  write_array(colors);
+  write_array(meshlets);
+  write_array(indices);
+  write_array(triangles);
+#undef write_array
+  return {{buffer, mesh.size}};
 }
 
 } // namespace ren

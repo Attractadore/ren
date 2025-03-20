@@ -11,6 +11,10 @@ namespace ren {
 
 class Renderer;
 
+constexpr u32 MAX_SRV_SIZE = 4096;
+constexpr u32 MAX_SRV_MIPS = 13;
+static_assert(MAX_SRV_SIZE == (1 << (MAX_SRV_MIPS - 1)));
+
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
   TinyImageFormat format = TinyImageFormat_UNDEFINED;

@@ -1,4 +1,6 @@
 #include "ImGuiApp.hpp"
+#include "ren/baking/image.hpp"
+#include "ren/baking/mesh.hpp"
 
 #include <boost/functional/hash.hpp>
 #include <cstdint>
@@ -246,9 +248,15 @@ template <> struct std::hash<GltfMeshDesc> {
   }
 };
 
+enum class GltfImageType {
+  Color,
+  Normal,
+  MetallicRoughness,
+};
+
 struct GltfImageDesc {
-  int index : 31 = -1;
-  bool srgb : 1 = false;
+  int index = -1;
+  GltfImageType type = {};
 
   auto operator<=>(const GltfImageDesc &) const = default;
 };
@@ -257,7 +265,7 @@ template <> struct std::hash<GltfImageDesc> {
   auto operator()(const GltfImageDesc &desc) const -> size_t {
     size_t seed = 0;
     boost::hash_combine(seed, desc.index);
-    boost::hash_combine(seed, desc.srgb);
+    boost::hash_combine(seed, desc.type);
     return seed;
   }
 };
@@ -471,16 +479,21 @@ private:
            indices->componentType, indices->type, indices->normalized);
     }());
 
-    return m_scene
-        ->create_mesh({
-            .positions = positions_data,
-            .normals = normals_data,
-            .tangents = tangents_data,
-            .colors = colors_data,
-            .uvs = tex_coords_data,
-            .indices = indices_data,
-        })
-        .transform_error(get_error_string);
+    OK(auto blob, ren::bake_mesh_to_memory({
+                      .num_vertices = positions_data.size(),
+                      .positions = positions_data.data(),
+                      .normals = normals_data.data(),
+                      .tangents = tangents_data.data(),
+                      .uvs = tex_coords_data.data(),
+                      .colors = colors_data.data(),
+                      .num_indices = indices_data.size(),
+                      .indices = indices_data.data(),
+                  }));
+    auto [blob_data, blob_size] = blob;
+    OK(ren::MeshId mesh, m_scene->create_mesh(blob_data, blob_size));
+    std::free(blob_data);
+
+    return mesh;
   }
 
   auto get_or_create_mesh(const tinygltf::Primitive &primitive)
@@ -530,26 +543,38 @@ private:
   }
 
   auto create_image(const GltfImageDesc &desc) -> Result<ren::ImageId> {
-    const tinygltf::Image &image = m_model.images[desc.index];
-    assert(image.image.size() ==
-           image.width * image.height * image.component * image.bits / 8);
+    const tinygltf::Image &gltf_image = m_model.images[desc.index];
+    assert(gltf_image.image.size() == gltf_image.width * gltf_image.height *
+                                          gltf_image.component *
+                                          gltf_image.bits / 8);
     OK(TinyImageFormat format,
-       get_image_format(image.component, image.pixel_type, desc.srgb));
-
-    return m_scene
-        ->create_image({
-            .width = unsigned(image.width),
-            .height = unsigned(image.height),
-            .format = format,
-            .data = image.image.data(),
-        })
-        .transform_error(get_error_string);
+       get_image_format(gltf_image.component, gltf_image.pixel_type,
+                        desc.type == GltfImageType::Color));
+    ren::TextureInfo info = {
+        .format = format,
+        .width = unsigned(gltf_image.width),
+        .height = unsigned(gltf_image.height),
+        .data = gltf_image.image.data(),
+    };
+    std::tuple<void *, size_t> blob = {};
+    if (desc.type == GltfImageType::Color) {
+      OK(blob, ren::bake_color_map_to_memory(info));
+    } else if (desc.type == GltfImageType::Normal) {
+      OK(blob, ren::bake_normal_map_to_memory(info));
+    } else if (desc.type == GltfImageType::MetallicRoughness) {
+      OK(blob, ren::bake_metallic_roughness_map_to_memory(info));
+    }
+    auto [blob_data, blob_size] = blob;
+    OK(ren::ImageId image, m_scene->create_image(blob_data, blob_size));
+    std::free(blob_data);
+    return image;
   }
 
-  auto get_or_create_image(int index, bool srgb) -> Result<ren::ImageId> {
+  auto get_or_create_image(int index, GltfImageType type)
+      -> Result<ren::ImageId> {
     GltfImageDesc desc = {
         .index = index,
-        .srgb = srgb,
+        .type = type,
     };
     ren::ImageId &image = m_image_cache[desc];
     if (!image) {
@@ -558,10 +583,10 @@ private:
     return image;
   }
 
-  auto get_or_create_texture_image(int index, bool srgb)
+  auto get_or_create_texture_image(int index, GltfImageType type)
       -> Result<ren::ImageId> {
     int image = m_model.textures[index].source;
-    return get_or_create_image(image, srgb);
+    return get_or_create_image(image, type);
   }
 
   auto get_texture_sampler(int texture) const -> Result<ren::SamplerDesc> {
@@ -589,7 +614,8 @@ private:
                base_color_texture.texCoord);
         }
         OK(desc.base_color_texture.image,
-           get_or_create_texture_image(base_color_texture.index, true));
+           get_or_create_texture_image(base_color_texture.index,
+                                       GltfImageType::Color));
         OK(desc.base_color_texture.sampler,
            get_texture_sampler(base_color_texture.index));
       }
@@ -608,7 +634,7 @@ private:
         }
         OK(desc.metallic_roughness_texture.image,
            get_or_create_texture_image(metallic_roughness_texture.index,
-                                       false));
+                                       GltfImageType::MetallicRoughness));
         OK(desc.metallic_roughness_texture.sampler,
            get_texture_sampler(metallic_roughness_texture.index));
       }
@@ -623,7 +649,8 @@ private:
                normal_texture.texCoord);
         }
         OK(desc.normal_texture.image,
-           get_or_create_texture_image(normal_texture.index, false));
+           get_or_create_texture_image(normal_texture.index,
+                                       GltfImageType::Normal));
         OK(desc.normal_texture.sampler,
            get_texture_sampler(normal_texture.index));
         desc.normal_texture.scale = normal_texture.scale;

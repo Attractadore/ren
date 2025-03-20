@@ -9,6 +9,8 @@
     "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
+    "directxtex",
+    "ktx",
     "fmt",
     "glm",
     "meshoptimizer",

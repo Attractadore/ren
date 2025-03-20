@@ -1,6 +1,4 @@
 #pragma once
-#include "tiny_imageformat.h"
-
 #include <expected>
 #include <glm/glm.hpp>
 #include <memory>
@@ -15,6 +13,9 @@ enum class Error {
   System,
   Runtime,
   SDL2,
+  InvalidFormat,
+  InvalidVersion,
+  IO,
   Unknown,
 };
 
@@ -136,30 +137,6 @@ struct ExposureDesc {
   float ec = 0.0f;
 };
 
-/// Mesh description
-struct MeshCreateInfo {
-  std::span<const glm::vec3> positions;
-  std::span<const glm::vec3> normals;
-  /// Optional
-  std::span<const glm::vec4> tangents;
-  /// Optional
-  std::span<const glm::vec4> colors;
-  /// Optional
-  std::span<const glm::vec2> uvs;
-  /// Optional
-  std::span<const unsigned> indices;
-};
-
-/// Image description.
-struct ImageCreateInfo {
-  unsigned width = 0;
-  unsigned height = 0;
-  /// Pixel format.
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  /// Pixel data.
-  const void *data = nullptr;
-};
-
 /// Texture or mipmap filter.
 enum class Filter {
   Nearest,
@@ -259,11 +236,21 @@ struct IScene {
 
   virtual void set_exposure(const ExposureDesc &desc) = 0;
 
-  [[nodiscard]] virtual auto create_mesh(const MeshCreateInfo &create_info)
+  [[nodiscard]] virtual auto create_mesh(std::span<const std::byte> blob)
       -> expected<MeshId> = 0;
 
-  [[nodiscard]] virtual auto create_image(const ImageCreateInfo &create_info)
+  [[nodiscard]] auto create_mesh(const void *blob_data, size_t blob_size)
+      -> expected<MeshId> {
+    return create_mesh(std::span((const std::byte *)blob_data, blob_size));
+  }
+
+  [[nodiscard]] virtual auto create_image(std::span<const std::byte> blob)
       -> expected<ImageId> = 0;
+
+  [[nodiscard]] auto create_image(const void *blob_data, size_t blob_size)
+      -> expected<ImageId> {
+    return create_image(std::span((const std::byte *)blob_data, blob_size));
+  }
 
   [[nodiscard]] virtual auto
   create_material(const MaterialCreateInfo &create_info)

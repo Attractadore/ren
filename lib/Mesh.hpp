@@ -12,6 +12,31 @@
 
 namespace ren {
 
+constexpr u32 MESH_PACKAGE_MAGIC = ('m' << 24) | ('n' << 16) | ('e' << 8) | 'r';
+constexpr u32 MESH_PACKAGE_VERSION = 0;
+
+struct MeshPackageHeader {
+  u32 magic = MESH_PACKAGE_MAGIC;
+  u32 version = MESH_PACKAGE_VERSION;
+  u64 num_vertices = 0;
+  u64 num_meshlets = 0;
+  u64 num_indices = 0;
+  u64 num_triangles = 0;
+  u32 num_lods = 0;
+  std::array<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods = {};
+  glsl::PositionBoundingBox bb = {};
+  glm::vec3 pos_enc_bb = {};
+  glsl::BoundingSquare uv_bs = {};
+  u64 positions_offset = 0;
+  u64 normals_offset = 0;
+  u64 tangents_offset = 0;
+  u64 uvs_offset = 0;
+  u64 colors_offset = 0;
+  u64 meshlets_offset = 0;
+  u64 indices_offset = 0;
+  u64 triangles_offset = 0;
+};
+
 class ResourceArena;
 
 struct Buffer;
@@ -41,7 +66,7 @@ struct Mesh {
   Handle<Buffer> colors;
   u32 index_pool = -1;
   Handle<Buffer> meshlets;
-  Handle<Buffer> meshlet_indices;
+  Handle<Buffer> indices;
   StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
 };
 

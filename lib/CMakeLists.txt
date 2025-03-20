@@ -31,15 +31,21 @@ target_link_libraries(ren-rhi PUBLIC
   volk::volk)
 target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1 VK_NO_PROTOTYPES)
 
+find_package(Ktx REQUIRED)
+find_package(directxtex REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 
 add_library(ren-gfx INTERFACE)
-target_link_libraries(ren-gfx INTERFACE
-  ren-core
-  ren-rhi
-  meshoptimizer::meshoptimizer
-  mikktspace::mikktspace)
+target_link_libraries(ren-gfx INTERFACE ren-core ren-rhi KTX::ktx)
+
+add_library(ren-baking ImageBaking.cpp MeshBaking.cpp MeshSimplification.cpp)
+add_library(ren::baking ALIAS ren-baking)
+target_sources(ren-baking PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/baking/image.hpp ${REN_INCLUDE}/ren/baking/mesh.hpp)
+target_link_libraries(ren-baking
+  PUBLIC glm::glm tiny_imageformat
+  PRIVATE ren-core Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace)
+target_compile_features(ren-baking PUBLIC cxx_std_23)
 
 add_library(ren
   ren.cpp
@@ -49,8 +55,6 @@ add_library(ren
   FreeListAllocator.cpp
   GpuScene.cpp
   Mesh.cpp
-  MeshProcessing.cpp
-  MeshSimplification.cpp
   Pipeline.cpp
   PipelineLoading.cpp
   Profiler.cpp

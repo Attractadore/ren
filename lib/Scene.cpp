@@ -1,7 +1,6 @@
 #include "Scene.hpp"
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
-#include "MeshProcessing.hpp"
 #include "Profiler.hpp"
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
@@ -16,6 +15,7 @@
 #include "passes/Skybox.hpp"
 
 #include <fmt/format.h>
+#include <ktx.h>
 
 namespace ren {
 
@@ -179,36 +179,70 @@ auto Scene::next_frame() -> Result<void, Error> {
   return {};
 }
 
-auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
-  Vector<glsl::Position> positions;
-  Vector<glsl::Normal> normals;
-  Vector<glsl::Tangent> tangents;
-  Vector<glsl::UV> uvs;
-  Vector<glsl::Color> colors;
-  Vector<glsl::Meshlet> meshlets;
-  Vector<u32> meshlet_indices;
-  Vector<u8> meshlet_triangles;
+auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
+  if (blob.size() < sizeof(MeshPackageHeader)) {
+    return std::unexpected(Error::InvalidFormat);
+  }
 
-  Mesh mesh = mesh_process(MeshProcessingOptions{
-      .positions = desc.positions,
-      .normals = desc.normals,
-      .tangents = desc.tangents,
-      .uvs = desc.uvs,
-      .colors = desc.colors,
-      .indices = desc.indices,
-      .enc_positions = &positions,
-      .enc_normals = &normals,
-      .enc_tangents = &tangents,
-      .enc_uvs = &uvs,
-      .enc_colors = &colors,
-      .meshlets = &meshlets,
-      .meshlet_indices = &meshlet_indices,
-      .meshlet_triangles = &meshlet_triangles,
-  });
+  const auto &header = *(const MeshPackageHeader *)blob.data();
+  if (header.magic != MESH_PACKAGE_MAGIC) {
+    return std::unexpected(Error::InvalidFormat);
+  }
+  if (header.version != MESH_PACKAGE_VERSION) {
+    return std::unexpected(Error::InvalidVersion);
+  }
+
+  Span positions = {
+      (const glsl::Position *)&blob[header.positions_offset],
+      header.num_vertices,
+  };
+
+  Span normals = {
+      (const glsl::Normal *)&blob[header.normals_offset],
+      header.num_vertices,
+  };
+
+  Span tangents = {
+      (const glsl::Tangent *)&blob[header.tangents_offset],
+      header.tangents_offset ? header.num_vertices : 0,
+  };
+
+  Span uvs = {
+      (const glsl::UV *)&blob[header.uvs_offset],
+      header.uvs_offset ? header.num_vertices : 0,
+  };
+
+  Span colors = {
+      (const glsl::Color *)&blob[header.colors_offset],
+      header.colors_offset ? header.num_vertices : 0,
+  };
+
+  Span indices = {
+      (const u32 *)&blob[header.indices_offset],
+      header.num_indices,
+  };
+
+  // Create a copy because we need to patch base triangle indices.
+  Vector<glsl::Meshlet> meshlets = Span{
+      (const glsl::Meshlet *)&blob[header.meshlets_offset],
+      header.num_meshlets,
+  };
+
+  Span triangles = {
+      (const u8 *)&blob[header.triangles_offset],
+      header.num_triangles * 3,
+  };
+
+  Mesh mesh = {
+      .bb = header.bb,
+      .pos_enc_bb = header.pos_enc_bb,
+      .uv_bs = header.uv_bs,
+      .lods = {&header.lods[0], &header.lods[header.num_lods]},
+  };
 
   // Upload vertices
 
-  auto upload_buffer = [&]<typename T>(const Vector<T> &data,
+  auto upload_buffer = [&]<typename T>(Span<const T> data,
                                        Handle<Buffer> &buffer,
                                        DebugName name) -> Result<void, Error> {
     if (not data.empty()) {
@@ -238,13 +272,11 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
 
   // Find or allocate index pool
 
-  u32 num_triangles = meshlet_triangles.size() / 3;
-
-  ren_assert_msg(num_triangles * 3 <= glsl::INDEX_POOL_SIZE,
+  ren_assert_msg(header.num_triangles * 3 <= glsl::INDEX_POOL_SIZE,
                  "Index pool overflow");
 
   if (m_data.index_pools.empty() or
-      m_data.index_pools.back().num_free_indices < num_triangles * 3) {
+      m_data.index_pools.back().num_free_indices < header.num_triangles * 3) {
     m_data.index_pools.emplace_back(create_index_pool(m_arena));
   }
 
@@ -256,21 +288,22 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
     meshlet.base_triangle += base_triangle;
   }
 
-  index_pool.num_free_indices -= num_triangles * 3;
+  index_pool.num_free_indices -= header.num_triangles * 3;
+
+  ren_try_to(upload_buffer(indices, mesh.indices,
+                           fmt::format("Mesh {} indices", index)));
 
   // Upload meshlets
 
-  ren_try_to(upload_buffer(meshlets, mesh.meshlets,
+  ren_try_to(upload_buffer(Span<const glsl::Meshlet>(meshlets), mesh.meshlets,
                            fmt::format("Mesh {} meshlets", index)));
-  ren_try_to(upload_buffer(meshlet_indices, mesh.meshlet_indices,
-                           fmt::format("Mesh {} meshlet indices", index)));
 
   // Upload triangles
 
   m_resource_uploader.stage_buffer(
-      *m_renderer, m_frcs->upload_allocator, Span(meshlet_triangles),
+      *m_renderer, m_frcs->upload_allocator, triangles,
       m_renderer->get_buffer_slice<u8>(index_pool.indices)
-          .slice(base_triangle, num_triangles * 3));
+          .slice(base_triangle, header.num_triangles * 3));
 
   Handle<Mesh> handle = m_data.meshes.insert(mesh);
 
@@ -285,8 +318,7 @@ auto Scene::create_mesh(const MeshCreateInfo &desc) -> expected<MeshId> {
       .colors = m_renderer->try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
       .meshlets =
           m_renderer->get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
-      .meshlet_indices =
-          m_renderer->get_buffer_device_ptr<u32>(mesh.meshlet_indices),
+      .meshlet_indices = m_renderer->get_buffer_device_ptr<u32>(mesh.indices),
       .bb = mesh.bb,
       .uv_bs = mesh.uv_bs,
       .index_pool = mesh.index_pool,
@@ -325,28 +357,32 @@ auto Scene::get_or_create_texture(Handle<Image> image,
   return glsl::SampledTexture2D(texture);
 }
 
-auto Scene::create_image(const ImageCreateInfo &desc) -> expected<ImageId> {
-  ren_try(
-      auto texture,
-      m_arena.create_texture({
-          .format = desc.format,
-          .usage = rhi::ImageUsage::ShaderResource |
-                   rhi::ImageUsage::TransferSrc | rhi::ImageUsage::TransferDst,
-          .width = desc.width,
-          .height = desc.height,
-          .num_mip_levels = get_mip_level_count(desc.width, desc.height),
-      }));
+auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
+  ktxTexture2 *ktx_texture2 = nullptr;
+  ktxTexture2_CreateFromMemory((const u8 *)blob.data(), blob.size(), 0,
+                               &ktx_texture2);
+  ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
-  usize block_bits = TinyImageFormat_BitSizeOfBlock(desc.format);
-  usize block_width = TinyImageFormat_WidthOfBlock(desc.format);
-  usize block_height = TinyImageFormat_HeightOfBlock(desc.format);
-  usize width_in_blocks = ceil_div(desc.width, block_width);
-  usize height_in_blocks = ceil_div(desc.height, block_height);
-  usize size = width_in_blocks * height_in_blocks * block_bits / 8;
+  TinyImageFormat format = TinyImageFormat_FromVkFormat(
+      (TinyImageFormat_VkFormat)ktx_texture2->vkFormat);
+  if (!format) {
+    return std::unexpected(Error::InvalidFormat);
+  }
+  ren_try(auto texture, m_arena.create_texture({
+                            .format = format,
+                            .usage = rhi::ImageUsage::ShaderResource |
+                                     rhi::ImageUsage::TransferSrc |
+                                     rhi::ImageUsage::TransferDst,
+                            .width = ktx_texture->baseWidth,
+                            .height = ktx_texture->baseHeight,
+                            .num_mip_levels = ktx_texture->numLevels,
+                        }));
 
   m_resource_uploader.stage_texture(*m_renderer, m_frcs->upload_allocator,
-                                    Span((const std::byte *)desc.data, size),
-                                    texture);
+                                    ktx_texture, texture);
+
+  ktxTexture_Destroy(ktx_texture);
+
   Handle<Image> h = m_images.insert(texture);
 
   return std::bit_cast<ImageId>(h);
@@ -650,28 +686,37 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
   io.BackendRendererName = "imgui_impl_ren";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
   u8 *data;
-  i32 width, height;
-  io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
-  ren::ImageId image =
-      create_image({
-                       .width = u32(width),
-                       .height = u32(height),
-                       .format = TinyImageFormat_R8G8B8A8_UNORM,
-                       .data = data,
-                   })
+  i32 width, height, bpp;
+  io.Fonts->GetTexDataAsRGBA32(&data, &width, &height, &bpp);
+  Handle<Texture> texture = m_arena
+                                .create_texture({
+                                    .name = "ImGui font atlas",
+                                    .format = TinyImageFormat_R8G8B8A8_UNORM,
+                                    .usage = rhi::ImageUsage::ShaderResource |
+                                             rhi::ImageUsage::TransferDst,
+                                    .width = (u32)width,
+                                    .height = (u32)height,
+                                })
+                                .value();
+  m_resource_uploader.stage_texture(
+      *m_renderer, m_frcs->upload_allocator,
+      Span((const std::byte *)data, width * height * bpp), texture);
+  glsl::SampledTexture descriptor =
+      m_descriptor_allocator
+          .allocate_sampled_texture(
+              *m_renderer, SrvDesc{texture},
+              get_or_create_sampler(
+                  {
+                      .mag_filter = rhi::Filter::Linear,
+                      .min_filter = rhi::Filter::Linear,
+                      .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                      .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                      .address_mode_v = rhi::SamplerAddressMode::Repeat,
+                  })
+                  .value())
           .value();
-  SamplerDesc desc = {
-      .mag_filter = Filter::Linear,
-      .min_filter = Filter::Linear,
-      .mipmap_filter = Filter::Linear,
-      .wrap_u = WrappingMode::Repeat,
-      .wrap_v = WrappingMode::Repeat,
-  };
-  glsl::SampledTexture2D texture =
-      get_or_create_texture(std::bit_cast<Handle<Image>>(image), desc).value();
-  // NOTE: texture from old context is leaked. Don't really care since context
-  // will probably be set only once
-  io.Fonts->SetTexID((ImTextureID)(uintptr_t)texture);
+  // FIXME: font texture is leaked.
+  io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor);
 }
 #endif
 

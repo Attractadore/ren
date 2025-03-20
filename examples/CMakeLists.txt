@@ -14,7 +14,7 @@ target_compile_definitions(
                   TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE)
 
 add_library(app-base AppBase.cpp)
-target_link_libraries(app-base PUBLIC ren::ren fmt::fmt)
+target_link_libraries(app-base PUBLIC ren::ren ren::baking fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 if (MSVC)
   target_compile_options(app-base PUBLIC /Zc:preprocessor)

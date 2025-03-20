@@ -1,4 +1,5 @@
 #include "ImGuiApp.hpp"
+#include "ren/baking/mesh.hpp"
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -34,34 +35,38 @@ auto load_mesh(ren::IScene &scene, const char *path) -> Result<ren::MeshId> {
     return Err(importer.GetErrorString());
   }
   assert(ai_scene->mNumMeshes > 0);
-  const aiMesh *mesh = ai_scene->mMeshes[0];
-  assert(mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE);
-  assert(mesh->HasPositions());
-  static_assert(sizeof(glm::vec3) == sizeof(*mesh->mVertices));
-  assert(mesh->HasNormals());
-  static_assert(sizeof(glm::vec3) == sizeof(*mesh->mNormals));
-  static_assert(sizeof(glm::vec4) == sizeof(*mesh->mColors[0]));
-  std::vector<unsigned> indices(mesh->mNumFaces * 3);
-  for (size_t f = 0; f < mesh->mNumFaces; ++f) {
-    assert(mesh->mFaces[f].mNumIndices == 3);
+  const aiMesh *ai_mesh = ai_scene->mMeshes[0];
+  assert(ai_mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE);
+  assert(ai_mesh->HasPositions());
+  static_assert(sizeof(glm::vec3) == sizeof(*ai_mesh->mVertices));
+  assert(ai_mesh->HasNormals());
+  static_assert(sizeof(glm::vec3) == sizeof(*ai_mesh->mNormals));
+  static_assert(sizeof(glm::vec4) == sizeof(*ai_mesh->mColors[0]));
+  std::vector<unsigned> indices(ai_mesh->mNumFaces * 3);
+  for (size_t f = 0; f < ai_mesh->mNumFaces; ++f) {
+    assert(ai_mesh->mFaces[f].mNumIndices == 3);
     for (size_t i = 0; i < 3; ++i) {
-      indices[f * 3 + i] = mesh->mFaces[f].mIndices[i];
+      indices[f * 3 + i] = ai_mesh->mFaces[f].mIndices[i];
     }
   }
-  return scene
-      .create_mesh({
-          .positions =
-              std::span(reinterpret_cast<const glm::vec3 *>(mesh->mVertices),
-                        mesh->mNumVertices),
-          .normals =
-              std::span(reinterpret_cast<const glm::vec3 *>(mesh->mNormals),
-                        mesh->mNumVertices),
-          .colors =
-              std::span(reinterpret_cast<const glm::vec4 *>(mesh->mColors[0]),
-                        mesh->HasVertexColors(0) ? mesh->mNumVertices : 0),
-          .indices = indices,
-      })
-      .transform_error(get_error_string);
+
+  OK(auto blob,
+     ren::bake_mesh_to_memory({
+         .num_vertices = ai_mesh->mNumVertices,
+         .positions = reinterpret_cast<const glm::vec3 *>(ai_mesh->mVertices),
+         .normals = reinterpret_cast<const glm::vec3 *>(ai_mesh->mNormals),
+         .colors =
+             ai_mesh->HasVertexColors(0)
+                 ? reinterpret_cast<const glm::vec4 *>(ai_mesh->mColors[0])
+                 : nullptr,
+         .num_indices = indices.size(),
+         .indices = indices.data(),
+     }));
+  auto [blob_data, blob_size] = blob;
+  OK(ren::MeshId mesh, scene.create_mesh(blob_data, blob_size));
+  std::free(blob_data);
+
+  return mesh;
 }
 
 auto create_material(ren::IScene &scene) -> Result<ren::MaterialId> {
@@ -81,8 +86,9 @@ auto init_random(unsigned seed) -> boost::random::mt19937 {
   return boost::random::mt19937(seed ? seed : boost::random::random_device()());
 }
 
-auto random_transform(boost::random::mt19937 &rg, float min_trans, float max_trans,
-                      float min_scale, float max_scale) -> glm::mat4x3 {
+auto random_transform(boost::random::mt19937 &rg, float min_trans,
+                      float max_trans, float min_scale, float max_scale)
+    -> glm::mat4x3 {
   boost::random::uniform_real_distribution<float> trans_dist(min_trans,
                                                              max_trans);
   boost::random::uniform_int_distribution<int> axis_dist(INT_MIN, INT_MAX);
@@ -116,9 +122,9 @@ auto random_transform(boost::random::mt19937 &rg, float min_trans, float max_tra
   return transform;
 }
 
-auto place_entities(boost::random::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
-                    ren::MaterialId material, unsigned num_entities)
-    -> Result<void> {
+auto place_entities(boost::random::mt19937 &rg, ren::IScene &scene,
+                    ren::MeshId mesh, ren::MaterialId material,
+                    unsigned num_entities) -> Result<void> {
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;

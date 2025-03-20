@@ -1,6 +1,6 @@
 #include "AppBase.hpp"
+#include "ren/baking/mesh.hpp"
 
-#include <array>
 #include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {
@@ -9,32 +9,33 @@ public:
     [&]() -> Result<void> {
       ren::IScene &scene = get_scene();
 
-      std::array<glm::vec3, 3> positions = {{
+      glm::vec3 positions[] = {
           {0.0f, 0.5f, 0.0f},
           {-std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
           {std::sqrt(3.0f) / 4.0f, -0.25f, 0.0f},
-      }};
+      };
 
-      std::array<glm::vec4, 3> colors = {{
+      glm::vec4 colors[] = {
           {1.0f, 0.0f, 0.0f, 1.0f},
           {0.0f, 1.0f, 0.0f, 1.0f},
           {0.0f, 0.0f, 1.0f, 1.0f},
-      }};
+      };
 
-      std::array<glm::vec3, 3> normals = {{
+      glm::vec3 normals[] = {
           {0.0f, 0.0f, 1.0f},
           {0.0f, 0.0f, 1.0f},
           {0.0f, 0.0f, 1.0f},
-      }};
+      };
 
-      std::array<unsigned, 3> indices = {0, 1, 2};
-
-      OK(ren::MeshId mesh, scene.create_mesh({
-                               .positions = positions,
-                               .normals = normals,
-                               .colors = colors,
-                               .indices = indices,
-                           }));
+      OK(auto blob, ren::bake_mesh_to_memory({
+                        .num_vertices = 3,
+                        .positions = positions,
+                        .normals = normals,
+                        .colors = colors,
+                    }));
+      auto [blob_data, blob_size] = blob;
+      OK(ren::MeshId mesh, scene.create_mesh(blob_data, blob_size));
+      std::free(blob_data);
 
       OK(ren::MaterialId material, scene.create_material({
                                        .metallic_factor = 1.0f,

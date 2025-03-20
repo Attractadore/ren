@@ -6,6 +6,8 @@
 
 #include <cstring>
 
+struct ktxTexture;
+
 namespace ren {
 
 class Renderer;
@@ -22,6 +24,7 @@ class ResourceUploader {
   struct TextureCopy {
     BufferView src;
     Handle<Texture> dst;
+    StaticVector<usize, MAX_SRV_MIPS> mip_offsets;
   };
   Vector<TextureCopy> m_texture_copies;
 
@@ -35,6 +38,9 @@ public:
 
   void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,
                     Span<const std::byte> data, const BufferView &buffer);
+
+  void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
+                     ktxTexture *ktx_texture, Handle<Texture> texture);
 
   void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
                      Span<const std::byte> data, Handle<Texture> texture);
