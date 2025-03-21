@@ -386,6 +386,7 @@ extern const size_t {}Size;
     std::ofstream f(hpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
+      return -1;
     }
     f.write(header.data(), header.size());
   }
@@ -411,6 +412,7 @@ const extern size_t {}Size = sizeof({}) / sizeof(uint32_t);
     std::ofstream f(cpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
+      return -1;
     }
     f.write(source.data(), source.size());
   }
