@@ -64,7 +64,7 @@ public:
 
 class DescriptorAllocatorScope {
 public:
-  DescriptorAllocatorScope(DescriptorAllocator &alloc);
+  DescriptorAllocatorScope() = default;
   DescriptorAllocatorScope(const DescriptorAllocatorScope &) = delete;
   DescriptorAllocatorScope(DescriptorAllocatorScope &&other) = default;
   ~DescriptorAllocatorScope();
@@ -74,12 +74,14 @@ public:
   DescriptorAllocatorScope &
   operator=(DescriptorAllocatorScope &&other) noexcept;
 
+  auto init(DescriptorAllocator &allocator) -> Result<void, Error>;
+
   auto get_resource_descriptor_heap() const -> Handle<ResourceDescriptorHeap> {
-    return m_alloc->get_resource_heap();
+    return m_allocator->get_resource_heap();
   }
 
   auto get_sampler_descriptor_heap() const -> Handle<SamplerDescriptorHeap> {
-    return m_alloc->get_sampler_heap();
+    return m_allocator->get_sampler_heap();
   }
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
@@ -98,7 +100,7 @@ public:
   void reset();
 
 private:
-  DescriptorAllocator *m_alloc = nullptr;
+  DescriptorAllocator *m_allocator = nullptr;
   Vector<glsl::Texture> m_srv;
   Vector<glsl::SampledTexture> m_cis;
   Vector<glsl::StorageTexture> m_uav;

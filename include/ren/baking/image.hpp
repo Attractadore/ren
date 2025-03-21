@@ -1,6 +1,7 @@
 #pragma once
 #include "../ren.hpp"
 #include "../tiny_imageformat.h"
+#include "baking.hpp"
 
 namespace ren {
 

@@ -38,20 +38,6 @@ inline auto fail(VkResult result, String description = "") -> Failure<Error> {
   return Failure(Error(code, std::move(description)));
 }
 
-auto load_vulkan() -> ren::Result<void, VkResult> {
-  static VkResult result = [&] {
-    fmt::println("vk: Load Vulkan");
-    if (SDL_Vulkan_LoadLibrary(nullptr)) {
-      return VK_ERROR_UNKNOWN;
-    }
-    return volkInitialize();
-  }();
-  if (result) {
-    return Failure(result);
-  }
-  return {};
-}
-
 const char *VK_LAYER_KHRONOS_VALIDATION_NAME = "VK_LAYER_KHRONOS_validation";
 
 constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
@@ -76,10 +62,14 @@ struct InstanceData {
   VkDebugReportCallbackEXT debug_callback = nullptr;
   StaticVector<AdapterData, MAX_PHYSICAL_DEVICES> adapters;
   decltype(&set_debug_name_stub) set_debug_name = set_debug_name_stub;
+  bool headless = false;
 } g_instance;
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+};
+
+constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -124,11 +114,24 @@ auto set_debug_name_real(Device device, VkObjectType type, void *object,
 
 } // namespace
 
-auto get_supported_features() -> Result<Features> {
-  if (!load_vulkan()) {
-    return fail(Error::Unsupported);
+auto load(bool headless) -> Result<void> {
+  static VkResult result = [&] {
+    fmt::println("vk: Load Vulkan");
+    if (not headless) {
+      if (SDL_Vulkan_LoadLibrary(nullptr)) {
+        return VK_ERROR_UNKNOWN;
+      }
+    }
+    return volkInitialize();
+  }();
+  if (result) {
+    return fail(result);
   }
+  g_instance.headless = headless;
+  return {};
+}
 
+auto get_supported_features() -> Result<Features> {
   VkResult result = VK_SUCCESS;
 
   uint32_t num_extensions = 0;
@@ -179,10 +182,6 @@ auto get_supported_features() -> Result<Features> {
 auto init(const InitInfo &init_info) -> Result<void> {
   ren_assert(!g_instance.handle);
 
-  if (!load_vulkan()) {
-    return fail(Error::Unsupported);
-  }
-
   VkResult result = VK_SUCCESS;
 
   fmt::println("vk: Create instance");
@@ -213,19 +212,27 @@ auto init(const InitInfo &init_info) -> Result<void> {
   SmallVector<const char *> layers;
   SmallVector<const char *> extensions;
 
-  fmt::println("vk: Enable SDL2 required extensions");
-  u32 num_sdl_extensions = 0;
-  if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
-                                        nullptr)) {
-    return fail(Error::Unknown);
-  }
-  extensions.resize(num_sdl_extensions);
-  if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
-                                        extensions.data())) {
-    return fail(Error::Unknown);
-  }
+  if (not g_instance.headless) {
+    fmt::println("vk: Enable SDL2 required extensions");
+    u32 num_sdl_extensions = 0;
+    if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
+                                          nullptr)) {
+      return fail(Error::Unknown);
+    }
+    extensions.resize(num_sdl_extensions);
+    if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
+                                          extensions.data())) {
+      return fail(Error::Unknown);
+    }
 
-  extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+
+    if (is_extension_supported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) {
+      fmt::println("vk: Enable {}",
+                   VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+      extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+    }
+  }
 
   if (features.debug_names) {
     fmt::println("vk: Enable debug names");
@@ -239,11 +246,6 @@ auto init(const InitInfo &init_info) -> Result<void> {
       fmt::println("vk: Enable debug callback");
       extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
-  }
-
-  if (is_extension_supported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) {
-    fmt::println("vk: Enable {}", VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-    extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
   }
 
   if (not layers.empty()) {
@@ -369,6 +371,18 @@ auto init(const InitInfo &init_info) -> Result<void> {
         break;
       }
     }
+    if (not g_instance.headless) {
+      for (const char *extension : REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS) {
+        if (not is_extension_supported(extension)) {
+          fmt::println(
+              "vk: Disable device {}: required extension {} is not supported",
+              device_name, extension);
+          skip = true;
+          break;
+        }
+      }
+    }
+
     if (skip) {
       continue;
     }
@@ -578,6 +592,9 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
   Vector<const char *> extensions = REQUIRED_DEVICE_EXTENSIONS;
+  if (not g_instance.headless) {
+    extensions.append(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
+  }
 
   void *pnext = nullptr;
   auto add_features = [&](auto &features) {

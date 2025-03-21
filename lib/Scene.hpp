@@ -81,6 +81,8 @@ struct SceneData {
 
   GenArray<DirectionalLight> directional_lights;
 
+  glsl::SampledTexture2D dhr_lut;
+
   glm::vec3 env_luminance = {};
 
 public:
@@ -125,6 +127,9 @@ public:
 
   auto create_image(std::span<const std::byte> blob)
       -> expected<ImageId> override;
+
+  auto create_texture(const void *blob, usize size)
+      -> expected<Handle<Texture>>;
 
   auto create_material(const MaterialCreateInfo &)
       -> expected<MaterialId> override;

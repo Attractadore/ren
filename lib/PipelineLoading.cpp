@@ -2,10 +2,8 @@
 #include "Formats.hpp"
 #include "Mesh.hpp"
 #include "ResourceArena.hpp"
-#include "core/Errors.hpp"
 #include "glsl/Opaque.h"
 
-#include "ComputeDHRLut.comp.hpp"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
 #include "HiZSpd.comp.hpp"
@@ -22,43 +20,9 @@
 #include "Skybox.frag.hpp"
 #include "Skybox.vert.hpp"
 
-#include <spirv_reflect.h>
+#include <fmt/format.h>
 
 namespace ren {
-
-auto create_pipeline_layout(ResourceArena &arena,
-                            TempSpan<const Span<const std::byte>> shaders,
-                            StringView name)
-    -> Result<Handle<PipelineLayout>, Error> {
-  u32 push_constants_size = 0;
-
-  SmallVector<SpvReflectDescriptorSet *> sets;
-  for (auto code : shaders) {
-    spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
-                                     SPV_REFLECT_MODULE_FLAG_NO_COPY);
-    throw_if_failed(shader.GetResult(),
-                    "SPIRV-Reflect: Failed to create shader module");
-
-    u32 num_pc_blocks = 0;
-    throw_if_failed(shader.EnumeratePushConstantBlocks(&num_pc_blocks, nullptr),
-                    "SPIRV-Reflect: Failed to enumerate push constants");
-    ren_assert(num_pc_blocks <= 1);
-    if (num_pc_blocks) {
-      SpvReflectBlockVariable *block_var;
-      throw_if_failed(
-          shader.EnumeratePushConstantBlocks(&num_pc_blocks, &block_var),
-          "SPIRV-Reflect: Failed to enumerate push constants");
-      push_constants_size = block_var->padded_size;
-    }
-  }
-
-  return arena.create_pipeline_layout({
-      .name = fmt::format("{} pipeline layout", name),
-      .use_resource_heap = true,
-      .use_sampler_heap = true,
-      .push_constants_size = push_constants_size,
-  });
-}
 
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
@@ -178,24 +142,11 @@ auto load_imgui_pipeline(ResourceArena &arena, TinyImageFormat format)
 }
 
 auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
-  auto load_compute_pipeline =
-      [&](Span<const std::byte> shader,
-          StringView name) -> Result<Handle<ComputePipeline>, Error> {
-    ren_try(Handle<PipelineLayout> layout,
-            create_pipeline_layout(arena, {shader}, name));
-    return arena.create_compute_pipeline({
-        .name = fmt::format("{} compute pipeline", name),
-        .layout = layout,
-        .cs = {shader},
-    });
-  };
 
 #define compute_pipeline(shader, name)                                         \
-  load_compute_pipeline(Span(shader, shader##Size).as_bytes(), name)
+  load_compute_pipeline(arena, shader, name)
 
   Pipelines pipelines;
-  ren_try(pipelines.compute_dhr_lut,
-          compute_pipeline(ComputeDHRLutCS, "Compute DHR LUT"));
   ren_try(
       pipelines.instance_culling_and_lod,
       compute_pipeline(InstanceCullingAndLODCS, "Instance culling and LOD"));

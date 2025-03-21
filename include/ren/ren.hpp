@@ -61,15 +61,25 @@ struct IScene;
 
 constexpr unsigned DEFAULT_ADAPTER = -1;
 
-[[nodiscard]] auto create_renderer(unsigned adapter = DEFAULT_ADAPTER)
+enum class RendererType {
+  Default,
+  Headless,
+};
+
+struct RendererInfo {
+  unsigned adapter = DEFAULT_ADAPTER;
+  RendererType type = RendererType::Default;
+};
+
+[[nodiscard]] auto create_renderer(const RendererInfo &info)
     -> expected<std::unique_ptr<IRenderer>>;
 
 struct IRenderer {
   virtual ~IRenderer() = default;
-
-  [[nodiscard]] virtual auto create_scene(ISwapchain &swapchain)
-      -> expected<std::unique_ptr<IScene>> = 0;
 };
+
+[[nodiscard]] auto create_scene(IRenderer &renderer, ISwapchain &swapchain)
+    -> expected<std::unique_ptr<IScene>>;
 
 enum class VSync {
   Off,

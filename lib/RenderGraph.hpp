@@ -478,10 +478,10 @@ private:
 };
 
 struct RgBuildInfo {
-  NotNull<DeviceBumpAllocator *> gfx_allocator;
-  NotNull<DeviceBumpAllocator *> async_allocator;
-  NotNull<DeviceBumpAllocator *> shared_allocator;
-  NotNull<UploadBumpAllocator *> upload_allocator;
+  DeviceBumpAllocator *gfx_allocator = nullptr;
+  DeviceBumpAllocator *async_allocator = nullptr;
+  DeviceBumpAllocator *shared_allocator = nullptr;
+  UploadBumpAllocator *upload_allocator = nullptr;
 };
 
 class RgBuilder {
@@ -528,6 +528,15 @@ public:
 
   void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
                      const glm::vec4 &value, RgQueue queue = RgQueue::Graphics);
+
+  void copy_texture_to_buffer(RgTextureId src, RgDebugName name,
+                              RgUntypedBufferId *dst,
+                              RgQueue queue = RgQueue::Graphics);
+
+  void copy_texture_to_buffer(RgTextureId src, RgUntypedBufferId *dst,
+                              RgQueue queue = RgQueue::Graphics) {
+    copy_texture_to_buffer(src, "rg#", dst, queue);
+  }
 
   void set_external_buffer(RgUntypedBufferId id, const BufferView &view);
 
@@ -624,8 +633,8 @@ private:
 struct RgExecuteInfo {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
-  NotNull<Handle<Semaphore> *> frame_end_semaphore;
-  NotNull<u64 *> frame_end_time;
+  Handle<Semaphore> *frame_end_semaphore = nullptr;
+  u64 *frame_end_time = nullptr;
 };
 
 class RenderGraph {
@@ -799,6 +808,23 @@ public:
   write_buffer(RgDebugName name, RgUntypedBufferId buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
+
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+               NotNull<RgUntypedBufferId *> new_buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
+      -> RgUntypedBufferToken {
+    RgUntypedBufferToken token;
+    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
+    return token;
+  }
+
+  [[nodiscard]] auto
+  write_buffer(RgDebugName name, RgUntypedBufferId *buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
+      -> RgUntypedBufferToken {
+    return write_buffer(std::move(name), *buffer, buffer, usage);
+  }
 
   template <typename T>
   [[nodiscard]] auto

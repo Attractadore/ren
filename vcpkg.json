@@ -15,6 +15,7 @@
     "glm",
     "meshoptimizer",
     "mikktspace",
+    "cxxopts",
     "ms-gsl",
     {
       "name": "sdl2",
@@ -75,6 +76,12 @@
       "description": "Build shader compiler",
       "dependencies": [
         "glslang"
+      ]
+    },
+    "baking-tools": {
+      "description": "Build baking tools",
+      "dependencies": [
+        "cxxopts"
       ]
     },
     "tests": {

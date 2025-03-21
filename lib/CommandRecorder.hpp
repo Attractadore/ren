@@ -151,6 +151,12 @@ public:
     update_buffer<T>(buffer, TempSpan(&data, 1));
   }
 
+  void copy_texture_to_buffer(Handle<Texture> src, Handle<Buffer> dst,
+                              TempSpan<const VkBufferImageCopy> regions);
+
+  void copy_texture_to_buffer(Handle<Texture> src, const BufferView &dst,
+                              u32 level = 0);
+
   void blit(Handle<Texture> src, Handle<Texture> dst,
             TempSpan<const VkImageBlit> regions, VkFilter filter);
 

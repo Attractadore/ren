@@ -295,4 +295,17 @@ auto Swapchain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {
                                                 m_surface);
 }
 
+auto get_sdl_window_flags(IRenderer &) -> uint32_t {
+  return rhi::SDL_WINDOW_FLAGS;
+}
+
+auto create_swapchain(IRenderer &irenderer, SDL_Window *window)
+    -> expected<std::unique_ptr<ISwapchain>> {
+  auto &renderer = static_cast<Renderer &>(irenderer);
+  auto swapchain = std::make_unique<Swapchain>();
+  return swapchain->init(renderer, window).transform([&] {
+    return std::move(swapchain);
+  });
+}
+
 } // namespace ren

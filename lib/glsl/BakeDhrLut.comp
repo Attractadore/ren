@@ -1,4 +1,4 @@
-#include "ComputeDHRLut.h"
+#include "BakeDhrLut.h"
 #include "Lighting.h"
 
 const uint NUM_THREADS = 256;

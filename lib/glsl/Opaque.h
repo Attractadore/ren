@@ -20,7 +20,7 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   vec3 eye;
   Texture2D exposure;
   vec3 env_luminance;
-  SampledTexture2D dhr_lut;
+  SampledTexture2D raw_dhr_lut;
 }
 GLSL_PC;
 

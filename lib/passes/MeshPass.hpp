@@ -59,7 +59,6 @@ using DepthOnlyMeshPassInfo = MeshPassInfo<DrawSet::DepthOnly>;
 template <> struct MeshPassInfo<DrawSet::Opaque> {
   MeshPassBaseInfo base;
   RgTextureId exposure;
-  RgTextureId dhr_lut;
   glm::vec3 env_luminance;
 };
 

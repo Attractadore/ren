@@ -40,7 +40,7 @@ AppBase::AppBase(const char *app_name) {
       }
     }
 
-    OK(m_renderer, ren::create_renderer(adapter));
+    OK(m_renderer, ren::create_renderer({.adapter = adapter}));
 
     m_window.reset(SDL_CreateWindow(
         app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
@@ -52,7 +52,7 @@ AppBase::AppBase(const char *app_name) {
 
     OK(m_swapchain, ren::create_swapchain(*m_renderer, m_window.get()));
 
-    OK(m_scene, m_renderer->create_scene(*m_swapchain));
+    OK(m_scene, ren::create_scene(*m_renderer, *m_swapchain));
 
     OK(m_camera, m_scene->create_camera());
     m_scene->set_camera(m_camera);

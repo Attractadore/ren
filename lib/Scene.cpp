@@ -5,7 +5,6 @@
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
-#include "passes/ComputeDHRLut.hpp"
 #include "passes/Exposure.hpp"
 #include "passes/GpuSceneUpdate.hpp"
 #include "passes/ImGui.hpp"
@@ -18,6 +17,12 @@
 #include <ktx.h>
 
 namespace ren {
+
+namespace {
+constexpr u8 DHR_LUT_KTX2[] = {
+#include "../assets/dhr-lut.ktx2.inc"
+};
+} // namespace
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
     : m_arena(renderer)
@@ -85,6 +90,13 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   }
 
   next_frame().value();
+
+  Handle<Texture> dhr_lut =
+      create_texture(DHR_LUT_KTX2, sizeof(DHR_LUT_KTX2)).value();
+  m_data.dhr_lut = (glsl::SampledTexture2D)m_descriptor_allocator
+                       .allocate_sampled_texture(*m_renderer, SrvDesc{dhr_lut},
+                                                 m_samplers.mip_nearest_clamp)
+                       .value();
 }
 
 auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
@@ -102,8 +114,6 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = acquire_semaphore,
         .present_semaphore = present_semaphore,
-        .descriptor_allocator =
-            DescriptorAllocatorScope(m_descriptor_allocator),
     });
     ScenePerFrameResources &frcs = m_per_frame_resources.back();
     ren_try(frcs.gfx_cmd_pool, m_arena.create_command_pool({
@@ -118,6 +128,7 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
               }));
     }
     frcs.upload_allocator.init(*m_renderer, m_arena, 64 * MiB);
+    ren_try_to(frcs.descriptor_allocator.init(m_descriptor_allocator));
   }
   return {};
 }
@@ -358,9 +369,15 @@ auto Scene::get_or_create_texture(Handle<Image> image,
 }
 
 auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
+  ren_try(auto texture, create_texture(blob.data(), blob.size()));
+  Handle<Image> image = m_images.insert(texture);
+  return std::bit_cast<ImageId>(image);
+}
+
+auto Scene::create_texture(const void *blob, usize size)
+    -> expected<Handle<Texture>> {
   ktxTexture2 *ktx_texture2 = nullptr;
-  ktxTexture2_CreateFromMemory((const u8 *)blob.data(), blob.size(), 0,
-                               &ktx_texture2);
+  ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
   TinyImageFormat format = TinyImageFormat_FromVkFormat(
@@ -381,11 +398,7 @@ auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
   m_resource_uploader.stage_texture(*m_renderer, m_frcs->upload_allocator,
                                     ktx_texture, texture);
 
-  ktxTexture_Destroy(ktx_texture);
-
-  Handle<Image> h = m_images.insert(texture);
-
-  return std::bit_cast<ImageId>(h);
+  return texture;
 }
 
 auto Scene::create_material(const MaterialCreateInfo &info)
@@ -772,16 +785,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                .exposure = &exposure,
                            });
 
-  RgTextureId dhr_lut;
-  setup_compute_dhr_lut_pass(cfg, {.dhr_lut = &dhr_lut});
-
   RgTextureId depth_buffer;
   RgTextureId hdr;
   setup_opaque_passes(cfg, OpaquePassesConfig{
                                .gpu_scene = &m_gpu_scene,
                                .rg_gpu_scene = &rg_gpu_scene,
                                .exposure = exposure,
-                               .dhr_lut = dhr_lut,
                                .depth_buffer = &depth_buffer,
                                .hdr = &hdr,
                            });
@@ -829,6 +838,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       .shared_allocator = &m_shared_allocators[0],
       .upload_allocator = &m_frcs->upload_allocator,
   });
+}
+
+auto create_scene(IRenderer &renderer, ISwapchain &swapchain)
+    -> expected<std::unique_ptr<IScene>> {
+  return std::make_unique<Scene>(static_cast<Renderer &>(renderer),
+                                 static_cast<Swapchain &>(swapchain));
 }
 
 } // namespace ren

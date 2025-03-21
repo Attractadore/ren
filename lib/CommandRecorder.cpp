@@ -116,6 +116,35 @@ void CommandRecorder::update_buffer(const BufferView &view,
                     view.offset, view.size_bytes(), data.data());
 }
 
+void CommandRecorder::copy_texture_to_buffer(
+    Handle<Texture> src, Handle<Buffer> dst,
+    TempSpan<const VkBufferImageCopy> regions) {
+  vkCmdCopyImageToBuffer(m_cmd.handle,
+                         m_renderer->get_texture(src).handle.handle,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         m_renderer->get_buffer(dst).handle.handle,
+                         regions.size(), regions.data());
+}
+
+void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
+                                             const BufferView &dst, u32 level) {
+  const Texture &texture = m_renderer->get_texture(src);
+  ren_assert(level < texture.num_mip_levels);
+  glm::uvec3 size = glm::max(texture.size, {1, 1, 1});
+  copy_texture_to_buffer(
+      src, dst.buffer,
+      {{
+          .bufferOffset = dst.offset,
+          .imageSubresource =
+              {
+                  .aspectMask = getVkImageAspectFlags(texture.format),
+                  .mipLevel = level,
+                  .layerCount = texture.num_array_layers,
+              },
+          .imageExtent = {size.x, size.y, size.z},
+      }});
+}
+
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
                            TempSpan<const VkImageBlit> regions,
                            VkFilter filter) {

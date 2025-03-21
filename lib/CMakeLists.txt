@@ -31,40 +31,26 @@ target_link_libraries(ren-rhi PUBLIC
   volk::volk)
 target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1 VK_NO_PROTOTYPES)
 
-find_package(Ktx REQUIRED)
-find_package(directxtex REQUIRED)
-find_package(meshoptimizer REQUIRED)
-find_package(mikktspace REQUIRED)
-
-add_library(ren-gfx INTERFACE)
-target_link_libraries(ren-gfx INTERFACE ren-core ren-rhi KTX::ktx)
-
-add_library(ren-baking ImageBaking.cpp MeshBaking.cpp MeshSimplification.cpp)
-add_library(ren::baking ALIAS ren-baking)
-target_sources(ren-baking PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/baking/image.hpp ${REN_INCLUDE}/ren/baking/mesh.hpp)
-target_link_libraries(ren-baking
-  PUBLIC glm::glm tiny_imageformat
-  PRIVATE ren-core Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace)
-target_compile_features(ren-baking PUBLIC cxx_std_23)
-
-add_library(ren
-  ren.cpp
-  Camera.cpp
+add_library(ren-gfx 
   CommandRecorder.cpp
   DescriptorAllocator.cpp
   FreeListAllocator.cpp
-  GpuScene.cpp
-  Mesh.cpp
   Pipeline.cpp
-  PipelineLoading.cpp
   Profiler.cpp
   RenderGraph.cpp
   Renderer.cpp
+  Texture.cpp
+)
+target_link_libraries(ren-gfx PUBLIC ren-core ren-rhi PRIVATE unofficial::spirv-reflect)
+
+add_library(ren
+  Camera.cpp
+  GpuScene.cpp
+  Mesh.cpp
+  PipelineLoading.cpp
   ResourceUploader.cpp
   Scene.cpp
   Swapchain.cpp
-  Texture.cpp
-  passes/ComputeDHRLut.cpp
   passes/Exposure.cpp
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp
@@ -84,8 +70,8 @@ target_compile_features(ren PUBLIC cxx_std_23)
 if(REN_BUILD_IMGUI_PLUGIN)
   message(STATUS "Enable ImGui plugin")
   find_package(ImGui REQUIRED)
-  target_compile_definitions(ren-gfx INTERFACE REN_IMGUI)
-  target_link_libraries(ren-gfx INTERFACE imgui::imgui)
+  target_compile_definitions(ren-gfx PUBLIC REN_IMGUI)
+  target_link_libraries(ren-gfx PUBLIC imgui::imgui)
   add_library(ren-imgui ren-imgui.cpp)
   add_library(ren::imgui ALIAS ren-imgui)
   target_sources(ren-imgui PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren-imgui.hpp)
@@ -97,29 +83,62 @@ endif()
 if(REN_PROFILER)
   message(STATUS "Enable profiler")
   find_package(Tracy REQUIRED)
-  target_link_libraries(ren-gfx INTERFACE Tracy::TracyClient)
-  target_compile_definitions(ren-gfx INTERFACE REN_PROFILER)
+  target_link_libraries(ren-gfx PUBLIC Tracy::TracyClient)
+  target_compile_definitions(ren-gfx PUBLIC REN_PROFILER)
 endif()
 if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
-  target_compile_definitions(ren-gfx INTERFACE REN_ASSERTIONS)
+  target_compile_definitions(ren-gfx PUBLIC REN_ASSERTIONS)
 endif()
 if(REN_DEBUG_LAYER)
   message(STATUS "Enable RHI debug layer")
-  target_compile_definitions(ren-gfx INTERFACE REN_DEBUG_LAYER)
+  target_compile_definitions(ren-gfx PUBLIC REN_DEBUG_LAYER)
 endif()
 if(REN_DEBUG_NAMES)
   message(STATUS "Enable RHI object debug names")
-  target_compile_definitions(ren-gfx INTERFACE REN_DEBUG_NAMES)
+  target_compile_definitions(ren-gfx PUBLIC REN_DEBUG_NAMES)
 endif()
 if(REN_RENDER_GRAPH_DEBUG)
   message(STATUS "Enable render graph debug features")
-  target_compile_definitions(ren-gfx INTERFACE REN_RG_DEBUG)
+  target_compile_definitions(ren-gfx PUBLIC REN_RG_DEBUG)
 endif()
-
-add_subdirectory(glsl)
 
 if (REN_BUILD_SHADER_COMPILER)
   message(STATUS "Build shader compiler")
   add_subdirectory(shader-compiler)
 endif()
+
+find_package(Ktx REQUIRED)
+find_package(directxtex REQUIRED)
+find_package(meshoptimizer REQUIRED)
+find_package(mikktspace REQUIRED)
+
+add_library(ren-baking
+  Baking.cpp
+  ImageBaking.cpp
+  MeshBaking.cpp
+  MeshSimplification.cpp
+)
+add_library(ren::baking ALIAS ren-baking)
+target_sources(
+  ren-baking PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
+  FILES
+  ${REN_INCLUDE}/ren/baking/baking.hpp
+  ${REN_INCLUDE}/ren/baking/image.hpp
+  ${REN_INCLUDE}/ren/baking/mesh.hpp
+)
+target_link_libraries(ren-baking
+  PUBLIC glm::glm tiny_imageformat
+  PRIVATE ren-gfx Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace)
+target_compile_features(ren-baking PUBLIC cxx_std_23)
+
+if (REN_BUILD_BAKING_TOOLS)
+  message(STATUS "Build baking tools")
+
+  find_package(cxxopts REQUIRED)
+
+  add_executable(ren-bake-dhr-lut bake-dhr-lut.cpp)
+  target_link_libraries(ren-bake-dhr-lut ren-baking cxxopts::cxxopts)
+endif()
+
+add_subdirectory(glsl)

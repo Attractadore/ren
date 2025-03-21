@@ -6,7 +6,6 @@
 namespace ren {
 
 struct Pipelines {
-  Handle<ComputePipeline> compute_dhr_lut;
   Handle<ComputePipeline> instance_culling_and_lod;
   Handle<ComputePipeline> meshlet_culling;
   Handle<ComputePipeline> exclusive_scan_uint32;

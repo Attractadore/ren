@@ -1,6 +1,5 @@
 #include "Renderer.hpp"
 #include "Profiler.hpp"
-#include "Scene.hpp"
 #include "Swapchain.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
@@ -9,7 +8,9 @@
 
 namespace ren {
 
-auto Renderer::init(u32 adapter) -> Result<void, Error> {
+auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
+  ren_try_to(rhi::load(info.type == RendererType::Headless));
+
   ren_try(rhi::Features features, rhi::get_supported_features());
 
 #if !REN_DEBUG_NAMES
@@ -20,16 +21,18 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
   features.debug_layer = false;
 #endif
 
-  ren_try_to(rhi::init({.features = features}));
+  ren_try_to(rhi::init({
+      .features = features,
+  }));
 
-  if (adapter == DEFAULT_ADAPTER) {
+  if (info.adapter == DEFAULT_ADAPTER) {
     m_adapter =
         rhi::get_adapter_by_preference(rhi::AdapterPreference::HighPerformance);
   } else {
-    if (adapter >= rhi::get_adapter_count()) {
+    if (info.adapter >= rhi::get_adapter_count()) {
       throw std::runtime_error("Vulkan: Failed to find requested adapter");
     }
-    m_adapter = rhi::get_adapter(adapter);
+    m_adapter = rhi::get_adapter(info.adapter);
   }
 
   rhi::AdapterFeatures adapter_features = rhi::get_adapter_features(m_adapter);
@@ -49,11 +52,6 @@ auto Renderer::init(u32 adapter) -> Result<void, Error> {
 Renderer::~Renderer() {
   rhi::destroy_device(m_device);
   rhi::exit();
-}
-
-auto Renderer::create_scene(ISwapchain &swapchain)
-    -> expected<std::unique_ptr<IScene>> {
-  return std::make_unique<Scene>(*this, static_cast<Swapchain &>(swapchain));
 }
 
 auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
@@ -703,3 +701,9 @@ auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
 }
 
 } // namespace ren
+
+auto ren::create_renderer(const RendererInfo &info)
+    -> expected<std::unique_ptr<IRenderer>> {
+  auto renderer = std::make_unique<Renderer>();
+  return renderer->init(info).transform([&] { return std::move(renderer); });
+}

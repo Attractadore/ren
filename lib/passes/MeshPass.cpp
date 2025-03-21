@@ -298,8 +298,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
       .eye = info.base.camera.position,
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = info.env_luminance,
-      .dhr_lut = pass.read_texture(info.dhr_lut, rhi::FS_RESOURCE_IMAGE,
-                                   cfg.samplers->mip_nearest_clamp),
+      .dhr_lut = cfg.scene->dhr_lut,
   };
 }
 

@@ -49,7 +49,6 @@ struct OpaquePassConfig {
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
   RgTextureId exposure;
-  RgTextureId dhr_lut;
 };
 
 void setup_opaque_pass(const PassCommonConfig &ccfg,
@@ -84,7 +83,6 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                           .hi_z = cfg.hi_z,
                       },
                   .exposure = cfg.exposure,
-                  .dhr_lut = cfg.dhr_lut,
                   .env_luminance = ccfg.scene->env_luminance,
               });
 }
@@ -158,7 +156,6 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
                               .depth_buffer = cfg.depth_buffer,
                               .hi_z = hi_z,
                               .exposure = cfg.exposure,
-                              .dhr_lut = cfg.dhr_lut,
                           });
   if (occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
     setup_hi_z_pass();
@@ -171,7 +168,6 @@ void ren::setup_opaque_passes(const PassCommonConfig &ccfg,
                   .depth_buffer = cfg.depth_buffer,
                   .hi_z = hi_z,
                   .exposure = cfg.exposure,
-                  .dhr_lut = cfg.dhr_lut,
               });
   }
 }

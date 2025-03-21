@@ -375,6 +375,19 @@ void RgBuilder::clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
       });
 }
 
+void RgBuilder::copy_texture_to_buffer(RgTextureId src, RgDebugName name,
+                                       RgUntypedBufferId *dst, RgQueue queue) {
+  auto pass = create_pass({.name = "copy-texture-to-buffer", .queue = queue});
+  auto src_token = pass.read_texture(src, rhi::TRANSFER_SRC_IMAGE);
+  auto dst_token =
+      pass.write_buffer(std::move(name), dst, rhi::TRANSFER_DST_BUFFER);
+  pass.set_callback([src_token, dst_token](Renderer &, const RgRuntime &rg,
+                                           CommandRecorder &cmd) {
+    cmd.copy_texture_to_buffer(rg.get_texture(src_token),
+                               rg.get_buffer(dst_token));
+  });
+}
+
 auto RgBuilder::add_texture_use(const RgTextureUse &use) -> RgTextureUseId {
   ren_assert(use.texture);
   RgTextureUseId id(m_data->m_texture_uses.size());
@@ -1724,12 +1737,14 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
   }
   m_rgp->m_frame_textures.clear();
 
-  if (m_rgp->m_async_compute) {
-    *exec_info.frame_end_semaphore = m_rgp->m_async_semaphore;
-    *exec_info.frame_end_time = m_rgp->m_async_time;
-  } else {
-    *exec_info.frame_end_semaphore = m_rgp->m_gfx_semaphore;
-    *exec_info.frame_end_time = m_rgp->m_gfx_time;
+  if (exec_info.frame_end_semaphore) {
+    if (m_rgp->m_async_compute) {
+      *exec_info.frame_end_semaphore = m_rgp->m_async_semaphore;
+      *exec_info.frame_end_time = m_rgp->m_async_time;
+    } else {
+      *exec_info.frame_end_semaphore = m_rgp->m_gfx_semaphore;
+      *exec_info.frame_end_time = m_rgp->m_gfx_time;
+    }
   }
 
   return {};

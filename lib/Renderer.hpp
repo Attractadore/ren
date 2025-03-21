@@ -14,10 +14,8 @@
 #include "glsl/DevicePtr.hpp"
 #include "rhi.hpp"
 
-#include <volk.h>
-
 #include <chrono>
-#include <memory>
+#include <volk.h>
 
 namespace ren {
 
@@ -75,10 +73,7 @@ public:
   Renderer &operator=(Renderer &&);
   ~Renderer();
 
-  auto init(u32 adapter) -> Result<void, Error>;
-
-  auto create_scene(ISwapchain &swapchain)
-      -> expected<std::unique_ptr<IScene>> override;
+  auto init(const RendererInfo &info) -> Result<void, Error>;
 
   auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 

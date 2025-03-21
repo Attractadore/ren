@@ -49,6 +49,8 @@ inline bool operator==(Error::Code code, const Error &error) {
 
 template <typename T> using Result = Result<T, Error>;
 
+[[nodiscard]] auto load(bool headless) -> Result<void>;
+
 struct Features {
   bool debug_names : 1 = false;
   bool debug_layer : 1 = false;

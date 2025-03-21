@@ -107,8 +107,10 @@ void DescriptorAllocator::free_storage_texture(glsl::StorageTexture texture) {
   m_uav_allocator.free(unsigned(texture));
 }
 
-DescriptorAllocatorScope::DescriptorAllocatorScope(DescriptorAllocator &alloc) {
-  m_alloc = &alloc;
+auto DescriptorAllocatorScope::init(DescriptorAllocator &allocator)
+    -> Result<void, Error> {
+  m_allocator = &allocator;
+  return {};
 }
 
 DescriptorAllocatorScope::~DescriptorAllocatorScope() { reset(); }
@@ -116,7 +118,7 @@ DescriptorAllocatorScope::~DescriptorAllocatorScope() { reset(); }
 DescriptorAllocatorScope &
 DescriptorAllocatorScope::operator=(DescriptorAllocatorScope &&other) noexcept {
   reset();
-  m_alloc = other.m_alloc;
+  m_allocator = other.m_allocator;
   m_sampler = std::move(other.m_sampler);
   m_srv = std::move(other.m_srv);
   m_cis = std::move(other.m_cis);
@@ -127,12 +129,13 @@ DescriptorAllocatorScope::operator=(DescriptorAllocatorScope &&other) noexcept {
 auto DescriptorAllocatorScope::allocate_sampler(Renderer &renderer,
                                                 Handle<Sampler> sampler)
     -> glsl::SamplerState {
-  return m_sampler.emplace_back(m_alloc->allocate_sampler(renderer, sampler));
+  return m_sampler.emplace_back(
+      m_allocator->allocate_sampler(renderer, sampler));
 }
 
 auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer, SrvDesc srv)
     -> Result<glsl::Texture, Error> {
-  ren_try(glsl::Texture texture, m_alloc->allocate_texture(renderer, srv));
+  ren_try(glsl::Texture texture, m_allocator->allocate_texture(renderer, srv));
   return m_srv.emplace_back(texture);
 }
 
@@ -141,7 +144,7 @@ auto DescriptorAllocatorScope::allocate_sampled_texture(Renderer &renderer,
                                                         Handle<Sampler> sampler)
     -> Result<glsl::SampledTexture, Error> {
   ren_try(glsl::SampledTexture texture,
-          m_alloc->allocate_sampled_texture(renderer, srv, sampler));
+          m_allocator->allocate_sampled_texture(renderer, srv, sampler));
   return m_cis.emplace_back(texture);
 }
 
@@ -149,22 +152,22 @@ auto DescriptorAllocatorScope::allocate_storage_texture(Renderer &renderer,
                                                         UavDesc uav)
     -> Result<glsl::StorageTexture, Error> {
   ren_try(glsl::StorageTexture texture,
-          m_alloc->allocate_storage_texture(renderer, uav));
+          m_allocator->allocate_storage_texture(renderer, uav));
   return m_uav.emplace_back(texture);
 }
 
 void DescriptorAllocatorScope::reset() {
   for (glsl::Texture texture : m_srv) {
-    m_alloc->free_texture(texture);
+    m_allocator->free_texture(texture);
   }
   for (glsl::SampledTexture texture : m_cis) {
-    m_alloc->free_sampled_texture(texture);
+    m_allocator->free_sampled_texture(texture);
   }
   for (glsl::StorageTexture texture : m_uav) {
-    m_alloc->free_storage_texture(texture);
+    m_allocator->free_storage_texture(texture);
   }
   for (glsl::SamplerState sampler : m_sampler) {
-    m_alloc->free_sampler(sampler);
+    m_allocator->free_sampler(sampler);
   }
   m_srv.clear();
   m_cis.clear();

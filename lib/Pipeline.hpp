@@ -74,4 +74,18 @@ struct ComputePipeline {
   glm::uvec3 local_size = {};
 };
 
+class ResourceArena;
+
+auto create_pipeline_layout(ResourceArena &arena,
+                            TempSpan<const Span<const std::byte>> shaders,
+                            StringView name)
+    -> Result<Handle<PipelineLayout>, Error>;
+
+auto load_compute_pipeline(ResourceArena &arena, Span<const std::byte> shader,
+                           StringView name)
+    -> Result<Handle<ComputePipeline>, Error>;
+
+#define load_compute_pipeline(arena, shader, name)                             \
+  load_compute_pipeline(arena, Span(shader, shader##Size).as_bytes(), name)
+
 } // namespace ren
