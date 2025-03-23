@@ -185,11 +185,6 @@ auto bake_orm_map(const TextureInfo &roughness_metallic_info,
 
   DirectX::ScratchImage merged_data;
   if (!occlusion_info.data) {
-    hres = merged_data.InitializeFromImage(src);
-    if (FAILED(hres)) {
-      return std::unexpected(Error::Unknown);
-    }
-    src = merged_data.GetImages()[0];
     hres = DirectX::TransformImage(
         src,
         [](DirectX::XMVECTOR *out, const DirectX::XMVECTOR *in, size_t width,
@@ -202,6 +197,7 @@ auto bake_orm_map(const TextureInfo &roughness_metallic_info,
     if (FAILED(hres)) {
       return std::unexpected(Error::Unknown);
     }
+    src = merged_data.GetImages()[0];
   } else if (occlusion_info.data != roughness_metallic_info.data) {
     todo("Separate roughness-metallic and occlusions maps");
   }
