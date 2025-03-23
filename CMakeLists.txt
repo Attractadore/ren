@@ -12,10 +12,6 @@ option(REN_BUILD_BAKING_TOOLS "Build baking tools" ON)
 option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
 option(REN_PROFILER "Enable profiler" OFF)
 
-if(REN_BUILD_IMGUI_PLUGIN)
-  list(APPEND VCPKG_MANIFEST_FEATURES imgui)
-endif()
-
 if(REN_BUILD_SHADER_COMPILER)
   list(APPEND VCPKG_MANIFEST_FEATURES shader-compiler)
 endif()

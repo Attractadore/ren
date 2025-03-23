@@ -69,7 +69,6 @@ target_compile_features(ren PUBLIC cxx_std_23)
 
 if(REN_BUILD_IMGUI_PLUGIN)
   message(STATUS "Enable ImGui plugin")
-  find_package(ImGui REQUIRED)
   target_compile_definitions(ren-gfx PUBLIC REN_IMGUI)
   target_link_libraries(ren-gfx PUBLIC imgui::imgui)
   add_library(ren-imgui ren-imgui.cpp)

@@ -1,10 +1,8 @@
 find_package(assimp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS random)
-find_package(SDL2 REQUIRED)
 find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
-find_package(imgui REQUIRED)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
 add_library(tinygltf tinygltf.cpp)

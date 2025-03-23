@@ -39,25 +39,7 @@
         "cxxopts",
         "fmt",
         "glm",
-        {
-          "name": "imgui",
-          "features": [
-            "sdl2-binding"
-          ]
-        },
-        {
-          "name": "ren",
-          "features": [
-            "imgui"
-          ]
-        },
         "tinygltf"
-      ]
-    },
-    "imgui": {
-      "description": "Enable ImGui plugin",
-      "dependencies": [
-        "imgui"
       ]
     },
     "profiler": {

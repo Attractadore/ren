@@ -1,3 +1,10 @@
 [submodule "external/tiny_imageformat"]
 	path = external/tiny_imageformat
 	url = https://github.com/DeanoC/tiny_imageformat
+[submodule "external/imgui"]
+	path = external/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "external/SDL"]
+	path = external/SDL
+	url = https://github.com/libsdl-org/SDL
+	branch = SDL2
