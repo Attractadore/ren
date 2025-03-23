@@ -71,11 +71,11 @@ auto get_opaque_batch_desc(const SceneData &scene, const Pipelines &pipelines,
   const Material &material = scene.materials.get(mesh_instance.material);
 
   MeshAttributeFlags attributes;
-  if (material.base_color_texture) {
+  if (mesh.uvs) {
     attributes |= MeshAttribute::UV;
   }
   if (material.normal_texture) {
-    attributes |= MeshAttribute::UV | MeshAttribute::Tangent;
+    attributes |= MeshAttribute::Tangent;
   }
   if (mesh.colors) {
     attributes |= MeshAttribute::Color;
