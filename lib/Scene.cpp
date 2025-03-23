@@ -374,29 +374,16 @@ auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
 
 auto Scene::create_texture(const void *blob, usize size)
     -> expected<Handle<Texture>> {
+  ktx_error_code_e err = KTX_SUCCESS;
   ktxTexture2 *ktx_texture2 = nullptr;
-  ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
-  ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
-
-  TinyImageFormat format = TinyImageFormat_FromVkFormat(
-      (TinyImageFormat_VkFormat)ktx_texture2->vkFormat);
-  if (!format) {
-    return std::unexpected(Error::InvalidFormat);
+  err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
+  if (err) {
+    return Failure(Error::Unknown);
   }
-  ren_try(auto texture, m_arena.create_texture({
-                            .format = format,
-                            .usage = rhi::ImageUsage::ShaderResource |
-                                     rhi::ImageUsage::TransferSrc |
-                                     rhi::ImageUsage::TransferDst,
-                            .width = ktx_texture->baseWidth,
-                            .height = ktx_texture->baseHeight,
-                            .num_mip_levels = ktx_texture->numLevels,
-                        }));
-
-  m_resource_uploader.stage_texture(*m_renderer, m_frcs->upload_allocator,
-                                    ktx_texture, texture);
-
-  return texture;
+  auto res = m_resource_uploader.create_texture(
+      m_arena, m_frcs->upload_allocator, ktx_texture2);
+  ktxTexture_Destroy(ktxTexture(ktx_texture2));
+  return res;
 }
 
 auto Scene::create_material(const MaterialCreateInfo &info)
@@ -568,6 +555,25 @@ void Scene::set_directional_light(DirectionalLightId light,
       m_data.directional_lights[handle]);
 };
 
+auto Scene::set_environment_map(ImageId image) -> expected<void> {
+  if (!image) {
+    m_data.env_map = {};
+    return {};
+  }
+  Handle<Texture> texture = m_images[std::bit_cast<Handle<Image>>(image)];
+  ren_try(Handle<Sampler> sampler,
+          get_or_create_sampler({
+              .mag_filter = rhi::Filter::Linear,
+              .min_filter = rhi::Filter::Linear,
+              .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+          }));
+  ren_try(
+      m_data.env_map,
+      m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
+          *m_renderer, SrvDesc{texture}, sampler));
+  return {};
+}
+
 auto Scene::delay_input() -> expected<void> {
   if (is_amd_anti_lag_enabled()) {
     return m_renderer->amd_anti_lag_input(m_frame_index);
@@ -709,7 +715,7 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
                                 })
                                 .value();
   m_resource_uploader.stage_texture(
-      *m_renderer, m_frcs->upload_allocator,
+      m_frcs->upload_allocator,
       Span((const std::byte *)data, width * height * bpp), texture);
   glsl::SampledTexture descriptor =
       m_descriptor_allocator

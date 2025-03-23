@@ -7,6 +7,7 @@
 #include <cstring>
 
 struct ktxTexture;
+struct ktxTexture2;
 
 namespace ren {
 
@@ -39,11 +40,15 @@ public:
   void stage_buffer(Renderer &renderer, UploadBumpAllocator &allocator,
                     Span<const std::byte> data, const BufferView &buffer);
 
-  void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
-                     ktxTexture *ktx_texture, Handle<Texture> texture);
+  auto create_texture(ResourceArena &arena, UploadBumpAllocator &allocator,
+                      ktxTexture2 *ktx_texture)
+      -> Result<Handle<Texture>, Error>;
 
-  void stage_texture(Renderer &renderer, UploadBumpAllocator &allocator,
-                     Span<const std::byte> data, Handle<Texture> texture);
+  void stage_texture(UploadBumpAllocator &allocator, ktxTexture *ktx_texture,
+                     Handle<Texture> texture);
+
+  void stage_texture(UploadBumpAllocator &allocator, Span<const std::byte> data,
+                     Handle<Texture> texture);
 
   auto upload(Renderer &renderer, Handle<CommandPool> cmd_pool)
       -> Result<void, Error>;

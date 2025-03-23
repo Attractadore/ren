@@ -83,7 +83,6 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                           .hi_z = cfg.hi_z,
                       },
                   .exposure = cfg.exposure,
-                  .env_luminance = ccfg.scene->env_luminance,
               });
 }
 

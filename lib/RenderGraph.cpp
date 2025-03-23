@@ -82,6 +82,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
         .format = create_info.format,
         .usage = usage,
         .size = {create_info.width, create_info.height, create_info.depth},
+        .cube_map = create_info.cube_map,
         .num_mip_levels = create_info.num_mip_levels,
         .num_array_layers = create_info.num_array_layers,
         .init_id = init_id,
@@ -755,6 +756,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
                 .width = physical_texture.size.x,
                 .height = physical_texture.size.y,
                 .depth = physical_texture.size.z,
+                .cube_map = physical_texture.cube_map,
                 .num_mip_levels = physical_texture.num_mip_levels,
                 .num_array_layers = physical_texture.num_array_layers,
                 // clang-format on
@@ -1106,7 +1108,9 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
     if (use.state.access_mask.is_set(rhi::Access::ShaderImageRead)) {
       SrvDesc srv = {
           .texture = physical_texture.handle,
-          .dimension = rhi::ImageViewDimension::e2D,
+          .dimension = physical_texture.cube_map
+                           ? rhi::ImageViewDimension::eCube
+                           : rhi::ImageViewDimension::e2D,
       };
       if (use.sampler) {
         ren_try(descriptors.combined,
@@ -1123,11 +1127,14 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
       for (u32 mip : range(descriptors.num_mips)) {
         ren_try(descriptors.storage[mip],
                 m_descriptor_allocator->allocate_storage_texture(
-                    *m_renderer, {
-                                     .texture = physical_texture.handle,
-                                     .dimension = rhi::ImageViewDimension::e2D,
-                                     .mip_level = mip,
-                                 }));
+                    *m_renderer,
+                    {
+                        .texture = physical_texture.handle,
+                        .dimension = physical_texture.cube_map
+                                         ? rhi::ImageViewDimension::eCube
+                                         : rhi::ImageViewDimension::e2D,
+                        .mip_level = mip,
+                    }));
       }
 
       num_storage_texture_descriptors += physical_texture.num_mip_levels;

@@ -21,13 +21,40 @@ void ResourceUploader::stage_buffer(Renderer &renderer,
   });
 }
 
-void ResourceUploader::stage_texture(Renderer &renderer,
-                                     UploadBumpAllocator &allocator,
+auto ResourceUploader::create_texture(ResourceArena &arena,
+                                      UploadBumpAllocator &allocator,
+                                      ktxTexture2 *ktx_texture2)
+    -> Result<Handle<Texture>, Error> {
+  TinyImageFormat format = TinyImageFormat_FromVkFormat(
+      (TinyImageFormat_VkFormat)ktx_texture2->vkFormat);
+  if (!format) {
+    return std::unexpected(Error::InvalidFormat);
+  }
+  ren_try(auto texture, arena.create_texture({
+                            .format = format,
+                            .usage = rhi::ImageUsage::ShaderResource |
+                                     rhi::ImageUsage::TransferSrc |
+                                     rhi::ImageUsage::TransferDst,
+                            .width = ktx_texture2->baseWidth,
+                            .height = ktx_texture2->baseHeight,
+                            .cube_map = ktx_texture2->numFaces > 1,
+                            .num_mip_levels = ktx_texture2->numLevels,
+                        }));
+  stage_texture(allocator, ktxTexture(ktx_texture2), texture);
+  return texture;
+}
+
+void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
                                      ktxTexture *ktx_texture,
                                      Handle<Texture> texture) {
   auto staging = allocator.allocate(ktx_texture->dataSize);
-  ktxTexture_LoadImageData(ktx_texture, (u8 *)staging.host_ptr,
-                           ktx_texture->dataSize);
+  if (!ktx_texture->pData) {
+    ktx_error_code_e err = ktxTexture_LoadImageData(
+        ktx_texture, (u8 *)staging.host_ptr, ktx_texture->dataSize);
+    ren_assert(!err);
+  } else {
+    std::memcpy(staging.host_ptr, ktx_texture->pData, ktx_texture->dataSize);
+  }
   TextureCopy &copy = m_texture_copies.emplace_back();
   copy = {
       .src = staging.slice,
@@ -39,8 +66,7 @@ void ResourceUploader::stage_texture(Renderer &renderer,
   }
 }
 
-void ResourceUploader::stage_texture(Renderer &renderer,
-                                     UploadBumpAllocator &allocator,
+void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
   auto staging = allocator.allocate(data.size());
@@ -91,22 +117,10 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     for (usize i : range(m_texture_copies.size())) {
       const TextureCopy &copy = m_texture_copies[i];
       const Texture &dst = renderer.get_texture(copy.dst);
-      StaticVector<VkBufferImageCopy, MAX_SRV_MIPS> mip_copies(
-          dst.num_mip_levels);
       for (u32 mip : range(dst.num_mip_levels)) {
-        glm::uvec3 size = get_mip_size(dst.size, mip);
-        mip_copies[mip] = {
-            .bufferOffset = copy.src.offset + copy.mip_offsets[mip],
-            .imageSubresource =
-                {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                    .mipLevel = mip,
-                    .layerCount = dst.num_array_layers,
-                },
-            .imageExtent = {size.x, size.y, size.z},
-        };
+        cmd.copy_buffer_to_texture(copy.src.slice(copy.mip_offsets[mip]),
+                                   copy.dst, mip, 1);
       }
-      cmd.copy_buffer_to_texture(copy.src.buffer, copy.dst, mip_copies);
       barriers[i] = {
           .resource = {copy.dst},
           .src_stage_mask = rhi::PipelineStage::Transfer,

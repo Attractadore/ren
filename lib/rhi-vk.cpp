@@ -68,6 +68,7 @@ struct InstanceData {
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+    VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
 };
 
 constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
@@ -662,6 +663,14 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   add_features(uint8_features);
 
+  VkPhysicalDeviceComputeShaderDerivativesFeaturesNV
+      compute_shader_derivatives_features = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV,
+          .computeDerivativeGroupLinear = true,
+      };
+  add_features(compute_shader_derivatives_features);
+
   // Add optional features.
   // TODO: check that they are supported.
 
@@ -1166,11 +1175,14 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
 
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .flags = create_info.cube_map ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+                                    : VkImageCreateFlags(0),
       .imageType = image_type,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .extent = {width, height, depth},
       .mipLevels = create_info.num_mip_levels,
-      .arrayLayers = create_info.num_array_layers,
+      .arrayLayers =
+          create_info.num_array_layers * (create_info.cube_map ? 6 : 1),
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = to_vk_image_usage_flags(create_info.usage),
@@ -1247,6 +1259,7 @@ auto get_format_aspect_mask(TinyImageFormat format) -> VkImageAspectFlags {
 
 auto create_srv(Device device, const SrvCreateInfo &create_info)
     -> Result<SRV> {
+  u32 num_faces = create_info.dimension == ImageViewDimension::eCube ? 6 : 1;
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
@@ -1264,8 +1277,8 @@ auto create_srv(Device device, const SrvCreateInfo &create_info)
               .aspectMask = get_format_aspect_mask(create_info.format),
               .baseMipLevel = create_info.first_mip_level,
               .levelCount = create_info.num_mip_levels,
-              .baseArrayLayer = create_info.first_array_layer,
-              .layerCount = create_info.num_array_layers,
+              .baseArrayLayer = create_info.first_array_layer * num_faces,
+              .layerCount = create_info.num_array_layers * num_faces,
           },
   };
   SRV srv;
@@ -1283,6 +1296,7 @@ void destroy_srv(Device device, SRV srv) {
 
 auto create_uav(Device device, const UavCreateInfo &create_info)
     -> Result<UAV> {
+  u32 num_faces = create_info.dimension == ImageViewDimension::eCube ? 6 : 1;
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
@@ -1293,8 +1307,8 @@ auto create_uav(Device device, const UavCreateInfo &create_info)
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
               .baseMipLevel = create_info.mip_level,
               .levelCount = 1,
-              .baseArrayLayer = create_info.first_array_layer,
-              .layerCount = create_info.num_array_layers,
+              .baseArrayLayer = create_info.first_array_layer * num_faces,
+              .layerCount = create_info.num_array_layers * num_faces,
           },
   };
   UAV uav;

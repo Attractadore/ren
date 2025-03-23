@@ -19,8 +19,6 @@ struct DirectionalLight {
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
 
-const float PI = 3.1415;
-
 inline vec3 fresnel_f0(vec3 color, float metallic) {
   float ior = 1.5f;
   vec3 f0 = vec3((ior - 1.0f) / (ior + 1.0f));
@@ -31,7 +29,7 @@ inline vec3 fresnel_f0(vec3 color, float metallic) {
 // clang-format off
 // G_2(l, v, h) = 1 / (1 + A(v) + A(l))
 // A(s) = (-1 + sqrt(1 + 1/a(s)^2)) / 2
-// a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2)
+// a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2))
 // A(s) = (-1 + sqrt(1 + alpha^2 * (1 - dot(n, s)^2) / dot(n, s)^2) / 2
 // clang-format on
 inline float g_smith(float roughness, float nl, float nv) {
@@ -64,20 +62,35 @@ inline vec3 importance_sample_ggx(vec2 xy, float roughness, vec3 n) {
   return mat3(t, b, n) * h;
 }
 
-inline vec2 hammersley(uint i, uint n) {
-  uint x = i;
-  uint y = bitfieldReverse(i) >> (31 - findLSB(n));
-  return vec2(x, y) / float(n);
+// https://math.stackexchange.com/a/1586015
+inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
+  float phi = xy.x * TWO_PI;
+  float z = xy.y;
+  float r = sqrt(1.0f - z * z);
+  vec3 d = vec3(r * cos(phi), r * sin(phi), z);
+
+  vec3 t = normalize(ortho_vec(n));
+  vec3 b = cross(n, t);
+
+  return mat3(t, b, n) * d;
 }
 
-vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv);
+// https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/lectures/168-lecture9.pdf
+inline vec3 importance_sample_cosine_weighted_hemisphere(vec2 xy, vec3 n) {
+  float phi = xy.x * TWO_PI;
+  float z = sqrt(xy.y);
+  float r = sqrt(1.0f - z * z);
+  vec3 d = vec3(r * cos(phi), r * sin(phi), z);
 
-#if GL_core_profile
-vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv) {
-  vec2 ab = texture_lod(lut, vec2(roughness, nv), 0).xy;
-  return f0 * ab.x + ab.y;
+  vec3 t = normalize(ortho_vec(n));
+  vec3 b = cross(n, t);
+
+  return mat3(t, b, n) * d;
 }
-#endif
+
+inline vec3 importance_sample_lambertian(vec2 xy, vec3 n) {
+  return importance_sample_cosine_weighted_hemisphere(xy, n);
+}
 
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
                      float roughness, vec3 illuminance) {
@@ -121,23 +134,50 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
   return L_o;
 }
 
-inline vec3 const_env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
-                               float roughness, vec3 luminance,
-                               SampledTexture2D dhr_lut) {
+#if GL_core_profile
 
+inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
+                               float nv) {
+  vec2 ab = texture_lod(lut, vec2(roughness, nv), 0).xy;
+  return f0 * ab.x + ab.y;
+}
+
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
+                         float roughness, vec3 luminance,
+                         SampledTexture2D directional_albedo_lut) {
   vec3 kd = mix(color, vec3(0.0f), metallic);
 
-  // Use the split integral approximation:
-  // clang-format off
-  // \int f_spec L dot(l, n) dl = \int D(r) L dot(n, l) dl * \int f_spec dot(l, n) dl = L * R(v)
-  // clang-format on
   vec3 f0 = fresnel_f0(color, metallic);
-  vec3 ks = dhr(dhr_lut, f0, roughness, dot(n, v));
+  vec3 ks =
+      directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
 
   vec3 L_o = (kd + ks) * luminance;
 
   return L_o;
 }
+
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
+                         float roughness, SampledTextureCube env_map,
+                         SampledTexture2D directional_albedo_lut) {
+  vec3 kd = mix(color, vec3(0.0f), metallic);
+
+  float nv = dot(n, v);
+
+  vec3 f0 = fresnel_f0(color, metallic);
+  vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
+
+  vec3 r = 2 * nv * n - v;
+
+  int num_mips = texture_query_levels(env_map);
+  float dlod = num_mips - 1;
+  float slod = roughness * (num_mips - 2);
+  vec3 L_o = kd * texture_lod(env_map, n, dlod).rgb +
+             ks * texture_lod(env_map, r, slod).rgb;
+
+  return L_o;
+}
+
+#endif // GL_core_profile
 
 GLSL_NAMESPACE_END
 

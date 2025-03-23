@@ -235,7 +235,8 @@ struct RgTextureCreateInfo {
   /// Texture height
   u32 height = 0;
   /// Texture depth
-  u32 depth = 0;
+  u32 depth : 31 = 0;
+  bool cube_map : 1 = false;
   /// Number of mip levels
   u32 num_mip_levels = 1;
   /// Number of array layers
@@ -256,6 +257,7 @@ struct RgPhysicalTexture {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage = {};
   glm::uvec3 size = {};
+  bool cube_map = false;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
   Handle<Texture> handle;
@@ -342,7 +344,9 @@ concept CIsStorageTexturePC = IsStorageTexturePCImpl<T>::value;
 
 define_texture_pc(glsl::Texture2D);
 define_sampled_texture_pc(glsl::SampledTexture2D);
+define_sampled_texture_pc(glsl::SampledTextureCube);
 define_storage_texture_pc(glsl::StorageTexture2D);
+define_storage_texture_pc(glsl::StorageTextureCube);
 
 #undef define_base_texture_pc
 

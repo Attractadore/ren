@@ -281,6 +281,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
 
 auto get_render_pass_args(const PassCommonConfig &cfg,
                           const OpaqueMeshPassInfo &info, RgPassBuilder &pass) {
+  const SceneData &scene = *cfg.scene;
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
   return RgOpaqueArgs{
       .meshes = pass.read_buffer(gpu_scene.meshes, rhi::VS_RESOURCE_BUFFER),
@@ -297,8 +298,9 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
           get_projection_view_matrix(info.base.camera, info.base.viewport),
       .eye = info.base.camera.position,
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
-      .env_luminance = info.env_luminance,
-      .dhr_lut = cfg.scene->dhr_lut,
+      .env_luminance = scene.env_luminance,
+      .env_map = scene.env_map,
+      .dhr_lut = scene.dhr_lut,
   };
 }
 

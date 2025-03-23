@@ -21,7 +21,8 @@ struct TextureCreateInfo {
   rhi::ImageUsageFlags usage;
   u32 width = 0;
   u32 height = 0;
-  u32 depth = 0;
+  u32 depth : 31 = 0;
+  bool cube_map : 1 = false;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
 };
@@ -50,6 +51,7 @@ struct Texture {
     };
     glm::uvec3 size = {0, 0, 0};
   };
+  bool cube_map = false;
   u32 num_mip_levels = 0;
   u32 num_array_layers = 0;
 };
@@ -133,6 +135,13 @@ auto get_mip_size(glm::uvec3 base_size, u32 mip_level) -> glm::uvec3;
 
 auto get_texture_size(Renderer &renderer, Handle<Texture> texture,
                       u32 mip_level = 0) -> glm::uvec3;
+
+auto get_mip_byte_size(TinyImageFormat format, glm::uvec3 size,
+                       u32 num_layers = 1) -> usize;
+
+auto get_mip_chain_byte_size(TinyImageFormat format, glm::uvec3 byte_size,
+                             u32 num_layers, u32 base_mip, u32 num_mips)
+    -> usize;
 
 auto get_rhi_Filter(Filter filter) -> rhi::Filter;
 auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode;

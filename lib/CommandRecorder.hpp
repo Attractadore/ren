@@ -127,7 +127,7 @@ public:
                               TempSpan<const VkBufferImageCopy> regions);
 
   void copy_buffer_to_texture(const BufferView &src, Handle<Texture> dst,
-                              u32 level = 0);
+                              u32 base_mip = 0, u32 num_mips = ALL_MIP_LEVELS);
 
   void fill_buffer(const BufferView &buffer, u32 value);
 
@@ -154,7 +154,7 @@ public:
                               TempSpan<const VkBufferImageCopy> regions);
 
   void copy_texture_to_buffer(Handle<Texture> src, const BufferView &dst,
-                              u32 level = 0);
+                              u32 base_mip = 0, u32 num_mips = ALL_MIP_LEVELS);
 
   void blit(Handle<Texture> src, Handle<Texture> dst,
             TempSpan<const VkImageBlit> regions, VkFilter filter);

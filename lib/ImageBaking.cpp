@@ -1,5 +1,4 @@
 #include "ImageBaking.hpp"
-#include "BakeDhrLut.comp.hpp"
 #include "Baking.hpp"
 #include "core/Errors.hpp"
 #include "core/Math.hpp"
@@ -8,12 +7,26 @@
 #include "core/Views.hpp"
 #include "ren/baking/image.hpp"
 
+#include "BakeDhrLut.comp.hpp"
+#include "BakeIrradianceMap.comp.hpp"
+#include "BakeReflectionMap.comp.hpp"
+#include "BakeSpecularMap.comp.hpp"
+
 #include <DirectXTex.h>
 #include <ktx.h>
 
 namespace ren {
 
 namespace {
+
+auto fail(HRESULT hres) -> Failure<Error> {
+  return Failure([&]() {
+    switch (hres) {
+    default:
+      return Error::Unknown;
+    }
+  }());
+}
 
 auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
   u32 block_width = TinyImageFormat_WidthOfBlock(info.format);
@@ -32,7 +45,7 @@ auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
 }
 
 auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
-    -> expected<ktxTexture *> {
+    -> expected<ktxTexture2 *> {
   ktx_error_code_e err = KTX_SUCCESS;
 
   const DirectX::TexMetadata &mdata = mip_chain.GetMetadata();
@@ -71,7 +84,7 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
     }
   }
 
-  return ktx_texture;
+  return ktx_texture2;
 }
 
 auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
@@ -83,9 +96,9 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
       .baseHeight = info.height,
       .baseDepth = 1,
       .numDimensions = 2,
-      .numLevels = 1,
+      .numLevels = info.num_mip_levels,
       .numLayers = 1,
-      .numFaces = 1,
+      .numFaces = u32(info.cube_map ? 6 : 1),
       .isArray = false,
       .generateMipmaps = false,
   };
@@ -97,12 +110,18 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
     return std::unexpected(Error::Unknown);
   }
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
-  err =
-      ktxTexture_SetImageFromMemory(ktx_texture, 0, 0, 0, (const u8 *)info.data,
-                                    ktxTexture_GetImageSize(ktx_texture, 0));
-  if (err) {
-    ktxTexture_Destroy(ktx_texture);
-    return std::unexpected(Error::Unknown);
+
+  const u8 *data = (const u8 *)info.data;
+  for (u32 mip : range(info.num_mip_levels)) {
+    usize size =
+        ktxTexture_GetImageSize(ktx_texture, mip) * (info.cube_map ? 6 : 1);
+    err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0,
+                                        KTX_FACESLICE_WHOLE_LEVEL, data, size);
+    if (err) {
+      ktxTexture_Destroy(ktx_texture);
+      return std::unexpected(Error::Unknown);
+    }
+    data += size;
   }
 
   return ktx_texture;
@@ -110,7 +129,8 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
 
 auto write_ktx_to_memory(const DirectX::ScratchImage &mip_chain)
     -> expected<std::tuple<void *, size_t>> {
-  ren_try(ktxTexture * ktx_texture, create_ktx_texture(mip_chain));
+  ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
+  ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
   u8 *blob_data;
   size_t blob_size;
   ktx_error_code_e err =
@@ -122,8 +142,7 @@ auto write_ktx_to_memory(const DirectX::ScratchImage &mip_chain)
   return {{blob_data, blob_size}};
 }
 
-auto write_ktx_to_memory(const TextureInfo &info)
-    -> expected<std::tuple<void *, size_t>> {
+auto write_ktx_to_memory(const TextureInfo &info) -> expected<Blob> {
   ren_try(ktxTexture * ktx_texture, create_ktx_texture(info));
   u8 *blob_data;
   size_t blob_size;
@@ -224,12 +243,12 @@ auto bake_dhr_lut(IBaker *baker) -> expected<TextureInfo> {
   ren_assert(baker);
 
   if (!baker->pipelines.dhr_lut) {
-    ren_try(
-        baker->pipelines.dhr_lut,
-        load_compute_pipeline(baker->arena, BakeDhrLutCS, "Compute DHR LUT"));
+    ren_try(baker->pipelines.dhr_lut,
+            load_compute_pipeline(baker->session_arena, BakeDhrLutCS,
+                                  "Compute DHR LUT"));
   }
 
-  RgBuilder rgb(baker->rg, *baker->renderer, baker->bake_descriptor_allocator);
+  RgBuilder rgb(baker->rg, *baker->renderer, baker->descriptor_allocator);
 
   constexpr usize DHR_LUT_SIZE = 128;
   constexpr TinyImageFormat DHR_LUT_FORMAT = TinyImageFormat_R16G16_UNORM;
@@ -251,7 +270,7 @@ auto bake_dhr_lut(IBaker *baker) -> expected<TextureInfo> {
                           {DHR_LUT_SIZE, DHR_LUT_SIZE});
   }
 
-  ren_try(BufferSlice readback, baker->bake_arena.create_buffer({
+  ren_try(BufferSlice readback, baker->arena.create_buffer({
                                     .name = "DHR LUT readback buffer",
                                     .heap = rhi::MemoryHeap::Readback,
                                     .size = DHR_LUT_BYTE_SIZE,
@@ -272,10 +291,187 @@ auto bake_dhr_lut(IBaker *baker) -> expected<TextureInfo> {
   };
 }
 
-auto bake_dhr_lut_to_memory(IBaker *baker)
-    -> expected<std::tuple<void *, size_t>> {
+auto bake_dhr_lut_to_memory(IBaker *baker) -> Result<Blob, Error> {
   ren_try(TextureInfo image, bake_dhr_lut(baker));
   ren_try(auto blob, write_ktx_to_memory(image));
+  reset_baker(*baker);
+  return blob;
+}
+
+auto bake_ibl(IBaker *baker, const TextureInfo &info)
+    -> Result<TextureInfo, Error> {
+  HRESULT hres = S_OK;
+
+  if (!baker->pipelines.reflection_map) {
+    ren_try(baker->pipelines.reflection_map,
+            load_compute_pipeline(baker->session_arena, BakeReflectionMapCS,
+                                  "Bake reflection environment map"));
+  }
+  if (!baker->pipelines.specular_map) {
+    ren_try(baker->pipelines.specular_map,
+            load_compute_pipeline(baker->session_arena, BakeSpecularMapCS,
+                                  "Bake specular environment map"));
+  }
+  if (!baker->pipelines.irradiance_map) {
+    ren_try(baker->pipelines.irradiance_map,
+            load_compute_pipeline(baker->session_arena, BakeIrradianceMapCS,
+                                  "Bake irradiance environment map"));
+  }
+  const DirectX::Image &src_image = to_dxtex_image(info);
+  DirectX::ScratchImage mip_chain;
+  hres = mip_chain.Initialize2D(src_image.format, src_image.width,
+                                src_image.height, 1, 0);
+  if (FAILED(hres)) {
+    return fail(hres);
+  }
+  std::memcpy(mip_chain.GetImages()[0].pixels, src_image.pixels,
+              src_image.slicePitch);
+  for (u32 mip : range<u32>(1, mip_chain.GetMetadata().mipLevels)) {
+    // Preserve flux: L' * dA' = L1 * dA1 + L2 * dA2 + L3 * dA3 + L4 * dA4.
+    // dA = dPhi * dTheta * sin(Theta)
+
+    const DirectX::Image &src_image = *mip_chain.GetImage(mip - 1, 0, 0);
+    const DirectX::Image &dst_image = *mip_chain.GetImage(mip, 0, 0);
+    const glm::vec4 *src_pixels = (const glm::vec4 *)src_image.pixels;
+    glm::vec4 *dst_pixels = (glm::vec4 *)dst_image.pixels;
+
+    float d_theta_src = std::numbers::pi / src_image.height;
+    float d_theta_dst = std::numbers::pi / dst_image.height;
+
+    for (usize y : range(dst_image.height)) {
+      usize y12 = 2 * y;
+      usize y34 = std::min<usize>(2 * y + 1, src_image.height - 1);
+      float sin_theta12 = glm::sin((y12 + 0.5f) * d_theta_src);
+      float sin_theta34 = glm::sin((y34 + 0.5f) * d_theta_src);
+      float sin_theta = glm::sin((y + 0.5f) * d_theta_dst);
+      for (usize x : range(dst_image.width)) {
+        usize x13 = 2 * x;
+        usize x24 = std::min<usize>(2 * x + 1, src_image.width - 1);
+
+        glm::vec3 L1 = src_pixels[src_image.width * y12 + x13];
+        glm::vec3 L2 = src_pixels[src_image.width * y12 + x24];
+        glm::vec3 L3 = src_pixels[src_image.width * y34 + x13];
+        glm::vec3 L4 = src_pixels[src_image.width * y34 + x24];
+
+        glm::vec3 L = ((L1 + L2) * sin_theta12 + (L3 + L4) * sin_theta34) /
+                      4.0f / sin_theta;
+
+        dst_pixels[dst_image.width * y + x] = glm::vec4(L, 1.0f);
+      }
+    }
+  }
+
+  ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
+  ren_try(Handle<Texture> env_map,
+          baker->uploader.create_texture(baker->arena, baker->upload_allocator,
+                                         ktx_texture2));
+  ktxTexture_Destroy(ktxTexture(ktx_texture2));
+  ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
+  ren_try(auto env_map_desc,
+          baker->descriptor_allocator.allocate_sampled_texture(
+              *baker->renderer, SrvDesc{env_map},
+              baker->samplers.mip_linear_wrap_clamp));
+
+  constexpr TinyImageFormat CUBE_MAP_FORMAT =
+      TinyImageFormat_R32G32B32A32_SFLOAT;
+  constexpr usize CUBE_MAP_SIZE = 512;
+  constexpr usize IRRADIANCE_SIZE = 32;
+  constexpr usize NUM_CUBE_MAP_MIPS =
+      ilog2(CUBE_MAP_SIZE / IRRADIANCE_SIZE) + 1;
+
+  RgBuilder rgb(baker->rg, *baker->renderer, baker->descriptor_allocator);
+
+  RgTextureId cube_map = baker->rg.create_texture({
+      .name = "cube-map",
+      .format = CUBE_MAP_FORMAT,
+      .width = CUBE_MAP_SIZE,
+      .height = CUBE_MAP_SIZE,
+      .cube_map = true,
+      .num_mip_levels = NUM_CUBE_MAP_MIPS,
+  });
+  {
+    auto pass = rgb.create_pass({"filter-cube-map"});
+
+    struct {
+      glsl::SampledTexture2D equirectangular_map;
+      RgTextureToken cube_map;
+    } args;
+
+    args.equirectangular_map = (glsl::SampledTexture2D)env_map_desc;
+    args.cube_map = pass.write_texture("cube-map", &cube_map,
+                                       rhi::CS_UNORDERED_ACCESS_IMAGE);
+
+    pass.set_callback(
+        [args, pipelines = &baker->pipelines](Renderer &, const RgRuntime &rg,
+                                              CommandRecorder &cmd) {
+          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
+                                   rg.get_sampler_descriptor_heap());
+
+          cmd.bind_compute_pipeline(pipelines->reflection_map);
+          cmd.set_push_constants(glsl::BakeReflectionMapArgs{
+              .equirectangular_map = args.equirectangular_map,
+              .reflectance_map =
+                  (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                      args.cube_map, 0),
+          });
+          cmd.dispatch_grid_3d({CUBE_MAP_SIZE, CUBE_MAP_SIZE, 6});
+
+          cmd.bind_compute_pipeline(pipelines->specular_map);
+          for (u32 mip : range<u32>(1, NUM_CUBE_MAP_MIPS - 1)) {
+            cmd.set_push_constants(glsl::BakeSpecularMapArgs{
+                .equirectangular_map = args.equirectangular_map,
+                .specular_map =
+                    (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                        args.cube_map, mip),
+                .roughness = float(mip) / (NUM_CUBE_MAP_MIPS - 2),
+            });
+            u32 size = CUBE_MAP_SIZE >> mip;
+            cmd.dispatch_grid_3d({size, size, 6});
+          }
+
+          cmd.bind_compute_pipeline(pipelines->irradiance_map);
+          {
+            cmd.set_push_constants(glsl::BakeIrradianceMapArgs{
+                .equirectangular_map = args.equirectangular_map,
+                .irradiance_map =
+                    (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                        args.cube_map, NUM_CUBE_MAP_MIPS - 1),
+            });
+            u32 size = CUBE_MAP_SIZE >> (NUM_CUBE_MAP_MIPS - 1);
+            cmd.dispatch_grid_3d({size, size, 6});
+          }
+        });
+  }
+
+  ren_try(BufferView readback,
+          baker->arena.create_buffer({
+              .heap = rhi::MemoryHeap::Readback,
+              .size = get_mip_chain_byte_size(CUBE_MAP_FORMAT,
+                                              {CUBE_MAP_SIZE, CUBE_MAP_SIZE, 1},
+                                              6, 0, NUM_CUBE_MAP_MIPS),
+          }));
+  RgUntypedBufferId cube_map_readback =
+      rgb.create_buffer("cube-map-readback", readback);
+  rgb.copy_texture_to_buffer(cube_map, &cube_map_readback);
+
+  ren_try(RenderGraph rg, rgb.build({}));
+  ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
+  baker->renderer->wait_idle();
+
+  return TextureInfo{
+      .format = CUBE_MAP_FORMAT,
+      .width = CUBE_MAP_SIZE,
+      .height = CUBE_MAP_SIZE,
+      .cube_map = true,
+      .num_mip_levels = NUM_CUBE_MAP_MIPS,
+      .data = baker->renderer->map_buffer(readback),
+  };
+}
+
+auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info)
+    -> Result<Blob, Error> {
+  ren_try(TextureInfo image, bake_ibl(baker, info));
+  ren_try(Blob blob, write_ktx_to_memory(image));
   reset_baker(*baker);
   return blob;
 }

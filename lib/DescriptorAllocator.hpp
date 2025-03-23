@@ -1,6 +1,7 @@
 #pragma once
 #include "Descriptors.hpp"
 #include "FreeListAllocator.hpp"
+#include "Texture.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Result.hpp"
 #include "glsl/Texture.h"
@@ -53,6 +54,19 @@ public:
   auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 Handle<Sampler> sampler)
       -> Result<glsl::SampledTexture, Error>;
+
+  template <std::constructible_from<glsl::SampledTexture> D>
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
+                                Handle<Sampler> sampler) -> Result<D, Error> {
+    if constexpr (std::same_as<D, glsl::SampledTexture2D>) {
+      srv.dimension = rhi::ImageViewDimension::e2D;
+    } else if constexpr (std::same_as<D, glsl::SampledTextureCube>) {
+      srv.dimension = rhi::ImageViewDimension::eCube;
+    }
+    ren_try(glsl::SampledTexture desc,
+            allocate_sampled_texture(renderer, srv, sampler));
+    return D(desc);
+  }
 
   void free_sampled_texture(glsl::SampledTexture texture);
 

@@ -9,6 +9,8 @@ struct TextureInfo {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   unsigned width = 0;
   unsigned height = 0;
+  bool cube_map = false;
+  unsigned num_mip_levels = 1;
   const void *data = nullptr;
 };
 

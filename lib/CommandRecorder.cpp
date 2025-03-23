@@ -81,22 +81,34 @@ void CommandRecorder::copy_buffer_to_texture(
 }
 
 void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
-                                             Handle<Texture> dst, u32 level) {
+                                             Handle<Texture> dst, u32 base_mip,
+                                             u32 num_mips) {
   const Texture &texture = m_renderer->get_texture(dst);
-  ren_assert(level < texture.num_mip_levels);
-  glm::uvec3 size = glm::max(texture.size, {1, 1, 1});
-  copy_buffer_to_texture(
-      src.buffer, dst,
-      {{
-          .bufferOffset = src.offset,
-          .imageSubresource =
-              {
-                  .aspectMask = getVkImageAspectFlags(texture.format),
-                  .mipLevel = level,
-                  .layerCount = texture.num_array_layers,
-              },
-          .imageExtent = {size.x, size.y, size.z},
-      }});
+  ren_assert(base_mip < texture.num_mip_levels);
+  if (num_mips == ALL_MIP_LEVELS) {
+    num_mips = texture.num_mip_levels - base_mip;
+  }
+  ren_assert(base_mip + num_mips <= texture.num_mip_levels);
+
+  SmallVector<VkBufferImageCopy, MAX_SRV_MIPS> regions(num_mips);
+  usize offset = src.offset;
+  for (u32 mip : range(base_mip, base_mip + num_mips)) {
+    glm::uvec3 size = get_mip_size(texture.size, mip);
+    u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_array_layers;
+    regions[mip - base_mip] = {
+        .bufferOffset = offset,
+        .imageSubresource =
+            {
+                .aspectMask = getVkImageAspectFlags(texture.format),
+                .mipLevel = mip,
+                .layerCount = num_layers,
+            },
+        .imageExtent = {size.x, size.y, size.z},
+    };
+    offset += get_mip_byte_size(texture.format, size, num_layers);
+  }
+
+  copy_buffer_to_texture(src.buffer, dst, regions);
 }
 
 void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
@@ -127,22 +139,34 @@ void CommandRecorder::copy_texture_to_buffer(
 }
 
 void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
-                                             const BufferView &dst, u32 level) {
+                                             const BufferView &dst,
+                                             u32 base_mip, u32 num_mips) {
   const Texture &texture = m_renderer->get_texture(src);
-  ren_assert(level < texture.num_mip_levels);
-  glm::uvec3 size = glm::max(texture.size, {1, 1, 1});
-  copy_texture_to_buffer(
-      src, dst.buffer,
-      {{
-          .bufferOffset = dst.offset,
-          .imageSubresource =
-              {
-                  .aspectMask = getVkImageAspectFlags(texture.format),
-                  .mipLevel = level,
-                  .layerCount = texture.num_array_layers,
-              },
-          .imageExtent = {size.x, size.y, size.z},
-      }});
+  ren_assert(base_mip < texture.num_mip_levels);
+  if (num_mips == ALL_MIP_LEVELS) {
+    num_mips = texture.num_mip_levels - base_mip;
+  }
+  ren_assert(base_mip + num_mips <= texture.num_mip_levels);
+
+  SmallVector<VkBufferImageCopy, MAX_SRV_MIPS> regions(num_mips);
+  usize offset = dst.offset;
+  for (u32 mip : range(base_mip, base_mip + num_mips)) {
+    glm::uvec3 size = get_mip_size(texture.size, mip);
+    u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_array_layers;
+    regions[mip - base_mip] = {
+        .bufferOffset = offset,
+        .imageSubresource =
+            {
+                .aspectMask = getVkImageAspectFlags(texture.format),
+                .mipLevel = mip,
+                .layerCount = num_layers,
+            },
+        .imageExtent = {size.x, size.y, size.z},
+    };
+    offset += get_mip_byte_size(texture.format, size, num_layers);
+  }
+
+  copy_texture_to_buffer(src, dst.buffer, regions);
 }
 
 void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
@@ -246,7 +270,8 @@ void CommandRecorder::pipeline_barrier(
                 .aspect_mask = get_format_aspect_mask(texture.format),
                 .first_mip_level = barrier.resource.first_mip_level,
                 .num_mip_levels = barrier.resource.num_mip_levels,
-                .num_array_layers = 1,
+                .num_array_layers =
+                    (texture.cube_map ? 6 : 1) * texture.num_array_layers,
             },
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,

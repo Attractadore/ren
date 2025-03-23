@@ -55,6 +55,11 @@ if (REN_BUILD_SHADER_COMPILER)
   add_subdirectory(glslang)
 endif()
 
+if (REN_BUILD_BAKING_TOOLS OR REN_BUILD_EXAMPLES)
+  add_library(stb INTERFACE)
+  target_include_directories(stb INTERFACE stb)
+endif()
+
 if (REN_BUILD_BAKING_TOOLS)
   add_subdirectory(DirectX-Headers)
   
@@ -107,8 +112,9 @@ if (REN_BUILD_EXAMPLES)
   add_library(tinygltf tinygltf/tiny_gltf.cc)
   target_include_directories(tinygltf
     PUBLIC tinygltf
-    PRIVATE assimp/contrib/rapidjson/include/rapidjson assimp/contrib/stb
+    PRIVATE assimp/contrib/rapidjson/include/rapidjson
   )
+target_link_libraries(tinygltf PRIVATE stb)
   target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_STB_IMAGE_WRITE TINYGLTF_USE_CPP14 TINYGLTF_USE_RAPIDJSON)
   target_compile_features(tinygltf PUBLIC cxx_std_14)
 endif()
