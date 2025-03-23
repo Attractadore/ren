@@ -9,7 +9,6 @@ option(REN_BUILD_EXAMPLES "Build example excutables" FALSE)
 option(REN_BUILD_IMGUI_PLUGIN "Enable ImGui plugin for debug UI rendering" OFF)
 option(REN_BUILD_SHADER_COMPILER "Build shader compiler" ON)
 option(REN_BUILD_BAKING_TOOLS "Build baking tools" ON)
-option(REN_BUILD_TESTS "Build tests" $CACHE{BUILD_TESTING})
 option(REN_PROFILER "Enable profiler" OFF)
 
 if(REN_BUILD_SHADER_COMPILER)
@@ -26,10 +25,6 @@ endif()
 
 if(REN_BUILD_EXAMPLES)
   list(APPEND VCPKG_MANIFEST_FEATURES examples)
-endif()
-
-if(REN_BUILD_TESTS)
-  list(APPEND VCPKG_MANIFEST_FEATURES tests)
 endif()
 
 project(ren VERSION 0.1.0)
@@ -56,11 +51,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 add_subdirectory(external)
 add_subdirectory(lib)
-
-if(REN_BUILD_TESTS)
-  message(STATUS "Build tests")
-  add_subdirectory(tests)
-endif()
 
 if(REN_BUILD_EXAMPLES)
   message(STATUS "Build examples")
