@@ -18,8 +18,10 @@
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON",
         "TRACY_ENABLE": "OFF",
         "TRACY_ON_DEMAND": "ON",
+        "ENABLE_GLSLANG_BINARIES": "OFF",
+        "ENABLE_HLSL": "OFF",
         "ENABLE_OPT": "OFF",
-        "ENABLE_HLSL": "OFF"
+        "ENABLE_SPVREMAPPER": "OFF"
       }
     },
     {
