@@ -17,12 +17,6 @@
     "mikktspace",
     "cxxopts",
     "ms-gsl",
-    {
-      "name": "sdl2",
-      "features": [
-        "vulkan"
-      ]
-    },
     "spirv-reflect",
     "tl-optional",
     "volk",

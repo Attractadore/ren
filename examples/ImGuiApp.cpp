@@ -58,9 +58,10 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
 #ifdef SDL_VIDEO_DRIVER_X11
       // SDL2 doesn't support HiDPI on X11. Set UI scale to Xft.dpi / 96.
 
-      void *xlib_so = SDL_LoadObject(SDL_VIDEO_DRIVER_X11_DYNAMIC);
+      const char *xlib = "libX11.so";
+      void *xlib_so = SDL_LoadObject(xlib);
       if (!xlib_so) {
-        bail("SDL2: failed to load {}", SDL_VIDEO_DRIVER_X11_DYNAMIC);
+        bail("SDL2: failed to load {}", xlib);
       }
 
 #define load_function(name)                                                    \
