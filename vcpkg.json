@@ -33,12 +33,6 @@
         "glm",
         "tinygltf"
       ]
-    },
-    "shader-compiler": {
-      "description": "Build shader compiler",
-      "dependencies": [
-        "glslang"
-      ]
     }
   }
 }

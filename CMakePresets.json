@@ -17,7 +17,9 @@
         "REN_RENDER_GRAPH_DEBUG": "ON",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON",
         "TRACY_ENABLE": "OFF",
-        "TRACY_ON_DEMAND": "ON"
+        "TRACY_ON_DEMAND": "ON",
+        "ENABLE_OPT": "OFF",
+        "ENABLE_HLSL": "OFF"
       }
     },
     {

@@ -25,3 +25,7 @@ add_subdirectory(tracy)
 if (REN_BUILD_BAKING_TOOLS OR REN_BUILD_SHADER_COMPILER OR REN_BUILD_EXAMPLES)
   add_subdirectory(cxxopts)
 endif()
+
+if (REN_BUILD_SHADER_COMPILER)
+  add_subdirectory(glslang)
+endif()

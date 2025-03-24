@@ -99,7 +99,18 @@ endif()
 
 if (REN_BUILD_SHADER_COMPILER)
   message(STATUS "Build shader compiler")
-  add_subdirectory(shader-compiler)
+
+  find_package(unofficial-spirv-reflect REQUIRED)
+
+  add_executable(ren-shader-compiler shader-compiler.cpp)
+  add_executable(ren::shader-compiler ALIAS ren-shader-compiler)
+  target_link_libraries(ren-shader-compiler
+    ren-core
+    glslang::glslang
+    glslang::glslang-default-resource-limits
+    cxxopts::cxxopts
+    unofficial::spirv-reflect
+  )
 endif()
 
 find_package(Ktx REQUIRED)

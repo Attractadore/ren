@@ -1,8 +1,8 @@
-#include "../core/Assert.hpp"
-#include "../core/Span.hpp"
-#include "../core/String.hpp"
-#include "../core/Vector.hpp"
-#include "../core/Views.hpp"
+#include "core/Assert.hpp"
+#include "core/Span.hpp"
+#include "core/String.hpp"
+#include "core/Vector.hpp"
+#include "core/Views.hpp"
 
 #include <cxxopts.hpp>
 #include <filesystem>
