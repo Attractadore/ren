@@ -15,7 +15,6 @@
     "glm",
     "meshoptimizer",
     "mikktspace",
-    "cxxopts",
     "ms-gsl",
     "spirv-reflect",
     "tl-optional",
@@ -30,7 +29,6 @@
         "assimp",
         "boost-functional",
         "boost-random",
-        "cxxopts",
         "fmt",
         "glm",
         "tinygltf"
@@ -40,12 +38,6 @@
       "description": "Build shader compiler",
       "dependencies": [
         "glslang"
-      ]
-    },
-    "baking-tools": {
-      "description": "Build baking tools",
-      "dependencies": [
-        "cxxopts"
       ]
     }
   }

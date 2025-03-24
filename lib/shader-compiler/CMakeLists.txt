@@ -1,4 +1,3 @@
-find_package(cxxopts REQUIRED)
 find_package(glslang REQUIRED)
 find_package(unofficial-spirv-reflect REQUIRED)
 

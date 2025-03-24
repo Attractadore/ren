@@ -129,8 +129,6 @@ target_compile_features(ren-baking PUBLIC cxx_std_23)
 if (REN_BUILD_BAKING_TOOLS)
   message(STATUS "Build baking tools")
 
-  find_package(cxxopts REQUIRED)
-
   add_executable(ren-bake-dhr-lut bake-dhr-lut.cpp)
   target_link_libraries(ren-bake-dhr-lut ren-baking cxxopts::cxxopts)
 endif()

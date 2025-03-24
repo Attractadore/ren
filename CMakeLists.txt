@@ -14,10 +14,6 @@ if(REN_BUILD_SHADER_COMPILER)
   list(APPEND VCPKG_MANIFEST_FEATURES shader-compiler)
 endif()
 
-if(REN_BUILD_BAKING_TOOLS)
-  list(APPEND VCPKG_MANIFEST_FEATURES baking-tools)
-endif()
-
 if(REN_BUILD_EXAMPLES)
   list(APPEND VCPKG_MANIFEST_FEATURES examples)
 endif()

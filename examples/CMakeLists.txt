@@ -1,6 +1,5 @@
 find_package(assimp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS random)
-find_package(cxxopts REQUIRED)
 find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 
