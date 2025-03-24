@@ -1,7 +1,6 @@
 #include "MeshPass.hpp"
 #include "../Batch.hpp"
 #include "../CommandRecorder.hpp"
-#include "../Profiler.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
@@ -16,6 +15,7 @@
 #include "PrepareBatch.comp.hpp"
 
 #include <fmt/format.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -31,7 +31,7 @@ struct CullingInfo {
 
 void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                     RgBuilder &rgb, const CullingInfo &cfg) {
-  ren_prof_zone("Record culling");
+  ZoneScoped;
 
   const DrawSetData &ds = info.gpu_scene->draw_sets[cfg.draw_set];
   const RgDrawSetData &rg_ds = info.rg_gpu_scene->draw_sets[cfg.draw_set];
@@ -313,7 +313,7 @@ template <DrawSet S>
 void record_render_pass(const PassCommonConfig &ccfg,
                         const MeshPassInfo<S> &info,
                         const RenderPassInfo &cfg) {
-  ren_prof_zone("Record render pass");
+  ZoneScoped;
 
   u32 draw_set = get_draw_set_index(S);
 
@@ -417,9 +417,10 @@ void record_render_pass(const PassCommonConfig &ccfg,
 template <DrawSet S>
 void record_mesh_pass(const PassCommonConfig &ccfg,
                       const MeshPassInfo<S> &info) {
-  ren_prof_zone("MeshPass::record");
+  ZoneScoped;
 #if REN_RG_DEBUG
-  ren_prof_zone_text(info.base.pass_name);
+  StringView pass_name = info.base.pass_name;
+  ZoneText(pass_name.data(), pass_name.size());
 #endif
 
   RgBufferId<glsl::MeshletDrawCommand> batch_commands;

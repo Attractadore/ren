@@ -42,18 +42,6 @@
         "tinygltf"
       ]
     },
-    "profiler": {
-      "description": "Enable profiler",
-      "dependencies": [
-        {
-          "name": "tracy",
-          "features": [
-            "gui-tools",
-            "on-demand"
-          ]
-        }
-      ]
-    },
     "shader-compiler": {
       "description": "Build shader compiler",
       "dependencies": [

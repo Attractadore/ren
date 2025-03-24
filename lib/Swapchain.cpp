@@ -1,6 +1,5 @@
 #include "Swapchain.hpp"
 #include "Formats.hpp"
-#include "Profiler.hpp"
 #include "Renderer.hpp"
 #include "Scene.hpp"
 #include "core/Views.hpp"
@@ -9,6 +8,7 @@
 #include <SDL2/SDL_syswm.h>
 #include <algorithm>
 #include <fmt/format.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -241,7 +241,7 @@ auto Swapchain::update() -> Result<void, Error> {
 
 auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
     -> Result<Handle<Texture>, Error> {
-  ren_prof_zone("Swapchain::acquire_texture");
+  ZoneScoped;
 
   glm::ivec2 size;
   SDL_GetWindowSizeInPixels(m_window, &size.x, &size.y);
@@ -277,7 +277,7 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
 
 auto Swapchain::present(rhi::QueueFamily qf, Handle<Semaphore> wait_semaphore)
     -> Result<void, Error> {
-  ren_prof_zone("Swapchain::present");
+  ZoneScoped;
   auto result = rhi::present(rhi::get_queue(m_renderer->get_rhi_device(), qf),
                              m_swap_chain,
                              m_renderer->get_semaphore(wait_semaphore).handle);

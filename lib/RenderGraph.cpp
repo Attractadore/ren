@@ -1,11 +1,11 @@
 #include "RenderGraph.hpp"
 #include "CommandRecorder.hpp"
-#include "Profiler.hpp"
 #include "Swapchain.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
 
 #include <fmt/format.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -1447,7 +1447,7 @@ void RgBuilder::place_barriers_and_semaphores() {
 
 auto RgBuilder::build(const RgBuildInfo &build_info)
     -> Result<RenderGraph, Error> {
-  ren_prof_zone("RgBuilder::build");
+  ZoneScoped;
 
   m_rgp->rotate_textures();
 
@@ -1607,14 +1607,14 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
 
 auto RenderGraph::execute(const RgExecuteInfo &exec_info)
     -> Result<void, Error> {
-  ren_prof_zone("RenderGraph::execute");
+  ZoneScoped;
 
   RgRuntime rt;
   rt.m_rg = this;
 
   for (rhi::QueueFamily queue_family :
        {rhi::QueueFamily::Graphics, rhi::QueueFamily::Compute}) {
-    ren_prof_zone("RenderGraph::submit_queue");
+    ZoneScopedN("RenderGraph::submit_queue");
 
     CommandRecorder cmd;
     Span<const SemaphoreState> batch_wait_semaphores;
@@ -1643,9 +1643,10 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
     }
 
     for (const RgRtPass &pass : passes) {
-      ren_prof_zone("RenderGraph::execute_pass");
+      ZoneScopedN("RenderGraph::execute_pass");
 #if REN_RG_DEBUG
-      ren_prof_zone_text(m_data->m_pass_names[pass.pass]);
+      StringView pass_name = m_data->m_pass_names[pass.pass];
+      ZoneText(pass_name.data(), pass_name.size());
 #endif
       if (pass.num_wait_semaphores > 0) {
         ren_try_to(submit_batch());

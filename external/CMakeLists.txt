@@ -19,3 +19,5 @@ if (REN_BUILD_IMGUI_PLUGIN)
   target_link_libraries(imgui PRIVATE SDL2::SDL2)
   add_library(imgui::imgui ALIAS imgui)
 endif()
+
+add_subdirectory(tracy)

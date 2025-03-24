@@ -1,10 +1,10 @@
 #include "Renderer.hpp"
-#include "Profiler.hpp"
 #include "Swapchain.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
 
 #include <spirv_reflect.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -690,13 +690,13 @@ bool Renderer::is_feature_supported(RendererFeature feature) const {
 
 auto Renderer::amd_anti_lag_input(u64 frame, bool enable, u32 max_fps)
     -> Result<void, Error> {
-  ren_prof_zone("AMD Anti-Lag (Input)");
+  ZoneScoped;
   return rhi::amd_anti_lag_input(m_device, frame, enable, max_fps);
 }
 
 auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
     -> Result<void, Error> {
-  ren_prof_zone("AMD Anti-Lag (Present)");
+  ZoneScoped;
   return rhi::amd_anti_lag_present(m_device, frame, enable, max_fps);
 }
 

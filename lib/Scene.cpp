@@ -1,7 +1,6 @@
 #include "Scene.hpp"
 #include "CommandRecorder.hpp"
 #include "ImGuiConfig.hpp"
-#include "Profiler.hpp"
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
@@ -15,6 +14,7 @@
 
 #include <fmt/format.h>
 #include <ktx.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -146,15 +146,13 @@ auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
 }
 
 auto Scene::next_frame() -> Result<void, Error> {
-  ren_prof_zone("Scene::next_frame");
+  ZoneScoped;
 
   m_frame_index++;
   m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
 
   {
-    ren_prof_zone("Scene::wait_for_previous_frame");
-    ren_prof_zone_text(
-        fmt::format("{}", i64(m_frame_index - m_num_frames_in_flight)));
+    ZoneScopedN("Scene::wait_for_previous_frame");
     if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
       ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
                                                 m_frcs->end_time));
@@ -586,7 +584,7 @@ bool Scene::is_amd_anti_lag_enabled() {
 }
 
 auto Scene::draw() -> expected<void> {
-  ren_prof_zone("Scene::draw");
+  ZoneScoped;
 
   ren_try_to(m_resource_uploader.upload(*m_renderer, m_frcs->gfx_cmd_pool));
 
@@ -608,14 +606,14 @@ auto Scene::draw() -> expected<void> {
                         : rhi::QueueFamily::Graphics;
   ren_try_to(m_swapchain->present(present_qf, m_frcs->present_semaphore));
 
-  prof::mark_frame();
+  FrameMark;
 
   return next_frame();
 }
 
 #if REN_IMGUI
 void Scene::draw_imgui() {
-  ren_prof_zone("Scene::draw_imgui");
+  ZoneScoped;
 
   ren_ImGuiScope(m_imgui_context);
   if (ImGui::GetCurrentContext()) {
@@ -733,7 +731,7 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
 #endif
 
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
-  ren_prof_zone("Scene::build_rg");
+  ZoneScoped;
 
   bool dirty = false;
   auto set_if_changed =

@@ -8,3 +8,6 @@
 	path = external/SDL
 	url = https://github.com/libsdl-org/SDL
 	branch = SDL2
+[submodule "external/tracy"]
+	path = external/tracy
+	url = https://github.com/wolfpld/tracy/

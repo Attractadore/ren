@@ -8,14 +8,16 @@ find_package(fmt REQUIRED)
 find_package(glm REQUIRED)
 find_package(tl-optional REQUIRED)
 
-add_library(ren-core INTERFACE)
-target_link_libraries(ren-core INTERFACE
+add_library(ren-core core/Profiler.cpp)
+target_link_libraries(ren-core PUBLIC
   glm::glm
   Boost::boost
   Boost::container
   fmt::fmt
-  tl::optional)
-target_compile_features(ren-core INTERFACE cxx_std_23)
+  tl::optional
+  Tracy::TracyClient
+)
+target_compile_features(ren-core PUBLIC cxx_std_23)
 
 find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
@@ -36,7 +38,6 @@ add_library(ren-gfx
   DescriptorAllocator.cpp
   FreeListAllocator.cpp
   Pipeline.cpp
-  Profiler.cpp
   RenderGraph.cpp
   Renderer.cpp
   Texture.cpp
@@ -79,12 +80,6 @@ if(REN_BUILD_IMGUI_PLUGIN)
     PRIVATE ren-gfx)
 endif()
 
-if(REN_PROFILER)
-  message(STATUS "Enable profiler")
-  find_package(Tracy REQUIRED)
-  target_link_libraries(ren-gfx PUBLIC Tracy::TracyClient)
-  target_compile_definitions(ren-gfx PUBLIC REN_PROFILER)
-endif()
 if(REN_ASSERTIONS)
   message(STATUS "Enable assertions")
   target_compile_definitions(ren-gfx PUBLIC REN_ASSERTIONS)

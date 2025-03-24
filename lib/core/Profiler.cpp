@@ -1,13 +1,11 @@
-#include "Profiler.hpp"
-#include "core/StdDef.hpp"
-
 #include <boost/predef.h>
 #include <cstdlib>
 #include <new>
+#include <tracy/Tracy.hpp>
 
-#if REN_PROFILER
+#ifdef TRACY_ENABLE
 
-constexpr ren::usize CALLSTACK_DEPTH = 20;
+constexpr size_t CALLSTACK_DEPTH = 20;
 
 void *operator new(std::size_t count) {
   void *ptr = std::malloc(count);

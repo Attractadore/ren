@@ -1,11 +1,11 @@
 #include "GpuSceneUpdate.hpp"
 #include "../CommandRecorder.hpp"
-#include "../Profiler.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
 
 #include <algorithm>
 #include <fmt/format.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -101,7 +101,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
   pass.set_callback([rcs](Renderer &renderer, const RgRuntime &rg,
                           CommandRecorder &cmd) {
     if (rcs.meshes) {
-      ren_prof_zone("Update meshes");
+      ZoneScopedN("Update meshes");
       auto update_meshes =
           rg.allocate<glsl::Mesh>(rcs.gpu_scene->update_meshes.size());
       std::ranges::copy(rcs.gpu_scene->mesh_update_data,
@@ -116,7 +116,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     if (rcs.mesh_instances) {
-      ren_prof_zone("Update mesh instances");
+      ZoneScopedN("Update mesh instances");
       auto update_mesh_instances = rg.allocate<glsl::MeshInstance>(
           rcs.gpu_scene->update_mesh_instances.size());
       std::ranges::copy(rcs.gpu_scene->mesh_instance_update_data,
@@ -133,7 +133,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     {
-      ren_prof_zone("Update mesh instance transforms");
+      ZoneScopedN("Update mesh instance transforms");
       usize count = rcs.scene->mesh_instances.raw_size();
       auto transforms = rg.allocate<glm::mat4x3>(count);
       std::ranges::copy_n(rcs.scene->mesh_instance_transforms.raw_data(), count,
@@ -209,7 +209,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     if (rcs.materials) {
-      ren_prof_zone("Update materials");
+      ZoneScopedN("Update materials");
       auto update_materials =
           rg.allocate<glsl::Material>(rcs.gpu_scene->update_materials.size());
       std::ranges::copy(rcs.gpu_scene->material_update_data,
@@ -224,7 +224,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     }
 
     if (rcs.directional_lights) {
-      ren_prof_zone("Update directional_lights");
+      ZoneScopedN("Update directional_lights");
       auto update_directional_lights = rg.allocate<glsl::DirectionalLight>(
           rcs.gpu_scene->update_directional_lights.size());
       std::ranges::copy(rcs.gpu_scene->directional_light_update_data,

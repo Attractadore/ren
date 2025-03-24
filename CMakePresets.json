@@ -11,12 +11,13 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "REN_BUILD_IMGUI_PLUGIN": "ON",
         "REN_BUILD_EXAMPLES": "ON",
-        "REN_BUILD_TESTS": "ON",
         "REN_ASSERTIONS": "ON",
         "REN_DEBUG_NAMES": "ON",
         "REN_DEBUG_LAYER": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON",
-        "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON"
+        "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON",
+        "TRACY_ENABLE": "OFF",
+        "TRACY_ON_DEMAND": "ON"
       }
     },
     {
@@ -57,8 +58,7 @@
       "hidden": true,
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake",
-        "REN_BUILD_TESTS": "OFF"
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
       },
       "condition": {
         "type": "equals",
@@ -88,7 +88,6 @@
       "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "REN_BUILD_TESTS": "OFF",
         "REN_ASSERTIONS": "OFF",
         "REN_DEBUG_LAYER": "OFF",
         "REN_DEBUG_NAMES": "OFF",
@@ -101,7 +100,7 @@
       "inherits": "release",
       "hidden": true,
       "cacheVariables": {
-        "REN_PROFILER": "ON"
+        "TRACY_ENABLE": "ON"
       }
     },
     {
