@@ -4,8 +4,6 @@ option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
 option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
 
 find_package(Boost COMPONENTS container REQUIRED)
-find_package(fmt REQUIRED)
-find_package(glm REQUIRED)
 find_package(tl-optional REQUIRED)
 
 add_library(ren-core core/Profiler.cpp)

@@ -29,3 +29,6 @@ endif()
 if (REN_BUILD_SHADER_COMPILER)
   add_subdirectory(glslang)
 endif()
+
+add_subdirectory(glm)
+add_subdirectory(fmt)

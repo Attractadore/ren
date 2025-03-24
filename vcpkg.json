@@ -11,8 +11,6 @@
     "boost-preprocessor",
     "directxtex",
     "ktx",
-    "fmt",
-    "glm",
     "meshoptimizer",
     "mikktspace",
     "ms-gsl",
@@ -29,8 +27,6 @@
         "assimp",
         "boost-functional",
         "boost-random",
-        "fmt",
-        "glm",
         "tinygltf"
       ]
     }
