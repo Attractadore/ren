@@ -862,17 +862,17 @@ void RgBuilder::init_runtime_passes() {
             rt_pass.ext = RgRtRenderPass{
                 .base_render_target = u32(m_rt_data->m_render_targets.size()),
                 .num_render_targets = u32(graphics_pass.render_targets.size()),
-                .depth_stencil_target = graphics_pass.depth_stencil_target.map(
-                    [&](const RgDepthStencilTarget &) -> u32 {
-                      return m_rt_data->m_depth_stencil_targets.size();
-                    }),
+                .depth_stencil_target =
+                    graphics_pass.depth_stencil_target.texture
+                        ? Optional(m_rt_data->m_depth_stencil_targets.size())
+                        : None,
                 .cb = std::move(graphics_pass.cb),
             };
             m_rt_data->m_render_targets.append(graphics_pass.render_targets);
-            graphics_pass.depth_stencil_target.map(
-                [&](const RgDepthStencilTarget &att) {
-                  m_rt_data->m_depth_stencil_targets.push_back(att);
-                });
+            if (graphics_pass.depth_stencil_target.texture) {
+              m_rt_data->m_depth_stencil_targets.push_back(
+                  graphics_pass.depth_stencil_target);
+            }
           },
           [&](RgCallback &cb) { rt_pass.ext = std::move(cb); },
       });
@@ -1609,8 +1609,8 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
     -> Result<void, Error> {
   ZoneScoped;
 
-  RgRuntime rt;
-  rt.m_rg = this;
+  RgRuntime rg;
+  rg.m_rg = this;
 
   for (rhi::QueueFamily queue_family :
        {rhi::QueueFamily::Graphics, rhi::QueueFamily::Compute}) {
@@ -1679,30 +1679,27 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
             [&](const RgRtRenderPass &pass) {
               glm::uvec2 viewport = {-1, -1};
 
-              auto render_targets =
-                  Span(m_data->m_render_targets)
-                      .subspan(pass.base_render_target,
-                               pass.num_render_targets) |
-                  map([&](const Optional<RgRenderTarget> &att)
-                          -> Optional<ColorAttachment> {
-                    return att.map(
-                        [&](const RgRenderTarget &att) -> ColorAttachment {
-                          Handle<Texture> texture = rt.get_texture(att.texture);
-                          viewport = get_texture_size(*m_renderer, texture);
-                          return {.rtv = {texture}, .ops = att.ops};
-                        });
-                  }) |
-                  std::ranges::to<StaticVector<Optional<ColorAttachment>,
-                                               rhi::MAX_NUM_RENDER_TARGETS>>();
+              StaticVector<ColorAttachment, rhi::MAX_NUM_RENDER_TARGETS>
+                  render_targets(pass.num_render_targets);
+              for (usize i : range(pass.num_render_targets)) {
+                const RgRenderTarget &rt =
+                    m_data->m_render_targets[pass.base_render_target + i];
+                if (!rt.texture) {
+                  continue;
+                }
+                Handle<Texture> texture = rg.get_texture(rt.texture);
+                viewport = get_texture_size(*m_renderer, texture);
+                render_targets[i] = {.rtv = {texture}, .ops = rt.ops};
+              }
 
-              auto depth_stencil_target = pass.depth_stencil_target.map(
-                  [&](u32 index) -> DepthStencilAttachment {
-                    const RgDepthStencilTarget &att =
-                        m_data->m_depth_stencil_targets[index];
-                    Handle<Texture> texture = rt.get_texture(att.texture);
-                    viewport = get_texture_size(*m_renderer, texture);
-                    return {.dsv = {texture}, .ops = att.ops};
-                  });
+              DepthStencilAttachment depth_stencil_target;
+              if (pass.depth_stencil_target) {
+                const RgDepthStencilTarget &dst =
+                    m_data->m_depth_stencil_targets[*pass.depth_stencil_target];
+                Handle<Texture> texture = rg.get_texture(dst.texture);
+                viewport = get_texture_size(*m_renderer, texture);
+                depth_stencil_target = {.dsv = {texture}, .ops = dst.ops};
+              }
 
               RenderPass render_pass = cmd.render_pass({
                   .color_attachments = render_targets,
@@ -1716,9 +1713,9 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
               render_pass.set_scissor_rects(
                   {{.extent = {viewport.x, viewport.y}}});
 
-              pass.cb(*m_renderer, rt, render_pass);
+              pass.cb(*m_renderer, rg, render_pass);
             },
-            [&](const RgCallback &cb) { cb(*m_renderer, rt, cmd); },
+            [&](const RgCallback &cb) { cb(*m_renderer, rg, cmd); },
         });
       }
 

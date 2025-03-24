@@ -1,5 +1,4 @@
 #pragma once
-#include "Optional.hpp"
 #include "StdDef.hpp"
 #include "TypeTraits.hpp"
 #include "Vector.hpp"
@@ -43,18 +42,23 @@ public:
 
   template <typename Self>
   auto operator[](this Self &self, const K &key) -> ConstLikeT<V, Self> & {
+    return self.get(key);
+  }
+
+  template <typename Self>
+  auto get(this Self &self, const K &key) -> ConstLikeT<V, Self> & {
     auto it = self.find(key);
     ren_assert(it != self.end());
     return std::get<1>(*it);
   }
 
   template <typename Self>
-  auto get(this Self &self, const K &key) -> Optional<ConstLikeT<V, Self> &> {
+  auto try_get(this Self &self, const K &key) -> ConstLikeT<V, Self> * {
     auto it = self.find(key);
-    if (it != self.end()) {
-      return std::get<1>(*it);
+    if (it == self.end()) {
+      return nullptr;
     };
-    return None;
+    return &std::get<1>(*it);
   }
 
   void clear() {

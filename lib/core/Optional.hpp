@@ -1,10 +1,10 @@
 #pragma once
-#include <tl/optional.hpp>
+#include <optional>
 
 namespace ren {
 
-template <typename T> using Optional = tl::optional<T>;
+template <typename T> using Optional = std::optional<T>;
 
-inline constexpr auto None = tl::nullopt;
+inline constexpr auto None = std::nullopt;
 
 } // namespace ren

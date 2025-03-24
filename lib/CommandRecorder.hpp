@@ -4,7 +4,6 @@
 #include "Descriptors.hpp"
 #include "Texture.hpp"
 #include "core/Assert.hpp"
-#include "core/Optional.hpp"
 #include "core/Span.hpp"
 #include "core/Vector.hpp"
 #include "glsl/Indirect.h"
@@ -30,8 +29,8 @@ struct DepthStencilAttachment {
 };
 
 struct RenderPassBeginInfo {
-  TempSpan<const Optional<ColorAttachment>> color_attachments;
-  Optional<DepthStencilAttachment> depth_stencil_attachment;
+  TempSpan<const ColorAttachment> color_attachments;
+  DepthStencilAttachment depth_stencil_attachment;
 };
 
 class RenderPass;

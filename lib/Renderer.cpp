@@ -80,13 +80,12 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
 }
 
 void Renderer::destroy(Handle<Buffer> handle) {
-  m_buffers.try_pop(handle).map([&](const Buffer &buffer) {
-    rhi::destroy_buffer(m_device, buffer.handle);
-  });
+  if (Optional<Buffer> buffer = m_buffers.try_pop(handle)) {
+    rhi::destroy_buffer(m_device, buffer->handle);
+  };
 }
 
-auto Renderer::try_get_buffer(Handle<Buffer> buffer) const
-    -> Optional<const Buffer &> {
+auto Renderer::try_get_buffer(Handle<Buffer> buffer) const -> const Buffer * {
   return m_buffers.try_get(buffer);
 };
 
@@ -97,12 +96,13 @@ auto Renderer::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
 
 auto Renderer::try_get_buffer_view(Handle<Buffer> handle) const
     -> Optional<BufferView> {
-  return try_get_buffer(handle).map([&](const Buffer &buffer) -> BufferView {
-    return {
+  if (const Buffer *buffer = try_get_buffer(handle)) {
+    return BufferView{
         .buffer = handle,
-        .count = buffer.size,
+        .count = buffer->size,
     };
-  });
+  };
+  return {};
 };
 
 auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
@@ -160,9 +160,9 @@ auto Renderer::create_external_texture(
 }
 
 void Renderer::destroy(Handle<Texture> handle) {
-  m_textures.try_pop(handle).map([&](const Texture &texture) {
-    if (rhi::get_allocation(m_device, texture.handle)) {
-      rhi::destroy_image(m_device, texture.handle);
+  if (Optional<Texture> texture = m_textures.try_pop(handle)) {
+    if (rhi::get_allocation(m_device, texture->handle)) {
+      rhi::destroy_image(m_device, texture->handle);
     }
     for (const auto &[desc, view] : m_image_views[handle]) {
       switch (desc.type) {
@@ -178,12 +178,7 @@ void Renderer::destroy(Handle<Texture> handle) {
       }
     }
     m_image_views.erase(handle);
-  });
-}
-
-auto Renderer::try_get_texture(Handle<Texture> texture) const
-    -> Optional<const Texture &> {
-  return m_textures.try_get(texture);
+  };
 }
 
 auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
@@ -241,7 +236,7 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
 
   auto &image_views = m_image_views[handle];
 
-  [[likely]] if (Optional<rhi::ImageView> image_view = image_views.get(desc)) {
+  [[likely]] if (const rhi::ImageView *image_view = image_views.try_get(desc)) {
     return *image_view;
   }
 
@@ -310,10 +305,10 @@ auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
   });
 }
 
-void Renderer::destroy(Handle<Sampler> sampler) {
-  m_samplers.try_pop(sampler).map([&](const Sampler &sampler) {
-    rhi::destroy_sampler(m_device, sampler.handle);
-  });
+void Renderer::destroy(Handle<Sampler> handle) {
+  if (Optional<Sampler> sampler = m_samplers.try_pop(handle)) {
+    rhi::destroy_sampler(m_device, sampler->handle);
+  }
 }
 
 auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
@@ -334,11 +329,11 @@ auto Renderer::create_resource_descriptor_heap(
   });
 }
 
-void Renderer::destroy(Handle<ResourceDescriptorHeap> heap) {
-  m_resource_descriptor_heaps.try_pop(heap).transform(
-      [&](const ResourceDescriptorHeap &heap) {
-        rhi::destroy_resource_descriptor_heap(m_device, heap.handle);
-      });
+void Renderer::destroy(Handle<ResourceDescriptorHeap> handle) {
+  if (Optional<ResourceDescriptorHeap> heap =
+          m_resource_descriptor_heaps.try_pop(handle)) {
+    rhi::destroy_resource_descriptor_heap(m_device, heap->handle);
+  }
 }
 
 auto Renderer::get_resource_descriptor_heap(Handle<ResourceDescriptorHeap> heap)
@@ -357,11 +352,11 @@ auto Renderer::create_sampler_descriptor_heap(
   });
 }
 
-void Renderer::destroy(Handle<SamplerDescriptorHeap> heap) {
-  m_sampler_descriptor_heaps.try_pop(heap).transform(
-      [&](const SamplerDescriptorHeap &heap) {
-        rhi::destroy_sampler_descriptor_heap(m_device, heap.handle);
-      });
+void Renderer::destroy(Handle<SamplerDescriptorHeap> handle) {
+  if (Optional<SamplerDescriptorHeap> heap =
+          m_sampler_descriptor_heaps.try_pop(handle)) {
+    rhi::destroy_sampler_descriptor_heap(m_device, heap->handle);
+  }
 }
 
 auto Renderer::get_sampler_descriptor_heap(
@@ -380,10 +375,10 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
-void Renderer::destroy(Handle<Semaphore> semaphore) {
-  m_semaphores.try_pop(semaphore).map([&](const Semaphore &semaphore) {
-    rhi::destroy_semaphore(m_device, semaphore.handle);
-  });
+void Renderer::destroy(Handle<Semaphore> handle) {
+  if (Optional<Semaphore> semaphore = m_semaphores.try_pop(handle)) {
+    rhi::destroy_semaphore(m_device, semaphore->handle);
+  }
 }
 
 auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
@@ -400,11 +395,6 @@ auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
                              std::chrono::nanoseconds(UINT64_MAX)));
   ren_assert(wait_result == rhi::WaitResult::Success);
   return {};
-}
-
-auto Renderer::try_get_semaphore(Handle<Semaphore> semaphore) const
-    -> Optional<const Semaphore &> {
-  return m_semaphores.try_get(semaphore);
 }
 
 auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
@@ -425,10 +415,10 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   });
 }
 
-void Renderer::destroy(Handle<CommandPool> pool) {
-  m_command_pools.try_pop(pool).map([&](const CommandPool &pool) {
-    rhi::destroy_command_pool(m_device, pool.handle);
-  });
+void Renderer::destroy(Handle<CommandPool> handle) {
+  if (Optional<CommandPool> pool = m_command_pools.try_pop(handle)) {
+    rhi::destroy_command_pool(m_device, pool->handle);
+  }
 }
 
 auto Renderer::get_command_pool(Handle<CommandPool> pool)
@@ -526,16 +516,11 @@ auto Renderer::create_graphics_pipeline(
   });
 }
 
-void Renderer::destroy(Handle<GraphicsPipeline> pipeline) {
-  m_graphics_pipelines.try_pop(pipeline).map(
-      [&](const GraphicsPipeline &pipeline) {
-        rhi::destroy_pipeline(m_device, pipeline.handle);
-      });
-}
-
-auto Renderer::try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline)
-    const -> Optional<const GraphicsPipeline &> {
-  return m_graphics_pipelines.try_get(pipeline);
+void Renderer::destroy(Handle<GraphicsPipeline> handle) {
+  if (Optional<GraphicsPipeline> pipeline =
+          m_graphics_pipelines.try_pop(handle)) {
+    rhi::destroy_pipeline(m_device, pipeline->handle);
+  }
 }
 
 auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
@@ -599,16 +584,11 @@ auto Renderer::create_compute_pipeline(
   });
 }
 
-void Renderer::destroy(Handle<ComputePipeline> pipeline) {
-  m_compute_pipelines.try_pop(pipeline).map(
-      [&](const ComputePipeline &pipeline) {
-        rhi::destroy_pipeline(m_device, pipeline.handle);
-      });
-}
-
-auto Renderer::try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
-    -> Optional<const ComputePipeline &> {
-  return m_compute_pipelines.try_get(pipeline);
+void Renderer::destroy(Handle<ComputePipeline> handle) {
+  if (Optional<ComputePipeline> pipeline =
+          m_compute_pipelines.try_pop(handle)) {
+    rhi::destroy_pipeline(m_device, pipeline->handle);
+  }
 }
 
 auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
@@ -639,15 +619,10 @@ auto Renderer::create_pipeline_layout(
   });
 }
 
-void Renderer::destroy(Handle<PipelineLayout> layout) {
-  m_pipeline_layouts.try_pop(layout).map([&](const PipelineLayout &layout) {
-    rhi::destroy_pipeline_layout(m_device, layout.handle);
-  });
-}
-
-auto Renderer::try_get_pipeline_layout(Handle<PipelineLayout> layout) const
-    -> Optional<const PipelineLayout &> {
-  return m_pipeline_layouts.try_get(layout);
+void Renderer::destroy(Handle<PipelineLayout> handle) {
+  if (Optional<PipelineLayout> layout = m_pipeline_layouts.try_pop(handle)) {
+    rhi::destroy_pipeline_layout(m_device, layout->handle);
+  }
 }
 
 auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const

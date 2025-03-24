@@ -86,7 +86,7 @@ public:
 
   void destroy(Handle<Buffer> buffer);
 
-  auto try_get_buffer(Handle<Buffer> buffer) const -> Optional<const Buffer &>;
+  auto try_get_buffer(Handle<Buffer> buffer) const -> const Buffer *;
 
   auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
 
@@ -97,7 +97,7 @@ public:
   template <typename T>
   auto try_get_buffer_slice(Handle<Buffer> buffer) const
       -> Optional<BufferSlice<T>> {
-    try_get_buffer_view(buffer).map(
+    try_get_buffer_view(buffer).transform(
         [](const BufferView &view) { return BufferSlice<T>(view); });
   }
 
@@ -133,14 +133,12 @@ public:
   }
 
   template <typename T>
-  auto try_get_buffer_device_ptr(Handle<Buffer> buffer,
+  auto try_get_buffer_device_ptr(Handle<Buffer> handle,
                                  u64 map_offset = 0) const -> DevicePtr<T> {
-    return try_get_buffer(buffer).map_or(
-        [&](const Buffer &buffer) {
-          return DevicePtr<T>(buffer.address ? (buffer.address + map_offset)
-                                             : 0);
-        },
-        DevicePtr<T>());
+    if (const Buffer *buffer = try_get_buffer(handle)) {
+      return DevicePtr<T>(buffer->address ? (buffer->address + map_offset) : 0);
+    }
+    return {};
   }
 
   template <typename T>
@@ -157,9 +155,6 @@ public:
   [[nodiscard]] auto
   create_external_texture(const ExternalTextureCreateInfo &&create_info)
       -> Handle<Texture>;
-
-  auto try_get_texture(Handle<Texture> texture) const
-      -> Optional<const Texture &>;
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
@@ -218,9 +213,6 @@ public:
 
   void destroy(Handle<GraphicsPipeline> pipeline);
 
-  auto try_get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
-      -> Optional<const GraphicsPipeline &>;
-
   auto get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> const GraphicsPipeline &;
 
@@ -229,9 +221,6 @@ public:
       -> Result<Handle<ComputePipeline>, Error>;
 
   void destroy(Handle<ComputePipeline> pipeline);
-
-  auto try_get_compute_pipeline(Handle<ComputePipeline> pipeline) const
-      -> Optional<const ComputePipeline &>;
 
   auto get_compute_pipeline(Handle<ComputePipeline> pipeline) const
       -> const ComputePipeline &;
@@ -242,7 +231,9 @@ public:
   void destroy(Handle<Semaphore> semaphore);
 
   auto try_get_semaphore(Handle<Semaphore> semaphore) const
-      -> Optional<const Semaphore &>;
+      -> const Semaphore * {
+    return m_semaphores.try_get(semaphore);
+  }
 
   auto get_semaphore(Handle<Semaphore> semaphore) const -> const Semaphore &;
 

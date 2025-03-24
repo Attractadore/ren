@@ -151,9 +151,8 @@ struct RgDepthStencilTarget {
 };
 
 struct RgRenderPass {
-  StaticVector<Optional<RgRenderTarget>, rhi::MAX_NUM_RENDER_TARGETS>
-      render_targets;
-  Optional<RgDepthStencilTarget> depth_stencil_target;
+  StaticVector<RgRenderTarget, rhi::MAX_NUM_RENDER_TARGETS> render_targets;
+  RgDepthStencilTarget depth_stencil_target;
   RgRenderPassCallback cb;
 };
 
@@ -416,7 +415,7 @@ struct RgRtData {
   GenMap<String, RgPassId> m_pass_names;
 #endif
 
-  Vector<Optional<RgRenderTarget>> m_render_targets;
+  Vector<RgRenderTarget> m_render_targets;
   Vector<RgDepthStencilTarget> m_depth_stencil_targets;
 
   Vector<BufferView> m_buffers;

@@ -15,7 +15,6 @@
     "mikktspace",
     "ms-gsl",
     "spirv-reflect",
-    "tl-optional",
     "volk",
     "vulkan-headers",
     "vulkan-memory-allocator"

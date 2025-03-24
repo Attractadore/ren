@@ -4,7 +4,6 @@ option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
 option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
 
 find_package(Boost COMPONENTS container REQUIRED)
-find_package(tl-optional REQUIRED)
 
 add_library(ren-core core/Profiler.cpp)
 target_link_libraries(ren-core PUBLIC
@@ -12,7 +11,6 @@ target_link_libraries(ren-core PUBLIC
   Boost::boost
   Boost::container
   fmt::fmt
-  tl::optional
   Tracy::TracyClient
 )
 target_compile_features(ren-core PUBLIC cxx_std_23)

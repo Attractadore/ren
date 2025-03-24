@@ -3,8 +3,6 @@
 #include "core/Math.hpp"
 #include "core/Views.hpp"
 
-#include <ranges>
-
 namespace ren {
 
 namespace {
@@ -272,50 +270,47 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
   glm::uvec2 max_size = {-1, -1};
   glm::uvec2 size = max_size;
 
-  auto color_attachments =
-      begin_info.color_attachments |
-      map([&](const Optional<ColorAttachment> &att) {
-        return att.map_or(
-            [&](const ColorAttachment &att) {
-              VkRenderingAttachmentInfo info = {
-                  .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                  .imageView = m_renderer->get_rtv(att.rtv)->handle,
-                  .imageLayout = get_layout_for_attachment_ops(att.ops.load,
-                                                               att.ops.store),
-                  .loadOp = att.ops.load,
-                  .storeOp = att.ops.store,
-              };
-              static_assert(sizeof(info.clearValue.color.float32) ==
-                            sizeof(att.ops.clear_color));
-              std::memcpy(info.clearValue.color.float32, &att.ops.clear_color,
-                          sizeof(att.ops.clear_color));
-              size = glm::min(size, glm::uvec2(get_texture_size(
-                                        *m_renderer, att.rtv.texture)));
-              return info;
-            },
-            VkRenderingAttachmentInfo{
-                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            });
-      }) |
-      std::ranges::to<SmallVector<VkRenderingAttachmentInfo, 8>>();
+  StaticVector<VkRenderingAttachmentInfo, rhi::MAX_NUM_RENDER_TARGETS>
+      render_targets(begin_info.color_attachments.size());
+  for (usize i : range(render_targets.size())) {
+    const ColorAttachment &rt = begin_info.color_attachments[i];
+    if (!rt.rtv.texture) {
+      render_targets[i] = {
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      };
+    }
+    render_targets[i] = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = m_renderer->get_rtv(rt.rtv)->handle,
+        .imageLayout = get_layout_for_attachment_ops(rt.ops.load, rt.ops.store),
+        .loadOp = rt.ops.load,
+        .storeOp = rt.ops.store,
+    };
+    static_assert(sizeof(render_targets[i].clearValue.color.float32) ==
+                  sizeof(rt.ops.clear_color));
+    std::memcpy(render_targets[i].clearValue.color.float32, &rt.ops.clear_color,
+                sizeof(rt.ops.clear_color));
+    size = glm::min(size,
+                    glm::uvec2(get_texture_size(*m_renderer, rt.rtv.texture)));
+  }
 
-  VkRenderingAttachmentInfo depth_attachment = {
+  VkRenderingAttachmentInfo depth_stencil_target = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
 
-  begin_info.depth_stencil_attachment.map(
-      [&](const DepthStencilAttachment &att) {
-        depth_attachment = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = m_renderer->get_rtv(att.dsv)->handle,
-            .imageLayout =
-                get_layout_for_attachment_ops(att.ops.load, att.ops.store),
-            .loadOp = att.ops.load,
-            .storeOp = att.ops.store,
-            .clearValue = {.depthStencil = {.depth = att.ops.clear_depth}},
-        };
-        size = glm::min(
-            size, glm::uvec2(get_texture_size(*m_renderer, att.dsv.texture)));
-      });
+  if (begin_info.depth_stencil_attachment.dsv.texture) {
+    const DepthStencilAttachment &dst = begin_info.depth_stencil_attachment;
+    depth_stencil_target = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = m_renderer->get_rtv(dst.dsv)->handle,
+        .imageLayout =
+            get_layout_for_attachment_ops(dst.ops.load, dst.ops.store),
+        .loadOp = dst.ops.load,
+        .storeOp = dst.ops.store,
+        .clearValue = {.depthStencil = {.depth = dst.ops.clear_depth}},
+    };
+    size = glm::min(size,
+                    glm::uvec2(get_texture_size(*m_renderer, dst.dsv.texture)));
+  }
 
   ren_assert_msg(size != max_size, "At least one attachment must be provided");
 
@@ -323,9 +318,9 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .renderArea = {.extent = {size.x, size.y}},
       .layerCount = 1,
-      .colorAttachmentCount = u32(color_attachments.size()),
-      .pColorAttachments = color_attachments.data(),
-      .pDepthAttachment = &depth_attachment,
+      .colorAttachmentCount = (u32)render_targets.size(),
+      .pColorAttachments = render_targets.data(),
+      .pDepthAttachment = &depth_stencil_target,
       .pStencilAttachment = nullptr,
   };
 

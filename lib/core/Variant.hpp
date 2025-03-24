@@ -1,5 +1,4 @@
 #pragma once
-#include "Optional.hpp"
 #include "TypeTraits.hpp"
 
 #include <variant>
@@ -29,11 +28,8 @@ public:
 
   template <typename T, typename Self>
     requires(CVariantType(T))
-  auto get(this Self &self) -> Optional<ConstLikeT<T, Self> &> {
-    if (auto *ptr = std::get_if<T>(&self)) {
-      return *ptr;
-    }
-    return None;
+  auto get(this Self &self) -> ConstLikeT<T, Self> * {
+    return std::get_if<T>(&self);
   }
 
   template <typename T>

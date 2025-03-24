@@ -96,11 +96,11 @@ public:
   }
 
   template <typename Self>
-  auto try_get(this Self &self, K key) -> Optional<ConstLikeT<T, Self> &> {
+  auto try_get(this Self &self, K key) -> ConstLikeT<T, Self> * {
     if (not self.contains(key)) {
-      return None;
+      return nullptr;
     }
-    return self.m_values[key];
+    return &self.m_values[key];
   }
 
   template <typename Self>
