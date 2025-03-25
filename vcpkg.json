@@ -9,7 +9,6 @@
     "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
-    "meshoptimizer",
     "mikktspace",
     "ms-gsl",
     "spirv-reflect",

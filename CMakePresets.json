@@ -27,7 +27,8 @@
         "KTX_FEATURE_TESTS": "OFF",
         "KTX_FEATURE_TOOLS": "OFF",
         "KTX_FEATURE_VK_UPLOAD": "OFF",
-        "KTX_GENERATE_VK_FILES": "OFF"
+        "KTX_GENERATE_VK_FILES": "OFF",
+        "MESHOPT_INSTALL": "OFF"
       }
     },
     {

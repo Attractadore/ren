@@ -77,3 +77,8 @@ if (REN_BUILD_BAKING_TOOLS)
   endif()
   add_library(Microsoft::DirectXTex ALIAS DirectXTex)
 endif()
+
+if (REN_BUILD_BAKING_TOOLS)
+  add_subdirectory(meshoptimizer)
+  add_library(meshoptimizer::meshoptimizer ALIAS meshoptimizer)
+endif()

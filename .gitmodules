@@ -35,3 +35,6 @@
 [submodule "external/KTX-Software"]
 	path = external/KTX-Software
 	url = https://github.com/KhronosGroup/KTX-Software
+[submodule "external/meshoptimizer"]
+	path = external/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer

@@ -109,7 +109,6 @@ if (REN_BUILD_SHADER_COMPILER)
   )
 endif()
 
-find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 
 add_library(ren-baking
