@@ -9,8 +9,7 @@
     "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
-    "ms-gsl",
-    "vulkan-memory-allocator"
+    "ms-gsl"
   ],
   "features": {
     "examples": {

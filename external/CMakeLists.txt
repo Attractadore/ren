@@ -97,3 +97,5 @@ target_compile_definitions(Vulkan-Headers INTERFACE VK_NO_PROTOTYPES)
 
 add_subdirectory(volk)
 target_link_libraries(volk PUBLIC Vulkan::Headers)
+
+add_subdirectory(VulkanMemoryAllocator)
