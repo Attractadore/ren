@@ -16,11 +16,15 @@ target_link_libraries(ren-core PUBLIC
 target_compile_features(ren-core PUBLIC cxx_std_23)
 
 add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
-target_link_libraries(ren-rhi PUBLIC 
+target_link_libraries(ren-rhi
+  PUBLIC
   ren-core
   GPUOpen::VulkanMemoryAllocator
   tiny_imageformat
-  volk::volk)
+  volk::volk
+  PRIVATE
+  SDL2::SDL2
+)
 target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1)
 
 add_library(ren-gfx 

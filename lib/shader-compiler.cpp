@@ -4,6 +4,7 @@
 #include "core/Vector.hpp"
 #include "core/Views.hpp"
 
+#include <SPIRV/GlslangToSpv.h>
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <fmt/format.h>
@@ -11,7 +12,6 @@
 #include <fmt/std.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/Public/ShaderLang.h>
-#include <glslang/SPIRV/GlslangToSpv.h>
 #include <spirv_reflect.h>
 
 namespace fs = std::filesystem;
