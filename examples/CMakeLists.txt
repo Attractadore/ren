@@ -1,5 +1,4 @@
 find_package(assimp REQUIRED)
-find_package(Boost REQUIRED COMPONENTS random)
 
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
 add_library(tinygltf tinygltf.cpp)
@@ -31,4 +30,4 @@ add_executable(view-gltf view-gltf.cpp)
 target_link_libraries(view-gltf imgui-app cxxopts::cxxopts tinygltf)
 
 add_executable(entity-stress-test entity-stress-test.cpp)
-target_link_libraries(entity-stress-test imgui-app assimp::assimp cxxopts::cxxopts Boost::random)
+target_link_libraries(entity-stress-test imgui-app assimp::assimp cxxopts::cxxopts)

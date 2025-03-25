@@ -13,7 +13,6 @@
       "description": "Build example executables",
       "dependencies": [
         "assimp",
-        "boost-random",
         "tinygltf"
       ]
     }
