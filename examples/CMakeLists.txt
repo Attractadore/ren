@@ -1,10 +1,3 @@
-find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
-add_library(tinygltf tinygltf.cpp)
-target_include_directories(tinygltf PUBLIC ${TINYGLTF_INCLUDE_DIRS})
-target_compile_definitions(
-  tinygltf PUBLIC TINYGLTF_USE_CPP14 TINYGLTF_NO_STB_IMAGE_WRITE
-                  TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE)
-
 add_library(app-base AppBase.cpp)
 target_link_libraries(app-base PUBLIC ren::ren ren::baking ren::core fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)

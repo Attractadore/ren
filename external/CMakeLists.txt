@@ -102,4 +102,15 @@ add_subdirectory(VulkanMemoryAllocator)
 
 if (REN_BUILD_EXAMPLES)
   add_subdirectory(assimp)
+
+  add_library(tinygltf tinygltf/tiny_gltf.cc)
+  target_include_directories(tinygltf PUBLIC tinygltf)
+  target_compile_definitions(tinygltf
+    PUBLIC
+    TINYGLTF_NO_STB_IMAGE_WRITE
+    TINYGLTF_USE_CPP14
+    TINYGLTF_USE_RAPIDJSON
+  )
+  target_compile_features(tinygltf PUBLIC cxx_std_14)
+  target_include_directories(tinygltf PRIVATE assimp/contrib/rapidjson/include/rapidjson assimp/contrib/stb)
 endif()

@@ -7,13 +7,5 @@
     "boost-dynamic-bitset",
     "boost-iterator",
     "boost-preprocessor"
-  ],
-  "features": {
-    "examples": {
-      "description": "Build example executables",
-      "dependencies": [
-        "tinygltf"
-      ]
-    }
-  }
+  ]
 }
