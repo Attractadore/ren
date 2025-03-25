@@ -100,9 +100,20 @@ public:
   bool operator==(const SamplerCreateInfo &) const = default;
 };
 
-REN_DEFINE_TYPE_HASH(SamplerCreateInfo, mag_filter, min_filter, mipmap_mode,
-                     address_mode_u, address_mode_v, anisotropy,
-                     reduction_mode);
+template <> struct Hash<SamplerCreateInfo> {
+  auto operator()(const SamplerCreateInfo &value) const noexcept -> u64 {
+    u64 seed = 0;
+    seed = hash_combine(seed, value.mag_filter);
+    seed = hash_combine(seed, value.min_filter);
+    seed = hash_combine(seed, value.mipmap_mode);
+    seed = hash_combine(seed, value.address_mode_u);
+    seed = hash_combine(seed, value.address_mode_v);
+    seed = hash_combine(seed, value.address_mode_w);
+    seed = hash_combine(seed, value.reduction_mode);
+    seed = hash_combine(seed, value.anisotropy);
+    return seed;
+  }
+};
 
 struct Sampler {
   rhi::Sampler handle = {};

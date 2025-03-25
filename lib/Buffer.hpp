@@ -63,6 +63,14 @@ public:
 
 using BufferView = BufferSlice<std::byte>;
 
-REN_DEFINE_TYPE_HASH(BufferView, buffer, offset, count);
+template <> struct Hash<BufferView> {
+  auto operator()(const BufferView &value) const noexcept -> u64 {
+    u64 seed = 0;
+    seed = hash_combine(seed, value.buffer);
+    seed = hash_combine(seed, value.offset);
+    seed = hash_combine(seed, value.count);
+    return seed;
+  }
+};
 
 } // namespace ren

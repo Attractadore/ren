@@ -15,6 +15,13 @@ public:
   bool operator==(const BatchDesc &) const = default;
 };
 
-REN_DEFINE_TYPE_HASH(BatchDesc, pipeline, index_buffer);
+template <> struct Hash<BatchDesc> {
+  auto operator()(const BatchDesc &value) const noexcept -> u64 {
+    u64 seed = 0;
+    seed = hash_combine(seed, value.pipeline);
+    seed = hash_combine(seed, value.index_buffer);
+    return seed;
+  }
+};
 
 } // namespace ren
