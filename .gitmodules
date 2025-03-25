@@ -32,3 +32,6 @@
 [submodule "external/DirectX-Headers"]
 	path = external/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers
+[submodule "external/KTX-Software"]
+	path = external/KTX-Software
+	url = https://github.com/KhronosGroup/KTX-Software

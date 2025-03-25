@@ -32,39 +32,48 @@ endif()
 
 add_subdirectory(glm)
 add_subdirectory(fmt)
-add_subdirectory(DirectX-Headers)
 
-include(FetchContent)
-FetchContent_Declare(sal URL https://raw.githubusercontent.com/dotnet/runtime/main/src/coreclr/pal/inc/rt/sal.h DOWNLOAD_NO_EXTRACT TRUE)
-FetchContent_MakeAvailable(sal)
-
-add_library(DirectXMath INTERFACE)
-target_include_directories(DirectXMath INTERFACE DirectXMath/Inc ${sal_SOURCE_DIR})
-target_compile_features(DirectXMath INTERFACE cxx_std_11)
-add_library(Microsoft::DirectXMath ALIAS DirectXMath)
-
-add_library(DirectXTex
-  DirectXTex/DirectXTex/BC.cpp
-  DirectXTex/DirectXTex/BC4BC5.cpp
-  DirectXTex/DirectXTex/BC6HBC7.cpp
-  DirectXTex/DirectXTex/DirectXTexCompress.cpp
-  DirectXTex/DirectXTex/DirectXTexConvert.cpp
-  DirectXTex/DirectXTex/DirectXTexDDS.cpp
-  DirectXTex/DirectXTex/DirectXTexHDR.cpp
-  DirectXTex/DirectXTex/DirectXTexImage.cpp
-  DirectXTex/DirectXTex/DirectXTexMipmaps.cpp
-  DirectXTex/DirectXTex/DirectXTexMisc.cpp
-  DirectXTex/DirectXTex/DirectXTexNormalMaps.cpp
-  DirectXTex/DirectXTex/DirectXTexPMAlpha.cpp
-  DirectXTex/DirectXTex/DirectXTexResize.cpp
-  DirectXTex/DirectXTex/DirectXTexTGA.cpp
-  DirectXTex/DirectXTex/DirectXTexUtil.cpp
-)
-target_include_directories(DirectXTex PUBLIC DirectXTex/DirectXTex)
-target_link_libraries(DirectXTex PUBLIC Microsoft::DirectXMath Microsoft::DirectX-Headers)
-target_compile_features(DirectXTex PUBLIC cxx_std_11)
-find_package(OpenMP)
-if(TARGET OpenMP::OpenMP_CXX)
-  target_link_libraries(DirectXTex PUBLIC OpenMP::OpenMP_CXX)
+if (REN_BUILD_BAKING_TOOLS)
+  add_subdirectory(KTX-Software)
+  add_library(KTX::ktx ALIAS ktx)
+  add_library(KTX::ktx_read ALIAS ktx_read)
 endif()
-add_library(Microsoft::DirectXTex ALIAS DirectXTex)
+
+if (REN_BUILD_BAKING_TOOLS)
+  add_subdirectory(DirectX-Headers)
+  
+  include(FetchContent)
+  FetchContent_Declare(sal URL https://raw.githubusercontent.com/dotnet/runtime/main/src/coreclr/pal/inc/rt/sal.h DOWNLOAD_NO_EXTRACT TRUE)
+  FetchContent_MakeAvailable(sal)
+  
+  add_library(DirectXMath INTERFACE)
+  target_include_directories(DirectXMath INTERFACE DirectXMath/Inc ${sal_SOURCE_DIR})
+  target_compile_features(DirectXMath INTERFACE cxx_std_11)
+  add_library(Microsoft::DirectXMath ALIAS DirectXMath)
+  
+  add_library(DirectXTex
+    DirectXTex/DirectXTex/BC.cpp
+    DirectXTex/DirectXTex/BC4BC5.cpp
+    DirectXTex/DirectXTex/BC6HBC7.cpp
+    DirectXTex/DirectXTex/DirectXTexCompress.cpp
+    DirectXTex/DirectXTex/DirectXTexConvert.cpp
+    DirectXTex/DirectXTex/DirectXTexDDS.cpp
+    DirectXTex/DirectXTex/DirectXTexHDR.cpp
+    DirectXTex/DirectXTex/DirectXTexImage.cpp
+    DirectXTex/DirectXTex/DirectXTexMipmaps.cpp
+    DirectXTex/DirectXTex/DirectXTexMisc.cpp
+    DirectXTex/DirectXTex/DirectXTexNormalMaps.cpp
+    DirectXTex/DirectXTex/DirectXTexPMAlpha.cpp
+    DirectXTex/DirectXTex/DirectXTexResize.cpp
+    DirectXTex/DirectXTex/DirectXTexTGA.cpp
+    DirectXTex/DirectXTex/DirectXTexUtil.cpp
+  )
+  target_include_directories(DirectXTex PUBLIC DirectXTex/DirectXTex)
+  target_link_libraries(DirectXTex PUBLIC Microsoft::DirectXMath Microsoft::DirectX-Headers)
+  target_compile_features(DirectXTex PUBLIC cxx_std_11)
+  find_package(OpenMP)
+  if(TARGET OpenMP::OpenMP_CXX)
+    target_link_libraries(DirectXTex PUBLIC OpenMP::OpenMP_CXX)
+  endif()
+  add_library(Microsoft::DirectXTex ALIAS DirectXTex)
+endif()

@@ -61,7 +61,7 @@ add_library(ren::ren ALIAS ren)
 target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren.hpp)
 target_link_libraries(ren
   PUBLIC glm::glm tiny_imageformat SDL2::SDL2
-  PRIVATE ren-gfx)
+  PRIVATE ren-gfx KTX::ktx_read)
 target_compile_features(ren PUBLIC cxx_std_23)
 
 if(REN_BUILD_IMGUI_PLUGIN)
@@ -109,7 +109,6 @@ if (REN_BUILD_SHADER_COMPILER)
   )
 endif()
 
-find_package(Ktx REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 

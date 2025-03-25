@@ -21,7 +21,13 @@
         "ENABLE_GLSLANG_BINARIES": "OFF",
         "ENABLE_HLSL": "OFF",
         "ENABLE_OPT": "OFF",
-        "ENABLE_SPVREMAPPER": "OFF"
+        "ENABLE_SPVREMAPPER": "OFF",
+        "KTX_FEATURE_GL_UPLOAD": "OFF",
+        "KTX_FEATURE_STATIC_LIBRARY": "ON",
+        "KTX_FEATURE_TESTS": "OFF",
+        "KTX_FEATURE_TOOLS": "OFF",
+        "KTX_FEATURE_VK_UPLOAD": "OFF",
+        "KTX_GENERATE_VK_FILES": "OFF"
       }
     },
     {

@@ -9,7 +9,6 @@
     "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
-    "ktx",
     "meshoptimizer",
     "mikktspace",
     "ms-gsl",
