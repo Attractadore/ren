@@ -4,20 +4,21 @@
     {
       "name": "base",
       "hidden": true,
-      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_COLOR_DIAGNOSTICS": "ON",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "REN_BUILD_IMGUI_PLUGIN": "ON",
-        "REN_BUILD_EXAMPLES": "ON",
         "REN_ASSERTIONS": "ON",
-        "REN_DEBUG_NAMES": "ON",
+        "REN_BUILD_EXAMPLES": "ON",
+        "REN_BUILD_IMGUI_PLUGIN": "ON",
         "REN_DEBUG_LAYER": "ON",
+        "REN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON",
-        "TRACY_ENABLE": "OFF",
-        "TRACY_ON_DEMAND": "ON",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ASSIMP_BUILD_TESTS": "OFF",
+        "ASSIMP_BUILD_ZLIB": "ON",
+        "ASSIMP_INSTALL": "OFF",
+        "ASSIMP_NO_EXPORT": "ON",
         "ENABLE_GLSLANG_BINARIES": "OFF",
         "ENABLE_HLSL": "OFF",
         "ENABLE_OPT": "OFF",
@@ -29,63 +30,14 @@
         "KTX_FEATURE_VK_UPLOAD": "OFF",
         "KTX_GENERATE_VK_FILES": "OFF",
         "MESHOPT_INSTALL": "OFF",
-        "VOLK_PULL_IN_VULKAN": "OFF",
-        "ASSIMP_BUILD_TESTS": "OFF",
-        "ASSIMP_INSTALL": "OFF",
-        "ASSIMP_BUILD_ZLIB": "ON",
-        "ASSIMP_NO_EXPORT": "ON"
-      }
-    },
-    {
-      "name": "windows",
-      "hidden": true,
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
-        "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "mingw",
-      "hidden": true,
-      "inherits": "windows",
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
-      }
-    },
-    {
-      "name": "linux",
-      "hidden": true,
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-linux"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "linux-mingw",
-      "hidden": true,
-      "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "/usr/share/mingw/toolchain-x86_64-w64-mingw32.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
+        "TRACY_ENABLE": "OFF",
+        "TRACY_ON_DEMAND": "ON",
+        "VOLK_PULL_IN_VULKAN": "OFF"
       }
     },
     {
       "name": "debug",
       "inherits": "base",
-      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -93,7 +45,6 @@
     {
       "name": "dev",
       "inherits": "debug",
-      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
@@ -101,7 +52,6 @@
     {
       "name": "release",
       "inherits": "base",
-      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "REN_ASSERTIONS": "OFF",
@@ -112,147 +62,19 @@
       }
     },
     {
-      "name": "prof",
+      "name": "profile",
       "inherits": "release",
-      "hidden": true,
       "cacheVariables": {
         "TRACY_ENABLE": "ON"
       }
     },
     {
-      "name": "gpu-prof",
+      "name": "gpu-profile",
       "inherits": "release",
-      "hidden": true,
       "cacheVariables": {
         "REN_DEBUG_NAMES": "ON",
         "REN_RENDER_GRAPH_DEBUG": "ON"
       }
-    },
-    {
-      "name": "windows-debug",
-      "inherits": [
-        "windows",
-        "debug"
-      ]
-    },
-    {
-      "name": "windows-dev",
-      "inherits": [
-        "windows",
-        "dev"
-      ]
-    },
-    {
-      "name": "windows-release",
-      "inherits": [
-        "windows",
-        "release"
-      ]
-    },
-    {
-      "name": "windows-prof",
-      "inherits": [
-        "windows",
-        "prof"
-      ]
-    },
-    {
-      "name": "windows-gpu-prof",
-      "inherits": [
-        "windows",
-        "gpu-prof"
-      ]
-    },
-    {
-      "name": "mingw-debug",
-      "inherits": [
-        "mingw",
-        "debug"
-      ]
-    },
-    {
-      "name": "mingw-dev",
-      "inherits": [
-        "mingw",
-        "dev"
-      ]
-    },
-    {
-      "name": "mingw-release",
-      "inherits": [
-        "mingw",
-        "release"
-      ]
-    },
-    {
-      "name": "mingw-gpu-prof",
-      "inherits": [
-        "mingw",
-        "gpu-prof"
-      ]
-    },
-    {
-      "name": "linux-debug",
-      "inherits": [
-        "linux",
-        "debug"
-      ]
-    },
-    {
-      "name": "linux-dev",
-      "inherits": [
-        "linux",
-        "dev"
-      ]
-    },
-    {
-      "name": "linux-release",
-      "inherits": [
-        "linux",
-        "release"
-      ]
-    },
-    {
-      "name": "linux-prof",
-      "inherits": [
-        "linux",
-        "prof"
-      ]
-    },
-    {
-      "name": "linux-gpu-prof",
-      "inherits": [
-        "linux",
-        "gpu-prof"
-      ]
-    },
-    {
-      "name": "linux-mingw-debug",
-      "inherits": [
-        "linux-mingw",
-        "debug"
-      ]
-    },
-    {
-      "name": "linux-mingw-dev",
-      "inherits": [
-        "linux-mingw",
-        "dev"
-      ]
-    },
-    {
-      "name": "linux-mingw-release",
-      "inherits": [
-        "linux-mingw",
-        "release"
-      ]
-    },
-    {
-      "name": "linux-mingw-gpu-prof",
-      "inherits": [
-        "linux-mingw",
-        "gpu-prof"
-      ]
     }
   ]
 }
