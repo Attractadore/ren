@@ -4,7 +4,6 @@
   "builtin-baseline": "0b91cf32ea6200b85814c50c129268e8d7dafadb",
   "dependencies": [
     "boost-container",
-    "boost-dynamic-bitset",
     "boost-iterator",
     "boost-preprocessor"
   ]

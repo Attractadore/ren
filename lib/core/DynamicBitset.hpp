@@ -1,8 +1,8 @@
 #pragma once
-#include <boost/dynamic_bitset.hpp>
+#include <vector>
 
 namespace ren {
 
-using DynamicBitset = boost::dynamic_bitset<>;
+using DynamicBitset = std::vector<bool>;
 
 }
