@@ -110,7 +110,6 @@ if (REN_BUILD_SHADER_COMPILER)
 endif()
 
 find_package(Ktx REQUIRED)
-find_package(directxtex REQUIRED)
 find_package(meshoptimizer REQUIRED)
 find_package(mikktspace REQUIRED)
 

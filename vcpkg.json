@@ -9,7 +9,6 @@
     "boost-iterator",
     "boost-predef",
     "boost-preprocessor",
-    "directxtex",
     "ktx",
     "meshoptimizer",
     "mikktspace",
