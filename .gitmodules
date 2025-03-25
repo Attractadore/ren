@@ -38,3 +38,6 @@
 [submodule "external/meshoptimizer"]
 	path = external/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer
+[submodule "external/MikkTSpace"]
+	path = external/MikkTSpace
+	url = https://github.com/mmikk/MikkTSpace
