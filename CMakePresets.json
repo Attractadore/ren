@@ -29,7 +29,11 @@
         "KTX_FEATURE_VK_UPLOAD": "OFF",
         "KTX_GENERATE_VK_FILES": "OFF",
         "MESHOPT_INSTALL": "OFF",
-        "VOLK_PULL_IN_VULKAN": "OFF"
+        "VOLK_PULL_IN_VULKAN": "OFF",
+        "ASSIMP_BUILD_TESTS": "OFF",
+        "ASSIMP_INSTALL": "OFF",
+        "ASSIMP_BUILD_ZLIB": "ON",
+        "ASSIMP_NO_EXPORT": "ON"
       }
     },
     {

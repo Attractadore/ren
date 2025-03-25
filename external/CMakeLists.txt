@@ -99,3 +99,7 @@ add_subdirectory(volk)
 target_link_libraries(volk PUBLIC Vulkan::Headers)
 
 add_subdirectory(VulkanMemoryAllocator)
+
+if (REN_BUILD_EXAMPLES)
+  add_subdirectory(assimp)
+endif()

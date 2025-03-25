@@ -12,7 +12,6 @@
     "examples": {
       "description": "Build example executables",
       "dependencies": [
-        "assimp",
         "tinygltf"
       ]
     }

@@ -1,5 +1,3 @@
-find_package(assimp REQUIRED)
-
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h" REQUIRED)
 add_library(tinygltf tinygltf.cpp)
 target_include_directories(tinygltf PUBLIC ${TINYGLTF_INCLUDE_DIRS})
