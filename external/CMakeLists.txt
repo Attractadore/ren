@@ -92,4 +92,8 @@ endif()
 add_library(spirv-reflect SPIRV-Reflect/spirv_reflect.c)
 target_include_directories(spirv-reflect PUBLIC SPIRV-Reflect)
 
+add_subdirectory(Vulkan-Headers)
+target_compile_definitions(Vulkan-Headers INTERFACE VK_NO_PROTOTYPES)
 
+add_subdirectory(volk)
+target_link_libraries(volk PUBLIC Vulkan::Headers)
