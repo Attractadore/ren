@@ -88,3 +88,8 @@ if (REN_BUILD_BAKING_TOOLS)
   target_include_directories(mikktspace PUBLIC MikkTSpace) 
   add_library(mikktspace::mikktspace ALIAS mikktspace)
 endif()
+
+add_library(spirv-reflect SPIRV-Reflect/spirv_reflect.c)
+target_include_directories(spirv-reflect PUBLIC SPIRV-Reflect)
+
+

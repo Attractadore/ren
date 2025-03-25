@@ -41,3 +41,6 @@
 [submodule "external/MikkTSpace"]
 	path = external/MikkTSpace
 	url = https://github.com/mmikk/MikkTSpace
+[submodule "external/SPIRV-Reflect"]
+	path = external/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect

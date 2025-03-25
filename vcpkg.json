@@ -10,7 +10,6 @@
     "boost-predef",
     "boost-preprocessor",
     "ms-gsl",
-    "spirv-reflect",
     "volk",
     "vulkan-headers",
     "vulkan-memory-allocator"

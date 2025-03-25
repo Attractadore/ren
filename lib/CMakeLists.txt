@@ -17,7 +17,6 @@ target_compile_features(ren-core PUBLIC cxx_std_23)
 
 find_package(VulkanHeaders REQUIRED)
 find_package(VulkanMemoryAllocator REQUIRED)
-find_package(unofficial-spirv-reflect REQUIRED)
 find_package(volk REQUIRED)
 
 add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
@@ -25,7 +24,6 @@ target_link_libraries(ren-rhi PUBLIC
   ren-core
   GPUOpen::VulkanMemoryAllocator
   tiny_imageformat
-  unofficial::spirv-reflect
   volk::volk)
 target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1 VK_NO_PROTOTYPES)
 
@@ -38,7 +36,7 @@ add_library(ren-gfx
   Renderer.cpp
   Texture.cpp
 )
-target_link_libraries(ren-gfx PUBLIC ren-core ren-rhi PRIVATE unofficial::spirv-reflect)
+target_link_libraries(ren-gfx PUBLIC ren-core ren-rhi PRIVATE spirv-reflect)
 
 add_library(ren
   Camera.cpp
@@ -96,8 +94,6 @@ endif()
 if (REN_BUILD_SHADER_COMPILER)
   message(STATUS "Build shader compiler")
 
-  find_package(unofficial-spirv-reflect REQUIRED)
-
   add_executable(ren-shader-compiler shader-compiler.cpp)
   add_executable(ren::shader-compiler ALIAS ren-shader-compiler)
   target_link_libraries(ren-shader-compiler
@@ -105,7 +101,7 @@ if (REN_BUILD_SHADER_COMPILER)
     glslang::glslang
     glslang::glslang-default-resource-limits
     cxxopts::cxxopts
-    unofficial::spirv-reflect
+    spirv-reflect
   )
 endif()
 
