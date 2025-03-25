@@ -3,14 +3,13 @@ option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
 option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
 
-find_package(Boost COMPONENTS container preprocessor iterator REQUIRED)
+find_package(Boost COMPONENTS container preprocessor REQUIRED)
 
 add_library(ren-core core/Profiler.cpp)
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC
   glm::glm
   Boost::container
-  Boost::iterator
   Boost::preprocessor
   fmt::fmt
   Tracy::TracyClient

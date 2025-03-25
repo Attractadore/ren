@@ -1,11 +1,11 @@
 #pragma once
 #include "Assert.hpp"
 #include "GenIndexPool.hpp"
+#include "Iterator.hpp"
 #include "Optional.hpp"
 #include "TypeTraits.hpp"
 
 #include <algorithm>
-#include <boost/iterator/iterator_facade.hpp>
 #include <concepts>
 
 namespace ren {
@@ -187,13 +187,11 @@ private:
   template <bool IsConst>
   using IteratorValueType = std::conditional_t<IsConst, const T, T>;
 
-  template <bool IsConst>
-  class Iterator : public boost::iterator_facade<
-                       Iterator<IsConst>, std::pair<const K, T>,
-                       boost::forward_traversal_tag,
-                       std::pair<const K, IteratorValueType<IsConst> &>> {
+  template <bool IsConst> class Iterator : public IteratorFacade {
   public:
     Iterator() = default;
+
+    using value_type = std::pair<K, T>;
 
     operator Iterator<true>() const
       requires(not IsConst)
@@ -206,7 +204,7 @@ private:
 
   private:
     template <bool> friend class Iterator;
-    friend boost::iterator_core_access;
+    friend IteratorFacade;
     friend GenArray;
 
     Iterator(GenIndexPool<K>::const_iterator it,

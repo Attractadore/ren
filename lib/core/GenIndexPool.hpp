@@ -1,23 +1,23 @@
 #pragma once
 #include "Assert.hpp"
 #include "GenIndex.hpp"
+#include "Iterator.hpp"
 #include "Vector.hpp"
 
-#include <boost/iterator/iterator_facade.hpp>
 #include <concepts>
 
 namespace ren {
 
 template <std::derived_from<GenIndex> K> class GenIndexPool {
 public:
-  class const_iterator
-      : public boost::iterator_facade<const_iterator, const K,
-                                      boost::forward_traversal_tag, K> {
+  class const_iterator : public IteratorFacade {
   public:
     const_iterator() = default;
 
+    using value_type = K;
+
   private:
-    friend boost::iterator_core_access;
+    friend IteratorFacade;
     friend GenIndexPool;
 
     const_iterator(const u8 *generations, usize size, usize index = 0) {
