@@ -5,7 +5,6 @@
 #include "Std.h"
 
 #if !GL_core_profile
-#include <boost/predef/compiler.h>
 #include <boost/preprocessor.hpp>
 #endif
 
@@ -108,7 +107,7 @@ GLSL_DEFINE_PTR_TYPE(SamplerState, SAMPLER_ID_SIZE);
 
 // clang-format off
 
-#if BOOST_COMP_MSVC
+#if _MSC_VER 
 #pragma warning(push)
 #pragma warning(disable: 4003)
 #endif
@@ -131,7 +130,7 @@ GLSL_DEFINE_PTR_TYPE(StorageTexture2D, TEXTURE_ID_SIZE);
 DEFINE_TEXTURE_DESCRIPTOR(CoherentStorageTexture2D, (StorageTexture)(StorageTexture2D),);
 GLSL_DEFINE_PTR_TYPE(CoherentStorageTexture2D, TEXTURE_ID_SIZE);
 
-#if BOOST_COMP_MSVC
+#if _MSC_VER
 #pragma warning(pop)
 #endif
 

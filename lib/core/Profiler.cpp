@@ -1,9 +1,7 @@
-#include <boost/predef.h>
+#ifdef TRACY_ENABLE
 #include <cstdlib>
 #include <new>
 #include <tracy/Tracy.hpp>
-
-#ifdef TRACY_ENABLE
 
 constexpr size_t CALLSTACK_DEPTH = 20;
 
@@ -18,7 +16,7 @@ void operator delete(void *ptr) noexcept {
   std::free(ptr);
 }
 
-#if BOOST_OS_WINDOWS
+#if _WIN64
 
 void *operator new(std::size_t count, std::align_val_t al,
                    const std::nothrow_t &) noexcept {

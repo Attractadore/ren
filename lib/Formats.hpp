@@ -2,7 +2,6 @@
 #include "core/StdDef.hpp"
 #include "ren/tiny_imageformat.h"
 
-#include <boost/predef/compiler.h>
 #include <vulkan/vulkan.h>
 
 namespace ren {

@@ -3,17 +3,21 @@ option(REN_ASSERTIONS "Enable assertions" OFF)
 option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
 option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
 
-find_package(Boost COMPONENTS container REQUIRED)
+find_package(Boost COMPONENTS container preprocessor iterator dynamic_bitset REQUIRED)
 
 add_library(ren-core core/Profiler.cpp)
+target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC
   glm::glm
-  Boost::boost
   Boost::container
+  Boost::dynamic_bitset
+  Boost::iterator
+  Boost::preprocessor
   fmt::fmt
   Tracy::TracyClient
 )
 target_compile_features(ren-core PUBLIC cxx_std_23)
+add_library(ren::core ALIAS ren-core)
 
 add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
 target_link_libraries(ren-rhi
@@ -128,7 +132,7 @@ if (REN_BUILD_BAKING_TOOLS)
   message(STATUS "Build baking tools")
 
   add_executable(ren-bake-dhr-lut bake-dhr-lut.cpp)
-  target_link_libraries(ren-bake-dhr-lut ren-baking cxxopts::cxxopts)
+  target_link_libraries(ren-bake-dhr-lut ren::core ren-baking cxxopts::cxxopts)
 endif()
 
 add_subdirectory(glsl)

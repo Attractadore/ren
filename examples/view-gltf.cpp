@@ -1,8 +1,8 @@
 #include "ImGuiApp.hpp"
+#include "core/Hash.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
 
-#include <boost/functional/hash.hpp>
 #include <cstdint>
 #include <cxxopts.hpp>
 #include <filesystem>
@@ -238,12 +238,12 @@ struct GltfMeshDesc {
 template <> struct std::hash<GltfMeshDesc> {
   auto operator()(const GltfMeshDesc &desc) const -> size_t {
     size_t seed = 0;
-    boost::hash_combine(seed, desc.positions);
-    boost::hash_combine(seed, desc.normals);
-    boost::hash_combine(seed, desc.tangents);
-    boost::hash_combine(seed, desc.colors);
-    boost::hash_combine(seed, desc.uvs);
-    boost::hash_combine(seed, desc.indices);
+    ren::hash_combine(seed, desc.positions);
+    ren::hash_combine(seed, desc.normals);
+    ren::hash_combine(seed, desc.tangents);
+    ren::hash_combine(seed, desc.colors);
+    ren::hash_combine(seed, desc.uvs);
+    ren::hash_combine(seed, desc.indices);
     return seed;
   }
 };

@@ -5,9 +5,7 @@
   "dependencies": [
     "boost-container",
     "boost-dynamic-bitset",
-    "boost-functional",
     "boost-iterator",
-    "boost-predef",
     "boost-preprocessor",
     "ms-gsl"
   ],
@@ -16,7 +14,6 @@
       "description": "Build example executables",
       "dependencies": [
         "assimp",
-        "boost-functional",
         "boost-random",
         "tinygltf"
       ]
