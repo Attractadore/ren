@@ -294,7 +294,6 @@ auto glslang_compile(const CompileOptions &opts) -> int {
 
     virtual auto includeLocal(const char *f, const char *, size_t depth)
         -> IncludeResult * override {
-      ren_assert(depth == 0);
       fs::path path = root / f;
       if (not fs::exists(path)) {
         return nullptr;

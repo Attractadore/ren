@@ -1,5 +1,36 @@
+add_subdirectory(boost-config)
+add_subdirectory(boost-assert)
+add_subdirectory(boost-move)
+add_subdirectory(boost-intrusive)
+add_subdirectory(boost-container)
+
+add_subdirectory(glm)
+
+add_subdirectory(fmt)
+
+if (REN_BUILD_SHADER_COMPILER OR REN_BUILD_BAKING_TOOLS OR REN_BUILD_EXAMPLES)
+  add_subdirectory(cxxopts)
+endif()
+
+add_subdirectory(tracy)
+
+add_subdirectory(KTX-Software)
+add_library(KTX::ktx ALIAS ktx)
+add_library(KTX::ktx_read ALIAS ktx_read)
+
 add_library(tiny_imageformat INTERFACE)
-target_include_directories(tiny_imageformat INTERFACE ${CMAKE_CURRENT_LIST_DIR}/tiny_imageformat/include ${REN_INCLUDE})
+target_include_directories(tiny_imageformat INTERFACE tiny_imageformat/include ${REN_INCLUDE})
+
+add_library(spirv-reflect SPIRV-Reflect/spirv_reflect.c)
+target_include_directories(spirv-reflect PUBLIC SPIRV-Reflect)
+
+add_subdirectory(Vulkan-Headers)
+target_compile_definitions(Vulkan-Headers INTERFACE VK_NO_PROTOTYPES)
+
+add_subdirectory(volk)
+target_link_libraries(volk PUBLIC Vulkan::Headers)
+
+add_subdirectory(VulkanMemoryAllocator)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_subdirectory(SDL)
@@ -15,28 +46,13 @@ if (REN_BUILD_IMGUI_PLUGIN)
     imgui/imgui_tables.cpp
     imgui/imgui_widgets.cpp
   )
-  target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_LIST_DIR}/imgui ${CMAKE_CURRENT_LIST_DIR}/imgui/backends)
+  target_include_directories(imgui PUBLIC imgui imgui/backends)
   target_link_libraries(imgui PRIVATE SDL2::SDL2)
   add_library(imgui::imgui ALIAS imgui)
 endif()
 
-add_subdirectory(tracy)
-
-if (REN_BUILD_BAKING_TOOLS OR REN_BUILD_SHADER_COMPILER OR REN_BUILD_EXAMPLES)
-  add_subdirectory(cxxopts)
-endif()
-
 if (REN_BUILD_SHADER_COMPILER)
   add_subdirectory(glslang)
-endif()
-
-add_subdirectory(glm)
-add_subdirectory(fmt)
-
-if (REN_BUILD_BAKING_TOOLS)
-  add_subdirectory(KTX-Software)
-  add_library(KTX::ktx ALIAS ktx)
-  add_library(KTX::ktx_read ALIAS ktx_read)
 endif()
 
 if (REN_BUILD_BAKING_TOOLS)
@@ -70,53 +86,29 @@ if (REN_BUILD_BAKING_TOOLS)
   )
   target_include_directories(DirectXTex PUBLIC DirectXTex/DirectXTex)
   target_link_libraries(DirectXTex PUBLIC Microsoft::DirectXMath Microsoft::DirectX-Headers)
-  target_compile_features(DirectXTex PUBLIC cxx_std_11)
   find_package(OpenMP)
   if(TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(DirectXTex PUBLIC OpenMP::OpenMP_CXX)
   endif()
+  target_compile_features(DirectXTex PUBLIC cxx_std_11)
   add_library(Microsoft::DirectXTex ALIAS DirectXTex)
-endif()
 
-if (REN_BUILD_BAKING_TOOLS)
   add_subdirectory(meshoptimizer)
   add_library(meshoptimizer::meshoptimizer ALIAS meshoptimizer)
-endif()
 
-if (REN_BUILD_BAKING_TOOLS)
   add_library(mikktspace MikkTSpace/mikktspace.c)
   target_include_directories(mikktspace PUBLIC MikkTSpace) 
   add_library(mikktspace::mikktspace ALIAS mikktspace)
 endif()
 
-add_library(spirv-reflect SPIRV-Reflect/spirv_reflect.c)
-target_include_directories(spirv-reflect PUBLIC SPIRV-Reflect)
-
-add_subdirectory(Vulkan-Headers)
-target_compile_definitions(Vulkan-Headers INTERFACE VK_NO_PROTOTYPES)
-
-add_subdirectory(volk)
-target_link_libraries(volk PUBLIC Vulkan::Headers)
-
-add_subdirectory(VulkanMemoryAllocator)
-
 if (REN_BUILD_EXAMPLES)
   add_subdirectory(assimp)
 
   add_library(tinygltf tinygltf/tiny_gltf.cc)
-  target_include_directories(tinygltf PUBLIC tinygltf)
-  target_compile_definitions(tinygltf
-    PUBLIC
-    TINYGLTF_NO_STB_IMAGE_WRITE
-    TINYGLTF_USE_CPP14
-    TINYGLTF_USE_RAPIDJSON
+  target_include_directories(tinygltf
+    PUBLIC tinygltf
+    PRIVATE assimp/contrib/rapidjson/include/rapidjson assimp/contrib/stb
   )
+  target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_STB_IMAGE_WRITE TINYGLTF_USE_CPP14 TINYGLTF_USE_RAPIDJSON)
   target_compile_features(tinygltf PUBLIC cxx_std_14)
-  target_include_directories(tinygltf PRIVATE assimp/contrib/rapidjson/include/rapidjson assimp/contrib/stb)
 endif()
-
-add_subdirectory(boost-config)
-add_subdirectory(boost-assert)
-add_subdirectory(boost-move)
-add_subdirectory(boost-intrusive)
-add_subdirectory(boost-container)

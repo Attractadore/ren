@@ -1,5 +1,4 @@
 set(SHADER_FLAGS)
-option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
 if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   message(STATUS "Enable source-level debug info for shaders")
   list(APPEND SHADER_FLAGS -g)

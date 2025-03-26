@@ -1,30 +1,21 @@
-option(REN_RENDER_GRAPH_DEBUG "Enable render graph debug features" OFF)
-option(REN_ASSERTIONS "Enable assertions" OFF)
-option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
-option(REN_DEBUG_NAMES "Enable RHI object debug names" OFF)
-
 add_library(ren-core core/Profiler.cpp)
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
-target_link_libraries(ren-core PUBLIC
-  glm::glm
-  Boost::container
-  fmt::fmt
-  Tracy::TracyClient
-)
+target_link_libraries(ren-core PUBLIC glm::glm Boost::container fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_23)
 add_library(ren::core ALIAS ren-core)
 
+if (REN_ASSERTIONS)
+  message(STATUS "Enable assertions")
+  target_compile_definitions(ren-core PUBLIC REN_ASSERTIONS)
+endif()
+
 add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
 target_link_libraries(ren-rhi
-  PUBLIC
-  ren-core
-  GPUOpen::VulkanMemoryAllocator
-  tiny_imageformat
-  volk::volk
-  PRIVATE
-  SDL2::SDL2
+  PUBLIC ren::core GPUOpen::VulkanMemoryAllocator tiny_imageformat volk::volk
+  PRIVATE SDL2::SDL2
 )
 target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1)
+add_library(ren::rhi ALIAS ren-rhi)
 
 add_library(ren-gfx 
   CommandRecorder.cpp
@@ -35,48 +26,12 @@ add_library(ren-gfx
   Renderer.cpp
   Texture.cpp
 )
-target_link_libraries(ren-gfx PUBLIC ren-core ren-rhi PRIVATE spirv-reflect)
+target_link_libraries(ren-gfx
+  PUBLIC ren::core ren::rhi
+  PRIVATE spirv-reflect
+)
+add_library(ren::gfx ALIAS ren-gfx)
 
-add_library(ren
-  Camera.cpp
-  GpuScene.cpp
-  Mesh.cpp
-  PipelineLoading.cpp
-  ResourceUploader.cpp
-  Scene.cpp
-  Swapchain.cpp
-  passes/Exposure.cpp
-  passes/GpuSceneUpdate.cpp
-  passes/HiZ.cpp
-  passes/ImGui.cpp
-  passes/MeshPass.cpp
-  passes/Opaque.cpp
-  passes/PostProcessing.cpp
-  passes/Present.cpp
-  passes/Skybox.cpp)
-add_library(ren::ren ALIAS ren)
-target_sources(ren PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren.hpp)
-target_link_libraries(ren
-  PUBLIC glm::glm tiny_imageformat SDL2::SDL2
-  PRIVATE ren-gfx KTX::ktx_read)
-target_compile_features(ren PUBLIC cxx_std_23)
-
-if(REN_BUILD_IMGUI_PLUGIN)
-  message(STATUS "Enable ImGui plugin")
-  target_compile_definitions(ren-gfx PUBLIC REN_IMGUI)
-  target_link_libraries(ren-gfx PUBLIC imgui::imgui)
-  add_library(ren-imgui ren-imgui.cpp)
-  add_library(ren::imgui ALIAS ren-imgui)
-  target_sources(ren-imgui PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE} FILES ${REN_INCLUDE}/ren/ren-imgui.hpp)
-  target_link_libraries(ren-imgui
-    PUBLIC ren::ren imgui::imgui
-    PRIVATE ren-gfx)
-endif()
-
-if(REN_ASSERTIONS)
-  message(STATUS "Enable assertions")
-  target_compile_definitions(ren-gfx PUBLIC REN_ASSERTIONS)
-endif()
 if(REN_DEBUG_LAYER)
   message(STATUS "Enable RHI debug layer")
   target_compile_definitions(ren-gfx PUBLIC REN_DEBUG_LAYER)
@@ -90,18 +45,44 @@ if(REN_RENDER_GRAPH_DEBUG)
   target_compile_definitions(ren-gfx PUBLIC REN_RG_DEBUG)
 endif()
 
+add_library(ren
+  Camera.cpp
+  GpuScene.cpp
+  ImGui.cpp
+  Mesh.cpp
+  PipelineLoading.cpp
+  ResourceUploader.cpp
+  Scene.cpp
+  Swapchain.cpp
+  passes/Exposure.cpp
+  passes/GpuSceneUpdate.cpp
+  passes/HiZ.cpp
+  passes/ImGui.cpp
+  passes/MeshPass.cpp
+  passes/Opaque.cpp
+  passes/PostProcessing.cpp
+  passes/Present.cpp
+  passes/Skybox.cpp
+)
+target_include_directories(ren PUBLIC ${REN_INCLUDE})
+target_link_libraries(ren
+  PUBLIC glm::glm tiny_imageformat SDL2::SDL2
+  PRIVATE ren::gfx KTX::ktx_read
+)
+target_compile_features(ren PUBLIC cxx_std_23)
+add_library(ren::ren ALIAS ren)
+
+if (REN_BUILD_IMGUI_PLUGIN)
+  message(STATUS "Enable ImGui plugin")
+  target_link_libraries(ren PRIVATE imgui::imgui)
+  target_compile_definitions(ren PRIVATE REN_IMGUI)
+endif()
+
 if (REN_BUILD_SHADER_COMPILER)
   message(STATUS "Build shader compiler")
-
   add_executable(ren-shader-compiler shader-compiler.cpp)
+  target_link_libraries(ren-shader-compiler ren::core glslang::glslang glslang::glslang-default-resource-limits cxxopts::cxxopts spirv-reflect)
   add_executable(ren::shader-compiler ALIAS ren-shader-compiler)
-  target_link_libraries(ren-shader-compiler
-    ren-core
-    glslang::glslang
-    glslang::glslang-default-resource-limits
-    cxxopts::cxxopts
-    spirv-reflect
-  )
 endif()
 
 add_library(ren-baking
@@ -110,24 +91,19 @@ add_library(ren-baking
   MeshBaking.cpp
   MeshSimplification.cpp
 )
-add_library(ren::baking ALIAS ren-baking)
-target_sources(
-  ren-baking PUBLIC FILE_SET HEADERS BASE_DIRS ${REN_INCLUDE}
-  FILES
-  ${REN_INCLUDE}/ren/baking/baking.hpp
-  ${REN_INCLUDE}/ren/baking/image.hpp
-  ${REN_INCLUDE}/ren/baking/mesh.hpp
-)
+target_include_directories(ren-baking PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren-baking
   PUBLIC glm::glm tiny_imageformat
-  PRIVATE ren-gfx Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace)
+  PRIVATE ren-gfx Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace
+)
 target_compile_features(ren-baking PUBLIC cxx_std_23)
+add_library(ren::baking ALIAS ren-baking)
 
 if (REN_BUILD_BAKING_TOOLS)
   message(STATUS "Build baking tools")
 
   add_executable(ren-bake-dhr-lut bake-dhr-lut.cpp)
-  target_link_libraries(ren-bake-dhr-lut ren::core ren-baking cxxopts::cxxopts)
+  target_link_libraries(ren-bake-dhr-lut ren::core ren::baking cxxopts::cxxopts)
 endif()
 
 add_subdirectory(glsl)

@@ -1,15 +1,9 @@
 add_library(app-base AppBase.cpp)
 target_link_libraries(app-base PUBLIC ren::ren ren::baking ren::core fmt::fmt)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
-if (MSVC)
-  target_compile_options(app-base PUBLIC /Zc:preprocessor)
-endif()
 
 add_library(imgui-app ImGuiApp.cpp)
-target_link_libraries(
-  imgui-app
-  PUBLIC app-base imgui::imgui
-  PRIVATE ren::imgui)
+target_link_libraries(imgui-app PUBLIC app-base imgui::imgui)
 
 add_executable(create-device create-device.cpp)
 target_link_libraries(create-device app-base)

@@ -1,7 +1,7 @@
 #if REN_IMGUI
-#include "ren/ren-imgui.hpp"
 #include "Lippincott.hpp"
 #include "Scene.hpp"
+#include "ren/ren-imgui.hpp"
 
 namespace ren::imgui {
 
