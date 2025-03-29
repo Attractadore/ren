@@ -67,7 +67,7 @@ add_library(ren
 target_include_directories(ren PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren
   PUBLIC glm::glm tiny_imageformat SDL2::SDL2
-  PRIVATE ren::gfx KTX::ktx_read
+  PRIVATE ren::gfx KTX::ktx
 )
 target_compile_features(ren PUBLIC cxx_std_23)
 add_library(ren::ren ALIAS ren)
