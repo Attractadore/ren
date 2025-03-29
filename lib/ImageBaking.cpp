@@ -247,7 +247,8 @@ auto bake_dhr_lut(IBaker *baker) -> expected<TextureInfo> {
     RgComputeDHRLutArgs args = {
         .lut = pass.write_texture("dhr-lut", &dhr_lut),
     };
-    pass.dispatch(baker->pipelines.dhr_lut, args, DHR_LUT_SIZE, DHR_LUT_SIZE);
+    pass.dispatch_grid_2d(baker->pipelines.dhr_lut, args,
+                          {DHR_LUT_SIZE, DHR_LUT_SIZE});
   }
 
   ren_try(BufferSlice readback, baker->bake_arena.create_buffer({

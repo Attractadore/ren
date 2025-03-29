@@ -73,6 +73,10 @@ ivec2 texture_size(SampledTexture2D t) {
     imageStore(coherent_images[img.id], pos, vec4(data));                      \
   }                                                                            \
                                                                                \
+  void image_store(ImageType img, ivec2 pos, vec2 data) {                      \
+    imageStore(images[img.id], pos, vec4(data, 0.0f, 0.0f));                   \
+  }                                                                            \
+                                                                               \
   void image_store(ImageType img, ivec2 pos, vec4 data) {                      \
     imageStore(images[img.id], pos, data);                                     \
   }
