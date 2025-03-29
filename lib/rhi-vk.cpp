@@ -2408,7 +2408,7 @@ constexpr auto PRESENT_MODE_MAP = [] {
   std::array<VkPresentModeKHR, PRESENT_MODE_COUNT> map = {};
   std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
   map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
-  map(Mailbox, VK_PRESENT_MODE_FIFO_KHR);
+  map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
   map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
   map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
   return map;
