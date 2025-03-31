@@ -555,6 +555,25 @@ void Scene::set_directional_light(DirectionalLightId light,
       m_data.directional_lights[handle]);
 };
 
+auto Scene::set_environment_map(ImageId image) -> expected<void> {
+  if (!image) {
+    m_data.env_map = {};
+    return {};
+  }
+  Handle<Texture> texture = m_images[std::bit_cast<Handle<Image>>(image)];
+  ren_try(Handle<Sampler> sampler,
+          get_or_create_sampler({
+              .mag_filter = rhi::Filter::Linear,
+              .min_filter = rhi::Filter::Linear,
+              .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+          }));
+  ren_try(
+      m_data.env_map,
+      m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
+          *m_renderer, SrvDesc{texture}, sampler));
+  return {};
+}
+
 auto Scene::delay_input() -> expected<void> {
   if (is_amd_anti_lag_enabled()) {
     return m_renderer->amd_anti_lag_input(m_frame_index);

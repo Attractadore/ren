@@ -77,6 +77,7 @@ inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
   float z = xy.y;
   float r = sqrt(1.0f - z * z);
   vec3 d = vec3(r * cos(phi), r * sin(phi), z);
+
   vec3 t = normalize(ortho_vec(n));
   vec3 b = cross(n, t);
 
@@ -142,23 +143,50 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
   return L_o;
 }
 
-inline vec3 const_env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
-                               float roughness, vec3 luminance,
-                               SampledTexture2D dhr_lut) {
+#if GL_core_profile
 
+inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
+                               float nv) {
+  vec2 ab = texture_lod(lut, vec2(roughness, nv), 0).xy;
+  return f0 * ab.x + ab.y;
+}
+
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
+                         float roughness, vec3 luminance,
+                         SampledTexture2D directional_albedo_lut) {
   vec3 kd = mix(color, vec3(0.0f), metallic);
 
-  // Use the split integral approximation:
-  // clang-format off
-  // \int f_spec L dot(l, n) dl = \int D(r) L dot(n, l) dl * \int f_spec dot(l, n) dl = L * R(v)
-  // clang-format on
   vec3 f0 = fresnel_f0(color, metallic);
-  vec3 ks = dhr(dhr_lut, f0, roughness, dot(n, v));
+  vec3 ks =
+      directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
 
   vec3 L_o = (kd + ks) * luminance;
 
   return L_o;
 }
+
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
+                         float roughness, SampledTextureCube env_map,
+                         SampledTexture2D directional_albedo_lut) {
+  vec3 kd = mix(color, vec3(0.0f), metallic);
+
+  float nv = dot(n, v);
+
+  vec3 f0 = fresnel_f0(color, metallic);
+  vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
+
+  vec3 r = 2 * nv * n - v;
+
+  int num_mips = texture_query_levels(env_map);
+  float dlod = num_mips - 1;
+  float slod = roughness * (num_mips - 2);
+  vec3 L_o = kd * texture_lod(env_map, n, dlod).rgb +
+             ks * texture_lod(env_map, r, slod).rgb;
+
+  return L_o;
+}
+
+#endif // GL_core_profile
 
 GLSL_NAMESPACE_END
 

@@ -312,6 +312,8 @@ struct IScene {
 
   virtual void set_environment_color(const glm::vec3 &luminance) = 0;
 
+  virtual auto set_environment_map(ImageId image) -> expected<void> = 0;
+
   // Call to use graphics driver low-latency APIs.
   [[nodiscard]] virtual auto delay_input() -> expected<void> = 0;
 

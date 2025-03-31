@@ -84,6 +84,7 @@ struct SceneData {
   glsl::SampledTexture2D dhr_lut;
 
   glm::vec3 env_luminance = {};
+  glsl::SampledTextureCube env_map;
 
 public:
   const Camera &get_camera() const {
@@ -156,6 +157,8 @@ public:
   void set_environment_color(const glm::vec3 &luminance) override {
     m_data.env_luminance = luminance;
   }
+
+  auto set_environment_map(ImageId image) -> expected<void> override;
 
   auto delay_input() -> expected<void> override;
 
