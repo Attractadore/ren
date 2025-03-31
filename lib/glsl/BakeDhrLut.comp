@@ -1,5 +1,6 @@
 #include "BakeDhrLut.h"
 #include "Lighting.h"
+#include "Random.h"
 
 // Calculate the Directional-Hemispherical Reflectance R(v) function's
 // coefficients, used for IBL and energy-conserving diffuse, as described in

@@ -64,12 +64,6 @@ inline vec3 importance_sample_ggx(vec2 xy, float roughness, vec3 n) {
   return mat3(t, b, n) * h;
 }
 
-inline vec2 hammersley(uint i, uint n) {
-  uint x = i;
-  uint y = bitfieldReverse(i) >> (31 - findLSB(n));
-  return vec2(x, y) / float(n);
-}
-
 vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv);
 
 #if GL_core_profile
