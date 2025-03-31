@@ -1,4 +1,7 @@
-add_library(ren-core core/Profiler.cpp)
+add_library(ren-core
+  core/IO.cpp
+  core/Profiler.cpp
+)
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC glm::glm Boost::container fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_23)
