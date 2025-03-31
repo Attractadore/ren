@@ -1,5 +1,6 @@
 #include "ImGuiApp.hpp"
 #include "core/Hash.hpp"
+#include "core/IO.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
 
@@ -787,30 +788,66 @@ private:
   std::vector<ren::MaterialId> m_material_cache;
 };
 
+struct ViewGltfOptions {
+  fs::path path;
+  unsigned scene = 0;
+  fs::path env_map;
+};
+
 class ViewGlTFApp : public ImGuiApp {
 public:
-  ViewGlTFApp(const fs::path &path, unsigned scene_idx)
-      : ImGuiApp(fmt::format("View glTF: {}", path).c_str()) {
+  ViewGlTFApp(const ViewGltfOptions &options)
+      : ImGuiApp(fmt::format("View glTF: {}", options.path).c_str()) {
     [&]() -> Result<void> {
-      OK(tinygltf::Model model, load_gltf(path));
+      OK(tinygltf::Model model, load_gltf(options.path));
       SceneWalker scene_walker(std::move(model), get_scene());
-      TRY_TO(scene_walker.walk(scene_idx));
+      TRY_TO(scene_walker.walk(options.scene));
       ren::IScene &scene = get_scene();
-      OK(auto directional_light, scene.create_directional_light({
-                                     .color = {1.0f, 1.0f, 1.0f},
-                                     .illuminance = 100'000.0f,
-                                     .origin = {0.0f, 0.0f, 1.0f},
-                                 }));
-      scene.set_environment_color(
-          glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
+
+      auto env_map = [&]() -> Result<ren::ImageId> {
+        if (options.env_map.empty()) {
+          return {};
+        }
+
+        FILE *f = ren::fopen(options.env_map, "rb");
+        if (!f) {
+          bail("Failed to open {}", options.env_map);
+        }
+
+        std::vector<std::byte> blob(fs::file_size(options.env_map));
+        size_t num_read = std::fread(blob.data(), 1, blob.size(), f);
+        std::fclose(f);
+        if (num_read != blob.size()) {
+          bail("Failed to read from {}", options.env_map);
+        }
+
+        return scene.create_image(blob).transform_error(get_error_string);
+      }();
+
+      if (env_map and *env_map) {
+        TRY_TO(scene.set_environment_map(*env_map));
+        m_camera_params.exposure = ren::ExposureMode::Automatic;
+      } else {
+        if (!env_map) {
+          warn("Failed to load environment map: {}", env_map.error());
+        }
+        OK(auto directional_light, scene.create_directional_light({
+                                       .color = {1.0f, 1.0f, 1.0f},
+                                       .illuminance = 100'000.0f,
+                                       .origin = {0.0f, 0.0f, 1.0f},
+                                   }));
+        scene.set_environment_color(
+            glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) *
+            8000.0f);
+      }
       return {};
     }()
                  .transform_error(throw_error)
                  .value();
   }
 
-  [[nodiscard]] static auto run(const fs::path &path, unsigned scene) -> int {
-    return AppBase::run<ViewGlTFApp>(path, scene);
+  [[nodiscard]] static auto run(const ViewGltfOptions &options) -> int {
+    return AppBase::run<ViewGlTFApp>(options);
   }
 
 protected:
@@ -949,6 +986,7 @@ int main(int argc, const char *argv[]) {
   options.add_options()
       ("file", "path to glTF file", cxxopts::value<fs::path>())
       ("scene", "index of scene to view", cxxopts::value<unsigned>()->default_value("0"))
+      ("env-map", "path to environment map", cxxopts::value<fs::path>())
       ("h,help", "show this message")
   ;
   // clang-format on
@@ -960,8 +998,10 @@ int main(int argc, const char *argv[]) {
     return 0;
   }
 
-  auto path = result["file"].as<fs::path>();
-  auto scene = result["scene"].as<unsigned>();
-
-  return ViewGlTFApp::run(path, scene);
+  return ViewGlTFApp::run({
+      .path = result["file"].as<fs::path>(),
+      .scene = result["scene"].as<unsigned>(),
+      .env_map = result.count("env-map") ? result["env-map"].as<fs::path>()
+                                         : fs::path(),
+  });
 }
