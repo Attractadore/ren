@@ -614,6 +614,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
       .features = {
           .samplerAnisotropy = true,
+          .textureCompressionBC = true,
           .shaderInt64 = true,
           .shaderInt16 = true,
       }};

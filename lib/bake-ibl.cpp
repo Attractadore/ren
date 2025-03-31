@@ -18,6 +18,7 @@ int main(int argc, const char *argv[]) {
   options.add_options()
     ("in", "input HDR environment map path", cxxopts::value<fs::path>())
     ("out", "output filtered HDR environment cube map path", cxxopts::value<fs::path>())
+    ("no-compress", "don't compress")
     ("h,help", "show this message")
   ;
   // clang-format on
@@ -59,7 +60,8 @@ int main(int argc, const char *argv[]) {
                              .width = (u32)w,
                              .height = (u32)h,
                              .data = buffer,
-                         })
+                         },
+                         not result.count("no-compress"))
           .value();
 
   fs::path out_dir = out_path.parent_path();

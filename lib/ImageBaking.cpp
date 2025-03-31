@@ -20,6 +20,7 @@ namespace ren {
 namespace {
 
 auto fail(HRESULT hres) -> Failure<Error> {
+  ren_assert(hres != E_INVALIDARG);
   return Failure([&]() {
     switch (hres) {
     default:
@@ -44,11 +45,51 @@ auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
   };
 }
 
+auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
+    -> DirectX::TexMetadata {
+  u32 num_faces = info.cube_map ? 6 : 1;
+  DirectX::TexMetadata mdata = {
+      .width = info.width,
+      .height = info.width,
+      .depth = 1,
+      .arraySize = num_faces,
+      .mipLevels = info.num_mip_levels,
+      .miscFlags = info.cube_map ? DirectX::TEX_MISC_TEXTURECUBE : 0,
+      .format = (DXGI_FORMAT)TinyImageFormat_ToDXGI_FORMAT(info.format),
+      .dimension = DirectX::TEX_DIMENSION_TEXTURE2D,
+  };
+  images.resize(mdata.mipLevels * mdata.arraySize);
+  u8 *data = (u8 *)info.data;
+  for (u32 mip : range(mdata.mipLevels)) {
+    glm::uvec3 size = get_mip_size({mdata.width, mdata.height, 1}, mip);
+    usize row_pitch, slice_pitch;
+    HRESULT hres = DirectX::ComputePitch(mdata.format, size.x, size.y,
+                                         row_pitch, slice_pitch);
+    ren_assert(SUCCEEDED(hres));
+    for (u32 item : range(mdata.arraySize)) {
+      images[mdata.ComputeIndex(mip, item, 0)] = {
+          .width = size.x,
+          .height = size.y,
+          .format = mdata.format,
+          .rowPitch = row_pitch,
+          .slicePitch = slice_pitch,
+          .pixels = data,
+      };
+      data += slice_pitch;
+    }
+  }
+  return mdata;
+};
+
 auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
     -> expected<ktxTexture2 *> {
   ktx_error_code_e err = KTX_SUCCESS;
 
   const DirectX::TexMetadata &mdata = mip_chain.GetMetadata();
+
+  u32 num_faces = (mdata.miscFlags & DirectX::TEX_MISC_TEXTURECUBE) ? 6 : 1;
+  u32 num_layers = (u32)mdata.arraySize / num_faces;
+  ren_assert(num_layers == 1);
 
   ktxTextureCreateInfo create_info = {
       .vkFormat =
@@ -58,9 +99,9 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
       .baseHeight = (u32)mdata.height,
       .baseDepth = 1,
       .numDimensions = 2,
-      .numLevels = (u32)mip_chain.GetMetadata().mipLevels,
+      .numLevels = (u32)mdata.mipLevels,
       .numLayers = 1,
-      .numFaces = 1,
+      .numFaces = num_faces,
       .isArray = false,
       .generateMipmaps = false,
   };
@@ -74,13 +115,15 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
   for (u32 mip : range(ktx_texture->numLevels)) {
-    const DirectX::Image &image = *mip_chain.GetImage(mip, 0, 0);
-    ren_assert(image.rowPitch == ktxTexture_GetRowPitch(ktx_texture, mip));
-    err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0, 0, image.pixels,
-                                        image.slicePitch);
-    if (err) {
-      ktxTexture_Destroy(ktx_texture);
-      return std::unexpected(Error::Unknown);
+    for (u32 face : range(num_faces)) {
+      const DirectX::Image &image = *mip_chain.GetImage(mip, face, 0);
+      ren_assert(image.rowPitch == ktxTexture_GetRowPitch(ktx_texture, mip));
+      err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0, face,
+                                          image.pixels, image.slicePitch);
+      if (err) {
+        ktxTexture_Destroy(ktx_texture);
+        return std::unexpected(Error::Unknown);
+      }
     }
   }
 
@@ -298,8 +341,8 @@ auto bake_dhr_lut_to_memory(IBaker *baker) -> Result<Blob, Error> {
   return blob;
 }
 
-auto bake_ibl(IBaker *baker, const TextureInfo &info)
-    -> Result<TextureInfo, Error> {
+auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
+    -> Result<DirectX::ScratchImage, Error> {
   HRESULT hres = S_OK;
 
   if (!baker->pipelines.reflection_map) {
@@ -367,10 +410,10 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info)
                                          ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
-  ren_try(auto env_map_desc,
-          baker->descriptor_allocator.allocate_sampled_texture(
-              *baker->renderer, SrvDesc{env_map},
-              baker->samplers.wrap_u_clamp_v));
+  ren_try(
+      auto env_map_desc,
+      baker->descriptor_allocator.allocate_sampled_texture(
+          *baker->renderer, SrvDesc{env_map}, baker->samplers.wrap_u_clamp_v));
 
   constexpr TinyImageFormat CUBE_MAP_FORMAT =
       TinyImageFormat_R32G32B32A32_SFLOAT;
@@ -458,22 +501,43 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info)
   ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
   baker->renderer->wait_idle();
 
-  return TextureInfo{
-      .format = CUBE_MAP_FORMAT,
-      .width = CUBE_MAP_SIZE,
-      .height = CUBE_MAP_SIZE,
-      .cube_map = true,
-      .num_mip_levels = NUM_CUBE_MAP_MIPS,
-      .data = baker->renderer->map_buffer(readback),
-  };
+  Vector<DirectX::Image> images;
+  DirectX::TexMetadata mdata = to_dxtex_images(
+      {
+          .format = CUBE_MAP_FORMAT,
+          .width = CUBE_MAP_SIZE,
+          .height = CUBE_MAP_SIZE,
+          .cube_map = true,
+          .num_mip_levels = NUM_CUBE_MAP_MIPS,
+          .data = baker->renderer->map_buffer(readback),
+      },
+      images);
+
+  DirectX::ScratchImage compressed;
+  if (compress) {
+    fmt::println("Compress environment map");
+    hres = DirectX::Compress(images.data(), images.size(), mdata,
+                             DXGI_FORMAT_BC6H_UF16,
+                             DirectX::TEX_COMPRESS_PARALLEL, 0.0f, compressed);
+  } else {
+    hres = DirectX::Convert(images.data(), images.size(), mdata,
+                            DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
+                            DirectX::TEX_FILTER_DEFAULT, 0.0f, compressed);
+  }
+  if (FAILED(hres)) {
+    return fail(hres);
+  }
+
+  return compressed;
 }
 
-auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info)
+auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info, bool compress)
     -> Result<Blob, Error> {
-  ren_try(TextureInfo image, bake_ibl(baker, info));
-  ren_try(Blob blob, write_ktx_to_memory(image));
+  ren_try(DirectX::ScratchImage image, bake_ibl(baker, info, compress));
+  ren_try(auto blob, write_ktx_to_memory(image));
   reset_baker(*baker);
-  return blob;
+  auto [blob_data, blob_size] = blob;
+  return {{blob_data, blob_size}};
 }
 
 } // namespace ren
