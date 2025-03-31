@@ -21,7 +21,8 @@ struct TextureCreateInfo {
   rhi::ImageUsageFlags usage;
   u32 width = 0;
   u32 height = 0;
-  u32 depth = 0;
+  u32 depth : 31 = 0;
+  bool cube_map : 1 = false;
   u32 num_mip_levels = 1;
   u32 num_array_layers = 1;
 };
@@ -50,6 +51,7 @@ struct Texture {
     };
     glm::uvec3 size = {0, 0, 0};
   };
+  bool cube_map = false;
   u32 num_mip_levels = 0;
   u32 num_array_layers = 0;
 };

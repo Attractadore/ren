@@ -246,7 +246,8 @@ void CommandRecorder::pipeline_barrier(
                 .aspect_mask = get_format_aspect_mask(texture.format),
                 .first_mip_level = barrier.resource.first_mip_level,
                 .num_mip_levels = barrier.resource.num_mip_levels,
-                .num_array_layers = 1,
+                .num_array_layers =
+                    (texture.cube_map ? 6 : 1) * texture.num_array_layers,
             },
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,

@@ -13,9 +13,11 @@
 layout(binding = 0, set = SRV_SET) uniform texture2D g_textures_2d[];
 
 layout(binding = 0, set = CIS_SET) uniform sampler2D g_sampled_textures_2d[];
+layout(binding = 0, set = CIS_SET) uniform samplerCube g_sampled_textures_cube[];
 
 layout(binding = 0, set = UAV_SET) restrict uniform image2D g_storage_textures_2d[];
 layout(binding = 0, set = UAV_SET) coherent restrict uniform image2D g_coherent_storage_textures_2d[];
+layout(binding = 0, set = UAV_SET) restrict uniform imageCube g_storage_textures_cube[];
 
 layout(binding = 0, set = SAMPLER_SET) uniform sampler g_samplers[MAX_NUM_SAMPLERS];
 // clang-format on
@@ -54,6 +56,18 @@ ivec2 texture_size(SampledTexture2D t) {
   return textureSize(g_sampled_textures_2d[t.id], 0);
 }
 
+vec4 texture(SampledTextureCube t, vec3 r) {
+  return texture(g_sampled_textures_cube[t.id], r);
+}
+
+vec4 texture_lod(SampledTextureCube t, vec3 r, float lod) {
+  return textureLod(g_sampled_textures_cube[t.id], r, lod);
+}
+
+int texture_query_levels(SampledTextureCube t) {
+  return textureQueryLevels(g_sampled_textures_cube[t.id]);
+}
+
 #define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images, coherent_images)     \
   ivec2 image_size(ImageType img) { return imageSize(images[img.id]); }        \
                                                                                \
@@ -85,5 +99,23 @@ DEFINE_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d,
                                g_coherent_storage_textures_2d)
 
 #undef DEFINE_STORAGE_TEXTURE_2D_IMPL
+
+#define images g_storage_textures_cube
+
+ivec2 image_size(StorageTextureCube img) { return imageSize(images[img.id]); }
+
+vec4 image_load(StorageTextureCube img, ivec3 pos) {
+  return imageLoad(images[img.id], pos);
+}
+
+void image_store(StorageTextureCube img, ivec3 pos, vec3 data) {
+  imageStore(images[img.id], pos, vec4(data, 0.0f));
+}
+
+void image_store(StorageTextureCube img, ivec3 pos, vec4 data) {
+  imageStore(images[img.id], pos, data);
+}
+
+#undef images
 
 #endif // REN_GLSL_TEXTURE_GLSL

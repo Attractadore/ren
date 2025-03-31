@@ -123,12 +123,13 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
           rhi::create_image({
               .device = m_device,
               .format = create_info.format,
+              .usage = create_info.usage,
               .width = create_info.width,
               .height = create_info.height,
               .depth = create_info.depth,
+              .cube_map = create_info.cube_map,
               .num_mip_levels = create_info.num_mip_levels,
               .num_array_layers = create_info.num_array_layers,
-              .usage = create_info.usage,
           }));
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
   return m_textures.emplace(Texture{
@@ -138,6 +139,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
       .width = create_info.width,
       .height = create_info.height,
       .depth = create_info.depth,
+      .cube_map = create_info.cube_map,
       .num_mip_levels = create_info.num_mip_levels,
       .num_array_layers = create_info.num_array_layers,
   });
