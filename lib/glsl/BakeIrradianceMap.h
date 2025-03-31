@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_BAKE_IRRADIANCE_MAP_H
-#define REN_GLSL_BAKE_IRRADIANCE_MAP_H
-
+#pragma once
 #include "Std.h"
 #include "Texture.h"
 
@@ -13,5 +11,3 @@ GLSL_PUSH_CONSTANTS BakeIrradianceMapArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_BAKE_IRRADIANCE_MAP_H

@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_LUMINANCE_HISTOGRAM_H
-#define REN_GLSL_LUMINANCE_HISTOGRAM_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 
@@ -23,5 +21,3 @@ struct LuminanceHistogram {
 GLSL_DEFINE_PTR_TYPE(LuminanceHistogram, 4);
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_LUMINANCE_HISTOGRAM_H

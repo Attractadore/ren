@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_RANDOM_H
-#define REN_GLSL_RANDOM_H
-
+#pragma once
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -12,5 +10,3 @@ inline vec2 hammersley(uint i, uint n) {
 }
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_RANDOM_H

@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_DEVICE_PTR_H
-#define REN_GLSL_DEVICE_PTR_H
-
+#pragma once
 #include "Std.h"
 
 #if GL_core_profile
@@ -34,5 +32,3 @@ GLSL_DEFINE_PTR_TYPE(mat4, 4);
 #define GLSL_PTR(Type) GLSL_RESTRICT GLSL_UNQUALIFIED_PTR(Type)
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_DEVICE_PTR_H

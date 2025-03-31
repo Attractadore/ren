@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_MESHLET_CULLING_H
-#define REN_GLSL_MESHLET_CULLING_H
-
+#pragma once
 #include "Culling.h"
 #include "Indirect.h"
 #include "Mesh.h"
@@ -36,5 +34,3 @@ GLSL_PUSH_CONSTANTS MeshletCullingArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_MESHLET_CULLING_H

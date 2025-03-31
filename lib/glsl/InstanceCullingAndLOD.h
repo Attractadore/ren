@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_INSTANCE_CULLING_AND_LOD_H
-#define REN_GLSL_INSTANCE_CULLING_AND_LOD_H
-
+#pragma once
 #include "Culling.h"
 #include "DevicePtr.h"
 #include "GpuScene.h"
@@ -54,5 +52,3 @@ GLSL_PUSH_CONSTANTS InstanceCullingAndLODArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_INSTANCE_CULLING_AND_LOD_H

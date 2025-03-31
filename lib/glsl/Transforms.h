@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_TRANSFORMS_H
-#define REN_GLSL_TRANSFORMS_H
-
+#pragma once
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -12,5 +10,3 @@ inline mat3 adjugate(mat3 m) {
 inline mat3 normal(mat3 m) { return adjugate(m); }
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_TRANSFORMS_H

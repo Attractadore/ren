@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_LIGHTING_H
-#define REN_GLSL_LIGHTING_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
@@ -189,5 +187,3 @@ inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
 #endif // GL_core_profile
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_LIGHTING_H

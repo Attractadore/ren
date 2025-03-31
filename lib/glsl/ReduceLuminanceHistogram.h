@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H
-#define REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "LuminanceHistogram.h"
 #include "Std.h"
@@ -16,5 +14,3 @@ GLSL_PUSH_CONSTANTS ReduceLuminanceHistogramArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_REDUCE_LUMINANCE_HISTOGRAM_H

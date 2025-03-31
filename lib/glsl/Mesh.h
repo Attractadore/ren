@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_MESH_H
-#define REN_GLSL_MESH_H
-
+#pragma once
 #include "Std.h"
 #include "Vertex.h"
 
@@ -71,5 +69,3 @@ struct MeshInstance {
 GLSL_DEFINE_PTR_TYPE(MeshInstance, 4);
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_MESH_H

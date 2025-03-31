@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_EARLY_Z_H
-#define REN_GLSL_EARLY_Z_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Mesh.h"
 #include "Std.h"
@@ -16,5 +14,3 @@ GLSL_PUSH_CONSTANTS EarlyZArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_EARLY_Z_H

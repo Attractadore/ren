@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_POST_PROCESS_H
-#define REN_GLSL_POST_PROCESS_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "LuminanceHistogram.h"
 #include "Std.h"
@@ -17,5 +15,3 @@ GLSL_PUSH_CONSTANTS PostProcessingArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_POST_PROCESS_H

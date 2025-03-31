@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_TEXTURE_GLSL
-#define REN_GLSL_TEXTURE_GLSL
-
+#pragma once
 #include "Std.h"
 #include "Texture.h"
 
@@ -142,5 +140,3 @@ vec2 direction_to_equirectangular_uv(vec3 r) {
   float theta = acos(r.z / length(r));
   return vec2(phi / TWO_PI, theta / PI);
 }
-
-#endif // REN_GLSL_TEXTURE_GLSL

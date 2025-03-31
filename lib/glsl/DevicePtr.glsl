@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_DEVICE_PTR_GLSL
-#define REN_GLSL_DEVICE_PTR_GLSL
-
+#pragma once
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_scalar_block_layout : require
@@ -15,5 +13,3 @@
 #define DEREF(ref) ((ref).data)
 
 layout(buffer_reference, scalar, buffer_reference_align = 1) buffer GLSL_UNQUALIFIED_PTR(void) { uint8_t no_data; };
-
-#endif // REN_GLSL_DEVICE_PTR_GLSL

@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_VERTEX_H
-#define REN_GLSL_VERTEX_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 
@@ -178,5 +176,3 @@ inline Color encode_color(vec4 color) {
 inline vec4 decode_color(Color color) { return vec4(color.color) / 255.0f; }
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_VERTEX_H

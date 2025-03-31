@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_TEXTURE_H
-#define REN_GLSL_TEXTURE_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 
@@ -132,5 +130,3 @@ GLSL_DEFINE_PTR_TYPE(StorageTextureCube, TEXTURE_ID_SIZE);
 #undef SamplerId
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_TEXTURE_H

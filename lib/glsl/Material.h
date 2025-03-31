@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_MATERIAL_H
-#define REN_GLSL_MATERIAL_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
@@ -21,5 +19,3 @@ struct Material {
 GLSL_DEFINE_PTR_TYPE(Material, 4);
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_MATERIAL_H

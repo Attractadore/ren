@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_BAKE_SPECULAR_MAP_H
-#define REN_GLSL_BAKE_SPECULAR_MAP_H
-
+#pragma once
 #include "Std.h"
 #include "Texture.h"
 
@@ -14,5 +12,3 @@ GLSL_PUSH_CONSTANTS BakeSpecularMapArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_BAKE_SPECULAR_MAP_H

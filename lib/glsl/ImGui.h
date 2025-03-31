@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_IMGUI_H
-#define REN_GLSL_IMGUI_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
@@ -31,5 +29,3 @@ const uint A_UV = 1;
 #endif
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_IMGUI_H

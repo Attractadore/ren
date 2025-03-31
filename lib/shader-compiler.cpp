@@ -300,6 +300,15 @@ auto glslang_compile(const CompileOptions &opts) -> int {
       }
       Vector<char> buffer;
       read_file(path, buffer);
+      if (StringView(buffer).starts_with("#pragma once")) {
+        if (std::ranges::find(m_included_files, path) !=
+            m_included_files.end()) {
+          buffer.clear();
+        } else {
+          buffer.erase(buffer.begin(),
+                       buffer.begin() + StringView("#pragma once").size());
+        }
+      }
       auto *result = (IncludeResult *)new Include{
           .result = IncludeResult(path.string(), buffer.data(), buffer.size(),
                                   nullptr),

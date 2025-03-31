@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_COMMON_H
-#define REN_GLSL_COMMON_H
-
+#pragma once
 #if GL_core_profile
 
 #pragma use_vulkan_memory_model
@@ -67,5 +65,3 @@ GLSL_NAMESPACE_BEGIN
 const float PI = 3.1416;
 const float TWO_PI = 6.2832;
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_COMMON_H

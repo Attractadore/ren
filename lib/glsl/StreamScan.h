@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_STREAM_SCAN_H
-#define REN_GLSL_STREAM_SCAN_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Math.h"
 #include "Std.h"
@@ -30,5 +28,3 @@ GLSL_PUSH_CONSTANTS StreamScanArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_STREAM_SCAN_H

@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_MATH_H
-#define REN_GLSL_MATH_H
-
+#pragma once
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -10,5 +8,3 @@ inline uint ceil_div(uint nom, uint denom) {
 }
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_MATH_H

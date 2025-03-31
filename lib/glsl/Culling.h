@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_CULLING_H
-#define REN_GLSL_CULLING_H
-
+#pragma once
 #include "Batch.h"
 #include "DevicePtr.h"
 #include "Mesh.h"
@@ -137,5 +135,3 @@ const uint PREPARE_BATCH_THREADS = 128;
 const uint NUM_MESHLET_CULLING_BUCKETS = MESH_MESHLET_COUNT_BITS;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_CULLING_H

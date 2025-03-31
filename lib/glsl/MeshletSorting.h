@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_MESHLET_SORTING_H
-#define REN_GLSL_MESHLET_SORTING_H
-
+#pragma once
 #include "Batch.h"
 #include "Culling.h"
 #include "DevicePtr.h"
@@ -18,5 +16,3 @@ GLSL_PUSH_CONSTANTS MeshletSortingArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_MESHLET_SORTING_H

@@ -1,5 +1,4 @@
-#ifndef REN_GLSL_COMPUTE_GLSL
-#define REN_GLSL_COMPUTE_GLSL
+#pragma once
 
 uvec2 linear_to_local_2d(const uvec3 WG_SIZE, uint index) {
   const uint NUM_QUADS_X = WG_SIZE.x / 2;
@@ -13,5 +12,3 @@ uvec2 linear_to_local_2d(const uvec3 WG_SIZE, uint index) {
 uvec2 linear_to_global_2d(const uvec3 WG_ID, const uvec3 WG_SIZE, uint index) {
   return WG_ID.xy * WG_SIZE.xy + linear_to_local_2d(WG_SIZE, index);
 }
-
-#endif // REN_GLSL_COMPUTE_GLSL

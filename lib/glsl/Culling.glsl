@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_CULLING_GLSL
-#define REN_GLSL_CULLING_GLSL
-
+#pragma once
 #include "Culling.h"
 #include "Texture.glsl"
 
@@ -18,5 +16,3 @@ bool occlusion_cull(SampledTexture2D hi_z, vec2 ndc_min, vec3 ndc_max) {
   hi_z_depth = min(hi_z_depth, texture_lod(hi_z, vec2(uv_max.x, uv_max.y), mip).r);
   return hi_z_depth > ndc_max.z;
 }
-
-#endif // REN_GLSL_CULLING_GLSL

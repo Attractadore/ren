@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_PREPARE_INDIRECT_DRAW_H
-#define REN_GLSL_PREPARE_INDIRECT_DRAW_H
-
+#pragma once
 #include "Culling.h"
 #include "Indirect.h"
 #include "Std.h"
@@ -16,5 +14,3 @@ GLSL_PUSH_CONSTANTS PrepareBatchArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_PREPARE_INDIRECT_DRAW_H

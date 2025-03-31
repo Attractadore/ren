@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_OPAQUE_H
-#define REN_GLSL_OPAQUE_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Lighting.h"
 #include "Material.h"
@@ -45,5 +43,3 @@ const uint A_MATERIAL = 5;
 #endif
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_OPAQUE_H

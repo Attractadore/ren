@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_INDIRECT_H
-#define REN_GLSL_INDIRECT_H
-
+#pragma once
 #include "DevicePtr.h"
 #include "Std.h"
 
@@ -34,5 +32,3 @@ struct DispatchIndirectCommand {
 GLSL_DEFINE_PTR_TYPE(DispatchIndirectCommand, 4);
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_INDIRECT_H

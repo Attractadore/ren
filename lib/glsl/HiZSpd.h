@@ -1,6 +1,4 @@
-#ifndef REN_GLSL_HI_Z_SPD_H
-#define REN_GLSL_HI_Z_SPD_H
-
+#pragma once
 #include "Array.h"
 #include "DevicePtr.h"
 #include "Std.h"
@@ -43,5 +41,3 @@ GLSL_PUSH_CONSTANTS HiZSpdArgs {
 GLSL_PC;
 
 GLSL_NAMESPACE_END
-
-#endif // REN_GLSL_HI_Z_SPD_H
