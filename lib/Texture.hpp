@@ -134,6 +134,13 @@ auto get_mip_size(glm::uvec3 base_size, u32 mip_level) -> glm::uvec3;
 auto get_texture_size(Renderer &renderer, Handle<Texture> texture,
                       u32 mip_level = 0) -> glm::uvec3;
 
+auto get_mip_byte_size(TinyImageFormat format, glm::uvec3 size,
+                       u32 num_layers = 1) -> usize;
+
+auto get_mip_chain_byte_size(TinyImageFormat format, glm::uvec3 byte_size,
+                             u32 num_layers, u32 base_mip, u32 num_mips)
+    -> usize;
+
 auto get_rhi_Filter(Filter filter) -> rhi::Filter;
 auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode;
 auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode;
