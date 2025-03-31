@@ -68,6 +68,7 @@ struct InstanceData {
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+    VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
 };
 
 constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
@@ -661,6 +662,14 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   };
 
   add_features(uint8_features);
+
+  VkPhysicalDeviceComputeShaderDerivativesFeaturesNV
+      compute_shader_derivatives_features = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV,
+          .computeDerivativeGroupLinear = true,
+      };
+  add_features(compute_shader_derivatives_features);
 
   // Add optional features.
   // TODO: check that they are supported.

@@ -27,11 +27,12 @@ add_library(ren-gfx
   Pipeline.cpp
   RenderGraph.cpp
   Renderer.cpp
+  ResourceUploader.cpp
   Texture.cpp
 )
 target_link_libraries(ren-gfx
   PUBLIC ren::core ren::rhi
-  PRIVATE spirv-reflect
+  PRIVATE spirv-reflect KTX::ktx
 )
 add_library(ren::gfx ALIAS ren-gfx)
 
@@ -54,7 +55,6 @@ add_library(ren
   ImGui.cpp
   Mesh.cpp
   PipelineLoading.cpp
-  ResourceUploader.cpp
   Scene.cpp
   Swapchain.cpp
   passes/Exposure.cpp
@@ -107,6 +107,9 @@ if (REN_BUILD_BAKING_TOOLS)
 
   add_executable(ren-bake-dhr-lut bake-dhr-lut.cpp)
   target_link_libraries(ren-bake-dhr-lut ren::core ren::baking cxxopts::cxxopts)
+
+  add_executable(ren-bake-ibl bake-ibl.cpp)
+  target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
 endif()
 
 add_subdirectory(glsl)

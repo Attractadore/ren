@@ -1,24 +1,34 @@
 #include "BumpAllocator.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceArena.hpp"
+#include "ResourceUploader.hpp"
 
 namespace ren {
 
 struct BakerPipelines {
   Handle<ComputePipeline> dhr_lut;
+  Handle<ComputePipeline> reflection_map;
+  Handle<ComputePipeline> specular_map;
+  Handle<ComputePipeline> irradiance_map;
+};
+
+struct BakerSamplers {
+  Handle<Sampler> wrap_u_clamp_v;
 };
 
 struct IBaker {
   Renderer *renderer = nullptr;
+  ResourceArena session_arena;
   ResourceArena arena;
-  ResourceArena bake_arena;
   Handle<CommandPool> cmd_pool;
   RgPersistent rg;
-  DescriptorAllocator descriptor_allocator;
-  DescriptorAllocatorScope bake_descriptor_allocator;
+  DescriptorAllocator session_descriptor_allocator;
+  DescriptorAllocatorScope descriptor_allocator;
   DeviceBumpAllocator allocator;
   UploadBumpAllocator upload_allocator;
+  ResourceUploader uploader;
   BakerPipelines pipelines;
+  BakerSamplers samplers;
 };
 
 void reset_baker(IBaker &baker);

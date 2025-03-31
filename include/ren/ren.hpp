@@ -21,6 +21,11 @@ enum class Error {
 
 template <typename T> using expected = std::expected<T, Error>;
 
+struct Blob {
+  void *data = nullptr;
+  size_t size = 0;
+};
+
 constexpr size_t MAX_NUM_MESHES = 16 * 1024;
 constexpr size_t MAX_NUM_MESH_INSTANCES = 1024 * 1024;
 constexpr size_t MAX_NUM_MATERIALS = 16 * 1024;

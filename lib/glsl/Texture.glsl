@@ -118,4 +118,29 @@ void image_store(StorageTextureCube img, ivec3 pos, vec4 data) {
 
 #undef images
 
+vec3 cube_map_face_pos_to_direction(uvec2 pos, uint face, uvec2 size) {
+  // uv_face = 0.5 * (uv_c / |r| + 1) =>
+  // uv_c = (2 * uv_face - 1) * |r|
+  vec2 uv_face = (pos + 0.5f) / size;
+  vec2 uv_c = 2.0f * uv_face - 1.0f;
+  float r_c = (face % 2 == 0) ? 1.0f : -1.0f;
+
+  vec3 v;
+  if (face / 2 == 0) {
+    v.zyx = vec3(r_c * -uv_c.x, -uv_c.y, r_c);
+  } else if (face / 2 == 1) {
+    v.xzy = vec3(uv_c.x, r_c * uv_c.y, r_c);
+  } else {
+    v.xyz = vec3(r_c * uv_c.x, -uv_c.y, r_c);
+  }
+
+  return v;
+}
+
+vec2 direction_to_equirectangular_uv(vec3 r) {
+  float phi = atan(r.y, r.x);
+  float theta = acos(r.z / length(r));
+  return vec2(phi / TWO_PI, theta / PI);
+}
+
 #endif // REN_GLSL_TEXTURE_GLSL

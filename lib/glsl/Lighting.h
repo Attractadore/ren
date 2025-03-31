@@ -19,8 +19,6 @@ struct DirectionalLight {
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
 
-const float PI = 3.1415;
-
 inline vec3 fresnel_f0(vec3 color, float metallic) {
   float ior = 1.5f;
   vec3 f0 = vec3((ior - 1.0f) / (ior + 1.0f));
@@ -31,7 +29,7 @@ inline vec3 fresnel_f0(vec3 color, float metallic) {
 // clang-format off
 // G_2(l, v, h) = 1 / (1 + A(v) + A(l))
 // A(s) = (-1 + sqrt(1 + 1/a(s)^2)) / 2
-// a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2)
+// a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2))
 // A(s) = (-1 + sqrt(1 + alpha^2 * (1 - dot(n, s)^2) / dot(n, s)^2) / 2
 // clang-format on
 inline float g_smith(float roughness, float nl, float nv) {
@@ -72,6 +70,35 @@ vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv) {
   return f0 * ab.x + ab.y;
 }
 #endif
+
+// https://math.stackexchange.com/a/1586015
+inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
+  float phi = xy.x * TWO_PI;
+  float z = xy.y;
+  float r = sqrt(1.0f - z * z);
+  vec3 d = vec3(r * cos(phi), r * sin(phi), z);
+  vec3 t = normalize(ortho_vec(n));
+  vec3 b = cross(n, t);
+
+  return mat3(t, b, n) * d;
+}
+
+// https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/lectures/168-lecture9.pdf
+inline vec3 importance_sample_cosine_weighted_hemisphere(vec2 xy, vec3 n) {
+  float phi = xy.x * TWO_PI;
+  float z = sqrt(xy.y);
+  float r = sqrt(1.0f - z * z);
+  vec3 d = vec3(r * cos(phi), r * sin(phi), z);
+
+  vec3 t = normalize(ortho_vec(n));
+  vec3 b = cross(n, t);
+
+  return mat3(t, b, n) * d;
+}
+
+inline vec3 importance_sample_lambertian(vec2 xy, vec3 n) {
+  return importance_sample_cosine_weighted_hemisphere(xy, n);
+}
 
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
                      float roughness, vec3 illuminance) {

@@ -63,4 +63,9 @@ GLSL_NAMESPACE_END
 
 #endif
 
+GLSL_NAMESPACE_BEGIN
+const float PI = 3.1416;
+const float TWO_PI = 6.2832;
+GLSL_NAMESPACE_END
+
 #endif // REN_GLSL_COMMON_H
