@@ -74,3 +74,6 @@
 [submodule "external/boost-intrusive"]
 	path = external/boost-intrusive
 	url = https://github.com/boostorg/intrusive
+[submodule "external/stb"]
+	path = external/stb
+	url = https://github.com/nothings/stb
