@@ -9,17 +9,6 @@ namespace ren {
 
 namespace {
 
-auto getVkImageAspectFlags(TinyImageFormat format) -> VkImageAspectFlags {
-  if (TinyImageFormat_IsDepthAndStencil(format)) {
-    return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-  } else if (TinyImageFormat_IsDepthOnly(format)) {
-    return VK_IMAGE_ASPECT_DEPTH_BIT;
-  } else if (TinyImageFormat_IsStencilOnly(format)) {
-    return VK_IMAGE_ASPECT_STENCIL_BIT;
-  }
-  return VK_IMAGE_ASPECT_COLOR_BIT;
-}
-
 auto get_format_aspect_mask(TinyImageFormat format) -> rhi::ImageAspectMask {
   if (TinyImageFormat_IsDepthAndStencil(format) or
       TinyImageFormat_IsDepthOnly(format)) {
@@ -53,207 +42,96 @@ auto CommandRecorder::end() -> Result<rhi::CommandBuffer, Error> {
   return std::exchange(m_cmd, {});
 }
 
-void CommandRecorder::copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                                  TempSpan<const VkBufferCopy> regions) {
-  vkCmdCopyBuffer(m_cmd.handle, m_renderer->get_buffer(src).handle.handle,
-                  m_renderer->get_buffer(dst).handle.handle, regions.size(),
-                  regions.data());
-}
-
 void CommandRecorder::copy_buffer(const BufferView &src,
                                   const BufferView &dst) {
   ren_assert(src.size_bytes() <= dst.size_bytes());
-  copy_buffer(src.buffer, dst.buffer,
-              {{
-                  .srcOffset = src.offset,
-                  .dstOffset = dst.offset,
-                  .size = src.size_bytes(),
-              }});
-}
-
-void CommandRecorder::copy_buffer_to_texture(
-    Handle<Buffer> src, Handle<Texture> dst,
-    TempSpan<const VkBufferImageCopy> regions) {
-  vkCmdCopyBufferToImage(
-      m_cmd.handle, m_renderer->get_buffer(src).handle.handle,
-      m_renderer->get_texture(dst).handle.handle,
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(), regions.data());
+  rhi::cmd_copy_buffer(m_cmd,
+                       {
+                           .src = m_renderer->get_buffer(src.buffer).handle,
+                           .dst = m_renderer->get_buffer(dst.buffer).handle,
+                           .src_offset = src.offset,
+                           .dst_offset = dst.offset,
+                           .size = src.size_bytes(),
+                       });
 }
 
 void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
                                              Handle<Texture> dst, u32 base_mip,
                                              u32 num_mips) {
+  const Buffer &buffer = m_renderer->get_buffer(src.buffer);
   const Texture &texture = m_renderer->get_texture(dst);
-  ren_assert(base_mip < texture.num_mip_levels);
-  if (num_mips == ALL_MIP_LEVELS) {
-    num_mips = texture.num_mip_levels - base_mip;
+  ren_assert(base_mip < texture.num_mips);
+  if (num_mips == ALL_MIPS) {
+    num_mips = texture.num_mips - base_mip;
   }
-  ren_assert(base_mip + num_mips <= texture.num_mip_levels);
-
-  SmallVector<VkBufferImageCopy, MAX_SRV_MIPS> regions(num_mips);
+  ren_assert(base_mip + num_mips <= texture.num_mips);
+  rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
+  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
   usize offset = src.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
-    u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_array_layers;
-    regions[mip - base_mip] = {
-        .bufferOffset = offset,
-        .imageSubresource =
-            {
-                .aspectMask = getVkImageAspectFlags(texture.format),
-                .mipLevel = mip,
-                .layerCount = num_layers,
-            },
-        .imageExtent = {size.x, size.y, size.z},
-    };
+    rhi::cmd_copy_buffer_to_image(m_cmd, {
+                                             .buffer = buffer.handle,
+                                             .image = texture.handle,
+                                             .buffer_offset = offset,
+                                             .aspect_mask = aspect_mask,
+                                             .mip = mip,
+                                             .num_layers = num_layers,
+                                             .image_size = size,
+                                         });
     offset += get_mip_byte_size(texture.format, size, num_layers);
   }
-
-  copy_buffer_to_texture(src.buffer, dst, regions);
-}
-
-void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
-  ren_assert(view.offset % alignof(u32) == 0);
-  ren_assert(view.size_bytes() % sizeof(u32) == 0);
-  vkCmdFillBuffer(m_cmd.handle,
-                  m_renderer->get_buffer(view.buffer).handle.handle,
-                  view.offset, view.size_bytes(), value);
-};
-
-void CommandRecorder::update_buffer(const BufferView &view,
-                                    TempSpan<const std::byte> data) {
-  ren_assert(view.size_bytes() >= data.size());
-  ren_assert(data.size() % 4 == 0);
-  vkCmdUpdateBuffer(m_cmd.handle,
-                    m_renderer->get_buffer(view.buffer).handle.handle,
-                    view.offset, view.size_bytes(), data.data());
-}
-
-void CommandRecorder::copy_texture_to_buffer(
-    Handle<Texture> src, Handle<Buffer> dst,
-    TempSpan<const VkBufferImageCopy> regions) {
-  vkCmdCopyImageToBuffer(m_cmd.handle,
-                         m_renderer->get_texture(src).handle.handle,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         m_renderer->get_buffer(dst).handle.handle,
-                         regions.size(), regions.data());
 }
 
 void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
                                              const BufferView &dst,
                                              u32 base_mip, u32 num_mips) {
   const Texture &texture = m_renderer->get_texture(src);
-  ren_assert(base_mip < texture.num_mip_levels);
-  if (num_mips == ALL_MIP_LEVELS) {
-    num_mips = texture.num_mip_levels - base_mip;
+  const Buffer &buffer = m_renderer->get_buffer(dst.buffer);
+  ren_assert(base_mip < texture.num_mips);
+  if (num_mips == ALL_MIPS) {
+    num_mips = texture.num_mips - base_mip;
   }
-  ren_assert(base_mip + num_mips <= texture.num_mip_levels);
-
-  SmallVector<VkBufferImageCopy, MAX_SRV_MIPS> regions(num_mips);
+  ren_assert(base_mip + num_mips <= texture.num_mips);
+  rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
+  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
   usize offset = dst.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
-    u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_array_layers;
-    regions[mip - base_mip] = {
-        .bufferOffset = offset,
-        .imageSubresource =
-            {
-                .aspectMask = getVkImageAspectFlags(texture.format),
-                .mipLevel = mip,
-                .layerCount = num_layers,
-            },
-        .imageExtent = {size.x, size.y, size.z},
-    };
+    rhi::cmd_copy_image_to_buffer(m_cmd, {
+                                             .buffer = buffer.handle,
+                                             .image = texture.handle,
+                                             .buffer_offset = offset,
+                                             .aspect_mask = aspect_mask,
+                                             .mip = mip,
+                                             .num_layers = num_layers,
+                                             .image_size = size,
+                                         });
     offset += get_mip_byte_size(texture.format, size, num_layers);
   }
-
-  copy_texture_to_buffer(src, dst.buffer, regions);
 }
 
-void CommandRecorder::blit(Handle<Texture> src, Handle<Texture> dst,
-                           TempSpan<const VkImageBlit> regions,
-                           VkFilter filter) {
-  vkCmdBlitImage(m_cmd.handle, m_renderer->get_texture(src).handle.handle,
-                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                 m_renderer->get_texture(dst).handle.handle,
-                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions.size(),
-                 regions.data(), filter);
+void CommandRecorder::fill_buffer(const BufferView &view, u32 value) {
+  rhi::cmd_fill_buffer(m_cmd,
+                       {
+                           .buffer = m_renderer->get_buffer(view.buffer).handle,
+                           .offset = view.offset,
+                           .size = view.size_bytes(),
+                           .value = value,
+                       });
 }
 
-void CommandRecorder::clear_texture(
-    Handle<Texture> texture, TempSpan<const VkClearColorValue> clear_colors,
-    TempSpan<const VkImageSubresourceRange> clear_ranges) {
-  auto count = std::min<usize>(clear_colors.size(), clear_ranges.size());
-  vkCmdClearColorImage(m_cmd.handle,
-                       m_renderer->get_texture(texture).handle.handle,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                       clear_colors.data(), count, clear_ranges.data());
-}
-
-void CommandRecorder::clear_texture(Handle<Texture> htexture,
-                                    const VkClearColorValue &clear_color) {
-  const Texture &texture = m_renderer->get_texture(htexture);
-  VkImageSubresourceRange clear_range = {
-      .aspectMask = getVkImageAspectFlags(texture.format),
-      .levelCount = texture.num_mip_levels,
-      .layerCount = texture.num_array_layers,
-  };
-  vkCmdClearColorImage(m_cmd.handle, texture.handle.handle,
-                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear_color, 1,
-                       &clear_range);
-}
-
-void CommandRecorder::clear_texture(Handle<Texture> texture,
-                                    const glm::vec4 &clear_color) {
-  clear_texture(texture,
-                VkClearColorValue{.float32 = {clear_color.r, clear_color.g,
-                                              clear_color.b, clear_color.a}});
-}
-
-void CommandRecorder::clear_texture(
-    Handle<Texture> texture,
-    TempSpan<const VkClearDepthStencilValue> clear_depth_stencils,
-    TempSpan<const VkImageSubresourceRange> clear_ranges) {
-  auto count =
-      std::min<usize>(clear_depth_stencils.size(), clear_ranges.size());
-  vkCmdClearDepthStencilImage(
-      m_cmd.handle, m_renderer->get_texture(texture).handle.handle,
-      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, clear_depth_stencils.data(), count,
-      clear_ranges.data());
-}
-
-void CommandRecorder::clear_texture(
-    Handle<Texture> htexture,
-    const VkClearDepthStencilValue &clear_depth_stencil) {
-  const Texture &texture = m_renderer->get_texture(htexture);
-  VkImageSubresourceRange clear_range = {
-      .aspectMask = getVkImageAspectFlags(texture.format),
-      .levelCount = texture.num_mip_levels,
-      .layerCount = texture.num_array_layers,
-  };
-  vkCmdClearDepthStencilImage(m_cmd.handle, texture.handle.handle,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              &clear_depth_stencil, 1, &clear_range);
-}
-
-void CommandRecorder::copy_texture(Handle<Texture> hsrc, Handle<Texture> hdst) {
-  const Texture &src = m_renderer->get_texture(hsrc);
-  const Texture &dst = m_renderer->get_texture(hdst);
-  glm::uvec3 size = glm::min(src.size, dst.size);
-  size = glm::max(src.size, {1, 1, 1});
-  VkImageCopy region = {.srcSubresource =
-                            {
-                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                .layerCount = src.num_array_layers,
-                            },
-                        .dstSubresource =
-                            {
-                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                                .layerCount = dst.num_array_layers,
-                            },
-                        .extent = {size.x, size.y, size.z}};
-  vkCmdCopyImage(m_cmd.handle, src.handle.handle,
-                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.handle.handle,
-                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+void CommandRecorder::clear_texture(Handle<Texture> handle,
+                                    const glm::vec4 &color) {
+  const Texture &texture = m_renderer->get_texture(handle);
+  rhi::cmd_clear_image(
+      m_cmd, {
+                 .image = texture.handle,
+                 .color = color,
+                 .aspect_mask = get_format_aspect_mask(texture.format),
+                 .num_mips = texture.num_mips,
+                 .num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers,
+             });
 }
 
 void CommandRecorder::pipeline_barrier(
@@ -268,10 +146,9 @@ void CommandRecorder::pipeline_barrier(
         .range =
             {
                 .aspect_mask = get_format_aspect_mask(texture.format),
-                .first_mip_level = barrier.resource.first_mip_level,
-                .num_mip_levels = barrier.resource.num_mip_levels,
-                .num_array_layers =
-                    (texture.cube_map ? 6 : 1) * texture.num_array_layers,
+                .base_mip = barrier.resource.base_mip,
+                .num_mips = barrier.resource.num_mips,
+                .num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers,
             },
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,
@@ -318,7 +195,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
     std::memcpy(render_targets[i].clearValue.color.float32, &rt.ops.clear_color,
                 sizeof(rt.ops.clear_color));
     size = glm::min(size,
-                    glm::uvec2(get_texture_size(*m_renderer, rt.rtv.texture)));
+                    glm::uvec2(m_renderer->get_texture(rt.rtv.texture).size));
   }
 
   VkRenderingAttachmentInfo depth_stencil_target = {
@@ -336,7 +213,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
         .clearValue = {.depthStencil = {.depth = dst.ops.clear_depth}},
     };
     size = glm::min(size,
-                    glm::uvec2(get_texture_size(*m_renderer, dst.dsv.texture)));
+                    glm::uvec2(m_renderer->get_texture(dst.dsv.texture).size));
   }
 
   ren_assert_msg(size != max_size, "At least one attachment must be provided");

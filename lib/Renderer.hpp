@@ -31,8 +31,8 @@ struct ImageViewDesc {
   rhi::ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ComponentMapping components;
-  u32 first_mip_level = 0;
-  u32 num_mip_levels = 0;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
 
 public:
   bool operator==(const ImageViewDesc &) const = default;

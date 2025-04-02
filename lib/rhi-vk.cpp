@@ -1181,9 +1181,8 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
       .imageType = image_type,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .extent = {width, height, depth},
-      .mipLevels = create_info.num_mip_levels,
-      .arrayLayers =
-          create_info.num_array_layers * (create_info.cube_map ? 6 : 1),
+      .mipLevels = create_info.num_mips,
+      .arrayLayers = create_info.num_layers * (create_info.cube_map ? 6 : 1),
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = to_vk_image_usage_flags(create_info.usage),
@@ -1276,10 +1275,10 @@ auto create_srv(Device device, const SrvCreateInfo &create_info)
       .subresourceRange =
           {
               .aspectMask = get_format_aspect_mask(create_info.format),
-              .baseMipLevel = create_info.first_mip_level,
-              .levelCount = create_info.num_mip_levels,
-              .baseArrayLayer = create_info.first_array_layer * num_faces,
-              .layerCount = create_info.num_array_layers * num_faces,
+              .baseMipLevel = create_info.base_mip,
+              .levelCount = create_info.num_mips,
+              .baseArrayLayer = create_info.base_layer * num_faces,
+              .layerCount = create_info.num_layers * num_faces,
           },
   };
   SRV srv;
@@ -1306,10 +1305,10 @@ auto create_uav(Device device, const UavCreateInfo &create_info)
       .subresourceRange =
           {
               .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .baseMipLevel = create_info.mip_level,
+              .baseMipLevel = create_info.mip,
               .levelCount = 1,
-              .baseArrayLayer = create_info.first_array_layer * num_faces,
-              .layerCount = create_info.num_array_layers * num_faces,
+              .baseArrayLayer = create_info.base_layer * num_faces,
+              .layerCount = create_info.num_layers * num_faces,
           },
   };
   UAV uav;
@@ -1335,10 +1334,10 @@ auto create_rtv(Device device, const RtvCreateInfo &create_info)
       .subresourceRange =
           {
               .aspectMask = get_format_aspect_mask(create_info.format),
-              .baseMipLevel = create_info.mip_level,
+              .baseMipLevel = create_info.mip,
               .levelCount = 1,
-              .baseArrayLayer = create_info.first_array_layer,
-              .layerCount = create_info.num_array_layers,
+              .baseArrayLayer = create_info.base_layer,
+              .layerCount = create_info.num_layers,
           },
   };
   RTV rtv;
@@ -2354,10 +2353,10 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
         .subresourceRange =
             {
                 .aspectMask = to_vk(barrier.range.aspect_mask),
-                .baseMipLevel = barrier.range.first_mip_level,
-                .levelCount = barrier.range.num_mip_levels,
-                .baseArrayLayer = barrier.range.first_array_layer,
-                .layerCount = barrier.range.num_array_layers,
+                .baseMipLevel = barrier.range.base_mip,
+                .levelCount = barrier.range.num_mips,
+                .baseArrayLayer = barrier.range.base_layer,
+                .layerCount = barrier.range.num_layers,
             },
     };
   }
@@ -2380,6 +2379,77 @@ void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
   cmd.device->vk.vkCmdBindDescriptorSets(
       cmd.handle, PIPELINE_BIND_POINT_MAP[(usize)bind_point],
       cmd.device->common_pipeline_layout, 0, std::size(sets), sets, 0, nullptr);
+}
+
+void cmd_copy_buffer(CommandBuffer cmd, const BufferCopyInfo &info) {
+  VkBufferCopy region = {
+      .srcOffset = info.src_offset,
+      .dstOffset = info.dst_offset,
+      .size = info.size,
+  };
+  cmd.device->vk.vkCmdCopyBuffer(cmd.handle, info.src.handle, info.dst.handle,
+                                 1, &region);
+}
+
+void cmd_copy_buffer_to_image(CommandBuffer cmd,
+                              const BufferImageCopyInfo &info) {
+  VkBufferImageCopy region = {
+      .bufferOffset = info.buffer_offset,
+      .imageSubresource =
+          {
+              .aspectMask = to_vk(info.aspect_mask),
+              .mipLevel = info.mip,
+              .baseArrayLayer = info.base_layer,
+              .layerCount = info.num_layers,
+          },
+      .imageOffset = {(i32)info.image_offset.x, (i32)info.image_offset.y,
+                      (i32)info.image_offset.z},
+      .imageExtent = {info.image_size.x, info.image_size.y, info.image_size.z},
+  };
+  cmd.device->vk.vkCmdCopyBufferToImage(
+      cmd.handle, info.buffer.handle, info.image.handle,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+}
+
+void cmd_copy_image_to_buffer(CommandBuffer cmd,
+                              const BufferImageCopyInfo &info) {
+  VkBufferImageCopy region = {
+      .bufferOffset = info.buffer_offset,
+      .imageSubresource =
+          {
+              .aspectMask = to_vk(info.aspect_mask),
+              .mipLevel = info.mip,
+              .baseArrayLayer = info.base_layer,
+              .layerCount = info.num_layers,
+          },
+      .imageOffset = {(i32)info.image_offset.x, (i32)info.image_offset.y,
+                      (i32)info.image_offset.z},
+      .imageExtent = {info.image_size.x, info.image_size.y, info.image_size.z},
+  };
+  cmd.device->vk.vkCmdCopyImageToBuffer(cmd.handle, info.image.handle,
+                                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                        info.buffer.handle, 1, &region);
+}
+
+void cmd_fill_buffer(CommandBuffer cmd, const BufferFillInfo &info) {
+  cmd.device->vk.vkCmdFillBuffer(cmd.handle, info.buffer.handle, info.offset,
+                                 info.size, info.value);
+}
+
+void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &info) {
+  VkClearColorValue color = {
+      .float32 = {info.color.r, info.color.g, info.color.b, info.color.a},
+  };
+  VkImageSubresourceRange subresource = {
+      .aspectMask = to_vk(info.aspect_mask),
+      .baseMipLevel = info.base_mip,
+      .levelCount = info.num_mips,
+      .baseArrayLayer = info.base_layer,
+      .layerCount = info.num_layers,
+  };
+  cmd.device->vk.vkCmdClearColorImage(cmd.handle, info.image.handle,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      &color, 1, &subresource);
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;

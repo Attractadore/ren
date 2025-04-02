@@ -21,7 +21,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
         .format = TinyImageFormat_R32_SFLOAT,
         .width = size.x,
         .height = size.y,
-        .num_mip_levels = num_mips,
+        .num_mips = num_mips,
     });
   }
 

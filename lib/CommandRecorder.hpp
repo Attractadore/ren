@@ -113,9 +113,6 @@ public:
   void
   dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
 
-  void copy_buffer(Handle<Buffer> src, Handle<Buffer> dst,
-                   TempSpan<const VkBufferCopy> regions);
-
   void copy_buffer(const BufferView &src, const BufferView &dst);
 
   template <typename T>
@@ -123,11 +120,11 @@ public:
     copy_buffer(BufferView(src), BufferView(dst));
   }
 
-  void copy_buffer_to_texture(Handle<Buffer> src, Handle<Texture> dst,
-                              TempSpan<const VkBufferImageCopy> regions);
-
   void copy_buffer_to_texture(const BufferView &src, Handle<Texture> dst,
-                              u32 base_mip = 0, u32 num_mips = ALL_MIP_LEVELS);
+                              u32 base_mip = 0, u32 num_mips = ALL_MIPS);
+
+  void copy_texture_to_buffer(Handle<Texture> src, const BufferView &dst,
+                              u32 base_mip = 0, u32 num_mips = ALL_MIPS);
 
   void fill_buffer(const BufferView &buffer, u32 value);
 
@@ -137,46 +134,7 @@ public:
     fill_buffer(BufferView(buffer), std::bit_cast<u32>(value));
   }
 
-  template <typename T>
-  void update_buffer(const BufferView &buffer, TempSpan<const T> data) {
-    update_buffer(buffer, data.as_bytes());
-  }
-
-  void update_buffer(const BufferView &buffer, TempSpan<const std::byte> data);
-
-  template <typename T>
-    requires(sizeof(T) % 4 == 0)
-  void update_buffer(const BufferView &buffer, const T &data) {
-    update_buffer<T>(buffer, TempSpan(&data, 1));
-  }
-
-  void copy_texture_to_buffer(Handle<Texture> src, Handle<Buffer> dst,
-                              TempSpan<const VkBufferImageCopy> regions);
-
-  void copy_texture_to_buffer(Handle<Texture> src, const BufferView &dst,
-                              u32 base_mip = 0, u32 num_mips = ALL_MIP_LEVELS);
-
-  void blit(Handle<Texture> src, Handle<Texture> dst,
-            TempSpan<const VkImageBlit> regions, VkFilter filter);
-
-  void clear_texture(Handle<Texture> texture,
-                     TempSpan<const VkClearColorValue> clear_colors,
-                     TempSpan<const VkImageSubresourceRange> clear_ranges);
-
-  void clear_texture(Handle<Texture> texture,
-                     const VkClearColorValue &clear_color);
-
-  void clear_texture(Handle<Texture> texture, const glm::vec4 &clear_color);
-
-  void
-  clear_texture(Handle<Texture> texture,
-                TempSpan<const VkClearDepthStencilValue> clear_depth_stencils,
-                TempSpan<const VkImageSubresourceRange> clear_ranges);
-
-  void clear_texture(Handle<Texture> texture,
-                     const VkClearDepthStencilValue &clear_depth_stencil);
-
-  void copy_texture(Handle<Texture> src, Handle<Texture> dst);
+  void clear_texture(Handle<Texture> texture, const glm::vec4 &color);
 
   void pipeline_barrier(TempSpan<const rhi::MemoryBarrier> memory_barriers,
                         TempSpan<const TextureBarrier> texture_barriers);

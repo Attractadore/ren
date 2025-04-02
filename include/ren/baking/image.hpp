@@ -10,7 +10,7 @@ struct TextureInfo {
   unsigned width = 0;
   unsigned height = 0;
   bool cube_map = false;
-  unsigned num_mip_levels = 1;
+  unsigned num_mips = 1;
   const void *data = nullptr;
 };
 

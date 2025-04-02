@@ -53,7 +53,7 @@ auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
       .height = info.width,
       .depth = 1,
       .arraySize = num_faces,
-      .mipLevels = info.num_mip_levels,
+      .mipLevels = info.num_mips,
       .miscFlags = info.cube_map ? DirectX::TEX_MISC_TEXTURECUBE : 0,
       .format = (DXGI_FORMAT)TinyImageFormat_ToDXGI_FORMAT(info.format),
       .dimension = DirectX::TEX_DIMENSION_TEXTURE2D,
@@ -139,7 +139,7 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
       .baseHeight = info.height,
       .baseDepth = 1,
       .numDimensions = 2,
-      .numLevels = info.num_mip_levels,
+      .numLevels = info.num_mips,
       .numLayers = 1,
       .numFaces = u32(info.cube_map ? 6 : 1),
       .isArray = false,
@@ -155,7 +155,7 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
   const u8 *data = (const u8 *)info.data;
-  for (u32 mip : range(info.num_mip_levels)) {
+  for (u32 mip : range(info.num_mips)) {
     usize size =
         ktxTexture_GetImageSize(ktx_texture, mip) * (info.cube_map ? 6 : 1);
     err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0,
@@ -430,7 +430,7 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
       .width = CUBE_MAP_SIZE,
       .height = CUBE_MAP_SIZE,
       .cube_map = true,
-      .num_mip_levels = NUM_CUBE_MAP_MIPS,
+      .num_mips = NUM_CUBE_MAP_MIPS,
   });
   {
     auto pass = rgb.create_pass({"filter-cube-map"});
@@ -508,7 +508,7 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
           .width = CUBE_MAP_SIZE,
           .height = CUBE_MAP_SIZE,
           .cube_map = true,
-          .num_mip_levels = NUM_CUBE_MAP_MIPS,
+          .num_mips = NUM_CUBE_MAP_MIPS,
           .data = baker->renderer->map_buffer(readback),
       },
       images);

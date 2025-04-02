@@ -116,21 +116,20 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
 auto Renderer::create_texture(const TextureCreateInfo &&create_info)
     -> Result<Handle<Texture>, Error> {
   ren_assert(create_info.width > 0);
-  ren_assert(create_info.num_mip_levels > 0);
-  ren_assert(create_info.num_array_layers > 0);
+  ren_assert(create_info.num_mips > 0);
+  ren_assert(create_info.num_layers > 0);
 
-  ren_try(rhi::Image image,
-          rhi::create_image({
-              .device = m_device,
-              .format = create_info.format,
-              .usage = create_info.usage,
-              .width = create_info.width,
-              .height = create_info.height,
-              .depth = create_info.depth,
-              .cube_map = create_info.cube_map,
-              .num_mip_levels = create_info.num_mip_levels,
-              .num_array_layers = create_info.num_array_layers,
-          }));
+  ren_try(rhi::Image image, rhi::create_image({
+                                .device = m_device,
+                                .format = create_info.format,
+                                .usage = create_info.usage,
+                                .width = create_info.width,
+                                .height = create_info.height,
+                                .depth = create_info.depth,
+                                .cube_map = create_info.cube_map,
+                                .num_mips = create_info.num_mips,
+                                .num_layers = create_info.num_layers,
+                            }));
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
   return m_textures.emplace(Texture{
       .handle = image,
@@ -140,8 +139,8 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
       .height = create_info.height,
       .depth = create_info.depth,
       .cube_map = create_info.cube_map,
-      .num_mip_levels = create_info.num_mip_levels,
-      .num_array_layers = create_info.num_array_layers,
+      .num_mips = create_info.num_mips,
+      .num_layers = create_info.num_layers,
   });
 }
 
@@ -156,8 +155,8 @@ auto Renderer::create_external_texture(
       .width = create_info.width,
       .height = create_info.height,
       .depth = create_info.depth,
-      .num_mip_levels = create_info.num_mip_levels,
-      .num_array_layers = create_info.num_array_layers,
+      .num_mips = create_info.num_mips,
+      .num_layers = create_info.num_layers,
   });
 }
 
@@ -189,16 +188,15 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
 }
 
 auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::SRV, Error> {
-  ren_try(
-      rhi::ImageView view,
-      get_image_view(srv.texture, ImageViewDesc{
-                                      .type = rhi::ImageViewType::SRV,
-                                      .dimension = srv.dimension,
-                                      .format = srv.format,
-                                      .components = srv.components,
-                                      .first_mip_level = srv.first_mip_level,
-                                      .num_mip_levels = srv.num_mip_levels,
-                                  }));
+  ren_try(rhi::ImageView view,
+          get_image_view(srv.texture, ImageViewDesc{
+                                          .type = rhi::ImageViewType::SRV,
+                                          .dimension = srv.dimension,
+                                          .format = srv.format,
+                                          .components = srv.components,
+                                          .base_mip = srv.base_mip,
+                                          .num_mips = srv.num_mips,
+                                      }));
   return view.srv;
 }
 
@@ -208,8 +206,8 @@ auto Renderer::get_uav(UavDesc uav) -> Result<rhi::UAV, Error> {
                                           .type = rhi::ImageViewType::UAV,
                                           .dimension = uav.dimension,
                                           .format = uav.format,
-                                          .first_mip_level = uav.mip_level,
-                                          .num_mip_levels = 1,
+                                          .base_mip = uav.mip,
+                                          .num_mips = 1,
                                       }));
   return view.uav;
 }
@@ -220,8 +218,8 @@ auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::RTV, Error> {
                                           .type = rhi::ImageViewType::RTV,
                                           .dimension = rtv.dimension,
                                           .format = rtv.format,
-                                          .first_mip_level = rtv.mip_level,
-                                          .num_mip_levels = 1,
+                                          .base_mip = rtv.mip,
+                                          .num_mips = 1,
                                       }));
   return view.rtv;
 }
@@ -232,8 +230,8 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
   if (desc.format == TinyImageFormat_UNDEFINED) {
     desc.format = texture.format;
   }
-  if (desc.num_mip_levels == ALL_MIP_LEVELS) {
-    desc.num_mip_levels = texture.num_mip_levels;
+  if (desc.num_mips == ALL_MIPS) {
+    desc.num_mips = texture.num_mips;
   }
 
   auto &image_views = m_image_views[handle];
@@ -245,33 +243,31 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
   rhi::ImageView view = {};
   switch (desc.type) {
   case rhi::ImageViewType::SRV: {
-    ren_try(view.srv, rhi::create_srv(
-                          m_device, {
-                                        .image = texture.handle,
-                                        .dimension = desc.dimension,
-                                        .format = desc.format,
-                                        .components = desc.components,
-                                        .first_mip_level = desc.first_mip_level,
-                                        .num_mip_levels = desc.num_mip_levels,
-                                    }));
+    ren_try(view.srv,
+            rhi::create_srv(m_device, {
+                                          .image = texture.handle,
+                                          .dimension = desc.dimension,
+                                          .format = desc.format,
+                                          .components = desc.components,
+                                          .base_mip = desc.base_mip,
+                                          .num_mips = desc.num_mips,
+                                      }));
   } break;
   case rhi::ImageViewType::UAV: {
-    ren_try(view.uav,
-            rhi::create_uav(m_device, {
-                                          .image = texture.handle,
-                                          .dimension = desc.dimension,
-                                          .format = desc.format,
-                                          .mip_level = desc.first_mip_level,
-                                      }));
+    ren_try(view.uav, rhi::create_uav(m_device, {
+                                                    .image = texture.handle,
+                                                    .dimension = desc.dimension,
+                                                    .format = desc.format,
+                                                    .mip = desc.base_mip,
+                                                }));
   } break;
   case rhi::ImageViewType::RTV: {
-    ren_try(view.rtv,
-            rhi::create_rtv(m_device, {
-                                          .image = texture.handle,
-                                          .dimension = desc.dimension,
-                                          .format = desc.format,
-                                          .mip_level = desc.first_mip_level,
-                                      }));
+    ren_try(view.rtv, rhi::create_rtv(m_device, {
+                                                    .image = texture.handle,
+                                                    .dimension = desc.dimension,
+                                                    .format = desc.format,
+                                                    .mip = desc.base_mip,
+                                                }));
   } break;
   }
 

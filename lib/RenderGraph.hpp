@@ -10,7 +10,6 @@
 #include "core/Flags.hpp"
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
-#include "core/HashMap.hpp"
 #include "core/NewType.hpp"
 #include "core/NotNull.hpp"
 #include "core/String.hpp"
@@ -97,8 +96,6 @@ REN_NEW_TYPE(RgPhysicalTextureId, u32);
 
 struct RgTexture;
 using RgTextureId = Handle<RgTexture>;
-
-constexpr u32 RG_MAX_TEMPORAL_LAYERS = 4;
 
 class RgTextureToken {
 public:
@@ -209,22 +206,6 @@ struct RgBufferUse {
   rhi::BufferState usage;
 };
 
-struct RgTextureTemporalInfo {
-  /// Number of temporal layers.
-  u32 num_temporal_layers = 0;
-  /// Texture usage in init callback.
-  rhi::ImageState usage;
-  /// Init callback for temporal layers.
-  RgTextureInitCallback cb;
-};
-
-struct RgTexturePersistentInfo {
-  /// Texture usage in init callback.
-  rhi::ImageState usage;
-  /// Init callback.
-  RgTextureInitCallback cb;
-};
-
 struct RgTextureCreateInfo {
   /// Texture name
   REN_RG_DEBUG_NAME_TYPE name;
@@ -238,16 +219,10 @@ struct RgTextureCreateInfo {
   u32 depth : 31 = 0;
   bool cube_map : 1 = false;
   /// Number of mip levels
-  u32 num_mip_levels = 1;
+  u32 num_mips = 1;
   /// Number of array layers
-  u32 num_array_layers = 1;
-  /// Additional create info.
-  Variant<Monostate, RgTextureTemporalInfo, RgTexturePersistentInfo> ext;
-};
-
-struct RgTextureInitInfo {
-  rhi::ImageState usage;
-  RgTextureInitCallback cb;
+  u32 num_layers = 1;
+  bool persistent = false;
 };
 
 struct RgPhysicalTexture {
@@ -258,11 +233,10 @@ struct RgPhysicalTexture {
   rhi::ImageUsageFlags usage = {};
   glm::uvec3 size = {};
   bool cube_map = false;
-  u32 num_mip_levels = 1;
-  u32 num_array_layers = 1;
+  u32 num_mips = 1;
+  u32 num_layers = 1;
   Handle<Texture> handle;
   rhi::ImageLayout layout = rhi::ImageLayout::Undefined;
-  RgTextureId init_id;
   RgTextureId id;
   RgQueue last_queue = RgQueue::None;
   RgQueue queue = RgQueue::None;
@@ -461,8 +435,6 @@ private:
   DynamicBitset m_external_textures;
   GenArray<RgTexture> m_textures;
 
-  HashMap<RgPhysicalTextureId, RgTextureInitInfo> m_texture_init_info;
-
   Vector<RgTextureId> m_frame_textures;
 
   GenArray<RgSemaphore> m_semaphores;
@@ -573,8 +545,8 @@ private:
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
-                                  const rhi::ImageState &usage, Handle<Sampler>,
-                                  u32 temporal_layer) -> RgTextureToken;
+                                  const rhi::ImageState &usage, Handle<Sampler>)
+      -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
                                    RgTextureId texture,
@@ -863,22 +835,13 @@ public:
   [[nodiscard]] auto
   read_texture(RgTextureId texture,
                const rhi::ImageState &usage = rhi::CS_RESOURCE_IMAGE,
-               u32 temporal_layer = 0) -> RgTextureToken;
-
-  [[nodiscard]] auto read_texture(RgTextureId texture, u32 temporal_layer)
-      -> RgTextureToken {
-    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, temporal_layer);
+               Handle<Sampler> sampler = NullHandle) -> RgTextureToken {
+    return m_builder->read_texture(m_pass, texture, usage, sampler);
   }
 
-  [[nodiscard]] auto read_texture(RgTextureId texture,
-                                  const rhi::ImageState &usage,
-                                  Handle<Sampler> sampler,
-                                  u32 temporal_layer = 0) -> RgTextureToken;
-
-  [[nodiscard]] auto read_texture(RgTextureId texture, Handle<Sampler> sampler,
-                                  u32 temporal_layer = 0) -> RgTextureToken {
-    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler,
-                        temporal_layer);
+  [[nodiscard]] auto read_texture(RgTextureId texture, Handle<Sampler> sampler)
+      -> RgTextureToken {
+    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler);
   }
 
   [[nodiscard]] auto
@@ -901,8 +864,7 @@ public:
                                          u32 index = 0)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
-  auto read_depth_stencil_target(RgTextureId texture, u32 temporal_layer = 0)
-      -> RgTextureToken;
+  auto read_depth_stencil_target(RgTextureId texture) -> RgTextureToken;
 
   auto write_depth_stencil_target(RgDebugName name, RgTextureId texture,
                                   const DepthAttachmentOperations &ops)

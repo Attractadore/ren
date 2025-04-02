@@ -38,7 +38,7 @@ auto ResourceUploader::create_texture(ResourceArena &arena,
                             .width = ktx_texture2->baseWidth,
                             .height = ktx_texture2->baseHeight,
                             .cube_map = ktx_texture2->numFaces > 1,
-                            .num_mip_levels = ktx_texture2->numLevels,
+                            .num_mips = ktx_texture2->numLevels,
                         }));
   stage_texture(allocator, ktxTexture(ktx_texture2), texture);
   return texture;
@@ -117,7 +117,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     for (usize i : range(m_texture_copies.size())) {
       const TextureCopy &copy = m_texture_copies[i];
       const Texture &dst = renderer.get_texture(copy.dst);
-      for (u32 mip : range(dst.num_mip_levels)) {
+      for (u32 mip : range(dst.num_mips)) {
         cmd.copy_buffer_to_texture(copy.src.slice(copy.mip_offsets[mip]),
                                    copy.dst, mip, 1);
       }

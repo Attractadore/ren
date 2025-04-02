@@ -245,8 +245,8 @@ struct ImageCreateInfo {
   u32 height = 0;
   u32 depth : 31 = 0;
   bool cube_map : 1 = false;
-  u32 num_mip_levels = 1;
-  u32 num_array_layers = 1;
+  u32 num_mips = 1;
+  u32 num_layers = 1;
 };
 
 auto create_image(const ImageCreateInfo &create_info) -> Result<Image>;
@@ -269,10 +269,10 @@ using ImageAspectMask = Flags<ImageAspect>;
 
 struct ImageSubresourceRange {
   ImageAspectMask aspect_mask;
-  u32 first_mip_level = 0;
-  u32 num_mip_levels = 0;
-  u32 first_array_layer = 0;
-  u32 num_array_layers = 0;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
 };
 
 auto set_debug_name(Device device, Image image, const char *name)
@@ -329,10 +329,10 @@ struct SrvCreateInfo {
   ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   ComponentMapping components;
-  u32 first_mip_level = 0;
-  u32 num_mip_levels = 1;
-  u32 first_array_layer = 0;
-  u32 num_array_layers = 1;
+  u32 base_mip = 0;
+  u32 num_mips = 1;
+  u32 base_layer = 0;
+  u32 num_layers = 1;
 };
 
 auto create_srv(Device device, const SrvCreateInfo &create_info) -> Result<SRV>;
@@ -343,9 +343,9 @@ struct UavCreateInfo {
   Image image = {};
   ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  u32 mip_level = 0;
-  u32 first_array_layer = 0;
-  u32 num_array_layers = 1;
+  u32 mip = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 1;
 };
 
 auto create_uav(Device device, const UavCreateInfo &create_info) -> Result<UAV>;
@@ -356,9 +356,9 @@ struct RtvCreateInfo {
   Image image = {};
   ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  u32 mip_level = 0;
-  u32 first_array_layer = 0;
-  u32 num_array_layers = 1;
+  u32 mip = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 1;
 };
 
 auto create_rtv(Device device, const RtvCreateInfo &create_info) -> Result<RTV>;
@@ -967,6 +967,55 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
 void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
                               ResourceDescriptorHeap resource_heap,
                               SamplerDescriptorHeap sampler_heap);
+
+struct BufferCopyInfo {
+  Buffer src = {};
+  Buffer dst = {};
+  usize src_offset = 0;
+  usize dst_offset = 0;
+  usize size = 0;
+};
+
+void cmd_copy_buffer(CommandBuffer cmd, const BufferCopyInfo &copy_info);
+
+struct BufferImageCopyInfo {
+  Buffer buffer = {};
+  Image image = {};
+  usize buffer_offset = 0;
+  ImageAspectMask aspect_mask;
+  u32 mip = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
+  glm::uvec3 image_offset = {};
+  glm::uvec3 image_size = {};
+};
+
+void cmd_copy_buffer_to_image(CommandBuffer cmd,
+                              const BufferImageCopyInfo &copy_info);
+
+void cmd_copy_image_to_buffer(CommandBuffer cmd,
+                              const BufferImageCopyInfo &copy_info);
+
+struct BufferFillInfo {
+  Buffer buffer = {};
+  usize offset = 0;
+  usize size = {};
+  u32 value = {};
+};
+
+void cmd_fill_buffer(CommandBuffer cmd, const BufferFillInfo &fill_info);
+
+struct ImageClearInfo {
+  Image image = {};
+  glm::vec4 color = {};
+  ImageAspectMask aspect_mask;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
+};
+
+void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &clear_info);
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 

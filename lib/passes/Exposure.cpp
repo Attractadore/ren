@@ -1,5 +1,4 @@
 #include "Exposure.hpp"
-#include "../CommandRecorder.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../glsl/LuminanceHistogram.h"
@@ -42,20 +41,14 @@ void setup_automatic_exposure_pass(const PassCommonConfig &ccfg,
         .format = TinyImageFormat_R32_SFLOAT,
         .width = 1,
         .height = 1,
-        .ext =
-            RgTexturePersistentInfo{
-                .usage = rhi::TRANSFER_DST_IMAGE,
-                .cb =
-                    [](Handle<Texture> texture, Renderer &,
-                       CommandRecorder &cmd) {
-                      cmd.clear_texture(texture,
-                                        glm::vec4(1.0f / glsl::MIN_LUMINANCE));
-                    },
-            },
-
+        .persistent = true,
     });
+    *cfg.exposure = ccfg.rcs->exposure;
+    ccfg.rgb->clear_texture("exposure", cfg.exposure,
+                            {1.0f / glsl::MIN_LUMINANCE, 0, 0, 0});
+  } else {
+    *cfg.exposure = ccfg.rcs->exposure;
   }
-  *cfg.exposure = ccfg.rcs->exposure;
 }
 
 } // namespace
