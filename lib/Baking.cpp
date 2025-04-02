@@ -34,7 +34,6 @@ auto ren::create_baker(IRenderer *irenderer) -> expected<IBaker *> {
                                .name = "Baker command pool",
                                .queue_family = rhi::QueueFamily::Graphics,
                            }));
-  ren_try_to(baker->session_descriptor_allocator.init(baker->session_arena));
   ren_try_to(
       baker->descriptor_allocator.init(baker->session_descriptor_allocator));
   baker->allocator.init(*baker->renderer, baker->session_arena, 64 * MiB);

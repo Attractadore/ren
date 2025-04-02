@@ -220,8 +220,6 @@ struct RgTextureCreateInfo {
   bool cube_map : 1 = false;
   /// Number of mip levels
   u32 num_mips = 1;
-  /// Number of array layers
-  u32 num_layers = 1;
   bool persistent = false;
 };
 
@@ -234,7 +232,6 @@ struct RgPhysicalTexture {
   glm::uvec3 size = {};
   bool cube_map = false;
   u32 num_mips = 1;
-  u32 num_layers = 1;
   Handle<Texture> handle;
   rhi::ImageLayout layout = rhi::ImageLayout::Undefined;
   RgTextureId id;
@@ -625,8 +622,6 @@ private:
   RgPersistent *m_rgp = nullptr;
   RgRtData *m_data = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
-  Handle<ResourceDescriptorHeap> m_resource_descriptor_heap;
-  Handle<SamplerDescriptorHeap> m_sampler_descriptor_heap;
   const GenArray<RgSemaphore> *m_semaphores = nullptr;
 };
 
@@ -684,14 +679,6 @@ public:
                                           u32 mip = 0) const
       -> glsl::StorageTexture;
 
-  auto get_resource_descriptor_heap() const -> Handle<ResourceDescriptorHeap> {
-    return m_rg->m_resource_descriptor_heap;
-  }
-
-  auto get_sampler_descriptor_heap() const -> Handle<SamplerDescriptorHeap> {
-    return m_rg->m_sampler_descriptor_heap;
-  }
-
   auto get_allocator() const -> UploadBumpAllocator &;
 
   template <typename T = std::byte>
@@ -740,15 +727,15 @@ public:
   }
 
   template <typename PassArgs>
-  void set_push_constants(RenderPass &render_pass, const PassArgs &args) const {
+  void push_constants(RenderPass &render_pass, const PassArgs &args) const {
     auto pc = to_push_constants(*this, args);
-    render_pass.set_push_constants(pc);
+    render_pass.push_constants(pc);
   }
 
   template <typename PassArgs>
-  void set_push_constants(CommandRecorder &cmd, const PassArgs &args) const {
+  void push_constants(CommandRecorder &cmd, const PassArgs &args) const {
     auto pc = to_push_constants(*this, args);
-    cmd.set_push_constants(pc);
+    cmd.push_constants(pc);
   }
 
 private:
@@ -887,10 +874,8 @@ public:
     set_callback([pipeline, args, num_groups_x, num_groups_y,
                   num_groups_z](Renderer &renderer, const RgRuntime &rg,
                                 CommandRecorder &cmd) {
-      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                               rg.get_sampler_descriptor_heap());
       cmd.bind_compute_pipeline(pipeline);
-      rg.set_push_constants(cmd, args);
+      rg.push_constants(cmd, args);
       cmd.dispatch(num_groups_x, num_groups_y, num_groups_z);
     });
   }
@@ -911,10 +896,8 @@ public:
     set_callback([pipeline, args, size, block_size_mult](Renderer &renderer,
                                                          const RgRuntime &rg,
                                                          CommandRecorder &cmd) {
-      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                               rg.get_sampler_descriptor_heap());
       cmd.bind_compute_pipeline(pipeline);
-      rg.set_push_constants(cmd, args);
+      rg.push_constants(cmd, args);
       cmd.dispatch_grid_3d(size, block_size_mult);
     });
   }
@@ -927,10 +910,8 @@ public:
     set_callback([pipeline, args, token](Renderer &renderer,
                                          const RgRuntime &rg,
                                          CommandRecorder &cmd) {
-      cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                               rg.get_sampler_descriptor_heap());
       cmd.bind_compute_pipeline(pipeline);
-      rg.set_push_constants(cmd, args);
+      rg.push_constants(cmd, args);
       cmd.dispatch_indirect(rg.get_buffer(token));
     });
   }

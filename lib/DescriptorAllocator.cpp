@@ -1,22 +1,7 @@
 #include "DescriptorAllocator.hpp"
 #include "Renderer.hpp"
-#include "ResourceArena.hpp"
 
 namespace ren {
-
-auto DescriptorAllocator::init(ResourceArena &arena) -> Result<void, Error> {
-  ren_try(
-      m_resource_descriptor_heap,
-      arena.create_resource_descriptor_heap(ResourceDescriptorHeapCreateInfo{
-          .name = "Resource descriptor heap",
-          .num_srv_descriptors = glsl::MAX_NUM_RESOURCES / 3,
-          .num_cis_descriptors = glsl::MAX_NUM_RESOURCES / 3,
-          .num_uav_descriptors = glsl::MAX_NUM_RESOURCES / 3,
-      }));
-  ren_try(m_sampler_descriptor_heap, arena.create_sampler_descriptor_heap(
-                                         {.name = "Sampler descriptor heap"}));
-  return {};
-}
 
 auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
                                            Handle<Sampler> sampler)
@@ -24,9 +9,7 @@ auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
   u32 index = m_sampler_allocator.allocate();
   ren_assert(index < glsl::MAX_NUM_SAMPLERS);
   rhi::write_sampler_descriptor_heap(
-      renderer.get_rhi_device(),
-      renderer.get_sampler_descriptor_heap(m_sampler_descriptor_heap).handle,
-      {renderer.get_sampler(sampler).handle}, index);
+      renderer.get_rhi_device(), {renderer.get_sampler(sampler).handle}, index);
   return glsl::SamplerState(index);
 };
 
@@ -40,9 +23,7 @@ auto DescriptorAllocator::try_allocate_sampler(Renderer &renderer,
   }
   ren_assert(index == u32(id));
   rhi::write_sampler_descriptor_heap(
-      renderer.get_rhi_device(),
-      renderer.get_sampler_descriptor_heap(m_sampler_descriptor_heap).handle,
-      {renderer.get_sampler(sampler).handle}, index);
+      renderer.get_rhi_device(), {renderer.get_sampler(sampler).handle}, index);
   return id;
 };
 
@@ -62,11 +43,8 @@ void DescriptorAllocator::free_sampler(glsl::SamplerState sampler) {
 auto DescriptorAllocator::allocate_texture(Renderer &renderer, SrvDesc desc)
     -> Result<glsl::Texture, Error> {
   u32 index = m_srv_allocator.allocate();
-  ren_try(rhi::SRV srv, renderer.get_srv(desc));
-  rhi::write_resource_descriptor_heap(
-      renderer.get_rhi_device(),
-      renderer.get_resource_descriptor_heap(m_resource_descriptor_heap).handle,
-      {srv}, index);
+  ren_try(rhi::ImageView srv, renderer.get_srv(desc));
+  rhi::write_srv_descriptor_heap(renderer.get_rhi_device(), {srv}, index);
   return glsl::Texture(index);
 };
 
@@ -79,11 +57,9 @@ auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
                                                    Handle<Sampler> sampler)
     -> Result<glsl::SampledTexture, Error> {
   u32 index = m_cis_allocator.allocate();
-  ren_try(rhi::SRV srv, renderer.get_srv(desc));
-  rhi::write_resource_descriptor_heap(
-      renderer.get_rhi_device(),
-      renderer.get_resource_descriptor_heap(m_resource_descriptor_heap).handle,
-      {srv}, {renderer.get_sampler(sampler).handle}, index);
+  ren_try(rhi::ImageView srv, renderer.get_srv(desc));
+  rhi::write_cis_descriptor_heap(renderer.get_rhi_device(), {srv},
+                                 {renderer.get_sampler(sampler).handle}, index);
   return glsl::SampledTexture(index);
 };
 
@@ -95,11 +71,8 @@ auto DescriptorAllocator::allocate_storage_texture(Renderer &renderer,
                                                    UavDesc desc)
     -> Result<glsl::StorageTexture, Error> {
   u32 index = m_uav_allocator.allocate();
-  ren_try(rhi::UAV uav, renderer.get_uav(desc));
-  rhi::write_resource_descriptor_heap(
-      renderer.get_rhi_device(),
-      renderer.get_resource_descriptor_heap(m_resource_descriptor_heap).handle,
-      {uav}, index);
+  ren_try(rhi::ImageView uav, renderer.get_uav(desc));
+  rhi::write_uav_descriptor_heap(renderer.get_rhi_device(), {uav}, index);
   return glsl::StorageTexture(index);
 };
 

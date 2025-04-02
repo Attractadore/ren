@@ -66,7 +66,7 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
   }
   ren_assert(base_mip + num_mips <= texture.num_mips);
   rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
-  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
+  u32 num_layers = (texture.cube_map ? 6 : 1);
   usize offset = src.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
@@ -94,7 +94,7 @@ void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
   }
   ren_assert(base_mip + num_mips <= texture.num_mips);
   rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
-  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
+  u32 num_layers = (texture.cube_map ? 6 : 1);
   usize offset = dst.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
@@ -130,7 +130,7 @@ void CommandRecorder::clear_texture(Handle<Texture> handle,
                  .color = color,
                  .aspect_mask = get_format_aspect_mask(texture.format),
                  .num_mips = texture.num_mips,
-                 .num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers,
+                 .num_layers = texture.cube_map ? 6u : 1u,
              });
 }
 
@@ -148,7 +148,7 @@ void CommandRecorder::pipeline_barrier(
                 .aspect_mask = get_format_aspect_mask(texture.format),
                 .base_mip = barrier.resource.base_mip,
                 .num_mips = barrier.resource.num_mips,
-                .num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers,
+                .num_layers = texture.cube_map ? 6u : 1u,
             },
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,
@@ -261,33 +261,12 @@ void RenderPass::set_depth_compare_op(VkCompareOp op) {
 
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
   const auto &pipeline = m_renderer->get_graphics_pipeline(handle);
-  m_pipeline_layout = pipeline.layout;
   vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     pipeline.handle.handle);
 }
 
-void RenderPass::set_descriptor_heaps(
-    Handle<ResourceDescriptorHeap> resource_heap,
-    Handle<SamplerDescriptorHeap> sampler_heap) {
-  rhi::cmd_set_descriptor_heaps(
-      {m_cmd.handle, m_renderer->get_rhi_device()},
-      rhi::PipelineBindPoint::Graphics,
-      m_renderer->get_resource_descriptor_heap(resource_heap).handle,
-      m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
-}
-
-void RenderPass::set_push_constants(Handle<PipelineLayout> layout,
-                                    TempSpan<const std::byte> data,
-                                    unsigned offset) {
-  vkCmdPushConstants(m_cmd.handle,
-                     m_renderer->get_pipeline_layout(layout).handle.handle,
-                     VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
-}
-
-void RenderPass::set_push_constants(TempSpan<const std::byte> data,
-                                    unsigned offset) {
-  ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
-  set_push_constants(m_pipeline_layout, data, offset);
+void RenderPass::push_constants(Span<const std::byte> data, unsigned offset) {
+  rhi::cmd_push_constants(m_cmd, offset, data);
 }
 
 void RenderPass::bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
@@ -375,33 +354,13 @@ void RenderPass::draw_indexed_indirect_count(
 void CommandRecorder::bind_compute_pipeline(Handle<ComputePipeline> handle) {
   const auto &pipeline = m_renderer->get_compute_pipeline(handle);
   m_pipeline = handle;
-  m_pipeline_layout = pipeline.layout;
   vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_COMPUTE,
                     pipeline.handle.handle);
 }
 
-void CommandRecorder::set_descriptor_heaps(
-    Handle<ResourceDescriptorHeap> resource_heap,
-    Handle<SamplerDescriptorHeap> sampler_heap) {
-  rhi::cmd_set_descriptor_heaps(
-      {m_cmd.handle, m_renderer->get_rhi_device()},
-      rhi::PipelineBindPoint::Compute,
-      m_renderer->get_resource_descriptor_heap(resource_heap).handle,
-      m_renderer->get_sampler_descriptor_heap(sampler_heap).handle);
-}
-
-void CommandRecorder::set_push_constants(Handle<PipelineLayout> layout,
-                                         TempSpan<const std::byte> data,
-                                         unsigned offset) {
-  vkCmdPushConstants(m_cmd.handle,
-                     m_renderer->get_pipeline_layout(layout).handle.handle,
-                     VK_SHADER_STAGE_ALL, offset, data.size(), data.data());
-}
-
-void CommandRecorder::set_push_constants(TempSpan<const std::byte> data,
-                                         unsigned offset) {
-  ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
-  set_push_constants(m_pipeline_layout, data, offset);
+void CommandRecorder::push_constants(Span<const std::byte> data,
+                                     unsigned offset) {
+  rhi::cmd_push_constants(m_cmd, offset, data);
 }
 
 void CommandRecorder::dispatch(u32 num_groups_x, u32 num_groups_y,

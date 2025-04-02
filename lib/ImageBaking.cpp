@@ -447,11 +447,8 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
     pass.set_callback(
         [args, pipelines = &baker->pipelines](Renderer &, const RgRuntime &rg,
                                               CommandRecorder &cmd) {
-          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                                   rg.get_sampler_descriptor_heap());
-
           cmd.bind_compute_pipeline(pipelines->reflection_map);
-          cmd.set_push_constants(glsl::BakeReflectionMapArgs{
+          cmd.push_constants(glsl::BakeReflectionMapArgs{
               .equirectangular_map = args.equirectangular_map,
               .reflectance_map =
                   (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
@@ -461,7 +458,7 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
 
           cmd.bind_compute_pipeline(pipelines->specular_map);
           for (u32 mip : range<u32>(1, NUM_CUBE_MAP_MIPS - 1)) {
-            cmd.set_push_constants(glsl::BakeSpecularMapArgs{
+            cmd.push_constants(glsl::BakeSpecularMapArgs{
                 .equirectangular_map = args.equirectangular_map,
                 .specular_map =
                     (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
@@ -474,7 +471,7 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
 
           cmd.bind_compute_pipeline(pipelines->irradiance_map);
           {
-            cmd.set_push_constants(glsl::BakeIrradianceMapArgs{
+            cmd.push_constants(glsl::BakeIrradianceMapArgs{
                 .equirectangular_map = args.equirectangular_map,
                 .irradiance_map =
                     (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(

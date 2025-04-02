@@ -84,14 +84,10 @@ struct DeviceData {
   VmaAllocator allocator = nullptr;
   Adapter adapter = {};
   std::array<Queue, QUEUE_FAMILY_COUNT> queues;
-  union {
-    struct {
-      VkDescriptorSetLayout resource_heap_layouts[3];
-      VkDescriptorSetLayout sampler_heap_layout;
-    };
-    VkDescriptorSetLayout heap_layouts[4] = {};
-  };
-  VkPipelineLayout common_pipeline_layout = nullptr;
+  VkDescriptorSetLayout descriptor_set_layout = nullptr;
+  VkPipelineLayout pipeline_layout = nullptr;
+  VkDescriptorPool descriptor_pool = nullptr;
+  VkDescriptorSet descriptor_heap = nullptr;
   VolkDeviceTable vk = {};
 };
 
@@ -758,79 +754,73 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   }
 
   {
-    VkDescriptorBindingFlags flags = {};
-    VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info = {
+    VkDescriptorBindingFlags flags[4] = {};
+    std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
         .sType =
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindingFlags = &flags,
-    };
-    VkDescriptorSetLayoutBinding binding = {};
-    VkDescriptorSetLayoutCreateInfo set_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = &binding_flags_info,
-        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
-        .bindingCount = 1,
-        .pBindings = &binding,
+        .bindingCount = std::size(flags),
+        .pBindingFlags = flags,
     };
 
-    flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
-
-    binding = {
-        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
-        .stageFlags =
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-    };
-    result = device->vk.vkCreateDescriptorSetLayout(
-        device->handle, &set_layout_info, nullptr,
-        &device->resource_heap_layouts[glsl::SRV_SET]);
-    if (result) {
-      destroy_device(device);
-      return fail(result);
-    }
-
-    binding = {
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
-        .stageFlags =
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
-    };
-    result = device->vk.vkCreateDescriptorSetLayout(
-        device->handle, &set_layout_info, nullptr,
-        &device->resource_heap_layouts[glsl::CIS_SET]);
-    if (result) {
-      destroy_device(device);
-      return fail(result);
-    }
-
-    binding = {
-        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
-        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-    };
-    result = device->vk.vkCreateDescriptorSetLayout(
-        device->handle, &set_layout_info, nullptr,
-        &device->resource_heap_layouts[glsl::UAV_SET]);
-    if (result) {
-      destroy_device(device);
-      return fail(result);
-    }
-
-    flags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-    binding = {
+    VkDescriptorSetLayoutBinding bindings[4] = {};
+    bindings[glsl::SAMPLER_SLOT] = {
+        .binding = glsl::SAMPLER_SLOT,
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
         .descriptorCount = glsl::MAX_NUM_SAMPLERS,
         .stageFlags =
             VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     };
+    bindings[glsl::SRV_SLOT] = {
+        .binding = glsl::SRV_SLOT,
+        .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .stageFlags =
+            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+    bindings[glsl::CIS_SLOT] = {
+        .binding = glsl::CIS_SLOT,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .stageFlags =
+            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+    bindings[glsl::UAV_SLOT] = {
+        .binding = glsl::UAV_SLOT,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo set_layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = &flags_info,
+        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+        .bindingCount = std::size(bindings),
+        .pBindings = bindings,
+    };
     result = device->vk.vkCreateDescriptorSetLayout(
         device->handle, &set_layout_info, nullptr,
-        &device->sampler_heap_layout);
+        &device->descriptor_set_layout);
+    if (result) {
+      destroy_device(device);
+      return fail(result);
+    }
+
+    VkPushConstantRange push_constants = {
+        .stageFlags = VK_SHADER_STAGE_ALL,
+        .size = MAX_PUSH_CONSTANTS_SIZE,
+    };
+    VkPipelineLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &device->descriptor_set_layout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constants,
+    };
+    result = device->vk.vkCreatePipelineLayout(
+        device->handle, &layout_info, nullptr, &device->pipeline_layout);
     if (result) {
       destroy_device(device);
       return fail(result);
@@ -838,19 +828,46 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
   }
 
   {
-    VkPushConstantRange push_constants = {
-        .stageFlags = VK_SHADER_STAGE_ALL,
-        .size = MAX_PUSH_CONSTANTS_SIZE,
+    VkDescriptorPoolSize pool_sizes[4] = {};
+    pool_sizes[glsl::SAMPLER_SLOT] = {
+        .type = VK_DESCRIPTOR_TYPE_SAMPLER,
+        .descriptorCount = glsl::MAX_NUM_SAMPLERS,
     };
-    VkPipelineLayoutCreateInfo layout_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 4,
-        .pSetLayouts = device->heap_layouts,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constants,
+    pool_sizes[glsl::SRV_SLOT] = {
+        .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
     };
-    result = device->vk.vkCreatePipelineLayout(
-        device->handle, &layout_info, nullptr, &device->common_pipeline_layout);
+    pool_sizes[glsl::CIS_SLOT] = {
+        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+    };
+    pool_sizes[glsl::UAV_SLOT] = {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+    };
+
+    VkDescriptorPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+        .maxSets = 1,
+        .poolSizeCount = std::size(pool_sizes),
+        .pPoolSizes = pool_sizes,
+    };
+    result = device->vk.vkCreateDescriptorPool(
+        device->handle, &pool_info, nullptr, &device->descriptor_pool);
+    if (result) {
+      destroy_device(device);
+      return fail(result);
+    }
+
+    VkDescriptorSetAllocateInfo set_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = device->descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &device->descriptor_set_layout,
+    };
+    result = device->vk.vkAllocateDescriptorSets(device->handle, &set_info,
+                                                 &device->descriptor_heap);
     if (result) {
       destroy_device(device);
       return fail(result);
@@ -864,12 +881,10 @@ void destroy_device(Device device) {
   if (device and device->handle) {
     VkDevice handle = device->handle;
     const VolkDeviceTable &vk = device->vk;
-    for (VkDescriptorSetLayout layout : device->resource_heap_layouts) {
-      vk.vkDestroyDescriptorSetLayout(handle, layout, nullptr);
-    }
-    vk.vkDestroyDescriptorSetLayout(handle, device->sampler_heap_layout,
+    vk.vkDestroyDescriptorSetLayout(handle, device->descriptor_set_layout,
                                     nullptr);
-    vk.vkDestroyPipelineLayout(handle, device->common_pipeline_layout, nullptr);
+    vk.vkDestroyPipelineLayout(handle, device->pipeline_layout, nullptr);
+    vk.vkDestroyDescriptorPool(handle, device->descriptor_pool, nullptr);
     vmaDestroyAllocator(device->allocator);
     vk.vkDestroyDevice(handle, nullptr);
   }
@@ -1257,9 +1272,8 @@ auto get_format_aspect_mask(TinyImageFormat format) -> VkImageAspectFlags {
 
 } // namespace
 
-auto create_srv(Device device, const SrvCreateInfo &create_info)
-    -> Result<SRV> {
-  u32 num_faces = create_info.dimension == ImageViewDimension::eCube ? 6 : 1;
+auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
+    -> Result<ImageView> {
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
@@ -1277,80 +1291,22 @@ auto create_srv(Device device, const SrvCreateInfo &create_info)
               .aspectMask = get_format_aspect_mask(create_info.format),
               .baseMipLevel = create_info.base_mip,
               .levelCount = create_info.num_mips,
-              .baseArrayLayer = create_info.base_layer * num_faces,
-              .layerCount = create_info.num_layers * num_faces,
-          },
-  };
-  SRV srv;
-  VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
-                                                 nullptr, &srv.handle);
-  if (result) {
-    return fail(result);
-  }
-  return srv;
-}
-
-void destroy_srv(Device device, SRV srv) {
-  device->vk.vkDestroyImageView(device->handle, srv.handle, nullptr);
-}
-
-auto create_uav(Device device, const UavCreateInfo &create_info)
-    -> Result<UAV> {
-  u32 num_faces = create_info.dimension == ImageViewDimension::eCube ? 6 : 1;
-  VkImageViewCreateInfo view_info = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = create_info.image.handle,
-      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
-      .format = toVkFormat(create_info.format),
-      .subresourceRange =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .baseMipLevel = create_info.mip,
-              .levelCount = 1,
-              .baseArrayLayer = create_info.base_layer * num_faces,
-              .layerCount = create_info.num_layers * num_faces,
-          },
-  };
-  UAV uav;
-  VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
-                                                 nullptr, &uav.handle);
-  if (result) {
-    return fail(result);
-  }
-  return uav;
-}
-
-void destroy_uav(Device device, UAV uav) {
-  device->vk.vkDestroyImageView(device->handle, uav.handle, nullptr);
-}
-
-auto create_rtv(Device device, const RtvCreateInfo &create_info)
-    -> Result<RTV> {
-  VkImageViewCreateInfo view_info = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = create_info.image.handle,
-      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
-      .format = toVkFormat(create_info.format),
-      .subresourceRange =
-          {
-              .aspectMask = get_format_aspect_mask(create_info.format),
-              .baseMipLevel = create_info.mip,
-              .levelCount = 1,
               .baseArrayLayer = create_info.base_layer,
-              .layerCount = create_info.num_layers,
+              .layerCount =
+                  create_info.dimension == ImageViewDimension::eCube ? 6u : 1u,
           },
   };
-  RTV rtv;
+  ImageView view;
   VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
-                                                 nullptr, &rtv.handle);
+                                                 nullptr, &view.handle);
   if (result) {
     return fail(result);
   }
-  return rtv;
+  return view;
 }
 
-void destroy_rtv(Device device, RTV rtv) {
-  device->vk.vkDestroyImageView(device->handle, rtv.handle, nullptr);
+void destroy_image_view(Device device, ImageView view) {
+  device->vk.vkDestroyImageView(device->handle, view.handle, nullptr);
 }
 
 namespace {
@@ -1425,66 +1381,27 @@ void destroy_sampler(Device device, Sampler sampler) {
   device->vk.vkDestroySampler(device->handle, sampler.handle, nullptr);
 }
 
-auto create_resource_descriptor_heap(
-    Device device, const ResourceDescriptorHeapCreateInfo &create_info)
-    -> Result<ResourceDescriptorHeap> {
-  VkResult result = VK_SUCCESS;
-
-  ResourceDescriptorHeap heap;
-
-  VkDescriptorPoolSize pool_sizes[3] = {};
-  pool_sizes[0] = {
-      .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-      .descriptorCount = create_info.num_srv_descriptors,
-  };
-  pool_sizes[1] = {
-      .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-      .descriptorCount = create_info.num_cis_descriptors,
-  };
-  pool_sizes[2] = {
-      .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-      .descriptorCount = create_info.num_uav_descriptors,
-  };
-
-  VkDescriptorPoolCreateInfo pool_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
-      .maxSets = 3,
-      .poolSizeCount = 3,
-      .pPoolSizes = pool_sizes,
-  };
-  result = device->vk.vkCreateDescriptorPool(device->handle, &pool_info,
-                                             nullptr, &heap.pool);
-  if (result) {
-    return fail(result);
+void write_sampler_descriptor_heap(Device device,
+                                   TempSpan<const Sampler> samplers,
+                                   u32 index) {
+  SmallVector<VkDescriptorImageInfo> image_info(samplers.size());
+  for (usize i : range(samplers.size())) {
+    image_info[i] = {.sampler = samplers[i].handle};
   }
-
-  VkDescriptorSetVariableDescriptorCountAllocateInfo variable_count_info = {
-      .sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
-      .descriptorSetCount = 3,
-      .pDescriptorCounts = create_info.num_descriptors.data(),
+  VkWriteDescriptorSet write_info = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = device->descriptor_heap,
+      .dstBinding = glsl::SAMPLER_SLOT,
+      .dstArrayElement = index,
+      .descriptorCount = (u32)image_info.size(),
+      .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
+      .pImageInfo = image_info.data(),
   };
-
-  VkDescriptorSetAllocateInfo allocate_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .pNext = &variable_count_info,
-      .descriptorPool = heap.pool,
-      .descriptorSetCount = 3,
-      .pSetLayouts = device->resource_heap_layouts,
-  };
-  result = device->vk.vkAllocateDescriptorSets(device->handle, &allocate_info,
-                                               heap.sets);
-  if (result) {
-    destroy_resource_descriptor_heap(device, heap);
-    return fail(result);
-  }
-
-  return heap;
+  device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const SRV> srvs, u32 index) {
+void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
+                               u32 index) {
   SmallVector<VkDescriptorImageInfo> image_info(srvs.size());
   for (usize i : range(srvs.size())) {
     image_info[i] = {
@@ -1494,7 +1411,8 @@ void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
   }
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = heap.sets[glsl::SRV_SET],
+      .dstSet = device->descriptor_heap,
+      .dstBinding = glsl::SRV_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1503,10 +1421,8 @@ void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const SRV> srvs,
-                                    TempSpan<const Sampler> samplers,
-                                    u32 index) {
+void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
+                               TempSpan<const Sampler> samplers, u32 index) {
   SmallVector<VkDescriptorImageInfo> image_info(srvs.size());
   for (usize i : range(srvs.size())) {
     image_info[i] = {
@@ -1517,7 +1433,8 @@ void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
   }
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = heap.sets[glsl::CIS_SET],
+      .dstSet = device->descriptor_heap,
+      .dstBinding = glsl::CIS_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1526,8 +1443,8 @@ void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const UAV> uavs, u32 index) {
+void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
+                               u32 index) {
   SmallVector<VkDescriptorImageInfo> image_info(uavs.size());
   for (usize i : range(uavs.size())) {
     image_info[i] = {
@@ -1537,179 +1454,14 @@ void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
   }
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = heap.sets[glsl::UAV_SET],
+      .dstSet = device->descriptor_heap,
+      .dstBinding = glsl::UAV_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
       .pImageInfo = image_info.data(),
   };
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
-}
-
-void destroy_resource_descriptor_heap(Device device,
-                                      ResourceDescriptorHeap heap) {
-  device->vk.vkDestroyDescriptorPool(device->handle, heap.pool, nullptr);
-}
-
-auto set_debug_name(Device device, ResourceDescriptorHeap heap,
-                    const char *name) -> Result<void> {
-  ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL,
-                                       heap.pool, name));
-  for (VkDescriptorSet set : heap.sets) {
-    ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_SET,
-                                         set, name));
-  }
-  return {};
-}
-
-auto create_sampler_descriptor_heap(Device device)
-    -> Result<SamplerDescriptorHeap> {
-  VkResult result = VK_SUCCESS;
-
-  SamplerDescriptorHeap heap;
-
-  VkDescriptorPoolSize pool_size = {
-      .type = VK_DESCRIPTOR_TYPE_SAMPLER,
-      .descriptorCount = glsl::MAX_NUM_SAMPLERS,
-  };
-
-  VkDescriptorPoolCreateInfo pool_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
-      .maxSets = 1,
-      .poolSizeCount = 1,
-      .pPoolSizes = &pool_size,
-  };
-  result = device->vk.vkCreateDescriptorPool(device->handle, &pool_info,
-                                             nullptr, &heap.pool);
-  if (result) {
-    return fail(result);
-  }
-
-  VkDescriptorSetAllocateInfo allocate_info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .descriptorPool = heap.pool,
-      .descriptorSetCount = 1,
-      .pSetLayouts = &device->sampler_heap_layout,
-  };
-  result = device->vk.vkAllocateDescriptorSets(device->handle, &allocate_info,
-                                               &heap.set);
-  if (result) {
-    destroy_sampler_descriptor_heap(device, heap);
-    return fail(result);
-  }
-
-  return heap;
-}
-
-void destroy_sampler_descriptor_heap(Device device,
-                                     SamplerDescriptorHeap heap) {
-  device->vk.vkDestroyDescriptorPool(device->handle, heap.pool, nullptr);
-}
-
-auto set_debug_name(Device device, SamplerDescriptorHeap heap, const char *name)
-    -> Result<void> {
-  ren_try_to(g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_POOL,
-                                       heap.pool, name));
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_DESCRIPTOR_SET,
-                                   heap.set, name);
-}
-
-void write_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap,
-                                   TempSpan<const Sampler> samplers,
-                                   u32 index) {
-  SmallVector<VkDescriptorImageInfo> image_info(samplers.size());
-  for (usize i : range(samplers.size())) {
-    image_info[i] = {.sampler = samplers[i].handle};
-  }
-  VkWriteDescriptorSet write_info = {
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = heap.set,
-      .dstArrayElement = index,
-      .descriptorCount = (u32)image_info.size(),
-      .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-      .pImageInfo = image_info.data(),
-  };
-  device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
-}
-
-auto create_pipeline_layout(Device device,
-                            const PipelineLayoutCreateInfo &create_info)
-    -> Result<PipelineLayout> {
-  VkResult result = VK_SUCCESS;
-
-  VkDescriptorSetLayout set_layouts[5] = {};
-  std::ranges::copy(device->heap_layouts, set_layouts);
-
-  VkDescriptorSetLayout push_set_layout = nullptr;
-  if (not create_info.push_descriptors.empty()) {
-    Vector<VkDescriptorSetLayoutBinding> bindings(
-        create_info.push_descriptors.size());
-    for (usize i : range(bindings.size())) {
-      const PushDescriptor &push_descriptor = create_info.push_descriptors[i];
-      bindings[i] = {
-          .binding = push_descriptor.binding,
-          .descriptorType =
-              [&] {
-                switch (push_descriptor.type) {
-                case PushDescriptorType::SRV:
-                case PushDescriptorType::UAV:
-                  return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                case PushDescriptorType::CBV:
-                  return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                }
-                std::unreachable();
-              }(),
-      };
-    }
-    VkDescriptorSetLayoutCreateInfo push_set_layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
-        .bindingCount = (u32)bindings.size(),
-        .pBindings = bindings.data(),
-    };
-    result = device->vk.vkCreateDescriptorSetLayout(
-        device->handle, &push_set_layout_info, nullptr, &push_set_layout);
-    if (result) {
-      return fail(result);
-    }
-    set_layouts[glsl::BUFFER_SET] = push_set_layout;
-  }
-
-  VkPushConstantRange push_constants = {
-      .stageFlags = VK_SHADER_STAGE_ALL,
-      .size = MAX_PUSH_CONSTANTS_SIZE,
-  };
-
-  PipelineLayout layout;
-
-  VkPipelineLayoutCreateInfo layout_info = {
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      .setLayoutCount = push_set_layout ? 5u : 4u,
-      .pSetLayouts = set_layouts,
-      .pushConstantRangeCount = 1,
-      .pPushConstantRanges = &push_constants,
-  };
-
-  result = device->vk.vkCreatePipelineLayout(device->handle, &layout_info,
-                                             nullptr, &layout.handle);
-  device->vk.vkDestroyDescriptorSetLayout(device->handle, push_set_layout,
-                                          nullptr);
-  if (result) {
-    return fail(result);
-  }
-
-  return layout;
-}
-
-void destroy_pipeline_layout(Device device, PipelineLayout layout) {
-  device->vk.vkDestroyPipelineLayout(device->handle, layout.handle, nullptr);
-}
-
-auto set_debug_name(Device device, PipelineLayout layout, const char *name)
-    -> Result<void> {
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_PIPELINE_LAYOUT,
-                                   layout.handle, name);
 }
 
 namespace {
@@ -2029,7 +1781,7 @@ auto create_graphics_pipeline(Device device,
       .pDepthStencilState = &depth_stencil_info,
       .pColorBlendState = &blend_info,
       .pDynamicState = &dynamic_state_info,
-      .layout = create_info.layout.handle,
+      .layout = device->pipeline_layout,
   };
 
   Pipeline pipeline;
@@ -2091,7 +1843,7 @@ auto create_compute_pipeline(Device device,
               .pName = cs.entry_point,
               .pSpecializationInfo = &specialization_info,
           },
-      .layout = create_info.layout.handle,
+      .layout = device->pipeline_layout,
   };
 
   Pipeline pipeline;
@@ -2121,6 +1873,7 @@ struct CommandPoolData {
   VkCommandPool handle = nullptr;
   SmallVector<VkCommandBuffer> cmd_buffers;
   usize cmd_index = 0;
+  QueueFamily queue_family = {};
 };
 
 } // namespace vk
@@ -2129,7 +1882,9 @@ auto create_command_pool(Device device,
                          const CommandPoolCreateInfo &create_info)
     -> Result<CommandPool> {
   const AdapterData &adapter = get_adapter(device);
-  CommandPool pool = new CommandPoolData;
+  CommandPool pool = new CommandPoolData{
+      .queue_family = create_info.queue_family,
+  };
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
@@ -2200,6 +1955,18 @@ auto begin_command_buffer(Device device, CommandPool pool)
   result = device->vk.vkBeginCommandBuffer(cmd.handle, &begin_info);
   if (result) {
     return fail(result);
+  }
+
+  if (pool->queue_family == QueueFamily::Graphics or
+      pool->queue_family == QueueFamily::Compute) {
+    device->vk.vkCmdBindDescriptorSets(
+        cmd.handle, VK_PIPELINE_BIND_POINT_COMPUTE, device->pipeline_layout, 0,
+        1, &device->descriptor_heap, 0, nullptr);
+  }
+  if (pool->queue_family == QueueFamily::Graphics) {
+    device->vk.vkCmdBindDescriptorSets(
+        cmd.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, device->pipeline_layout, 0,
+        1, &device->descriptor_heap, 0, nullptr);
   }
 
   return cmd;
@@ -2370,6 +2137,7 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
 }
 
+#if 0
 void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
                               ResourceDescriptorHeap resource_heap,
                               SamplerDescriptorHeap sampler_heap) {
@@ -2380,6 +2148,7 @@ void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
       cmd.handle, PIPELINE_BIND_POINT_MAP[(usize)bind_point],
       cmd.device->common_pipeline_layout, 0, std::size(sets), sets, 0, nullptr);
 }
+#endif
 
 void cmd_copy_buffer(CommandBuffer cmd, const BufferCopyInfo &info) {
   VkBufferCopy region = {
@@ -2450,6 +2219,13 @@ void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &info) {
   cmd.device->vk.vkCmdClearColorImage(cmd.handle, info.image.handle,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                       &color, 1, &subresource);
+}
+
+void cmd_push_constants(CommandBuffer cmd, usize offset,
+                        Span<const std::byte> data) {
+  cmd.device->vk.vkCmdPushConstants(cmd.handle, cmd.device->pipeline_layout,
+                                    VK_SHADER_STAGE_ALL, offset, data.size(),
+                                    data.data());
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;

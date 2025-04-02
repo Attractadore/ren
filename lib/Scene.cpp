@@ -31,8 +31,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
-  m_descriptor_allocator.init(m_arena).value();
-
   m_samplers = {
       .hi_z_gen =
           m_arena

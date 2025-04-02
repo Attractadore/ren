@@ -52,36 +52,12 @@ struct Image {
   Allocation allocation = {};
 };
 
-struct SRV {
-  VkImageView handle = nullptr;
-};
-
-struct UAV {
-  VkImageView handle = nullptr;
-};
-
-struct RTV {
+struct ImageView {
   VkImageView handle = nullptr;
 };
 
 struct Sampler {
   VkSampler handle = nullptr;
-};
-
-#define REN_RHI_MUTABLE_DESCRIPTORS 0
-
-struct ResourceDescriptorHeap {
-  VkDescriptorPool pool = nullptr;
-  VkDescriptorSet sets[3] = {};
-};
-
-struct SamplerDescriptorHeap {
-  VkDescriptorPool pool = nullptr;
-  VkDescriptorSet set = nullptr;
-};
-
-struct PipelineLayout {
-  VkPipelineLayout handle = nullptr;
 };
 
 struct Pipeline {

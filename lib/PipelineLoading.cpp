@@ -27,11 +27,8 @@ namespace ren {
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(EarlyZVS, EarlyZVSSize).as_bytes();
-  ren_try(Handle<PipelineLayout> layout,
-          create_pipeline_layout(arena, {vs}, "Early Z pass"));
   return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
       .name = "Early Z pass graphics pipeline",
-      .layout = layout,
       .vs = {vs},
       .rasterization_state = {.cull_mode = rhi::CullMode::Back},
       .depth_stencil_state =
@@ -48,8 +45,6 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
     Error> {
   auto vs = Span(OpaqueVS, OpaqueVSSize).as_bytes();
   auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
-  ren_try(Handle<PipelineLayout> layout,
-          create_pipeline_layout(arena, {vs, fs}, "Opaque pass"));
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       pipelines;
   for (int i = 0; i < glsl::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
@@ -62,7 +57,6 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
     Result<Handle<GraphicsPipeline>, Error> result =
         arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
             .name = fmt::format("Opaque pass graphics pipeline {}", i),
-            .layout = layout,
             .vs =
                 {
                     .code = vs,
@@ -97,11 +91,8 @@ auto load_skybox_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(SkyboxVS, SkyboxVSSize).as_bytes();
   auto fs = Span(SkyboxFS, SkyboxFSSize).as_bytes();
-  ren_try(Handle<PipelineLayout> layout,
-          create_pipeline_layout(arena, {vs, fs}, "Skybox pass"));
   return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
       .name = "Skybox pass graphics pipeline",
-      .layout = layout,
       .vs = {vs},
       .fs = {fs},
       .depth_stencil_state =
@@ -118,11 +109,8 @@ auto load_imgui_pipeline(ResourceArena &arena, TinyImageFormat format)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(ImGuiVS, ImGuiVSSize).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFSSize).as_bytes();
-  ren_try(Handle<PipelineLayout> layout,
-          create_pipeline_layout(arena, {vs, fs}, "ImGui pass"));
   return arena.create_graphics_pipeline({
       .name = "ImGui pass graphics pipeline",
-      .layout = layout,
       .vs = {vs},
       .fs = {fs},
       .rtv_formats = {format},

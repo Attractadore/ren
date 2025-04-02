@@ -1,5 +1,4 @@
 #pragma once
-#include "Descriptors.hpp"
 #include "FreeListAllocator.hpp"
 #include "Texture.hpp"
 #include "core/GenIndex.hpp"
@@ -17,24 +16,12 @@ struct SrvDesc;
 struct UavDesc;
 
 class DescriptorAllocator {
-  Handle<ResourceDescriptorHeap> m_resource_descriptor_heap;
-  Handle<SamplerDescriptorHeap> m_sampler_descriptor_heap;
   FreeListAllocator m_srv_allocator;
   FreeListAllocator m_cis_allocator;
   FreeListAllocator m_uav_allocator;
   FreeListAllocator m_sampler_allocator;
 
 public:
-  auto init(ResourceArena &arena) -> Result<void, Error>;
-
-  auto get_resource_heap() const -> Handle<ResourceDescriptorHeap> {
-    return m_resource_descriptor_heap;
-  }
-
-  auto get_sampler_heap() const -> Handle<SamplerDescriptorHeap> {
-    return m_sampler_descriptor_heap;
-  }
-
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;
 
@@ -89,14 +76,6 @@ public:
   operator=(DescriptorAllocatorScope &&other) noexcept;
 
   auto init(DescriptorAllocator &allocator) -> Result<void, Error>;
-
-  auto get_resource_descriptor_heap() const -> Handle<ResourceDescriptorHeap> {
-    return m_allocator->get_resource_heap();
-  }
-
-  auto get_sampler_descriptor_heap() const -> Handle<SamplerDescriptorHeap> {
-    return m_allocator->get_sampler_heap();
-  }
 
   auto allocate_sampler(Renderer &renderer, Handle<Sampler> sampler)
       -> glsl::SamplerState;

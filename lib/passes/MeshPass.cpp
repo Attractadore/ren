@@ -195,8 +195,6 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     pass.set_callback(
         [rcs, args](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
-          cmd.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                                   rg.get_sampler_descriptor_heap());
           cmd.bind_compute_pipeline(rcs.pipeline);
           auto pc = to_push_constants(rg, args);
           DevicePtr<glsl::MeshletCullData> base_cull_data = pc.bucket_cull_data;
@@ -205,7 +203,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
             pc.bucket_cull_data = base_cull_data + rcs.bucket_offsets[bucket];
             pc.bucket_size = base_bucket_size + bucket;
             pc.bucket = bucket;
-            cmd.set_push_constants(pc);
+            cmd.push_constants(pc);
             cmd.dispatch_indirect(
                 rg.get_buffer(rcs.meshlet_bucket_commands).slice(bucket));
           }
@@ -402,12 +400,10 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
-      render_pass.set_descriptor_heaps(rg.get_resource_descriptor_heap(),
-                                       rg.get_sampler_descriptor_heap());
       render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
       render_pass.bind_index_buffer(rcs.batch.index_buffer,
                                     VK_INDEX_TYPE_UINT8_EXT);
-      rg.set_push_constants(render_pass, args);
+      rg.push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
                                               rg.get_buffer(rcs.batch_sizes));
     });

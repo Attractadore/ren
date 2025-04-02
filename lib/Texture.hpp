@@ -24,7 +24,6 @@ struct TextureCreateInfo {
   u32 depth : 31 = 0;
   bool cube_map : 1 = false;
   u32 num_mips = 1;
-  u32 num_layers = 1;
 };
 
 struct ExternalTextureCreateInfo {
@@ -36,7 +35,6 @@ struct ExternalTextureCreateInfo {
   u32 height = 0;
   u32 depth = 0;
   u32 num_mips = 1;
-  u32 num_layers = 1;
 };
 
 struct Texture {
@@ -53,10 +51,10 @@ struct Texture {
   };
   bool cube_map = false;
   u32 num_mips = 0;
-  u32 num_layers = 0;
 };
 
 constexpr u32 ALL_MIPS = -1;
+constexpr u32 ALL_LAYERS = -1;
 
 struct Subresource {
   Handle<Texture> handle;
@@ -85,6 +83,7 @@ struct RtvDesc {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
   u32 mip = 0;
+  u32 layer = 0;
 };
 
 struct SamplerCreateInfo {

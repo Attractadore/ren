@@ -1,9 +1,7 @@
 #pragma once
 #include "Attachments.hpp"
 #include "Buffer.hpp"
-#include "Descriptors.hpp"
 #include "Texture.hpp"
-#include "core/Assert.hpp"
 #include "core/Span.hpp"
 #include "core/Vector.hpp"
 #include "glsl/Indirect.h"
@@ -16,7 +14,6 @@ class Renderer;
 struct CommandPool;
 struct ComputePipeline;
 struct GraphicsPipeline;
-struct PipelineLayout;
 
 struct ColorAttachment {
   RtvDesc rtv;
@@ -77,27 +74,12 @@ public:
 
   void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
 
-  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
-                            Handle<SamplerDescriptorHeap> sampler_heap);
-
-  void set_push_constants(Handle<PipelineLayout> layout,
-                          TempSpan<const std::byte> data, unsigned offset = 0);
-
-  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
+  void push_constants(Span<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
     requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
-                          unsigned offset = 0) {
-    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
-  }
-
-  template <typename T>
-    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(const T &data, unsigned offset = 0) {
-    ren_assert_msg(m_pipeline_layout, "A compute pipeline must be bound");
-    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
-                       offset);
+  void push_constants(const T &data, unsigned offset = 0) {
+    push_constants(Span(&data, 1).as_bytes(), offset);
   }
 
   void dispatch(u32 num_groups_x, u32 num_groups_y = 1, u32 num_groups_z = 1);
@@ -153,7 +135,6 @@ private:
   Renderer *m_renderer = nullptr;
   rhi::CommandBuffer m_cmd = {};
   Handle<ComputePipeline> m_pipeline;
-  Handle<PipelineLayout> m_pipeline_layout;
 };
 
 class RenderPass {
@@ -175,27 +156,12 @@ public:
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
-  void set_descriptor_heaps(Handle<ResourceDescriptorHeap> resource_heap,
-                            Handle<SamplerDescriptorHeap> sampler_heap);
-
-  void set_push_constants(Handle<PipelineLayout> layout,
-                          TempSpan<const std::byte> data, unsigned offset = 0);
-
-  void set_push_constants(TempSpan<const std::byte> data, unsigned offset = 0);
+  void push_constants(Span<const std::byte> data, unsigned offset = 0);
 
   template <typename T>
     requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(Handle<PipelineLayout> layout, const T &data,
-                          unsigned offset = 0) {
-    set_push_constants(layout, TempSpan(&data, 1).as_bytes(), offset);
-  }
-
-  template <typename T>
-    requires(sizeof(T) <= rhi::MAX_PUSH_CONSTANTS_SIZE)
-  void set_push_constants(const T &data, unsigned offset = 0) {
-    ren_assert_msg(m_pipeline_layout, "A graphics pipeline must be bound");
-    set_push_constants(m_pipeline_layout, TempSpan(&data, 1).as_bytes(),
-                       offset);
+  void push_constants(const T &data, unsigned offset = 0) {
+    push_constants(Span(&data, 1).as_bytes(), offset);
   }
 
   void bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
@@ -235,7 +201,6 @@ private:
 private:
   Renderer *m_renderer = nullptr;
   rhi::CommandBuffer m_cmd = {};
-  Handle<PipelineLayout> m_pipeline_layout;
 };
 
 class DebugRegion {

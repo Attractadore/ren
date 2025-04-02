@@ -8,16 +8,16 @@
 #define IS_NULL_DESC(descriptor) ((descriptor).id == 0)
 
 // clang-format off
-layout(binding = 0, set = SRV_SET) uniform texture2D g_textures_2d[];
+layout(binding = SAMPLER_SLOT) uniform sampler g_samplers[MAX_NUM_SAMPLERS];
 
-layout(binding = 0, set = CIS_SET) uniform sampler2D g_sampled_textures_2d[];
-layout(binding = 0, set = CIS_SET) uniform samplerCube g_sampled_textures_cube[];
+layout(binding = SRV_SLOT) uniform texture2D g_textures_2d[MAX_NUM_RESOURCES];
 
-layout(binding = 0, set = UAV_SET) restrict uniform image2D g_storage_textures_2d[];
-layout(binding = 0, set = UAV_SET) coherent restrict uniform image2D g_coherent_storage_textures_2d[];
-layout(binding = 0, set = UAV_SET) restrict uniform imageCube g_storage_textures_cube[];
+layout(binding = CIS_SLOT) uniform sampler2D g_sampled_textures_2d[MAX_NUM_RESOURCES];
+layout(binding = CIS_SLOT) uniform samplerCube g_sampled_textures_cube[MAX_NUM_RESOURCES];
 
-layout(binding = 0, set = SAMPLER_SET) uniform sampler g_samplers[MAX_NUM_SAMPLERS];
+layout(binding = UAV_SLOT) restrict uniform image2D g_storage_textures_2d[MAX_NUM_RESOURCES];
+layout(binding = UAV_SLOT) coherent restrict uniform image2D g_coherent_storage_textures_2d[MAX_NUM_RESOURCES];
+layout(binding = UAV_SLOT) restrict uniform imageCube g_storage_textures_cube[MAX_NUM_RESOURCES];
 // clang-format on
 
 #define MAKE_SAMPLER_2D(s, t) sampler2D(g_textures_2d[t.id], g_samplers[s.id])

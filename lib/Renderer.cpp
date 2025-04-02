@@ -117,7 +117,6 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
     -> Result<Handle<Texture>, Error> {
   ren_assert(create_info.width > 0);
   ren_assert(create_info.num_mips > 0);
-  ren_assert(create_info.num_layers > 0);
 
   ren_try(rhi::Image image, rhi::create_image({
                                 .device = m_device,
@@ -128,7 +127,6 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
                                 .depth = create_info.depth,
                                 .cube_map = create_info.cube_map,
                                 .num_mips = create_info.num_mips,
-                                .num_layers = create_info.num_layers,
                             }));
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
   return m_textures.emplace(Texture{
@@ -140,7 +138,6 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
       .depth = create_info.depth,
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
-      .num_layers = create_info.num_layers,
   });
 }
 
@@ -156,7 +153,6 @@ auto Renderer::create_external_texture(
       .height = create_info.height,
       .depth = create_info.depth,
       .num_mips = create_info.num_mips,
-      .num_layers = create_info.num_layers,
   });
 }
 
@@ -166,17 +162,7 @@ void Renderer::destroy(Handle<Texture> handle) {
       rhi::destroy_image(m_device, texture->handle);
     }
     for (const auto &[desc, view] : m_image_views[handle]) {
-      switch (desc.type) {
-      case rhi::ImageViewType::SRV: {
-        rhi::destroy_srv(m_device, view.srv);
-      } break;
-      case rhi::ImageViewType::UAV: {
-        rhi::destroy_uav(m_device, view.uav);
-      } break;
-      case rhi::ImageViewType::RTV: {
-        rhi::destroy_rtv(m_device, view.rtv);
-      } break;
-      }
+      rhi::destroy_image_view(m_device, view);
     }
     m_image_views.erase(handle);
   };
@@ -187,41 +173,33 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::SRV, Error> {
-  ren_try(rhi::ImageView view,
-          get_image_view(srv.texture, ImageViewDesc{
-                                          .type = rhi::ImageViewType::SRV,
-                                          .dimension = srv.dimension,
-                                          .format = srv.format,
-                                          .components = srv.components,
-                                          .base_mip = srv.base_mip,
-                                          .num_mips = srv.num_mips,
-                                      }));
-  return view.srv;
+auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error> {
+  return get_image_view(srv.texture, ImageViewDesc{
+                                         .dimension = srv.dimension,
+                                         .format = srv.format,
+                                         .components = srv.components,
+                                         .base_mip = srv.base_mip,
+                                         .num_mips = srv.num_mips,
+                                     });
 }
 
-auto Renderer::get_uav(UavDesc uav) -> Result<rhi::UAV, Error> {
-  ren_try(rhi::ImageView view,
-          get_image_view(uav.texture, ImageViewDesc{
-                                          .type = rhi::ImageViewType::UAV,
-                                          .dimension = uav.dimension,
-                                          .format = uav.format,
-                                          .base_mip = uav.mip,
-                                          .num_mips = 1,
-                                      }));
-  return view.uav;
+auto Renderer::get_uav(UavDesc uav) -> Result<rhi::ImageView, Error> {
+  return get_image_view(uav.texture, ImageViewDesc{
+                                         .dimension = uav.dimension,
+                                         .format = uav.format,
+                                         .base_mip = uav.mip,
+                                         .num_mips = 1,
+                                     });
 }
 
-auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::RTV, Error> {
-  ren_try(rhi::ImageView view,
-          get_image_view(rtv.texture, ImageViewDesc{
-                                          .type = rhi::ImageViewType::RTV,
-                                          .dimension = rtv.dimension,
-                                          .format = rtv.format,
-                                          .base_mip = rtv.mip,
-                                          .num_mips = 1,
-                                      }));
-  return view.rtv;
+auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error> {
+  return get_image_view(rtv.texture, ImageViewDesc{
+                                         .dimension = rtv.dimension,
+                                         .format = rtv.format,
+                                         .base_mip = rtv.mip,
+                                         .num_mips = 1,
+                                         .base_layer = rtv.layer,
+                                     });
 }
 
 auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
@@ -231,45 +209,25 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     desc.format = texture.format;
   }
   if (desc.num_mips == ALL_MIPS) {
-    desc.num_mips = texture.num_mips;
+    desc.num_mips = texture.num_mips - desc.base_mip;
   }
 
   auto &image_views = m_image_views[handle];
 
-  [[likely]] if (const rhi::ImageView *image_view = image_views.try_get(desc)) {
-    return *image_view;
+  [[likely]] if (const rhi::ImageView *view = image_views.try_get(desc)) {
+    return *view;
   }
 
-  rhi::ImageView view = {};
-  switch (desc.type) {
-  case rhi::ImageViewType::SRV: {
-    ren_try(view.srv,
-            rhi::create_srv(m_device, {
-                                          .image = texture.handle,
-                                          .dimension = desc.dimension,
-                                          .format = desc.format,
-                                          .components = desc.components,
-                                          .base_mip = desc.base_mip,
-                                          .num_mips = desc.num_mips,
-                                      }));
-  } break;
-  case rhi::ImageViewType::UAV: {
-    ren_try(view.uav, rhi::create_uav(m_device, {
-                                                    .image = texture.handle,
-                                                    .dimension = desc.dimension,
-                                                    .format = desc.format,
-                                                    .mip = desc.base_mip,
-                                                }));
-  } break;
-  case rhi::ImageViewType::RTV: {
-    ren_try(view.rtv, rhi::create_rtv(m_device, {
-                                                    .image = texture.handle,
-                                                    .dimension = desc.dimension,
-                                                    .format = desc.format,
-                                                    .mip = desc.base_mip,
-                                                }));
-  } break;
-  }
+  ren_try(rhi::ImageView view,
+          rhi::create_image_view(m_device, {
+                                               .image = texture.handle,
+                                               .dimension = desc.dimension,
+                                               .format = desc.format,
+                                               .components = desc.components,
+                                               .base_mip = desc.base_mip,
+                                               .num_mips = desc.num_mips,
+                                               .base_layer = desc.base_layer,
+                                           }));
 
   image_views.insert(desc, view);
 
@@ -312,54 +270,6 @@ void Renderer::destroy(Handle<Sampler> handle) {
 auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
   ren_assert(m_samplers.contains(sampler));
   return m_samplers[sampler];
-}
-
-auto Renderer::create_resource_descriptor_heap(
-    const ResourceDescriptorHeapCreateInfo &&create_info)
-    -> Result<Handle<ResourceDescriptorHeap>, Error> {
-  ren_try(rhi::ResourceDescriptorHeap heap,
-          rhi::create_resource_descriptor_heap(
-              m_device, {.num_descriptors = create_info.num_descriptors}));
-  ren_try_to(rhi::set_debug_name(m_device, heap, create_info.name.c_str()));
-  return m_resource_descriptor_heaps.emplace(ResourceDescriptorHeap{
-      .handle = heap,
-      .num_descriptors = create_info.num_descriptors,
-  });
-}
-
-void Renderer::destroy(Handle<ResourceDescriptorHeap> handle) {
-  if (Optional<ResourceDescriptorHeap> heap =
-          m_resource_descriptor_heaps.try_pop(handle)) {
-    rhi::destroy_resource_descriptor_heap(m_device, heap->handle);
-  }
-}
-
-auto Renderer::get_resource_descriptor_heap(Handle<ResourceDescriptorHeap> heap)
-    const -> const ResourceDescriptorHeap & {
-  return m_resource_descriptor_heaps[heap];
-}
-
-auto Renderer::create_sampler_descriptor_heap(
-    const SamplerDescriptorHeapCreateInfo &&create_info)
-    -> Result<Handle<SamplerDescriptorHeap>, Error> {
-  ren_try(rhi::SamplerDescriptorHeap heap,
-          rhi::create_sampler_descriptor_heap(m_device));
-  ren_try_to(rhi::set_debug_name(m_device, heap, create_info.name.c_str()));
-  return m_sampler_descriptor_heaps.emplace(SamplerDescriptorHeap{
-      .handle = heap,
-  });
-}
-
-void Renderer::destroy(Handle<SamplerDescriptorHeap> handle) {
-  if (Optional<SamplerDescriptorHeap> heap =
-          m_sampler_descriptor_heaps.try_pop(handle)) {
-    rhi::destroy_sampler_descriptor_heap(m_device, heap->handle);
-  }
-}
-
-auto Renderer::get_sampler_descriptor_heap(
-    Handle<SamplerDescriptorHeap> heap) const -> const SamplerDescriptorHeap & {
-  return m_sampler_descriptor_heaps[heap];
 }
 
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
@@ -439,7 +349,6 @@ auto Renderer::create_graphics_pipeline(
     }
   }
   rhi::GraphicsPipelineCreateInfo pipeline_info = {
-      .layout = get_pipeline_layout(create_info.layout).handle,
       .input_assembly_state = create_info.input_assembly_state,
       .rasterization_state = create_info.rasterization_state,
       .multisampling_state = create_info.multisampling_state,
@@ -508,10 +417,7 @@ auto Renderer::create_graphics_pipeline(
           rhi::create_graphics_pipeline(m_device, pipeline_info));
   ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
 
-  return m_graphics_pipelines.emplace(GraphicsPipeline{
-      .handle = pipeline,
-      .layout = create_info.layout,
-  });
+  return m_graphics_pipelines.emplace(GraphicsPipeline{.handle = pipeline});
 }
 
 void Renderer::destroy(Handle<GraphicsPipeline> handle) {
@@ -561,7 +467,6 @@ auto Renderer::create_compute_pipeline(
           rhi::create_compute_pipeline(
               m_device,
               {
-                  .layout = get_pipeline_layout(create_info.layout).handle,
                   .cs =
                       {
                           .code = create_info.cs.code,
@@ -577,7 +482,6 @@ auto Renderer::create_compute_pipeline(
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
-      .layout = create_info.layout,
       .local_size = {local_size.x, local_size.y, local_size.z},
   });
 }
@@ -593,40 +497,6 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
     -> const ComputePipeline & {
   ren_assert(m_compute_pipelines.contains(pipeline));
   return m_compute_pipelines[pipeline];
-}
-
-auto Renderer::create_pipeline_layout(
-    const PipelineLayoutCreateInfo &&create_info)
-    -> Result<Handle<PipelineLayout>, Error> {
-  ren_try(
-      rhi::PipelineLayout layout,
-      rhi::create_pipeline_layout(
-          m_device, {
-                        .use_resource_heap = create_info.use_resource_heap,
-                        .use_sampler_heap = create_info.use_sampler_heap,
-                        .push_descriptors = create_info.push_descriptors,
-                        .push_constants_size = create_info.push_constants_size,
-                    }));
-  ren_try_to(rhi::set_debug_name(m_device, layout, create_info.name.c_str()));
-  return m_pipeline_layouts.emplace(PipelineLayout{
-      .handle = layout,
-      .use_resource_heap = create_info.use_resource_heap,
-      .use_sampler_heap = create_info.use_sampler_heap,
-      .push_descriptors = create_info.push_descriptors,
-      .push_constants_size = create_info.push_constants_size,
-  });
-}
-
-void Renderer::destroy(Handle<PipelineLayout> handle) {
-  if (Optional<PipelineLayout> layout = m_pipeline_layouts.try_pop(handle)) {
-    rhi::destroy_pipeline_layout(m_device, layout->handle);
-  }
-}
-
-auto Renderer::get_pipeline_layout(Handle<PipelineLayout> layout) const
-    -> const PipelineLayout & {
-  ren_assert(m_pipeline_layouts.contains(layout));
-  return m_pipeline_layouts[layout];
 }
 
 auto Renderer::submit(rhi::QueueFamily queue_family,

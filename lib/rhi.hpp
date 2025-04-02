@@ -7,7 +7,6 @@
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
 
-#include <array>
 #include <chrono>
 #include <glm/vec2.hpp>
 
@@ -280,18 +279,6 @@ auto set_debug_name(Device device, Image image, const char *name)
 
 auto get_allocation(Device device, Image image) -> Allocation;
 
-enum class ImageViewType {
-  SRV,
-  UAV,
-  RTV,
-};
-
-union ImageView {
-  SRV srv;
-  UAV uav;
-  RTV rtv;
-};
-
 enum class ImageViewDimension {
   e1D,
   e2D,
@@ -324,46 +311,20 @@ public:
   bool operator==(const ComponentMapping &) const = default;
 };
 
-struct SrvCreateInfo {
+struct ImageViewCreateInfo {
   Image image = {};
   ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   ComponentMapping components;
   u32 base_mip = 0;
-  u32 num_mips = 1;
+  u32 num_mips = 0;
   u32 base_layer = 0;
-  u32 num_layers = 1;
 };
 
-auto create_srv(Device device, const SrvCreateInfo &create_info) -> Result<SRV>;
+auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
+    -> Result<ImageView>;
 
-void destroy_srv(Device device, SRV srv);
-
-struct UavCreateInfo {
-  Image image = {};
-  ImageViewDimension dimension = {};
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  u32 mip = 0;
-  u32 base_layer = 0;
-  u32 num_layers = 1;
-};
-
-auto create_uav(Device device, const UavCreateInfo &create_info) -> Result<UAV>;
-
-void destroy_uav(Device device, UAV uav);
-
-struct RtvCreateInfo {
-  Image image = {};
-  ImageViewDimension dimension = {};
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  u32 mip = 0;
-  u32 base_layer = 0;
-  u32 num_layers = 1;
-};
-
-auto create_rtv(Device device, const RtvCreateInfo &create_info) -> Result<RTV>;
-
-void destroy_rtv(Device device, RTV rtv);
+void destroy_image_view(Device device, ImageView view);
 
 enum class Filter {
   Nearest,
@@ -418,75 +379,19 @@ auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler>;
 
 void destroy_sampler(Device device, Sampler sampler);
 
-struct ResourceDescriptorHeapCreateInfo {
-  union {
-    struct {
-      u32 num_srv_descriptors;
-      u32 num_cis_descriptors;
-      u32 num_uav_descriptors;
-    };
-    std::array<u32, 3> num_descriptors = {};
-  };
-};
+void write_sampler_descriptor_heap(Device device,
+                                   TempSpan<const Sampler> samplers,
+                                   u32 base_index);
 
-auto create_resource_descriptor_heap(
-    Device device, const ResourceDescriptorHeapCreateInfo &create_info)
-    -> Result<ResourceDescriptorHeap>;
+void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> views,
+                               u32 base_index);
 
-void destroy_resource_descriptor_heap(Device device,
-                                      ResourceDescriptorHeap heap);
+void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> views,
+                               TempSpan<const Sampler> samplers,
+                               u32 base_index);
 
-auto set_debug_name(Device device, ResourceDescriptorHeap heap,
-                    const char *name) -> Result<void>;
-
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const SRV> srvs, u32 index);
-
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const SRV> srvs,
-                                    TempSpan<const Sampler> samplers,
-                                    u32 index);
-
-void write_resource_descriptor_heap(Device device, ResourceDescriptorHeap heap,
-                                    TempSpan<const UAV> uavs, u32 index);
-
-auto create_sampler_descriptor_heap(Device device)
-    -> Result<SamplerDescriptorHeap>;
-
-void destroy_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap);
-
-auto set_debug_name(Device device, SamplerDescriptorHeap heap, const char *name)
-    -> Result<void>;
-
-void write_sampler_descriptor_heap(Device device, SamplerDescriptorHeap heap,
-                                   TempSpan<const Sampler> samplers, u32 index);
-
-enum class PushDescriptorType {
-  SRV,
-  UAV,
-  CBV,
-};
-
-struct PushDescriptor {
-  PushDescriptorType type = {};
-  u32 binding = 0;
-};
-
-struct PipelineLayoutCreateInfo {
-  bool use_resource_heap = false;
-  bool use_sampler_heap = false;
-  TempSpan<const PushDescriptor> push_descriptors = {};
-  u32 push_constants_size = 0;
-};
-
-auto create_pipeline_layout(Device device,
-                            const PipelineLayoutCreateInfo &create_info)
-    -> Result<PipelineLayout>;
-
-void destroy_pipeline_layout(Device device, PipelineLayout layout);
-
-auto set_debug_name(Device device, PipelineLayout layout, const char *name)
-    -> Result<void>;
+void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> views,
+                               u32 base_index);
 
 struct SpecializationConstant {
   u32 id = 0;
@@ -683,7 +588,6 @@ struct BlendStateInfo {
 };
 
 struct GraphicsPipelineCreateInfo {
-  PipelineLayout layout;
   ShaderInfo ts;
   ShaderInfo ms;
   ShaderInfo vs;
@@ -699,7 +603,6 @@ struct GraphicsPipelineCreateInfo {
 };
 
 struct ComputePipelineCreateInfo {
-  PipelineLayout layout;
   ShaderInfo cs;
 };
 
@@ -964,10 +867,6 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers);
 
-void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
-                              ResourceDescriptorHeap resource_heap,
-                              SamplerDescriptorHeap sampler_heap);
-
 struct BufferCopyInfo {
   Buffer src = {};
   Buffer dst = {};
@@ -1016,6 +915,9 @@ struct ImageClearInfo {
 };
 
 void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &clear_info);
+
+void cmd_push_constants(CommandBuffer cmd, usize offset,
+                        Span<const std::byte> data);
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 

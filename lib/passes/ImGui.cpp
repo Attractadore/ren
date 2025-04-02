@@ -39,8 +39,6 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
     indices += cmd_list->IdxBuffer.Size;
   }
 
-  render_pass.set_descriptor_heaps(rg.get_resource_descriptor_heap(), rg.get_sampler_descriptor_heap());
-
   render_pass.bind_graphics_pipeline(rcs.pipeline);
 
   render_pass.bind_index_buffer(index_buffer);
@@ -85,7 +83,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
 
       glsl::SampledTexture2D texture((uintptr_t)cmd.TextureId);
 
-      render_pass.set_push_constants(glsl::ImGuiArgs{
+      render_pass.push_constants(glsl::ImGuiArgs{
           .vertices = DevicePtr<glsl::ImGuiVertex>(vertices_ptr),
           .scale = scale,
           .translate = translate,

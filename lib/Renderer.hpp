@@ -1,7 +1,6 @@
 #pragma once
 #include "Buffer.hpp"
 #include "CommandPool.hpp"
-#include "Descriptors.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
 #include "Texture.hpp"
@@ -27,12 +26,12 @@ enum class RendererFeature {
 constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
 
 struct ImageViewDesc {
-  rhi::ImageViewType type = {};
   rhi::ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ComponentMapping components;
   u32 base_mip = 0;
   u32 num_mips = 0;
+  u32 base_layer = 0;
 
 public:
   bool operator==(const ImageViewDesc &) const = default;
@@ -54,11 +53,6 @@ class Renderer final : public IRenderer {
   GenArray<Sampler> m_samplers;
 
   GenArray<Semaphore> m_semaphores;
-
-  GenArray<ResourceDescriptorHeap> m_resource_descriptor_heaps;
-  GenArray<SamplerDescriptorHeap> m_sampler_descriptor_heaps;
-
-  GenArray<PipelineLayout> m_pipeline_layouts;
 
   GenArray<GraphicsPipeline> m_graphics_pipelines;
   GenArray<ComputePipeline> m_compute_pipelines;
@@ -158,11 +152,11 @@ public:
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto get_srv(SrvDesc srv) -> Result<rhi::SRV, Error>;
+  auto get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error>;
 
-  auto get_uav(UavDesc uav) -> Result<rhi::UAV, Error>;
+  auto get_uav(UavDesc uav) -> Result<rhi::ImageView, Error>;
 
-  auto get_rtv(RtvDesc rtv) -> Result<rhi::RTV, Error>;
+  auto get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error>;
 
   auto get_image_view(Handle<Texture> texture, ImageViewDesc view)
       -> Result<rhi::ImageView, Error>;
@@ -176,36 +170,6 @@ public:
       -> Optional<const Sampler &>;
 
   auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
-
-  [[nodiscard]] auto create_resource_descriptor_heap(
-      const ResourceDescriptorHeapCreateInfo &&create_info)
-      -> Result<Handle<ResourceDescriptorHeap>, Error>;
-
-  void destroy(Handle<ResourceDescriptorHeap> heap);
-
-  auto get_resource_descriptor_heap(Handle<ResourceDescriptorHeap> heap) const
-      -> const ResourceDescriptorHeap &;
-
-  [[nodiscard]] auto create_sampler_descriptor_heap(
-      const SamplerDescriptorHeapCreateInfo &&create_info)
-      -> Result<Handle<SamplerDescriptorHeap>, Error>;
-
-  void destroy(Handle<SamplerDescriptorHeap> heap);
-
-  auto get_sampler_descriptor_heap(Handle<SamplerDescriptorHeap> heap) const
-      -> const SamplerDescriptorHeap &;
-
-  [[nodiscard]] auto
-  create_pipeline_layout(const PipelineLayoutCreateInfo &&create_info)
-      -> Result<Handle<PipelineLayout>, Error>;
-
-  void destroy(Handle<PipelineLayout> layout);
-
-  auto try_get_pipeline_layout(Handle<PipelineLayout> layout) const
-      -> Optional<const PipelineLayout &>;
-
-  auto get_pipeline_layout(Handle<PipelineLayout> layout) const
-      -> const PipelineLayout &;
 
   [[nodiscard]] auto
   create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
