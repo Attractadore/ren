@@ -2228,6 +2228,25 @@ void cmd_push_constants(CommandBuffer cmd, usize offset,
                                     data.data());
 }
 
+namespace {
+
+template <>
+constexpr auto MAP<IndexType> = [] {
+  std::array<VkIndexType, ENUM_SIZE<IndexType>> map = {};
+  map(IndexType::UInt8, VK_INDEX_TYPE_UINT8_EXT);
+  map(IndexType::UInt16, VK_INDEX_TYPE_UINT16);
+  map(IndexType::UInt32, VK_INDEX_TYPE_UINT32);
+  return map;
+}();
+
+} // namespace
+
+void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
+                           IndexType index_type) {
+  cmd.device->vk.vkCmdBindIndexBuffer(cmd.handle, buffer.handle, offset,
+                                      to_vk(index_type));
+}
+
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
 auto create_surface(SDL_Window *window) -> Result<Surface> {

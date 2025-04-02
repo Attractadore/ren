@@ -401,8 +401,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
       render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
-      render_pass.bind_index_buffer(rcs.batch.index_buffer,
-                                    VK_INDEX_TYPE_UINT8_EXT);
+      render_pass.bind_index_buffer(BufferSlice<u8>{rcs.batch.index_buffer});
       rg.push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
                                               rg.get_buffer(rcs.batch_sizes));

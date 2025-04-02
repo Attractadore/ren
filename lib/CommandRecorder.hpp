@@ -164,12 +164,19 @@ public:
     push_constants(Span(&data, 1).as_bytes(), offset);
   }
 
-  void bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
-                         u32 offset = 0);
-  void bind_index_buffer(const BufferView &view, VkIndexType type);
-  void bind_index_buffer(const BufferSlice<u8> &slice);
-  void bind_index_buffer(const BufferSlice<u16> &slice);
-  void bind_index_buffer(const BufferSlice<u32> &slice);
+  void bind_index_buffer(const BufferView &view, rhi::IndexType index_type);
+
+  void bind_index_buffer(const BufferSlice<u8> &slice) {
+    bind_index_buffer(BufferView(slice), rhi::IndexType::UInt8);
+  }
+
+  void bind_index_buffer(const BufferSlice<u16> &slice) {
+    bind_index_buffer(BufferView(slice), rhi::IndexType::UInt16);
+  }
+
+  void bind_index_buffer(const BufferSlice<u32> &slice) {
+    bind_index_buffer(BufferView(slice), rhi::IndexType::UInt32);
+  }
 
   void draw(const DrawInfo &&draw_info);
 

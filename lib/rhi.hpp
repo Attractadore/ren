@@ -919,6 +919,16 @@ void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &clear_info);
 void cmd_push_constants(CommandBuffer cmd, usize offset,
                         Span<const std::byte> data);
 
+enum class IndexType {
+  UInt8,
+  UInt16,
+  UInt32,
+  Last = UInt32,
+};
+
+void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
+                           IndexType index_type);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;

@@ -269,26 +269,10 @@ void RenderPass::push_constants(Span<const std::byte> data, unsigned offset) {
   rhi::cmd_push_constants(m_cmd, offset, data);
 }
 
-void RenderPass::bind_index_buffer(Handle<Buffer> buffer, VkIndexType type,
-                                   u32 offset) {
-  vkCmdBindIndexBuffer(
-      m_cmd.handle, m_renderer->get_buffer(buffer).handle.handle, offset, type);
-}
-
-void RenderPass::bind_index_buffer(const BufferView &view, VkIndexType type) {
-  bind_index_buffer(view.buffer, type, view.offset);
-}
-
-void RenderPass::bind_index_buffer(const BufferSlice<u8> &slice) {
-  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT8_EXT, slice.offset);
-}
-
-void RenderPass::bind_index_buffer(const BufferSlice<u16> &slice) {
-  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT16, slice.offset);
-}
-
-void RenderPass::bind_index_buffer(const BufferSlice<u32> &slice) {
-  bind_index_buffer(slice.buffer, VK_INDEX_TYPE_UINT32, slice.offset);
+void RenderPass::bind_index_buffer(const BufferView &view,
+                                   rhi::IndexType index_type) {
+  rhi::cmd_bind_index_buffer(m_cmd, m_renderer->get_buffer(view.buffer).handle,
+                             view.offset, index_type);
 }
 
 void RenderPass::draw(const DrawInfo &&draw_info) {
