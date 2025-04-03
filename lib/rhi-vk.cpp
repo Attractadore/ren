@@ -2137,19 +2137,6 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
 }
 
-#if 0
-void cmd_set_descriptor_heaps(CommandBuffer cmd, PipelineBindPoint bind_point,
-                              ResourceDescriptorHeap resource_heap,
-                              SamplerDescriptorHeap sampler_heap) {
-  VkDescriptorSet sets[4] = {};
-  std::ranges::copy(resource_heap.sets, sets);
-  sets[glsl::SAMPLER_SET] = sampler_heap.set;
-  cmd.device->vk.vkCmdBindDescriptorSets(
-      cmd.handle, PIPELINE_BIND_POINT_MAP[(usize)bind_point],
-      cmd.device->common_pipeline_layout, 0, std::size(sets), sets, 0, nullptr);
-}
-#endif
-
 void cmd_copy_buffer(CommandBuffer cmd, const BufferCopyInfo &info) {
   VkBufferCopy region = {
       .srcOffset = info.src_offset,
