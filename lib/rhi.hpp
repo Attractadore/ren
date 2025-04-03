@@ -929,6 +929,48 @@ enum class IndexType {
 void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
                            IndexType index_type);
 
+void cmd_bind_pipeline(CommandBuffer cmd, PipelineBindPoint bind_point,
+                       Pipeline pipeline);
+
+struct DrawInfo {
+  u32 num_vertices = 0;
+  u32 num_instances = 1;
+  u32 base_vertex = 0;
+  u32 base_instance = 0;
+};
+
+void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info);
+
+struct DrawIndexedInfo {
+  u32 num_indices = 0;
+  u32 num_instances = 1;
+  u32 base_index = 0;
+  i32 vertex_offset = 0;
+  u32 base_instance = 0;
+};
+
+void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info);
+
+struct DrawIndirectCountInfo {
+  Buffer buffer = {};
+  usize buffer_offset = 0;
+  usize buffer_stride = 0;
+  Buffer count_buffer = {};
+  usize count_buffer_offset = 0;
+  usize max_count = 0;
+};
+
+void cmd_draw_indirect_count(CommandBuffer cmd,
+                             const DrawIndirectCountInfo &draw_info);
+
+void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
+                                     const DrawIndirectCountInfo &draw_info);
+
+void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
+                  u32 num_groups_z);
+
+void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;

@@ -32,27 +32,6 @@ struct RenderPassBeginInfo {
 
 class RenderPass;
 
-struct DrawInfo {
-  u32 num_vertices = 0;
-  u32 num_instances = 1;
-  u32 first_vertex = 0;
-  u32 first_instance = 0;
-};
-
-struct DrawIndexedInfo {
-  u32 num_indices = 0;
-  u32 num_instances = 1;
-  u32 first_index = 0;
-  i32 vertex_offset = 0;
-  u32 first_instance = 0;
-};
-
-struct DrawIndirectCountInfo {
-  BufferView buffer;
-  BufferView count_buffer;
-  u32 max_count;
-};
-
 class DebugRegion;
 
 class CommandRecorder {
@@ -91,7 +70,6 @@ public:
   void dispatch_grid_3d(glm::uvec3 size,
                         glm::uvec3 group_size_mult = {1, 1, 1});
 
-  void dispatch_indirect(const BufferView &view);
   void
   dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
 
@@ -178,26 +156,15 @@ public:
     bind_index_buffer(BufferView(slice), rhi::IndexType::UInt32);
   }
 
-  void draw(const DrawInfo &&draw_info);
+  void draw(const rhi::DrawInfo &draw_info);
 
-  void draw_indexed(const DrawIndexedInfo &&draw_info);
+  void draw_indexed(const rhi::DrawIndexedInfo &draw_info);
 
-  void draw_indirect(const BufferView &view,
-                     usize stride = sizeof(VkDrawIndirectCommand));
-
-  void draw_indirect_count(const BufferView &view, const BufferView &counter,
-                           usize stride = sizeof(VkDrawIndirectCommand));
-
-  void
-  draw_indexed_indirect(const BufferView &view,
-                        usize stride = sizeof(VkDrawIndexedIndirectCommand));
+  void draw_indirect_count(const BufferSlice<glsl::DrawIndirectCommand> &slice,
+                           const BufferSlice<u32> &counter);
 
   void draw_indexed_indirect_count(
-      const BufferView &view, const BufferView &counter,
-      usize stride = sizeof(VkDrawIndexedIndirectCommand));
-
-  void draw_indexed_indirect_count(
-      const BufferSlice<glsl::DrawIndexedIndirectCommand> &commands,
+      const BufferSlice<glsl::DrawIndexedIndirectCommand> &slice,
       const BufferSlice<u32> &counter);
 
 private:

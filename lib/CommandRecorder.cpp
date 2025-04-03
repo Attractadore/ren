@@ -259,10 +259,9 @@ void RenderPass::set_depth_compare_op(VkCompareOp op) {
   vkCmdSetDepthCompareOp(m_cmd.handle, op);
 }
 
-void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> handle) {
-  const auto &pipeline = m_renderer->get_graphics_pipeline(handle);
-  vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    pipeline.handle.handle);
+void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {
+  rhi::cmd_bind_pipeline(m_cmd, rhi::PipelineBindPoint::Graphics,
+                         m_renderer->get_graphics_pipeline(pipeline).handle);
 }
 
 void RenderPass::push_constants(Span<const std::byte> data, unsigned offset) {
@@ -275,71 +274,50 @@ void RenderPass::bind_index_buffer(const BufferView &view,
                              view.offset, index_type);
 }
 
-void RenderPass::draw(const DrawInfo &&draw_info) {
-  vkCmdDraw(m_cmd.handle, draw_info.num_vertices, draw_info.num_instances,
-            draw_info.first_vertex, draw_info.first_instance);
+void RenderPass::draw(const rhi::DrawInfo &draw_info) {
+  rhi::cmd_draw(m_cmd, draw_info);
 }
 
-void RenderPass::draw_indexed(const DrawIndexedInfo &&draw_info) {
-  vkCmdDrawIndexed(m_cmd.handle, draw_info.num_indices, draw_info.num_instances,
-                   draw_info.first_index, draw_info.vertex_offset,
-                   draw_info.first_instance);
+void RenderPass::draw_indexed(const rhi::DrawIndexedInfo &draw_info) {
+  rhi::cmd_draw_indexed(m_cmd, draw_info);
 }
 
-void RenderPass::draw_indirect(const BufferView &view, usize stride) {
-  const Buffer &buffer = m_renderer->get_buffer(view.buffer);
-  usize count = (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
-                sizeof(VkDrawIndirectCommand);
-  vkCmdDrawIndirect(m_cmd.handle, buffer.handle.handle, view.offset, count,
-                    stride);
-}
-
-void RenderPass::draw_indirect_count(const BufferView &view,
-                                     const BufferView &counter, usize stride) {
-  const Buffer &buffer = m_renderer->get_buffer(view.buffer);
+void RenderPass::draw_indirect_count(
+    const BufferSlice<glsl::DrawIndirectCommand> &slice,
+    const BufferSlice<u32> &counter) {
+  const Buffer &buffer = m_renderer->get_buffer(slice.buffer);
   const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
-  usize max_count =
-      (view.size_bytes() + stride - sizeof(VkDrawIndirectCommand)) /
-      sizeof(VkDrawIndirectCommand);
-  vkCmdDrawIndexedIndirectCount(m_cmd.handle, buffer.handle.handle, view.offset,
-                                count_buffer.handle.handle, counter.offset,
-                                max_count, stride);
-}
-
-void RenderPass::draw_indexed_indirect(const BufferView &view, usize stride) {
-  const Buffer &buffer = m_renderer->get_buffer(view.buffer);
-  usize count =
-      (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
-      sizeof(VkDrawIndexedIndirectCommand);
-  vkCmdDrawIndexedIndirect(m_cmd.handle, buffer.handle.handle, view.offset,
-                           count, stride);
-}
-
-void RenderPass::draw_indexed_indirect_count(const BufferView &view,
-                                             const BufferView &counter,
-                                             usize stride) {
-  const Buffer &buffer = m_renderer->get_buffer(view.buffer);
-  const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
-  usize max_count =
-      (view.size_bytes() + stride - sizeof(VkDrawIndexedIndirectCommand)) /
-      sizeof(VkDrawIndexedIndirectCommand);
-  vkCmdDrawIndexedIndirectCount(m_cmd.handle, buffer.handle.handle, view.offset,
-                                count_buffer.handle.handle, counter.offset,
-                                max_count, stride);
+  rhi::cmd_draw_indirect_count(
+      m_cmd, {
+                 .buffer = buffer.handle,
+                 .buffer_offset = slice.offset,
+                 .buffer_stride = sizeof(glsl::DrawIndirectCommand),
+                 .count_buffer = count_buffer.handle,
+                 .count_buffer_offset = counter.offset,
+                 .max_count = slice.count,
+             });
 }
 
 void RenderPass::draw_indexed_indirect_count(
-    const BufferSlice<glsl::DrawIndexedIndirectCommand> &commands,
+    const BufferSlice<glsl::DrawIndexedIndirectCommand> &slice,
     const BufferSlice<u32> &counter) {
-  ren_assert(counter.count > 0);
-  draw_indexed_indirect_count(BufferView(commands), BufferView(counter));
+  const Buffer &buffer = m_renderer->get_buffer(slice.buffer);
+  const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
+  rhi::cmd_draw_indexed_indirect_count(
+      m_cmd, {
+                 .buffer = buffer.handle,
+                 .buffer_offset = slice.offset,
+                 .buffer_stride = sizeof(glsl::DrawIndexedIndirectCommand),
+                 .count_buffer = count_buffer.handle,
+                 .count_buffer_offset = counter.offset,
+                 .max_count = slice.count,
+             });
 }
 
-void CommandRecorder::bind_compute_pipeline(Handle<ComputePipeline> handle) {
-  const auto &pipeline = m_renderer->get_compute_pipeline(handle);
-  m_pipeline = handle;
-  vkCmdBindPipeline(m_cmd.handle, VK_PIPELINE_BIND_POINT_COMPUTE,
-                    pipeline.handle.handle);
+void CommandRecorder::bind_compute_pipeline(Handle<ComputePipeline> pipeline) {
+  m_pipeline = pipeline;
+  rhi::cmd_bind_pipeline(m_cmd, rhi::PipelineBindPoint::Compute,
+                         m_renderer->get_compute_pipeline(pipeline).handle);
 }
 
 void CommandRecorder::push_constants(Span<const std::byte> data,
@@ -349,7 +327,7 @@ void CommandRecorder::push_constants(Span<const std::byte> data,
 
 void CommandRecorder::dispatch(u32 num_groups_x, u32 num_groups_y,
                                u32 num_groups_z) {
-  vkCmdDispatch(m_cmd.handle, num_groups_x, num_groups_y, num_groups_z);
+  rhi::cmd_dispatch(m_cmd, num_groups_x, num_groups_y, num_groups_z);
 }
 
 void CommandRecorder::dispatch(glm::uvec2 num_groups) {
@@ -380,16 +358,10 @@ void CommandRecorder::dispatch_grid_3d(glm::uvec3 size,
   dispatch(num_groups);
 }
 
-void CommandRecorder::dispatch_indirect(const BufferView &view) {
-  ren_assert(view.size_bytes() >= sizeof(VkDispatchIndirectCommand));
-  vkCmdDispatchIndirect(m_cmd.handle,
-                        m_renderer->get_buffer(view.buffer).handle.handle,
-                        view.offset);
-}
-
 void CommandRecorder::dispatch_indirect(
     const BufferSlice<glsl::DispatchIndirectCommand> &slice) {
-  dispatch_indirect(BufferView(slice));
+  rhi::cmd_dispatch_indirect(m_cmd, m_renderer->get_buffer(slice.buffer).handle,
+                             slice.offset);
 }
 
 auto CommandRecorder::debug_region(const char *label) -> DebugRegion {

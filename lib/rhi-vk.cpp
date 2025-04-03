@@ -2080,7 +2080,8 @@ constexpr auto MAP<ImageLayout> = [] {
   return map;
 }();
 
-constexpr auto PIPELINE_BIND_POINT_MAP = [] {
+template <>
+constexpr auto MAP<PipelineBindPoint> = [] {
   std::array<VkPipelineBindPoint, PIPELINE_BIND_POINT_COUNT> map = {};
   map(PipelineBindPoint::Graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
   map(PipelineBindPoint::Compute, VK_PIPELINE_BIND_POINT_COMPUTE);
@@ -2232,6 +2233,50 @@ void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
                            IndexType index_type) {
   cmd.device->vk.vkCmdBindIndexBuffer(cmd.handle, buffer.handle, offset,
                                       to_vk(index_type));
+}
+
+void cmd_bind_pipeline(CommandBuffer cmd, PipelineBindPoint bind_point,
+                       Pipeline pipeline) {
+  cmd.device->vk.vkCmdBindPipeline(cmd.handle, to_vk(bind_point),
+                                   pipeline.handle);
+}
+
+void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info) {
+  cmd.device->vk.vkCmdDraw(cmd.handle, draw_info.num_vertices,
+                           draw_info.num_instances, draw_info.base_vertex,
+                           draw_info.base_instance);
+}
+
+void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndexed(
+      cmd.handle, draw_info.num_indices, draw_info.num_instances,
+      draw_info.base_index, draw_info.vertex_offset, draw_info.base_instance);
+}
+
+void cmd_draw_indirect_count(CommandBuffer cmd,
+                             const DrawIndirectCountInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndirectCount(
+      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
+      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
+      draw_info.max_count, draw_info.buffer_stride);
+}
+
+void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
+                                     const DrawIndirectCountInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndexedIndirectCount(
+      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
+      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
+      draw_info.max_count, draw_info.buffer_stride);
+}
+
+void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
+                  u32 num_groups_z) {
+  cmd.device->vk.vkCmdDispatch(cmd.handle, num_groups_x, num_groups_y,
+                               num_groups_z);
+}
+
+void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset) {
+  cmd.device->vk.vkCmdDispatchIndirect(cmd.handle, buffer.handle, offset);
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;

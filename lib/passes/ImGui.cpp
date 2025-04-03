@@ -57,8 +57,8 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
   glm::vec2 translate = glm::vec2(-1.0f) - display_offset * scale;
   glm::vec2 fb_size = rcs.viewport;
 
-  usize vertex_offset = 0;
-  usize index_offset = 0;
+  u32 vertex_offset = 0;
+  u32 index_offset = 0;
   for (const ImDrawList *cmd_list : draw_data->CmdLists) {
     for (const ImDrawCmd &cmd : cmd_list->CmdBuffer) {
       ren_assert(!cmd.UserCallback);
@@ -93,7 +93,7 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
       render_pass.draw_indexed({
           .num_indices = cmd.ElemCount,
           .num_instances = 1,
-          .first_index = u32(cmd.IdxOffset + index_offset),
+          .base_index = cmd.IdxOffset + index_offset,
           .vertex_offset = i32(cmd.VtxOffset + vertex_offset),
       });
     }
