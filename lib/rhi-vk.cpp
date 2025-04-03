@@ -2279,6 +2279,35 @@ void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset) {
   cmd.device->vk.vkCmdDispatchIndirect(cmd.handle, buffer.handle, offset);
 }
 
+void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports) {
+  VkViewport vk_viewports[rhi::MAX_NUM_RENDER_TARGETS];
+  for (usize i : range(viewports.size())) {
+    const Viewport &vp = viewports[i];
+    vk_viewports[i] = {
+        .x = vp.offset.x,
+        .y = vp.offset.y + vp.size.y,
+        .width = vp.size.x,
+        .height = -vp.size.y,
+        .minDepth = vp.min_depth,
+        .maxDepth = vp.max_depth,
+    };
+  }
+  cmd.device->vk.vkCmdSetViewportWithCount(cmd.handle, viewports.size(),
+                                           vk_viewports);
+}
+
+void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects) {
+  VkRect2D vk_rects[rhi::MAX_NUM_RENDER_TARGETS];
+  for (usize i : range(rects.size())) {
+    const Rect2D &rect = rects[i];
+    vk_rects[i] = {
+        .offset = {(i32)rect.offset.x, (i32)rect.offset.y},
+        .extent = {rect.size.x, rect.size.y},
+    };
+  }
+  cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.size(), vk_rects);
+}
+
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
 auto create_surface(SDL_Window *window) -> Result<Surface> {

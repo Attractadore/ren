@@ -74,12 +74,10 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
         continue;
       }
 
-      VkRect2D scissor = {
+      render_pass.set_scissor_rects({{
           .offset = {i32(clip_min.x), i32(clip_min.y)},
-          .extent = {u32(clip_max.x - clip_min.x),
-                     u32(clip_max.y - clip_min.y)},
-      };
-      render_pass.set_scissor_rects({scissor});
+          .size = {u32(clip_max.x - clip_min.x), u32(clip_max.y - clip_min.y)},
+      }});
 
       glsl::SampledTexture2D texture((uintptr_t)cmd.TextureId);
 

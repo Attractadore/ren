@@ -1575,13 +1575,8 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
                   .color_attachments = render_targets,
                   .depth_stencil_attachment = depth_stencil_target,
               });
-              render_pass.set_viewports({{
-                  .width = float(viewport.x),
-                  .height = float(viewport.y),
-                  .maxDepth = 1.0f,
-              }});
-              render_pass.set_scissor_rects(
-                  {{.extent = {viewport.x, viewport.y}}});
+              render_pass.set_viewports({{.size = viewport}});
+              render_pass.set_scissor_rects({{.size = viewport}});
 
               pass.cb(*m_renderer, rg, render_pass);
             },

@@ -971,6 +971,22 @@ void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
 
 void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset);
 
+struct Viewport {
+  glm::vec2 offset = {};
+  glm::vec2 size = {};
+  float min_depth = 0.0f;
+  float max_depth = 1.0f;
+};
+
+void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports);
+
+struct Rect2D {
+  glm::uvec2 offset = {};
+  glm::uvec2 size = {};
+};
+
+void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;

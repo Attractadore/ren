@@ -242,21 +242,12 @@ void RenderPass::end() {
   m_cmd = {};
 }
 
-void RenderPass::set_viewports(
-    StaticVector<VkViewport, rhi::MAX_NUM_RENDER_TARGETS> viewports) {
-  for (auto &viewport : viewports) {
-    viewport.y += viewport.height;
-    viewport.height = -viewport.height;
-  }
-  vkCmdSetViewportWithCount(m_cmd.handle, viewports.size(), viewports.data());
+void RenderPass::set_viewports(TempSpan<const rhi::Viewport> viewports) {
+  rhi::cmd_set_viewports(m_cmd, viewports);
 }
 
-void RenderPass::set_scissor_rects(TempSpan<const VkRect2D> rects) {
-  vkCmdSetScissorWithCount(m_cmd.handle, rects.size(), rects.data());
-}
-
-void RenderPass::set_depth_compare_op(VkCompareOp op) {
-  vkCmdSetDepthCompareOp(m_cmd.handle, op);
+void RenderPass::set_scissor_rects(TempSpan<const rhi::Rect2D> rects) {
+  rhi::cmd_set_scissor_rects(m_cmd, rects);
 }
 
 void RenderPass::bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline) {

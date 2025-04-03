@@ -125,12 +125,9 @@ public:
 
   void end();
 
-  void set_viewports(
-      StaticVector<VkViewport, rhi::MAX_NUM_RENDER_TARGETS> viewports);
+  void set_viewports(TempSpan<const rhi::Viewport> viewports);
 
-  void set_scissor_rects(TempSpan<const VkRect2D> rects);
-
-  void set_depth_compare_op(VkCompareOp op);
+  void set_scissor_rects(TempSpan<const rhi::Rect2D> rects);
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
