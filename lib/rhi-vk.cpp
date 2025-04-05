@@ -39,6 +39,369 @@ inline auto fail(VkResult result, String description = "") -> Failure<Error> {
   return Failure(Error(code, std::move(description)));
 }
 
+template <typename E>
+  requires std::is_scoped_enum_v<E>
+constexpr usize ENUM_SIZE = []() -> usize {
+  if (CFlagsEnum<E>) {
+    return std::countr_zero((usize)E::Last) + 1;
+  }
+  return (usize)E::Last + 1;
+}();
+
+template <typename From> constexpr auto MAP = nullptr;
+
+template <typename From>
+  requires std::is_scoped_enum_v<From>
+auto to_vk(From e) {
+  return MAP<From>[(usize)e];
+};
+
+template <CFlagsEnum From> auto to_vk(Flags<From> mask) {
+  std::conditional_t<
+      sizeof(typename decltype(MAP<From>)::value_type) == sizeof(u64), u64, u32>
+      vk_mask = 0;
+  for (usize bit : range(ENUM_SIZE<From>)) {
+    if (mask.is_set((From)(1ull << bit))) {
+      vk_mask |= MAP<From>[bit];
+    }
+  }
+  return vk_mask;
+};
+
+auto to_vk(TinyImageFormat format) -> VkFormat {
+  return (VkFormat)TinyImageFormat_ToVkFormat(format);
+}
+
+template <typename From>
+  requires std::is_scoped_enum_v<From>
+auto from_vk(typename decltype(MAP<From>)::value_type vk_value) -> From {
+  auto it = std::ranges::find(MAP<From>, vk_value);
+  ren_assert(it != MAP<From>.end());
+  return From(it - MAP<From>.begin());
+};
+
+template <CFlagsEnum From> auto from_vk(u64 vk_flags) -> Flags<From> {
+  Flags<From> flags;
+  for (usize bit : range(ENUM_SIZE<From>)) {
+    auto vk_mask = MAP<From>[bit];
+    if (vk_flags & vk_mask) {
+      flags |= (From)(1 << bit);
+    }
+  }
+  return flags;
+};
+
+template <>
+constexpr auto MAP<SemaphoreType> = [] {
+  std::array<VkSemaphoreType, ENUM_SIZE<SemaphoreType>> map = {};
+  map(SemaphoreType::Binary, VK_SEMAPHORE_TYPE_BINARY);
+  map(SemaphoreType::Timeline, VK_SEMAPHORE_TYPE_TIMELINE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ImageAspect> = [] {
+  std::array<VkImageAspectFlagBits, ENUM_SIZE<ImageAspect>> map = {};
+  map_bit(ImageAspect::Color, VK_IMAGE_ASPECT_COLOR_BIT);
+  map_bit(ImageAspect::Depth, VK_IMAGE_ASPECT_DEPTH_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ImageUsage> = [] {
+  using enum ImageUsage;
+  std::array<VkImageUsageFlagBits, ENUM_SIZE<ImageUsage>> map = {};
+  map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+  map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  map_bit(ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map_bit(UnorderedAccess, VK_IMAGE_USAGE_STORAGE_BIT);
+  map_bit(RenderTarget, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map_bit(DepthStencilTarget, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ImageViewDimension> = [] {
+  std::array<VkImageViewType, ENUM_SIZE<ImageViewDimension>> map = {};
+  map(ImageViewDimension::e1D, VK_IMAGE_VIEW_TYPE_1D);
+  map(ImageViewDimension::e2D, VK_IMAGE_VIEW_TYPE_2D);
+  map(ImageViewDimension::eCube, VK_IMAGE_VIEW_TYPE_CUBE);
+  map(ImageViewDimension::e3D, VK_IMAGE_VIEW_TYPE_3D);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ComponentSwizzle> = [] {
+  std::array<VkComponentSwizzle, ENUM_SIZE<ComponentSwizzle>> map = {};
+  map(ComponentSwizzle::Identity, VK_COMPONENT_SWIZZLE_IDENTITY);
+  map(ComponentSwizzle::Zero, VK_COMPONENT_SWIZZLE_ZERO);
+  map(ComponentSwizzle::One, VK_COMPONENT_SWIZZLE_ONE);
+  map(ComponentSwizzle::R, VK_COMPONENT_SWIZZLE_R);
+  map(ComponentSwizzle::G, VK_COMPONENT_SWIZZLE_G);
+  map(ComponentSwizzle::B, VK_COMPONENT_SWIZZLE_B);
+  map(ComponentSwizzle::A, VK_COMPONENT_SWIZZLE_A);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<Filter> = [] {
+  std::array<VkFilter, ENUM_SIZE<Filter>> map = {};
+  map(Filter::Nearest, VK_FILTER_NEAREST);
+  map(Filter::Linear, VK_FILTER_LINEAR);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<SamplerMipmapMode> = [] {
+  std::array<VkSamplerMipmapMode, ENUM_SIZE<SamplerMipmapMode>> map = {};
+  map(SamplerMipmapMode::Nearest, VK_SAMPLER_MIPMAP_MODE_NEAREST);
+  map(SamplerMipmapMode::Linear, VK_SAMPLER_MIPMAP_MODE_LINEAR);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<SamplerAddressMode> = [] {
+  std::array<VkSamplerAddressMode, ENUM_SIZE<SamplerAddressMode>> map = {};
+  map(SamplerAddressMode::Repeat, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+  map(SamplerAddressMode::MirroredRepeat,
+      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT);
+  map(SamplerAddressMode::ClampToEdge, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<SamplerReductionMode> = [] {
+  std::array<VkSamplerReductionMode, ENUM_SIZE<SamplerReductionMode>> map = {};
+  map(SamplerReductionMode::WeightedAverage,
+      VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
+  map(SamplerReductionMode::Min, VK_SAMPLER_REDUCTION_MODE_MIN);
+  map(SamplerReductionMode::Max, VK_SAMPLER_REDUCTION_MODE_MAX);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<PrimitiveTopology> = [] {
+  std::array<VkPrimitiveTopology, ENUM_SIZE<PrimitiveTopology>> map = {};
+  map(PrimitiveTopology::PointList, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
+  map(PrimitiveTopology::LineList, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+  map(PrimitiveTopology::TriangleList, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<FillMode> = [] {
+  std::array<VkPolygonMode, ENUM_SIZE<FillMode>> map = {};
+  map(FillMode::Fill, VK_POLYGON_MODE_FILL);
+  map(FillMode::Wireframe, VK_POLYGON_MODE_LINE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<CullMode> = [] {
+  std::array<VkCullModeFlagBits, ENUM_SIZE<CullMode>> map = {};
+  map(CullMode::None, VK_CULL_MODE_NONE);
+  map(CullMode::Front, VK_CULL_MODE_FRONT_BIT);
+  map(CullMode::Back, VK_CULL_MODE_BACK_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<CompareOp> = [] {
+  std::array<VkCompareOp, ENUM_SIZE<CompareOp>> map = {};
+  map(CompareOp::Never, VK_COMPARE_OP_NEVER);
+  map(CompareOp::Less, VK_COMPARE_OP_LESS);
+  map(CompareOp::Equal, VK_COMPARE_OP_EQUAL);
+  map(CompareOp::LessOrEqual, VK_COMPARE_OP_LESS_OR_EQUAL);
+  map(CompareOp::Greater, VK_COMPARE_OP_GREATER);
+  map(CompareOp::NotEqual, VK_COMPARE_OP_NOT_EQUAL);
+  map(CompareOp::GreaterOrEqual, VK_COMPARE_OP_GREATER_OR_EQUAL);
+  map(CompareOp::Always, VK_COMPARE_OP_ALWAYS);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<BlendFactor> = [] {
+  std::array<VkBlendFactor, ENUM_SIZE<BlendFactor>> map = {};
+  map(BlendFactor::Zero, VK_BLEND_FACTOR_ZERO);
+  map(BlendFactor::One, VK_BLEND_FACTOR_ONE);
+  map(BlendFactor::SrcColor, VK_BLEND_FACTOR_SRC_COLOR);
+  map(BlendFactor::OneMinusSrcColor, VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR);
+  map(BlendFactor::DstColor, VK_BLEND_FACTOR_DST_COLOR);
+  map(BlendFactor::OneMinusDstColor, VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR);
+  map(BlendFactor::SrcAlpha, VK_BLEND_FACTOR_SRC_ALPHA);
+  map(BlendFactor::OneMinusSrcAlpha, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+  map(BlendFactor::DstAlpha, VK_BLEND_FACTOR_DST_ALPHA);
+  map(BlendFactor::OneMinusDstAlpha, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA);
+  map(BlendFactor::ConstantColor, VK_BLEND_FACTOR_CONSTANT_COLOR);
+  map(BlendFactor::OneMinusConstantColor,
+      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR);
+  map(BlendFactor::ConstantAlpha, VK_BLEND_FACTOR_CONSTANT_ALPHA);
+  map(BlendFactor::OneMinusConstantAlpha,
+      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA);
+  map(BlendFactor::SrcAlphaSaturate, VK_BLEND_FACTOR_SRC_ALPHA_SATURATE);
+  map(BlendFactor::Src1Color, VK_BLEND_FACTOR_SRC1_COLOR);
+  map(BlendFactor::OneMinusSrc1Color, VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR);
+  map(BlendFactor::Src1Alpha, VK_BLEND_FACTOR_SRC1_ALPHA);
+  map(BlendFactor::OneMinusSrc1Alpha, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<BlendOp> = [] {
+  std::array<VkBlendOp, ENUM_SIZE<BlendOp>> map = {};
+  map(BlendOp::Add, VK_BLEND_OP_ADD);
+  map(BlendOp::Subtract, VK_BLEND_OP_SUBTRACT);
+  map(BlendOp::ReverseSubtract, VK_BLEND_OP_REVERSE_SUBTRACT);
+  map(BlendOp::Min, VK_BLEND_OP_MIN);
+  map(BlendOp::Max, VK_BLEND_OP_MAX);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<LogicOp> = [] {
+  std::array<VkLogicOp, ENUM_SIZE<LogicOp>> map = {};
+  map(LogicOp::Clear, VK_LOGIC_OP_CLEAR);
+  map(LogicOp::And, VK_LOGIC_OP_AND);
+  map(LogicOp::AndReverse, VK_LOGIC_OP_AND_REVERSE);
+  map(LogicOp::Copy, VK_LOGIC_OP_COPY);
+  map(LogicOp::AndInverted, VK_LOGIC_OP_AND_INVERTED);
+  map(LogicOp::NoOp, VK_LOGIC_OP_NO_OP);
+  map(LogicOp::Xor, VK_LOGIC_OP_XOR);
+  map(LogicOp::Or, VK_LOGIC_OP_OR);
+  map(LogicOp::Nor, VK_LOGIC_OP_NOR);
+  map(LogicOp::Equivalent, VK_LOGIC_OP_EQUIVALENT);
+  map(LogicOp::Invert, VK_LOGIC_OP_INVERT);
+  map(LogicOp::OrReverse, VK_LOGIC_OP_OR_REVERSE);
+  map(LogicOp::CopyInverted, VK_LOGIC_OP_COPY_INVERTED);
+  map(LogicOp::OrInverted, VK_LOGIC_OP_OR_INVERTED);
+  map(LogicOp::Nand, VK_LOGIC_OP_NAND);
+  map(LogicOp::Set, VK_LOGIC_OP_SET);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ColorComponent> = [] {
+  using enum ImageUsage;
+  std::array<VkColorComponentFlagBits, ENUM_SIZE<ColorComponent>> map = {};
+  map_bit(ColorComponent::R, VK_COLOR_COMPONENT_R_BIT);
+  map_bit(ColorComponent::G, VK_COLOR_COMPONENT_G_BIT);
+  map_bit(ColorComponent::B, VK_COLOR_COMPONENT_B_BIT);
+  map_bit(ColorComponent::A, VK_COLOR_COMPONENT_A_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<PipelineStage> = [] {
+  std::array<VkPipelineStageFlagBits2, ENUM_SIZE<PipelineStage>> map = {};
+  map_bit(PipelineStage::ExecuteIndirect,
+          VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
+  map_bit(PipelineStage::TaskShader, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
+  map_bit(PipelineStage::MeshShader, VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT);
+  map_bit(PipelineStage::IndexInput, VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT);
+  map_bit(PipelineStage::VertexShader, VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
+  map_bit(PipelineStage::EarlyFragmentTests,
+          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT);
+  map_bit(PipelineStage::FragmentShader,
+          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
+  map_bit(PipelineStage::LateFragmentTests,
+          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
+  map_bit(PipelineStage::RenderTargetOutput,
+          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+  map_bit(PipelineStage::ComputeShader, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
+  map_bit(PipelineStage::Transfer, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT);
+  map_bit(PipelineStage::All, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<Access> = [] {
+  std::array<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
+  map_bit(Access::IndirectCommandRead, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
+  map_bit(Access::IndexRead, VK_ACCESS_2_INDEX_READ_BIT);
+  map_bit(Access::UniformRead, VK_ACCESS_2_UNIFORM_READ_BIT);
+  map_bit(Access::ShaderBufferRead, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
+  map_bit(Access::ShaderImageRead, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+  map_bit(Access::UnorderedAccess, VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                       VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
+  map_bit(Access::RenderTarget, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
+                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+  map_bit(Access::DepthStencilRead,
+          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
+  map_bit(Access::DepthStencilWrite,
+          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+  map_bit(Access::TransferRead, VK_ACCESS_2_TRANSFER_READ_BIT);
+  map_bit(Access::TransferWrite, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+  map_bit(Access::MemoryRead, VK_ACCESS_2_MEMORY_READ_BIT);
+  map_bit(Access::MemoryWrite, VK_ACCESS_2_MEMORY_WRITE_BIT);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<ImageLayout> = [] {
+  std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
+  map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
+  map(ImageLayout::ShaderResource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  map(ImageLayout::UnorderedAccess, VK_IMAGE_LAYOUT_GENERAL);
+  map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  map(ImageLayout::DepthStencilRead,
+      VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+  map(ImageLayout::DepthStencilWrite,
+      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+  map(ImageLayout::TransferSrc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+  map(ImageLayout::TransferDst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+  map(ImageLayout::Present, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<PipelineBindPoint> = [] {
+  std::array<VkPipelineBindPoint, ENUM_SIZE<PipelineBindPoint>> map = {};
+  map(PipelineBindPoint::Graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
+  map(PipelineBindPoint::Compute, VK_PIPELINE_BIND_POINT_COMPUTE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<RenderPassLoadOp> = [] {
+  std::array<VkAttachmentLoadOp, ENUM_SIZE<RenderPassLoadOp>> map = {};
+  map(RenderPassLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
+  map(RenderPassLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
+  map(RenderPassLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<RenderPassStoreOp> = [] {
+  std::array<VkAttachmentStoreOp, ENUM_SIZE<RenderPassStoreOp>> map = {};
+  map(RenderPassStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
+  map(RenderPassStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+  map(RenderPassStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<IndexType> = [] {
+  std::array<VkIndexType, ENUM_SIZE<IndexType>> map = {};
+  map(IndexType::UInt8, VK_INDEX_TYPE_UINT8_EXT);
+  map(IndexType::UInt16, VK_INDEX_TYPE_UINT16);
+  map(IndexType::UInt32, VK_INDEX_TYPE_UINT32);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<PresentMode> = [] {
+  using enum PresentMode;
+  std::array<VkPresentModeKHR, ENUM_SIZE<PresentMode>> map = {};
+  std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
+  map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
+  map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
+  map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
+  map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
+  return map;
+}();
+
+#undef map
+
 const char *VK_LAYER_KHRONOS_VALIDATION_NAME = "VK_LAYER_KHRONOS_validation";
 
 constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
@@ -46,9 +409,9 @@ constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
 struct AdapterData {
   VkPhysicalDevice physical_device = nullptr;
   AdapterFeatures features;
-  u32 queue_family_indices[QUEUE_FAMILY_COUNT] = {};
+  u32 queue_family_indices[ENUM_SIZE<QueueFamily>] = {};
   VkPhysicalDeviceProperties properties;
-  MemoryHeapProperties heap_properties[MEMORY_HEAP_COUNT] = {};
+  MemoryHeapProperties heap_properties[ENUM_SIZE<MemoryHeap>] = {};
 };
 
 constexpr usize MAX_PHYSICAL_DEVICES = 4;
@@ -77,7 +440,7 @@ struct DeviceData {
   VkDevice handle = nullptr;
   VmaAllocator allocator = nullptr;
   Adapter adapter = {};
-  std::array<Queue, QUEUE_FAMILY_COUNT> queues;
+  std::array<Queue, ENUM_SIZE<QueueFamily>> queues = {};
   VkDescriptorSetLayout descriptor_set_layout = nullptr;
   VkPipelineLayout pipeline_layout = nullptr;
   VkDescriptorPool descriptor_pool = nullptr;
@@ -442,43 +805,35 @@ auto init(const InitInfo &init_info) -> Result<void> {
     if (adapter.properties.deviceType ==
         VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
       adapter.heap_properties[(usize)MemoryHeap::Default] = {
-          .heap_type = MemoryHeap::Default,
           .host_page_property = HostPageProperty::WriteCombined,
           .memory_pool = MemoryPool::L0,
       };
       adapter.heap_properties[(usize)MemoryHeap::Upload] = {
-          .heap_type = MemoryHeap::Upload,
           .host_page_property = HostPageProperty::WriteCombined,
           .memory_pool = MemoryPool::L0,
       };
       adapter.heap_properties[(usize)MemoryHeap::DeviceUpload] = {
-          .heap_type = MemoryHeap::DeviceUpload,
           .host_page_property = HostPageProperty::WriteCombined,
           .memory_pool = MemoryPool::L0,
       };
       adapter.heap_properties[(usize)MemoryHeap::Readback] = {
-          .heap_type = MemoryHeap::Readback,
           .host_page_property = HostPageProperty::WriteBack,
           .memory_pool = MemoryPool::L0,
       };
     } else {
       adapter.heap_properties[(usize)MemoryHeap::Default] = {
-          .heap_type = MemoryHeap::Default,
           .host_page_property = HostPageProperty::NotAvailable,
           .memory_pool = MemoryPool::L1,
       };
       adapter.heap_properties[(usize)MemoryHeap::Upload] = {
-          .heap_type = MemoryHeap::Upload,
           .host_page_property = HostPageProperty::WriteCombined,
           .memory_pool = MemoryPool::L0,
       };
       adapter.heap_properties[(usize)MemoryHeap::DeviceUpload] = {
-          .heap_type = MemoryHeap::DeviceUpload,
           .host_page_property = HostPageProperty::WriteCombined,
           .memory_pool = MemoryPool::L1,
       };
       adapter.heap_properties[(usize)MemoryHeap::Readback] = {
-          .heap_type = MemoryHeap::Readback,
           .host_page_property = HostPageProperty::WriteBack,
           .memory_pool = MemoryPool::L0,
       };
@@ -561,11 +916,6 @@ auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool {
   ren_assert(adapter.index < g_instance.adapters.size());
   return g_instance.adapters[adapter.index]
              .queue_family_indices[(usize)family] != QUEUE_FAMILY_UNAVAILABLE;
-}
-
-auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
-    -> MemoryHeapProperties {
-  return g_instance.adapters[adapter.index].heap_properties[(usize)heap];
 }
 
 auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
@@ -674,8 +1024,9 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   float queue_priority = 1.0f;
 
-  StaticVector<VkDeviceQueueCreateInfo, QUEUE_FAMILY_COUNT> queue_create_info;
-  for (u32 i : range(QUEUE_FAMILY_COUNT)) {
+  StaticVector<VkDeviceQueueCreateInfo, ENUM_SIZE<QueueFamily>>
+      queue_create_info;
+  for (u32 i : range(ENUM_SIZE<QueueFamily>)) {
     if (adapter.queue_family_indices[i] != QUEUE_FAMILY_UNAVAILABLE) {
       queue_create_info.push_back({
           .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -714,7 +1065,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   volkLoadDeviceTable(&device->vk, device->handle);
 
-  for (usize i : range(QUEUE_FAMILY_COUNT)) {
+  for (usize i : range(ENUM_SIZE<QueueFamily>)) {
     u32 qfi = adapter.queue_family_indices[i];
     if (qfi != QUEUE_FAMILY_UNAVAILABLE) {
       device->vk.vkGetDeviceQueue(device->handle, qfi, 0,
@@ -964,23 +1315,11 @@ auto queue_wait_idle(Queue queue) -> Result<void> {
   return {};
 }
 
-namespace {
-
-constexpr auto SEMAPHORE_TYPE_MAP = [] {
-  std::array<VkSemaphoreType, SEMAPHORE_TYPE_COUNT> map;
-  map(SemaphoreType::Binary, VK_SEMAPHORE_TYPE_BINARY);
-  map(SemaphoreType::Timeline, VK_SEMAPHORE_TYPE_TIMELINE);
-  return map;
-}();
-
-} // namespace
-
-auto create_semaphore(const SemaphoreCreateInfo &create_info)
+auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
     -> Result<Semaphore> {
-  Device device = create_info.device;
   VkSemaphoreTypeCreateInfo type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-      .semaphoreType = SEMAPHORE_TYPE_MAP[(usize)create_info.type],
+      .semaphoreType = to_vk(create_info.type),
       .initialValue = create_info.initial_value,
   };
   VkSemaphoreCreateInfo vk_create_info = {
@@ -1027,13 +1366,19 @@ auto wait_for_semaphores(Device device,
   return fail(result);
 }
 
-auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer> {
-  Device device = create_info.device;
+auto map(Device device, Allocation allocation) -> void * {
+  VmaAllocationInfo allocation_info;
+  vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
+  return allocation_info.pMappedData;
+}
+
+auto create_buffer(Device device, const BufferCreateInfo &create_info)
+    -> Result<Buffer> {
   const MemoryHeapProperties &heap_props =
       g_instance.adapters[device->adapter.index]
           .heap_properties[(usize)create_info.heap];
 
-  StaticVector<u32, QUEUE_FAMILY_COUNT> queue_family_indices(
+  StaticVector<u32, ENUM_SIZE<QueueFamily>> queue_family_indices(
       get_adapter(device).queue_family_indices);
   queue_family_indices.erase(QUEUE_FAMILY_UNAVAILABLE);
 
@@ -1106,48 +1451,8 @@ auto get_device_ptr(Device device, Buffer buffer) -> u64 {
   return device->vk.vkGetBufferDeviceAddress(device->handle, &address_info);
 }
 
-namespace {
-
-constexpr auto IMAGE_USAGE_MAP = [] {
-  using enum ImageUsage;
-  std::array<VkImageUsageFlagBits, IMAGE_USAGE_COUNT> map = {};
-  map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-  map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-  map_bit(ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
-  map_bit(UnorderedAccess, VK_IMAGE_USAGE_STORAGE_BIT);
-  map_bit(RenderTarget, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-  map_bit(DepthStencilTarget, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-  return map;
-}();
-
-auto to_vk_image_usage_flags(ImageUsageFlags flags) -> VkImageUsageFlags {
-  VkImageUsageFlags vk_flags = 0;
-  for (usize bit : range(IMAGE_USAGE_COUNT)) {
-    auto usage = (ImageUsage)(1 << bit);
-    if (flags.is_set(usage)) {
-      vk_flags |= IMAGE_USAGE_MAP[bit];
-    }
-  }
-  return vk_flags;
-}
-
-auto from_vk_image_usage_flags(VkImageUsageFlags vk_flags) -> ImageUsageFlags {
-  ImageUsageFlags flags;
-  for (usize bit : range(IMAGE_USAGE_COUNT)) {
-    VkImageUsageFlagBits vk_usage = IMAGE_USAGE_MAP[bit];
-    if (vk_flags & vk_usage) {
-      auto usage = (ImageUsage)(1 << bit);
-      flags |= usage;
-    }
-  }
-  return flags;
-}
-
-} // namespace
-
-auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
-  Device device = create_info.device;
-
+auto create_image(Device device, const ImageCreateInfo &create_info)
+    -> Result<Image> {
   u32 width = create_info.width;
   ren_assert(width > 0);
   u32 height = create_info.height;
@@ -1164,7 +1469,7 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
 
   ImageUsageFlags usage = create_info.usage;
 
-  StaticVector<u32, QUEUE_FAMILY_COUNT> queue_family_indices(
+  StaticVector<u32, ENUM_SIZE<QueueFamily>> queue_family_indices(
       get_adapter(device).queue_family_indices);
   if (!usage.is_any_set(ImageUsage::TransferSrc | ImageUsage::TransferDst)) {
     queue_family_indices[(usize)QueueFamily::Transfer] =
@@ -1189,7 +1494,7 @@ auto create_image(const ImageCreateInfo &create_info) -> Result<Image> {
       .arrayLayers = create_info.num_layers * (create_info.cube_map ? 6 : 1),
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
-      .usage = to_vk_image_usage_flags(create_info.usage),
+      .usage = to_vk(create_info.usage),
       .sharingMode = queue_family_indices.size() > 1
                          ? VK_SHARING_MODE_CONCURRENT
                          : VK_SHARING_MODE_EXCLUSIVE,
@@ -1223,60 +1528,25 @@ auto get_allocation(Device, Image image) -> Allocation {
   return image.allocation;
 }
 
-namespace {
-
-constexpr auto VIEW_TYPE_MAP = [] {
-  std::array<VkImageViewType, IMAGE_VIEW_DIMENSION_COUNT> map = {};
-  map(ImageViewDimension::e1D, VK_IMAGE_VIEW_TYPE_1D);
-  map(ImageViewDimension::e2D, VK_IMAGE_VIEW_TYPE_2D);
-  map(ImageViewDimension::eCube, VK_IMAGE_VIEW_TYPE_CUBE);
-  map(ImageViewDimension::e3D, VK_IMAGE_VIEW_TYPE_3D);
-  return map;
-}();
-
-constexpr auto COMPONENT_SWIZZLE_MAP = [] {
-  std::array<VkComponentSwizzle, COMPONENT_SWIZZLE_COUNT> map = {};
-  map(ComponentSwizzle::Identity, VK_COMPONENT_SWIZZLE_IDENTITY);
-  map(ComponentSwizzle::Zero, VK_COMPONENT_SWIZZLE_ZERO);
-  map(ComponentSwizzle::One, VK_COMPONENT_SWIZZLE_ONE);
-  map(ComponentSwizzle::R, VK_COMPONENT_SWIZZLE_R);
-  map(ComponentSwizzle::G, VK_COMPONENT_SWIZZLE_G);
-  map(ComponentSwizzle::B, VK_COMPONENT_SWIZZLE_B);
-  map(ComponentSwizzle::A, VK_COMPONENT_SWIZZLE_A);
-  return map;
-}();
-
-auto toVkFormat(TinyImageFormat format) -> VkFormat {
-  return (VkFormat)TinyImageFormat_ToVkFormat(format);
-}
-
-auto get_format_aspect_mask(TinyImageFormat format) -> VkImageAspectFlags {
-  if (TinyImageFormat_IsDepthOnly(format) or
-      TinyImageFormat_IsDepthAndStencil(format)) {
-    return VK_IMAGE_ASPECT_DEPTH_BIT;
-  }
-  return VK_IMAGE_ASPECT_COLOR_BIT;
-}
-
-} // namespace
+namespace {} // namespace
 
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
     -> Result<ImageView> {
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
-      .viewType = VIEW_TYPE_MAP[(usize)create_info.dimension],
-      .format = toVkFormat(create_info.format),
+      .viewType = to_vk(create_info.dimension),
+      .format = to_vk(create_info.format),
       .components =
           {
-              .r = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.r],
-              .g = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.g],
-              .b = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.b],
-              .a = COMPONENT_SWIZZLE_MAP[(usize)create_info.components.a],
+              .r = to_vk(create_info.components.r),
+              .g = to_vk(create_info.components.g),
+              .b = to_vk(create_info.components.b),
+              .a = to_vk(create_info.components.a),
           },
       .subresourceRange =
           {
-              .aspectMask = get_format_aspect_mask(create_info.format),
+              .aspectMask = to_vk(create_info.aspect_mask),
               .baseMipLevel = create_info.base_mip,
               .levelCount = create_info.num_mips,
               .baseArrayLayer = create_info.base_layer,
@@ -1297,61 +1567,21 @@ void destroy_image_view(Device device, ImageView view) {
   device->vk.vkDestroyImageView(device->handle, view.handle, nullptr);
 }
 
-namespace {
-
-constexpr auto FILTER_MAP = [] {
-  std::array<VkFilter, FILTER_COUNT> map = {};
-  map(Filter::Nearest, VK_FILTER_NEAREST);
-  map(Filter::Linear, VK_FILTER_LINEAR);
-  return map;
-}();
-
-constexpr auto SAMPLER_MIPMAP_MODE_MAP = [] {
-  std::array<VkSamplerMipmapMode, SAMPLER_MIPMAP_MODE_COUNT> map = {};
-  map(SamplerMipmapMode::Nearest, VK_SAMPLER_MIPMAP_MODE_NEAREST);
-  map(SamplerMipmapMode::Linear, VK_SAMPLER_MIPMAP_MODE_LINEAR);
-  return map;
-}();
-
-constexpr auto SAMPLER_ADDRESS_MODE_MAP = [] {
-  std::array<VkSamplerAddressMode, SAMPLER_ADDRESS_MODE_COUNT> map = {};
-  map(SamplerAddressMode::Repeat, VK_SAMPLER_ADDRESS_MODE_REPEAT);
-  map(SamplerAddressMode::MirroredRepeat,
-      VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT);
-  map(SamplerAddressMode::ClampToEdge, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-  return map;
-}();
-
-constexpr auto SAMPLER_REDUCTION_MODE_MAP = [] {
-  std::array<VkSamplerReductionMode, SAMPLER_REDUCTION_MODE_COUNT> map = {};
-  map(SamplerReductionMode::WeightedAverage,
-      VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
-  map(SamplerReductionMode::Min, VK_SAMPLER_REDUCTION_MODE_MIN);
-  map(SamplerReductionMode::Max, VK_SAMPLER_REDUCTION_MODE_MAX);
-  return map;
-}();
-
-} // namespace
-
 auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler> {
   Device device = create_info.device;
   VkSamplerReductionModeCreateInfo reduction_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
-      .reductionMode =
-          SAMPLER_REDUCTION_MODE_MAP[(usize)create_info.reduction_mode],
+      .reductionMode = to_vk(create_info.reduction_mode),
   };
   VkSamplerCreateInfo sampler_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .pNext = &reduction_mode_info,
-      .magFilter = FILTER_MAP[(usize)create_info.mag_filter],
-      .minFilter = FILTER_MAP[(usize)create_info.min_filter],
-      .mipmapMode = SAMPLER_MIPMAP_MODE_MAP[(usize)create_info.mipmap_mode],
-      .addressModeU =
-          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_u],
-      .addressModeV =
-          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_v],
-      .addressModeW =
-          SAMPLER_ADDRESS_MODE_MAP[(usize)create_info.address_mode_w],
+      .magFilter = to_vk(create_info.mag_filter),
+      .minFilter = to_vk(create_info.min_filter),
+      .mipmapMode = to_vk(create_info.mipmap_mode),
+      .addressModeU = to_vk(create_info.address_mode_u),
+      .addressModeV = to_vk(create_info.address_mode_v),
+      .addressModeW = to_vk(create_info.address_mode_w),
       .anisotropyEnable = create_info.max_anisotropy > 0.0f,
       .maxAnisotropy = create_info.max_anisotropy,
       .maxLod = VK_LOD_CLAMP_NONE,
@@ -1452,125 +1682,6 @@ void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-namespace {
-
-constexpr auto PRIMITIVE_TOPOLOGY_MAP = [] {
-  std::array<VkPrimitiveTopology, PRIMITIVE_TOPOLOGY_COUNT> map = {};
-  map(PrimitiveTopology::PointList, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
-  map(PrimitiveTopology::LineList, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-  map(PrimitiveTopology::TriangleList, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-  return map;
-}();
-
-constexpr auto FILL_MODE_MAP = [] {
-  std::array<VkPolygonMode, FILL_MODE_COUNT> map = {};
-  map(FillMode::Fill, VK_POLYGON_MODE_FILL);
-  map(FillMode::Wireframe, VK_POLYGON_MODE_LINE);
-  return map;
-}();
-
-constexpr auto CULL_MODE_MAP = [] {
-  std::array<VkCullModeFlagBits, CULL_MODE_COUNT> map = {};
-  map(CullMode::None, VK_CULL_MODE_NONE);
-  map(CullMode::Front, VK_CULL_MODE_FRONT_BIT);
-  map(CullMode::Back, VK_CULL_MODE_BACK_BIT);
-  return map;
-}();
-
-constexpr auto COMPARE_OP_MAP = [] {
-  std::array<VkCompareOp, COMPARE_OP_COUNT> map = {};
-  map(CompareOp::Never, VK_COMPARE_OP_NEVER);
-  map(CompareOp::Less, VK_COMPARE_OP_LESS);
-  map(CompareOp::Equal, VK_COMPARE_OP_EQUAL);
-  map(CompareOp::LessOrEqual, VK_COMPARE_OP_LESS_OR_EQUAL);
-  map(CompareOp::Greater, VK_COMPARE_OP_GREATER);
-  map(CompareOp::NotEqual, VK_COMPARE_OP_NOT_EQUAL);
-  map(CompareOp::GreaterOrEqual, VK_COMPARE_OP_GREATER_OR_EQUAL);
-  map(CompareOp::Always, VK_COMPARE_OP_ALWAYS);
-  return map;
-}();
-
-constexpr auto BLEND_FACTOR_MAP = [] {
-  std::array<VkBlendFactor, BLEND_FACTOR_COUNT> map = {};
-  map(BlendFactor::Zero, VK_BLEND_FACTOR_ZERO);
-  map(BlendFactor::One, VK_BLEND_FACTOR_ONE);
-  map(BlendFactor::SrcColor, VK_BLEND_FACTOR_SRC_COLOR);
-  map(BlendFactor::OneMinusSrcColor, VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR);
-  map(BlendFactor::DstColor, VK_BLEND_FACTOR_DST_COLOR);
-  map(BlendFactor::OneMinusDstColor, VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR);
-  map(BlendFactor::SrcAlpha, VK_BLEND_FACTOR_SRC_ALPHA);
-  map(BlendFactor::OneMinusSrcAlpha, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
-  map(BlendFactor::DstAlpha, VK_BLEND_FACTOR_DST_ALPHA);
-  map(BlendFactor::OneMinusDstAlpha, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA);
-  map(BlendFactor::ConstantColor, VK_BLEND_FACTOR_CONSTANT_COLOR);
-  map(BlendFactor::OneMinusConstantColor,
-      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR);
-  map(BlendFactor::ConstantAlpha, VK_BLEND_FACTOR_CONSTANT_ALPHA);
-  map(BlendFactor::OneMinusConstantAlpha,
-      VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA);
-  map(BlendFactor::SrcAlphaSaturate, VK_BLEND_FACTOR_SRC_ALPHA_SATURATE);
-  map(BlendFactor::Src1Color, VK_BLEND_FACTOR_SRC1_COLOR);
-  map(BlendFactor::OneMinusSrc1Color, VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR);
-  map(BlendFactor::Src1Alpha, VK_BLEND_FACTOR_SRC1_ALPHA);
-  map(BlendFactor::OneMinusSrc1Alpha, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA);
-  return map;
-}();
-
-constexpr auto BLEND_OP_MAP = [] {
-  std::array<VkBlendOp, BLEND_OP_COUNT> map = {};
-  map(BlendOp::Add, VK_BLEND_OP_ADD);
-  map(BlendOp::Subtract, VK_BLEND_OP_SUBTRACT);
-  map(BlendOp::ReverseSubtract, VK_BLEND_OP_REVERSE_SUBTRACT);
-  map(BlendOp::Min, VK_BLEND_OP_MIN);
-  map(BlendOp::Max, VK_BLEND_OP_MAX);
-  return map;
-}();
-
-constexpr auto LOGIC_OP_MAP = [] {
-  std::array<VkLogicOp, LOGIC_OP_COUNT> map = {};
-  map(LogicOp::Clear, VK_LOGIC_OP_CLEAR);
-  map(LogicOp::And, VK_LOGIC_OP_AND);
-  map(LogicOp::AndReverse, VK_LOGIC_OP_AND_REVERSE);
-  map(LogicOp::Copy, VK_LOGIC_OP_COPY);
-  map(LogicOp::AndInverted, VK_LOGIC_OP_AND_INVERTED);
-  map(LogicOp::NoOp, VK_LOGIC_OP_NO_OP);
-  map(LogicOp::Xor, VK_LOGIC_OP_XOR);
-  map(LogicOp::Or, VK_LOGIC_OP_OR);
-  map(LogicOp::Nor, VK_LOGIC_OP_NOR);
-  map(LogicOp::Equivalent, VK_LOGIC_OP_EQUIVALENT);
-  map(LogicOp::Invert, VK_LOGIC_OP_INVERT);
-  map(LogicOp::OrReverse, VK_LOGIC_OP_OR_REVERSE);
-  map(LogicOp::CopyInverted, VK_LOGIC_OP_COPY_INVERTED);
-  map(LogicOp::OrInverted, VK_LOGIC_OP_OR_INVERTED);
-  map(LogicOp::Nand, VK_LOGIC_OP_NAND);
-  map(LogicOp::Set, VK_LOGIC_OP_SET);
-  return map;
-}();
-
-constexpr auto COLOR_COMPONENT_MAP = [] {
-  using enum ImageUsage;
-  std::array<VkColorComponentFlagBits, COLOR_COMPONENT_COUNT> map = {};
-  map_bit(ColorComponent::R, VK_COLOR_COMPONENT_R_BIT);
-  map_bit(ColorComponent::G, VK_COLOR_COMPONENT_G_BIT);
-  map_bit(ColorComponent::B, VK_COLOR_COMPONENT_B_BIT);
-  map_bit(ColorComponent::A, VK_COLOR_COMPONENT_A_BIT);
-  return map;
-}();
-
-auto to_vk_color_component_mask(ColorComponentMask mask)
-    -> VkColorComponentFlags {
-  VkColorComponentFlags vk_mask = 0;
-  for (usize bit : range(COLOR_COMPONENT_COUNT)) {
-    auto comp = (ColorComponent)(1 << bit);
-    if (mask.is_set(comp)) {
-      vk_mask |= COLOR_COMPONENT_MAP[bit];
-    }
-  }
-  return vk_mask;
-}
-
-} // namespace
-
 auto create_graphics_pipeline(Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline> {
@@ -1654,8 +1765,7 @@ auto create_graphics_pipeline(Device device,
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = PRIMITIVE_TOPOLOGY_MAP[(usize)create_info.input_assembly_state
-                                             .topology],
+      .topology = to_vk(create_info.input_assembly_state.topology),
   };
 
   VkPipelineViewportStateCreateInfo viewport_info = {
@@ -1665,10 +1775,9 @@ auto create_graphics_pipeline(Device device,
   VkPipelineRasterizationStateCreateInfo rasterization_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
       .depthClampEnable = create_info.rasterization_state.depth_clamp_enable,
-      .polygonMode =
-          FILL_MODE_MAP[(usize)create_info.rasterization_state.fill_mode],
-      .cullMode = (VkCullModeFlags)
-          CULL_MODE_MAP[(usize)create_info.rasterization_state.cull_mode],
+      .polygonMode = to_vk(create_info.rasterization_state.fill_mode),
+      .cullMode =
+          (VkCullModeFlags)to_vk(create_info.rasterization_state.cull_mode),
       .frontFace = create_info.rasterization_state.front_face == FrontFace::CCW
                        ? VK_FRONT_FACE_COUNTER_CLOCKWISE
                        : VK_FRONT_FACE_CLOCKWISE,
@@ -1694,8 +1803,7 @@ auto create_graphics_pipeline(Device device,
       .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
       .depthTestEnable = create_info.depth_stencil_state.depth_test_enable,
       .depthWriteEnable = create_info.depth_stencil_state.depth_write_enable,
-      .depthCompareOp = COMPARE_OP_MAP[(usize)create_info.depth_stencil_state
-                                           .depth_compare_op],
+      .depthCompareOp = to_vk(create_info.depth_stencil_state.depth_compare_op),
       .depthBoundsTestEnable =
           create_info.depth_stencil_state.depth_bounds_test_enable,
       .minDepthBounds = create_info.depth_stencil_state.min_depth_bounds,
@@ -1704,14 +1812,14 @@ auto create_graphics_pipeline(Device device,
 
   VkFormat color_formats[MAX_NUM_RENDER_TARGETS] = {};
   for (usize i : range(MAX_NUM_RENDER_TARGETS)) {
-    color_formats[i] = toVkFormat(create_info.rtv_formats[i]);
+    color_formats[i] = to_vk(create_info.rtv_formats[i]);
   }
 
   VkPipelineRenderingCreateInfo rendering_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
       .colorAttachmentCount = create_info.num_render_targets,
       .pColorAttachmentFormats = color_formats,
-      .depthAttachmentFormat = toVkFormat(create_info.dsv_format),
+      .depthAttachmentFormat = to_vk(create_info.dsv_format),
   };
 
   VkPipelineColorBlendAttachmentState
@@ -1720,24 +1828,20 @@ auto create_graphics_pipeline(Device device,
     const RenderTargetBlendInfo &target = create_info.blend_state.targets[i];
     attachment_blend_info[i] = {
         .blendEnable = target.blend_enable,
-        .srcColorBlendFactor =
-            BLEND_FACTOR_MAP[(usize)target.src_color_blend_factor],
-        .dstColorBlendFactor =
-            BLEND_FACTOR_MAP[(usize)target.dst_color_blend_factor],
-        .colorBlendOp = BLEND_OP_MAP[(usize)target.color_blend_op],
-        .srcAlphaBlendFactor =
-            BLEND_FACTOR_MAP[(usize)target.src_alpha_blend_factor],
-        .dstAlphaBlendFactor =
-            BLEND_FACTOR_MAP[(usize)target.dst_alpha_blend_factor],
-        .alphaBlendOp = BLEND_OP_MAP[(usize)target.alpha_blend_op],
-        .colorWriteMask = to_vk_color_component_mask(target.color_write_mask),
+        .srcColorBlendFactor = to_vk(target.src_color_blend_factor),
+        .dstColorBlendFactor = to_vk(target.dst_color_blend_factor),
+        .colorBlendOp = to_vk(target.color_blend_op),
+        .srcAlphaBlendFactor = to_vk(target.src_alpha_blend_factor),
+        .dstAlphaBlendFactor = to_vk(target.dst_alpha_blend_factor),
+        .alphaBlendOp = to_vk(target.alpha_blend_op),
+        .colorWriteMask = to_vk(target.color_write_mask),
     };
   }
 
   VkPipelineColorBlendStateCreateInfo blend_info = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
       .logicOpEnable = create_info.blend_state.logic_op_enable,
-      .logicOp = LOGIC_OP_MAP[(usize)create_info.blend_state.logic_op],
+      .logicOp = to_vk(create_info.blend_state.logic_op),
       .attachmentCount = create_info.num_render_targets,
       .pAttachments = attachment_blend_info,
   };
@@ -1967,134 +2071,6 @@ auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
   return {};
 }
 
-namespace {
-
-template <typename E>
-  requires std::is_scoped_enum_v<E>
-constexpr usize ENUM_SIZE = []() -> usize {
-  if (CFlagsEnum<E>) {
-    return std::countr_zero((usize)E::Last) + 1;
-  }
-  return (usize)E::Last + 1;
-}();
-
-template <typename From> constexpr auto MAP = nullptr;
-
-template <typename From>
-  requires std::is_scoped_enum_v<From>
-auto to_vk(From e) {
-  return MAP<From>[(usize)e];
-};
-
-template <CFlagsEnum From> auto to_vk(Flags<From> mask) {
-  typename decltype(MAP<From>)::value_type vk_mask = 0;
-  for (usize bit : range(ENUM_SIZE<From>)) {
-    if (mask.is_set((From)(1ull << bit))) {
-      vk_mask |= MAP<From>[bit];
-    }
-  }
-  return vk_mask;
-};
-
-template <>
-constexpr auto MAP<ImageAspect> = [] {
-  std::array<VkImageAspectFlags, ENUM_SIZE<ImageAspect>> map = {};
-  map_bit(ImageAspect::Color, VK_IMAGE_ASPECT_COLOR_BIT);
-  map_bit(ImageAspect::Depth, VK_IMAGE_ASPECT_DEPTH_BIT);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<PipelineStage> = [] {
-  std::array<VkPipelineStageFlagBits2, ENUM_SIZE<PipelineStage>> map = {};
-  map_bit(PipelineStage::ExecuteIndirect,
-          VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
-  map_bit(PipelineStage::TaskShader, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
-  map_bit(PipelineStage::MeshShader, VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT);
-  map_bit(PipelineStage::IndexInput, VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT);
-  map_bit(PipelineStage::VertexShader, VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT);
-  map_bit(PipelineStage::EarlyFragmentTests,
-          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT);
-  map_bit(PipelineStage::FragmentShader,
-          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
-  map_bit(PipelineStage::LateFragmentTests,
-          VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT);
-  map_bit(PipelineStage::RenderTargetOutput,
-          VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
-  map_bit(PipelineStage::ComputeShader, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT);
-  map_bit(PipelineStage::Transfer, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT);
-  map_bit(PipelineStage::All, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<Access> = [] {
-  std::array<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
-  map_bit(Access::IndirectCommandRead, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
-  map_bit(Access::IndexRead, VK_ACCESS_2_INDEX_READ_BIT);
-  map_bit(Access::UniformRead, VK_ACCESS_2_UNIFORM_READ_BIT);
-  map_bit(Access::ShaderBufferRead, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
-  map_bit(Access::ShaderImageRead, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
-  map_bit(Access::UnorderedAccess, VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                       VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT);
-  map_bit(Access::RenderTarget, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT |
-                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-  map_bit(Access::DepthStencilRead,
-          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT);
-  map_bit(Access::DepthStencilWrite,
-          VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-  map_bit(Access::TransferRead, VK_ACCESS_2_TRANSFER_READ_BIT);
-  map_bit(Access::TransferWrite, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-  map_bit(Access::MemoryRead, VK_ACCESS_2_MEMORY_READ_BIT);
-  map_bit(Access::MemoryWrite, VK_ACCESS_2_MEMORY_WRITE_BIT);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<ImageLayout> = [] {
-  std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
-  map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
-  map(ImageLayout::ShaderResource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  map(ImageLayout::UnorderedAccess, VK_IMAGE_LAYOUT_GENERAL);
-  map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-  map(ImageLayout::DepthStencilRead,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-  map(ImageLayout::DepthStencilWrite,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-  map(ImageLayout::TransferSrc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-  map(ImageLayout::TransferDst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-  map(ImageLayout::Present, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<PipelineBindPoint> = [] {
-  std::array<VkPipelineBindPoint, PIPELINE_BIND_POINT_COUNT> map = {};
-  map(PipelineBindPoint::Graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
-  map(PipelineBindPoint::Compute, VK_PIPELINE_BIND_POINT_COMPUTE);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<RenderPassLoadOp> = [] {
-  std::array<VkAttachmentLoadOp, ENUM_SIZE<RenderPassLoadOp>> map = {};
-  map(RenderPassLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
-  map(RenderPassLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
-  map(RenderPassLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
-  return map;
-}();
-
-template <>
-constexpr auto MAP<RenderPassStoreOp> = [] {
-  std::array<VkAttachmentStoreOp, ENUM_SIZE<RenderPassStoreOp>> map = {};
-  map(RenderPassStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
-  map(RenderPassStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
-  map(RenderPassStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
-  return map;
-}();
-
-} // namespace
-
 void cmd_pipeline_barrier(CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers) {
@@ -2125,11 +2101,11 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
         .image = barrier.image.handle,
         .subresourceRange =
             {
-                .aspectMask = to_vk(barrier.range.aspect_mask),
-                .baseMipLevel = barrier.range.base_mip,
-                .levelCount = barrier.range.num_mips,
-                .baseArrayLayer = barrier.range.base_layer,
-                .layerCount = barrier.range.num_layers,
+                .aspectMask = to_vk(barrier.aspect_mask),
+                .baseMipLevel = barrier.base_mip,
+                .levelCount = barrier.num_mips,
+                .baseArrayLayer = barrier.base_layer,
+                .layerCount = barrier.num_layers,
             },
     };
   }
@@ -2214,120 +2190,17 @@ void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &info) {
                                       &color, 1, &subresource);
 }
 
-void cmd_push_constants(CommandBuffer cmd, usize offset,
-                        Span<const std::byte> data) {
-  cmd.device->vk.vkCmdPushConstants(cmd.handle, cmd.device->pipeline_layout,
-                                    VK_SHADER_STAGE_ALL, offset, data.size(),
-                                    data.data());
-}
-
-namespace {
-
-template <>
-constexpr auto MAP<IndexType> = [] {
-  std::array<VkIndexType, ENUM_SIZE<IndexType>> map = {};
-  map(IndexType::UInt8, VK_INDEX_TYPE_UINT8_EXT);
-  map(IndexType::UInt16, VK_INDEX_TYPE_UINT16);
-  map(IndexType::UInt32, VK_INDEX_TYPE_UINT32);
-  return map;
-}();
-
-} // namespace
-
-void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
-                           IndexType index_type) {
-  cmd.device->vk.vkCmdBindIndexBuffer(cmd.handle, buffer.handle, offset,
-                                      to_vk(index_type));
-}
-
 void cmd_bind_pipeline(CommandBuffer cmd, PipelineBindPoint bind_point,
                        Pipeline pipeline) {
   cmd.device->vk.vkCmdBindPipeline(cmd.handle, to_vk(bind_point),
                                    pipeline.handle);
 }
 
-void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info) {
-  cmd.device->vk.vkCmdDraw(cmd.handle, draw_info.num_vertices,
-                           draw_info.num_instances, draw_info.base_vertex,
-                           draw_info.base_instance);
-}
-
-void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info) {
-  cmd.device->vk.vkCmdDrawIndexed(
-      cmd.handle, draw_info.num_indices, draw_info.num_instances,
-      draw_info.base_index, draw_info.vertex_offset, draw_info.base_instance);
-}
-
-void cmd_draw_indirect_count(CommandBuffer cmd,
-                             const DrawIndirectCountInfo &draw_info) {
-  cmd.device->vk.vkCmdDrawIndirectCount(
-      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
-      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
-      draw_info.max_count, draw_info.buffer_stride);
-}
-
-void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
-                                     const DrawIndirectCountInfo &draw_info) {
-  cmd.device->vk.vkCmdDrawIndexedIndirectCount(
-      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
-      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
-      draw_info.max_count, draw_info.buffer_stride);
-}
-
-void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
-                  u32 num_groups_z) {
-  cmd.device->vk.vkCmdDispatch(cmd.handle, num_groups_x, num_groups_y,
-                               num_groups_z);
-}
-
-void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset) {
-  cmd.device->vk.vkCmdDispatchIndirect(cmd.handle, buffer.handle, offset);
-}
-
-void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports) {
-  VkViewport vk_viewports[rhi::MAX_NUM_RENDER_TARGETS];
-  for (usize i : range(viewports.size())) {
-    const Viewport &vp = viewports[i];
-    vk_viewports[i] = {
-        .x = vp.offset.x,
-        .y = vp.offset.y + vp.size.y,
-        .width = vp.size.x,
-        .height = -vp.size.y,
-        .minDepth = vp.min_depth,
-        .maxDepth = vp.max_depth,
-    };
-  }
-  cmd.device->vk.vkCmdSetViewportWithCount(cmd.handle, viewports.size(),
-                                           vk_viewports);
-}
-
-void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects) {
-  VkRect2D vk_rects[rhi::MAX_NUM_RENDER_TARGETS];
-  for (usize i : range(rects.size())) {
-    const Rect2D &rect = rects[i];
-    vk_rects[i] = {
-        .offset = {(i32)rect.offset.x, (i32)rect.offset.y},
-        .extent = {rect.size.x, rect.size.y},
-    };
-  }
-  cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.size(), vk_rects);
-}
-
-void cmd_begin_debug_label(CommandBuffer cmd, const char *label) {
-  if (vkCmdBeginDebugUtilsLabelEXT) {
-    ren_assert(label);
-    VkDebugUtilsLabelEXT label_info = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-        .pLabelName = label,
-    };
-    vkCmdBeginDebugUtilsLabelEXT(cmd.handle, &label_info);
-  }
-}
-
-void cmd_end_debug_label(CommandBuffer cmd) {
-  if (vkCmdEndDebugUtilsLabelEXT) {
-    vkCmdEndDebugUtilsLabelEXT(cmd.handle);
-  }
+void cmd_push_constants(CommandBuffer cmd, usize offset,
+                        Span<const std::byte> data) {
+  cmd.device->vk.vkCmdPushConstants(cmd.handle, cmd.device->pipeline_layout,
+                                    VK_SHADER_STAGE_ALL, offset, data.size(),
+                                    data.data());
 }
 
 void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
@@ -2392,6 +2265,96 @@ void cmd_end_render_pass(CommandBuffer cmd) {
   cmd.device->vk.vkCmdEndRendering(cmd.handle);
 }
 
+void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports) {
+  VkViewport vk_viewports[rhi::MAX_NUM_RENDER_TARGETS];
+  for (usize i : range(viewports.size())) {
+    const Viewport &vp = viewports[i];
+    vk_viewports[i] = {
+        .x = vp.offset.x,
+        .y = vp.offset.y + vp.size.y,
+        .width = vp.size.x,
+        .height = -vp.size.y,
+        .minDepth = vp.min_depth,
+        .maxDepth = vp.max_depth,
+    };
+  }
+  cmd.device->vk.vkCmdSetViewportWithCount(cmd.handle, viewports.size(),
+                                           vk_viewports);
+}
+
+void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects) {
+  VkRect2D vk_rects[rhi::MAX_NUM_RENDER_TARGETS];
+  for (usize i : range(rects.size())) {
+    const Rect2D &rect = rects[i];
+    vk_rects[i] = {
+        .offset = {(i32)rect.offset.x, (i32)rect.offset.y},
+        .extent = {rect.size.x, rect.size.y},
+    };
+  }
+  cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.size(), vk_rects);
+}
+
+void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
+                           IndexType index_type) {
+  cmd.device->vk.vkCmdBindIndexBuffer(cmd.handle, buffer.handle, offset,
+                                      to_vk(index_type));
+}
+
+void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info) {
+  cmd.device->vk.vkCmdDraw(cmd.handle, draw_info.num_vertices,
+                           draw_info.num_instances, draw_info.base_vertex,
+                           draw_info.base_instance);
+}
+
+void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndexed(
+      cmd.handle, draw_info.num_indices, draw_info.num_instances,
+      draw_info.base_index, draw_info.vertex_offset, draw_info.base_instance);
+}
+
+void cmd_draw_indirect_count(CommandBuffer cmd,
+                             const DrawIndirectCountInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndirectCount(
+      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
+      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
+      draw_info.max_count, draw_info.buffer_stride);
+}
+
+void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
+                                     const DrawIndirectCountInfo &draw_info) {
+  cmd.device->vk.vkCmdDrawIndexedIndirectCount(
+      cmd.handle, draw_info.buffer.handle, draw_info.buffer_offset,
+      draw_info.count_buffer.handle, draw_info.count_buffer_offset,
+      draw_info.max_count, draw_info.buffer_stride);
+}
+
+void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
+                  u32 num_groups_z) {
+  cmd.device->vk.vkCmdDispatch(cmd.handle, num_groups_x, num_groups_y,
+                               num_groups_z);
+}
+
+void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset) {
+  cmd.device->vk.vkCmdDispatchIndirect(cmd.handle, buffer.handle, offset);
+}
+
+void cmd_begin_debug_label(CommandBuffer cmd, const char *label) {
+  if (vkCmdBeginDebugUtilsLabelEXT) {
+    ren_assert(label);
+    VkDebugUtilsLabelEXT label_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = label,
+    };
+    vkCmdBeginDebugUtilsLabelEXT(cmd.handle, &label_info);
+  }
+}
+
+void cmd_end_debug_label(CommandBuffer cmd) {
+  if (vkCmdEndDebugUtilsLabelEXT) {
+    vkCmdEndDebugUtilsLabelEXT(cmd.handle);
+  }
+}
+
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
 auto create_surface(SDL_Window *window) -> Result<Surface> {
@@ -2426,35 +2389,10 @@ auto is_queue_family_present_supported(Adapter handle, QueueFamily family,
   return supported;
 }
 
-namespace {
-
-constexpr auto PRESENT_MODE_MAP = [] {
-  using enum PresentMode;
-  std::array<VkPresentModeKHR, PRESENT_MODE_COUNT> map = {};
-  std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
-  map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
-  map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
-  map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
-  map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
-  return map;
-}();
-
-auto to_vk_present_mode(PresentMode present_mode) -> VkPresentModeKHR {
-  return PRESENT_MODE_MAP[(usize)present_mode];
-}
-
-auto from_vk_present_mode(VkPresentModeKHR present_mode) -> PresentMode {
-  auto it = std::ranges::find(PRESENT_MODE_MAP, present_mode);
-  ren_assert(it != PRESENT_MODE_MAP.end());
-  return (PresentMode)(it - PRESENT_MODE_MAP.begin());
-}
-
-} // namespace
-
 auto get_surface_present_modes(Adapter adapter, Surface surface,
                                u32 *num_present_modes,
                                PresentMode *present_modes) -> Result<void> {
-  VkPresentModeKHR vk_present_modes[PRESENT_MODE_COUNT];
+  VkPresentModeKHR vk_present_modes[ENUM_SIZE<PresentMode>];
   u32 num_vk_present_modes = std::size(vk_present_modes);
   VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(
       g_instance.adapters[adapter.index].physical_device, surface.handle,
@@ -2465,7 +2403,7 @@ auto get_surface_present_modes(Adapter adapter, Surface surface,
   }
   if (present_modes) {
     for (usize i : range(std::min(*num_present_modes, num_vk_present_modes))) {
-      present_modes[i] = from_vk_present_mode(vk_present_modes[i]);
+      present_modes[i] = from_vk<PresentMode>(vk_present_modes[i]);
     }
     if (*num_present_modes < num_vk_present_modes) {
       return fail(Error::Incomplete);
@@ -2520,7 +2458,7 @@ auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
                                                 &capabilities)) {
     return fail(Error::Unknown);
   }
-  return from_vk_image_usage_flags(capabilities.supportedUsageFlags);
+  return from_vk<ImageUsage>(capabilities.supportedUsageFlags);
 }
 
 namespace vk {
@@ -2662,11 +2600,11 @@ auto create_swap_chain(const SwapChainCreateInfo &create_info)
   SwapChain swap_chain = new (SwapChainData){
       .device = create_info.device,
       .surface = create_info.surface,
-      .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
-      .usage = to_vk_image_usage_flags(create_info.usage),
+      .format = to_vk(create_info.format),
+      .usage = to_vk(create_info.usage),
       .size = {create_info.width, create_info.height},
       .num_images = create_info.num_images,
-      .present_mode = to_vk_present_mode(create_info.present_mode),
+      .present_mode = to_vk(create_info.present_mode),
   };
   Result<void> result =
       recreate_swap_chain(swap_chain, swap_chain->size, swap_chain->num_images,
@@ -2715,7 +2653,7 @@ auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
 
 auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
                        ImageUsageFlags usage) -> Result<void> {
-  VkImageUsageFlags vk_usage = to_vk_image_usage_flags(usage);
+  VkImageUsageFlags vk_usage = to_vk(usage);
   if (!vk_usage) {
     vk_usage = swap_chain->usage;
   }
@@ -2727,8 +2665,7 @@ auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
 auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
     -> Result<void> {
   return recreate_swap_chain(swap_chain, swap_chain->size,
-                             swap_chain->num_images,
-                             to_vk_present_mode(present_mode));
+                             swap_chain->num_images, to_vk(present_mode));
 }
 
 auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32> {
@@ -2796,13 +2733,6 @@ auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
     -> Result<void> {
   return amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_PRESENT_AMD, enable,
                       max_fps);
-}
-
-#undef map
-auto map(Device device, Allocation allocation) -> void * {
-  VmaAllocationInfo allocation_info;
-  vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
-  return allocation_info.pMappedData;
 }
 
 } // namespace ren::rhi

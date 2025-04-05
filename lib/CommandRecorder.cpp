@@ -7,18 +7,6 @@
 
 namespace ren {
 
-namespace {
-
-auto get_format_aspect_mask(TinyImageFormat format) -> rhi::ImageAspectMask {
-  if (TinyImageFormat_IsDepthAndStencil(format) or
-      TinyImageFormat_IsDepthOnly(format)) {
-    return rhi::ImageAspect::Depth;
-  }
-  return rhi::ImageAspect::Color;
-}
-
-} // namespace
-
 auto CommandRecorder::begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
     -> Result<void, Error> {
   m_renderer = &renderer;
@@ -56,7 +44,8 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
     num_mips = texture.num_mips - base_mip;
   }
   ren_assert(base_mip + num_mips <= texture.num_mips);
-  rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
+  rhi::ImageAspectMask aspect_mask =
+      rhi::get_format_aspect_mask(texture.format);
   u32 num_layers = (texture.cube_map ? 6 : 1);
   usize offset = src.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
@@ -84,7 +73,8 @@ void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
     num_mips = texture.num_mips - base_mip;
   }
   ren_assert(base_mip + num_mips <= texture.num_mips);
-  rhi::ImageAspectMask aspect_mask = get_format_aspect_mask(texture.format);
+  rhi::ImageAspectMask aspect_mask =
+      rhi::get_format_aspect_mask(texture.format);
   u32 num_layers = (texture.cube_map ? 6 : 1);
   usize offset = dst.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
@@ -119,7 +109,7 @@ void CommandRecorder::clear_texture(Handle<Texture> handle,
       m_cmd, {
                  .image = texture.handle,
                  .color = color,
-                 .aspect_mask = get_format_aspect_mask(texture.format),
+                 .aspect_mask = rhi::get_format_aspect_mask(texture.format),
                  .num_mips = texture.num_mips,
                  .num_layers = texture.cube_map ? 6u : 1u,
              });
@@ -134,13 +124,10 @@ void CommandRecorder::pipeline_barrier(
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
     image_barriers[i] = {
         .image = texture.handle,
-        .range =
-            {
-                .aspect_mask = get_format_aspect_mask(texture.format),
-                .base_mip = barrier.resource.base_mip,
-                .num_mips = barrier.resource.num_mips,
-                .num_layers = texture.cube_map ? 6u : 1u,
-            },
+        .aspect_mask = rhi::get_format_aspect_mask(texture.format),
+        .base_mip = barrier.resource.base_mip,
+        .num_mips = barrier.resource.num_mips,
+        .num_layers = texture.cube_map ? 6u : 1u,
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,
         .src_layout = barrier.src_layout,

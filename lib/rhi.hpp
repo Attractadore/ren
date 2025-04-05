@@ -89,7 +89,6 @@ enum class QueueFamily {
   Transfer,
   Last = Transfer,
 };
-constexpr usize QUEUE_FAMILY_COUNT = (usize)QueueFamily::Last + 1;
 
 auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool;
 
@@ -100,7 +99,6 @@ enum class MemoryHeap {
   Readback,
   Last = Readback
 };
-constexpr usize MEMORY_HEAP_COUNT = (usize)MemoryHeap::Last + 1;
 
 enum class HostPageProperty {
   NotAvailable,
@@ -114,13 +112,9 @@ enum class MemoryPool {
 };
 
 struct MemoryHeapProperties {
-  MemoryHeap heap_type = {};
   HostPageProperty host_page_property = {};
   MemoryPool memory_pool = {};
 };
-
-auto get_memory_heap_properties(Adapter adapter, MemoryHeap heap)
-    -> MemoryHeapProperties;
 
 struct DeviceCreateInfo {
   Adapter adapter;
@@ -136,13 +130,13 @@ auto device_wait_idle(Device device) -> Result<void>;
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
 struct SemaphoreState {
-  rhi::Semaphore semaphore;
+  Semaphore semaphore;
   u64 value = 0;
 };
 
-auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
-                  TempSpan<const rhi::SemaphoreState> wait_semaphores,
-                  TempSpan<const rhi::SemaphoreState> signal_semaphores)
+auto queue_submit(Queue queue, TempSpan<const CommandBuffer> cmd_buffers,
+                  TempSpan<const SemaphoreState> wait_semaphores,
+                  TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void>;
 
 auto queue_wait_idle(Queue queue) -> Result<void>;
@@ -152,15 +146,13 @@ enum class SemaphoreType {
   Timeline,
   Last = Timeline,
 };
-constexpr usize SEMAPHORE_TYPE_COUNT = (usize)SemaphoreType::Last + 1;
 
 struct SemaphoreCreateInfo {
-  Device device = {};
   SemaphoreType type = SemaphoreType::Timeline;
   u64 initial_value = 0;
 };
 
-auto create_semaphore(const SemaphoreCreateInfo &create_info)
+auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
     -> Result<Semaphore>;
 
 void destroy_semaphore(Device device, Semaphore semaphore);
@@ -185,22 +177,13 @@ auto wait_for_semaphores(Device device,
 
 auto map(Device device, Allocation allocation) -> void *;
 
-// This is empty for now because buffers are just memory. RADV only treats
-// acceleration structures and descriptor buffers differently, otherwise usage
-// flags are ignored.
-// clang-format off
-REN_BEGIN_FLAGS_ENUM(BufferUsage) {
-} REN_END_FLAGS_ENUM(BufferUsage);
-// clang-format on
-
 struct BufferCreateInfo {
-  Device device = {};
   usize size = 0;
-  BufferUsage usage = {};
   MemoryHeap heap = MemoryHeap::Default;
 };
 
-auto create_buffer(const BufferCreateInfo &create_info) -> Result<Buffer>;
+auto create_buffer(Device device, const BufferCreateInfo &create_info)
+    -> Result<Buffer>;
 
 void destroy_buffer(Device device, Buffer buffer);
 
@@ -226,7 +209,6 @@ REN_BEGIN_FLAGS_ENUM(ImageUsage) {
   Last = DepthStencilTarget,
 } REN_END_FLAGS_ENUM(ImageUsage);
 // clang-format on
-constexpr u32 IMAGE_USAGE_COUNT = std::countr_zero((usize)ImageUsage::Last) + 1;
 
 } // namespace ren::rhi
 
@@ -235,22 +217,6 @@ REN_ENABLE_FLAGS(ren::rhi::ImageUsage);
 namespace ren::rhi {
 
 using ImageUsageFlags = Flags<rhi::ImageUsage>;
-
-struct ImageCreateInfo {
-  Device device = {};
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  ImageUsageFlags usage;
-  u32 width = 0;
-  u32 height = 0;
-  u32 depth : 31 = 0;
-  bool cube_map : 1 = false;
-  u32 num_mips = 1;
-  u32 num_layers = 1;
-};
-
-auto create_image(const ImageCreateInfo &create_info) -> Result<Image>;
-
-void destroy_image(Device device, Image image);
 
 REN_BEGIN_FLAGS_ENUM(ImageAspect){
     REN_FLAG(Color),
@@ -266,13 +232,29 @@ namespace ren::rhi {
 
 using ImageAspectMask = Flags<ImageAspect>;
 
-struct ImageSubresourceRange {
-  ImageAspectMask aspect_mask;
-  u32 base_mip = 0;
-  u32 num_mips = 0;
-  u32 base_layer = 0;
-  u32 num_layers = 0;
+inline auto get_format_aspect_mask(TinyImageFormat format) -> ImageAspectMask {
+  if (TinyImageFormat_IsDepthAndStencil(format) or
+      TinyImageFormat_IsDepthOnly(format)) {
+    return ImageAspect::Depth;
+  }
+  return ImageAspect::Color;
+}
+
+struct ImageCreateInfo {
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  ImageUsageFlags usage;
+  u32 width = 0;
+  u32 height = 0;
+  u32 depth : 31 = 0;
+  bool cube_map : 1 = false;
+  u32 num_mips = 1;
+  u32 num_layers = 1;
 };
+
+auto create_image(Device device, const ImageCreateInfo &create_info)
+    -> Result<Image>;
+
+void destroy_image(Device device, Image image);
 
 auto set_debug_name(Device device, Image image, const char *name)
     -> Result<void>;
@@ -286,8 +268,6 @@ enum class ImageViewDimension {
   e3D,
   Last = e3D,
 };
-constexpr usize IMAGE_VIEW_DIMENSION_COUNT =
-    (usize)ImageViewDimension::Last + 1;
 
 enum class ComponentSwizzle : u8 {
   Identity,
@@ -299,7 +279,6 @@ enum class ComponentSwizzle : u8 {
   A,
   Last = A,
 };
-constexpr usize COMPONENT_SWIZZLE_COUNT = (usize)ComponentSwizzle::Last + 1;
 
 struct ComponentMapping {
   ComponentSwizzle r : 4 = ComponentSwizzle::Identity;
@@ -316,6 +295,7 @@ struct ImageViewCreateInfo {
   ImageViewDimension dimension = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   ComponentMapping components;
+  ImageAspectMask aspect_mask;
   u32 base_mip = 0;
   u32 num_mips = 0;
   u32 base_layer = 0;
@@ -331,14 +311,12 @@ enum class Filter {
   Linear,
   Last = Linear,
 };
-constexpr usize FILTER_COUNT = (usize)Filter::Last + 1;
 
 enum class SamplerMipmapMode {
   Nearest,
   Linear,
   Last = Linear,
 };
-constexpr usize SAMPLER_MIPMAP_MODE_COUNT = (usize)SamplerMipmapMode::Last + 1;
 
 enum class SamplerAddressMode {
   Repeat,
@@ -346,8 +324,6 @@ enum class SamplerAddressMode {
   ClampToEdge,
   Last = ClampToEdge,
 };
-constexpr usize SAMPLER_ADDRESS_MODE_COUNT =
-    (usize)SamplerAddressMode::Last + 1;
 
 constexpr float LOD_CLAMP_NONE = 1000.0f;
 
@@ -357,8 +333,6 @@ enum class SamplerReductionMode {
   Max,
   Last = Max,
 };
-constexpr usize SAMPLER_REDUCTION_MODE_COUNT =
-    (usize)SamplerReductionMode::Last + 1;
 
 struct SamplerCreateInfo {
   Device device = {};
@@ -416,7 +390,6 @@ enum class PrimitiveTopology {
   TriangleList,
   Last = TriangleList,
 };
-constexpr usize PRIMITIVE_TOPOLOGY_COUNT = (usize)PrimitiveTopology::Last + 1;
 
 struct InputAssemblyStateInfo {
   PrimitiveTopology topology = PrimitiveTopology::TriangleList;
@@ -427,7 +400,6 @@ enum class FillMode {
   Wireframe,
   Last = Wireframe,
 };
-constexpr usize FILL_MODE_COUNT = (usize)FillMode::Last + 1;
 
 enum class CullMode {
   None,
@@ -435,14 +407,12 @@ enum class CullMode {
   Back,
   Last = Back,
 };
-constexpr usize CULL_MODE_COUNT = (usize)CullMode::Last + 1;
 
 enum class FrontFace {
   CCW,
   CW,
   Last = CW,
 };
-constexpr usize FRONT_FACE_COUNT = (usize)FrontFace::Last + 1;
 
 struct RasterizationStateInfo {
   FillMode fill_mode = FillMode::Fill;
@@ -480,7 +450,6 @@ enum class CompareOp {
   Always,
   Last = Always,
 };
-constexpr usize COMPARE_OP_COUNT = (usize)CompareOp::Last + 1;
 
 struct DepthStencilStateInfo {
   bool depth_test_enable = false;
@@ -515,7 +484,6 @@ enum class BlendFactor {
   OneMinusSrc1Alpha,
   Last = OneMinusSrc1Alpha,
 };
-constexpr usize BLEND_FACTOR_COUNT = (usize)BlendFactor::Last + 1;
 
 enum class BlendOp {
   Add,
@@ -525,7 +493,6 @@ enum class BlendOp {
   Max,
   Last = Max,
 };
-constexpr usize BLEND_OP_COUNT = (usize)BlendOp::Last + 1;
 
 // clang-format off
 REN_BEGIN_FLAGS_ENUM(ColorComponent) {
@@ -536,8 +503,6 @@ REN_BEGIN_FLAGS_ENUM(ColorComponent) {
   Last = A,
 } REN_END_FLAGS_ENUM(ColorComponent);
 // clang-format on
-constexpr usize COLOR_COMPONENT_COUNT =
-    std::countr_zero((usize)ColorComponent::Last) + 1;
 
 } // namespace ren::rhi
 
@@ -602,13 +567,13 @@ struct GraphicsPipelineCreateInfo {
   BlendStateInfo blend_state;
 };
 
-struct ComputePipelineCreateInfo {
-  ShaderInfo cs;
-};
-
 auto create_graphics_pipeline(Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline>;
+
+struct ComputePipelineCreateInfo {
+  ShaderInfo cs;
+};
 
 auto create_compute_pipeline(Device device,
                              const ComputePipelineCreateInfo &create_info)
@@ -638,15 +603,6 @@ auto begin_command_buffer(Device device, CommandPool pool)
     -> Result<CommandBuffer>;
 
 auto end_command_buffer(CommandBuffer cmd) -> Result<void>;
-
-constexpr usize MAX_PUSH_CONSTANTS_SIZE = 256;
-
-enum class PipelineBindPoint {
-  Graphics,
-  Compute,
-  Last = Compute,
-};
-constexpr usize PIPELINE_BIND_POINT_COUNT = (usize)PipelineBindPoint::Last + 1;
 
 // clang-format off
 REN_BEGIN_FLAGS_ENUM(PipelineStage){
@@ -854,7 +810,11 @@ constexpr MemoryBarrier ALL_MEMORY_BARRIER = {
 
 struct ImageBarrier {
   Image image;
-  ImageSubresourceRange range;
+  ImageAspectMask aspect_mask;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
   PipelineStageMask src_stage_mask;
   AccessMask src_access_mask;
   ImageLayout src_layout = ImageLayout::Undefined;
@@ -916,80 +876,19 @@ struct ImageClearInfo {
 
 void cmd_clear_image(CommandBuffer cmd, const ImageClearInfo &clear_info);
 
-void cmd_push_constants(CommandBuffer cmd, usize offset,
-                        Span<const std::byte> data);
-
-enum class IndexType {
-  UInt8,
-  UInt16,
-  UInt32,
-  Last = UInt32,
+enum class PipelineBindPoint {
+  Graphics,
+  Compute,
+  Last = Compute,
 };
-
-void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
-                           IndexType index_type);
 
 void cmd_bind_pipeline(CommandBuffer cmd, PipelineBindPoint bind_point,
                        Pipeline pipeline);
 
-struct DrawInfo {
-  u32 num_vertices = 0;
-  u32 num_instances = 1;
-  u32 base_vertex = 0;
-  u32 base_instance = 0;
-};
+constexpr usize MAX_PUSH_CONSTANTS_SIZE = 256;
 
-void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info);
-
-struct DrawIndexedInfo {
-  u32 num_indices = 0;
-  u32 num_instances = 1;
-  u32 base_index = 0;
-  i32 vertex_offset = 0;
-  u32 base_instance = 0;
-};
-
-void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info);
-
-struct DrawIndirectCountInfo {
-  Buffer buffer = {};
-  usize buffer_offset = 0;
-  usize buffer_stride = 0;
-  Buffer count_buffer = {};
-  usize count_buffer_offset = 0;
-  usize max_count = 0;
-};
-
-void cmd_draw_indirect_count(CommandBuffer cmd,
-                             const DrawIndirectCountInfo &draw_info);
-
-void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
-                                     const DrawIndirectCountInfo &draw_info);
-
-void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
-                  u32 num_groups_z);
-
-void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset);
-
-struct Viewport {
-  glm::vec2 offset = {};
-  glm::vec2 size = {};
-  float min_depth = 0.0f;
-  float max_depth = 1.0f;
-};
-
-void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports);
-
-struct Rect2D {
-  glm::uvec2 offset = {};
-  glm::uvec2 size = {};
-};
-
-void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects);
-
-void cmd_begin_debug_label(CommandBuffer cmd, const char *label);
-
-void cmd_end_debug_label(CommandBuffer cmd);
+void cmd_push_constants(CommandBuffer cmd, usize offset,
+                        Span<const std::byte> data);
 
 enum class RenderPassLoadOp {
   Load,
@@ -1037,6 +936,75 @@ void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info);
 
 void cmd_end_render_pass(CommandBuffer cmd);
 
+struct Viewport {
+  glm::vec2 offset = {};
+  glm::vec2 size = {};
+  float min_depth = 0.0f;
+  float max_depth = 1.0f;
+};
+
+void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports);
+
+struct Rect2D {
+  glm::uvec2 offset = {};
+  glm::uvec2 size = {};
+};
+
+void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects);
+
+enum class IndexType {
+  UInt8,
+  UInt16,
+  UInt32,
+  Last = UInt32,
+};
+
+void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,
+                           IndexType index_type);
+
+struct DrawInfo {
+  u32 num_vertices = 0;
+  u32 num_instances = 1;
+  u32 base_vertex = 0;
+  u32 base_instance = 0;
+};
+
+void cmd_draw(CommandBuffer cmd, const DrawInfo &draw_info);
+
+struct DrawIndexedInfo {
+  u32 num_indices = 0;
+  u32 num_instances = 1;
+  u32 base_index = 0;
+  i32 vertex_offset = 0;
+  u32 base_instance = 0;
+};
+
+void cmd_draw_indexed(CommandBuffer cmd, const DrawIndexedInfo &draw_info);
+
+struct DrawIndirectCountInfo {
+  Buffer buffer = {};
+  usize buffer_offset = 0;
+  usize buffer_stride = 0;
+  Buffer count_buffer = {};
+  usize count_buffer_offset = 0;
+  usize max_count = 0;
+};
+
+void cmd_draw_indirect_count(CommandBuffer cmd,
+                             const DrawIndirectCountInfo &draw_info);
+
+void cmd_draw_indexed_indirect_count(CommandBuffer cmd,
+                                     const DrawIndirectCountInfo &draw_info);
+
+void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
+                  u32 num_groups_z);
+
+void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset);
+
+void cmd_begin_debug_label(CommandBuffer cmd, const char *label);
+
+void cmd_end_debug_label(CommandBuffer cmd);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;
@@ -1053,7 +1021,6 @@ enum class PresentMode {
   FifoRelaxed,
   Last = FifoRelaxed,
 };
-constexpr u32 PRESENT_MODE_COUNT = (usize)PresentMode::Last + 1;
 
 auto get_surface_present_modes(Adapter adapter, Surface surface,
                                u32 *num_present_modes,

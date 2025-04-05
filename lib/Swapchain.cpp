@@ -115,7 +115,7 @@ void Swapchain::set_usage(rhi::ImageUsageFlags usage) {
 auto Swapchain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
-    rhi::PresentMode present_modes[rhi::PRESENT_MODE_COUNT];
+    rhi::PresentMode present_modes[(usize)rhi::PresentMode::Last + 1];
     u32 num_present_modes = std::size(present_modes);
     ren_try_to(rhi::get_surface_present_modes(m_renderer->get_adapter(),
                                               m_surface, &num_present_modes,

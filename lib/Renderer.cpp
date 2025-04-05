@@ -64,11 +64,11 @@ void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Result<Handle<Buffer>, Error> {
   ren_assert(create_info.size > 0);
-  ren_try(rhi::Buffer buffer, rhi::create_buffer({
-                                  .device = m_device,
-                                  .size = create_info.size,
-                                  .heap = create_info.heap,
-                              }));
+  ren_try(rhi::Buffer buffer,
+          rhi::create_buffer(m_device, {
+                                           .size = create_info.size,
+                                           .heap = create_info.heap,
+                                       }));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, buffer, create_info.name.c_str()));
 #endif
@@ -120,16 +120,16 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
   ren_assert(create_info.width > 0);
   ren_assert(create_info.num_mips > 0);
 
-  ren_try(rhi::Image image, rhi::create_image({
-                                .device = m_device,
-                                .format = create_info.format,
-                                .usage = create_info.usage,
-                                .width = create_info.width,
-                                .height = create_info.height,
-                                .depth = create_info.depth,
-                                .cube_map = create_info.cube_map,
-                                .num_mips = create_info.num_mips,
-                            }));
+  ren_try(rhi::Image image,
+          rhi::create_image(m_device, {
+                                          .format = create_info.format,
+                                          .usage = create_info.usage,
+                                          .width = create_info.width,
+                                          .height = create_info.height,
+                                          .depth = create_info.depth,
+                                          .cube_map = create_info.cube_map,
+                                          .num_mips = create_info.num_mips,
+                                      }));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
 #endif
@@ -225,15 +225,18 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
   }
 
   ren_try(rhi::ImageView view,
-          rhi::create_image_view(m_device, {
-                                               .image = texture.handle,
-                                               .dimension = desc.dimension,
-                                               .format = desc.format,
-                                               .components = desc.components,
-                                               .base_mip = desc.base_mip,
-                                               .num_mips = desc.num_mips,
-                                               .base_layer = desc.base_layer,
-                                           }));
+          rhi::create_image_view(
+              m_device,
+              {
+                  .image = texture.handle,
+                  .dimension = desc.dimension,
+                  .format = desc.format,
+                  .components = desc.components,
+                  .aspect_mask = rhi::get_format_aspect_mask(texture.format),
+                  .base_mip = desc.base_mip,
+                  .num_mips = desc.num_mips,
+                  .base_layer = desc.base_layer,
+              }));
 
   image_views.insert(desc, view);
 
@@ -281,11 +284,11 @@ auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
     -> Result<Handle<Semaphore>, Error> {
   ren_try(rhi::Semaphore semaphore,
-          rhi::create_semaphore({
-              .device = m_device,
-              .type = create_info.type,
-              .initial_value = create_info.initial_value,
-          }));
+          rhi::create_semaphore(m_device,
+                                {
+                                    .type = create_info.type,
+                                    .initial_value = create_info.initial_value,
+                                }));
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
