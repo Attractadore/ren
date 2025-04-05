@@ -987,6 +987,10 @@ struct Rect2D {
 
 void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects);
 
+void cmd_begin_debug_label(CommandBuffer cmd, const char *label);
+
+void cmd_end_debug_label(CommandBuffer cmd);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;

@@ -355,19 +355,19 @@ void CommandRecorder::dispatch_indirect(
                              slice.offset);
 }
 
-auto CommandRecorder::debug_region(const char *label) -> DebugRegion {
+auto CommandRecorder::debug_region(StringView label) -> DebugRegion {
   return DebugRegion(m_cmd, label);
 }
 
-DebugRegion::DebugRegion(rhi::CommandBuffer cmd, const char *label) {
+DebugRegion::DebugRegion(rhi::CommandBuffer cmd, StringView label) {
   m_cmd = cmd;
 #if REN_DEBUG_NAMES
-  ren_assert(label);
-  VkDebugUtilsLabelEXT label_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-      .pLabelName = label,
-  };
-  vkCmdBeginDebugUtilsLabelEXT(m_cmd.handle, &label_info);
+  char label_c_str[128];
+  usize len = std::min(label.size(), std::size(label_c_str) - 1);
+  ren_assert(len == label.size());
+  std::ranges::copy_n(label.data(), len, label_c_str);
+  label_c_str[len] = '\0';
+  rhi::cmd_begin_debug_label(m_cmd, label_c_str);
 #endif
 }
 
@@ -379,7 +379,7 @@ DebugRegion::~DebugRegion() {
 
 void DebugRegion::end() {
 #if REN_DEBUG_NAMES
-  vkCmdEndDebugUtilsLabelEXT(m_cmd.handle);
+  rhi::cmd_end_debug_label(m_cmd);
 #endif
   m_cmd = {};
 }

@@ -107,7 +107,7 @@ public:
     pipeline_barrier({}, {&barrier, 1});
   }
 
-  [[nodiscard]] auto debug_region(const char *label) -> DebugRegion;
+  [[nodiscard]] auto debug_region(StringView) -> DebugRegion;
 
 private:
   Renderer *m_renderer = nullptr;
@@ -186,7 +186,7 @@ public:
 
 private:
   friend class CommandRecorder;
-  DebugRegion(rhi::CommandBuffer cmd_buffer, const char *label);
+  DebugRegion(rhi::CommandBuffer cmd_buffer, StringView label);
 
 private:
   rhi::CommandBuffer m_cmd = {};

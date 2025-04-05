@@ -53,16 +53,10 @@ struct AdapterData {
 
 constexpr usize MAX_PHYSICAL_DEVICES = 4;
 
-auto set_debug_name_stub(Device device, VkObjectType type, void *object,
-                         const char *name) -> Result<void> {
-  return {};
-}
-
 struct InstanceData {
   VkInstance handle = nullptr;
   VkDebugReportCallbackEXT debug_callback = nullptr;
   StaticVector<AdapterData, MAX_PHYSICAL_DEVICES> adapters;
-  decltype(&set_debug_name_stub) set_debug_name = set_debug_name_stub;
   bool headless = false;
 } g_instance;
 
@@ -95,17 +89,19 @@ struct DeviceData {
 
 namespace {
 
-auto set_debug_name_real(Device device, VkObjectType type, void *object,
-                         const char *name) -> Result<void> {
-  VkDebugUtilsObjectNameInfoEXT name_info = {
-      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-      .objectType = type,
-      .objectHandle = (u64)object,
-      .pObjectName = name,
-  };
-  VkResult result = vkSetDebugUtilsObjectNameEXT(device->handle, &name_info);
-  if (result) {
-    return fail(result);
+auto set_debug_name(Device device, VkObjectType type, void *object,
+                    const char *name) -> Result<void> {
+  if (vkSetDebugUtilsObjectNameEXT) {
+    VkDebugUtilsObjectNameInfoEXT name_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = type,
+        .objectHandle = (u64)object,
+        .pObjectName = name,
+    };
+    VkResult result = vkSetDebugUtilsObjectNameEXT(device->handle, &name_info);
+    if (result) {
+      return fail(result);
+    }
   }
   return {};
 }
@@ -282,10 +278,6 @@ auto init(const InitInfo &init_info) -> Result<void> {
   // TODO: replace this with volkLoadInstanceOnly when everything is migrated to
   // the RHI API.
   volkLoadInstance(g_instance.handle);
-
-  if (features.debug_names) {
-    g_instance.set_debug_name = set_debug_name_real;
-  }
 
   if (features.debug_layer and
       is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
@@ -1101,8 +1093,7 @@ void destroy_buffer(Device device, Buffer buffer) {
 
 auto set_debug_name(Device device, Buffer buffer, const char *name)
     -> Result<void> {
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_BUFFER, buffer.handle,
-                                   name);
+  return set_debug_name(device, VK_OBJECT_TYPE_BUFFER, buffer.handle, name);
 }
 
 auto get_allocation(Device, Buffer buffer) -> Allocation {
@@ -1227,8 +1218,7 @@ void destroy_image(Device device, Image image) {
 
 auto set_debug_name(Device device, Image image, const char *name)
     -> Result<void> {
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_IMAGE, image.handle,
-                                   name);
+  return set_debug_name(device, VK_OBJECT_TYPE_IMAGE, image.handle, name);
 }
 
 auto get_allocation(Device, Image image) -> Allocation {
@@ -1863,8 +1853,7 @@ void destroy_pipeline(Device device, Pipeline pipeline) {
 
 auto set_debug_name(Device device, Pipeline pipeline, const char *name)
     -> Result<void> {
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_PIPELINE,
-                                   pipeline.handle, name);
+  return set_debug_name(device, VK_OBJECT_TYPE_PIPELINE, pipeline.handle, name);
 }
 
 namespace vk {
@@ -1908,8 +1897,8 @@ void destroy_command_pool(Device device, CommandPool pool) {
 
 auto set_debug_name(Device device, CommandPool pool, const char *name)
     -> Result<void> {
-  return g_instance.set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL,
-                                   pool->handle, name);
+  return set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL, pool->handle,
+                        name);
 }
 
 auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
@@ -2306,6 +2295,23 @@ void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects) {
     };
   }
   cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.size(), vk_rects);
+}
+
+void cmd_begin_debug_label(CommandBuffer cmd, const char *label) {
+  if (vkCmdBeginDebugUtilsLabelEXT) {
+    ren_assert(label);
+    VkDebugUtilsLabelEXT label_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = label,
+    };
+    vkCmdBeginDebugUtilsLabelEXT(cmd.handle, &label_info);
+  }
+}
+
+void cmd_end_debug_label(CommandBuffer cmd) {
+  if (vkCmdEndDebugUtilsLabelEXT) {
+    vkCmdEndDebugUtilsLabelEXT(cmd.handle);
+  }
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;

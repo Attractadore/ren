@@ -69,7 +69,9 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
                                   .size = create_info.size,
                                   .heap = create_info.heap,
                               }));
+#if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, buffer, create_info.name.c_str()));
+#endif
   return m_buffers.emplace(Buffer{
       .handle = buffer,
       .ptr = (std::byte *)rhi::map(m_device, buffer),
@@ -128,7 +130,9 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
                                 .cube_map = create_info.cube_map,
                                 .num_mips = create_info.num_mips,
                             }));
+#if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
+#endif
   return m_textures.emplace(Texture{
       .handle = image,
       .format = create_info.format,
@@ -143,8 +147,10 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
 
 auto Renderer::create_external_texture(
     const ExternalTextureCreateInfo &&create_info) -> Handle<Texture> {
+#if REN_DEBUG_NAMES
   std::ignore = rhi::set_debug_name(m_device, create_info.handle,
                                     create_info.name.c_str());
+#endif
   return m_textures.emplace(Texture{
       .handle = create_info.handle,
       .format = create_info.format,
@@ -316,7 +322,9 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   ren_try(rhi::CommandPool pool,
           rhi::create_command_pool(m_device,
                                    {.queue_family = create_info.queue_family}));
+#if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pool, create_info.name.c_str()));
+#endif
   return m_command_pools.emplace(CommandPool{
       .handle = pool,
       .queue_family = create_info.queue_family,
@@ -415,7 +423,9 @@ auto Renderer::create_graphics_pipeline(
 
   ren_try(rhi::Pipeline pipeline,
           rhi::create_graphics_pipeline(m_device, pipeline_info));
+#if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
+#endif
 
   return m_graphics_pipelines.emplace(GraphicsPipeline{.handle = pipeline});
 }
@@ -478,7 +488,9 @@ auto Renderer::create_compute_pipeline(
                               },
                       },
               }));
+#if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
+#endif
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
