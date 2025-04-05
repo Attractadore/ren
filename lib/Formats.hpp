@@ -2,8 +2,6 @@
 #include "core/StdDef.hpp"
 #include "ren/tiny_imageformat.h"
 
-#include <vulkan/vulkan.h>
-
 namespace ren {
 
 constexpr usize FORMAT_BITS = 8;

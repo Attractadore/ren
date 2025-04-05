@@ -31,11 +31,11 @@ struct MeshPassBaseInfo {
   StringView pass_name;
 
   TempSpan<const NotNull<RgTextureId *>> color_attachments;
-  TempSpan<const ColorAttachmentOperations> color_attachment_ops;
+  TempSpan<const rhi::RenderTargetOperations> color_attachment_ops;
   TempSpan<const RgDebugName> color_attachment_names;
 
   NotNull<RgTextureId *> depth_attachment;
-  DepthAttachmentOperations depth_attachment_ops;
+  rhi::DepthTargetOperations depth_attachment_ops;
   RgDebugName depth_attachment_name;
 
   Camera camera;

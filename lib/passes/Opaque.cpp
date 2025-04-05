@@ -26,8 +26,8 @@ void setup_early_z_pass(const PassCommonConfig &ccfg,
                         .depth_attachment = cfg.depth_buffer,
                         .depth_attachment_ops =
                             {
-                                .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                                .store = VK_ATTACHMENT_STORE_OP_STORE,
+                                .load = rhi::RenderPassLoadOp::Clear,
+                                .store = rhi::RenderPassStoreOp::Store,
                             },
                         .depth_attachment_name = "depth-buffer",
                         .camera = ccfg.scene->get_camera(),
@@ -60,19 +60,19 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                           .pass_name = "opaque",
                           .color_attachments = {cfg.hdr},
                           .color_attachment_ops = {{
-                              .load = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                              .store = VK_ATTACHMENT_STORE_OP_STORE,
+                          .load = rhi::RenderPassLoadOp::Discard,
+                          .store = rhi::RenderPassStoreOp::Store,
                           }},
                           .color_attachment_names = {"hdr"},
                           .depth_attachment = cfg.depth_buffer,
                           .depth_attachment_ops = ccfg.scene->settings.early_z ?
-                           DepthAttachmentOperations {
-                                .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                .store = VK_ATTACHMENT_STORE_OP_NONE,
+                           rhi::DepthTargetOperations {
+                           .load = rhi::RenderPassLoadOp::Load,
+                           .store = rhi::RenderPassStoreOp::None,
                            } :
-                           DepthAttachmentOperations {
-                               .load = VK_ATTACHMENT_LOAD_OP_CLEAR,
-                               .store = VK_ATTACHMENT_STORE_OP_STORE,
+                           rhi::DepthTargetOperations {
+                           .load = rhi::RenderPassLoadOp::Clear,
+                           .store = rhi::RenderPassStoreOp::Store,
                            },
                           .depth_attachment_name = "depth-buffer",
                           .camera = ccfg.scene->get_camera(),

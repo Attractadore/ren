@@ -1,10 +1,9 @@
 #pragma once
-#include "Attachments.hpp"
 #include "Buffer.hpp"
 #include "Texture.hpp"
 #include "core/Span.hpp"
-#include "core/Vector.hpp"
 #include "glsl/Indirect.h"
+#include "rhi.hpp"
 
 #include <glm/glm.hpp>
 
@@ -15,19 +14,19 @@ struct CommandPool;
 struct ComputePipeline;
 struct GraphicsPipeline;
 
-struct ColorAttachment {
+struct RenderTarget {
   RtvDesc rtv;
-  ColorAttachmentOperations ops;
+  rhi::RenderTargetOperations ops;
 };
 
-struct DepthStencilAttachment {
+struct DepthStencilTarget {
   RtvDesc dsv;
-  DepthAttachmentOperations ops;
+  rhi::DepthTargetOperations ops;
 };
 
-struct RenderPassBeginInfo {
-  TempSpan<const ColorAttachment> color_attachments;
-  DepthStencilAttachment depth_stencil_attachment;
+struct RenderPassInfo {
+  TempSpan<const RenderTarget> render_targets;
+  DepthStencilTarget depth_stencil_target;
 };
 
 class RenderPass;
@@ -49,7 +48,7 @@ public:
 
   explicit operator bool() const { return !!m_cmd; }
 
-  auto render_pass(const RenderPassBeginInfo &&begin_info) -> RenderPass;
+  auto render_pass(const RenderPassInfo &&begin_info) -> RenderPass;
 
   void bind_compute_pipeline(Handle<ComputePipeline> pipeline);
 
@@ -167,7 +166,7 @@ public:
 private:
   friend class CommandRecorder;
   RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
-             const RenderPassBeginInfo &&begin_info);
+             const RenderPassInfo &&begin_info);
 
 private:
   Renderer *m_renderer = nullptr;

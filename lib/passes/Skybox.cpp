@@ -12,8 +12,8 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
   std::tie(*cfg.hdr, std::ignore) =
       pass.write_render_target("hdr-skybox", *cfg.hdr,
                                {
-                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
+                                   .load = rhi::RenderPassLoadOp::Load,
+                                   .store = rhi::RenderPassStoreOp::Store,
                                });
   pass.read_depth_stencil_target(cfg.depth_buffer);
   const Camera &camera = ccfg.scene->get_camera();

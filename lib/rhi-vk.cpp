@@ -2077,6 +2077,24 @@ constexpr auto MAP<PipelineBindPoint> = [] {
   return map;
 }();
 
+template <>
+constexpr auto MAP<RenderPassLoadOp> = [] {
+  std::array<VkAttachmentLoadOp, ENUM_SIZE<RenderPassLoadOp>> map = {};
+  map(RenderPassLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
+  map(RenderPassLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
+  map(RenderPassLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+  return map;
+}();
+
+template <>
+constexpr auto MAP<RenderPassStoreOp> = [] {
+  std::array<VkAttachmentStoreOp, ENUM_SIZE<RenderPassStoreOp>> map = {};
+  map(RenderPassStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
+  map(RenderPassStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
+  map(RenderPassStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
+  return map;
+}();
+
 } // namespace
 
 void cmd_pipeline_barrier(CommandBuffer cmd,
@@ -2312,6 +2330,68 @@ void cmd_end_debug_label(CommandBuffer cmd) {
   if (vkCmdEndDebugUtilsLabelEXT) {
     vkCmdEndDebugUtilsLabelEXT(cmd.handle);
   }
+}
+
+void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
+  VkRenderingAttachmentInfo render_targets[MAX_NUM_RENDER_TARGETS];
+  VkRenderingAttachmentInfo depth_stencil_target = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+  };
+  for (usize i : range(info.render_targets.size())) {
+    const RenderTarget &rt = info.render_targets[i];
+    if (!rt.rtv) {
+      render_targets[i] = {
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      };
+      continue;
+    }
+    render_targets[i] = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = rt.rtv.handle,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = to_vk(rt.ops.load),
+        .storeOp = to_vk(rt.ops.store),
+        .clearValue =
+            {
+                .color =
+                    {
+                        .float32 =
+                            {
+                                rt.ops.clear_color.r,
+                                rt.ops.clear_color.g,
+                                rt.ops.clear_color.b,
+                                rt.ops.clear_color.a,
+                            },
+                    },
+            },
+    };
+  }
+  if (info.depth_stencil_target.dsv) {
+    const DepthStencilTarget &dst = info.depth_stencil_target;
+    depth_stencil_target = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = dst.dsv.handle,
+        .imageLayout = dst.ops.store == RenderPassStoreOp::None
+                           ? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+                           : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .loadOp = to_vk(dst.ops.load),
+        .storeOp = to_vk(dst.ops.store),
+        .clearValue = {.depthStencil = {.depth = dst.ops.clear_depth}},
+    };
+  }
+  VkRenderingInfo rendering_info = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = {.extent = {info.render_area.x, info.render_area.y}},
+      .layerCount = 1,
+      .colorAttachmentCount = (u32)info.render_targets.size(),
+      .pColorAttachments = render_targets,
+      .pDepthAttachment = &depth_stencil_target,
+  };
+  cmd.device->vk.vkCmdBeginRendering(cmd.handle, &rendering_info);
+}
+
+void cmd_end_render_pass(CommandBuffer cmd) {
+  cmd.device->vk.vkCmdEndRendering(cmd.handle);
 }
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;

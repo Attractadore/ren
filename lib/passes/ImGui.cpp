@@ -111,8 +111,8 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
   std::tie(*cfg.sdr, std::ignore) =
       pass.write_render_target("sdr-imgui", *cfg.sdr,
                                {
-                                   .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                   .store = VK_ATTACHMENT_STORE_OP_STORE,
+                                   .load = rhi::RenderPassLoadOp::Load,
+                                   .store = rhi::RenderPassStoreOp::Store,
                                });
 
   ImGuiPassResources rcs = {

@@ -302,7 +302,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
   };
 }
 
-struct RenderPassInfo {
+struct MeshRenderPassInfo {
   RgBufferId<glsl::MeshletDrawCommand> batch_commands;
   RgBufferId<u32> batch_offsets;
   RgBufferId<u32> batch_sizes;
@@ -312,7 +312,7 @@ struct RenderPassInfo {
 template <DrawSet S>
 void record_render_pass(const PassCommonConfig &ccfg,
                         const MeshPassInfo<S> &info,
-                        const RenderPassInfo &cfg) {
+                        const MeshRenderPassInfo &cfg) {
   ZoneScoped;
 
   u32 draw_set = get_draw_set_index(S);
@@ -359,25 +359,26 @@ void record_render_pass(const PassCommonConfig &ccfg,
       if (!*color_attachment) {
         continue;
       }
-      ColorAttachmentOperations ops = info.base.color_attachment_ops[i];
+      rhi::RenderTargetOperations ops = info.base.color_attachment_ops[i];
       if (info.base.occlusion_culling_mode ==
               OcclusionCullingMode::SecondPhase or
           batch > 0) {
-        ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+        ops.load = rhi::RenderPassLoadOp::Load;
       }
       std::tie(*color_attachment, std::ignore) = pass.write_render_target(
           info.base.color_attachment_names[i], *color_attachment, ops);
     }
 
     if (*info.base.depth_attachment) {
-      if (info.base.depth_attachment_ops.store == VK_ATTACHMENT_STORE_OP_NONE) {
+      if (info.base.depth_attachment_ops.store ==
+          rhi::RenderPassStoreOp::None) {
         pass.read_depth_stencil_target(*info.base.depth_attachment);
       } else {
-        DepthAttachmentOperations ops = info.base.depth_attachment_ops;
+        rhi::DepthTargetOperations ops = info.base.depth_attachment_ops;
         if (info.base.occlusion_culling_mode ==
                 OcclusionCullingMode::SecondPhase or
             batch > 0) {
-          ops.load = VK_ATTACHMENT_LOAD_OP_LOAD;
+          ops.load = rhi::RenderPassLoadOp::Load;
         }
         std::tie(*info.base.depth_attachment, std::ignore) =
             pass.write_depth_stencil_target(info.base.depth_attachment_name,
@@ -433,7 +434,7 @@ void record_mesh_pass(const PassCommonConfig &ccfg,
                  });
 
   record_render_pass(ccfg, info,
-                     RenderPassInfo{
+                     MeshRenderPassInfo{
                          .batch_commands = batch_commands,
                          .batch_offsets = batch_offsets,
                          .batch_sizes = batch_sizes,

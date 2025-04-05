@@ -1,5 +1,4 @@
 #pragma once
-#include "Attachments.hpp"
 #include "BumpAllocator.hpp"
 #include "CommandRecorder.hpp"
 #include "DescriptorAllocator.hpp"
@@ -139,12 +138,12 @@ struct RgPassCreateInfo {
 
 struct RgRenderTarget {
   RgTextureToken texture;
-  ColorAttachmentOperations ops;
+  rhi::RenderTargetOperations ops;
 };
 
 struct RgDepthStencilTarget {
   RgTextureToken texture;
-  DepthAttachmentOperations ops;
+  rhi::DepthTargetOperations ops;
 };
 
 struct RgRenderPass {
@@ -847,14 +846,14 @@ public:
       -> RgTextureToken;
 
   [[nodiscard]] auto write_render_target(RgDebugName name, RgTextureId texture,
-                                         const ColorAttachmentOperations &ops,
+                                         const rhi::RenderTargetOperations &ops,
                                          u32 index = 0)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   auto read_depth_stencil_target(RgTextureId texture) -> RgTextureToken;
 
   auto write_depth_stencil_target(RgDebugName name, RgTextureId texture,
-                                  const DepthAttachmentOperations &ops)
+                                  const rhi::DepthTargetOperations &ops)
       -> std::tuple<RgTextureId, RgTextureToken>;
 
   void wait_semaphore(RgSemaphoreId semaphore, u64 value = 0);
@@ -922,10 +921,10 @@ private:
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 
   void add_render_target(u32 index, RgTextureToken texture,
-                         const ColorAttachmentOperations &ops);
+                         const rhi::RenderTargetOperations &ops);
 
   void add_depth_stencil_target(RgTextureToken texture,
-                                const DepthAttachmentOperations &ops);
+                                const rhi::DepthTargetOperations &ops);
 
 private:
   RgPassId m_pass;

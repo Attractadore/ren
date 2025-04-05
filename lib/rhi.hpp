@@ -991,6 +991,52 @@ void cmd_begin_debug_label(CommandBuffer cmd, const char *label);
 
 void cmd_end_debug_label(CommandBuffer cmd);
 
+enum class RenderPassLoadOp {
+  Load,
+  Clear,
+  Discard,
+  Last = Discard,
+};
+
+enum class RenderPassStoreOp {
+  Store,
+  Discard,
+  None,
+  Last = None,
+};
+
+struct RenderTargetOperations {
+  RenderPassLoadOp load = rhi::RenderPassLoadOp::Load;
+  RenderPassStoreOp store = rhi::RenderPassStoreOp::Store;
+  glm::vec4 clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+};
+
+struct DepthTargetOperations {
+  RenderPassLoadOp load = rhi::RenderPassLoadOp::Load;
+  RenderPassStoreOp store = rhi::RenderPassStoreOp::Store;
+  float clear_depth = 0.0f;
+};
+
+struct RenderTarget {
+  ImageView rtv = {};
+  RenderTargetOperations ops;
+};
+
+struct DepthStencilTarget {
+  ImageView dsv = {};
+  DepthTargetOperations ops;
+};
+
+struct RenderPassInfo {
+  TempSpan<const RenderTarget> render_targets;
+  DepthStencilTarget depth_stencil_target;
+  glm::uvec2 render_area = {};
+};
+
+void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info);
+
+void cmd_end_render_pass(CommandBuffer cmd);
+
 extern const uint32_t SDL_WINDOW_FLAGS;
 
 auto create_surface(SDL_Window *window) -> Result<Surface>;

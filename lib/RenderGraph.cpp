@@ -1414,7 +1414,7 @@ auto RgPassBuilder::write_texture(RgDebugName name,
 }
 
 void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
-                                      const ColorAttachmentOperations &ops) {
+                                      const rhi::RenderTargetOperations &ops) {
   auto &render_targets = m_builder->m_data->m_passes[m_pass]
                              .ext.get_or_emplace<RgRenderPass>()
                              .render_targets;
@@ -1428,7 +1428,7 @@ void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
 }
 
 void RgPassBuilder::add_depth_stencil_target(
-    RgTextureToken texture, const DepthAttachmentOperations &ops) {
+    RgTextureToken texture, const rhi::DepthTargetOperations &ops) {
   m_builder->m_data->m_passes[m_pass]
       .ext.get_or_emplace<RgRenderPass>()
       .depth_stencil_target = RgDepthStencilTarget{
@@ -1438,7 +1438,7 @@ void RgPassBuilder::add_depth_stencil_target(
 }
 
 auto RgPassBuilder::write_render_target(RgDebugName name, RgTextureId texture,
-                                        const ColorAttachmentOperations &ops,
+                                        const rhi::RenderTargetOperations &ops,
                                         u32 index)
     -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
@@ -1452,14 +1452,15 @@ auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture)
   RgTextureToken token =
       read_texture(texture, rhi::READ_DEPTH_STENCIL_TARGET, NullHandle);
   add_depth_stencil_target(token, {
-                                      .load = VK_ATTACHMENT_LOAD_OP_LOAD,
-                                      .store = VK_ATTACHMENT_STORE_OP_NONE,
+                                      .load = rhi::RenderPassLoadOp::Load,
+                                      .store = rhi::RenderPassStoreOp::None,
                                   });
   return token;
 }
 
 auto RgPassBuilder::write_depth_stencil_target(
-    RgDebugName name, RgTextureId texture, const DepthAttachmentOperations &ops)
+    RgDebugName name, RgTextureId texture,
+    const rhi::DepthTargetOperations &ops)
     -> std::tuple<RgTextureId, RgTextureToken> {
   auto [new_texture, token] =
       write_texture(std::move(name), texture, rhi::DEPTH_STENCIL_TARGET);
@@ -1549,7 +1550,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
             [&](const RgRtRenderPass &pass) {
               glm::uvec2 viewport = {-1, -1};
 
-              StaticVector<ColorAttachment, rhi::MAX_NUM_RENDER_TARGETS>
+              StaticVector<RenderTarget, rhi::MAX_NUM_RENDER_TARGETS>
                   render_targets(pass.num_render_targets);
               for (usize i : range(pass.num_render_targets)) {
                 const RgRenderTarget &rt =
@@ -1562,7 +1563,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
                 render_targets[i] = {.rtv = {texture}, .ops = rt.ops};
               }
 
-              DepthStencilAttachment depth_stencil_target;
+              DepthStencilTarget depth_stencil_target;
               if (pass.depth_stencil_target) {
                 const RgDepthStencilTarget &dst =
                     m_data->m_depth_stencil_targets[*pass.depth_stencil_target];
@@ -1572,8 +1573,8 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
               }
 
               RenderPass render_pass = cmd.render_pass({
-                  .color_attachments = render_targets,
-                  .depth_stencil_attachment = depth_stencil_target,
+                  .render_targets = render_targets,
+                  .depth_stencil_target = depth_stencil_target,
               });
               render_pass.set_viewports({{.size = viewport}});
               render_pass.set_scissor_rects({{.size = viewport}});

@@ -17,15 +17,6 @@ auto get_format_aspect_mask(TinyImageFormat format) -> rhi::ImageAspectMask {
   return rhi::ImageAspect::Color;
 }
 
-auto get_layout_for_attachment_ops(VkAttachmentLoadOp load,
-                                   VkAttachmentStoreOp store) -> VkImageLayout {
-  if (load == VK_ATTACHMENT_LOAD_OP_LOAD and
-      store == VK_ATTACHMENT_STORE_OP_NONE) {
-    return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-  }
-  return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
-}
-
 } // namespace
 
 auto CommandRecorder::begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
@@ -161,74 +152,54 @@ void CommandRecorder::pipeline_barrier(
   rhi::cmd_pipeline_barrier(m_cmd, memory_barriers, image_barriers);
 }
 
-auto CommandRecorder::render_pass(const RenderPassBeginInfo &&begin_info)
+auto CommandRecorder::render_pass(const RenderPassInfo &&begin_info)
     -> RenderPass {
   return RenderPass(*m_renderer, m_cmd, std::move(begin_info));
 }
 
 RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
-                       const RenderPassBeginInfo &&begin_info) {
+                       const RenderPassInfo &&info) {
   m_renderer = &renderer;
   m_cmd = cmd;
 
-  glm::uvec2 max_size = {-1, -1};
-  glm::uvec2 size = max_size;
+  glm::uvec2 max_render_area = {-1, -1};
+  glm::uvec2 render_area = max_render_area;
 
-  StaticVector<VkRenderingAttachmentInfo, rhi::MAX_NUM_RENDER_TARGETS>
-      render_targets(begin_info.color_attachments.size());
-  for (usize i : range(render_targets.size())) {
-    const ColorAttachment &rt = begin_info.color_attachments[i];
+  rhi::RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
+  for (usize i : range(info.render_targets.size())) {
+    const RenderTarget &rt = info.render_targets[i];
     if (!rt.rtv.texture) {
-      render_targets[i] = {
-          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      };
+      continue;
     }
     render_targets[i] = {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = m_renderer->get_rtv(rt.rtv)->handle,
-        .imageLayout = get_layout_for_attachment_ops(rt.ops.load, rt.ops.store),
-        .loadOp = rt.ops.load,
-        .storeOp = rt.ops.store,
+        .rtv = m_renderer->get_rtv(rt.rtv).value(),
+        .ops = rt.ops,
     };
-    static_assert(sizeof(render_targets[i].clearValue.color.float32) ==
-                  sizeof(rt.ops.clear_color));
-    std::memcpy(render_targets[i].clearValue.color.float32, &rt.ops.clear_color,
-                sizeof(rt.ops.clear_color));
-    size = glm::min(size,
-                    glm::uvec2(m_renderer->get_texture(rt.rtv.texture).size));
+    render_area = glm::min(
+        render_area, glm::uvec2(m_renderer->get_texture(rt.rtv.texture).size));
   }
 
-  VkRenderingAttachmentInfo depth_stencil_target = {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-
-  if (begin_info.depth_stencil_attachment.dsv.texture) {
-    const DepthStencilAttachment &dst = begin_info.depth_stencil_attachment;
+  rhi::DepthStencilTarget depth_stencil_target;
+  if (info.depth_stencil_target.dsv.texture) {
+    const DepthStencilTarget &dst = info.depth_stencil_target;
     depth_stencil_target = {
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = m_renderer->get_rtv(dst.dsv)->handle,
-        .imageLayout =
-            get_layout_for_attachment_ops(dst.ops.load, dst.ops.store),
-        .loadOp = dst.ops.load,
-        .storeOp = dst.ops.store,
-        .clearValue = {.depthStencil = {.depth = dst.ops.clear_depth}},
+        .dsv = m_renderer->get_rtv(dst.dsv).value(),
+        .ops = dst.ops,
     };
-    size = glm::min(size,
-                    glm::uvec2(m_renderer->get_texture(dst.dsv.texture).size));
+    render_area = glm::min(
+        render_area, glm::uvec2(m_renderer->get_texture(dst.dsv.texture).size));
   }
 
-  ren_assert_msg(size != max_size, "At least one attachment must be provided");
+  ren_assert_msg(render_area != max_render_area,
+                 "At least one attachment must be provided");
 
-  VkRenderingInfo rendering_info = {
-      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = {.extent = {size.x, size.y}},
-      .layerCount = 1,
-      .colorAttachmentCount = (u32)render_targets.size(),
-      .pColorAttachments = render_targets.data(),
-      .pDepthAttachment = &depth_stencil_target,
-      .pStencilAttachment = nullptr,
-  };
-
-  vkCmdBeginRendering(m_cmd.handle, &rendering_info);
+  rhi::cmd_begin_render_pass(
+      m_cmd,
+      {
+          .render_targets = Span(render_targets, info.render_targets.size()),
+          .depth_stencil_target = depth_stencil_target,
+          .render_area = render_area,
+      });
 }
 
 RenderPass::~RenderPass() {
@@ -238,7 +209,7 @@ RenderPass::~RenderPass() {
 }
 
 void RenderPass::end() {
-  vkCmdEndRendering(m_cmd.handle);
+  rhi::cmd_end_render_pass(m_cmd);
   m_cmd = {};
 }
 

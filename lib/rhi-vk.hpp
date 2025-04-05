@@ -54,6 +54,9 @@ struct Image {
 
 struct ImageView {
   VkImageView handle = nullptr;
+
+public:
+  explicit operator bool() const { return handle; }
 };
 
 struct Sampler {
