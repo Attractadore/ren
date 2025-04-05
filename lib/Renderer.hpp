@@ -14,7 +14,6 @@
 #include "rhi.hpp"
 
 #include <chrono>
-#include <volk.h>
 
 namespace ren {
 

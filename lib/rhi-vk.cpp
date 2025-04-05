@@ -275,9 +275,7 @@ auto init(const InitInfo &init_info) -> Result<void> {
     return fail(Error::Unknown);
   }
 
-  // TODO: replace this with volkLoadInstanceOnly when everything is migrated to
-  // the RHI API.
-  volkLoadInstance(g_instance.handle);
+  volkLoadInstanceOnly(g_instance.handle);
 
   if (features.debug_layer and
       is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
