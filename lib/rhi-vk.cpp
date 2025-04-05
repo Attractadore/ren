@@ -318,7 +318,6 @@ constexpr auto MAP<Access> = [] {
   std::array<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
   map_bit(Access::IndirectCommandRead, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
   map_bit(Access::IndexRead, VK_ACCESS_2_INDEX_READ_BIT);
-  map_bit(Access::UniformRead, VK_ACCESS_2_UNIFORM_READ_BIT);
   map_bit(Access::ShaderBufferRead, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
   map_bit(Access::ShaderImageRead, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
   map_bit(Access::UnorderedAccess, VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
@@ -340,13 +339,9 @@ template <>
 constexpr auto MAP<ImageLayout> = [] {
   std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
   map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
-  map(ImageLayout::ShaderResource, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-  map(ImageLayout::UnorderedAccess, VK_IMAGE_LAYOUT_GENERAL);
-  map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-  map(ImageLayout::DepthStencilRead,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-  map(ImageLayout::DepthStencilWrite,
-      VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+  map(ImageLayout::ReadOnly, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+  map(ImageLayout::General, VK_IMAGE_LAYOUT_GENERAL);
+  map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
   map(ImageLayout::TransferSrc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
   map(ImageLayout::TransferDst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
   map(ImageLayout::Present, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);

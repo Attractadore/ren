@@ -128,7 +128,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
           .src_layout = rhi::ImageLayout::TransferDst,
           .dst_stage_mask = rhi::PipelineStage::All,
           .dst_access_mask = rhi::Access::ShaderImageRead,
-          .dst_layout = rhi::ImageLayout::ShaderResource,
+          .dst_layout = rhi::ImageLayout::ReadOnly,
       };
     }
     cmd.pipeline_barrier({}, barriers);
