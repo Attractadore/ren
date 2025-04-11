@@ -4,17 +4,17 @@
 namespace ren {
 
 auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
-                                           Handle<Sampler> sampler)
+                                           rhi::Sampler sampler)
     -> glsl::SamplerState {
   u32 index = m_sampler_allocator.allocate();
   ren_assert(index < glsl::MAX_NUM_SAMPLERS);
-  rhi::write_sampler_descriptor_heap(
-      renderer.get_rhi_device(), {renderer.get_sampler(sampler).handle}, index);
+  rhi::write_sampler_descriptor_heap(renderer.get_rhi_device(), {sampler},
+                                     index);
   return glsl::SamplerState(index);
 };
 
 auto DescriptorAllocator::try_allocate_sampler(Renderer &renderer,
-                                               Handle<Sampler> sampler,
+                                               rhi::Sampler sampler,
                                                glsl::SamplerState id)
     -> glsl::SamplerState {
   u32 index = m_sampler_allocator.allocate(u32(id));
@@ -22,13 +22,13 @@ auto DescriptorAllocator::try_allocate_sampler(Renderer &renderer,
     return {};
   }
   ren_assert(index == u32(id));
-  rhi::write_sampler_descriptor_heap(
-      renderer.get_rhi_device(), {renderer.get_sampler(sampler).handle}, index);
+  rhi::write_sampler_descriptor_heap(renderer.get_rhi_device(), {sampler},
+                                     index);
   return id;
 };
 
 auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
-                                           Handle<Sampler> sampler,
+                                           rhi::Sampler sampler,
                                            glsl::SamplerState id)
     -> glsl::SamplerState {
   glsl::SamplerState new_id = try_allocate_sampler(renderer, sampler, id);
@@ -54,12 +54,12 @@ void DescriptorAllocator::free_texture(glsl::Texture texture) {
 
 auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
                                                    SrvDesc desc,
-                                                   Handle<Sampler> sampler)
+                                                   rhi::Sampler sampler)
     -> Result<glsl::SampledTexture, Error> {
   u32 index = m_cis_allocator.allocate();
   ren_try(rhi::ImageView srv, renderer.get_srv(desc));
-  rhi::write_cis_descriptor_heap(renderer.get_rhi_device(), {srv},
-                                 {renderer.get_sampler(sampler).handle}, index);
+  rhi::write_cis_descriptor_heap(renderer.get_rhi_device(), {srv}, {sampler},
+                                 index);
   return glsl::SampledTexture(index);
 };
 
@@ -100,7 +100,7 @@ DescriptorAllocatorScope::operator=(DescriptorAllocatorScope &&other) noexcept {
 }
 
 auto DescriptorAllocatorScope::allocate_sampler(Renderer &renderer,
-                                                Handle<Sampler> sampler)
+                                                rhi::Sampler sampler)
     -> glsl::SamplerState {
   return m_sampler.emplace_back(
       m_allocator->allocate_sampler(renderer, sampler));
@@ -114,7 +114,7 @@ auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer, SrvDesc srv)
 
 auto DescriptorAllocatorScope::allocate_sampled_texture(Renderer &renderer,
                                                         SrvDesc srv,
-                                                        Handle<Sampler> sampler)
+                                                        rhi::Sampler sampler)
     -> Result<glsl::SampledTexture, Error> {
   ren_try(glsl::SampledTexture texture,
           m_allocator->allocate_sampled_texture(renderer, srv, sampler));

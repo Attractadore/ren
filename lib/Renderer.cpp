@@ -50,6 +50,9 @@ auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
 }
 
 Renderer::~Renderer() {
+  for (const auto &[_, sampler] : m_samplers) {
+    rhi::destroy_sampler(m_device, sampler);
+  }
   rhi::destroy_device(m_device);
   rhi::exit();
 }
@@ -243,42 +246,15 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
   return view;
 }
 
-auto Renderer::create_sampler(const SamplerCreateInfo &&create_info)
-    -> Result<Handle<Sampler>, Error> {
-  ren_try(rhi::Sampler sampler,
-          rhi::create_sampler(rhi::SamplerCreateInfo{
-              .device = m_device,
-              .mag_filter = create_info.mag_filter,
-              .min_filter = create_info.min_filter,
-              .mipmap_mode = create_info.mipmap_mode,
-              .address_mode_u = create_info.address_mode_u,
-              .address_mode_v = create_info.address_mode_v,
-              .address_mode_w = create_info.address_mode_w,
-              .reduction_mode = create_info.reduction_mode,
-              .max_anisotropy = create_info.anisotropy,
-          }));
-  return m_samplers.emplace(Sampler{
-      .handle = sampler,
-      .mag_filter = create_info.mag_filter,
-      .min_filter = create_info.min_filter,
-      .mipmap_mode = create_info.mipmap_mode,
-      .address_mode_u = create_info.address_mode_u,
-      .address_mode_v = create_info.address_mode_v,
-      .address_mode_w = create_info.address_mode_w,
-      .reduction_mode = create_info.reduction_mode,
-      .anisotropy = create_info.anisotropy,
-  });
-}
-
-void Renderer::destroy(Handle<Sampler> handle) {
-  if (Optional<Sampler> sampler = m_samplers.try_pop(handle)) {
-    rhi::destroy_sampler(m_device, sampler->handle);
+auto Renderer::get_sampler(const rhi::SamplerCreateInfo &create_info)
+    -> Result<rhi::Sampler, Error> {
+  [[likely]] if (const rhi::Sampler *sampler =
+                     m_samplers.try_get(create_info)) {
+    return *sampler;
   }
-}
-
-auto Renderer::get_sampler(Handle<Sampler> sampler) const -> const Sampler & {
-  ren_assert(m_samplers.contains(sampler));
-  return m_samplers[sampler];
+  ren_try(rhi::Sampler sampler, rhi::create_sampler(m_device, create_info));
+  m_samplers.insert(create_info, sampler);
+  return sampler;
 }
 
 auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)

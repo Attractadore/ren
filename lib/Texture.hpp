@@ -86,48 +86,6 @@ struct RtvDesc {
   u32 layer = 0;
 };
 
-struct SamplerCreateInfo {
-  rhi::Filter mag_filter = rhi::Filter::Linear;
-  rhi::Filter min_filter = rhi::Filter::Linear;
-  rhi::SamplerMipmapMode mipmap_mode = rhi::SamplerMipmapMode::Linear;
-  rhi::SamplerAddressMode address_mode_u = rhi::SamplerAddressMode::Repeat;
-  rhi::SamplerAddressMode address_mode_v = rhi::SamplerAddressMode::Repeat;
-  rhi::SamplerAddressMode address_mode_w = rhi::SamplerAddressMode::Repeat;
-  rhi::SamplerReductionMode reduction_mode =
-      rhi::SamplerReductionMode::WeightedAverage;
-  float anisotropy = 0.0f;
-
-public:
-  bool operator==(const SamplerCreateInfo &) const = default;
-};
-
-template <> struct Hash<SamplerCreateInfo> {
-  auto operator()(const SamplerCreateInfo &value) const noexcept -> u64 {
-    u64 seed = 0;
-    seed = hash_combine(seed, value.mag_filter);
-    seed = hash_combine(seed, value.min_filter);
-    seed = hash_combine(seed, value.mipmap_mode);
-    seed = hash_combine(seed, value.address_mode_u);
-    seed = hash_combine(seed, value.address_mode_v);
-    seed = hash_combine(seed, value.address_mode_w);
-    seed = hash_combine(seed, value.reduction_mode);
-    seed = hash_combine(seed, value.anisotropy);
-    return seed;
-  }
-};
-
-struct Sampler {
-  rhi::Sampler handle = {};
-  rhi::Filter mag_filter = {};
-  rhi::Filter min_filter = {};
-  rhi::SamplerMipmapMode mipmap_mode = {};
-  rhi::SamplerAddressMode address_mode_u = {};
-  rhi::SamplerAddressMode address_mode_v = {};
-  rhi::SamplerAddressMode address_mode_w = {};
-  rhi::SamplerReductionMode reduction_mode = {};
-  float anisotropy = 0.0f;
-};
-
 auto get_mip_size(glm::uvec3 base_size, u32 mip) -> glm::uvec3;
 
 auto get_mip_byte_size(TinyImageFormat format, glm::uvec3 size,

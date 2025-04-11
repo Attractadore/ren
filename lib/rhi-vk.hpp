@@ -18,6 +18,10 @@ enum class PipelineBindPoint;
 
 namespace vk {
 
+struct HandleBase {
+  explicit operator bool(this const auto &self) { return self.handle; }
+};
+
 struct Adapter {
   u32 index = u32(-1);
 };
@@ -26,44 +30,38 @@ struct DeviceData;
 
 using Device = const DeviceData *;
 
-struct Queue {
+struct Queue : HandleBase {
   VkQueue handle = nullptr;
   const VolkDeviceTable *vk = nullptr;
 };
 
-struct Semaphore {
+struct Semaphore : HandleBase {
   VkSemaphore handle = nullptr;
 };
 
-struct Allocation {
+struct Allocation : HandleBase {
   VmaAllocation handle = nullptr;
-
-public:
-  explicit operator bool() const { return handle; }
 };
 
-struct Buffer {
+struct Buffer : HandleBase {
   VkBuffer handle = nullptr;
   Allocation allocation = {};
 };
 
-struct Image {
+struct Image : HandleBase {
   VkImage handle = nullptr;
   Allocation allocation = {};
 };
 
-struct ImageView {
+struct ImageView : HandleBase {
   VkImageView handle = nullptr;
-
-public:
-  explicit operator bool() const { return handle; }
 };
 
-struct Sampler {
+struct Sampler : HandleBase {
   VkSampler handle = nullptr;
 };
 
-struct Pipeline {
+struct Pipeline : HandleBase {
   VkPipeline handle = nullptr;
 };
 
@@ -71,15 +69,12 @@ struct CommandPoolData;
 
 using CommandPool = CommandPoolData *;
 
-struct CommandBuffer {
+struct CommandBuffer : HandleBase {
   VkCommandBuffer handle = nullptr;
   Device device = {};
-
-public:
-  explicit operator bool() const { return handle; }
 };
 
-struct Surface {
+struct Surface : HandleBase {
   VkSurfaceKHR handle = nullptr;
 };
 

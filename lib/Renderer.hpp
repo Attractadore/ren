@@ -49,7 +49,7 @@ class Renderer final : public IRenderer {
   HashMap<Handle<Texture>, SmallLinearMap<ImageViewDesc, rhi::ImageView, 3>>
       m_image_views;
 
-  GenArray<Sampler> m_samplers;
+  LinearMap<rhi::SamplerCreateInfo, rhi::Sampler> m_samplers;
 
   GenArray<Semaphore> m_semaphores;
 
@@ -160,15 +160,8 @@ public:
   auto get_image_view(Handle<Texture> texture, ImageViewDesc view)
       -> Result<rhi::ImageView, Error>;
 
-  [[nodiscard]] auto create_sampler(const SamplerCreateInfo &&create_info)
-      -> Result<Handle<Sampler>, Error>;
-
-  void destroy(Handle<Sampler> sampler);
-
-  auto try_get_sampler(Handle<Sampler> sampler) const
-      -> Optional<const Sampler &>;
-
-  auto get_sampler(Handle<Sampler> sampler) const -> const Sampler &;
+  [[nodiscard]] auto get_sampler(const rhi::SamplerCreateInfo &info)
+      -> Result<rhi::Sampler, Error>;
 
   [[nodiscard]] auto
   create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)

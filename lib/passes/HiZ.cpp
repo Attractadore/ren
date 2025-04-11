@@ -1,7 +1,7 @@
 #include "HiZ.hpp"
-#include "../Scene.hpp"
 #include "../Swapchain.hpp"
 #include "HiZSpd.comp.hpp"
+#include "PipelineLoading.hpp"
 
 #include <bit>
 
@@ -34,7 +34,16 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
       .dsts = pass.write_texture("hi-z", ccfg.rcs->hi_z, cfg.hi_z),
       .dst_size = size,
       .num_dst_mips = num_mips,
-      .src = pass.read_texture(cfg.depth_buffer, ccfg.samplers->hi_z_gen),
+      .src = pass.read_texture(
+          cfg.depth_buffer,
+          {
+              .mag_filter = rhi::Filter::Linear,
+              .min_filter = rhi::Filter::Linear,
+              .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+              .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+              .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              .reduction_mode = rhi::SamplerReductionMode::Min,
+          }),
   };
 
   pass.dispatch_grid_2d(

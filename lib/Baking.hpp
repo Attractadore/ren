@@ -12,10 +12,6 @@ struct BakerPipelines {
   Handle<ComputePipeline> irradiance_map;
 };
 
-struct BakerSamplers {
-  Handle<Sampler> wrap_u_clamp_v;
-};
-
 struct IBaker {
   Renderer *renderer = nullptr;
   ResourceArena session_arena;
@@ -28,7 +24,6 @@ struct IBaker {
   UploadBumpAllocator upload_allocator;
   ResourceUploader uploader;
   BakerPipelines pipelines;
-  BakerSamplers samplers;
 };
 
 void reset_baker(IBaker &baker);

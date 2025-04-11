@@ -1562,8 +1562,8 @@ void destroy_image_view(Device device, ImageView view) {
   device->vk.vkDestroyImageView(device->handle, view.handle, nullptr);
 }
 
-auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler> {
-  Device device = create_info.device;
+auto create_sampler(Device device, const SamplerCreateInfo &create_info)
+    -> Result<Sampler> {
   VkSamplerReductionModeCreateInfo reduction_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
       .reductionMode = to_vk(create_info.reduction_mode),

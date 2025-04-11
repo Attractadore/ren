@@ -410,10 +410,6 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
                                          ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
-  ren_try(
-      auto env_map_desc,
-      baker->descriptor_allocator.allocate_sampled_texture(
-          *baker->renderer, SrvDesc{env_map}, baker->samplers.wrap_u_clamp_v));
 
   constexpr TinyImageFormat CUBE_MAP_FORMAT =
       TinyImageFormat_R32G32B32A32_SFLOAT;
@@ -440,7 +436,18 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
       RgTextureToken cube_map;
     } args;
 
-    args.equirectangular_map = (glsl::SampledTexture2D)env_map_desc;
+    ren_try(args.equirectangular_map,
+            baker->descriptor_allocator
+                .allocate_sampled_texture<glsl::SampledTexture2D>(
+                    *baker->renderer, SrvDesc{env_map},
+                    {
+                        .mag_filter = rhi::Filter::Linear,
+                        .min_filter = rhi::Filter::Linear,
+                        .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+                        .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                        .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                        .max_anisotropy = 16.0f,
+                    }));
     args.cube_map = pass.write_texture("cube-map", &cube_map,
                                        rhi::CS_UNORDERED_ACCESS_IMAGE);
 

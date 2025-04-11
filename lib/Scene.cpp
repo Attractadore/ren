@@ -31,38 +31,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_renderer = &renderer;
   m_swapchain = &swapchain;
 
-  m_samplers = {
-      .hi_z_gen =
-          m_arena
-              .create_sampler({
-                  .mag_filter = rhi::Filter::Linear,
-                  .min_filter = rhi::Filter::Linear,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                  .reduction_mode = rhi::SamplerReductionMode::Min,
-              })
-              .value(),
-      .hi_z = m_arena
-                  .create_sampler({
-                      .mag_filter = rhi::Filter::Nearest,
-                      .min_filter = rhi::Filter::Nearest,
-                      .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                      .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                      .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                  })
-                  .value(),
-      .mip_nearest_clamp =
-          m_arena
-              .create_sampler({
-                  .mag_filter = rhi::Filter::Linear,
-                  .min_filter = rhi::Filter::Linear,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-              })
-              .value(),
-  };
-
   m_pipelines = load_pipelines(m_arena).value();
 
   m_rgp = std::make_unique<RgPersistent>(*m_renderer);
@@ -91,10 +59,18 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   Handle<Texture> dhr_lut =
       create_texture(DHR_LUT_KTX2, sizeof(DHR_LUT_KTX2)).value();
-  m_data.dhr_lut = (glsl::SampledTexture2D)m_descriptor_allocator
-                       .allocate_sampled_texture(*m_renderer, SrvDesc{dhr_lut},
-                                                 m_samplers.mip_nearest_clamp)
-                       .value();
+  m_data.dhr_lut =
+      m_descriptor_allocator
+          .allocate_sampled_texture<glsl::SampledTexture2D>(
+              *m_renderer, SrvDesc{dhr_lut},
+              {
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              })
+          .value();
 }
 
 auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
@@ -336,32 +312,21 @@ auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
   return std::bit_cast<MeshId>(handle);
 }
 
-auto Scene::get_or_create_sampler(const SamplerCreateInfo &&create_info)
-    -> Result<Handle<Sampler>, Error> {
-  Handle<Sampler> &handle = m_sampler_cache[create_info];
-  if (!handle) {
-    ren_try(handle, m_arena.create_sampler(std::move(create_info)));
-  }
-  return handle;
-}
-
 auto Scene::get_or_create_texture(Handle<Image> image,
                                   const SamplerDesc &sampler_desc)
     -> Result<glsl::SampledTexture2D, Error> {
-  ren_try(
-      Handle<Sampler> sampler,
-      get_or_create_sampler({
-          .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
-          .min_filter = get_rhi_Filter(sampler_desc.min_filter),
-          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
-          .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
-          .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
-          .anisotropy = 16.0f,
-      }));
-  ren_try(glsl::SampledTexture texture,
-          m_descriptor_allocator.allocate_sampled_texture(
-              *m_renderer, SrvDesc{m_images[image]}, sampler));
-  return glsl::SampledTexture2D(texture);
+  return m_descriptor_allocator
+      .allocate_sampled_texture<glsl::SampledTexture2D>(
+          *m_renderer, SrvDesc{m_images[image]},
+          {
+              .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
+              .min_filter = get_rhi_Filter(sampler_desc.min_filter),
+              .mipmap_mode =
+                  get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
+              .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
+              .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
+              .max_anisotropy = 16.0f,
+          });
 }
 
 auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
@@ -559,16 +524,15 @@ auto Scene::set_environment_map(ImageId image) -> expected<void> {
     return {};
   }
   Handle<Texture> texture = m_images[std::bit_cast<Handle<Image>>(image)];
-  ren_try(Handle<Sampler> sampler,
-          get_or_create_sampler({
+  ren_try(
+      m_data.env_map,
+      m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
+          *m_renderer, SrvDesc{texture},
+          {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
               .mipmap_mode = rhi::SamplerMipmapMode::Linear,
           }));
-  ren_try(
-      m_data.env_map,
-      m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
-          *m_renderer, SrvDesc{texture}, sampler));
   return {};
 }
 
@@ -715,19 +679,17 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
   m_resource_uploader.stage_texture(
       m_frcs->upload_allocator,
       Span((const std::byte *)data, width * height * bpp), texture);
-  glsl::SampledTexture descriptor =
+  auto descriptor =
       m_descriptor_allocator
-          .allocate_sampled_texture(
+          .allocate_sampled_texture<glsl::SampledTexture2D>(
               *m_renderer, SrvDesc{texture},
-              get_or_create_sampler(
-                  {
-                      .mag_filter = rhi::Filter::Linear,
-                      .min_filter = rhi::Filter::Linear,
-                      .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                      .address_mode_u = rhi::SamplerAddressMode::Repeat,
-                      .address_mode_v = rhi::SamplerAddressMode::Repeat,
-                  })
-                  .value())
+              {
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                  .address_mode_v = rhi::SamplerAddressMode::Repeat,
+              })
           .value();
   // FIXME: font texture is leaked.
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor);
@@ -770,7 +732,6 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       .rgb = &rgb,
       .allocator = &m_frcs->upload_allocator,
       .pipelines = &m_pipelines,
-      .samplers = &m_samplers,
       .scene = &m_data,
       .rcs = &m_pass_rcs,
       .swapchain = m_swapchain,

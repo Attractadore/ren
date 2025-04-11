@@ -252,7 +252,7 @@ struct RgTexture {
 
 struct RgTextureUse {
   RgTextureId texture;
-  Handle<Sampler> sampler;
+  rhi::Sampler sampler;
   rhi::ImageState state;
 };
 
@@ -541,8 +541,8 @@ private:
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
-                                  const rhi::ImageState &usage, Handle<Sampler>)
-      -> RgTextureToken;
+                                  const rhi::ImageState &usage,
+                                  rhi::Sampler sampler) -> RgTextureToken;
 
   [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
                                    RgTextureId texture,
@@ -821,13 +821,28 @@ public:
   [[nodiscard]] auto
   read_texture(RgTextureId texture,
                const rhi::ImageState &usage = rhi::CS_RESOURCE_IMAGE,
-               Handle<Sampler> sampler = NullHandle) -> RgTextureToken {
+               rhi::Sampler sampler = {}) -> RgTextureToken {
     return m_builder->read_texture(m_pass, texture, usage, sampler);
   }
 
-  [[nodiscard]] auto read_texture(RgTextureId texture, Handle<Sampler> sampler)
+  [[nodiscard]] auto read_texture(RgTextureId texture, rhi::Sampler sampler)
       -> RgTextureToken {
     return read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler);
+  }
+
+  [[nodiscard]] auto read_texture(RgTextureId texture,
+                                  const rhi::ImageState &usage,
+                                  const rhi::SamplerCreateInfo &sampler_info)
+      -> RgTextureToken {
+    return read_texture(
+        texture, usage,
+        m_builder->m_renderer->get_sampler(sampler_info).value());
+  }
+
+  [[nodiscard]] auto read_texture(RgTextureId texture,
+                                  const rhi::SamplerCreateInfo &sampler_info)
+      -> RgTextureToken {
+    return read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler_info);
   }
 
   [[nodiscard]] auto

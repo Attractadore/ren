@@ -93,12 +93,6 @@ public:
   }
 };
 
-struct Samplers {
-  Handle<Sampler> hi_z_gen;
-  Handle<Sampler> hi_z;
-  Handle<Sampler> mip_nearest_clamp;
-};
-
 class Scene final : public IScene {
 public:
   Scene(Renderer &renderer, Swapchain &swapchain);
@@ -185,10 +179,6 @@ private:
 
   auto get_camera(CameraId camera) -> Camera &;
 
-  [[nodiscard]] auto
-  get_or_create_sampler(const SamplerCreateInfo &&create_info)
-      -> Result<Handle<Sampler>, Error>;
-
   [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
                                            const SamplerDesc &sampler_desc)
       -> Result<glsl::SampledTexture2D, Error>;
@@ -217,8 +207,6 @@ private:
   std::array<DeviceBumpAllocator, 2> m_shared_allocators;
 
   GenArray<Image> m_images;
-  HashMap<SamplerCreateInfo, Handle<Sampler>> m_sampler_cache;
-  Samplers m_samplers;
 
   ResourceUploader m_resource_uploader;
 

@@ -47,13 +47,6 @@ public:
     return insert(m_renderer->create_texture(std::move(create_info)));
   }
 
-  auto create_sampler(const SamplerCreateInfo &&create_info)
-      -> Result<Handle<Sampler>, Error>
-    requires IsArenaResource<Sampler>
-  {
-    return insert(m_renderer->create_sampler(std::move(create_info)));
-  }
-
   auto create_semaphore(const SemaphoreCreateInfo &&create_info)
       -> Result<Handle<Semaphore>, Error>
     requires IsArenaResource<Semaphore>
@@ -125,8 +118,8 @@ private:
 };
 
 using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, ComputePipeline, GraphicsPipeline, Sampler,
-                      Semaphore, Texture, CommandPool>;
+    ResourceArenaImpl<Buffer, ComputePipeline, GraphicsPipeline, Semaphore,
+                      Texture, CommandPool>;
 
 } // namespace detail
 

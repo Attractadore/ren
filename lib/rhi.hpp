@@ -335,7 +335,6 @@ enum class SamplerReductionMode {
 };
 
 struct SamplerCreateInfo {
-  Device device = {};
   Filter mag_filter = Filter::Nearest;
   Filter min_filter = Filter::Nearest;
   SamplerMipmapMode mipmap_mode = SamplerMipmapMode::Nearest;
@@ -347,9 +346,13 @@ struct SamplerCreateInfo {
   float max_anisotropy = 0.0f;
   float min_lod = 0.0f;
   float max_lod = LOD_CLAMP_NONE;
+
+public:
+  bool operator==(const SamplerCreateInfo &) const = default;
 };
 
-auto create_sampler(const SamplerCreateInfo &create_info) -> Result<Sampler>;
+auto create_sampler(Device device, const SamplerCreateInfo &create_info)
+    -> Result<Sampler>;
 
 void destroy_sampler(Device device, Sampler sampler);
 

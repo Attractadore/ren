@@ -337,8 +337,8 @@ auto RgBuilder::create_virtual_texture(RgPassId pass, RgDebugName name,
 }
 
 auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
-                             const rhi::ImageState &usage,
-                             Handle<Sampler> sampler) -> RgTextureToken {
+                             const rhi::ImageState &usage, rhi::Sampler sampler)
+    -> RgTextureToken {
   ren_assert(texture);
   if (sampler) {
     ren_assert_msg(usage.access_mask.is_set(rhi::Access::ShaderImageRead),
@@ -1449,8 +1449,7 @@ auto RgPassBuilder::write_render_target(RgDebugName name, RgTextureId texture,
 
 auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture)
     -> RgTextureToken {
-  RgTextureToken token =
-      read_texture(texture, rhi::READ_DEPTH_STENCIL_TARGET, NullHandle);
+  RgTextureToken token = read_texture(texture, rhi::READ_DEPTH_STENCIL_TARGET);
   add_depth_stencil_target(token, {
                                       .load = rhi::RenderPassLoadOp::Load,
                                       .store = rhi::RenderPassStoreOp::None,

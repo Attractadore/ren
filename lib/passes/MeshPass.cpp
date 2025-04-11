@@ -128,7 +128,14 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
       args.mesh_instance_visibility =
           pass.write_buffer("new-mesh-instance-visibility",
                             &info.rg_gpu_scene->mesh_instance_visibility);
-      args.hi_z = pass.read_texture(info.hi_z, ccfg.samplers->hi_z);
+      args.hi_z = pass.read_texture(
+          info.hi_z, {
+                         .mag_filter = rhi::Filter::Nearest,
+                         .min_filter = rhi::Filter::Nearest,
+                         .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                         .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                         .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                     });
     } else if (info.occlusion_culling_mode != OcclusionCullingMode::Disabled) {
       args.mesh_instance_visibility =
           pass.read_buffer(info.rg_gpu_scene->mesh_instance_visibility);
@@ -190,7 +197,14 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     }
     if (settings.meshlet_occlusion_culling and info.hi_z) {
       args.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
-      args.hi_z = pass.read_texture(info.hi_z, ccfg.samplers->hi_z);
+      args.hi_z = pass.read_texture(
+          info.hi_z, {
+                         .mag_filter = rhi::Filter::Nearest,
+                         .min_filter = rhi::Filter::Nearest,
+                         .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                         .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                         .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                     });
     }
 
     pass.set_callback(

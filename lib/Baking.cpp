@@ -1,6 +1,7 @@
 #include "Baking.hpp"
 #include "ren/baking/baking.hpp"
 
+#if 0
 namespace ren {
 
 namespace {
@@ -20,6 +21,7 @@ auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
 } // namespace
 
 } // namespace ren
+#endif
 
 auto ren::create_baker(IRenderer *irenderer) -> expected<IBaker *> {
   Renderer *renderer = static_cast<Renderer *>(irenderer);
@@ -39,7 +41,6 @@ auto ren::create_baker(IRenderer *irenderer) -> expected<IBaker *> {
   baker->allocator.init(*baker->renderer, baker->session_arena, 64 * MiB);
   baker->upload_allocator.init(*baker->renderer, baker->session_arena,
                                256 * MiB);
-  ren_try(baker->samplers, init_baker_samplers(baker->session_arena));
   return baker.release();
 }
 
