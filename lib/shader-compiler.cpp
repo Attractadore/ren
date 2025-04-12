@@ -328,15 +328,19 @@ auto glslang_compile(const CompileOptions &opts) -> int {
 
   includer.root = opts.src.parent_path();
 
-  if (!shader.parse(GetDefaultResources(), 100, false, EShMsgDefault,
-                    includer)) {
+  EShMessages messages = EShMsgDefault;
+  if (opts.debug) {
+    messages = EShMsgDebugInfo;
+  }
+
+  if (!shader.parse(GetDefaultResources(), 100, false, messages, includer)) {
     fmt::println(stderr, "Compilation failed:\n{}", shader.getInfoLog());
     return -1;
   }
 
   glslang::TProgram program;
   program.addShader(&shader);
-  if (!program.link(EShMsgDefault)) {
+  if (!program.link(messages)) {
     fmt::println(stderr, "Linking failed:\n{}", program.getInfoLog());
   }
 
