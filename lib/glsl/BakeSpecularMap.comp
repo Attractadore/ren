@@ -9,8 +9,8 @@ vec3 integrate_specular_map(float roughness, vec3 r, SampledTexture2D equirectan
   vec3 i = vec3(0.0f);
   float weight = 0.0f;
   const uint NUM_SAMPLES = 1024;
-  for (uint k = 0; k < NUM_SAMPLES; ++k) {
-    vec3 h = importance_sample_ggx(hammersley(k, NUM_SAMPLES), roughness, n);
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 h = importance_sample_ggx(hammersley_2d(k, NUM_SAMPLES), roughness, n);
     vec3 l = 2.0f * dot(h, v) * h - v;
     float nl = dot(n, l);
     if (nl > 0.0f) {

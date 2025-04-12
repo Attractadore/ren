@@ -42,8 +42,8 @@ vec2 integrate_dhr(float roughness, float nv) {
   // a ~= 1 / N \sum_0^(N-1) (1 - F_c) G dot(h, v) / (dot(h, n) * dot(n, v))
   // clang-format on
   const uint NUM_SAMPLES = 1024;
-  for (uint k = 0; k < NUM_SAMPLES; ++k) {
-    vec3 h = importance_sample_ggx(hammersley(k, NUM_SAMPLES), roughness, n);
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 h = importance_sample_ggx(hammersley_2d(k, NUM_SAMPLES), roughness, n);
     float hv = dot(h, v);
     vec3 l = 2.0f * hv * h - v;
     float nl = dot(n, l);

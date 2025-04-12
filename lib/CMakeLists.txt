@@ -113,3 +113,6 @@ if (REN_BUILD_BAKING_TOOLS)
 endif()
 
 add_subdirectory(glsl)
+
+add_executable(test-sequences test-sequences.cpp)
+target_link_libraries(test-sequences ren::core)

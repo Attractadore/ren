@@ -6,8 +6,8 @@
 vec3 integrate_irradiance_map(vec3 n, SampledTexture2D equirectangular_map) {
   vec3 i = vec3(0.0f);
   const uint NUM_SAMPLES = 4096;
-  for (uint k = 0; k < NUM_SAMPLES; ++k) {
-    vec3 l = importance_sample_lambertian(hammersley(k, NUM_SAMPLES), n);
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 l = importance_sample_lambertian(hammersley_2d(k, NUM_SAMPLES), n);
     float nl = dot(n, l);
     if (nl > 0.0f) {
       // TODO: select mip based on solid angle.
