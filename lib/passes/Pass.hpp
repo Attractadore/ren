@@ -13,6 +13,7 @@ struct PassPersistentConfig {
   glm::uvec2 viewport;
   ExposureMode exposure = {};
   rhi::ImageUsageFlags backbuffer_usage = {};
+  bool ssao = true;
 };
 
 struct PassPersistentResources {
@@ -20,6 +21,7 @@ struct PassPersistentResources {
   RgTextureId hdr;
   RgTextureId depth_buffer;
   RgTextureId hi_z;
+  RgTextureId ssao;
   RgTextureId sdr;
   RgTextureId backbuffer;
   RgTextureId dhr_lut;

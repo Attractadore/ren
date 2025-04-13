@@ -13,6 +13,7 @@
 #include "MeshletSorting.comp.hpp"
 #include "Opaque.frag.hpp"
 #include "PrepareBatch.comp.hpp"
+#include "Swapchain.hpp"
 
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
@@ -309,6 +310,19 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
       .eye = info.base.camera.position,
+      .viewport = cfg.swapchain->get_size(),
+      .ssao =
+          info.ssao
+              ? pass.read_texture(
+                    info.ssao, rhi::FS_RESOURCE_IMAGE,
+                    {
+                        .mag_filter = rhi::Filter::Nearest,
+                        .min_filter = rhi::Filter::Nearest,
+                        .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                        .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                        .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                    })
+              : RgTextureToken(),
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,

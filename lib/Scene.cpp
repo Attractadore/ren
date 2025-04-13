@@ -1,16 +1,21 @@
 #include "Scene.hpp"
 #include "CommandRecorder.hpp"
+#include "Formats.hpp"
 #include "ImGuiConfig.hpp"
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
 #include "passes/Exposure.hpp"
 #include "passes/GpuSceneUpdate.hpp"
+#include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
+#include "passes/MeshPass.hpp"
 #include "passes/Opaque.hpp"
 #include "passes/PostProcessing.hpp"
 #include "passes/Present.hpp"
 #include "passes/Skybox.hpp"
+
+#include "Ssao.comp.hpp"
 
 #include <fmt/format.h>
 #include <ktx.h>
@@ -644,9 +649,16 @@ void Scene::draw_imgui() {
         ImGui::EndDisabled();
       }
 
-      ImGui::SeparatorText("Opaque pass");
+      ImGui::SeparatorText("SSAO");
       {
-        ImGui::Checkbox("Early Z", &settings.early_z);
+        ImGui::Checkbox("SSAO", &settings.ssao);
+
+        ImGui::BeginDisabled(!settings.ssao);
+        ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f,
+                           "%.3f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderInt("Sample count", &settings.ssao_num_samples, 1, 64,
+                         "%d", ImGuiSliderFlags_Logarithmic);
+        ImGui::EndDisabled();
       }
 
       ImGui::End();
@@ -717,6 +729,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   set_if_changed(m_pass_cfg.backbuffer_usage, m_swapchain->get_usage());
 
+  set_if_changed(m_pass_cfg.ssao, m_data.settings.ssao);
+
   if (dirty) {
     m_rgp->reset();
     m_rgp->set_async_compute_enabled(m_pass_cfg.async_compute);
@@ -748,15 +762,96 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                .exposure = &exposure,
                            });
 
-  RgTextureId depth_buffer;
-  RgTextureId hdr;
-  setup_opaque_passes(cfg, OpaquePassesConfig{
-                               .gpu_scene = &m_gpu_scene,
-                               .rg_gpu_scene = &rg_gpu_scene,
-                               .exposure = exposure,
-                               .depth_buffer = &depth_buffer,
-                               .hdr = &hdr,
-                           });
+  glm::uvec2 viewport = m_swapchain->get_size();
+
+  if (!m_pass_rcs.depth_buffer) {
+    m_pass_rcs.depth_buffer = m_rgp->create_texture({
+        .name = "depth-buffer",
+        .format = DEPTH_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId depth_buffer = m_pass_rcs.depth_buffer;
+  RgTextureId hi_z;
+
+  auto occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  if (m_data.settings.instance_occulusion_culling) {
+    occlusion_culling_mode = OcclusionCullingMode::FirstPhase;
+  }
+
+  setup_early_z_pass(cfg, EarlyZPassConfig{
+                              .gpu_scene = &m_gpu_scene,
+                              .rg_gpu_scene = &rg_gpu_scene,
+                              .occlusion_culling_mode = occlusion_culling_mode,
+                              .depth_buffer = &depth_buffer,
+                          });
+  if (occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
+    setup_hi_z_pass(cfg,
+                    HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
+    setup_early_z_pass(
+        cfg, EarlyZPassConfig{
+                 .gpu_scene = &m_gpu_scene,
+                 .rg_gpu_scene = &rg_gpu_scene,
+                 .occlusion_culling_mode = OcclusionCullingMode::SecondPhase,
+                 .depth_buffer = &depth_buffer,
+                 .hi_z = hi_z,
+             });
+    occlusion_culling_mode = OcclusionCullingMode::ThirdPhase;
+  }
+
+  RgTextureId ssao = m_pass_rcs.ssao;
+  if (m_data.settings.ssao) {
+    if (!m_pass_rcs.ssao) {
+      m_pass_rcs.ssao = m_rgp->create_texture({
+          .name = "ssao",
+          .format = TinyImageFormat_R16_UNORM,
+          .width = viewport.x,
+          .height = viewport.y,
+      });
+    }
+    ssao = m_pass_rcs.ssao;
+    auto pass = rgb.create_pass({.name = "ssao"});
+    glm::mat4 proj = get_projection_matrix(m_data.get_camera(), viewport);
+    RgSsaoArgs args = {
+        .depth = pass.read_texture(
+            depth_buffer,
+            {
+                .mag_filter = rhi::Filter::Nearest,
+                .min_filter = rhi::Filter::Nearest,
+                .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+            }),
+        .ssao = pass.write_texture("ssao", &ssao),
+        .proj = proj,
+        .inv_proj = glm::inverse(proj),
+        .radius = m_data.settings.ssao_radius,
+        .num_samples = (u32)m_data.settings.ssao_num_samples,
+    };
+    pass.dispatch_grid_2d(m_pipelines.ssao, args, viewport);
+  }
+
+  if (!m_pass_rcs.hdr) {
+    m_pass_rcs.hdr = m_rgp->create_texture({
+        .name = "hdr",
+        .format = HDR_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId hdr = m_pass_rcs.hdr;
+
+  setup_opaque_pass(cfg, OpaquePassConfig{
+                             .gpu_scene = &m_gpu_scene,
+                             .rg_gpu_scene = &rg_gpu_scene,
+                             .occlusion_culling_mode = occlusion_culling_mode,
+                             .hdr = &hdr,
+                             .depth_buffer = &depth_buffer,
+                             .hi_z = hi_z,
+                             .ssao = ssao,
+                             .exposure = exposure,
+                         });
 
   setup_skybox_pass(cfg, SkyboxPassConfig{
                              .exposure = exposure,

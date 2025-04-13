@@ -140,3 +140,21 @@ vec2 direction_to_equirectangular_uv(vec3 r) {
   float theta = acos(r.z / length(r));
   return vec2(phi / TWO_PI, theta / PI);
 }
+
+vec2 ndc_to_uv(vec2 ndc) {
+  return vec2(0.5f + 0.5f * ndc.x, 0.5f - 0.5f * ndc.y);
+}
+
+vec2 uv_to_ndc(vec2 uv) {
+  return vec2(2.0f * uv.x - 1.0f, 1.0f - 2.0f * uv.y);
+}
+
+vec3 view_to_ndc(mat4 proj, vec3 view) {
+  vec4 p = proj * vec4(view, 1.0f);
+  return p.xyz / p.w;
+}
+
+vec3 ndc_to_view(mat4 inv_proj, vec3 ndc) {
+  vec4 p = inv_proj * vec4(ndc, 1.0f);
+  return p.xyz / p.w;
+}

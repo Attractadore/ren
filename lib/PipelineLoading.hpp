@@ -12,6 +12,7 @@ struct Pipelines {
   Handle<ComputePipeline> meshlet_sorting;
   Handle<ComputePipeline> prepare_batch;
   Handle<ComputePipeline> hi_z;
+  Handle<ComputePipeline> ssao;
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;

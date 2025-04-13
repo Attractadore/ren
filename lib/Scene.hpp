@@ -57,8 +57,9 @@ struct SceneGraphicsSettings {
   bool meshlet_frustum_culling = true;
   bool meshlet_occlusion_culling = true;
 
-  // Opaque pass
-  bool early_z = true;
+  bool ssao = true;
+  float ssao_radius = 0.1f;
+  i32 ssao_num_samples = 16;
 
   bool amd_anti_lag = true;
 };

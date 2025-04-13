@@ -16,6 +16,8 @@ layout(location = A_MATERIAL) in flat uint a_material;
 
 layout(location = 0) out vec4 f_color;
 
+layout(origin_upper_left) in vec4 gl_FragCoord;
+
 void main() {
   Material material = DEREF(pc.materials[a_material]);
 
@@ -38,6 +40,9 @@ void main() {
     metallic *= orm.b;
   }
 
+  vec3 albedo = mix(color.rgb, vec3(0.0f), metallic);
+  vec3 f0 = fresnel_f0(color.rgb, metallic);
+
   vec3 normal = a_normal;
   if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {
     vec3 tex = texture(material.normal_texture, a_uv).xyz;
@@ -54,12 +59,18 @@ void main() {
   vec3 view = normalize(pc.eye - a_position);
   for (int i = 0; i < pc.num_directional_lights; ++i) {
     DirectionalLight light = DEREF(pc.directional_lights[i]);
-    result.xyz += lighting(normal, light.origin, view, color.xyz, metallic, roughness, light.color * light.illuminance);
+    result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
+  }
+
+  vec3 ao = vec3(1.0f);
+  if (!IS_NULL_DESC(pc.ssao)) {
+    vec2 ao_uv = gl_FragCoord.xy / pc.viewport;
+    ao = texture_lod(pc.ssao, ao_uv, 0.0f).rrr;
   }
   if (!IS_NULL_DESC(pc.raw_env_map)) {
-    result.xyz = occlusion * env_lighting(normal, view, color.xyz, metallic, roughness, pc.raw_env_map, pc.raw_dhr_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ao, pc.raw_dhr_lut);
   } else {
-    result.xyz += occlusion * env_lighting(normal, view, color.xyz, metallic, roughness, pc.env_luminance, pc.raw_dhr_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ao, pc.raw_dhr_lut);
   }
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;

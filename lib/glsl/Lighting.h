@@ -99,7 +99,7 @@ inline vec3 importance_sample_lambertian(vec2 xy, vec3 n) {
   return importance_sample_cosine_weighted_hemisphere(xy, n);
 }
 
-inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
+inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
                      float roughness, vec3 illuminance) {
   float alpha = roughness * roughness;
   float alpha2 = alpha * alpha;
@@ -122,7 +122,6 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
   // clang-format on
 
   // F(h, l) = F_0 + (1 - F_0) * (1 - dot(h, l))^5
-  vec3 f0 = fresnel_f0(color, metallic);
   vec3 fresnel = f0 + (1.0f - f0) * pow(1.0f - lh, 5.0f);
 
   float smith = g_smith(roughness, nl, nv);
@@ -134,7 +133,7 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 color, float metallic,
   float ggx_pi = alpha2 / (quot * quot);
 
   vec3 fs_nl_pi = (fresnel * smith * ggx_pi) / (4.0f * nv);
-  vec3 fd_nl_pi = mix(color, vec3(0.0f), metallic) * nl;
+  vec3 fd_nl_pi = albedo * nl;
 
   vec3 L_o = float(nl > 0.0f) * (fd_nl_pi + fs_nl_pi) * illuminance / PI;
 
@@ -149,39 +148,27 @@ inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
   return f0 * ab.x + ab.y;
 }
 
-inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
-                         float roughness, vec3 luminance,
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
+                         vec3 luminance, vec3 ao,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = mix(color, vec3(0.0f), metallic);
-
-  vec3 f0 = fresnel_f0(color, metallic);
+  vec3 kd = ao * albedo;
   vec3 ks =
       directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
-
-  vec3 L_o = (kd + ks) * luminance;
-
-  return L_o;
+  return (kd + ks) * luminance;
 }
 
-inline vec3 env_lighting(vec3 n, vec3 v, vec3 color, float metallic,
-                         float roughness, SampledTextureCube env_map,
+inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
+                         SampledTextureCube env_map, vec3 ao,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = mix(color, vec3(0.0f), metallic);
-
+  vec3 kd = ao * albedo;
   float nv = dot(n, v);
-
-  vec3 f0 = fresnel_f0(color, metallic);
   vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
-
   vec3 r = 2 * nv * n - v;
-
   int num_mips = texture_query_levels(env_map);
   float dlod = num_mips - 1;
   float slod = roughness * (num_mips - 2);
-  vec3 L_o = kd * texture_lod(env_map, n, dlod).rgb +
-             ks * texture_lod(env_map, r, slod).rgb;
-
-  return L_o;
+  return kd * texture_lod(env_map, n, dlod).rgb +
+         ks * texture_lod(env_map, r, slod).rgb;
 }
 
 #endif // GL_core_profile

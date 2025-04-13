@@ -19,6 +19,7 @@
 #include "ReduceLuminanceHistogram.comp.hpp"
 #include "Skybox.frag.hpp"
 #include "Skybox.vert.hpp"
+#include "Ssao.comp.hpp"
 
 #include <fmt/format.h>
 
@@ -147,6 +148,7 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.prepare_batch,
           compute_pipeline(PrepareBatchCS, "Prepare batch"));
   ren_try(pipelines.hi_z, compute_pipeline(HiZSpdCS, "Hi-Z SPD"));
+  ren_try(pipelines.ssao, compute_pipeline(SsaoCS, "SSAO"));
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
   ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
