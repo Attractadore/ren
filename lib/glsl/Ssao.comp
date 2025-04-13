@@ -19,9 +19,9 @@ float integrate_ao(vec3 p, vec3 n) {
     float ro;
     vec3 l = importance_sample_ao_volume(xi, n, ro);
     vec3 ndc_sample = view_to_ndc(pc.proj, p + l * (ro * pc.radius));
-    vec2 uv = ndc_to_uv(ndc_sample.xy);
-    float d = ndc_sample.z;
-    ka += texture_lod(pc.depth, uv, 0.0f).r > d ? ro : 1.0f;
+    vec3 ndc_geom = vec3(ndc_sample.xy, texture_lod(pc.depth, ndc_to_uv(ndc_sample.xy), 0.0f).r);
+    vec3 view_geom = ndc_to_view(pc.inv_proj, ndc_geom);
+    ka += ndc_sample.z < ndc_geom.z ? min(length(view_geom - p) / pc.radius, 1.0f) : 1.0f;
   }
   return ka / pc.num_samples;
 }
