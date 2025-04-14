@@ -79,6 +79,7 @@ auto get_adapter_by_preference(AdapterPreference preference) -> Adapter;
 
 struct AdapterFeatures {
   bool amd_anti_lag : 1 = false;
+  bool compute_shader_derivatives : 1 = false;
 };
 
 auto get_adapter_features(Adapter adapter) -> AdapterFeatures;

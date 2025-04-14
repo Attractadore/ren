@@ -420,11 +420,14 @@ struct InstanceData {
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
-    VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
 };
 
 constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+constexpr const char *OPTIONAL_DEVICE_EXTENSIONS[] = {
+    VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
 };
 
 } // namespace
@@ -746,6 +749,13 @@ auto init(const InitInfo &init_info) -> Result<void> {
 
     add_features(amd_anti_lag_features);
 
+    VkPhysicalDeviceComputeShaderDerivativesFeaturesNV
+        compute_shader_derivatives_features = {
+            .sType =
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV,
+        };
+    add_features(compute_shader_derivatives_features);
+
     VkPhysicalDeviceFeatures2 vk_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = pnext,
@@ -757,6 +767,10 @@ auto init(const InitInfo &init_info) -> Result<void> {
         .amd_anti_lag =
             is_extension_supported(VK_AMD_ANTI_LAG_EXTENSION_NAME) and
             amd_anti_lag_features.antiLag,
+        .compute_shader_derivatives =
+            is_extension_supported(
+                VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME) and
+            compute_shader_derivatives_features.computeDerivativeGroupLinear,
     };
 
     std::ranges::fill(adapter.queue_family_indices, QUEUE_FAMILY_UNAVAILABLE);
@@ -995,14 +1009,6 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
 
   add_features(uint8_features);
 
-  VkPhysicalDeviceComputeShaderDerivativesFeaturesNV
-      compute_shader_derivatives_features = {
-          .sType =
-              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV,
-          .computeDerivativeGroupLinear = true,
-      };
-  add_features(compute_shader_derivatives_features);
-
   // Add optional features.
   // TODO: check that they are supported.
 
@@ -1015,6 +1021,19 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
     fmt::println("vk: Enable AMD Anti-Lag");
     extensions.push_back(VK_AMD_ANTI_LAG_EXTENSION_NAME);
     add_features(amd_anti_lag_features);
+  }
+
+  VkPhysicalDeviceComputeShaderDerivativesFeaturesNV
+      compute_shader_derivatives_features = {
+          .sType =
+              VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_NV,
+          .computeDerivativeGroupLinear = true,
+      };
+
+  if (features.compute_shader_derivatives) {
+    fmt::println("vk: Enable compute shader derivatives");
+    extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
+    add_features(compute_shader_derivatives_features);
   }
 
   float queue_priority = 1.0f;
