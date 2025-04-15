@@ -2,6 +2,7 @@
 #include "Lighting.h"
 #include "Random.h"
 #include "Texture.glsl"
+#include "Transforms.h"
 #include "Vertex.h"
 
 vec3 importance_sample_ao_volume(vec3 xi, vec3 n, out float ro) {
@@ -13,16 +14,27 @@ vec3 importance_sample_ao_volume(vec3 xi, vec3 n, out float ro) {
 }
 
 float integrate_ao(vec3 p, vec3 n) {
+  // Add extra rotation around normal to avoid banding artifacts.
+  float rot = corput_base_2(gl_GlobalInvocationID.x) + corput_base_3(gl_GlobalInvocationID.y);
+
   float ka = 0.0f;
   for (uint k = 1; k <= pc.num_samples; ++k) {
     vec3 xi = hammersley_3d(k, pc.num_samples);
+    xi.x += rot;
     float ro;
     vec3 l = importance_sample_ao_volume(xi, n, ro);
     vec3 ndc_sample = view_to_ndc(pc.proj, p + l * (ro * pc.radius));
-    vec3 ndc_geom = vec3(ndc_sample.xy, texture_lod(pc.depth, ndc_to_uv(ndc_sample.xy), 0.0f).r);
-    vec3 view_geom = ndc_to_view(pc.inv_proj, ndc_geom);
-    ka += ndc_sample.z < ndc_geom.z ? min(length(view_geom - p) / pc.radius, 1.0f) : 1.0f;
+
+    float d = texture_lod(pc.depth, ndc_to_uv(ndc_sample.xy), 0.0f).r;
+    float s = ndc_sample.z;
+
+    float znear = pc.proj[3][2];
+    float z = -znear / d;
+    float w = min(abs(z - p.z) / pc.radius, 1.0f);
+
+    ka += d > s ? w : 1.0f;
   }
+
   return ka / pc.num_samples;
 }
 
@@ -84,6 +96,10 @@ void main() {
   vec3 b = pb - p0;
   vec3 n = normalize(cross(t, b));
   n = flipn ? -n : n;
+
+  // Add normal offset to avoid self-shadowing of flat surfaces.
+  vec2 pixel_size = pixel_view_space_size(pc.proj[0][0], pc.proj[1][1], texture_size(pc.depth), p0.z);
+  p0 = normal_offset(p0, vec3(0.0f, 0.0f, 1.0f), n, pixel_size);
 
   float ka = integrate_ao(p0, n);
 
