@@ -6,7 +6,7 @@
 
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
-#include "HiZSpd.comp.hpp"
+#include "HiZ.comp.hpp"
 #include "ImGui.frag.hpp"
 #include "ImGui.vert.hpp"
 #include "InstanceCullingAndLOD.comp.hpp"
@@ -147,7 +147,7 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
           compute_pipeline(MeshletSortingCS, "Meshlet soring"));
   ren_try(pipelines.prepare_batch,
           compute_pipeline(PrepareBatchCS, "Prepare batch"));
-  ren_try(pipelines.hi_z, compute_pipeline(HiZSpdCS, "Hi-Z SPD"));
+  ren_try(pipelines.hi_z, compute_pipeline(HiZCS, "Hi-Z"));
   ren_try(pipelines.ssao, compute_pipeline(SsaoCS, "SSAO"));
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));

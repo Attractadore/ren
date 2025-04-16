@@ -81,8 +81,8 @@ int texture_query_levels(SampledTextureCube t) {
     imageStore(images[img.id], pos, vec4(data));                               \
   }                                                                            \
                                                                                \
-  void image_coherent_store(ImageType img, ivec2 pos, float data) {            \
-    imageStore(coherent_images[img.id], pos, vec4(data));                      \
+  void image_coherent_store(ImageType img, ivec2 pos, vec4 data) {             \
+    imageStore(coherent_images[img.id], pos, data);                            \
   }                                                                            \
                                                                                \
   void image_store(ImageType img, ivec2 pos, vec2 data) {                      \

@@ -48,7 +48,7 @@ add_shader(ren Skybox.frag)
 add_shader(ren ImGui.vert)
 add_shader(ren ImGui.frag)
 
-add_shader(ren HiZSpd.comp)
+add_shader(ren HiZ.comp)
 add_shader(ren Ssao.comp)
 add_shader(ren PostProcessing.comp)
 add_shader(ren ReduceLuminanceHistogram.comp)
