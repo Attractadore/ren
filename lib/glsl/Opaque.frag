@@ -62,15 +62,16 @@ void main() {
     result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
   }
 
-  vec3 ao = vec3(1.0f);
+  float ka = 1.0f;
   if (!IS_NULL_DESC(pc.ssao)) {
-    vec2 ao_uv = gl_FragCoord.xy / pc.viewport;
-    ao = texture_lod(pc.ssao, ao_uv, 0.0f).rrr;
+    vec2 ka_uv = gl_FragCoord.xy / pc.viewport;
+    ka = texture_lod(pc.ssao, ka_uv, 0.0f).r;
   }
+  occlusion = min(occlusion, ka);
   if (!IS_NULL_DESC(pc.raw_env_map)) {
-    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ao, pc.raw_dhr_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, pc.raw_dhr_lut);
   } else {
-    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ao, pc.raw_dhr_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, pc.raw_dhr_lut);
   }
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;

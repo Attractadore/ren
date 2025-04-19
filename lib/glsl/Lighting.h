@@ -149,18 +149,18 @@ inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         vec3 luminance, vec3 ao,
+                         vec3 luminance,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = ao * albedo;
+  vec3 kd = albedo;
   vec3 ks =
       directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
   return (kd + ks) * luminance;
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         SampledTextureCube env_map, vec3 ao,
+                         SampledTextureCube env_map,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = ao * albedo;
+  vec3 kd = albedo;
   float nv = dot(n, v);
   vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
   vec3 r = 2 * nv * n - v;
