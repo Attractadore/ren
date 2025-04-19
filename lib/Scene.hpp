@@ -58,8 +58,9 @@ struct SceneGraphicsSettings {
   bool meshlet_occlusion_culling = true;
 
   bool ssao = true;
+  i32 ssao_num_samples = 8;
   float ssao_radius = 0.1f;
-  i32 ssao_num_samples = 16;
+  float ssao_lod_bias = 0.0f;
 
   bool amd_anti_lag = true;
 };

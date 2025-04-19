@@ -66,6 +66,8 @@ int texture_query_levels(SampledTextureCube t) {
   return textureQueryLevels(g_sampled_textures_cube[t.id]);
 }
 
+#define texture_gather(t, p, comp) textureGather(g_sampled_textures_2d[t.id], p, comp)
+
 #define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images, coherent_images)     \
   ivec2 image_size(ImageType img) { return imageSize(images[img.id]); }        \
                                                                                \

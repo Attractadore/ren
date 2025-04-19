@@ -16,6 +16,7 @@
 #include "passes/Skybox.hpp"
 
 #include "Ssao.comp.hpp"
+#include "SsaoHiZ.comp.hpp"
 
 #include <fmt/format.h>
 #include <ktx.h>
@@ -654,10 +655,12 @@ void Scene::draw_imgui() {
         ImGui::Checkbox("SSAO", &settings.ssao);
 
         ImGui::BeginDisabled(!settings.ssao);
-        ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f,
-                           "%.3f", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderInt("Sample count", &settings.ssao_num_samples, 1, 64,
                          "%d", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f,
+                           "%.3f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("LOD bias## SSAO", &settings.ssao_lod_bias, -1.0f,
+                           4.0f);
         ImGui::EndDisabled();
       }
 
@@ -802,6 +805,53 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   RgTextureId ssao = m_pass_rcs.ssao;
   if (m_data.settings.ssao) {
+    glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
+                                 std::bit_floor(viewport.y)};
+    // Don't need the full mip chain since after a certain stage they become
+    // small enough to completely fit in cache but are much less detailed.
+    i32 num_ssao_hi_z_mips =
+        get_mip_chain_length(std::min(ssao_hi_z_size.x, ssao_hi_z_size.y));
+    num_ssao_hi_z_mips =
+        std::max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
+
+    if (!m_pass_rcs.ssao_hi_z) {
+      m_pass_rcs.ssao_hi_z = m_rgp->create_texture({
+          .name = "ssao-hi-z",
+          .format = TinyImageFormat_R16_SFLOAT,
+          .width = ssao_hi_z_size.x,
+          .height = ssao_hi_z_size.y,
+          .num_mips = (u32)num_ssao_hi_z_mips,
+      });
+    }
+    RgTextureId ssao_hi_z = m_pass_rcs.ssao_hi_z;
+
+    const Camera &camera = m_data.get_camera();
+    glm::mat4 proj = get_projection_matrix(camera, viewport);
+
+    {
+      auto pass = rgb.create_pass({.name = "ssao-hi-z"});
+      auto spd_counter = rgb.create_buffer<u32>({.init = 0});
+      RgLinearHiZArgs args = {
+          .spd_counter =
+              pass.write_buffer("ssao-hi-z-spd-counter", &spd_counter),
+          .num_mips = (u32)num_ssao_hi_z_mips,
+          .dsts = pass.write_texture("ssao-hi-z", &ssao_hi_z),
+          .src = pass.read_texture(
+              depth_buffer,
+              {
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              }),
+          .znear = camera.near,
+      };
+      pass.dispatch_grid_2d(
+          m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
+          {glsl::SPD_THREAD_ELEMS_X, glsl::SPD_THREAD_ELEMS_Y});
+    }
+
     if (!m_pass_rcs.ssao) {
       m_pass_rcs.ssao = m_rgp->create_texture({
           .name = "ssao",
@@ -811,25 +861,37 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       });
     }
     ssao = m_pass_rcs.ssao;
-    auto pass = rgb.create_pass({.name = "ssao"});
-    glm::mat4 proj = get_projection_matrix(m_data.get_camera(), viewport);
-    RgSsaoArgs args = {
-        .depth = pass.read_texture(
-            depth_buffer,
-            {
-                .mag_filter = rhi::Filter::Nearest,
-                .min_filter = rhi::Filter::Nearest,
-                .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-            }),
-        .ssao = pass.write_texture("ssao", &ssao),
-        .proj = proj,
-        .inv_proj = glm::inverse(proj),
-        .radius = m_data.settings.ssao_radius,
-        .num_samples = (u32)m_data.settings.ssao_num_samples,
-    };
-    pass.dispatch_grid_2d(m_pipelines.ssao, args, viewport);
+
+    {
+      auto pass = rgb.create_pass({.name = "ssao"});
+      RgSsaoArgs args = {
+          .depth = pass.read_texture(
+              depth_buffer,
+              {
+                  .mag_filter = rhi::Filter::Nearest,
+                  .min_filter = rhi::Filter::Nearest,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              }),
+          .hi_z = pass.read_texture(
+              ssao_hi_z,
+              {
+                  .mag_filter = rhi::Filter::Nearest,
+                  .min_filter = rhi::Filter::Nearest,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              }),
+          .ssao = pass.write_texture("ssao", &ssao),
+          .num_samples = (u32)m_data.settings.ssao_num_samples,
+          .proj = proj,
+          .inv_proj = glm::inverse(proj),
+          .radius = m_data.settings.ssao_radius,
+          .lod_bias = m_data.settings.ssao_lod_bias,
+      };
+      pass.dispatch_grid_2d(m_pipelines.ssao, args, viewport);
+    }
   }
 
   if (!m_pass_rcs.hdr) {
