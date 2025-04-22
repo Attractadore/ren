@@ -9,11 +9,12 @@ inline mat3 adjugate(mat3 m) {
 
 inline mat3 normal(mat3 m) { return adjugate(m); }
 
-inline vec2 pixel_view_space_size(float p00, float p11, vec2 size, float z) {
+inline vec2 pixel_view_space_size(float rcp_p00, float rcp_p11, vec2 rcp_size,
+                                  float z) {
   // s_ndc = a * s_v / -z_v =>
   // s_v = s_ndc * -z_v / a
   // s_ndc = 2 * s_uv = 2 / size
-  return (2.0f * -z) / (vec2(p00, p11) * size);
+  return (2.0f * -z) * vec2(rcp_p00, rcp_p11) * rcp_size;
 }
 
 inline vec3 normal_offset(vec3 p, vec3 v, vec3 n, vec2 pixel_size) {
@@ -21,6 +22,23 @@ inline vec3 normal_offset(vec3 p, vec3 v, vec3 n, vec2 pixel_size) {
   float cos_v = dot(v, n);
   float sin_v = sqrt(1.0f - cos_v * cos_v);
   return p + (0.5f * sin_v * diag) * n;
+}
+
+inline vec2 ndc_to_uv(vec2 ndc) {
+  return vec2(0.5f + 0.5f * ndc.x, 0.5f - 0.5f * ndc.y);
+}
+
+inline vec2 uv_to_ndc(vec2 uv) {
+  return vec2(2.0f * uv.x - 1.0f, 1.0f - 2.0f * uv.y);
+}
+
+inline vec3 view_to_ndc(float p00, float p11, float znear, vec3 p) {
+  return vec3(p.x * p00, p.y * p11, znear) / -p.z;
+}
+
+inline vec3 ndc_to_view(float rcp_p00, float rcp_p11, float znear, vec3 p) {
+  float z = -znear / p.z;
+  return vec3(p.x * rcp_p00 * -z, p.y * rcp_p11 * -z, z);
 }
 
 GLSL_NAMESPACE_END

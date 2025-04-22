@@ -885,8 +885,11 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
               }),
           .ssao = pass.write_texture("ssao", &ssao),
           .num_samples = (u32)m_data.settings.ssao_num_samples,
-          .proj = proj,
-          .inv_proj = glm::inverse(proj),
+          .p00 = proj[0][0],
+          .p11 = proj[1][1],
+          .znear = camera.near,
+          .rcp_p00 = 1.0f / proj[0][0],
+          .rcp_p11 = 1.0f / proj[1][1],
           .radius = m_data.settings.ssao_radius,
           .lod_bias = m_data.settings.ssao_lod_bias,
       };

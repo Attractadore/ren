@@ -9,8 +9,11 @@ GLSL_PUSH_CONSTANTS SsaoArgs {
   SampledTexture2D hi_z;
   StorageTexture2D ssao;
   uint num_samples;
-  mat4 proj;
-  mat4 inv_proj;
+  float p00;
+  float p11;
+  float znear;
+  float rcp_p00;
+  float rcp_p11;
   float radius;
   float lod_bias;
 }
