@@ -8,7 +8,6 @@
 LOCAL_SIZE_2D(16, 16);
 
 // TODO:
-// 0. Fix self-shadowing artifacts.
 // 1. Fix off-screen samples and samples close to camera.
 // 2. Blur.
 // 3. Half-res.
@@ -120,7 +119,7 @@ void main() {
   n = flipn ? -n : n;
 
   // Add normal offset to avoid self-shadowing of flat surfaces.
-  vec2 pixel_size = pixel_view_space_size(pc.proj[0][0], pc.proj[1][1], texture_size(pc.hi_z), p0.z);
+  vec2 pixel_size = pixel_view_space_size(pc.proj[0][0], pc.proj[1][1], texture_size(pc.depth), p0.z);
   p0 = normal_offset(p0, vec3(0.0f, 0.0f, 1.0f), n, pixel_size);
 
   float ka = integrate_ao(p0, n);

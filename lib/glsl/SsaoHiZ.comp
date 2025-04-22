@@ -2,68 +2,34 @@
 #include "Texture.glsl"
 
 struct SsaoHiZSpdArgs {
-  vec2 src_size;
-  vec2 inv_dst_size;
+  vec2 inv_size;
 };
 
-float ssao_hi_z_ndc_to_view(float d) {
-  // Subtract znear to use the full range of FP16.
-  return pc.znear * (1.0f - d) / d;
-}
-
-float ssao_hi_z_view_to_ndc(float z) {
-  return pc.znear / (z - pc.znear);
-}
-
-#if 0
-float ssao_hi_z_blend(vec4 z, vec4 w) {
-  bool all_inf = all(isinf(z));
-  // Set weights of infinite pixels to 0.
-  w = mix(w, vec4(0.0f), isinf(z));
-  // Set infinite pixels to zero to avoid NaN.
-  z = mix(z, vec4(0.0f), isinf(z));
-  // Blend and normalize.
-  return all_inf ? (1.0f / 0.0f) : dot(z, w) / (w.x + w.y + w.z + w.w);
-}
-#else
-float ssao_hi_z_blend(vec4 d, vec4 w) {
-  bvec4 far_mask = equal(d, vec4(0.0f));
-  bool all_far = all(far_mask);
-  // Set weights of far plane pixels to 0.
-  w = mix(w, vec4(0.0f), far_mask);
-  // Blend and normalize.
-  return all_far ? 0.0f : dot(d, w) / (w.x + w.y + w.z + w.w);
-}
-#endif
-
 float ssao_hi_z_spd_load(SsaoHiZSpdArgs args, ivec2 pos) {
-  vec2 st = (pos + vec2(0.5f)) * args.inv_dst_size;
-  vec2 uv = st * args.src_size;
-  vec2 ij = floor(uv - 0.5f);
-  vec2 ab = uv - 0.5f - ij;
-  vec2 w0 = 1.0f - ab;
-  vec2 w1 = ab; 
-
-  vec4 d = texture_gather(pc.src, st, 0);
-  vec4 w = vec4(w0.x * w1.y, w1.x * w1.y, w1.x * w0.y, w0.x * w0.y);
-
-  return ssao_hi_z_blend(d, w);
+  vec2 uv = (pos + vec2(0.5f)) * args.inv_size;
+  vec4 d = texture_gather(pc.src, uv, 0);
+  vec4 z = pc.znear * (1.0f - d) / d;
+  return max(max(z.x, z.y), max(z.z, z.w));
 }
 
-// 4. Optimize depth pre-filtering and mip selection strategy.
 #define SpdT float
 #define SPD_DEFAULT_VALUE (0.0f)
 #define SpdArgsT SsaoHiZSpdArgs
 #define spd_load ssao_hi_z_spd_load
-#define spd_to_vec4(d) ssao_hi_z_ndc_to_view(d).rrrr
-#define spd_from_vec4(z) ssao_hi_z_view_to_ndc(z.r)
-#define spd_reduce_quad(x0y0, x1y0, x0y1, x1y1) ssao_hi_z_blend(vec4(x0y0, x1y0, x0y1, x1y1), vec4(1.0f)) 
+// Bias towards next representable FP16 value since rounding towards zero causes
+// self-shadowing artifacts.
+#define spd_to_vec4(z)                                                         \
+  (isinf(z) ? z                                                                \
+            : uintBitsToFloat((floatBitsToUint(z) & 0xFFFFE000) + 0x00002000)) \
+      .rrrr
+#define spd_from_vec4(z) z.r
+#define spd_reduce_quad(x0y0, x1y0, x0y1, x1y1)                                \
+  max(max(x0y0, x1y0), max(x0y1, x1y1))
 
 #include "Spd.glsl"
 
 void main() {
   SsaoHiZSpdArgs args;
-  args.src_size = texture_size(pc.src);
-  args.inv_dst_size = 1.0f / image_size(pc.dsts[0]);
+  args.inv_size = 1.0f / image_size(pc.dsts[0]);
   spd_main(args);
 }
