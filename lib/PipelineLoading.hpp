@@ -14,6 +14,7 @@ struct Pipelines {
   Handle<ComputePipeline> hi_z;
   Handle<ComputePipeline> ssao_hi_z;
   Handle<ComputePipeline> ssao;
+  Handle<ComputePipeline> ssao_blur;
   Handle<GraphicsPipeline> early_z_pass;
   std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;

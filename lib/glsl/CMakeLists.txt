@@ -51,6 +51,7 @@ add_shader(ren ImGui.frag)
 add_shader(ren HiZ.comp)
 add_shader(ren SsaoHiZ.comp)
 add_shader(ren Ssao.comp)
+add_shader(ren SsaoBlur.comp)
 add_shader(ren PostProcessing.comp)
 add_shader(ren ReduceLuminanceHistogram.comp)
 

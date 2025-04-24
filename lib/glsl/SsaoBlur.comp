@@ -1,0 +1,78 @@
+#include "Math.h"
+#include "SsaoBlur.h"
+#include "Texture.glsl"
+
+LOCAL_SIZE_2D(16, 16);
+
+const uint FILTER_SIZE = 5;
+const uint FILTER_OFFSET = (FILTER_SIZE - 1) / 2;
+
+const uint TILE_WIDTH = SSAO_BLUR_THREAD_ITEMS_X * gl_WorkGroupSize.x;
+const uint TILE_HEIGHT = SSAO_BLUR_THREAD_ITEMS_Y * gl_WorkGroupSize.y;
+const uint FILTER_TILE_WIDTH = TILE_WIDTH + FILTER_SIZE - 1;
+const uint FILTER_TILE_HEIGHT = TILE_HEIGHT + FILTER_SIZE - 1;
+
+shared float tile[2][FILTER_TILE_HEIGHT][FILTER_TILE_WIDTH];
+
+void main() {
+  // Load.
+  {
+    const ivec2 size = texture_size(pc.src);
+
+    const uint THREAD_LOAD_ITEMS =
+        glsl_ceil_div(FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT,
+                      gl_WorkGroupSize.x * gl_WorkGroupSize.y);
+    float v[THREAD_LOAD_ITEMS];
+
+    for (uint k = 0; k < THREAD_LOAD_ITEMS; ++k) {
+      uint i =
+          gl_LocalInvocationIndex + k * gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+      uint x = i % FILTER_TILE_WIDTH;
+      uint y = i / FILTER_TILE_WIDTH;
+      ivec2 pos = ivec2(gl_WorkGroupID.xy * uvec2(TILE_WIDTH, TILE_HEIGHT)) +
+                  ivec2(x, y) - ivec2(FILTER_OFFSET, FILTER_OFFSET);
+      pos = clamp(pos, ivec2(0, 0), size - ivec2(1, 1));
+      v[k] = (y < FILTER_TILE_HEIGHT) ? texel_fetch(pc.src, pos, 0).r : 0.0f;
+    }
+
+    for (uint k = 0; k < THREAD_LOAD_ITEMS; ++k) {
+      uint i =
+          gl_LocalInvocationIndex + k * gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+      uint x = i % FILTER_TILE_WIDTH;
+      uint y = i / FILTER_TILE_WIDTH;
+      if (y < FILTER_TILE_HEIGHT) {
+        tile[0][y][x] = v[k];
+      }
+    }
+  }
+  barrier();
+
+  // Vertical blur.
+  for (uint i = gl_LocalInvocationIndex; i < FILTER_TILE_WIDTH * TILE_HEIGHT;
+       i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+    uint x = i % FILTER_TILE_WIDTH;
+    uint y = i / FILTER_TILE_WIDTH;
+    float v = 0.0f;
+    for (uint r = 0; r < FILTER_SIZE; ++r) {
+      v += tile[0][y + r][x];
+    }
+    tile[1][y + FILTER_OFFSET][x] = v / FILTER_SIZE;
+  }
+  barrier();
+
+  // Horizontal blur and store.
+  for (uint i = gl_LocalInvocationIndex; i < FILTER_TILE_WIDTH * TILE_HEIGHT;
+       i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+    uint x = i % FILTER_TILE_WIDTH;
+    uint y = i / FILTER_TILE_WIDTH + FILTER_OFFSET;
+    if (x < TILE_HEIGHT) {
+      float v = 0.0f;
+      for (uint c = 0; c < FILTER_SIZE; ++c) {
+        v += tile[1][y][x + c];
+      }
+      ivec2 pos = ivec2(gl_WorkGroupID.xy * uvec2(TILE_WIDTH, TILE_HEIGHT)) +
+                  ivec2(x, y - FILTER_OFFSET);
+      image_store(pc.dst, pos, v / FILTER_SIZE);
+    }
+  }
+}

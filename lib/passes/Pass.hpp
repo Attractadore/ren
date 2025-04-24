@@ -23,6 +23,7 @@ struct PassPersistentResources {
   RgTextureId hi_z;
   RgTextureId ssao_hi_z;
   RgTextureId ssao;
+  RgTextureId ssao_blurred;
   RgTextureId sdr;
   RgTextureId backbuffer;
   RgTextureId dhr_lut;

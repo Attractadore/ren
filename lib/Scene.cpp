@@ -16,6 +16,7 @@
 #include "passes/Skybox.hpp"
 
 #include "Ssao.comp.hpp"
+#include "SsaoBlur.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
 
 #include <fmt/format.h>
@@ -803,7 +804,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     occlusion_culling_mode = OcclusionCullingMode::ThirdPhase;
   }
 
-  RgTextureId ssao = m_pass_rcs.ssao;
+  RgTextureId ssao_blurred;
   if (m_data.settings.ssao) {
     glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
                                  std::bit_floor(viewport.y)};
@@ -860,8 +861,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .height = viewport.y,
       });
     }
-    ssao = m_pass_rcs.ssao;
-
+    RgTextureId ssao = m_pass_rcs.ssao;
     {
       auto pass = rgb.create_pass({.name = "ssao"});
       RgSsaoArgs args = {
@@ -895,6 +895,26 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       };
       pass.dispatch_grid_2d(m_pipelines.ssao, args, viewport);
     }
+
+    if (!m_pass_rcs.ssao_blurred) {
+      m_pass_rcs.ssao_blurred = m_rgp->create_texture({
+          .name = "ssao-blurred",
+          .format = TinyImageFormat_R16_UNORM,
+          .width = viewport.x,
+          .height = viewport.y,
+      });
+    }
+    ssao_blurred = m_pass_rcs.ssao_blurred;
+    {
+      auto pass = rgb.create_pass({.name = "ssao-blur"});
+      RgSsaoBlurArgs args = {
+          .src = pass.read_texture(ssao),
+          .dst = pass.write_texture("ssao-blurred", &ssao_blurred),
+      };
+      pass.dispatch_grid_2d(
+          m_pipelines.ssao_blur, args, viewport,
+          {glsl::SSAO_BLUR_THREAD_ITEMS_X, glsl::SSAO_BLUR_THREAD_ITEMS_Y});
+    }
   }
 
   if (!m_pass_rcs.hdr) {
@@ -914,7 +934,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                              .hdr = &hdr,
                              .depth_buffer = &depth_buffer,
                              .hi_z = hi_z,
-                             .ssao = ssao,
+                             .ssao = ssao_blurred,
                              .exposure = exposure,
                          });
 

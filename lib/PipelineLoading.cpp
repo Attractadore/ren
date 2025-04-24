@@ -20,6 +20,7 @@
 #include "Skybox.frag.hpp"
 #include "Skybox.vert.hpp"
 #include "Ssao.comp.hpp"
+#include "SsaoBlur.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
 
 #include <fmt/format.h>
@@ -151,6 +152,7 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.hi_z, compute_pipeline(HiZCS, "Hi-Z"));
   ren_try(pipelines.ssao_hi_z, compute_pipeline(SsaoHiZCS, "SSAO Hi-Z"));
   ren_try(pipelines.ssao, compute_pipeline(SsaoCS, "SSAO"));
+  ren_try(pipelines.ssao_blur, compute_pipeline(SsaoBlurCS, "SSAO blur"));
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
   ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
