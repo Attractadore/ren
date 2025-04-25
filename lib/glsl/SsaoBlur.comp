@@ -1,78 +1,125 @@
-#include "Math.h"
 #include "SsaoBlur.h"
+#include "Math.h"
 #include "Texture.glsl"
 
 LOCAL_SIZE_2D(16, 16);
 
-const uint FILTER_SIZE = 5;
-const uint FILTER_OFFSET = (FILTER_SIZE - 1) / 2;
+const uint WG_SIZE = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
 
 const uint TILE_WIDTH = SSAO_BLUR_THREAD_ITEMS_X * gl_WorkGroupSize.x;
 const uint TILE_HEIGHT = SSAO_BLUR_THREAD_ITEMS_Y * gl_WorkGroupSize.y;
-const uint FILTER_TILE_WIDTH = TILE_WIDTH + FILTER_SIZE - 1;
-const uint FILTER_TILE_HEIGHT = TILE_HEIGHT + FILTER_SIZE - 1;
+const uvec2 TILE_SIZE_2D = uvec2(TILE_WIDTH, TILE_HEIGHT);
 
-shared float tile[2][FILTER_TILE_HEIGHT][FILTER_TILE_WIDTH];
+const uint FILTER_SIZE = 5;
+const uint FILTER_RADIUS = (FILTER_SIZE - 1) / 2;
+const uint FILTER_TILE_WIDTH = TILE_WIDTH + 2 * FILTER_RADIUS;
+const uint FILTER_TILE_HEIGHT = TILE_HEIGHT + 2 * FILTER_RADIUS;
+
+shared float ssao[FILTER_TILE_HEIGHT][FILTER_TILE_WIDTH];
+shared float depth[FILTER_TILE_HEIGHT][FILTER_TILE_WIDTH];
 
 void main() {
   // Load.
   {
     const ivec2 size = texture_size(pc.src);
 
-    const uint THREAD_LOAD_ITEMS =
-        glsl_ceil_div(FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT,
-                      gl_WorkGroupSize.x * gl_WorkGroupSize.y);
-    float v[THREAD_LOAD_ITEMS];
+    const uint NUM_LOAD = glsl_ceil_div(FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT, WG_SIZE);
+    float v[NUM_LOAD];
+    float d[NUM_LOAD];
 
-    for (uint k = 0; k < THREAD_LOAD_ITEMS; ++k) {
-      uint i =
-          gl_LocalInvocationIndex + k * gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+    for (uint k = 0; k < NUM_LOAD; ++k) {
+      uint i = gl_LocalInvocationIndex + k * WG_SIZE;
       uint x = i % FILTER_TILE_WIDTH;
       uint y = i / FILTER_TILE_WIDTH;
-      ivec2 pos = ivec2(gl_WorkGroupID.xy * uvec2(TILE_WIDTH, TILE_HEIGHT)) +
-                  ivec2(x, y) - ivec2(FILTER_OFFSET, FILTER_OFFSET);
+      ivec2 pos = ivec2(gl_WorkGroupID.xy * TILE_SIZE_2D) + ivec2(x - FILTER_RADIUS, y - FILTER_RADIUS);
       pos = clamp(pos, ivec2(0, 0), size - ivec2(1, 1));
-      v[k] = (y < FILTER_TILE_HEIGHT) ? texel_fetch(pc.src, pos, 0).r : 0.0f;
+      if (i < FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT) {
+        v[k] = texel_fetch(pc.src, pos, 0).r;
+        d[k] = texel_fetch(pc.depth, pos, 0).r;
+      }
     }
 
-    for (uint k = 0; k < THREAD_LOAD_ITEMS; ++k) {
-      uint i =
-          gl_LocalInvocationIndex + k * gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+    for (uint k = 0; k < NUM_LOAD; ++k) {
+      uint i = gl_LocalInvocationIndex + k * WG_SIZE;
       uint x = i % FILTER_TILE_WIDTH;
       uint y = i / FILTER_TILE_WIDTH;
-      if (y < FILTER_TILE_HEIGHT) {
-        tile[0][y][x] = v[k];
+      if (i < FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT) {
+        ssao[y][x] = v[k];
+        d[k] = pc.znear / d[k];
+        // Replace infinity with highest representable value to avoid NaNs.
+        d[k] = isinf(d[k]) ? uintBitsToFloat(floatBitsToUint(d[k]) - 1) : d[k];
+        depth[y][x] = -pc.znear / d[k];
       }
     }
   }
   barrier();
+
+  float rcp_sigmaz = 3.0f / pc.radius;
+  float rcp_varz = rcp_sigmaz * rcp_sigmaz;
+  float rcp_sigmar = 6.0 / FILTER_SIZE;
+  float rcp_varr = rcp_sigmar * rcp_sigmar;
 
   // Vertical blur.
-  for (uint i = gl_LocalInvocationIndex; i < FILTER_TILE_WIDTH * TILE_HEIGHT;
-       i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
-    uint x = i % FILTER_TILE_WIDTH;
-    uint y = i / FILTER_TILE_WIDTH;
-    float v = 0.0f;
-    for (uint r = 0; r < FILTER_SIZE; ++r) {
-      v += tile[0][y + r][x];
+  const uint NUM_VERTICAL_BLUR = glsl_ceil_div(FILTER_TILE_WIDTH * TILE_HEIGHT, WG_SIZE);
+  float v[NUM_VERTICAL_BLUR];
+  for (uint k = 0; k < NUM_VERTICAL_BLUR; ++k) {
+    uint i = gl_LocalInvocationIndex + k * WG_SIZE;
+    if (i >= FILTER_TILE_WIDTH * TILE_HEIGHT) {
+      break;
     }
-    tile[1][y + FILTER_OFFSET][x] = v / FILTER_SIZE;
+    uint x = i % FILTER_TILE_WIDTH;
+    uint y = i / FILTER_TILE_WIDTH + FILTER_RADIUS;
+
+    float cz = depth[y][x];
+
+    v[k] = 0.0f;
+    float weight = 0.0f;
+    for (int r = -int(FILTER_RADIUS); r <= int(FILTER_RADIUS); ++r) {
+      float z = depth[y + r][x];
+      float deltaz = z - cz;
+      float w = exp(-0.5f * (deltaz * deltaz * rcp_varz + r * r * rcp_varr));
+      v[k] += w * ssao[y + r][x];
+      weight += w;
+    }
+    v[k] /= weight;
   }
   barrier();
 
-  // Horizontal blur and store.
-  for (uint i = gl_LocalInvocationIndex; i < FILTER_TILE_WIDTH * TILE_HEIGHT;
-       i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
-    uint x = i % FILTER_TILE_WIDTH;
-    uint y = i / FILTER_TILE_WIDTH + FILTER_OFFSET;
-    if (x < TILE_HEIGHT) {
-      float v = 0.0f;
-      for (uint c = 0; c < FILTER_SIZE; ++c) {
-        v += tile[1][y][x + c];
-      }
-      ivec2 pos = ivec2(gl_WorkGroupID.xy * uvec2(TILE_WIDTH, TILE_HEIGHT)) +
-                  ivec2(x, y - FILTER_OFFSET);
-      image_store(pc.dst, pos, v / FILTER_SIZE);
+  for (uint k = 0; k < NUM_VERTICAL_BLUR; ++k) {
+    uint i = gl_LocalInvocationIndex + k * WG_SIZE;
+    if (i >= FILTER_TILE_WIDTH * TILE_HEIGHT) {
+      break;
     }
+    uint x = i % FILTER_TILE_WIDTH;
+    uint y = i / FILTER_TILE_WIDTH + FILTER_RADIUS;
+    ssao[y][x] = v[k];
+  }
+  barrier();
+
+  // Horizontal blur.
+  const uint NUM_HORIZONTAL_BLUR = glsl_ceil_div(TILE_WIDTH * TILE_HEIGHT, WG_SIZE);
+  for (uint k = 0; k < NUM_HORIZONTAL_BLUR; ++k) {
+    uint i = gl_LocalInvocationIndex + k * WG_SIZE;
+    if (i >= TILE_WIDTH * TILE_HEIGHT) {
+      break;
+    }
+    uint x = i % TILE_WIDTH + FILTER_RADIUS;
+    uint y = i / TILE_WIDTH + FILTER_RADIUS;
+
+    float cz = depth[y][x];
+
+    float v = 0.0f;
+    float weight = 0.0f;
+    for (int c = -int(FILTER_RADIUS); c <= int(FILTER_RADIUS); ++c) {
+      float z = depth[y][x + c];
+      float deltaz = z - cz;
+      float w = exp(-0.5f * (deltaz * deltaz * rcp_varz + c * c * rcp_varr));
+      v += w * ssao[y][x + c];
+      weight += w;
+    }
+    v /= weight;
+
+    ivec2 pos = ivec2(gl_WorkGroupID.xy * TILE_SIZE_2D) + ivec2(x - FILTER_RADIUS, y - FILTER_RADIUS);
+    image_store(pc.dst, pos, v);
   }
 }

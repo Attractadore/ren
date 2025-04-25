@@ -9,7 +9,6 @@ LOCAL_SIZE_2D(16, 16);
 
 // TODO:
 // 1. Fix off-screen samples and samples close to camera.
-// 2. Blur.
 // 3. Half-res.
 // 4. Optimize sample placement.
 

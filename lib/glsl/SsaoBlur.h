@@ -5,8 +5,11 @@
 GLSL_NAMESPACE_BEGIN
 
 GLSL_PUSH_CONSTANTS SsaoBlurArgs {
+  Texture2D depth;
   Texture2D src;
   StorageTexture2D dst;
+  float znear;
+  float radius;
 }
 GLSL_PC;
 

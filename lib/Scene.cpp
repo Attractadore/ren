@@ -908,8 +908,11 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     {
       auto pass = rgb.create_pass({.name = "ssao-blur"});
       RgSsaoBlurArgs args = {
+          .depth = pass.read_texture(depth_buffer),
           .src = pass.read_texture(ssao),
           .dst = pass.write_texture("ssao-blurred", &ssao_blurred),
+          .znear = camera.near,
+          .radius = m_data.settings.ssao_radius,
       };
       pass.dispatch_grid_2d(
           m_pipelines.ssao_blur, args, viewport,
