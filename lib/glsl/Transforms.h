@@ -41,4 +41,18 @@ inline vec3 ndc_to_view(float rcp_p00, float rcp_p11, float znear, vec3 p) {
   return vec3(p.x * rcp_p00 * -z, p.y * rcp_p11 * -z, z);
 }
 
+inline uvec2 linear_to_morton_2d(uint i) {
+  uint x = i & 0x55555555;
+  uint y = (i >> 1) & 0x55555555;
+  // All bits in x and  y need to be shifted by a combination of shifts of
+  // lengths 8, 4, 2 and 1.
+  // Bit i needs to be shifted by i / 2.
+  uvec2 m = uvec2(x, y);
+  m = (m | (m >> uvec2(1))) & uvec2(0x33333333);
+  m = (m | (m >> uvec2(2))) & uvec2(0x0F0F0F0F);
+  m = (m | (m >> uvec2(4))) & uvec2(0x00FF00FF);
+  m = (m | (m >> uvec2(8))) & uvec2(0x0000FFFF);
+  return m;
+}
+
 GLSL_NAMESPACE_END
