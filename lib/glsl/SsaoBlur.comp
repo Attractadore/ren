@@ -48,7 +48,7 @@ void main() {
         d[k] = pc.znear / d[k];
         // Replace infinity with highest representable value to avoid NaNs.
         d[k] = isinf(d[k]) ? uintBitsToFloat(floatBitsToUint(d[k]) - 1) : d[k];
-        depth[y][x] = -pc.znear / d[k];
+        depth[y][x] = d[k];
       }
     }
   }
@@ -77,7 +77,7 @@ void main() {
     for (int r = -int(FILTER_RADIUS); r <= int(FILTER_RADIUS); ++r) {
       float z = depth[y + r][x];
       float deltaz = z - cz;
-      float w = exp(-0.5f * (deltaz * deltaz * rcp_varz + r * r * rcp_varr));
+      float w = exp2(-0.5f * (deltaz * deltaz * rcp_varz + r * r * rcp_varr));
       v[k] += w * ssao[y + r][x];
       weight += w;
     }
@@ -113,7 +113,7 @@ void main() {
     for (int c = -int(FILTER_RADIUS); c <= int(FILTER_RADIUS); ++c) {
       float z = depth[y][x + c];
       float deltaz = z - cz;
-      float w = exp(-0.5f * (deltaz * deltaz * rcp_varz + c * c * rcp_varr));
+      float w = exp2(-0.5f * (deltaz * deltaz * rcp_varz + c * c * rcp_varr));
       v += w * ssao[y][x + c];
       weight += w;
     }
