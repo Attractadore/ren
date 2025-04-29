@@ -18,6 +18,7 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   vec3 eye;
   vec2 viewport;
   SampledTexture2D ssao;
+  Texture2D depth;
   Texture2D exposure;
   vec3 env_luminance;
   SampledTextureCube raw_env_map;

@@ -20,6 +20,10 @@ namespace vk {
 
 struct HandleBase {
   explicit operator bool(this const auto &self) { return self.handle; }
+  template <typename Self>
+  bool operator==(this const Self &self, const Self &other) {
+    return self.handle == other.handle;
+  };
 };
 
 struct Adapter {

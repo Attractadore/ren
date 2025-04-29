@@ -344,8 +344,17 @@ auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
     ren_assert_msg(usage.access_mask.is_set(rhi::Access::ShaderImageRead),
                    "Sampler must be null if texture is not sampled");
   }
-  RgPhysicalTextureId physical_texture = m_rgp->m_textures[texture].parent;
   RgPass &pass = m_data->m_passes[pass_id];
+  for (RgTextureUseId use_id : pass.read_textures) {
+    RgTextureUse &use = m_data->m_texture_uses[use_id];
+    if (use.texture == texture) {
+      use.state = use.state | usage;
+      ren_assert(!use.sampler or use.sampler == sampler);
+      use.sampler = sampler;
+      return RgTextureToken(use_id);
+    }
+  }
+  RgPhysicalTextureId physical_texture = m_rgp->m_textures[texture].parent;
   RgTextureUseId use = add_texture_use({
       .texture = texture,
       .sampler = sampler,

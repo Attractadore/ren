@@ -1,4 +1,5 @@
 #pragma once
+#include "core/Assert.hpp"
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
 #include "core/Span.hpp"
@@ -734,6 +735,16 @@ struct ImageState {
   PipelineStageMask stage_mask;
   AccessMask access_mask;
   ImageLayout layout = ImageLayout::Undefined;
+
+public:
+  auto operator|(const ImageState &other) const -> ImageState {
+    ren_assert(other.layout == layout);
+    return {
+        .stage_mask = stage_mask | other.stage_mask,
+        .access_mask = access_mask | other.access_mask,
+        .layout = layout,
+    };
+  };
 };
 
 constexpr ImageState VS_SAMPLED_IMAGE = {

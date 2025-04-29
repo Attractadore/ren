@@ -323,6 +323,8 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
                         .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
                     })
               : RgTextureToken(),
+      .depth = pass.read_texture(*info.base.depth_attachment,
+                                 rhi::FS_RESOURCE_IMAGE),
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,
