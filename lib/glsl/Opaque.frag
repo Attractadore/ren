@@ -1,7 +1,8 @@
+#include "Opaque.h"
 #include "Lighting.h"
 #include "Material.h"
-#include "Opaque.h"
 #include "Texture.glsl"
+#include "Transforms.h"
 
 layout(location = A_POSITION) in vec3 a_position;
 
@@ -64,9 +65,27 @@ void main() {
 
   float ka = 1.0f;
   if (!IS_NULL_DESC(pc.ssao)) {
-    vec2 ka_uv = gl_FragCoord.xy / pc.viewport;
-    ka = texture_lod(pc.ssao, ka_uv, 0.0f).r;
+    vec2 uv = gl_FragCoord.xy * pc.inv_viewport;
+    if (IS_NULL_DESC(pc.ssao_depth)) {
+      ka = texture_lod(SAMPLER_NEAREST_CLAMP, pc.ssao, uv, 0).r;
+    } else {
+      vec4 gd = texture_gather_r(SAMPLER_NEAREST_CLAMP, pc.ssao_depth, uv);
+      float d = pack_depth_linear_16bit(gl_FragCoord.z, pc.znear);
+      vec4 dz = abs(gd - d);
+      if (all(lessThan(dz, vec4(pc.ssao_radius / 3.0f)))) {
+        ka = texture_lod(SAMPLER_LINEAR_MIP_NEAREST_CLAMP, pc.ssao, uv, 0).r;
+      } else {
+        vec4 gka = texture_gather_r(SAMPLER_NEAREST_CLAMP, pc.ssao, uv);
+        ka = gka[0];
+        float mindz = dz[0];
+        for (uint k = 1; k < 4; ++k) {
+          ka = dz[k] < mindz ? gka[k] : ka;
+          mindz = min(mindz, dz[k]);
+        }
+      }
+    }
   }
+
   occlusion = min(occlusion, ka);
   if (!IS_NULL_DESC(pc.raw_env_map)) {
     result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, pc.raw_dhr_lut);

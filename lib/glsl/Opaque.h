@@ -15,10 +15,12 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   GLSL_READONLY GLSL_PTR(DirectionalLight) directional_lights;
   uint num_directional_lights;
   mat4 proj_view;
+  float znear;
   vec3 eye;
-  vec2 viewport;
-  SampledTexture2D ssao;
-  Texture2D depth;
+  vec2 inv_viewport;
+  Texture2D ssao;
+  Texture2D ssao_depth;
+  float ssao_radius;
   Texture2D exposure;
   vec3 env_luminance;
   SampledTextureCube raw_env_map;

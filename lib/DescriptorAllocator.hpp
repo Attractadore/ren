@@ -59,6 +59,13 @@ public:
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
                         glsl::SamplerState id) -> glsl::SamplerState;
 
+  auto allocate_sampler(Renderer &renderer,
+                        const rhi::SamplerCreateInfo &sampler_info,
+                        glsl::SamplerState id) -> glsl::SamplerState {
+    return allocate_sampler(renderer,
+                            renderer.get_sampler(sampler_info).value(), id);
+  }
+
   void free_sampler(glsl::SamplerState sampler);
 
   auto allocate_texture(Renderer &renderer, SrvDesc srv)

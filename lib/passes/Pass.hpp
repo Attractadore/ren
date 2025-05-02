@@ -14,6 +14,7 @@ struct PassPersistentConfig {
   ExposureMode exposure = {};
   rhi::ImageUsageFlags backbuffer_usage = {};
   bool ssao = true;
+  bool ssao_half_res = true;
 };
 
 struct PassPersistentResources {
@@ -23,6 +24,7 @@ struct PassPersistentResources {
   RgTextureId hi_z;
   RgTextureId ssao_hi_z;
   RgTextureId ssao;
+  RgTextureId ssao_depth;
   RgTextureId ssao_blurred;
   RgTextureId sdr;
   RgTextureId backbuffer;

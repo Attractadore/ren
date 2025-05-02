@@ -6,8 +6,9 @@ GLSL_NAMESPACE_BEGIN
 
 GLSL_PUSH_CONSTANTS SsaoBlurArgs {
   Texture2D depth;
-  Texture2D src;
-  StorageTexture2D dst;
+  Texture2D ssao;
+  Texture2D ssao_depth;
+  StorageTexture2D ssao_blurred;
   float znear;
   float radius;
 }

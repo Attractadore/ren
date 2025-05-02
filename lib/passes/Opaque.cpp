@@ -59,6 +59,7 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                         .hi_z = cfg.hi_z,
                     },
                 .ssao = cfg.ssao,
+                .ssao_depth = cfg.ssao_depth,
                 .exposure = cfg.exposure,
             });
 }

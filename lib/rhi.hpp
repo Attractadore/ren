@@ -353,6 +353,20 @@ public:
   bool operator==(const SamplerCreateInfo &) const = default;
 };
 
+constexpr SamplerCreateInfo SAMPLER_NEAREST_CLAMP = {
+    .address_mode_u = SamplerAddressMode::ClampToEdge,
+    .address_mode_v = SamplerAddressMode::ClampToEdge,
+    .address_mode_w = SamplerAddressMode::ClampToEdge,
+};
+
+constexpr SamplerCreateInfo SAMPLER_LINEAR_MIP_NEAREST_CLAMP = {
+    .mag_filter = Filter::Linear,
+    .min_filter = Filter::Linear,
+    .address_mode_u = SamplerAddressMode::ClampToEdge,
+    .address_mode_v = SamplerAddressMode::ClampToEdge,
+    .address_mode_w = SamplerAddressMode::ClampToEdge,
+};
+
 auto create_sampler(Device device, const SamplerCreateInfo &create_info)
     -> Result<Sampler>;
 

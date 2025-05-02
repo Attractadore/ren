@@ -8,6 +8,7 @@ GLSL_PUSH_CONSTANTS SsaoArgs {
   SampledTexture2D depth;
   SampledTexture2D hi_z;
   StorageTexture2D ssao;
+  StorageTexture2D ssao_depth;
   uint num_samples;
   float p00;
   float p11;

@@ -62,6 +62,13 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
     }
   }
 
+  m_descriptor_allocator.allocate_sampler(
+      *m_renderer, rhi::SAMPLER_NEAREST_CLAMP, glsl::SAMPLER_NEAREST_CLAMP);
+
+  m_descriptor_allocator.allocate_sampler(
+      *m_renderer, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP,
+      glsl::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
+
   next_frame().value();
 
   Handle<Texture> dhr_lut =
@@ -662,6 +669,7 @@ void Scene::draw_imgui() {
                            "%.3f", ImGuiSliderFlags_Logarithmic);
         ImGui::SliderFloat("LOD bias## SSAO", &settings.ssao_lod_bias, -1.0f,
                            4.0f);
+        ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
         ImGui::EndDisabled();
       }
 
@@ -734,6 +742,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   set_if_changed(m_pass_cfg.backbuffer_usage, m_swapchain->get_usage());
 
   set_if_changed(m_pass_cfg.ssao, m_data.settings.ssao);
+  set_if_changed(m_pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
 
   if (dirty) {
     m_rgp->reset();
@@ -805,6 +814,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   }
 
   RgTextureId ssao_blurred;
+  RgTextureId ssao_depth = m_pass_rcs.ssao_depth;
   if (m_data.settings.ssao) {
     glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
                                  std::bit_floor(viewport.y)};
@@ -853,37 +863,37 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           {glsl::SPD_THREAD_ELEMS_X, glsl::SPD_THREAD_ELEMS_Y});
     }
 
+    glm::uvec2 ssao_size =
+        m_data.settings.ssao_full_res ? viewport : viewport / 2u;
+
     if (!m_pass_rcs.ssao) {
       m_pass_rcs.ssao = m_rgp->create_texture({
           .name = "ssao",
           .format = TinyImageFormat_R16_UNORM,
-          .width = viewport.x,
-          .height = viewport.y,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
       });
     }
+    if (!m_data.settings.ssao_full_res and !m_pass_rcs.ssao_depth) {
+      m_pass_rcs.ssao_depth = m_rgp->create_texture({
+          .name = "ssao-depth",
+          .format = TinyImageFormat_R16_SFLOAT,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
+      });
+    }
+
     RgTextureId ssao = m_pass_rcs.ssao;
+    ssao_depth = m_pass_rcs.ssao_depth;
     {
       auto pass = rgb.create_pass({.name = "ssao"});
       RgSsaoArgs args = {
-          .depth = pass.read_texture(
-              depth_buffer,
-              {
-                  .mag_filter = rhi::Filter::Nearest,
-                  .min_filter = rhi::Filter::Nearest,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-              }),
-          .hi_z = pass.read_texture(
-              ssao_hi_z,
-              {
-                  .mag_filter = rhi::Filter::Nearest,
-                  .min_filter = rhi::Filter::Nearest,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-              }),
+          .depth = pass.read_texture(depth_buffer, rhi::SAMPLER_NEAREST_CLAMP),
+          .hi_z = pass.read_texture(ssao_hi_z, rhi::SAMPLER_NEAREST_CLAMP),
           .ssao = pass.write_texture("ssao", &ssao),
+          .ssao_depth = ssao_depth
+                            ? pass.write_texture("ssao-depth", &ssao_depth)
+                            : RgTextureToken(),
           .num_samples = (u32)m_data.settings.ssao_num_samples,
           .p00 = proj[0][0],
           .p11 = proj[1][1],
@@ -893,29 +903,31 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .radius = m_data.settings.ssao_radius,
           .lod_bias = m_data.settings.ssao_lod_bias,
       };
-      pass.dispatch_grid_2d(m_pipelines.ssao, args, viewport);
+      pass.dispatch_grid_2d(m_pipelines.ssao, args, ssao_size);
     }
 
     if (!m_pass_rcs.ssao_blurred) {
       m_pass_rcs.ssao_blurred = m_rgp->create_texture({
           .name = "ssao-blurred",
           .format = TinyImageFormat_R16_UNORM,
-          .width = viewport.x,
-          .height = viewport.y,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
       });
     }
     ssao_blurred = m_pass_rcs.ssao_blurred;
     {
       auto pass = rgb.create_pass({.name = "ssao-blur"});
       RgSsaoBlurArgs args = {
-          .depth = pass.read_texture(depth_buffer),
-          .src = pass.read_texture(ssao),
-          .dst = pass.write_texture("ssao-blurred", &ssao_blurred),
+          .depth =
+              !ssao_depth ? pass.read_texture(depth_buffer) : RgTextureToken(),
+          .ssao = pass.read_texture(ssao),
+          .ssao_depth = pass.try_read_texture(ssao_depth),
+          .ssao_blurred = pass.write_texture("ssao-blurred", &ssao_blurred),
           .znear = camera.near,
           .radius = m_data.settings.ssao_radius,
       };
       pass.dispatch_grid_2d(
-          m_pipelines.ssao_blur, args, viewport,
+          m_pipelines.ssao_blur, args, ssao_size,
           {glsl::SSAO_BLUR_THREAD_ITEMS_X, glsl::SSAO_BLUR_THREAD_ITEMS_Y});
     }
   }
@@ -938,6 +950,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                              .depth_buffer = &depth_buffer,
                              .hi_z = hi_z,
                              .ssao = ssao_blurred,
+                             .ssao_depth = ssao_depth,
                              .exposure = exposure,
                          });
 

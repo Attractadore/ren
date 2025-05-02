@@ -61,6 +61,7 @@ struct SceneGraphicsSettings {
   i32 ssao_num_samples = 8;
   float ssao_radius = 0.1f;
   float ssao_lod_bias = 0.0f;
+  bool ssao_full_res = false;
 
   bool amd_anti_lag = true;
 };

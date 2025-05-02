@@ -296,6 +296,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
                           const OpaqueMeshPassInfo &info, RgPassBuilder &pass) {
   const SceneData &scene = *cfg.scene;
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
+
   return RgOpaqueArgs{
       .meshes = pass.read_buffer(gpu_scene.meshes, rhi::VS_RESOURCE_BUFFER),
       .mesh_instances =
@@ -309,22 +310,13 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
       .num_directional_lights = u32(cfg.scene->directional_lights.size()),
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
+      .znear = info.base.camera.near,
       .eye = info.base.camera.position,
-      .viewport = cfg.swapchain->get_size(),
-      .ssao =
-          info.ssao
-              ? pass.read_texture(
-                    info.ssao, rhi::FS_RESOURCE_IMAGE,
-                    {
-                        .mag_filter = rhi::Filter::Nearest,
-                        .min_filter = rhi::Filter::Nearest,
-                        .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                        .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                        .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                    })
-              : RgTextureToken(),
-      .depth = pass.read_texture(*info.base.depth_attachment,
-                                 rhi::FS_RESOURCE_IMAGE),
+      .inv_viewport = 1.0f / glm::vec2(cfg.swapchain->get_size()),
+      .ssao = pass.try_read_texture(info.ssao, rhi::FS_RESOURCE_IMAGE),
+      .ssao_depth =
+          pass.try_read_texture(info.ssao_depth, rhi::FS_RESOURCE_IMAGE),
+      .ssao_radius = scene.settings.ssao_radius,
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,

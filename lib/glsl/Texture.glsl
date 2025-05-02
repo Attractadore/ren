@@ -36,6 +36,10 @@ vec4 texel_fetch(Texture2D t, ivec2 pos, int lod) {
 
 ivec2 texture_size(Texture2D t) { return textureSize(g_textures_2d[t.id], 0); }
 
+vec4 texture_gather_r(SamplerState s, Texture2D t, vec2 uv) {
+  return textureGather(MAKE_SAMPLER_2D(s, t), uv, 0);
+}
+
 #undef MAKE_SAMPLER_2D
 
 vec4 texture(SampledTexture2D t, vec2 uv) {
@@ -141,4 +145,11 @@ vec2 direction_to_equirectangular_uv(vec3 r) {
   float phi = atan(r.y, r.x);
   float theta = acos(r.z / length(r));
   return vec2(phi / TWO_PI, theta / PI);
+}
+
+float reduce_quad_checkered_min_max(uint x, uint y, vec4 v) {
+  float minv = min(min(v.x, v.y), min(v.z, v.w));
+  float maxv = max(max(v.x, v.y), max(v.z, v.w));
+  return maxv;
+  return (x + y) % 2 == 0 ? minv : maxv;
 }

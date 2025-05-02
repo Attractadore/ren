@@ -9,7 +9,6 @@ LOCAL_SIZE_2D(16, 16);
 
 // TODO:
 // 1. Fix off-screen samples and samples close to camera.
-// 3. Half-res.
 // 4. Optimize sample placement.
 
 vec3 importance_sample_ao_volume(vec3 xi, vec3 n, out float ro) {
@@ -59,36 +58,48 @@ float integrate_ao(vec3 p, vec3 n) {
 }
 
 void main() {
-  const uvec2 pos = gl_GlobalInvocationID.xy;
+  const ivec2 depth_size = texture_size(pc.depth);
+  const vec2 inv_depth_size = 1.0f / texture_size(pc.depth);
+  const ivec2 ssao_size = image_size(pc.ssao);
+  const bool full_res = depth_size == ssao_size;
 
   // Reconstruct normal from depth buffer:
   // https://atyuwen.github.io/posts/normal-reconstruction
   // This works fine in general, but fails for small or thin triangles.
   // TODO: as a fallback, try to derive the normal by viewing the depth buffer as a height-map and differentiating it.
 
-  // TODO: half-resolution.
-  vec2 inv_size = 1.0f / texture_size(pc.depth);
+  vec2 uv = (gl_GlobalInvocationID.xy + 0.5f) / ssao_size;
+  float d;
+  if (full_res) {
+    d = texture_lod(pc.depth, uv, 0.0f).r;
+  } else {
+    vec4 gd = texture_gather(pc.depth, uv, 0);
+    d = reduce_quad_checkered_min_max(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y, gd);
+    image_store(pc.ssao_depth, ivec2(gl_GlobalInvocationID.xy), pack_depth_linear_16bit(d, pc.znear));
+    uvec2 off = uvec2(0, 1);
+    off = gd.y == d ? uvec2(1, 1) : off;
+    off = gd.z == d ? uvec2(1, 0) : off;
+    off = gd.w == d ? uvec2(0, 0) : off;
+    uv = (2 * gl_GlobalInvocationID.xy + off + 0.5f) * inv_depth_size;
+  }
 
-  vec2 uv = (pos + 0.5f) * inv_size;
-
-  float d = texture_lod(pc.depth, uv, 0.0f).r;
   vec3 p0 = ndc_to_view(pc.rcp_p00, pc.rcp_p11, pc.znear, vec3(uv_to_ndc(uv), d));
   bool flipn = false;
 
   vec3 pt;
   {
     vec4 h;
-    h.z = texture_lod(pc.depth, uv - vec2(2, 0) * inv_size, 0.0f).r;
-    h.x = texture_lod(pc.depth, uv - vec2(1, 0) * inv_size, 0.0f).r;
-    h.y = texture_lod(pc.depth, uv + vec2(1, 0) * inv_size, 0.0f).r;
-    h.w = texture_lod(pc.depth, uv + vec2(2, 0) * inv_size, 0.0f).r;
+    h.z = texture_lod(pc.depth, uv - vec2(2, 0) * inv_depth_size, 0.0f).r;
+    h.x = texture_lod(pc.depth, uv - vec2(1, 0) * inv_depth_size, 0.0f).r;
+    h.y = texture_lod(pc.depth, uv + vec2(1, 0) * inv_depth_size, 0.0f).r;
+    h.w = texture_lod(pc.depth, uv + vec2(2, 0) * inv_depth_size, 0.0f).r;
 
     vec2 he = abs(2.0f * h.xy - h.zw - d);
     if (he.x < he.y) {
-      pt = vec3(uv_to_ndc((pos + vec2(-0.5f, 0.5f)) * inv_size), h.x);
+      pt = vec3(uv_to_ndc(uv - vec2(1, 0) * inv_depth_size), h.x);
       flipn = true;
     } else {
-      pt = vec3(uv_to_ndc((pos + vec2( 1.5f, 0.5f)) * inv_size), h.y);
+      pt = vec3(uv_to_ndc(uv + vec2(1, 0) * inv_depth_size), h.y);
     }
     pt = ndc_to_view(pc.rcp_p00, pc.rcp_p11, pc.znear, pt);
   }
@@ -96,16 +107,16 @@ void main() {
   vec3 pb;
   {
     vec4 v;
-    v.z = texture_lod(pc.depth, uv - vec2(0, 2) * inv_size, 0.0f).r;
-    v.x = texture_lod(pc.depth, uv - vec2(0, 1) * inv_size, 0.0f).r;
-    v.y = texture_lod(pc.depth, uv + vec2(0, 1) * inv_size, 0.0f).r;
-    v.w = texture_lod(pc.depth, uv + vec2(0, 2) * inv_size, 0.0f).r;
+    v.z = texture_lod(pc.depth, uv - vec2(0, 2) * inv_depth_size, 0.0f).r;
+    v.x = texture_lod(pc.depth, uv - vec2(0, 1) * inv_depth_size, 0.0f).r;
+    v.y = texture_lod(pc.depth, uv + vec2(0, 1) * inv_depth_size, 0.0f).r;
+    v.w = texture_lod(pc.depth, uv + vec2(0, 2) * inv_depth_size, 0.0f).r;
   
     vec2 ve = abs(2.0f * v.xy - v.zw - d);
     if (ve.x < ve.y) {
-      pb = vec3(uv_to_ndc((pos + vec2(0.5f, -0.5f)) * inv_size), v.x);
+      pb = vec3(uv_to_ndc(uv - vec2(0, 1) * inv_depth_size), v.x);
     } else {
-      pb = vec3(uv_to_ndc((pos + vec2(0.5f,  1.5f)) * inv_size), v.y);
+      pb = vec3(uv_to_ndc(uv + vec2(0, 1) * inv_depth_size), v.y);
       flipn = !flipn;
     }
     pb = ndc_to_view(pc.rcp_p00, pc.rcp_p11, pc.znear, pb);
@@ -117,10 +128,10 @@ void main() {
   n = flipn ? -n : n;
 
   // Add normal offset to avoid self-shadowing of flat surfaces.
-  vec2 pixel_size = pixel_view_space_size(pc.rcp_p00, pc.rcp_p11, 1.0f / texture_size(pc.depth), p0.z);
+  vec2 pixel_size = pixel_view_space_size(pc.rcp_p00, pc.rcp_p11, inv_depth_size, p0.z);
   p0 = normal_offset(p0, vec3(0.0f, 0.0f, 1.0f), n, pixel_size);
 
   float ka = integrate_ao(p0, n);
 
-  image_store(pc.ssao, ivec2(pos), ka);
+  image_store(pc.ssao, ivec2(gl_GlobalInvocationID.xy), ka);
 }

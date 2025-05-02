@@ -128,4 +128,7 @@ GLSL_DEFINE_PTR_TYPE(StorageTextureCube, TEXTURE_ID_SIZE);
 #undef TextureId
 #undef SamplerId
 
+const SamplerState SAMPLER_NEAREST_CLAMP = SamplerState(1);
+const SamplerState SAMPLER_LINEAR_MIP_NEAREST_CLAMP = SamplerState(2);
+
 GLSL_NAMESPACE_END

@@ -846,6 +846,32 @@ public:
   }
 
   [[nodiscard]] auto
+  try_read_texture(RgTextureId texture,
+                   const rhi::ImageState &usage = rhi::CS_RESOURCE_IMAGE,
+                   rhi::Sampler sampler = {}) -> RgTextureToken {
+    if (!texture) {
+      return {};
+    }
+    return m_builder->read_texture(m_pass, texture, usage, sampler);
+  }
+
+  [[nodiscard]] auto
+  try_read_texture(RgTextureId texture, const rhi::ImageState &usage,
+                   const rhi::SamplerCreateInfo &sampler_info)
+      -> RgTextureToken {
+    return try_read_texture(
+        texture, usage,
+        m_builder->m_renderer->get_sampler(sampler_info).value());
+  }
+
+  [[nodiscard]] auto
+  try_read_texture(RgTextureId texture,
+                   const rhi::SamplerCreateInfo &sampler_info)
+      -> RgTextureToken {
+    return try_read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler_info);
+  }
+
+  [[nodiscard]] auto
   write_texture(RgDebugName name, RgTextureId texture,
                 const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> std::tuple<RgTextureId, RgTextureToken>;

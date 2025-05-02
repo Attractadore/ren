@@ -1,6 +1,7 @@
 #include "SsaoBlur.h"
 #include "Math.h"
 #include "Texture.glsl"
+#include "Transforms.h"
 
 LOCAL_SIZE_2D(16, 16);
 
@@ -21,7 +22,7 @@ shared float depth[FILTER_TILE_HEIGHT][FILTER_TILE_WIDTH];
 void main() {
   // Load.
   {
-    const ivec2 size = texture_size(pc.src);
+    const ivec2 size = texture_size(pc.ssao);
 
     const uint NUM_LOAD = glsl_ceil_div(FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT, WG_SIZE);
     float v[NUM_LOAD];
@@ -34,8 +35,12 @@ void main() {
       ivec2 pos = ivec2(gl_WorkGroupID.xy * TILE_SIZE_2D) + ivec2(x - FILTER_RADIUS, y - FILTER_RADIUS);
       pos = clamp(pos, ivec2(0, 0), size - ivec2(1, 1));
       if (i < FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT) {
-        v[k] = texel_fetch(pc.src, pos, 0).r;
-        d[k] = texel_fetch(pc.depth, pos, 0).r;
+        v[k] = texel_fetch(pc.ssao, pos, 0).r;
+        if (!IS_NULL_DESC(pc.depth)) {
+          d[k] = texel_fetch(pc.depth, pos, 0).r;
+        } else {
+          d[k] = texel_fetch(pc.ssao_depth, pos, 0).r;
+        }
       }
     }
 
@@ -45,10 +50,15 @@ void main() {
       uint y = i / FILTER_TILE_WIDTH;
       if (i < FILTER_TILE_WIDTH * FILTER_TILE_HEIGHT) {
         ssao[y][x] = v[k];
-        d[k] = pc.znear / d[k];
+        float z = d[k];
+        if (!IS_NULL_DESC(pc.depth)) {
+          z = pc.znear / z;
+        } else {
+          z = unpack_z_linear_16bit(z, pc.znear);
+        }
         // Replace infinity with highest representable value to avoid NaNs.
-        d[k] = isinf(d[k]) ? uintBitsToFloat(floatBitsToUint(d[k]) - 1) : d[k];
-        depth[y][x] = d[k];
+        z = isinf(z) ? uintBitsToFloat(floatBitsToUint(z) - 1) : z;
+        depth[y][x] = z;
       }
     }
   }
@@ -120,6 +130,6 @@ void main() {
     v /= weight;
 
     ivec2 pos = ivec2(gl_WorkGroupID.xy * TILE_SIZE_2D) + ivec2(x - FILTER_RADIUS, y - FILTER_RADIUS);
-    image_store(pc.dst, pos, v);
+    image_store(pc.ssao_blurred, pos, v);
   }
 }

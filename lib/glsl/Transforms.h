@@ -55,4 +55,12 @@ inline uvec2 linear_to_morton_2d(uint i) {
   return m;
 }
 
+inline float pack_depth_linear_16bit(float d, float znear) {
+  return znear * (1.0f - d) / d;
+}
+
+inline float pack_z_linear_16bit(float z, float znear) { return z - znear; }
+
+inline float unpack_z_linear_16bit(float z, float znear) { return z + znear; }
+
 GLSL_NAMESPACE_END
