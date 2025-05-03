@@ -58,8 +58,8 @@ struct SceneGraphicsSettings {
   bool meshlet_occlusion_culling = true;
 
   bool ssao = true;
-  i32 ssao_num_samples = 8;
-  float ssao_radius = 0.1f;
+  i32 ssao_num_samples = 4;
+  float ssao_radius = 1.0f;
   float ssao_lod_bias = 0.0f;
   bool ssao_full_res = false;
 
