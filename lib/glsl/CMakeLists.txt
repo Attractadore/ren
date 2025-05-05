@@ -56,7 +56,7 @@ add_shader(ren PostProcessing.comp)
 add_shader(ren ReduceLuminanceHistogram.comp)
 
 if (TARGET ren-baking)
-  add_shader(ren-baking BakeDhrLut.comp)
+  add_shader(ren-baking BakeSoLut.comp)
   add_shader(ren-baking BakeReflectionMap.comp)
   add_shader(ren-baking BakeSpecularMap.comp)
   add_shader(ren-baking BakeIrradianceMap.comp)

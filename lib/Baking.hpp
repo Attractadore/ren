@@ -6,7 +6,7 @@
 namespace ren {
 
 struct BakerPipelines {
-  Handle<ComputePipeline> dhr_lut;
+  Handle<ComputePipeline> so_lut;
   Handle<ComputePipeline> reflection_map;
   Handle<ComputePipeline> specular_map;
   Handle<ComputePipeline> irradiance_map;

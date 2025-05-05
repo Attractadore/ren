@@ -78,10 +78,12 @@ auto write_to_file(Span<const std::byte> data, const fs::path &path)
 }
 
 int main(int argc, const char *argv[]) {
-  cxxopts::Options options("bake-dhr-lut", "Bake DHR LUT");
+  cxxopts::Options options("bake-specular-occlusion-lut",
+                           "Bake specular occlusion LUT");
   // clang-format off
   options.add_options()
     ("out", "output path", cxxopts::value<fs::path>())
+    ("no-compress", "don't compress")
     ("h,help", "show this message")
   ;
   // clang-format on
@@ -99,7 +101,8 @@ int main(int argc, const char *argv[]) {
       ren::create_renderer({.type = RendererType::Headless}).value();
   IBaker *baker = ren::create_baker(renderer.get()).value();
 
-  auto [blob_data, blob_size] = bake_dhr_lut_to_memory(baker).value();
+  auto [blob_data, blob_size] =
+      bake_so_lut_to_memory(baker, not result.count("no-compress")).value();
   write_to_file(Span((const std::byte *)blob_data, blob_size), path).value();
 
   ren::destroy_baker(baker);

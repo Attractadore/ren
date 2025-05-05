@@ -1,0 +1,45 @@
+#include "BakeSoLut.h"
+#include "Lighting.h"
+#include "Random.h"
+
+// "Real Shading in Unreal Engine 4":
+// https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+// "Practical Real-Time Strategies for Accurate Indirect Occlusion":
+// https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
+
+vec2 integrate_so(float roughness, float nv, float cosa) {
+  vec3 v = vec3(sqrt(1.0f - nv * nv), 0.0f, nv);
+  vec3 n = vec3(0.0f, 0.0f, 1.0f);
+
+  float a = 0.0f;
+  float b = 0.0f;
+
+  const uint NUM_SAMPLES = 1024;
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 h = importance_sample_ggx(hammersley_2d(k, NUM_SAMPLES), roughness, n);
+    float hv = dot(h, v);
+    vec3 l = 2.0f * hv * h - v;
+    float nl = dot(n, l);
+    // Ignore light outside the visibility cone.
+    if (nl > cosa) {
+      float nh = dot(n, h);
+      float g = g_smith(roughness, nl, nv) * hv / (nv * nh);
+      float fc = pow(1.0f - hv, 5.0f);
+      a += (1 - fc) * g;
+      b += fc * g;
+    }
+  }
+
+  return vec2(a, b) / NUM_SAMPLES;
+}
+
+LOCAL_SIZE_3D(4, 4, 4);
+void main()
+{
+  vec3 uvw = (gl_GlobalInvocationID.xyz + vec3(0.5f, 0.5f, 0.0f)) / image_size(pc.lut);
+  float roughness = uvw.x;
+  float nv = uvw.y;
+  float cosa = uvw.z;
+  vec2 ab = integrate_so(roughness, nv, cosa);
+  image_store(pc.lut, ivec3(gl_GlobalInvocationID), ab);
+}

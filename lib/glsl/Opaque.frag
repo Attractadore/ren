@@ -88,9 +88,9 @@ void main() {
   ka = ka * occlusion;
 
   if (!IS_NULL_DESC(pc.raw_env_map)) {
-    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, pc.raw_dhr_lut);
+    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, pc.raw_so_lut);
   } else {
-    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, pc.raw_dhr_lut);
+    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, pc.raw_so_lut);
   }
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;

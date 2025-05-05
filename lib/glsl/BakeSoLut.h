@@ -4,7 +4,7 @@
 
 GLSL_NAMESPACE_BEGIN
 
-GLSL_PUSH_CONSTANTS ComputeDHRLutArgs { StorageTexture2D lut; }
+GLSL_PUSH_CONSTANTS BakeSoLutArgs { StorageTexture3D lut; }
 GLSL_PC;
 
 GLSL_NAMESPACE_END

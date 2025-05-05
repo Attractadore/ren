@@ -24,7 +24,7 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   Texture2D exposure;
   vec3 env_luminance;
   SampledTextureCube raw_env_map;
-  SampledTexture2D raw_dhr_lut;
+  SampledTexture3D raw_so_lut;
 }
 GLSL_PC;
 

@@ -137,27 +137,26 @@ inline vec3 ka_with_interreflection(float ka, vec3 albedo) {
 
 #if GL_core_profile
 
-inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
-                               float nv) {
-  vec2 ab = texture_lod(lut, vec2(roughness, nv), 0).xy;
+inline vec3 specular_occlusion(SampledTexture3D lut, vec3 f0, float roughness,
+                               float nv, float ka) {
+  float cosa = sqrt(1.0f - ka);
+  vec2 ab = texture_lod(lut, vec3(roughness, nv, cosa), 0).xy;
   return f0 * ab.x + ab.y;
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         vec3 luminance, float ka,
-                         SampledTexture2D directional_albedo_lut) {
+                         vec3 luminance, float ka, SampledTexture3D so_lut) {
   vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
-  vec3 ks =
-      directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
+  vec3 ks = specular_occlusion(so_lut, f0, roughness, dot(n, v), ka);
   return (kd + ks) * luminance;
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
                          SampledTextureCube env_map, float ka,
-                         SampledTexture2D directional_albedo_lut) {
+                         SampledTexture3D so_lut) {
   vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
   float nv = dot(n, v);
-  vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
+  vec3 ks = specular_occlusion(so_lut, f0, roughness, nv, ka);
   vec3 r = 2 * nv * n - v;
   int num_mips = texture_query_levels(env_map);
   float dlod = num_mips - 1;

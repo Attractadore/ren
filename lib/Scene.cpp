@@ -26,8 +26,8 @@
 namespace ren {
 
 namespace {
-constexpr u8 DHR_LUT_KTX2[] = {
-#include "../assets/dhr-lut.ktx2.inc"
+constexpr u8 SO_LUT_KTX2[] = {
+#include "../assets/so-lut.ktx2.inc"
 };
 } // namespace
 
@@ -71,18 +71,19 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
 
   next_frame().value();
 
-  Handle<Texture> dhr_lut =
-      create_texture(DHR_LUT_KTX2, sizeof(DHR_LUT_KTX2)).value();
-  m_data.dhr_lut =
+  Handle<Texture> so_lut =
+      create_texture(SO_LUT_KTX2, sizeof(SO_LUT_KTX2)).value();
+  m_data.so_lut =
       m_descriptor_allocator
-          .allocate_sampled_texture<glsl::SampledTexture2D>(
-              *m_renderer, SrvDesc{dhr_lut},
+          .allocate_sampled_texture<glsl::SampledTexture3D>(
+              *m_renderer, SrvDesc{so_lut},
               {
                   .mag_filter = rhi::Filter::Linear,
                   .min_filter = rhi::Filter::Linear,
                   .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
                   .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
                   .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_w = rhi::SamplerAddressMode::ClampToEdge,
               })
           .value();
 }
