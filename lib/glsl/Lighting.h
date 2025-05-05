@@ -60,15 +60,6 @@ inline vec3 importance_sample_ggx(vec2 xy, float roughness, vec3 n) {
   return mat3(t, b, n) * h;
 }
 
-vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv);
-
-#if GL_core_profile
-vec3 dhr(SampledTexture2D lut, vec3 f0, float roughness, float nv) {
-  vec2 ab = texture_lod(lut, vec2(roughness, nv), 0).xy;
-  return f0 * ab.x + ab.y;
-}
-#endif
-
 // https://math.stackexchange.com/a/1586015
 inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
   float phi = xy.x * TWO_PI;
@@ -140,6 +131,10 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
   return L_o;
 }
 
+inline vec3 ka_with_interreflection(float ka, vec3 albedo) {
+  return ka * (1.0f - albedo * (1.0f - ka));
+}
+
 #if GL_core_profile
 
 inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
@@ -149,18 +144,18 @@ inline vec3 directional_albedo(SampledTexture2D lut, vec3 f0, float roughness,
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         vec3 luminance,
+                         vec3 luminance, float ka,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = albedo;
+  vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
   vec3 ks =
       directional_albedo(directional_albedo_lut, f0, roughness, dot(n, v));
   return (kd + ks) * luminance;
 }
 
 inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         SampledTextureCube env_map,
+                         SampledTextureCube env_map, float ka,
                          SampledTexture2D directional_albedo_lut) {
-  vec3 kd = albedo;
+  vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
   float nv = dot(n, v);
   vec3 ks = directional_albedo(directional_albedo_lut, f0, roughness, nv);
   vec3 r = 2 * nv * n - v;
