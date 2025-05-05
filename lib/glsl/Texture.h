@@ -94,6 +94,11 @@ struct TextureCube {
 };
 GLSL_DEFINE_PTR_TYPE(TextureCube, TEXTURE_ID_SIZE);
 
+struct Texture3D {
+  DEFINE_DESCRIPTOR(Texture3D, Texture)
+};
+GLSL_DEFINE_PTR_TYPE(Texture3D, TEXTURE_ID_SIZE);
+
 struct SampledTexture {
   DEFINE_BASE_DESCRIPTOR(SampledTexture)
 };
@@ -108,6 +113,11 @@ struct SampledTextureCube {
 };
 GLSL_DEFINE_PTR_TYPE(SampledTextureCube, TEXTURE_ID_SIZE);
 
+struct SampledTexture3D {
+  DEFINE_DESCRIPTOR(SampledTexture3D, SampledTexture)
+};
+GLSL_DEFINE_PTR_TYPE(SampledTexture3D, TEXTURE_ID_SIZE);
+
 struct StorageTexture {
   DEFINE_BASE_DESCRIPTOR(StorageTexture)
 };
@@ -121,6 +131,11 @@ struct StorageTextureCube {
   DEFINE_DESCRIPTOR(StorageTextureCube, StorageTexture)
 };
 GLSL_DEFINE_PTR_TYPE(StorageTextureCube, TEXTURE_ID_SIZE);
+
+struct StorageTexture3D {
+  DEFINE_DESCRIPTOR(StorageTexture3D, StorageTexture)
+};
+GLSL_DEFINE_PTR_TYPE(StorageTexture3D, TEXTURE_ID_SIZE);
 
 #undef DEFINE_BASE_DESCRIPTOR
 #undef DEFINE_DESCRIPTOR

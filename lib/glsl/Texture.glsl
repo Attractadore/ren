@@ -11,13 +11,16 @@
 layout(binding = SAMPLER_SLOT) uniform sampler g_samplers[MAX_NUM_SAMPLERS];
 
 layout(binding = SRV_SLOT) uniform texture2D g_textures_2d[MAX_NUM_RESOURCES];
+layout(binding = SRV_SLOT) uniform texture2D g_textures_3d[MAX_NUM_RESOURCES];
 
 layout(binding = CIS_SLOT) uniform sampler2D g_sampled_textures_2d[MAX_NUM_RESOURCES];
 layout(binding = CIS_SLOT) uniform samplerCube g_sampled_textures_cube[MAX_NUM_RESOURCES];
+layout(binding = CIS_SLOT) uniform sampler3D g_sampled_textures_3d[MAX_NUM_RESOURCES];
 
 layout(binding = UAV_SLOT) restrict uniform image2D g_storage_textures_2d[MAX_NUM_RESOURCES];
 layout(binding = UAV_SLOT) coherent restrict uniform image2D g_coherent_storage_textures_2d[MAX_NUM_RESOURCES];
 layout(binding = UAV_SLOT) restrict uniform imageCube g_storage_textures_cube[MAX_NUM_RESOURCES];
+layout(binding = UAV_SLOT) restrict uniform image3D g_storage_textures_3d[MAX_NUM_RESOURCES];
 // clang-format on
 
 #define MAKE_SAMPLER_2D(s, t) sampler2D(g_textures_2d[t.id], g_samplers[s.id])
@@ -58,6 +61,8 @@ ivec2 texture_size(SampledTexture2D t) {
   return textureSize(g_sampled_textures_2d[t.id], 0);
 }
 
+#define texture_gather(t, p, comp) textureGather(g_sampled_textures_2d[t.id], p, comp)
+
 vec4 texture(SampledTextureCube t, vec3 r) {
   return texture(g_sampled_textures_cube[t.id], r);
 }
@@ -70,57 +75,79 @@ int texture_query_levels(SampledTextureCube t) {
   return textureQueryLevels(g_sampled_textures_cube[t.id]);
 }
 
-#define texture_gather(t, p, comp) textureGather(g_sampled_textures_2d[t.id], p, comp)
+vec4 texture(SampledTexture3D t, vec3 uv) {
+  return texture(g_sampled_textures_3d[t.id], uv);
+}
 
-#define DEFINE_STORAGE_TEXTURE_2D_IMPL(ImageType, images, coherent_images)     \
-  ivec2 image_size(ImageType img) { return imageSize(images[img.id]); }        \
-                                                                               \
-  vec4 image_load(ImageType img, ivec2 pos) {                                  \
-    return imageLoad(images[img.id], pos);                                     \
-  }                                                                            \
-                                                                               \
-  vec4 image_coherent_load(ImageType img, ivec2 pos) {                         \
-    return imageLoad(coherent_images[img.id], pos);                            \
-  }                                                                            \
-                                                                               \
-  void image_store(ImageType img, ivec2 pos, float data) {                     \
-    imageStore(images[img.id], pos, vec4(data));                               \
-  }                                                                            \
-                                                                               \
-  void image_coherent_store(ImageType img, ivec2 pos, vec4 data) {             \
-    imageStore(coherent_images[img.id], pos, data);                            \
-  }                                                                            \
-                                                                               \
-  void image_store(ImageType img, ivec2 pos, vec2 data) {                      \
-    imageStore(images[img.id], pos, vec4(data, 0.0f, 0.0f));                   \
-  }                                                                            \
-                                                                               \
-  void image_store(ImageType img, ivec2 pos, vec4 data) {                      \
-    imageStore(images[img.id], pos, data);                                     \
-  }
+vec4 texture_lod(SampledTexture3D t, vec3 uv, float lod) {
+  return textureLod(g_sampled_textures_3d[t.id], uv, lod);
+}
 
-DEFINE_STORAGE_TEXTURE_2D_IMPL(StorageTexture2D, g_storage_textures_2d,
-                               g_coherent_storage_textures_2d)
+vec4 texel_fetch(SampledTexture3D t, ivec3 pos, int lod) {
+  return texelFetch(g_sampled_textures_3d[t.id], pos, lod);
+}
 
-#undef DEFINE_STORAGE_TEXTURE_2D_IMPL
+ivec3 texture_size(SampledTexture3D t) {
+  return textureSize(g_sampled_textures_3d[t.id], 0);
+}
 
-#define images g_storage_textures_cube
+ivec2 image_size(StorageTexture2D img) { return imageSize(g_storage_textures_2d[img.id]); }        
+                                                                             
+vec4 image_load(StorageTexture2D img, ivec2 pos) {                                  
+  return imageLoad(g_storage_textures_2d[img.id], pos);                                     
+}                                                                            
+                                                                             
+vec4 image_coherent_load(StorageTexture2D img, ivec2 pos) {                         
+  return imageLoad(g_coherent_storage_textures_2d[img.id], pos);                            
+}                                                                            
+                                                                             
+void image_store(StorageTexture2D img, ivec2 pos, float data) {                     
+  imageStore(g_storage_textures_2d[img.id], pos, vec4(data));                               
+}                                                                            
+                                                                             
+void image_coherent_store(StorageTexture2D img, ivec2 pos, vec4 data) {             
+  imageStore(g_coherent_storage_textures_2d[img.id], pos, data);                            
+}                                                                            
+                                                                             
+void image_store(StorageTexture2D img, ivec2 pos, vec2 data) {                      
+  imageStore(g_storage_textures_2d[img.id], pos, vec4(data, 0.0f, 0.0f));                   
+}                                                                            
+                                                                             
+void image_store(StorageTexture2D img, ivec2 pos, vec4 data) {                      
+  imageStore(g_storage_textures_2d[img.id], pos, data);                                     
+}
 
-ivec2 image_size(StorageTextureCube img) { return imageSize(images[img.id]); }
+ivec2 image_size(StorageTextureCube img) { return imageSize(g_storage_textures_cube[img.id]); }
 
 vec4 image_load(StorageTextureCube img, ivec3 pos) {
-  return imageLoad(images[img.id], pos);
+  return imageLoad(g_storage_textures_cube[img.id], pos);
 }
 
 void image_store(StorageTextureCube img, ivec3 pos, vec3 data) {
-  imageStore(images[img.id], pos, vec4(data, 0.0f));
+  imageStore(g_storage_textures_cube[img.id], pos, vec4(data, 0.0f));
 }
 
 void image_store(StorageTextureCube img, ivec3 pos, vec4 data) {
-  imageStore(images[img.id], pos, data);
+  imageStore(g_storage_textures_cube[img.id], pos, data);
 }
 
-#undef images
+ivec3 image_size(StorageTexture3D img) { return imageSize(g_storage_textures_3d[img.id]); }        
+                                                                             
+vec4 image_load(StorageTexture3D img, ivec3 pos) {                                  
+  return imageLoad(g_storage_textures_3d[img.id], pos);                                     
+}                                                                            
+                                                                             
+void image_store(StorageTexture3D img, ivec3 pos, float data) {                     
+  imageStore(g_storage_textures_3d[img.id], pos, vec4(data));                               
+}                                                                            
+                                                                             
+void image_store(StorageTexture3D img, ivec3 pos, vec2 data) {                      
+  imageStore(g_storage_textures_3d[img.id], pos, vec4(data, 0.0f, 0.0f));                   
+}                                                                            
+                                                                             
+void image_store(StorageTexture3D img, ivec3 pos, vec4 data) {                      
+  imageStore(g_storage_textures_3d[img.id], pos, data);                                     
+}
 
 vec3 cube_map_face_pos_to_direction(uvec2 pos, uint face, uvec2 size) {
   // uv_face = 0.5 * (uv_c / |r| + 1) =>

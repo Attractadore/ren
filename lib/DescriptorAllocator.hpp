@@ -25,6 +25,8 @@ struct DescriptorAllocatorMixin {
       srv.dimension = rhi::ImageViewDimension::e2D;
     } else if constexpr (std::same_as<D, glsl::SampledTextureCube>) {
       srv.dimension = rhi::ImageViewDimension::eCube;
+    } else if constexpr (std::same_as<D, glsl::SampledTexture3D>) {
+      srv.dimension = rhi::ImageViewDimension::e3D;
     }
     ren_try(glsl::SampledTexture desc,
             self.allocate_sampled_texture(renderer, srv, sampler));

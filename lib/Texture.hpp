@@ -19,9 +19,9 @@ struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage;
-  u32 width = 0;
-  u32 height = 0;
-  u32 depth : 31 = 0;
+  u32 width = 1;
+  u32 height = 1;
+  u32 depth : 31 = 1;
   bool cube_map : 1 = false;
   u32 num_mips = 1;
 };
@@ -31,9 +31,9 @@ struct ExternalTextureCreateInfo {
   rhi::Image handle = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage;
-  u32 width = 0;
-  u32 height = 0;
-  u32 depth = 0;
+  u32 width = 1;
+  u32 height = 1;
+  u32 depth = 1;
   u32 num_mips = 1;
 };
 

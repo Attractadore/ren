@@ -1468,18 +1468,15 @@ auto get_device_ptr(Device device, Buffer buffer) -> u64 {
 auto create_image(Device device, const ImageCreateInfo &create_info)
     -> Result<Image> {
   u32 width = create_info.width;
-  ren_assert(width > 0);
   u32 height = create_info.height;
   u32 depth = create_info.depth;
-  VkImageType image_type = VK_IMAGE_TYPE_1D;
-  if (height > 0) {
-    image_type = VK_IMAGE_TYPE_2D;
-  }
-  if (depth > 0) {
+  ren_assert(width > 0);
+  ren_assert(height > 0);
+  ren_assert(depth > 0);
+  VkImageType image_type = VK_IMAGE_TYPE_2D;
+  if (depth > 1) {
     image_type = VK_IMAGE_TYPE_3D;
   }
-  height = std::max(height, 1u);
-  depth = std::max(depth, 1u);
 
   ImageUsageFlags usage = create_info.usage;
 

@@ -30,6 +30,7 @@ auto fail(HRESULT hres) -> Failure<Error> {
 }
 
 auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
+  ren_assert(info.depth == 1 and not info.cube_map);
   u32 block_width = TinyImageFormat_WidthOfBlock(info.format);
   u32 block_height = TinyImageFormat_HeightOfBlock(info.format);
   u32 block_size = TinyImageFormat_BitSizeOfBlock(info.format) / 8;
@@ -50,32 +51,36 @@ auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
   u32 num_faces = info.cube_map ? 6 : 1;
   DirectX::TexMetadata mdata = {
       .width = info.width,
-      .height = info.width,
-      .depth = 1,
+      .height = info.height,
+      .depth = info.depth,
       .arraySize = num_faces,
       .mipLevels = info.num_mips,
       .miscFlags = info.cube_map ? DirectX::TEX_MISC_TEXTURECUBE : 0,
       .format = (DXGI_FORMAT)TinyImageFormat_ToDXGI_FORMAT(info.format),
-      .dimension = DirectX::TEX_DIMENSION_TEXTURE2D,
+      .dimension = info.depth > 1 ? DirectX::TEX_DIMENSION_TEXTURE3D
+                                  : DirectX::TEX_DIMENSION_TEXTURE2D,
   };
-  images.resize(mdata.mipLevels * mdata.arraySize);
+  images.resize(mdata.mipLevels * mdata.depth * mdata.arraySize);
   u8 *data = (u8 *)info.data;
   for (u32 mip : range(mdata.mipLevels)) {
-    glm::uvec3 size = get_mip_size({mdata.width, mdata.height, 1}, mip);
+    glm::uvec3 size =
+        get_mip_size({mdata.width, mdata.height, mdata.depth}, mip);
     usize row_pitch, slice_pitch;
     HRESULT hres = DirectX::ComputePitch(mdata.format, size.x, size.y,
                                          row_pitch, slice_pitch);
     ren_assert(SUCCEEDED(hres));
     for (u32 item : range(mdata.arraySize)) {
-      images[mdata.ComputeIndex(mip, item, 0)] = {
-          .width = size.x,
-          .height = size.y,
-          .format = mdata.format,
-          .rowPitch = row_pitch,
-          .slicePitch = slice_pitch,
-          .pixels = data,
-      };
-      data += slice_pitch;
+      for (u32 plane : range(mdata.depth)) {
+        images[mdata.ComputeIndex(mip, item, plane)] = {
+            .width = size.x,
+            .height = size.y,
+            .format = mdata.format,
+            .rowPitch = row_pitch,
+            .slicePitch = slice_pitch,
+            .pixels = data,
+        };
+        data += slice_pitch;
+      }
     }
   }
   return mdata;
@@ -97,8 +102,9 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
               (TinyImageFormat_DXGI_FORMAT)mdata.format)),
       .baseWidth = (u32)mdata.width,
       .baseHeight = (u32)mdata.height,
-      .baseDepth = 1,
-      .numDimensions = 2,
+      .baseDepth = (u32)mdata.depth,
+      .numDimensions =
+          (u32)(mdata.dimension == DirectX::TEX_DIMENSION_TEXTURE3D ? 3 : 2),
       .numLevels = (u32)mdata.mipLevels,
       .numLayers = 1,
       .numFaces = num_faces,
@@ -117,9 +123,14 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
   for (u32 mip : range(ktx_texture->numLevels)) {
     for (u32 face : range(num_faces)) {
       const DirectX::Image &image = *mip_chain.GetImage(mip, face, 0);
+      if (ktx_texture->baseDepth > 1) {
+        ren_assert(image.pixels + image.slicePitch ==
+                   mip_chain.GetImage(mip, face, 1)->pixels);
+      }
       ren_assert(image.rowPitch == ktxTexture_GetRowPitch(ktx_texture, mip));
-      err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0, face,
-                                          image.pixels, image.slicePitch);
+      err = ktxTexture_SetImageFromMemory(
+          ktx_texture, mip, 0, face, image.pixels,
+          ktx_texture->baseDepth * image.slicePitch);
       if (err) {
         ktxTexture_Destroy(ktx_texture);
         return std::unexpected(Error::Unknown);
@@ -137,8 +148,8 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
       .vkFormat = (u32)TinyImageFormat_ToVkFormat(info.format),
       .baseWidth = info.width,
       .baseHeight = info.height,
-      .baseDepth = 1,
-      .numDimensions = 2,
+      .baseDepth = info.depth,
+      .numDimensions = (u32)(info.depth > 1 ? 3 : 2),
       .numLevels = info.num_mips,
       .numLayers = 1,
       .numFaces = u32(info.cube_map ? 6 : 1),
@@ -156,8 +167,9 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture *> {
 
   const u8 *data = (const u8 *)info.data;
   for (u32 mip : range(info.num_mips)) {
-    usize size =
-        ktxTexture_GetImageSize(ktx_texture, mip) * (info.cube_map ? 6 : 1);
+    usize size = ktxTexture_GetImageSize(ktx_texture, mip) *
+                 ktx_texture->numFaces * ktx_texture->numLayers *
+                 ktx_texture->baseDepth;
     err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0,
                                         KTX_FACESLICE_WHOLE_LEVEL, data, size);
     if (err) {

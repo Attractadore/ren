@@ -7,8 +7,9 @@ namespace ren {
 
 struct TextureInfo {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  unsigned width = 0;
-  unsigned height = 0;
+  unsigned width = 1;
+  unsigned height = 1;
+  unsigned depth = 1;
   bool cube_map = false;
   unsigned num_mips = 1;
   const void *data = nullptr;

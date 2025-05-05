@@ -37,6 +37,7 @@ auto ResourceUploader::create_texture(ResourceArena &arena,
                                      rhi::ImageUsage::TransferDst,
                             .width = ktx_texture2->baseWidth,
                             .height = ktx_texture2->baseHeight,
+                            .depth = ktx_texture2->baseDepth,
                             .cube_map = ktx_texture2->numFaces > 1,
                             .num_mips = ktx_texture2->numLevels,
                         }));

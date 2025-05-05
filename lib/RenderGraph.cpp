@@ -962,6 +962,21 @@ void RgBuilder::init_runtime_buffers() {
   }
 }
 
+namespace {
+
+auto get_view_dimension(const RgPhysicalTexture &ptex)
+    -> rhi::ImageViewDimension {
+  if (ptex.size.z > 1) {
+    return rhi::ImageViewDimension::e3D;
+  }
+  if (ptex.cube_map) {
+    return rhi::ImageViewDimension::eCube;
+  }
+  return rhi::ImageViewDimension::e2D;
+}
+
+} // namespace
+
 auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
   auto &rt_textures = m_rt_data->m_textures;
   const auto &texture_uses = m_data->m_texture_uses;
@@ -999,9 +1014,7 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
     if (use.state.access_mask.is_set(rhi::Access::ShaderImageRead)) {
       SrvDesc srv = {
           .texture = physical_texture.handle,
-          .dimension = physical_texture.cube_map
-                           ? rhi::ImageViewDimension::eCube
-                           : rhi::ImageViewDimension::e2D,
+          .dimension = get_view_dimension(physical_texture),
       };
       if (use.sampler) {
         ren_try(descriptors.combined,
@@ -1021,9 +1034,7 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
                     *m_renderer,
                     {
                         .texture = physical_texture.handle,
-                        .dimension = physical_texture.cube_map
-                                         ? rhi::ImageViewDimension::eCube
-                                         : rhi::ImageViewDimension::e2D,
+                        .dimension = get_view_dimension(physical_texture),
                         .mip = mip,
                     }));
       }

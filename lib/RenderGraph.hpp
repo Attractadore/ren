@@ -211,11 +211,11 @@ struct RgTextureCreateInfo {
   /// Texture format
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   /// Texture width
-  u32 width = 0;
+  u32 width = 1;
   /// Texture height
-  u32 height = 0;
+  u32 height = 1;
   /// Texture depth
-  u32 depth : 31 = 0;
+  u32 depth : 31 = 1;
   bool cube_map : 1 = false;
   /// Number of mip levels
   u32 num_mips = 1;
@@ -313,10 +313,13 @@ concept CIsStorageTexturePC = IsStorageTexturePCImpl<T>::value;
   template <> struct IsStorageTexturePCImpl<Type> : std::true_type {}
 
 define_texture_pc(glsl::Texture2D);
+define_texture_pc(glsl::Texture3D);
 define_sampled_texture_pc(glsl::SampledTexture2D);
 define_sampled_texture_pc(glsl::SampledTextureCube);
+define_sampled_texture_pc(glsl::SampledTexture3D);
 define_storage_texture_pc(glsl::StorageTexture2D);
 define_storage_texture_pc(glsl::StorageTextureCube);
+define_storage_texture_pc(glsl::StorageTexture3D);
 
 #undef define_base_texture_pc
 
