@@ -5,6 +5,8 @@
 #include "Swapchain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
+#include "glsl/Random.h"
+#include "glsl/Transforms.h"
 #include "passes/Exposure.hpp"
 #include "passes/GpuSceneUpdate.hpp"
 #include "passes/HiZ.hpp"
@@ -888,7 +890,20 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     ssao_depth = m_pass_rcs.ssao_depth;
     {
       auto pass = rgb.create_pass({.name = "ssao"});
+
+      auto noise_lut = m_frcs->upload_allocator.allocate<float>(
+          glsl::SSAO_HILBERT_CURVE_SIZE * glsl::SSAO_HILBERT_CURVE_SIZE);
+
+      for (u32 y : range(glsl::SSAO_HILBERT_CURVE_SIZE)) {
+        for (u32 x : range(glsl::SSAO_HILBERT_CURVE_SIZE)) {
+          u32 h = glsl::hilbert_from_2d(glsl::SSAO_HILBERT_CURVE_SIZE, x, y);
+          noise_lut.host_ptr[y * glsl::SSAO_HILBERT_CURVE_SIZE + x] =
+              glsl::r1_seq(h);
+        }
+      }
+
       RgSsaoArgs args = {
+          .noise_lut = noise_lut.device_ptr,
           .depth = pass.read_texture(depth_buffer, rhi::SAMPLER_NEAREST_CLAMP),
           .hi_z = pass.read_texture(ssao_hi_z, rhi::SAMPLER_NEAREST_CLAMP),
           .ssao = pass.write_texture("ssao", &ssao),

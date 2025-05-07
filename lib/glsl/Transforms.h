@@ -63,4 +63,28 @@ inline float pack_z_linear_16bit(float z, float znear) { return z - znear; }
 
 inline float unpack_z_linear_16bit(float z, float znear) { return z + znear; }
 
+inline uvec2 hilbert_rotate(uint n, uint x, uint y, bool rx, bool ry) {
+  if (!ry) {
+    if (rx) {
+      x = n - 1 - x;
+      y = n - 1 - y;
+    }
+    return uvec2(y, x);
+  }
+  return uvec2(x, y);
+}
+
+inline uint hilbert_from_2d(uint n, uint x, uint y) {
+  uint d = 0;
+  for (uint s = n / 2; s > 0; s /= 2) {
+    bool rx = (x & s) > 0;
+    bool ry = (y & s) > 0;
+    d += s * s * ((3 * uint(rx)) ^ uint(ry));
+    uvec2 xy = hilbert_rotate(n, x, y, rx, ry);
+    x = xy.x;
+    y = xy.y;
+  }
+  return d;
+}
+
 GLSL_NAMESPACE_END

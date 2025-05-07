@@ -1,10 +1,15 @@
 #pragma once
+#include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
 
 GLSL_NAMESPACE_BEGIN
 
+const uint SSAO_HILBERT_CURVE_LEVEL = 6;
+const uint SSAO_HILBERT_CURVE_SIZE = 1 << SSAO_HILBERT_CURVE_LEVEL;
+
 GLSL_PUSH_CONSTANTS SsaoArgs {
+  GLSL_READONLY GLSL_PTR(float) raw_noise_lut;
   SampledTexture2D depth;
   SampledTexture2D hi_z;
   StorageTexture2D ssao;

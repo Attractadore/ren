@@ -32,4 +32,24 @@ inline vec3 hammersley_3d(uint i, uint n) {
   return vec3(i / float(n), corput_base_2(i), corput_base_3(i));
 }
 
+// https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
+inline float r1_seq(float i, float seed) {
+  const float g = 1.618033;
+  const float a1 = 1.0f / g;
+  return fract(seed + a1 * i);
+}
+
+inline float r1_seq(float i) { return r1_seq(i, 0.5f); }
+
+inline vec3 r3_seq(float i, vec3 seed) {
+  const float g = 1.220744;
+  const float a1 = 1.0f / g;
+  const float a2 = a1 * a1;
+  const float a3 = a2 * a1;
+  const vec3 a = vec3(a1, a2, a3);
+  return fract(seed + a * i);
+}
+
+inline vec3 r3_seq(float i) { return r3_seq(i, vec3(0.5f)); }
+
 GLSL_NAMESPACE_END

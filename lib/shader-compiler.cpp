@@ -115,7 +115,9 @@ auto gen_rg_args(const CompileOptions &opts,
         member_type.remove_suffix(PTR_SUFFIX.size());
         fmt::format_to(
             std::back_inserter(element_type), "GLSL_UNQUALIFIED_PTR({}{})",
-            member_type == "void" ? "" : "::ren::glsl::", member_type);
+            member_type == "void" or member_type == "float" ? ""
+                                                            : "::ren::glsl::",
+            member_type);
       } else {
         fmt::format_to(std::back_inserter(element_type), "::ren::glsl::{}",
                        type->members[i].type_name);
