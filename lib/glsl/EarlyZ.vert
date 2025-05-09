@@ -1,5 +1,7 @@
 #include "EarlyZ.h"
 
+layout(location = 0) out vec3 v_view_pos;
+
 void main() {
   MeshInstance mesh_instance = DEREF(pc.mesh_instances[gl_BaseInstance]);
   mat4x3 transform_matrix = DEREF(pc.transform_matrices[gl_BaseInstance]);
@@ -12,4 +14,5 @@ void main() {
 
   position = transform_matrix * vec4(position, 1.0f);
   gl_Position = pc.proj_view * vec4(position, 1.0f);
+  v_view_pos = pc.view * position;
 }

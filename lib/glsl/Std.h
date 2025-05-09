@@ -40,6 +40,7 @@
 #include <concepts>
 #include <cstdint>
 #include <glm/glm.hpp>
+#include <glm/gtc/packing.hpp>
 
 #define GLSL_NAMESPACE_BEGIN namespace ren::glsl {
 #define GLSL_NAMESPACE_END }

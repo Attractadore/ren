@@ -41,6 +41,7 @@ add_shader(ren ExclusiveScanUint32.comp)
 add_shader(ren PrepareBatch.comp)
 
 add_shader(ren EarlyZ.vert)
+add_shader(ren EarlyZ.frag)
 add_shader(ren Opaque.vert)
 add_shader(ren Opaque.frag)
 add_shader(ren Skybox.vert)

@@ -11,6 +11,7 @@ struct EarlyZPassConfig {
   NotNull<const GpuScene *> gpu_scene;
   NotNull<RgGpuScene *> rg_gpu_scene;
   OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  NotNull<RgTextureId *> normal_buffer;
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
 };

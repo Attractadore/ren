@@ -99,6 +99,14 @@ inline vec3 decode_normal(Normal normal) {
   return normalize(vec3(xy, z));
 }
 
+inline uint pack_normal_to_uint(Normal normal) {
+  return packUint2x16(normal.normal);
+}
+
+inline Normal unpack_normal_form_uint(uint normal) {
+  return Normal(unpackUint2x16(normal));
+}
+
 struct Tangent {
   uint16_t tangent_and_sign;
 };

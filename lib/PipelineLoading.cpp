@@ -4,6 +4,7 @@
 #include "ResourceArena.hpp"
 #include "glsl/Opaque.h"
 
+#include "EarlyZ.frag.hpp"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
 #include "HiZ.comp.hpp"
@@ -30,15 +31,18 @@ namespace ren {
 auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(EarlyZVS, EarlyZVSSize).as_bytes();
+  auto fs = Span(EarlyZFS, EarlyZFSSize).as_bytes();
   return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
       .name = "Early Z pass graphics pipeline",
       .vs = {vs},
+      .fs = {fs},
       .rasterization_state = {.cull_mode = rhi::CullMode::Back},
       .depth_stencil_state =
           {
               .depth_test_enable = true,
               .depth_compare_op = rhi::CompareOp::GreaterOrEqual,
           },
+      .rtv_formats = {NORMAL_FORMAT},
       .dsv_format = DEPTH_FORMAT,
   });
 }

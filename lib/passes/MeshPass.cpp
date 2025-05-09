@@ -289,6 +289,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
                                              rhi::VS_RESOURCE_BUFFER),
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
+      .view = get_view_matrix(info.base.camera),
   };
 }
 

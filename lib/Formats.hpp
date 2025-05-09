@@ -11,5 +11,6 @@ constexpr TinyImageFormat HDR_FORMAT = TinyImageFormat_R16G16B16A16_SFLOAT;
 constexpr TinyImageFormat SWAP_CHAIN_FORMAT = TinyImageFormat_B8G8R8A8_UNORM;
 constexpr TinyImageFormat SDR_FORMAT = SWAP_CHAIN_FORMAT;
 constexpr TinyImageFormat DEPTH_FORMAT = TinyImageFormat_D32_SFLOAT;
+constexpr TinyImageFormat NORMAL_FORMAT = TinyImageFormat_R32_UINT;
 
 } // namespace ren

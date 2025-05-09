@@ -13,6 +13,12 @@ void setup_early_z_pass(const PassCommonConfig &ccfg,
                 .base =
                     {
                         .pass_name = "early-z",
+                        .color_attachments = {cfg.normal_buffer},
+                        .color_attachment_ops = {{
+                            .load = rhi::RenderPassLoadOp::Discard,
+                            .store = rhi::RenderPassStoreOp::Store,
+                        }},
+                        .color_attachment_names = {"normal-buffer"},
                         .depth_attachment = cfg.depth_buffer,
                         .depth_attachment_ops =
                             {

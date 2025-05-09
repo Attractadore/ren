@@ -789,7 +789,16 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     });
   }
   RgTextureId depth_buffer = m_pass_rcs.depth_buffer;
-  RgTextureId hi_z;
+
+  if (!m_pass_rcs.normal_buffer) {
+    m_pass_rcs.normal_buffer = m_rgp->create_texture({
+        .name = "normal-buffer",
+        .format = NORMAL_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId normal_buffer = m_pass_rcs.normal_buffer;
 
   auto occlusion_culling_mode = OcclusionCullingMode::Disabled;
   if (m_data.settings.instance_occulusion_culling) {
@@ -800,8 +809,11 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                               .gpu_scene = &m_gpu_scene,
                               .rg_gpu_scene = &rg_gpu_scene,
                               .occlusion_culling_mode = occlusion_culling_mode,
+                              .normal_buffer = &normal_buffer,
                               .depth_buffer = &depth_buffer,
                           });
+
+  RgTextureId hi_z;
   if (occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
     setup_hi_z_pass(cfg,
                     HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
@@ -810,6 +822,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                  .gpu_scene = &m_gpu_scene,
                  .rg_gpu_scene = &rg_gpu_scene,
                  .occlusion_culling_mode = OcclusionCullingMode::SecondPhase,
+                 .normal_buffer = &normal_buffer,
                  .depth_buffer = &depth_buffer,
                  .hi_z = hi_z,
              });
