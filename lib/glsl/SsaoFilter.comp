@@ -1,0 +1,258 @@
+#include "Math.h"
+#include "SsaoFilter.h"
+#include "Texture.glsl"
+#include "Transforms.h"
+
+LOCAL_SIZE(SSAO_FILTER_GROUP_SIZE.x * SSAO_FILTER_GROUP_SIZE.y);
+
+const uint GROUP_FILTER_WIDTH =
+    SSAO_FILTER_UNROLL.x * SSAO_FILTER_GROUP_SIZE.x + 2 * SSAO_FILTER_RADIUS;
+
+shared f16vec2 load_cache[GROUP_FILTER_WIDTH * SSAO_FILTER_GROUP_SIZE.y];
+
+uint load_cache_2d_to_linear(uint x, uint y) {
+  const uint NUM_BANKS = 32;
+  const uint UNROLL_WIDTH = max(NUM_BANKS / SSAO_FILTER_GROUP_SIZE.x, 1);
+  x = UNROLL_WIDTH * x + y % UNROLL_WIDTH;
+  y = y / UNROLL_WIDTH;
+  uint i = UNROLL_WIDTH * GROUP_FILTER_WIDTH * y + x;
+  return i;
+}
+
+void load_cache_store(uint ix, uint iy, float z, float ssao) {
+  uint i = load_cache_2d_to_linear(ix, iy);
+  z = z - pc.znear;
+  z = min(z, 65504.0f);
+  load_cache[i] = f16vec2(z, 1.0f - ssao);
+}
+
+void load_cache_load(uint ix, uint iy, out float x, out float y) {
+  uint i = load_cache_2d_to_linear(ix, iy);
+  x = load_cache[i].x;
+  y = load_cache[i].y;
+}
+
+const uint STORE_CACHE_HEIGHT = 4 * SSAO_FILTER_GROUP_SIZE.y;
+const uint STORE_CACHE_WIDTH = SSAO_FILTER_UNROLL.x * SSAO_FILTER_GROUP_SIZE.x;
+
+shared float store_cache_x[STORE_CACHE_HEIGHT][STORE_CACHE_WIDTH];
+shared float store_cache_x2[STORE_CACHE_HEIGHT][STORE_CACHE_WIDTH];
+shared f16vec2 store_cache_y_xy[STORE_CACHE_HEIGHT][STORE_CACHE_WIDTH];
+
+void store_cache_store(uint ix, uint iy, float x, float x2, float y, float xy) {
+  store_cache_x[iy][ix] = x;
+  store_cache_x2[iy][ix] = x2;
+  store_cache_y_xy[iy][ix] = f16vec2(y, xy);
+}
+
+void store_cache_load(uint ix, uint iy, out float x, out float x2, out float y,
+                      out float xy) {
+  x = store_cache_x[iy][ix];
+  x2 = store_cache_x2[iy][ix];
+  y = store_cache_y_xy[iy][ix].x;
+  xy = store_cache_y_xy[iy][ix].y;
+}
+
+ivec2 global_position(ivec2 lxy) {
+  uvec2 xy = gl_WorkGroupID.xy * SSAO_FILTER_GROUP_SIZE * SSAO_FILTER_UNROLL;
+  return ivec2(xy) + lxy;
+}
+
+float gauss(float r) {
+  const float RCP_SIGMA = 4.0f / (2.0f * SSAO_FILTER_RADIUS + 1.0f);
+  const float RCP_VARIANCE = RCP_SIGMA * RCP_SIGMA;
+  return exp(-0.5f * RCP_VARIANCE * r * r);
+}
+
+void load(uvec2 lxy, int y) {
+  const uint NUM_HORIZONTAL =
+      glsl_ceil_div(GROUP_FILTER_WIDTH, SSAO_FILTER_GROUP_SIZE.x);
+
+  if (!IS_NULL_DESC(pc.depth)) {
+    [[unroll]]
+    for (uint k = 0; k < NUM_HORIZONTAL; ++k) {
+      uint x = lxy.x + k * SSAO_FILTER_GROUP_SIZE.x;
+      ivec2 xy = global_position(ivec2(x - SSAO_FILTER_RADIUS, y));
+      xy = clamp(xy, ivec2(0, 0), texture_size(pc.ssao) - 1);
+      if (x < GROUP_FILTER_WIDTH) {
+        float v = texel_fetch(pc.ssao, xy, 0).r;
+        float d = texel_fetch(pc.depth, xy, 0).r;
+        float z = pc.znear / d;
+        load_cache_store(x, lxy.y, z, v);
+      }
+    }
+  } else {
+    [[unroll]]
+    for (uint k = 0; k < NUM_HORIZONTAL; ++k) {
+      uint x = lxy.x + k * SSAO_FILTER_GROUP_SIZE.x;
+      ivec2 xy = global_position(ivec2(x - SSAO_FILTER_RADIUS, y));
+      xy = clamp(xy, ivec2(0, 0), texture_size(pc.ssao) - 1);
+      if (x < GROUP_FILTER_WIDTH) {
+        float v = texel_fetch(pc.ssao, xy, 0).r;
+        float z = texel_fetch(pc.ssao_depth, xy, 0).r;
+        z = unpack_z_linear_16bit(z, pc.znear);
+        load_cache_store(x, lxy.y, z, v);
+      }
+    }
+  }
+
+  // If a single subgroup covers at least 2 rows, only a shared memory barrier
+  // is required.
+  if (gl_SubgroupSize >= 2 * SSAO_FILTER_GROUP_SIZE.x) {
+    subgroupMemoryBarrierShared();
+  } else {
+    barrier();
+  }
+}
+
+void blur_horizontal(uvec2 lxy, uint iy) {
+  for (uint u = 0; u < SSAO_FILTER_UNROLL.x; ++u) {
+    uint lcx = lxy.x + SSAO_FILTER_RADIUS + u * SSAO_FILTER_GROUP_SIZE.x;
+    uint lcy = lxy.y;
+
+    float w = 1.0f;
+    float weight = w;
+    float g, s;
+    load_cache_load(lcx, lcy, g, s);
+    float x = g * w;
+    float x2 = g * (g * w);
+    float y = s * w;
+    float xy = g * (s * w);
+
+    float r = 1.0f;
+    for (uint k = 1; k <= SSAO_FILTER_RADIUS; ++k, ++r) {
+      w = gauss(r);
+      weight += 2.0f * w;
+
+      load_cache_load(lcx - k, lcy, g, s);
+      x += g * w;
+      x2 += g * (g * w);
+      y += s * w;
+      xy += g * (s * w);
+
+      load_cache_load(lcx + k, lcy, g, s);
+      x += g * w;
+      x2 += g * (g * w);
+      y += s * w;
+      xy += g * (s * w);
+    }
+
+    x /= weight;
+    x2 /= weight;
+    y /= weight;
+    xy /= weight;
+
+    uint scx = lxy.x + u * SSAO_FILTER_GROUP_SIZE.x;
+    uint scy = iy % STORE_CACHE_HEIGHT;
+
+    store_cache_store(scx, scy, x, x2, y, xy);
+  }
+}
+
+void blur_vertical(uvec2 lxy, uint iy) {
+  for (uint u = 0; u < SSAO_FILTER_UNROLL.x; ++u) {
+    uint ix = lxy.x + u * SSAO_FILTER_GROUP_SIZE.x;
+
+    uint scx = ix;
+    uint scy = iy % STORE_CACHE_HEIGHT;
+
+    float w = 1.0f;
+    float weight = w;
+    float g, g2, s, gs;
+    store_cache_load(scx, scy, g, g2, s, gs);
+
+    float x = g * w;
+    float x2 = g2 * w;
+    float y = s * w;
+    float xy = gs * w;
+
+    float r = 1.0f;
+    for (uint k = 1; k <= SSAO_FILTER_RADIUS; ++k, ++r) {
+      w = gauss(r);
+      weight += 2.0f * w;
+
+      scy = (iy + STORE_CACHE_HEIGHT - k) % STORE_CACHE_HEIGHT;
+      store_cache_load(scx, scy, g, g2, s, gs);
+      x += g * w;
+      x2 += g2 * w;
+      y += s * w;
+      xy += gs * w;
+
+      scy = (iy + k) % STORE_CACHE_HEIGHT;
+      store_cache_load(scx, scy, g, g2, s, gs);
+      x += g * w;
+      x2 += g2 * w;
+      y += s * w;
+      xy += gs * w;
+    }
+
+    x /= weight;
+    x2 /= weight;
+    y /= weight;
+    xy /= weight;
+
+    float var_x = x2 - x * x;
+    float cov_xy = xy - x * y;
+
+    // 1 - ka = a * (z - n) + b
+    // ka = -az + (1 - b) + an
+    // a' = -a
+    // b' = -b + an + 1
+
+    const float REG_CONSTANT = 1e-4f;
+    float a = cov_xy / (var_x + REG_CONSTANT);
+    float b = y - a * x;
+
+    float a_p = -a;
+    float b_p = a * pc.znear - b + 1.0f;
+
+    image_store(pc.ssao_llm, global_position(ivec2(ix, iy)),
+                vec4(b_p, a_p, 0.0f, 0.0f));
+  }
+}
+
+void main() {
+  uvec2 lxy;
+  {
+    // Remap 4 linear items to a quad for improved texture access.
+    uint x = gl_LocalInvocationID.x % (SSAO_FILTER_GROUP_SIZE.x * 2);
+    uint y = gl_LocalInvocationID.x / (SSAO_FILTER_GROUP_SIZE.x * 2);
+    lxy.x = x / 2;
+    lxy.y = 2 * y + x % 2;
+  }
+
+  // Load top edge.
+  {
+    int y = int(lxy.y - SSAO_FILTER_RADIUS);
+    if (y < 0) {
+      load(lxy, y);
+      blur_horizontal(lxy, STORE_CACHE_HEIGHT + y);
+    }
+  }
+
+  uint y = lxy.y;
+
+  // Load first part.
+  load(lxy, int(y));
+  blur_horizontal(lxy, y);
+  y += SSAO_FILTER_GROUP_SIZE.y;
+
+  for (uint k = 1; k < SSAO_FILTER_UNROLL.y; ++k) {
+    load(lxy, int(y));
+    blur_horizontal(lxy, y);
+    barrier();
+    blur_vertical(lxy, y - SSAO_FILTER_GROUP_SIZE.y);
+    y += SSAO_FILTER_GROUP_SIZE.y;
+  }
+
+  // Load bottom edge.
+  if (y <
+      SSAO_FILTER_UNROLL.y * SSAO_FILTER_GROUP_SIZE.y + SSAO_FILTER_RADIUS) {
+    load(lxy, int(y));
+    blur_horizontal(lxy, y);
+  }
+  barrier();
+
+  // Blur last part.
+  blur_vertical(lxy, y - SSAO_FILTER_GROUP_SIZE.y);
+}

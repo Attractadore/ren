@@ -978,6 +978,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
       .drawIndirectCount = true,
       .storageBuffer8BitAccess = true,
+      .shaderFloat16 = true,
       .shaderInt8 = true,
       .descriptorBindingSampledImageUpdateAfterBind = true,
       .descriptorBindingStorageImageUpdateAfterBind = true,

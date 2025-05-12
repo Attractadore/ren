@@ -66,24 +66,9 @@ void main() {
   float ka = 1.0f;
   if (!IS_NULL_DESC(pc.ssao)) {
     vec2 uv = gl_FragCoord.xy * pc.inv_viewport;
-    if (IS_NULL_DESC(pc.ssao_depth)) {
-      ka = texture_lod(SAMPLER_NEAREST_CLAMP, pc.ssao, uv, 0).r;
-    } else {
-      vec4 gd = texture_gather_r(SAMPLER_NEAREST_CLAMP, pc.ssao_depth, uv);
-      float d = pack_depth_linear_16bit(gl_FragCoord.z, pc.znear);
-      vec4 dz = abs(gd - d);
-      if (all(lessThan(dz, vec4(pc.ssao_radius / 3.0f)))) {
-        ka = texture_lod(SAMPLER_LINEAR_MIP_NEAREST_CLAMP, pc.ssao, uv, 0).r;
-      } else {
-        vec4 gka = texture_gather_r(SAMPLER_NEAREST_CLAMP, pc.ssao, uv);
-        ka = gka[0];
-        float mindz = dz[0];
-        for (uint k = 1; k < 4; ++k) {
-          ka = dz[k] < mindz ? gka[k] : ka;
-          mindz = min(mindz, dz[k]);
-        }
-      }
-    }
+    vec2 ba = texture_lod(pc.ssao, uv, 0).rg;
+    float z = abs(1.0f / gl_FragCoord.w);
+    ka = clamp(ba.x + ba.y * z, 0.0f, 1.0f);
   }
   ka = ka * occlusion;
 

@@ -18,7 +18,7 @@
 #include "passes/Skybox.hpp"
 
 #include "Ssao.comp.hpp"
-#include "SsaoBlur.comp.hpp"
+#include "SsaoFilter.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
 
 #include <fmt/format.h>
@@ -816,7 +816,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     occlusion_culling_mode = OcclusionCullingMode::ThirdPhase;
   }
 
-  RgTextureId ssao_blurred;
+  RgTextureId ssao_llm;
   RgTextureId ssao_depth = m_pass_rcs.ssao_depth;
   if (m_data.settings.ssao) {
     glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
@@ -922,29 +922,31 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       pass.dispatch_grid_2d(m_pipelines.ssao, args, ssao_size);
     }
 
-    if (!m_pass_rcs.ssao_blurred) {
-      m_pass_rcs.ssao_blurred = m_rgp->create_texture({
-          .name = "ssao-blurred",
-          .format = TinyImageFormat_R16_UNORM,
+    if (!m_pass_rcs.ssao_llm) {
+      m_pass_rcs.ssao_llm = m_rgp->create_texture({
+          .name = "ssao-llm",
+          .format = TinyImageFormat_R16G16_SFLOAT,
           .width = ssao_size.x,
           .height = ssao_size.y,
       });
     }
-    ssao_blurred = m_pass_rcs.ssao_blurred;
+    ssao_llm = m_pass_rcs.ssao_llm;
     {
-      auto pass = rgb.create_pass({.name = "ssao-blur"});
-      RgSsaoBlurArgs args = {
+      auto pass = rgb.create_pass({.name = "ssao-filter"});
+
+      RgSsaoFilterArgs args = {
           .depth =
               !ssao_depth ? pass.read_texture(depth_buffer) : RgTextureToken(),
           .ssao = pass.read_texture(ssao),
           .ssao_depth = pass.try_read_texture(ssao_depth),
-          .ssao_blurred = pass.write_texture("ssao-blurred", &ssao_blurred),
+          .ssao_llm = pass.write_texture("ssao-llm", &ssao_llm),
           .znear = camera.near,
-          .radius = m_data.settings.ssao_radius,
       };
-      pass.dispatch_grid_2d(
-          m_pipelines.ssao_blur, args, ssao_size,
-          {glsl::SSAO_BLUR_THREAD_ITEMS_X, glsl::SSAO_BLUR_THREAD_ITEMS_Y});
+      pass.dispatch(m_pipelines.ssao_filter, args,
+                    ceil_div(ssao_size.x, glsl::SSAO_FILTER_GROUP_SIZE.x *
+                                              glsl::SSAO_FILTER_UNROLL.x),
+                    ceil_div(ssao_size.y, glsl::SSAO_FILTER_GROUP_SIZE.y *
+                                              glsl::SSAO_FILTER_UNROLL.y));
     }
   }
 
@@ -965,8 +967,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                              .hdr = &hdr,
                              .depth_buffer = &depth_buffer,
                              .hi_z = hi_z,
-                             .ssao = ssao_blurred,
-                             .ssao_depth = ssao_depth,
+                             .ssao = ssao_llm,
                              .exposure = exposure,
                          });
 

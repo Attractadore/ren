@@ -4,6 +4,7 @@
 #pragma use_vulkan_memory_model
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_EXT_debug_printf : require
+#extension GL_EXT_maximal_reconvergence : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_image_load_formatted : require
@@ -14,6 +15,7 @@
 #define static_assert(expr)
 #define inline
 #define alignas(alignment)
+#define constexpr const
 
 #define GLSL_NAMESPACE_BEGIN
 #define GLSL_NAMESPACE_END
