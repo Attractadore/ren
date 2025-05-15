@@ -338,12 +338,16 @@ auto glslang_compile(const CompileOptions &opts) -> int {
   if (!shader.parse(GetDefaultResources(), 100, false, messages, includer)) {
     fmt::println(stderr, "Compilation failed:\n{}", shader.getInfoLog());
     return -1;
+  } else if (shader.getInfoLog() and std::strlen(shader.getInfoLog()) > 0) {
+    fmt::println(stderr, "{}", shader.getInfoLog());
   }
 
   glslang::TProgram program;
   program.addShader(&shader);
   if (!program.link(messages)) {
     fmt::println(stderr, "Linking failed:\n{}", program.getInfoLog());
+  } else if (program.getInfoLog() and std::strlen(program.getInfoLog()) > 0) {
+    fmt::println(stderr, "{}", program.getInfoLog());
   }
 
   glslang::SpvOptions spv_opts;
