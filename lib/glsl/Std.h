@@ -2,6 +2,7 @@
 #if GL_core_profile
 
 #pragma use_vulkan_memory_model
+#extension GL_EXT_control_flow_attributes : require
 #extension GL_EXT_debug_printf : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types : require
