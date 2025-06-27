@@ -64,6 +64,15 @@ GLSL_NAMESPACE_END
 
 #endif
 
+#if SLANG
+#define DIFFERENTIABLE [Differentiable]
+#define I_DIFFERENTIABLE : IDifferentiable
+#else
+#define DIFFERENTIABLE
+#define no_diff
+#define I_DIFFERENTIABLE
+#endif
+
 GLSL_NAMESPACE_BEGIN
 const float PI = 3.1416;
 const float TWO_PI = 6.2832;

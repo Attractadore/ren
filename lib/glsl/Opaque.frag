@@ -42,7 +42,7 @@ void main() {
   }
 
   vec3 albedo = mix(color.rgb, vec3(0.0f), metallic);
-  vec3 f0 = fresnel_f0(color.rgb, metallic);
+  vec3 f0 = F_schlick_f0(color.rgb, metallic);
 
   vec3 normal = a_normal;
   if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {

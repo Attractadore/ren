@@ -1,4 +1,5 @@
 #pragma once
+#include "BRDF.h"
 #include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
@@ -16,30 +17,6 @@ struct DirectionalLight {
 };
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
-
-inline vec3 fresnel_f0(vec3 color, float metallic) {
-  float ior = 1.5f;
-  vec3 f0 = vec3((ior - 1.0f) / (ior + 1.0f));
-  f0 = f0 * f0;
-  return mix(f0, color, metallic);
-}
-
-// clang-format off
-// G_2(l, v, h) = 1 / (1 + A(v) + A(l))
-// A(s) = (-1 + sqrt(1 + 1/a(s)^2)) / 2
-// a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2))
-// A(s) = (-1 + sqrt(1 + alpha^2 * (1 - dot(n, s)^2) / dot(n, s)^2) / 2
-// clang-format on
-inline float g_smith(float roughness, float nl, float nv) {
-  float alpha = roughness * roughness;
-  float alpha2 = alpha * alpha;
-  float nl2 = nl * nl;
-  float nv2 = nv * nv;
-  float lambda_l = sqrt(1.0f + alpha2 * (1.0f - nl2) / nl2);
-  float lambda_v = sqrt(1.0f + alpha2 * (1.0f - nv2) / nv2);
-  float G = 2.0f / (lambda_l + lambda_v);
-  return G;
-}
 
 // GGX importance sampling function is given in "Microfacet Models for
 // Refraction through Rough Surfaces":
@@ -112,10 +89,9 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
   // L_o = f(l, v) * E_p * dot(n, l)
   // clang-format on
 
-  // F(h, l) = F_0 + (1 - F_0) * (1 - dot(h, l))^5
-  vec3 fresnel = f0 + (1.0f - f0) * pow(1.0f - lh, 5.0f);
+  vec3 fresnel = F_schlick(f0, lh);
 
-  float smith = g_smith(roughness, nl, nv);
+  float smith = G_smith(roughness, nl, nv);
 
   // clang-format off
   // D(h) = alpha^2 / (pi * (1 + dot(n, h)^2 * (alpha^2 - 1))^2)

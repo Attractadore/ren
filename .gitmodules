@@ -77,3 +77,9 @@
 [submodule "external/stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb
+[submodule "external/eigen"]
+	path = external/eigen
+	url = https://gitlab.com/libeigen/eigen
+[submodule "external/LBFGSpp"]
+	path = external/LBFGSpp
+	url = https://github.com/yixuan/LBFGSpp

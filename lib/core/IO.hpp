@@ -13,11 +13,21 @@ namespace ren {
 
 auto fopen(const fs::path &p, const char *mode) -> FILE *;
 
-auto write_to_file(void *data, usize size, fs::path &p) -> Result<void, Error>;
+auto write_to_file(const void *data, usize size, const fs::path &p)
+    -> Result<void, Error>;
+
+auto stringify_and_write_to_files(const void *data, usize size,
+                                  const fs::path &p) -> Result<void, Error>;
 
 template <typename T>
-auto write_to_file(Span<T> data, fs::path &p) -> Result<void, Error> {
+auto write_to_file(Span<T> data, const fs::path &p) -> Result<void, Error> {
   return write_to_file(data.data(), data.size_bytes(), p);
+}
+
+template <typename T>
+auto stringify_and_write_to_files(Span<T> data, const fs::path &p)
+    -> Result<void, Error> {
+  return stringify_and_write_to_files(data.data(), data.size_bytes(), p);
 }
 
 } // namespace ren
