@@ -23,7 +23,7 @@ vec2 integrate_so(float roughness, float nv, float cosa) {
     // Ignore light outside the visibility cone.
     if (nl > cosa) {
       float nh = dot(n, h);
-      float g = g_smith(roughness, nl, nv) * hv / (nv * nh);
+      float g = G_smith(roughness, nl, nv) * hv / (nv * nh);
       float fc = pow(1.0f - hv, 5.0f);
       a += (1 - fc) * g;
       b += fc * g;
