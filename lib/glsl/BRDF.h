@@ -44,4 +44,35 @@ inline float D_ggx(float roughness, float NoH) {
   return alpha2 / (PI * q * q);
 }
 
+#if SLANG || __cplusplus
+
+DIFFERENTIABLE
+inline double F_schlick(double f0, double NoV) {
+  return f0 + (1.0 - f0) * pow(1.0 - NoV, 5.0);
+}
+
+DIFFERENTIABLE
+inline dvec3 F_schlick(dvec3 f0, double NoV) {
+  return f0 + (1.0 - f0) * pow(1.0 - NoV, 5.0);
+}
+
+inline double G_smith(double roughness, double NoL, double NoV) {
+  double alpha = roughness * roughness;
+  double alpha2 = alpha * alpha;
+  double NoL2 = NoL * NoL;
+  double NoV2 = NoV * NoV;
+  double lambda_L = sqrt(1.0 + alpha2 * (1.0 - NoL2) / NoL2);
+  double lambda_V = sqrt(1.0 + alpha2 * (1.0 - NoV2) / NoV2);
+  return 2.0 / (lambda_L + lambda_V);
+}
+
+inline double D_ggx(double roughness, double NoH) {
+  double alpha = roughness * roughness;
+  double alpha2 = alpha * alpha;
+  double q = 1 + NoH * NoH * (alpha2 - 1);
+  return alpha2 / (3.1416 * q * q);
+}
+
+#endif
+
 GLSL_NAMESPACE_END
