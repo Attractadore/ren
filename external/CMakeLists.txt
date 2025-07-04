@@ -106,6 +106,7 @@ if (REN_BUILD_BAKING_TOOLS)
   add_library(mikktspace::mikktspace ALIAS mikktspace)
 
   add_subdirectory(eigen)
+  target_compile_definitions(eigen INTERFACE EIGEN_DONT_PARALLELIZE)
   add_library(lbfgs INTERFACE)
   target_include_directories(lbfgs INTERFACE LBFGSpp/include)
   target_link_libraries(lbfgs INTERFACE Eigen3::Eigen)

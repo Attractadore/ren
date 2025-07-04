@@ -14,6 +14,10 @@ GLSL_NAMESPACE_BEGIN
 #define GLOBAL __global
 #endif
 
+static const uint MAX_NUM_SGS = 4;
+static const uint NUM_PARAMS = 4;
+static const double MIN_F0 = 0.02;
+
 struct DASG I_DIFFERENTIABLE {
   dvec3 z;
   dvec3 x;
@@ -42,31 +46,32 @@ inline double F_norm(double f0, double NoV) {
 
 DIFFERENTIABLE
 inline DASG make_asg(double phi, double a, double lx, double ly, double f0,
-                     dvec3 V, dvec3 B) {
+                     double roughness, dvec3 V) {
   dvec3 Z = {cos(phi), 0, sin(phi)};
-  dvec3 Y = B;
+  dvec3 Y = dvec3(0, 1, 0);
   dvec3 X = {-sin(phi), 0, cos(phi)};
   dvec3 H = normalize(Z + V);
+  double VoH = dot(V, H);
+  double NoV = V.z;
+  double NoL = Z.z;
+  double NoH = H.z;
   DASG asg = {};
   asg.z = Z;
   asg.x = X;
   asg.y = Y;
-  asg.a = a * F_norm(f0, dot(H, V));
-  asg.lx = lx * lx;
-  asg.ly = ly * ly;
+  asg.a = a * F_norm(f0, VoH) * D_ggx(roughness, NoH);
+  double alpha2 = roughness * roughness;
+  alpha2 = alpha2 * alpha2;
+  double l = 2 / alpha2;
+  asg.lx = lx * (l / 8);
+  asg.ly = ly * (l / (8 * NoV * NoV));
   return asg;
 };
 
-static const uint MAX_NUM_SGS = 4;
-static const uint NUM_PARAMS = 4;
-
 PUBLIC struct SgBrdfLossArgs {
-  dvec3 V;
-  dvec3 B;
+  double NoV;
+  double roughness;
   uint n;
-  const double *f0;
-  const dvec3 *L;
-  const double *y;
   uint g;
   const double *params;
   double *grad;

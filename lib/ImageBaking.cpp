@@ -29,6 +29,8 @@ auto fail(HRESULT hres) -> Failure<Error> {
   }());
 }
 
+} // namespace
+
 auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
   ren_assert(info.depth == 1 and not info.cube_map);
   u32 block_width = TinyImageFormat_WidthOfBlock(info.format);
@@ -139,6 +141,8 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
 }
 
 auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture2 *> {
+  ren_assert(info.num_layers > 0);
+
   ktx_error_code_e err = KTX_SUCCESS;
 
   ktxTextureCreateInfo create_info = {
@@ -148,9 +152,9 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture2 *> {
       .baseDepth = info.depth,
       .numDimensions = (u32)(info.depth > 1 ? 3 : 2),
       .numLevels = info.num_mips,
-      .numLayers = 1,
+      .numLayers = info.num_layers,
       .numFaces = u32(info.cube_map ? 6 : 1),
-      .isArray = false,
+      .isArray = info.num_layers > 1,
       .generateMipmaps = false,
   };
 
@@ -206,8 +210,6 @@ auto write_ktx_to_memory(const TextureInfo &info) -> expected<Blob> {
   }
   return {{blob_data, blob_size}};
 }
-
-} // namespace
 
 auto bake_color_map(const TextureInfo &info)
     -> expected<DirectX::ScratchImage> {

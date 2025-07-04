@@ -121,7 +121,7 @@ if (REN_BUILD_BAKING_TOOLS)
     DEPFILE ${SLANG_D}
     VERBATIM)
   add_executable(ren-bake-sg-brdf-lut bake-sg-brdf-lut.cpp ${SLANG_CPP})
-  target_link_libraries(ren-bake-sg-brdf-lut ren::core cxxopts::cxxopts lbfgs)
+  target_link_libraries(ren-bake-sg-brdf-lut ren::core ren::baking cxxopts::cxxopts lbfgs tiny_imageformat Microsoft::DirectXTex)
 endif()
 
 add_subdirectory(glsl)
