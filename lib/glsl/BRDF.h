@@ -56,6 +56,7 @@ inline dvec3 F_schlick(dvec3 f0, double NoV) {
   return f0 + (1.0 - f0) * pow(1.0 - NoV, 5.0);
 }
 
+DIFFERENTIABLE
 inline double G_smith(double roughness, double NoL, double NoV) {
   double alpha = roughness * roughness;
   double alpha2 = alpha * alpha;
@@ -66,11 +67,20 @@ inline double G_smith(double roughness, double NoL, double NoV) {
   return 2.0 / (lambda_L + lambda_V);
 }
 
+DIFFERENTIABLE
 inline double D_ggx(double roughness, double NoH) {
   double alpha = roughness * roughness;
   double alpha2 = alpha * alpha;
   double q = 1 + NoH * NoH * (alpha2 - 1);
   return alpha2 / (3.1416 * q * q);
+}
+
+inline dvec3 importance_sample_ggx(dvec2 Xi, double roughness) {
+  double alpha = roughness * roughness;
+  double z = sqrt((1 - Xi.x) / (1 + (alpha * alpha - 1) * Xi.x));
+  double r = sqrt(1 - z * z);
+  double phi = 6.2832 * Xi.y;
+  return dvec3(r * cos(phi), r * sin(phi), z);
 }
 
 #endif
