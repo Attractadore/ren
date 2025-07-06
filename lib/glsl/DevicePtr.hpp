@@ -1,6 +1,7 @@
 #pragma once
 #include "../core/Assert.hpp"
 #include "../core/StdDef.hpp"
+#include "Std.h"
 
 namespace ren {
 
@@ -66,3 +67,10 @@ private:
   static_assert(alignof(Type) == alignment)
 
 } // namespace ren
+
+GLSL_NAMESPACE_BEGIN
+
+static const uint DEFAULT_DEVICE_PTR_ALIGNMENT = 16;
+static const uint DEVICE_CACHE_LINE_SIZE = 128;
+
+GLSL_NAMESPACE_END

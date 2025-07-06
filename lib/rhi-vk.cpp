@@ -961,6 +961,7 @@ auto create_device(const DeviceCreateInfo &create_info) -> Result<Device> {
       .features = {
           .samplerAnisotropy = true,
           .textureCompressionBC = true,
+          .shaderFloat64 = true,
           .shaderInt64 = true,
           .shaderInt16 = true,
       }};

@@ -110,18 +110,8 @@ if (REN_BUILD_BAKING_TOOLS)
 
   add_executable(ren-bake-ibl bake-ibl.cpp)
   target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
-
-  find_program(SLANGC slangc REQUIRED)
-  set(SLANG_CPP ${CMAKE_CURRENT_BINARY_DIR}/bake-sg-brdf-lut.slang.cpp)
-  set(SLANG_D ${CMAKE_CURRENT_BINARY_DIR}/bake-sg-brdf-lut.slang.d)
-  add_custom_command(
-    OUTPUT ${SLANG_CPP}
-    DEPENDS ${CMAKE_CURRENT_LIST_DIR}/bake-sg-brdf-lut.slang
-    COMMAND ${SLANGC} -o ${SLANG_CPP} -target cpp -depfile ${SLANG_D} ${CMAKE_CURRENT_LIST_DIR}/bake-sg-brdf-lut.slang
-    DEPFILE ${SLANG_D}
-    VERBATIM)
   add_executable(ren-bake-sg-brdf-lut bake-sg-brdf-lut.cpp ${SLANG_CPP})
-  target_link_libraries(ren-bake-sg-brdf-lut ren::core ren::baking cxxopts::cxxopts lbfgs tiny_imageformat Microsoft::DirectXTex)
+  target_link_libraries(ren-bake-sg-brdf-lut ren::core ren-gfx ren::baking cxxopts::cxxopts lbfgs tiny_imageformat Microsoft::DirectXTex)
 endif()
 
 add_subdirectory(glsl)

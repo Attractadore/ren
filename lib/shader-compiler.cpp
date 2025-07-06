@@ -90,11 +90,11 @@ auto gen_rg_args(const CompileOptions &opts,
   const SpvReflectBlockVariable *pc = sm.GetPushConstantBlock(0, &result);
   if (result) {
     fmt::println(stderr, "Failed to get push constant block: {}", (int)result);
-    return -1;
+    return 0;
   }
   if (StringView(pc->name) != "pc") {
     fmt::println(stderr, "Unknown push constants name: {}", pc->name);
-    return -1;
+    return 0;
   }
 
   const SpvReflectTypeDescription *type = pc->type_description;
