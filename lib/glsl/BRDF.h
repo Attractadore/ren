@@ -48,12 +48,18 @@ inline float D_ggx(float roughness, float NoH) {
 
 DIFFERENTIABLE
 inline double F_schlick(double f0, double NoV) {
-  return f0 + (1.0 - f0) * pow(1.0 - NoV, 5.0);
+  double e = 1.0 - NoV;
+  double e2 = e * e;
+  double e5 = e2 * e2 * e;
+  return f0 + (1.0 - f0) * e5;
 }
 
 DIFFERENTIABLE
 inline dvec3 F_schlick(dvec3 f0, double NoV) {
-  return f0 + (1.0 - f0) * pow(1.0 - NoV, 5.0);
+  double e = 1.0 - NoV;
+  double e2 = e * e;
+  double e5 = e2 * e2 * e;
+  return f0 + (1.0 - f0) * e5;
 }
 
 DIFFERENTIABLE

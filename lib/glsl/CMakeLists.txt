@@ -6,10 +6,10 @@ endif()
 
 function(add_shader target shader_glsl)
   cmake_path(ABSOLUTE_PATH shader_glsl)
-  if(NOT EXISTS ${shader_glsl})
-    message(
-      FATAL_ERROR "Could not find shader source file ${shader_glsl}")
-  endif()
+  # if(NOT EXISTS ${shader_glsl})
+  #   message(
+  #     FATAL_ERROR "Could not find shader source file ${shader_glsl}")
+  # endif()
 
   cmake_path(GET shader_glsl FILENAME shader_filename)
   cmake_path(GET shader_glsl STEM shader_name)
@@ -60,4 +60,15 @@ if (TARGET ren-baking)
   add_shader(ren-baking BakeReflectionMap.comp)
   add_shader(ren-baking BakeSpecularMap.comp)
   add_shader(ren-baking BakeIrradianceMap.comp)
+
+  find_program(SLANGC slangc REQUIRED)
+  set(SLANG_COMP ${CMAKE_CURRENT_BINARY_DIR}/SgBrdfLoss.comp)
+  set(SLANG_D ${CMAKE_CURRENT_BINARY_DIR}/SgBrdfLoss.slang.d)
+  add_custom_command(
+    OUTPUT ${SLANG_COMP}
+    DEPENDS ${CMAKE_CURRENT_LIST_DIR}/SgBrdfLoss.slang
+    COMMAND ${SLANGC} -o ${SLANG_COMP} -entry main -target glsl -force-glsl-scalar-layout -depfile ${SLANG_D} ${CMAKE_CURRENT_LIST_DIR}/SgBrdfLoss.slang
+    DEPFILE ${SLANG_D}
+    VERBATIM)
+  add_shader(ren-baking ${SLANG_COMP})
 endif()

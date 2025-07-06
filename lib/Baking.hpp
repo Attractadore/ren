@@ -10,6 +10,7 @@ struct BakerPipelines {
   Handle<ComputePipeline> reflection_map;
   Handle<ComputePipeline> specular_map;
   Handle<ComputePipeline> irradiance_map;
+  Handle<ComputePipeline> sg_brdf_loss;
 };
 
 struct IBaker {

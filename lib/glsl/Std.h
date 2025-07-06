@@ -74,7 +74,13 @@ GLSL_NAMESPACE_END
 #endif
 
 GLSL_NAMESPACE_BEGIN
+
+#if SLANG
+static const float PI = 3.1416;
+static const float TWO_PI = 6.2832;
+#else
 const float PI = 3.1416;
 const float TWO_PI = 6.2832;
+#endif
 
 GLSL_NAMESPACE_END
