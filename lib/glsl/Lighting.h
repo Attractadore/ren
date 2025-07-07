@@ -3,7 +3,6 @@
 #include "DevicePtr.h"
 #include "Std.h"
 #include "Texture.h"
-#include "Vertex.h"
 #if GL_core_profile
 #include "Texture.glsl"
 #endif
@@ -17,25 +16,6 @@ struct DirectionalLight {
 };
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
-
-// GGX importance sampling function is given in "Microfacet Models for
-// Refraction through Rough Surfaces":
-// https://www.cs.cornell.edu/%7Esrm/publications/EGSR07-btdf.pdf
-inline vec3 importance_sample_ggx(vec2 xy, float roughness, vec3 n) {
-  float alpha = roughness * roughness;
-
-  float cos_theta =
-      sqrt((1.0f - xy.x) / (1.0f + (alpha * alpha - 1.0f) * xy.x));
-  float sin_theta = sqrt(1.0f - cos_theta * cos_theta);
-  float phi = 2.0f * PI * xy.y;
-
-  vec3 h = vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
-
-  vec3 t = normalize(ortho_vec(n));
-  vec3 b = cross(n, t);
-
-  return mat3(t, b, n) * h;
-}
 
 // https://math.stackexchange.com/a/1586015
 inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
