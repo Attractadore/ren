@@ -1,5 +1,6 @@
 #pragma once
 #include "Std.h"
+#include "Transforms.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -26,6 +27,7 @@ inline vec3 F_schlick(vec3 f0, float NoV) {
 // a(s) = dot(n, s) / (alpha * sqrt(1 - dot(n, s)^2))
 // A(s) = (-1 + sqrt(1 + alpha^2 * (1 - dot(n, s)^2) / dot(n, s)^2) / 2
 // clang-format on
+DIFFERENTIABLE
 inline float G_smith(float roughness, float nl, float nv) {
   float alpha = roughness * roughness;
   float alpha2 = alpha * alpha;
@@ -37,6 +39,7 @@ inline float G_smith(float roughness, float nl, float nv) {
   return G;
 }
 
+DIFFERENTIABLE
 inline float D_ggx(float roughness, float NoH) {
   float alpha = roughness * roughness;
   float alpha2 = alpha * alpha;
@@ -44,22 +47,35 @@ inline float D_ggx(float roughness, float NoH) {
   return alpha2 / (PI * q * q);
 }
 
-#if SLANG || __cplusplus
+// GGX importance sampling function is given in "Microfacet Models for
+// Refraction through Rough Surfaces":
+// https://www.cs.cornell.edu/%7Esrm/publications/EGSR07-btdf.pdf
+inline vec3 importance_sample_ggx(vec2 Xi, float roughness) {
+  float alpha = roughness * roughness;
+  float z = sqrt((1.0f - Xi.x) / (1.0f + (alpha * alpha - 1.0f) * Xi.x));
+  z = min(z, 1.0f);
+  float r = sqrt(1.0f - z * z);
+  float phi = TWO_PI * Xi.y;
+  return vec3(r * cos(phi), r * sin(phi), z);
+}
+
+inline vec3 importance_sample_ggx(vec2 Xi, float roughness, vec3 N) {
+  vec3 H = importance_sample_ggx(Xi, roughness);
+  vec3 T = normalize(ortho_vec(N));
+  vec3 B = cross(N, T);
+  return mat3(T, B, N) * H;
+}
+
+#if __cplusplus
 
 DIFFERENTIABLE
 inline double F_schlick(double f0, double NoV) {
-  double e = 1.0 - NoV;
-  double e2 = e * e;
-  double e5 = e2 * e2 * e;
-  return f0 + (1.0 - f0) * e5;
+  return f0 + (1 - f0) * pow(1 - NoV, 5);
 }
 
 DIFFERENTIABLE
 inline dvec3 F_schlick(dvec3 f0, double NoV) {
-  double e = 1.0 - NoV;
-  double e2 = e * e;
-  double e5 = e2 * e2 * e;
-  return f0 + (1.0 - f0) * e5;
+  return f0 + (1.0 - f0) * pow(1 - NoV, 5);
 }
 
 DIFFERENTIABLE

@@ -27,11 +27,11 @@ namespace {
 
 struct GpuContext {
   Handle<ComputePipeline> kernel;
-  BufferSlice<double> f_norm_lut;
-  BufferSlice<double> params;
-  BufferSlice<double> loss;
-  BufferSlice<double> loss0;
-  BufferSlice<double> grad;
+  BufferSlice<float> f_norm_lut;
+  BufferSlice<float> params;
+  BufferSlice<float> loss;
+  BufferSlice<float> loss0;
+  BufferSlice<float> grad;
   NotNull<Renderer *> renderer;
   Handle<CommandPool> cmd_pool;
 };
@@ -44,7 +44,7 @@ constexpr usize NUM_F_NORM_LUT_POINTS = 1024;
 constexpr usize ROUGHNESS_SIZE = 32;
 constexpr usize NoV_SIZE = 32;
 
-void init_F_norm_lut(double *f_norm_lut, double roughness, double NoV) {
+void init_F_norm_lut(float *f_norm_lut, double roughness, double NoV) {
   double ToV = glm::sqrt(1 - NoV * NoV);
   glm::dvec3 V = {ToV, 0, NoV};
   for (usize i : range(glsl::F_NORM_LUT_SIZE)) {
@@ -72,7 +72,7 @@ void sort_params(Eigen::VectorXd &params) {
   for (usize k : range(g)) {
     phis[k] = {params[k * glsl::NUM_PARAMS + 0], k};
   }
-  std::ranges::sort(phis);
+  std::ranges::sort(phis, &phis[g]);
   double unsorted_params[glsl::MAX_NUM_SGS * glsl::NUM_PARAMS];
   std::ranges::copy(params, unsorted_params);
   for (usize k : range(g)) {
@@ -96,6 +96,8 @@ auto minimize_local(const GpuContext &ctx,
 
   auto loss_f = [&](const Eigen::VectorXd &params,
                     Eigen::VectorXd &grad) -> double {
+    ZoneScoped;
+
     CommandRecorder cmd;
     cmd.begin(*ctx.renderer, ctx.cmd_pool).value();
 
@@ -107,8 +109,8 @@ auto minimize_local(const GpuContext &ctx,
         .loss = ctx.renderer->get_buffer_device_ptr(ctx.loss),
         .loss0 = ctx.renderer->get_buffer_device_ptr(ctx.loss0),
         .grad = ctx.renderer->get_buffer_device_ptr(ctx.grad),
-        .NoV = NoV,
-        .roughness = roughness,
+        .NoV = (float)NoV,
+        .roughness = (float)roughness,
         .n = NUM_POINTS,
         .g = g,
     });
@@ -119,25 +121,20 @@ auto minimize_local(const GpuContext &ctx,
     ctx.renderer->wait_idle();
     ctx.renderer->reset_command_pool(ctx.cmd_pool).value();
 
-    const double *rb_loss = ctx.renderer->map_buffer(ctx.loss);
-    const double *rb_loss0 = ctx.renderer->map_buffer(ctx.loss0);
-    double loss = 0;
-    double loss0 = 0;
-    for (usize i : range(NUM_POINTS / 32)) {
-      loss += rb_loss[i];
-      loss0 += rb_loss0[i];
-    }
-    loss /= loss0;
+    Span rb_loss0(ctx.renderer->map_buffer(ctx.loss0), NUM_POINTS / 32);
+    double loss0 = std::reduce(rb_loss0.begin(), rb_loss0.end(), 0.0);
+    ren_assert(not glm::isinf(loss0) and not glm::isnan(loss0));
 
-    const double *rb_grad = ctx.renderer->map_buffer(ctx.grad);
-    grad.setZero();
-    for (usize i : range(NUM_POINTS / 32)) {
-      for (usize k : range(g * glsl::NUM_PARAMS)) {
-        grad[k] += *(rb_grad++);
-      }
-    }
+    Span rb_loss(ctx.renderer->map_buffer(ctx.loss), NUM_POINTS / 32);
+    double loss = std::reduce(rb_loss.begin(), rb_loss.end(), 0.0) / loss0;
+    ren_assert(not glm::isinf(loss) and not glm::isnan(loss));
+
+    float *rb_grad = ctx.renderer->map_buffer(ctx.grad);
     for (usize k : range(g * glsl::NUM_PARAMS)) {
-      grad[k] /= loss0;
+      auto v = Span(&rb_grad[NUM_POINTS / 32 * k], NUM_POINTS / 32);
+      grad[k] = std::reduce(v.begin(), v.end(), 0.0) / loss0;
+      ren_assert(not glm::isinf(params[k]) and not glm::isnan(params[k]));
+      ren_assert(not glm::isinf(grad[k]) and not glm::isnan(grad[k]));
     }
 
 #if 0
@@ -153,18 +150,16 @@ auto minimize_local(const GpuContext &ctx,
     }
     fmt::println("Loss: {}", loss);
 #endif
-    ren_assert(not glm::isinf(loss) and not glm::isnan(loss));
-    for (usize k : range(params.size())) {
-      ren_assert(not glm::isinf(params[k]) and not glm::isnan(params[k]));
-      ren_assert(not glm::isinf(grad[k]) and not glm::isnan(grad[k]));
-    }
+
     return loss;
   };
   double loss;
   try {
     solver.minimize(loss_f, params, loss, lb, ub);
   } catch (const std::runtime_error &err) {
+#if 0
     fmt::println("Minimize failed: {}", err.what());
+#endif
     Eigen::VectorXd grad(params.size());
     loss = loss_f(params, grad);
   }
@@ -184,19 +179,16 @@ auto minimize_global(const GpuContext &ctx,
   std::uniform_real_distribution<double> udist;
 
   const double alpha2 = glm::pow(roughness, 4);
-  const double D_CUTOFF = 0.001;
+  const double D_CUTOFF = glm::max(glm::sqrt(0.01), alpha2);
+  const double LOBE_WIDTH =
+      2 *
+      glm::acos(glm::sqrt((alpha2 / glm::sqrt(D_CUTOFF) - 1) / (alpha2 - 1)));
+  ren_assert(not glm::isnan(LOBE_WIDTH));
+  ren_assert(LOBE_WIDTH <= PI);
 
-  const glm::dvec4 scale = {
-      glm::min(PI, glm::acos(glm::sqrt((alpha2 / glm::sqrt(D_CUTOFF) - 1) /
-                                       (alpha2 - 1)))),
-      1,
-      1,
-      1,
-  };
+  const glm::dvec4 scale = {LOBE_WIDTH, 1, 1, 1};
 
-  const usize g = params.size() / glsl::NUM_PARAMS;
-
-  const usize NUM_BH_ITERATIONS = 32;
+  const usize NUM_BH_ITERATIONS = 128;
   const double BH_TARGET_ACCEPT_RATIO = 0.5;
   const double BH_STEPWISE_FACTOR = 0.9;
   const usize BH_INTERVAL = 8;
@@ -208,8 +200,10 @@ auto minimize_global(const GpuContext &ctx,
   double bh_t = opt_loss * 0.01;
   double old_loss = opt_loss;
   Eigen::VectorXd old_params = params;
-  for (usize bhi : range(NUM_BH_ITERATIONS << (g - 1))) {
+  for (usize bhi : range(NUM_BH_ITERATIONS)) {
+#if 0
     fmt::println("Basin hopping iteration {}:", bhi + 1);
+#endif
 
     // Perturb parameters.
     for (usize k : range(params.size())) {
@@ -222,25 +216,33 @@ auto minimize_global(const GpuContext &ctx,
       ren_assert(params[k] <= ub[k]);
     }
     sort_params(params);
+#if 0
     fmt::println("Perturb parameters:");
-    for (usize k : range(g)) {
+    for (usize k : range(params.size() / glsl::NUM_PARAMS)) {
       fmt::println(
           "{}", Span(params.data() + k * glsl::NUM_PARAMS, glsl::NUM_PARAMS));
     }
+#endif
 
+#if 0
     fmt::println("Minimize:");
+#endif
     double loss = minimize_local(ctx, solver, roughness, NoV, params, lb, ub);
+#if 0
     fmt::println("Parameters:");
-    for (usize k : range(g)) {
+    for (usize k : range(params.size() / glsl::NUM_PARAMS)) {
       fmt::println(
           "{}", Span(params.data() + k * glsl::NUM_PARAMS, glsl::NUM_PARAMS));
     }
     fmt::println("Loss: {} ({}x better)", loss, opt_loss / loss);
+#endif
 
     // Accept or reject based on Metropolis criterion.
     double C = glm::exp(-(loss - old_loss) / bh_t);
     if (udist(rng) <= C) {
+#if 0
       fmt::println("Accept solution");
+#endif
       if (loss < opt_loss) {
         opt_params = params;
         opt_loss = loss;
@@ -248,22 +250,30 @@ auto minimize_global(const GpuContext &ctx,
       }
       bh_num_accepted++;
     } else {
+#if 0
       fmt::println("Reject solution");
+#endif
       params = old_params;
       loss = old_loss;
     }
 
     usize num_tested = bhi % BH_INTERVAL + 1;
     double accept_rate = double(bh_num_accepted) / num_tested;
+#if 0
     fmt::println("Accept rate: {:.2f}", accept_rate);
+#endif
 
     // Update step size.
     if (num_tested == BH_INTERVAL) {
       if (accept_rate > BH_TARGET_ACCEPT_RATIO) {
+#if 0
         fmt::println("Increase step size");
+#endif
         bh_stepsize /= BH_STEPWISE_FACTOR;
       } else {
+#if 0
         fmt::println("Decrease step size");
+#endif
         bh_stepsize *= BH_STEPWISE_FACTOR;
       }
       bh_num_accepted = 0;
@@ -271,8 +281,6 @@ auto minimize_global(const GpuContext &ctx,
 
     old_params = params;
     old_loss = loss;
-
-    fmt::print("\n");
   }
 
   ren_assert(opt_loss < INF);
@@ -294,34 +302,34 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
       .cmd_pool = baker->cmd_pool,
   };
 
-  ren_try(ctx.f_norm_lut, baker->arena.create_buffer<double>({
+  ren_try(ctx.f_norm_lut, baker->arena.create_buffer<float>({
                               .name = "F_norm LUT",
                               .heap = rhi::MemoryHeap::Readback,
                               .count = glsl::F_NORM_LUT_SIZE,
                           }));
 
-  ren_try(ctx.params, baker->arena.create_buffer<double>({
+  ren_try(ctx.params, baker->arena.create_buffer<float>({
                           .name = "Optimization parameters",
                           .heap = rhi::MemoryHeap::Readback,
-                          .count = NUM_POINTS / 32 * glsl::MAX_NUM_PARAMS,
+                          .count = NUM_POINTS * glsl::MAX_NUM_PARAMS,
                       }));
 
-  ren_try(ctx.loss, baker->arena.create_buffer<double>({
+  ren_try(ctx.loss, baker->arena.create_buffer<float>({
                         .name = "Loss",
                         .heap = rhi::MemoryHeap::Readback,
-                        .count = NUM_POINTS / 32,
+                        .count = NUM_POINTS,
                     }));
 
-  ren_try(ctx.loss0, baker->arena.create_buffer<double>({
+  ren_try(ctx.loss0, baker->arena.create_buffer<float>({
                          .name = "Loss0",
                          .heap = rhi::MemoryHeap::Readback,
-                         .count = NUM_POINTS / 32,
+                         .count = NUM_POINTS,
                      }));
 
-  ren_try(ctx.grad, baker->arena.create_buffer<double>({
+  ren_try(ctx.grad, baker->arena.create_buffer<float>({
                         .name = "Gradient",
                         .heap = rhi::MemoryHeap::Readback,
-                        .count = NUM_POINTS / 32 * glsl::MAX_NUM_PARAMS,
+                        .count = NUM_POINTS * glsl::MAX_NUM_PARAMS,
                     }));
 
   double lut_loss[glsl::MAX_NUM_SGS][NoV_SIZE][ROUGHNESS_SIZE];
@@ -360,10 +368,10 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
     } else {
       params.conservativeResize(g * glsl::NUM_PARAMS);
       double *p = &params[(g - 1) * glsl::NUM_PARAMS];
-      p[0] = params[(g - 2) * glsl::NUM_PARAMS + 0];
-      p[1] = 0;
-      p[2] = params[(g - 2) * glsl::NUM_PARAMS + 2];
-      p[3] = params[(g - 2) * glsl::NUM_PARAMS + 3];
+      p[0] = INIT_PHI;
+      p[1] = 1;
+      p[2] = 1;
+      p[3] = 1;
       sort_params(params);
     }
 
@@ -373,17 +381,26 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
       ub[i * glsl::NUM_PARAMS + 0] = 2 * PI;
     }
 
+    fmt::println("Fit {} ASG(s) at ({}, {})", g, INIT_IROUGHNESS, INIT_INoV);
+
+#if 0
+    fmt::println("Initial parameters:");
+    for (usize k : range(g)) {
+      fmt::println(
+          "{}", Span(params.data() + k * glsl::NUM_PARAMS, glsl::NUM_PARAMS));
+    }
+#endif
+
     double loss =
         minimize_global(ctx, solver, INIT_ROUGHNESS, INIT_NoV, params, lb, ub);
-
-    fmt::println("Fit {} ASG(s) at ({}, {})", g, INIT_IROUGHNESS, INIT_INoV);
+#if 0
     fmt::println("Optimal parameters:");
     for (usize k : range(g)) {
       fmt::println(
           "{}", Span(params.data() + k * glsl::NUM_PARAMS, glsl::NUM_PARAMS));
     }
+#endif
     fmt::println("Loss: {}", loss);
-    fmt::print("\n");
 
     lut_loss[g - 1][INIT_INoV][INIT_IROUGHNESS] = loss;
     lut_params[g - 1][INIT_INoV][INIT_IROUGHNESS] = params;
@@ -407,7 +424,7 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
         init_F_norm_lut(ctx.renderer->map_buffer(ctx.f_norm_lut), roughness,
                         NoV);
 
-        fmt::println("Fit {} ASG(s) at ({}, {}):", g, iroughness, iNoV);
+        fmt::println("Fit {} ASG(s) at ({}, {})", g, iroughness, iNoV);
 
         if (iroughness + 1 < ROUGHNESS_SIZE) {
           params = lut_params[g - 1][iNoV][iroughness + 1];
@@ -423,11 +440,13 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
         double loss =
             minimize_global(ctx, solver, roughness, NoV, params, lb, ub);
 
+#if 0
         fmt::println("Optimal parameters:");
         for (usize k : range(g)) {
           fmt::println("{}", Span(params.data() + k * glsl::NUM_PARAMS,
                                   glsl::NUM_PARAMS));
         }
+#endif
         fmt::println("Loss: {}", loss);
 
         lut_loss[g - 1][iNoV][iroughness] = loss;

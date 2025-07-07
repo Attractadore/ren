@@ -62,7 +62,10 @@ auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
   return rhi::is_queue_family_supported(m_adapter, queue_family);
 }
 
-void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
+void Renderer::wait_idle() {
+  ZoneScoped;
+  rhi::device_wait_idle(m_device).value();
+}
 
 auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
     -> Result<Handle<Buffer>, Error> {
@@ -323,6 +326,7 @@ auto Renderer::get_command_pool(Handle<CommandPool> pool)
 
 auto Renderer::reset_command_pool(Handle<CommandPool> pool)
     -> Result<void, Error> {
+  ZoneScoped;
   return rhi::reset_command_pool(m_device, get_command_pool(pool).handle);
 }
 
@@ -495,6 +499,7 @@ auto Renderer::submit(rhi::QueueFamily queue_family,
                       TempSpan<const SemaphoreState> wait_semaphores,
                       TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void, Error> {
+  ZoneScoped;
   SmallVector<rhi::SemaphoreState> semaphore_states(wait_semaphores.size() +
                                                     signal_semaphores.size());
   for (usize i : range(wait_semaphores.size())) {

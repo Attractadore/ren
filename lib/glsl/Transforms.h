@@ -87,4 +87,11 @@ inline uint hilbert_from_2d(uint n, uint x, uint y) {
   return d;
 }
 
+inline vec3 ortho_vec(vec3 v) {
+  if (abs(v.y) > abs(v.z)) {
+    return vec3(v.y, -v.x, 0.0f);
+  }
+  return vec3(v.z, 0.0f, -v.x);
+}
+
 GLSL_NAMESPACE_END

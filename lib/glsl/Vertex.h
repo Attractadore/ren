@@ -1,6 +1,7 @@
 #pragma once
 #include "DevicePtr.h"
 #include "Std.h"
+#include "Transforms.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -104,13 +105,6 @@ struct Tangent {
 };
 
 GLSL_DEFINE_PTR_TYPE(Tangent, 2);
-
-inline vec3 ortho_vec(vec3 v) {
-  if (abs(v.y) > abs(v.z)) {
-    return vec3(v.y, -v.x, 0.0f);
-  }
-  return vec3(v.z, 0.0f, -v.x);
-}
 
 inline float sq_wrap(float v) {
   return (2.0f - abs(v)) * (v >= 0.0f ? 1.0f : -1.0f);
