@@ -24,7 +24,6 @@ struct SgBrdfLossArgs {
   GLSL_PTR(float) f_norm_lut;
   GLSL_PTR(float) params;
   GLSL_PTR(FloatBox) loss;
-  GLSL_PTR(FloatBox) loss0;
   GLSL_PTR(FloatBox) grad;
   float NoV;
   float roughness;
