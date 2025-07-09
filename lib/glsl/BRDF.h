@@ -66,6 +66,54 @@ inline vec3 importance_sample_ggx(vec2 Xi, float roughness, vec3 N) {
   return mat3(T, B, N) * H;
 }
 
+// https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/lectures/168-lecture9.pdf
+inline vec3 importance_sample_cosine_weighted_hemisphere(vec2 Xi) {
+  float phi = Xi.x * TWO_PI;
+  float z = sqrt(Xi.y);
+  float r = sqrt(1.0f - Xi.y);
+  return vec3(r * cos(phi), r * sin(phi), z);
+}
+
+inline vec3 importance_sample_cosine_weighted_hemisphere(vec2 Xi, vec3 N) {
+  vec3 R = importance_sample_cosine_weighted_hemisphere(Xi);
+  vec3 T = normalize(ortho_vec(N));
+  vec3 B = cross(N, T);
+  return mat3(T, B, N) * R;
+}
+
+inline vec3 importance_sample_lambertian(vec2 Xi, vec3 N) {
+  return importance_sample_cosine_weighted_hemisphere(Xi, N);
+}
+
+// https://math.stackexchange.com/a/1586015
+inline vec3 uniform_sample_hemisphere(vec2 Xi) {
+  float phi = Xi.x * TWO_PI;
+  float z = Xi.y;
+  float r = sqrt(1.0f - z * z);
+  return vec3(r * cos(phi), r * sin(phi), z);
+}
+
+inline vec3 uniform_sample_hemisphere(vec2 Xi, vec3 N) {
+  vec3 R = uniform_sample_hemisphere(Xi);
+  vec3 T = normalize(ortho_vec(N));
+  vec3 B = cross(N, T);
+  return mat3(T, B, N) * R;
+}
+
+inline vec3 uniform_sample_sphere(vec2 Xi) {
+  float phi = Xi.x * TWO_PI;
+  float z = mix(-1.0f, 1.0f, Xi.y);
+  float r = sqrt(1.0f - z * z);
+  return vec3(r * cos(phi), r * sin(phi), z);
+}
+
+inline vec3 uniform_sample_sphere(vec2 Xi, vec3 N) {
+  vec3 R = uniform_sample_sphere(Xi);
+  vec3 T = normalize(ortho_vec(N));
+  vec3 B = cross(N, T);
+  return mat3(T, B, N) * R;
+}
+
 #if __cplusplus
 
 DIFFERENTIABLE

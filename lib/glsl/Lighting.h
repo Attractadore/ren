@@ -17,36 +17,6 @@ struct DirectionalLight {
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
 
-// https://math.stackexchange.com/a/1586015
-inline vec3 uniform_sample_hemisphere(vec2 xy, vec3 n) {
-  float phi = xy.x * TWO_PI;
-  float z = xy.y;
-  float r = sqrt(1.0f - z * z);
-  vec3 d = vec3(r * cos(phi), r * sin(phi), z);
-
-  vec3 t = normalize(ortho_vec(n));
-  vec3 b = cross(n, t);
-
-  return mat3(t, b, n) * d;
-}
-
-// https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/lectures/168-lecture9.pdf
-inline vec3 importance_sample_cosine_weighted_hemisphere(vec2 xi, vec3 n) {
-  float phi = xi.x * TWO_PI;
-  float cos_theta = sqrt(xi.y);
-  float sin_theta = sqrt(1.0f - xi.y);
-  vec3 d = vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
-
-  vec3 t = normalize(ortho_vec(n));
-  vec3 b = cross(n, t);
-
-  return mat3(t, b, n) * d;
-}
-
-inline vec3 importance_sample_lambertian(vec2 xy, vec3 n) {
-  return importance_sample_cosine_weighted_hemisphere(xy, n);
-}
-
 inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
                      float roughness, vec3 illuminance) {
   float alpha = roughness * roughness;
