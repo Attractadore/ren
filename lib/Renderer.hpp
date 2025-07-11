@@ -31,6 +31,7 @@ struct ImageViewDesc {
   u32 base_mip = 0;
   u32 num_mips = 0;
   u32 base_layer = 0;
+  u32 num_layers = 0;
 
 public:
   bool operator==(const ImageViewDesc &) const = default;

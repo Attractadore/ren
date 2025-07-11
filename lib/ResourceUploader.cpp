@@ -40,6 +40,7 @@ auto ResourceUploader::create_texture(ResourceArena &arena,
                             .depth = ktx_texture2->baseDepth,
                             .cube_map = ktx_texture2->numFaces > 1,
                             .num_mips = ktx_texture2->numLevels,
+                            .num_layers = ktx_texture2->numLayers,
                         }));
   stage_texture(allocator, ktxTexture(ktx_texture2), texture);
   return texture;

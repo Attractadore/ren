@@ -24,6 +24,7 @@ struct TextureCreateInfo {
   u32 depth : 31 = 1;
   bool cube_map : 1 = false;
   u32 num_mips = 1;
+  u32 num_layers = 1;
 };
 
 struct ExternalTextureCreateInfo {
@@ -35,6 +36,7 @@ struct ExternalTextureCreateInfo {
   u32 height = 1;
   u32 depth = 1;
   u32 num_mips = 1;
+  u32 num_layers = 1;
 };
 
 struct Texture {
@@ -51,6 +53,7 @@ struct Texture {
   };
   bool cube_map = false;
   u32 num_mips = 0;
+  u32 num_layers = 0;
 };
 
 constexpr u32 ALL_MIPS = -1;
@@ -69,6 +72,8 @@ struct SrvDesc {
   rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
   u32 base_mip = 0;
   u32 num_mips = ALL_MIPS;
+  u32 base_layer = 0;
+  u32 num_layers = ALL_LAYERS;
 };
 
 struct UavDesc {
@@ -76,6 +81,8 @@ struct UavDesc {
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageViewDimension dimension = rhi::ImageViewDimension::e2D;
   u32 mip = 0;
+  u32 base_layer = 0;
+  u32 num_layers = ALL_LAYERS;
 };
 
 struct RtvDesc {

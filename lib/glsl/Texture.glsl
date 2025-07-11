@@ -14,6 +14,7 @@ layout(binding = SRV_SLOT) uniform texture2D g_textures_2d[MAX_NUM_RESOURCES];
 layout(binding = SRV_SLOT) uniform texture2D g_textures_3d[MAX_NUM_RESOURCES];
 
 layout(binding = CIS_SLOT) uniform sampler2D g_sampled_textures_2d[MAX_NUM_RESOURCES];
+layout(binding = CIS_SLOT) uniform sampler2DArray g_sampled_textures_2d_array[MAX_NUM_RESOURCES];
 layout(binding = CIS_SLOT) uniform samplerCube g_sampled_textures_cube[MAX_NUM_RESOURCES];
 layout(binding = CIS_SLOT) uniform sampler3D g_sampled_textures_3d[MAX_NUM_RESOURCES];
 
@@ -59,6 +60,10 @@ vec4 texel_fetch(SampledTexture2D t, ivec2 pos, int lod) {
 
 ivec2 texture_size(SampledTexture2D t) {
   return textureSize(g_sampled_textures_2d[t.id], 0);
+}
+
+vec4 texture(SampledTexture2DArray t, vec3 uv) {
+  return texture(g_sampled_textures_2d_array[t.id], uv);
 }
 
 #define texture_gather(t, p, comp) textureGather(g_sampled_textures_2d[t.id], p, comp)
