@@ -474,10 +474,13 @@ auto load(bool headless) -> Result<void> {
     std::ignore = rhi::load_gfx_debugger();
     fmt::println("vk: Load Vulkan");
     if (not headless) {
+      fmt::println("SDL2: Load Vulkan");
       if (SDL_Vulkan_LoadLibrary(nullptr)) {
+        fmt::println("SDL2: {}", SDL_GetError());
         return VK_ERROR_UNKNOWN;
       }
     }
+    fmt::println("vk: Initialize volk");
     return volkInitialize();
   }();
   if (result) {
@@ -1564,7 +1567,9 @@ auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
               .levelCount = create_info.num_mips,
               .baseArrayLayer = create_info.base_layer,
               .layerCount =
-                  create_info.dimension == ImageViewDimension::eCube ? 6u : 1u,
+                  (create_info.dimension == ImageViewDimension::eCube ? 6u
+                                                                      : 1u) *
+                  create_info.num_layers,
           },
   };
   ImageView view;

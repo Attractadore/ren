@@ -108,6 +108,11 @@ struct SampledTexture2D {
 };
 GLSL_DEFINE_PTR_TYPE(SampledTexture2D, TEXTURE_ID_SIZE);
 
+struct SampledTexture2DArray {
+  DEFINE_DESCRIPTOR(SampledTexture2DArray, SampledTexture)
+};
+GLSL_DEFINE_PTR_TYPE(SampledTexture2DArray, TEXTURE_ID_SIZE);
+
 struct SampledTextureCube {
   DEFINE_DESCRIPTOR(SampledTextureCube, SampledTexture)
 };

@@ -301,6 +301,7 @@ struct ImageViewCreateInfo {
   u32 base_mip = 0;
   u32 num_mips = 0;
   u32 base_layer = 0;
+  u32 num_layers = 0;
 };
 
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)

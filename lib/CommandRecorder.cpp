@@ -46,7 +46,7 @@ void CommandRecorder::copy_buffer_to_texture(const BufferView &src,
   ren_assert(base_mip + num_mips <= texture.num_mips);
   rhi::ImageAspectMask aspect_mask =
       rhi::get_format_aspect_mask(texture.format);
-  u32 num_layers = (texture.cube_map ? 6 : 1);
+  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
   usize offset = src.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
@@ -75,7 +75,7 @@ void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
   ren_assert(base_mip + num_mips <= texture.num_mips);
   rhi::ImageAspectMask aspect_mask =
       rhi::get_format_aspect_mask(texture.format);
-  u32 num_layers = (texture.cube_map ? 6 : 1);
+  u32 num_layers = (texture.cube_map ? 6 : 1) * num_layers;
   usize offset = dst.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);
@@ -111,7 +111,7 @@ void CommandRecorder::clear_texture(Handle<Texture> handle,
                  .color = color,
                  .aspect_mask = rhi::get_format_aspect_mask(texture.format),
                  .num_mips = texture.num_mips,
-                 .num_layers = texture.cube_map ? 6u : 1u,
+                 .num_layers = (texture.cube_map ? 6u : 1u) * texture.num_layers,
              });
 }
 
@@ -127,7 +127,7 @@ void CommandRecorder::pipeline_barrier(
         .aspect_mask = rhi::get_format_aspect_mask(texture.format),
         .base_mip = barrier.resource.base_mip,
         .num_mips = barrier.resource.num_mips,
-        .num_layers = texture.cube_map ? 6u : 1u,
+        .num_layers = (texture.cube_map ? 6u : 1u) * texture.num_layers,
         .src_stage_mask = barrier.src_stage_mask,
         .src_access_mask = barrier.src_access_mask,
         .src_layout = barrier.src_layout,
