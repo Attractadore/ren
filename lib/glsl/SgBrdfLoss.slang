@@ -27,7 +27,6 @@ ASG make_asg(float phi, float a, float lx, float ly, float f0, float roughness,
   vec3 H = normalize(Z + V);
   float VoH = dot(V, H);
   float NoV = V.z;
-  float NoL = Z.z;
   float NoH = H.z;
   ASG asg = {};
   asg.z = Z;

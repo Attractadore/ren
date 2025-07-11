@@ -31,6 +31,10 @@ namespace {
 constexpr u8 SO_LUT_KTX2[] = {
 #include "../assets/so-lut.ktx2.inc"
 };
+
+constexpr u8 SG_BRDF_LUT_KTX2[] = {
+#include "../assets/sg-brdf-lut.ktx2.inc"
+};
 } // namespace
 
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
@@ -79,6 +83,22 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       m_descriptor_allocator
           .allocate_sampled_texture<glsl::SampledTexture3D>(
               *m_renderer, SrvDesc{so_lut},
+              {
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_w = rhi::SamplerAddressMode::ClampToEdge,
+              })
+          .value();
+
+  Handle<Texture> sg_brdf_lut =
+      create_texture(SG_BRDF_LUT_KTX2, sizeof(SG_BRDF_LUT_KTX2)).value();
+  m_data.sg_brdf_lut =
+      m_descriptor_allocator
+          .allocate_sampled_texture<glsl::SampledTexture2DArray>(
+              *m_renderer, SrvDesc{sg_brdf_lut},
               {
                   .mag_filter = rhi::Filter::Linear,
                   .min_filter = rhi::Filter::Linear,
@@ -674,6 +694,11 @@ void Scene::draw_imgui() {
                            4.0f);
         ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
         ImGui::EndDisabled();
+      }
+
+      ImGui::SeparatorText("SG BRDF");
+      {
+        ImGui::SliderInt("BRDF SG count", &settings.num_brdf_sgs, 0, 4);
       }
 
       ImGui::End();

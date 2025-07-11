@@ -3,6 +3,7 @@
 #include "Material.h"
 #include "Texture.glsl"
 #include "Transforms.h"
+#include "SG.h"
 
 layout(location = A_POSITION) in vec3 a_position;
 
@@ -40,9 +41,13 @@ void main() {
     roughness *= orm.g;
     metallic *= orm.b;
   }
+  roughness = 0.3f;
 
   vec3 albedo = mix(color.rgb, vec3(0.0f), metallic);
   vec3 f0 = F_schlick_f0(color.rgb, metallic);
+
+  // albedo = mix(vec3(0, 0, 1), vec3(1, 0, 0), roughness);
+  albedo = vec3(0.0f);
 
   vec3 normal = a_normal;
   if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {
@@ -60,7 +65,60 @@ void main() {
   vec3 view = normalize(pc.eye - a_position);
   for (int i = 0; i < pc.num_directional_lights; ++i) {
     DirectionalLight light = DEREF(pc.directional_lights[i]);
-    result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
+    if (pc.num_brdf_sgs == 0) {
+      result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
+    } else {
+      vec3 N = normal;
+      vec3 V = view;
+      vec3 L = light.origin;
+      float NoV = dot(N, V);
+      float NoL = dot(N, L);
+
+      vec3 kd = albedo * NoL / PI;
+      vec3 ks = vec3(0.0f);
+
+      vec3 B = normalize(cross(N, V));
+      vec3 T = cross(B, N);
+      mat3 TBN = mat3(T, B, N);
+
+      float alpha2 = roughness * roughness;
+      alpha2 = alpha2 * alpha2;
+      float sh0 = 2.0f / alpha2;
+      float shx0 = sh0 / 8;
+      float shy0 = sh0 / (8 * NoV * NoV);
+
+      uint base_sg = (pc.num_brdf_sgs - 1) * pc.num_brdf_sgs / 2;
+      for (uint i = 0; i < pc.num_brdf_sgs; ++i) {
+        vec4 params = texture(pc.raw_sg_brdf_lut, vec3(roughness, NoV, base_sg + i));
+        float phi = params[0];
+        float a = params[1];
+        float lx = params[2];
+        float ly = params[3];
+
+        float cos_phi = cos(phi);
+        float sin_phi = sin(phi);
+        vec3 Z = TBN * vec3(cos_phi, 0.0f, sin_phi);
+        vec3 Y = B;
+        vec3 X = TBN * vec3(-sin_phi, 0.0f, cos_phi);
+        vec3 H = normalize(Z + V);
+        float NoH = dot(N, H);
+        float VoH = dot(V, H);
+
+        ASG asg;
+        asg.z = Z;
+        asg.x = X;
+        asg.y = Y;
+        asg.a = a * D_ggx(roughness, NoH) / (4.0f * NoV);
+        asg.lx = (lx * lx) * shx0;
+        asg.ly = (ly * ly) * shy0;
+
+        ks += F_schlick(f0, VoH) * eval_asg(asg, L);
+      }
+
+      vec3 E_p = light.color * light.illuminance;
+      result.xyz += NoL > 0.0f ? E_p * (kd + ks) : vec3(0.0f);
+    }
+
   }
 
   float ka = 1.0f;
@@ -72,11 +130,13 @@ void main() {
   }
   ka = ka * occlusion;
 
+#if 0
   if (!IS_NULL_DESC(pc.raw_env_map)) {
     result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, pc.raw_so_lut);
   } else {
     result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, pc.raw_so_lut);
   }
+#endif
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
   result.xyz *= exposure;

@@ -23,6 +23,8 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   vec3 env_luminance;
   SampledTextureCube raw_env_map;
   SampledTexture3D raw_so_lut;
+  uint num_brdf_sgs;
+  SampledTexture2DArray raw_sg_brdf_lut;
 }
 GLSL_PC;
 
