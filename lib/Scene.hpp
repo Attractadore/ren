@@ -63,6 +63,8 @@ struct SceneGraphicsSettings {
   float ssao_lod_bias = 0.0f;
   bool ssao_full_res = false;
 
+  i32 num_brdf_sgs = 2;
+
   bool amd_anti_lag = true;
 };
 
@@ -85,6 +87,7 @@ struct SceneData {
   GenArray<DirectionalLight> directional_lights;
 
   glsl::SampledTexture3D so_lut;
+  glsl::SampledTexture2DArray sg_brdf_lut;
 
   glm::vec3 env_luminance = {};
   glsl::SampledTextureCube env_map;

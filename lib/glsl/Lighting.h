@@ -17,44 +17,22 @@ struct DirectionalLight {
 
 GLSL_DEFINE_PTR_TYPE(DirectionalLight, 4);
 
-inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
-                     float roughness, vec3 illuminance) {
-  float alpha = roughness * roughness;
-  float alpha2 = alpha * alpha;
+inline vec3 lighting(vec3 N, vec3 L, vec3 V, vec3 albedo, vec3 f0,
+                     float roughness, vec3 E_p) {
+  float NoV = dot(N, V);
+  float NoL = dot(N, L);
+  vec3 H = normalize(V + L);
+  float NoH = dot(N, H);
+  float VoH = dot(V, H);
 
-  vec3 h = normalize(v + l);
+  vec3 kd = albedo * NoL / PI;
 
-  float nl = dot(n, l);
-  float nl2 = nl * nl;
-  float nv = dot(n, v);
-  float nv2 = nv * nv;
-  float nh = dot(n, h);
-  float nh2 = nh * nh;
-  float lh = dot(l, h);
+  vec3 F = F_schlick(f0, VoH);
+  float G = G_smith(roughness, NoL, NoV);
+  float D = D_ggx(roughness, NoH);
+  vec3 ks = F * (G * D / (4.0f * NoV));
 
-  // clang-format off
-  // f_diff(l, v) = (1 - F(h, l)) * c / pi
-  // f_spec(l, v) = F(h, l) * G_2(l, v, h) * D(h) / (4 * dot(n, l) * dot(n, v))
-  // f(l, v) = f_diff(l, v) + f_spec(l, v)
-  // L_o = f(l, v) * E_p * dot(n, l)
-  // clang-format on
-
-  vec3 fresnel = F_schlick(f0, lh);
-
-  float smith = G_smith(roughness, nl, nv);
-
-  // clang-format off
-  // D(h) = alpha^2 / (pi * (1 + dot(n, h)^2 * (alpha^2 - 1))^2)
-  // clang-format on
-  float quot = 1.0f + nh2 * (alpha2 - 1.0f);
-  float ggx_pi = alpha2 / (quot * quot);
-
-  vec3 fs_nl_pi = (fresnel * smith * ggx_pi) / (4.0f * nv);
-  vec3 fd_nl_pi = albedo * nl;
-
-  vec3 L_o = float(nl > 0.0f) * (fd_nl_pi + fs_nl_pi) * illuminance / PI;
-
-  return L_o;
+  return NoL > 0.0f ? E_p * (kd + ks) : vec3(0.0f);
 }
 
 inline vec3 ka_with_interreflection(float ka, vec3 albedo) {

@@ -313,11 +313,16 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
       .znear = info.base.camera.near,
       .eye = info.base.camera.position,
       .inv_viewport = 1.0f / glm::vec2(cfg.swapchain->get_size()),
-      .ssao = pass.try_read_texture(info.ssao, rhi::FS_RESOURCE_IMAGE, scene.settings.ssao_full_res ? rhi::SAMPLER_NEAREST_CLAMP : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
+      .ssao = pass.try_read_texture(
+          info.ssao, rhi::FS_RESOURCE_IMAGE,
+          scene.settings.ssao_full_res ? rhi::SAMPLER_NEAREST_CLAMP
+                                       : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,
       .so_lut = scene.so_lut,
+      .num_brdf_sgs = (u32)scene.settings.num_brdf_sgs,
+      .sg_brdf_lut = scene.sg_brdf_lut,
   };
 }
 
