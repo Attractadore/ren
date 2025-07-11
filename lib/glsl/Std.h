@@ -38,6 +38,10 @@
 #define LOCAL_SIZE_2D(x, y) LOCAL_SIZE_3D(x, y, 1)
 #define LOCAL_SIZE(x) LOCAL_SIZE_3D(x, 1, 1)
 
+#ifndef SLANG
+#define static
+#endif
+
 #else
 
 #include <concepts>
@@ -75,12 +79,7 @@ GLSL_NAMESPACE_END
 
 GLSL_NAMESPACE_BEGIN
 
-#if SLANG
 static const float PI = 3.1416;
 static const float TWO_PI = 6.2832;
-#else
-const float PI = 3.1416;
-const float TWO_PI = 6.2832;
-#endif
 
 GLSL_NAMESPACE_END

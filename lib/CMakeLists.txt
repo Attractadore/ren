@@ -112,6 +112,10 @@ if (REN_BUILD_BAKING_TOOLS)
   target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
   add_executable(ren-bake-sg-brdf-lut bake-sg-brdf-lut.cpp ${SLANG_CPP})
   target_link_libraries(ren-bake-sg-brdf-lut ren::core ren-gfx ren::baking cxxopts::cxxopts lbfgs tiny_imageformat Microsoft::DirectXTex)
+
+  add_library(renpy SHARED renpy.cpp)
+  target_link_libraries(renpy ren::core tiny_imageformat KTX::ktx Microsoft::DirectXTex)
+  set_target_properties(renpy PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 endif()
 
 add_subdirectory(glsl)
