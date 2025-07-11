@@ -9,8 +9,8 @@ import glsl;
 [vk::push_constant]
 SgBrdfLossArgs pc;
 
-groupshared float params[MAX_NUM_PARAMS];
-groupshared float grad[MAX_NUM_PARAMS];
+groupshared float params[MAX_SG_BRDF_PARAMS];
+groupshared float grad[MAX_SG_BRDF_PARAMS];
 
 [Differentiable]
 float F_norm(no_diff float f0, float NoV) {
@@ -57,7 +57,7 @@ void main() {
 
   float loss;
 
-  if (gl_LocalInvocationIndex < pc.g * NUM_PARAMS) {
+  if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
     params[gl_LocalInvocationIndex] = pc.params[gl_LocalInvocationIndex];
     grad[gl_LocalInvocationIndex] = 0.0f;
   }
@@ -79,27 +79,27 @@ void main() {
     float w = (4.0f * max(VoH, 0)) / (D * NoH);
 
     float p = 0.0f;
-    [MaxIters(MAX_NUM_SGS)]
+    [MaxIters(MAX_SG_BRDF_SIZE)]
     for (uint g = 0; g < pc.g; ++g) {
-      uint k = g * NUM_PARAMS;
+      uint k = g * NUM_SG_BRDF_PARAMS;
       p += eval_asg(params[k + 0], params[k + 1], params[k + 2], params[k + 3],
                     f0, pc.roughness, V, L);
     }
     float delta = p - y;
     loss = WaveActiveSum(delta * delta * w);
 
-    [MaxIters(MAX_NUM_SGS)]
+    [MaxIters(MAX_SG_BRDF_SIZE)]
     for (uint g = 0; g < pc.g; ++g) {
-      DifferentialPair<float> dp[NUM_PARAMS];
-      for (uint k = 0; k < NUM_PARAMS; ++k) {
-        dp[k] = diffPair(params[g * NUM_PARAMS + k]);
+      DifferentialPair<float> dp[NUM_SG_BRDF_PARAMS];
+      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
+        dp[k] = diffPair(params[g * NUM_SG_BRDF_PARAMS + k]);
       }
       bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
                          2.0f * delta * w);
-      for (uint k = 0; k < NUM_PARAMS; ++k) {
+      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
         float s = WaveActiveSum(dp[k].d);
         if (WaveIsFirstLane()) {
-          grad[g * NUM_PARAMS + k] = s;
+          grad[g * NUM_SG_BRDF_PARAMS + k] = s;
         }
       }
     }
@@ -120,27 +120,27 @@ void main() {
     float w = 4.0f * PI;
 
     float p = 0.0f;
-    [MaxIters(MAX_NUM_SGS)]
+    [MaxIters(MAX_SG_BRDF_SIZE)]
     for (uint g = 0; g < pc.g; ++g) {
-      uint k = g * NUM_PARAMS;
+      uint k = g * NUM_SG_BRDF_PARAMS;
       p += eval_asg(params[k + 0], params[k + 1], params[k + 2], params[k + 3],
                     f0, pc.roughness, V, L);
     }
     float delta = p - y;
     loss += WaveActiveSum(delta * delta * w);
 
-    [MaxIters(MAX_NUM_SGS)]
+    [MaxIters(MAX_SG_BRDF_SIZE)]
     for (uint g = 0; g < pc.g; ++g) {
-      DifferentialPair<float> dp[NUM_PARAMS];
-      for (uint k = 0; k < NUM_PARAMS; ++k) {
-        dp[k] = diffPair(params[g * NUM_PARAMS + k]);
+      DifferentialPair<float> dp[NUM_SG_BRDF_PARAMS];
+      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
+        dp[k] = diffPair(params[g * NUM_SG_BRDF_PARAMS + k]);
       }
       bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
                          2.0f * delta * w);
-      for (uint k = 0; k < NUM_PARAMS; ++k) {
+      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
         float s = WaveActiveSum(dp[k].d);
         if (WaveIsFirstLane()) {
-          grad[g * NUM_PARAMS + k] += s;
+          grad[g * NUM_SG_BRDF_PARAMS + k] += s;
         }
       }
     }
@@ -151,7 +151,7 @@ void main() {
     pc.loss[gl_WorkGroupID.x].value = loss;
   }
 
-  if (gl_LocalInvocationIndex < pc.g * NUM_PARAMS) {
+  if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
     pc.grad[pc.n / 32 * gl_LocalInvocationIndex + gl_WorkGroupID.x].value =
         grad[gl_LocalInvocationIndex];
   }
