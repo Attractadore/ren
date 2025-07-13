@@ -1548,10 +1548,15 @@ namespace {} // namespace
 
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
     -> Result<ImageView> {
+  VkImageViewType type = to_vk(create_info.dimension);
+  if (create_info.num_layers > 1) {
+    ren_assert(type = VK_IMAGE_VIEW_TYPE_2D);
+    type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+  }
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
-      .viewType = to_vk(create_info.dimension),
+      .viewType = type,
       .format = to_vk(create_info.format),
       .components =
           {
