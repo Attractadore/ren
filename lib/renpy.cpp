@@ -26,6 +26,42 @@ extern "C" void ren_eval_brdf(size_t n, const float *cL, float *y, float f0,
   }
 }
 
+extern "C" void ren_eval_analytical_sg_brdf(size_t n, const float *cL, float *y,
+                                            float f0, float roughness,
+                                            float NoV) {
+  const glm::vec3 V = {glm::sqrt(1.0f - NoV * NoV), 0.0f, NoV};
+  const glm::vec3 R = {-V.x, 0.0f, V.z};
+
+  float alpha2 = glm::pow(roughness, 4.0f);
+  float sh0 = 2.0f / alpha2;
+  float shx0 = sh0 / 8;
+  float shy0 = sh0 / (8 * NoV * NoV);
+
+  glm::vec3 Z = R;
+  glm::vec3 Y = {0, 1, 0};
+  glm::vec3 X = {-R.z, 0.0f, R.x};
+  glm::vec3 H = normalize(Z + V);
+  float VoH = dot(V, H);
+
+  float F = glsl::F_schlick(f0, VoH);
+  float G = glsl::G_smith(roughness, NoV, NoV);
+  float A = 1.0f / (glsl::PI * alpha2);
+  float Q = 4.0f * NoV;
+
+  glsl::ASG asg;
+  asg.z = Z;
+  asg.x = X;
+  asg.y = Y;
+  asg.a = F * G * A / Q;
+  asg.lx = shx0;
+  asg.ly = shy0;
+
+  const auto *L = (const glm::vec3 *)cL;
+  for (usize i : range(n)) {
+    y[i] = glsl::eval_asg(asg, L[i]);
+  }
+}
+
 namespace {
 
 constexpr u8 SG_BRDF_LUT_KTX2[] = {
