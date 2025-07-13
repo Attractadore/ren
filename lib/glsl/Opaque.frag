@@ -1,9 +1,10 @@
 #include "Opaque.h"
 #include "Lighting.h"
 #include "Material.h"
+#include "Math.h"
+#include "SG.h"
 #include "Texture.glsl"
 #include "Transforms.h"
-#include "SG.h"
 
 layout(location = A_POSITION) in vec3 a_position;
 
@@ -41,13 +42,9 @@ void main() {
     roughness *= orm.g;
     metallic *= orm.b;
   }
-  roughness = 0.3f;
 
   vec3 albedo = mix(color.rgb, vec3(0.0f), metallic);
   vec3 f0 = F_schlick_f0(color.rgb, metallic);
-
-  // albedo = mix(vec3(0, 0, 1), vec3(1, 0, 0), roughness);
-  albedo = vec3(0.0f);
 
   vec3 normal = a_normal;
   if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {
@@ -72,6 +69,7 @@ void main() {
       vec3 V = view;
       vec3 L = light.origin;
       float NoV = dot(N, V);
+      float NvV = acos_0_to_1_fast(NoV);
       float NoL = dot(N, L);
 
       vec3 kd = albedo * NoL / PI;
@@ -88,8 +86,9 @@ void main() {
       float shy0 = sh0 / (8 * NoV * NoV);
 
       uint base_sg = (pc.num_brdf_sgs - 1) * pc.num_brdf_sgs / 2;
+      vec2 uv = sg_brdf_r_and_NvV_to_uv(roughness, NvV);
       for (uint i = 0; i < pc.num_brdf_sgs; ++i) {
-        vec4 params = texture(pc.raw_sg_brdf_lut, vec3(roughness, NoV, base_sg + i));
+        vec4 params = texture(pc.raw_sg_brdf_lut, vec3(uv, base_sg + i));
         float phi = params[0];
         float a = params[1];
         float lx = params[2];
@@ -108,12 +107,13 @@ void main() {
         asg.z = Z;
         asg.x = X;
         asg.y = Y;
-        asg.a = a * D_ggx(roughness, NoH) / (4.0f * NoV);
+        asg.a = a * D_ggx(roughness, NoH);
         asg.lx = (lx * lx) * shx0;
         asg.ly = (ly * ly) * shy0;
 
         ks += F_schlick(f0, VoH) * eval_asg(asg, L);
       }
+      ks = ks / (4.0f * NoV);
 
       vec3 E_p = light.color * light.illuminance;
       result.xyz += NoL > 0.0f ? E_p * (kd + ks) : vec3(0.0f);

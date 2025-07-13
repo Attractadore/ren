@@ -71,7 +71,7 @@ constexpr u8 SG_BRDF_LUT_KTX2[] = {
 auto get_sg_brdf_lut() -> const auto * {
   static const auto lut = [] {
     std::array<glm::vec4, glsl::SG_BRDF_ROUGHNESS_SIZE *
-                              glsl::SG_BRDF_NoV_SIZE * glsl::NUM_SG_BRDF_LAYERS>
+                              glsl::SG_BRDF_NvV_SIZE * glsl::NUM_SG_BRDF_LAYERS>
         lut;
 
     ktx_error_code_e result = KTX_SUCCESS;
@@ -127,13 +127,13 @@ auto get_sg_brdf_lut() -> const auto * {
       const DirectX::Image *image = decompressed.GetImage(0, layer, 0);
       ren_assert(image);
       std::memcpy(
-          &lut[layer * glsl::SG_BRDF_ROUGHNESS_SIZE * glsl::SG_BRDF_NoV_SIZE],
+          &lut[layer * glsl::SG_BRDF_ROUGHNESS_SIZE * glsl::SG_BRDF_NvV_SIZE],
           image->pixels, image->slicePitch);
     }
 
     return lut;
   }();
-  return (const glm::vec4(*)[glsl::SG_BRDF_NoV_SIZE]
+  return (const glm::vec4(*)[glsl::SG_BRDF_NvV_SIZE]
                             [glsl::SG_BRDF_ROUGHNESS_SIZE])lut.data();
 }
 } // namespace
@@ -144,8 +144,11 @@ extern "C" void ren_eval_sg_brdf(size_t n, const float *cL, float *y, float f0,
   const auto *lut = get_sg_brdf_lut();
   num_brdf_sgs = glm::clamp<u32>(num_brdf_sgs, 1, glsl::MAX_SG_BRDF_SIZE);
 
-  glm::ivec2 size = {glsl::SG_BRDF_ROUGHNESS_SIZE, glsl::SG_BRDF_NoV_SIZE};
-  glm::vec2 uv = glm::vec2(size) * glm::vec2(roughness, NoV);
+  float NvV = glsl::acos_0_to_1_fast(NoV);
+
+  glm::ivec2 size = {glsl::SG_BRDF_ROUGHNESS_SIZE, glsl::SG_BRDF_NvV_SIZE};
+  glm::vec2 uv =
+      glsl::sg_brdf_r_and_NvV_to_uv(roughness, NvV) * glm::vec2(size);
   glm::vec2 ab = glm::fract(uv - 0.5f);
   glm::vec2 w0 = 1.0f - ab;
   glm::vec2 w1 = ab;

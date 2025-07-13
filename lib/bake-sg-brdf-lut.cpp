@@ -39,8 +39,7 @@ struct GpuContext {
 constexpr double PI = 3.1416;
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-constexpr usize NUM_POINTS = 16 * 1024;
-constexpr usize NUM_F_NORM_LUT_POINTS = 1024;
+constexpr usize NUM_F_NORM_LUT_SAMPLE_POINTS = 1024;
 
 void init_F_norm_lut(float *f_norm_lut, double roughness, double NoV) {
   double ToV = glm::sqrt(1 - NoV * NoV);
@@ -48,7 +47,7 @@ void init_F_norm_lut(float *f_norm_lut, double roughness, double NoV) {
   for (usize i : range(glsl::F_NORM_LUT_SIZE)) {
     double f0 = i / double(glsl::F_NORM_LUT_SIZE - 1);
     double v = 0;
-    for (usize k : range(NUM_F_NORM_LUT_POINTS)) {
+    for (usize k : range(NUM_F_NORM_LUT_SAMPLE_POINTS)) {
       glm::dvec2 Xi = glsl::r2_seq(k);
       glm::dvec3 H = glsl::importance_sample_ggx(Xi, roughness);
       double VoH = dot(V, H);
@@ -108,24 +107,28 @@ auto minimize_local(const GpuContext &ctx,
         .grad = ctx.renderer->get_buffer_device_ptr(ctx.grad),
         .NoV = (float)NoV,
         .roughness = (float)roughness,
-        .n = NUM_POINTS,
+        .n = glsl::NUM_SG_BRDF_SAMPLE_POINTS,
         .g = g,
     });
-    cmd.dispatch(NUM_POINTS / 32);
+    cmd.dispatch(glsl::NUM_SG_BRDF_SAMPLE_POINTS / 32);
 
     ctx.renderer->submit(rhi::QueueFamily::Graphics, {cmd.end().value()})
         .value();
     ctx.renderer->wait_idle();
     ctx.renderer->reset_command_pool(ctx.cmd_pool).value();
 
-    Span rb_loss(ctx.renderer->map_buffer(ctx.loss), NUM_POINTS / 32);
-    double loss = std::reduce(rb_loss.begin(), rb_loss.end(), 0.0) / NUM_POINTS;
+    Span rb_loss(ctx.renderer->map_buffer(ctx.loss),
+                 glsl::NUM_SG_BRDF_SAMPLE_POINTS / 32);
+    double loss = std::reduce(rb_loss.begin(), rb_loss.end(), 0.0) /
+                  glsl::NUM_SG_BRDF_SAMPLE_POINTS;
     ren_assert(not glm::isinf(loss) and not glm::isnan(loss));
 
     float *rb_grad = ctx.renderer->map_buffer(ctx.grad);
     for (usize k : range(g * glsl::NUM_SG_BRDF_PARAMS)) {
-      auto v = Span(&rb_grad[NUM_POINTS / 32 * k], NUM_POINTS / 32);
-      grad[k] = std::reduce(v.begin(), v.end(), 0.0) / NUM_POINTS;
+      auto v = Span(&rb_grad[glsl::NUM_SG_BRDF_SAMPLE_POINTS / 32 * k],
+                    glsl::NUM_SG_BRDF_SAMPLE_POINTS / 32);
+      grad[k] = std::reduce(v.begin(), v.end(), 0.0) /
+                glsl::NUM_SG_BRDF_SAMPLE_POINTS;
       ren_assert(not glm::isinf(params[k]) and not glm::isnan(params[k]));
       ren_assert(not glm::isinf(grad[k]) and not glm::isnan(grad[k]));
     }
@@ -304,34 +307,38 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
   ren_try(ctx.params, baker->arena.create_buffer<float>({
                           .name = "Optimization parameters",
                           .heap = rhi::MemoryHeap::Readback,
-                          .count = NUM_POINTS * glsl::MAX_SG_BRDF_PARAMS,
+                          .count = glsl::NUM_SG_BRDF_SAMPLE_POINTS *
+                                   glsl::MAX_SG_BRDF_PARAMS,
                       }));
 
   ren_try(ctx.loss, baker->arena.create_buffer<float>({
                         .name = "Loss",
                         .heap = rhi::MemoryHeap::Readback,
-                        .count = NUM_POINTS,
+                        .count = glsl::NUM_SG_BRDF_SAMPLE_POINTS,
                     }));
 
   ren_try(ctx.grad, baker->arena.create_buffer<float>({
                         .name = "Gradient",
                         .heap = rhi::MemoryHeap::Readback,
-                        .count = NUM_POINTS * glsl::MAX_SG_BRDF_PARAMS,
+                        .count = glsl::NUM_SG_BRDF_SAMPLE_POINTS *
+                                 glsl::MAX_SG_BRDF_PARAMS,
                     }));
 
-  double lut_loss[glsl::MAX_SG_BRDF_SIZE][glsl::SG_BRDF_NoV_SIZE]
+  double lut_loss[glsl::MAX_SG_BRDF_SIZE][glsl::SG_BRDF_NvV_SIZE]
                  [glsl::SG_BRDF_ROUGHNESS_SIZE];
   std::ranges::fill_n(&lut_loss[0][0][0],
                       sizeof(lut_loss) / sizeof(lut_loss[0][0][0]), INF);
-  Eigen::VectorXd lut_params[glsl::MAX_SG_BRDF_SIZE][glsl::SG_BRDF_NoV_SIZE]
+  Eigen::VectorXd lut_params[glsl::MAX_SG_BRDF_SIZE][glsl::SG_BRDF_NvV_SIZE]
                             [glsl::SG_BRDF_ROUGHNESS_SIZE];
 
   const usize INIT_IROUGHNESS = glsl::SG_BRDF_ROUGHNESS_SIZE - 1;
-  const usize INIT_INoV = glsl::SG_BRDF_NoV_SIZE - 1;
+  const usize INIT_INvV = 0;
 
-  const double INIT_ROUGHNESS =
-      (INIT_IROUGHNESS + 0.5) / glsl::SG_BRDF_ROUGHNESS_SIZE;
-  const double INIT_NoV = (INIT_INoV + 0.5) / glsl::SG_BRDF_NoV_SIZE;
+  const double INIT_ROUGHNESS = glsl::sg_brdf_uv_to_r(
+      (INIT_IROUGHNESS + 0.5) / glsl::SG_BRDF_ROUGHNESS_SIZE);
+  const double INIT_NvV =
+      glsl::sg_brdf_uv_to_NvV((INIT_INvV + 0.5) / glsl::SG_BRDF_NvV_SIZE);
+  const double INIT_NoV = glm::cos(INIT_NvV);
 
   LBFGSpp::LBFGSBParam<double> solver_options;
   solver_options.max_iterations = 256;
@@ -373,7 +380,7 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
       ub[i * glsl::NUM_SG_BRDF_PARAMS + 0] = 2 * PI;
     }
 
-    fmt::println("Fit {} ASG(s) at ({}, {})", g, INIT_IROUGHNESS, INIT_INoV);
+    fmt::println("Fit {} ASG(s) at ({}, {})", g, INIT_IROUGHNESS, INIT_INvV);
 
 #if 0
     fmt::println("Initial parameters:");
@@ -394,8 +401,8 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
 #endif
     fmt::println("Loss: {}", loss);
 
-    lut_loss[g - 1][INIT_INoV][INIT_IROUGHNESS] = loss;
-    lut_params[g - 1][INIT_INoV][INIT_IROUGHNESS] = params;
+    lut_loss[g - 1][INIT_INvV][INIT_IROUGHNESS] = loss;
+    lut_params[g - 1][INIT_INvV][INIT_IROUGHNESS] = params;
   }
 
   for (u32 g : range<u32>(1, glsl::MAX_SG_BRDF_SIZE + 1)) {
@@ -407,36 +414,39 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
     }
 
     for (i32 iroughness = INIT_IROUGHNESS; iroughness >= 0; iroughness--) {
-      for (i32 iNoV = INIT_INoV; iNoV >= 0; iNoV--) {
-        double roughness = (iroughness + 0.5) / glsl::SG_BRDF_ROUGHNESS_SIZE;
-        double NoV = (iNoV + 0.5) / glsl::SG_BRDF_NoV_SIZE;
+      for (i32 iNvV = INIT_INvV; iNvV < glsl::SG_BRDF_NvV_SIZE; iNvV++) {
+        double roughness = glsl::sg_brdf_uv_to_r((iroughness + 0.5) /
+                                                 glsl::SG_BRDF_ROUGHNESS_SIZE);
+        double NvV =
+            glsl::sg_brdf_uv_to_NvV((iNvV + 0.5) / glsl::SG_BRDF_NvV_SIZE);
+        double NoV = glm::cos(NvV);
         init_F_norm_lut(ctx.renderer->map_buffer(ctx.f_norm_lut), roughness,
                         NoV);
 
-        fmt::println("Fit {} ASG(s) at ({}, {})", g, iroughness, iNoV);
+        fmt::println("Fit {} ASG(s) at ({}, {})", g, iroughness, iNvV);
 
         if (iroughness + 1 < glsl::SG_BRDF_ROUGHNESS_SIZE) {
-          params = lut_params[g - 1][iNoV][iroughness + 1];
+          params = lut_params[g - 1][iNvV][iroughness + 1];
           double loss =
               minimize_global(ctx, solver, roughness, NoV, params, lb, ub);
-          lut_loss[g - 1][iNoV][iroughness] = loss;
-          lut_params[g - 1][iNoV][iroughness] = params;
+          lut_loss[g - 1][iNvV][iroughness] = loss;
+          lut_params[g - 1][iNvV][iroughness] = params;
         }
 
-        if (iNoV + 1 < glsl::SG_BRDF_NoV_SIZE) {
-          params = lut_params[g - 1][iNoV + 1][iroughness];
-          double dPhi = glm::acos(NoV) -
-                        glm::acos((iNoV + 1 + 0.5) / glsl::SG_BRDF_NoV_SIZE);
+        if (iNvV - 1 >= 0) {
+          params = lut_params[g - 1][iNvV - 1][iroughness];
+          double dPhi = NvV - glsl::sg_brdf_uv_to_NvV((iNvV - 0.5) /
+                                                      glsl::SG_BRDF_NvV_SIZE);
           ren_assert(dPhi >= 0);
-          params = lut_params[g - 1][iNoV + 1][iroughness];
+          params = lut_params[g - 1][iNvV - 1][iroughness];
           for (usize k : range(g)) {
             params[k * glsl::NUM_SG_BRDF_PARAMS + 0] += dPhi;
           }
           double loss =
               minimize_global(ctx, solver, roughness, NoV, params, lb, ub);
-          if (loss < lut_loss[g - 1][iNoV][iroughness]) {
-            lut_loss[g - 1][iNoV][iroughness] = loss;
-            lut_params[g - 1][iNoV][iroughness] = params;
+          if (loss < lut_loss[g - 1][iNvV][iroughness]) {
+            lut_loss[g - 1][iNvV][iroughness] = loss;
+            lut_params[g - 1][iNvV][iroughness] = params;
           }
         }
 
@@ -449,13 +459,13 @@ auto bake_sg_brdf_lut_to_memory(IBaker *baker, bool compress)
                    glsl::NUM_SG_BRDF_PARAMS));
         }
 #endif
-        fmt::println("Loss: {}", lut_loss[g - 1][iNoV][iroughness]);
+        fmt::println("Loss: {}", lut_loss[g - 1][iNvV][iroughness]);
       }
     }
   }
 
   constexpr usize ROW_SIZE = glsl::SG_BRDF_ROUGHNESS_SIZE;
-  constexpr usize NUM_ROWS = glsl::SG_BRDF_NoV_SIZE;
+  constexpr usize NUM_ROWS = glsl::SG_BRDF_NvV_SIZE;
   constexpr usize LAYER_SIZE = ROW_SIZE * NUM_ROWS;
   constexpr usize NUM_LAYERS =
       (glsl::MAX_SG_BRDF_SIZE + 1) * glsl::MAX_SG_BRDF_SIZE / 2;
