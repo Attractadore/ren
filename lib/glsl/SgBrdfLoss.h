@@ -1,12 +1,22 @@
 #pragma once
 #include "DevicePtr.h"
-#include "SG.h"
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
 
-static const uint F_NORM_LUT_SIZE = 256;
-static const float MIN_F0 = 0.02;
+static const uint SG_BRDF_LOSS_THREADS_X = 64;
+
+static const uint NUM_SG_BRDF_LOSS_F0 = 3;
+static const float SG_BRDF_LOSS_F0[NUM_SG_BRDF_LOSS_F0] = {
+    0.04f,
+    0.5f,
+    1.0f,
+};
+static const float SG_BRDF_LOSS_F0_WEIGHTS[NUM_SG_BRDF_LOSS_F0] = {
+    2.0f,
+    1.0f,
+    1.0f,
+};
 
 // Workaround for compiler not generating correct code for stores through
 // pointers.

@@ -1,6 +1,7 @@
 #include "core/StdDef.hpp"
 #include "core/Views.hpp"
 #include "glsl/BRDF.h"
+#include "glsl/Math.h"
 #include "glsl/SG.h"
 #include "ren/tiny_imageformat.h"
 

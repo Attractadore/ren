@@ -1,5 +1,4 @@
 #pragma once
-#include "Math.h"
 #include "Std.h"
 
 GLSL_NAMESPACE_BEGIN
@@ -21,17 +20,11 @@ inline float eval_asg(ASG asg, vec3 V) {
          exp(-asg.lx * VoX * VoX - asg.ly * VoY * VoY);
 }
 
-#if 0
-static const uint NUM_SG_BRDF_SAMPLE_POINTS = 16 * 1024;
+static const uint NUM_SG_BRDF_SAMPLE_POINTS = 2048;
 static const uint SG_BRDF_ROUGHNESS_SIZE = 32;
-static const uint SG_BRDF_NoV_SIZE = 32;
-#else
-static const uint NUM_SG_BRDF_SAMPLE_POINTS = 1024;
-static const uint SG_BRDF_ROUGHNESS_SIZE = 16;
 static const uint SG_BRDF_NvV_SIZE = 32;
-#endif
-
 static const uint MAX_SG_BRDF_SIZE = 4;
+
 static const uint NUM_SG_BRDF_LAYERS =
     (MAX_SG_BRDF_SIZE + 1) * MAX_SG_BRDF_SIZE / 2;
 static const uint NUM_SG_BRDF_PARAMS = 4;

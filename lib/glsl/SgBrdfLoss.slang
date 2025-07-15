@@ -9,13 +9,13 @@ import glsl;
 [vk::push_constant]
 SgBrdfLossArgs pc;
 
-groupshared float params[MAX_SG_BRDF_PARAMS];
-groupshared float grad[MAX_SG_BRDF_PARAMS];
+groupshared float gs_params[MAX_SG_BRDF_PARAMS];
+groupshared float gs_grad[MAX_SG_BRDF_PARAMS];
+groupshared float gs_loss;
 
 [Differentiable]
 float F_norm(no_diff float f0, float NoV) {
-  int i = (int)round(f0 * float(F_NORM_LUT_SIZE - 1));
-  return pc.f_norm_lut[i] * F_schlick(f0, NoV);
+  return pc.f_norm_lut[gl_LocalInvocationID.z] * F_schlick(f0, NoV);
 };
 
 [Differentiable]
@@ -49,110 +49,84 @@ float eval_asg(float phi, float a, float lx, float ly, no_diff float f0,
 }
 
 [shader("compute")]
-[numthreads(32, 1, 1)]
+[numthreads(SG_BRDF_LOSS_THREADS_X, 2, 3)]
 void main() {
+  if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
+    gs_params[gl_LocalInvocationIndex] = pc.params[gl_LocalInvocationIndex];
+    gs_grad[gl_LocalInvocationIndex] = 0.0f;
+  }
+  if (gl_LocalInvocationIndex == 0) {
+    gs_loss = 0.0f;
+  }
+  barrier();
+
   vec3 V = { sqrt(1 - pc.NoV * pc.NoV), 0, pc.NoV };
-  vec3 Xi = r3_seq(gl_GlobalInvocationID.x);
-  float f0 = mix(MIN_F0, 1.0f, Xi.x);
-
-  float loss;
-
-  if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
-    params[gl_LocalInvocationIndex] = pc.params[gl_LocalInvocationIndex];
-    grad[gl_LocalInvocationIndex] = 0.0f;
+  vec2 Xi = r2_seq(gl_GlobalInvocationID.x);
+  vec3 L;
+  vec3 H;
+  if (gl_LocalInvocationID.y == 0) {
+    H = importance_sample_ggx(Xi, pc.roughness);
+    L = 2.0f * dot(V, H) * H - V;
+  } else {
+    L = uniform_sample_sphere(Xi);
+    H = normalize(L + V);
   }
-  barrier();
+  float NoH = H.z;
+  float VoH = dot(V, H);
+  float NoL = L.z;
 
-  {
-    vec3 H = importance_sample_ggx(Xi.yz, pc.roughness);
-    float NoH = H.z;
-    float VoH = dot(V, H);
-    vec3 L = 2.0f * VoH * H - V;
-    float NoL = L.z;
+  float f0 = SG_BRDF_LOSS_F0[gl_LocalInvocationID.z];
+  float F = F_norm(f0, VoH);
+  float G = G_smith(pc.roughness, NoL, pc.NoV);
+  float D = D_ggx(pc.roughness, NoH);
+  float Q = 4.0f * pc.NoV;
 
-    float F = F_norm(f0, VoH);
-    float G = G_smith(pc.roughness, NoL, pc.NoV);
-    float D = D_ggx(pc.roughness, NoH);
-    float Q = 4.0f * pc.NoV;
-
-    float y = NoL > 0.0f ? F * G * D / Q : 0.0f;
-    float w = (4.0f * max(VoH, 0)) / (D * NoH);
-
-    float p = 0.0f;
-    [MaxIters(MAX_SG_BRDF_SIZE)]
-    for (uint g = 0; g < pc.g; ++g) {
-      uint k = g * NUM_SG_BRDF_PARAMS;
-      p += eval_asg(params[k + 0], params[k + 1], params[k + 2], params[k + 3],
-                    f0, pc.roughness, V, L);
-    }
-    float delta = p - y;
-    loss = WaveActiveSum(delta * delta * w);
-
-    [MaxIters(MAX_SG_BRDF_SIZE)]
-    for (uint g = 0; g < pc.g; ++g) {
-      DifferentialPair<float> dp[NUM_SG_BRDF_PARAMS];
-      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
-        dp[k] = diffPair(params[g * NUM_SG_BRDF_PARAMS + k]);
-      }
-      bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
-                         2.0f * delta * w);
-      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
-        float s = WaveActiveSum(dp[k].d);
-        if (WaveIsFirstLane()) {
-          grad[g * NUM_SG_BRDF_PARAMS + k] = s;
-        }
-      }
-    }
+  float y = NoL > 0.0f ? F * G * D / Q : 0.0f;
+  float w;
+  if (gl_LocalInvocationID.y == 0) {
+    w = (4.0f * max(VoH, 0)) / (D * NoH);
+  } else {
+    w = 4.0f * PI;
   }
-  {
-    vec3 L = uniform_sample_sphere(Xi.yz);
-    vec3 H = normalize(L + V);
-    float NoH = H.z;
-    float VoH = dot(V, H);
-    float NoL = L.z;
+  w *= SG_BRDF_LOSS_F0_WEIGHTS[gl_LocalInvocationID.z];
 
-    float F = F_norm(f0, VoH);
-    float G = G_smith(pc.roughness, NoL, pc.NoV);
-    float D = D_ggx(pc.roughness, NoH);
-    float Q = 4.0f * pc.NoV;
+  float p = 0.0f;
+  [MaxIters(MAX_SG_BRDF_SIZE)]
+  for (uint g = 0; g < pc.g; ++g) {
+    uint k = g * NUM_SG_BRDF_PARAMS;
+    p += eval_asg(gs_params[k + 0], gs_params[k + 1], gs_params[k + 2],
+                  gs_params[k + 3], f0, pc.roughness, V, L);
+  }
+  float delta = p - y;
+  float loss = subgroupAdd(delta * delta * w);
+  if (subgroupElect()) {
+    atomicAdd(gs_loss, loss);
+  }
 
-    float y = NoL > 0.0f ? F * G * D / Q : 0.0f;
-    float w = 4.0f * PI;
-
-    float p = 0.0f;
-    [MaxIters(MAX_SG_BRDF_SIZE)]
-    for (uint g = 0; g < pc.g; ++g) {
-      uint k = g * NUM_SG_BRDF_PARAMS;
-      p += eval_asg(params[k + 0], params[k + 1], params[k + 2], params[k + 3],
-                    f0, pc.roughness, V, L);
+  [MaxIters(MAX_SG_BRDF_SIZE)]
+  for (uint g = 0; g < pc.g; ++g) {
+    DifferentialPair<float> dp[NUM_SG_BRDF_PARAMS];
+    for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
+      dp[k] = diffPair(gs_params[g * NUM_SG_BRDF_PARAMS + k]);
     }
-    float delta = p - y;
-    loss += WaveActiveSum(delta * delta * w);
-
-    [MaxIters(MAX_SG_BRDF_SIZE)]
-    for (uint g = 0; g < pc.g; ++g) {
-      DifferentialPair<float> dp[NUM_SG_BRDF_PARAMS];
-      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
-        dp[k] = diffPair(params[g * NUM_SG_BRDF_PARAMS + k]);
-      }
-      bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
-                         2.0f * delta * w);
-      for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
-        float s = WaveActiveSum(dp[k].d);
-        if (WaveIsFirstLane()) {
-          grad[g * NUM_SG_BRDF_PARAMS + k] += s;
-        }
+    bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
+                       2.0f * delta * w);
+    for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
+      float grad = subgroupAdd(dp[k].d);
+      if (subgroupElect()) {
+        atomicAdd(gs_grad[g * NUM_SG_BRDF_PARAMS + k], grad);
       }
     }
   }
   barrier();
 
-  if (WaveIsFirstLane()) {
-    pc.loss[gl_WorkGroupID.x].value = loss;
+  if (gl_LocalInvocationIndex == 0) {
+    pc.loss[gl_WorkGroupID.x].value = gs_loss;
   }
 
   if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
-    pc.grad[pc.n / 32 * gl_LocalInvocationIndex + gl_WorkGroupID.x].value =
-        grad[gl_LocalInvocationIndex];
+    pc.grad[pc.n / gl_WorkGroupSize.x * gl_LocalInvocationIndex +
+            gl_WorkGroupID.x]
+        .value = gs_grad[gl_LocalInvocationIndex];
   }
 }
