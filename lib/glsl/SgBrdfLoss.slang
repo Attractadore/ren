@@ -49,7 +49,7 @@ float eval_asg(float phi, float a, float lx, float ly, no_diff float f0,
 }
 
 [shader("compute")]
-[numthreads(SG_BRDF_LOSS_THREADS_X, 2, 3)]
+[numthreads(SG_BRDF_LOSS_THREADS_X, 3, 3)]
 void main() {
   if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
     gs_params[gl_LocalInvocationIndex] = pc.params[gl_LocalInvocationIndex];
@@ -60,6 +60,8 @@ void main() {
   }
   barrier();
 
+  float f0 = SG_BRDF_LOSS_F0[gl_LocalInvocationID.z];
+
   vec3 V = { sqrt(1 - pc.NoV * pc.NoV), 0, pc.NoV };
   vec2 Xi = r2_seq(gl_GlobalInvocationID.x);
   vec3 L;
@@ -67,28 +69,30 @@ void main() {
   if (gl_LocalInvocationID.y == 0) {
     H = importance_sample_ggx(Xi, pc.roughness);
     L = 2.0f * dot(V, H) * H - V;
-  } else {
+  } else if (gl_LocalInvocationID.y == 1) {
     L = uniform_sample_sphere(Xi);
     H = normalize(L + V);
+  } else {
+    H = importance_sample_schlick(Xi, f0, V);
+    L = 2.0f * dot(V, H) * H - V;
   }
+
   float NoH = H.z;
   float VoH = dot(V, H);
   float NoL = L.z;
 
-  float f0 = SG_BRDF_LOSS_F0[gl_LocalInvocationID.z];
   float F = F_norm(f0, VoH);
   float G = G_smith(pc.roughness, NoL, pc.NoV);
   float D = D_ggx(pc.roughness, NoH);
   float Q = 4.0f * pc.NoV;
 
   float y = NoL > 0.0f ? F * G * D / Q : 0.0f;
-  float w;
-  if (gl_LocalInvocationID.y == 0) {
-    w = (4.0f * max(VoH, 0)) / (D * NoH);
-  } else {
-    w = 4.0f * PI;
-  }
-  w *= SG_BRDF_LOSS_F0_WEIGHTS[gl_LocalInvocationID.z];
+
+  float w_ggx = NoH > 0.0f && VoH > 0.0f ? (4.0f * VoH) / (D * NoH) : 0.0f;
+  float w_us = 4.0f * PI;
+  float w_schlick = VoH > 0.0f ? (4.0f * VoH) / F_schlick_pdf(f0, VoH) : 0.0f;
+  float w = SG_BRDF_LOSS_F0_WEIGHTS[gl_LocalInvocationID.z] *
+            (w_ggx + w_us + w_schlick) / gl_WorkGroupSize.y;
 
   float p = 0.0f;
   [MaxIters(MAX_SG_BRDF_SIZE)]
@@ -97,7 +101,10 @@ void main() {
     p += eval_asg(gs_params[k + 0], gs_params[k + 1], gs_params[k + 2],
                   gs_params[k + 3], f0, pc.roughness, V, L);
   }
+
   float delta = p - y;
+  float dloss_dp = 2.0f * delta * w;
+
   float loss = subgroupAdd(delta * delta * w);
   if (subgroupElect()) {
     atomicAdd(gs_loss, loss);
@@ -110,7 +117,7 @@ void main() {
       dp[k] = diffPair(gs_params[g * NUM_SG_BRDF_PARAMS + k]);
     }
     bwd_diff(eval_asg)(dp[0], dp[1], dp[2], dp[3], f0, pc.roughness, V, L,
-                       2.0f * delta * w);
+                       dloss_dp);
     for (uint k = 0; k < NUM_SG_BRDF_PARAMS; ++k) {
       float grad = subgroupAdd(dp[k].d);
       if (subgroupElect()) {

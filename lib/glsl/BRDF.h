@@ -21,6 +21,32 @@ inline vec3 F_schlick(vec3 f0, float NoV) {
   return f0 + (1.0f - f0) * pow(1.0f - NoV, 5.0f);
 }
 
+inline float F_schlick_pdf(float f0, float NoV) {
+  return 6.0f * F_schlick(f0, NoV) / (5.0f * f0 + 1.0f);
+}
+
+inline float F_schlick_cdf(float f0, float NoV) {
+  return (6.0f * f0 * NoV + (1 - f0) * (1 - pow(1 - NoV, 6.0f))) /
+         (5.0f * f0 + 1.0f);
+}
+
+inline vec3 importance_sample_schlick(vec2 Xi, float f0) {
+  float phi = TWO_PI * Xi.x;
+  float NoV = mix(1.0f - pow(1.0f - Xi.y, 1.0f / 6.0f), Xi.y, sqrt(f0));
+  for (uint i = 0; i < 1; ++i) {
+    NoV = NoV - (F_schlick_cdf(f0, NoV) - Xi.y) / F_schlick_pdf(f0, NoV);
+  }
+  float r = sqrt(1.0f - NoV * NoV);
+  return vec3(cos(phi) * r, sin(phi) * r, NoV);
+}
+
+inline vec3 importance_sample_schlick(vec2 Xi, float f0, vec3 N) {
+  vec3 R = importance_sample_schlick(Xi, f0);
+  vec3 T = normalize(ortho_vec(N));
+  vec3 B = cross(N, T);
+  return mat3(T, B, N) * R;
+}
+
 // clang-format off
 // G_2(l, v, h) = 1 / (1 + A(v) + A(l))
 // A(s) = (-1 + sqrt(1 + 1/a(s)^2)) / 2

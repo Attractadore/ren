@@ -158,8 +158,8 @@ auto minimize_local(const GpuContext &ctx,
       }
     }
 
-    loss /= (glsl::NUM_SG_BRDF_SAMPLE_POINTS * 8 * roughness.size());
-    grad /= (glsl::NUM_SG_BRDF_SAMPLE_POINTS * 8 * roughness.size());
+    loss /= (glsl::NUM_SG_BRDF_SAMPLE_POINTS * roughness.size());
+    grad /= (glsl::NUM_SG_BRDF_SAMPLE_POINTS * roughness.size());
 
 #if 0
     fmt::println("Parameters:");
