@@ -15,7 +15,7 @@ groupshared float gs_loss;
 
 [Differentiable]
 float F_norm(no_diff float f0, float NoV) {
-  return pc.f_norm_lut[gl_LocalInvocationID.z] * F_schlick(f0, NoV);
+  return pc.f_norm_lut[gl_GlobalInvocationID.z] * F_schlick(f0, NoV);
 };
 
 [Differentiable]
@@ -49,7 +49,7 @@ float eval_asg(float phi, float a, float lx, float ly, no_diff float f0,
 }
 
 [shader("compute")]
-[numthreads(SG_BRDF_LOSS_THREADS_X, 3, 3)]
+[numthreads(SG_BRDF_LOSS_THREADS_X)]
 void main() {
   if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
     gs_params[gl_LocalInvocationIndex] = pc.params[gl_LocalInvocationIndex];
@@ -60,21 +60,28 @@ void main() {
   }
   barrier();
 
-  float f0 = SG_BRDF_LOSS_F0[gl_LocalInvocationID.z];
+  float f0 = SG_BRDF_LOSS_F0[gl_GlobalInvocationID.z];
 
   vec3 V = { sqrt(1 - pc.NoV * pc.NoV), 0, pc.NoV };
   vec2 Xi = r2_seq(gl_GlobalInvocationID.x);
   vec3 L;
   vec3 H;
-  if (gl_LocalInvocationID.y == 0) {
+  switch ((SgBrdfLossPdf)gl_GlobalInvocationID.y) {
+  case SgBrdfLossPdf::GGX: {
     H = importance_sample_ggx(Xi, pc.roughness);
     L = 2.0f * dot(V, H) * H - V;
-  } else if (gl_LocalInvocationID.y == 1) {
+    break;
+  }
+  case SgBrdfLossPdf::UniformSphere: {
     L = uniform_sample_sphere(Xi);
     H = normalize(L + V);
-  } else {
+    break;
+  }
+  case SgBrdfLossPdf::Fresnel: {
     H = importance_sample_schlick(Xi, f0, V);
     L = 2.0f * dot(V, H) * H - V;
+    break;
+  }
   }
 
   float NoH = H.z;
@@ -127,13 +134,18 @@ void main() {
   }
   barrier();
 
+  uint num_batches =
+      gl_NumWorkGroups.x * gl_NumWorkGroups.y * gl_NumWorkGroups.z;
+  uint batch_index =
+      gl_WorkGroupID.z * gl_NumWorkGroups.x * gl_NumWorkGroups.y +
+      gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+
   if (gl_LocalInvocationIndex == 0) {
-    pc.loss[gl_WorkGroupID.x].value = gs_loss;
+    pc.loss[batch_index].value = gs_loss;
   }
 
   if (gl_LocalInvocationIndex < pc.g * NUM_SG_BRDF_PARAMS) {
-    pc.grad[pc.n / gl_WorkGroupSize.x * gl_LocalInvocationIndex +
-            gl_WorkGroupID.x]
-        .value = gs_grad[gl_LocalInvocationIndex];
+    pc.grad[num_batches * gl_LocalInvocationIndex + batch_index].value =
+        gs_grad[gl_LocalInvocationIndex];
   }
 }

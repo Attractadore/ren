@@ -4,7 +4,14 @@
 
 GLSL_NAMESPACE_BEGIN
 
-static const uint SG_BRDF_LOSS_THREADS_X = 64;
+static const uint SG_BRDF_LOSS_THREADS_X = 256;
+
+enum class SgBrdfLossPdf {
+  GGX,
+  UniformSphere,
+  Fresnel,
+  Count,
+};
 
 static const uint NUM_SG_BRDF_LOSS_F0 = 3;
 static const float SG_BRDF_LOSS_F0[NUM_SG_BRDF_LOSS_F0] = {

@@ -41,7 +41,8 @@ constexpr double INF = std::numeric_limits<double>::infinity();
 
 constexpr usize NUM_F_NORM_LUT_SAMPLE_POINTS = glsl::NUM_SG_BRDF_SAMPLE_POINTS;
 constexpr usize NUM_BATCHES =
-    glsl::NUM_SG_BRDF_SAMPLE_POINTS / glsl::SG_BRDF_LOSS_THREADS_X;
+    glsl::NUM_SG_BRDF_SAMPLE_POINTS / glsl::SG_BRDF_LOSS_THREADS_X *
+    (i32)glsl::SgBrdfLossPdf::Count * glsl::NUM_SG_BRDF_LOSS_F0;
 
 void init_F_norm_lut(float *f_norm_lut, double roughness, double NoV) {
   double ToV = glm::sqrt(1 - NoV * NoV);
@@ -130,7 +131,11 @@ auto minimize_local(const GpuContext &ctx,
           .n = glsl::NUM_SG_BRDF_SAMPLE_POINTS,
           .g = u32(free_params.size() / glsl::NUM_SG_BRDF_PARAMS),
       });
-      cmd.dispatch(NUM_BATCHES);
+      cmd.dispatch_grid_3d({
+          glsl::NUM_SG_BRDF_SAMPLE_POINTS,
+          (i32)glsl::SgBrdfLossPdf::Count,
+          glsl::NUM_SG_BRDF_LOSS_F0,
+      });
     }
 
     ctx.renderer->submit(rhi::QueueFamily::Graphics, {cmd.end().value()})
@@ -190,7 +195,7 @@ auto minimize_local(const GpuContext &ctx,
   double loss;
   try {
     solver.minimize(loss_f, free_params, loss, lb, ub);
-  } catch (const std::exception &err) {
+  } catch (const std::runtime_error &err) {
 #if 0
     fmt::println("Minimize failed: {}", err.what());
 #endif
