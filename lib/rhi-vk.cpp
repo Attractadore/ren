@@ -471,6 +471,7 @@ auto set_debug_name(Device device, VkObjectType type, void *object,
 
 auto load(bool headless) -> Result<void> {
   static VkResult result = [&] {
+    std::ignore = rhi::load_gfx_debugger();
     fmt::println("vk: Load Vulkan");
     if (not headless) {
       if (SDL_Vulkan_LoadLibrary(nullptr)) {

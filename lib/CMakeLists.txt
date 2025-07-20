@@ -12,7 +12,7 @@ if (REN_ASSERTIONS)
   target_compile_definitions(ren-core PUBLIC REN_ASSERTIONS)
 endif()
 
-add_library(ren-rhi rhi-vk.cpp rhi-vk-vma.cpp)
+add_library(ren-rhi rhi.cpp rhi-vk.cpp rhi-vk-vma.cpp)
 target_link_libraries(ren-rhi
   PUBLIC ren::core GPUOpen::VulkanMemoryAllocator tiny_imageformat
   PRIVATE SDL2::SDL2 volk::volk

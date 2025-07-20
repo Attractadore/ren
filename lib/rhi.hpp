@@ -1097,4 +1097,10 @@ auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
 auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
     -> Result<void>;
 
+auto load_gfx_debugger() -> Result<void>;
+
+void start_gfx_capture();
+
+void end_gfx_capture();
+
 } // namespace ren::rhi
