@@ -1,4 +1,5 @@
 #pragma once
+#if !SLANG
 #include "DevicePtr.h"
 #include "Std.h"
 
@@ -152,3 +153,4 @@ const SamplerState SAMPLER_NEAREST_CLAMP = SamplerState(1);
 const SamplerState SAMPLER_LINEAR_MIP_NEAREST_CLAMP = SamplerState(2);
 
 GLSL_NAMESPACE_END
+#endif

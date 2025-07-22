@@ -1,5 +1,6 @@
 #include "Skybox.h"
 #include "Texture.glsl"
+#include "SG.h"
 
 layout(location = 0) in vec2 a_position;
 

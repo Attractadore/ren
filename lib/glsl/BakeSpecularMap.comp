@@ -1,26 +1,36 @@
 #include "BakeSpecularMap.h"
 #include "Texture.glsl"
 #include "Random.h"
-#include "Lighting.h"
+#include "SG.h"
 
-vec3 integrate_specular_map(float roughness, vec3 r, SampledTexture2D equirectangular_map) {
-  vec3 n = r;
-  vec3 v = r;
-  vec3 i = vec3(0.0f);
-  float weight = 0.0f;
-  const uint NUM_SAMPLES = 1024;
-  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
-    vec3 h = importance_sample_ggx(hammersley_2d(k, NUM_SAMPLES), roughness, n);
-    vec3 l = 2.0f * dot(h, v) * h - v;
-    float nl = dot(n, l);
-    if (nl > 0.0f) {
-      // TODO: select mip based on solid angle.
-      vec2 uv = direction_to_equirectangular_uv(l);
-      i += texture_lod(equirectangular_map, uv, 0.0f).rgb * nl;
-      weight += nl;
-    }
+vec3 integrate_specular_map(float sharpness, vec3 Z, SampledTexture2D equirectangular_map) {
+  SG sg;
+  sg.z = Z;
+  sg.a = 1.0f;
+  sg.l = 2.0f * sharpness;
+
+  mat3 XYZ = make_orthonormal_basis(Z);
+
+  ASG asg;
+  asg.z = XYZ[2];
+  asg.x = XYZ[0];
+  asg.y = XYZ[1];
+  asg.a = 1.0f;
+  asg.lx = asg.ly = sharpness;
+  asg = normalize_asg(asg);
+
+  vec3 conv = vec3(0.0f);
+  const float NUM_SAMPLES = 1024;
+  float kf = 0.0f;
+  for (uint k = 0; k < NUM_SAMPLES; ++k) {
+    vec2 Xi = r2_seq(kf++);
+    vec3 V = XYZ * importance_sample_sg_hemisphere(Xi, sg.l);
+    vec2 uv = direction_to_equirectangular_uv(V);
+    vec3 luminance = texture_lod(equirectangular_map, uv, 0.0f).rgb;
+    conv += (eval_asg(asg, V) / eval_sg(sg, V)) * luminance;
   }
-  return i / weight;
+
+  return (TWO_PI * (1.0f - exp(-sg.l)) / (sg.l * NUM_SAMPLES)) * conv;
 }
 
 LOCAL_SIZE_2D(16, 16);
@@ -28,7 +38,7 @@ void main()
 {
   const uvec2 pos = gl_GlobalInvocationID.xy;
   const uint face = gl_GlobalInvocationID.z;
-  vec3 r = cube_map_face_pos_to_direction(pos, face, image_size(pc.specular_map));
-  vec3 i = integrate_specular_map(pc.roughness, normalize(r), pc.equirectangular_map);
-  image_store(pc.specular_map, ivec3(pos, face), i);
+  vec3 Z = cube_map_face_pos_to_direction(pos, face, image_size(pc.specular_map));
+  vec3 conv = integrate_specular_map(pc.sharpness, normalize(Z), pc.equirectangular_map);
+  image_store(pc.specular_map, ivec3(pos, face), vec4(conv, 1.0f));
 }

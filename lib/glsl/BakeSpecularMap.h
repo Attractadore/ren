@@ -7,7 +7,7 @@ GLSL_NAMESPACE_BEGIN
 GLSL_PUSH_CONSTANTS BakeSpecularMapArgs {
   SampledTexture2D equirectangular_map;
   StorageTextureCube specular_map;
-  float roughness;
+  float sharpness;
 }
 GLSL_PC;
 

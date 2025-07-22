@@ -97,7 +97,8 @@ void main() {
 
   float w_ggx = NoH > 0.0f && VoH > 0.0f ? (4.0f * VoH) / (D * NoH) : 0.0f;
   float w_us = 4.0f * PI;
-  float w_schlick = VoH > 0.0f ? (4.0f * VoH) / F_schlick_pdf(f0, VoH) : 0.0f;
+  float w_schlick =
+      VoH > 0.0f ? (8.0f * VoH * PI) / F_schlick_pdf(f0, VoH) : 0.0f;
   float w = SG_BRDF_LOSS_F0_WEIGHTS[gl_LocalInvocationID.z] *
             (w_ggx + w_us + w_schlick) / gl_WorkGroupSize.y;
 

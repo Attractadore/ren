@@ -75,7 +75,7 @@ void CommandRecorder::copy_texture_to_buffer(Handle<Texture> src,
   ren_assert(base_mip + num_mips <= texture.num_mips);
   rhi::ImageAspectMask aspect_mask =
       rhi::get_format_aspect_mask(texture.format);
-  u32 num_layers = (texture.cube_map ? 6 : 1) * num_layers;
+  u32 num_layers = (texture.cube_map ? 6 : 1) * texture.num_layers;
   usize offset = dst.offset;
   for (u32 mip : range(base_mip, base_mip + num_mips)) {
     glm::uvec3 size = get_mip_size(texture.size, mip);

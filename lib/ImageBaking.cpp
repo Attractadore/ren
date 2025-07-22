@@ -5,9 +5,9 @@
 #include "core/Result.hpp"
 #include "core/StdDef.hpp"
 #include "core/Views.hpp"
+#include "glsl/SG.h"
 #include "ren/baking/image.hpp"
 
-#include "BakeIrradianceMap.comp.hpp"
 #include "BakeReflectionMap.comp.hpp"
 #include "BakeSoLut.comp.hpp"
 #include "BakeSpecularMap.comp.hpp"
@@ -382,11 +382,6 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
             load_compute_pipeline(baker->session_arena, BakeSpecularMapCS,
                                   "Bake specular environment map"));
   }
-  if (!baker->pipelines.irradiance_map) {
-    ren_try(baker->pipelines.irradiance_map,
-            load_compute_pipeline(baker->session_arena, BakeIrradianceMapCS,
-                                  "Bake irradiance environment map"));
-  }
   const DirectX::Image &src_image = to_dxtex_image(info);
   DirectX::ScratchImage mip_chain;
   hres = mip_chain.Initialize2D(src_image.format, src_image.width,
@@ -441,9 +436,7 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
   constexpr TinyImageFormat CUBE_MAP_FORMAT =
       TinyImageFormat_R32G32B32A32_SFLOAT;
   constexpr usize CUBE_MAP_SIZE = 512;
-  constexpr usize IRRADIANCE_SIZE = 32;
-  constexpr usize NUM_CUBE_MAP_MIPS =
-      ilog2(CUBE_MAP_SIZE / IRRADIANCE_SIZE) + 1;
+  constexpr usize NUM_CUBE_MAP_MIPS = ilog2(CUBE_MAP_SIZE) + 1;
 
   RgBuilder rgb(baker->rg, *baker->renderer, baker->descriptor_allocator);
 
@@ -491,27 +484,19 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
           cmd.dispatch_grid_3d({CUBE_MAP_SIZE, CUBE_MAP_SIZE, 6});
 
           cmd.bind_compute_pipeline(pipelines->specular_map);
-          for (u32 mip : range<u32>(1, NUM_CUBE_MAP_MIPS - 1)) {
+          for (u32 mip : range<u32>(1, NUM_CUBE_MAP_MIPS)) {
+            const float MIN_SHARPNESS = glsl::roughness_to_asg_sharpness(
+                glsl::MIN_CONVOLVED_SG_CUBE_MAP_ROUGHNESS);
+            float sharpness =
+                MIN_SHARPNESS * (1 << (2 * (NUM_CUBE_MAP_MIPS - 1 - mip)));
             cmd.push_constants(glsl::BakeSpecularMapArgs{
                 .equirectangular_map = args.equirectangular_map,
                 .specular_map =
                     (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
                         args.cube_map, mip),
-                .roughness = float(mip) / (NUM_CUBE_MAP_MIPS - 2),
+                .sharpness = sharpness,
             });
             u32 size = CUBE_MAP_SIZE >> mip;
-            cmd.dispatch_grid_3d({size, size, 6});
-          }
-
-          cmd.bind_compute_pipeline(pipelines->irradiance_map);
-          {
-            cmd.push_constants(glsl::BakeIrradianceMapArgs{
-                .equirectangular_map = args.equirectangular_map,
-                .irradiance_map =
-                    (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
-                        args.cube_map, NUM_CUBE_MAP_MIPS - 1),
-            });
-            u32 size = CUBE_MAP_SIZE >> (NUM_CUBE_MAP_MIPS - 1);
             cmd.dispatch_grid_3d({size, size, 6});
           }
         });
@@ -529,7 +514,9 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
   rgb.copy_texture_to_buffer(cube_map, &cube_map_readback);
 
   ren_try(RenderGraph rg, rgb.build({}));
+  rhi::start_gfx_capture();
   ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
+  rhi::end_gfx_capture();
   baker->renderer->wait_idle();
 
   Vector<DirectX::Image> images;

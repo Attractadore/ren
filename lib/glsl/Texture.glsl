@@ -1,4 +1,5 @@
 #pragma once
+#if !SLANG
 #include "Std.h"
 #include "Texture.h"
 
@@ -76,8 +77,16 @@ vec4 texture_lod(SampledTextureCube t, vec3 r, float lod) {
   return textureLod(g_sampled_textures_cube[t.id], r, lod);
 }
 
+vec4 texture_grad(SampledTextureCube t, vec3 P, vec3 dPdx, vec3 dPdy) {
+  return textureGrad(g_sampled_textures_cube[t.id], P, dPdx, dPdy);
+}
+
 int texture_query_levels(SampledTextureCube t) {
   return textureQueryLevels(g_sampled_textures_cube[t.id]);
+}
+
+ivec2 texture_size(SampledTextureCube t) {
+  return textureSize(g_sampled_textures_cube[t.id], 0);
 }
 
 vec4 texture(SampledTexture3D t, vec3 uv) {
@@ -185,3 +194,4 @@ float reduce_quad_checkered_min_max(uint x, uint y, vec4 v) {
   return maxv;
   return (x + y) % 2 == 0 ? minv : maxv;
 }
+#endif

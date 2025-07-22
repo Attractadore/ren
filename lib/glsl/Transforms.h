@@ -94,4 +94,10 @@ inline vec3 ortho_vec(vec3 v) {
   return vec3(v.z, 0.0f, -v.x);
 }
 
+inline mat3 make_orthonormal_basis(vec3 Z) {
+  vec3 X = normalize(ortho_vec(Z));
+  vec3 Y = cross(Z, X);
+  return mat3(X, Y, Z);
+}
+
 GLSL_NAMESPACE_END

@@ -62,63 +62,7 @@ void main() {
   vec3 view = normalize(pc.eye - a_position);
   for (int i = 0; i < pc.num_directional_lights; ++i) {
     DirectionalLight light = DEREF(pc.directional_lights[i]);
-    if (pc.num_brdf_sgs == 0) {
-      result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
-    } else {
-      vec3 N = normal;
-      vec3 V = view;
-      vec3 L = light.origin;
-      float NoV = dot(N, V);
-      float NvV = acos_0_to_1_fast(NoV);
-      float NoL = dot(N, L);
-
-      vec3 kd = albedo * NoL / PI;
-      vec3 ks = vec3(0.0f);
-
-      vec3 B = normalize(cross(N, V));
-      vec3 T = cross(B, N);
-      mat3 TBN = mat3(T, B, N);
-
-      float alpha2 = roughness * roughness;
-      alpha2 = alpha2 * alpha2;
-      float sh0 = 2.0f / alpha2;
-      float shx0 = sh0 / 8;
-      float shy0 = sh0 / (8 * NoV * NoV);
-
-      uint base_sg = (pc.num_brdf_sgs - 1) * pc.num_brdf_sgs / 2;
-      vec2 uv = sg_brdf_r_and_NvV_to_uv(roughness, NvV);
-      for (uint i = 0; i < pc.num_brdf_sgs; ++i) {
-        vec4 params = texture(pc.raw_sg_brdf_lut, vec3(uv, base_sg + i));
-        float phi = params[0];
-        float a = params[1];
-        float lx = params[2];
-        float ly = params[3];
-
-        float cos_phi = cos(phi);
-        float sin_phi = sin(phi);
-        vec3 Z = TBN * vec3(cos_phi, 0.0f, sin_phi);
-        vec3 Y = B;
-        vec3 X = TBN * vec3(-sin_phi, 0.0f, cos_phi);
-        vec3 H = normalize(Z + V);
-        float NoH = dot(N, H);
-        float VoH = dot(V, H);
-
-        ASG asg;
-        asg.z = Z;
-        asg.x = X;
-        asg.y = Y;
-        asg.a = a * D_ggx(roughness, NoH);
-        asg.lx = (lx * lx) * shx0;
-        asg.ly = (ly * ly) * shy0;
-
-        ks += F_schlick(f0, VoH) * eval_asg(asg, L);
-      }
-      ks = ks / (4.0f * NoV);
-
-      vec3 E_p = light.color * light.illuminance;
-      result.xyz += NoL > 0.0f ? E_p * (kd + ks) : vec3(0.0f);
-    }
-
+    result.xyz += lighting(normal, light.origin, view, albedo, f0, roughness, light.color * light.illuminance);
   }
 
   float ka = 1.0f;
@@ -130,13 +74,93 @@ void main() {
   }
   ka = ka * occlusion;
 
-#if 0
   if (!IS_NULL_DESC(pc.raw_env_map)) {
-    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, pc.raw_so_lut);
+      vec3 ks_analytical = vec3(0.0f);
+      vec3 ks_convolved = vec3(0.0f);
+      vec3 ks_rough = vec3(0.0f);
+
+      vec3 N = normal;
+      vec3 V = view;
+
+      float NoV = dot(N, V);
+      float NvV = acos_0_to_1_fast(NoV);
+
+      vec3 B = normalize(cross(N, V));
+      vec3 T = cross(B, N);
+      mat3 TBN = mat3(T, B, N);
+
+      float shx0 = roughness_to_asg_sharpness(roughness);
+      float shy0 = roughness_to_asg_sharpness(roughness, NoV);
+
+      if (roughness < ANALYTICAL_SG_BRDF_ROUGHNESS_HIGH) {
+        vec3 R = 2.0f * NoV * N - V;
+
+        vec3 Z = R;
+        vec3 Y = B;
+        vec3 X = cross(Y, Z);
+
+        vec3 F = F_schlick(f0, NoV);
+        float G = G_smith(roughness, NoV, NoV);
+        float D = D_ggx(roughness, 1.0f);
+        float Q = 4.0f * NoV;
+
+        ASG asg;
+        asg.z = Z;
+        asg.x = X;
+        asg.y = Y;
+        asg.a = G * D / Q;
+        asg.lx = shx0;
+        asg.ly = shy0;
+
+        ks_analytical = F * sample_convolved_asg(asg, pc.raw_env_map);
+      }
+
+      if (roughness > ANALYTICAL_SG_BRDF_ROUGHNESS_LOW && roughness < CONVOLVED_SG_BRDF_ROUGHNESS_HIGH) {
+        const uint NUM_BRDF_SGS = 2;
+        const uint BASE_SG = (NUM_BRDF_SGS - 1) * NUM_BRDF_SGS / 2;
+        vec2 uv = sg_brdf_r_and_NvV_to_uv(roughness, NvV);
+        vec3 FGD = vec3(0.0f);
+        for (uint i = 0; i < NUM_BRDF_SGS; ++i) {
+          vec4 params = texture(pc.raw_sg_brdf_lut, vec3(uv, BASE_SG + i));
+          float phi = params[0];
+          float a = params[1];
+          float lx = params[2];
+          float ly = params[3];
+
+          float cos_phi = cos(phi);
+          float sin_phi = sin(phi);
+          vec3 Z = TBN * vec3(cos_phi, 0.0f, sin_phi);
+          vec3 Y = B;
+          vec3 X = TBN * vec3(-sin_phi, 0.0f, cos_phi);
+          vec3 H = normalize(Z + V);
+          float NoH = dot(N, H);
+          float VoH = dot(V, H);
+
+          ASG asg;
+          asg.z = Z;
+          asg.x = X;
+          asg.y = Y;
+          asg.a = a * D_ggx(roughness, NoH);
+          asg.lx = (lx * lx) * shx0;
+          asg.ly = (ly * ly) * shy0;
+
+          FGD += F_schlick(f0, VoH) * sample_convolved_asg(asg, pc.raw_env_map);
+        }
+        float Q = 4.0f * NoV;
+        ks_convolved = FGD / Q;
+      }
+
+      if (roughness > CONVOLVED_SG_BRDF_ROUGHNESS_LOW) {
+        // TODO: convolve with SG mixture fit to environment map.
+      }
+
+      vec3 ks = mix(ks_analytical, ks_convolved, smoothstep(ANALYTICAL_SG_BRDF_ROUGHNESS_LOW, ANALYTICAL_SG_BRDF_ROUGHNESS_HIGH, roughness)); 
+      ks = mix(ks, ks_rough, smoothstep(CONVOLVED_SG_BRDF_ROUGHNESS_LOW, CONVOLVED_SG_BRDF_ROUGHNESS_HIGH, roughness));
+
+      result.rgb += ks; 
   } else {
     result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, pc.raw_so_lut);
   }
-#endif
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
   result.xyz *= exposure;

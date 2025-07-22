@@ -195,7 +195,7 @@ auto minimize_local(const GpuContext &ctx,
   double loss;
   try {
     solver.minimize(loss_f, free_params, loss, lb, ub);
-  } catch (const std::runtime_error &err) {
+  } catch (const std::exception &err) {
 #if 0
     fmt::println("Minimize failed: {}", err.what());
 #endif

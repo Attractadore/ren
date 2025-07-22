@@ -47,8 +47,8 @@ struct SceneGraphicsSettings {
 
   // Instance culling and LOD
   bool instance_frustum_culling = true;
-  bool instance_occulusion_culling = true;
-  bool lod_selection = true;
+  bool instance_occulusion_culling = false;
+  bool lod_selection = false;
   float lod_triangle_pixels = 16.0f;
   i32 lod_bias = 0;
 
