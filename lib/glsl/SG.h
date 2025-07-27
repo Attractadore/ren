@@ -148,52 +148,118 @@ inline void ellipse_transform_derivatives(GLSL_INOUT(vec2) X,
   Y.y = sqrt(f * (t + p) / (t * (q - t)));
 }
 
+inline float calculate_texture_grad_lod(float size, vec3 P, vec3 dPdx,
+                                        vec3 dPdy) {
+  vec3 axis = abs(P);
+  float major_axis = max(axis.x, max(axis.y, axis.z));
+
+  if (major_axis == P.z) {
+    P = vec3(P.x, -P.y, P.z);
+    dPdx = vec3(dPdx.x, -dPdx.y, dPdx.z);
+    dPdy = vec3(dPdy.x, -dPdy.y, dPdy.z);
+  } else if (major_axis == -P.z) {
+    P = vec3(-P.x, -P.y, P.z);
+    dPdx = vec3(-dPdx.x, -dPdx.y, dPdx.z);
+    dPdy = vec3(-dPdy.x, -dPdy.y, dPdy.z);
+  } else if (major_axis == P.y) {
+    P = vec3(P.x, P.z, P.y);
+    dPdx = vec3(dPdx.x, dPdx.z, dPdx.y);
+    dPdy = vec3(dPdy.x, dPdy.z, dPdy.y);
+  } else if (major_axis == -P.y) {
+    P = vec3(P.x, -P.z, P.y);
+    dPdx = vec3(dPdx.x, -dPdx.z, dPdx.y);
+    dPdy = vec3(dPdy.x, -dPdy.z, dPdy.y);
+  } else if (major_axis == P.x) {
+    P = vec3(-P.z, -P.y, P.x);
+    dPdx = vec3(-dPdx.z, -dPdx.y, dPdx.x);
+    dPdy = vec3(-dPdy.z, -dPdy.y, dPdy.x);
+  } else {
+    P = vec3(P.z, -P.y, P.x);
+    dPdx = vec3(dPdx.z, -dPdx.y, dPdx.x);
+    dPdy = vec3(dPdy.z, -dPdy.y, dPdy.x);
+  }
+
+  vec2 duv_dx = 0.5f *
+                (abs(P.z) * vec2(dPdx.x, dPdx.y) - vec2(P.x, P.y) * dPdx.z) /
+                (P.z * P.z);
+  vec2 duv_dy = 0.5f *
+                (abs(P.z) * vec2(dPdy.x, dPdy.y) - vec2(P.x, P.y) * dPdy.z) /
+                (P.z * P.z);
+
+  vec2 mx = duv_dx * size;
+  vec2 my = duv_dy * size;
+
+  ellipse_transform_derivatives(mx, my);
+
+  float len_x = length(mx);
+  float len_y = length(my);
+
+  float len_max = max(len_x, len_y);
+  float len_min = min(len_x, len_y);
+
+  float anisotropy = min(len_max / len_min, 16.0f);
+
+  return log2(len_max / anisotropy);
+}
+
 #if GL_core_profile && !SLANG
 
-inline vec3 sample_convolved_asg(ASG asg, SampledTextureCube env_map) {
+inline vec3 sample_convolved_asg_isotropic(ASG asg,
+                                           SampledTextureCube env_map) {
   const float MIN_SHARPNESS =
       roughness_to_asg_sharpness(MIN_CONVOLVED_SG_CUBE_MAP_ROUGHNESS);
-
-#if 0
   float sharpness = min(asg.lx, asg.ly);
   float ratio = sharpness / MIN_SHARPNESS;
   float reverse_mip = 0.5f * log2(ratio);
   float num_mips = texture_query_levels(env_map);
   float mip = num_mips - 1.0f - reverse_mip;
   return integrate_asg(asg) * texture_lod(env_map, asg.z, mip).rgb;
-#else
-  vec3 axis = abs(asg.z);
-  float major_axis = max(max(axis.x, axis.y), axis.z);
+}
 
-  vec3 X = asg.x;
-  vec3 Y = asg.y;
-  if (major_axis == axis.z) {
-    X.z = 0.0f;
-    Y.z = 0.0f;
-    ellipse_transform_derivatives(X.xy, Y.xy);
-  } else if (major_axis == axis.y) {
-    X.y = 0.0f;
-    Y.y = 0.0f;
-    ellipse_transform_derivatives(X.xz, Y.xz);
-  } else {
-    X.x = 0.0f;
-    Y.x = 0.0f;
-    ellipse_transform_derivatives(X.yz, Y.yz);
-  }
-  X = normalize(X);
-  Y = normalize(Y);
-
+inline vec3
+sample_convolved_asg_software_anisotropic(ASG asg, SampledTextureCube env_map) {
   vec2 sharpness = vec2(asg.lx, asg.ly);
+  const float MIN_SHARPNESS =
+      roughness_to_asg_sharpness(MIN_CONVOLVED_SG_CUBE_MAP_ROUGHNESS);
   vec2 ratio = sharpness / MIN_SHARPNESS;
-  vec2 len = 2.0f * major_axis / sqrt(ratio);
+  float max_ratio = max(ratio.x, ratio.y);
+  float min_ratio = min(ratio.x, ratio.y);
 
-  vec3 dPdx = len.x * X;
-  vec3 dPdy = len.y * Y;
+  float rsqrt_min_ratio = 1.0f / sqrt(min_ratio);
 
-  vec3 conv = texture_grad(env_map, asg.z, dPdx, dPdy).rgb;
+  float cone_width = 2.0f * sqrt(2.0f / 3.0f) * rsqrt_min_ratio;
+  vec3 axis_of_anisotropy = asg.lx < asg.ly ? asg.x : asg.y;
+
+  const float MAX_ANISOTROPY = 16.0f;
+  float anisotropy = min(sqrt(max_ratio) * rsqrt_min_ratio, MAX_ANISOTROPY);
+
+  float ratio_bias = 1.0f;
+#if FS
+  vec3 dPdx = dFdx(asg.z);
+  vec3 dPdy = dFdy(asg.z);
+  float dPdx2 = dot(dPdx, dPdx);
+  float dPdy2 = dot(dPdy, dPdy);
+  ratio_bias = min(cone_width * cone_width / max(dPdx2, dPdy2), 1.0f);
+#endif
+  float max_anisotropic_ratio =
+      min(min_ratio * MAX_ANISOTROPY * MAX_ANISOTROPY, max_ratio);
+  float reverse_lod = 0.5f * log2(max_anisotropic_ratio * ratio_bias);
+  float lod = texture_query_levels(env_map) - 1.0f - reverse_lod;
+
+  vec3 conv = vec3(0.0f);
+  uint num_samples = uint(ceil(anisotropy));
+  for (uint i = 0; i < num_samples; ++i) {
+    vec3 s = ((i + 1.0f) / (num_samples + 1.0f) - 0.5f) * cone_width *
+             axis_of_anisotropy;
+    conv += texture_lod(env_map, asg.z + s, lod).rgb;
+  }
+  conv /= num_samples;
 
   return integrate_asg(asg) * conv;
-#endif
+}
+
+inline vec3 sample_convolved_asg(ASG asg, SampledTextureCube env_map) {
+  return sample_convolved_asg_software_anisotropic(asg, env_map);
 }
 
 #endif

@@ -272,7 +272,11 @@ auto glslang_compile(const CompileOptions &opts) -> int {
   shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_3);
   shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_6);
   shader.setOverrideVersion(460);
-  shader.setPreamble("#extension GL_GOOGLE_include_directive : require\n");
+  String preamble =
+      fmt::format("#extension GL_GOOGLE_include_directive : require\n"
+                  "#define {} 1\n",
+                  get_stage_short_name(stage));
+  shader.setPreamble(preamble.c_str());
   shader.setDebugInfo(opts.debug);
 
   Vector<char> src;

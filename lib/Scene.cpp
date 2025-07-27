@@ -569,7 +569,6 @@ auto Scene::set_environment_map(ImageId image) -> expected<void> {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
               .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-              .max_anisotropy = 16.0f,
           }));
   return {};
 }
