@@ -1,3 +1,4 @@
+#include "TextureFiltering.hpp"
 #include "core/StdDef.hpp"
 #include "core/Views.hpp"
 #include "glsl/BRDF.h"
@@ -150,22 +151,11 @@ extern "C" void ren_eval_sg_brdf(size_t n, const float *cL, float *y, float f0,
   glm::ivec2 size = {glsl::SG_BRDF_ROUGHNESS_SIZE, glsl::SG_BRDF_NvV_SIZE};
   glm::vec2 uv =
       glsl::sg_brdf_r_and_NvV_to_uv(roughness, NvV) * glm::vec2(size);
-  glm::vec2 ab = glm::fract(uv - 0.5f);
-  glm::vec2 w0 = 1.0f - ab;
-  glm::vec2 w1 = ab;
-
-  glm::ivec2 ij0 = (uv - 0.5f) - ab;
-  glm::ivec2 ij1 = ij0 + 1;
-  ij0 = glm::max(ij0, 0);
-  ij1 = glm::min(ij1, size - 1);
 
   glm::vec4 params[glsl::MAX_SG_BRDF_SIZE];
   u32 base_layer = (num_brdf_sgs - 1) * num_brdf_sgs / 2;
   for (u32 layer : range(num_brdf_sgs)) {
-    params[layer] = lut[base_layer + layer][ij0.y][ij0.x] * w0.y * w0.x +
-                    lut[base_layer + layer][ij0.y][ij1.x] * w0.y * w1.x +
-                    lut[base_layer + layer][ij1.y][ij0.x] * w1.y * w0.x +
-                    lut[base_layer + layer][ij1.y][ij1.x] * w1.y * w1.x;
+    params[layer] = texture_lod(size.x, size.y, lut[base_layer + layer][0], uv);
   }
 
   const glm::vec3 V = {glm::sqrt(1.0f - NoV * NoV), 0.0f, NoV};

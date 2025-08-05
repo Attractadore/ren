@@ -4,15 +4,19 @@
 #if GL_core_profile
 #include "Texture.glsl"
 #endif
+#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
-struct SG {
+struct SG I_DIFFERENTIABLE {
   vec3 z;
   float a;
   float l;
 };
 
+GLSL_DEFINE_PTR_TYPE(SG, 4);
+
+DIFFERENTIABLE
 inline float eval_sg(SG sg, vec3 V) {
   return sg.a * exp(sg.l * (dot(sg.z, V) - 1.0f));
 }
@@ -25,6 +29,8 @@ struct ASG I_DIFFERENTIABLE {
   float lx;
   float ly;
 };
+
+GLSL_DEFINE_PTR_TYPE(ASG, 4);
 
 DIFFERENTIABLE
 inline float eval_asg(ASG asg, vec3 V) {
@@ -263,5 +269,10 @@ inline vec3 sample_convolved_asg(ASG asg, SampledTextureCube env_map) {
 }
 
 #endif
+
+static const uint NUM_SG_ENV_LIGHTING_PARAMS = 6;
+static const uint MAX_SG_ENV_LIGHTING_SIZE = 32;
+static const uint MAX_NUM_SG_ENV_LIGHTING_PARAMS =
+    NUM_SG_ENV_LIGHTING_PARAMS * MAX_SG_ENV_LIGHTING_SIZE;
 
 GLSL_NAMESPACE_END

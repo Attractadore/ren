@@ -1,0 +1,34 @@
+#include "SgEnvLightingPreview.h"
+#include "SG.h"
+
+shared float gs_params[MAX_NUM_SG_ENV_LIGHTING_PARAMS];
+
+LOCAL_SIZE_2D(16, 16);
+void main() {
+  uint num_params = pc.num_sgs * NUM_SG_ENV_LIGHTING_PARAMS;
+  if (gl_LocalInvocationIndex < num_params) {
+    gs_params[gl_LocalInvocationIndex] = DEREF(pc.raw_params[gl_LocalInvocationIndex]);
+  }
+  barrier();
+
+  const uvec2 pos = gl_GlobalInvocationID.xy;
+  const uint face = gl_GlobalInvocationID.z;
+  vec3 R = normalize(cube_map_face_pos_to_direction(pos, face, image_size(pc.preview_map)));
+  vec3 luminance = vec3(0.0f);
+  for (uint i = 0; i < pc.num_sgs; ++i) {
+    uint p = i * NUM_SG_ENV_LIGHTING_PARAMS;
+    float phi = gs_params[p + 0];
+    float z = gs_params[p + 1];
+    float amp_r = gs_params[p + 2];
+    float amp_g = gs_params[p + 3];
+    float amp_b = gs_params[p + 4];
+    float sh = gs_params[p + 5];
+    SG sg;
+    sg.z = cylindrical_to_cartesian(phi, z);
+    sg.a = 1.0f;
+    sg.l = sh;
+    luminance += vec3(amp_r, amp_g, amp_b) * eval_sg(sg, R);
+  }
+
+  image_store(pc.preview_map, ivec3(pos, face), vec4(luminance, 1.0f));
+}

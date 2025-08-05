@@ -100,4 +100,10 @@ inline mat3 make_orthonormal_basis(vec3 Z) {
   return mat3(X, Y, Z);
 }
 
+DIFFERENTIABLE
+inline vec3 cylindrical_to_cartesian(float phi, float z) {
+  float r = sqrt(1.0f - z * z);
+  return vec3(cos(phi) * r, sin(phi) * r, z);
+}
+
 GLSL_NAMESPACE_END

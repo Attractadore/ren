@@ -182,12 +182,6 @@ vec3 cube_map_face_pos_to_direction(uvec2 pos, uint face, uvec2 size) {
   return v;
 }
 
-vec2 direction_to_equirectangular_uv(vec3 r) {
-  float phi = atan(r.y, r.x);
-  float theta = acos(r.z / length(r));
-  return vec2(phi / TWO_PI, theta / PI);
-}
-
 float reduce_quad_checkered_min_max(uint x, uint y, vec4 v) {
   float minv = min(min(v.x, v.y), min(v.z, v.w));
   float maxv = max(max(v.x, v.y), max(v.z, v.w));

@@ -1102,6 +1102,12 @@ auto load_gfx_debugger() -> Result<void>;
 
 void start_gfx_capture();
 
+void start_gfx_capture(StringView name);
+
+void set_gfx_capture_title(StringView name);
+
 void end_gfx_capture();
+
+auto have_gfx_debugger() -> bool;
 
 } // namespace ren::rhi

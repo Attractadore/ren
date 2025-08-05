@@ -5,6 +5,7 @@
 #endif
 
 #if RENDERDOC
+#include <fmt/format.h>
 #include <renderdoc_app.h>
 
 #if __linux__
@@ -13,7 +14,7 @@
 
 namespace ren::rhi {
 
-static const RENDERDOC_API_1_0_0 *rdapi = nullptr;
+static const RENDERDOC_API_1_6_0 *rdapi = nullptr;
 
 auto load_gfx_debugger() -> Result<void> {
   if (rdapi) {
@@ -54,6 +55,18 @@ void end_gfx_capture() {
   }
 }
 
+auto have_gfx_debugger() -> bool { return rdapi != nullptr; }
+
+void set_gfx_capture_title(StringView name) {
+  if (rdapi) {
+    char c_str[256];
+    name = name.substr(0, std::min(std::size(c_str) - 1, name.size()));
+    std::ranges::copy(name, c_str);
+    c_str[name.size()] = '\0';
+    rdapi->SetCaptureTitle(c_str);
+  }
+}
+
 } // namespace ren::rhi
 
 #else
@@ -68,6 +81,19 @@ void start_gfx_capture() {}
 
 void end_gfx_capture() {}
 
+auto have_gfx_debugger() -> bool { return false; }
+
+void set_gfx_capture_title(StringView) {}
+
 } // namespace ren::rhi
 
 #endif
+
+namespace ren::rhi {
+
+void start_gfx_capture(StringView name) {
+  start_gfx_capture();
+  set_gfx_capture_title(name);
+}
+
+} // namespace ren::rhi

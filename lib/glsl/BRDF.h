@@ -140,6 +140,12 @@ inline vec3 uniform_sample_sphere(vec2 Xi, vec3 N) {
   return mat3(T, B, N) * R;
 }
 
+inline vec2 uniform_sample_cylinder(vec2 Xi) {
+  float phi = Xi.x * TWO_PI;
+  float z = mix(-1.0f, 1.0f, Xi.y);
+  return vec2(phi, z);
+}
+
 #if __cplusplus
 
 DIFFERENTIABLE

@@ -46,7 +46,11 @@ void main() {
   vec3 albedo = mix(color.rgb, vec3(0.0f), metallic);
   vec3 f0 = F_schlick_f0(color.rgb, metallic);
 
+  f0 = vec3(1.0f);
+  roughness = 0.10f;
+
   vec3 normal = a_normal;
+#if 0
   if (OPAQUE_FEATURE_UV && OPAQUE_FEATURE_TS && !IS_NULL_DESC(material.normal_texture)) {
     vec3 tex = texture(material.normal_texture, a_uv).xyz;
     tex = 2.0f * tex - 1.0f;
@@ -56,6 +60,7 @@ void main() {
     vec3 bitangent = s * cross(normal, tangent);
     normal = mat3(tangent, bitangent, normal) * tex;
   }
+#endif
   normal = normalize(normal);
 
   vec4 result = vec4(0.0f, 0.0f, 0.0f, 1.0f);

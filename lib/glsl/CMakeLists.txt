@@ -34,6 +34,20 @@ function(add_shader target shader_glsl)
   add_dependencies(${target} ${shader_target})
 endfunction()
 
+function(add_slang_shader target shader_slang shader_glsl)
+  find_program(SLANGC slangc REQUIRED)
+  set(src ${CMAKE_CURRENT_LIST_DIR}/${shader_slang})
+  set(output ${CMAKE_CURRENT_BINARY_DIR}/${shader_glsl})
+  set(dep ${CMAKE_CURRENT_BINARY_DIR}/${shader_slang}.d)
+  add_custom_command(
+    OUTPUT ${output}
+    DEPENDS ${src}
+    COMMAND ${SLANGC} -o ${output} -entry main -target glsl -force-glsl-scalar-layout -fvk-use-scalar-layout -depfile ${dep} ${src}
+    DEPFILE ${dep}
+    VERBATIM)
+  add_shader(${target} ${output})
+endfunction()
+
 add_shader(ren InstanceCullingAndLOD.comp)
 add_shader(ren MeshletCulling.comp)
 add_shader(ren MeshletSorting.comp)
@@ -60,15 +74,7 @@ if (TARGET ren-baking)
   add_shader(ren-baking BakeReflectionMap.comp)
   add_shader(ren-baking BakeSpecularMap.comp)
   add_shader(ren-baking BakeIrradianceMap.comp)
-
-  find_program(SLANGC slangc REQUIRED)
-  set(SLANG_COMP ${CMAKE_CURRENT_BINARY_DIR}/SgBrdfLoss.comp)
-  set(SLANG_D ${CMAKE_CURRENT_BINARY_DIR}/SgBrdfLoss.slang.d)
-  add_custom_command(
-    OUTPUT ${SLANG_COMP}
-    DEPENDS ${CMAKE_CURRENT_LIST_DIR}/SgBrdfLoss.slang
-    COMMAND ${SLANGC} -o ${SLANG_COMP} -entry main -target glsl -force-glsl-scalar-layout -depfile ${SLANG_D} ${CMAKE_CURRENT_LIST_DIR}/SgBrdfLoss.slang
-    DEPFILE ${SLANG_D}
-    VERBATIM)
-  add_shader(ren-baking ${SLANG_COMP})
+  add_slang_shader(ren-baking SgBrdfLoss.slang SgBrdfLoss.comp)
+  add_slang_shader(ren-baking SgEnvLightingLoss.slang SgEnvLightingLoss.comp)
+  add_shader(ren-baking SgEnvLightingPreview.comp)
 endif()

@@ -109,7 +109,7 @@ if (REN_BUILD_BAKING_TOOLS)
   target_link_libraries(ren-bake-specular-occlusion-lut ren::core ren::baking cxxopts::cxxopts)
 
   add_executable(ren-bake-ibl bake-ibl.cpp)
-  target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
+  target_link_libraries(ren-bake-ibl ren::core ren-gfx ren::baking cxxopts::cxxopts stb Microsoft::DirectXTex KTX::ktx lbfgs)
   add_executable(ren-bake-sg-brdf-lut bake-sg-brdf-lut.cpp ${SLANG_CPP})
   target_link_libraries(ren-bake-sg-brdf-lut ren::core ren-gfx ren::baking cxxopts::cxxopts lbfgs tiny_imageformat Microsoft::DirectXTex)
 

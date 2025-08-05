@@ -152,5 +152,11 @@ GLSL_DEFINE_PTR_TYPE(StorageTexture3D, TEXTURE_ID_SIZE);
 const SamplerState SAMPLER_NEAREST_CLAMP = SamplerState(1);
 const SamplerState SAMPLER_LINEAR_MIP_NEAREST_CLAMP = SamplerState(2);
 
+inline vec2 direction_to_equirectangular_uv(vec3 r) {
+  float phi = atan(r.y, r.x);
+  float theta = acos(r.z / length(r));
+  return vec2(phi / TWO_PI, theta / PI);
+}
+
 GLSL_NAMESPACE_END
 #endif

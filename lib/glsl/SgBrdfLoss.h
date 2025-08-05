@@ -25,16 +25,6 @@ static const float SG_BRDF_LOSS_F0_WEIGHTS[NUM_SG_BRDF_LOSS_F0] = {
     1.0f,
 };
 
-// Workaround for compiler not generating correct code for stores through
-// pointers.
-#if SLANG
-struct FloatBox {
-  float value;
-};
-#elif __cplusplus
-using FloatBox = float;
-#endif
-
 struct SgBrdfLossArgs {
   GLSL_PTR(float) f_norm_lut;
   GLSL_PTR(float) params;
