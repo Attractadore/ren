@@ -555,21 +555,54 @@ void Scene::set_directional_light(DirectionalLightId light,
       m_data.directional_lights[handle]);
 };
 
-auto Scene::set_environment_map(ImageId image) -> expected<void> {
-  if (!image) {
-    m_data.env_map = {};
-    return {};
+auto Scene::create_environment(std::span<const std::byte> blob)
+    -> expected<EnvironmentId> {
+  if (blob.size() < sizeof(EnvironmentPackageHeader)) {
+    return std::unexpected(Error::InvalidFormat);
   }
-  Handle<Texture> texture = m_images[std::bit_cast<Handle<Image>>(image)];
+  const auto &header = *(const EnvironmentPackageHeader *)blob.data();
+  if (header.magic != ENV_LIGHTING_PACKAGE_MAGIC) {
+    return std::unexpected(Error::InvalidFormat);
+  }
+  if (header.version != ENV_LIGHTING_PACKAGE_VERSION) {
+    return std::unexpected(Error::InvalidVersion);
+  }
+
+  const auto *sgs = (const glsl::SG3 *)(blob.data() + header.sgs_offset);
+  ren_try(BufferSlice<glsl::SG3> sg_buffer,
+          m_arena.create_buffer<glsl::SG3>({
+              .name = "Environment SG mixture",
+              .heap = rhi::MemoryHeap::Default,
+              .count = header.num_sgs,
+          }));
+  m_resource_uploader.stage_buffer(*m_renderer, m_frcs->upload_allocator,
+                                   Span(sgs, header.num_sgs), sg_buffer);
+
+  ren_try(Handle<Texture> map,
+          create_texture(blob.data() + header.ktx_offset, header.ktx_size));
+
+  glsl::Environment environment = {
+      .sgs = m_renderer->get_buffer_device_ptr(sg_buffer),
+      .num_sgs = (u32)header.num_sgs,
+  };
+
   ren_try(
-      m_data.env_map,
+      environment.map,
       m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
-          *m_renderer, SrvDesc{texture},
+          *m_renderer, SrvDesc{map},
           {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
               .mipmap_mode = rhi::SamplerMipmapMode::Linear,
           }));
+
+  Handle<glsl::Environment> handle = m_data.environments.insert(environment);
+
+  return std::bit_cast<EnvironmentId>(handle);
+}
+
+auto Scene::set_environment(EnvironmentId env) -> expected<void> {
+  m_data.environment = std::bit_cast<Handle<glsl::Environment>>(env);
   return {};
 }
 

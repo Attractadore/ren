@@ -1,7 +1,7 @@
 #pragma once
 #include "Batch.hpp"
 #include "DrawSet.hpp"
-#include "Light.hpp"
+#include "Lighting.hpp"
 #include "Material.hpp"
 #include "RenderGraph.hpp"
 #include "glsl/Culling.h"

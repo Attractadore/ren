@@ -319,9 +319,9 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
                                        : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
-      .env_map = scene.env_map,
+      .env = scene.environment ? scene.environments[scene.environment]
+                               : glsl::Environment(),
       .so_lut = scene.so_lut,
-      .num_brdf_sgs = (u32)scene.settings.num_brdf_sgs,
       .sg_brdf_lut = scene.sg_brdf_lut,
   };
 }

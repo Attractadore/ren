@@ -21,7 +21,9 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
   RgSkyboxArgs args = {
       .exposure = pass.read_texture(cfg.exposure),
       .env_luminance = ccfg.scene->env_luminance,
-      .env_map = ccfg.scene->env_map,
+      .env_map = ccfg.scene->environment
+                     ? ccfg.scene->environments[ccfg.scene->environment].map
+                     : glsl::SampledTextureCube(),
       .inv_proj_view = glm::inverse(
           get_projection_view_matrix(camera, ccfg.swapchain->get_size())),
       .eye = camera.position,

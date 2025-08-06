@@ -2,7 +2,7 @@
 #include "Camera.hpp"
 #include "DescriptorAllocator.hpp"
 #include "GpuScene.hpp"
-#include "Light.hpp"
+#include "Lighting.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
@@ -11,6 +11,7 @@
 #include "Texture.hpp"
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
+#include "glsl/Lighting.h"
 #include "passes/Pass.hpp"
 #include "ren/ren.hpp"
 
@@ -90,7 +91,8 @@ struct SceneData {
   glsl::SampledTexture2DArray sg_brdf_lut;
 
   glm::vec3 env_luminance = {};
-  glsl::SampledTextureCube env_map;
+  GenArray<glsl::Environment> environments;
+  Handle<glsl::Environment> environment = {};
 
 public:
   const Camera &get_camera() const {
@@ -158,7 +160,10 @@ public:
     m_data.env_luminance = luminance;
   }
 
-  auto set_environment_map(ImageId image) -> expected<void> override;
+  auto create_environment(std::span<const std::byte> blob)
+      -> expected<EnvironmentId> override;
+
+  auto set_environment(EnvironmentId env) -> expected<void> override;
 
   auto delay_input() -> expected<void> override;
 

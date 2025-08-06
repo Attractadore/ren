@@ -57,6 +57,7 @@ ren_define_id(MaterialId);
 ren_define_id(MeshInstanceId);
 ren_define_id(DirectionalLightId);
 ren_define_id(CameraId);
+ren_define_id(EnvironmentId);
 
 #undef ren_define_id
 
@@ -312,7 +313,10 @@ struct IScene {
 
   virtual void set_environment_color(const glm::vec3 &luminance) = 0;
 
-  virtual auto set_environment_map(ImageId image) -> expected<void> = 0;
+  virtual auto create_environment(std::span<const std::byte> blob)
+      -> expected<EnvironmentId> = 0;
+
+  virtual auto set_environment(EnvironmentId env) -> expected<void> = 0;
 
   // Call to use graphics driver low-latency APIs.
   [[nodiscard]] virtual auto delay_input() -> expected<void> = 0;

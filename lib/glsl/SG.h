@@ -14,10 +14,22 @@ struct SG I_DIFFERENTIABLE {
   float l;
 };
 
+struct SG3 I_DIFFERENTIABLE {
+  vec3 z;
+  vec3 a;
+  float l;
+};
+
 GLSL_DEFINE_PTR_TYPE(SG, 4);
+GLSL_DEFINE_PTR_TYPE(SG3, 4);
 
 DIFFERENTIABLE
 inline float eval_sg(SG sg, vec3 V) {
+  return sg.a * exp(sg.l * (dot(sg.z, V) - 1.0f));
+}
+
+DIFFERENTIABLE
+inline vec3 eval_sg(SG3 sg, vec3 V) {
   return sg.a * exp(sg.l * (dot(sg.z, V) - 1.0f));
 }
 
@@ -61,6 +73,18 @@ inline float integrate_asg(ASG asg) {
 inline ASG normalize_asg(ASG asg) {
   asg.a = asg.a / integrate_asg(asg);
   return asg;
+}
+
+inline vec3 convolve_asg_with_sg(ASG asg, SG3 sg) {
+  float v = sg.l * 0.5f;
+  ASG conv;
+  conv.z = asg.z;
+  conv.x = asg.x;
+  conv.y = asg.y;
+  conv.lx = v * asg.lx / (v + asg.lx);
+  conv.ly = v * asg.ly / (v + asg.ly);
+  conv.a = asg.a * PI / sqrt((asg.lx + v) * (asg.ly + v));
+  return sg.a * eval_asg(conv, sg.z);
 }
 
 static const uint NUM_SG_BRDF_SAMPLE_POINTS = 2048;
@@ -238,6 +262,7 @@ sample_convolved_asg_software_anisotropic(ASG asg, SampledTextureCube env_map) {
 
   const float MAX_ANISOTROPY = 16.0f;
   float anisotropy = min(sqrt(max_ratio) * rsqrt_min_ratio, MAX_ANISOTROPY);
+  anisotropy = max(anisotropy, 1.0f);
 
   float ratio_bias = 1.0f;
 #if FS

@@ -2,6 +2,7 @@
 #include "BakeSpecularMap.comp.hpp"
 #include "Baking.hpp"
 #include "ImageBaking.hpp"
+#include "Lighting.hpp"
 #include "SgEnvLightingLoss.comp.hpp"
 #include "SgEnvLightingPreview.comp.hpp"
 #include "TextureFiltering.hpp"
@@ -42,7 +43,7 @@ auto fail(HRESULT hres) -> Failure<Error> {
 } // namespace
 
 auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
-    -> Result<DirectX::ScratchImage, Error> {
+    -> Result<Blob, Error> {
   HRESULT hres = S_OK;
 
   if (!baker->pipelines.reflection_map) {
@@ -426,16 +427,39 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
     baker->renderer->wait_idle();
   }
 
-  return compressed;
-}
+  ren_try(Blob ktx_blob, write_ktx_to_memory(compressed));
 
-auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info, bool compress)
-    -> Result<Blob, Error> {
-  ren_try(DirectX::ScratchImage image, bake_ibl(baker, info, compress));
-  ren_try(auto blob, write_ktx_to_memory(image));
-  reset_baker(*baker);
-  auto [blob_data, blob_size] = blob;
-  return {{blob_data, blob_size}};
+  Blob blob;
+  blob.size = sizeof(EnvironmentPackageHeader) + sizeof(glsl::SG3) * num_sgs +
+              ktx_blob.size;
+  blob.data = std::malloc(blob.size);
+
+  auto *header = (EnvironmentPackageHeader *)blob.data;
+  *header = {
+      .num_sgs = num_sgs,
+      .ktx_size = ktx_blob.size,
+  };
+  usize offset = sizeof(EnvironmentPackageHeader);
+
+  {
+    header->sgs_offset = offset;
+    auto *sgs = (glsl::SG3 *)((u8 *)blob.data + offset);
+    for (usize i : range(num_sgs)) {
+      usize p = i * glsl::NUM_SG_ENV_LIGHTING_PARAMS;
+      sgs[i] = {
+          .z = glsl::cylindrical_to_cartesian(params[p + 0], params[p + 1]),
+          .a = {params[p + 2], params[p + 3], params[p + 4]},
+          .l = float(params[p + 5]),
+      };
+    }
+    offset += sizeof(glsl::SG3) * num_sgs;
+  }
+
+  header->ktx_offset = offset;
+  std::memcpy((u8 *)blob.data + offset, ktx_blob.data, ktx_blob.size);
+  std::free(ktx_blob.data);
+
+  return blob;
 }
 
 int main(int argc, const char *argv[]) {
@@ -479,16 +503,16 @@ int main(int argc, const char *argv[]) {
   }
   std::fclose(f);
 
-  Blob blob =
-      bake_ibl_to_memory(baker,
-                         {
-                             .format = TinyImageFormat_R32G32B32A32_SFLOAT,
-                             .width = (u32)w,
-                             .height = (u32)h,
-                             .data = buffer,
-                         },
-                         not result.count("no-compress"))
-          .value();
+  Blob blob = bake_ibl(baker,
+                       {
+                           .format = TinyImageFormat_R32G32B32A32_SFLOAT,
+                           .width = (u32)w,
+                           .height = (u32)h,
+                           .data = buffer,
+                       },
+                       not result.count("no-compress"))
+                  .value();
+  const auto *header = (const EnvironmentPackageHeader *)blob.data;
 
   fs::path out_dir = out_path.parent_path();
   if (not out_dir.empty()) {
@@ -496,6 +520,10 @@ int main(int argc, const char *argv[]) {
   }
 
   write_to_file(blob.data, blob.size, out_path).value();
+  auto ktx_path = out_path.replace_extension(".ktx2");
+  write_to_file((u8 *)blob.data + header->ktx_offset, header->ktx_size,
+                ktx_path)
+      .value();
 
   destroy_baker(baker);
 }

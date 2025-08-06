@@ -664,7 +664,7 @@ private:
     }
 
     if (material.doubleSided) {
-      bail("Double sided materials not implemented");
+      warn("Double sided materials not implemented");
     }
 
     return m_scene->create_material(desc).transform_error(get_error_string);
@@ -791,7 +791,7 @@ private:
 struct ViewGltfOptions {
   fs::path path;
   unsigned scene = 0;
-  fs::path env_map;
+  fs::path env;
 };
 
 class ViewGlTFApp : public ImGuiApp {
@@ -804,32 +804,32 @@ public:
       TRY_TO(scene_walker.walk(options.scene));
       ren::IScene &scene = get_scene();
 
-      auto env_map = [&]() -> Result<ren::ImageId> {
-        if (options.env_map.empty()) {
+      auto environment = [&]() -> Result<ren::EnvironmentId> {
+        if (options.env.empty()) {
           return {};
         }
 
-        FILE *f = ren::fopen(options.env_map, "rb");
+        FILE *f = ren::fopen(options.env, "rb");
         if (!f) {
-          bail("Failed to open {}", options.env_map);
+          bail("Failed to open {}", options.env);
         }
 
-        std::vector<std::byte> blob(fs::file_size(options.env_map));
+        std::vector<std::byte> blob(fs::file_size(options.env));
         size_t num_read = std::fread(blob.data(), 1, blob.size(), f);
         std::fclose(f);
         if (num_read != blob.size()) {
-          bail("Failed to read from {}", options.env_map);
+          bail("Failed to read from {}", options.env);
         }
 
-        return scene.create_image(blob).transform_error(get_error_string);
+        return scene.create_environment(blob).transform_error(get_error_string);
       }();
 
-      if (env_map and *env_map) {
-        TRY_TO(scene.set_environment_map(*env_map));
+      if (environment and *environment) {
+        TRY_TO(scene.set_environment(*environment));
         m_camera_params.exposure = ren::ExposureMode::Automatic;
       } else {
-        if (!env_map) {
-          warn("Failed to load environment map: {}", env_map.error());
+        if (!environment) {
+          warn("Failed to load environment map: {}", environment.error());
         }
         OK(auto directional_light, scene.create_directional_light({
                                        .color = {1.0f, 1.0f, 1.0f},
@@ -986,7 +986,7 @@ int main(int argc, const char *argv[]) {
   options.add_options()
       ("file", "path to glTF file", cxxopts::value<fs::path>())
       ("scene", "index of scene to view", cxxopts::value<unsigned>()->default_value("0"))
-      ("env-map", "path to environment map", cxxopts::value<fs::path>())
+      ("env", "path to environment", cxxopts::value<fs::path>())
       ("h,help", "show this message")
   ;
   // clang-format on
@@ -1001,7 +1001,6 @@ int main(int argc, const char *argv[]) {
   return ViewGlTFApp::run({
       .path = result["file"].as<fs::path>(),
       .scene = result["scene"].as<unsigned>(),
-      .env_map = result.count("env-map") ? result["env-map"].as<fs::path>()
-                                         : fs::path(),
+      .env = result.count("env") ? result["env"].as<fs::path>() : fs::path(),
   });
 }

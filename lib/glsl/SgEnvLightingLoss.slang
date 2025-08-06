@@ -16,11 +16,11 @@ groupshared float gs_loss;
 [Differentiable]
 vec3 eval_sg(float phi, float z, float amp_r, float amp_g, float amp_b,
              float sh, no_diff vec3 V) {
-  SG sg;
+  SG3 sg;
   sg.z = cylindrical_to_cartesian(phi, z);
-  sg.a = 1.0f;
+  sg.a = vec3(amp_r, amp_g, amp_b);
   sg.l = sh;
-  return vec3(amp_r, amp_g, amp_b) * eval_sg(sg, V);
+  return eval_sg(sg, V);
 }
 
 [shader("compute")]
@@ -57,7 +57,8 @@ void main() {
 
   float loss = dot(D, D);
   if (isnan(loss)) {
-    printf("%d: R: (%f, %f, %f), L: (%f, %f, %f)\n", gl_GlobalInvocationID.x, R.x, R.y, R.z, L.x, L.y, L.z);
+    printf("%d: R: (%f, %f, %f), L: (%f, %f, %f)\n", gl_GlobalInvocationID.x,
+           R.x, R.y, R.z, L.x, L.y, L.z);
   }
   loss = subgroupAdd(loss);
   if (subgroupElect()) {
