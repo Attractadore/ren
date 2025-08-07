@@ -1,10 +1,11 @@
 #pragma once
+#include "DevicePtr.h"
+#include "Math.h"
 #include "Std.h"
 #include "Transforms.h"
 #if GL_core_profile
 #include "Texture.glsl"
 #endif
-#include "DevicePtr.h"
 
 GLSL_NAMESPACE_BEGIN
 
@@ -33,6 +34,20 @@ inline vec3 eval_sg(SG3 sg, vec3 V) {
   return sg.a * exp(sg.l * (dot(sg.z, V) - 1.0f));
 }
 
+// https://gpuopen.com/download/Accurate_Diffuse_Lighting_from_Spherical_Gaussian_Lights.pdf
+inline vec3 convolve_sg_with_clamped_cosine(SG3 sg, vec3 N) {
+  float k = max(sg.l, 0.001f);
+
+  float t = k * sqrt((0.5f * k + 0.65173288269070562f) /
+                     (k * k + 1.3418280033141288f * k + 7.2216687798956709f));
+
+  float s = 0.5f + 0.5f * erf_fast(t * dot(N, sg.z)) / erf_0_inf_fast(t);
+
+  return mix(exp(-k), 1.0f, s) * TWO_PI * (1.0f - exp(-k)) / k * sg.a;
+}
+
+// https://cg.cs.tsinghua.edu.cn/people/~kun/asg/paper_asg.pdf
+// https://cg.cs.tsinghua.edu.cn/people/~kun/asg/supplemental_asg.pdf
 struct ASG I_DIFFERENTIABLE {
   vec3 z;
   vec3 x;

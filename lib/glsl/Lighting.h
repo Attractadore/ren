@@ -198,7 +198,13 @@ inline vec3 env_lighting(vec3 N, vec3 V, vec3 albedo, vec3 f0, float roughness,
            smoothstep(CONVOLVED_SG_BRDF_ROUGHNESS_LOW,
                       CONVOLVED_SG_BRDF_ROUGHNESS_HIGH, roughness));
 
-  return ks;
+  vec3 kd = vec3(0.0f);
+  for (uint s = 0; s < env.num_sgs; ++s) {
+    kd += convolve_sg_with_clamped_cosine(DEREF(env.sgs[s]), N);
+  }
+  kd = albedo / PI * kd;
+
+  return kd + ks;
 }
 
 #endif // GL_core_profile
