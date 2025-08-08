@@ -30,11 +30,19 @@ public:
 
   void set_usage(rhi::ImageUsageFlags usage);
 
-  auto acquire_texture(Handle<Semaphore> signal_semaphore)
-      -> Result<Handle<Texture>, Error>;
+  auto acquire(Handle<Semaphore> signal_semaphore) -> Result<u32, Error>;
 
-  auto present(rhi::QueueFamily queue_family, Handle<Semaphore> wait_semaphore)
-      -> Result<void, Error>;
+  auto get_texture(u32 i) -> Handle<Texture> {
+    ren_assert(i < m_textures.size());
+    return m_textures[i];
+  }
+
+  auto get_semaphore(u32 i) -> Handle<Semaphore> {
+    ren_assert(i < m_semaphores.size());
+    return m_semaphores[i];
+  }
+
+  auto present(rhi::QueueFamily queue_family) -> Result<void, Error>;
 
   auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
@@ -50,6 +58,7 @@ private:
   rhi::Surface m_surface = {};
   rhi::SwapChain m_swap_chain = {};
   SmallVector<Handle<Texture>> m_textures;
+  SmallVector<Handle<Semaphore>> m_semaphores;
   TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags m_usage = {};
   glm::ivec2 m_size = {};

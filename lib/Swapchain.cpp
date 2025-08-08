@@ -27,8 +27,9 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 Swapchain::~Swapchain() {
   m_renderer->wait_idle();
-  for (Handle<Texture> t : m_textures) {
-    m_renderer->destroy(t);
+  for (usize i : range(m_textures.size())) {
+    m_renderer->destroy(m_textures[i]);
+    m_renderer->destroy(m_semaphores[i]);
   }
   rhi::destroy_swap_chain(m_swap_chain);
   rhi::destroy_surface(m_surface);
@@ -187,6 +188,7 @@ auto Swapchain::update_textures() -> Result<void, Error> {
   u32 num_images = std::size(images);
   ren_try_to(rhi::get_swap_chain_images(m_swap_chain, &num_images, images));
   m_textures.resize(num_images);
+  m_semaphores.resize(num_images);
   for (usize i : range(num_images)) {
     m_textures[i] = m_renderer->create_external_texture({
         .name = fmt::format("Swap Chain Texture {}", i),
@@ -196,6 +198,11 @@ auto Swapchain::update_textures() -> Result<void, Error> {
         .width = (u32)m_size.x,
         .height = (u32)m_size.y,
     });
+    ren_try(m_semaphores[i],
+            m_renderer->create_semaphore({
+                .name = fmt::format("Swap Chain Semaphore {}", i),
+                .type = rhi::SemaphoreType::Binary,
+            }));
   }
   return {};
 }
@@ -226,8 +233,9 @@ auto Swapchain::update() -> Result<void, Error> {
       rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  for (Handle<Texture> t : m_textures) {
-    m_renderer->destroy(t);
+  for (usize i : range(m_textures.size())) {
+    m_renderer->destroy(m_textures[i]);
+    m_renderer->destroy(m_semaphores[i]);
   }
   ren_try_to(update_textures());
 
@@ -239,8 +247,8 @@ auto Swapchain::update() -> Result<void, Error> {
   return {};
 }
 
-auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
-    -> Result<Handle<Texture>, Error> {
+auto Swapchain::acquire(Handle<Semaphore> signal_semaphore)
+    -> Result<u32, Error> {
   ZoneScoped;
 
   glm::ivec2 size;
@@ -265,7 +273,8 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
         m_swap_chain,
         rhi::Semaphore{m_renderer->get_semaphore(signal_semaphore).handle});
     if (image) {
-      return m_textures[*image];
+      m_image_index = *image;
+      return m_image_index;
     }
     if (image.error() == rhi::Error::OutOfDate) {
       ren_try_to(update());
@@ -275,12 +284,12 @@ auto Swapchain::acquire_texture(Handle<Semaphore> signal_semaphore)
   }
 }
 
-auto Swapchain::present(rhi::QueueFamily qf, Handle<Semaphore> wait_semaphore)
-    -> Result<void, Error> {
+auto Swapchain::present(rhi::QueueFamily qf) -> Result<void, Error> {
   ZoneScoped;
-  auto result = rhi::present(rhi::get_queue(m_renderer->get_rhi_device(), qf),
-                             m_swap_chain,
-                             m_renderer->get_semaphore(wait_semaphore).handle);
+  auto result = rhi::present(
+      rhi::get_queue(m_renderer->get_rhi_device(), qf), m_swap_chain,
+      m_renderer->get_semaphore(m_semaphores[m_image_index]).handle);
+  m_image_index = -1;
   if (!result) {
     if (result.error() == rhi::Error::OutOfDate) {
       return update();

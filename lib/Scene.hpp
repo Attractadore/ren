@@ -24,7 +24,6 @@ constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
 
 struct ScenePerFrameResources {
   Handle<Semaphore> acquire_semaphore;
-  Handle<Semaphore> present_semaphore;
   UploadBumpAllocator upload_allocator;
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;

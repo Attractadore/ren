@@ -11,16 +11,16 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         ccfg.rgp->create_semaphore("present-semaphore");
   }
 
-  Result<Handle<Texture>, Error> backbuffer =
-      ccfg.swapchain->acquire_texture(cfg.acquire_semaphore);
-  ren_assert(backbuffer);
+  Result<u32, Error> result = ccfg.swapchain->acquire(cfg.acquire_semaphore);
+  ren_assert(result);
 
-  rgb.set_external_texture(ccfg.rcs->backbuffer, *backbuffer);
+  rgb.set_external_texture(ccfg.rcs->backbuffer,
+                           ccfg.swapchain->get_texture(*result));
 
   rgb.set_external_semaphore(ccfg.rcs->acquire_semaphore,
                              cfg.acquire_semaphore);
   rgb.set_external_semaphore(ccfg.rcs->present_semaphore,
-                             cfg.present_semaphore);
+                             ccfg.swapchain->get_semaphore(*result));
 
   auto present = ccfg.rgb->create_pass({
       .name = "present",

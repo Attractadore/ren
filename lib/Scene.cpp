@@ -104,7 +104,6 @@ auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
             }));
     m_per_frame_resources.emplace_back(ScenePerFrameResources{
         .acquire_semaphore = acquire_semaphore,
-        .present_semaphore = present_semaphore,
     });
     ScenePerFrameResources &frcs = m_per_frame_resources.back();
     ren_try(frcs.gfx_cmd_pool, m_arena.create_command_pool({
@@ -589,7 +588,7 @@ auto Scene::draw() -> expected<void> {
   auto present_qf = m_data.settings.present_from_compute
                         ? rhi::QueueFamily::Compute
                         : rhi::QueueFamily::Graphics;
-  ren_try_to(m_swapchain->present(present_qf, m_frcs->present_semaphore));
+  ren_try_to(m_swapchain->present(present_qf));
 
   FrameMark;
 
@@ -1004,7 +1003,6 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,
                               .acquire_semaphore = m_frcs->acquire_semaphore,
-                              .present_semaphore = m_frcs->present_semaphore,
                               .swapchain = m_swapchain,
                           });
 
