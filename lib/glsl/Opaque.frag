@@ -70,12 +70,12 @@ void main() {
     float z = abs(1.0f / gl_FragCoord.w);
     ka = clamp(ba.x + ba.y * z, 0.0f, 1.0f);
   }
-  ka = ka * occlusion;
+  vec3 bent_normal = normalize(cross(dFdy(a_position), dFdx(a_position)));
 
   if (!IS_NULL_DESC(pc.raw_env_map)) {
-    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, pc.raw_so_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, bent_normal);
   } else {
-    result.xyz += env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, pc.raw_so_lut);
+    result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, bent_normal);
   }
 
   float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;

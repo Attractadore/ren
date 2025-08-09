@@ -317,7 +317,6 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
       .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,
-      .so_lut = scene.so_lut,
   };
 }
 

@@ -5,9 +5,6 @@
 
 namespace ren {
 
-auto bake_so_lut_to_memory(IBaker *baker, bool compress = true)
-    -> Result<Blob, Error>;
-
 auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info,
                         bool compress = true) -> Result<Blob, Error>;
 

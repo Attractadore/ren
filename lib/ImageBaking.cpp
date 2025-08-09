@@ -9,7 +9,6 @@
 
 #include "BakeIrradianceMap.comp.hpp"
 #include "BakeReflectionMap.comp.hpp"
-#include "BakeSoLut.comp.hpp"
 #include "BakeSpecularMap.comp.hpp"
 
 #include <DirectXTex.h>
@@ -287,83 +286,6 @@ auto bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
   ren_try(DirectX::ScratchImage mip_chain,
           bake_orm_map(roughness_metallic_info, occlusion_info));
   return write_ktx_to_memory(mip_chain);
-}
-
-auto bake_so_lut_to_memory(IBaker *baker, bool compress) -> expected<Blob> {
-  ren_assert(baker);
-
-  if (!baker->pipelines.so_lut) {
-    ren_try(baker->pipelines.so_lut,
-            load_compute_pipeline(baker->session_arena, BakeSoLutCS,
-                                  "Bake SO LUT"));
-  }
-
-  RgBuilder rgb(baker->rg, *baker->renderer, baker->descriptor_allocator);
-
-  constexpr usize SO_LUT_SIZE = 32;
-  constexpr TinyImageFormat SO_LUT_FORMAT = TinyImageFormat_R16G16_UNORM;
-  usize SO_LUT_PIXEL_SIZE = TinyImageFormat_BitSizeOfBlock(SO_LUT_FORMAT) / 8;
-  usize SO_LUT_BYTE_SIZE =
-      SO_LUT_SIZE * SO_LUT_SIZE * SO_LUT_SIZE * SO_LUT_PIXEL_SIZE;
-
-  RgTextureId so_lut = baker->rg.create_texture({
-      .name = "so-lut",
-      .format = SO_LUT_FORMAT,
-      .width = SO_LUT_SIZE,
-      .height = SO_LUT_SIZE,
-      .depth = SO_LUT_SIZE,
-  });
-  {
-    auto pass = rgb.create_pass({.name = "bake-so-lut"});
-    RgBakeSoLutArgs args = {
-        .lut = pass.write_texture("so-lut", &so_lut),
-    };
-    pass.dispatch_grid_3d(baker->pipelines.so_lut, args,
-                          {SO_LUT_SIZE, SO_LUT_SIZE, SO_LUT_SIZE});
-  }
-
-  ren_try(BufferSlice readback, baker->arena.create_buffer({
-                                    .name = "SO LUT readback buffer",
-                                    .heap = rhi::MemoryHeap::Readback,
-                                    .size = SO_LUT_BYTE_SIZE,
-                                }));
-  RgUntypedBufferId so_lut_readback =
-      rgb.create_buffer("so-lut-readback", readback);
-  rgb.copy_texture_to_buffer(so_lut, &so_lut_readback);
-
-  ren_try(RenderGraph rg, rgb.build({}));
-  ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
-  baker->renderer->wait_idle();
-
-  if (compress) {
-    fmt::println("Compress specular occlusion LUT");
-    Vector<DirectX::Image> images;
-    DirectX::TexMetadata mdata = to_dxtex_images(
-        {
-            .format = SO_LUT_FORMAT,
-            .width = SO_LUT_SIZE,
-            .height = SO_LUT_SIZE,
-            .depth = SO_LUT_SIZE,
-            .data = baker->renderer->map_buffer(readback),
-        },
-        images);
-    DirectX::ScratchImage compressed;
-    HRESULT hres = DirectX::Compress(
-        images.data(), images.size(), mdata, DXGI_FORMAT_BC5_UNORM,
-        DirectX::TEX_COMPRESS_DEFAULT, 0.0f, compressed);
-    if (FAILED(hres)) {
-      return fail(hres);
-    }
-    return write_ktx_to_memory(compressed);
-  }
-
-  return write_ktx_to_memory({
-      .format = SO_LUT_FORMAT,
-      .width = SO_LUT_SIZE,
-      .height = SO_LUT_SIZE,
-      .depth = SO_LUT_SIZE,
-      .data = baker->renderer->map_buffer(readback),
-  });
 }
 
 auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)

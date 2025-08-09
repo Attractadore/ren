@@ -83,8 +83,6 @@ struct SceneData {
 
   GenArray<DirectionalLight> directional_lights;
 
-  glsl::SampledTexture3D so_lut;
-
   glm::vec3 env_luminance = {};
   glsl::SampledTextureCube env_map;
 

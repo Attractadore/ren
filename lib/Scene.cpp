@@ -27,12 +27,6 @@
 
 namespace ren {
 
-namespace {
-constexpr u8 SO_LUT_KTX2[] = {
-#include "../assets/so-lut.ktx2.inc"
-};
-} // namespace
-
 Scene::Scene(Renderer &renderer, Swapchain &swapchain)
     : m_arena(renderer)
 
@@ -72,22 +66,6 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
       glsl::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
 
   next_frame().value();
-
-  Handle<Texture> so_lut =
-      create_texture(SO_LUT_KTX2, sizeof(SO_LUT_KTX2)).value();
-  m_data.so_lut =
-      m_descriptor_allocator
-          .allocate_sampled_texture<glsl::SampledTexture3D>(
-              *m_renderer, SrvDesc{so_lut},
-              {
-                  .mag_filter = rhi::Filter::Linear,
-                  .min_filter = rhi::Filter::Linear,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_w = rhi::SamplerAddressMode::ClampToEdge,
-              })
-          .value();
 }
 
 auto Scene::allocate_per_frame_resources() -> Result<void, Error> {

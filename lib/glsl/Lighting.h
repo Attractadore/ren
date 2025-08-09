@@ -1,5 +1,6 @@
 #pragma once
 #include "DevicePtr.h"
+#include "Math.h"
 #include "Std.h"
 #include "Texture.h"
 #include "Vertex.h"
@@ -135,34 +136,67 @@ inline vec3 ka_with_interreflection(float ka, vec3 albedo) {
   return ka * (1.0f - albedo * (1.0f - ka));
 }
 
-#if GL_core_profile
-
-inline vec3 specular_occlusion(SampledTexture3D lut, vec3 f0, float roughness,
-                               float nv, float ka) {
-  float cosa = sqrt(1.0f - ka);
-  vec2 ab = texture_lod(lut, vec3(roughness, nv, cosa), 0).xy;
-  return f0 * ab.x + ab.y;
+// https://c0de517e.blogspot.com/2016/07/siggraph-2015-notes-for-approximate.html
+inline vec3 directional_albedo(vec3 f0, float roughness, float NoV) {
+  float bias = exp2(-7.0f * NoV + 4.0f * roughness * roughness);
+  float scale = 1.0f - bias -
+                roughness * roughness *
+                    max(bias, min(roughness, 0.739f + 0.323f * NoV) - 0.434f);
+  return f0 * scale + bias;
 }
 
-inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         vec3 luminance, float ka, SampledTexture3D so_lut) {
+// https://github.com/GameTechDev/XeGTAO/blob/a5b1686c7ea37788eeb3576b5be47f7c03db532c/Source/Rendering/Shaders/Filament/ambient_occlusion.va.fs#L24
+inline float specular_occlusion(vec3 R, float roughness, vec3 C, float ka) {
+  float cos_vis = sqrt(1.0f - ka);
+  float cos_ndf = exp2(-3.321928f * roughness * roughness);
+
+  float r_vis = acos_0_to_1_fast(cos_vis);
+  float r_ndf = acos_0_to_1_fast(cos_ndf);
+  float d = acos_fast(dot(R, C));
+
+  float intersection_area = 0.0f;
+  if (min(r_vis, r_ndf) <= max(r_vis, r_ndf) - d) {
+    intersection_area = 1.0f - max(cos_vis, cos_ndf);
+  } else if (r_vis + r_vis <= d) {
+    intersection_area = 0.0f;
+  } else {
+    float delta = abs(r_vis - r_ndf);
+    float x = 1.0 - clamp((d - delta) / max(r_vis + r_ndf - delta, 1e-4f), 0.0f,
+                          1.0f);
+    float area = x * x * (-2.0 * x + 3.0);
+    intersection_area = area * (1.0 - max(cos_vis, cos_ndf));
+  }
+  float ndf_area = 1.0f - cos_ndf;
+
+  float so = intersection_area / ndf_area;
+
+  return mix(1.0f, so, smoothstep(0.01f, 0.09f, roughness));
+}
+
+inline vec3 env_lighting(vec3 N, vec3 V, vec3 albedo, vec3 f0, float roughness,
+                         vec3 luminance, float ka, vec3 bN) {
+  float NoV = dot(N, V);
+  vec3 R = reflect(-V, N);
   vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
-  vec3 ks = specular_occlusion(so_lut, f0, roughness, dot(n, v), ka);
+  vec3 ks = specular_occlusion(R, roughness, bN, ka) *
+            directional_albedo(f0, roughness, NoV);
   return (kd + ks) * luminance;
 }
 
-inline vec3 env_lighting(vec3 n, vec3 v, vec3 albedo, vec3 f0, float roughness,
-                         SampledTextureCube env_map, float ka,
-                         SampledTexture3D so_lut) {
+#if GL_core_profile
+
+inline vec3 env_lighting(vec3 N, vec3 V, vec3 albedo, vec3 f0, float roughness,
+                         SampledTextureCube env_map, float ka, vec3 bN) {
+  float NoV = dot(N, V);
+  vec3 R = reflect(-V, N);
   vec3 kd = ka_with_interreflection(ka, albedo) * albedo;
-  float nv = dot(n, v);
-  vec3 ks = specular_occlusion(so_lut, f0, roughness, nv, ka);
-  vec3 r = 2 * nv * n - v;
+  vec3 ks = specular_occlusion(R, roughness, bN, ka) *
+            directional_albedo(f0, roughness, NoV);
   int num_mips = texture_query_levels(env_map);
   float dlod = num_mips - 1;
   float slod = roughness * (num_mips - 2);
-  return kd * texture_lod(env_map, n, dlod).rgb +
-         ks * texture_lod(env_map, r, slod).rgb;
+  return kd * texture_lod(env_map, N, dlod).rgb +
+         ks * texture_lod(env_map, R, slod).rgb;
 }
 
 #endif // GL_core_profile

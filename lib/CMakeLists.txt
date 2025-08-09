@@ -105,9 +105,6 @@ add_library(ren::baking ALIAS ren-baking)
 if (REN_BUILD_BAKING_TOOLS)
   message(STATUS "Build baking tools")
 
-  add_executable(ren-bake-specular-occlusion-lut bake-specular-occlusion-lut.cpp)
-  target_link_libraries(ren-bake-specular-occlusion-lut ren::core ren::baking cxxopts::cxxopts)
-
   add_executable(ren-bake-ibl bake-ibl.cpp)
   target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
 endif()
