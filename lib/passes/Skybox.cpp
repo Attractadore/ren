@@ -1,7 +1,6 @@
 #include "Skybox.hpp"
 #include "../Scene.hpp"
 #include "Skybox.frag.hpp"
-#include "Swapchain.hpp"
 
 namespace ren {
 
@@ -22,8 +21,8 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
       .exposure = pass.read_texture(cfg.exposure),
       .env_luminance = ccfg.scene->env_luminance,
       .env_map = ccfg.scene->env_map,
-      .inv_proj_view = glm::inverse(
-          get_projection_view_matrix(camera, ccfg.swapchain->get_size())),
+      .inv_proj_view =
+          glm::inverse(get_projection_view_matrix(camera, ccfg.viewport)),
       .eye = camera.position,
   };
   pass.set_render_pass_callback(

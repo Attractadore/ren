@@ -288,7 +288,7 @@ auto bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
   return write_ktx_to_memory(mip_chain);
 }
 
-auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
+auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     -> Result<DirectX::ScratchImage, Error> {
   HRESULT hres = S_OK;
 
@@ -482,11 +482,11 @@ auto bake_ibl(IBaker *baker, const TextureInfo &info, bool compress)
   return compressed;
 }
 
-auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info, bool compress)
+auto bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress)
     -> Result<Blob, Error> {
   ren_try(DirectX::ScratchImage image, bake_ibl(baker, info, compress));
   ren_try(auto blob, write_ktx_to_memory(image));
-  reset_baker(*baker);
+  reset_baker(baker);
   auto [blob_data, blob_size] = blob;
   return {{blob_data, blob_size}};
 }

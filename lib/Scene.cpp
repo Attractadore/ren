@@ -2,7 +2,7 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "ImGuiConfig.hpp"
-#include "Swapchain.hpp"
+#include "SwapChain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
 #include "glsl/Random.h"
@@ -27,12 +27,19 @@
 
 namespace ren {
 
-Scene::Scene(Renderer &renderer, Swapchain &swapchain)
+auto create_scene(Renderer *renderer, SwapChain *swap_chain)
+    -> expected<Scene *> {
+  return new Scene(*renderer, *swap_chain);
+}
+
+void destroy_scene(Scene *scene) { delete scene; }
+
+Scene::Scene(Renderer &renderer, SwapChain &swap_chain)
     : m_arena(renderer)
 
 {
   m_renderer = &renderer;
-  m_swapchain = &swapchain;
+  m_swap_chain = &swap_chain;
 
   m_pipelines = load_pipelines(m_arena).value();
 
@@ -43,7 +50,7 @@ Scene::Scene(Renderer &renderer, Swapchain &swapchain)
   m_data.settings.async_compute =
       m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
   m_data.settings.present_from_compute =
-      m_swapchain->is_queue_family_supported(rhi::QueueFamily::Compute);
+      m_swap_chain->is_queue_family_supported(rhi::QueueFamily::Compute);
 
   m_data.settings.amd_anti_lag =
       m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
@@ -156,7 +163,8 @@ auto Scene::next_frame() -> Result<void, Error> {
   return {};
 }
 
-auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
+auto create_mesh(Scene *scene, std::span<const std::byte> blob)
+    -> expected<MeshId> {
   if (blob.size() < sizeof(MeshPackageHeader)) {
     return std::unexpected(Error::InvalidFormat);
   }
@@ -219,23 +227,25 @@ auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
 
   // Upload vertices
 
+  Renderer *renderer = scene->m_renderer;
+
   auto upload_buffer = [&]<typename T>(Span<const T> data,
                                        Handle<Buffer> &buffer,
                                        DebugName name) -> Result<void, Error> {
     if (not data.empty()) {
-      ren_try(BufferSlice<T> slice, m_arena.create_buffer<T>({
+      ren_try(BufferSlice<T> slice, scene->m_arena.create_buffer<T>({
                                         .name = std::move(name),
                                         .heap = rhi::MemoryHeap::Default,
                                         .count = data.size(),
                                     }));
       buffer = slice.buffer;
-      m_resource_uploader.stage_buffer(*m_renderer, m_frcs->upload_allocator,
-                                       Span(data), slice);
+      scene->m_resource_uploader.stage_buffer(
+          *renderer, scene->m_frcs->upload_allocator, Span(data), slice);
     }
     return {};
   };
 
-  u32 index = m_data.meshes.size();
+  u32 index = scene->m_data.meshes.size();
 
   ren_try_to(upload_buffer(positions, mesh.positions,
                            fmt::format("Mesh {} positions", index)));
@@ -252,13 +262,14 @@ auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
   ren_assert_msg(header.num_triangles * 3 <= glsl::INDEX_POOL_SIZE,
                  "Index pool overflow");
 
-  if (m_data.index_pools.empty() or
-      m_data.index_pools.back().num_free_indices < header.num_triangles * 3) {
-    m_data.index_pools.emplace_back(create_index_pool(m_arena));
+  if (scene->m_data.index_pools.empty() or
+      scene->m_data.index_pools.back().num_free_indices <
+          header.num_triangles * 3) {
+    scene->m_data.index_pools.emplace_back(create_index_pool(scene->m_arena));
   }
 
-  mesh.index_pool = m_data.index_pools.size() - 1;
-  IndexPool &index_pool = m_data.index_pools.back();
+  mesh.index_pool = scene->m_data.index_pools.size() - 1;
+  IndexPool &index_pool = scene->m_data.index_pools.back();
 
   u32 base_triangle = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
   for (glsl::Meshlet &meshlet : meshlets) {
@@ -277,31 +288,30 @@ auto Scene::create_mesh(std::span<const std::byte> blob) -> expected<MeshId> {
 
   // Upload triangles
 
-  m_resource_uploader.stage_buffer(
-      *m_renderer, m_frcs->upload_allocator, triangles,
-      m_renderer->get_buffer_slice<u8>(index_pool.indices)
+  scene->m_resource_uploader.stage_buffer(
+      *renderer, scene->m_frcs->upload_allocator, triangles,
+      renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, header.num_triangles * 3));
 
-  Handle<Mesh> handle = m_data.meshes.insert(mesh);
+  Handle<Mesh> handle = scene->m_data.meshes.insert(mesh);
 
-  m_gpu_scene.update_meshes.push_back(handle);
-  m_gpu_scene.mesh_update_data.push_back({
+  scene->m_gpu_scene.update_meshes.push_back(handle);
+  scene->m_gpu_scene.mesh_update_data.push_back({
       .positions =
-          m_renderer->get_buffer_device_ptr<glsl::Position>(mesh.positions),
-      .normals = m_renderer->get_buffer_device_ptr<glsl::Normal>(mesh.normals),
+          renderer->get_buffer_device_ptr<glsl::Position>(mesh.positions),
+      .normals = renderer->get_buffer_device_ptr<glsl::Normal>(mesh.normals),
       .tangents =
-          m_renderer->try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
-      .uvs = m_renderer->try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
-      .colors = m_renderer->try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
-      .meshlets =
-          m_renderer->get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
-      .meshlet_indices = m_renderer->get_buffer_device_ptr<u32>(mesh.indices),
+          renderer->try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
+      .uvs = renderer->try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
+      .colors = renderer->try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
+      .meshlets = renderer->get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
+      .meshlet_indices = renderer->get_buffer_device_ptr<u32>(mesh.indices),
       .bb = mesh.bb,
       .uv_bs = mesh.uv_bs,
       .index_pool = mesh.index_pool,
       .num_lods = u32(mesh.lods.size()),
   });
-  std::ranges::copy(mesh.lods, m_gpu_scene.mesh_update_data.back().lods);
+  std::ranges::copy(mesh.lods, scene->m_gpu_scene.mesh_update_data.back().lods);
 
   return std::bit_cast<MeshId>(handle);
 }
@@ -323,9 +333,10 @@ auto Scene::get_or_create_texture(Handle<Image> image,
           });
 }
 
-auto Scene::create_image(std::span<const std::byte> blob) -> expected<ImageId> {
-  ren_try(auto texture, create_texture(blob.data(), blob.size()));
-  Handle<Image> image = m_images.insert(texture);
+auto create_image(Scene *scene, std::span<const std::byte> blob)
+    -> expected<ImageId> {
+  ren_try(auto texture, scene->create_texture(blob.data(), blob.size()));
+  Handle<Image> image = scene->m_images.insert(texture);
   return std::bit_cast<ImageId>(image);
 }
 
@@ -343,13 +354,13 @@ auto Scene::create_texture(const void *blob, usize size)
   return res;
 }
 
-auto Scene::create_material(const MaterialCreateInfo &info)
+auto create_material(Scene *scene, const MaterialCreateInfo &info)
     -> expected<MaterialId> {
   auto get_descriptor =
       [&](const auto &texture) -> Result<glsl::SampledTexture2D, Error> {
     if (texture.image) {
-      return get_or_create_texture(std::bit_cast<Handle<Image>>(texture.image),
-                                   texture.sampler);
+      return scene->get_or_create_texture(
+          std::bit_cast<Handle<Image>>(texture.image), texture.sampler);
     }
     return {};
   };
@@ -358,7 +369,7 @@ auto Scene::create_material(const MaterialCreateInfo &info)
   ren_try(auto orm_texture, get_descriptor(info.orm_texture));
   ren_try(auto normal_texture, get_descriptor(info.normal_texture));
 
-  Handle<Material> handle = m_data.materials.insert({
+  Handle<Material> handle = scene->m_data.materials.insert({
       .base_color = info.base_color_factor,
       .base_color_texture = base_color_texture,
       .occlusion_strength = info.orm_texture.strength,
@@ -368,90 +379,93 @@ auto Scene::create_material(const MaterialCreateInfo &info)
       .normal_scale = info.normal_texture.scale,
       .normal_texture = normal_texture,
   });
-  m_gpu_scene.update_materials.push_back(handle);
-  m_gpu_scene.material_update_data.push_back(m_data.materials[handle]);
+  scene->m_gpu_scene.update_materials.push_back(handle);
+  scene->m_gpu_scene.material_update_data.push_back(
+      scene->m_data.materials[handle]);
 
   return std::bit_cast<MaterialId>(handle);
   ;
 }
 
-auto Scene::create_camera() -> expected<CameraId> {
-  return std::bit_cast<CameraId>(m_data.cameras.emplace());
+auto create_camera(Scene *scene) -> expected<CameraId> {
+  return std::bit_cast<CameraId>(scene->m_data.cameras.emplace());
 }
 
-void Scene::destroy_camera(CameraId camera) {
-  m_data.cameras.erase(std::bit_cast<Handle<Camera>>(camera));
+void destroy_camera(Scene *scene, CameraId camera) {
+  scene->m_data.cameras.erase(std::bit_cast<Handle<Camera>>(camera));
 }
 
 auto Scene::get_camera(CameraId camera) -> Camera & {
   return m_data.cameras[std::bit_cast<Handle<Camera>>(camera)];
 }
 
-void Scene::set_camera(CameraId camera) {
-  m_data.camera = std::bit_cast<Handle<Camera>>(camera);
+void set_camera(Scene *scene, CameraId camera) {
+  scene->m_data.camera = std::bit_cast<Handle<Camera>>(camera);
 }
 
-void Scene::set_camera_perspective_projection(
-    CameraId id, const CameraPerspectiveProjectionDesc &desc) {
-  Camera &camera = get_camera(id);
+void set_camera_perspective_projection(
+    Scene *scene, CameraId id, const CameraPerspectiveProjectionDesc &desc) {
+  Camera &camera = scene->get_camera(id);
   camera.proj = CameraProjection::Perspective;
   camera.persp_hfov = desc.hfov;
   camera.near = desc.near;
   camera.far = 0.0f;
 }
 
-void Scene::set_camera_orthographic_projection(
-    CameraId id, const CameraOrthographicProjectionDesc &desc) {
-  Camera &camera = get_camera(id);
+void set_camera_orthographic_projection(
+    Scene *scene, CameraId id, const CameraOrthographicProjectionDesc &desc) {
+  Camera &camera = scene->get_camera(id);
   camera.proj = CameraProjection::Orthograpic;
   camera.ortho_width = desc.width;
   camera.near = desc.near;
   camera.far = desc.far;
 }
 
-void Scene::set_camera_transform(CameraId id, const CameraTransformDesc &desc) {
-  Camera &camera = get_camera(id);
+void set_camera_transform(Scene *scene, CameraId id,
+                          const CameraTransformDesc &desc) {
+  Camera &camera = scene->get_camera(id);
   camera.position = desc.position;
   camera.forward = desc.forward;
   camera.up = desc.up;
 }
 
-void Scene::set_camera_parameters(CameraId id,
-                                  const CameraParameterDesc &desc) {
-  get_camera(id).params = {
+void set_camera_parameters(Scene *scene, CameraId id,
+                           const CameraParameterDesc &desc) {
+  scene->get_camera(id).params = {
       .aperture = desc.aperture,
       .shutter_time = desc.shutter_time,
       .iso = desc.iso,
   };
 }
 
-void Scene::set_exposure(const ExposureDesc &desc) {
-  m_data.exposure.mode = desc.mode;
-  m_data.exposure.ec = desc.ec;
+void set_exposure(Scene *scene, const ExposureDesc &desc) {
+  scene->m_data.exposure.mode = desc.mode;
+  scene->m_data.exposure.ec = desc.ec;
 };
 
-auto Scene::create_mesh_instances(
-    std::span<const MeshInstanceCreateInfo> create_info,
-    std::span<MeshInstanceId> out) -> expected<void> {
+auto create_mesh_instances(Scene *scene,
+                           std::span<const MeshInstanceCreateInfo> create_info,
+                           std::span<MeshInstanceId> out) -> expected<void> {
   ren_assert(out.size() >= create_info.size());
   for (usize i : range(create_info.size())) {
     auto mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh);
     ren_assert(mesh);
     auto material = std::bit_cast<Handle<Material>>(create_info[i].material);
     ren_assert(material);
-    Handle<MeshInstance> handle = m_data.mesh_instances.insert({
+    Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert({
         .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
         .material = std::bit_cast<Handle<Material>>(create_info[i].material),
     });
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
-      add_to_draw_set(m_data, m_gpu_scene, m_pipelines, handle, set);
+      add_to_draw_set(scene->m_data, scene->m_gpu_scene, scene->m_pipelines,
+                      handle, set);
     }
-    m_data.mesh_instance_transforms.insert(
-        handle,
-        glsl::make_decode_position_matrix(m_data.meshes[mesh].pos_enc_bb));
-    m_gpu_scene.update_mesh_instances.push_back(handle);
-    m_gpu_scene.mesh_instance_update_data.push_back({
+    scene->m_data.mesh_instance_transforms.insert(
+        handle, glsl::make_decode_position_matrix(
+                    scene->m_data.meshes[mesh].pos_enc_bb));
+    scene->m_gpu_scene.update_mesh_instances.push_back(handle);
+    scene->m_gpu_scene.mesh_instance_update_data.push_back({
         .mesh = mesh,
         .material = material,
     });
@@ -460,79 +474,86 @@ auto Scene::create_mesh_instances(
   return {};
 }
 
-void Scene::destroy_mesh_instances(
-    std::span<const MeshInstanceId> mesh_instances) {
+void destroy_mesh_instances(Scene *scene,
+                            std::span<const MeshInstanceId> mesh_instances) {
   for (MeshInstanceId mesh_instance : mesh_instances) {
     auto handle = std::bit_cast<Handle<MeshInstance>>(mesh_instance);
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
-      remove_from_draw_set(m_data, m_gpu_scene, m_pipelines, handle, set);
+      remove_from_draw_set(scene->m_data, scene->m_gpu_scene,
+                           scene->m_pipelines, handle, set);
     }
-    m_data.mesh_instances.erase(handle);
+    scene->m_data.mesh_instances.erase(handle);
   }
 }
 
-void Scene::set_mesh_instance_transforms(
-    std::span<const MeshInstanceId> mesh_instances,
+void set_mesh_instance_transforms(
+    Scene *scene, std::span<const MeshInstanceId> mesh_instances,
     std::span<const glm::mat4x3> matrices) {
   ren_assert(mesh_instances.size() == matrices.size());
   for (usize i : range(mesh_instances.size())) {
     auto h = std::bit_cast<Handle<MeshInstance>>(mesh_instances[i]);
-    MeshInstance &mesh_instance = m_data.mesh_instances[h];
+    MeshInstance &mesh_instance = scene->m_data.mesh_instances[h];
     const Mesh &mesh =
-        m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
-    m_data.mesh_instance_transforms[h] =
+        scene->m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
+    scene->m_data.mesh_instance_transforms[h] =
         matrices[i] * glsl::make_decode_position_matrix(mesh.pos_enc_bb);
   }
 }
 
-auto Scene::create_directional_light(const DirectionalLightDesc &desc)
+auto create_directional_light(Scene *scene, const DirectionalLightDesc &desc)
     -> expected<DirectionalLightId> {
-  Handle<glsl::DirectionalLight> light = m_data.directional_lights.emplace();
+  Handle<glsl::DirectionalLight> light =
+      scene->m_data.directional_lights.emplace();
   auto id = std::bit_cast<DirectionalLightId>(light);
-  set_directional_light(id, desc);
+  set_directional_light(scene, id, desc);
   return id;
 };
 
-void Scene::destroy_directional_light(DirectionalLightId light) {
-  m_data.directional_lights.erase(
+void destroy_directional_light(Scene *scene, DirectionalLightId light) {
+  scene->m_data.directional_lights.erase(
       std::bit_cast<Handle<glsl::DirectionalLight>>(light));
 }
 
-void Scene::set_directional_light(DirectionalLightId light,
-                                  const DirectionalLightDesc &desc) {
+void set_directional_light(Scene *scene, DirectionalLightId light,
+                           const DirectionalLightDesc &desc) {
   auto handle = std::bit_cast<Handle<glsl::DirectionalLight>>(light);
-  m_data.directional_lights[handle] = {
+  scene->m_data.directional_lights[handle] = {
       .color = desc.color,
       .illuminance = desc.illuminance,
       .origin = glm::normalize(desc.origin),
   };
-  m_gpu_scene.update_directional_lights.push_back(handle);
-  m_gpu_scene.directional_light_update_data.push_back(
-      m_data.directional_lights[handle]);
+  scene->m_gpu_scene.update_directional_lights.push_back(handle);
+  scene->m_gpu_scene.directional_light_update_data.push_back(
+      scene->m_data.directional_lights[handle]);
 };
 
-auto Scene::set_environment_map(ImageId image) -> expected<void> {
+void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
+  scene->m_data.env_luminance = luminance;
+}
+
+auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
   if (!image) {
-    m_data.env_map = {};
+    scene->m_data.env_map = {};
     return {};
   }
-  Handle<Texture> texture = m_images[std::bit_cast<Handle<Image>>(image)];
-  ren_try(
-      m_data.env_map,
-      m_descriptor_allocator.allocate_sampled_texture<glsl::SampledTextureCube>(
-          *m_renderer, SrvDesc{texture},
-          {
-              .mag_filter = rhi::Filter::Linear,
-              .min_filter = rhi::Filter::Linear,
-              .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-          }));
+  Handle<Texture> texture =
+      scene->m_images[std::bit_cast<Handle<Image>>(image)];
+  ren_try(scene->m_data.env_map,
+          scene->m_descriptor_allocator
+              .allocate_sampled_texture<glsl::SampledTextureCube>(
+                  *scene->m_renderer, SrvDesc{texture},
+                  {
+                      .mag_filter = rhi::Filter::Linear,
+                      .min_filter = rhi::Filter::Linear,
+                      .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+                  }));
   return {};
 }
 
-auto Scene::delay_input() -> expected<void> {
-  if (is_amd_anti_lag_enabled()) {
-    return m_renderer->amd_anti_lag_input(m_frame_index);
+auto delay_input(Scene *scene) -> expected<void> {
+  if (scene->is_amd_anti_lag_enabled()) {
+    return scene->m_renderer->amd_anti_lag_input(scene->m_frame_index);
   }
   return {};
 }
@@ -545,52 +566,59 @@ bool Scene::is_amd_anti_lag_enabled() {
   return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
 }
 
-auto Scene::draw() -> expected<void> {
+auto draw(Scene *scene) -> expected<void> {
   ZoneScoped;
 
-  ren_try_to(m_resource_uploader.upload(*m_renderer, m_frcs->gfx_cmd_pool));
+  Renderer *renderer = scene->m_renderer;
+  auto *frcs = scene->m_frcs;
 
-  ren_try(RenderGraph render_graph, build_rg());
+  ren_try_to(scene->m_resource_uploader.upload(*renderer,
+                                               scene->m_frcs->gfx_cmd_pool));
+
+  ren_try(RenderGraph render_graph, scene->build_rg());
 
   ren_try_to(render_graph.execute({
-      .gfx_cmd_pool = m_frcs->gfx_cmd_pool,
-      .async_cmd_pool = m_frcs->async_cmd_pool,
-      .frame_end_semaphore = &m_frcs->end_semaphore,
-      .frame_end_time = &m_frcs->end_time,
+      .gfx_cmd_pool = frcs->gfx_cmd_pool,
+      .async_cmd_pool = frcs->async_cmd_pool,
+      .frame_end_semaphore = &frcs->end_semaphore,
+      .frame_end_time = &frcs->end_time,
   }));
 
-  if (is_amd_anti_lag_enabled()) {
-    ren_try_to(m_renderer->amd_anti_lag_present(m_frame_index));
+  if (scene->is_amd_anti_lag_enabled()) {
+    ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));
   }
 
-  auto present_qf = m_data.settings.present_from_compute
+  auto present_qf = scene->m_data.settings.present_from_compute
                         ? rhi::QueueFamily::Compute
                         : rhi::QueueFamily::Graphics;
-  ren_try_to(m_swapchain->present(present_qf));
+  ren_try_to(scene->m_swap_chain->present(present_qf));
 
   FrameMark;
 
-  return next_frame();
+  return scene->next_frame();
 }
 
 #if REN_IMGUI
-void Scene::draw_imgui() {
+
+namespace imgui {
+
+auto draw(Scene *scene) -> expected<void> {
   ZoneScoped;
 
-  ren_ImGuiScope(m_imgui_context);
+  ren_ImGuiScope(scene->m_imgui_context);
   if (ImGui::GetCurrentContext()) {
     if (ImGui::Begin("Scene renderer settings")) {
-      SceneGraphicsSettings &settings = m_data.settings;
+      SceneGraphicsSettings &settings = scene->m_data.settings;
 
       ImGui::SeparatorText("Async compute");
       {
-        ImGui::BeginDisabled(
-            !m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute));
+        ImGui::BeginDisabled(!scene->m_renderer->is_queue_family_supported(
+            rhi::QueueFamily::Compute));
 
         ImGui::Checkbox("Async compute", &settings.async_compute);
 
-        ImGui::BeginDisabled(
-            !m_swapchain->is_queue_family_supported(rhi::QueueFamily::Compute));
+        ImGui::BeginDisabled(!scene->m_swap_chain->is_queue_family_supported(
+            rhi::QueueFamily::Compute));
         ImGui::Checkbox("Present from compute", &settings.present_from_compute);
         ImGui::EndDisabled();
 
@@ -599,7 +627,7 @@ void Scene::draw_imgui() {
 
       ImGui::SeparatorText("Latency");
       {
-        ImGui::BeginDisabled(!is_amd_anti_lag_available());
+        ImGui::BeginDisabled(!scene->is_amd_anti_lag_available());
         ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
         ImGui::EndDisabled();
       }
@@ -656,21 +684,23 @@ void Scene::draw_imgui() {
       ImGui::End();
     }
   }
+
+  return {};
 }
 
-void Scene::set_imgui_context(ImGuiContext *context) noexcept {
-  m_imgui_context = context;
+void set_context(Scene *scene, ImGuiContext *context) {
+  scene->m_imgui_context = context;
   if (!context) {
     return;
   }
-  ren_ImGuiScope(m_imgui_context);
+  ren_ImGuiScope(scene->m_imgui_context);
   ImGuiIO &io = ImGui::GetIO();
   io.BackendRendererName = "imgui_impl_ren";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
   u8 *data;
   i32 width, height, bpp;
   io.Fonts->GetTexDataAsRGBA32(&data, &width, &height, &bpp);
-  Handle<Texture> texture = m_arena
+  Handle<Texture> texture = scene->m_arena
                                 .create_texture({
                                     .name = "ImGui font atlas",
                                     .format = TinyImageFormat_R8G8B8A8_UNORM,
@@ -680,13 +710,13 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
                                     .height = (u32)height,
                                 })
                                 .value();
-  m_resource_uploader.stage_texture(
-      m_frcs->upload_allocator,
+  scene->m_resource_uploader.stage_texture(
+      scene->m_frcs->upload_allocator,
       Span((const std::byte *)data, width * height * bpp), texture);
   auto descriptor =
-      m_descriptor_allocator
+      scene->m_descriptor_allocator
           .allocate_sampled_texture<glsl::SampledTexture2D>(
-              *m_renderer, SrvDesc{texture},
+              *scene->m_renderer, SrvDesc{texture},
               {
                   .mag_filter = rhi::Filter::Linear,
                   .min_filter = rhi::Filter::Linear,
@@ -698,6 +728,12 @@ void Scene::set_imgui_context(ImGuiContext *context) noexcept {
   // FIXME: font texture is leaked.
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor);
 }
+
+auto get_context(Scene *scene) -> ImGuiContext * {
+  return scene->m_imgui_context;
+}
+
+} // namespace imgui
 #endif
 
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
@@ -717,9 +753,9 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   set_if_changed(m_pass_cfg.exposure, m_data.exposure.mode);
 
-  set_if_changed(m_pass_cfg.viewport, m_swapchain->get_size());
+  set_if_changed(m_pass_cfg.viewport, m_swap_chain->get_size());
 
-  set_if_changed(m_pass_cfg.backbuffer_usage, m_swapchain->get_usage());
+  set_if_changed(m_pass_cfg.backbuffer_usage, m_swap_chain->get_usage());
 
   set_if_changed(m_pass_cfg.ssao, m_data.settings.ssao);
   set_if_changed(m_pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
@@ -741,7 +777,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       .pipelines = &m_pipelines,
       .scene = &m_data,
       .rcs = &m_pass_rcs,
-      .swapchain = m_swapchain,
+      .viewport = m_swap_chain->get_size(),
   };
 
   RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, m_gpu_scene);
@@ -755,7 +791,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                .exposure = &exposure,
                            });
 
-  glm::uvec2 viewport = m_swapchain->get_size();
+  glm::uvec2 viewport = m_swap_chain->get_size();
 
   if (!m_pass_rcs.depth_buffer) {
     m_pass_rcs.depth_buffer = m_rgp->create_texture({
@@ -976,12 +1012,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   }
 #endif
 
-  m_swapchain->set_usage(swap_chain_usage);
+  m_swap_chain->set_usage(swap_chain_usage);
 
   setup_present_pass(cfg, PresentPassConfig{
                               .src = sdr,
                               .acquire_semaphore = m_frcs->acquire_semaphore,
-                              .swapchain = m_swapchain,
+                              .swap_chain = m_swap_chain,
                           });
 
   return rgb.build({
@@ -990,12 +1026,6 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       .shared_allocator = &m_shared_allocators[0],
       .upload_allocator = &m_frcs->upload_allocator,
   });
-}
-
-auto create_scene(IRenderer &renderer, ISwapchain &swapchain)
-    -> expected<std::unique_ptr<IScene>> {
-  return std::make_unique<Scene>(static_cast<Renderer &>(renderer),
-                                 static_cast<Swapchain &>(swapchain));
 }
 
 } // namespace ren

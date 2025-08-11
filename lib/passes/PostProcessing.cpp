@@ -1,7 +1,6 @@
 #include "PostProcessing.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
-#include "../Swapchain.hpp"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
 
@@ -16,8 +15,6 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .init_queue = RgQueue::Async,
     });
   }
-
-  glm::uvec2 viewport = ccfg.swapchain->get_size();
 
   *cfg.sdr = ccfg.rcs->sdr;
 
@@ -39,7 +36,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
       args.previous_exposure = pass.read_texture(cfg.exposure);
     }
 
-    pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, viewport,
+    pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, ccfg.viewport,
                           {4, 4});
   }
 

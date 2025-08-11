@@ -1,7 +1,5 @@
 #include "Opaque.hpp"
-#include "../RenderGraph.hpp"
 #include "../Scene.hpp"
-#include "../Swapchain.hpp"
 #include "MeshPass.hpp"
 
 namespace ren {
@@ -21,7 +19,7 @@ void setup_early_z_pass(const PassCommonConfig &ccfg,
                             },
                         .depth_attachment_name = "depth-buffer",
                         .camera = ccfg.scene->get_camera(),
-                        .viewport = ccfg.swapchain->get_size(),
+                        .viewport = ccfg.viewport,
                         .gpu_scene = cfg.gpu_scene,
                         .rg_gpu_scene = cfg.rg_gpu_scene,
                         .occlusion_culling_mode = cfg.occlusion_culling_mode,
@@ -52,7 +50,7 @@ void setup_opaque_pass(const PassCommonConfig &ccfg,
                             },
                         .depth_attachment_name = "depth-buffer",
                         .camera = ccfg.scene->get_camera(),
-                        .viewport = ccfg.swapchain->get_size(),
+                        .viewport = ccfg.viewport,
                         .gpu_scene = cfg.gpu_scene,
                         .rg_gpu_scene = cfg.rg_gpu_scene,
                         .occlusion_culling_mode = cfg.occlusion_culling_mode,

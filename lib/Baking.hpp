@@ -11,7 +11,7 @@ struct BakerPipelines {
   Handle<ComputePipeline> irradiance_map;
 };
 
-struct IBaker {
+struct Baker {
   Renderer *renderer = nullptr;
   ResourceArena session_arena;
   ResourceArena arena;
@@ -25,6 +25,6 @@ struct IBaker {
   BakerPipelines pipelines;
 };
 
-void reset_baker(IBaker &baker);
+void reset_baker(Baker *baker);
 
 } // namespace ren

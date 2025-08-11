@@ -1,7 +1,6 @@
 #pragma once
 #include <expected>
 #include <glm/glm.hpp>
-#include <memory>
 #include <span>
 
 struct SDL_Window;
@@ -60,9 +59,9 @@ ren_define_id(CameraId);
 
 #undef ren_define_id
 
-struct IRenderer;
-struct ISwapchain;
-struct IScene;
+struct Renderer;
+struct SwapChain;
+struct Scene;
 
 constexpr unsigned DEFAULT_ADAPTER = -1;
 
@@ -77,30 +76,28 @@ struct RendererInfo {
 };
 
 [[nodiscard]] auto create_renderer(const RendererInfo &info)
-    -> expected<std::unique_ptr<IRenderer>>;
+    -> expected<Renderer *>;
 
-struct IRenderer {
-  virtual ~IRenderer() = default;
-};
+void destroy_renderer(Renderer *renderer);
 
-[[nodiscard]] auto create_scene(IRenderer &renderer, ISwapchain &swapchain)
-    -> expected<std::unique_ptr<IScene>>;
+[[nodiscard]] auto create_scene(Renderer *renderer, SwapChain *swapchain)
+    -> expected<Scene *>;
+
+void destroy_scene(Scene *scene);
 
 enum class VSync {
   Off,
   On,
 };
 
-struct ISwapchain {
-  virtual ~ISwapchain() = default;
+void set_vsync(SwapChain *swap_chain, VSync vsync);
 
-  virtual void set_vsync(VSync vsync) = 0;
-};
+auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
 
-auto get_sdl_window_flags(IRenderer &renderer) -> uint32_t;
+[[nodiscard]] auto create_swapchain(Renderer *renderer, SDL_Window *window)
+    -> expected<SwapChain *>;
 
-[[nodiscard]] auto create_swapchain(IRenderer &renderer, SDL_Window *window)
-    -> expected<std::unique_ptr<ISwapchain>>;
+void destroy_swap_chain(SwapChain *swap_chain);
 
 /// Camera perspective projection descriptor.
 struct CameraPerspectiveProjectionDesc {
@@ -229,95 +226,95 @@ struct DirectionalLightDesc {
   glm::vec3 origin = {0.0f, 0.0f, 1.0f};
 };
 
-struct IScene {
-  virtual ~IScene() = default;
+[[nodiscard]] auto create_camera(Scene *scene) -> expected<CameraId>;
 
-  [[nodiscard]] virtual auto create_camera() -> expected<CameraId> = 0;
+void destroy_camera(Scene *scene, CameraId camera);
 
-  virtual void destroy_camera(CameraId camera) = 0;
+/// Set active scene camera.
+void set_camera(Scene *scene, CameraId camera);
 
-  /// Set active scene camera.
-  virtual void set_camera(CameraId camera) = 0;
+void set_camera_perspective_projection(
+    Scene *scene, CameraId camera, const CameraPerspectiveProjectionDesc &desc);
 
-  virtual void set_camera_perspective_projection(
-      CameraId camera, const CameraPerspectiveProjectionDesc &desc) = 0;
+void set_camera_orthographic_projection(
+    Scene *scene, CameraId camera,
+    const CameraOrthographicProjectionDesc &desc);
 
-  virtual void set_camera_orthographic_projection(
-      CameraId camera, const CameraOrthographicProjectionDesc &desc) = 0;
+void set_camera_transform(Scene *scene, CameraId camera,
+                          const CameraTransformDesc &desc);
 
-  virtual void set_camera_transform(CameraId camera,
-                                    const CameraTransformDesc &desc) = 0;
+void set_camera_parameters(Scene *scene, CameraId camera,
+                           const CameraParameterDesc &desc);
 
-  virtual void set_camera_parameters(CameraId camera,
-                                     const CameraParameterDesc &desc) = 0;
+void set_exposure(Scene *scene, const ExposureDesc &desc);
 
-  virtual void set_exposure(const ExposureDesc &desc) = 0;
+[[nodiscard]] auto create_mesh(Scene *scene, std::span<const std::byte> blob)
+    -> expected<MeshId>;
 
-  [[nodiscard]] virtual auto create_mesh(std::span<const std::byte> blob)
-      -> expected<MeshId> = 0;
+[[nodiscard]] auto inline create_mesh(Scene *scene, const void *blob_data,
+                                      size_t blob_size) -> expected<MeshId> {
+  return create_mesh(scene, std::span((const std::byte *)blob_data, blob_size));
+}
 
-  [[nodiscard]] auto create_mesh(const void *blob_data, size_t blob_size)
-      -> expected<MeshId> {
-    return create_mesh(std::span((const std::byte *)blob_data, blob_size));
-  }
+[[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
+    -> expected<ImageId>;
 
-  [[nodiscard]] virtual auto create_image(std::span<const std::byte> blob)
-      -> expected<ImageId> = 0;
+[[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
+                                       size_t blob_size) -> expected<ImageId> {
+  return create_image(scene,
+                      std::span((const std::byte *)blob_data, blob_size));
+}
 
-  [[nodiscard]] auto create_image(const void *blob_data, size_t blob_size)
-      -> expected<ImageId> {
-    return create_image(std::span((const std::byte *)blob_data, blob_size));
-  }
+[[nodiscard]] auto create_material(Scene *scene,
+                                   const MaterialCreateInfo &create_info)
+    -> expected<MaterialId>;
 
-  [[nodiscard]] virtual auto
-  create_material(const MaterialCreateInfo &create_info)
-      -> expected<MaterialId> = 0;
+[[nodiscard]] auto
+create_mesh_instances(Scene *scene,
+                      std::span<const MeshInstanceCreateInfo> create_info,
+                      std::span<MeshInstanceId> out) -> expected<void>;
 
-  [[nodiscard]] virtual auto
-  create_mesh_instances(std::span<const MeshInstanceCreateInfo> create_info,
-                        std::span<MeshInstanceId> out) -> expected<void> = 0;
+[[nodiscard]] inline auto
+create_mesh_instance(Scene *scene, const MeshInstanceCreateInfo &create_info)
+    -> expected<MeshInstanceId> {
+  MeshInstanceId mesh_instance;
+  return create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1})
+      .transform([&] { return mesh_instance; });
+}
 
-  [[nodiscard]] auto
-  create_mesh_instance(const MeshInstanceCreateInfo &create_info)
-      -> expected<MeshInstanceId> {
-    MeshInstanceId mesh_instance;
-    return create_mesh_instances({&create_info, 1}, {&mesh_instance, 1})
-        .transform([&] { return mesh_instance; });
-  }
+void destroy_mesh_instances(Scene *scene,
+                            std::span<const MeshInstanceId> mesh_instances);
 
-  virtual void
-  destroy_mesh_instances(std::span<const MeshInstanceId> mesh_instances) = 0;
+void inline destroy_mesh_instance(Scene *scene, MeshInstanceId mesh_instance) {
+  destroy_mesh_instances(scene, {&mesh_instance, 1});
+}
 
-  void destroy_mesh_instance(MeshInstanceId mesh_instance) {
-    destroy_mesh_instances({&mesh_instance, 1});
-  }
+void set_mesh_instance_transforms(
+    Scene *scene, std::span<const MeshInstanceId> mesh_instances,
+    std::span<const glm::mat4x3> transforms);
 
-  virtual void
-  set_mesh_instance_transforms(std::span<const MeshInstanceId> mesh_instances,
-                               std::span<const glm::mat4x3> transforms) = 0;
+void inline set_mesh_instance_transform(Scene *scene,
+                                        MeshInstanceId mesh_instance,
+                                        const glm::mat4x3 &transform) {
+  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
+}
 
-  void set_mesh_instance_transform(MeshInstanceId mesh_instance,
-                                   const glm::mat4x3 &transform) {
-    set_mesh_instance_transforms({&mesh_instance, 1}, {&transform, 1});
-  }
+[[nodiscard]] auto create_directional_light(Scene *scene,
+                                            const DirectionalLightDesc &desc)
+    -> expected<DirectionalLightId>;
 
-  [[nodiscard]] virtual auto
-  create_directional_light(const DirectionalLightDesc &desc)
-      -> expected<DirectionalLightId> = 0;
+void destroy_directional_light(Scene *scene, DirectionalLightId light);
 
-  virtual void destroy_directional_light(DirectionalLightId light) = 0;
+void set_directional_light(Scene *scene, DirectionalLightId light,
+                           const DirectionalLightDesc &desc);
 
-  virtual void set_directional_light(DirectionalLightId light,
-                                     const DirectionalLightDesc &desc) = 0;
+void set_environment_color(Scene *scene, const glm::vec3 &luminance);
 
-  virtual void set_environment_color(const glm::vec3 &luminance) = 0;
+auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
 
-  virtual auto set_environment_map(ImageId image) -> expected<void> = 0;
+// Call to use graphics driver low-latency APIs.
+[[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
 
-  // Call to use graphics driver low-latency APIs.
-  [[nodiscard]] virtual auto delay_input() -> expected<void> = 0;
-
-  [[nodiscard]] virtual auto draw() -> expected<void> = 0;
-};
+[[nodiscard]] auto draw(Scene *scene) -> expected<void>;
 
 } // namespace ren

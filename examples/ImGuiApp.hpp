@@ -5,7 +5,7 @@
 
 class ImGuiApp : public AppBase {
 public:
-  ImGuiApp(const char *name);
+  auto init(const char *name) -> Result<void>;
 
 protected:
   [[nodiscard]] auto process_event(const SDL_Event &e) -> Result<void> override;

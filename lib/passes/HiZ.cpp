@@ -1,5 +1,4 @@
 #include "HiZ.hpp"
-#include "../Swapchain.hpp"
 #include "HiZ.comp.hpp"
 #include "PipelineLoading.hpp"
 
@@ -8,8 +7,8 @@
 namespace ren {
 
 void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
-  glm::uvec2 viewport = ccfg.swapchain->get_size();
-  glm::uvec2 size = {std::bit_floor(viewport.x), std::bit_floor(viewport.y)};
+  glm::uvec2 size = {std::bit_floor(ccfg.viewport.x),
+                     std::bit_floor(ccfg.viewport.y)};
   u32 num_mips =
       std::max(std::countr_zero(size.x), std::countr_zero(size.y)) + 1;
   ren_assert(size.x < glsl::SPD_MAX_SIZE and size.y < glsl::SPD_MAX_SIZE);

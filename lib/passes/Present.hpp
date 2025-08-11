@@ -6,7 +6,7 @@ namespace ren {
 struct PresentPassConfig {
   RgTextureId src;
   Handle<Semaphore> acquire_semaphore;
-  NotNull<Swapchain *> swapchain;
+  NotNull<SwapChain *> swap_chain;
 };
 
 void setup_present_pass(const PassCommonConfig &ccfg,

@@ -4,8 +4,6 @@
 #include "core/Span.hpp"
 #include "core/Vector.hpp"
 
-#include <cstring>
-
 struct ktxTexture;
 struct ktxTexture2;
 

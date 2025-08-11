@@ -27,7 +27,6 @@ using RgDebugName = DummyString;
 #define REN_RG_DEBUG_NAME_TYPE [[no_unique_address]] RgDebugName
 
 class CommandRecorder;
-class Swapchain;
 class RenderPass;
 
 class RgPersistent;

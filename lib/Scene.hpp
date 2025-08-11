@@ -93,91 +93,25 @@ public:
   }
 };
 
-class Scene final : public IScene {
-public:
-  Scene(Renderer &renderer, Swapchain &swapchain);
+struct Scene {
+  Scene(Renderer &renderer, SwapChain &swap_chain);
 
-  auto create_camera() -> expected<CameraId> override;
-
-  void destroy_camera(CameraId camera) override;
-
-  void set_camera(CameraId camera) override;
-
-  void set_camera_perspective_projection(
-      CameraId camera, const CameraPerspectiveProjectionDesc &desc) override;
-
-  void set_camera_orthographic_projection(
-      CameraId camera, const CameraOrthographicProjectionDesc &desc) override;
-
-  void set_camera_transform(CameraId camera,
-                            const CameraTransformDesc &desc) override;
-
-  void set_camera_parameters(CameraId camera,
-                             const CameraParameterDesc &desc) override;
-
-  void set_exposure(const ExposureDesc &desc) override;
-
-  auto create_mesh(std::span<const std::byte> blob)
-      -> expected<MeshId> override;
-
-  auto create_image(std::span<const std::byte> blob)
-      -> expected<ImageId> override;
+  auto get_camera(CameraId camera) -> Camera &;
 
   auto create_texture(const void *blob, usize size)
       -> expected<Handle<Texture>>;
-
-  auto create_material(const MaterialCreateInfo &)
-      -> expected<MaterialId> override;
-
-  auto create_mesh_instances(std::span<const MeshInstanceCreateInfo> descs,
-                             std::span<MeshInstanceId>)
-      -> expected<void> override;
-
-  void destroy_mesh_instances(
-      std::span<const MeshInstanceId> mesh_instances) override;
-
-  void set_mesh_instance_transforms(
-      std::span<const MeshInstanceId> mesh_instances,
-      std::span<const glm::mat4x3> transforms) override;
-
-  auto create_directional_light(const DirectionalLightDesc &desc)
-      -> expected<DirectionalLightId> override;
-
-  void destroy_directional_light(DirectionalLightId light) override;
-
-  void set_directional_light(DirectionalLightId light,
-                             const DirectionalLightDesc &desc) override;
-
-  void set_environment_color(const glm::vec3 &luminance) override {
-    m_data.env_luminance = luminance;
-  }
-
-  auto set_environment_map(ImageId image) -> expected<void> override;
-
-  auto delay_input() -> expected<void> override;
 
   bool is_amd_anti_lag_available();
 
   bool is_amd_anti_lag_enabled();
 
-  auto draw() -> expected<void> override;
-
   auto next_frame() -> Result<void, Error>;
 
 #if REN_IMGUI
-  void set_imgui_context(ImGuiContext *context) noexcept;
-
-  auto get_imgui_context() const noexcept -> ImGuiContext * {
-    return m_imgui_context;
-  }
-
   void draw_imgui();
 #endif
 
-private:
   auto allocate_per_frame_resources() -> Result<void, Error>;
-
-  auto get_camera(CameraId camera) -> Camera &;
 
   [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
                                            const SamplerDesc &sampler_desc)
@@ -185,9 +119,8 @@ private:
 
   auto build_rg() -> Result<RenderGraph, Error>;
 
-private:
   Renderer *m_renderer = nullptr;
-  Swapchain *m_swapchain = nullptr;
+  SwapChain *m_swap_chain = nullptr;
 
 #if REN_IMGUI
   ImGuiContext *m_imgui_context = nullptr;
@@ -195,16 +128,15 @@ private:
 
   ResourceArena m_arena;
   DescriptorAllocator m_descriptor_allocator;
+
+  Pipelines m_pipelines;
+  DeviceBumpAllocator m_gfx_allocator;
+  DeviceBumpAllocator m_async_allocator;
+  std::array<DeviceBumpAllocator, 2> m_shared_allocators;
   StaticVector<ScenePerFrameResources, NUM_FRAMES_IN_FLIGHT>
       m_per_frame_resources;
   ScenePerFrameResources *m_frcs = nullptr;
   u64 m_frame_index = u64(-1);
-
-  Pipelines m_pipelines;
-
-  DeviceBumpAllocator m_gfx_allocator;
-  DeviceBumpAllocator m_async_allocator;
-  std::array<DeviceBumpAllocator, 2> m_shared_allocators;
 
   GenArray<Image> m_images;
 

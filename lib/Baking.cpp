@@ -1,9 +1,9 @@
 #include "Baking.hpp"
 #include "ren/baking/baking.hpp"
 
-#if 0
 namespace ren {
 
+#if 0
 namespace {
 auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
   BakerSamplers samplers;
@@ -20,17 +20,15 @@ auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
 };
 } // namespace
 
-} // namespace ren
 #endif
 
-auto ren::create_baker(IRenderer *irenderer) -> expected<IBaker *> {
-  Renderer *renderer = static_cast<Renderer *>(irenderer);
-  auto baker = std::make_unique<IBaker>(IBaker{
+auto create_baker(Renderer *renderer) -> expected<Baker *> {
+  auto baker = new Baker{
       .renderer = renderer,
       .session_arena = ResourceArena(*renderer),
       .arena = ResourceArena(*renderer),
       .rg = RgPersistent(*renderer),
-  });
+  };
   baker->rg.set_async_compute_enabled(false);
   ren_try(baker->cmd_pool, baker->session_arena.create_command_pool({
                                .name = "Baker command pool",
@@ -41,16 +39,18 @@ auto ren::create_baker(IRenderer *irenderer) -> expected<IBaker *> {
   baker->allocator.init(*baker->renderer, baker->session_arena, 64 * MiB);
   baker->upload_allocator.init(*baker->renderer, baker->session_arena,
                                256 * MiB);
-  return baker.release();
+  return baker;
 }
 
-void ren::destroy_baker(IBaker *baker) { delete baker; }
+void destroy_baker(Baker *baker) { delete baker; }
 
-void ren::reset_baker(IBaker &baker) {
-  baker.arena.clear();
-  baker.renderer->reset_command_pool(baker.cmd_pool).value();
-  baker.rg.reset();
-  baker.descriptor_allocator.reset();
-  baker.allocator.reset();
-  baker.upload_allocator.reset();
+void reset_baker(Baker *baker) {
+  baker->arena.clear();
+  std::ignore = baker->renderer->reset_command_pool(baker->cmd_pool);
+  baker->rg.reset();
+  baker->descriptor_allocator.reset();
+  baker->allocator.reset();
+  baker->upload_allocator.reset();
 }
+
+} // namespace ren

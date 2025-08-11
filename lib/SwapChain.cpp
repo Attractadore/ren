@@ -1,4 +1,4 @@
-#include "Swapchain.hpp"
+#include "SwapChain.hpp"
 #include "Formats.hpp"
 #include "Renderer.hpp"
 #include "Scene.hpp"
@@ -25,17 +25,33 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 } // namespace
 
-Swapchain::~Swapchain() {
-  m_renderer->wait_idle();
-  for (usize i : range(m_textures.size())) {
-    m_renderer->destroy(m_textures[i]);
-    m_renderer->destroy(m_semaphores[i]);
-  }
-  rhi::destroy_swap_chain(m_swap_chain);
-  rhi::destroy_surface(m_surface);
+auto get_sdl_window_flags(Renderer *) -> uint32_t {
+  return rhi::SDL_WINDOW_FLAGS;
 }
 
-auto Swapchain::init(Renderer &renderer, SDL_Window *window)
+auto create_swapchain(Renderer *renderer, SDL_Window *window)
+    -> expected<SwapChain *> {
+  auto *swap_chain = new SwapChain();
+  ren_try_to(swap_chain->init(*renderer, window));
+  return swap_chain;
+}
+
+void destroy_swap_chain(SwapChain *swap_chain) {
+  if (!swap_chain) {
+    return;
+  }
+  Renderer *renderer = swap_chain->m_renderer;
+  renderer->wait_idle();
+  for (usize i : range(swap_chain->m_textures.size())) {
+    renderer->destroy(swap_chain->m_textures[i]);
+    renderer->destroy(swap_chain->m_semaphores[i]);
+  }
+  rhi::destroy_swap_chain(swap_chain->m_swap_chain);
+  rhi::destroy_surface(swap_chain->m_surface);
+  delete swap_chain;
+}
+
+auto SwapChain::init(Renderer &renderer, SDL_Window *window)
     -> Result<void, Error> {
   m_renderer = &renderer;
   m_window = window;
@@ -99,21 +115,21 @@ auto Swapchain::init(Renderer &renderer, SDL_Window *window)
   return {};
 }
 
-void Swapchain::set_vsync(VSync vsync) {
+void SwapChain::set_vsync(VSync vsync) {
   if (m_vsync != vsync) {
     m_vsync = vsync;
     m_dirty = true;
   }
 }
 
-void Swapchain::set_usage(rhi::ImageUsageFlags usage) {
+void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
   if (m_usage != usage) {
     m_usage = usage;
     m_dirty = true;
   }
 }
 
-auto Swapchain::select_present_mode() -> Result<rhi::PresentMode, Error> {
+auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
     rhi::PresentMode present_modes[(usize)rhi::PresentMode::Last + 1];
@@ -138,7 +154,7 @@ auto Swapchain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   return present_mode;
 }
 
-auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
+auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   SDL_SysWMinfo wm_info;
   SDL_VERSION(&wm_info.version);
   if (!SDL_GetWindowWMInfo(m_window, &wm_info)) {
@@ -183,7 +199,7 @@ auto Swapchain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   }
 }
 
-auto Swapchain::update_textures() -> Result<void, Error> {
+auto SwapChain::update_textures() -> Result<void, Error> {
   rhi::Image images[rhi::MAX_SWAP_CHAIN_IMAGE_COUNT];
   u32 num_images = std::size(images);
   ren_try_to(rhi::get_swap_chain_images(m_swap_chain, &num_images, images));
@@ -207,7 +223,7 @@ auto Swapchain::update_textures() -> Result<void, Error> {
   return {};
 }
 
-auto Swapchain::update() -> Result<void, Error> {
+auto SwapChain::update() -> Result<void, Error> {
   m_renderer->wait_idle();
 
   auto present_mode = select_present_mode();
@@ -247,7 +263,7 @@ auto Swapchain::update() -> Result<void, Error> {
   return {};
 }
 
-auto Swapchain::acquire(Handle<Semaphore> signal_semaphore)
+auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
     -> Result<u32, Error> {
   ZoneScoped;
 
@@ -284,7 +300,7 @@ auto Swapchain::acquire(Handle<Semaphore> signal_semaphore)
   }
 }
 
-auto Swapchain::present(rhi::QueueFamily qf) -> Result<void, Error> {
+auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
   ZoneScoped;
   auto result = rhi::present(
       rhi::get_queue(m_renderer->get_rhi_device(), qf), m_swap_chain,
@@ -299,22 +315,9 @@ auto Swapchain::present(rhi::QueueFamily qf) -> Result<void, Error> {
   return {};
 }
 
-auto Swapchain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {
+auto SwapChain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {
   return rhi::is_queue_family_present_supported(m_renderer->get_adapter(), qf,
                                                 m_surface);
-}
-
-auto get_sdl_window_flags(IRenderer &) -> uint32_t {
-  return rhi::SDL_WINDOW_FLAGS;
-}
-
-auto create_swapchain(IRenderer &irenderer, SDL_Window *window)
-    -> expected<std::unique_ptr<ISwapchain>> {
-  auto &renderer = static_cast<Renderer &>(irenderer);
-  auto swapchain = std::make_unique<Swapchain>();
-  return swapchain->init(renderer, window).transform([&] {
-    return std::move(swapchain);
-  });
 }
 
 } // namespace ren

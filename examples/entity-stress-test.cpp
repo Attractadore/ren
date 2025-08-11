@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-auto load_mesh(ren::IScene &scene, const char *path) -> Result<ren::MeshId> {
+auto load_mesh(ren::Scene *scene, const char *path) -> Result<ren::MeshId> {
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
   const aiScene *ai_scene = importer.ReadFile(
@@ -62,17 +62,17 @@ auto load_mesh(ren::IScene &scene, const char *path) -> Result<ren::MeshId> {
          .indices = indices.data(),
      }));
   auto [blob_data, blob_size] = blob;
-  OK(ren::MeshId mesh, scene.create_mesh(blob_data, blob_size));
+  OK(ren::MeshId mesh, create_mesh(scene, blob_data, blob_size));
   std::free(blob_data);
 
   return mesh;
 }
 
-auto create_material(ren::IScene &scene) -> Result<ren::MaterialId> {
-  return scene
-      .create_material({
-          .metallic_factor = 0.0f,
-      })
+auto create_material(ren::Scene *scene) -> Result<ren::MaterialId> {
+  return create_material(scene,
+                         {
+                             .metallic_factor = 0.0f,
+                         })
       .transform_error(get_error_string);
 }
 
@@ -118,7 +118,7 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
   return transform;
 }
 
-auto place_entities(std::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
+auto place_entities(std::mt19937 &rg, ren::Scene *scene, ren::MeshId mesh,
                     ren::MaterialId material, unsigned num_entities)
     -> Result<void> {
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
@@ -137,60 +137,57 @@ auto place_entities(std::mt19937 &rg, ren::IScene &scene, ren::MeshId mesh,
         random_transform(rg, min_trans, max_trans, min_scale, max_scale);
   }
 
-  TRY_TO(scene.create_mesh_instances(create_info, entities));
-  scene.set_mesh_instance_transforms(entities, transforms);
+  TRY_TO(create_mesh_instances(scene, create_info, entities));
+  set_mesh_instance_transforms(scene, entities, transforms);
 
   return {};
 }
 
-auto place_light(ren::IScene &scene) -> Result<void> {
-  OK(auto _, scene
-                 .create_directional_light({
-                     .origin = {-1.0f, 0.0f, 1.0f},
-                 })
+auto place_light(ren::Scene *scene) -> Result<void> {
+  OK(auto _, create_directional_light(scene,
+                                      {
+                                          .origin = {-1.0f, 0.0f, 1.0f},
+                                      })
                  .transform_error(get_error_string));
   return {};
 }
 
-void set_camera(ren::IScene &scene, ren::CameraId camera,
+void set_camera(ren::Scene *scene, ren::CameraId camera,
                 unsigned num_entities) {
   auto [scene_min, _] = get_scene_bounds(num_entities);
 
-  scene.set_camera_perspective_projection(camera, {});
-  scene.set_camera_transform(camera, {
-                                         .position = {scene_min, 0.0f, 0.0f},
-                                         .forward = {1.0f, 0.0f, 0.0f},
-                                         .up = {0.0f, 0.0f, 1.0f},
-                                     });
+  set_camera_perspective_projection(scene, camera, {});
+  set_camera_transform(scene, camera,
+                       {
+                           .position = {scene_min, 0.0f, 0.0f},
+                           .forward = {1.0f, 0.0f, 0.0f},
+                           .up = {0.0f, 0.0f, 1.0f},
+                       });
 
-  scene.set_exposure({
-      .mode = ren::ExposureMode::Automatic,
-      .ec = 2.0f,
-  });
+  set_exposure(scene, {
+                          .mode = ren::ExposureMode::Automatic,
+                          .ec = 2.0f,
+                      });
 }
 
 } // namespace
 
 class EntityStressTestApp : public ImGuiApp {
 public:
-  EntityStressTestApp(const char *mesh_path, unsigned num_entities,
-                      unsigned seed)
-      : ImGuiApp(
-            fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
-                .c_str()) {
-    [&]() -> Result<> {
-      ren::IScene &scene = get_scene();
-      ren::CameraId camera = get_camera();
-      OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
-      OK(ren::MaterialId material, create_material(scene));
-      auto rg = init_random(seed);
-      TRY_TO(place_entities(rg, scene, mesh, material, num_entities));
-      TRY_TO(place_light(scene));
-      set_camera(scene, camera, num_entities);
-      return {};
-    }()
-                 .transform_error(throw_error)
-                 .value();
+  auto init(const char *mesh_path, unsigned num_entities, unsigned seed)
+      -> Result<void> {
+    TRY_TO(ImGuiApp::init(
+        fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
+            .c_str()));
+    ren::Scene *scene = get_scene();
+    ren::CameraId camera = get_camera();
+    OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
+    OK(ren::MaterialId material, create_material(scene));
+    auto rg = init_random(seed);
+    TRY_TO(place_entities(rg, scene, mesh, material, num_entities));
+    TRY_TO(place_light(scene));
+    set_camera(scene, camera, num_entities);
+    return {};
   }
 
   [[nodiscard]] static auto run(const char *mesh_path, unsigned num_entities,

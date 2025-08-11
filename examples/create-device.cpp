@@ -2,7 +2,7 @@
 
 class CreateDeviceApp : public AppBase {
 public:
-  CreateDeviceApp() : AppBase("Create Device") {}
+  auto init() -> Result<void> { return AppBase::init("Create Device"); }
 
   [[nodiscard]] static auto run() -> int {
     return AppBase::run<CreateDeviceApp>();

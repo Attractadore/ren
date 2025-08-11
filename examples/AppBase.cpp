@@ -26,41 +26,44 @@ auto throw_error(std::string err) -> std::string {
   throw std::runtime_error(std::move(err));
 }
 
-AppBase::AppBase(const char *app_name) {
-  [&]() -> Result<void> {
-    m_app_name = app_name;
+auto AppBase::init(const char *app_name) -> Result<void> {
+  m_app_name = app_name;
 
-    unsigned adapter = ren::DEFAULT_ADAPTER;
-    const char *user_adapter = std::getenv("REN_ADAPTER");
-    if (user_adapter) {
-      char *end;
-      adapter = std::strtol(user_adapter, &end, 10);
-      if (end != user_adapter + std::strlen(user_adapter)) {
-        adapter = ren::DEFAULT_ADAPTER;
-      }
+  unsigned adapter = ren::DEFAULT_ADAPTER;
+  const char *user_adapter = std::getenv("REN_ADAPTER");
+  if (user_adapter) {
+    char *end;
+    adapter = std::strtol(user_adapter, &end, 10);
+    if (end != user_adapter + std::strlen(user_adapter)) {
+      adapter = ren::DEFAULT_ADAPTER;
     }
+  }
 
-    OK(m_renderer, ren::create_renderer({.adapter = adapter}));
+  OK(m_renderer, ren::create_renderer({.adapter = adapter}));
 
-    m_window.reset(SDL_CreateWindow(
-        app_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
-        SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
-            ren::get_sdl_window_flags(*m_renderer)));
-    if (!m_window) {
-      bail("{}", SDL_GetError());
-    }
+  m_window = SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED, 1280, 720,
+                              SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
+                                  ren::get_sdl_window_flags(m_renderer));
+  if (!m_window) {
+    bail("{}", SDL_GetError());
+  }
 
-    OK(m_swapchain, ren::create_swapchain(*m_renderer, m_window.get()));
+  OK(m_swapchain, ren::create_swapchain(m_renderer, m_window));
 
-    OK(m_scene, ren::create_scene(*m_renderer, *m_swapchain));
+  OK(m_scene, ren::create_scene(m_renderer, m_swapchain));
 
-    OK(m_camera, m_scene->create_camera());
-    m_scene->set_camera(m_camera);
+  OK(m_camera, create_camera(m_scene));
+  set_camera(m_scene, m_camera);
 
-    return {};
-  }()
-               .transform_error(throw_error)
-               .value();
+  return {};
+}
+
+AppBase::~AppBase() {
+  ren::destroy_scene(m_scene);
+  ren::destroy_swap_chain(m_swapchain);
+  ren::destroy_renderer(m_renderer);
+  SDL_DestroyWindow(m_window);
 }
 
 auto AppBase::loop() -> Result<void> {
@@ -74,9 +77,9 @@ auto AppBase::loop() -> Result<void> {
 
     float fps = 1e9f / dt.count();
     auto title = fmt::format("{} @ {:.1f} FPS", m_app_name, fps);
-    SDL_SetWindowTitle(m_window.get(), title.c_str());
+    SDL_SetWindowTitle(m_window, title.c_str());
 
-    TRY_TO(m_scene->delay_input());
+    TRY_TO(delay_input(m_scene));
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -91,7 +94,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(begin_frame());
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(m_scene->draw());
+    TRY_TO(draw(m_scene));
   }
 
   return {};
@@ -101,8 +104,8 @@ auto AppBase::process_event(const SDL_Event &event) -> Result<void> {
   if (event.type == SDL_KEYDOWN and
       event.key.keysym.scancode == SDL_SCANCODE_F11) {
     bool is_fullscreen =
-        SDL_GetWindowFlags(m_window.get()) & SDL_WINDOW_FULLSCREEN_DESKTOP;
-    SDL_SetWindowFullscreen(m_window.get(),
+        SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+    SDL_SetWindowFullscreen(m_window,
                             is_fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
   }
   return {};

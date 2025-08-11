@@ -5,7 +5,7 @@
 
 namespace ren {
 
-auto bake_ibl_to_memory(IBaker *baker, const TextureInfo &info,
+auto bake_ibl_to_memory(Baker *baker, const TextureInfo &info,
                         bool compress = true) -> Result<Blob, Error>;
 
 } // namespace ren

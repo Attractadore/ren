@@ -3,7 +3,6 @@
 #include "../CommandRecorder.hpp"
 #include "../ImGuiConfig.hpp"
 #include "../Scene.hpp"
-#include "../Swapchain.hpp"
 #include "../glsl/ImGui.h"
 
 namespace ren {
@@ -118,7 +117,7 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
   ImGuiPassResources rcs = {
       .ctx = cfg.ctx,
       .pipeline = ccfg.pipelines->imgui_pass,
-      .viewport = ccfg.swapchain->get_size(),
+      .viewport = ccfg.viewport,
   };
 
   pass.set_render_pass_callback(

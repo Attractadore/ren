@@ -36,7 +36,7 @@ public:
   bool operator==(const ImageViewDesc &) const = default;
 };
 
-class Renderer final : public IRenderer {
+struct Renderer {
   rhi::Adapter m_adapter;
   rhi::Device m_device;
 
@@ -57,14 +57,6 @@ class Renderer final : public IRenderer {
   GenArray<ComputePipeline> m_compute_pipelines;
 
   GenArray<CommandPool> m_command_pools;
-
-public:
-  Renderer() = default;
-  Renderer(const Renderer &) = delete;
-  Renderer(Renderer &&);
-  Renderer &operator=(const Renderer &) = delete;
-  Renderer &operator=(Renderer &&);
-  ~Renderer();
 
   auto init(const RendererInfo &info) -> Result<void, Error>;
 
@@ -225,11 +217,7 @@ public:
   auto amd_anti_lag_present(u64 frame, bool enable = true, u32 max_fps = 0)
       -> Result<void, Error>;
 
-private:
   void create_device();
-
-private:
-  template <typename H> friend class Handle;
 };
 
 } // namespace ren

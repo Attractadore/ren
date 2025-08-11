@@ -3,6 +3,8 @@
 #include "../tiny_imageformat.h"
 #include "baking.hpp"
 
+#include <cstdio>
+
 namespace ren {
 
 struct TextureInfo {

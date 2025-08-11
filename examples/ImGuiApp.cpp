@@ -33,36 +33,37 @@ struct ImGui_ImplSDL2_Data {
 };
 static_assert(IMGUI_VERSION_NUM == 19150);
 
-ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
-  [&]() -> Result<void> {
-    if (!IMGUI_CHECKVERSION()) {
-      bail("ImGui: failed to check version");
-    }
+auto ImGuiApp::init(const char *name) -> Result<void> {
+  TRY_TO(AppBase::init(name));
 
-    m_imgui_context.reset(ImGui::CreateContext());
-    if (!m_imgui_context) {
-      bail("ImGui: failed to create context");
-    }
+  if (!IMGUI_CHECKVERSION()) {
+    bail("ImGui: failed to check version");
+  }
 
-    ImGui::StyleColorsDark();
+  m_imgui_context.reset(ImGui::CreateContext());
+  if (!m_imgui_context) {
+    bail("ImGui: failed to create context");
+  }
 
-    SDL_SysWMinfo sys_wm_info = {};
-    SDL_VERSION(&sys_wm_info.version);
-    bool result = SDL_GetWindowWMInfo(get_window(), &sys_wm_info);
-    if (!result) {
-      bail("SDL2: failed to get WM info: {}", SDL_GetError());
-    }
+  ImGui::StyleColorsDark();
 
-    switch (sys_wm_info.subsystem) {
-    case SDL_SYSWM_X11: {
+  SDL_SysWMinfo sys_wm_info = {};
+  SDL_VERSION(&sys_wm_info.version);
+  bool result = SDL_GetWindowWMInfo(get_window(), &sys_wm_info);
+  if (!result) {
+    bail("SDL2: failed to get WM info: {}", SDL_GetError());
+  }
+
+  switch (sys_wm_info.subsystem) {
+  case SDL_SYSWM_X11: {
 #ifdef SDL_VIDEO_DRIVER_X11
-      // SDL2 doesn't support HiDPI on X11. Set UI scale to Xft.dpi / 96.
+    // SDL2 doesn't support HiDPI on X11. Set UI scale to Xft.dpi / 96.
 
-      const char *xlib = "libX11.so";
-      void *xlib_so = SDL_LoadObject(xlib);
-      if (!xlib_so) {
-        bail("SDL2: failed to load {}", xlib);
-      }
+    const char *xlib = "libX11.so";
+    void *xlib_so = SDL_LoadObject(xlib);
+    if (!xlib_so) {
+      bail("SDL2: failed to load {}", xlib);
+    }
 
 #define load_function(name)                                                    \
   auto *pfn##name = (decltype(name) *)SDL_LoadFunction(xlib_so, #name);        \
@@ -70,73 +71,70 @@ ImGuiApp::ImGuiApp(const char *name) : AppBase(name) {
     bail("SDL2: failed to load {}", #name);                                    \
   }
 
-      load_function(XResourceManagerString);
-      load_function(XrmGetStringDatabase);
-      load_function(XrmGetResource);
+    load_function(XResourceManagerString);
+    load_function(XrmGetStringDatabase);
+    load_function(XrmGetResource);
 
 #undef load_function
 
-      const char *resource_string =
-          pfnXResourceManagerString(sys_wm_info.info.x11.display);
-      XrmDatabase db = pfnXrmGetStringDatabase(resource_string);
-      char *type;
-      XrmValue value;
-      if (pfnXrmGetResource(db, "Xft.dpi", "String", &type, &value) &&
-          value.addr) {
-        char *end;
-        float dpi = std::strtof(value.addr, &end);
-        if (end == value.addr + std::strlen(value.addr)) {
-          m_ui_scale = dpi / 96.0f;
-        }
+    const char *resource_string =
+        pfnXResourceManagerString(sys_wm_info.info.x11.display);
+    XrmDatabase db = pfnXrmGetStringDatabase(resource_string);
+    char *type;
+    XrmValue value;
+    if (pfnXrmGetResource(db, "Xft.dpi", "String", &type, &value) &&
+        value.addr) {
+      char *end;
+      float dpi = std::strtof(value.addr, &end);
+      if (end == value.addr + std::strlen(value.addr)) {
+        m_ui_scale = dpi / 96.0f;
       }
+    }
 
-      SDL_UnloadObject(xlib_so);
+    SDL_UnloadObject(xlib_so);
 #endif
-    } break;
-    default: {
-      // On Win32 and Wayland, set scaling factor to ratio between framebuffer
-      // and window size.
-      int w, h;
-      SDL_GetWindowSize(get_window(), &w, &h);
-      int dw, dh;
-      SDL_Vulkan_GetDrawableSize(get_window(), &dw, &dh);
-      m_ui_scale = (float)dw / (float)w;
-      m_mouse_scale = m_ui_scale;
-    } break;
-    }
+  } break;
+  default: {
+    // On Win32 and Wayland, set scaling factor to ratio between framebuffer
+    // and window size.
+    int w, h;
+    SDL_GetWindowSize(get_window(), &w, &h);
+    int dw, dh;
+    SDL_Vulkan_GetDrawableSize(get_window(), &dw, &dh);
+    m_ui_scale = (float)dw / (float)w;
+    m_mouse_scale = m_ui_scale;
+  } break;
+  }
 
-    fmt::println("ImGui UI scale: {}, ImGui mouse scale: {}", m_ui_scale,
-                 m_mouse_scale);
+  fmt::println("ImGui UI scale: {}, ImGui mouse scale: {}", m_ui_scale,
+               m_mouse_scale);
 
-    ImGuiIO &io = ImGui::GetIO();
-    ImFont *default_font = io.Fonts->AddFontDefault();
-    ImFontConfig font_config = *std::ranges::find_if(
-        io.Fonts->ConfigData, [&](const ImFontConfig &font_config) {
-          return font_config.DstFont == default_font;
-        });
-    font_config.FontDataOwnedByAtlas = false;
-    font_config.SizePixels = glm::floor(font_config.SizePixels * m_ui_scale);
-    std::ranges::fill(font_config.Name, '\0');
-    font_config.DstFont = nullptr;
-    m_font = io.Fonts->AddFont(&font_config);
-    io.Fonts->Build();
+  ImGuiIO &io = ImGui::GetIO();
+  ImFont *default_font = io.Fonts->AddFontDefault();
+  ImFontConfig font_config = *std::ranges::find_if(
+      io.Fonts->ConfigData, [&](const ImFontConfig &font_config) {
+        return font_config.DstFont == default_font;
+      });
+  font_config.FontDataOwnedByAtlas = false;
+  font_config.SizePixels = glm::floor(font_config.SizePixels * m_ui_scale);
+  std::ranges::fill(font_config.Name, '\0');
+  font_config.DstFont = nullptr;
+  m_font = io.Fonts->AddFont(&font_config);
+  io.Fonts->Build();
 
-    ImGuiStyle &style = ImGui::GetStyle();
-    style.ScaleAllSizes(m_ui_scale);
+  ImGuiStyle &style = ImGui::GetStyle();
+  style.ScaleAllSizes(m_ui_scale);
 
-    if (!ImGui_ImplSDL2_InitForVulkan(get_window())) {
-      bail("ImGui-SDL2: failed to init backend");
-    }
+  if (!ImGui_ImplSDL2_InitForVulkan(get_window())) {
+    bail("ImGui-SDL2: failed to init backend");
+  }
 
-    // FIXME: hack to disable global mouse query on Win32 and X11.
-    auto *bd = (ImGui_ImplSDL2_Data *)ImGui::GetIO().BackendPlatformUserData;
-    bd->MouseCanUseGlobalState = false;
+  // FIXME: hack to disable global mouse query on Win32 and X11.
+  auto *bd = (ImGui_ImplSDL2_Data *)ImGui::GetIO().BackendPlatformUserData;
+  bd->MouseCanUseGlobalState = false;
 
-    ren::imgui::set_context(get_scene(), m_imgui_context.get());
-    return {};
-  }()
-               .transform_error(throw_error)
-               .value();
+  ren::imgui::set_context(get_scene(), m_imgui_context.get());
+  return {};
 }
 
 void ImGuiApp::Deleter::operator()(ImGuiContext *context) const noexcept {
@@ -186,7 +184,7 @@ auto ImGuiApp::begin_frame() -> Result<void> {
 }
 
 auto ImGuiApp::end_frame() -> Result<void> {
-  ren::imgui::draw(get_scene());
+  std::ignore = ren::imgui::draw(get_scene());
   ImGui::PopFont();
   if (m_imgui_enabled) {
     ImGui::Render();

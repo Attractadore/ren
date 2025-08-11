@@ -52,11 +52,10 @@ endif()
 add_library(ren
   Camera.cpp
   GpuScene.cpp
-  ImGui.cpp
   Mesh.cpp
   PipelineLoading.cpp
   Scene.cpp
-  Swapchain.cpp
+  SwapChain.cpp
   passes/Exposure.cpp
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp

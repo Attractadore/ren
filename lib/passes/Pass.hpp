@@ -40,7 +40,7 @@ struct PassCommonConfig {
   NotNull<const Pipelines *> pipelines;
   NotNull<const SceneData *> scene;
   NotNull<PassPersistentResources *> rcs;
-  NotNull<Swapchain *> swapchain;
+  glm::uvec2 viewport = {};
 };
 
 } // namespace ren

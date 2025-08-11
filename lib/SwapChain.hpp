@@ -8,19 +8,10 @@ namespace ren {
 
 class Renderer;
 
-class Swapchain final : public ISwapchain {
-public:
-  Swapchain() = default;
-  Swapchain(const Swapchain &) = delete;
-  Swapchain(Swapchain &&) noexcept;
-  ~Swapchain();
-
-  Swapchain &operator=(const Swapchain &) = delete;
-  Swapchain &operator=(Swapchain &&) noexcept;
-
+struct SwapChain {
   auto init(Renderer &renderer, SDL_Window *window) -> Result<void, Error>;
 
-  void set_vsync(VSync vsync) override;
+  void set_vsync(VSync vsync);
 
   auto get_size() const -> glm::uvec2 { return m_size; }
 
@@ -46,13 +37,11 @@ public:
 
   auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
-private:
   auto select_present_mode() -> Result<rhi::PresentMode, Error>;
   auto select_image_count(rhi::PresentMode present_mode) -> Result<u32, Error>;
   auto update_textures() -> Result<void, Error>;
   auto update() -> Result<void, Error>;
 
-private:
   Renderer *m_renderer = nullptr;
   SDL_Window *m_window = nullptr;
   rhi::Surface m_surface = {};

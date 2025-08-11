@@ -260,9 +260,9 @@ auto deindex_attibute(std::span<const T> attribute,
 
 class SceneWalker {
 public:
-  SceneWalker(tinygltf::Model model, ren::IScene &scene) {
+  SceneWalker(tinygltf::Model model, ren::Scene *scene) {
     m_model = std::move(model);
-    m_scene = &scene;
+    m_scene = scene;
   }
 
   auto walk(int scene) -> Result<void> {
@@ -469,7 +469,7 @@ private:
                       .indices = indices_data.data(),
                   }));
     auto [blob_data, blob_size] = blob;
-    OK(ren::MeshId mesh, m_scene->create_mesh(blob_data, blob_size));
+    OK(ren::MeshId mesh, ren::create_mesh(m_scene, blob_data, blob_size));
     std::free(blob_data);
 
     return mesh;
@@ -567,7 +567,7 @@ private:
           OK(ren::TextureInfo texture_info, get_image_info(src, true));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          OK(image, m_scene->create_image(blob_data, blob_size));
+          OK(image, create_image(m_scene, blob_data, blob_size));
           std::free(blob_data);
         }
         desc.base_color_texture.image = image;
@@ -617,7 +617,7 @@ private:
                                                     occlusion_info));
           auto [blob_data, blob_size] = blob;
           OK(desc.orm_texture.image,
-             m_scene->create_image(blob_data, blob_size));
+             create_image(m_scene, blob_data, blob_size));
           std::free(blob_data);
           m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
                                          desc.orm_texture.image);
@@ -644,7 +644,7 @@ private:
           OK(ren::TextureInfo texture_info, get_image_info(src));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          OK(image, m_scene->create_image(blob_data, blob_size));
+          OK(image, create_image(m_scene, blob_data, blob_size));
           std::free(blob_data);
         }
         desc.normal_texture.image = image;
@@ -667,7 +667,8 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return m_scene->create_material(desc).transform_error(get_error_string);
+    return ren::create_material(m_scene, desc)
+        .transform_error(get_error_string);
   }
 
   auto get_or_create_material(int index) -> Result<ren::MaterialId> {
@@ -688,13 +689,13 @@ private:
     OK(ren::MaterialId material, get_or_create_material(primitive.material));
     OK(ren::MeshId mesh, get_or_create_mesh(primitive));
     OK(ren::MeshInstanceId mesh_instance,
-       m_scene
-           ->create_mesh_instance({
-               .mesh = mesh,
-               .material = material,
-           })
+       ren::create_mesh_instance(m_scene,
+                                 {
+                                     .mesh = mesh,
+                                     .material = material,
+                                 })
            .transform_error(get_error_string));
-    m_scene->set_mesh_instance_transform(mesh_instance, transform);
+    set_mesh_instance_transform(m_scene, mesh_instance, transform);
     return mesh_instance;
   }
 
@@ -780,7 +781,7 @@ private:
 
 private:
   tinygltf::Model m_model;
-  ren::IScene *m_scene = nullptr;
+  ren::Scene *m_scene = nullptr;
   std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
   std::unordered_map<int, ren::ImageId> m_color_image_cache;
   std::vector<std::tuple<int, int, ren::ImageId>> m_orm_image_cache;
@@ -796,54 +797,51 @@ struct ViewGltfOptions {
 
 class ViewGlTFApp : public ImGuiApp {
 public:
-  ViewGlTFApp(const ViewGltfOptions &options)
-      : ImGuiApp(fmt::format("View glTF: {}", options.path).c_str()) {
-    [&]() -> Result<void> {
-      OK(tinygltf::Model model, load_gltf(options.path));
-      SceneWalker scene_walker(std::move(model), get_scene());
-      TRY_TO(scene_walker.walk(options.scene));
-      ren::IScene &scene = get_scene();
+  auto init(const ViewGltfOptions &options) -> Result<void> {
+    TRY_TO(ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str()));
+    OK(tinygltf::Model model, load_gltf(options.path));
+    SceneWalker scene_walker(std::move(model), get_scene());
+    TRY_TO(scene_walker.walk(options.scene));
+    ren::Scene *scene = get_scene();
 
-      auto env_map = [&]() -> Result<ren::ImageId> {
-        if (options.env_map.empty()) {
-          return {};
-        }
-
-        FILE *f = ren::fopen(options.env_map, "rb");
-        if (!f) {
-          bail("Failed to open {}", options.env_map);
-        }
-
-        std::vector<std::byte> blob(fs::file_size(options.env_map));
-        size_t num_read = std::fread(blob.data(), 1, blob.size(), f);
-        std::fclose(f);
-        if (num_read != blob.size()) {
-          bail("Failed to read from {}", options.env_map);
-        }
-
-        return scene.create_image(blob).transform_error(get_error_string);
-      }();
-
-      if (env_map and *env_map) {
-        TRY_TO(scene.set_environment_map(*env_map));
-        m_camera_params.exposure = ren::ExposureMode::Automatic;
-      } else {
-        if (!env_map) {
-          warn("Failed to load environment map: {}", env_map.error());
-        }
-        OK(auto directional_light, scene.create_directional_light({
-                                       .color = {1.0f, 1.0f, 1.0f},
-                                       .illuminance = 100'000.0f,
-                                       .origin = {0.0f, 0.0f, 1.0f},
-                                   }));
-        scene.set_environment_color(
-            glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) *
-            8000.0f);
+    auto env_map = [&]() -> Result<ren::ImageId> {
+      if (options.env_map.empty()) {
+        return {};
       }
-      return {};
-    }()
-                 .transform_error(throw_error)
-                 .value();
+
+      FILE *f = ren::fopen(options.env_map, "rb");
+      if (!f) {
+        bail("Failed to open {}", options.env_map);
+      }
+
+      std::vector<std::byte> blob(fs::file_size(options.env_map));
+      size_t num_read = std::fread(blob.data(), 1, blob.size(), f);
+      std::fclose(f);
+      if (num_read != blob.size()) {
+        bail("Failed to read from {}", options.env_map);
+      }
+
+      return create_image(scene, blob).transform_error(get_error_string);
+    }();
+
+    if (env_map and *env_map) {
+      TRY_TO(set_environment_map(scene, *env_map));
+      m_camera_params.exposure = ren::ExposureMode::Automatic;
+    } else {
+      if (!env_map) {
+        warn("Failed to load environment map: {}", env_map.error());
+      }
+      OK(auto directional_light,
+         create_directional_light(scene, {
+                                             .color = {1.0f, 1.0f, 1.0f},
+                                             .illuminance = 100'000.0f,
+                                             .origin = {0.0f, 0.0f, 1.0f},
+                                         }));
+      set_environment_color(
+          scene,
+          glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
+    }
+    return {};
   }
 
   [[nodiscard]] static auto run(const ViewGltfOptions &options) -> int {
@@ -897,7 +895,7 @@ protected:
       ImGui::End();
     }
 
-    ren::IScene &scene = get_scene();
+    ren::Scene *scene = get_scene();
 
     float dt = duration_as_float(dt_ns);
 
@@ -921,26 +919,28 @@ protected:
     {
       ren::CameraId camera = get_camera();
 
-      scene.set_camera_transform(camera, {
-                                             .position = position,
-                                             .forward = forward,
-                                             .up = up,
-                                         });
-      scene.set_camera_parameters(
-          camera, {
-                      .aperture = m_camera_params.aperture,
-                      .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
-                      .iso = m_camera_params.iso,
-                  });
+      set_camera_transform(scene, camera,
+                           {
+                               .position = position,
+                               .forward = forward,
+                               .up = up,
+                           });
+      set_camera_parameters(
+          scene, camera,
+          {
+              .aperture = m_camera_params.aperture,
+              .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
+              .iso = m_camera_params.iso,
+          });
 
       switch (m_camera_params.projection) {
       case PROJECTION_PERSPECTIVE: {
-        scene.set_camera_perspective_projection(
-            camera, {.hfov = glm::radians(m_camera_params.hfov)});
+        set_camera_perspective_projection(
+            scene, camera, {.hfov = glm::radians(m_camera_params.hfov)});
       } break;
       case PROJECTION_ORTHOGRAPHIC: {
-        scene.set_camera_orthographic_projection(
-            camera, {.width = m_camera_params.orthographic_width});
+        set_camera_orthographic_projection(
+            scene, camera, {.width = m_camera_params.orthographic_width});
       } break;
       }
 
@@ -953,10 +953,10 @@ protected:
         ec = m_camera_params.automatic_exposure_compensation;
       } break;
       }
-      scene.set_exposure({
-          .mode = m_camera_params.exposure,
-          .ec = ec,
-      });
+      set_exposure(scene, {
+                              .mode = m_camera_params.exposure,
+                              .ec = ec,
+                          });
     }
 
     return {};

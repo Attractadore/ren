@@ -1,5 +1,5 @@
 #include "Renderer.hpp"
-#include "Swapchain.hpp"
+#include "SwapChain.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
 
@@ -7,6 +7,24 @@
 #include <tracy/Tracy.hpp>
 
 namespace ren {
+
+auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
+  auto *renderer = new Renderer();
+  ren_try_to(renderer->init(info));
+  return renderer;
+}
+
+void destroy_renderer(Renderer *renderer) {
+  if (!renderer) {
+    return;
+  }
+  for (const auto &[_, sampler] : renderer->m_samplers) {
+    rhi::destroy_sampler(renderer->m_device, sampler);
+  }
+  rhi::destroy_device(renderer->m_device);
+  rhi::exit();
+  delete renderer;
+}
 
 auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
   ren_try_to(rhi::load(info.type == RendererType::Headless));
@@ -47,14 +65,6 @@ auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
   }
 
   return {};
-}
-
-Renderer::~Renderer() {
-  for (const auto &[_, sampler] : m_samplers) {
-    rhi::destroy_sampler(m_device, sampler);
-  }
-  rhi::destroy_device(m_device);
-  rhi::exit();
 }
 
 auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
@@ -535,9 +545,3 @@ auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
 }
 
 } // namespace ren
-
-auto ren::create_renderer(const RendererInfo &info)
-    -> expected<std::unique_ptr<IRenderer>> {
-  auto renderer = std::make_unique<Renderer>();
-  return renderer->init(info).transform([&] { return std::move(renderer); });
-}

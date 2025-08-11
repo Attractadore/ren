@@ -33,10 +33,10 @@ int main(int argc, const char *argv[]) {
   auto in_path = result["in"].as<fs::path>();
   auto out_path = result["out"].as<fs::path>();
 
-  std::unique_ptr<IRenderer> renderer =
+  Renderer *renderer =
       create_renderer({.type = RendererType::Headless}).value();
 
-  IBaker *baker = create_baker(renderer.get()).value();
+  Baker *baker = create_baker(renderer).value();
 
   FILE *f = fopen(in_path, "rb");
   if (!f) {
