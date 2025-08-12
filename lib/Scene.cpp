@@ -16,6 +16,7 @@
 #include "passes/PostProcessing.hpp"
 #include "passes/Present.hpp"
 #include "passes/Skybox.hpp"
+#include "ren/ren.hpp"
 
 #include "Ssao.comp.hpp"
 #include "SsaoFilter.comp.hpp"
@@ -25,143 +26,86 @@
 #include <ktx.h>
 #include <tracy/Tracy.hpp>
 
-namespace ren {
+namespace ren_export {
 
-auto create_scene(Renderer *renderer, SwapChain *swap_chain)
-    -> expected<Scene *> {
-  return new Scene(*renderer, *swap_chain);
-}
+namespace {
 
-void destroy_scene(Scene *scene) { delete scene; }
+auto init_scene_internal_data(Renderer *renderer,
+                              DescriptorAllocator &descriptor_allocator)
+    -> Result<std::unique_ptr<SceneInternalData>, Error> {
+  auto sid = std::make_unique<SceneInternalData>();
+  sid->m_arena.init(renderer);
+  ren_try(sid->m_pipelines, load_pipelines(sid->m_arena));
 
-Scene::Scene(Renderer &renderer, SwapChain &swap_chain)
-    : m_arena(renderer)
-
-{
-  m_renderer = &renderer;
-  m_swap_chain = &swap_chain;
-
-  m_pipelines = load_pipelines(m_arena).value();
-
-  m_rgp = std::make_unique<RgPersistent>(*m_renderer);
-
-  m_gpu_scene = init_gpu_scene(m_arena);
-
-  m_data.settings.async_compute =
-      m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
-  m_data.settings.present_from_compute =
-      m_swap_chain->is_queue_family_supported(rhi::QueueFamily::Compute);
-
-  m_data.settings.amd_anti_lag =
-      m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
-
-  allocate_per_frame_resources().value();
-
-  m_gfx_allocator.init(renderer, m_arena, 256 * MiB);
-  if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    m_async_allocator.init(renderer, m_arena, 16 * MiB);
-    for (DeviceBumpAllocator &allocator : m_shared_allocators) {
-      allocator.init(renderer, m_arena, 16 * MiB);
+  sid->m_gfx_allocator.init(*renderer, sid->m_arena, 256 * MiB);
+  if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+    sid->m_async_allocator.init(*renderer, sid->m_arena, 16 * MiB);
+    for (DeviceBumpAllocator &allocator : sid->m_shared_allocators) {
+      allocator.init(*renderer, sid->m_arena, 16 * MiB);
     }
   }
 
-  m_descriptor_allocator.allocate_sampler(
-      *m_renderer, rhi::SAMPLER_NEAREST_CLAMP, glsl::SAMPLER_NEAREST_CLAMP);
-
-  m_descriptor_allocator.allocate_sampler(
-      *m_renderer, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP,
-      glsl::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
-
-  next_frame().value();
-}
-
-auto Scene::allocate_per_frame_resources() -> Result<void, Error> {
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
-    ren_try(Handle<Semaphore> acquire_semaphore,
-            m_arena.create_semaphore({
+    ScenePerFrameResources &frcs = sid->m_per_frame_resources[i];
+    ren_try(frcs.acquire_semaphore,
+            sid->m_arena.create_semaphore({
                 .name = fmt::format("Acquire semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
-    ren_try(Handle<Semaphore> present_semaphore,
-            m_arena.create_semaphore({
-                .name = fmt::format("Present semaphore {}", i),
-                .type = rhi::SemaphoreType::Binary,
-            }));
-    m_per_frame_resources.emplace_back(ScenePerFrameResources{
-        .acquire_semaphore = acquire_semaphore,
-    });
-    ScenePerFrameResources &frcs = m_per_frame_resources.back();
-    ren_try(frcs.gfx_cmd_pool, m_arena.create_command_pool({
+    ren_try(frcs.gfx_cmd_pool, sid->m_arena.create_command_pool({
                                    .name = fmt::format("Command pool {}", i),
                                    .queue_family = rhi::QueueFamily::Graphics,
                                }));
-    if (m_renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
+    if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
       ren_try(frcs.async_cmd_pool,
-              m_arena.create_command_pool({
+              sid->m_arena.create_command_pool({
                   .name = fmt::format("Command pool {}", i),
                   .queue_family = rhi::QueueFamily::Compute,
               }));
     }
-    frcs.upload_allocator.init(*m_renderer, m_arena, 64 * MiB);
-    ren_try_to(frcs.descriptor_allocator.init(m_descriptor_allocator));
+    frcs.upload_allocator.init(*renderer, sid->m_arena, 64 * MiB);
+    ren_try_to(frcs.descriptor_allocator.init(descriptor_allocator));
   }
-  return {};
+
+  sid->m_rgp.init(renderer);
+
+  return sid;
 }
 
-auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
-  upload_allocator.reset();
-  ren_try_to(renderer.reset_command_pool(gfx_cmd_pool));
-  if (async_cmd_pool) {
-    ren_try_to(renderer.reset_command_pool(async_cmd_pool));
-  }
-  descriptor_allocator.reset();
-  end_semaphore = {};
-  end_time = 0;
-  return {};
+} // namespace
+
+auto create_scene(Renderer *renderer, SwapChain *swap_chain)
+    -> expected<Scene *> {
+  auto *scene = new Scene{
+      .m_renderer = renderer,
+      .m_swap_chain = swap_chain,
+  };
+  scene->m_arena.init(renderer);
+  scene->m_gpu_scene = init_gpu_scene(scene->m_arena);
+
+  scene->m_descriptor_allocator.allocate_sampler(
+      *renderer, rhi::SAMPLER_NEAREST_CLAMP, glsl::SAMPLER_NEAREST_CLAMP);
+  scene->m_descriptor_allocator.allocate_sampler(
+      *renderer, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP,
+      glsl::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
+
+  scene->m_data.settings.async_compute =
+      renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
+  scene->m_data.settings.present_from_compute =
+      swap_chain->is_queue_family_supported(rhi::QueueFamily::Compute);
+
+  scene->m_data.settings.amd_anti_lag =
+      renderer->is_feature_supported(RendererFeature::AmdAntiLag);
+
+  ren_try(scene->m_sid,
+          init_scene_internal_data(renderer, scene->m_descriptor_allocator));
+
+  ren_try_to(scene->next_frame());
+
+  return scene;
 }
 
-auto Scene::next_frame() -> Result<void, Error> {
-  ZoneScoped;
-
-  m_frame_index++;
-  m_frcs = &m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
-
-  {
-    ZoneScopedN("Scene::wait_for_previous_frame");
-    if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
-      ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
-                                                m_frcs->end_time));
-    }
-  }
-
-  ren_try_to(m_frcs->reset(*m_renderer));
-
-  m_gfx_allocator.reset();
-  CommandRecorder cmd;
-  ren_try_to(cmd.begin(*m_renderer, m_frcs->gfx_cmd_pool));
-  {
-    auto _ = cmd.debug_region("begin-frame");
-    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
-  }
-  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-  ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
-
-  if (m_data.settings.async_compute) {
-    m_async_allocator.reset();
-    std::swap(m_shared_allocators[0], m_shared_allocators[1]);
-    m_shared_allocators[0].reset();
-    CommandRecorder cmd;
-    ren_try_to(cmd.begin(*m_renderer, m_frcs->async_cmd_pool));
-    {
-      auto _ = cmd.debug_region("begin-frame");
-      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
-    }
-    ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-    ren_try_to(m_renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer}));
-  }
-
-  return {};
-}
+void destroy_scene(Scene *scene) { delete scene; }
 
 auto create_mesh(Scene *scene, std::span<const std::byte> blob)
     -> expected<MeshId> {
@@ -316,42 +260,11 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   return std::bit_cast<MeshId>(handle);
 }
 
-auto Scene::get_or_create_texture(Handle<Image> image,
-                                  const SamplerDesc &sampler_desc)
-    -> Result<glsl::SampledTexture2D, Error> {
-  return m_descriptor_allocator
-      .allocate_sampled_texture<glsl::SampledTexture2D>(
-          *m_renderer, SrvDesc{m_images[image]},
-          {
-              .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
-              .min_filter = get_rhi_Filter(sampler_desc.min_filter),
-              .mipmap_mode =
-                  get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
-              .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
-              .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
-              .max_anisotropy = 16.0f,
-          });
-}
-
 auto create_image(Scene *scene, std::span<const std::byte> blob)
     -> expected<ImageId> {
   ren_try(auto texture, scene->create_texture(blob.data(), blob.size()));
   Handle<Image> image = scene->m_images.insert(texture);
   return std::bit_cast<ImageId>(image);
-}
-
-auto Scene::create_texture(const void *blob, usize size)
-    -> expected<Handle<Texture>> {
-  ktx_error_code_e err = KTX_SUCCESS;
-  ktxTexture2 *ktx_texture2 = nullptr;
-  err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
-  if (err) {
-    return Failure(Error::Unknown);
-  }
-  auto res = m_resource_uploader.create_texture(
-      m_arena, m_frcs->upload_allocator, ktx_texture2);
-  ktxTexture_Destroy(ktxTexture(ktx_texture2));
-  return res;
 }
 
 auto create_material(Scene *scene, const MaterialCreateInfo &info)
@@ -393,10 +306,6 @@ auto create_camera(Scene *scene) -> expected<CameraId> {
 
 void destroy_camera(Scene *scene, CameraId camera) {
   scene->m_data.cameras.erase(std::bit_cast<Handle<Camera>>(camera));
-}
-
-auto Scene::get_camera(CameraId camera) -> Camera & {
-  return m_data.cameras[std::bit_cast<Handle<Camera>>(camera)];
 }
 
 void set_camera(Scene *scene, CameraId camera) {
@@ -458,8 +367,7 @@ auto create_mesh_instances(Scene *scene,
     });
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
-      add_to_draw_set(scene->m_data, scene->m_gpu_scene, scene->m_pipelines,
-                      handle, set);
+      add_to_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
     }
     scene->m_data.mesh_instance_transforms.insert(
         handle, glsl::make_decode_position_matrix(
@@ -480,8 +388,7 @@ void destroy_mesh_instances(Scene *scene,
     auto handle = std::bit_cast<Handle<MeshInstance>>(mesh_instance);
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
-      remove_from_draw_set(scene->m_data, scene->m_gpu_scene,
-                           scene->m_pipelines, handle, set);
+      remove_from_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
     }
     scene->m_data.mesh_instances.erase(handle);
   }
@@ -506,7 +413,7 @@ auto create_directional_light(Scene *scene, const DirectionalLightDesc &desc)
   Handle<glsl::DirectionalLight> light =
       scene->m_data.directional_lights.emplace();
   auto id = std::bit_cast<DirectionalLightId>(light);
-  set_directional_light(scene, id, desc);
+  ren_export::set_directional_light(scene, id, desc);
   return id;
 };
 
@@ -556,14 +463,6 @@ auto delay_input(Scene *scene) -> expected<void> {
     return scene->m_renderer->amd_anti_lag_input(scene->m_frame_index);
   }
   return {};
-}
-
-bool Scene::is_amd_anti_lag_available() {
-  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
-}
-
-bool Scene::is_amd_anti_lag_enabled() {
-  return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
 }
 
 auto draw(Scene *scene) -> expected<void> {
@@ -736,8 +635,114 @@ auto get_context(Scene *scene) -> ImGuiContext * {
 } // namespace imgui
 #endif
 
+} // namespace ren_export
+
+namespace ren {
+
+auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
+  upload_allocator.reset();
+  ren_try_to(renderer.reset_command_pool(gfx_cmd_pool));
+  if (async_cmd_pool) {
+    ren_try_to(renderer.reset_command_pool(async_cmd_pool));
+  }
+  descriptor_allocator.reset();
+  end_semaphore = {};
+  end_time = 0;
+  return {};
+}
+
+auto Scene::next_frame() -> Result<void, Error> {
+  ZoneScoped;
+
+  m_frame_index++;
+  m_frcs = &m_sid->m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
+
+  {
+    ZoneScopedN("Scene::wait_for_previous_frame");
+    if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
+      ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
+                                                m_frcs->end_time));
+    }
+  }
+
+  ren_try_to(m_frcs->reset(*m_renderer));
+
+  m_sid->m_gfx_allocator.reset();
+  CommandRecorder cmd;
+  ren_try_to(cmd.begin(*m_renderer, m_frcs->gfx_cmd_pool));
+  {
+    auto _ = cmd.debug_region("begin-frame");
+    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+  }
+  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
+  ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
+
+  if (m_data.settings.async_compute) {
+    m_sid->m_async_allocator.reset();
+    std::swap(m_sid->m_shared_allocators[0], m_sid->m_shared_allocators[1]);
+    m_sid->m_shared_allocators[0].reset();
+    CommandRecorder cmd;
+    ren_try_to(cmd.begin(*m_renderer, m_frcs->async_cmd_pool));
+    {
+      auto _ = cmd.debug_region("begin-frame");
+      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+    }
+    ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
+    ren_try_to(m_renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer}));
+  }
+
+  return {};
+}
+
+auto Scene::get_or_create_texture(Handle<Image> image,
+                                  const SamplerDesc &sampler_desc)
+    -> Result<glsl::SampledTexture2D, Error> {
+  return m_descriptor_allocator
+      .allocate_sampled_texture<glsl::SampledTexture2D>(
+          *m_renderer, SrvDesc{m_images[image]},
+          {
+              .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
+              .min_filter = get_rhi_Filter(sampler_desc.min_filter),
+              .mipmap_mode =
+                  get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
+              .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
+              .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
+              .max_anisotropy = 16.0f,
+          });
+}
+
+auto Scene::create_texture(const void *blob, usize size)
+    -> expected<Handle<Texture>> {
+  ktx_error_code_e err = KTX_SUCCESS;
+  ktxTexture2 *ktx_texture2 = nullptr;
+  err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
+  if (err) {
+    return Failure(Error::Unknown);
+  }
+  auto res = m_resource_uploader.create_texture(
+      m_arena, m_frcs->upload_allocator, ktx_texture2);
+  ktxTexture_Destroy(ktxTexture(ktx_texture2));
+  return res;
+}
+
+auto Scene::get_camera(CameraId camera) -> Camera & {
+  return m_data.cameras[std::bit_cast<Handle<Camera>>(camera)];
+}
+
+bool Scene::is_amd_anti_lag_available() {
+  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
+}
+
+bool Scene::is_amd_anti_lag_enabled() {
+  return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
+}
+
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
   ZoneScoped;
+
+  auto &pass_cfg = m_sid->m_pass_cfg;
+  PassPersistentResources &pass_rcs = m_sid->m_pass_rcs;
+  RgPersistent &rgp = m_sid->m_rgp;
 
   bool dirty = false;
   auto set_if_changed =
@@ -749,34 +754,34 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
         }
       };
 
-  set_if_changed(m_pass_cfg.async_compute, m_data.settings.async_compute);
+  set_if_changed(pass_cfg.async_compute, m_data.settings.async_compute);
 
-  set_if_changed(m_pass_cfg.exposure, m_data.exposure.mode);
+  set_if_changed(pass_cfg.exposure, m_data.exposure.mode);
 
-  set_if_changed(m_pass_cfg.viewport, m_swap_chain->get_size());
+  set_if_changed(pass_cfg.viewport, m_swap_chain->get_size());
 
-  set_if_changed(m_pass_cfg.backbuffer_usage, m_swap_chain->get_usage());
+  set_if_changed(pass_cfg.backbuffer_usage, m_swap_chain->get_usage());
 
-  set_if_changed(m_pass_cfg.ssao, m_data.settings.ssao);
-  set_if_changed(m_pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
+  set_if_changed(pass_cfg.ssao, m_data.settings.ssao);
+  set_if_changed(pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
 
   if (dirty) {
-    m_rgp->reset();
-    m_rgp->set_async_compute_enabled(m_pass_cfg.async_compute);
-    m_pass_rcs = {};
-    m_pass_rcs.backbuffer = m_rgp->create_texture("backbuffer");
-    m_pass_rcs.sdr = m_pass_rcs.backbuffer;
+    rgp.reset();
+    rgp.set_async_compute_enabled(pass_cfg.async_compute);
+    pass_rcs = {};
+    pass_rcs.backbuffer = rgp.create_texture("backbuffer");
+    pass_rcs.sdr = pass_rcs.backbuffer;
   }
 
-  RgBuilder rgb(*m_rgp, *m_renderer, m_frcs->descriptor_allocator);
+  RgBuilder rgb(rgp, *m_renderer, m_frcs->descriptor_allocator);
 
   PassCommonConfig cfg = {
-      .rgp = m_rgp.get(),
+      .rgp = &rgp,
       .rgb = &rgb,
       .allocator = &m_frcs->upload_allocator,
-      .pipelines = &m_pipelines,
+      .pipelines = &m_sid->m_pipelines,
       .scene = &m_data,
-      .rcs = &m_pass_rcs,
+      .rcs = &pass_rcs,
       .viewport = m_swap_chain->get_size(),
   };
 
@@ -793,15 +798,15 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   glm::uvec2 viewport = m_swap_chain->get_size();
 
-  if (!m_pass_rcs.depth_buffer) {
-    m_pass_rcs.depth_buffer = m_rgp->create_texture({
+  if (!pass_rcs.depth_buffer) {
+    pass_rcs.depth_buffer = rgp.create_texture({
         .name = "depth-buffer",
         .format = DEPTH_FORMAT,
         .width = viewport.x,
         .height = viewport.y,
     });
   }
-  RgTextureId depth_buffer = m_pass_rcs.depth_buffer;
+  RgTextureId depth_buffer = pass_rcs.depth_buffer;
   RgTextureId hi_z;
 
   auto occlusion_culling_mode = OcclusionCullingMode::Disabled;
@@ -830,7 +835,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   }
 
   RgTextureId ssao_llm;
-  RgTextureId ssao_depth = m_pass_rcs.ssao_depth;
+  RgTextureId ssao_depth = pass_rcs.ssao_depth;
   if (m_data.settings.ssao) {
     glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
                                  std::bit_floor(viewport.y)};
@@ -841,8 +846,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     num_ssao_hi_z_mips =
         std::max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
 
-    if (!m_pass_rcs.ssao_hi_z) {
-      m_pass_rcs.ssao_hi_z = m_rgp->create_texture({
+    if (!pass_rcs.ssao_hi_z) {
+      pass_rcs.ssao_hi_z = rgp.create_texture({
           .name = "ssao-hi-z",
           .format = TinyImageFormat_R16_SFLOAT,
           .width = ssao_hi_z_size.x,
@@ -850,7 +855,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .num_mips = (u32)num_ssao_hi_z_mips,
       });
     }
-    RgTextureId ssao_hi_z = m_pass_rcs.ssao_hi_z;
+    RgTextureId ssao_hi_z = pass_rcs.ssao_hi_z;
 
     const Camera &camera = m_data.get_camera();
     glm::mat4 proj = get_projection_matrix(camera, viewport);
@@ -875,23 +880,23 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .znear = camera.near,
       };
       pass.dispatch_grid_2d(
-          m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
+          m_sid->m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
           {glsl::SPD_THREAD_ELEMS_X, glsl::SPD_THREAD_ELEMS_Y});
     }
 
     glm::uvec2 ssao_size =
         m_data.settings.ssao_full_res ? viewport : viewport / 2u;
 
-    if (!m_pass_rcs.ssao) {
-      m_pass_rcs.ssao = m_rgp->create_texture({
+    if (!pass_rcs.ssao) {
+      pass_rcs.ssao = rgp.create_texture({
           .name = "ssao",
           .format = TinyImageFormat_R16_UNORM,
           .width = ssao_size.x,
           .height = ssao_size.y,
       });
     }
-    if (!m_data.settings.ssao_full_res and !m_pass_rcs.ssao_depth) {
-      m_pass_rcs.ssao_depth = m_rgp->create_texture({
+    if (!m_data.settings.ssao_full_res and !pass_rcs.ssao_depth) {
+      pass_rcs.ssao_depth = rgp.create_texture({
           .name = "ssao-depth",
           .format = TinyImageFormat_R16_SFLOAT,
           .width = ssao_size.x,
@@ -899,8 +904,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       });
     }
 
-    RgTextureId ssao = m_pass_rcs.ssao;
-    ssao_depth = m_pass_rcs.ssao_depth;
+    RgTextureId ssao = pass_rcs.ssao;
+    ssao_depth = pass_rcs.ssao_depth;
     {
       auto pass = rgb.create_pass({.name = "ssao"});
 
@@ -932,18 +937,18 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .radius = m_data.settings.ssao_radius,
           .lod_bias = m_data.settings.ssao_lod_bias,
       };
-      pass.dispatch_grid_2d(m_pipelines.ssao, args, ssao_size);
+      pass.dispatch_grid_2d(m_sid->m_pipelines.ssao, args, ssao_size);
     }
 
-    if (!m_pass_rcs.ssao_llm) {
-      m_pass_rcs.ssao_llm = m_rgp->create_texture({
+    if (!pass_rcs.ssao_llm) {
+      pass_rcs.ssao_llm = rgp.create_texture({
           .name = "ssao-llm",
           .format = TinyImageFormat_R16G16_SFLOAT,
           .width = ssao_size.x,
           .height = ssao_size.y,
       });
     }
-    ssao_llm = m_pass_rcs.ssao_llm;
+    ssao_llm = pass_rcs.ssao_llm;
     {
       auto pass = rgb.create_pass({.name = "ssao-filter"});
 
@@ -955,7 +960,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .ssao_llm = pass.write_texture("ssao-llm", &ssao_llm),
           .znear = camera.near,
       };
-      pass.dispatch(m_pipelines.ssao_filter, args,
+      pass.dispatch(m_sid->m_pipelines.ssao_filter, args,
                     ceil_div(ssao_size.x, glsl::SSAO_FILTER_GROUP_SIZE.x *
                                               glsl::SSAO_FILTER_UNROLL.x),
                     ceil_div(ssao_size.y, glsl::SSAO_FILTER_GROUP_SIZE.y *
@@ -963,15 +968,15 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     }
   }
 
-  if (!m_pass_rcs.hdr) {
-    m_pass_rcs.hdr = m_rgp->create_texture({
+  if (!pass_rcs.hdr) {
+    pass_rcs.hdr = rgp.create_texture({
         .name = "hdr",
         .format = HDR_FORMAT,
         .width = viewport.x,
         .height = viewport.y,
     });
   }
-  RgTextureId hdr = m_pass_rcs.hdr;
+  RgTextureId hdr = pass_rcs.hdr;
 
   setup_opaque_pass(cfg, OpaquePassConfig{
                              .gpu_scene = &m_gpu_scene,
@@ -991,7 +996,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                          });
 
   if (!cfg.rcs->acquire_semaphore) {
-    cfg.rcs->acquire_semaphore = m_rgp->create_semaphore("acquire-semaphore");
+    cfg.rcs->acquire_semaphore = rgp.create_semaphore("acquire-semaphore");
   }
 
   rhi::ImageUsageFlags swap_chain_usage = rhi::ImageUsage::UnorderedAccess;
@@ -1021,11 +1026,29 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                           });
 
   return rgb.build({
-      .gfx_allocator = &m_gfx_allocator,
-      .async_allocator = &m_async_allocator,
-      .shared_allocator = &m_shared_allocators[0],
+      .gfx_allocator = &m_sid->m_gfx_allocator,
+      .async_allocator = &m_sid->m_async_allocator,
+      .shared_allocator = &m_sid->m_shared_allocators[0],
       .upload_allocator = &m_frcs->upload_allocator,
   });
 }
 
 } // namespace ren
+
+namespace ren::hot_reload {
+
+void unload(Scene *scene) {
+  scene->m_renderer->wait_idle();
+  scene->m_sid = nullptr;
+  unload(scene->m_renderer);
+}
+
+auto load(Scene *scene) -> expected<void> {
+  ren_try_to(load(scene->m_renderer));
+  ren_try(scene->m_sid, init_scene_internal_data(
+                            scene->m_renderer, scene->m_descriptor_allocator));
+  ren_try_to(scene->next_frame());
+  return {};
+}
+
+} // namespace ren::hot_reload

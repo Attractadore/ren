@@ -1,8 +1,8 @@
 #pragma once
-#include "Batch.hpp"
 #include "DrawSet.hpp"
 #include "Light.hpp"
 #include "Material.hpp"
+#include "Mesh.hpp"
 #include "RenderGraph.hpp"
 #include "glsl/Culling.h"
 #include "glsl/GpuScene.h"
@@ -11,10 +11,8 @@
 
 namespace ren {
 
-struct Mesh;
-struct MeshInstance;
-struct Pipelines;
 struct SceneData;
+struct Pipelines;
 
 namespace glsl {
 struct Mesh;
@@ -22,6 +20,13 @@ struct Material;
 struct MeshInstance;
 struct DirectionalLight;
 } // namespace glsl
+
+struct BatchDesc {
+  MeshAttributeFlags attributes;
+  u32 index_pool = -1;
+
+  bool operator==(const BatchDesc &) const = default;
+};
 
 struct Batch {
   BatchDesc desc;
@@ -79,11 +84,15 @@ struct RgGpuScene {
 };
 
 void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
-                     const Pipelines &pipelines, Handle<MeshInstance> handle,
-                     DrawSet set);
+                     Handle<MeshInstance> handle, DrawSet set);
 
 void remove_from_draw_set(SceneData &scene, GpuScene &gpu_scene,
-                          const Pipelines &pipelines,
                           Handle<MeshInstance> handle, DrawSet set);
+
+auto get_batch_pipeline(DrawSet ds, const BatchDesc &desc,
+                        const Pipelines &pipelines) -> Handle<GraphicsPipeline>;
+
+auto get_batch_indices(const BatchDesc &desc, const SceneData &scene)
+    -> BufferSlice<u8>;
 
 } // namespace ren

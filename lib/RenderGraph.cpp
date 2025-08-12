@@ -8,8 +8,6 @@
 
 namespace ren {
 
-RgPersistent::RgPersistent(Renderer &renderer) : m_arena(renderer) {}
-
 auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
     -> RgTextureId {
 #if REN_RG_DEBUG

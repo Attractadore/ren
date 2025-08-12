@@ -407,7 +407,7 @@ struct RgRtData {
 
 class RgPersistent {
 public:
-  RgPersistent(Renderer &renderer);
+  void init(Renderer *renderer) { m_arena.init(renderer); }
 
   [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
       -> RgTextureId;

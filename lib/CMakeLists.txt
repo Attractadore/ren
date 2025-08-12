@@ -12,15 +12,21 @@ if (REN_ASSERTIONS)
   target_compile_definitions(ren-core PUBLIC REN_ASSERTIONS)
 endif()
 
-add_library(ren-rhi rhi.cpp rhi-vk.cpp rhi-vk-vma.cpp)
+if (REN_HOT_RELOAD)
+  add_library(ren-vma SHARED vma.cpp)
+else()
+  add_library(ren-vma vma.cpp)
+endif()
+target_link_libraries(ren-vma PUBLIC GPUOpen::VulkanMemoryAllocator Vulkan::Headers)
+
+add_library(ren-rhi rhi.cpp rhi-vk.cpp)
 target_link_libraries(ren-rhi
-  PUBLIC ren::core GPUOpen::VulkanMemoryAllocator tiny_imageformat
+  PUBLIC ren::core ren-vma Vulkan::Headers tiny_imageformat
   PRIVATE SDL2::SDL2 volk::volk
 )
-target_compile_definitions(ren-rhi PUBLIC REN_RHI_VULKAN=1)
 add_library(ren::rhi ALIAS ren-rhi)
 
-add_library(ren-gfx 
+add_library(ren-internal 
   CommandRecorder.cpp
   DescriptorAllocator.cpp
   FreeListAllocator.cpp
@@ -30,26 +36,29 @@ add_library(ren-gfx
   ResourceUploader.cpp
   Texture.cpp
 )
-target_link_libraries(ren-gfx
+target_link_libraries(ren-internal
   PUBLIC ren::core ren::rhi
   PRIVATE spirv-reflect KTX::ktx
 )
-add_library(ren::gfx ALIAS ren-gfx)
 
 if(REN_DEBUG_LAYER)
   message(STATUS "Enable RHI debug layer")
-  target_compile_definitions(ren-gfx PUBLIC REN_DEBUG_LAYER)
+  target_compile_definitions(ren-internal PUBLIC REN_DEBUG_LAYER)
 endif()
 if(REN_DEBUG_NAMES)
   message(STATUS "Enable RHI object debug names")
-  target_compile_definitions(ren-gfx PUBLIC REN_DEBUG_NAMES)
+  target_compile_definitions(ren-internal PUBLIC REN_DEBUG_NAMES)
 endif()
 if(REN_RENDER_GRAPH_DEBUG)
   message(STATUS "Enable render graph debug features")
-  target_compile_definitions(ren-gfx PUBLIC REN_RG_DEBUG)
+  target_compile_definitions(ren-internal PUBLIC REN_RG_DEBUG)
+endif()
+if(REN_HOT_RELOAD)
+  message(STATUS "Enable hot reload support")
+  target_compile_definitions(ren-core PUBLIC REN_HOT_RELOAD)
 endif()
 
-add_library(ren
+add_library(ren STATIC 
   Camera.cpp
   GpuScene.cpp
   Mesh.cpp
@@ -69,10 +78,23 @@ add_library(ren
 target_include_directories(ren PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren
   PUBLIC glm::glm tiny_imageformat SDL2::SDL2
-  PRIVATE ren::gfx KTX::ktx
+  PRIVATE ren-internal KTX::ktx
 )
 target_compile_features(ren PUBLIC cxx_std_23)
-add_library(ren::ren ALIAS ren)
+
+if(REN_HOT_RELOAD)
+  add_library(ren-dynamic MODULE libren.cpp)
+  target_link_libraries(ren-dynamic PUBLIC ren PRIVATE ren-internal)
+
+  add_library(ren-hot-reload STATIC hot-reload.cpp)
+  target_include_directories(ren-hot-reload PUBLIC ${REN_INCLUDE})
+  target_link_libraries(ren-hot-reload PUBLIC glm::glm tiny_imageformat PRIVATE ren::core)
+  target_compile_features(ren-hot-reload PUBLIC cxx_std_23)
+  target_compile_definitions(ren-hot-reload PUBLIC REN_HOT_RELOAD PRIVATE REN_LIBREN_PATH="$<TARGET_FILE:ren-dynamic>")
+  add_library(ren::ren ALIAS ren-hot-reload)
+else()
+  add_library(ren::ren ALIAS ren)
+endif()
 
 if (REN_BUILD_IMGUI_PLUGIN)
   message(STATUS "Enable ImGui plugin")
@@ -88,7 +110,6 @@ if (REN_BUILD_SHADER_COMPILER)
 endif()
 
 add_library(ren-baking
-  Baking.cpp
   ImageBaking.cpp
   MeshBaking.cpp
   MeshSimplification.cpp
@@ -96,7 +117,7 @@ add_library(ren-baking
 target_include_directories(ren-baking PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren-baking
   PUBLIC glm::glm tiny_imageformat
-  PRIVATE ren-gfx Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace
+  PRIVATE ren::core Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace
 )
 target_compile_features(ren-baking PUBLIC cxx_std_23)
 add_library(ren::baking ALIAS ren-baking)
@@ -104,8 +125,11 @@ add_library(ren::baking ALIAS ren-baking)
 if (REN_BUILD_BAKING_TOOLS)
   message(STATUS "Build baking tools")
 
+  add_library(ren-baking-internal Baking.cpp)
+  target_link_libraries(ren-baking-internal PUBLIC ren-internal ren-baking)
+
   add_executable(ren-bake-ibl bake-ibl.cpp)
-  target_link_libraries(ren-bake-ibl ren::core ren::baking cxxopts::cxxopts stb)
+  target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx cxxopts::cxxopts stb)
 endif()
 
 add_subdirectory(glsl)

@@ -51,24 +51,29 @@ template <typename T> using Result = Result<T, Error>;
 
 [[nodiscard]] auto load(bool headless) -> Result<void>;
 
-struct Features {
+void unload(Instance instance);
+[[nodiscard]] auto load(Instance instance) -> Result<void>;
+
+struct InstanceFeatures {
   bool debug_names : 1 = false;
   bool debug_layer : 1 = false;
 };
 
-[[nodiscard]] auto get_supported_features() -> Result<Features>;
+[[nodiscard]] auto get_instance_features() -> Result<InstanceFeatures>;
 
-struct InitInfo {
-  Features features;
+struct InstanceCreateInfo {
+  InstanceFeatures features;
+  bool headless = false;
 };
 
-[[nodiscard]] auto init(const InitInfo &init_info) -> Result<void>;
+[[nodiscard]] auto create_instance(const InstanceCreateInfo &create_info)
+    -> Result<Instance>;
 
-void exit();
+void destroy_instance(Instance instance);
 
-auto get_adapter_count() -> u32;
+auto get_adapter_count(Instance instance) -> u32;
 
-auto get_adapter(u32 adapter) -> Adapter;
+auto get_adapter(Instance instance, u32 adapter) -> Adapter;
 
 enum class AdapterPreference {
   Auto,
@@ -76,14 +81,16 @@ enum class AdapterPreference {
   HighPerformance,
 };
 
-auto get_adapter_by_preference(AdapterPreference preference) -> Adapter;
+auto get_adapter_by_preference(Instance instance, AdapterPreference preference)
+    -> Adapter;
 
 struct AdapterFeatures {
   bool amd_anti_lag : 1 = false;
   bool compute_shader_derivatives : 1 = false;
 };
 
-auto get_adapter_features(Adapter adapter) -> AdapterFeatures;
+auto get_adapter_features(Instance instance, Adapter adapter)
+    -> AdapterFeatures;
 
 enum class QueueFamily {
   Graphics,
@@ -92,7 +99,8 @@ enum class QueueFamily {
   Last = Transfer,
 };
 
-auto is_queue_family_supported(Adapter adapter, QueueFamily family) -> bool;
+auto is_queue_family_supported(Instance instance, Adapter adapter,
+                               QueueFamily family) -> bool;
 
 enum class MemoryHeap {
   Default,
@@ -123,7 +131,8 @@ struct DeviceCreateInfo {
   AdapterFeatures features;
 };
 
-auto create_device(const DeviceCreateInfo &create_info) -> Result<Device>;
+auto create_device(Instance instance, const DeviceCreateInfo &create_info)
+    -> Result<Device>;
 
 void destroy_device(Device device);
 
@@ -1032,12 +1041,13 @@ void cmd_end_debug_label(CommandBuffer cmd);
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 
-auto create_surface(SDL_Window *window) -> Result<Surface>;
+auto create_surface(Instance instance, SDL_Window *window) -> Result<Surface>;
 
-void destroy_surface(Surface surface);
+void destroy_surface(Instance instance, Surface surface);
 
-auto is_queue_family_present_supported(Adapter adapter, QueueFamily family,
-                                       Surface surface) -> bool;
+auto is_queue_family_present_supported(Instance instance, Adapter adapter,
+                                       QueueFamily family, Surface surface)
+    -> bool;
 
 enum class PresentMode {
   Immediate,
@@ -1047,18 +1057,19 @@ enum class PresentMode {
   Last = FifoRelaxed,
 };
 
-auto get_surface_present_modes(Adapter adapter, Surface surface,
-                               u32 *num_present_modes,
+auto get_surface_present_modes(Instance instance, Adapter adapter,
+                               Surface surface, u32 *num_present_modes,
                                PresentMode *present_modes) -> Result<void>;
 
-auto get_surface_formats(Adapter adapter, Surface surface, u32 *num_formats,
-                         TinyImageFormat *formats) -> Result<void>;
+auto get_surface_formats(Instance instance, Adapter adapter, Surface surface,
+                         u32 *num_formats, TinyImageFormat *formats)
+    -> Result<void>;
 
-auto get_surface_supported_image_usage(Adapter adapter, Surface surface)
+auto get_surface_supported_image_usage(Instance instance, Adapter adapter,
+                                       Surface surface)
     -> Result<Flags<ImageUsage>>;
 
 struct SwapChainCreateInfo {
-  rhi::Device device = {};
   rhi::Surface surface;
   u32 width = 0;
   u32 height = 0;
@@ -1070,7 +1081,7 @@ struct SwapChainCreateInfo {
 
 constexpr u32 MAX_SWAP_CHAIN_IMAGE_COUNT = 8;
 
-auto create_swap_chain(const SwapChainCreateInfo &create_info)
+auto create_swap_chain(Device device, const SwapChainCreateInfo &create_info)
     -> Result<SwapChain>;
 
 void destroy_swap_chain(SwapChain swap_chain);

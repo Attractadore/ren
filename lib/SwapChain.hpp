@@ -11,8 +11,6 @@ class Renderer;
 struct SwapChain {
   auto init(Renderer &renderer, SDL_Window *window) -> Result<void, Error>;
 
-  void set_vsync(VSync vsync);
-
   auto get_size() const -> glm::uvec2 { return m_size; }
 
   auto get_format() const -> TinyImageFormat { return m_format; }

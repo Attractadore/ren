@@ -55,18 +55,8 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
   return gpu_scene;
 }
 
-auto get_depth_only_batch_desc(const SceneData &scene,
-                               const Pipelines &pipelines,
-                               const MeshInstance &mesh_instance) -> BatchDesc {
-  const Mesh &mesh = scene.meshes.get(mesh_instance.mesh);
-  return {
-      .pipeline = pipelines.early_z_pass,
-      .index_buffer = scene.index_pools[mesh.index_pool].indices,
-  };
-}
-
-auto get_opaque_batch_desc(const SceneData &scene, const Pipelines &pipelines,
-                           const MeshInstance &mesh_instance) -> BatchDesc {
+auto get_batch_desc(const SceneData &scene, const MeshInstance &mesh_instance)
+    -> BatchDesc {
   const Mesh &mesh = scene.meshes.get(mesh_instance.mesh);
   const Material &material = scene.materials.get(mesh_instance.material);
 
@@ -82,33 +72,20 @@ auto get_opaque_batch_desc(const SceneData &scene, const Pipelines &pipelines,
   }
 
   return {
-      .pipeline = pipelines.opaque_pass[i32(attributes.get())],
-      .index_buffer = scene.index_pools[mesh.index_pool].indices,
+      .attributes = attributes,
+      .index_pool = mesh.index_pool,
   };
 }
 
-auto get_batch_desc(const SceneData &scene, const Pipelines &pipelines,
-                    const MeshInstance &mesh_instance, DrawSet draw_set)
-    -> BatchDesc {
-  switch (draw_set) {
-  case DrawSet::DepthOnly:
-    return get_depth_only_batch_desc(scene, pipelines, mesh_instance);
-  case DrawSet::Opaque:
-    return get_opaque_batch_desc(scene, pipelines, mesh_instance);
-  }
-  std::unreachable();
-}
-
 void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
-                     const Pipelines &pipelines, Handle<MeshInstance> handle,
-                     DrawSet set) {
+                     Handle<MeshInstance> handle, DrawSet set) {
   MeshInstance &mesh_instance = scene.mesh_instances[handle];
 
   u32 ds_idx = get_draw_set_index(set);
 
   DrawSetData &ds = gpu_scene.draw_sets[ds_idx];
 
-  BatchDesc batch_desc = get_batch_desc(scene, pipelines, mesh_instance, set);
+  BatchDesc batch_desc = get_batch_desc(scene, mesh_instance);
 
   auto it = std::ranges::find_if(
       ds.batches, [&](const Batch &batch) { return batch.desc == batch_desc; });
@@ -138,7 +115,6 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
 }
 
 void remove_from_draw_set(SceneData &scene, GpuScene &gpu_scene,
-                          const Pipelines &pipelines,
                           Handle<MeshInstance> handle, DrawSet set) {
   MeshInstance &mesh_instance = scene.mesh_instances[handle];
 
@@ -154,7 +130,7 @@ void remove_from_draw_set(SceneData &scene, GpuScene &gpu_scene,
                  "Deleting items that were added to a draw set the during the "
                  "same frame is not supported");
 
-  BatchDesc batch_desc = get_batch_desc(scene, pipelines, mesh_instance, set);
+  BatchDesc batch_desc = get_batch_desc(scene, mesh_instance);
 
   auto it = std::ranges::find_if(
       ds.batches, [&](const Batch &batch) { return batch.desc == batch_desc; });
@@ -175,6 +151,23 @@ void remove_from_draw_set(SceneData &scene, GpuScene &gpu_scene,
   ren_assert(mesh_instance.draw_sets.is_set(set));
   mesh_instance.draw_sets.reset(set);
   mesh_instance.draw_set_ids[ds_idx] = InvalidDrawSetId;
+}
+
+auto get_batch_pipeline(DrawSet ds, const BatchDesc &desc,
+                        const Pipelines &pipelines)
+    -> Handle<GraphicsPipeline> {
+  switch (ds) {
+  case DrawSet::DepthOnly:
+    return pipelines.early_z_pass;
+  case DrawSet::Opaque:
+    return pipelines.opaque_pass[(i32)desc.attributes.get()];
+  }
+  std::unreachable();
+}
+
+auto get_batch_indices(const BatchDesc &desc, const SceneData &scene)
+    -> BufferSlice<u8> {
+  return BufferSlice<u8>{scene.index_pools[desc.index_pool].indices};
 }
 
 } // namespace ren

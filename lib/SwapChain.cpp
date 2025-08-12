@@ -10,20 +10,7 @@
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
-namespace ren {
-
-namespace {
-
-auto get_fullscreen_state(SDL_Window *window) -> bool {
-  int w, h;
-  SDL_GetWindowSize((SDL_Window *)window, &w, &h);
-  int display = SDL_GetWindowDisplayIndex((SDL_Window *)window);
-  SDL_DisplayMode mode;
-  SDL_GetDesktopDisplayMode(display, &mode);
-  return mode.w == w and mode.h == h;
-}
-
-} // namespace
+namespace ren_export {
 
 auto get_sdl_window_flags(Renderer *) -> uint32_t {
   return rhi::SDL_WINDOW_FLAGS;
@@ -47,16 +34,40 @@ void destroy_swap_chain(SwapChain *swap_chain) {
     renderer->destroy(swap_chain->m_semaphores[i]);
   }
   rhi::destroy_swap_chain(swap_chain->m_swap_chain);
-  rhi::destroy_surface(swap_chain->m_surface);
+  rhi::destroy_surface(renderer->m_instance, swap_chain->m_surface);
   delete swap_chain;
 }
+
+void set_vsync(SwapChain *swap_chain, VSync vsync) {
+  if (swap_chain->m_vsync != vsync) {
+    swap_chain->m_vsync = vsync;
+    swap_chain->m_dirty = true;
+  }
+}
+
+} // namespace ren_export
+
+namespace ren {
+
+namespace {
+
+auto get_fullscreen_state(SDL_Window *window) -> bool {
+  int w, h;
+  SDL_GetWindowSize((SDL_Window *)window, &w, &h);
+  int display = SDL_GetWindowDisplayIndex((SDL_Window *)window);
+  SDL_DisplayMode mode;
+  SDL_GetDesktopDisplayMode(display, &mode);
+  return mode.w == w and mode.h == h;
+}
+
+} // namespace
 
 auto SwapChain::init(Renderer &renderer, SDL_Window *window)
     -> Result<void, Error> {
   m_renderer = &renderer;
   m_window = window;
 
-  ren_try(m_surface, rhi::create_surface(m_window));
+  ren_try(m_surface, rhi::create_surface(renderer.m_instance, m_window));
 
   SDL_GetWindowSizeInPixels(m_window, &m_size.x, &m_size.y);
   m_fullscreen = get_fullscreen_state(m_window);
@@ -69,11 +80,11 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
 
   {
     u32 num_formats = 0;
-    ren_try_to(
-        rhi::get_surface_formats(adapter, m_surface, &num_formats, nullptr));
+    ren_try_to(rhi::get_surface_formats(renderer.m_instance, adapter, m_surface,
+                                        &num_formats, nullptr));
     SmallVector<TinyImageFormat> formats(num_formats);
-    ren_try_to(rhi::get_surface_formats(adapter, m_surface, &num_formats,
-                                        formats.data()));
+    ren_try_to(rhi::get_surface_formats(renderer.m_instance, adapter, m_surface,
+                                        &num_formats, formats.data()));
     auto it = std::ranges::find_if(formats, [](TinyImageFormat format) {
       return format == SWAP_CHAIN_FORMAT;
     });
@@ -82,7 +93,8 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
 
   {
     ren_try(rhi::ImageUsageFlags supported_usage,
-            rhi::get_surface_supported_image_usage(adapter, m_surface));
+            rhi::get_surface_supported_image_usage(renderer.m_instance, adapter,
+                                                   m_surface));
     constexpr rhi::ImageUsageFlags REQUIRED_USAGE =
         rhi::ImageUsage::UnorderedAccess;
     ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
@@ -94,16 +106,16 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
                num_images);
 
-  ren_try(m_swap_chain, rhi::create_swap_chain({
-                            .device = device,
-                            .surface = m_surface,
-                            .width = (u32)m_size.x,
-                            .height = (u32)m_size.y,
-                            .format = m_format,
-                            .usage = m_usage,
-                            .num_images = num_images,
-                            .present_mode = present_mode,
-                        }));
+  ren_try(m_swap_chain,
+          rhi::create_swap_chain(device, {
+                                             .surface = m_surface,
+                                             .width = (u32)m_size.x,
+                                             .height = (u32)m_size.y,
+                                             .format = m_format,
+                                             .usage = m_usage,
+                                             .num_images = num_images,
+                                             .present_mode = present_mode,
+                                         }));
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
@@ -113,13 +125,6 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
                m_size.x, m_size.y, (int)present_mode, m_textures.size());
 
   return {};
-}
-
-void SwapChain::set_vsync(VSync vsync) {
-  if (m_vsync != vsync) {
-    m_vsync = vsync;
-    m_dirty = true;
-  }
 }
 
 void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
@@ -134,9 +139,9 @@ auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   if (m_vsync == VSync::Off) {
     rhi::PresentMode present_modes[(usize)rhi::PresentMode::Last + 1];
     u32 num_present_modes = std::size(present_modes);
-    ren_try_to(rhi::get_surface_present_modes(m_renderer->get_adapter(),
-                                              m_surface, &num_present_modes,
-                                              present_modes));
+    ren_try_to(rhi::get_surface_present_modes(
+        m_renderer->m_instance, m_renderer->get_adapter(), m_surface,
+        &num_present_modes, present_modes));
     bool have_immediate = false;
     bool have_mailbox = false;
     for (usize i : range(num_present_modes)) {
@@ -242,8 +247,8 @@ auto SwapChain::update() -> Result<void, Error> {
 
   ren_try_to(rhi::set_present_mode(m_swap_chain, *present_mode));
   ren_try(rhi::ImageUsageFlags supported_usage,
-          rhi::get_surface_supported_image_usage(m_renderer->get_adapter(),
-                                                 m_surface));
+          rhi::get_surface_supported_image_usage(
+              m_renderer->m_instance, m_renderer->get_adapter(), m_surface));
   ren_assert(m_usage & supported_usage);
   ren_try_to(
       rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
@@ -316,8 +321,8 @@ auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
 }
 
 auto SwapChain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {
-  return rhi::is_queue_family_present_supported(m_renderer->get_adapter(), qf,
-                                                m_surface);
+  return rhi::is_queue_family_present_supported(
+      m_renderer->m_instance, m_renderer->get_adapter(), qf, m_surface);
 }
 
 } // namespace ren

@@ -37,8 +37,9 @@ public:
 };
 
 struct Renderer {
+  rhi::Instance m_instance = {};
   rhi::Adapter m_adapter;
-  rhi::Device m_device;
+  rhi::Device m_device = {};
 
   BitSet<NUM_RENDERER_FEAUTURES> m_features;
 
@@ -219,5 +220,8 @@ struct Renderer {
 
   void create_device();
 };
+
+void unload(Renderer *renderer);
+auto load(Renderer *renderer) -> Result<void, Error>;
 
 } // namespace ren

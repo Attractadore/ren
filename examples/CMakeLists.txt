@@ -1,5 +1,5 @@
 add_library(app-base AppBase.cpp)
-target_link_libraries(app-base PUBLIC ren::ren ren::baking ren::core fmt::fmt)
+target_link_libraries(app-base PUBLIC ren::ren ren::baking ren::core fmt::fmt SDL2::SDL2)
 target_compile_definitions(app-base PUBLIC SDL_MAIN_HANDLED)
 
 add_library(imgui-app ImGuiApp.cpp)

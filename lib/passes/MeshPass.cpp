@@ -1,5 +1,4 @@
 #include "MeshPass.hpp"
-#include "../Batch.hpp"
 #include "../CommandRecorder.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
@@ -407,12 +406,16 @@ void record_render_pass(const PassCommonConfig &ccfg,
     }
 
     struct {
-      BatchDesc batch;
+      Handle<GraphicsPipeline> pipeline;
+      BufferSlice<u8> indices;
       RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
     } rcs;
 
-    rcs.batch = info.base.gpu_scene->draw_sets[draw_set].batches[batch].desc;
+    const BatchDesc &batch_desc =
+        info.base.gpu_scene->draw_sets[draw_set].batches[batch].desc;
+    rcs.pipeline = get_batch_pipeline(S, batch_desc, *ccfg.pipelines);
+    rcs.indices = get_batch_indices(batch_desc, *ccfg.scene);
     rcs.commands = pass.read_buffer(commands, rhi::INDIRECT_COMMAND_BUFFER);
     rcs.batch_sizes =
         pass.read_buffer(cfg.batch_sizes, rhi::INDIRECT_COMMAND_BUFFER, batch);
@@ -421,8 +424,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
-      render_pass.bind_graphics_pipeline(rcs.batch.pipeline);
-      render_pass.bind_index_buffer(BufferSlice<u8>{rcs.batch.index_buffer});
+      render_pass.bind_graphics_pipeline(rcs.pipeline);
+      render_pass.bind_index_buffer(rcs.indices);
       rg.push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
                                               rg.get_buffer(rcs.batch_sizes));

@@ -11,7 +11,8 @@ template <typename... Ts> class ResourceArenaImpl {
   static constexpr bool IsArenaResource = (std::same_as<T, Ts> or ...);
 
 public:
-  explicit ResourceArenaImpl(Renderer &renderer) { m_renderer = &renderer; }
+  ResourceArenaImpl() = default;
+  void init(Renderer *renderer) { m_renderer = renderer; }
   ResourceArenaImpl(const ResourceArenaImpl &) = delete;
   ResourceArenaImpl(ResourceArenaImpl &&) = default;
   ~ResourceArenaImpl() { clear(); }

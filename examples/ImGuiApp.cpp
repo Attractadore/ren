@@ -1,5 +1,4 @@
 #include "ImGuiApp.hpp"
-#include "ren/ren-imgui.hpp"
 
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>

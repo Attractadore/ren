@@ -4,6 +4,7 @@
 #include <span>
 
 struct SDL_Window;
+struct ImGuiContext;
 
 namespace ren {
 
@@ -31,6 +32,12 @@ constexpr size_t MAX_NUM_MATERIALS = 16 * 1024;
 constexpr size_t MAX_NUM_DIRECTIONAL_LIGHTS = 1;
 
 namespace detail {
+
+#if REN_HOT_RELOAD
+#define ren_export ren::hot_reload
+#else
+#define ren_export ren
+#endif
 
 struct NullIdImpl {};
 
@@ -75,29 +82,10 @@ struct RendererInfo {
   RendererType type = RendererType::Default;
 };
 
-[[nodiscard]] auto create_renderer(const RendererInfo &info)
-    -> expected<Renderer *>;
-
-void destroy_renderer(Renderer *renderer);
-
-[[nodiscard]] auto create_scene(Renderer *renderer, SwapChain *swapchain)
-    -> expected<Scene *>;
-
-void destroy_scene(Scene *scene);
-
 enum class VSync {
   Off,
   On,
 };
-
-void set_vsync(SwapChain *swap_chain, VSync vsync);
-
-auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
-
-[[nodiscard]] auto create_swapchain(Renderer *renderer, SDL_Window *window)
-    -> expected<SwapChain *>;
-
-void destroy_swap_chain(SwapChain *swap_chain);
 
 /// Camera perspective projection descriptor.
 struct CameraPerspectiveProjectionDesc {
@@ -226,6 +214,29 @@ struct DirectionalLightDesc {
   glm::vec3 origin = {0.0f, 0.0f, 1.0f};
 };
 
+} // namespace ren
+
+namespace ren_export {
+
+[[nodiscard]] auto create_renderer(const RendererInfo &info)
+    -> expected<Renderer *>;
+
+void destroy_renderer(Renderer *renderer);
+
+[[nodiscard]] auto create_scene(Renderer *renderer, SwapChain *swapchain)
+    -> expected<Scene *>;
+
+void destroy_scene(Scene *scene);
+
+void set_vsync(SwapChain *swap_chain, VSync vsync);
+
+auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
+
+[[nodiscard]] auto create_swapchain(Renderer *renderer, SDL_Window *window)
+    -> expected<SwapChain *>;
+
+void destroy_swap_chain(SwapChain *swap_chain);
+
 [[nodiscard]] auto create_camera(Scene *scene) -> expected<CameraId>;
 
 void destroy_camera(Scene *scene, CameraId camera);
@@ -251,19 +262,8 @@ void set_exposure(Scene *scene, const ExposureDesc &desc);
 [[nodiscard]] auto create_mesh(Scene *scene, std::span<const std::byte> blob)
     -> expected<MeshId>;
 
-[[nodiscard]] auto inline create_mesh(Scene *scene, const void *blob_data,
-                                      size_t blob_size) -> expected<MeshId> {
-  return create_mesh(scene, std::span((const std::byte *)blob_data, blob_size));
-}
-
 [[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
     -> expected<ImageId>;
-
-[[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
-                                       size_t blob_size) -> expected<ImageId> {
-  return create_image(scene,
-                      std::span((const std::byte *)blob_data, blob_size));
-}
 
 [[nodiscard]] auto create_material(Scene *scene,
                                    const MaterialCreateInfo &create_info)
@@ -274,30 +274,12 @@ create_mesh_instances(Scene *scene,
                       std::span<const MeshInstanceCreateInfo> create_info,
                       std::span<MeshInstanceId> out) -> expected<void>;
 
-[[nodiscard]] inline auto
-create_mesh_instance(Scene *scene, const MeshInstanceCreateInfo &create_info)
-    -> expected<MeshInstanceId> {
-  MeshInstanceId mesh_instance;
-  return create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1})
-      .transform([&] { return mesh_instance; });
-}
-
 void destroy_mesh_instances(Scene *scene,
                             std::span<const MeshInstanceId> mesh_instances);
-
-void inline destroy_mesh_instance(Scene *scene, MeshInstanceId mesh_instance) {
-  destroy_mesh_instances(scene, {&mesh_instance, 1});
-}
 
 void set_mesh_instance_transforms(
     Scene *scene, std::span<const MeshInstanceId> mesh_instances,
     std::span<const glm::mat4x3> transforms);
-
-void inline set_mesh_instance_transform(Scene *scene,
-                                        MeshInstanceId mesh_instance,
-                                        const glm::mat4x3 &transform) {
-  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
-}
 
 [[nodiscard]] auto create_directional_light(Scene *scene,
                                             const DirectionalLightDesc &desc)
@@ -316,5 +298,263 @@ auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
 [[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
 
 [[nodiscard]] auto draw(Scene *scene) -> expected<void>;
+
+namespace imgui {
+
+void set_context(Scene *scene, ImGuiContext *ctx);
+
+auto get_context(Scene *scene) -> ImGuiContext *;
+
+auto draw(Scene *scene) -> expected<void>;
+
+} // namespace imgui
+
+} // namespace ren_export
+
+#if REN_HOT_RELOAD
+
+namespace ren::hot_reload {
+
+void unload(Scene *scene);
+[[nodiscard]] auto load(Scene *scene) -> expected<void>;
+
+struct Vtbl {
+#define ren_vtbl_f(name) decltype(ren_export::name) *name
+  ren_vtbl_f(create_renderer);
+  ren_vtbl_f(destroy_renderer);
+  ren_vtbl_f(get_sdl_window_flags);
+  ren_vtbl_f(set_vsync);
+  ren_vtbl_f(create_swapchain);
+  ren_vtbl_f(destroy_swap_chain);
+  ren_vtbl_f(create_scene);
+  ren_vtbl_f(destroy_scene);
+  ren_vtbl_f(create_camera);
+  ren_vtbl_f(destroy_camera);
+  ren_vtbl_f(set_camera);
+  ren_vtbl_f(set_camera_perspective_projection);
+  ren_vtbl_f(set_camera_orthographic_projection);
+  ren_vtbl_f(set_camera_transform);
+  ren_vtbl_f(set_camera_parameters);
+  ren_vtbl_f(set_exposure);
+  ren_vtbl_f(create_mesh);
+  ren_vtbl_f(create_image);
+  ren_vtbl_f(create_material);
+  ren_vtbl_f(create_mesh_instances);
+  ren_vtbl_f(destroy_mesh_instances);
+  ren_vtbl_f(set_mesh_instance_transforms);
+  ren_vtbl_f(create_directional_light);
+  ren_vtbl_f(destroy_directional_light);
+  ren_vtbl_f(set_directional_light);
+  ren_vtbl_f(set_environment_color);
+  ren_vtbl_f(set_environment_map);
+  ren_vtbl_f(delay_input);
+  ren_vtbl_f(draw);
+  ren_vtbl_f(unload);
+  ren_vtbl_f(load);
+#undef ren_vtbl_f
+
+  // ImGui
+#define ren_vtbl_f(name) decltype(imgui::name) *imgui_##name
+  ren_vtbl_f(set_context);
+  ren_vtbl_f(get_context);
+  ren_vtbl_f(draw);
+#undef ren_vtbl_f
+};
+
+extern const ren::hot_reload::Vtbl *vtbl_ref;
+
+} // namespace ren::hot_reload
+
+namespace ren {
+
+[[nodiscard]] auto create_renderer(const RendererInfo &info)
+    -> expected<Renderer *>;
+
+inline void destroy_renderer(Renderer *renderer) {
+  return hot_reload::vtbl_ref->destroy_renderer(renderer);
+}
+
+inline auto get_sdl_window_flags(Renderer *renderer) -> uint32_t {
+  return hot_reload::vtbl_ref->get_sdl_window_flags(renderer);
+}
+
+inline auto create_swapchain(Renderer *renderer, SDL_Window *window)
+    -> expected<SwapChain *> {
+  return hot_reload::vtbl_ref->create_swapchain(renderer, window);
+}
+
+inline void destroy_swap_chain(SwapChain *swap_chain) {
+  return hot_reload::vtbl_ref->destroy_swap_chain(swap_chain);
+}
+
+inline void set_vsync(SwapChain *swap_chain, VSync vsync) {
+  return hot_reload::vtbl_ref->set_vsync(swap_chain, vsync);
+}
+
+inline auto create_scene(Renderer *renderer, SwapChain *swap_chain)
+    -> expected<Scene *> {
+  return hot_reload::vtbl_ref->create_scene(renderer, swap_chain);
+}
+
+inline void destroy_scene(Scene *scene) {
+  return hot_reload::vtbl_ref->destroy_scene(scene);
+}
+
+inline auto create_camera(Scene *scene) -> expected<CameraId> {
+  return hot_reload::vtbl_ref->create_camera(scene);
+}
+
+inline void destroy_camera(Scene *scene, CameraId camera) {
+  return hot_reload::vtbl_ref->destroy_camera(scene, camera);
+}
+
+/// Set active scene camera.
+inline void set_camera(Scene *scene, CameraId camera) {
+  return hot_reload::vtbl_ref->set_camera(scene, camera);
+}
+
+inline void
+set_camera_perspective_projection(Scene *scene, CameraId camera,
+                                  const CameraPerspectiveProjectionDesc &desc) {
+  return hot_reload::vtbl_ref->set_camera_perspective_projection(scene, camera,
+                                                                 desc);
+}
+
+inline void set_camera_orthographic_projection(
+    Scene *scene, CameraId camera,
+    const CameraOrthographicProjectionDesc &desc) {
+  return hot_reload::vtbl_ref->set_camera_orthographic_projection(scene, camera,
+                                                                  desc);
+}
+
+inline void set_camera_transform(Scene *scene, CameraId camera,
+                                 const CameraTransformDesc &desc) {
+  return hot_reload::vtbl_ref->set_camera_transform(scene, camera, desc);
+}
+
+inline void set_camera_parameters(Scene *scene, CameraId camera,
+                                  const CameraParameterDesc &desc) {
+  return hot_reload::vtbl_ref->set_camera_parameters(scene, camera, desc);
+}
+
+inline void set_exposure(Scene *scene, const ExposureDesc &desc) {
+  return hot_reload::vtbl_ref->set_exposure(scene, desc);
+}
+
+inline auto create_mesh(Scene *scene, std::span<const std::byte> blob)
+    -> expected<MeshId> {
+  return hot_reload::vtbl_ref->create_mesh(scene, blob);
+}
+
+inline auto create_image(Scene *scene, std::span<const std::byte> blob)
+    -> expected<ImageId> {
+  return hot_reload::vtbl_ref->create_image(scene, blob);
+}
+
+inline auto create_material(Scene *scene, const MaterialCreateInfo &create_info)
+    -> expected<MaterialId> {
+  return hot_reload::vtbl_ref->create_material(scene, create_info);
+}
+
+inline auto
+create_mesh_instances(Scene *scene,
+                      std::span<const MeshInstanceCreateInfo> create_info,
+                      std::span<MeshInstanceId> out) -> expected<void> {
+  return hot_reload::vtbl_ref->create_mesh_instances(scene, create_info, out);
+}
+
+inline void
+destroy_mesh_instances(Scene *scene,
+                       std::span<const MeshInstanceId> mesh_instances) {
+  return hot_reload::vtbl_ref->destroy_mesh_instances(scene, mesh_instances);
+}
+
+inline void
+set_mesh_instance_transforms(Scene *scene,
+                             std::span<const MeshInstanceId> mesh_instances,
+                             std::span<const glm::mat4x3> transforms) {
+  return hot_reload::vtbl_ref->set_mesh_instance_transforms(
+      scene, mesh_instances, transforms);
+}
+
+inline auto create_directional_light(Scene *scene,
+                                     const DirectionalLightDesc &desc)
+    -> expected<DirectionalLightId> {
+  return hot_reload::vtbl_ref->create_directional_light(scene, desc);
+}
+
+inline void destroy_directional_light(Scene *scene, DirectionalLightId light) {
+  return hot_reload::vtbl_ref->destroy_directional_light(scene, light);
+}
+
+inline void set_directional_light(Scene *scene, DirectionalLightId light,
+                                  const DirectionalLightDesc &desc) {
+  return hot_reload::vtbl_ref->set_directional_light(scene, light, desc);
+}
+
+inline void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
+  return hot_reload::vtbl_ref->set_environment_color(scene, luminance);
+}
+
+inline auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
+  return hot_reload::vtbl_ref->set_environment_map(scene, image);
+}
+
+inline auto delay_input(Scene *scene) -> expected<void> {
+  return hot_reload::vtbl_ref->delay_input(scene);
+}
+
+[[nodiscard]] auto draw(Scene *scene) -> expected<void>;
+
+namespace imgui {
+
+inline void set_context(Scene *scene, ImGuiContext *ctx) {
+  return hot_reload::vtbl_ref->imgui_set_context(scene, ctx);
+}
+
+inline auto get_context(Scene *scene) -> ImGuiContext * {
+  return hot_reload::vtbl_ref->imgui_get_context(scene);
+}
+
+inline auto draw(Scene *scene) -> expected<void> {
+  return hot_reload::vtbl_ref->imgui_draw(scene);
+}
+
+} // namespace imgui
+
+} // namespace ren
+
+#endif
+
+namespace ren {
+
+[[nodiscard]] auto inline create_mesh(Scene *scene, const void *blob_data,
+                                      size_t blob_size) -> expected<MeshId> {
+  return create_mesh(scene, std::span((const std::byte *)blob_data, blob_size));
+}
+
+[[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
+                                       size_t blob_size) -> expected<ImageId> {
+  return create_image(scene,
+                      std::span((const std::byte *)blob_data, blob_size));
+}
+
+[[nodiscard]] inline auto
+create_mesh_instance(Scene *scene, const MeshInstanceCreateInfo &create_info)
+    -> expected<MeshInstanceId> {
+  MeshInstanceId mesh_instance;
+  return create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1})
+      .transform([&] { return mesh_instance; });
+}
+
+void inline destroy_mesh_instance(Scene *scene, MeshInstanceId mesh_instance) {
+  destroy_mesh_instances(scene, {&mesh_instance, 1});
+}
+
+void inline set_mesh_instance_transform(Scene *scene,
+                                        MeshInstanceId mesh_instance,
+                                        const glm::mat4x3 &transform) {
+  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
+}
 
 } // namespace ren

@@ -821,23 +821,23 @@ public:
         bail("Failed to read from {}", options.env_map);
       }
 
-      return create_image(scene, blob).transform_error(get_error_string);
+      return ren::create_image(scene, blob).transform_error(get_error_string);
     }();
 
     if (env_map and *env_map) {
-      TRY_TO(set_environment_map(scene, *env_map));
+      TRY_TO(ren::set_environment_map(scene, *env_map));
       m_camera_params.exposure = ren::ExposureMode::Automatic;
     } else {
       if (!env_map) {
         warn("Failed to load environment map: {}", env_map.error());
       }
       OK(auto directional_light,
-         create_directional_light(scene, {
-                                             .color = {1.0f, 1.0f, 1.0f},
-                                             .illuminance = 100'000.0f,
-                                             .origin = {0.0f, 0.0f, 1.0f},
-                                         }));
-      set_environment_color(
+         ren::create_directional_light(scene, {
+                                                  .color = {1.0f, 1.0f, 1.0f},
+                                                  .illuminance = 100'000.0f,
+                                                  .origin = {0.0f, 0.0f, 1.0f},
+                                              }));
+      ren::set_environment_color(
           scene,
           glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
     }
@@ -919,13 +919,13 @@ protected:
     {
       ren::CameraId camera = get_camera();
 
-      set_camera_transform(scene, camera,
-                           {
-                               .position = position,
-                               .forward = forward,
-                               .up = up,
-                           });
-      set_camera_parameters(
+      ren::set_camera_transform(scene, camera,
+                                {
+                                    .position = position,
+                                    .forward = forward,
+                                    .up = up,
+                                });
+      ren::set_camera_parameters(
           scene, camera,
           {
               .aperture = m_camera_params.aperture,
@@ -935,11 +935,11 @@ protected:
 
       switch (m_camera_params.projection) {
       case PROJECTION_PERSPECTIVE: {
-        set_camera_perspective_projection(
+        ren::set_camera_perspective_projection(
             scene, camera, {.hfov = glm::radians(m_camera_params.hfov)});
       } break;
       case PROJECTION_ORTHOGRAPHIC: {
-        set_camera_orthographic_projection(
+        ren::set_camera_orthographic_projection(
             scene, camera, {.width = m_camera_params.orthographic_width});
       } break;
       }
@@ -953,10 +953,10 @@ protected:
         ec = m_camera_params.automatic_exposure_compensation;
       } break;
       }
-      set_exposure(scene, {
-                              .mode = m_camera_params.exposure,
-                              .ec = ec,
-                          });
+      ren::set_exposure(scene, {
+                                   .mode = m_camera_params.exposure,
+                                   .ec = ec,
+                               });
     }
 
     return {};

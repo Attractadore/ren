@@ -39,10 +39,10 @@ public:
     std::free(blob_data);
 
     OK(ren::MaterialId material,
-       create_material(scene, {
-                                  .roughness_factor = 0.5f,
-                                  .metallic_factor = 1.0f,
-                              }));
+       ren::create_material(scene, {
+                                       .roughness_factor = 0.5f,
+                                       .metallic_factor = 1.0f,
+                                   }));
 
     OK(ren::MeshInstanceId model,
        create_mesh_instance(scene, {
@@ -52,26 +52,26 @@ public:
 
     // Ambient day light
     OK(ren::DirectionalLightId light,
-       create_directional_light(scene, {
-                                           .color = {1.0f, 1.0f, 1.0f},
-                                           .illuminance = 25'000.0f,
-                                           .origin = {0.0f, 0.0f, 1.0f},
-                                       }));
+       ren::create_directional_light(scene, {
+                                                .color = {1.0f, 1.0f, 1.0f},
+                                                .illuminance = 25'000.0f,
+                                                .origin = {0.0f, 0.0f, 1.0f},
+                                            }));
 
     ren::CameraId camera = get_camera();
 
-    set_camera_orthographic_projection(scene, camera, {.width = 2.0f});
-    set_camera_transform(scene, camera,
-                         {
-                             .position = {0.0f, 0.0f, 1.0f},
-                             .forward = {0.0f, 0.0f, -1.0f},
-                             .up = {0.0f, 1.0f, 0.0f},
-                         });
+    ren::set_camera_orthographic_projection(scene, camera, {.width = 2.0f});
+    ren::set_camera_transform(scene, camera,
+                              {
+                                  .position = {0.0f, 0.0f, 1.0f},
+                                  .forward = {0.0f, 0.0f, -1.0f},
+                                  .up = {0.0f, 1.0f, 0.0f},
+                              });
 
-    set_exposure(scene, {
-                            .mode = ren::ExposureMode::Automatic,
-                            .ec = 2.0f,
-                        });
+    ren::set_exposure(scene, {
+                                 .mode = ren::ExposureMode::Automatic,
+                                 .ec = 2.0f,
+                             });
 
     return {};
   }

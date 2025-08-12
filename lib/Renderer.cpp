@@ -6,7 +6,7 @@
 #include <spirv_reflect.h>
 #include <tracy/Tracy.hpp>
 
-namespace ren {
+namespace ren_export {
 
 auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
   auto *renderer = new Renderer();
@@ -22,14 +22,20 @@ void destroy_renderer(Renderer *renderer) {
     rhi::destroy_sampler(renderer->m_device, sampler);
   }
   rhi::destroy_device(renderer->m_device);
-  rhi::exit();
+  rhi::destroy_instance(renderer->m_instance);
   delete renderer;
 }
 
-auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
-  ren_try_to(rhi::load(info.type == RendererType::Headless));
+} // namespace ren_export
 
-  ren_try(rhi::Features features, rhi::get_supported_features());
+namespace ren {
+
+auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
+  bool headless = info.type == RendererType::Headless;
+
+  ren_try_to(rhi::load(headless));
+
+  ren_try(rhi::InstanceFeatures features, rhi::get_instance_features());
 
 #if !REN_DEBUG_NAMES
   features.debug_names = false;
@@ -39,26 +45,29 @@ auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
   features.debug_layer = false;
 #endif
 
-  ren_try_to(rhi::init({
-      .features = features,
-  }));
+  ren_try(m_instance, rhi::create_instance({
+                          .features = features,
+                          .headless = headless,
+                      }));
 
   if (info.adapter == DEFAULT_ADAPTER) {
-    m_adapter =
-        rhi::get_adapter_by_preference(rhi::AdapterPreference::HighPerformance);
+    m_adapter = rhi::get_adapter_by_preference(
+        m_instance, rhi::AdapterPreference::HighPerformance);
   } else {
-    if (info.adapter >= rhi::get_adapter_count()) {
+    if (info.adapter >= rhi::get_adapter_count(m_instance)) {
       throw std::runtime_error("Vulkan: Failed to find requested adapter");
     }
-    m_adapter = rhi::get_adapter(info.adapter);
+    m_adapter = rhi::get_adapter(m_instance, info.adapter);
   }
 
-  rhi::AdapterFeatures adapter_features = rhi::get_adapter_features(m_adapter);
+  rhi::AdapterFeatures adapter_features =
+      rhi::get_adapter_features(m_instance, m_adapter);
 
-  ren_try(m_device, rhi::create_device({
-                        .adapter = m_adapter,
-                        .features = adapter_features,
-                    }));
+  ren_try(m_device,
+          rhi::create_device(m_instance, {
+                                             .adapter = m_adapter,
+                                             .features = adapter_features,
+                                         }));
 
   if (adapter_features.amd_anti_lag) {
     m_features[(usize)RendererFeature::AmdAntiLag] = true;
@@ -69,7 +78,7 @@ auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
 
 auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
     -> bool {
-  return rhi::is_queue_family_supported(m_adapter, queue_family);
+  return rhi::is_queue_family_supported(m_instance, m_adapter, queue_family);
 }
 
 void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
@@ -542,6 +551,12 @@ auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
     -> Result<void, Error> {
   ZoneScoped;
   return rhi::amd_anti_lag_present(m_device, frame, enable, max_fps);
+}
+
+void unload(Renderer *renderer) { rhi::unload(renderer->m_instance); }
+
+auto load(Renderer *renderer) -> Result<void, Error> {
+  return rhi::load(renderer->m_instance);
 }
 
 } // namespace ren

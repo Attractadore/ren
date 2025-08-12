@@ -53,8 +53,8 @@ auto AppBase::init(const char *app_name) -> Result<void> {
 
   OK(m_scene, ren::create_scene(m_renderer, m_swapchain));
 
-  OK(m_camera, create_camera(m_scene));
-  set_camera(m_scene, m_camera);
+  OK(m_camera, ren::create_camera(m_scene));
+  ren::set_camera(m_scene, m_camera);
 
   return {};
 }
@@ -79,7 +79,7 @@ auto AppBase::loop() -> Result<void> {
     auto title = fmt::format("{} @ {:.1f} FPS", m_app_name, fps);
     SDL_SetWindowTitle(m_window, title.c_str());
 
-    TRY_TO(delay_input(m_scene));
+    TRY_TO(ren::delay_input(m_scene));
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -94,7 +94,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(begin_frame());
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(draw(m_scene));
+    TRY_TO(ren::draw(m_scene));
   }
 
   return {};

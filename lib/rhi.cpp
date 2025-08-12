@@ -5,6 +5,7 @@
 #endif
 
 #if RENDERDOC
+#include <fmt/core.h>
 #include <renderdoc_app.h>
 
 #if __linux__
