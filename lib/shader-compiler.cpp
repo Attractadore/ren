@@ -1,4 +1,5 @@
 #include "core/Assert.hpp"
+#include "core/IO.hpp"
 #include "core/Span.hpp"
 #include "core/String.hpp"
 #include "core/Vector.hpp"
@@ -208,7 +209,8 @@ auto gen_rg_args(const CompileOptions &opts,
   fs::path shader_header = fs::absolute(opts.src).replace_extension(".h");
   String shader_header_include;
   if (fs::exists(shader_header)) {
-    shader_header_include = fmt::format(R"(#include "{}")", shader_header);
+    shader_header_include =
+        fmt::format(R"(#include "{}")", to_system_path(shader_header));
   }
 
   fmt::format_to(std::back_inserter(hpp), R"(
@@ -235,7 +237,8 @@ inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{1}& from) -> 
 #endif // RG_{1}_DEFINED
 )",
                  opts.ns, type->type_name, member_declarations,
-                 member_conversions, fs::absolute(opts.project_src_dir),
+                 member_conversions,
+                 to_system_path(fs::absolute(opts.project_src_dir)),
                  shader_header_include);
 
   return 0;
@@ -447,8 +450,10 @@ const extern size_t {}Size = sizeof({}) / sizeof(uint32_t);
     auto r = std::ranges::unique(deps);
     deps.erase(r.begin(), r.end());
 
-    String dep_file =
-        fmt::format("{}: {}", fmt::join(products, " "), fmt::join(deps, " "));
+    String dep_file = fmt::format(
+        "{}: {}",
+        fmt::join(std::views::transform(products, to_system_path), " "),
+        fmt::join(std::views::transform(deps, to_system_path), " "));
 
     fs::path dep_dir = opts.deps.parent_path();
     if (not dep_dir.empty()) {

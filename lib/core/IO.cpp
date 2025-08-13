@@ -1,14 +1,35 @@
 #include "IO.hpp"
+#include "Assert.hpp"
 
-#include <fmt/ostream.h>
+#include <fmt/base.h>
 #include <fmt/std.h>
+
+#if _WIN32
+#include <windows.h>
+#endif
 
 namespace ren {
 
+auto to_system_path(const fs::path &path) -> String {
+#if _WIN32
+  static const LPSTR (*wine_get_unix_file_name)(LPCWSTR) =
+      (decltype(wine_get_unix_file_name))GetProcAddress(
+          GetModuleHandleA("KERNEL32"), "wine_get_unix_file_name");
+  if (wine_get_unix_file_name) {
+    return wine_get_unix_file_name(path.c_str());
+  }
+#endif
+  return path.string();
+}
+
 auto fopen(const fs::path &p, const char *mode) -> FILE * {
+#if _WIN32
   wchar_t wmode[64];
-  std::mbtowc(wmode, mode, std::size(wmode));
-#if _WIN64
+  usize i = 0;
+  do {
+    ren_assert(i < std::size(wmode));
+    wmode[i] = mode[i];
+  } while (mode[i++]);
   return _wfopen(p.c_str(), wmode);
 #else
   return std::fopen(p.c_str(), mode);

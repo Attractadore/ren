@@ -1,4 +1,5 @@
 #pragma once
+#include "core/StdDef.hpp"
 #include "core/String.hpp"
 
 namespace ren {
@@ -12,7 +13,7 @@ using DebugName = String;
 
 using DebugName = DummyString;
 
-#define REN_DEBUG_NAME_FIELD(default_name) [[no_unique_address]] DebugName name
+#define REN_DEBUG_NAME_FIELD(default_name) NO_UNIQUE_ADDRESS DebugName name
 
 #endif
 

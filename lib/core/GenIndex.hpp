@@ -2,6 +2,8 @@
 #include "Hash.hpp"
 #include "StdDef.hpp"
 
+#include <bit>
+
 namespace ren {
 
 namespace detail {

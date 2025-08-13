@@ -24,7 +24,7 @@ using RgDebugName = String;
 using RgDebugName = DummyString;
 #endif
 
-#define REN_RG_DEBUG_NAME_TYPE [[no_unique_address]] RgDebugName
+#define REN_RG_DEBUG_NAME_TYPE NO_UNIQUE_ADDRESS RgDebugName
 
 class CommandRecorder;
 class RenderPass;

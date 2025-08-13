@@ -17,3 +17,9 @@ using u64 = uint64_t;
 using usize = size_t;
 
 } // namespace ren
+
+#if _MSC_VER
+#define NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define NO_UNIQUE_ADDRESS
+#endif

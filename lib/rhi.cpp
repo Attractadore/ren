@@ -1,14 +1,26 @@
 #include "rhi.hpp"
 
 #if __has_include(<renderdoc_app.h>)
+#include <renderdoc_app.h>
+#define RENDERDOC 1
+#endif
+
+#if __has_include(</usr/include/renderdoc_app.h>)
+#include </usr/include/renderdoc_app.h>
+#define RENDERDOC 1
+#endif
+
+#if __has_include(<C:/Program Files/RenderDoc/renderdoc_app.h>)
+#include <C:/Program Files/RenderDoc/renderdoc_app.h>
 #define RENDERDOC 1
 #endif
 
 #if RENDERDOC
-#include <fmt/core.h>
-#include <renderdoc_app.h>
+#include <fmt/base.h>
 
-#if __linux__
+#if _WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
 #endif
 
@@ -23,16 +35,22 @@ auto load_gfx_debugger() -> Result<void> {
 
   fmt::println("rhi: Load RenderDoc API");
 
-#if __linux__
-  void *mod = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
-  if (!mod) {
+  pRENDERDOC_GetAPI RENDERDOC_GetAPI = nullptr;
+#if _WIN32
+  HMODULE module = GetModuleHandleA("renderdoc.dll");
+  if (!module) {
     fmt::println("rhi: Failed to load RenderDoc API");
     return fail(Error::FeatureNotPresent);
   }
-  pRENDERDOC_GetAPI RENDERDOC_GetAPI =
-      (pRENDERDOC_GetAPI)dlsym(mod, "RENDERDOC_GetAPI");
+  RENDERDOC_GetAPI =
+      (pRENDERDOC_GetAPI)GetProcAddress(module, "RENDERDOC_GetAPI");
 #else
-  todo();
+  void *lib_handle = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
+  if (!lib_handle) {
+    fmt::println("rhi: Failed to load RenderDoc API");
+    return fail(Error::FeatureNotPresent);
+  }
+  RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(lib_handle, "RENDERDOC_GetAPI");
 #endif
   if (!RENDERDOC_GetAPI or
       !RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_0_0, (void **)&rdapi)) {

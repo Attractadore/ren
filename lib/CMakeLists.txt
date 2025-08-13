@@ -5,6 +5,7 @@ add_library(ren-core
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC glm::glm Boost::container fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_23)
+target_compile_definitions(ren-core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 add_library(ren::core ALIAS ren-core)
 
 if (REN_ASSERTIONS)
@@ -83,14 +84,23 @@ target_link_libraries(ren
 target_compile_features(ren PUBLIC cxx_std_23)
 
 if(REN_HOT_RELOAD)
-  add_library(ren-dynamic MODULE libren.cpp)
-  target_link_libraries(ren-dynamic PUBLIC ren PRIVATE ren-internal)
+  add_library(libren MODULE libren.cpp)
+  set_property(TARGET libren PROPERTY PREFIX "")
+  target_link_libraries(libren PUBLIC ren PRIVATE ren-internal)
 
   add_library(ren-hot-reload STATIC hot-reload.cpp)
   target_include_directories(ren-hot-reload PUBLIC ${REN_INCLUDE})
-  target_link_libraries(ren-hot-reload PUBLIC glm::glm tiny_imageformat PRIVATE ren::core)
+  target_link_libraries(ren-hot-reload PUBLIC glm::glm tiny_imageformat PRIVATE ren::core SDL2::SDL2)
   target_compile_features(ren-hot-reload PUBLIC cxx_std_23)
-  target_compile_definitions(ren-hot-reload PUBLIC REN_HOT_RELOAD PRIVATE REN_LIBREN_PATH="$<TARGET_FILE:ren-dynamic>")
+
+  target_compile_definitions(ren-hot-reload
+    PUBLIC REN_HOT_RELOAD
+    PRIVATE
+    REN_LIB_DIR="$<TARGET_FILE_DIR:libren>"
+    REN_LIB_NAME="$<TARGET_FILE_NAME:libren>"
+    REN_LIB_PATH="$<TARGET_FILE:libren>"
+  )
+
   add_library(ren::ren ALIAS ren-hot-reload)
 else()
   add_library(ren::ren ALIAS ren)

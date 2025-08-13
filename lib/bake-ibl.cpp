@@ -71,8 +71,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     const glm::vec4 *src_pixels = (const glm::vec4 *)src_image.pixels;
     glm::vec4 *dst_pixels = (glm::vec4 *)dst_image.pixels;
 
-    float d_theta_src = std::numbers::pi / src_image.height;
-    float d_theta_dst = std::numbers::pi / dst_image.height;
+    float d_theta_src = glsl::PI / src_image.height;
+    float d_theta_dst = glsl::PI / dst_image.height;
 
     for (usize y : range(dst_image.height)) {
       usize y12 = 2 * y;
@@ -211,6 +211,13 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
       images);
 
   DirectX::ScratchImage compressed;
+
+#if !_OPENMP
+  if (compress) {
+    fmt::println("OpenMP not available, skip environment map compression");
+    compress = false;
+  }
+#endif
   if (compress) {
     fmt::println("Compress environment map");
     hres = DirectX::Compress(images.data(), images.size(), mdata,

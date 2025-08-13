@@ -27,19 +27,24 @@ template <typename... Ts>
   fmt::print(stderr, "{}\n",
              fmt::format(std::move(fmt_str), std::forward<Ts>(args)...));
   ren_trap();
+  std::abort();
 }
 
 [[noreturn]] inline void
 todo(std::source_location sl = std::source_location::current()) {
-  unreachable("{}:{}: {} not implemented!", sl.file_name(), sl.line(),
-              sl.function_name());
+  fmt::println(stderr, "{}:{}: {} not implemented!", sl.file_name(), sl.line(),
+               sl.function_name());
+  ren_trap();
+  std::abort();
 }
 
 template <typename... Ts>
 [[noreturn]] inline void
 todo(StringView message,
      std::source_location sl = std::source_location::current()) {
-  unreachable("{}:{}: {}", sl.file_name(), sl.line(), message);
+  fmt::println(stderr, "{}:{}: {}", sl.file_name(), sl.line(), message);
+  ren_trap();
+  std::abort();
 }
 
 } // namespace ren

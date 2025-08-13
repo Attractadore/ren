@@ -1,9 +1,10 @@
 #if REN_HOT_RELOAD
 #include "ren/ren.hpp"
+#include "core/DLL.hpp"
 
-extern "C" ren::hot_reload::Vtbl ren_vtbl;
+extern "C" REN_DLL_EXPORT ren::hot_reload::Vtbl ren_vtbl;
 
-__attribute__((visibility("default"))) ren::hot_reload::Vtbl ren_vtbl = {
+ren::hot_reload::Vtbl ren_vtbl = {
 #define ren_vtbl_f(name) .name = &ren_export::name
     ren_vtbl_f(create_renderer),
     ren_vtbl_f(destroy_renderer),

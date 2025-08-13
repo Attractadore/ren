@@ -69,7 +69,7 @@ public:
 private:
   KeyContainer m_keys;
   ValueContainer m_values;
-  [[no_unique_address]] Compare m_compare;
+  NO_UNIQUE_ADDRESS Compare m_compare;
 };
 
 } // namespace detail

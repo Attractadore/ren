@@ -32,8 +32,8 @@ constexpr inline auto get_draw_set_name(DrawSet set) -> const char * {
   std::unreachable();
 }
 
-constexpr inline auto get_draw_set_index(DrawSet set) -> usize {
-  return std::countr_zero((usize)set);
+constexpr inline auto get_draw_set_index(DrawSet set) -> u32 {
+  return std::countr_zero((u32)set);
 }
 
 constexpr usize NUM_DRAW_SETS = get_draw_set_index(DrawSet::Last) + 1;

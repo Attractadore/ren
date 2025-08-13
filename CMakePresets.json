@@ -21,6 +21,7 @@
         "ASSIMP_BUILD_ZLIB": "ON",
         "ASSIMP_INSTALL": "OFF",
         "ASSIMP_NO_EXPORT": "ON",
+        "ASSIMP_WARNINGS_AS_ERRORS": "OFF",
         "ENABLE_GLSLANG_BINARIES": "OFF",
         "ENABLE_HLSL": "OFF",
         "ENABLE_OPT": "OFF",
