@@ -138,7 +138,7 @@ inline vec3 ka_with_interreflection(float ka, vec3 albedo) {
 
 // https://c0de517e.blogspot.com/2016/07/siggraph-2015-notes-for-approximate.html
 inline vec3 directional_albedo(vec3 f0, float roughness, float NoV) {
-  float bias = exp2(-7.0f * NoV + 4.0f * roughness * roughness);
+  float bias = exp2(-7.0f * NoV - 4.0f * roughness * roughness);
   float scale = 1.0f - bias -
                 roughness * roughness *
                     max(bias, min(roughness, 0.739f + 0.323f * NoV) - 0.434f);
@@ -168,7 +168,7 @@ inline float specular_occlusion(vec3 R, float roughness, vec3 C, float ka) {
   }
   float ndf_area = 1.0f - cos_ndf;
 
-  float so = intersection_area / ndf_area;
+  float so = clamp(intersection_area / ndf_area, 0.0f, 1.0f);
 
   return mix(1.0f, so, smoothstep(0.01f, 0.09f, roughness));
 }

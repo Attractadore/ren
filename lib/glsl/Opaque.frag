@@ -70,7 +70,7 @@ void main() {
     float z = abs(1.0f / gl_FragCoord.w);
     ka = clamp(ba.x + ba.y * z, 0.0f, 1.0f);
   }
-  vec3 bent_normal = normalize(cross(dFdy(a_position), dFdx(a_position)));
+  vec3 bent_normal = normalize(a_normal);
 
   if (!IS_NULL_DESC(pc.raw_env_map)) {
     result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.raw_env_map, ka, bent_normal);
