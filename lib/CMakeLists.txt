@@ -1,3 +1,5 @@
+include(GenerateExportHeader)
+
 add_library(ren-core
   core/IO.cpp
   core/Profiler.cpp
@@ -18,11 +20,14 @@ if (REN_HOT_RELOAD)
 else()
   add_library(ren-vma vma.cpp)
 endif()
-target_link_libraries(ren-vma PUBLIC GPUOpen::VulkanMemoryAllocator Vulkan::Headers)
+generate_export_header(ren-vma)
+target_link_libraries(ren-vma PUBLIC ren::core GPUOpen::VulkanMemoryAllocator Vulkan::Headers)
+target_include_directories(ren-vma PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+add_library(ren::vma ALIAS ren-vma)
 
 add_library(ren-rhi rhi.cpp rhi-vk.cpp)
 target_link_libraries(ren-rhi
-  PUBLIC ren::core ren-vma Vulkan::Headers tiny_imageformat
+  PUBLIC ren::core ren::vma Vulkan::Headers tiny_imageformat
   PRIVATE SDL2::SDL2 volk::volk
 )
 add_library(ren::rhi ALIAS ren-rhi)
