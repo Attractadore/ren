@@ -3,6 +3,20 @@
 #include "Math.h"
 #include "Vertex.h"
 
+bool is_uniform_scaled_orthogonal(mat3 A) {
+  const float eps = 0.001f;
+  float A0 = dot(A[0], A[0]);
+  float A1 = dot(A[1], A[1]);
+  float A2 = dot(A[2], A[2]);
+  float A_min = min(A0, min(A1, A2));
+  float A_max = max(A0, max(A1, A2));
+  return
+    (A_max - A_min) < 0.5f * eps * A_max &&
+    dot(A[0], A[1]) < eps * A_max &&
+    dot(A[0], A[2]) < eps * A_max &&
+    dot(A[1], A[2]) < eps * A_max;
+}
+
 bool cull(Meshlet meshlet, uint mesh_instance) {
   const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
   const bool frustum_culling = bool(pc.feature_mask & MESHLET_CULLING_FRUSTUM_BIT);
@@ -14,10 +28,13 @@ bool cull(Meshlet meshlet, uint mesh_instance) {
 
   mat4x3 transform_matrix = DEREF(pc.transform_matrices[mesh_instance]);
 
-  if (cone_culling) {
+  // Culling cone stops being conservative when shears or non-uniform scales are applied.
+  if (cone_culling && is_uniform_scaled_orthogonal(mat3(transform_matrix))) {
     vec3 cone_apex = transform_matrix * vec4(decode_position(meshlet.cone_apex), 1.0f);
     vec3 cone_axis = transform_matrix * vec4(decode_position(meshlet.cone_axis), 0.0f);
-    if (dot(cone_apex - pc.eye, normalize(cone_axis)) >= meshlet.cone_cutoff * length(cone_apex - pc.eye)) {
+    vec3 view = cone_apex - pc.eye;
+    float min_dot = meshlet.cone_cutoff * length(view) * length(cone_axis);
+    if (dot(view, cone_axis) > min_dot) {
       return true;
     }
   }
@@ -81,8 +98,8 @@ void main() {
     return;
   }
 
+#if 1
   uint num_active = subgroupAdd(1);
-
   uint command_offset;
   if (subgroupElect()) {
     command_offset = atomicAdd(DEREF(pc.num_commands), num_active, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
@@ -95,6 +112,16 @@ void main() {
     }
   }
   command_offset = subgroupBroadcastFirst(command_offset) + subgroupExclusiveAdd(1);
+#else
+  uint command_offset = atomicAdd(DEREF(pc.num_commands), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
+  uint old_command_count = command_offset;
+  uint old_wg_count = ceil_div(old_command_count, MESHLET_SORTING_THREADS);
+  uint new_command_count = min(old_command_count + 1, MAX_DRAW_MESHLETS);
+  uint new_wg_count = ceil_div(new_command_count, MESHLET_SORTING_THREADS);
+  if (old_wg_count != new_wg_count) {
+    atomicMax(DEREF(pc.sort_command).x, new_wg_count, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
+  }
+#endif
 
   if (command_offset >= MAX_DRAW_MESHLETS) {
     return;

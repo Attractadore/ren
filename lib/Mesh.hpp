@@ -25,7 +25,7 @@ struct MeshPackageHeader {
   u32 num_lods = 0;
   std::array<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods = {};
   glsl::PositionBoundingBox bb = {};
-  glm::vec3 pos_enc_bb = {};
+  float scale = 0.0f;
   glsl::BoundingSquare uv_bs = {};
   u64 positions_offset = 0;
   u64 normals_offset = 0;
@@ -58,7 +58,7 @@ using MeshAttributeFlags = Flags<MeshAttribute>;
 struct Mesh {
   Handle<Buffer> positions;
   glsl::PositionBoundingBox bb = {};
-  glm::vec3 pos_enc_bb = glm::vec3(0.0f);
+  float scale = 0.0f;
   Handle<Buffer> normals;
   Handle<Buffer> tangents;
   Handle<Buffer> uvs;

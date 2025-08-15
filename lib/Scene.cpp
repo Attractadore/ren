@@ -164,7 +164,7 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
 
   Mesh mesh = {
       .bb = header.bb,
-      .pos_enc_bb = header.pos_enc_bb,
+      .scale = header.scale,
       .uv_bs = header.uv_bs,
       .lods = {&header.lods[0], &header.lods[header.num_lods]},
   };
@@ -370,8 +370,8 @@ auto create_mesh_instances(Scene *scene,
       add_to_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
     }
     scene->m_data.mesh_instance_transforms.insert(
-        handle, glsl::make_decode_position_matrix(
-                    scene->m_data.meshes[mesh].pos_enc_bb));
+        handle,
+        glsl::make_decode_position_matrix(scene->m_data.meshes[mesh].scale));
     scene->m_gpu_scene.update_mesh_instances.push_back(handle);
     scene->m_gpu_scene.mesh_instance_update_data.push_back({
         .mesh = mesh,
@@ -404,7 +404,7 @@ void set_mesh_instance_transforms(
     const Mesh &mesh =
         scene->m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
     scene->m_data.mesh_instance_transforms[h] =
-        matrices[i] * glsl::make_decode_position_matrix(mesh.pos_enc_bb);
+        matrices[i] * glsl::make_decode_position_matrix(mesh.scale);
   }
 }
 

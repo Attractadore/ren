@@ -202,39 +202,37 @@ void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts) {
 
 void mesh_compute_bounds(Span<const glm::vec3> positions,
                          NotNull<glsl::PositionBoundingBox *> pbb,
-                         NotNull<glm::vec3 *> enc_bb) {
+                         NotNull<float *> scale) {
   glsl::BoundingBox bb = {
       .min = glm::vec3(std::numeric_limits<float>::infinity()),
       .max = -glm::vec3(std::numeric_limits<float>::infinity()),
   };
 
-  // Select relatively big default bounding box size to avoid log2 NaN.
-  *enc_bb = glm::vec3(1.0f);
-
+  // Select relatively big default size to avoid log2 NaN.
+  float size = 1.0f;
   for (const glm::vec3 &position : positions) {
-    *enc_bb = glm::max(*enc_bb, glm::abs(position));
+    glm::vec3 abs_position = glm::abs(position);
+    size = std::max({size, abs_position.x, abs_position.y, abs_position.z});
     bb.min = glm::min(bb.min, position);
     bb.max = glm::max(bb.max, position);
   }
+  *scale = glm::exp2(-glm::ceil(glm::log2(size)));
 
-  *enc_bb = glm::exp2(glm::ceil(glm::log2(*enc_bb)));
-
-  *pbb = glsl::encode_bounding_box(bb, *enc_bb);
+  *pbb = glsl::encode_bounding_box(bb, *scale);
 }
 
-auto mesh_encode_positions(Span<const glm::vec3> positions,
-                           const glm::vec3 &enc_bb) -> Vector<glsl::Position> {
+auto mesh_encode_positions(Span<const glm::vec3> positions, float scale)
+    -> Vector<glsl::Position> {
   Vector<glsl::Position> enc_positions(positions.size());
   for (usize i = 0; i < positions.size(); ++i) {
-    enc_positions[i] = glsl::encode_position(positions[i], enc_bb);
+    enc_positions[i] = glsl::encode_position(positions[i], scale);
   }
   return enc_positions;
 }
 
-auto mesh_encode_normals(Span<const glm::vec3> normals,
-                         const glm::vec3 &pos_enc_bb) -> Vector<glsl::Normal> {
-  glm::mat3 encode_transform_matrix =
-      glsl::make_encode_position_matrix(pos_enc_bb);
+auto mesh_encode_normals(Span<const glm::vec3> normals, float scale)
+    -> Vector<glsl::Normal> {
+  glm::mat3 encode_transform_matrix = glsl::make_encode_position_matrix(scale);
   glm::mat3 encode_normal_matrix = glsl::normal(encode_transform_matrix);
 
   Vector<glsl::Normal> enc_normals(normals.size());
@@ -246,12 +244,10 @@ auto mesh_encode_normals(Span<const glm::vec3> normals,
   return enc_normals;
 }
 
-auto mesh_encode_tangents(Span<const glm::vec4> tangents,
-                          const glm::vec3 &pos_enc_bb,
+auto mesh_encode_tangents(Span<const glm::vec4> tangents, float scale,
                           Span<const glsl::Normal> enc_normals)
     -> Vector<glsl::Tangent> {
-  glm::mat3 encode_transform_matrix =
-      glsl::make_encode_position_matrix(pos_enc_bb);
+  glm::mat3 encode_transform_matrix = glsl::make_encode_position_matrix(scale);
 
   Vector<glsl::Tangent> enc_tangents(tangents.size());
   for (usize i = 0; i < tangents.size(); ++i) {
@@ -325,7 +321,7 @@ struct MeshGenerateMeshletsOptions {
 };
 
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
-  ren_assert(opts.header->pos_enc_bb != glm::vec3(0.0f));
+  ren_assert(opts.header->scale != 0.0f);
 
   SmallVector<u32, glsl::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
 
@@ -407,10 +403,8 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
       glm::vec3 cone_apex = glm::make_vec3(bounds.cone_apex);
       glm::vec3 cone_axis = glm::make_vec3(bounds.cone_axis);
 
-      meshlet.cone_apex =
-          glsl::encode_position(cone_apex, opts.header->pos_enc_bb),
-      meshlet.cone_axis =
-          glsl::encode_position(cone_axis, opts.header->pos_enc_bb),
+      meshlet.cone_apex = glsl::encode_position(cone_apex, opts.header->scale),
+      meshlet.cone_axis = glsl::encode_position(cone_axis, opts.header->scale),
       meshlet.cone_cutoff = bounds.cone_cutoff;
 
       glsl::BoundingBox bb = {
@@ -425,7 +419,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
         bb.max = glm::max(bb.max, position);
       }
 
-      meshlet.bb = glsl::encode_bounding_box(bb, opts.header->pos_enc_bb);
+      meshlet.bb = glsl::encode_bounding_box(bb, opts.header->scale);
 
       (*opts.meshlets)[base_meshlet + m] = meshlet;
 
@@ -553,7 +547,7 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
 
   // Compute bounds.
 
-  mesh_compute_bounds(positions, &mesh.header.bb, &mesh.header.pos_enc_bb);
+  mesh_compute_bounds(positions, &mesh.header.bb, &mesh.header.scale);
 
   // Generate meshlets
 
@@ -570,13 +564,13 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
 
   // Encode vertex attributes
 
-  mesh.positions = mesh_encode_positions(positions, mesh.header.pos_enc_bb);
+  mesh.positions = mesh_encode_positions(positions, mesh.header.scale);
 
-  mesh.normals = mesh_encode_normals(normals, mesh.header.pos_enc_bb);
+  mesh.normals = mesh_encode_normals(normals, mesh.header.scale);
 
   if (not tangents.empty()) {
     mesh.tangents =
-        mesh_encode_tangents(tangents, mesh.header.pos_enc_bb, mesh.normals);
+        mesh_encode_tangents(tangents, mesh.header.scale, mesh.normals);
   }
 
   if (not uvs.empty()) {

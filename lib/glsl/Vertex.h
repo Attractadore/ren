@@ -25,8 +25,8 @@ struct PositionBoundingBox {
   Position max;
 };
 
-inline Position encode_position(vec3 position, vec3 bb) {
-  vec3 scale = float(1 << 15) / bb;
+inline Position encode_position(vec3 position, float scale) {
+  scale = float(1 << 15) * scale;
   Position eposition;
   eposition.position =
       i16vec3(min(ivec3(round(position * scale)), (1 << 15) - 1));
@@ -37,10 +37,10 @@ inline vec3 decode_position(Position position) {
   return vec3(position.position);
 }
 
-inline PositionBoundingBox encode_bounding_box(BoundingBox bb, vec3 ebb) {
+inline PositionBoundingBox encode_bounding_box(BoundingBox bb, float scale) {
   PositionBoundingBox pbb;
-  pbb.min = encode_position(bb.min, ebb);
-  pbb.max = encode_position(bb.max, ebb);
+  pbb.min = encode_position(bb.min, scale);
+  pbb.max = encode_position(bb.max, scale);
   return pbb;
 }
 
@@ -51,21 +51,17 @@ inline BoundingBox decode_bounding_box(PositionBoundingBox pbb) {
   return bb;
 }
 
-inline mat4 make_encode_position_matrix(vec3 bb) {
-  vec3 scale = float(1 << 15) / bb;
+inline mat4 make_encode_position_matrix(float scale) {
+  scale = float(1 << 15) * scale;
   mat4 m = mat4(1.0f);
-  m[0][0] = scale.x;
-  m[1][1] = scale.y;
-  m[2][2] = scale.z;
+  m[0][0] = m[1][1] = m[2][2] = scale;
   return m;
 }
 
-inline mat4 make_decode_position_matrix(vec3 bb) {
-  vec3 scale = bb / float(1 << 15);
+inline mat4 make_decode_position_matrix(float scale) {
+  scale = 1.0f / (scale * float(1 << 15));
   mat4 m = mat4(1.0f);
-  m[0][0] = scale.x;
-  m[1][1] = scale.y;
-  m[2][2] = scale.z;
+  m[0][0] = m[1][1] = m[2][2] = scale;
   return m;
 }
 
