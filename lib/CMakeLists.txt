@@ -106,6 +106,7 @@ if(REN_HOT_RELOAD)
     REN_LIB_PATH="$<TARGET_FILE:libren>"
   )
 
+  add_dependencies(ren-hot-reload libren)
   add_library(ren::ren ALIAS ren-hot-reload)
 else()
   add_library(ren::ren ALIAS ren)
