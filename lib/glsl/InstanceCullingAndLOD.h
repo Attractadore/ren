@@ -9,28 +9,18 @@
 
 GLSL_NAMESPACE_BEGIN
 
-const uint INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT = 1 << 0;
-const uint INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT = 1 << 1;
-
-const uint INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT = 1 << 2;
-const uint INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT = 1 << 3;
-const uint INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK =
-    INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT |
-    INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
-
-const uint INSTANCE_CULLING_AND_LOD_NO_OCCLUSION_CULLING = 0;
 // Phase 1: Reject not visible in previous frame. Perform culling (without
 // occlusion check) and LOD selection. Draw.
-const uint INSTANCE_CULLING_AND_LOD_FIRST_PHASE =
-    INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT;
 // Phase 2: Perform culling (with occlusion check). Generate new visibility
 // buffer. Select LOD and draw if not visible in previous frame.
-const uint INSTANCE_CULLING_AND_LOD_SECOND_PHASE =
-    INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
 // Phase 3+: Reject not visible in current frame. Select LOD. Draw.
-const uint INSTANCE_CULLING_AND_LOD_THIRD_PHASE =
-    INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT |
-    INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
+
+const uint INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT = 1 << 0;
+const uint INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT = 1 << 1;
+const uint INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT = 1 << 2;
+
+const uint INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT = 1 << 3;
+const uint INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT = 1 << 4;
 
 GLSL_PUSH_CONSTANTS InstanceCullingAndLODArgs {
   GLSL_READONLY GLSL_PTR(Mesh) meshes;

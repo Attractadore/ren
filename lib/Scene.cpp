@@ -559,10 +559,8 @@ auto draw(Scene *scene) -> expected<void> {
         ImGui::Checkbox("Cone culling", &settings.meshlet_cone_culling);
         ImGui::Checkbox("Frustum culling## Meshlet",
                         &settings.meshlet_frustum_culling);
-        ImGui::BeginDisabled(!settings.instance_occulusion_culling);
         ImGui::Checkbox("Occlusion culling## Meshlet",
                         &settings.meshlet_occlusion_culling);
-        ImGui::EndDisabled();
       }
 
       ImGui::SeparatorText("SSAO");
@@ -809,30 +807,24 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   RgTextureId depth_buffer = pass_rcs.depth_buffer;
   RgTextureId hi_z;
 
-  auto occlusion_culling_mode = OcclusionCullingMode::Disabled;
-  if (m_data.settings.instance_occulusion_culling) {
-    occlusion_culling_mode = OcclusionCullingMode::FirstPhase;
-  }
-
   setup_early_z_pass(cfg, EarlyZPassConfig{
                               .gpu_scene = &m_gpu_scene,
                               .rg_gpu_scene = &rg_gpu_scene,
-                              .occlusion_culling_mode = occlusion_culling_mode,
+                              .culling_phase = CullingPhase::First,
                               .depth_buffer = &depth_buffer,
                           });
-  if (occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
+  if (m_data.settings.instance_occulusion_culling or
+      m_data.settings.meshlet_occlusion_culling) {
     setup_hi_z_pass(cfg,
                     HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
-    setup_early_z_pass(
-        cfg, EarlyZPassConfig{
-                 .gpu_scene = &m_gpu_scene,
-                 .rg_gpu_scene = &rg_gpu_scene,
-                 .occlusion_culling_mode = OcclusionCullingMode::SecondPhase,
-                 .depth_buffer = &depth_buffer,
-                 .hi_z = hi_z,
-             });
-    occlusion_culling_mode = OcclusionCullingMode::ThirdPhase;
   }
+  setup_early_z_pass(cfg, EarlyZPassConfig{
+                              .gpu_scene = &m_gpu_scene,
+                              .rg_gpu_scene = &rg_gpu_scene,
+                              .culling_phase = CullingPhase::Second,
+                              .depth_buffer = &depth_buffer,
+                              .hi_z = hi_z,
+                          });
 
   RgTextureId ssao_llm;
   RgTextureId ssao_depth = pass_rcs.ssao_depth;
@@ -981,7 +973,6 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   setup_opaque_pass(cfg, OpaquePassConfig{
                              .gpu_scene = &m_gpu_scene,
                              .rg_gpu_scene = &rg_gpu_scene,
-                             .occlusion_culling_mode = occlusion_culling_mode,
                              .hdr = &hdr,
                              .depth_buffer = &depth_buffer,
                              .hi_z = hi_z,

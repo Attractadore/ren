@@ -87,13 +87,21 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     const SceneGraphicsSettings &settings = ccfg.scene->settings;
 
     u32 feature_mask = 0;
-    if (settings.instance_frustum_culling) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
-    }
     if (settings.lod_selection) {
       feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
     }
-    feature_mask |= (u32)info.occlusion_culling_mode;
+    if (settings.instance_frustum_culling) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
+    }
+    if (settings.instance_occulusion_culling) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT;
+    }
+
+    if (info.culling_phase == CullingPhase::First) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT;
+    } else if (info.culling_phase == CullingPhase::Second) {
+      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
+    }
 
     float num_viewport_triangles =
         info.viewport.x * info.viewport.y / settings.lod_triangle_pixels;
@@ -122,20 +130,23 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         .lod_bias = settings.lod_bias,
     };
 
-    if (info.occlusion_culling_mode == OcclusionCullingMode::SecondPhase) {
-      ren_assert(info.hi_z);
+    if (info.culling_phase == CullingPhase::Second) {
       args.mesh_instance_visibility =
           pass.write_buffer("new-mesh-instance-visibility",
                             &info.rg_gpu_scene->mesh_instance_visibility);
-      args.hi_z = pass.read_texture(
-          info.hi_z, {
-                         .mag_filter = rhi::Filter::Nearest,
-                         .min_filter = rhi::Filter::Nearest,
-                         .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                         .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                         .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                     });
-    } else if (info.occlusion_culling_mode != OcclusionCullingMode::Disabled) {
+      if (settings.instance_occulusion_culling) {
+        ren_assert(info.hi_z);
+        args.hi_z = pass.read_texture(
+            info.hi_z,
+            {
+                .mag_filter = rhi::Filter::Nearest,
+                .min_filter = rhi::Filter::Nearest,
+                .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+            });
+      }
+    } else {
       args.mesh_instance_visibility =
           pass.read_buffer(info.rg_gpu_scene->mesh_instance_visibility);
     }
@@ -194,16 +205,20 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     if (settings.meshlet_frustum_culling) {
       args.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
     }
-    if (settings.meshlet_occlusion_culling and info.hi_z) {
+    if (settings.meshlet_occlusion_culling) {
       args.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
-      args.hi_z = pass.read_texture(
-          info.hi_z, {
-                         .mag_filter = rhi::Filter::Nearest,
-                         .min_filter = rhi::Filter::Nearest,
-                         .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                         .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                         .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                     });
+      if (info.culling_phase != CullingPhase::First) {
+        ren_assert(info.hi_z);
+        args.hi_z = pass.read_texture(
+            info.hi_z,
+            {
+                .mag_filter = rhi::Filter::Nearest,
+                .min_filter = rhi::Filter::Nearest,
+                .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+            });
+      }
     }
 
     pass.set_callback(
@@ -340,10 +355,9 @@ void record_render_pass(const PassCommonConfig &ccfg,
   const RgDrawSetData &rg_ds = info.base.rg_gpu_scene->draw_sets[draw_set];
 
   const char *pass_type = "";
-  if (info.base.occlusion_culling_mode == OcclusionCullingMode::FirstPhase) {
+  if (info.base.culling_phase == CullingPhase::First) {
     pass_type = "-first-phase";
-  } else if (info.base.occlusion_culling_mode ==
-             OcclusionCullingMode::SecondPhase) {
+  } else if (info.base.culling_phase == CullingPhase::Second) {
     pass_type = "-second-phase";
   }
 
@@ -379,9 +393,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
         continue;
       }
       rhi::RenderTargetOperations ops = info.base.color_attachment_ops[i];
-      if (info.base.occlusion_culling_mode ==
-              OcclusionCullingMode::SecondPhase or
-          batch > 0) {
+      if (info.base.culling_phase != CullingPhase::First or batch > 0) {
         ops.load = rhi::RenderPassLoadOp::Load;
       }
       std::tie(*color_attachment, std::ignore) = pass.write_render_target(
@@ -394,9 +406,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
         pass.read_depth_stencil_target(*info.base.depth_attachment);
       } else {
         rhi::DepthTargetOperations ops = info.base.depth_attachment_ops;
-        if (info.base.occlusion_culling_mode ==
-                OcclusionCullingMode::SecondPhase or
-            batch > 0) {
+        if (info.base.culling_phase != CullingPhase::First or batch > 0) {
           ops.load = rhi::RenderPassLoadOp::Load;
         }
         std::tie(*info.base.depth_attachment, std::ignore) =

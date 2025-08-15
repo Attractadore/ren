@@ -10,7 +10,7 @@ struct RgGpuScene;
 struct EarlyZPassConfig {
   NotNull<const GpuScene *> gpu_scene;
   NotNull<RgGpuScene *> rg_gpu_scene;
-  OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  CullingPhase culling_phase = CullingPhase::Final;
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
 };
@@ -21,7 +21,7 @@ void setup_early_z_pass(const PassCommonConfig &ccfg,
 struct OpaquePassConfig {
   NotNull<const GpuScene *> gpu_scene;
   NotNull<RgGpuScene *> rg_gpu_scene;
-  OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  CullingPhase culling_phase = CullingPhase::Final;
   NotNull<RgTextureId *> hdr;
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;

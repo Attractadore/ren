@@ -3,7 +3,6 @@
 #include "../GpuScene.hpp"
 #include "../RenderGraph.hpp"
 #include "../core/NotNull.hpp"
-#include "../glsl/InstanceCullingAndLOD.h"
 #include "../passes/Pass.hpp"
 
 #include <fmt/format.h>
@@ -20,11 +19,10 @@ struct Material;
 struct DirectionalLight;
 } // namespace glsl
 
-enum class OcclusionCullingMode {
-  Disabled = glsl::INSTANCE_CULLING_AND_LOD_NO_OCCLUSION_CULLING,
-  FirstPhase = glsl::INSTANCE_CULLING_AND_LOD_FIRST_PHASE,
-  SecondPhase = glsl::INSTANCE_CULLING_AND_LOD_SECOND_PHASE,
-  ThirdPhase = glsl::INSTANCE_CULLING_AND_LOD_THIRD_PHASE,
+enum class CullingPhase {
+  First,
+  Second,
+  Final,
 };
 
 struct MeshPassBaseInfo {
@@ -44,7 +42,7 @@ struct MeshPassBaseInfo {
   NotNull<const GpuScene *> gpu_scene;
   NotNull<RgGpuScene *> rg_gpu_scene;
 
-  OcclusionCullingMode occlusion_culling_mode = OcclusionCullingMode::Disabled;
+  CullingPhase culling_phase = CullingPhase::Final;
   RgTextureId hi_z;
 };
 

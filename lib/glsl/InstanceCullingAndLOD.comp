@@ -2,13 +2,7 @@
 #include "Culling.glsl"
 #include "Math.h"
 
-bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_bb, NDCBoundingBox ndc_bb, inout int lod) {
-  // TODO: support finite far plane.
-  float n = cs_bb.p[0].z;
-
-  float zmin, zmax;
-  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
-
+bool cull(bool frustum_culling, bool occlusion_culling, float n, float zmin, float zmax, NDCBoundingBox ndc_bb) {
   // Cull if bounding box is in front of near plane.
   if (frustum_culling && zmax < n) {
     return true;
@@ -16,7 +10,6 @@ bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_
 
   // Select highest lod and don't cull if bounding box crosses near plane.
   if (zmin < n) {
-    lod = 0;
     return false;
   }
 
@@ -35,7 +28,12 @@ bool cull(bool frustum_culling, bool occlusion_culling, ClipSpaceBoundingBox cs_
   return false;
 }
 
-int select_lod(Mesh mesh, NDCBoundingBox ndc_bb) {
+int select_lod(Mesh mesh, float n, float zmin, NDCBoundingBox ndc_bb) {
+  // Select highest lod and don't cull if bounding box crosses near plane.
+  if (zmin < n) {
+    return 0;
+  }
+
   float area = get_ndc_bb_area(ndc_bb);
   uint num_triangles = uint(area * pc.lod_triangle_density);
 
@@ -49,89 +47,84 @@ int select_lod(Mesh mesh, NDCBoundingBox ndc_bb) {
   return l;
 }
 
-LOCAL_SIZE(128);
+LOCAL_SIZE(256);
 void main() {
-  const uint STRIDE = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
-  for (uint t = gl_GlobalInvocationID.x; t < pc.num_instances; t += STRIDE) {
-    const bool first_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_FIRST_PHASE;
-    const bool second_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_SECOND_PHASE;
-    const bool third_phase = (pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_MASK) == INSTANCE_CULLING_AND_LOD_THIRD_PHASE;
+  if (gl_GlobalInvocationID.x >= pc.num_instances) {
+    return;
+  }
 
-    const bool frustum_culling =  bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
-    const bool occlusion_culling = second_phase;
-    const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+  const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+  const bool frustum_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+  const bool occlusion_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT);
 
-    InstanceCullData cull_data = DEREF(pc.cull_data[t]);
+  InstanceCullData cull_data = DEREF(pc.cull_data[gl_GlobalInvocationID.x]);
+  Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
 
-    Mesh mesh = DEREF(pc.meshes[cull_data.mesh]);
+  uint vis_idx = cull_data.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  uint vis_bit = cull_data.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  glsl_MeshInstanceVisibilityMask vis_mask = glsl_MeshInstanceVisibilityMask(1) << vis_bit;
 
-    uint vis_idx = cull_data.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
-    uint vis_bit = cull_data.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
-    glsl_MeshInstanceVisibilityMask vis_mask = glsl_MeshInstanceVisibilityMask(1) << vis_bit;
+  mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
+  ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
+  // TODO: support finite far plane.
+  float n = cs_bb.p[0].z;
+  float zmin, zmax;
+  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
+  NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
 
-    bool visible = true;
-    if (first_phase || third_phase) {
-      visible = bool(DEREF(pc.mesh_instance_visibility[vis_idx]) & vis_mask);
+  if (bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT)) {
+    bool visible = bool(DEREF(pc.mesh_instance_visibility[vis_idx]) & vis_mask);
+    visible = visible && !cull(frustum_culling, false, n, zmin, zmax, ndc_bb);
+    if (!visible) {
+      return;
     }
-
-    mat4 pvm = pc.proj_view * mat4(DEREF(pc.transform_matrices[cull_data.mesh_instance]));
-    ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
-    NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
-
-    int l = -1;
-    if (visible && !third_phase) {
-      visible = !cull(frustum_culling, occlusion_culling, cs_bb, ndc_bb, l);
+  } else if (bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT)) {
+    bool visible = !cull(frustum_culling, occlusion_culling, n, zmin, zmax, ndc_bb);
+    if (!visible) {
+      atomicAnd(DEREF(pc.mesh_instance_visibility[vis_idx]), ~vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
+      return;
     }
-
-    bool draw = visible;
-
-    if (second_phase) {
-      if (visible) {
-        bool was_visible = bool(vis_mask & atomicOr(DEREF(pc.mesh_instance_visibility[vis_idx]), vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed));
-        draw = !was_visible;
-      } else {
-        atomicAnd(DEREF(pc.mesh_instance_visibility[vis_idx]), ~vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
-      }
-    } 
-
-    if (!draw) {
-      continue;
+    bool was_visible = bool(vis_mask & atomicOr(DEREF(pc.mesh_instance_visibility[vis_idx]), vis_mask, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed));
+    if (was_visible) {
+      return;
     }
-
-    if (l < 0) {
-      l = lod_selection ? select_lod(mesh, ndc_bb) : 0;
+  } else {
+    bool visible = bool(DEREF(pc.mesh_instance_visibility[vis_idx]) & vis_mask);
+    if (!visible) {
+      return;
     }
-    l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
+  }
 
-    MeshLOD lod = mesh.lods[l];
+  int l = lod_selection ? select_lod(mesh, n, zmin, ndc_bb) : 0;
+  l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
+  MeshLOD lod = mesh.lods[l];
 
-    uint base_meshlet = lod.base_meshlet;
-    uint num_meshlets = lod.num_meshlets;
-    while (num_meshlets != 0) {
-      uint bucket = findLSB(num_meshlets);
-      uint bucket_stride = 1 << bucket;
+  uint base_meshlet = lod.base_meshlet;
+  uint num_meshlets = lod.num_meshlets;
+  while (num_meshlets != 0) {
+    uint bucket = findLSB(num_meshlets);
+    uint bucket_stride = 1 << bucket;
 
-      MeshletCullData meshlet_cull_data;
-      meshlet_cull_data.mesh = cull_data.mesh;
-      meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
-      meshlet_cull_data.batch = cull_data.batch;
-      meshlet_cull_data.base_meshlet = base_meshlet;
+    MeshletCullData meshlet_cull_data;
+    meshlet_cull_data.mesh = cull_data.mesh;
+    meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
+    meshlet_cull_data.batch = cull_data.batch;
+    meshlet_cull_data.base_meshlet = base_meshlet;
 
-      base_meshlet += bucket_stride;
-      num_meshlets &= ~bucket_stride;
+    base_meshlet += bucket_stride;
+    num_meshlets &= ~bucket_stride;
 
-      uint bucket_offset = DEREF(pc.raw_meshlet_bucket_offsets[bucket]);
-      uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
-      uint bucket_size = offset + 1;
-      DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;
+    uint bucket_offset = DEREF(pc.raw_meshlet_bucket_offsets[bucket]);
+    uint offset = atomicAdd(DEREF(pc.meshlet_bucket_sizes[bucket]), 1, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
+    uint bucket_size = offset + 1;
+    DEREF(pc.meshlet_cull_data[bucket_offset + offset]) = meshlet_cull_data;
 
-      uint old_num_bucket_threads = (bucket_size - 1) * bucket_stride;
-      uint old_num_bucket_work_groups = ceil_div(old_num_bucket_threads, MESHLET_CULLING_THREADS);
-      uint num_bucket_threads = bucket_size * bucket_stride;
-      uint num_bucket_work_groups = ceil_div(num_bucket_threads, MESHLET_CULLING_THREADS);
-      if (old_num_bucket_work_groups != num_bucket_work_groups) {
-        atomicMax(DEREF(pc.meshlet_bucket_commands[bucket]).x, num_bucket_work_groups, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
-      }
+    uint old_num_bucket_threads = (bucket_size - 1) * bucket_stride;
+    uint old_num_bucket_work_groups = ceil_div(old_num_bucket_threads, MESHLET_CULLING_THREADS);
+    uint num_bucket_threads = bucket_size * bucket_stride;
+    uint num_bucket_work_groups = ceil_div(num_bucket_threads, MESHLET_CULLING_THREADS);
+    if (old_num_bucket_work_groups != num_bucket_work_groups) {
+      atomicMax(DEREF(pc.meshlet_bucket_commands[bucket]).x, num_bucket_work_groups, gl_ScopeQueueFamily, 0, gl_SemanticsRelaxed);
     }
   }
 }
