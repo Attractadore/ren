@@ -6,9 +6,6 @@
 
 LOCAL_SIZE_2D(16, 16);
 
-// TODO:
-// 1. Fix off-screen samples and samples close to camera.
-
 float integrate_ao(float noise, vec3 p, vec3 n) {
   // To optimize cache usage, limit the size of the area that a work group samples at a specific mip.
   // Set this area's diameter to twice the work group's size.
@@ -26,25 +23,54 @@ float integrate_ao(float noise, vec3 p, vec3 n) {
   vec3 b = cross(n, t);
   mat3 tbn = mat3(t, b, n);
 
+  vec3 p_ndc = view_to_ndc(pc.p00, pc.p11, pc.znear, p);
+
   float ka = 0.0f;
   for (float k = 0; k < pc.num_samples; ++k) {
-    vec3 xi = r3_seq(k);
-    float phi = TWO_PI * (xi.x + noise);
-    float cos_theta = sqrt(xi.y);
-    float sin_theta = sqrt(1.0f - xi.y);
-    float radius = pc.radius * xi.z * xi.z;
+    vec3 Xi = r3_seq(k);
+    float phi = TWO_PI * (Xi.x + noise);
+    float cos_theta = sqrt(Xi.y);
+    float sin_theta = sqrt(1.0f - Xi.y);
+    float sample_distance = pc.radius * Xi.z * Xi.z;
 
-    vec3 sample_ts = radius * vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+    vec3 sample_ts = sample_distance * vec3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
     vec3 sample_view = p + tbn * sample_ts;
-    vec2 sample_ndc = view_to_ndc(pc.p00, pc.p11, pc.znear, sample_view).xy;
-    vec2 sample_uv = ndc_to_uv(sample_ndc);
+    vec3 sample_ndc = view_to_ndc(pc.p00, pc.p11, pc.znear, sample_view);
+    vec2 sample_uv = ndc_to_uv(sample_ndc.xy);
+
+    // Find the closest frustum plane intersected by the sampling ray.
+    vec3 ray_ndc = sample_ndc - p_ndc;
+
+    // Select frustum planes based on ray's direction.
+    vec3 planes = vec3(
+      ray_ndc.x > 0.0f ? 1.0f : -1.0f,
+      ray_ndc.y > 0.0f ? 1.0f : -1.0f,
+      ray_ndc.z > 0.0f ? 1.0f :  0.0f
+    );
+
+    // Select closest intersected plane.
+    // Negative distances means that the sample is outside the frustum.
+    vec3 a = (planes - sample_ndc) / ray_ndc;
+    float amin = min(a.x, min(a.y, a.z));
+    vec3 intersect_ndc = sample_ndc + amin * ray_ndc;
+    vec3 intersect_view = ndc_to_view(pc.rcp_p00, pc.rcp_p11, pc.znear, intersect_ndc);
+    float frustum_distance = length(intersect_view - sample_view);
+    // Calculate an attenuation factor for samples that are close to frustum's sides or off screen
+    // to avoid sudden changes in occlusion when something enters or exists the screen.
+    float offscreen_falloff = amin > 0.0f ? smoothstep(0.0f, 0.5f * pc.radius, frustum_distance) : 0.0f;
 
     // Add 0.5 because r0 should be the maximum radius at which we sample mip 0.
-    float mip = log2(radius * inv_hi_z_r0_view) + 0.5f + pc.lod_bias;
+    float mip = log2(sample_distance * inv_hi_z_r0_view) + 0.5f + pc.lod_bias;
 
     float z = texture_lod(pc.hi_z, sample_uv, mip).r;
     z = -(z + pc.znear);
-    float w = min(abs(z - p.z) / pc.radius, 1.0f);
+    vec3 occluder_ndc = vec3(sample_ndc.xy, -pc.znear / z);
+    vec3 occluder_view = ndc_to_view(pc.rcp_p00, pc.rcp_p11, pc.znear, occluder_ndc);
+    float occluder_distance = length(occluder_view - p);
+    // Calculate an attenuation factor for distant occluders to avoid halo artifacts.
+    float distance_falloff = 1.0f - smoothstep(pc.radius, 1.5f * pc.radius, occluder_distance);
+    
+    float w = clamp(1.0f - offscreen_falloff * distance_falloff, 0.0f, 1.0f);
 
     ka += z > sample_view.z ? w : 1.0f;
   }
