@@ -34,20 +34,28 @@ inline vec3 hammersley_3d(uint i, uint n) {
 
 // https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
 inline float r1_seq(float i, float seed) {
-  const float g = 1.618033;
+  const float g = 1.6180339887498948482;
   const float a1 = 1.0f / g;
   return fract(seed + a1 * i);
 }
 
 inline float r1_seq(float i) { return r1_seq(i, 0.5f); }
 
+inline vec2 r2_seq(float i, vec2 seed) {
+  const float g = 1.32471795724474602596f;
+  const float a1 = 1.0f / g;
+  const float a2 = a1 * a1;
+  return fract(seed + vec2(a1, a2) * i);
+}
+
+inline vec2 r2_seq(float i) { return r2_seq(i, vec2(0.5f)); }
+
 inline vec3 r3_seq(float i, vec3 seed) {
-  const float g = 1.220744;
+  const float g = 1.22074408460575947536;
   const float a1 = 1.0f / g;
   const float a2 = a1 * a1;
   const float a3 = a2 * a1;
-  const vec3 a = vec3(a1, a2, a3);
-  return fract(seed + a * i);
+  return fract(seed + vec3(a1, a2, a3) * i);
 }
 
 inline vec3 r3_seq(float i) { return r3_seq(i, vec3(0.5f)); }
