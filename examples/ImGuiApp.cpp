@@ -3,7 +3,7 @@
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 #include <algorithm>
-#include <imgui_impl_sdl2.h>
+#include <imgui.hpp>
 #ifdef SDL_VIDEO_DRIVER_X11
 #include <X11/Xresource.h>
 #include <dlfcn.h>
@@ -39,8 +39,7 @@ auto ImGuiApp::init(const char *name) -> Result<void> {
     bail("ImGui: failed to check version");
   }
 
-  m_imgui_context.reset(ImGui::CreateContext());
-  if (!m_imgui_context) {
+  if (!ImGui::CreateContext()) {
     bail("ImGui: failed to create context");
   }
 
@@ -132,15 +131,13 @@ auto ImGuiApp::init(const char *name) -> Result<void> {
   auto *bd = (ImGui_ImplSDL2_Data *)ImGui::GetIO().BackendPlatformUserData;
   bd->MouseCanUseGlobalState = false;
 
-  ren::imgui::set_context(get_scene(), m_imgui_context.get());
+  TRY_TO(ren::init_imgui(get_scene()));
   return {};
 }
 
-void ImGuiApp::Deleter::operator()(ImGuiContext *context) const noexcept {
-  if (context) {
-    ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext(context);
-  }
+ImGuiApp::~ImGuiApp() {
+  ImGui_ImplSDL2_Shutdown();
+  ImGui::DestroyContext();
 }
 
 auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
@@ -162,29 +159,34 @@ auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
   if (not imgui_wants_capture_keyboard() and event.type == SDL_KEYDOWN and
       event.key.keysym.scancode == SDL_SCANCODE_G) {
     m_imgui_enabled = not m_imgui_enabled;
-    ren::imgui::set_context(get_scene(),
-                            m_imgui_enabled ? m_imgui_context.get() : nullptr);
   }
   return AppBase::process_event(event);
 }
 
 auto ImGuiApp::begin_frame() -> Result<void> {
   ImGui_ImplSDL2_NewFrame();
-
   ImGuiIO &io = ImGui::GetIO();
-  int dw, dh;
-  SDL_Vulkan_GetDrawableSize(get_window(), &dw, &dh);
-  io.DisplaySize = ImVec2(dw, dh);
-  io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 
   ImGui::NewFrame();
+
+  ImGui::Begin("ImGuiApp", nullptr,
+               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
+  ImGui::SetWindowPos({0.0f, 0.0f});
+  ImGui::SetWindowSize({io.DisplaySize.x * 0.3f, io.DisplaySize.y});
+
   ImGui::PushFont(m_font);
+
+  if (ImGui::CollapsingHeader("Renderer settings")) {
+    ren::draw_imgui(get_scene());
+  }
+
   return {};
 }
 
 auto ImGuiApp::end_frame() -> Result<void> {
-  std::ignore = ren::imgui::draw(get_scene());
   ImGui::PopFont();
+  ImGui::End();
   if (m_imgui_enabled) {
     ImGui::Render();
   }

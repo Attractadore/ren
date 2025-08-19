@@ -299,15 +299,9 @@ auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
 
 [[nodiscard]] auto draw(Scene *scene) -> expected<void>;
 
-namespace imgui {
+auto init_imgui(Scene *scene) -> expected<void>;
 
-void set_context(Scene *scene, ImGuiContext *ctx);
-
-auto get_context(Scene *scene) -> ImGuiContext *;
-
-auto draw(Scene *scene) -> expected<void>;
-
-} // namespace imgui
+void draw_imgui(Scene *scene);
 
 } // namespace ren_export
 
@@ -351,13 +345,8 @@ struct Vtbl {
   ren_vtbl_f(draw);
   ren_vtbl_f(unload);
   ren_vtbl_f(load);
-#undef ren_vtbl_f
-
-  // ImGui
-#define ren_vtbl_f(name) decltype(imgui::name) *imgui_##name
-  ren_vtbl_f(set_context);
-  ren_vtbl_f(get_context);
-  ren_vtbl_f(draw);
+  ren_vtbl_f(init_imgui);
+  ren_vtbl_f(draw_imgui);
 #undef ren_vtbl_f
 };
 
@@ -506,21 +495,13 @@ inline auto delay_input(Scene *scene) -> expected<void> {
 
 [[nodiscard]] auto draw(Scene *scene) -> expected<void>;
 
-namespace imgui {
-
-inline void set_context(Scene *scene, ImGuiContext *ctx) {
-  return hot_reload::vtbl_ref->imgui_set_context(scene, ctx);
+inline auto init_imgui(Scene *scene) -> expected<void> {
+  return hot_reload::vtbl_ref->init_imgui(scene);
 }
 
-inline auto get_context(Scene *scene) -> ImGuiContext * {
-  return hot_reload::vtbl_ref->imgui_get_context(scene);
+inline void draw_imgui(Scene *scene) {
+  hot_reload::vtbl_ref->draw_imgui(scene);
 }
-
-inline auto draw(Scene *scene) -> expected<void> {
-  return hot_reload::vtbl_ref->imgui_draw(scene);
-}
-
-} // namespace imgui
 
 } // namespace ren
 

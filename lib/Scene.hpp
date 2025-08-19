@@ -127,9 +127,6 @@ struct Scene {
 
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;
-#if REN_IMGUI
-  ImGuiContext *m_imgui_context = nullptr;
-#endif
   ResourceArena m_arena;
   DescriptorAllocator m_descriptor_allocator;
   u64 m_frame_index = u64(-1);

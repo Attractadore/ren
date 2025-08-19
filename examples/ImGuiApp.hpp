@@ -1,11 +1,12 @@
 #pragma once
 #include "AppBase.hpp"
 
-#include <imgui.h>
+#include <imgui.hpp>
 
 class ImGuiApp : public AppBase {
 public:
   auto init(const char *name) -> Result<void>;
+  ~ImGuiApp();
 
 protected:
   [[nodiscard]] auto process_event(const SDL_Event &e) -> Result<void> override;
@@ -19,11 +20,6 @@ protected:
   auto imgui_wants_capture_mouse() const -> bool;
 
 private:
-  struct Deleter {
-    void operator()(ImGuiContext *context) const noexcept;
-  };
-
-  std::unique_ptr<ImGuiContext, Deleter> m_imgui_context;
   bool m_imgui_enabled = true;
   ImFont *m_font = nullptr;
   float m_ui_scale = 1.0f;

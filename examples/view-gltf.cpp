@@ -890,9 +890,8 @@ protected:
   }
 
   auto process_frame(chrono::nanoseconds dt_ns) -> Result<void> override {
-    if (ImGui::Begin("Scene graphics settings")) {
+    if (ImGui::GetCurrentContext()) {
       draw_camera_imgui(m_camera_params);
-      ImGui::End();
     }
 
     ren::Scene *scene = get_scene();

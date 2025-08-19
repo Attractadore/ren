@@ -1,6 +1,6 @@
 #if REN_HOT_RELOAD
-#include "ren/ren.hpp"
 #include "core/DLL.hpp"
+#include "ren/ren.hpp"
 
 extern "C" REN_DLL_EXPORT ren::hot_reload::Vtbl ren_vtbl;
 
@@ -37,12 +37,7 @@ ren::hot_reload::Vtbl ren_vtbl = {
     ren_vtbl_f(draw),
     ren_vtbl_f(unload),
     ren_vtbl_f(load),
-#undef ren_vtbl_f
-
-#define ren_vtbl_f(name) .imgui_##name = &ren_export::imgui::name
-    ren_vtbl_f(set_context),
-    ren_vtbl_f(get_context),
-    ren_vtbl_f(draw),
-#undef ren_vtbl_f
+    ren_vtbl_f(init_imgui),
+    ren_vtbl_f(draw_imgui),
 };
 #endif

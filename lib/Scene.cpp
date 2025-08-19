@@ -1,7 +1,6 @@
 #include "Scene.hpp"
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
-#include "ImGuiConfig.hpp"
 #include "SwapChain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
@@ -497,100 +496,12 @@ auto draw(Scene *scene) -> expected<void> {
   return scene->next_frame();
 }
 
+auto init_imgui(Scene *scene) -> Result<void, Error> {
 #if REN_IMGUI
-
-namespace imgui {
-
-auto draw(Scene *scene) -> expected<void> {
-  ZoneScoped;
-
-  ren_ImGuiScope(scene->m_imgui_context);
-  if (ImGui::GetCurrentContext()) {
-    if (ImGui::Begin("Scene renderer settings")) {
-      SceneGraphicsSettings &settings = scene->m_data.settings;
-
-      ImGui::SeparatorText("Async compute");
-      {
-        ImGui::BeginDisabled(!scene->m_renderer->is_queue_family_supported(
-            rhi::QueueFamily::Compute));
-
-        ImGui::Checkbox("Async compute", &settings.async_compute);
-
-        ImGui::BeginDisabled(!scene->m_swap_chain->is_queue_family_supported(
-            rhi::QueueFamily::Compute));
-        ImGui::Checkbox("Present from compute", &settings.present_from_compute);
-        ImGui::EndDisabled();
-
-        ImGui::EndDisabled();
-      }
-
-      ImGui::SeparatorText("Latency");
-      {
-        ImGui::BeginDisabled(!scene->is_amd_anti_lag_available());
-        ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
-        ImGui::EndDisabled();
-      }
-
-      ImGui::SeparatorText("Instance culling");
-      {
-        ImGui::Checkbox("Frustum culling## Instance",
-                        &settings.instance_frustum_culling);
-        ImGui::Checkbox("Occlusion culling## Instance",
-                        &settings.instance_occulusion_culling);
-      }
-
-      ImGui::SeparatorText("Level of detail");
-      {
-        ImGui::SliderInt("LOD bias", &settings.lod_bias,
-                         -(glsl::MAX_NUM_LODS - 1), glsl::MAX_NUM_LODS - 1,
-                         "%d");
-
-        ImGui::Checkbox("LOD selection", &settings.lod_selection);
-
-        ImGui::BeginDisabled(!settings.lod_selection);
-        ImGui::SliderFloat("LOD pixels per triangle",
-                           &settings.lod_triangle_pixels, 1.0f, 64.0f, "%.1f",
-                           ImGuiSliderFlags_Logarithmic);
-        ImGui::EndDisabled();
-      }
-
-      ImGui::SeparatorText("Meshlet culling");
-      {
-        ImGui::Checkbox("Cone culling", &settings.meshlet_cone_culling);
-        ImGui::Checkbox("Frustum culling## Meshlet",
-                        &settings.meshlet_frustum_culling);
-        ImGui::Checkbox("Occlusion culling## Meshlet",
-                        &settings.meshlet_occlusion_culling);
-      }
-
-      ImGui::SeparatorText("SSAO");
-      {
-        ImGui::Checkbox("SSAO", &settings.ssao);
-
-        ImGui::BeginDisabled(!settings.ssao);
-        ImGui::SliderInt("Sample count", &settings.ssao_num_samples, 1, 64,
-                         "%d", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f,
-                           "%.3f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderFloat("LOD bias## SSAO", &settings.ssao_lod_bias, -1.0f,
-                           4.0f);
-        ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
-        ImGui::EndDisabled();
-      }
-
-      ImGui::End();
-    }
+  if (!ImGui::GetCurrentContext()) {
+    return {};
   }
 
-  return {};
-}
-
-void set_context(Scene *scene, ImGuiContext *context) {
-  scene->m_imgui_context = context;
-  if (!context) {
-    return;
-  }
-  ren_ImGuiScope(scene->m_imgui_context);
   ImGuiIO &io = ImGui::GetIO();
   io.BackendRendererName = "imgui_impl_ren";
   io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
@@ -622,16 +533,88 @@ void set_context(Scene *scene, ImGuiContext *context) {
                   .address_mode_v = rhi::SamplerAddressMode::Repeat,
               })
           .value();
-  // FIXME: font texture is leaked.
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor);
-}
-
-auto get_context(Scene *scene) -> ImGuiContext * {
-  return scene->m_imgui_context;
-}
-
-} // namespace imgui
 #endif
+  return {};
+}
+
+void draw_imgui(Scene *scene) {
+#if REN_IMGUI
+  ZoneScoped;
+
+  if (!ImGui::GetCurrentContext()) {
+    return;
+  }
+
+  SceneGraphicsSettings &settings = scene->m_data.settings;
+
+  ImGui::SeparatorText("Async compute");
+  {
+    ImGui::BeginDisabled(!scene->m_renderer->is_queue_family_supported(
+        rhi::QueueFamily::Compute));
+
+    ImGui::Checkbox("Async compute", &settings.async_compute);
+
+    ImGui::BeginDisabled(!scene->m_swap_chain->is_queue_family_supported(
+        rhi::QueueFamily::Compute));
+    ImGui::Checkbox("Present from compute", &settings.present_from_compute);
+    ImGui::EndDisabled();
+
+    ImGui::EndDisabled();
+  }
+
+  ImGui::SeparatorText("Latency");
+  {
+    ImGui::BeginDisabled(!scene->is_amd_anti_lag_available());
+    ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
+    ImGui::EndDisabled();
+  }
+
+  ImGui::SeparatorText("Instance culling");
+  {
+    ImGui::Checkbox("Frustum culling## Instance",
+                    &settings.instance_frustum_culling);
+    ImGui::Checkbox("Occlusion culling## Instance",
+                    &settings.instance_occulusion_culling);
+  }
+
+  ImGui::SeparatorText("Level of detail");
+  {
+    ImGui::SliderInt("LOD bias", &settings.lod_bias, -(glsl::MAX_NUM_LODS - 1),
+                     glsl::MAX_NUM_LODS - 1, "%d");
+
+    ImGui::Checkbox("LOD selection", &settings.lod_selection);
+
+    ImGui::BeginDisabled(!settings.lod_selection);
+    ImGui::SliderFloat("LOD pixels per triangle", &settings.lod_triangle_pixels,
+                       1.0f, 64.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+    ImGui::EndDisabled();
+  }
+
+  ImGui::SeparatorText("Meshlet culling");
+  {
+    ImGui::Checkbox("Cone culling", &settings.meshlet_cone_culling);
+    ImGui::Checkbox("Frustum culling## Meshlet",
+                    &settings.meshlet_frustum_culling);
+    ImGui::Checkbox("Occlusion culling## Meshlet",
+                    &settings.meshlet_occlusion_culling);
+  }
+
+  ImGui::SeparatorText("SSAO");
+  {
+    ImGui::Checkbox("SSAO", &settings.ssao);
+
+    ImGui::BeginDisabled(!settings.ssao);
+    ImGui::SliderInt("Sample count", &settings.ssao_num_samples, 1, 64, "%d",
+                     ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f, "%.3f",
+                       ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("LOD bias## SSAO", &settings.ssao_lod_bias, -1.0f, 4.0f);
+    ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
+    ImGui::EndDisabled();
+  }
+#endif
+}
 
 } // namespace ren_export
 
@@ -999,10 +982,9 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                         .sdr = &sdr,
                                     });
 #if REN_IMGUI
-  if (m_imgui_context) {
+  if (ImGui::GetDrawData()) {
     swap_chain_usage |= rhi::ImageUsage::RenderTarget;
     setup_imgui_pass(cfg, ImGuiPassConfig{
-                              .ctx = m_imgui_context,
                               .sdr = &sdr,
                           });
   }

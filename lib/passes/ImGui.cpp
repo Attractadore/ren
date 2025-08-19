@@ -1,7 +1,6 @@
 #if REN_IMGUI
 #include "ImGui.hpp"
 #include "../CommandRecorder.hpp"
-#include "../ImGuiConfig.hpp"
 #include "../Scene.hpp"
 #include "../glsl/ImGui.h"
 
@@ -17,8 +16,6 @@ struct ImGuiPassResources {
 
 void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
                     RenderPass &render_pass, const ImGuiPassResources &rcs) {
-  ren_ImGuiScope(rcs.ctx);
-
   const ImDrawData *draw_data = ImGui::GetDrawData();
   if (!draw_data->TotalVtxCount) {
     return;
@@ -115,7 +112,6 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
                                });
 
   ImGuiPassResources rcs = {
-      .ctx = cfg.ctx,
       .pipeline = ccfg.pipelines->imgui_pass,
       .viewport = ccfg.viewport,
   };
