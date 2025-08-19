@@ -12,6 +12,6 @@ void main() {
         vec3 v = pc.eye - world_pos.xyz / world_pos.w;
         luminance = texture_lod(pc.raw_env_map, -v, 0.0f).rgb;
     }
-    float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
+    float exposure = DEREF(pc.exposure);
     f_color = vec4(luminance * exposure, 1.0f);
 }

@@ -18,7 +18,7 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
   const Camera &camera = ccfg.scene->get_camera();
 
   RgSkyboxArgs args = {
-      .exposure = pass.read_texture(cfg.exposure),
+      .exposure = pass.read_buffer(cfg.exposure, rhi::FS_RESOURCE_BUFFER),
       .env_luminance = ccfg.scene->env_luminance,
       .env_map = ccfg.scene->env_map,
       .inv_proj_view =

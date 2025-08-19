@@ -311,6 +311,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
 
   return RgOpaqueArgs{
+      .exposure = pass.read_buffer(gpu_scene.exposure, rhi::FS_RESOURCE_BUFFER),
       .meshes = pass.read_buffer(gpu_scene.meshes, rhi::VS_RESOURCE_BUFFER),
       .mesh_instances =
           pass.read_buffer(gpu_scene.mesh_instances, rhi::VS_RESOURCE_BUFFER),
@@ -330,7 +331,6 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
           info.ssao, rhi::FS_RESOURCE_IMAGE,
           scene.settings.ssao_full_res ? rhi::SAMPLER_NEAREST_CLAMP
                                        : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
-      .exposure = pass.read_texture(info.exposure, rhi::FS_RESOURCE_IMAGE),
       .env_luminance = scene.env_luminance,
       .env_map = scene.env_map,
   };

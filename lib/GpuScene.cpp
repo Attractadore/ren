@@ -28,6 +28,7 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
       MAX_NUM_MESH_INSTANCES, glsl::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
 
   GpuScene gpu_scene = {
+      .exposure = create_buffer(float, "Exposure", 1),
       .meshes = create_buffer(glsl::Mesh, "Scene meshes", MAX_NUM_MESHES),
       .mesh_instances = create_buffer(
           glsl::MeshInstance, "Scene mesh instances", MAX_NUM_MESH_INSTANCES),

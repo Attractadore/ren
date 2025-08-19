@@ -50,7 +50,7 @@ void main() {
   float exposure;
   bool enable_automatic_exposure = !IS_NULL_PTR(pc.histogram);
   if (enable_automatic_exposure) {
-    exposure = texel_fetch(pc.previous_exposure, ivec2(0), 0).r;
+    exposure = DEREF(pc.exposure);
     init_luminance_histogram();
   }
 

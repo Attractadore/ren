@@ -12,6 +12,7 @@ namespace ren {
 auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
     -> RgGpuScene {
   RgGpuScene rg_gpu_scene = {
+      .exposure = rgb.create_buffer("exposure", gpu_scene.exposure),
       .meshes = rgb.create_buffer("meshes", gpu_scene.meshes),
       .mesh_instances =
           rgb.create_buffer("mesh-instances", gpu_scene.mesh_instances),

@@ -5,7 +5,7 @@ namespace ren {
 
 struct PostProcessingPassesConfig {
   RgTextureId hdr;
-  RgTextureId exposure;
+  NotNull<RgBufferId<float> *> exposure;
   NotNull<RgTextureId *> sdr;
 };
 

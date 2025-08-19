@@ -26,7 +26,6 @@ struct OpaquePassConfig {
   NotNull<RgTextureId *> depth_buffer;
   RgTextureId hi_z;
   RgTextureId ssao;
-  RgTextureId exposure;
 };
 
 void setup_opaque_pass(const PassCommonConfig &ccfg,

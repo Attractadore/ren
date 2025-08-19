@@ -6,7 +6,6 @@
 #include "core/Views.hpp"
 #include "glsl/Random.h"
 #include "glsl/Transforms.h"
-#include "passes/Exposure.hpp"
 #include "passes/GpuSceneUpdate.hpp"
 #include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
@@ -718,6 +717,17 @@ bool Scene::is_amd_anti_lag_enabled() {
   return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
 }
 
+namespace {
+
+auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
+  auto ev100_pow2 = camera.aperture * camera.aperture / camera.shutter_time *
+                    100.0f / camera.iso;
+  auto max_luminance = 1.2f * ev100_pow2 * glm::exp2(-ec);
+  return 1.0f / max_luminance;
+};
+
+} // namespace
+
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
   ZoneScoped;
 
@@ -771,11 +781,12 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                        .gpu_scene = &m_gpu_scene,
                                        .rg_gpu_scene = &rg_gpu_scene,
                                    });
-
-  RgTextureId exposure;
-  setup_exposure_pass(cfg, ExposurePassConfig{
-                               .exposure = &exposure,
-                           });
+  if (m_data.exposure.mode == ExposureMode::Camera) {
+    float exposure =
+        get_camera_exposure(m_data.get_camera().params, m_data.exposure.ec);
+    ren_assert(exposure > 0.0f);
+    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
+  }
 
   glm::uvec2 viewport = m_swap_chain->get_size();
 
@@ -960,11 +971,10 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                              .depth_buffer = &depth_buffer,
                              .hi_z = hi_z,
                              .ssao = ssao_llm,
-                             .exposure = exposure,
                          });
 
   setup_skybox_pass(cfg, SkyboxPassConfig{
-                             .exposure = exposure,
+                             .exposure = rg_gpu_scene.exposure,
                              .hdr = &hdr,
                              .depth_buffer = depth_buffer,
                          });
@@ -978,7 +988,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{
                                         .hdr = hdr,
-                                        .exposure = exposure,
+                                        .exposure = &rg_gpu_scene.exposure,
                                         .sdr = &sdr,
                                     });
 #if REN_IMGUI

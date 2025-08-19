@@ -4,7 +4,7 @@
 namespace ren {
 
 struct SkyboxPassConfig {
-  RgTextureId exposure;
+  RgBufferId<float> exposure;
   NotNull<RgTextureId *> hdr;
   RgTextureId depth_buffer;
 };

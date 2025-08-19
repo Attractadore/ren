@@ -71,7 +71,6 @@ add_library(ren STATIC
   PipelineLoading.cpp
   Scene.cpp
   SwapChain.cpp
-  passes/Exposure.cpp
   passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp
   passes/ImGui.cpp

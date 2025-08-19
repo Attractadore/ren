@@ -18,7 +18,6 @@ struct PassPersistentConfig {
 };
 
 struct PassPersistentResources {
-  RgTextureId exposure;
   RgTextureId hdr;
   RgTextureId depth_buffer;
   RgTextureId hi_z;

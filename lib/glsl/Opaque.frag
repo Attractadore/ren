@@ -78,7 +78,7 @@ void main() {
     result.xyz += occlusion * env_lighting(normal, view, albedo, f0, roughness, pc.env_luminance, ka, bent_normal);
   }
 
-  float exposure = texel_fetch(pc.exposure, ivec2(0), 0).r;
+  float exposure = DEREF(pc.exposure);
   result.xyz *= exposure;
 
   f_color = result;

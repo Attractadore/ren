@@ -32,5 +32,5 @@ void main() {
     exposure = 1.0f / max_luminance;
   }
 
-  image_store(pc.exposure, ivec2(0), exposure);
+  DEREF(pc.exposure) = exposure;
 }

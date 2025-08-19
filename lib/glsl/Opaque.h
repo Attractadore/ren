@@ -8,6 +8,7 @@
 GLSL_NAMESPACE_BEGIN
 
 GLSL_PUSH_CONSTANTS OpaqueArgs {
+  GLSL_READONLY GLSL_PTR(float) exposure;
   GLSL_READONLY GLSL_PTR(Mesh) meshes;
   GLSL_READONLY GLSL_PTR(MeshInstance) mesh_instances;
   GLSL_READONLY GLSL_PTR(mat4x3) transform_matrices;
@@ -19,7 +20,6 @@ GLSL_PUSH_CONSTANTS OpaqueArgs {
   vec3 eye;
   vec2 inv_viewport;
   SampledTexture2D ssao;
-  Texture2D exposure;
   vec3 env_luminance;
   SampledTextureCube raw_env_map;
 }

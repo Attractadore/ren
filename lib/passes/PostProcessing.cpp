@@ -33,7 +33,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
     if (histogram) {
       args.histogram = pass.write_buffer("luminance-histogram", &histogram);
-      args.previous_exposure = pass.read_texture(cfg.exposure);
+      args.exposure = pass.read_buffer(*cfg.exposure);
     }
 
     pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, ccfg.viewport,
@@ -48,7 +48,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
     RgReduceLuminanceHistogramArgs args = {
         .histogram = pass.read_buffer(histogram),
-        .exposure = pass.write_texture("new-exposure", cfg.exposure, nullptr),
+        .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
         .exposure_compensation = ccfg.scene->exposure.ec,
     };
 

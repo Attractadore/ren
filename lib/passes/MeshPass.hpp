@@ -57,7 +57,6 @@ using DepthOnlyMeshPassInfo = MeshPassInfo<DrawSet::DepthOnly>;
 template <> struct MeshPassInfo<DrawSet::Opaque> {
   MeshPassBaseInfo base;
   RgTextureId ssao;
-  RgTextureId exposure;
 };
 
 using OpaqueMeshPassInfo = MeshPassInfo<DrawSet::Opaque>;

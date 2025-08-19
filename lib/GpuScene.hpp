@@ -48,6 +48,8 @@ public:
 };
 
 struct GpuScene {
+  BufferSlice<float> exposure;
+
   BufferSlice<glsl::Mesh> meshes;
   Vector<Handle<Mesh>> update_meshes;
   Vector<glsl::Mesh> mesh_update_data;
@@ -74,6 +76,7 @@ struct RgDrawSetData {
 };
 
 struct RgGpuScene {
+  RgBufferId<float> exposure;
   RgBufferId<glsl::Mesh> meshes;
   RgBufferId<glsl::MeshInstance> mesh_instances;
   RgBufferId<glm::mat4x3> transform_matrices;

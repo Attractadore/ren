@@ -8,7 +8,7 @@ GLSL_NAMESPACE_BEGIN
 
 GLSL_PUSH_CONSTANTS PostProcessingArgs {
   GLSL_PTR(LuminanceHistogram) histogram;
-  Texture2D previous_exposure;
+  GLSL_READONLY GLSL_PTR(float) exposure;
   Texture2D hdr;
   StorageTexture2D sdr;
 }
