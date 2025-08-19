@@ -982,7 +982,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                         .sdr = &sdr,
                                     });
 #if REN_IMGUI
-  if (ImGui::GetDrawData()) {
+  if (ImGui::GetCurrentContext() and ImGui::GetDrawData()) {
     swap_chain_usage |= rhi::ImageUsage::RenderTarget;
     setup_imgui_pass(cfg, ImGuiPassConfig{
                               .sdr = &sdr,
