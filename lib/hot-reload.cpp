@@ -5,7 +5,7 @@
 #include "core/Vector.hpp"
 #include "ren/ren.hpp"
 
-#include <SDL_loadso.h>
+#include <SDL3/SDL_loadso.h>
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/std.h>
@@ -32,7 +32,7 @@ int lib_watch_fd = -1;
 fs::file_time_type lib_timestamp = {};
 #endif
 
-void *lib_handle = nullptr;
+SDL_SharedObject *lib_handle = nullptr;
 
 // On DLL platforms, the DLL is locked when it's loaded, so it can't be updated
 // by the compiler. Copy it to a temporary location to bypass this.

@@ -1,8 +1,9 @@
 #pragma once
 #include "ren/ren.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_hints.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_init.h>
 #include <chrono>
 #include <fmt/format.h>
 
@@ -76,8 +77,7 @@ protected:
   template <class App, typename... Args>
   [[nodiscard]] static auto run(Args &&...args) -> int {
     auto rc = [&]() -> Result<void> {
-      SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
-      if (SDL_Init(SDL_INIT_EVERYTHING)) {
+      if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         bail("{}", SDL_GetError());
       }
       App app;

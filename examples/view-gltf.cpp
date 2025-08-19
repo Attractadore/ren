@@ -855,12 +855,12 @@ protected:
     switch (event.type) {
     default:
       break;
-    case SDL_MOUSEWHEEL: {
+    case SDL_EVENT_MOUSE_WHEEL: {
       if (imgui_wants_capture_mouse()) {
         break;
       }
-      m_distance = m_distance *
-                   glm::pow(2.0f, event.wheel.preciseY / m_zoom_sensitivity);
+      m_distance =
+          m_distance * glm::pow(2.0f, event.wheel.y / m_zoom_sensitivity);
     } break;
     }
     return {};
@@ -873,7 +873,7 @@ protected:
 
   auto get_input_state() const -> InputState {
     InputState input;
-    const Uint8 *keys = SDL_GetKeyboardState(nullptr);
+    const bool *keys = SDL_GetKeyboardState(nullptr);
     if (keys[m_pitch_up_key]) {
       input.pitch += 1.0f;
     }

@@ -14,8 +14,8 @@ auto get_error_string_impl(ren::Error err) -> std::string {
     return "ren: System error";
   case ren::Error::Runtime:
     return "ren: Runtime error";
-  case ren::Error::SDL2:
-    return fmt::format("ren: SDL2 error: {}", SDL_GetError());
+  case ren::Error::SDL:
+    return fmt::format("ren: SDL error: {}", SDL_GetError());
   case ren::Error::Unknown:
     return "ren: Unknown error";
   }
@@ -41,10 +41,10 @@ auto AppBase::init(const char *app_name) -> Result<void> {
 
   OK(m_renderer, ren::create_renderer({.adapter = adapter}));
 
-  m_window = SDL_CreateWindow(app_name, SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED, 1280, 720,
-                              SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE |
-                                  ren::get_sdl_window_flags(m_renderer));
+  m_window =
+      SDL_CreateWindow(app_name, 1280, 720,
+                       SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE |
+                           ren::get_sdl_window_flags(m_renderer));
   if (!m_window) {
     bail("{}", SDL_GetError());
   }
@@ -83,9 +83,8 @@ auto AppBase::loop() -> Result<void> {
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
-      if (e.type == SDL_QUIT or
-          (e.type == SDL_KEYDOWN and
-           e.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
+      if (e.type == SDL_EVENT_QUIT or (e.type == SDL_EVENT_KEY_DOWN and
+                                       e.key.scancode == SDL_SCANCODE_ESCAPE)) {
         quit = true;
       }
       TRY_TO(process_event(e));
@@ -101,12 +100,10 @@ auto AppBase::loop() -> Result<void> {
 }
 
 auto AppBase::process_event(const SDL_Event &event) -> Result<void> {
-  if (event.type == SDL_KEYDOWN and
-      event.key.keysym.scancode == SDL_SCANCODE_F11) {
-    bool is_fullscreen =
-        SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
-    SDL_SetWindowFullscreen(m_window,
-                            is_fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+  if (event.type == SDL_EVENT_KEY_DOWN and
+      event.key.scancode == SDL_SCANCODE_F11) {
+    bool is_fullscreen = SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN;
+    SDL_SetWindowFullscreen(m_window, not is_fullscreen);
   }
   return {};
 }

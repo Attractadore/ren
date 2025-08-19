@@ -12,7 +12,7 @@ enum class Error {
   RHI,
   System,
   Runtime,
-  SDL2,
+  SDL,
   InvalidFormat,
   InvalidVersion,
   IO,

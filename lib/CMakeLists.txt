@@ -28,7 +28,7 @@ add_library(ren::vma ALIAS ren-vma)
 add_library(ren-rhi rhi.cpp rhi-vk.cpp)
 target_link_libraries(ren-rhi
   PUBLIC ren::core ren::vma Vulkan::Headers tiny_imageformat
-  PRIVATE SDL2::SDL2 volk::volk
+  PRIVATE SDL3::SDL3 volk::volk
 )
 add_library(ren::rhi ALIAS ren-rhi)
 
@@ -83,7 +83,7 @@ add_library(ren STATIC
 )
 target_include_directories(ren PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren
-  PUBLIC glm::glm tiny_imageformat SDL2::SDL2
+  PUBLIC glm::glm tiny_imageformat SDL3::SDL3
   PRIVATE ren-internal KTX::ktx
 )
 target_compile_features(ren PUBLIC cxx_std_23)
@@ -95,7 +95,7 @@ if(REN_HOT_RELOAD)
 
   add_library(ren-hot-reload STATIC hot-reload.cpp)
   target_include_directories(ren-hot-reload PUBLIC ${REN_INCLUDE})
-  target_link_libraries(ren-hot-reload PUBLIC glm::glm tiny_imageformat PRIVATE ren::core SDL2::SDL2)
+  target_link_libraries(ren-hot-reload PUBLIC glm::glm tiny_imageformat PRIVATE ren::core SDL3::SDL3)
   target_compile_features(ren-hot-reload PUBLIC cxx_std_23)
 
   target_compile_definitions(ren-hot-reload

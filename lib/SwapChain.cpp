@@ -4,8 +4,7 @@
 #include "Scene.hpp"
 #include "core/Views.hpp"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
+#include <SDL3/SDL_video.h>
 #include <algorithm>
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
@@ -54,10 +53,9 @@ namespace {
 auto get_fullscreen_state(SDL_Window *window) -> bool {
   int w, h;
   SDL_GetWindowSize((SDL_Window *)window, &w, &h);
-  int display = SDL_GetWindowDisplayIndex((SDL_Window *)window);
-  SDL_DisplayMode mode;
-  SDL_GetDesktopDisplayMode(display, &mode);
-  return mode.w == w and mode.h == h;
+  int display = SDL_GetDisplayForWindow((SDL_Window *)window);
+  const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(display);
+  return mode->w == w and mode->h == h;
 }
 
 } // namespace
@@ -160,16 +158,8 @@ auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
 }
 
 auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
-  SDL_SysWMinfo wm_info;
-  SDL_VERSION(&wm_info.version);
-  if (!SDL_GetWindowWMInfo(m_window, &wm_info)) {
-    return Failure(Error::SDL2);
-  }
-  switch (wm_info.subsystem) {
-  default:
-    return 3;
-  case SDL_SYSWM_X11:
-  case SDL_SYSWM_WAYLAND: {
+  const char *wm = SDL_GetCurrentVideoDriver();
+  if (std::strcmp(wm, "x11") == 0 or std::strcmp(wm, "wayland") == 0) {
     // On Linux, we need the following images:
     // 1. One for presenting.
     // 2. For mailbox, one queued for present.
@@ -183,8 +173,7 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
       return num_images + 1;
     }
     return num_images;
-  }
-  case SDL_SYSWM_WINDOWS: {
+  } else if (std::strcmp(wm, "windows") == 0) {
     // On Windows, we need the following images:
     // 1. One for presenting.
     // 2. For mailbox, 1 or 2 queued for present. DWM can only returns images
@@ -200,7 +189,8 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
       return num_images + 1;
     }
     return num_images;
-  }
+  } else {
+    return 3;
   }
 }
 

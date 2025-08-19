@@ -22,6 +22,4 @@ protected:
 private:
   bool m_imgui_enabled = true;
   ImFont *m_font = nullptr;
-  float m_ui_scale = 1.0f;
-  float m_mouse_scale = 1.0f;
 };

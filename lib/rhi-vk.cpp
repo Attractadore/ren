@@ -7,7 +7,7 @@
 #include "core/Views.hpp"
 #include "glsl/Texture.h"
 
-#include <SDL2/SDL_vulkan.h>
+#include <SDL3/SDL_vulkan.h>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
 #include <utility>
@@ -476,7 +476,7 @@ auto load(bool headless) -> Result<void> {
   std::ignore = rhi::load_gfx_debugger();
   fmt::println("vk: Load Vulkan");
   if (not headless) {
-    if (SDL_Vulkan_LoadLibrary(nullptr)) {
+    if (!SDL_Vulkan_LoadLibrary(nullptr)) {
       return fail(VK_ERROR_UNKNOWN);
     }
   }
@@ -583,17 +583,14 @@ auto create_instance(const InstanceCreateInfo &create_info)
   SmallVector<const char *> extensions;
 
   if (not create_info.headless) {
-    fmt::println("vk: Enable SDL2 required extensions");
+    fmt::println("vk: Enable SDL required extensions");
     u32 num_sdl_extensions = 0;
-    if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
-                                          nullptr)) {
+    const char *const *sdl_extensions =
+        SDL_Vulkan_GetInstanceExtensions(&num_sdl_extensions);
+    if (!sdl_extensions) {
       return fail(Error::Unknown);
     }
-    extensions.resize(num_sdl_extensions);
-    if (!SDL_Vulkan_GetInstanceExtensions(nullptr, &num_sdl_extensions,
-                                          extensions.data())) {
-      return fail(Error::Unknown);
-    }
+    extensions = Span(sdl_extensions, num_sdl_extensions);
 
     extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
@@ -2399,7 +2396,8 @@ extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
 auto create_surface(Instance instance, SDL_Window *window) -> Result<Surface> {
   Surface surface;
-  if (!SDL_Vulkan_CreateSurface(window, instance->handle, &surface.handle)) {
+  if (!SDL_Vulkan_CreateSurface(window, instance->handle, nullptr,
+                                &surface.handle)) {
     return fail(Error::Unknown);
   }
   return surface;
