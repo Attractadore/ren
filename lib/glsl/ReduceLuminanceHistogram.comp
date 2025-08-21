@@ -28,7 +28,8 @@ void main() {
   if (num_samples > 0) {
     log_luminance /= num_samples;
     float luminance = exp2(log_luminance - pc.exposure_compensation);
-    float max_luminance = 9.6f * luminance;
+    const float MIDDLE_GRAY = 0.18f;
+    float max_luminance = 1.2f / MIDDLE_GRAY * luminance;
     exposure = 1.0f / max_luminance;
   }
 

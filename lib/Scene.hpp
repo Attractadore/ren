@@ -64,7 +64,7 @@ struct SceneGraphicsSettings {
   bool ssao_full_res = false;
 
   // Post processing
-  glsl::ToneMapper tone_mapper = glsl::ToneMapper::Aces;
+  glsl::ToneMapper tone_mapper = glsl::ToneMapper::AgxPunchy;
 
   bool amd_anti_lag = true;
 };

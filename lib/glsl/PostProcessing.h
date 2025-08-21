@@ -10,6 +10,9 @@ const uint TONE_MAPPER_LINEAR = 0;
 const uint TONE_MAPPER_REINHARD = 1;
 const uint TONE_MAPPER_ACES = 2;
 const uint TONE_MAPPER_KHR_PBR_NEUTRAL = 3;
+const uint TONE_MAPPER_AGX_DEFAULT = 4;
+const uint TONE_MAPPER_AGX_GOLDEN = 5;
+const uint TONE_MAPPER_AGX_PUNCHY = 6;
 
 #if __cplusplus
 
@@ -18,6 +21,9 @@ enum class ToneMapper {
   Reinhard = TONE_MAPPER_REINHARD,
   Aces = TONE_MAPPER_ACES,
   KhrPbrNeutral = TONE_MAPPER_KHR_PBR_NEUTRAL,
+  AgxDefault = TONE_MAPPER_AGX_DEFAULT,
+  AgxGolden = TONE_MAPPER_AGX_GOLDEN,
+  AgxPunchy = TONE_MAPPER_AGX_PUNCHY,
   Count,
 };
 
