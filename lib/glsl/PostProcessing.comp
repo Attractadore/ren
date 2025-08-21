@@ -43,6 +43,24 @@ vec3 tone_map_aces(vec3 color) {
   return clamp(color, 0.0f, 1.0f);
 }
 
+// https://github.com/KhronosGroup/ToneMapping/blob/main/PBR_Neutral
+vec3 tone_map_khr_pbr_neutral(vec3 color) {
+  const float F0 = 0.04f;
+  const float KS = 0.80f - F0;
+  const float KD = 0.15f;
+
+  float x = min(color.r, min(color.g, color.b));
+  float f = x <= 2.0f * F0 ? x - x * x / (4.0f * F0): F0;
+  float p = max(color.r, max(color.g, color.b)) - f;
+  if (p <= KS) {
+    return color - f;
+  }
+
+  float p_n = 1.0f - (1.0f - KS) * (1.0f - KS) / (p + 1.0f - 2.0f * KS);
+  float g = 1.0f / (KD * (p - p_n) + 1.0f);
+
+  return mix(vec3(p_n), (color - f) * p_n / p, g);
+}
 
 void init_luminance_histogram() {
   uint i = gl_LocalInvocationIndex;
@@ -104,6 +122,9 @@ void main() {
         } break;
         case TONE_MAPPER_ACES: {
           color = tone_map_aces(color);
+        } break;
+        case TONE_MAPPER_KHR_PBR_NEUTRAL: {
+          color = tone_map_khr_pbr_neutral(color);
         } break;
       }
 

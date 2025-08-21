@@ -615,10 +615,11 @@ void draw_imgui(Scene *scene) {
 
   ImGui::SeparatorText("Post processing");
   {
-    const char *TONE_MAPPERS[3] = {};
+    const char *TONE_MAPPERS[(i32)glsl::ToneMapper::Count] = {};
     TONE_MAPPERS[glsl::TONE_MAPPER_LINEAR] = "Linear";
     TONE_MAPPERS[glsl::TONE_MAPPER_REINHARD] = "Reinhard";
     TONE_MAPPERS[glsl::TONE_MAPPER_ACES] = "ACES";
+    TONE_MAPPERS[glsl::TONE_MAPPER_KHR_PBR_NEUTRAL] = "Khronos PBR Neutral";
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
   }

@@ -9,6 +9,7 @@ GLSL_NAMESPACE_BEGIN
 const uint TONE_MAPPER_LINEAR = 0;
 const uint TONE_MAPPER_REINHARD = 1;
 const uint TONE_MAPPER_ACES = 2;
+const uint TONE_MAPPER_KHR_PBR_NEUTRAL = 3;
 
 #if __cplusplus
 
@@ -16,6 +17,8 @@ enum class ToneMapper {
   Linear = TONE_MAPPER_LINEAR,
   Reinhard = TONE_MAPPER_REINHARD,
   Aces = TONE_MAPPER_ACES,
+  KhrPbrNeutral = TONE_MAPPER_KHR_PBR_NEUTRAL,
+  Count,
 };
 
 #endif
