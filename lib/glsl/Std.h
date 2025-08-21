@@ -31,6 +31,8 @@
 #define GLSL_PUSH_CONSTANTS layout(push_constant, scalar) uniform
 #define GLSL_PC pc
 
+#define GLSL_ENUM(T) uint
+
 #define SPEC_CONSTANT(id) layout(constant_id = id) const
 
 #define LOCAL_SIZE_3D(x, y, z)                                                 \
@@ -57,6 +59,8 @@
 
 #define GLSL_PUSH_CONSTANTS struct
 #define GLSL_PC
+
+#define GLSL_ENUM(T) T
 
 GLSL_NAMESPACE_BEGIN
 using namespace glm;

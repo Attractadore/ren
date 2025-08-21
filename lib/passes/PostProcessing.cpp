@@ -29,6 +29,8 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     RgPostProcessingArgs args = {
         .hdr = pass.read_texture(cfg.hdr),
         .sdr = pass.write_texture("sdr", cfg.sdr.get()),
+        .tone_mapper = scene.settings.tone_mapper,
+        .output_color_space = glsl::ColorSpace::Srgb,
     };
 
     if (histogram) {

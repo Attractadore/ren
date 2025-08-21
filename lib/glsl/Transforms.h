@@ -87,4 +87,9 @@ inline uint hilbert_from_2d(uint n, uint x, uint y) {
   return d;
 }
 
+inline vec3 linear_to_srgb(vec3 color) {
+  return mix(color * 12.92f, 1.055f * pow(color, vec3(1.0f / 2.4f)) - 0.055f,
+             greaterThanEqual(color, vec3(0.0031308f)));
+}
+
 GLSL_NAMESPACE_END

@@ -100,80 +100,15 @@ auto gen_rg_args(const CompileOptions &opts,
 
   const SpvReflectTypeDescription *type = pc->type_description;
 
-  String element_type;
-  String scalar_type;
-
   Vector<Member> members(type->member_count);
+  String element_type;
   for (usize i : range(type->member_count)) {
-    Member &member = members[i];
-    const SpvReflectArrayTraits &array = type->members[i].traits.array;
-    SpvReflectTypeFlags type_flags = type->members[i].type_flags;
     element_type.clear();
-    if (type->members[i].type_name) {
-      StringView member_type = type->members[i].type_name;
-      constexpr StringView PTR_SUFFIX = "_Ptr";
-      if (member_type.ends_with(PTR_SUFFIX)) {
-        member_type.remove_suffix(PTR_SUFFIX.size());
-        fmt::format_to(
-            std::back_inserter(element_type), "GLSL_UNQUALIFIED_PTR({}{})",
-            member_type == "void" or member_type == "float" ? ""
-                                                            : "::ren::glsl::",
-            member_type);
-      } else {
-        fmt::format_to(std::back_inserter(element_type), "::ren::glsl::{}",
-                       type->members[i].type_name);
-      }
-    } else {
-      scalar_type.clear();
-      const SpvReflectNumericTraits &numeric = type->members[i].traits.numeric;
-      const SpvReflectNumericTraits::Scalar &scalar = numeric.scalar;
-      if (type_flags & SPV_REFLECT_TYPE_FLAG_BOOL) {
-        fmt::println(stderr, "Booleans in push constants are not supported");
-        return -1;
-      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_INT) {
-        fmt::format_to(std::back_inserter(scalar_type), "{}int{}_t",
-                       scalar.signedness ? "" : "u", scalar.width);
-      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_FLOAT) {
-        if (scalar.width == 32) {
-          scalar_type = "float";
-        } else if (scalar.width == 64) {
-          scalar_type = "double";
-        } else {
-          fmt::println(stderr,
-                       "Unknown float type of {}::{}: width: {}, signed: {}",
-                       type->type_name, type->members[i].struct_member_name,
-                       scalar.width, scalar.signedness);
-          return -1;
-        }
-      } else {
-        fmt::println(stderr, "Failed to identify scalar type of {}::{}",
-                     type->type_name, type->members[i].struct_member_name);
-        return -1;
-      }
-
-      if (type_flags & SPV_REFLECT_TYPE_FLAG_MATRIX) {
-        fmt::format_to(std::back_inserter(element_type), "glm::mat<{}, {}, {}>",
-                       numeric.matrix.column_count, numeric.matrix.row_count,
-                       scalar_type);
-      } else if (type_flags & SPV_REFLECT_TYPE_FLAG_VECTOR) {
-        fmt::format_to(std::back_inserter(element_type), "glm::vec<{}, {}>",
-                       numeric.vector.component_count, scalar_type);
-      } else {
-        element_type = scalar_type;
-      }
-    }
-    if (type_flags & SPV_REFLECT_TYPE_FLAG_ARRAY) {
-      if (array.dims_count > 1) {
-        fmt::println(
-            stderr,
-            "Multidimensional arrays are not supported in push constants");
-        return -1;
-      }
-      member.type =
-          fmt::format("std::array<{}, {}>", element_type, array.dims[0]);
-    } else {
-      member.type = element_type;
-    }
+    fmt::format_to(std::back_inserter(element_type),
+                   "decltype(::ren::glsl::{}::{})", type->type_name,
+                   type->members[i].struct_member_name);
+    Member &member = members[i];
+    member.type = element_type;
     member.name = type->members[i].struct_member_name;
   }
 

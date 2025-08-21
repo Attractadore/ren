@@ -1,5 +1,6 @@
 #include "PostProcessing.h"
 #include "Texture.glsl"
+#include "Transforms.h"
 
 const uint THREADS_X = 8;
 const uint THREADS_Y = 8;
@@ -9,6 +10,39 @@ shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 float get_luminance(vec3 color) {
   return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
 }
+
+vec3 tone_map_reinhard(vec3 color) {
+  float luminance = get_luminance(color);
+  return 1.0f / (1.0f + luminance) * color;
+}
+
+vec3 aces_rrt_and_odt_fit(vec3 v) {
+  vec3 a = v * (v + 0.0245786f) - 0.000090537f;
+  vec3 b = v * (0.983729f * v + 0.4329510f) + 0.238081f;
+  return a / b;
+}
+
+// https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+vec3 tone_map_aces(vec3 color) {
+  const mat3 ACES_INPUT_MATRIX = mat3(
+    0.59719f, 0.07600f, 0.02840f,
+    0.35458f, 0.90834f, 0.13383f,
+    0.04823f, 0.01566f, 0.83777f
+  );
+
+  const mat3 ACES_OUTPUT_MATRIX = mat3(
+     1.60475f, -0.10208f, -0.00327f,
+    -0.53108f,  1.10813f, -0.07276f,
+    -0.07367f, -0.00605f,  1.07602f
+  );
+
+  color = ACES_INPUT_MATRIX * color;
+  color = aces_rrt_and_odt_fit(color);
+  color = ACES_OUTPUT_MATRIX * color;
+
+  return clamp(color, 0.0f, 1.0f);
+}
+
 
 void init_luminance_histogram() {
   uint i = gl_LocalInvocationIndex;
@@ -47,30 +81,39 @@ void main() {
   const ivec2 size = texture_size(pc.hdr);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy) * ivec2(THREADS_X, THREADS_Y);
 
-  float exposure;
   bool enable_automatic_exposure = !IS_NULL_PTR(pc.histogram);
   if (enable_automatic_exposure) {
-    exposure = DEREF(pc.exposure);
     init_luminance_histogram();
   }
 
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec4 color = texel_fetch(pc.hdr, ivec2(x, y), 0);
-      float luminance = get_luminance(color.rgb);
+      vec3 color = texel_fetch(pc.hdr, ivec2(x, y), 0).rgb;
 
       if (enable_automatic_exposure) {
+        float luminance = get_luminance(color);
+        float exposure = DEREF(pc.exposure);
         add_to_luminance_histogram(luminance / exposure);
       }
 
-      // Tone mapping
-      color.rgb /= (1.0f + luminance);
+      switch (pc.tone_mapper) {
+        case TONE_MAPPER_LINEAR: break;
+        case TONE_MAPPER_REINHARD: {
+          color = tone_map_reinhard(color);
+        } break;
+        case TONE_MAPPER_ACES: {
+          color = tone_map_aces(color);
+        } break;
+      }
 
-      // Gamma correction.
-      color.rgb = pow(color.rgb, vec3(1.0f / 2.4f));
+      switch (pc.output_color_space) {
+        case COLOR_SPACE_SRGB: {
+          color = linear_to_srgb(color);
+        } break;
+      }
 
-      image_store(pc.sdr, ivec2(x, y), color);
+      image_store(pc.sdr, ivec2(x, y), vec4(color, 1.0f));
     }
   }
 

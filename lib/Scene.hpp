@@ -11,6 +11,7 @@
 #include "Texture.hpp"
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
+#include "glsl/PostProcessing.h"
 #include "passes/Pass.hpp"
 #include "ren/ren.hpp"
 
@@ -61,6 +62,9 @@ struct SceneGraphicsSettings {
   float ssao_radius = 1.0f;
   float ssao_lod_bias = 0.0f;
   bool ssao_full_res = false;
+
+  // Post processing
+  glsl::ToneMapper tone_mapper = glsl::ToneMapper::Aces;
 
   bool amd_anti_lag = true;
 };

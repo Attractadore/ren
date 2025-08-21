@@ -612,6 +612,16 @@ void draw_imgui(Scene *scene) {
     ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
     ImGui::EndDisabled();
   }
+
+  ImGui::SeparatorText("Post processing");
+  {
+    const char *TONE_MAPPERS[3] = {};
+    TONE_MAPPERS[glsl::TONE_MAPPER_LINEAR] = "Linear";
+    TONE_MAPPERS[glsl::TONE_MAPPER_REINHARD] = "Reinhard";
+    TONE_MAPPERS[glsl::TONE_MAPPER_ACES] = "ACES";
+    ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
+                   std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
+  }
 #endif
 }
 
