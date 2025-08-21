@@ -12,6 +12,10 @@ float get_luminance(vec3 color) {
 }
 
 vec3 tone_map_reinhard(vec3 color) {
+  return color / (1.0f + color);
+}
+
+vec3 tone_map_luminance_reinhard(vec3 color) {
   float luminance = get_luminance(color);
   return 1.0f / (1.0f + luminance) * color;
 }
@@ -179,6 +183,9 @@ void main() {
         case TONE_MAPPER_LINEAR: break;
         case TONE_MAPPER_REINHARD: {
           color = tone_map_reinhard(color);
+        } break;
+        case TONE_MAPPER_LUMINANCE_REINHARD: {
+          color = tone_map_luminance_reinhard(color);
         } break;
         case TONE_MAPPER_ACES: {
           color = tone_map_aces(color);

@@ -8,17 +8,19 @@ GLSL_NAMESPACE_BEGIN
 
 const uint TONE_MAPPER_LINEAR = 0;
 const uint TONE_MAPPER_REINHARD = 1;
-const uint TONE_MAPPER_ACES = 2;
-const uint TONE_MAPPER_KHR_PBR_NEUTRAL = 3;
-const uint TONE_MAPPER_AGX_DEFAULT = 4;
-const uint TONE_MAPPER_AGX_GOLDEN = 5;
-const uint TONE_MAPPER_AGX_PUNCHY = 6;
+const uint TONE_MAPPER_LUMINANCE_REINHARD = 2;
+const uint TONE_MAPPER_ACES = 3;
+const uint TONE_MAPPER_KHR_PBR_NEUTRAL = 4;
+const uint TONE_MAPPER_AGX_DEFAULT = 5;
+const uint TONE_MAPPER_AGX_GOLDEN = 6;
+const uint TONE_MAPPER_AGX_PUNCHY = 7;
 
 #if __cplusplus
 
 enum class ToneMapper {
   Linear = TONE_MAPPER_LINEAR,
   Reinhard = TONE_MAPPER_REINHARD,
+  LuminanceReinhard = TONE_MAPPER_LUMINANCE_REINHARD,
   Aces = TONE_MAPPER_ACES,
   KhrPbrNeutral = TONE_MAPPER_KHR_PBR_NEUTRAL,
   AgxDefault = TONE_MAPPER_AGX_DEFAULT,

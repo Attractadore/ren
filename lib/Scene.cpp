@@ -618,6 +618,7 @@ void draw_imgui(Scene *scene) {
     const char *TONE_MAPPERS[(i32)glsl::ToneMapper::Count] = {};
     TONE_MAPPERS[glsl::TONE_MAPPER_LINEAR] = "Linear";
     TONE_MAPPERS[glsl::TONE_MAPPER_REINHARD] = "Reinhard";
+    TONE_MAPPERS[glsl::TONE_MAPPER_LUMINANCE_REINHARD] = "Reinhard (Luminance)";
     TONE_MAPPERS[glsl::TONE_MAPPER_ACES] = "ACES";
     TONE_MAPPERS[glsl::TONE_MAPPER_KHR_PBR_NEUTRAL] = "Khronos PBR Neutral";
     TONE_MAPPERS[glsl::TONE_MAPPER_AGX_DEFAULT] = "AgX Default";
