@@ -8,10 +8,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
   const SceneData &scene = *ccfg.scene;
 
-  RgBufferId<glsl::LuminanceHistogram> histogram;
+  RgBufferId<sh::LuminanceHistogram> histogram;
   if (scene.exposure.mode == ExposureMode::Automatic) {
-    histogram = ccfg.rgb->create_buffer<glsl::LuminanceHistogram>({
-        .init = glsl::LuminanceHistogram(),
+    histogram = ccfg.rgb->create_buffer<sh::LuminanceHistogram>({
+        .init = sh::LuminanceHistogram(),
         .init_queue = RgQueue::Async,
     });
   }
@@ -30,7 +30,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .hdr = pass.read_texture(cfg.hdr),
         .sdr = pass.write_texture("sdr", cfg.sdr.get()),
         .tone_mapper = scene.settings.tone_mapper,
-        .output_color_space = glsl::ColorSpace::Srgb,
+        .output_color_space = sh::COLOR_SPACE_SRGB,
     };
 
     if (histogram) {
@@ -55,6 +55,6 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     };
 
     pass.dispatch_grid(ccfg.pipelines->reduce_luminance_histogram, args,
-                       glsl::NUM_LUMINANCE_HISTOGRAM_BINS);
+                       sh::NUM_LUMINANCE_HISTOGRAM_BINS);
   }
 }

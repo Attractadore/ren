@@ -44,7 +44,7 @@ add_library(ren-internal
 )
 target_link_libraries(ren-internal
   PUBLIC ren::core ren::rhi
-  PRIVATE spirv-reflect KTX::ktx
+  PRIVATE SPIRV-Headers KTX::ktx
 )
 
 if(REN_DEBUG_LAYER)
@@ -117,12 +117,9 @@ if (REN_BUILD_IMGUI_PLUGIN)
   target_compile_definitions(ren PRIVATE REN_IMGUI)
 endif()
 
-if (REN_BUILD_SHADER_COMPILER)
-  message(STATUS "Build shader compiler")
-  add_executable(ren-shader-compiler shader-compiler.cpp)
-  target_link_libraries(ren-shader-compiler ren::core glslang::glslang glslang::glslang-default-resource-limits cxxopts::cxxopts spirv-reflect)
-  add_executable(ren::shader-compiler ALIAS ren-shader-compiler)
-endif()
+add_executable(ren-process-shader process-shader.cpp)
+target_link_libraries(ren-process-shader ren::core cxxopts::cxxopts SPIRV-Headers)
+add_executable(ren::process-shader ALIAS ren-process-shader)
 
 add_library(ren-baking
   ImageBaking.cpp
@@ -147,7 +144,7 @@ if (REN_BUILD_BAKING_TOOLS)
   target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx cxxopts::cxxopts stb)
 endif()
 
-add_subdirectory(glsl)
+add_subdirectory(sh)
 
 add_executable(test-sequences test-sequences.cpp)
 target_link_libraries(test-sequences ren::core)

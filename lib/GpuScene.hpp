@@ -1,11 +1,9 @@
 #pragma once
 #include "DrawSet.hpp"
-#include "Light.hpp"
-#include "Material.hpp"
 #include "Mesh.hpp"
 #include "RenderGraph.hpp"
-#include "glsl/Culling.h"
-#include "glsl/GpuScene.h"
+#include "sh/Geometry.h"
+#include "sh/Lighting.h"
 
 #include <glm/glm.hpp>
 
@@ -13,13 +11,6 @@ namespace ren {
 
 struct SceneData;
 struct Pipelines;
-
-namespace glsl {
-struct Mesh;
-struct Material;
-struct MeshInstance;
-struct DirectionalLight;
-} // namespace glsl
 
 struct BatchDesc {
   MeshAttributeFlags attributes;
@@ -36,8 +27,8 @@ struct Batch {
 struct DrawSetData {
 public:
   Vector<Handle<MeshInstance>> mesh_instances;
-  BufferSlice<glsl::InstanceCullData> cull_data;
-  Vector<glsl::InstanceCullData> update_cull_data;
+  BufferSlice<sh::InstanceCullData> cull_data;
+  Vector<sh::InstanceCullData> update_cull_data;
   Vector<DrawSetId> delete_ids;
   Vector<Batch> batches;
 
@@ -50,40 +41,40 @@ public:
 struct GpuScene {
   BufferSlice<float> exposure;
 
-  BufferSlice<glsl::Mesh> meshes;
+  BufferSlice<sh::Mesh> meshes;
   Vector<Handle<Mesh>> update_meshes;
-  Vector<glsl::Mesh> mesh_update_data;
+  Vector<sh::Mesh> mesh_update_data;
 
-  BufferSlice<glsl::MeshInstance> mesh_instances;
-  BufferSlice<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
+  BufferSlice<sh::MeshInstance> mesh_instances;
+  BufferSlice<sh::MeshInstanceVisibilityMask> mesh_instance_visibility;
   Vector<Handle<MeshInstance>> update_mesh_instances;
-  Vector<glsl::MeshInstance> mesh_instance_update_data;
+  Vector<sh::MeshInstance> mesh_instance_update_data;
   std::array<DrawSetData, NUM_DRAW_SETS> draw_sets;
 
-  BufferSlice<glsl::Material> materials;
-  Vector<Handle<Material>> update_materials;
-  Vector<glsl::Material> material_update_data;
+  BufferSlice<sh::Material> materials;
+  Vector<Handle<sh::Material>> update_materials;
+  Vector<sh::Material> material_update_data;
 
-  BufferSlice<glsl::DirectionalLight> directional_lights;
-  Vector<Handle<DirectionalLight>> update_directional_lights;
-  Vector<glsl::DirectionalLight> directional_light_update_data;
+  BufferSlice<sh::DirectionalLight> directional_lights;
+  Vector<Handle<sh::DirectionalLight>> update_directional_lights;
+  Vector<sh::DirectionalLight> directional_light_update_data;
 };
 
 auto init_gpu_scene(ResourceArena &arena) -> GpuScene;
 
 struct RgDrawSetData {
-  RgBufferId<glsl::InstanceCullData> cull_data;
+  RgBufferId<sh::InstanceCullData> cull_data;
 };
 
 struct RgGpuScene {
   RgBufferId<float> exposure;
-  RgBufferId<glsl::Mesh> meshes;
-  RgBufferId<glsl::MeshInstance> mesh_instances;
+  RgBufferId<sh::Mesh> meshes;
+  RgBufferId<sh::MeshInstance> mesh_instances;
   RgBufferId<glm::mat4x3> transform_matrices;
-  RgBufferId<glsl_MeshInstanceVisibilityMask> mesh_instance_visibility;
+  RgBufferId<sh::MeshInstanceVisibilityMask> mesh_instance_visibility;
   std::array<RgDrawSetData, NUM_DRAW_SETS> draw_sets;
-  RgBufferId<glsl::Material> materials;
-  RgBufferId<glsl::DirectionalLight> directional_lights;
+  RgBufferId<sh::Material> materials;
+  RgBufferId<sh::DirectionalLight> directional_lights;
 };
 
 void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,

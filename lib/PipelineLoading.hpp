@@ -1,7 +1,7 @@
 #pragma once
 #include "ResourceArena.hpp"
 #include "core/GenIndex.hpp"
-#include "glsl/Mesh.h"
+#include "sh/Geometry.h"
 
 namespace ren {
 
@@ -16,7 +16,7 @@ struct Pipelines {
   Handle<ComputePipeline> ssao;
   Handle<ComputePipeline> ssao_filter;
   Handle<GraphicsPipeline> early_z_pass;
-  std::array<Handle<GraphicsPipeline>, glsl::NUM_MESH_ATTRIBUTE_FLAGS>
+  std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;
   Handle<GraphicsPipeline> skybox_pass;
   Handle<ComputePipeline> post_processing;

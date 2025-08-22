@@ -1,9 +1,8 @@
 #include "Renderer.hpp"
 #include "SwapChain.hpp"
-#include "core/Errors.hpp"
 #include "core/Views.hpp"
 
-#include <spirv_reflect.h>
+#include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren_export {
@@ -446,15 +445,27 @@ auto Renderer::create_compute_pipeline(
     -> Result<Handle<ComputePipeline>, Error> {
   Span<const std::byte> code = create_info.cs.code;
 
-  spv_reflect::ShaderModule shader(code.size_bytes(), code.data(),
-                                   SPV_REFLECT_MODULE_FLAG_NO_COPY);
-  throw_if_failed(shader.GetResult(),
-                  "SPIRV-Reflect: Failed to create shader module");
-  const SpvReflectEntryPoint *entry_point = spvReflectGetEntryPoint(
-      &shader.GetShaderModule(), create_info.cs.entry_point);
-  throw_if_failed(entry_point,
-                  "SPIRV-Reflect: Failed to find entry point in shader module");
-  SpvReflectEntryPoint::LocalSize local_size = entry_point->local_size;
+  Span<const u32> spirv((const u32 *)code.data(), code.size() / 4);
+  ren_assert(spirv[0] == SpvMagicNumber);
+
+  glm::uvec3 local_size = {};
+  for (usize word = 5; word < spirv.size();) {
+    usize num_words = spirv[word] >> SpvWordCountShift;
+    SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
+
+    if (op == SpvOpExecutionMode) {
+      SpvExecutionMode mode = SpvExecutionMode(spirv[word + 2]);
+      if (mode == SpvExecutionModeLocalSize) {
+        local_size.x = spirv[word + 3];
+        local_size.y = spirv[word + 4];
+        local_size.z = spirv[word + 5];
+        break;
+      }
+    }
+
+    word += num_words;
+  }
+  ren_assert(local_size != glm::uvec3(0));
 
   const ShaderInfo &cs = create_info.cs;
 

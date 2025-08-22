@@ -1,0 +1,24 @@
+#include "PrepareBatch.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] PrepareBatchArgs pc;
+
+[numthreads(PREPARE_BATCH_THREADS)]
+void main() {
+  uint num_commands = *pc.batch_size;
+  if (gl_GlobalInvocationID.x >= num_commands) {
+    return;
+  }
+  uint offset = *pc.batch_offset;
+  MeshletDrawCommand desc = pc.command_descs[offset + gl_GlobalInvocationID.x];
+  DrawIndexedIndirectCommand command;
+  command.num_indices = desc.num_triangles * 3;
+  command.num_instances = 1;
+  command.base_index = desc.base_triangle;
+  command.base_vertex = desc.base_index;
+  command.base_instance = desc.mesh_instance;
+  pc.commands[gl_GlobalInvocationID.x] = command;
+}
+
+}

@@ -1,0 +1,33 @@
+#include "BakeIrradianceMap.h"
+#include "Random.h"
+#include "Lighting.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] BakeIrradianceMapArgs pc;
+
+vec3 integrate_irradiance_map(vec3 n, Sampler2D equirectangular_map) {
+  vec3 i = vec3(0.0f);
+  const uint NUM_SAMPLES = 4096;
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 l = importance_sample_lambertian(hammersley_2d(k, NUM_SAMPLES), n);
+    float nl = dot(n, l);
+    if (nl > 0.0f) {
+      // TODO: select mip based on solid angle.
+      vec2 uv = direction_to_equirectangular_uv(l);
+      i += equirectangular_map.SampleLevel(uv, 0).rgb;
+    }
+  }
+  return i / NUM_SAMPLES;
+}
+
+[numthreads(16, 16)]
+void main() {
+  const uvec2 pos = gl_GlobalInvocationID.xy;
+  const uint face = gl_GlobalInvocationID.z;
+  vec3 n = cube_map_face_pos_to_direction(pos, face, TextureSize(Get(pc.irradiance_map)).xy);
+  vec3 irradiance = integrate_irradiance_map(normalize(n), Get(pc.equirectangular_map));
+  Get(pc.irradiance_map).Store(int3(pos, face), vec4(irradiance, 1.0f));
+}
+
+}

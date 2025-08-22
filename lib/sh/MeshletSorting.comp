@@ -1,0 +1,18 @@
+#include "MeshletSorting.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] MeshletSortingArgs pc;
+
+[numthreads(MESHLET_SORTING_THREADS)]
+void main() {
+  uint num_commands = min(*pc.num_commands, MAX_DRAW_MESHLETS);
+  if (gl_GlobalInvocationID.x >= num_commands) {
+    return;
+  }
+  BatchId batch = pc.unsorted_command_batch_ids[gl_GlobalInvocationID.x];
+  uint offset = atomicAdd(pc.batch_out_offsets[batch], 1);
+  pc.commands[offset] = pc.unsorted_commands[gl_GlobalInvocationID.x];
+}
+
+}

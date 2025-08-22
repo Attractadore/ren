@@ -232,7 +232,7 @@ void RenderPass::draw_indexed(const rhi::DrawIndexedInfo &draw_info) {
 }
 
 void RenderPass::draw_indirect_count(
-    const BufferSlice<glsl::DrawIndirectCommand> &slice,
+    const BufferSlice<sh::DrawIndirectCommand> &slice,
     const BufferSlice<u32> &counter) {
   const Buffer &buffer = m_renderer->get_buffer(slice.buffer);
   const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
@@ -240,7 +240,7 @@ void RenderPass::draw_indirect_count(
       m_cmd, {
                  .buffer = buffer.handle,
                  .buffer_offset = slice.offset,
-                 .buffer_stride = sizeof(glsl::DrawIndirectCommand),
+                 .buffer_stride = sizeof(sh::DrawIndirectCommand),
                  .count_buffer = count_buffer.handle,
                  .count_buffer_offset = counter.offset,
                  .max_count = slice.count,
@@ -248,7 +248,7 @@ void RenderPass::draw_indirect_count(
 }
 
 void RenderPass::draw_indexed_indirect_count(
-    const BufferSlice<glsl::DrawIndexedIndirectCommand> &slice,
+    const BufferSlice<sh::DrawIndexedIndirectCommand> &slice,
     const BufferSlice<u32> &counter) {
   const Buffer &buffer = m_renderer->get_buffer(slice.buffer);
   const Buffer &count_buffer = m_renderer->get_buffer(counter.buffer);
@@ -256,7 +256,7 @@ void RenderPass::draw_indexed_indirect_count(
       m_cmd, {
                  .buffer = buffer.handle,
                  .buffer_offset = slice.offset,
-                 .buffer_stride = sizeof(glsl::DrawIndexedIndirectCommand),
+                 .buffer_stride = sizeof(sh::DrawIndexedIndirectCommand),
                  .count_buffer = count_buffer.handle,
                  .count_buffer_offset = counter.offset,
                  .max_count = slice.count,
@@ -308,7 +308,7 @@ void CommandRecorder::dispatch_grid_3d(glm::uvec3 size,
 }
 
 void CommandRecorder::dispatch_indirect(
-    const BufferSlice<glsl::DispatchIndirectCommand> &slice) {
+    const BufferSlice<sh::DispatchIndirectCommand> &slice) {
   rhi::cmd_dispatch_indirect(m_cmd, m_renderer->get_buffer(slice.buffer).handle,
                              slice.offset);
 }

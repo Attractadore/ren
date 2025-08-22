@@ -1,0 +1,153 @@
+#include "MeshletCulling.h"
+#include "MeshletSorting.h"
+#include "PrepareBatch.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] MeshletCullingArgs pc;
+
+bool is_uniform_scaled_orthogonal(mat3 A) {
+  const float eps = 0.001f;
+  float A0 = dot(A[0], A[0]);
+  float A1 = dot(A[1], A[1]);
+  float A2 = dot(A[2], A[2]);
+  float A_min = min(A0, min(A1, A2));
+  float A_max = max(A0, max(A1, A2));
+  return
+    (A_max - A_min) < 0.5f * eps * A_max &&
+    dot(A[0], A[1]) < eps * A_max &&
+    dot(A[0], A[2]) < eps * A_max &&
+    dot(A[1], A[2]) < eps * A_max;
+}
+
+bool cull(Meshlet meshlet, uint mesh_instance) {
+  const bool cone_culling = bool(pc.feature_mask & MESHLET_CULLING_CONE_BIT);
+  const bool frustum_culling = bool(pc.feature_mask & MESHLET_CULLING_FRUSTUM_BIT);
+  const bool occlusion_culling = bool(pc.feature_mask & MESHLET_CULLING_OCCLUSION_BIT);
+
+  if (!cone_culling && !frustum_culling && !occlusion_culling) {
+    return false;
+  }
+
+  mat4x3 transform_matrix = pc.transform_matrices[mesh_instance];
+
+  // Culling cone stops being conservative when shears or non-uniform scales are applied.
+  if (cone_culling && is_uniform_scaled_orthogonal(mat3(transform_matrix))) {
+    vec3 cone_apex = transform_matrix * vec4(decode_position(meshlet.cone_apex), 1.0f);
+    vec3 cone_axis = transform_matrix * vec4(decode_position(meshlet.cone_axis), 0.0f);
+    vec3 view = cone_apex - pc.eye;
+    float min_dot = meshlet.cone_cutoff * length(view) * length(cone_axis);
+    if (dot(view, cone_axis) > min_dot) {
+      return true;
+    }
+  }
+
+  if (!frustum_culling && !occlusion_culling) {
+    return false;
+  }
+
+  mat4 pvm = pc.proj_view * as_mat4(transform_matrix);
+  ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, meshlet.bb);
+
+  // TODO: support finite far plane.
+  float n = cs_bb.p[0].z;
+
+  float zmin, zmax;
+  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
+
+  // Cull if bounding box is in front of near plane.
+  if (zmax < n) {
+    return true;
+  }
+
+  // Don't cull if bounding box crosses near plane.
+  if (zmin <= n) {
+    return false;
+  }
+
+  NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
+  vec2 ndc_min;
+  vec3 ndc_max;
+  get_ndc_bb_min_max(ndc_bb, ndc_min, ndc_max);
+
+  if (frustum_culling && frustum_cull(ndc_min, ndc_max)) {
+    return true;
+  }
+
+  if (occlusion_culling && occlusion_cull(Get(pc.hi_z), ndc_min, ndc_max)) {
+    return true;
+  }
+
+  return false;
+}
+
+[numthreads(MESHLET_CULLING_THREADS)]
+void main() {
+  const uint bucket_size = *pc.bucket_size;
+  const uint bucket_stride = 1 << pc.bucket;
+
+  const uint index = gl_GlobalInvocationID.x / bucket_stride;
+  const uint offset = gl_GlobalInvocationID.x % bucket_stride;
+
+  if (index >= bucket_size) {
+    return;
+  };
+
+  MeshletCullData cull_data = pc.bucket_cull_data[index];
+  Mesh mesh = pc.meshes[cull_data.mesh];
+  Meshlet meshlet = mesh.meshlets[cull_data.base_meshlet + offset];
+
+  if (cull(meshlet, cull_data.mesh_instance)) {
+    return;
+  }
+
+#if 0
+  uint num_active = subgroupAdd(1);
+  uint command_offset;
+  if (subgroupElect()) {
+    command_offset = atomicAdd(*pc.num_commands, num_active);
+    uint old_command_count = command_offset;
+    uint old_wg_count = ceil_div(old_command_count, MESHLET_SORTING_THREADS);
+    uint new_command_count = min(old_command_count + num_active, MAX_DRAW_MESHLETS);
+    uint new_wg_count = ceil_div(new_command_count, MESHLET_SORTING_THREADS);
+    if (old_wg_count != new_wg_count) {
+      atomicMax(pc.sort_command->x, new_wg_count);
+    }
+  }
+  command_offset = subgroupBroadcastFirst(command_offset) + subgroupExclusiveAdd(1);
+#else
+  uint command_offset = atomicAdd(*pc.num_commands, 1);
+  uint old_command_count = command_offset;
+  uint old_wg_count = ceil_div(old_command_count, MESHLET_SORTING_THREADS);
+  uint new_command_count = min(old_command_count + 1, MAX_DRAW_MESHLETS);
+  uint new_wg_count = ceil_div(new_command_count, MESHLET_SORTING_THREADS);
+  if (old_wg_count != new_wg_count) {
+    atomicMax(pc.sort_command->x, new_wg_count);
+  }
+#endif
+
+  if (command_offset >= MAX_DRAW_MESHLETS) {
+    return;
+  }
+
+  MeshletDrawCommand command;
+  command.num_triangles = meshlet.num_triangles;
+  command.base_triangle = meshlet.base_triangle;
+  command.base_index = meshlet.base_index;
+  command.mesh_instance = cull_data.mesh_instance;
+
+  BatchId batch = cull_data.batch;
+
+  pc.commands[command_offset] = command;
+  pc.command_batch_ids[command_offset] = batch;
+
+  uint old_batch_size = atomicAdd(pc.batch_sizes[batch], 1);
+  uint old_batch_wg_count = ceil_div(old_batch_size, PREPARE_BATCH_THREADS);
+  uint new_batch_size = old_batch_size + 1;
+  uint new_batch_wg_count = ceil_div(new_batch_size, PREPARE_BATCH_THREADS);
+  if (old_batch_wg_count != new_batch_wg_count) {
+    atomicMax(pc.batch_prepare_commands[batch].x, new_batch_wg_count);
+  }
+}
+
+}

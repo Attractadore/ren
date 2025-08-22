@@ -1,0 +1,20 @@
+#extension GL_NV_compute_shader_derivatives : require 
+#include "BakeReflectionMap.h"
+#include "Transforms.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] BakeReflectionMapArgs pc;
+
+layout(derivative_group_linearNV) in;
+[numthreads(16, 16)]
+void main() {
+  const uvec2 pos = linear_to_global_2d(gl_WorkGroupID, gl_WorkGroupSize, gl_LocalInvocationIndex);
+  const uint face = gl_GlobalInvocationID.z;
+  vec3 r = cube_map_face_pos_to_direction(pos, face, TextureSize(Get(pc.reflectance_map)).xy);
+  vec2 uv = direction_to_equirectangular_uv(r);
+  vec3 luminance = Get(pc.equirectangular_map).Sample(uv).rgb;
+  Get(pc.reflectance_map).Store(int3(pos, face), vec4(luminance, 1.0f));
+}
+
+}

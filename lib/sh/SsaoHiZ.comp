@@ -1,0 +1,45 @@
+#include "SsaoHiZ.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] SsaoHiZArgs pc;
+
+struct SsaoHiZSpdArgs {
+  vec2 inv_size;
+};
+
+float ssao_hi_z_spd_load(SsaoHiZSpdArgs args, ivec2 pos) {
+  vec2 uv = (pos + vec2(0.5f)) * args.inv_size;
+  vec4 d = Get(pc.src).Gather(uv);
+  vec4 z = pc.znear * (1.0f - d) / d;
+  return max(max(z.x, z.y), max(z.z, z.w));
+}
+
+}
+
+#define SpdT float
+#define SPD_DEFAULT_VALUE (0.0f)
+#define SpdArgsT SsaoHiZSpdArgs
+#define spd_load ssao_hi_z_spd_load
+// Bias towards next representable FP16 value since rounding towards zero causes
+// self-shadowing artifacts.
+#define spd_to_vec4(z)                                                         \
+  (isinf(z) ? z                                                                \
+            : uintBitsToFloat((floatBitsToUint(z) & 0xFFFFE000) + 0x00002000)) \
+      .rrrr
+#define spd_from_vec4(z) z.r
+#define spd_reduce_quad(x0y0, x1y0, x0y1, x1y1)                                \
+  max(max(x0y0, x1y0), max(x0y1, x1y1))
+
+#include "Spd.glsl"
+
+namespace ren::sh {
+
+[numthreads(SPD_THREADS_X, SPD_THREADS_Y)]
+void main() {
+  SsaoHiZSpdArgs args;
+  args.inv_size = 1.0f / TextureSize(Get(pc.dsts[0]));
+  spd_main(args);
+}
+
+}

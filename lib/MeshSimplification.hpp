@@ -1,7 +1,7 @@
 #pragma once
 #include "core/NotNull.hpp"
 #include "core/Vector.hpp"
-#include "glsl/Mesh.h"
+#include "sh/Geometry.h"
 
 #include <glm/glm.hpp>
 
@@ -19,8 +19,8 @@ struct MeshSimplificationOptions {
   Vector<glm::vec2> *uvs = nullptr;
   Vector<glm::vec4> *colors = nullptr;
   NotNull<Vector<u32> *> indices;
-  NotNull<StaticVector<LOD, glsl::MAX_NUM_LODS> *> lods;
-  u32 num_lods = glsl::MAX_NUM_LODS;
+  NotNull<StaticVector<LOD, sh::MAX_NUM_LODS> *> lods;
+  u32 num_lods = sh::MAX_NUM_LODS;
   /// Percentage of triangles to retain at each LOD
   float threshold = 0.75f;
   /// Number of LOD triangles after which to stop simplification.

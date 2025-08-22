@@ -3,8 +3,8 @@
 #include "Renderer.hpp"
 #include "Texture.hpp"
 #include "core/Result.hpp"
-#include "glsl/Texture.h"
 #include "ren/ren.hpp"
+#include "sh/Std.h"
 
 namespace ren {
 
@@ -17,27 +17,27 @@ struct UavDesc;
 namespace detail {
 
 struct DescriptorAllocatorMixin {
-  template <std::constructible_from<glsl::SampledTexture> D>
+  template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
   auto allocate_sampled_texture(this auto &self, Renderer &renderer,
                                 SrvDesc srv, rhi::Sampler sampler)
-      -> Result<D, Error> {
-    if constexpr (std::same_as<D, glsl::SampledTexture2D>) {
+      -> Result<sh::Handle<D>, Error> {
+    if constexpr (std::same_as<D, sh::Sampler2D>) {
       srv.dimension = rhi::ImageViewDimension::e2D;
-    } else if constexpr (std::same_as<D, glsl::SampledTextureCube>) {
+    } else if constexpr (std::same_as<D, sh::SamplerCube>) {
       srv.dimension = rhi::ImageViewDimension::eCube;
-    } else if constexpr (std::same_as<D, glsl::SampledTexture3D>) {
+    } else if constexpr (std::same_as<D, sh::Sampler3D>) {
       srv.dimension = rhi::ImageViewDimension::e3D;
     }
-    ren_try(glsl::SampledTexture desc,
+    ren_try(sh::Handle<void> desc,
             self.allocate_sampled_texture(renderer, srv, sampler));
-    return D(desc);
+    return sh::Handle<D>(desc);
   }
 
-  template <std::constructible_from<glsl::SampledTexture> D>
+  template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
   auto allocate_sampled_texture(this auto &self, Renderer &renderer,
                                 SrvDesc srv,
                                 const rhi::SamplerCreateInfo &sampler_info)
-      -> Result<D, Error> {
+      -> Result<sh::Handle<D>, Error> {
     ren_try(rhi::Sampler sampler, renderer.get_sampler(sampler_info));
     return self.template allocate_sampled_texture<D>(renderer, srv, sampler);
   }
@@ -53,40 +53,43 @@ class DescriptorAllocator : public detail::DescriptorAllocatorMixin {
 
 public:
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
-      -> glsl::SamplerState;
+      -> sh::Handle<sh::SamplerState>;
 
   auto try_allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
-                            glsl::SamplerState id) -> glsl::SamplerState;
+                            sh::Handle<sh::SamplerState> id)
+      -> sh::Handle<sh::SamplerState>;
 
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
-                        glsl::SamplerState id) -> glsl::SamplerState;
+                        sh::Handle<sh::SamplerState> handle)
+      -> sh::Handle<sh::SamplerState>;
 
   auto allocate_sampler(Renderer &renderer,
                         const rhi::SamplerCreateInfo &sampler_info,
-                        glsl::SamplerState id) -> glsl::SamplerState {
+                        sh::Handle<sh::SamplerState> handle)
+      -> sh::Handle<sh::SamplerState> {
     return allocate_sampler(renderer,
-                            renderer.get_sampler(sampler_info).value(), id);
+                            renderer.get_sampler(sampler_info).value(), handle);
   }
 
-  void free_sampler(glsl::SamplerState sampler);
+  void free_sampler(sh::Handle<sh::SamplerState> sampler);
 
   auto allocate_texture(Renderer &renderer, SrvDesc srv)
-      -> Result<glsl::Texture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
-  void free_texture(glsl::Texture texture);
+  void free_texture(sh::Handle<void> texture);
 
   auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler)
-      -> Result<glsl::SampledTexture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
   using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
 
-  void free_sampled_texture(glsl::SampledTexture texture);
+  void free_sampled_texture(sh::Handle<void> texture);
 
   auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
-      -> Result<glsl::StorageTexture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
-  void free_storage_texture(glsl::StorageTexture texture);
+  void free_storage_texture(sh::Handle<void> texture);
 };
 
 class DescriptorAllocatorScope : public detail::DescriptorAllocatorMixin {
@@ -104,28 +107,28 @@ public:
   auto init(DescriptorAllocator &allocator) -> Result<void, Error>;
 
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
-      -> glsl::SamplerState;
+      -> sh::Handle<sh::SamplerState>;
 
   auto allocate_texture(Renderer &renderer, SrvDesc srv)
-      -> Result<glsl::Texture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
   auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler)
-      -> Result<glsl::SampledTexture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
   using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
 
   auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
-      -> Result<glsl::StorageTexture, Error>;
+      -> Result<sh::Handle<void>, Error>;
 
   void reset();
 
 private:
   DescriptorAllocator *m_allocator = nullptr;
-  Vector<glsl::Texture> m_srv;
-  Vector<glsl::SampledTexture> m_cis;
-  Vector<glsl::StorageTexture> m_uav;
-  Vector<glsl::SamplerState> m_sampler;
+  Vector<u32> m_srv;
+  Vector<u32> m_cis;
+  Vector<u32> m_uav;
+  Vector<u32> m_sampler;
 };
 
 }; // namespace ren

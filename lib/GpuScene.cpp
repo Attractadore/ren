@@ -2,9 +2,6 @@
 #include "Mesh.hpp"
 #include "Scene.hpp"
 #include "core/Views.hpp"
-#include "glsl/Lighting.h"
-#include "glsl/Material.h"
-#include "glsl/Mesh.h"
 #include "ren/ren.hpp"
 
 #include <algorithm>
@@ -25,20 +22,20 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
       .value()
 
   constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(
-      MAX_NUM_MESH_INSTANCES, glsl::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
+      MAX_NUM_MESH_INSTANCES, sh::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
 
   GpuScene gpu_scene = {
       .exposure = create_buffer(float, "Exposure", 1),
-      .meshes = create_buffer(glsl::Mesh, "Scene meshes", MAX_NUM_MESHES),
-      .mesh_instances = create_buffer(
-          glsl::MeshInstance, "Scene mesh instances", MAX_NUM_MESH_INSTANCES),
+      .meshes = create_buffer(sh::Mesh, "Scene meshes", MAX_NUM_MESHES),
+      .mesh_instances = create_buffer(sh::MeshInstance, "Scene mesh instances",
+                                      MAX_NUM_MESH_INSTANCES),
       .mesh_instance_visibility = create_buffer(
-          glsl_MeshInstanceVisibilityMask, "Scene mesh instance visibility",
+          sh::MeshInstanceVisibilityMask, "Scene mesh instance visibility",
           NUM_MESH_INSTANCE_VISIBILITY_MASKS),
       .materials =
-          create_buffer(glsl::Material, "Scene materials", MAX_NUM_MATERIALS),
+          create_buffer(sh::Material, "Scene materials", MAX_NUM_MATERIALS),
       .directional_lights =
-          create_buffer(glsl::DirectionalLight, "Scene directional lights",
+          create_buffer(sh::DirectionalLight, "Scene directional lights",
                         MAX_NUM_DIRECTIONAL_LIGHTS),
   };
 
@@ -46,7 +43,7 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
     auto s = (DrawSet)(1 << i);
     DrawSetData &ds = gpu_scene.draw_sets[i];
     ds.cull_data = create_buffer(
-        glsl::InstanceCullData,
+        sh::InstanceCullData,
         fmt::format("Draw set {} mesh instances", get_draw_set_name(s)),
         MAX_NUM_MESH_INSTANCES);
   }
@@ -59,7 +56,7 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
 auto get_batch_desc(const SceneData &scene, const MeshInstance &mesh_instance)
     -> BatchDesc {
   const Mesh &mesh = scene.meshes.get(mesh_instance.mesh);
-  const Material &material = scene.materials.get(mesh_instance.material);
+  const sh::Material &material = scene.materials.get(mesh_instance.material);
 
   MeshAttributeFlags attributes;
   if (mesh.uvs) {
@@ -104,10 +101,10 @@ void add_to_draw_set(SceneData &scene, GpuScene &gpu_scene,
 
   DrawSetId id(ds.mesh_instances.size());
   ds.mesh_instances.push_back(handle);
-  ds.update_cull_data.push_back(glsl::InstanceCullData{
+  ds.update_cull_data.push_back(sh::InstanceCullData{
       .mesh = mesh_instance.mesh,
       .mesh_instance = handle,
-      .batch = glsl_BatchId(batch - ds.batches.data()),
+      .batch = sh::BatchId(batch - ds.batches.data()),
   });
 
   ren_assert(not mesh_instance.draw_sets.is_set(set));

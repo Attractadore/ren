@@ -1026,7 +1026,7 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
       descriptors.storage =
           &rt_storage_texture_descriptors[num_storage_texture_descriptors];
       for (u32 mip : range(descriptors.num_mips)) {
-        ren_try(descriptors.storage[mip],
+        ren_try(sh::Handle<void> descriptor,
                 m_descriptor_allocator->allocate_storage_texture(
                     *m_renderer,
                     {
@@ -1034,6 +1034,7 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
                         .dimension = get_view_dimension(physical_texture),
                         .mip = mip,
                     }));
+        descriptors.storage[mip] = descriptor.m_id;
       }
 
       num_storage_texture_descriptors += physical_texture.num_mips;
@@ -1642,40 +1643,40 @@ auto RgRuntime::get_texture(RgTextureToken texture) const -> Handle<Texture> {
 }
 
 auto RgRuntime::get_texture_descriptor(RgTextureToken texture) const
-    -> glsl::Texture {
+    -> sh::Handle<void> {
   ren_assert(texture);
-  glsl::Texture descriptor =
+  sh::Handle<void> descriptor =
       m_rg->m_data->m_texture_descriptors[texture].sampled;
   ren_assert(descriptor);
   return descriptor;
 }
 
 auto RgRuntime::try_get_texture_descriptor(RgTextureToken texture) const
-    -> glsl::Texture {
+    -> sh::Handle<void> {
   if (!texture) {
     return {};
   }
-  glsl::Texture descriptor =
+  sh::Handle<void> descriptor =
       m_rg->m_data->m_texture_descriptors[texture].sampled;
   ren_assert(descriptor);
   return descriptor;
 }
 
 auto RgRuntime::get_sampled_texture_descriptor(RgTextureToken texture) const
-    -> glsl::SampledTexture {
+    -> sh::Handle<void> {
   ren_assert(texture);
-  glsl::SampledTexture descriptor =
+  sh::Handle<void> descriptor =
       m_rg->m_data->m_texture_descriptors[texture].combined;
   ren_assert(descriptor);
   return descriptor;
 }
 
 auto RgRuntime::try_get_sampled_texture_descriptor(RgTextureToken texture) const
-    -> glsl::SampledTexture {
+    -> sh::Handle<void> {
   if (!texture) {
     return {};
   }
-  glsl::SampledTexture descriptor =
+  sh::Handle<void> descriptor =
       m_rg->m_data->m_texture_descriptors[texture].combined;
   ren_assert(descriptor);
   return descriptor;
@@ -1683,20 +1684,21 @@ auto RgRuntime::try_get_sampled_texture_descriptor(RgTextureToken texture) const
 
 auto RgRuntime::get_storage_texture_descriptor(RgTextureToken texture,
                                                u32 mip) const
-    -> glsl::StorageTexture {
+    -> sh::Handle<void> {
   ren_assert(texture);
   ren_assert(m_rg->m_data->m_texture_descriptors[texture].storage);
   const RgTextureDescriptors &descriptors =
       m_rg->m_data->m_texture_descriptors[texture];
   ren_assert(mip < descriptors.num_mips);
-  glsl::StorageTexture descriptor = descriptors.storage[mip];
+  sh::Handle<void> descriptor(descriptors.storage[mip],
+                              sh::DescriptorKind::RWTexture);
   ren_assert(descriptor);
   return descriptor;
 }
 
 auto RgRuntime::try_get_storage_texture_descriptor(RgTextureToken texture,
                                                    u32 mip) const
-    -> glsl::StorageTexture {
+    -> sh::Handle<void> {
   if (!texture) {
     return {};
   }
@@ -1706,7 +1708,8 @@ auto RgRuntime::try_get_storage_texture_descriptor(RgTextureToken texture,
   if (mip >= descriptors.num_mips) {
     return {};
   }
-  glsl::StorageTexture descriptor = descriptors.storage[mip];
+  sh::Handle<void> descriptor(descriptors.storage[mip],
+                              sh::DescriptorKind::RWTexture);
   ren_assert(descriptor);
   return descriptor;
 }

@@ -2,8 +2,8 @@
 #include "Buffer.hpp"
 #include "Texture.hpp"
 #include "core/Span.hpp"
-#include "glsl/Indirect.h"
 #include "rhi.hpp"
+#include "sh/Std.h"
 
 #include <glm/glm.hpp>
 
@@ -69,8 +69,7 @@ public:
   void dispatch_grid_3d(glm::uvec3 size,
                         glm::uvec3 group_size_mult = {1, 1, 1});
 
-  void
-  dispatch_indirect(const BufferSlice<glsl::DispatchIndirectCommand> &slice);
+  void dispatch_indirect(const BufferSlice<sh::DispatchIndirectCommand> &slice);
 
   void copy_buffer(const BufferView &src, const BufferView &dst);
 
@@ -156,11 +155,11 @@ public:
 
   void draw_indexed(const rhi::DrawIndexedInfo &draw_info);
 
-  void draw_indirect_count(const BufferSlice<glsl::DrawIndirectCommand> &slice,
+  void draw_indirect_count(const BufferSlice<sh::DrawIndirectCommand> &slice,
                            const BufferSlice<u32> &counter);
 
   void draw_indexed_indirect_count(
-      const BufferSlice<glsl::DrawIndexedIndirectCommand> &slice,
+      const BufferSlice<sh::DrawIndexedIndirectCommand> &slice,
       const BufferSlice<u32> &counter);
 
 private:

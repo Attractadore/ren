@@ -11,7 +11,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
                      std::bit_floor(ccfg.viewport.y)};
   u32 num_mips =
       std::max(std::countr_zero(size.x), std::countr_zero(size.y)) + 1;
-  ren_assert(size.x < glsl::SPD_MAX_SIZE and size.y < glsl::SPD_MAX_SIZE);
+  ren_assert(size.x < sh::SPD_MAX_SIZE and size.y < sh::SPD_MAX_SIZE);
 
   if (!ccfg.rcs->hi_z) {
     ccfg.rcs->hi_z = ccfg.rgp->create_texture({
@@ -44,7 +44,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   };
 
   pass.dispatch_grid_2d(ccfg.pipelines->hi_z, args, size,
-                        {glsl::SPD_THREAD_ELEMS_X, glsl::SPD_THREAD_ELEMS_Y});
+                        {sh::SPD_THREAD_ELEMS_X, sh::SPD_THREAD_ELEMS_Y});
 }
 
 } // namespace ren

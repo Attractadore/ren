@@ -1,8 +1,9 @@
 #pragma once
 #include "Buffer.hpp"
+#include "DevicePtr.hpp"
 #include "ResourceArena.hpp"
 #include "core/Math.hpp"
-#include "glsl/DevicePtr.h"
+#include "sh/Std.h"
 
 namespace ren {
 
@@ -85,7 +86,7 @@ private:
 };
 
 struct DeviceBumpAllocationPolicy {
-  static constexpr usize ALIGNMENT = glsl::DEFAULT_DEVICE_PTR_ALIGNMENT;
+  static constexpr usize ALIGNMENT = sh::DEFAULT_DEVICE_PTR_ALIGNMENT;
 
   struct Block {
     DevicePtr<std::byte> ptr;
@@ -127,7 +128,7 @@ struct DeviceBumpAllocationPolicy {
 
 struct UploadBumpAllocationPolicy {
   static constexpr auto ALIGNMENT =
-      std::max<usize>(glsl::DEFAULT_DEVICE_PTR_ALIGNMENT, 64);
+      std::max<usize>(sh::DEFAULT_DEVICE_PTR_ALIGNMENT, 64);
 
   struct Block {
     std::byte *host_ptr = nullptr;

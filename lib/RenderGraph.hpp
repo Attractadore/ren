@@ -279,59 +279,26 @@ template <> struct RgPushConstantImpl<DevicePtr<void>> {
 template <typename T> struct IsDevicePtrPCImpl : std::false_type {};
 template <typename T>
 struct IsDevicePtrPCImpl<DevicePtr<T>> : std::true_type {};
+
 template <typename T>
-concept CIsDevicePtrPC = IsDevicePtrPCImpl<T>::value;
+concept IsDevicePtr = IsDevicePtrPCImpl<T>::value;
 
-template <typename T> struct IsTexturePCImpl : std::false_type {};
-template <typename T>
-concept CIsTexturePC = IsTexturePCImpl<T>::value;
-
-template <typename T> struct IsSampledTexturePCImpl : std::false_type {};
-template <typename T>
-concept CIsSampledTexturePC = IsSampledTexturePCImpl<T>::value;
-
-template <typename T> struct IsStorageTexturePCImpl : std::false_type {};
-template <typename T>
-concept CIsStorageTexturePC = IsStorageTexturePCImpl<T>::value;
-
-#define define_base_texture_pc(Type)                                           \
-  template <> struct RgPushConstantImpl<Type> {                                \
-    using type = RgTextureToken;                                               \
-  }
-
-#define define_texture_pc(Type)                                                \
-  define_base_texture_pc(Type);                                                \
-  template <> struct IsTexturePCImpl<Type> : std::true_type {}
-
-#define define_sampled_texture_pc(Type)                                        \
-  define_base_texture_pc(Type);                                                \
-  template <> struct IsSampledTexturePCImpl<Type> : std::true_type {}
-
-#define define_storage_texture_pc(Type)                                        \
-  define_base_texture_pc(Type);                                                \
-  template <> struct IsStorageTexturePCImpl<Type> : std::true_type {}
-
-define_texture_pc(glsl::Texture2D);
-define_texture_pc(glsl::Texture3D);
-define_sampled_texture_pc(glsl::SampledTexture2D);
-define_sampled_texture_pc(glsl::SampledTextureCube);
-define_sampled_texture_pc(glsl::SampledTexture3D);
-define_storage_texture_pc(glsl::StorageTexture2D);
-define_storage_texture_pc(glsl::StorageTextureCube);
-define_storage_texture_pc(glsl::StorageTexture3D);
-
-#undef define_base_texture_pc
-
-template <CIsStorageTexturePC T, usize N>
-struct RgPushConstantImpl<std::array<T, N>> {
+template <typename T> struct RgPushConstantImpl<sh::Handle<T>> {
   using type = RgTextureToken;
 };
 
-template <typename T> struct IsStorageTextureArrayPCImpl : std::false_type {};
-template <CIsStorageTexturePC T, usize N>
-struct IsStorageTextureArrayPCImpl<std::array<T, N>> : std::true_type {};
+template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T, usize N>
+struct RgPushConstantImpl<std::array<sh::Handle<T>, N>> {
+  using type = RgTextureToken;
+};
+
+template <typename T> struct RWTextureArrayImpl : std::false_type {};
+
+template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T, usize N>
+struct RWTextureArrayImpl<std::array<sh::Handle<T>, N>> : std::true_type {};
+
 template <typename T>
-concept CIsStorageTextureArrayPC = IsStorageTextureArrayPCImpl<T>::value;
+concept RWTextureArray = RWTextureArrayImpl<T>::value;
 
 }; // namespace detail
 
@@ -379,9 +346,9 @@ struct RgRtPass {
 
 struct RgTextureDescriptors {
   u32 num_mips = 0;
-  glsl::Texture sampled;
-  glsl::SampledTexture combined;
-  glsl::StorageTexture *storage = nullptr;
+  sh::Handle<void> sampled;
+  sh::Handle<void> combined;
+  u32 *storage = nullptr;
 };
 
 struct RgRtData {
@@ -398,7 +365,7 @@ struct RgRtData {
 
   Vector<Handle<Texture>> m_textures;
   Vector<RgTextureDescriptors> m_texture_descriptors;
-  Vector<glsl::StorageTexture> m_storage_texture_descriptors;
+  Vector<u32> m_storage_texture_descriptors;
 
   Vector<rhi::MemoryBarrier> m_memory_barriers;
   Vector<TextureBarrier> m_texture_barriers;
@@ -662,23 +629,35 @@ public:
 
   auto get_texture(RgTextureToken texture) const -> Handle<Texture>;
 
-  auto get_texture_descriptor(RgTextureToken texture) const -> glsl::Texture;
+  auto get_texture_descriptor(RgTextureToken texture) const -> sh::Handle<void>;
 
   auto try_get_texture_descriptor(RgTextureToken texture) const
-      -> glsl::Texture;
+      -> sh::Handle<void>;
 
   auto get_sampled_texture_descriptor(RgTextureToken texture) const
-      -> glsl::SampledTexture;
+      -> sh::Handle<void>;
 
   auto try_get_sampled_texture_descriptor(RgTextureToken texture) const
-      -> glsl::SampledTexture;
+      -> sh::Handle<void>;
 
   auto get_storage_texture_descriptor(RgTextureToken texture, u32 mip = 0) const
-      -> glsl::StorageTexture;
+      -> sh::Handle<void>;
 
   auto try_get_storage_texture_descriptor(RgTextureToken texture,
                                           u32 mip = 0) const
-      -> glsl::StorageTexture;
+      -> sh::Handle<void>;
+
+  template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T>
+  auto get_storage_texture_descriptor(RgTextureToken texture, u32 mip = 0) const
+      -> sh::Handle<T> {
+    return sh::Handle<T>(get_storage_texture_descriptor(texture, mip));
+  }
+
+  template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T>
+  auto try_get_storage_texture_descriptor(RgTextureToken texture,
+                                          u32 mip = 0) const -> sh::Handle<T> {
+    return sh::Handle<T>(try_get_storage_texture_descriptor(texture, mip));
+  }
 
   auto get_allocator() const -> UploadBumpAllocator &;
 
@@ -693,7 +672,7 @@ public:
     return data;
   }
 
-  template <detail::CIsDevicePtrPC P>
+  template <detail::IsDevicePtr P>
   auto to_push_constant(RgPushConstant<P> buffer) const -> P {
     return try_get_buffer_device_ptr(buffer);
   }
@@ -702,22 +681,22 @@ public:
     return try_get_buffer_device_ptr(buffer);
   }
 
-  template <detail::CIsTexturePC T>
+  template <sh::HandleOfKind<sh::DescriptorKind::Texture> T>
   auto to_push_constant(RgTextureToken texture) const -> T {
     return T(try_get_texture_descriptor(texture));
   }
 
-  template <detail::CIsSampledTexturePC T>
+  template <sh::HandleOfKind<sh::DescriptorKind::Sampler> T>
   auto to_push_constant(RgTextureToken texture) const -> T {
     return T(try_get_sampled_texture_descriptor(texture));
   }
 
-  template <detail::CIsStorageTexturePC T>
+  template <sh::HandleOfKind<sh::DescriptorKind::RWTexture> T>
   auto to_push_constant(RgTextureToken texture) const -> T {
     return T(try_get_storage_texture_descriptor(texture));
   }
 
-  template <detail::CIsStorageTextureArrayPC A>
+  template <detail::RWTextureArray A>
   auto to_push_constant(RgTextureToken texture) const -> A {
     A pc = {};
     for (usize i = 0; i < pc.size(); ++i) {
@@ -945,9 +924,9 @@ public:
   }
 
   void dispatch_indirect(Handle<ComputePipeline> pipeline, const auto &args,
-                         RgBufferId<glsl::DispatchIndirectCommand> command,
+                         RgBufferId<sh::DispatchIndirectCommand> command,
                          u32 offset = 0) {
-    RgBufferToken<glsl::DispatchIndirectCommand> token =
+    RgBufferToken<sh::DispatchIndirectCommand> token =
         read_buffer(command, rhi::INDIRECT_COMMAND_BUFFER, offset);
     set_callback([pipeline, args, token](Renderer &renderer,
                                          const RgRuntime &rg,

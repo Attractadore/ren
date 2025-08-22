@@ -2,8 +2,6 @@
 #include "Camera.hpp"
 #include "DescriptorAllocator.hpp"
 #include "GpuScene.hpp"
-#include "Light.hpp"
-#include "Material.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
@@ -11,9 +9,9 @@
 #include "Texture.hpp"
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
-#include "glsl/PostProcessing.h"
 #include "passes/Pass.hpp"
 #include "ren/ren.hpp"
+#include "sh/PostProcessing.h"
 
 struct ImGuiContext;
 
@@ -64,7 +62,7 @@ struct SceneGraphicsSettings {
   bool ssao_full_res = false;
 
   // Post processing
-  glsl::ToneMapper tone_mapper = glsl::ToneMapper::AgxPunchy;
+  sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
 
   bool amd_anti_lag = true;
 };
@@ -83,12 +81,12 @@ struct SceneData {
   GenArray<MeshInstance> mesh_instances;
   GenMap<glm::mat4x3, Handle<MeshInstance>> mesh_instance_transforms;
 
-  GenArray<Material> materials;
+  GenArray<sh::Material> materials;
 
-  GenArray<DirectionalLight> directional_lights;
+  GenArray<sh::DirectionalLight> directional_lights;
 
   glm::vec3 env_luminance = {};
-  glsl::SampledTextureCube env_map;
+  sh::Handle<sh::SamplerCube> env_map;
 
 public:
   const Camera &get_camera() const {
@@ -125,7 +123,7 @@ struct Scene {
 
   [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
                                            const SamplerDesc &sampler_desc)
-      -> Result<glsl::SampledTexture2D, Error>;
+      -> Result<sh::Handle<sh::Sampler2D>, Error>;
 
   auto build_rg() -> Result<RenderGraph, Error>;
 

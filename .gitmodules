@@ -14,9 +14,6 @@
 [submodule "external/cxxopts"]
 	path = external/cxxopts
 	url = https://github.com/jarro2783/cxxopts
-[submodule "external/glslang"]
-	path = external/glslang
-	url = https://github.com/KhronosGroup/glslang
 [submodule "external/glm"]
 	path = external/glm
 	url = https://github.com/g-truc/glm
@@ -41,9 +38,6 @@
 [submodule "external/MikkTSpace"]
 	path = external/MikkTSpace
 	url = https://github.com/mmikk/MikkTSpace
-[submodule "external/SPIRV-Reflect"]
-	path = external/SPIRV-Reflect
-	url = https://github.com/KhronosGroup/SPIRV-Reflect
 [submodule "external/Vulkan-Headers"]
 	path = external/Vulkan-Headers
 	url = https://github.com/KhronosGroup/Vulkan-Headers
@@ -77,3 +71,6 @@
 [submodule "external/stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb
+[submodule "external/SPIRV-Headers"]
+	path = external/SPIRV-Headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers

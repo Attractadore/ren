@@ -12,12 +12,12 @@ namespace ren {
 struct SceneData;
 struct Samplers;
 
-namespace glsl {
+namespace sh {
 struct Mesh;
 struct MeshInstance;
 struct Material;
 struct DirectionalLight;
-} // namespace glsl
+} // namespace sh
 
 enum class CullingPhase {
   First,

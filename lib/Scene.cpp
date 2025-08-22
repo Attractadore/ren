@@ -4,8 +4,6 @@
 #include "SwapChain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
-#include "glsl/Random.h"
-#include "glsl/Transforms.h"
 #include "passes/GpuSceneUpdate.hpp"
 #include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
@@ -15,6 +13,8 @@
 #include "passes/Present.hpp"
 #include "passes/Skybox.hpp"
 #include "ren/ren.hpp"
+#include "sh/Random.h"
+#include "sh/Transforms.h"
 
 #include "Ssao.comp.hpp"
 #include "SsaoFilter.comp.hpp"
@@ -81,12 +81,6 @@ auto create_scene(Renderer *renderer, SwapChain *swap_chain)
   scene->m_arena.init(renderer);
   scene->m_gpu_scene = init_gpu_scene(scene->m_arena);
 
-  scene->m_descriptor_allocator.allocate_sampler(
-      *renderer, rhi::SAMPLER_NEAREST_CLAMP, glsl::SAMPLER_NEAREST_CLAMP);
-  scene->m_descriptor_allocator.allocate_sampler(
-      *renderer, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP,
-      glsl::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
-
   scene->m_data.settings.async_compute =
       renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
   scene->m_data.settings.present_from_compute =
@@ -120,27 +114,27 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   }
 
   Span positions = {
-      (const glsl::Position *)&blob[header.positions_offset],
+      (const sh::Position *)&blob[header.positions_offset],
       header.num_vertices,
   };
 
   Span normals = {
-      (const glsl::Normal *)&blob[header.normals_offset],
+      (const sh::Normal *)&blob[header.normals_offset],
       header.num_vertices,
   };
 
   Span tangents = {
-      (const glsl::Tangent *)&blob[header.tangents_offset],
+      (const sh::Tangent *)&blob[header.tangents_offset],
       header.tangents_offset ? header.num_vertices : 0,
   };
 
   Span uvs = {
-      (const glsl::UV *)&blob[header.uvs_offset],
+      (const sh::UV *)&blob[header.uvs_offset],
       header.uvs_offset ? header.num_vertices : 0,
   };
 
   Span colors = {
-      (const glsl::Color *)&blob[header.colors_offset],
+      (const sh::Color *)&blob[header.colors_offset],
       header.colors_offset ? header.num_vertices : 0,
   };
 
@@ -150,8 +144,8 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   };
 
   // Create a copy because we need to patch base triangle indices.
-  Vector<glsl::Meshlet> meshlets = Span{
-      (const glsl::Meshlet *)&blob[header.meshlets_offset],
+  Vector<sh::Meshlet> meshlets = Span{
+      (const sh::Meshlet *)&blob[header.meshlets_offset],
       header.num_meshlets,
   };
 
@@ -201,7 +195,7 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
 
   // Find or allocate index pool
 
-  ren_assert_msg(header.num_triangles * 3 <= glsl::INDEX_POOL_SIZE,
+  ren_assert_msg(header.num_triangles * 3 <= sh::INDEX_POOL_SIZE,
                  "Index pool overflow");
 
   if (scene->m_data.index_pools.empty() or
@@ -213,8 +207,8 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   mesh.index_pool = scene->m_data.index_pools.size() - 1;
   IndexPool &index_pool = scene->m_data.index_pools.back();
 
-  u32 base_triangle = glsl::INDEX_POOL_SIZE - index_pool.num_free_indices;
-  for (glsl::Meshlet &meshlet : meshlets) {
+  u32 base_triangle = sh::INDEX_POOL_SIZE - index_pool.num_free_indices;
+  for (sh::Meshlet &meshlet : meshlets) {
     meshlet.base_triangle += base_triangle;
   }
 
@@ -225,7 +219,7 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
 
   // Upload meshlets
 
-  ren_try_to(upload_buffer(Span<const glsl::Meshlet>(meshlets), mesh.meshlets,
+  ren_try_to(upload_buffer(Span<const sh::Meshlet>(meshlets), mesh.meshlets,
                            fmt::format("Mesh {} meshlets", index)));
 
   // Upload triangles
@@ -240,13 +234,13 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   scene->m_gpu_scene.update_meshes.push_back(handle);
   scene->m_gpu_scene.mesh_update_data.push_back({
       .positions =
-          renderer->get_buffer_device_ptr<glsl::Position>(mesh.positions),
-      .normals = renderer->get_buffer_device_ptr<glsl::Normal>(mesh.normals),
+          renderer->get_buffer_device_ptr<sh::Position>(mesh.positions),
+      .normals = renderer->get_buffer_device_ptr<sh::Normal>(mesh.normals),
       .tangents =
-          renderer->try_get_buffer_device_ptr<glsl::Tangent>(mesh.tangents),
-      .uvs = renderer->try_get_buffer_device_ptr<glsl::UV>(mesh.uvs),
-      .colors = renderer->try_get_buffer_device_ptr<glsl::Color>(mesh.colors),
-      .meshlets = renderer->get_buffer_device_ptr<glsl::Meshlet>(mesh.meshlets),
+          renderer->try_get_buffer_device_ptr<sh::Tangent>(mesh.tangents),
+      .uvs = renderer->try_get_buffer_device_ptr<sh::UV>(mesh.uvs),
+      .colors = renderer->try_get_buffer_device_ptr<sh::Color>(mesh.colors),
+      .meshlets = renderer->get_buffer_device_ptr<sh::Meshlet>(mesh.meshlets),
       .meshlet_indices = renderer->get_buffer_device_ptr<u32>(mesh.indices),
       .bb = mesh.bb,
       .uv_bs = mesh.uv_bs,
@@ -268,7 +262,7 @@ auto create_image(Scene *scene, std::span<const std::byte> blob)
 auto create_material(Scene *scene, const MaterialCreateInfo &info)
     -> expected<MaterialId> {
   auto get_descriptor =
-      [&](const auto &texture) -> Result<glsl::SampledTexture2D, Error> {
+      [&](const auto &texture) -> Result<sh::Handle<sh::Sampler2D>, Error> {
     if (texture.image) {
       return scene->get_or_create_texture(
           std::bit_cast<Handle<Image>>(texture.image), texture.sampler);
@@ -280,7 +274,7 @@ auto create_material(Scene *scene, const MaterialCreateInfo &info)
   ren_try(auto orm_texture, get_descriptor(info.orm_texture));
   ren_try(auto normal_texture, get_descriptor(info.normal_texture));
 
-  Handle<Material> handle = scene->m_data.materials.insert({
+  Handle<sh::Material> handle = scene->m_data.materials.insert({
       .base_color = info.base_color_factor,
       .base_color_texture = base_color_texture,
       .occlusion_strength = info.orm_texture.strength,
@@ -357,11 +351,13 @@ auto create_mesh_instances(Scene *scene,
   for (usize i : range(create_info.size())) {
     auto mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh);
     ren_assert(mesh);
-    auto material = std::bit_cast<Handle<Material>>(create_info[i].material);
+    auto material =
+        std::bit_cast<Handle<sh::Material>>(create_info[i].material);
     ren_assert(material);
     Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert({
         .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
-        .material = std::bit_cast<Handle<Material>>(create_info[i].material),
+        .material =
+            std::bit_cast<Handle<sh::Material>>(create_info[i].material),
     });
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
@@ -369,7 +365,7 @@ auto create_mesh_instances(Scene *scene,
     }
     scene->m_data.mesh_instance_transforms.insert(
         handle,
-        glsl::make_decode_position_matrix(scene->m_data.meshes[mesh].scale));
+        sh::make_decode_position_matrix(scene->m_data.meshes[mesh].scale));
     scene->m_gpu_scene.update_mesh_instances.push_back(handle);
     scene->m_gpu_scene.mesh_instance_update_data.push_back({
         .mesh = mesh,
@@ -402,13 +398,13 @@ void set_mesh_instance_transforms(
     const Mesh &mesh =
         scene->m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
     scene->m_data.mesh_instance_transforms[h] =
-        matrices[i] * glsl::make_decode_position_matrix(mesh.scale);
+        matrices[i] * sh::make_decode_position_matrix(mesh.scale);
   }
 }
 
 auto create_directional_light(Scene *scene, const DirectionalLightDesc &desc)
     -> expected<DirectionalLightId> {
-  Handle<glsl::DirectionalLight> light =
+  Handle<sh::DirectionalLight> light =
       scene->m_data.directional_lights.emplace();
   auto id = std::bit_cast<DirectionalLightId>(light);
   ren_export::set_directional_light(scene, id, desc);
@@ -417,12 +413,12 @@ auto create_directional_light(Scene *scene, const DirectionalLightDesc &desc)
 
 void destroy_directional_light(Scene *scene, DirectionalLightId light) {
   scene->m_data.directional_lights.erase(
-      std::bit_cast<Handle<glsl::DirectionalLight>>(light));
+      std::bit_cast<Handle<sh::DirectionalLight>>(light));
 }
 
 void set_directional_light(Scene *scene, DirectionalLightId light,
                            const DirectionalLightDesc &desc) {
-  auto handle = std::bit_cast<Handle<glsl::DirectionalLight>>(light);
+  auto handle = std::bit_cast<Handle<sh::DirectionalLight>>(light);
   scene->m_data.directional_lights[handle] = {
       .color = desc.color,
       .illuminance = desc.illuminance,
@@ -444,15 +440,15 @@ auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
   }
   Handle<Texture> texture =
       scene->m_images[std::bit_cast<Handle<Image>>(image)];
-  ren_try(scene->m_data.env_map,
-          scene->m_descriptor_allocator
-              .allocate_sampled_texture<glsl::SampledTextureCube>(
-                  *scene->m_renderer, SrvDesc{texture},
-                  {
-                      .mag_filter = rhi::Filter::Linear,
-                      .min_filter = rhi::Filter::Linear,
-                      .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-                  }));
+  ren_try(
+      scene->m_data.env_map,
+      scene->m_descriptor_allocator.allocate_sampled_texture<sh::SamplerCube>(
+          *scene->m_renderer, SrvDesc{texture},
+          {
+              .mag_filter = rhi::Filter::Linear,
+              .min_filter = rhi::Filter::Linear,
+              .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+          }));
   return {};
 }
 
@@ -522,7 +518,7 @@ auto init_imgui(Scene *scene) -> Result<void, Error> {
       Span((const std::byte *)data, width * height * bpp), texture);
   auto descriptor =
       scene->m_descriptor_allocator
-          .allocate_sampled_texture<glsl::SampledTexture2D>(
+          .allocate_sampled_texture<sh::Sampler2D>(
               *scene->m_renderer, SrvDesc{texture},
               {
                   .mag_filter = rhi::Filter::Linear,
@@ -532,7 +528,7 @@ auto init_imgui(Scene *scene) -> Result<void, Error> {
                   .address_mode_v = rhi::SamplerAddressMode::Repeat,
               })
           .value();
-  io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor);
+  io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor.m_id);
 #endif
   return {};
 }
@@ -579,8 +575,8 @@ void draw_imgui(Scene *scene) {
 
   ImGui::SeparatorText("Level of detail");
   {
-    ImGui::SliderInt("LOD bias", &settings.lod_bias, -(glsl::MAX_NUM_LODS - 1),
-                     glsl::MAX_NUM_LODS - 1, "%d");
+    ImGui::SliderInt("LOD bias", &settings.lod_bias, -(sh::MAX_NUM_LODS - 1),
+                     sh::MAX_NUM_LODS - 1, "%d");
 
     ImGui::Checkbox("LOD selection", &settings.lod_selection);
 
@@ -615,15 +611,15 @@ void draw_imgui(Scene *scene) {
 
   ImGui::SeparatorText("Post processing");
   {
-    const char *TONE_MAPPERS[(i32)glsl::ToneMapper::Count] = {};
-    TONE_MAPPERS[glsl::TONE_MAPPER_LINEAR] = "Linear";
-    TONE_MAPPERS[glsl::TONE_MAPPER_REINHARD] = "Reinhard";
-    TONE_MAPPERS[glsl::TONE_MAPPER_LUMINANCE_REINHARD] = "Reinhard (Luminance)";
-    TONE_MAPPERS[glsl::TONE_MAPPER_ACES] = "ACES";
-    TONE_MAPPERS[glsl::TONE_MAPPER_KHR_PBR_NEUTRAL] = "Khronos PBR Neutral";
-    TONE_MAPPERS[glsl::TONE_MAPPER_AGX_DEFAULT] = "AgX Default";
-    TONE_MAPPERS[glsl::TONE_MAPPER_AGX_GOLDEN] = "AgX Golden";
-    TONE_MAPPERS[glsl::TONE_MAPPER_AGX_PUNCHY] = "AgX Punchy";
+    const char *TONE_MAPPERS[(i32)sh::TONE_MAPPER_COUNT] = {};
+    TONE_MAPPERS[sh::TONE_MAPPER_LINEAR] = "Linear";
+    TONE_MAPPERS[sh::TONE_MAPPER_REINHARD] = "Reinhard";
+    TONE_MAPPERS[sh::TONE_MAPPER_LUMINANCE_REINHARD] = "Reinhard (Luminance)";
+    TONE_MAPPERS[sh::TONE_MAPPER_ACES] = "ACES";
+    TONE_MAPPERS[sh::TONE_MAPPER_KHR_PBR_NEUTRAL] = "Khronos PBR Neutral";
+    TONE_MAPPERS[sh::TONE_MAPPER_AGX_DEFAULT] = "AgX Default";
+    TONE_MAPPERS[sh::TONE_MAPPER_AGX_GOLDEN] = "AgX Golden";
+    TONE_MAPPERS[sh::TONE_MAPPER_AGX_PUNCHY] = "AgX Punchy";
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
   }
@@ -691,19 +687,17 @@ auto Scene::next_frame() -> Result<void, Error> {
 
 auto Scene::get_or_create_texture(Handle<Image> image,
                                   const SamplerDesc &sampler_desc)
-    -> Result<glsl::SampledTexture2D, Error> {
-  return m_descriptor_allocator
-      .allocate_sampled_texture<glsl::SampledTexture2D>(
-          *m_renderer, SrvDesc{m_images[image]},
-          {
-              .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
-              .min_filter = get_rhi_Filter(sampler_desc.min_filter),
-              .mipmap_mode =
-                  get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
-              .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
-              .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
-              .max_anisotropy = 16.0f,
-          });
+    -> Result<sh::Handle<sh::Sampler2D>, Error> {
+  return m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
+      *m_renderer, SrvDesc{m_images[image]},
+      {
+          .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
+          .min_filter = get_rhi_Filter(sampler_desc.min_filter),
+          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
+          .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
+          .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
+          .max_anisotropy = 16.0f,
+      });
 }
 
 auto Scene::create_texture(const void *blob, usize size)
@@ -864,7 +858,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     {
       auto pass = rgb.create_pass({.name = "ssao-hi-z"});
       auto spd_counter = rgb.create_buffer<u32>({.init = 0});
-      RgLinearHiZArgs args = {
+      RgSsaoHiZArgs args = {
           .spd_counter =
               pass.write_buffer("ssao-hi-z-spd-counter", &spd_counter),
           .num_mips = (u32)num_ssao_hi_z_mips,
@@ -880,9 +874,8 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
               }),
           .znear = camera.near,
       };
-      pass.dispatch_grid_2d(
-          m_sid->m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
-          {glsl::SPD_THREAD_ELEMS_X, glsl::SPD_THREAD_ELEMS_Y});
+      pass.dispatch_grid_2d(m_sid->m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
+                            {sh::SPD_THREAD_ELEMS_X, sh::SPD_THREAD_ELEMS_Y});
     }
 
     glm::uvec2 ssao_size =
@@ -911,13 +904,13 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
       auto pass = rgb.create_pass({.name = "ssao"});
 
       auto noise_lut = m_frcs->upload_allocator.allocate<float>(
-          glsl::SSAO_HILBERT_CURVE_SIZE * glsl::SSAO_HILBERT_CURVE_SIZE);
+          sh::SSAO_HILBERT_CURVE_SIZE * sh::SSAO_HILBERT_CURVE_SIZE);
 
-      for (u32 y : range(glsl::SSAO_HILBERT_CURVE_SIZE)) {
-        for (u32 x : range(glsl::SSAO_HILBERT_CURVE_SIZE)) {
-          u32 h = glsl::hilbert_from_2d(glsl::SSAO_HILBERT_CURVE_SIZE, x, y);
-          noise_lut.host_ptr[y * glsl::SSAO_HILBERT_CURVE_SIZE + x] =
-              glsl::r1_seq(h);
+      for (u32 y : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
+        for (u32 x : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
+          u32 h = sh::hilbert_from_2d(sh::SSAO_HILBERT_CURVE_SIZE, x, y);
+          noise_lut.host_ptr[y * sh::SSAO_HILBERT_CURVE_SIZE + x] =
+              sh::r1_seq(h);
         }
       }
 
@@ -962,10 +955,10 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
           .znear = camera.near,
       };
       pass.dispatch(m_sid->m_pipelines.ssao_filter, args,
-                    ceil_div(ssao_size.x, glsl::SSAO_FILTER_GROUP_SIZE.x *
-                                              glsl::SSAO_FILTER_UNROLL.x),
-                    ceil_div(ssao_size.y, glsl::SSAO_FILTER_GROUP_SIZE.y *
-                                              glsl::SSAO_FILTER_UNROLL.y));
+                    ceil_div(ssao_size.x, sh::SSAO_FILTER_GROUP_SIZE.x *
+                                              sh::SSAO_FILTER_UNROLL.x),
+                    ceil_div(ssao_size.y, sh::SSAO_FILTER_GROUP_SIZE.y *
+                                              sh::SSAO_FILTER_UNROLL.y));
     }
   }
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
 #include "CommandPool.hpp"
+#include "DevicePtr.hpp"
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
 #include "Texture.hpp"
@@ -10,7 +11,6 @@
 #include "core/LinearMap.hpp"
 #include "core/Optional.hpp"
 #include "core/Span.hpp"
-#include "glsl/DevicePtr.hpp"
 #include "rhi.hpp"
 
 #include <chrono>

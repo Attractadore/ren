@@ -3,8 +3,8 @@
 #include "core/Math.hpp"
 #include "core/Result.hpp"
 #include "core/Span.hpp"
-#include "glsl/Transforms.h"
 #include "ren/baking/mesh.hpp"
+#include "sh/Transforms.h"
 
 #include <cstdio>
 #include <glm/gtc/type_ptr.hpp>
@@ -201,9 +201,9 @@ void mesh_generate_tangents(const MeshGenerateTangentsOptions &opts) {
 }
 
 void mesh_compute_bounds(Span<const glm::vec3> positions,
-                         NotNull<glsl::PositionBoundingBox *> pbb,
+                         NotNull<sh::PositionBoundingBox *> pbb,
                          NotNull<float *> scale) {
-  glsl::BoundingBox bb = {
+  sh::BoundingBox bb = {
       .min = glm::vec3(std::numeric_limits<float>::infinity()),
       .max = -glm::vec3(std::numeric_limits<float>::infinity()),
   };
@@ -218,44 +218,44 @@ void mesh_compute_bounds(Span<const glm::vec3> positions,
   }
   *scale = glm::exp2(-glm::ceil(glm::log2(size)));
 
-  *pbb = glsl::encode_bounding_box(bb, *scale);
+  *pbb = sh::encode_bounding_box(bb, *scale);
 }
 
 auto mesh_encode_positions(Span<const glm::vec3> positions, float scale)
-    -> Vector<glsl::Position> {
-  Vector<glsl::Position> enc_positions(positions.size());
+    -> Vector<sh::Position> {
+  Vector<sh::Position> enc_positions(positions.size());
   for (usize i = 0; i < positions.size(); ++i) {
-    enc_positions[i] = glsl::encode_position(positions[i], scale);
+    enc_positions[i] = sh::encode_position(positions[i], scale);
   }
   return enc_positions;
 }
 
 auto mesh_encode_normals(Span<const glm::vec3> normals, float scale)
-    -> Vector<glsl::Normal> {
-  glm::mat3 encode_transform_matrix = glsl::make_encode_position_matrix(scale);
-  glm::mat3 encode_normal_matrix = glsl::normal(encode_transform_matrix);
+    -> Vector<sh::Normal> {
+  glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
+  glm::mat3 encode_normal_matrix = sh::normal(encode_transform_matrix);
 
-  Vector<glsl::Normal> enc_normals(normals.size());
+  Vector<sh::Normal> enc_normals(normals.size());
   for (usize i = 0; i < normals.size(); ++i) {
     enc_normals[i] =
-        glsl::encode_normal(glm::normalize(encode_normal_matrix * normals[i]));
+        sh::encode_normal(glm::normalize(encode_normal_matrix * normals[i]));
   }
 
   return enc_normals;
 }
 
 auto mesh_encode_tangents(Span<const glm::vec4> tangents, float scale,
-                          Span<const glsl::Normal> enc_normals)
-    -> Vector<glsl::Tangent> {
-  glm::mat3 encode_transform_matrix = glsl::make_encode_position_matrix(scale);
+                          Span<const sh::Normal> enc_normals)
+    -> Vector<sh::Tangent> {
+  glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
 
-  Vector<glsl::Tangent> enc_tangents(tangents.size());
+  Vector<sh::Tangent> enc_tangents(tangents.size());
   for (usize i = 0; i < tangents.size(); ++i) {
     // Encoding and then decoding the normal can change how the
     // tangent basis is selected due to rounding errors. Since
     // shaders use the decoded normal to decode the tangent, use
     // it for encoding as well.
-    glm::vec3 normal = glsl::decode_normal(enc_normals[i]);
+    glm::vec3 normal = sh::decode_normal(enc_normals[i]);
 
     // Orthonormalize tangent space.
     glm::vec4 tangent = tangents[i];
@@ -266,15 +266,14 @@ auto mesh_encode_tangents(Span<const glm::vec4> tangents, float scale,
 
     tangent =
         glm::vec4(glm::normalize(encode_transform_matrix * tangent3d), sign);
-    enc_tangents[i] = glsl::encode_tangent(tangent, normal);
+    enc_tangents[i] = sh::encode_tangent(tangent, normal);
   };
 
   return enc_tangents;
 }
 
 auto mesh_encode_uvs(Span<const glm::vec2> uvs,
-                     NotNull<glsl::BoundingSquare *> uv_bs)
-    -> Vector<glsl::UV> {
+                     NotNull<sh::BoundingSquare *> uv_bs) -> Vector<sh::UV> {
   for (glm::vec2 uv : uvs) {
     uv_bs->min = glm::min(uv_bs->min, uv);
     uv_bs->max = glm::max(uv_bs->max, uv);
@@ -292,19 +291,19 @@ auto mesh_encode_uvs(Span<const glm::vec2> uvs,
                           glm::notEqual(uv_bs->max, glm::vec2(0.0f)));
   }
 
-  Vector<glsl::UV> enc_uvs(uvs.size());
+  Vector<sh::UV> enc_uvs(uvs.size());
   for (usize i = 0; i < uvs.size(); ++i) {
-    enc_uvs[i] = glsl::encode_uv(uvs[i], *uv_bs);
+    enc_uvs[i] = sh::encode_uv(uvs[i], *uv_bs);
   }
 
   return enc_uvs;
 }
 
 [[nodiscard]] auto mesh_encode_colors(Span<const glm::vec4> colors)
-    -> Vector<glsl::Color> {
-  Vector<glsl::Color> enc_colors(colors.size());
+    -> Vector<sh::Color> {
+  Vector<sh::Color> enc_colors(colors.size());
   for (usize i = 0; i < colors.size(); ++i) {
-    enc_colors[i] = glsl::encode_color(colors[i]);
+    enc_colors[i] = sh::encode_color(colors[i]);
   }
   return enc_colors;
 }
@@ -313,7 +312,7 @@ struct MeshGenerateMeshletsOptions {
   Span<const glm::vec3> positions;
   Span<const u32> indices;
   Span<const LOD> lods;
-  NotNull<Vector<glsl::Meshlet> *> meshlets;
+  NotNull<Vector<sh::Meshlet> *> meshlets;
   NotNull<Vector<u32> *> meshlet_indices;
   NotNull<Vector<u8> *> meshlet_triangles;
   NotNull<MeshPackageHeader *> header;
@@ -323,16 +322,15 @@ struct MeshGenerateMeshletsOptions {
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
   ren_assert(opts.header->scale != 0.0f);
 
-  SmallVector<u32, glsl::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
+  SmallVector<u32, sh::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
 
   opts.header->num_lods = opts.lods.size();
   Vector<meshopt_Meshlet> lod_meshlets;
   for (isize l = opts.lods.size() - 1; l >= 0; --l) {
     const LOD &lod = opts.lods[l];
 
-    u32 num_lod_meshlets =
-        meshopt_buildMeshletsBound(lod.num_indices, glsl::NUM_MESHLET_VERTICES,
-                                   glsl::NUM_MESHLET_TRIANGLES);
+    u32 num_lod_meshlets = meshopt_buildMeshletsBound(
+        lod.num_indices, sh::NUM_MESHLET_VERTICES, sh::NUM_MESHLET_TRIANGLES);
     lod_meshlets.resize(num_lod_meshlets);
 
     u32 base_meshlet = opts.meshlets->size();
@@ -340,17 +338,17 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
     u32 base_triangle = opts.meshlet_triangles->size();
     ren_assert(base_triangle == lod.base_index);
     opts.meshlet_indices->resize(base_index +
-                                 num_lod_meshlets * glsl::NUM_MESHLET_VERTICES);
+                                 num_lod_meshlets * sh::NUM_MESHLET_VERTICES);
     opts.meshlet_triangles->resize(
-        base_triangle + num_lod_meshlets * glsl::NUM_MESHLET_TRIANGLES * 3);
+        base_triangle + num_lod_meshlets * sh::NUM_MESHLET_TRIANGLES * 3);
 
     num_lod_meshlets = meshopt_buildMeshlets(
         lod_meshlets.data(), &(*opts.meshlet_indices)[base_index],
         &(*opts.meshlet_triangles)[base_triangle],
         &opts.indices[lod.base_index], lod.num_indices,
         (const float *)opts.positions.data(), opts.positions.size(),
-        sizeof(glm::vec3), glsl::NUM_MESHLET_VERTICES,
-        glsl::NUM_MESHLET_TRIANGLES, opts.cone_weight);
+        sizeof(glm::vec3), sh::NUM_MESHLET_VERTICES, sh::NUM_MESHLET_TRIANGLES,
+        opts.cone_weight);
 
     opts.meshlets->resize(base_meshlet + num_lod_meshlets);
 
@@ -364,7 +362,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
     for (usize m = 0; m < num_lod_meshlets; ++m) {
       const meshopt_Meshlet lod_meshlet = lod_meshlets[m];
 
-      glsl::Meshlet meshlet = {
+      sh::Meshlet meshlet = {
           .base_index = base_index,
           .base_triangle = base_triangle + num_lod_triangles * 3,
           .num_triangles = lod_meshlet.triangle_count,
@@ -403,11 +401,11 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
       glm::vec3 cone_apex = glm::make_vec3(bounds.cone_apex);
       glm::vec3 cone_axis = glm::make_vec3(bounds.cone_axis);
 
-      meshlet.cone_apex = glsl::encode_position(cone_apex, opts.header->scale),
-      meshlet.cone_axis = glsl::encode_position(cone_axis, opts.header->scale),
+      meshlet.cone_apex = sh::encode_position(cone_apex, opts.header->scale),
+      meshlet.cone_axis = sh::encode_position(cone_axis, opts.header->scale),
       meshlet.cone_cutoff = bounds.cone_cutoff;
 
-      glsl::BoundingBox bb = {
+      sh::BoundingBox bb = {
           .min = glm::vec3(std::numeric_limits<float>::infinity()),
           .max = -glm::vec3(std::numeric_limits<float>::infinity()),
       };
@@ -419,7 +417,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
         bb.max = glm::max(bb.max, position);
       }
 
-      meshlet.bb = glsl::encode_bounding_box(bb, opts.header->scale);
+      meshlet.bb = sh::encode_bounding_box(bb, opts.header->scale);
 
       (*opts.meshlets)[base_meshlet + m] = meshlet;
 
@@ -439,12 +437,12 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
 struct BakedMesh {
   MeshPackageHeader header;
   usize size = 0;
-  Vector<glsl::Position> positions;
-  Vector<glsl::Normal> normals;
-  Vector<glsl::Tangent> tangents;
-  Vector<glsl::UV> uvs;
-  Vector<glsl::Color> colors;
-  Vector<glsl::Meshlet> meshlets;
+  Vector<sh::Position> positions;
+  Vector<sh::Normal> normals;
+  Vector<sh::Tangent> tangents;
+  Vector<sh::UV> uvs;
+  Vector<sh::Color> colors;
+  Vector<sh::Meshlet> meshlets;
   Vector<u32> indices;
   Vector<u8> triangles;
 };
@@ -505,7 +503,7 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
 
   // Generate LODs
 
-  StaticVector<LOD, glsl::MAX_NUM_LODS> lods;
+  StaticVector<LOD, sh::MAX_NUM_LODS> lods;
   mesh_simplify({
       .positions = &positions,
       .normals = &normals,

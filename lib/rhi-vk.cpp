@@ -5,7 +5,7 @@
 #include "core/String.hpp"
 #include "core/Vector.hpp"
 #include "core/Views.hpp"
-#include "glsl/Texture.h"
+#include "sh/Std.h"
 
 #include <SDL3/SDL_vulkan.h>
 #include <fmt/format.h>
@@ -1012,7 +1012,6 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
       .scalarBlockLayout = true,
       .timelineSemaphore = true,
       .bufferDeviceAddress = true,
-      .vulkanMemoryModel = true,
   };
 
   add_features(vulkan12_features);
@@ -1146,31 +1145,31 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
     };
 
     VkDescriptorSetLayoutBinding bindings[4] = {};
-    bindings[glsl::SAMPLER_SLOT] = {
-        .binding = glsl::SAMPLER_SLOT,
+    bindings[sh::SAMPLER_STATE_SLOT] = {
+        .binding = sh::SAMPLER_STATE_SLOT,
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-        .descriptorCount = glsl::MAX_NUM_SAMPLERS,
+        .descriptorCount = sh::MAX_NUM_SAMPLERS,
         .stageFlags =
             VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     };
-    bindings[glsl::SRV_SLOT] = {
-        .binding = glsl::SRV_SLOT,
+    bindings[sh::TEXTURE_SLOT] = {
+        .binding = sh::TEXTURE_SLOT,
         .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
         .stageFlags =
             VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     };
-    bindings[glsl::CIS_SLOT] = {
-        .binding = glsl::CIS_SLOT,
+    bindings[sh::SAMPLER_SLOT] = {
+        .binding = sh::SAMPLER_SLOT,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
         .stageFlags =
             VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
     };
-    bindings[glsl::UAV_SLOT] = {
-        .binding = glsl::UAV_SLOT,
+    bindings[sh::RW_TEXTURE_SLOT] = {
+        .binding = sh::RW_TEXTURE_SLOT,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
     };
 
@@ -1210,21 +1209,21 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
 
   {
     VkDescriptorPoolSize pool_sizes[4] = {};
-    pool_sizes[glsl::SAMPLER_SLOT] = {
+    pool_sizes[sh::SAMPLER_STATE_SLOT] = {
         .type = VK_DESCRIPTOR_TYPE_SAMPLER,
-        .descriptorCount = glsl::MAX_NUM_SAMPLERS,
+        .descriptorCount = sh::MAX_NUM_SAMPLERS,
     };
-    pool_sizes[glsl::SRV_SLOT] = {
+    pool_sizes[sh::TEXTURE_SLOT] = {
         .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
     };
-    pool_sizes[glsl::CIS_SLOT] = {
+    pool_sizes[sh::SAMPLER_SLOT] = {
         .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
     };
-    pool_sizes[glsl::UAV_SLOT] = {
+    pool_sizes[sh::RW_TEXTURE_SLOT] = {
         .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-        .descriptorCount = glsl::MAX_NUM_RESOURCES,
+        .descriptorCount = sh::MAX_NUM_RESOURCES,
     };
 
     VkDescriptorPoolCreateInfo pool_info = {
@@ -1646,7 +1645,7 @@ void write_sampler_descriptor_heap(Device device,
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = device->descriptor_heap,
-      .dstBinding = glsl::SAMPLER_SLOT,
+      .dstBinding = sh::SAMPLER_STATE_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
@@ -1667,7 +1666,7 @@ void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = device->descriptor_heap,
-      .dstBinding = glsl::SRV_SLOT,
+      .dstBinding = sh::TEXTURE_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
@@ -1689,7 +1688,7 @@ void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = device->descriptor_heap,
-      .dstBinding = glsl::CIS_SLOT,
+      .dstBinding = sh::SAMPLER_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1710,7 +1709,7 @@ void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
   VkWriteDescriptorSet write_info = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = device->descriptor_heap,
-      .dstBinding = glsl::UAV_SLOT,
+      .dstBinding = sh::RW_TEXTURE_SLOT,
       .dstArrayElement = index,
       .descriptorCount = (u32)image_info.size(),
       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,

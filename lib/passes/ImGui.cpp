@@ -2,7 +2,7 @@
 #include "ImGui.hpp"
 #include "../CommandRecorder.hpp"
 #include "../Scene.hpp"
-#include "../glsl/ImGui.h"
+#include "../sh/ImGui.h"
 
 namespace ren {
 
@@ -75,10 +75,10 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
           .size = {u32(clip_max.x - clip_min.x), u32(clip_max.y - clip_min.y)},
       }});
 
-      glsl::SampledTexture2D texture((uintptr_t)cmd.TextureId);
+      sh::Handle<sh::Sampler2D> texture(cmd.TextureId);
 
-      render_pass.push_constants(glsl::ImGuiArgs{
-          .vertices = DevicePtr<glsl::ImGuiVertex>(vertices_ptr),
+      render_pass.push_constants(sh::ImGuiArgs{
+          .vertices = DevicePtr<sh::ImGuiVertex>(vertices_ptr),
           .scale = scale,
           .translate = translate,
           .tex = texture,

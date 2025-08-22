@@ -1,11 +1,10 @@
 #pragma once
 #include "DrawSet.hpp"
-#include "Material.hpp"
 #include "core/Flags.hpp"
 #include "core/GenIndex.hpp"
 #include "core/StdDef.hpp"
 #include "core/Vector.hpp"
-#include "glsl/Mesh.h"
+#include "sh/Geometry.h"
 
 #include <array>
 #include <glm/glm.hpp>
@@ -23,10 +22,10 @@ struct MeshPackageHeader {
   u64 num_indices = 0;
   u64 num_triangles = 0;
   u32 num_lods = 0;
-  std::array<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods = {};
-  glsl::PositionBoundingBox bb = {};
+  std::array<sh::MeshLOD, sh::MAX_NUM_LODS> lods = {};
+  sh::PositionBoundingBox bb = {};
   float scale = 0.0f;
-  glsl::BoundingSquare uv_bs = {};
+  sh::BoundingSquare uv_bs = {};
   u64 positions_offset = 0;
   u64 normals_offset = 0;
   u64 tangents_offset = 0;
@@ -42,9 +41,9 @@ class ResourceArena;
 struct Buffer;
 
 enum class MeshAttribute {
-  UV = glsl::MESH_ATTRIBUTE_UV_BIT,
-  Tangent = glsl::MESH_ATTRIBUTE_TANGENT_BIT,
-  Color = glsl::MESH_ATTRIBUTE_COLOR_BIT,
+  UV = sh::MESH_ATTRIBUTE_UV_BIT,
+  Tangent = sh::MESH_ATTRIBUTE_TANGENT_BIT,
+  Color = sh::MESH_ATTRIBUTE_COLOR_BIT,
 };
 
 } // namespace ren
@@ -57,31 +56,35 @@ using MeshAttributeFlags = Flags<MeshAttribute>;
 
 struct Mesh {
   Handle<Buffer> positions;
-  glsl::PositionBoundingBox bb = {};
+  sh::PositionBoundingBox bb = {};
   float scale = 0.0f;
   Handle<Buffer> normals;
   Handle<Buffer> tangents;
   Handle<Buffer> uvs;
-  glsl::BoundingSquare uv_bs = {};
+  sh::BoundingSquare uv_bs = {};
   Handle<Buffer> colors;
   u32 index_pool = -1;
   Handle<Buffer> meshlets;
   Handle<Buffer> indices;
-  StaticVector<glsl::MeshLOD, glsl::MAX_NUM_LODS> lods;
+  StaticVector<sh::MeshLOD, sh::MAX_NUM_LODS> lods;
 };
 
 struct IndexPool {
   Handle<Buffer> indices;
-  u32 num_free_indices = glsl::INDEX_POOL_SIZE;
+  u32 num_free_indices = sh::INDEX_POOL_SIZE;
 };
 
 using IndexPoolList = SmallVector<IndexPool, 1>;
 
 auto create_index_pool(ResourceArena &arena) -> IndexPool;
 
+namespace sh {
+struct Material;
+}
+
 struct MeshInstance {
   Handle<Mesh> mesh;
-  Handle<Material> material;
+  Handle<sh::Material> material;
   DrawSetFlags draw_sets;
   std::array<DrawSetId, NUM_DRAW_SETS> draw_set_ids;
 };

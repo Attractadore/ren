@@ -12,7 +12,7 @@ void mesh_simplify(const MeshSimplificationOptions &opts) {
   *opts.lods = {{.num_indices = u32(opts.indices->size())}};
 
   Vector<u32> lod_indices;
-  while (opts.lods->size() < glsl::MAX_NUM_LODS) {
+  while (opts.lods->size() < sh::MAX_NUM_LODS) {
     u32 num_prev_lod_indices = opts.lods->back().num_indices;
 
     u32 num_lod_target_indices = num_prev_lod_indices * opts.threshold;

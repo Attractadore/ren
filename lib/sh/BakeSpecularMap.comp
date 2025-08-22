@@ -1,0 +1,38 @@
+#include "BakeSpecularMap.h"
+#include "Lighting.h"
+#include "Random.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] BakeSpecularMapArgs pc;
+
+vec3 integrate_specular_map(float roughness, vec3 r, Sampler2D equirectangular_map) {
+  vec3 n = r;
+  vec3 v = r;
+  vec3 i = vec3(0.0f);
+  float weight = 0.0f;
+  const uint NUM_SAMPLES = 1024;
+  for (uint k = 1; k <= NUM_SAMPLES; ++k) {
+    vec3 h = importance_sample_ggx(hammersley_2d(k, NUM_SAMPLES), roughness, n);
+    vec3 l = 2.0f * dot(h, v) * h - v;
+    float nl = dot(n, l);
+    if (nl > 0.0f) {
+      // TODO: select mip based on solid angle.
+      vec2 uv = direction_to_equirectangular_uv(l);
+      i += equirectangular_map.SampleLevel(uv, 0).rgb * nl;
+      weight += nl;
+    }
+  }
+  return i / weight;
+}
+
+[numthreads(16, 16)]
+void main() {
+  const uvec2 pos = gl_GlobalInvocationID.xy;
+  const uint face = gl_GlobalInvocationID.z;
+  vec3 r = cube_map_face_pos_to_direction(pos, face, TextureSize(Get(pc.specular_map)).xy);
+  vec3 i = integrate_specular_map(pc.roughness, normalize(r), Get(pc.equirectangular_map));
+  Get(pc.specular_map).Store(int3(pos, face), vec4(i, 1.0f));
+}
+
+}

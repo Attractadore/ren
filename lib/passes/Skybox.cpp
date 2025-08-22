@@ -30,7 +30,7 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
           Renderer &renderer, const RgRuntime &rg, RenderPass &rp) {
         rp.bind_graphics_pipeline(pipeline);
         rg.push_constants(rp, args);
-        rp.draw({.num_vertices = glsl::NUM_SKYBOX_VERTICES});
+        rp.draw({.num_vertices = sh::NUM_SKYBOX_VERTICES});
       });
 }
 

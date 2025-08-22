@@ -46,12 +46,12 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
   struct {
     const SceneData *scene = nullptr;
     GpuScene *gpu_scene = nullptr;
-    RgBufferToken<glsl::Mesh> meshes;
-    RgBufferToken<glsl::MeshInstance> mesh_instances;
-    std::array<RgBufferToken<glsl::InstanceCullData>, NUM_DRAW_SETS> draw_sets;
+    RgBufferToken<sh::Mesh> meshes;
+    RgBufferToken<sh::MeshInstance> mesh_instances;
+    std::array<RgBufferToken<sh::InstanceCullData>, NUM_DRAW_SETS> draw_sets;
     RgBufferToken<glm::mat4x3> transform_matrices;
-    RgBufferToken<glsl::Material> materials;
-    RgBufferToken<glsl::DirectionalLight> directional_lights;
+    RgBufferToken<sh::Material> materials;
+    RgBufferToken<sh::DirectionalLight> directional_lights;
   } rcs;
 
   rcs.scene = ccfg.scene;
@@ -104,10 +104,10 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     if (rcs.meshes) {
       ZoneScopedN("Update meshes");
       auto update_meshes =
-          rg.allocate<glsl::Mesh>(rcs.gpu_scene->update_meshes.size());
+          rg.allocate<sh::Mesh>(rcs.gpu_scene->update_meshes.size());
       std::ranges::copy(rcs.gpu_scene->mesh_update_data,
                         update_meshes.host_ptr);
-      BufferSlice<glsl::Mesh> meshes = rg.get_buffer(rcs.meshes);
+      BufferSlice<sh::Mesh> meshes = rg.get_buffer(rcs.meshes);
       for (auto i : range(rcs.gpu_scene->update_meshes.size())) {
         cmd.copy_buffer(update_meshes.slice.slice(i, 1),
                         meshes.slice(rcs.gpu_scene->update_meshes[i], 1));
@@ -118,12 +118,11 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
 
     if (rcs.mesh_instances) {
       ZoneScopedN("Update mesh instances");
-      auto update_mesh_instances = rg.allocate<glsl::MeshInstance>(
+      auto update_mesh_instances = rg.allocate<sh::MeshInstance>(
           rcs.gpu_scene->update_mesh_instances.size());
       std::ranges::copy(rcs.gpu_scene->mesh_instance_update_data,
                         update_mesh_instances.host_ptr);
-      BufferSlice<glsl::MeshInstance> buffer =
-          rg.get_buffer(rcs.mesh_instances);
+      BufferSlice<sh::MeshInstance> buffer = rg.get_buffer(rcs.mesh_instances);
       for (auto i : range(rcs.gpu_scene->update_mesh_instances.size())) {
         cmd.copy_buffer(
             update_mesh_instances.slice.slice(i, 1),
@@ -150,9 +149,9 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
       DrawSetData &ds = rcs.gpu_scene->draw_sets[s];
 
       auto update_cull_data =
-          rg.allocate<glsl::InstanceCullData>(ds.update_cull_data.size());
+          rg.allocate<sh::InstanceCullData>(ds.update_cull_data.size());
       std::ranges::copy(ds.update_cull_data, update_cull_data.host_ptr);
-      BufferSlice<glsl::InstanceCullData> cull_data =
+      BufferSlice<sh::InstanceCullData> cull_data =
           rg.get_buffer(rcs.draw_sets[s]);
 
       usize num_add = ds.update_cull_data.size();
@@ -212,10 +211,10 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     if (rcs.materials) {
       ZoneScopedN("Update materials");
       auto update_materials =
-          rg.allocate<glsl::Material>(rcs.gpu_scene->update_materials.size());
+          rg.allocate<sh::Material>(rcs.gpu_scene->update_materials.size());
       std::ranges::copy(rcs.gpu_scene->material_update_data,
                         update_materials.host_ptr);
-      BufferSlice<glsl::Material> materials = rg.get_buffer(rcs.materials);
+      BufferSlice<sh::Material> materials = rg.get_buffer(rcs.materials);
       for (auto i : range(rcs.gpu_scene->update_materials.size())) {
         cmd.copy_buffer(update_materials.slice.slice(i, 1),
                         materials.slice(rcs.gpu_scene->update_materials[i], 1));
@@ -226,11 +225,11 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
 
     if (rcs.directional_lights) {
       ZoneScopedN("Update directional_lights");
-      auto update_directional_lights = rg.allocate<glsl::DirectionalLight>(
+      auto update_directional_lights = rg.allocate<sh::DirectionalLight>(
           rcs.gpu_scene->update_directional_lights.size());
       std::ranges::copy(rcs.gpu_scene->directional_light_update_data,
                         update_directional_lights.host_ptr);
-      BufferSlice<glsl::DirectionalLight> buffer =
+      BufferSlice<sh::DirectionalLight> buffer =
           rg.get_buffer(rcs.directional_lights);
       for (auto i : range(rcs.gpu_scene->update_directional_lights.size())) {
         cmd.copy_buffer(

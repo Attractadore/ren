@@ -1,0 +1,37 @@
+#include "HiZ.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] HiZArgs pc;
+
+struct HiZSpdArgs {
+  vec2 inv_size;
+};
+
+float hi_z_spd_load(HiZSpdArgs args, ivec2 pos) {
+  vec2 uv = (pos + vec2(0.5f)) * args.inv_size;
+  return Get(pc.src).SampleLevel(uv, 0).r;
+}
+
+}
+
+#define SpdT float
+#define SPD_DEFAULT_VALUE (1.0f)
+#define SpdArgsT HiZSpdArgs
+#define spd_load hi_z_spd_load
+#define spd_to_vec4(v) v.rrrr
+#define spd_from_vec4(v) v.r
+#define spd_reduce_quad(x0y0, x1y0, x0y1, x1y1) min(min(x0y0, x1y0), min(x0y1, x1y1))
+
+#include "Spd.glsl"
+
+namespace ren::sh {
+
+[numthreads(SPD_THREADS_X, SPD_THREADS_Y)]
+void main() {
+  HiZSpdArgs args;
+  args.inv_size = 1.0f / TextureSize(Get(pc.dsts[0]));
+  spd_main(args);
+}
+
+}

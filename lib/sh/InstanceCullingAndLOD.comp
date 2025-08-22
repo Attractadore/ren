@@ -1,0 +1,135 @@
+#include "InstanceCullingAndLOD.h"
+#include "MeshletCulling.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] InstanceCullingAndLODArgs pc;
+
+bool cull(bool frustum_culling, bool occlusion_culling, float n, float zmin, float zmax, NDCBoundingBox ndc_bb) {
+  // Cull if bounding box is in front of near plane.
+  if (frustum_culling && zmax < n) {
+    return true;
+  }
+
+  // Select highest lod and don't cull if bounding box crosses near plane.
+  if (zmin < n) {
+    return false;
+  }
+
+  vec2 ndc_min;
+  vec3 ndc_max;
+  get_ndc_bb_min_max(ndc_bb, ndc_min, ndc_max);
+
+  if (frustum_culling && frustum_cull(ndc_min, ndc_max)) {
+    return true;
+  }
+
+  if (occlusion_culling && occlusion_cull(Get(pc.hi_z), ndc_min, ndc_max)) {
+    return true;
+  }
+
+  return false;
+}
+
+int select_lod(Mesh mesh, float n, float zmin, NDCBoundingBox ndc_bb) {
+  // Select highest lod and don't cull if bounding box crosses near plane.
+  if (zmin < n) {
+    return 0;
+  }
+
+  float area = get_ndc_bb_area(ndc_bb);
+  uint num_triangles = uint(area * pc.lod_triangle_density);
+
+  int l = 0;
+  for (; l < mesh.num_lods - 1; ++l) {
+    if (mesh.lods[l].num_triangles <= num_triangles) {
+      break;
+    }
+  }
+
+  return l;
+}
+
+[numthreads(256)]
+void main() {
+  if (gl_GlobalInvocationID.x >= pc.num_instances) {
+    return;
+  }
+
+  const bool lod_selection = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT);
+  const bool frustum_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
+  const bool occlusion_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT);
+
+  InstanceCullData cull_data = pc.cull_data[gl_GlobalInvocationID.x];
+  Mesh mesh = pc.meshes[cull_data.mesh];
+
+  uint vis_idx = cull_data.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  uint vis_bit = cull_data.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  MeshInstanceVisibilityMask vis_mask = MeshInstanceVisibilityMask(1) << vis_bit;
+
+  mat4 pvm = pc.proj_view * as_mat4(pc.transform_matrices[cull_data.mesh_instance]);
+  ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
+  // TODO: support finite far plane.
+  float n = cs_bb.p[0].z;
+  float zmin, zmax;
+  get_cs_bb_min_max_z(cs_bb, zmin, zmax);
+  NDCBoundingBox ndc_bb = convert_cs_bb_to_ndc(cs_bb);
+
+  if (bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT)) {
+    bool visible = bool(pc.mesh_instance_visibility[vis_idx] & vis_mask);
+    visible = visible && !cull(frustum_culling, false, n, zmin, zmax, ndc_bb);
+    if (!visible) {
+      return;
+    }
+  } else if (bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT)) {
+    bool visible = !cull(frustum_culling, occlusion_culling, n, zmin, zmax, ndc_bb);
+    if (!visible) {
+      atomicAnd(pc.mesh_instance_visibility[vis_idx], ~vis_mask);
+      return;
+    }
+    bool was_visible = bool(vis_mask & atomicOr(pc.mesh_instance_visibility[vis_idx], vis_mask));
+    if (was_visible) {
+      return;
+    }
+  } else {
+    bool visible = bool(pc.mesh_instance_visibility[vis_idx] & vis_mask);
+    if (!visible) {
+      return;
+    }
+  }
+
+  int l = lod_selection ? select_lod(mesh, n, zmin, ndc_bb) : 0;
+  l = clamp(l - pc.lod_bias, 0, int(mesh.num_lods - 1));
+  MeshLOD lod = mesh.lods[l];
+
+  uint base_meshlet = lod.base_meshlet;
+  uint num_meshlets = lod.num_meshlets;
+  while (num_meshlets != 0) {
+    uint bucket = findLSB(num_meshlets);
+    uint bucket_stride = 1 << bucket;
+
+    MeshletCullData meshlet_cull_data;
+    meshlet_cull_data.mesh = cull_data.mesh;
+    meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
+    meshlet_cull_data.batch = cull_data.batch;
+    meshlet_cull_data.base_meshlet = base_meshlet;
+
+    base_meshlet += bucket_stride;
+    num_meshlets &= ~bucket_stride;
+
+    uint bucket_offset = pc.meshlet_bucket_offsets[bucket];
+    uint offset = atomicAdd(pc.meshlet_bucket_sizes[bucket], 1);
+    uint bucket_size = offset + 1;
+    pc.meshlet_cull_data[bucket_offset + offset] = meshlet_cull_data;
+
+    uint old_num_bucket_threads = (bucket_size - 1) * bucket_stride;
+    uint old_num_bucket_work_groups = ceil_div(old_num_bucket_threads, MESHLET_CULLING_THREADS);
+    uint num_bucket_threads = bucket_size * bucket_stride;
+    uint num_bucket_work_groups = ceil_div(num_bucket_threads, MESHLET_CULLING_THREADS);
+    if (old_num_bucket_work_groups != num_bucket_work_groups) {
+      atomicMax(pc.meshlet_bucket_commands[bucket].x, num_bucket_work_groups);
+    }
+  }
+}
+
+}

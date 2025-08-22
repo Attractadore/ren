@@ -1,0 +1,3 @@
+#define SCAN_TYPE SCAN_TYPE_EXSCLUSIVE
+typedef uint scan_t
+#include "StreamScan.comp"

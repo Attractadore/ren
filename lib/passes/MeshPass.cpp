@@ -3,8 +3,8 @@
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
-#include "../glsl/MeshletCulling.h"
-#include "../glsl/StreamScan.h"
+#include "../sh/MeshletCulling.h"
+#include "../sh/StreamScan.h"
 #include "EarlyZ.vert.hpp"
 #include "ExclusiveScanUint32.comp.hpp"
 #include "InstanceCullingAndLOD.comp.hpp"
@@ -22,10 +22,10 @@ namespace {
 
 struct CullingInfo {
   u32 draw_set = -1;
-  NotNull<RgBufferId<glsl::MeshletDrawCommand> *> batch_commands;
+  NotNull<RgBufferId<sh::MeshletDrawCommand> *> batch_commands;
   NotNull<RgBufferId<u32> *> batch_offsets;
   NotNull<RgBufferId<u32> *> batch_sizes;
-  NotNull<RgBufferId<glsl::DispatchIndirectCommand> *> batch_prepare_commands;
+  NotNull<RgBufferId<sh::DispatchIndirectCommand> *> batch_prepare_commands;
 };
 
 void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
@@ -45,8 +45,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   }
 
   u32 buckets_size = 0;
-  std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
-  for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+  std::array<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+  for (u32 bucket : range(sh::NUM_MESHLET_CULLING_BUCKETS)) {
     bucket_offsets[bucket] = buckets_size;
     u32 bucket_stride = 1 << bucket;
     u32 bucket_size = std::min(num_instances, num_meshlets / bucket_stride);
@@ -54,31 +54,30 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   }
 
   auto meshlet_bucket_commands =
-      rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
-          .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
+      rgb.create_buffer<sh::DispatchIndirectCommand>({
+          .count = sh::NUM_MESHLET_CULLING_BUCKETS,
+          .init = sh::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
       });
 
   auto meshlet_bucket_sizes = rgb.create_buffer<u32>({
-      .count = glsl::NUM_MESHLET_CULLING_BUCKETS,
+      .count = sh::NUM_MESHLET_CULLING_BUCKETS,
       .init = 0,
   });
 
   auto meshlet_cull_data =
-      rgb.create_buffer<glsl::MeshletCullData>({.count = buckets_size});
+      rgb.create_buffer<sh::MeshletCullData>({.count = buckets_size});
 
   *cfg.batch_sizes = rgb.create_buffer<u32>({.count = num_batches, .init = 0});
 
-  *cfg.batch_prepare_commands =
-      rgb.create_buffer<glsl::DispatchIndirectCommand>({
-          .count = num_batches,
-          .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
-      });
+  *cfg.batch_prepare_commands = rgb.create_buffer<sh::DispatchIndirectCommand>({
+      .count = num_batches,
+      .init = sh::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
+  });
 
   auto num_commands = rgb.create_buffer<u32>({.init = 0});
 
-  auto sort_command = rgb.create_buffer<glsl::DispatchIndirectCommand>({
-      .init = glsl::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
+  auto sort_command = rgb.create_buffer<sh::DispatchIndirectCommand>({
+      .init = sh::DispatchIndirectCommand{.x = 0, .y = 1, .z = 1},
   });
 
   {
@@ -88,19 +87,19 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     u32 feature_mask = 0;
     if (settings.lod_selection) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
+      feature_mask |= sh::INSTANCE_CULLING_AND_LOD_LOD_SELECTION_BIT;
     }
     if (settings.instance_frustum_culling) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
+      feature_mask |= sh::INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT;
     }
     if (settings.instance_occulusion_culling) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT;
+      feature_mask |= sh::INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT;
     }
 
     if (info.culling_phase == CullingPhase::First) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT;
+      feature_mask |= sh::INSTANCE_CULLING_AND_LOD_FIRST_PHASE_BIT;
     } else if (info.culling_phase == CullingPhase::Second) {
-      feature_mask |= glsl::INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
+      feature_mask |= sh::INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT;
     }
 
     float num_viewport_triangles =
@@ -155,20 +154,20 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                        num_instances);
   }
 
-  auto unsorted_batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>({
-      .count = glsl::MAX_DRAW_MESHLETS,
+  auto unsorted_batch_commands = rgb.create_buffer<sh::MeshletDrawCommand>({
+      .count = sh::MAX_DRAW_MESHLETS,
   });
 
   auto unsorted_batch_command_batch_ids =
-      rgb.create_buffer<glsl_BatchId>({.count = glsl::MAX_DRAW_MESHLETS});
+      rgb.create_buffer<sh::BatchId>({.count = sh::MAX_DRAW_MESHLETS});
 
   {
     auto pass = rgb.create_pass({"meshlet-culling"});
 
     struct {
       Handle<ComputePipeline> pipeline;
-      RgBufferToken<glsl::DispatchIndirectCommand> meshlet_bucket_commands;
-      std::array<u32, glsl::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+      RgBufferToken<sh::DispatchIndirectCommand> meshlet_bucket_commands;
+      std::array<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
     } rcs;
 
     rcs.pipeline = ccfg.pipelines->meshlet_culling;
@@ -200,13 +199,13 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     const SceneGraphicsSettings &settings = ccfg.scene->settings;
 
     if (settings.meshlet_cone_culling) {
-      args.feature_mask |= glsl::MESHLET_CULLING_CONE_BIT;
+      args.feature_mask |= sh::MESHLET_CULLING_CONE_BIT;
     }
     if (settings.meshlet_frustum_culling) {
-      args.feature_mask |= glsl::MESHLET_CULLING_FRUSTUM_BIT;
+      args.feature_mask |= sh::MESHLET_CULLING_FRUSTUM_BIT;
     }
     if (settings.meshlet_occlusion_culling) {
-      args.feature_mask |= glsl::MESHLET_CULLING_OCCLUSION_BIT;
+      args.feature_mask |= sh::MESHLET_CULLING_OCCLUSION_BIT;
       if (info.culling_phase != CullingPhase::First) {
         ren_assert(info.hi_z);
         args.hi_z = pass.read_texture(
@@ -225,9 +224,9 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         [rcs, args](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
           cmd.bind_compute_pipeline(rcs.pipeline);
           auto pc = to_push_constants(rg, args);
-          DevicePtr<glsl::MeshletCullData> base_cull_data = pc.bucket_cull_data;
+          DevicePtr<sh::MeshletCullData> base_cull_data = pc.bucket_cull_data;
           DevicePtr<u32> base_bucket_size = pc.bucket_size;
-          for (u32 bucket : range(glsl::NUM_MESHLET_CULLING_BUCKETS)) {
+          for (u32 bucket : range(sh::NUM_MESHLET_CULLING_BUCKETS)) {
             pc.bucket_cull_data = base_cull_data + rcs.bucket_offsets[bucket];
             pc.bucket_size = base_bucket_size + bucket;
             pc.bucket = bucket;
@@ -242,7 +241,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
   {
     auto block_sums = rgb.create_buffer<u32>(
-        {.count = glsl::get_stream_scan_block_sum_count(num_batches)});
+        {.count = sh::get_stream_scan_block_sum_count(num_batches)});
 
     auto scan_num_started = rgb.create_buffer<u32>({.init = 0});
 
@@ -264,8 +263,8 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
                        num_batches);
   }
 
-  *cfg.batch_commands = rgb.create_buffer<glsl::MeshletDrawCommand>(
-      {.count = glsl::MAX_DRAW_MESHLETS});
+  *cfg.batch_commands = rgb.create_buffer<sh::MeshletDrawCommand>(
+      {.count = sh::MAX_DRAW_MESHLETS});
 
   {
     RgBufferId<u32> batch_out_offsets =
@@ -337,10 +336,10 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
 }
 
 struct MeshRenderPassInfo {
-  RgBufferId<glsl::MeshletDrawCommand> batch_commands;
+  RgBufferId<sh::MeshletDrawCommand> batch_commands;
   RgBufferId<u32> batch_offsets;
   RgBufferId<u32> batch_sizes;
-  RgBufferId<glsl::DispatchIndirectCommand> batch_prepare_commands;
+  RgBufferId<sh::DispatchIndirectCommand> batch_prepare_commands;
 };
 
 template <DrawSet S>
@@ -361,11 +360,11 @@ void record_render_pass(const PassCommonConfig &ccfg,
     pass_type = "-second-phase";
   }
 
-  RgBufferId<glsl::DrawIndexedIndirectCommand> commands =
-      ccfg.rgb->create_buffer<glsl::DrawIndexedIndirectCommand>(
-          {.count = glsl::MAX_DRAW_MESHLETS});
+  RgBufferId<sh::DrawIndexedIndirectCommand> commands =
+      ccfg.rgb->create_buffer<sh::DrawIndexedIndirectCommand>(
+          {.count = sh::MAX_DRAW_MESHLETS});
 
-  for (glsl_BatchId batch : range(ds.batches.size())) {
+  for (sh::BatchId batch : range(ds.batches.size())) {
     {
       auto pass = ccfg.rgb->create_pass({fmt::format(
           "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});
@@ -418,7 +417,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
     struct {
       Handle<GraphicsPipeline> pipeline;
       BufferSlice<u8> indices;
-      RgBufferToken<glsl::DrawIndexedIndirectCommand> commands;
+      RgBufferToken<sh::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
     } rcs;
 
@@ -454,9 +453,9 @@ void record_mesh_pass(const PassCommonConfig &ccfg,
   ZoneText(pass_name.data(), pass_name.size());
 #endif
 
-  RgBufferId<glsl::MeshletDrawCommand> batch_commands;
+  RgBufferId<sh::MeshletDrawCommand> batch_commands;
   RgBufferId<u32> batch_offsets, batch_sizes;
-  RgBufferId<glsl::DispatchIndirectCommand> batch_prepare_commands;
+  RgBufferId<sh::DispatchIndirectCommand> batch_prepare_commands;
   record_culling(ccfg, info.base, *ccfg.rgb,
                  CullingInfo{
                      .draw_set = get_draw_set_index(S),

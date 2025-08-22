@@ -21,11 +21,9 @@ add_library(KTX::ktx_read ALIAS ktx_read)
 add_library(tiny_imageformat INTERFACE)
 target_include_directories(tiny_imageformat INTERFACE tiny_imageformat/include ${REN_INCLUDE})
 
-add_library(spirv-reflect SPIRV-Reflect/spirv_reflect.c)
-target_include_directories(spirv-reflect PUBLIC SPIRV-Reflect)
-
 add_subdirectory(Vulkan-Headers)
 target_compile_definitions(Vulkan-Headers INTERFACE VK_NO_PROTOTYPES)
+add_subdirectory(SPIRV-Headers)
 
 add_subdirectory(volk)
 target_link_libraries(volk PUBLIC Vulkan::Headers)
@@ -59,9 +57,8 @@ if (REN_BUILD_IMGUI_PLUGIN)
   generate_export_header(imgui)
 endif()
 
-if (REN_BUILD_SHADER_COMPILER)
-  add_subdirectory(glslang)
-endif()
+set(slang_version 2025.14.3)
+set(slangc "${CMAKE_CURRENT_LIST_DIR}/slang/${slang_version}/${CMAKE_HOST_SYSTEM_NAME}/bin/slangc${CMAKE_HOST_EXECUTABLE_SUFFIX}" PARENT_SCOPE)
 
 if (REN_BUILD_BAKING_TOOLS OR REN_BUILD_EXAMPLES)
   add_library(stb INTERFACE)

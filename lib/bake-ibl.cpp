@@ -71,8 +71,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     const glm::vec4 *src_pixels = (const glm::vec4 *)src_image.pixels;
     glm::vec4 *dst_pixels = (glm::vec4 *)dst_image.pixels;
 
-    float d_theta_src = glsl::PI / src_image.height;
-    float d_theta_dst = glsl::PI / dst_image.height;
+    float d_theta_src = sh::PI / src_image.height;
+    float d_theta_dst = sh::PI / dst_image.height;
 
     for (usize y : range(dst_image.height)) {
       usize y12 = 2 * y;
@@ -125,22 +125,21 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     auto pass = rgb.create_pass({"filter-cube-map"});
 
     struct {
-      glsl::SampledTexture2D equirectangular_map;
+      sh::Handle<sh::Sampler2D> equirectangular_map;
       RgTextureToken cube_map;
     } args;
 
     ren_try(args.equirectangular_map,
-            baker->descriptor_allocator
-                .allocate_sampled_texture<glsl::SampledTexture2D>(
-                    *baker->renderer, SrvDesc{env_map},
-                    {
-                        .mag_filter = rhi::Filter::Linear,
-                        .min_filter = rhi::Filter::Linear,
-                        .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-                        .address_mode_u = rhi::SamplerAddressMode::Repeat,
-                        .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                        .max_anisotropy = 16.0f,
-                    }));
+            baker->descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
+                *baker->renderer, SrvDesc{env_map},
+                {
+                    .mag_filter = rhi::Filter::Linear,
+                    .min_filter = rhi::Filter::Linear,
+                    .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+                    .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                    .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                    .max_anisotropy = 16.0f,
+                }));
     args.cube_map = pass.write_texture("cube-map", &cube_map,
                                        rhi::CS_UNORDERED_ACCESS_IMAGE);
 
@@ -148,20 +147,20 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
         [args, pipelines = &baker->pipelines](Renderer &, const RgRuntime &rg,
                                               CommandRecorder &cmd) {
           cmd.bind_compute_pipeline(pipelines->reflection_map);
-          cmd.push_constants(glsl::BakeReflectionMapArgs{
+          cmd.push_constants(sh::BakeReflectionMapArgs{
               .equirectangular_map = args.equirectangular_map,
               .reflectance_map =
-                  (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                  rg.get_storage_texture_descriptor<sh::RWTexture2DArray>(
                       args.cube_map, 0),
           });
           cmd.dispatch_grid_3d({CUBE_MAP_SIZE, CUBE_MAP_SIZE, 6});
 
           cmd.bind_compute_pipeline(pipelines->specular_map);
           for (u32 mip : range<u32>(1, NUM_CUBE_MAP_MIPS - 1)) {
-            cmd.push_constants(glsl::BakeSpecularMapArgs{
+            cmd.push_constants(sh::BakeSpecularMapArgs{
                 .equirectangular_map = args.equirectangular_map,
                 .specular_map =
-                    (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                    rg.get_storage_texture_descriptor<sh::RWTexture2DArray>(
                         args.cube_map, mip),
                 .roughness = float(mip) / (NUM_CUBE_MAP_MIPS - 2),
             });
@@ -171,10 +170,10 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 
           cmd.bind_compute_pipeline(pipelines->irradiance_map);
           {
-            cmd.push_constants(glsl::BakeIrradianceMapArgs{
+            cmd.push_constants(sh::BakeIrradianceMapArgs{
                 .equirectangular_map = args.equirectangular_map,
                 .irradiance_map =
-                    (glsl::StorageTextureCube)rg.get_storage_texture_descriptor(
+                    rg.get_storage_texture_descriptor<sh::RWTexture2DArray>(
                         args.cube_map, NUM_CUBE_MAP_MIPS - 1),
             });
             u32 size = CUBE_MAP_SIZE >> (NUM_CUBE_MAP_MIPS - 1);
