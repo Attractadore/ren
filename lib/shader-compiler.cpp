@@ -13,6 +13,7 @@
 #include <fmt/std.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/Public/ShaderLang.h>
+#include <numeric>
 #include <spirv_reflect.h>
 
 namespace fs = std::filesystem;
@@ -32,7 +33,6 @@ struct CompileOptions {
   fs::path dst_dir;
   fs::path deps;
   bool debug = false;
-  String ns = "ren";
 };
 
 struct Member {
@@ -80,11 +80,104 @@ auto get_stage_short_name(ShaderStage stage) -> const char * {
   }
 }
 
+auto gen_asserts(const spv_reflect::ShaderModule &sm) -> String {
+  Span<const uint32_t> spirv(sm.GetCode(), sm.GetCodeSize() / 4);
+  ren_assert(spirv[0] == SpvMagicNumber);
+
+  uint32_t spv_bound = spirv[3];
+
+  // Parse all structs.
+  Vector<StringView> struct_names(spv_bound);
+  Vector<u32> struct_member_counts(spv_bound);
+  Vector<u32> struct_member_offsets(spv_bound);
+  for (usize word = 5; word < spirv.size();) {
+    usize num_words = spirv[word] >> SpvWordCountShift;
+    SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
+
+    if (op == SpvOpName) {
+      u32 structure = spirv[word + 1];
+      const char *name = (const char *)&spirv[word + 2];
+      struct_names[structure] = name;
+    } else if (op == SpvOpTypeStruct) {
+      u32 structure = spirv[word + 1];
+      struct_member_counts[structure] = num_words - 2;
+    }
+
+    word += num_words;
+  }
+  usize last_struct_member_count = struct_member_counts.back();
+  std::exclusive_scan(struct_member_counts.begin(), struct_member_counts.end(),
+                      struct_member_offsets.begin(), 0);
+  usize num_members = last_struct_member_count + struct_member_offsets.back();
+
+  // Parse all struct members.
+  Vector<StringView> member_names(num_members);
+  Vector<u32> member_offsets(num_members);
+  for (usize word = 5; word < spirv.size();) {
+    usize num_words = spirv[word] >> SpvWordCountShift;
+    SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
+
+    if (op == SpvOpMemberName) {
+      u32 structure = spirv[word + 1];
+      u32 member = spirv[word + 2];
+      const char *name = (const char *)&spirv[word + 3];
+      member_names[struct_member_offsets[structure] + member] = name;
+    } else if (op == SpvOpMemberDecorate) {
+      u32 structure = spirv[word + 1];
+      u32 member = spirv[word + 2];
+      SpvDecoration decoration = SpvDecoration(spirv[word + 3]);
+      if (decoration == SpvDecorationOffset) {
+        u32 offset = spirv[word + 4];
+        member_offsets[struct_member_offsets[structure] + member] = offset;
+      }
+    }
+
+    word += num_words;
+  }
+
+  String result = "#include <cstddef>\n\n";
+  for (usize i : range(spv_bound)) {
+    if (struct_names[i].empty() or struct_member_counts[i] == 0) {
+      continue;
+    }
+
+    StringView name = struct_names[i];
+    if (name.ends_with("_natural")) {
+      name.remove_suffix(std::strlen("_natural"));
+    }
+
+    usize offset = struct_member_offsets[i];
+
+    bool any_offset_non_zero = false;
+    for (usize m : range(struct_member_counts[i])) {
+      any_offset_non_zero =
+          any_offset_non_zero or member_offsets[offset + m] != 0;
+    }
+    if (not any_offset_non_zero) {
+      continue;
+    }
+
+    result += fmt::format("// {}\n", struct_names[i]);
+    for (usize m : range(struct_member_counts[i])) {
+      result += fmt::format(
+          "static_assert(offsetof(::ren::glsl::{}, {}) == {});\n", name,
+          member_names[offset + m], member_offsets[offset + m]);
+    }
+    result += '\n';
+  }
+
+  return result;
+}
+
 auto gen_rg_args(const CompileOptions &opts,
-                 const spv_reflect::ShaderModule &sm, String &hpp, String &cpp)
-    -> int {
-  hpp.clear();
-  cpp.clear();
+                 const spv_reflect::ShaderModule &sm, String &hpp) -> int {
+  fs::path shader_header = fs::absolute(opts.src).replace_extension(".h");
+  if (not fs::exists(shader_header)) {
+    fmt::println(stderr, "{} does not exist", shader_header);
+    return -1;
+  }
+
+  String asserts_hpp = gen_asserts(sm);
 
   SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
 
@@ -141,40 +234,36 @@ auto gen_rg_args(const CompileOptions &opts,
     }
   }
 
-  fs::path shader_header = fs::absolute(opts.src).replace_extension(".h");
-  String shader_header_include;
-  if (fs::exists(shader_header)) {
-    shader_header_include =
-        fmt::format(R"(#include "{}")", to_system_path(shader_header));
-  }
+  String rg_hpp = fmt::format(
+      R"(#ifndef Rg{0}_DEFINED
+#define Rg{0}_DEFINED
 
-  fmt::format_to(std::back_inserter(hpp), R"(
-#ifndef RG_{1}_DEFINED
-#define RG_{1}_DEFINED
-
-#include "{4}/lib/RenderGraph.hpp"
-{5}
+#include "{3}/lib/RenderGraph.hpp"
 
 #include <cstdint>
 
-namespace {0} {{
+namespace ren {{
 
-struct Rg{1} {{
-{2}}};
+struct Rg{0} {{
+{1}}};
 
-inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{1}& from) -> ::ren::glsl::{1} {{
+inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{0}& from) -> ::ren::glsl::{0} {{
   return {{
-{3}  }};
+{2}  }};
 }}
 
 }}
 
-#endif // RG_{1}_DEFINED
-)",
-                 opts.ns, type->type_name, member_declarations,
-                 member_conversions,
-                 to_system_path(fs::absolute(opts.project_src_dir)),
-                 shader_header_include);
+#endif // Rg{0}_DEFINED)",
+      type->type_name, member_declarations, member_conversions,
+      to_system_path(fs::absolute(opts.project_src_dir)));
+
+  hpp.clear();
+  fmt::format_to(std::back_inserter(hpp),
+                 R"(#include "{}"
+
+{}{})",
+                 to_system_path(shader_header), asserts_hpp, rg_hpp);
 
   return 0;
 }
@@ -300,10 +389,12 @@ auto glslang_compile(const CompileOptions &opts) -> int {
 
   spv_reflect::ShaderModule sm(spirv, SPV_REFLECT_MODULE_FLAG_NO_COPY);
 
-  String rg_hpp, rg_cpp;
-  if (int ret = gen_rg_args(opts, sm, rg_hpp, rg_cpp)) {
+  String rg_hpp;
+  if (int ret = gen_rg_args(opts, sm, rg_hpp)) {
     return ret;
   }
+
+  String asserts_hpp = gen_asserts(sm);
 
   String var_name =
       fmt::format("{}{}", opts.src.stem(), get_stage_short_name(stage));
@@ -324,21 +415,21 @@ auto glslang_compile(const CompileOptions &opts) -> int {
   }
 
   {
-    String header = fmt::format(R"(
-#pragma once
+    String header = fmt::format(
+        R"(#pragma once
+
 #include <cstddef>
 #include <cstdint>
 
-namespace {} {{
+namespace ren {{
 
 extern const uint32_t {}[];
 extern const size_t {}Size;
 
 }}
 
-{}
-)",
-                                opts.ns, var_name, var_name, rg_hpp);
+{})",
+        var_name, var_name, rg_hpp);
     std::ofstream f(hpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
@@ -349,22 +440,17 @@ extern const size_t {}Size;
 
   {
     String code = fmt::format("{:#010x}", fmt::join(spirv, ",\n  "));
-    String source =
-        fmt::format(R"(
-#include <cstddef>
+    String source = fmt::format(R"(#include <cstddef>
 #include <cstdint>
 
-namespace {} {{
+namespace ren {{
 
 const extern uint32_t {}[] = {{
   {}
 }};
 const extern size_t {}Size = sizeof({}) / sizeof(uint32_t);
-}}
-
-{}
-)",
-                    opts.ns, var_name, code, var_name, var_name, rg_cpp);
+}})",
+                                var_name, code, var_name, var_name);
     std::ofstream f(cpp_dst, std::ios::binary);
     if (!f) {
       fmt::println("Failed to open {} for writing", hpp_dst);
@@ -415,7 +501,6 @@ int main(int argc, const char *argv[]) {
       ("file", "path to GLSL source file", cxxopts::value<fs::path>())
       ("o,output-dir", "output directory", cxxopts::value<fs::path>())
       ("g", "generate debug info")
-      ("namespace", "namespace to define variables in", cxxopts::value<String>()->default_value(opts.ns))
       ("depfile", "write dependency file", cxxopts::value<fs::path>())
       ("project-src-dir", "value of PROJECT_SOURCE_DIR", cxxopts::value<fs::path>())
       ("h,help", "show this message")
@@ -439,7 +524,6 @@ int main(int argc, const char *argv[]) {
   if (result.count("g")) {
     opts.debug = true;
   }
-  opts.ns = result["namespace"].as<String>();
 
   if (!glslang::InitializeProcess()) {
     fmt::println(stderr, "Failed to initalize glslang");
