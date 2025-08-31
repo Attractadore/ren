@@ -142,8 +142,8 @@ auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
   return hot_reload::vtbl_ref->create_renderer(info);
 }
 
-auto draw(Scene *scene) -> expected<void> {
-  ren_try_to(hot_reload::vtbl_ref->draw(scene));
+auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
+  ren_try_to(hot_reload::vtbl_ref->draw(scene, draw_info));
 
 #if __linux__
   if (lib_watch_fd == -1) {

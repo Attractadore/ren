@@ -36,7 +36,13 @@ void main() {
     exposure = 1.0f / max_luminance;
   }
 
-  *pc.exposure = exposure;
+  float old_exposure = *pc.exposure;
+  float adaptation_time = exposure > old_exposure ? pc.dark_adaptation_time : pc.bright_adaptation_time;
+  // e^-5 ~= 0.6%
+  float m = 1.0f - exp(-5.0f*pc.dt/adaptation_time);
+  float new_exposure = mix(old_exposure, exposure, m);
+
+  *pc.exposure = new_exposure;
 }
 
 }

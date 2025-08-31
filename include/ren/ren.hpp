@@ -214,6 +214,10 @@ struct DirectionalLightDesc {
   glm::vec3 origin = {0.0f, 0.0f, 1.0f};
 };
 
+struct DrawInfo {
+  float delta_time = 0.0f;
+};
+
 } // namespace ren
 
 namespace ren_export {
@@ -297,7 +301,8 @@ auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
 // Call to use graphics driver low-latency APIs.
 [[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
 
-[[nodiscard]] auto draw(Scene *scene) -> expected<void>;
+[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
+    -> expected<void>;
 
 auto init_imgui(Scene *scene) -> expected<void>;
 
@@ -493,7 +498,8 @@ inline auto delay_input(Scene *scene) -> expected<void> {
   return hot_reload::vtbl_ref->delay_input(scene);
 }
 
-[[nodiscard]] auto draw(Scene *scene) -> expected<void>;
+[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
+    -> expected<void>;
 
 inline auto init_imgui(Scene *scene) -> expected<void> {
   return hot_reload::vtbl_ref->init_imgui(scene);

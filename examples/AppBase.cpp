@@ -93,7 +93,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(begin_frame());
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(ren::draw(m_scene));
+    TRY_TO(ren::draw(m_scene, {.delta_time = dt.count() / 1e9f}));
   }
 
   return {};

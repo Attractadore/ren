@@ -459,8 +459,10 @@ auto delay_input(Scene *scene) -> expected<void> {
   return {};
 }
 
-auto draw(Scene *scene) -> expected<void> {
+auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ZoneScoped;
+
+  scene->m_data.delta_time = draw_info.delta_time;
 
   Renderer *renderer = scene->m_renderer;
   auto *frcs = scene->m_frcs;
@@ -622,6 +624,13 @@ void draw_imgui(Scene *scene) {
     TONE_MAPPERS[sh::TONE_MAPPER_AGX_PUNCHY] = "AgX Punchy";
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
+
+    ImGui::SliderFloat("Dark auto-adaptation time",
+                       &settings.dark_adaptation_time, 0.2f, 30.0f * 60.0f,
+                       nullptr, ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Bright auto-adaptation time",
+                       &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
+                       nullptr, ImGuiSliderFlags_Logarithmic);
   }
 #endif
 }

@@ -63,11 +63,17 @@ struct SceneGraphicsSettings {
 
   // Post processing
   sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
+  // Bright to dark and dark to bright adaptation time is 20 and 5 minutes
+  // respectively for humans, make it 60 times for a stronger effect.
+  float dark_adaptation_time = 20;
+  float bright_adaptation_time = 5;
 
   bool amd_anti_lag = true;
 };
 
 struct SceneData {
+  float delta_time = 0.0f;
+
   SceneGraphicsSettings settings;
 
   SceneExposureSettings exposure;

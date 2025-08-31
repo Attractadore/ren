@@ -48,10 +48,15 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .queue = RgQueue::Async,
     });
 
+    const SceneData *scene = ccfg.scene;
+
     RgReduceLuminanceHistogramArgs args = {
         .histogram = pass.read_buffer(histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
-        .exposure_compensation = ccfg.scene->exposure.ec,
+        .exposure_compensation = scene->exposure.ec,
+        .dark_adaptation_time = scene->settings.dark_adaptation_time,
+        .bright_adaptation_time = scene->settings.bright_adaptation_time,
+        .dt = scene->delta_time,
     };
 
     pass.dispatch_grid(ccfg.pipelines->reduce_luminance_histogram, args,
