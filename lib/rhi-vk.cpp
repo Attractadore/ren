@@ -413,6 +413,7 @@ constexpr usize MAX_PHYSICAL_DEVICES = 4;
 
 constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
+    VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
 };
 
 constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
@@ -1031,6 +1032,15 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
   };
 
   add_features(uint8_features);
+
+  VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_float_features = {
+      .sType =
+          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
+      .shaderBufferFloat32AtomicAdd = true,
+      .shaderSharedFloat32AtomicAdd = true,
+  };
+
+  add_features(atomic_float_features);
 
   // Add optional features.
   // TODO: check that they are supported.

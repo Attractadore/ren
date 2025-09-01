@@ -634,12 +634,38 @@ void draw_imgui(Scene *scene) {
                       1.0f, 10.0f, "%.1f EV");
 
     ImGui::BeginDisabled(settings.exposure_mode != sh::EXPOSURE_MODE_AUTOMATIC);
-    ImGui::SliderFloat("Dark auto adaptation time",
-                       &settings.dark_adaptation_time, 0.2f, 30.0f * 60.0f,
-                       nullptr, ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("Bright auto adaptation time",
+
+    ImGui::SliderFloat("Dark adaptation time", &settings.dark_adaptation_time,
+                       0.2f, 30.0f * 60.0f, nullptr,
+                       ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Bright adaptation time",
                        &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
                        nullptr, ImGuiSliderFlags_Logarithmic);
+
+    const char *METERING_MODES[sh::METERING_MODE_COUNT] = {};
+    METERING_MODES[sh::METERING_MODE_SPOT] = "Spot";
+    METERING_MODES[sh::METERING_MODE_CENTER_WEIGHTED] = "Center-weighted";
+    METERING_MODES[sh::METERING_MODE_AVERAGE] = "Average";
+    ImGui::ListBox("Metering mode", (int *)&settings.metering_mode,
+                   METERING_MODES, std::size(METERING_MODES));
+
+    ImGui::BeginDisabled(settings.metering_mode != sh::METERING_MODE_SPOT);
+    ImGui::SliderFloat("Spot metering pattern size",
+                       &settings.spot_metering_pattern_relative_diameter, 0.1f,
+                       1.0f);
+    ImGui::EndDisabled();
+
+    ImGui::BeginDisabled(settings.metering_mode !=
+                         sh::METERING_MODE_CENTER_WEIGHTED);
+    ImGui::SliderFloat(
+        "Center-weighted metering pattern inner size",
+        &settings.center_weighted_metering_pattern_relative_inner_diameter,
+        0.1f, 1.0f);
+    ImGui::SliderFloat(
+        "Center-weighted metering pattern outer to inner size ratio",
+        &settings.center_weighted_metering_pattern_size_ratio, 1.1f, 2.0f);
+    ImGui::EndDisabled();
+
     ImGui::EndDisabled();
 
     ImGui::SeparatorText("Tone mapping");

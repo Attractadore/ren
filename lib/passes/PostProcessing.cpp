@@ -8,10 +8,11 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
   const SceneData &scene = *ccfg.scene;
 
-  RgBufferId<sh::LuminanceHistogram> histogram;
+  RgBufferId<float> luminance_histogram;
   if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
-    histogram = ccfg.rgb->create_buffer<sh::LuminanceHistogram>({
-        .init = sh::LuminanceHistogram(),
+    luminance_histogram = ccfg.rgb->create_buffer<float>({
+        .count = sh::NUM_LUMINANCE_HISTOGRAM_BINS,
+        .init = 0.0f,
         .init_queue = RgQueue::Async,
     });
   }
@@ -26,15 +27,29 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
     pass.wait_semaphore(ccfg.rcs->acquire_semaphore);
 
+    float inner_size = scene.settings.spot_metering_pattern_relative_diameter;
+    float outer_size = inner_size;
+    if (scene.settings.metering_mode == sh::METERING_MODE_CENTER_WEIGHTED) {
+      inner_size =
+          scene.settings
+              .center_weighted_metering_pattern_relative_inner_diameter;
+      outer_size = inner_size *
+                   scene.settings.center_weighted_metering_pattern_size_ratio;
+    };
+
     RgPostProcessingArgs args = {
+        .metering_mode = scene.settings.metering_mode,
+        .metering_pattern_relative_inner_size = inner_size,
+        .metering_pattern_relative_outer_size = outer_size,
         .hdr = pass.read_texture(cfg.hdr),
         .sdr = pass.write_texture("sdr", cfg.sdr.get()),
         .tone_mapper = scene.settings.tone_mapper,
         .output_color_space = sh::COLOR_SPACE_SRGB,
     };
 
-    if (histogram) {
-      args.histogram = pass.write_buffer("luminance-histogram", &histogram);
+    if (luminance_histogram) {
+      args.luminance_histogram =
+          pass.write_buffer("luminance-histogram", &luminance_histogram);
       args.exposure = pass.read_buffer(*cfg.exposure);
     }
 
@@ -48,17 +63,15 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .queue = RgQueue::Async,
     });
 
-    const SceneData *scene = ccfg.scene;
-
     RgReduceLuminanceHistogramArgs args = {
-        .histogram = pass.read_buffer(histogram),
+        .luminance_histogram = pass.read_buffer(luminance_histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
-        .exposure_compensation = scene->settings.exposure_compensation,
+        .exposure_compensation = scene.settings.exposure_compensation,
         .dark_adaptation_time =
-            cfg.frame_index > 0 ? scene->settings.dark_adaptation_time : 0.0f,
+            cfg.frame_index > 0 ? scene.settings.dark_adaptation_time : 0.0f,
         .bright_adaptation_time =
-            cfg.frame_index > 0 ? scene->settings.bright_adaptation_time : 0.0f,
-        .dt = scene->delta_time,
+            cfg.frame_index > 0 ? scene.settings.bright_adaptation_time : 0.0f,
+        .dt = scene.delta_time,
     };
 
     pass.dispatch_grid(ccfg.pipelines->reduce_luminance_histogram, args,

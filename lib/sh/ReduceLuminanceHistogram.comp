@@ -1,35 +1,35 @@
 #include "ReduceLuminanceHistogram.h"
+#include "PostProcessing.h"
 
 namespace ren::sh {
 
 [[vk::push_constant]] ReduceLuminanceHistogramArgs pc;
 
-shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+shared float luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
 [numthreads(NUM_LUMINANCE_HISTOGRAM_BINS)]
 void main() {
   uint index = gl_LocalInvocationIndex;
 
-  histogram[index] = pc.histogram->bins[index];
+  luminance_histogram[index] = pc.luminance_histogram[index];
   barrier();
 
   if (index != 0) {
     return;
   }
 
-  uint num_samples = 0;
   float log_luminance = 0.0f;
+  float weight = 0.0f;
   for (int i = 1; i < NUM_LUMINANCE_HISTOGRAM_BINS; ++i) {
     float bin_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE,
                               (i + 0.5f) / NUM_LUMINANCE_HISTOGRAM_BINS);
-    uint bin_count = histogram[i];
-    log_luminance += bin_luminance * bin_count;
-    num_samples += bin_count;
+    log_luminance += bin_luminance * luminance_histogram[i];
+    weight += luminance_histogram[i];
   }
 
   float exposure = 1.0f / MIN_LUMINANCE;
-  if (num_samples > 0) {
-    log_luminance /= num_samples;
+  if (weight > 0.0f) {
+    log_luminance /= weight;
     float luminance = exp2(log_luminance - pc.exposure_compensation);
     const float MIDDLE_GRAY = 0.18f;
     float max_luminance = 1.2f / MIDDLE_GRAY * luminance;

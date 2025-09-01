@@ -5,7 +5,7 @@ namespace ren::sh {
 
 [[vk::push_constant]] PostProcessingArgs pc;
 
-shared uint histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+shared float luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
 float get_luminance(vec3 color) {
   return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
@@ -126,56 +126,49 @@ vec3 tone_map_khr_pbr_neutral(vec3 color) {
   return mix(vec3(p_n), (color - f) * p_n / p, g);
 }
 
-void init_luminance_histogram() {
-  uint i = gl_LocalInvocationIndex;
-  const uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
-  for (; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += stride) {
-    histogram[i] = 0;
-  }
-  barrier();
-}
-
-void add_to_luminance_histogram(float luminance) {
-  luminance = max(luminance, MIN_LUMINANCE);
-  float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) /
-                (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
-  int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
-  // Ignore bin 0
-  if (bin > 0) {
-    atomicAdd(histogram[bin], 1);
-  }
-}
-
-void store_luminance_histogram() {
-  barrier();
-  uint i = gl_LocalInvocationIndex;
-  const uint stride = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
-  for (; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += stride) {
-    // Ignore bin 0 and zero-valued bins
-    if (i > 0 && histogram[i] > 0) {
-      atomicAdd(pc.histogram->bins[i], histogram[i]);
-    }
-  }
-}
-
 [numthreads(8, 8)]
 void main() {
-  const ivec2 size = TextureSize(Get(pc.hdr));
+  Texture2D hdr = Get(pc.hdr);
+
+  const ivec2 size = TextureSize(hdr);
+  const vec2 center = 0.5f * vec2(size);
   const ivec2 stride = ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
 
-  bool enable_automatic_exposure = pc.histogram;
-  if (enable_automatic_exposure) {
-    init_luminance_histogram();
+  if (pc.luminance_histogram) {
+    for (uint i = gl_LocalInvocationIndex; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+      luminance_histogram[i] = 0.0f;
+    }
+    barrier();
   }
 
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec3 color = Get(pc.hdr).Load(int3(x, y, 0)).rgb;
+      vec3 color = hdr.Load(int3(x, y, 0)).rgb;
 
-      if (enable_automatic_exposure) {
-        float luminance = get_luminance(color);
-        add_to_luminance_histogram(luminance / *pc.exposure);
+      if (pc.luminance_histogram) {
+        float weight = 1.0f;
+      
+        vec2 relative_centered_pos = 2.0f * (vec2(x + 0.5f, y + 0.5f) - center) / min(size.x, size.y);
+        if (pc.metering_mode == METERING_MODE_SPOT) {
+          float radius = 0.5f * pc.metering_pattern_relative_inner_size;
+          weight = length(relative_centered_pos) < radius ? 1.0f : 0.0f;
+        } else if (pc.metering_mode == METERING_MODE_CENTER_WEIGHTED) {
+          weight = 1.0f - smoothstep(
+            0.5f * pc.metering_pattern_relative_inner_size,
+            0.5f * pc.metering_pattern_relative_outer_size,
+            length(relative_centered_pos)
+          );
+        }
+
+        float luminance = max(get_luminance(color) / *pc.exposure, MIN_LUMINANCE);
+        float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) /
+                      (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
+        int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
+        // Ignore bin 0
+        if (bin > 0) {
+          atomicAdd(luminance_histogram[bin], weight);
+        }
       }
 
       switch (pc.tone_mapper) {
@@ -210,8 +203,14 @@ void main() {
     }
   }
 
-  if (enable_automatic_exposure) {
-    store_luminance_histogram();
+  if (pc.luminance_histogram) {
+    barrier();
+    for (uint i = gl_LocalInvocationIndex; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+      // Ignore bin 0 and zero-valued bins
+      if (i > 0 && luminance_histogram[i] > 0.0f) {
+        atomicAdd(pc.luminance_histogram[i], luminance_histogram[i]);
+      }
+    }
   }
 }
 

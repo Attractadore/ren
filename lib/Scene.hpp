@@ -80,6 +80,14 @@ struct SceneGraphicsSettings {
   /// noticeable effect.
   float dark_adaptation_time = 20;
   float bright_adaptation_time = 5;
+  /// Exposure metering mode for automatic exposure.
+  sh::MeteringMode metering_mode = sh::METERING_MODE_CENTER_WEIGHTED;
+  /// Spot metering pattern diameter.
+  float spot_metering_pattern_relative_diameter = 0.1f;
+  /// Center-weighted metering inner diameter.
+  float center_weighted_metering_pattern_relative_inner_diameter = 0.3f;
+  /// Center-weighted metering pattern ratio of inner and outer sizes.
+  float center_weighted_metering_pattern_size_ratio = 1.5f;
 
   /// Tone mapping
 
