@@ -476,6 +476,7 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
 
   FrameMark;
 
+  scene->m_frame_index++;
   return scene->next_frame();
 }
 
@@ -676,7 +677,6 @@ auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
 auto Scene::next_frame() -> Result<void, Error> {
   ZoneScoped;
 
-  m_frame_index++;
   m_frcs = &m_sid->m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
 
   {
@@ -837,6 +837,11 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
 
   } break;
+  case sh::EXPOSURE_MODE_AUTOMATIC:
+    if (m_frame_index == 0) {
+      rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, 1.0f);
+    }
+    break;
   default:
     break;
   }
@@ -1039,6 +1044,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   RgTextureId sdr;
   setup_post_processing_passes(cfg, PostProcessingPassesConfig{
+                                        .frame_index = m_frame_index,
                                         .hdr = hdr,
                                         .exposure = &rg_gpu_scene.exposure,
                                         .sdr = &sdr,

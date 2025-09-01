@@ -54,8 +54,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .histogram = pass.read_buffer(histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
         .exposure_compensation = scene->settings.exposure_compensation,
-        .dark_adaptation_time = scene->settings.dark_adaptation_time,
-        .bright_adaptation_time = scene->settings.bright_adaptation_time,
+        .dark_adaptation_time =
+            cfg.frame_index > 0 ? scene->settings.dark_adaptation_time : 0.0f,
+        .bright_adaptation_time =
+            cfg.frame_index > 0 ? scene->settings.bright_adaptation_time : 0.0f,
         .dt = scene->delta_time,
     };
 

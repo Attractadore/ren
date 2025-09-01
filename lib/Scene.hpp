@@ -152,7 +152,7 @@ struct Scene {
   SwapChain *m_swap_chain = nullptr;
   ResourceArena m_arena;
   DescriptorAllocator m_descriptor_allocator;
-  u64 m_frame_index = u64(-1);
+  u64 m_frame_index = 0;
   ScenePerFrameResources *m_frcs = nullptr;
   GenArray<Image> m_images;
   ResourceUploader m_resource_uploader;

@@ -4,6 +4,7 @@
 namespace ren {
 
 struct PostProcessingPassesConfig {
+  u64 frame_index = 0;
   RgTextureId hdr;
   NotNull<RgBufferId<float> *> exposure;
   NotNull<RgTextureId *> sdr;
