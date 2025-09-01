@@ -20,8 +20,6 @@ ren::hot_reload::Vtbl ren_vtbl = {
     ren_vtbl_f(set_camera_perspective_projection),
     ren_vtbl_f(set_camera_orthographic_projection),
     ren_vtbl_f(set_camera_transform),
-    ren_vtbl_f(set_camera_parameters),
-    ren_vtbl_f(set_exposure),
     ren_vtbl_f(create_mesh),
     ren_vtbl_f(create_image),
     ren_vtbl_f(create_material),

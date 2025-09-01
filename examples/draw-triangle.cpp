@@ -68,11 +68,6 @@ public:
                                   .up = {0.0f, 1.0f, 0.0f},
                               });
 
-    ren::set_exposure(scene, {
-                                 .mode = ren::ExposureMode::Automatic,
-                                 .ec = 2.0f,
-                             });
-
     return {};
   }
 

@@ -2,6 +2,7 @@
 #include "../BumpAllocator.hpp"
 #include "../RenderGraph.hpp"
 #include "../core/NotNull.hpp"
+#include "../sh/PostProcessing.h"
 
 namespace ren {
 
@@ -11,7 +12,7 @@ struct Pipelines;
 struct PassPersistentConfig {
   bool async_compute = true;
   glm::uvec2 viewport;
-  ExposureMode exposure = {};
+  sh::ExposureMode exposure_mode = {};
   rhi::ImageUsageFlags backbuffer_usage = {};
   bool ssao = true;
   bool ssao_half_res = true;

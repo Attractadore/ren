@@ -163,11 +163,6 @@ void set_camera(ren::Scene *scene, ren::CameraId camera,
                            .forward = {1.0f, 0.0f, 0.0f},
                            .up = {0.0f, 0.0f, 1.0f},
                        });
-
-  set_exposure(scene, {
-                          .mode = ren::ExposureMode::Automatic,
-                          .ec = 2.0f,
-                      });
 }
 
 } // namespace

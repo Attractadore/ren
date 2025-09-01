@@ -330,20 +330,6 @@ void set_camera_transform(Scene *scene, CameraId id,
   camera.up = desc.up;
 }
 
-void set_camera_parameters(Scene *scene, CameraId id,
-                           const CameraParameterDesc &desc) {
-  scene->get_camera(id).params = {
-      .aperture = desc.aperture,
-      .shutter_time = desc.shutter_time,
-      .iso = desc.iso,
-  };
-}
-
-void set_exposure(Scene *scene, const ExposureDesc &desc) {
-  scene->m_data.exposure.mode = desc.mode;
-  scene->m_data.exposure.ec = desc.ec;
-};
-
 auto create_mesh_instances(Scene *scene,
                            std::span<const MeshInstanceCreateInfo> create_info,
                            std::span<MeshInstanceId> out) -> expected<void> {
@@ -545,8 +531,7 @@ void draw_imgui(Scene *scene) {
 
   SceneGraphicsSettings &settings = scene->m_data.settings;
 
-  ImGui::SeparatorText("Async compute");
-  {
+  if (ImGui::TreeNode("Async compute")) {
     ImGui::BeginDisabled(!scene->m_renderer->is_queue_family_supported(
         rhi::QueueFamily::Compute));
 
@@ -558,62 +543,104 @@ void draw_imgui(Scene *scene) {
     ImGui::EndDisabled();
 
     ImGui::EndDisabled();
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("Latency");
-  {
+  if (ImGui::TreeNode("Latency")) {
     ImGui::BeginDisabled(!scene->is_amd_anti_lag_available());
     ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
     ImGui::EndDisabled();
+
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("Instance culling");
-  {
-    ImGui::Checkbox("Frustum culling## Instance",
+  if (ImGui::TreeNode("Instance culling")) {
+    ImGui::Checkbox("Frustum##InstanceCulling",
                     &settings.instance_frustum_culling);
-    ImGui::Checkbox("Occlusion culling## Instance",
+    ImGui::Checkbox("Occlusion##InstanceCulling",
                     &settings.instance_occulusion_culling);
+
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("Level of detail");
-  {
-    ImGui::SliderInt("LOD bias", &settings.lod_bias, -(sh::MAX_NUM_LODS - 1),
-                     sh::MAX_NUM_LODS - 1, "%d");
+  if (ImGui::TreeNode("Level of detail")) {
+    ImGui::SliderInt("LOD bias##LOD", &settings.lod_bias,
+                     -(sh::MAX_NUM_LODS - 1), sh::MAX_NUM_LODS - 1, "%d");
 
-    ImGui::Checkbox("LOD selection", &settings.lod_selection);
+    ImGui::Checkbox("LOD selection##LOD", &settings.lod_selection);
 
     ImGui::BeginDisabled(!settings.lod_selection);
-    ImGui::SliderFloat("LOD pixels per triangle", &settings.lod_triangle_pixels,
-                       1.0f, 64.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("LOD pixels per triangle##LOD",
+                       &settings.lod_triangle_pixels, 1.0f, 64.0f, "%.1f",
+                       ImGuiSliderFlags_Logarithmic);
     ImGui::EndDisabled();
+
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("Meshlet culling");
-  {
-    ImGui::Checkbox("Cone culling", &settings.meshlet_cone_culling);
-    ImGui::Checkbox("Frustum culling## Meshlet",
+  if (ImGui::TreeNode("Meshlet culling")) {
+    ImGui::Checkbox("Cone##MeshletCulling", &settings.meshlet_cone_culling);
+    ImGui::Checkbox("Frustum##MeshletCulling",
                     &settings.meshlet_frustum_culling);
-    ImGui::Checkbox("Occlusion culling## Meshlet",
+    ImGui::Checkbox("Occlusion##MeshletCulling",
                     &settings.meshlet_occlusion_culling);
+
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("SSAO");
-  {
-    ImGui::Checkbox("SSAO", &settings.ssao);
+  if (ImGui::TreeNode("SSAO")) {
+    ImGui::Checkbox("Enabled##SSAO", &settings.ssao);
 
     ImGui::BeginDisabled(!settings.ssao);
-    ImGui::SliderInt("Sample count", &settings.ssao_num_samples, 1, 64, "%d",
-                     ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("Radius", &settings.ssao_radius, 0.001f, 1.0f, "%.3f",
-                       ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("LOD bias## SSAO", &settings.ssao_lod_bias, -1.0f, 4.0f);
-    ImGui::Checkbox("Full resolution## SSAO", &settings.ssao_full_res);
+    ImGui::SliderInt("Sample count##SSAO", &settings.ssao_num_samples, 1, 64,
+                     "%d", ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Radius##SSAO", &settings.ssao_radius, 0.001f, 1.0f,
+                       "%.3f", ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("LOD bias##SSAO", &settings.ssao_lod_bias, -1.0f, 4.0f);
+    ImGui::Checkbox("Full resolution##SSAO", &settings.ssao_full_res);
     ImGui::EndDisabled();
+
+    ImGui::TreePop();
   }
 
-  ImGui::SeparatorText("Post processing");
-  {
-    const char *TONE_MAPPERS[(i32)sh::TONE_MAPPER_COUNT] = {};
+  if (ImGui::TreeNode("Post processing")) {
+    ImGui::SeparatorText("Camera");
+    ImGui::SliderFloat(
+        "Aperture", &settings.camera_aperture, 1.0f, 22.0f, "f/%.1f",
+        ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Shutter time", &settings.inv_camera_shutter_time, 1.0f,
+                       2000.0f, "%.0f 1/s",
+                       ImGuiSliderFlags_AlwaysClamp |
+                           ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("ISO", &settings.camera_iso, 100.0f, 3200.0f, "%.0f",
+                       ImGuiSliderFlags_AlwaysClamp |
+                           ImGuiSliderFlags_Logarithmic);
+
+    ImGui::SeparatorText("Exposure");
+    const char *EXPOSURE_MODES[sh::EXPOSURE_MODE_COUNT] = {};
+    EXPOSURE_MODES[sh::EXPOSURE_MODE_MANUAL] = "Manual";
+    EXPOSURE_MODES[sh::EXPOSURE_MODE_CAMERA] = "Physical camera";
+    EXPOSURE_MODES[sh::EXPOSURE_MODE_AUTOMATIC] = "Automatic";
+    ImGui::ListBox("Exposure mode", (int *)&settings.exposure_mode,
+                   EXPOSURE_MODES, std::size(EXPOSURE_MODES));
+
+    ImGui::BeginDisabled(settings.exposure_mode != sh::EXPOSURE_MODE_MANUAL);
+    ImGui::InputFloat("Manual exposure", &settings.manual_exposure, 1.0f, 10.0f,
+                      "%.1f EV");
+    ImGui::EndDisabled();
+
+    ImGui::InputFloat("Exposure compensation", &settings.exposure_compensation,
+                      1.0f, 10.0f, "%.1f EV");
+
+    ImGui::SliderFloat("Dark auto-adaptation time",
+                       &settings.dark_adaptation_time, 0.2f, 30.0f * 60.0f,
+                       nullptr, ImGuiSliderFlags_Logarithmic);
+    ImGui::SliderFloat("Bright auto-adaptation time",
+                       &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
+                       nullptr, ImGuiSliderFlags_Logarithmic);
+
+    ImGui::SeparatorText("Tone mapping");
+    const char *TONE_MAPPERS[sh::TONE_MAPPER_COUNT] = {};
     TONE_MAPPERS[sh::TONE_MAPPER_LINEAR] = "Linear";
     TONE_MAPPERS[sh::TONE_MAPPER_REINHARD] = "Reinhard";
     TONE_MAPPERS[sh::TONE_MAPPER_LUMINANCE_REINHARD] = "Reinhard (Luminance)";
@@ -625,12 +652,7 @@ void draw_imgui(Scene *scene) {
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
 
-    ImGui::SliderFloat("Dark auto-adaptation time",
-                       &settings.dark_adaptation_time, 0.2f, 30.0f * 60.0f,
-                       nullptr, ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("Bright auto-adaptation time",
-                       &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
-                       nullptr, ImGuiSliderFlags_Logarithmic);
+    ImGui::TreePop();
   }
 #endif
 }
@@ -737,9 +759,9 @@ bool Scene::is_amd_anti_lag_enabled() {
 
 namespace {
 
-auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
-  auto ev100_pow2 = camera.aperture * camera.aperture / camera.shutter_time *
-                    100.0f / camera.iso;
+auto get_camera_exposure(float aperture, float inv_shutter_time, float iso,
+                         float ec) -> float {
+  auto ev100_pow2 = aperture * aperture * inv_shutter_time * 100.0f / iso;
   auto max_luminance = 1.2f * ev100_pow2 * glm::exp2(-ec);
   return 1.0f / max_luminance;
 };
@@ -748,6 +770,8 @@ auto get_camera_exposure(const CameraParameters &camera, float ec) -> float {
 
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
   ZoneScoped;
+
+  const SceneGraphicsSettings &settings = m_data.settings;
 
   auto &pass_cfg = m_sid->m_pass_cfg;
   PassPersistentResources &pass_rcs = m_sid->m_pass_rcs;
@@ -765,7 +789,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   set_if_changed(pass_cfg.async_compute, m_data.settings.async_compute);
 
-  set_if_changed(pass_cfg.exposure, m_data.exposure.mode);
+  set_if_changed(pass_cfg.exposure_mode, m_data.settings.exposure_mode);
 
   set_if_changed(pass_cfg.viewport, m_swap_chain->get_size());
 
@@ -799,11 +823,22 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                        .gpu_scene = &m_gpu_scene,
                                        .rg_gpu_scene = &rg_gpu_scene,
                                    });
-  if (m_data.exposure.mode == ExposureMode::Camera) {
+  switch (settings.exposure_mode) {
+  case sh::EXPOSURE_MODE_MANUAL: {
     float exposure =
-        get_camera_exposure(m_data.get_camera().params, m_data.exposure.ec);
+        glm::exp2(settings.manual_exposure - settings.exposure_compensation);
+    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
+  } break;
+  case sh::EXPOSURE_MODE_CAMERA: {
+    float exposure = get_camera_exposure(
+        settings.camera_aperture, settings.inv_camera_shutter_time,
+        settings.camera_iso, settings.exposure_compensation);
     ren_assert(exposure > 0.0f);
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
+
+  } break;
+  default:
+    break;
   }
 
   glm::uvec2 viewport = m_swap_chain->get_size();

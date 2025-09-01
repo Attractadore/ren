@@ -75,13 +75,20 @@ auto ImGuiApp::begin_frame() -> Result<void> {
 
   ImGui::NewFrame();
 
+  ImGui::PushFont(m_font);
+
+#if 0
+  static bool open = true;
+  if (open) {
+    ImGui::ShowDemoWindow(&open);
+  }
+#endif
+
   ImGui::Begin("ImGuiApp", nullptr,
                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse);
   ImGui::SetWindowPos({0.0f, 0.0f});
   ImGui::SetWindowSize({io.DisplaySize.x * 0.3f, io.DisplaySize.y});
-
-  ImGui::PushFont(m_font);
 
   if (ImGui::CollapsingHeader("Renderer settings")) {
     ren::draw_imgui(get_scene());
@@ -91,8 +98,8 @@ auto ImGuiApp::begin_frame() -> Result<void> {
 }
 
 auto ImGuiApp::end_frame() -> Result<void> {
-  ImGui::PopFont();
   ImGui::End();
+  ImGui::PopFont();
   if (m_imgui_enabled) {
     ImGui::Render();
   }

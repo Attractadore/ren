@@ -8,12 +8,6 @@ enum class CameraProjection {
   Orthograpic,
 };
 
-struct CameraParameters {
-  float aperture = 16.0f;
-  float shutter_time = 1.0f / 400.0f;
-  float iso = 400.0f;
-};
-
 struct Camera {
   glm::vec3 position;
   glm::vec3 forward = {1.0f, 0.0f, 0.0f};
@@ -23,7 +17,6 @@ struct Camera {
   float ortho_width = 1.0f;
   float near = 0.01f;
   float far = 0.0f;
-  CameraParameters params;
 };
 
 glm::mat4 get_view_matrix(const Camera &camera);

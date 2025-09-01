@@ -28,12 +28,6 @@ struct CameraParams {
   Projection projection = PROJECTION_PERSPECTIVE;
   float hfov = 90.0f;
   float orthographic_width = 1.0f;
-  ren::ExposureMode exposure = ren::ExposureMode::Camera;
-  float camera_exposure_comensation = 0.0f;
-  float iso = 100.0f;
-  float aperture = 16.0f;
-  float inv_shutter_time = 100.0f;
-  float automatic_exposure_compensation = 0.0f;
 };
 
 void draw_camera_imgui(CameraParams &params) {
@@ -51,33 +45,6 @@ void draw_camera_imgui(CameraParams &params) {
                          "%.1f m");
     }
     params.projection = (Projection)projection;
-
-    ImGui::SeparatorText("Exposure");
-    int exposure = (int)params.exposure;
-    ImGui::RadioButton("Physical camera", &exposure,
-                       (int)ren::ExposureMode::Camera);
-    if (params.exposure == ren::ExposureMode::Camera) {
-      ImGui::SliderFloat("ISO", &params.iso, 100.0f, 3200.0f, "%.0f",
-                         ImGuiSliderFlags_AlwaysClamp |
-                             ImGuiSliderFlags_Logarithmic);
-      ImGui::SliderFloat("Aperture", &params.aperture, 1.0f, 22.0f, "f/%.1f",
-                         ImGuiSliderFlags_AlwaysClamp |
-                             ImGuiSliderFlags_Logarithmic);
-      ImGui::SliderFloat(
-          "Shutter time", &params.inv_shutter_time, 1.0f, 2000.0f, "%.0f 1/s",
-          ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic);
-      ImGui::InputFloat("Exposure compensation",
-                        &params.camera_exposure_comensation, 1.0f, 10.0f,
-                        "%.1f EV");
-    }
-    ImGui::RadioButton("Automatic", &exposure,
-                       (int)ren::ExposureMode::Automatic);
-    if (params.exposure == ren::ExposureMode::Automatic) {
-      ImGui::InputFloat("Exposure compensation",
-                        &params.automatic_exposure_compensation, 1.0f, 10.0f,
-                        "%.1f EV");
-    }
-    params.exposure = (ren::ExposureMode)exposure;
   }
 }
 
@@ -826,7 +793,6 @@ public:
 
     if (env_map and *env_map) {
       TRY_TO(ren::set_environment_map(scene, *env_map));
-      m_camera_params.exposure = ren::ExposureMode::Automatic;
     } else {
       if (!env_map) {
         warn("Failed to load environment map: {}", env_map.error());
@@ -924,13 +890,6 @@ protected:
                                     .forward = forward,
                                     .up = up,
                                 });
-      ren::set_camera_parameters(
-          scene, camera,
-          {
-              .aperture = m_camera_params.aperture,
-              .shutter_time = 1.0f / m_camera_params.inv_shutter_time,
-              .iso = m_camera_params.iso,
-          });
 
       switch (m_camera_params.projection) {
       case PROJECTION_PERSPECTIVE: {
@@ -942,20 +901,6 @@ protected:
             scene, camera, {.width = m_camera_params.orthographic_width});
       } break;
       }
-
-      float ec;
-      switch (m_camera_params.exposure) {
-      case ren::ExposureMode::Camera: {
-        ec = m_camera_params.camera_exposure_comensation;
-      } break;
-      case ren::ExposureMode::Automatic: {
-        ec = m_camera_params.automatic_exposure_compensation;
-      } break;
-      }
-      ren::set_exposure(scene, {
-                                   .mode = m_camera_params.exposure,
-                                   .ec = ec,
-                               });
     }
 
     return {};

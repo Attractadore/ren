@@ -34,11 +34,6 @@ public:
   auto reset(Renderer &renderer) -> Result<void, Error>;
 };
 
-struct SceneExposureSettings {
-  ExposureMode mode = {};
-  float ec = 0.0f;
-};
-
 struct SceneGraphicsSettings {
   bool async_compute = true;
   bool present_from_compute = true;
@@ -61,12 +56,34 @@ struct SceneGraphicsSettings {
   float ssao_lod_bias = 0.0f;
   bool ssao_full_res = false;
 
-  // Post processing
-  sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
-  // Bright to dark and dark to bright adaptation time is 20 and 5 minutes
-  // respectively for humans, make it 60 times for a stronger effect.
+  /// Post processing
+
+  /// Camera
+
+  /// Camera relative aperture size in f-stops.
+  float camera_aperture = 16.0f;
+  /// Inverse camera shutter time in 1/seconds.
+  float inv_camera_shutter_time = 400.0f;
+  /// Camera sensitivity in ISO.
+  float camera_iso = 400.0f;
+
+  /// Exposure
+
+  sh::ExposureMode exposure_mode = sh::EXPOSURE_MODE_AUTOMATIC;
+  /// Manual exposure setting in f-stops.
+  float manual_exposure = 0.0f;
+  /// Exposure compensation applied in all modes, in f-stops.
+  float exposure_compensation = 0.0f;
+  /// Automatic exposure temporal adaptation.
+  /// Bright to dark and dark to bright adaptation time is 20 and 5 minutes
+  /// respectively for humans, set it to be 60 times quicker for a more
+  /// noticeable effect.
   float dark_adaptation_time = 20;
   float bright_adaptation_time = 5;
+
+  /// Tone mapping
+
+  sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
 
   bool amd_anti_lag = true;
 };
@@ -75,8 +92,6 @@ struct SceneData {
   float delta_time = 0.0f;
 
   SceneGraphicsSettings settings;
-
-  SceneExposureSettings exposure;
 
   Handle<Camera> camera;
   GenArray<Camera> cameras;

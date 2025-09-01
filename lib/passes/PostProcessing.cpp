@@ -9,7 +9,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   const SceneData &scene = *ccfg.scene;
 
   RgBufferId<sh::LuminanceHistogram> histogram;
-  if (scene.exposure.mode == ExposureMode::Automatic) {
+  if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
     histogram = ccfg.rgb->create_buffer<sh::LuminanceHistogram>({
         .init = sh::LuminanceHistogram(),
         .init_queue = RgQueue::Async,
@@ -42,7 +42,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                           {4, 4});
   }
 
-  if (scene.exposure.mode == ExposureMode::Automatic) {
+  if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
     auto pass = ccfg.rgb->create_pass({
         .name = "reduce-luminance-histogram",
         .queue = RgQueue::Async,
@@ -53,7 +53,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     RgReduceLuminanceHistogramArgs args = {
         .histogram = pass.read_buffer(histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
-        .exposure_compensation = scene->exposure.ec,
+        .exposure_compensation = scene->settings.exposure_compensation,
         .dark_adaptation_time = scene->settings.dark_adaptation_time,
         .bright_adaptation_time = scene->settings.bright_adaptation_time,
         .dt = scene->delta_time,

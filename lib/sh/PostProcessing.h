@@ -4,6 +4,13 @@
 
 namespace ren::sh {
 
+enum ExposureMode {
+  EXPOSURE_MODE_MANUAL,
+  EXPOSURE_MODE_CAMERA,
+  EXPOSURE_MODE_AUTOMATIC,
+  EXPOSURE_MODE_COUNT,
+};
+
 enum ToneMapper {
   TONE_MAPPER_LINEAR,
   TONE_MAPPER_REINHARD,

@@ -112,31 +112,6 @@ struct CameraTransformDesc {
   glm::vec3 up = {0.0f, 0.0f, 1.0f};
 };
 
-/// Camera physical parameters and settings descriptor.
-struct CameraParameterDesc {
-  /// Relative aperture in f-stops.
-  float aperture = 16.0f;
-  /// Shutter time in seconds.
-  float shutter_time = 1.0f / 400.0f;
-  /// Sensitivity in ISO. Ignored if exposure is not calculated from camera
-  /// parameters.
-  float iso = 400.0f;
-};
-
-/// Exposure algorithm.
-enum class ExposureMode {
-  /// Calculate exposure using a physical camera model.
-  Camera,
-  /// Calculate exposure automatically based on scene luminance.
-  Automatic,
-};
-
-struct ExposureDesc {
-  ExposureMode mode = ExposureMode::Automatic;
-  /// Exposure compensation in f-stops.
-  float ec = 0.0f;
-};
-
 /// Texture or mipmap filter.
 enum class Filter {
   Nearest,
@@ -258,11 +233,6 @@ void set_camera_orthographic_projection(
 void set_camera_transform(Scene *scene, CameraId camera,
                           const CameraTransformDesc &desc);
 
-void set_camera_parameters(Scene *scene, CameraId camera,
-                           const CameraParameterDesc &desc);
-
-void set_exposure(Scene *scene, const ExposureDesc &desc);
-
 [[nodiscard]] auto create_mesh(Scene *scene, std::span<const std::byte> blob)
     -> expected<MeshId>;
 
@@ -333,8 +303,6 @@ struct Vtbl {
   ren_vtbl_f(set_camera_perspective_projection);
   ren_vtbl_f(set_camera_orthographic_projection);
   ren_vtbl_f(set_camera_transform);
-  ren_vtbl_f(set_camera_parameters);
-  ren_vtbl_f(set_exposure);
   ren_vtbl_f(create_mesh);
   ren_vtbl_f(create_image);
   ren_vtbl_f(create_material);
@@ -424,15 +392,6 @@ inline void set_camera_orthographic_projection(
 inline void set_camera_transform(Scene *scene, CameraId camera,
                                  const CameraTransformDesc &desc) {
   return hot_reload::vtbl_ref->set_camera_transform(scene, camera, desc);
-}
-
-inline void set_camera_parameters(Scene *scene, CameraId camera,
-                                  const CameraParameterDesc &desc) {
-  return hot_reload::vtbl_ref->set_camera_parameters(scene, camera, desc);
-}
-
-inline void set_exposure(Scene *scene, const ExposureDesc &desc) {
-  return hot_reload::vtbl_ref->set_exposure(scene, desc);
 }
 
 inline auto create_mesh(Scene *scene, std::span<const std::byte> blob)
