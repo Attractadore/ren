@@ -633,12 +633,14 @@ void draw_imgui(Scene *scene) {
     ImGui::InputFloat("Exposure compensation", &settings.exposure_compensation,
                       1.0f, 10.0f, "%.1f EV");
 
-    ImGui::SliderFloat("Dark auto-adaptation time",
+    ImGui::BeginDisabled(settings.exposure_mode != sh::EXPOSURE_MODE_AUTOMATIC);
+    ImGui::SliderFloat("Dark auto adaptation time",
                        &settings.dark_adaptation_time, 0.2f, 30.0f * 60.0f,
                        nullptr, ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("Bright auto-adaptation time",
+    ImGui::SliderFloat("Bright auto adaptation time",
                        &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
                        nullptr, ImGuiSliderFlags_Logarithmic);
+    ImGui::EndDisabled();
 
     ImGui::SeparatorText("Tone mapping");
     const char *TONE_MAPPERS[sh::TONE_MAPPER_COUNT] = {};
