@@ -18,23 +18,19 @@ void main() {
     return;
   }
 
-  float log_luminance = 0.0f;
-  float weight = 0.0f;
+  float log_luminance = MIN_LOG_LUMINANCE;
+  float weight = 1.0f;
   for (int i = 1; i < NUM_LUMINANCE_HISTOGRAM_BINS; ++i) {
-    float bin_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE,
-                              (i + 0.5f) / NUM_LUMINANCE_HISTOGRAM_BINS);
-    log_luminance += bin_luminance * luminance_histogram[i];
+    float bin_log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, float(i) / (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
+    log_luminance += bin_log_luminance * luminance_histogram[i];
     weight += luminance_histogram[i];
   }
+  log_luminance /= weight;
 
-  float exposure = 1.0f / MIN_LUMINANCE;
-  if (weight > 0.0f) {
-    log_luminance /= weight;
-    float luminance = exp2(log_luminance - pc.exposure_compensation);
-    const float MIDDLE_GRAY = 0.18f;
-    float max_luminance = 1.2f / MIDDLE_GRAY * luminance;
-    exposure = 1.0f / max_luminance;
-  }
+  float luminance = exp2(log_luminance - pc.exposure_compensation);
+  const float MIDDLE_GRAY = 0.18f;
+  float max_luminance = 1.2f / MIDDLE_GRAY * luminance;
+  float exposure = 1.0f / max_luminance;
 
   float old_exposure = *pc.exposure;
   float adaptation_time = exposure > old_exposure ? pc.dark_adaptation_time : pc.bright_adaptation_time;

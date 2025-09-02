@@ -162,13 +162,17 @@ void main() {
         }
 
         float luminance = max(get_luminance(color) / *pc.exposure, MIN_LUMINANCE);
-        float alpha = (log2(luminance) - MIN_LOG_LUMINANCE) /
-                      (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE);
-        int bin = int(alpha * NUM_LUMINANCE_HISTOGRAM_BINS);
-        // Ignore bin 0
-        if (bin > 0) {
-          atomicAdd(luminance_histogram[bin], weight);
-        }
+        float log_luminance = log2(luminance);
+        float alpha = saturate((log_luminance - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE));
+        int lo_bin = int(alpha * (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
+        int hi_bin = min(lo_bin + 1, NUM_LUMINANCE_HISTOGRAM_BINS - 1);
+
+        float lo_log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, float(lo_bin) / (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
+        float lo_weight = weight * (2.0f - log_luminance / lo_log_luminance);
+        float hi_weight = weight - lo_weight;
+
+        atomicAdd(luminance_histogram[lo_bin], lo_weight);
+        atomicAdd(luminance_histogram[hi_bin], hi_weight);
       }
 
       switch (pc.tone_mapper) {
