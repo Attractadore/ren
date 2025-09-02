@@ -27,11 +27,7 @@ void main() {
   }
   log_luminance /= weight;
 
-  float luminance = exp2(log_luminance - pc.exposure_compensation);
-  const float MIDDLE_GRAY = 0.18f;
-  float max_luminance = 1.2f / MIDDLE_GRAY * luminance;
-  float exposure = 1.0f / max_luminance;
-
+  float exposure = automatic_exposure(log_luminance, pc.exposure_compensation, pc.middle_gray);
   float old_exposure = *pc.exposure;
   float adaptation_time = exposure > old_exposure ? pc.dark_adaptation_time : pc.bright_adaptation_time;
   // e^-5 ~= 0.6%

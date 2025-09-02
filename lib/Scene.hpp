@@ -69,6 +69,9 @@ struct SceneGraphicsSettings {
 
   /// Exposure
 
+  /// Middle gray control.
+  i32 brightness = 50;
+  float middle_gray = 0.0f;
   sh::ExposureMode exposure_mode = sh::EXPOSURE_MODE_AUTOMATIC;
   /// Manual exposure setting in f-stops.
   float manual_exposure = 0.0f;

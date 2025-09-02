@@ -448,6 +448,8 @@ auto delay_input(Scene *scene) -> expected<void> {
 auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ZoneScoped;
 
+  scene->m_data.settings.middle_gray =
+      glm::pow(scene->m_data.settings.brightness * 0.01f, 2.2f);
   scene->m_data.delta_time = draw_info.delta_time;
 
   Renderer *renderer = scene->m_renderer;
@@ -618,6 +620,9 @@ void draw_imgui(Scene *scene) {
                            ImGuiSliderFlags_Logarithmic);
 
     ImGui::SeparatorText("Exposure");
+
+    ImGui::SliderInt("Brightness", &settings.brightness, 10, 100);
+
     const char *EXPOSURE_MODES[sh::EXPOSURE_MODE_COUNT] = {};
     EXPOSURE_MODES[sh::EXPOSURE_MODE_MANUAL] = "Manual";
     EXPOSURE_MODES[sh::EXPOSURE_MODE_CAMERA] = "Physical camera";
@@ -785,17 +790,6 @@ bool Scene::is_amd_anti_lag_enabled() {
   return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
 }
 
-namespace {
-
-auto get_camera_exposure(float aperture, float inv_shutter_time, float iso,
-                         float ec) -> float {
-  auto ev100_pow2 = aperture * aperture * inv_shutter_time * 100.0f / iso;
-  auto max_luminance = 1.2f * ev100_pow2 * glm::exp2(-ec);
-  return 1.0f / max_luminance;
-};
-
-} // namespace
-
 auto Scene::build_rg() -> Result<RenderGraph, Error> {
   ZoneScoped;
 
@@ -853,15 +847,16 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
                                    });
   switch (settings.exposure_mode) {
   case sh::EXPOSURE_MODE_MANUAL: {
-    float exposure =
-        glm::exp2(settings.manual_exposure - settings.exposure_compensation);
+    float exposure = sh::manual_exposure(settings.manual_exposure,
+                                         settings.exposure_compensation,
+                                         settings.middle_gray);
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
   } break;
   case sh::EXPOSURE_MODE_CAMERA: {
-    float exposure = get_camera_exposure(
+    float exposure = sh::camera_exposure(
         settings.camera_aperture, settings.inv_camera_shutter_time,
-        settings.camera_iso, settings.exposure_compensation);
-    ren_assert(exposure > 0.0f);
+        settings.camera_iso, settings.exposure_compensation,
+        settings.middle_gray);
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
 
   } break;

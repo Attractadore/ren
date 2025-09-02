@@ -13,6 +13,30 @@ static const float MAX_LOG_LUMINANCE = log2(MAX_LUMINANCE);
 
 static const uint NUM_LUMINANCE_HISTOGRAM_BINS = 64;
 
+static const float DEFAULT_MIDDLE_GRAY = 0.127f;
+
+inline float manual_exposure(float stops, float ec, float middle_gray) {
+  return middle_gray * exp2(stops - ec);
+}
+
+// https://seblagarde.wordpress.com/wp-content/uploads/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
+// Page 85
+inline float camera_exposure(float aperture, float inv_shutter_time, float iso,
+                             float ec, float middle_gray) {
+  float ev100_pow2 = aperture * aperture * inv_shutter_time * 100.0f / iso;
+  float max_luminance = 1.2f * ev100_pow2 * exp2(-ec);
+  return middle_gray / (DEFAULT_MIDDLE_GRAY * max_luminance);
+};
+
+// https://seblagarde.wordpress.com/wp-content/uploads/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
+// Page 85
+inline float automatic_exposure(float log_luminance, float ec,
+                                float middle_gray) {
+  float luminance = exp2(log_luminance - ec);
+  float max_luminance = 9.6f * luminance;
+  return middle_gray / (DEFAULT_MIDDLE_GRAY * max_luminance);
+}
+
 enum ExposureMode {
   EXPOSURE_MODE_MANUAL,
   EXPOSURE_MODE_CAMERA,
