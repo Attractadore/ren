@@ -92,6 +92,10 @@ inline vec3 linear_to_srgb(vec3 color) {
              greaterThanEqual(color, vec3(0.0031308f)));
 }
 
+inline float srgb_to_linear(float x) {
+  return x > float(0.04045f) ? pow((x + 0.055f) / 1.055f, 2.4f) : x / 12.92f;
+}
+
 inline vec3 srgb_to_linear(vec3 color) {
   return mix(color / 12.92f, pow((color + 0.055f) / 1.055f, vec3(2.4f)),
              greaterThan(color, vec3(0.04045f)));

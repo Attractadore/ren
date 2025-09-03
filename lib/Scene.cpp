@@ -686,6 +686,8 @@ void draw_imgui(Scene *scene) {
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
 
+    ImGui::Checkbox("Dithering", &settings.dithering);
+
     ImGui::TreePop();
   }
 #endif

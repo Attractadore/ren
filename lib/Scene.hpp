@@ -96,6 +96,10 @@ struct SceneGraphicsSettings {
 
   sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
 
+  /// Dithering
+
+  bool dithering = true;
+
   bool amd_anti_lag = true;
 };
 

@@ -63,11 +63,11 @@ enum ToneMapper {
   TONE_MAPPER_COUNT
 };
 
-enum ColorSpace {
-  COLOR_SPACE_SRGB,
-};
+static const uint PP_HILBERT_CURVE_LEVEL = 6;
+static const uint PP_HILBERT_CURVE_SIZE = 1 << PP_HILBERT_CURVE_LEVEL;
 
 struct PostProcessingArgs {
+  SH_RG_IGNORE(DevicePtr<vec3>) noise_lut;
   DevicePtr<float> luminance_histogram;
   DevicePtr<float> exposure;
   MeteringMode metering_mode;
@@ -76,7 +76,7 @@ struct PostProcessingArgs {
   Handle<Texture2D> hdr;
   Handle<RWTexture2D> sdr;
   ToneMapper tone_mapper;
-  ColorSpace output_color_space;
+  int dithering;
 };
 
 } // namespace ren::sh

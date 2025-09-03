@@ -1,6 +1,8 @@
 #include "PostProcessing.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
+#include "../core/Views.hpp"
+#include "../sh/Random.h"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
 
@@ -37,14 +39,25 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                    scene.settings.center_weighted_metering_pattern_size_ratio;
     };
 
+    auto noise_lut = ccfg.allocator->allocate<glm::vec3>(
+        sh::PP_HILBERT_CURVE_SIZE * sh::PP_HILBERT_CURVE_SIZE);
+
+    for (u32 y : range(sh::PP_HILBERT_CURVE_SIZE)) {
+      for (u32 x : range(sh::PP_HILBERT_CURVE_SIZE)) {
+        u32 h = sh::hilbert_from_2d(sh::PP_HILBERT_CURVE_SIZE, x, y);
+        noise_lut.host_ptr[y * sh::PP_HILBERT_CURVE_SIZE + x] = sh::r3_seq(h);
+      }
+    }
+
     RgPostProcessingArgs args = {
+        .noise_lut = noise_lut.device_ptr,
         .metering_mode = scene.settings.metering_mode,
         .metering_pattern_relative_inner_size = inner_size,
         .metering_pattern_relative_outer_size = outer_size,
         .hdr = pass.read_texture(cfg.hdr),
         .sdr = pass.write_texture("sdr", cfg.sdr.get()),
         .tone_mapper = scene.settings.tone_mapper,
-        .output_color_space = sh::COLOR_SPACE_SRGB,
+        .dithering = scene.settings.dithering,
     };
 
     if (luminance_histogram) {

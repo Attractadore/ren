@@ -126,6 +126,15 @@ vec3 tone_map_khr_pbr_neutral(vec3 color) {
   return mix(vec3(p_n), (color - f) * p_n / p, g);
 }
 
+// https://gpuopen.com/download/GdcVdrLottes.pdf
+vec3 dither_srgb(vec3 color, vec3 noise, uint bit_depth) {
+  vec3 grain = 2.0f * noise - 1.0f;
+  float step_size = 1.0f / ((1 << bit_depth) - 1);
+  float black = 0.5f * srgb_to_linear(step_size);
+  float biggest = 0.75f * (srgb_to_linear(1.0f + step_size) - 1.0f);
+  return color + grain * min(color + black, biggest);
+}
+
 [numthreads(8, 8)]
 void main() {
   Texture2D hdr = Get(pc.hdr);
@@ -197,11 +206,12 @@ void main() {
         } break;
       }
 
-      switch (pc.output_color_space) {
-        case COLOR_SPACE_SRGB: {
-          color = linear_to_srgb(color);
-        } break;
+      if (bool(pc.dithering)) {
+        vec3 noise = pc.noise_lut[y % PP_HILBERT_CURVE_SIZE * PP_HILBERT_CURVE_SIZE + x % PP_HILBERT_CURVE_SIZE];
+        color = dither_srgb(color, noise, 8);
       }
+
+      color = linear_to_srgb(color);
 
       Get(pc.sdr).Store(ivec2(x, y), vec4(color, 1.0f));
     }
