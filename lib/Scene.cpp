@@ -850,15 +850,13 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   switch (settings.exposure_mode) {
   case sh::EXPOSURE_MODE_MANUAL: {
     float exposure = sh::manual_exposure(settings.manual_exposure,
-                                         settings.exposure_compensation,
-                                         settings.middle_gray);
+                                         settings.exposure_compensation);
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
   } break;
   case sh::EXPOSURE_MODE_CAMERA: {
     float exposure = sh::camera_exposure(
         settings.camera_aperture, settings.inv_camera_shutter_time,
-        settings.camera_iso, settings.exposure_compensation,
-        settings.middle_gray);
+        settings.camera_iso, settings.exposure_compensation);
     rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
 
   } break;

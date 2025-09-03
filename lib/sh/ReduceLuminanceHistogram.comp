@@ -27,7 +27,7 @@ void main() {
   }
   log_luminance /= weight;
 
-  float exposure = automatic_exposure(log_luminance, pc.exposure_compensation, pc.middle_gray);
+  float exposure = automatic_exposure(log_luminance, pc.exposure_compensation);
   float old_exposure = *pc.exposure;
   float adaptation_time = exposure > old_exposure ? pc.dark_adaptation_time : pc.bright_adaptation_time;
   // e^-5 ~= 0.6%

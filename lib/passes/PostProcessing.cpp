@@ -51,6 +51,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
     RgPostProcessingArgs args = {
         .noise_lut = noise_lut.device_ptr,
+        .middle_gray = scene.settings.middle_gray,
         .metering_mode = scene.settings.metering_mode,
         .metering_pattern_relative_inner_size = inner_size,
         .metering_pattern_relative_outer_size = outer_size,
@@ -79,7 +80,6 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     RgReduceLuminanceHistogramArgs args = {
         .luminance_histogram = pass.read_buffer(luminance_histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
-        .middle_gray = scene.settings.middle_gray,
         .exposure_compensation = scene.settings.exposure_compensation,
         .dark_adaptation_time =
             cfg.frame_index > 0 ? scene.settings.dark_adaptation_time : 0.0f,

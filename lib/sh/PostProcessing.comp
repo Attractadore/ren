@@ -153,7 +153,7 @@ void main() {
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec3 color = hdr.Load(int3(x, y, 0)).rgb;
+      vec3 color = pc.middle_gray * hdr.Load(int3(x, y, 0)).rgb;
 
       if (pc.luminance_histogram) {
         float weight = 1.0f;
@@ -170,7 +170,7 @@ void main() {
           );
         }
 
-        float luminance = max(get_luminance(color) / *pc.exposure, MIN_LUMINANCE);
+        float luminance = max(get_luminance(color) / (*pc.exposure * pc.middle_gray), MIN_LUMINANCE);
         float log_luminance = log2(luminance);
         float alpha = saturate((log_luminance - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE));
         int lo_bin = int(alpha * (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
