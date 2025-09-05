@@ -81,6 +81,7 @@ struct SceneGraphicsSettings {
   /// Bright to dark and dark to bright adaptation time is 20 and 5 minutes
   /// respectively for humans, set it to be 60 times quicker for a more
   /// noticeable effect.
+  bool temporal_adaptation = true;
   float dark_adaptation_time = 20;
   float bright_adaptation_time = 5;
   /// Exposure metering mode for automatic exposure.

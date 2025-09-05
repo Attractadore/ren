@@ -640,12 +640,15 @@ void draw_imgui(Scene *scene) {
 
     ImGui::BeginDisabled(settings.exposure_mode != sh::EXPOSURE_MODE_AUTOMATIC);
 
+    ImGui::Checkbox("Temporal adaptation", &settings.temporal_adaptation);
+    ImGui::BeginDisabled(!settings.temporal_adaptation);
     ImGui::SliderFloat("Dark adaptation time", &settings.dark_adaptation_time,
                        0.2f, 30.0f * 60.0f, nullptr,
                        ImGuiSliderFlags_Logarithmic);
     ImGui::SliderFloat("Bright adaptation time",
                        &settings.bright_adaptation_time, 0.05f, 5.0f * 60.0f,
                        nullptr, ImGuiSliderFlags_Logarithmic);
+    ImGui::EndDisabled();
 
     const char *METERING_MODES[sh::METERING_MODE_COUNT] = {};
     METERING_MODES[sh::METERING_MODE_SPOT] = "Spot";

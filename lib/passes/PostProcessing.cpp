@@ -77,14 +77,17 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
         .queue = RgQueue::Async,
     });
 
+    bool temporal_adaptation =
+        cfg.frame_index > 0 and scene.settings.temporal_adaptation;
+
     RgReduceLuminanceHistogramArgs args = {
         .luminance_histogram = pass.read_buffer(luminance_histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
         .exposure_compensation = scene.settings.exposure_compensation,
         .dark_adaptation_time =
-            cfg.frame_index > 0 ? scene.settings.dark_adaptation_time : 0.0f,
+            temporal_adaptation ? scene.settings.dark_adaptation_time : 0.0f,
         .bright_adaptation_time =
-            cfg.frame_index > 0 ? scene.settings.bright_adaptation_time : 0.0f,
+            temporal_adaptation ? scene.settings.bright_adaptation_time : 0.0f,
         .dt = scene.delta_time,
     };
 
