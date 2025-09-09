@@ -96,6 +96,13 @@ struct SceneGraphicsSettings {
   /// Tone mapping
 
   sh::ToneMapper tone_mapper = sh::TONE_MAPPER_AGX_PUNCHY;
+  bool local_tone_mapping = true;
+  float ltm_shadows = 1.5f;
+  float ltm_highlights = 2.0f;
+  float ltm_sigma = 3.0f;
+  bool ltm_contrast_boost = true;
+  i32 ltm_pyramid_size = 6;
+  i32 ltm_llm_mip = 1;
 
   /// Dithering
 

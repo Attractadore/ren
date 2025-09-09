@@ -688,10 +688,24 @@ void draw_imgui(Scene *scene) {
     TONE_MAPPERS[sh::TONE_MAPPER_ACES] = "ACES";
     TONE_MAPPERS[sh::TONE_MAPPER_KHR_PBR_NEUTRAL] = "Khronos PBR Neutral";
     TONE_MAPPERS[sh::TONE_MAPPER_AGX_DEFAULT] = "AgX Default";
-    TONE_MAPPERS[sh::TONE_MAPPER_AGX_GOLDEN] = "AgX Golden";
     TONE_MAPPERS[sh::TONE_MAPPER_AGX_PUNCHY] = "AgX Punchy";
     ImGui::ListBox("Tone mapper", (int *)&settings.tone_mapper, TONE_MAPPERS,
                    std::size(TONE_MAPPERS), std::size(TONE_MAPPERS));
+
+    ImGui::Checkbox("Local tone mapping", &settings.local_tone_mapping);
+    ImGui::BeginDisabled(!settings.local_tone_mapping);
+    ImGui::SliderFloat("Local tone mapping shadows", &settings.ltm_shadows,
+                       0.0f, 4.0f);
+    ImGui::SliderFloat("Local tone mapping highlights",
+                       &settings.ltm_highlights, 0.0f, 4.0f);
+    ImGui::SliderFloat("Local tone mapping sigma", &settings.ltm_sigma, 0.0f,
+                       5.0f);
+    ImGui::Checkbox("Local tone mapping contrast boost",
+                    &settings.ltm_contrast_boost);
+    ImGui::SliderInt("Local tone mapping pyramid size",
+                     &settings.ltm_pyramid_size, 1, 10);
+    ImGui::SliderInt("Local tone mapping LLM mip", &settings.ltm_llm_mip, 0, 9);
+    ImGui::EndDisabled();
 
     ImGui::Checkbox("Dithering", &settings.dithering);
 
@@ -836,6 +850,10 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   set_if_changed(pass_cfg.ssao, m_data.settings.ssao);
   set_if_changed(pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
+  set_if_changed(pass_cfg.local_tone_mapping,
+                 m_data.settings.local_tone_mapping);
+  set_if_changed(pass_cfg.ltm_pyramid_size, m_data.settings.ltm_pyramid_size);
+  set_if_changed(pass_cfg.ltm_pyramid_mip, m_data.settings.ltm_llm_mip);
 
   if (dirty) {
     rgp.reset();

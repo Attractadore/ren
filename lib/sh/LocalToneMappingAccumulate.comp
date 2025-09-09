@@ -1,0 +1,62 @@
+#include "LocalToneMappingAccumulate.h"
+#include "Transforms.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] LocalToneMappingAccumulateArgs pc;
+
+// https://www.shadertoy.com/view/wtXXDl
+vec4 filter(Sampler2D t, vec2 uv, vec2 inv_size, int mip) {
+  vec2 q = fract(uv / inv_size);
+  vec2 c = (q * (q - 1.0f) + 0.5f) * inv_size;
+  vec2 w0 = uv - c;
+  vec2 w1 = uv + c;
+  vec4 s = 0.0f;
+  s += t.SampleLevel(vec2(w0.x, w0.y), mip);
+  s += t.SampleLevel(vec2(w0.x, w1.y), mip);
+  s += t.SampleLevel(vec2(w1.x, w1.y), mip);
+  s += t.SampleLevel(vec2(w1.x, w0.y), mip);
+  return 0.25f * s;
+}
+
+[numthreads(LTM_ACCUMULATE_GROUP_SIZE_X * LTM_ACCUMULATE_GROUP_SIZE_Y)]
+void main() {
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_ACCUMULATE_GROUP_SIZE_X);
+
+  Sampler2D ltm_lightness = Get(pc.lightness);
+  Sampler2D ltm_weights = Get(pc.weights);
+  RWTexture2D dst_accumulator = Get(pc.dst_accumulator);
+
+  if (IsNull(pc.src_accumulator)) {
+    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
+      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
+      weight.b = 1.0f - weight.r - weight.g;
+      vec3 gaussian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb;
+      float accumulator = dot(gaussian, weight);
+      if (all(pos < TextureSize(dst_accumulator))) {
+        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+      }
+    }
+  } else {
+    Sampler2D src_accumulator = Get(pc.src_accumulator);
+    vec2 inv_dst_size = 1.0f / TextureSize(dst_accumulator);
+    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
+      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
+      vec2 uv = (pos + 0.5f) * inv_dst_size;
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
+      weight.b = 1.0f - weight.r - weight.g;
+      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb - filter(ltm_lightness, uv, inv_dst_size, pc.dst_mip + 1).rgb;
+      if (bool(pc.contrast_boost)) {
+        weight *= (abs(laplacian) + 0.001f);
+        weight /= (weight.r + weight.g + weight.b);
+      }
+      float accumulator = filter(src_accumulator, uv, inv_dst_size, pc.dst_mip - pc.llm_mip + 1).r + dot(laplacian, weight);
+      if (all(pos < TextureSize(dst_accumulator))) {
+        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+      }
+    }
+  }
+}
+
+}
