@@ -10,6 +10,8 @@
 #include "ImGui.frag.hpp"
 #include "ImGui.vert.hpp"
 #include "InstanceCullingAndLOD.comp.hpp"
+#include "LocalToneMapping.comp.hpp"
+#include "LocalToneMappingAccumulate.comp.hpp"
 #include "MeshletCulling.comp.hpp"
 #include "MeshletSorting.comp.hpp"
 #include "Opaque.frag.hpp"
@@ -154,6 +156,11 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
   ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
+  ren_try(pipelines.local_tone_mapping,
+          compute_pipeline(LocalToneMappingCS, "Local tone mapping"));
+  ren_try(pipelines.local_tone_mapping_accumulate,
+          compute_pipeline(LocalToneMappingAccumulateCS,
+                           "Local tone mapping accumulation"));
   ren_try(pipelines.post_processing,
           compute_pipeline(PostProcessingCS, "Post-processing"));
   ren_try(pipelines.reduce_luminance_histogram,

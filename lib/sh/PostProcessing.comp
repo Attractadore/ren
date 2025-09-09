@@ -1,139 +1,12 @@
 #include "PostProcessing.h"
 #include "Transforms.h"
+#include "LocalToneMapping.h"
 
 namespace ren::sh {
 
 [[vk::push_constant]] PostProcessingArgs pc;
 
 shared float luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
-
-float get_luminance(vec3 color) {
-  return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
-}
-
-vec3 tone_map_reinhard(vec3 color) {
-  return color / (1.0f + color);
-}
-
-vec3 tone_map_luminance_reinhard(vec3 color) {
-  float luminance = get_luminance(color);
-  return 1.0f / (1.0f + luminance) * color;
-}
-
-vec3 aces_rrt_and_odt_fit(vec3 v) {
-  vec3 a = v * (v + 0.0245786f) - 0.000090537f;
-  vec3 b = v * (0.983729f * v + 0.4329510f) + 0.238081f;
-  return a / b;
-}
-
-// https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
-vec3 tone_map_aces(vec3 color) {
-  const mat3 ACES_INPUT_MATRIX = mat3(
-    0.59719f, 0.07600f, 0.02840f,
-    0.35458f, 0.90834f, 0.13383f,
-    0.04823f, 0.01566f, 0.83777f
-  );
-
-  const mat3 ACES_OUTPUT_MATRIX = mat3(
-     1.60475f, -0.10208f, -0.00327f,
-    -0.53108f,  1.10813f, -0.07276f,
-    -0.07367f, -0.00605f,  1.07602f
-  );
-
-  color = ACES_INPUT_MATRIX * color;
-  color = aces_rrt_and_odt_fit(color);
-  color = ACES_OUTPUT_MATRIX * color;
-
-  return clamp(color, 0.0f, 1.0f);
-}
-
-vec3 agx_default_contrast_curve(vec3 x) {
-  vec3 x2 = x * x;
-  vec3 x3 = x2 * x;
-  vec3 x4 = x2 * x2;
-  vec3 x5 = x4 * x;
-  vec3 x6 = x4 * x2;
-  vec3 x7 = x6 * x;
-  return -17.86f * x7 + 78.01f * x6 - 126.7f * x5 + 92.06f * x4 - 28.72f * x3 + 4.361f * x2 - 0.1718f * x + 0.002857f;
-}
-
-const uint AGX_LOOK_DEFAULT = 0;
-const uint AGX_LOOK_GOLDEN = TONE_MAPPER_AGX_GOLDEN - TONE_MAPPER_AGX_DEFAULT;
-const uint AGX_LOOK_PUNCHY = TONE_MAPPER_AGX_PUNCHY - TONE_MAPPER_AGX_DEFAULT;
-
-// https://iolite-engine.com/blog_posts/minimal_agx_implementation
-vec3 tone_map_agx(vec3 color, uint look) {
-  const mat3 AGX_INPUT_MATRIX = mat3(
-    0.842479062253094f , 0.0423282422610123f, 0.0423756549057051f,
-    0.0784335999999992f, 0.878468636469772f , 0.0784336f         ,
-    0.0792237451477643f, 0.0791661274605434f, 0.879142973793104f
-  );
-
-  const mat3 AGX_OUTPUT_MATRIX = mat3(
-     1.19687900512017f  , -0.0528968517574562f, -0.0529716355144438f,
-    -0.0980208811401368f,  1.15190312990417f  , -0.0980434501171241f,
-    -0.0990297440797205f, -0.0989611768448433f,  1.15107367264116f
-  );
-
-  const float AGX_MIN_EV = -12.47393f;
-  const float AGX_MAX_EV = 4.026069f;
-
-  color = AGX_INPUT_MATRIX * color;
-  color = clamp(log2(color), AGX_MIN_EV, AGX_MAX_EV);
-  color = (color - AGX_MIN_EV) / (AGX_MAX_EV - AGX_MIN_EV);
-  color = agx_default_contrast_curve(color);
-
-  vec3 offset = vec3(0.0f);
-  vec3 slope = vec3(1.0f);
-  vec3 power = vec3(1.0f);
-  float sat = 1.0f;
-  switch (look) {
-    case AGX_LOOK_GOLDEN: {
-      slope = vec3(1.0f, 0.9f, 0.5f);
-      power = vec3(0.8f);
-      sat = 0.8f;
-    } break;
-    case AGX_LOOK_PUNCHY: {
-      slope = vec3(1.0f);
-      power = vec3(1.35f);
-      sat = 1.4f;
-    } break;
-  }
-  color = pow(color * slope + offset, power);
-
-  float luminance = get_luminance(color);
-  color = luminance + sat * (color - luminance);
-  color = AGX_OUTPUT_MATRIX * color;
-  return srgb_to_linear(color);
-}
-
-// https://github.com/KhronosGroup/ToneMapping/blob/main/PBR_Neutral
-vec3 tone_map_khr_pbr_neutral(vec3 color) {
-  const float F0 = 0.04f;
-  const float KS = 0.80f - F0;
-  const float KD = 0.15f;
-
-  float x = min(color.r, min(color.g, color.b));
-  float f = x <= 2.0f * F0 ? x - x * x / (4.0f * F0): F0;
-  float p = max(color.r, max(color.g, color.b)) - f;
-  if (p <= KS) {
-    return color - f;
-  }
-
-  float p_n = 1.0f - (1.0f - KS) * (1.0f - KS) / (p + 1.0f - 2.0f * KS);
-  float g = 1.0f / (KD * (p - p_n) + 1.0f);
-
-  return mix(vec3(p_n), (color - f) * p_n / p, g);
-}
-
-// https://gpuopen.com/download/GdcVdrLottes.pdf
-vec3 dither_srgb(vec3 color, vec3 noise, uint bit_depth) {
-  vec3 grain = 2.0f * noise - 1.0f;
-  float step_size = 1.0f / ((1 << bit_depth) - 1);
-  float black = 0.5f * srgb_to_linear(step_size);
-  float biggest = 0.75f * (srgb_to_linear(1.0f + step_size) - 1.0f);
-  return color + grain * min(color + black, biggest);
-}
 
 [numthreads(8, 8)]
 void main() {
@@ -153,7 +26,7 @@ void main() {
   const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
   for (int x = start.x; x < size.x; x += stride.x) {
     for (int y = start.y; y < size.y; y += stride.y) {
-      vec3 color = pc.middle_gray * hdr.Load(int3(x, y, 0)).rgb;
+      vec3 color = hdr.Load(int3(x, y, 0)).rgb;
 
       if (pc.luminance_histogram) {
         float weight = 1.0f;
@@ -170,7 +43,7 @@ void main() {
           );
         }
 
-        float luminance = max(get_luminance(color) / (*pc.exposure * pc.middle_gray), MIN_LUMINANCE);
+        float luminance = max(color_to_luminance(color) / *pc.exposure, MIN_LUMINANCE);
         float log_luminance = log2(luminance);
         float alpha = saturate((log_luminance - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE));
         int lo_bin = int(alpha * (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
@@ -184,33 +57,19 @@ void main() {
         atomicAdd(luminance_histogram[hi_bin], hi_weight);
       }
 
-      switch (pc.tone_mapper) {
-        case TONE_MAPPER_LINEAR: break;
-        case TONE_MAPPER_REINHARD: {
-          color = tone_map_reinhard(color);
-        } break;
-        case TONE_MAPPER_LUMINANCE_REINHARD: {
-          color = tone_map_luminance_reinhard(color);
-        } break;
-        case TONE_MAPPER_ACES: {
-          color = tone_map_aces(color);
-        } break;
-        case TONE_MAPPER_KHR_PBR_NEUTRAL: {
-          color = tone_map_khr_pbr_neutral(color);
-        } break;
-        case TONE_MAPPER_AGX_DEFAULT:
-        case TONE_MAPPER_AGX_GOLDEN:
-        case TONE_MAPPER_AGX_PUNCHY: {
-          uint look = pc.tone_mapper - TONE_MAPPER_AGX_DEFAULT;
-          color = tone_map_agx(color, look);
-        } break;
+      if (!IsNull(pc.ltm_accumulator)) {
+        float lightness = Get(pc.ltm_accumulator).Load(ivec3(x, y, 0)).r;
+        lightness = srgb_to_linear(lightness);
+        float luminance = inverse_tone_map(lightness, pc.tone_mapper);
+        color = luminance / color_to_luminance(color) * color;
+      } else {
+        color = pc.middle_gray * color;
       }
 
+      color = tone_map(color, pc.tone_mapper);
       if (bool(pc.dithering)) {
-        vec3 noise = pc.noise_lut[y % PP_HILBERT_CURVE_SIZE * PP_HILBERT_CURVE_SIZE + x % PP_HILBERT_CURVE_SIZE];
-        color = dither_srgb(color, noise, 8);
+        color = dither_srgb(color, 8, pc.noise_lut, uvec2(x, y));
       }
-
       color = linear_to_srgb(color);
 
       Get(pc.sdr).Store(ivec2(x, y), vec4(color, 1.0f));

@@ -2,6 +2,7 @@
 #include "../BumpAllocator.hpp"
 #include "../RenderGraph.hpp"
 #include "../core/NotNull.hpp"
+#include "../sh/LocalToneMapping.h"
 #include "../sh/PostProcessing.h"
 
 namespace ren {
@@ -16,6 +17,7 @@ struct PassPersistentConfig {
   rhi::ImageUsageFlags backbuffer_usage = {};
   bool ssao = true;
   bool ssao_half_res = true;
+  bool local_tone_mapping = true;
 };
 
 struct PassPersistentResources {
@@ -26,9 +28,11 @@ struct PassPersistentResources {
   RgTextureId ssao;
   RgTextureId ssao_depth;
   RgTextureId ssao_llm;
+  RgTextureId ltm_lightness;
+  RgTextureId ltm_weights;
+  std::array<RgTextureId, sh::LTM_PYRAMID_SIZE> ltm_accumulator;
   RgTextureId sdr;
   RgTextureId backbuffer;
-  RgTextureId dhr_lut;
   RgSemaphoreId acquire_semaphore;
   RgSemaphoreId present_semaphore;
 };

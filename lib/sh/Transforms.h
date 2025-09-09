@@ -92,6 +92,10 @@ inline vec3 linear_to_srgb(vec3 color) {
              greaterThanEqual(color, vec3(0.0031308f)));
 }
 
+inline float linear_to_srgb(float x) {
+  return x >= 0.0031308f ? 1.055f * pow(x, 1.0f / 2.4f) - 0.055f : x * 12.92f;
+}
+
 inline float srgb_to_linear(float x) {
   return x > float(0.04045f) ? pow((x + 0.055f) / 1.055f, 2.4f) : x / 12.92f;
 }
@@ -99,6 +103,10 @@ inline float srgb_to_linear(float x) {
 inline vec3 srgb_to_linear(vec3 color) {
   return mix(color / 12.92f, pow((color + 0.055f) / 1.055f, vec3(2.4f)),
              greaterThan(color, vec3(0.04045f)));
+}
+
+inline float color_to_luminance(vec3 color) {
+  return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
 }
 
 inline uvec2 linear_to_local_2d(const uvec3 WG_SIZE, uint index) {
@@ -152,6 +160,27 @@ inline vec3 make_orthogonal_vector(vec3 v) {
     return vec3(v.y, -v.x, 0.0f);
   }
   return vec3(v.z, 0.0f, -v.x);
+}
+
+inline uint pack_r10g10b10a2_unorm(vec3 color) {
+  uint r = uint(round(clamp(color.r, 0.0f, 1.0f) * 1023.0f));
+  uint g = uint(round(clamp(color.g, 0.0f, 1.0f) * 1023.0f));
+  uint b = uint(round(clamp(color.b, 0.0f, 1.0f) * 1023.0f));
+  uint a = 3;
+  return (a << 30) | (b << 20) | (g << 10) | r;
+}
+
+inline vec4 unpack_r10g10b10a2_unorm(uint bits) {
+  uint r = (bits >> 0) & 1023;
+  uint g = (bits >> 10) & 1023;
+  uint b = (bits >> 20) & 1023;
+  uint a = bits >> 30;
+  vec4 color;
+  color.r = r / 1023.0f;
+  color.g = g / 1023.0f;
+  color.b = b / 1023.0f;
+  color.a = a / 3.0f;
+  return color;
 }
 
 } // namespace ren::sh
