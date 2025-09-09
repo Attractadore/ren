@@ -274,8 +274,11 @@ auto get_allocation(Device device, Image image) -> Allocation;
 
 enum class ImageViewDimension {
   e1D,
+  eArray1D,
   e2D,
+  eArray2D,
   eCube,
+  eArrayCube,
   e3D,
   Last = e3D,
 };
@@ -310,6 +313,7 @@ struct ImageViewCreateInfo {
   u32 base_mip = 0;
   u32 num_mips = 0;
   u32 base_layer = 0;
+  u32 num_layers = 0;
 };
 
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)

@@ -124,8 +124,11 @@ template <>
 constexpr auto MAP<ImageViewDimension> = [] {
   std::array<VkImageViewType, ENUM_SIZE<ImageViewDimension>> map = {};
   map(ImageViewDimension::e1D, VK_IMAGE_VIEW_TYPE_1D);
+  map(ImageViewDimension::eArray1D, VK_IMAGE_VIEW_TYPE_1D_ARRAY);
   map(ImageViewDimension::e2D, VK_IMAGE_VIEW_TYPE_2D);
+  map(ImageViewDimension::eArray2D, VK_IMAGE_VIEW_TYPE_2D_ARRAY);
   map(ImageViewDimension::eCube, VK_IMAGE_VIEW_TYPE_CUBE);
+  map(ImageViewDimension::eArrayCube, VK_IMAGE_VIEW_TYPE_CUBE_ARRAY);
   map(ImageViewDimension::e3D, VK_IMAGE_VIEW_TYPE_3D);
   return map;
 }();
@@ -1578,6 +1581,9 @@ namespace {} // namespace
 
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
     -> Result<ImageView> {
+  ren_assert(create_info.num_mips > 0);
+  ren_assert(create_info.num_layers > 0);
+
   VkImageViewCreateInfo view_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = create_info.image.handle,
@@ -1597,7 +1603,11 @@ auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
               .levelCount = create_info.num_mips,
               .baseArrayLayer = create_info.base_layer,
               .layerCount =
-                  create_info.dimension == ImageViewDimension::eCube ? 6u : 1u,
+                  create_info.num_layers *
+                  ((create_info.dimension == ImageViewDimension::eCube or
+                    create_info.dimension == ImageViewDimension::eArrayCube)
+                       ? 6u
+                       : 1u),
           },
   };
   ImageView view;

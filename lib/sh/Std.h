@@ -175,8 +175,10 @@ enum class DescriptorKind : u32 {
 
 struct SamplerState;
 struct Texture2D;
+struct Texture2DArray;
 struct TextureCube;
 struct Sampler2D;
+struct Sampler2DArray;
 struct SamplerCube;
 struct Sampler3D;
 struct RWTexture2D;
@@ -194,8 +196,10 @@ template <typename T> constexpr auto DescriptorKindImpl = nullptr;
 define_opaque_descriptor(void, Unknown);
 define_opaque_descriptor(SamplerState, SamplerState);
 define_opaque_descriptor(Texture2D, Texture);
+define_opaque_descriptor(Texture2DArray, Texture);
 define_opaque_descriptor(TextureCube, Texture);
 define_opaque_descriptor(Sampler2D, Sampler);
+define_opaque_descriptor(Sampler2DArray, Sampler);
 define_opaque_descriptor(SamplerCube, Sampler);
 define_opaque_descriptor(Sampler3D, Sampler);
 define_opaque_descriptor(RWTexture2D, RWTexture);

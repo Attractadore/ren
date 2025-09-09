@@ -37,6 +37,7 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
       .size = {create_info.width, create_info.height, create_info.depth},
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
+      .num_layers = create_info.num_layers,
       .id = m_textures.insert({
 #if REN_RG_DEBUG
           .name = std::move(name),
@@ -420,6 +421,7 @@ void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle) {
       .usage = texture.usage,
       .size = texture.size,
       .num_mips = texture.num_mips,
+      .num_layers = texture.num_layers,
       .handle = handle,
       .layout = ptex.layout,
       .id = ptex.id,
@@ -647,6 +649,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
                 .depth = physical_texture.size.z,
                 .cube_map = physical_texture.cube_map,
                 .num_mips = physical_texture.num_mips,
+                .num_layers = physical_texture.num_layers,
                 // clang-format on
             }));
     physical_texture.layout = rhi::ImageLayout::Undefined;
@@ -967,7 +970,13 @@ auto get_view_dimension(const RgPhysicalTexture &ptex)
     return rhi::ImageViewDimension::e3D;
   }
   if (ptex.cube_map) {
+    if (ptex.num_layers > 1) {
+      return rhi::ImageViewDimension::eArrayCube;
+    }
     return rhi::ImageViewDimension::eCube;
+  }
+  if (ptex.num_layers > 1) {
+    return rhi::ImageViewDimension::eArray2D;
   }
   return rhi::ImageViewDimension::e2D;
 }

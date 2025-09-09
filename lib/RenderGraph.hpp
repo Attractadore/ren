@@ -218,6 +218,7 @@ struct RgTextureCreateInfo {
   bool cube_map : 1 = false;
   /// Number of mip levels
   u32 num_mips = 1;
+  u32 num_layers = 1;
   bool persistent = false;
 };
 
@@ -230,6 +231,7 @@ struct RgPhysicalTexture {
   glm::uvec3 size = {};
   bool cube_map = false;
   u32 num_mips = 1;
+  u32 num_layers = 1;
   Handle<Texture> handle;
   rhi::ImageLayout layout = rhi::ImageLayout::Undefined;
   RgTextureId id;
