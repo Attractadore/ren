@@ -150,6 +150,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
                                           .depth = create_info.depth,
                                           .cube_map = create_info.cube_map,
                                           .num_mips = create_info.num_mips,
+                                          .num_layers = create_info.num_layers,
                                       }));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
@@ -163,6 +164,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
       .depth = create_info.depth,
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
+      .num_layers = create_info.num_layers,
   });
 }
 
@@ -180,6 +182,7 @@ auto Renderer::create_external_texture(
       .height = create_info.height,
       .depth = create_info.depth,
       .num_mips = create_info.num_mips,
+      .num_layers = create_info.num_layers,
   });
 }
 
@@ -207,6 +210,8 @@ auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error> {
                                          .components = srv.components,
                                          .base_mip = srv.base_mip,
                                          .num_mips = srv.num_mips,
+                                         .base_layer = srv.base_layer,
+                                         .num_layers = srv.num_layers,
                                      });
 }
 
@@ -216,6 +221,8 @@ auto Renderer::get_uav(UavDesc uav) -> Result<rhi::ImageView, Error> {
                                          .format = uav.format,
                                          .base_mip = uav.mip,
                                          .num_mips = 1,
+                                         .base_layer = uav.base_layer,
+                                         .num_layers = uav.num_layers,
                                      });
 }
 
@@ -226,6 +233,7 @@ auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error> {
                                          .base_mip = rtv.mip,
                                          .num_mips = 1,
                                          .base_layer = rtv.layer,
+                                         .num_layers = 1,
                                      });
 }
 
@@ -237,6 +245,9 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
   }
   if (desc.num_mips == ALL_MIPS) {
     desc.num_mips = texture.num_mips - desc.base_mip;
+  }
+  if (desc.num_layers == ALL_LAYERS) {
+    desc.num_layers = texture.num_layers - desc.base_layer;
   }
 
   auto &image_views = m_image_views[handle];
@@ -257,6 +268,7 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
                   .base_mip = desc.base_mip,
                   .num_mips = desc.num_mips,
                   .base_layer = desc.base_layer,
+                  .num_layers = desc.num_layers,
               }));
 
   image_views.insert(desc, view);
