@@ -255,6 +255,7 @@ struct RgTextureUse {
   RgTextureId texture;
   rhi::Sampler sampler;
   rhi::ImageState state;
+  u32 base_mip = 0;
 };
 
 struct RgSemaphore {
@@ -426,6 +427,15 @@ struct RgBuildInfo {
   UploadBumpAllocator *upload_allocator = nullptr;
 };
 
+struct RgTextureWriteInfo {
+  NO_UNIQUE_ADDRESS RgDebugName name;
+  RgPassId pass;
+  NotNull<RgTextureId *> texture;
+  rhi::ImageState usage = rhi::CS_UNORDERED_ACCESS_IMAGE;
+  rhi::Sampler sampler;
+  u32 base_mip = 0;
+};
+
 class RgBuilder {
 public:
   RgBuilder(RgPersistent &rgp, Renderer &renderer,
@@ -515,15 +525,7 @@ private:
                                   const rhi::ImageState &usage,
                                   rhi::Sampler sampler) -> RgTextureToken;
 
-  [[nodiscard]] auto write_texture(RgPassId pass, RgDebugName name,
-                                   RgTextureId texture,
-                                   const rhi::ImageState &usage)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  [[nodiscard]] auto write_texture(RgPassId pass, RgTextureId dst,
-                                   RgTextureId texture,
-                                   const rhi::ImageState &usage)
-      -> RgTextureToken;
+  [[nodiscard]] auto write_texture(RgTextureWriteInfo &&info) -> RgTextureToken;
 
   [[nodiscard]] auto add_semaphore_state(RgSemaphoreId semaphore, u64 value)
       -> RgSemaphoreStateId;
@@ -854,31 +856,31 @@ public:
     return try_read_texture(texture, rhi::CS_RESOURCE_IMAGE, sampler_info);
   }
 
-  [[nodiscard]] auto
+  auto
   write_texture(RgDebugName name, RgTextureId texture,
-                const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
-      -> std::tuple<RgTextureId, RgTextureToken>;
-
-  [[nodiscard]] auto
-  write_texture(RgDebugName name, RgTextureId texture, RgTextureId *new_texture,
                 const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
-  [[nodiscard]] auto
+  auto
   write_texture(RgDebugName name, NotNull<RgTextureId *> texture,
                 const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
-  [[nodiscard]] auto write_render_target(RgDebugName name, RgTextureId texture,
-                                         const rhi::RenderTargetOperations &ops,
-                                         u32 index = 0)
-      -> std::tuple<RgTextureId, RgTextureToken>;
+  auto write_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+                     const rhi::ImageState &usage,
+                     const rhi::SamplerCreateInfo &sampler, u32 base_mip = 0)
+      -> RgTextureToken;
+
+  auto write_render_target(RgDebugName name, NotNull<RgTextureId *> texture,
+                           const rhi::RenderTargetOperations &ops,
+                           u32 index = 0) -> RgTextureToken;
 
   auto read_depth_stencil_target(RgTextureId texture) -> RgTextureToken;
 
-  auto write_depth_stencil_target(RgDebugName name, RgTextureId texture,
+  auto write_depth_stencil_target(RgDebugName name,
+                                  NotNull<RgTextureId *> texture,
                                   const rhi::DepthTargetOperations &ops)
-      -> std::tuple<RgTextureId, RgTextureToken>;
+      -> RgTextureToken;
 
   void wait_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 

@@ -30,7 +30,7 @@ struct PassPersistentResources {
   RgTextureId ssao_llm;
   RgTextureId ltm_lightness;
   RgTextureId ltm_weights;
-  std::array<RgTextureId, sh::LTM_PYRAMID_SIZE> ltm_accumulator;
+  RgTextureId ltm_accumulator;
   RgTextureId sdr;
   RgTextureId backbuffer;
   RgSemaphoreId acquire_semaphore;

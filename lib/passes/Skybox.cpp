@@ -8,12 +8,11 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
                        const SkyboxPassConfig &cfg) {
   RgBuilder &rgb = *ccfg.rgb;
   auto pass = rgb.create_pass({.name = "skybox"});
-  std::tie(*cfg.hdr, std::ignore) =
-      pass.write_render_target("hdr-skybox", *cfg.hdr,
-                               {
-                                   .load = rhi::RenderPassLoadOp::Load,
-                                   .store = rhi::RenderPassStoreOp::Store,
-                               });
+  pass.write_render_target("hdr-skybox", cfg.hdr,
+                           {
+                               .load = rhi::RenderPassLoadOp::Load,
+                               .store = rhi::RenderPassStoreOp::Store,
+                           });
   pass.read_depth_stencil_target(cfg.depth_buffer);
   const Camera &camera = ccfg.scene->get_camera();
 

@@ -8,19 +8,18 @@ namespace ren::sh {
 void main() {
   Sampler2D ltm_lightness = Get(pc.lightness);
   Sampler2D ltm_weights = Get(pc.weights);
+  Sampler2D src_accumulator = Get(pc.src_accumulator);
   RWTexture2D dst_accumulator = Get(pc.dst_accumulator);
 
   vec3 weight = ltm_weights.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgg; 
   weight.b = 1.0f - weight.r - weight.g;
 
   vec3 accumulator;
-  if (IsNull(pc.src_accumulator)) {
+  if (pc.mip == TextureMips(src_accumulator) - 1) {
     vec3 gaussian = ltm_lightness.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgb;
     accumulator = dot(gaussian, weight);
   } else {
-    Sampler2D src_accumulator = Get(pc.src_accumulator);
     vec2 uv = (gl_GlobalInvocationID.xy + 0.5f) / TextureSize(dst_accumulator);
-    accumulator = src_accumulator.SampleLevel(uv, 0).rgb;
 
     vec3 laplacian =
       ltm_lightness.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgb -
@@ -31,7 +30,7 @@ void main() {
       weight /= (weight.r + weight.g + weight.b);
     }
 
-    accumulator += dot(laplacian, weight);
+    accumulator = src_accumulator.SampleLevel(uv, pc.mip + 1).rgb + dot(laplacian, weight);
   }
 
   dst_accumulator.Store(gl_GlobalInvocationID.xy, vec4(accumulator, 1.0f));

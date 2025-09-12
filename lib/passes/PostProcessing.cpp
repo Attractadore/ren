@@ -60,19 +60,18 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .num_mips = num_mips,
       });
     }
-    if (!ccfg.rcs->ltm_accumulator[0]) {
-      for (u32 mip : range(sh::LTM_PYRAMID_SIZE)) {
-        glm::uvec2 mip_size = get_mip_size({size, 1}, mip);
-        ccfg.rcs->ltm_accumulator[mip] = ccfg.rgp->create_texture({
-            .name = fmt::format("ltm-accumulator-{}", mip),
-            .format = TinyImageFormat_R8_UNORM,
-            .width = mip_size.x,
-            .height = mip_size.y,
-        });
-      }
+    if (!ccfg.rcs->ltm_accumulator) {
+      ccfg.rcs->ltm_accumulator = ccfg.rgp->create_texture({
+          .name = "ltm-accumulator",
+          .format = TinyImageFormat_R8_UNORM,
+          .width = size.x,
+          .height = size.y,
+          .num_mips = num_mips,
+      });
     }
     RgTextureId ltm_lightness = ccfg.rcs->ltm_lightness;
     RgTextureId ltm_weights = ccfg.rcs->ltm_weights;
+    ltm_accumulator = ccfg.rcs->ltm_accumulator;
 
     {
       auto pass = ccfg.rgb->create_pass({
@@ -99,20 +98,16 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .name = fmt::format("local-tone-mapping-accumulate-{}", mip),
           .queue = RgQueue::Async,
       });
-      RgTextureId prev_accumulator = ltm_accumulator;
-      ltm_accumulator = ccfg.rcs->ltm_accumulator[mip];
       RgLocalToneMappingAccumulateArgs args = {
           .lightness = pass.read_texture(ltm_lightness,
                                          rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
           .weights = pass.read_texture(ltm_weights,
                                        rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
-          .src_accumulator =
-              prev_accumulator
-                  ? pass.read_texture(prev_accumulator,
-                                      rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP)
-                  : RgTextureToken(),
-          .dst_accumulator = pass.write_texture(
-              fmt::format("ltm-accumulator-{}", mip), &ltm_accumulator),
+          .src_accumulator = pass.write_texture(
+              fmt::format("ltm-accumulator-{}", mip), &ltm_accumulator,
+              rhi::CS_UNORDERED_ACCESS_IMAGE | rhi::CS_RESOURCE_IMAGE,
+              rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip),
+          .dst_accumulator = args.src_accumulator,
           .mip = u32(mip),
           .contrast_boost = settings.ltm_contrast_boost,
       };

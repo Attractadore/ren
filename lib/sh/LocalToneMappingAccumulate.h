@@ -1,4 +1,5 @@
 #pragma once
+#include "LocalToneMapping.h"
 #include "Std.h"
 
 namespace ren::sh {

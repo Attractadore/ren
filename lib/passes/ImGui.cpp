@@ -104,12 +104,11 @@ void ren::setup_imgui_pass(const PassCommonConfig &ccfg,
                            const ImGuiPassConfig &cfg) {
   auto pass = ccfg.rgb->create_pass({.name = "imgui"});
 
-  std::tie(*cfg.sdr, std::ignore) =
-      pass.write_render_target("sdr-imgui", *cfg.sdr,
-                               {
-                                   .load = rhi::RenderPassLoadOp::Load,
-                                   .store = rhi::RenderPassStoreOp::Store,
-                               });
+  pass.write_render_target("sdr-imgui", cfg.sdr,
+                           {
+                               .load = rhi::RenderPassLoadOp::Load,
+                               .store = rhi::RenderPassStoreOp::Store,
+                           });
 
   ImGuiPassResources rcs = {
       .pipeline = ccfg.pipelines->imgui_pass,

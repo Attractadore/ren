@@ -362,40 +362,25 @@ auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
   return RgTextureToken(use);
 }
 
-auto RgBuilder::write_texture(RgPassId pass_id, RgDebugName name,
-                              RgTextureId src, const rhi::ImageState &usage)
-    -> std::tuple<RgTextureId, RgTextureToken> {
+auto RgBuilder::write_texture(RgTextureWriteInfo &&info) -> RgTextureToken {
+  RgTextureId src = *info.texture;
   ren_assert(src);
-  ren_assert(m_rgp->m_textures[src].def != pass_id);
-  RgPass &pass = m_data->m_passes[pass_id];
-  RgTextureId dst = create_virtual_texture(pass_id, std::move(name), src);
+  const RgTexture &tex = m_rgp->m_textures[src];
+  const RgPhysicalTexture &ptex = m_rgp->m_physical_textures[tex.parent];
+  ren_assert(info.base_mip < ptex.num_mips);
+  ren_assert(tex.def != info.pass);
+  if (info.sampler) {
+    ren_assert_msg(info.usage.access_mask.is_set(rhi::Access::ShaderImageRead),
+                   "Sampler must be null if texture is not sampled");
+  }
   RgTextureUseId use = add_texture_use({
       .texture = src,
-      .state = usage,
+      .sampler = info.sampler,
+      .state = info.usage,
+      .base_mip = info.base_mip,
   });
-  pass.write_textures.push_back(use);
-  return {dst, RgTextureToken(use)};
-}
-
-auto RgBuilder::write_texture(RgPassId pass_id, RgTextureId dst_id,
-                              RgTextureId src_id, const rhi::ImageState &usage)
-    -> RgTextureToken {
-  ren_assert(pass_id);
-  ren_assert(dst_id);
-  ren_assert(src_id);
-  RgTexture &dst = m_rgp->m_textures[dst_id];
-  RgTexture &src = m_rgp->m_textures[src_id];
-  ren_assert(dst.parent == src.parent);
-  dst.def = pass_id;
-  src.kill = pass_id;
-  ren_assert(!src.child);
-  src.child = dst_id;
-  RgPass &pass = m_data->m_passes[pass_id];
-  RgTextureUseId use = add_texture_use({
-      .texture = src_id,
-      .state = usage,
-  });
-  pass.write_textures.push_back(use);
+  m_data->m_passes[info.pass].write_textures.push_back(use);
+  *info.texture = create_virtual_texture(info.pass, std::move(info.name), src);
   return RgTextureToken(use);
 }
 
@@ -1030,8 +1015,9 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
         ren_try(descriptors.sampled,
                 m_descriptor_allocator->allocate_texture(*m_renderer, srv));
       }
-    } else if (use.state.access_mask.is_set(rhi::Access::UnorderedAccess)) {
-      descriptors.num_mips = physical_texture.num_mips;
+    }
+    if (use.state.access_mask.is_set(rhi::Access::UnorderedAccess)) {
+      descriptors.num_mips = physical_texture.num_mips - use.base_mip;
       descriptors.storage =
           &rt_storage_texture_descriptors[num_storage_texture_descriptors];
       for (u32 mip : range(descriptors.num_mips)) {
@@ -1041,12 +1027,11 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
                     {
                         .texture = physical_texture.handle,
                         .dimension = get_view_dimension(physical_texture),
-                        .mip = mip,
+                        .mip = use.base_mip + mip,
                     }));
         descriptors.storage[mip] = descriptor.m_id;
       }
-
-      num_storage_texture_descriptors += physical_texture.num_mips;
+      num_storage_texture_descriptors += descriptors.num_mips;
     }
   }
 
@@ -1412,32 +1397,35 @@ auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
 
 auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
                                   const rhi::ImageState &usage)
-    -> std::tuple<RgTextureId, RgTextureToken> {
-  return m_builder->write_texture(m_pass, std::move(name), texture, usage);
-}
-
-auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
-                                  RgTextureId *new_texture,
-                                  const rhi::ImageState &usage)
     -> RgTextureToken {
-  RgTextureToken token;
-  if (new_texture) {
-    std::tie(*new_texture, token) =
-        write_texture(std::move(name), texture, usage);
-  } else {
-    std::tie(std::ignore, token) =
-        write_texture(std::move(name), texture, usage);
-  }
-  return token;
+  return write_texture(std::move(name), &texture, usage);
 }
 
 auto RgPassBuilder::write_texture(RgDebugName name,
                                   NotNull<RgTextureId *> texture,
                                   const rhi::ImageState &usage)
     -> RgTextureToken {
-  RgTextureToken token;
-  std::tie(*texture, token) = write_texture(std::move(name), *texture, usage);
-  return token;
+  return m_builder->write_texture({
+      .name = std::move(name),
+      .pass = m_pass,
+      .texture = texture,
+      .usage = usage,
+  });
+}
+
+auto RgPassBuilder::write_texture(RgDebugName name,
+                                  NotNull<RgTextureId *> texture,
+                                  const rhi::ImageState &usage,
+                                  const rhi::SamplerCreateInfo &sampler,
+                                  u32 base_mip) -> RgTextureToken {
+  return m_builder->write_texture({
+      .name = std::move(name),
+      .pass = m_pass,
+      .texture = texture,
+      .usage = usage,
+      .sampler = m_builder->m_renderer->get_sampler(sampler).value(),
+      .base_mip = base_mip,
+  });
 }
 
 void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
@@ -1464,14 +1452,14 @@ void RgPassBuilder::add_depth_stencil_target(
   };
 }
 
-auto RgPassBuilder::write_render_target(RgDebugName name, RgTextureId texture,
+auto RgPassBuilder::write_render_target(RgDebugName name,
+                                        NotNull<RgTextureId *> texture,
                                         const rhi::RenderTargetOperations &ops,
-                                        u32 index)
-    -> std::tuple<RgTextureId, RgTextureToken> {
-  auto [new_texture, token] =
+                                        u32 index) -> RgTextureToken {
+  RgTextureToken token =
       write_texture(std::move(name), texture, rhi::RENDER_TARGET);
   add_render_target(index, token, ops);
-  return {new_texture, token};
+  return token;
 }
 
 auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture)
@@ -1485,13 +1473,12 @@ auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture)
 }
 
 auto RgPassBuilder::write_depth_stencil_target(
-    RgDebugName name, RgTextureId texture,
-    const rhi::DepthTargetOperations &ops)
-    -> std::tuple<RgTextureId, RgTextureToken> {
-  auto [new_texture, token] =
+    RgDebugName name, NotNull<RgTextureId *> texture,
+    const rhi::DepthTargetOperations &ops) -> RgTextureToken {
+  RgTextureToken token =
       write_texture(std::move(name), texture, rhi::DEPTH_STENCIL_TARGET);
   add_depth_stencil_target(token, ops);
-  return {new_texture, token};
+  return token;
 }
 
 void RgPassBuilder::wait_semaphore(RgSemaphoreId semaphore, u64 value) {

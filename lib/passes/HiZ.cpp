@@ -22,6 +22,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
         .num_mips = num_mips,
     });
   }
+  *cfg.hi_z = ccfg.rcs->hi_z;
 
   auto counter = ccfg.rgb->create_buffer<u32>({.init = 0});
 
@@ -30,7 +31,7 @@ void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   RgHiZArgs args = {
       .spd_counter = pass.write_buffer("hi-z-spd-counter", &counter),
       .num_mips = num_mips,
-      .dsts = pass.write_texture("hi-z", ccfg.rcs->hi_z, cfg.hi_z),
+      .dsts = pass.write_texture("hi-z", cfg.hi_z),
       .src = pass.read_texture(
           cfg.depth_buffer,
           {
