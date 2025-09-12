@@ -1213,7 +1213,7 @@ void RgBuilder::place_barriers_and_semaphores() {
               texture_after_write_hazard_src_states[ptex_id];
           src_stage_mask =
               std::exchange(texture_after_read_hazard_src_states[ptex_id], {});
-          if (!src_stage_mask and def_pass and def_pass->queue != pass.queue) {
+          if (!src_stage_mask and def_pass and def_pass->queue == pass.queue) {
             src_stage_mask = after_write_state.stage_mask;
             src_access_mask = after_write_state.access_mask;
           }

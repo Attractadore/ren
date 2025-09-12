@@ -1,6 +1,5 @@
 #include "PostProcessing.h"
 #include "Transforms.h"
-#include "LocalToneMapping.h"
 
 namespace ren::sh {
 

@@ -2,7 +2,6 @@
 #include "../BumpAllocator.hpp"
 #include "../RenderGraph.hpp"
 #include "../core/NotNull.hpp"
-#include "../sh/LocalToneMapping.h"
 #include "../sh/PostProcessing.h"
 
 namespace ren {
@@ -18,6 +17,7 @@ struct PassPersistentConfig {
   bool ssao = true;
   bool ssao_half_res = true;
   bool local_tone_mapping = true;
+  u32 ltm_pyramid_size = 0;
 };
 
 struct PassPersistentResources {

@@ -124,6 +124,20 @@ inline uvec2 linear_to_global_2d(const uvec3 WG_ID, const uvec3 WG_SIZE,
   return uvec2(WG_ID) * uvec2(WG_SIZE) + linear_to_local_2d(WG_SIZE, index);
 }
 
+// Remap 4 linear items to a quad for improved texture access.
+inline uvec2 swizzle_quads(uint id, const uint GROUP_SIZE_X) {
+  uint x = id % (GROUP_SIZE_X * 2);
+  uint y = id / (GROUP_SIZE_X * 2);
+  return uvec2(x / 2, 2 * y + x % 2);
+}
+
+// Remap linear index to 2d zig-zag pattern.
+inline uvec2 swizzle_zz(uint k, const uint WIDTH) {
+  uint y = k / WIDTH;
+  uint x = y % 2 == 0 ? k % WIDTH : WIDTH - 1 - k % WIDTH;
+  return uvec2(x, y);
+}
+
 inline vec3 cube_map_face_pos_to_direction(uvec2 pos, uint face, uvec2 size) {
   // uv_face = 0.5 * (uv_c / |r| + 1) =>
   // uv_c = (2 * uv_face - 1) * |r|

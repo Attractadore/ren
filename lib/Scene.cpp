@@ -700,6 +700,8 @@ void draw_imgui(Scene *scene) {
                        5.0f);
     ImGui::Checkbox("Local tone mapping contrast boost",
                     &settings.ltm_contrast_boost);
+    ImGui::SliderInt("Local tone mapping pyramid size",
+                     &settings.ltm_pyramid_size, 1, 13);
     ImGui::EndDisabled();
 
     ImGui::Checkbox("Dithering", &settings.dithering);
@@ -847,6 +849,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   set_if_changed(pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
   set_if_changed(pass_cfg.local_tone_mapping,
                  m_data.settings.local_tone_mapping);
+  set_if_changed(pass_cfg.ltm_pyramid_size, m_data.settings.ltm_pyramid_size);
 
   if (dirty) {
     rgp.reset();

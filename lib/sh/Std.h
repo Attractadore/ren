@@ -293,11 +293,13 @@ vec4 CoherentLoad(Handle<RWTexture2D> handle, uvec2 pos) {
       .Load(pos);
 }
 
-uvec2 TextureSize(Sampler2D texture) {
-  uvec2 size;
-  texture.GetDimensions(size.x, size.y);
-  return size;
+uvec2 TextureSize(Sampler2D texture, uint mip) {
+  uvec3 size;
+  texture.GetDimensions(mip, size.x, size.y, size.z);
+  return size.xy;
 }
+
+uvec2 TextureSize(Sampler2D texture) { return TextureSize(texture, 0); }
 
 uvec2 TextureSize(Texture2D texture) {
   uvec2 size;

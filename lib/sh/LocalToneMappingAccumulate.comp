@@ -1,39 +1,48 @@
 #include "LocalToneMappingAccumulate.h"
+#include "Transforms.h"
 
 namespace ren::sh {
 
 [[vk::push_constant]] LocalToneMappingAccumulateArgs pc;
 
-[numthreads(16, 16)]
+[numthreads(LTM_ACCUMULATE_GROUP_SIZE_X * LTM_ACCUMULATE_GROUP_SIZE_Y)]
 void main() {
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_ACCUMULATE_GROUP_SIZE_X);
+
   Sampler2D ltm_lightness = Get(pc.lightness);
   Sampler2D ltm_weights = Get(pc.weights);
-  Sampler2D src_accumulator = Get(pc.src_accumulator);
   RWTexture2D dst_accumulator = Get(pc.dst_accumulator);
 
-  vec3 weight = ltm_weights.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgg; 
-  weight.b = 1.0f - weight.r - weight.g;
-
-  vec3 accumulator;
-  if (pc.mip == TextureMips(src_accumulator) - 1) {
-    vec3 gaussian = ltm_lightness.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgb;
-    accumulator = dot(gaussian, weight);
-  } else {
-    vec2 uv = (gl_GlobalInvocationID.xy + 0.5f) / TextureSize(dst_accumulator);
-
-    vec3 laplacian =
-      ltm_lightness.Load(ivec3(gl_GlobalInvocationID.xy, pc.mip)).rgb -
-      ltm_lightness.SampleLevel(uv, pc.mip + 1).rgb;
-
-    if (bool(pc.contrast_boost)) {
-      weight *= (abs(laplacian) + 0.001f);
-      weight /= (weight.r + weight.g + weight.b);
+  if (IsNull(pc.src_accumulator)) {
+    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
+      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.mip)).rgg; 
+      weight.b = 1.0f - weight.r - weight.g;
+      vec3 gaussian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb;
+      float accumulator = dot(gaussian, weight);
+      if (all(pos < TextureSize(dst_accumulator))) {
+        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+      }
     }
-
-    accumulator = src_accumulator.SampleLevel(uv, pc.mip + 1).rgb + dot(laplacian, weight);
+  } else {
+    Sampler2D src_accumulator = Get(pc.src_accumulator);
+    vec2 inv_dst_size = 1.0f / TextureSize(dst_accumulator);
+    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
+      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
+      vec2 uv = (pos + 0.5f) * inv_dst_size;
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.mip)).rgg; 
+      weight.b = 1.0f - weight.r - weight.g;
+      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb - ltm_lightness.SampleLevel(uv, pc.mip + 1).rgb;
+      if (bool(pc.contrast_boost)) {
+        weight *= (abs(laplacian) + 0.001f);
+        weight /= (weight.r + weight.g + weight.b);
+      }
+      float accumulator = src_accumulator.SampleLevel(uv, pc.mip + 1).r + dot(laplacian, weight);
+      if (all(pos < TextureSize(dst_accumulator))) {
+        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+      }
+    }
   }
-
-  dst_accumulator.Store(gl_GlobalInvocationID.xy, vec4(accumulator, 1.0f));
 }
 
 }
