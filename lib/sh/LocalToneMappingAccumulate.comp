@@ -5,6 +5,20 @@ namespace ren::sh {
 
 [[vk::push_constant]] LocalToneMappingAccumulateArgs pc;
 
+// https://www.shadertoy.com/view/wtXXDl
+vec4 filter(Sampler2D t, vec2 uv, vec2 inv_size, int mip) {
+  vec2 q = fract(uv / inv_size);
+  vec2 c = (q * (q - 1.0f) + 0.5f) * inv_size;
+  vec2 w0 = uv - c;
+  vec2 w1 = uv + c;
+  vec4 s = 0.0f;
+  s += t.SampleLevel(vec2(w0.x, w0.y), mip);
+  s += t.SampleLevel(vec2(w0.x, w1.y), mip);
+  s += t.SampleLevel(vec2(w1.x, w1.y), mip);
+  s += t.SampleLevel(vec2(w1.x, w0.y), mip);
+  return 0.25f * s;
+}
+
 [numthreads(LTM_ACCUMULATE_GROUP_SIZE_X * LTM_ACCUMULATE_GROUP_SIZE_Y)]
 void main() {
   uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_ACCUMULATE_GROUP_SIZE_X);
@@ -32,12 +46,12 @@ void main() {
       vec2 uv = (pos + 0.5f) * inv_dst_size;
       vec3 weight = ltm_weights.Load(ivec3(pos, pc.mip)).rgg; 
       weight.b = 1.0f - weight.r - weight.g;
-      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb - ltm_lightness.SampleLevel(uv, pc.mip + 1).rgb;
+      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb - filter(ltm_lightness, uv, inv_dst_size, pc.mip + 1).rgb;
       if (bool(pc.contrast_boost)) {
         weight *= (abs(laplacian) + 0.001f);
         weight /= (weight.r + weight.g + weight.b);
       }
-      float accumulator = src_accumulator.SampleLevel(uv, pc.mip + 1).r + dot(laplacian, weight);
+      float accumulator = filter(src_accumulator, uv, inv_dst_size, pc.mip + 1).r + dot(laplacian, weight);
       if (all(pos < TextureSize(dst_accumulator))) {
         dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
       }

@@ -1,9 +1,6 @@
 #pragma once
 #include "Std.h"
 
-// https://bartwronski.com/2022/03/07/fast-gpu-friendly-antialiasing-downsampling-filter/
-// https://www.shadertoy.com/view/fsjBWm
-
 namespace ren::sh {
 
 static const uint LTM_REDUCE_GROUP_SIZE_X = 16;

@@ -701,7 +701,7 @@ void draw_imgui(Scene *scene) {
     ImGui::Checkbox("Local tone mapping contrast boost",
                     &settings.ltm_contrast_boost);
     ImGui::SliderInt("Local tone mapping pyramid size",
-                     &settings.ltm_pyramid_size, 1, 13);
+                     &settings.ltm_pyramid_size, 1, 10);
     ImGui::EndDisabled();
 
     ImGui::Checkbox("Dithering", &settings.dithering);
