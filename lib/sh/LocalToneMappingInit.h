@@ -7,12 +7,12 @@
 
 namespace ren::sh {
 
-static const uint LTM_INIT_GROUP_SIZE_X = 16;
-static const uint LTM_INIT_GROUP_SIZE_Y = 16;
+static const uint LTM_INIT_GROUP_SIZE_X = 8;
+static const uint LTM_INIT_GROUP_SIZE_Y = 8;
 static const uvec2 LTM_INIT_GROUP_SIZE =
     uvec2(LTM_INIT_GROUP_SIZE_X, LTM_INIT_GROUP_SIZE_Y);
-static const uint LTM_INIT_UNROLL_X = 4;
-static const uint LTM_INIT_UNROLL_Y = 4;
+static const uint LTM_INIT_UNROLL_X = 2;
+static const uint LTM_INIT_UNROLL_Y = 2;
 static const uvec2 LTM_INIT_UNROLL =
     uvec2(LTM_INIT_UNROLL_X, LTM_INIT_UNROLL_Y);
 static const uvec2 LTM_INIT_TILE_SIZE = LTM_INIT_GROUP_SIZE * LTM_INIT_UNROLL;

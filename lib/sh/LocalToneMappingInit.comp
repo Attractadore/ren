@@ -4,26 +4,36 @@
 namespace ren::sh {
 
 static const uint UNROLL = LTM_INIT_UNROLL_X * LTM_INIT_UNROLL_Y;
+static const uint GROUP_SIZE = LTM_INIT_GROUP_SIZE_X * LTM_INIT_GROUP_SIZE_Y;
 static const uvec2 TILE_SIZE = LTM_INIT_GROUP_SIZE * LTM_INIT_UNROLL;
+
+shared float load_cache[GROUP_SIZE * UNROLL];
 
 [[vk::push_constant]] LocalToneMappingInitArgs pc;
 
-[numthreads(LTM_INIT_GROUP_SIZE_X * LTM_INIT_GROUP_SIZE_Y)]
+[numthreads(GROUP_SIZE)]
 void main() {
-  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_INIT_GROUP_SIZE_X);
-
   Texture2D hdr = Get(pc.hdr);
   RWTexture2D ltm_lightness = Get(pc.lightness);
   RWTexture2D ltm_weights = Get(pc.weights);
 
-  for (uint k = 0; k < UNROLL; ++k) {
-    ivec2 pos = gl_WorkGroupID.xy * TILE_SIZE + swizzle_zz(k, LTM_INIT_UNROLL_X) * LTM_INIT_GROUP_SIZE + lxy;
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_INIT_GROUP_SIZE_X);
 
+  [[unroll]]
+  for (uint k = 0; k < UNROLL; ++k) {
+    uvec2 gxy = swizzle_zz(k, LTM_INIT_UNROLL_X);
+    ivec2 pos = gl_WorkGroupID.xy * TILE_SIZE + gxy * LTM_INIT_GROUP_SIZE + lxy;
     vec3 color = hdr.Load(ivec3(min(pos, TextureSize(hdr) - 1), 0)).rgb;
     float luminance = pc.middle_gray * color_to_luminance(color);
+    load_cache[GROUP_SIZE * k + gl_LocalInvocationIndex] = luminance;
+  }
 
-    float gray = tone_map(pc.middle_gray, pc.tone_mapper);
-    gray = linear_to_srgb(gray);
+  float gray = tone_map(pc.middle_gray, pc.tone_mapper);
+  gray = linear_to_srgb(gray);
+
+  [[unroll]]
+  for (uint k = 0; k < UNROLL; ++k) {
+    float luminance = load_cache[GROUP_SIZE * k + gl_LocalInvocationIndex];
 
     vec3 exposures = vec3(pc.shadows, 1.0f, pc.highlights);
     vec3 lightness;
@@ -37,6 +47,8 @@ void main() {
     }
     weight /= (weight.r + weight.g + weight.b);
 
+    uvec2 gxy = swizzle_zz(k, LTM_INIT_UNROLL_X);
+    ivec2 pos = gl_WorkGroupID.xy * TILE_SIZE + gxy * LTM_INIT_GROUP_SIZE + lxy;
     if (all(pos < TextureSize(ltm_lightness))) {
       ltm_lightness.Store(pos, vec4(lightness, 1.0f));
       ltm_weights.Store(pos, vec4(weight.rg, 0.0f, 0.0f));
