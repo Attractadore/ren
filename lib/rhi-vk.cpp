@@ -1434,11 +1434,12 @@ auto create_buffer(Device device, const BufferCreateInfo &create_info)
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = create_info.size,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-               VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+      .usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
                VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+               VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
       .sharingMode = queue_family_indices.size() > 1
                          ? VK_SHARING_MODE_CONCURRENT
                          : VK_SHARING_MODE_EXCLUSIVE,
