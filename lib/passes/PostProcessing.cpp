@@ -39,7 +39,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     }
   }
 
-  glm::uvec2 ltm_size = ccfg.viewport;
+  glm::uvec2 ltm_size = ccfg.viewport / 2u;
   RgTextureId ltm_llm;
   if (settings.local_tone_mapping) {
     i32 num_mips = std::min<u32>(settings.ltm_pyramid_size,
@@ -220,7 +220,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     if (settings.local_tone_mapping) {
       args.ltm_llm =
           pass.read_texture(ltm_llm, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
-      args.ltm_inv_size = 1.0f / glm::vec2(ltm_size);
+      args.ltm_inv_size = 1.0f / glm::vec2(2u * ltm_size);
     }
 
     pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, ccfg.viewport,

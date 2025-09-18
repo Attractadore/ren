@@ -101,8 +101,8 @@ struct SceneGraphicsSettings {
   float ltm_highlights = 2.0f;
   float ltm_sigma = 3.0f;
   bool ltm_contrast_boost = true;
-  i32 ltm_pyramid_size = 7;
-  i32 ltm_llm_mip = 2;
+  i32 ltm_pyramid_size = 6;
+  i32 ltm_llm_mip = 1;
 
   /// Dithering
 

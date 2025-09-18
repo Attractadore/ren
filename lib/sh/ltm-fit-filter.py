@@ -59,7 +59,7 @@ DF_LANCZOS3 = make_lanczos_df(3)
 
 def filter_loss(f):
   h = fft.fft2(f, s=[2*FN, 2*FN])[:FN,:FN]
-  h[:FN//2,:FN//2] *= IF_FFT[:FN//2,:FN//2]
+  # h[:FN//2,:FN//2] *= IF_FFT[:FN//2,:FN//2]
   mse = (
     np.sum((np.abs(h[:FN//2,:FN//2]) - 1)**2) +
     np.sum(np.abs(h[:FN//2,FN//2:])**2) +
@@ -69,6 +69,7 @@ def filter_loss(f):
   mse = mse / (FN * FN)
   return mse
 
+"""
 def make_filter(w):
   w = np.clip(w, a_min=0, a_max=1)
 
@@ -95,8 +96,15 @@ def make_filter(w):
   f /= f.sum()
 
   return f
+"""
+
+def make_filter(w):
+  w = np.concat((w, np.flip(w)))
+  f = np.outer(w, w)
+  return f / f.sum()
 
 def make_tap_list(w):
+  w = np.clip(w, a_min=0, a_max=1)
   w = [float(e) for e in w]
   wa = -w[0]
   a = w[1]
@@ -116,12 +124,15 @@ def make_tap_list(w):
 def loss(w):
   return filter_loss(make_filter(w))
 
-w = np.array([0.25, 0.5, 1, 0.5])
+w = np.array([-0.5, -1, 2, 6])
 print(w, loss(w))
 print(make_filter(w))
 w = opt.minimize(loss, w).x
 print(w, loss(w))
 print(make_filter(w))
+w = np.concat((w, np.flip(w)))
+w /= np.sum(w)
+print(w, np.sum(w))
 
-for tap in make_tap_list(w):
-  print(tap)
+# for tap in make_tap_list(w):
+#   print(tap)

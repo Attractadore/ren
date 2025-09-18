@@ -11,12 +11,7 @@ static const uint LTM_LIGHTNESS_GROUP_SIZE_X = 8;
 static const uint LTM_LIGHTNESS_GROUP_SIZE_Y = 8;
 static const uvec2 LTM_LIGHTNESS_GROUP_SIZE =
     uvec2(LTM_LIGHTNESS_GROUP_SIZE_X, LTM_LIGHTNESS_GROUP_SIZE_Y);
-static const uint LTM_LIGHTNESS_UNROLL_X = 2;
-static const uint LTM_LIGHTNESS_UNROLL_Y = 2;
-static const uvec2 LTM_LIGHTNESS_UNROLL =
-    uvec2(LTM_LIGHTNESS_UNROLL_X, LTM_LIGHTNESS_UNROLL_Y);
-static const uvec2 LTM_LIGHTNESS_TILE_SIZE =
-    LTM_LIGHTNESS_GROUP_SIZE * LTM_LIGHTNESS_UNROLL;
+static const uvec2 LTM_LIGHTNESS_TILE_SIZE = LTM_LIGHTNESS_GROUP_SIZE;
 
 struct LocalToneMappingLightnessArgs {
   Handle<Texture2D> hdr;
