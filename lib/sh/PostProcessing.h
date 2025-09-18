@@ -358,7 +358,8 @@ struct PostProcessingArgs {
   Handle<Texture2D> hdr;
   Handle<RWTexture2D> sdr;
   ToneMapper tone_mapper;
-  Handle<Texture2D> ltm_accumulator;
+  Handle<Sampler2D> ltm_llm;
+  vec2 ltm_inv_size;
   int dithering;
 };
 

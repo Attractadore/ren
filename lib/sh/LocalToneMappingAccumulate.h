@@ -19,7 +19,8 @@ struct LocalToneMappingAccumulateArgs {
   Handle<Sampler2D> weights;
   Handle<Sampler2D> src_accumulator;
   Handle<RWTexture2D> dst_accumulator;
-  uint mip;
+  uint dst_mip;
+  uint llm_mip;
   int contrast_boost;
 };
 

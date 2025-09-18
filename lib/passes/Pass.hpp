@@ -18,6 +18,7 @@ struct PassPersistentConfig {
   bool ssao_half_res = true;
   bool local_tone_mapping = true;
   u32 ltm_pyramid_size = 0;
+  u32 ltm_pyramid_mip = 0;
 };
 
 struct PassPersistentResources {
@@ -31,6 +32,7 @@ struct PassPersistentResources {
   RgTextureId ltm_lightness;
   RgTextureId ltm_weights;
   RgTextureId ltm_accumulator;
+  RgTextureId ltm_llm;
   RgTextureId sdr;
   RgTextureId backbuffer;
   RgSemaphoreId acquire_semaphore;

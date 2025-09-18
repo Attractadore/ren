@@ -5,6 +5,7 @@
 #include "../sh/Random.h"
 #include "LocalToneMappingAccumulate.comp.hpp"
 #include "LocalToneMappingInit.comp.hpp"
+#include "LocalToneMappingLLM.comp.hpp"
 #include "LocalToneMappingReduce.comp.hpp"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
@@ -38,45 +39,59 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     }
   }
 
-  RgTextureId ltm_accumulator;
+  glm::uvec2 ltm_size = ccfg.viewport;
+  RgTextureId ltm_llm;
   if (settings.local_tone_mapping) {
-    glm::uvec2 size = ccfg.viewport;
-    u32 num_mips = std::min<u32>(settings.ltm_pyramid_size,
-                                 get_mip_chain_length(size.x, size.y));
+    i32 num_mips = std::min<u32>(settings.ltm_pyramid_size,
+                                 get_mip_chain_length(ltm_size.x, ltm_size.y));
+    i32 llm_mip = std::min<u32>(settings.ltm_llm_mip, num_mips - 1);
     u32 pad_size = 1 << (num_mips - 1);
-    size.x = pad(size.x, pad_size);
-    size.y = pad(size.y, pad_size);
+    ltm_size.x = pad(ltm_size.x, pad_size);
+    ltm_size.y = pad(ltm_size.y, pad_size);
     if (!ccfg.rcs->ltm_lightness) {
       ccfg.rcs->ltm_lightness = ccfg.rgp->create_texture({
           .name = "ltm-lightness",
           .format = TinyImageFormat_R10G10B10A2_UNORM,
-          .width = size.x,
-          .height = size.y,
-          .num_mips = num_mips,
+          .width = ltm_size.x,
+          .height = ltm_size.y,
+          .num_mips = (u32)num_mips,
       });
     }
     if (!ccfg.rcs->ltm_weights) {
       ccfg.rcs->ltm_weights = ccfg.rgp->create_texture({
           .name = "ltm-weights",
           .format = TinyImageFormat_R16G16_UNORM,
-          .width = size.x,
-          .height = size.y,
-          .num_mips = num_mips,
+          .width = ltm_size.x,
+          .height = ltm_size.y,
+          .num_mips = (u32)num_mips,
       });
     }
+    glm::uvec2 llm_size = get_mip_size({ltm_size, 1}, llm_mip);
     if (!ccfg.rcs->ltm_accumulator) {
       ccfg.rcs->ltm_accumulator = ccfg.rgp->create_texture({
           .name = "ltm-accumulator",
           .format = TinyImageFormat_R8_UNORM,
-          .width = size.x,
-          .height = size.y,
-          .num_mips = num_mips,
+          .width = llm_size.x,
+          .height = llm_size.y,
+          .num_mips = (u32)(num_mips - llm_mip),
       });
     }
+    if (!ccfg.rcs->ltm_llm) {
+      ccfg.rcs->ltm_llm = ccfg.rgp->create_texture({
+          .name = "ltm-llm",
+          .format = TinyImageFormat_R16G16_SFLOAT,
+          .width = llm_size.x,
+          .height = llm_size.y,
+      });
+    }
+
     RgTextureId ltm_lightness = ccfg.rcs->ltm_lightness;
     RgTextureId ltm_weights = ccfg.rcs->ltm_weights;
-    ltm_accumulator = ccfg.rcs->ltm_accumulator;
+    RgTextureId ltm_accumulator = ccfg.rcs->ltm_accumulator;
+    ltm_llm = ccfg.rcs->ltm_llm;
 
+    float shadows = glm::exp2(settings.ltm_shadows);
+    float highlights = glm::exp2(-settings.ltm_highlights);
     {
       auto pass = ccfg.rgb->create_pass({
           .name = "local-tone-mapping-init",
@@ -88,13 +103,13 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .weights = pass.write_texture("ltm-weights-0", &ltm_weights),
           .middle_gray = settings.middle_gray,
           .tone_mapper = settings.tone_mapper,
-          .shadows = glm::exp2(settings.ltm_shadows),
-          .highlights = glm::exp2(-settings.ltm_highlights),
+          .shadows = shadows,
+          .highlights = highlights,
           .sigma = settings.ltm_sigma,
       };
       pass.dispatch(ccfg.pipelines->local_tone_mapping_init, args,
-                    ceil_div(size.x, sh::LTM_INIT_TILE_SIZE.x),
-                    ceil_div(size.y, sh::LTM_INIT_TILE_SIZE.y));
+                    ceil_div(ltm_size.x, sh::LTM_INIT_TILE_SIZE.x),
+                    ceil_div(ltm_size.y, sh::LTM_INIT_TILE_SIZE.y));
     }
     for (u32 mip = 1; mip < num_mips; ++mip) {
       auto pass = ccfg.rgb->create_pass({
@@ -114,12 +129,12 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .dst_weights = args.src_weights,
           .src_mip = mip - 1,
       };
-      glm::uvec2 mip_size = get_mip_size({size, 1}, mip);
+      glm::uvec2 mip_size = get_mip_size({ltm_size, 1}, mip);
       pass.dispatch(ccfg.pipelines->local_tone_mapping_reduce, args,
                     ceil_div(mip_size.x, sh::LTM_REDUCE_TILE_SIZE.x),
                     ceil_div(mip_size.y, sh::LTM_REDUCE_TILE_SIZE.y));
     }
-    for (i32 mip = num_mips - 1; mip >= 0; --mip) {
+    for (i32 mip = num_mips - 1; mip >= llm_mip; --mip) {
       auto pass = ccfg.rgb->create_pass({
           .name = fmt::format("local-tone-mapping-accumulate-{}", mip),
           .queue = RgQueue::Async,
@@ -128,7 +143,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
       RgTextureToken accumulator = pass.write_texture(
           fmt::format("ltm-accumulator-{}", mip), &ltm_accumulator,
           rhi::CS_UNORDERED_ACCESS_IMAGE | rhi::CS_RESOURCE_IMAGE,
-          rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip);
+          rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip - llm_mip);
 
       RgLocalToneMappingAccumulateArgs args = {
           .lightness = pass.read_texture(ltm_lightness,
@@ -138,13 +153,31 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .src_accumulator =
               mip < num_mips - 1 ? accumulator : RgTextureToken(),
           .dst_accumulator = accumulator,
-          .mip = u32(mip),
+          .dst_mip = u32(mip),
+          .llm_mip = u32(llm_mip),
           .contrast_boost = settings.ltm_contrast_boost,
       };
-      glm::uvec2 mip_size = get_mip_size({size, 1}, mip);
+      glm::uvec2 mip_size = get_mip_size({ltm_size, 1}, mip);
       pass.dispatch(ccfg.pipelines->local_tone_mapping_accumulate, args,
                     ceil_div(mip_size.x, sh::LTM_ACCUMULATE_TILE_SIZE.x),
                     ceil_div(mip_size.y, sh::LTM_ACCUMULATE_TILE_SIZE.y));
+    }
+    {
+      auto pass = ccfg.rgb->create_pass({
+          .name = "local-tone-mapping-llm",
+          .queue = RgQueue::Async,
+      });
+      RgLocalToneMappingLLMArgs args = {
+          .lightness = pass.read_texture(ltm_lightness,
+                                         rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
+          .accumulator = pass.read_texture(
+              ltm_accumulator, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
+          .llm = pass.write_texture("ltm-llm", &ltm_llm),
+          .mip = (u32)llm_mip,
+      };
+      pass.dispatch(ccfg.pipelines->local_tone_mapping_llm, args,
+                    ceil_div(llm_size.x, sh::LTM_LLM_TILE_SIZE.x),
+                    ceil_div(llm_size.y, sh::LTM_LLM_TILE_SIZE.y));
     }
   }
 
@@ -185,7 +218,9 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     }
 
     if (settings.local_tone_mapping) {
-      args.ltm_accumulator = pass.read_texture(ltm_accumulator);
+      args.ltm_llm =
+          pass.read_texture(ltm_llm, rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP);
+      args.ltm_inv_size = 1.0f / glm::vec2(ltm_size);
     }
 
     pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, ccfg.viewport,

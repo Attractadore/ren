@@ -1,0 +1,53 @@
+#include "LocalToneMappingLLM.h"
+#include "Transforms.h"
+
+namespace ren::sh {
+
+[[vk::push_constant]] LocalToneMappingLLMArgs pc;
+
+[numthreads(LTM_LLM_GROUP_SIZE_X * LTM_LLM_GROUP_SIZE_Y)]
+void main() {
+  Sampler2D ltm_lightness = Get(pc.lightness);
+  Sampler2D ltm_accumulator = Get(pc.accumulator);
+  RWTexture2D ltm_llm = Get(pc.llm);
+
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_LLM_GROUP_SIZE_X);
+  ivec2 pos = gl_WorkGroupID.xy * LTM_LLM_TILE_SIZE + lxy;
+
+  float x = 0.0f;
+  float y = 0.0f;
+  float x2 = 0.0f;
+  float xy = 0.0f;
+  float w = 0.0f;
+  [[unroll]] for (int iy = -1; iy <= 1; ++iy) {
+    [[unroll]] for (int ix = -1; ix <= 1; ++ix) {
+      ivec2 spos = clamp(pos + ivec2(ix, iy), 0, TextureSize(ltm_lightness) - 1);
+
+      float sx = ltm_lightness.Load(ivec3(spos, pc.mip)).y;
+      float sy = ltm_accumulator.Load(ivec3(spos, 0)).x;
+
+      float dr2 = iy * iy + ix * ix;
+      const float sigma = 1.5f;
+      float sw = exp(-0.5f * dr2 / (sigma * sigma));
+
+      x += sw * sx;
+      y += sw * sy;
+      x2 += sw * sx * sx;
+      xy += sw * sx * sy;
+      w += sw;
+    }
+  }
+  x /= w;
+  y /= w;
+  x2 /= w;
+  xy /= w;
+  const float REG_CONSTANT = 0.000001f;
+  float a = (xy - x * y) / (x2 - x * x + REG_CONSTANT);
+  float b = y - a * x;
+
+  if (all(pos < TextureSize(ltm_llm))) {
+    ltm_llm[pos] = vec4(a, b, 0.0f, 0.0f);
+  }
+}
+
+}

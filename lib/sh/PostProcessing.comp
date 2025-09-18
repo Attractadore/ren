@@ -56,10 +56,18 @@ void main() {
         atomicAdd(luminance_histogram[hi_bin], hi_weight);
       }
 
-      if (!IsNull(pc.ltm_accumulator)) {
-        float lightness = Get(pc.ltm_accumulator).Load(ivec3(x, y, 0)).r;
-        lightness = srgb_to_linear(lightness);
-        float luminance = inverse_tone_map(lightness, pc.tone_mapper);
+      if (!IsNull(pc.ltm_llm)) {
+        Sampler2D ltm_llm = Get(pc.ltm_llm);
+        vec2 uv = vec2(x + 0.5f, y + 0.5f) * pc.ltm_inv_size;
+        vec2 ab = ltm_llm.SampleLevel(uv, 0).xy;
+
+        float luminance = pc.middle_gray * color_to_luminance(color);
+        luminance = tone_map(luminance, pc.tone_mapper);
+        luminance = linear_to_srgb(luminance);
+        luminance = ab.x * luminance + ab.y;
+        luminance = srgb_to_linear(luminance);
+        luminance = inverse_tone_map(luminance, pc.tone_mapper);
+
         color = luminance / color_to_luminance(color) * color;
       } else {
         color = pc.middle_gray * color;

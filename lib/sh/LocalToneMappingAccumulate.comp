@@ -30,9 +30,9 @@ void main() {
   if (IsNull(pc.src_accumulator)) {
     for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
       ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
-      vec3 weight = ltm_weights.Load(ivec3(pos, pc.mip)).rgg; 
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
       weight.b = 1.0f - weight.r - weight.g;
-      vec3 gaussian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb;
+      vec3 gaussian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb;
       float accumulator = dot(gaussian, weight);
       if (all(pos < TextureSize(dst_accumulator))) {
         dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
@@ -44,14 +44,14 @@ void main() {
     for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
       ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
       vec2 uv = (pos + 0.5f) * inv_dst_size;
-      vec3 weight = ltm_weights.Load(ivec3(pos, pc.mip)).rgg; 
+      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
       weight.b = 1.0f - weight.r - weight.g;
-      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.mip)).rgb - filter(ltm_lightness, uv, inv_dst_size, pc.mip + 1).rgb;
+      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb - filter(ltm_lightness, uv, inv_dst_size, pc.dst_mip + 1).rgb;
       if (bool(pc.contrast_boost)) {
         weight *= (abs(laplacian) + 0.001f);
         weight /= (weight.r + weight.g + weight.b);
       }
-      float accumulator = filter(src_accumulator, uv, inv_dst_size, pc.mip + 1).r + dot(laplacian, weight);
+      float accumulator = filter(src_accumulator, uv, inv_dst_size, pc.dst_mip - pc.llm_mip + 1).r + dot(laplacian, weight);
       if (all(pos < TextureSize(dst_accumulator))) {
         dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
       }

@@ -12,6 +12,7 @@
 #include "InstanceCullingAndLOD.comp.hpp"
 #include "LocalToneMappingAccumulate.comp.hpp"
 #include "LocalToneMappingInit.comp.hpp"
+#include "LocalToneMappingLLM.comp.hpp"
 #include "LocalToneMappingReduce.comp.hpp"
 #include "MeshletCulling.comp.hpp"
 #include "MeshletSorting.comp.hpp"
@@ -166,6 +167,8 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.local_tone_mapping_accumulate,
           compute_pipeline(LocalToneMappingAccumulateCS,
                            "Local tone mapping accumulation"));
+  ren_try(pipelines.local_tone_mapping_llm,
+          compute_pipeline(LocalToneMappingLLMCS, "Local tone mapping LLM"));
   ren_try(pipelines.post_processing,
           compute_pipeline(PostProcessingCS, "Post-processing"));
   ren_try(pipelines.reduce_luminance_histogram,

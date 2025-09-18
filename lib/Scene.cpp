@@ -702,6 +702,7 @@ void draw_imgui(Scene *scene) {
                     &settings.ltm_contrast_boost);
     ImGui::SliderInt("Local tone mapping pyramid size",
                      &settings.ltm_pyramid_size, 1, 10);
+    ImGui::SliderInt("Local tone mapping LLM mip", &settings.ltm_llm_mip, 0, 9);
     ImGui::EndDisabled();
 
     ImGui::Checkbox("Dithering", &settings.dithering);
@@ -850,6 +851,7 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
   set_if_changed(pass_cfg.local_tone_mapping,
                  m_data.settings.local_tone_mapping);
   set_if_changed(pass_cfg.ltm_pyramid_size, m_data.settings.ltm_pyramid_size);
+  set_if_changed(pass_cfg.ltm_pyramid_mip, m_data.settings.ltm_llm_mip);
 
   if (dirty) {
     rgp.reset();
