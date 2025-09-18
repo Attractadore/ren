@@ -4,8 +4,8 @@
 #include "../core/Views.hpp"
 #include "../sh/Random.h"
 #include "LocalToneMappingAccumulate.comp.hpp"
-#include "LocalToneMappingInit.comp.hpp"
 #include "LocalToneMappingLLM.comp.hpp"
+#include "LocalToneMappingLightness.comp.hpp"
 #include "LocalToneMappingReduce.comp.hpp"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
@@ -94,10 +94,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     float highlights = glm::exp2(-settings.ltm_highlights);
     {
       auto pass = ccfg.rgb->create_pass({
-          .name = "local-tone-mapping-init",
+          .name = "local-tone-mapping-lightness",
           .queue = RgQueue::Async,
       });
-      RgLocalToneMappingInitArgs args = {
+      RgLocalToneMappingLightnessArgs args = {
           .hdr = pass.read_texture(cfg.hdr),
           .lightness = pass.write_texture("ltm-lightness-0", &ltm_lightness),
           .weights = pass.write_texture("ltm-weights-0", &ltm_weights),
@@ -107,9 +107,9 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .highlights = highlights,
           .sigma = settings.ltm_sigma,
       };
-      pass.dispatch(ccfg.pipelines->local_tone_mapping_init, args,
-                    ceil_div(ltm_size.x, sh::LTM_INIT_TILE_SIZE.x),
-                    ceil_div(ltm_size.y, sh::LTM_INIT_TILE_SIZE.y));
+      pass.dispatch(ccfg.pipelines->local_tone_mapping_lightness, args,
+                    ceil_div(ltm_size.x, sh::LTM_LIGHTNESS_TILE_SIZE.x),
+                    ceil_div(ltm_size.y, sh::LTM_LIGHTNESS_TILE_SIZE.y));
     }
     for (u32 mip = 1; mip < num_mips; ++mip) {
       auto pass = ccfg.rgb->create_pass({

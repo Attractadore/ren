@@ -11,8 +11,8 @@
 #include "ImGui.vert.hpp"
 #include "InstanceCullingAndLOD.comp.hpp"
 #include "LocalToneMappingAccumulate.comp.hpp"
-#include "LocalToneMappingInit.comp.hpp"
 #include "LocalToneMappingLLM.comp.hpp"
+#include "LocalToneMappingLightness.comp.hpp"
 #include "LocalToneMappingReduce.comp.hpp"
 #include "MeshletCulling.comp.hpp"
 #include "MeshletSorting.comp.hpp"
@@ -158,9 +158,9 @@ auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
   ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
   ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
   ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
-  ren_try(pipelines.local_tone_mapping_init,
-          compute_pipeline(LocalToneMappingInitCS,
-                           "Local tone mapping initialization"));
+  ren_try(pipelines.local_tone_mapping_lightness,
+          compute_pipeline(LocalToneMappingLightnessCS,
+                           "Local tone mapping lightness"));
   ren_try(pipelines.local_tone_mapping_reduce,
           compute_pipeline(LocalToneMappingReduceCS,
                            "Local tone mapping reduction"));
