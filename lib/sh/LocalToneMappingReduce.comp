@@ -28,16 +28,17 @@ void main() {
   RWTexture2D dst_weights = Get(pc.dst_weights);
 
   vec2 inv_src_size = 1.0f / TextureSize(src_lightness, pc.src_mip);
+  ivec2 pos = gl_WorkGroupID.xy * LTM_REDUCE_TILE_SIZE + lxy;
+  vec2 uv = (2 * pos + 1) * inv_src_size;
 
-  for (uint k = 0; k < LTM_REDUCE_UNROLL_X * LTM_REDUCE_UNROLL_Y; ++k) {
-    ivec2 pos = gl_WorkGroupID.xy * LTM_REDUCE_TILE_SIZE + swizzle_zz(k, LTM_REDUCE_UNROLL_X) * LTM_REDUCE_GROUP_SIZE + lxy;
-    vec2 uv = (2 * pos + 1) * inv_src_size;
-    vec3 lightness = filter(src_lightness, uv, inv_src_size, pc.src_mip).rgb;
-    vec2 weight = filter(src_weights, uv, inv_src_size, pc.src_mip).rg;
-    if (all(pos < TextureSize(dst_lightness))) {
-      dst_lightness.Store(pos, vec4(lightness, 1.0f));
-      dst_weights.Store(pos, vec4(weight, 0.0f, 1.0f));
-    }
+  vec3 lightness = filter(src_lightness, uv, inv_src_size, pc.src_mip).rgb;
+  if (all(pos < TextureSize(dst_lightness))) {
+    dst_lightness.Store(pos, vec4(lightness, 1.0f));
+  }
+
+  vec2 weight = filter(src_weights, uv, inv_src_size, pc.src_mip).rg;
+  if (all(pos < TextureSize(dst_lightness))) {
+    dst_weights.Store(pos, vec4(weight, 0.0f, 1.0f));
   }
 }
 
