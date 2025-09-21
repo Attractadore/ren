@@ -292,6 +292,16 @@ void Renderer::destroy(Handle<Semaphore> handle) {
   }
 }
 
+auto Renderer::create_event() -> Handle<Event> {
+  return m_events.emplace(Event{.handle = rhi::create_event(m_device)});
+}
+
+void Renderer::destroy(Handle<Event> handle) {
+  if (Optional<Event> event = m_events.try_pop(handle)) {
+    rhi::destroy_event(m_device, event->handle);
+  }
+}
+
 auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                   std::chrono::nanoseconds timeout) const
     -> Result<rhi::WaitResult, Error> {

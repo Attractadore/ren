@@ -612,6 +612,10 @@ void destroy_pipeline(Device device, Pipeline pipeline);
 auto set_debug_name(Device device, Pipeline pipeline, const char *name)
     -> Result<void>;
 
+auto create_event(Device device) -> Event;
+
+void destroy_event(Device device, Event event);
+
 struct CommandPoolCreateInfo {
   QueueFamily queue_family = {};
 };
@@ -835,6 +839,11 @@ struct MemoryBarrier {
   AccessMask dst_access_mask;
 };
 
+constexpr MemoryBarrier ALL_COMMANDS_BARRIER = {
+    .src_stage_mask = rhi::PipelineStage::All,
+    .dst_stage_mask = rhi::PipelineStage::All,
+};
+
 constexpr MemoryBarrier ALL_MEMORY_BARRIER = {
     .src_stage_mask = rhi::PipelineStage::All,
     .src_access_mask = rhi::Access::MemoryWrite,
@@ -860,6 +869,16 @@ struct ImageBarrier {
 void cmd_pipeline_barrier(CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers);
+
+void cmd_set_event(CommandBuffer cmd, Event event,
+                   TempSpan<const MemoryBarrier> memory_barriers,
+                   TempSpan<const ImageBarrier> image_barriers);
+
+void cmd_wait_event(CommandBuffer cmd, Event event,
+                    TempSpan<const MemoryBarrier> memory_barriers,
+                    TempSpan<const ImageBarrier> image_barriers);
+
+void cmd_reset_event(CommandBuffer cmd, Event event, PipelineStageMask stages);
 
 struct BufferCopyInfo {
   Buffer src = {};

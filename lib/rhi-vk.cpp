@@ -2004,6 +2004,25 @@ auto set_debug_name(Device device, Pipeline pipeline, const char *name)
   return set_debug_name(device, VK_OBJECT_TYPE_PIPELINE, pipeline.handle, name);
 }
 
+auto create_event(Device device) -> Event {
+  VkEventCreateInfo event_info = {
+      .sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO,
+      .flags = VK_EVENT_CREATE_DEVICE_ONLY_BIT,
+  };
+  Event event;
+  VkResult result = device->vk.vkCreateEvent(device->handle, &event_info,
+                                             nullptr, &event.handle);
+  if (result) {
+    fmt::println(stderr, "VkEvent creation failed: {}", (i32)result);
+    std::exit(1);
+  }
+  return event;
+}
+
+void destroy_event(Device device, Event event) {
+  device->vk.vkDestroyEvent(device->handle, event.handle, nullptr);
+}
+
 namespace vk {
 
 struct CommandPoolData {
@@ -2163,6 +2182,107 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
       .pImageMemoryBarriers = vk_image_barriers.data(),
   };
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
+}
+
+void cmd_set_event(CommandBuffer cmd, Event event,
+                   TempSpan<const MemoryBarrier> memory_barriers,
+                   TempSpan<const ImageBarrier> image_barriers) {
+  Adapter adapter = cmd.device->adapter;
+  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  for (usize i : range(memory_barriers.size())) {
+    const MemoryBarrier &barrier = memory_barriers[i];
+    vk_memory_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+    };
+  }
+  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
+      image_barriers.size());
+  for (usize i : range(image_barriers.size())) {
+    const ImageBarrier &barrier = image_barriers[i];
+    vk_image_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+        .oldLayout = to_vk(barrier.src_layout),
+        .newLayout = to_vk(barrier.dst_layout),
+        .image = barrier.image.handle,
+        .subresourceRange =
+            {
+                .aspectMask = to_vk(barrier.aspect_mask),
+                .baseMipLevel = barrier.base_mip,
+                .levelCount = barrier.num_mips,
+                .baseArrayLayer = barrier.base_layer,
+                .layerCount = barrier.num_layers,
+            },
+    };
+  }
+  VkDependencyInfo dependency_info = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers.data(),
+      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers.data(),
+  };
+  cmd.device->vk.vkCmdSetEvent2(cmd.handle, event.handle, &dependency_info);
+}
+
+void cmd_wait_event(CommandBuffer cmd, Event event,
+                    TempSpan<const MemoryBarrier> memory_barriers,
+                    TempSpan<const ImageBarrier> image_barriers) {
+  Adapter adapter = cmd.device->adapter;
+  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  for (usize i : range(memory_barriers.size())) {
+    const MemoryBarrier &barrier = memory_barriers[i];
+    vk_memory_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+    };
+  }
+  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
+      image_barriers.size());
+  for (usize i : range(image_barriers.size())) {
+    const ImageBarrier &barrier = image_barriers[i];
+    vk_image_barriers[i] = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = to_vk(barrier.src_stage_mask),
+        .srcAccessMask = to_vk(barrier.src_access_mask),
+        .dstStageMask = to_vk(barrier.dst_stage_mask),
+        .dstAccessMask = to_vk(barrier.dst_access_mask),
+        .oldLayout = to_vk(barrier.src_layout),
+        .newLayout = to_vk(barrier.dst_layout),
+        .image = barrier.image.handle,
+        .subresourceRange =
+            {
+                .aspectMask = to_vk(barrier.aspect_mask),
+                .baseMipLevel = barrier.base_mip,
+                .levelCount = barrier.num_mips,
+                .baseArrayLayer = barrier.base_layer,
+                .layerCount = barrier.num_layers,
+            },
+    };
+  }
+  VkDependencyInfo dependency_info = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers.data(),
+      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers.data(),
+  };
+  cmd.device->vk.vkCmdWaitEvents2(cmd.handle, 1, &event.handle,
+                                  &dependency_info);
+}
+
+void cmd_reset_event(CommandBuffer cmd, Event event, PipelineStageMask stages) {
+  cmd.device->vk.vkCmdResetEvent2(cmd.handle, event.handle, to_vk(stages));
 }
 
 void cmd_copy_buffer(CommandBuffer cmd, const BufferCopyInfo &info) {

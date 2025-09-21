@@ -1,5 +1,7 @@
 #include "CommandRecorder.hpp"
 #include "Renderer.hpp"
+#include "ResourceArena.hpp"
+#include "core/Assert.hpp"
 #include "core/Math.hpp"
 #include "core/Views.hpp"
 
@@ -139,6 +141,61 @@ void CommandRecorder::pipeline_barrier(
   rhi::cmd_pipeline_barrier(m_cmd, memory_barriers, image_barriers);
 }
 
+void CommandRecorder::set_event(
+    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    TempSpan<const TextureBarrier> texture_barriers) {
+  SmallVector<rhi::ImageBarrier, 16> image_barriers(texture_barriers.size());
+  for (usize i : range(texture_barriers.size())) {
+    const TextureBarrier &barrier = texture_barriers[i];
+    const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
+    image_barriers[i] = {
+        .image = texture.handle,
+        .aspect_mask = rhi::get_format_aspect_mask(texture.format),
+        .base_mip = barrier.resource.base_mip,
+        .num_mips = barrier.resource.num_mips,
+        .num_layers = texture.cube_map ? 6u : 1u,
+        .src_stage_mask = barrier.src_stage_mask,
+        .src_access_mask = barrier.src_access_mask,
+        .src_layout = barrier.src_layout,
+        .dst_stage_mask = barrier.dst_stage_mask,
+        .dst_access_mask = barrier.dst_access_mask,
+        .dst_layout = barrier.dst_layout,
+    };
+  }
+  rhi::cmd_set_event(m_cmd, m_renderer->get_event(event).handle,
+                     memory_barriers, image_barriers);
+}
+
+void CommandRecorder::wait_event(
+    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    TempSpan<const TextureBarrier> texture_barriers) {
+  SmallVector<rhi::ImageBarrier, 16> image_barriers(texture_barriers.size());
+  for (usize i : range(texture_barriers.size())) {
+    const TextureBarrier &barrier = texture_barriers[i];
+    const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
+    image_barriers[i] = {
+        .image = texture.handle,
+        .aspect_mask = rhi::get_format_aspect_mask(texture.format),
+        .base_mip = barrier.resource.base_mip,
+        .num_mips = barrier.resource.num_mips,
+        .num_layers = texture.cube_map ? 6u : 1u,
+        .src_stage_mask = barrier.src_stage_mask,
+        .src_access_mask = barrier.src_access_mask,
+        .src_layout = barrier.src_layout,
+        .dst_stage_mask = barrier.dst_stage_mask,
+        .dst_access_mask = barrier.dst_access_mask,
+        .dst_layout = barrier.dst_layout,
+    };
+  }
+  rhi::cmd_wait_event(m_cmd, m_renderer->get_event(event).handle,
+                      memory_barriers, image_barriers);
+}
+
+void CommandRecorder::reset_event(Handle<Event> event,
+                                  rhi::PipelineStageMask stages) {
+  rhi::cmd_reset_event(m_cmd, m_renderer->get_event(event).handle, stages);
+}
+
 auto CommandRecorder::render_pass(const RenderPassInfo &&begin_info)
     -> RenderPass {
   return RenderPass(*m_renderer, m_cmd, std::move(begin_info));
@@ -276,6 +333,9 @@ void CommandRecorder::push_constants(Span<const std::byte> data,
 
 void CommandRecorder::dispatch(u32 num_groups_x, u32 num_groups_y,
                                u32 num_groups_z) {
+  ren_assert_msg(num_groups_x < 2048, "Suspiciously big dispatch");
+  ren_assert_msg(num_groups_y < 2048, "Suspiciously big dispatch");
+  ren_assert_msg(num_groups_z < 2048, "Suspiciously big dispatch");
   rhi::cmd_dispatch(m_cmd, num_groups_x, num_groups_y, num_groups_z);
 }
 
@@ -340,6 +400,55 @@ void DebugRegion::end() {
   rhi::cmd_end_debug_label(m_cmd);
 #endif
   m_cmd = {};
+}
+
+auto init_event_pool(ResourceArena &arena) -> EventPool {
+  return {
+      .m_arena = &arena,
+      .m_events = {{}},
+      .m_index = 1,
+  };
+};
+
+auto set_event(CommandRecorder &cmd, EventPool &pool,
+               TempSpan<const rhi::MemoryBarrier> memory_barriers,
+               TempSpan<const TextureBarrier> texture_barriers) -> EventId {
+  [[unlikely]] if (pool.m_index == pool.m_events.size()) {
+    pool.m_events.push_back({
+        .handle = pool.m_arena->create_event(),
+    });
+  }
+
+  EventData &event = pool.m_events[pool.m_index];
+  event.memory_barrier_offset = pool.memory_barriers.size();
+  event.memory_barrier_count = memory_barriers.size();
+  event.texture_barrier_offset = pool.texture_barriers.size();
+  event.texture_barrier_count = texture_barriers.size();
+  pool.memory_barriers.append(memory_barriers);
+  pool.texture_barriers.append(texture_barriers);
+
+  cmd.set_event(event.handle, memory_barriers, texture_barriers);
+
+  return EventId(pool.m_index++);
+}
+
+void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId id) {
+  const EventData &event = pool.m_events[id];
+  cmd.wait_event(
+      event.handle,
+      Span(pool.memory_barriers)
+          .subspan(event.memory_barrier_offset, event.memory_barrier_count),
+      Span(pool.texture_barriers)
+          .subspan(event.texture_barrier_offset, event.texture_barrier_count));
+}
+
+void reset_event_pool(CommandRecorder &cmd, EventPool &pool) {
+  for (usize i : range<usize>(1, pool.m_events.size())) {
+    cmd.reset_event(pool.m_events[i].handle);
+  }
+  pool.memory_barriers.clear();
+  pool.texture_barriers.clear();
+  pool.m_index = 1;
 }
 
 } // namespace ren

@@ -138,6 +138,8 @@ struct SceneInternalData {
   Pipelines m_pipelines;
   DeviceBumpAllocator m_gfx_allocator;
   DeviceBumpAllocator m_async_allocator;
+  EventPool m_gfx_event_pool;
+  EventPool m_async_event_pool;
   std::array<DeviceBumpAllocator, 2> m_shared_allocators;
   std::array<ScenePerFrameResources, NUM_FRAMES_IN_FLIGHT>
       m_per_frame_resources;

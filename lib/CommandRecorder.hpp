@@ -1,7 +1,9 @@
 #pragma once
 #include "Buffer.hpp"
 #include "Texture.hpp"
+#include "core/NewType.hpp"
 #include "core/Span.hpp"
+#include "core/Vector.hpp"
 #include "rhi.hpp"
 #include "sh/Std.h"
 
@@ -10,9 +12,11 @@
 namespace ren {
 
 class Renderer;
+class ResourceArena;
 struct CommandPool;
 struct ComputePipeline;
 struct GraphicsPipeline;
+struct Event;
 
 struct RenderTarget {
   RtvDesc rtv;
@@ -105,6 +109,17 @@ public:
     pipeline_barrier({}, {&barrier, 1});
   }
 
+  void set_event(Handle<Event> event,
+                 TempSpan<const rhi::MemoryBarrier> memory_barriers,
+                 TempSpan<const TextureBarrier> texture_barriers);
+
+  void wait_event(Handle<Event> event,
+                  TempSpan<const rhi::MemoryBarrier> memory_barriers,
+                  TempSpan<const TextureBarrier> texture_barriers);
+
+  void reset_event(Handle<Event> event,
+                   rhi::PipelineStageMask stages = rhi::PipelineStage::All);
+
   [[nodiscard]] auto debug_region(StringView) -> DebugRegion;
 
 private:
@@ -189,5 +204,43 @@ private:
 private:
   rhi::CommandBuffer m_cmd = {};
 };
+
+REN_NEW_TYPE(EventId, u32);
+
+struct EventData {
+  Handle<Event> handle;
+  u32 memory_barrier_offset = 0;
+  u32 memory_barrier_count = 0;
+  u32 texture_barrier_offset = 0;
+  u32 texture_barrier_count = 0;
+};
+
+struct EventPool {
+  ResourceArena *m_arena = nullptr;
+  Vector<EventData> m_events;
+  Vector<rhi::MemoryBarrier> memory_barriers;
+  Vector<TextureBarrier> texture_barriers;
+  u32 m_index = 0;
+};
+
+auto init_event_pool(ResourceArena &arena) -> EventPool;
+
+auto set_event(CommandRecorder &cmd, EventPool &pool,
+               TempSpan<const rhi::MemoryBarrier> memory_barriers,
+               TempSpan<const TextureBarrier> texture_barriers) -> EventId;
+
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
+                      const rhi::MemoryBarrier &barrier) -> EventId {
+  return set_event(cmd, pool, {&barrier, 1}, {});
+}
+
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
+                      const TextureBarrier &barrier) -> EventId {
+  return set_event(cmd, pool, {}, {&barrier, 1});
+}
+
+void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId event);
+
+void reset_event_pool(CommandRecorder &cmd, EventPool &pool);
 
 } // namespace ren
