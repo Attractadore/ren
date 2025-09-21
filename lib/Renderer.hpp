@@ -17,6 +17,10 @@
 
 namespace ren {
 
+struct Event {
+  rhi::Event handle;
+};
+
 enum class RendererFeature {
   AmdAntiLag,
   Last = AmdAntiLag,
@@ -53,6 +57,7 @@ struct Renderer {
   LinearMap<rhi::SamplerCreateInfo, rhi::Sampler> m_samplers;
 
   GenArray<Semaphore> m_semaphores;
+  GenArray<Event> m_events;
 
   GenArray<GraphicsPipeline> m_graphics_pipelines;
   GenArray<ComputePipeline> m_compute_pipelines;
@@ -194,6 +199,13 @@ struct Renderer {
 
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
       -> Result<void, Error>;
+
+  auto create_event() -> Handle<Event>;
+  void destroy(Handle<Event>);
+
+  auto get_event(Handle<Event> event) -> const Event & {
+    return m_events[event];
+  }
 
   auto create_command_pool(const CommandPoolCreateInfo &create_info)
       -> Result<Handle<CommandPool>, Error>;

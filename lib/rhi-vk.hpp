@@ -68,6 +68,10 @@ struct Pipeline : HandleBase {
   VkPipeline handle = nullptr;
 };
 
+struct Event : HandleBase {
+  VkEvent handle = nullptr;
+};
+
 struct CommandPoolData;
 
 using CommandPool = CommandPoolData *;

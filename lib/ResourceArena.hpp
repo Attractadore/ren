@@ -55,6 +55,12 @@ public:
     return insert(m_renderer->create_semaphore(std::move(create_info)));
   }
 
+  auto create_event() -> Handle<Event>
+    requires IsArenaResource<Event>
+  {
+    return insert(m_renderer->create_event());
+  }
+
   auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
       -> Result<Handle<GraphicsPipeline>, Error>
     requires IsArenaResource<GraphicsPipeline>
@@ -120,7 +126,7 @@ private:
 
 using ResourceArenaBase =
     ResourceArenaImpl<Buffer, ComputePipeline, GraphicsPipeline, Semaphore,
-                      Texture, CommandPool>;
+                      Event, Texture, CommandPool>;
 
 } // namespace detail
 
