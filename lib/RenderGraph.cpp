@@ -1216,6 +1216,8 @@ void RgBuilder::place_barriers_and_semaphores() {
 
       if (dst_layout == ptex.layout) {
         // Only a memory barrier is required if layout doesn't change.
+        // However, this can cause the driver (RADV) to be overly conservative
+        // with cache flushes. So use a texture barrier instead.
         // NOTE: this code is copy-pasted from above.
 
         rhi::PipelineStageMask src_stage_mask;
@@ -1252,7 +1254,8 @@ void RgBuilder::place_barriers_and_semaphores() {
           return;
         }
 
-        m_memory_barriers.push_back({
+        m_texture_barriers.push_back({
+            .resource = {ptex.handle},
             .src_stage_mask = src_stage_mask,
             .src_access_mask = src_access_mask,
             .dst_stage_mask = dst_stage_mask,
