@@ -22,6 +22,8 @@ struct LocalToneMappingLightnessArgs {
   float shadows;
   float highlights;
   float sigma;
+  uint y_offset;
+  uint y_size;
 };
 
 } // namespace ren::sh

@@ -7,12 +7,11 @@ namespace ren::sh {
 
 [numthreads(LTM_LLM_GROUP_SIZE_X * LTM_LLM_GROUP_SIZE_Y)]
 void main() {
-  Sampler2D ltm_lightness = Get(pc.lightness);
-  Sampler2D ltm_accumulator = Get(pc.accumulator);
+  RWTexture2D ltm_lightness = Get(pc.lightness);
   RWTexture2D ltm_llm = Get(pc.llm);
 
   uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_LLM_GROUP_SIZE_X);
-  ivec2 pos = gl_WorkGroupID.xy * LTM_LLM_TILE_SIZE + lxy;
+  ivec2 pos = gl_WorkGroupID.xy * LTM_LLM_TILE_SIZE + ivec2(0, pc.y_offset) + lxy;
 
   float x = 0.0f;
   float y = 0.0f;
@@ -23,8 +22,8 @@ void main() {
     [[unroll]] for (int ix = -1; ix <= 1; ++ix) {
       ivec2 spos = clamp(pos + ivec2(ix, iy), 0, TextureSize(ltm_lightness) - 1);
 
-      float sx = ltm_lightness.Load(ivec3(spos, pc.mip)).y;
-      float sy = ltm_accumulator.Load(ivec3(spos, 0)).x;
+      float sx = CoherentLoad(pc.lightness, spos).y;
+      float sy = CoherentLoad(pc.accumulator, spos).x;
 
       float dr2 = iy * iy + ix * ix;
       const float sigma = 1.5f;
@@ -45,7 +44,7 @@ void main() {
   float a = (xy - x * y) / (x2 - x * x + REG_CONSTANT);
   float b = y - a * x;
 
-  if (all(pos < TextureSize(ltm_llm))) {
+  if (all(pos < TextureSize(ltm_llm)) && pos.y < pc.y_offset + pc.y_size) {
     ltm_llm[pos] = vec4(a, b, 0.0f, 0.0f);
   }
 }

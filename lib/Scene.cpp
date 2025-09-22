@@ -465,6 +465,8 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ren_try_to(render_graph.execute({
       .gfx_cmd_pool = frcs->gfx_cmd_pool,
       .async_cmd_pool = frcs->async_cmd_pool,
+      .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
+      .async_event_pool = &scene->m_sid->m_async_event_pool,
       .frame_end_semaphore = &frcs->end_semaphore,
       .frame_end_time = &frcs->end_time,
   }));

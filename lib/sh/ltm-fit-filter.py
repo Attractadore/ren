@@ -59,7 +59,7 @@ DF_LANCZOS3 = make_lanczos_df(3)
 
 def filter_loss(f):
   h = fft.fft2(f, s=[2*FN, 2*FN])[:FN,:FN]
-  # h[:FN//2,:FN//2] *= IF_FFT[:FN//2,:FN//2]
+  h[:FN//2,:FN//2] *= IF_FFT[:FN//2,:FN//2]
   mse = (
     np.sum((np.abs(h[:FN//2,:FN//2]) - 1)**2) +
     np.sum(np.abs(h[:FN//2,FN//2:])**2) +

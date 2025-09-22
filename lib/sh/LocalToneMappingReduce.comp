@@ -3,42 +3,97 @@
 
 namespace ren::sh {
 
-[[vk::push_constant]] LocalToneMappingReduceArgs pc;
+static const uint LC_SIZE = 24;
+shared uint load_cache[LC_SIZE][LC_SIZE];
+shared uint store_cache[LC_SIZE][8];
 
-vec4 filter(Sampler2D t, vec2 uv, vec2 inv_size, int mip) {
-  vec4 s = 0.0f;
-  s += -0.0826844273824397f * t.SampleLevel(uv + vec2(-3.0345751082467562f, 0.0f) * inv_size, mip);
-  s += -0.0826844273824397f * t.SampleLevel(uv + vec2(0.0f, -3.0345751082467562f) * inv_size, mip);
-  s += -0.0826844273824397f * t.SampleLevel(uv + vec2(0.0f,  3.0345751082467562f) * inv_size, mip);
-  s += -0.0826844273824397f * t.SampleLevel(uv + vec2( 3.0345751082467562f, 0.0f) * inv_size, mip);
-  s +=  0.3326844273824397f * t.SampleLevel(uv + vec2(-0.7629477704209346f,  0.7629477704209346f) * inv_size, mip);
-  s +=  0.3326844273824397f * t.SampleLevel(uv + vec2(-0.7629477704209346f, -0.7629477704209346f) * inv_size, mip);
-  s +=  0.3326844273824397f * t.SampleLevel(uv + vec2( 0.7629477704209346f, -0.7629477704209346f) * inv_size, mip);
-  s +=  0.3326844273824397f * t.SampleLevel(uv + vec2( 0.7629477704209346f,  0.7629477704209346f) * inv_size, mip);
-  return s;
-}
+static const float FILTER[] = { -0.1330018f, -0.11585925f, 0.19901849f, 0.54984257f };
+
+[[vk::push_constant]] LocalToneMappingReduceArgs pc;
 
 [numthreads(LTM_REDUCE_GROUP_SIZE_X * LTM_REDUCE_GROUP_SIZE_Y)]
 void main() {
-  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_REDUCE_GROUP_SIZE_X);
-
-  Sampler2D src_lightness = Get(pc.src_lightness);
-  Sampler2D src_weights = Get(pc.src_weights);
+  RWTexture2D src_lightness = Get(pc.src_lightness);
+  RWTexture2D src_weights = Get(pc.src_weights);
   RWTexture2D dst_lightness = Get(pc.dst_lightness);
   RWTexture2D dst_weights = Get(pc.dst_weights);
 
-  vec2 inv_src_size = 1.0f / TextureSize(src_lightness, pc.src_mip);
-  ivec2 pos = gl_WorkGroupID.xy * LTM_REDUCE_TILE_SIZE + lxy;
-  vec2 uv = (2 * pos + 1) * inv_src_size;
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_REDUCE_GROUP_SIZE_X);
+  ivec2 base_load_xy = 2 * ivec2(gl_WorkGroupID.xy * LTM_REDUCE_TILE_SIZE) + ivec2(0, 2 * pc.y_offset);
+  ivec2 min_load_xy = max(0, base_load_xy - 3);
+  ivec2 max_load_xy = min(TextureSize(src_lightness) - 1, base_load_xy + 2 * LTM_REDUCE_TILE_SIZE + 2);
+  ivec2 store_xy = gl_WorkGroupID.xy * LTM_REDUCE_TILE_SIZE + ivec2(0, pc.y_offset) + lxy;
 
-  vec3 lightness = filter(src_lightness, uv, inv_src_size, pc.src_mip).rgb;
-  if (all(pos < TextureSize(dst_lightness))) {
-    dst_lightness.Store(pos, vec4(lightness, 1.0f));
+  [[unroll]] for (uint k = 0; k < 9; ++k) {
+    uvec2 gxy = swizzle_zz(k, 3);
+    ivec2 offset = gxy * LTM_REDUCE_GROUP_SIZE + lxy + ivec2(-4, -4);
+    ivec2 load_xy = base_load_xy + offset;
+    load_xy = clamp(load_xy, min_load_xy, max_load_xy);
+    vec3 lightness = CoherentLoad(pc.src_lightness, load_xy).rgb;
+    load_cache[offset.y + 4][offset.x + 4] = pack_r10g10b10a2_unorm(lightness);
+  }
+  barrier();
+
+  [[unroll]] for (uint k = 0; k < 3; ++k) {
+    uint x = lxy.x;
+    uint y = lxy.y + k * 8;
+    vec3 lightness = 0.0f;
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      lightness += FILTER[i] * unpack_r10g10b10a2_unorm(load_cache[y][2 * x + i + 1]).rgb;
+      lightness += FILTER[i] * unpack_r10g10b10a2_unorm(load_cache[y][2 * x + 8 - i]).rgb;
+    }
+    store_cache[y][x] = pack_r10g10b10a2_unorm(lightness);
+  }
+  barrier();
+
+  vec3 lightness = 0.0f;
+  {
+    uint x = lxy.x;
+    uint y = lxy.y;
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      lightness += FILTER[i] * unpack_r10g10b10a2_unorm(store_cache[2 * y + i + 1][x]).rgb;
+      lightness += FILTER[i] * unpack_r10g10b10a2_unorm(store_cache[2 * y + 8 - i][x]).rgb;
+    }
   }
 
-  vec2 weight = filter(src_weights, uv, inv_src_size, pc.src_mip).rg;
-  if (all(pos < TextureSize(dst_lightness))) {
-    dst_weights.Store(pos, vec4(weight, 0.0f, 1.0f));
+  if (all(store_xy < TextureSize(dst_lightness)) && store_xy.y < pc.y_offset + pc.y_size) {
+    CoherentStore(pc.dst_lightness, store_xy, vec4(lightness, 0.0f));
+  }
+
+  [[unroll]] for (uint k = 0; k < 9; ++k) {
+    uvec2 gxy = swizzle_zz(k, 3);
+    ivec2 offset = gxy * LTM_REDUCE_GROUP_SIZE + lxy + ivec2(-4, -4);
+    ivec2 load_xy = base_load_xy + offset;
+    load_xy = clamp(load_xy, min_load_xy, max_load_xy);
+    vec2 weight = CoherentLoad(pc.src_weights, load_xy).rg;
+    load_cache[offset.y + 4][offset.x + 4] = packUnorm2x16(weight);
+  }
+  barrier();
+
+  [[unroll]] for (uint k = 0; k < 3; ++k) {
+    uint x = lxy.x;
+    uint y = lxy.y + k * 8;
+    vec2 weight = 0.0f;
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      weight += FILTER[i] * unpackUnorm2x16(load_cache[y][2 * x + i + 1]);
+      weight += FILTER[i] * unpackUnorm2x16(load_cache[y][2 * x + 8 - i]);
+    }
+    store_cache[y][x] = packUnorm2x16(weight);
+  }
+  barrier();
+
+  vec2 weight = 0.0f;
+  {
+    uint x = lxy.x;
+    uint y = lxy.y;
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      weight += FILTER[i] * unpackUnorm2x16(store_cache[2 * y + i + 1][x]);
+      weight += FILTER[i] * unpackUnorm2x16(store_cache[2 * y + 8 - i][x]);
+    }
+  }
+
+  if (all(store_xy < TextureSize(dst_weights)) && store_xy.y < pc.y_offset + pc.y_size) {
+    CoherentStore(pc.dst_weights, store_xy, vec4(weight, 0.0f, 0.0f));
   }
 }
 

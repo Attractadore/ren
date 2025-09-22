@@ -577,6 +577,8 @@ private:
 struct RgExecuteInfo {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
+  EventPool* gfx_event_pool = nullptr;
+  EventPool* async_event_pool = nullptr;
   Handle<Semaphore> *frame_end_semaphore = nullptr;
   u64 *frame_end_time = nullptr;
 };
@@ -594,6 +596,8 @@ private:
   RgPersistent *m_rgp = nullptr;
   RgRtData *m_data = nullptr;
   UploadBumpAllocator *m_upload_allocator = nullptr;
+  EventPool *m_gfx_event_pool = nullptr;
+  EventPool *m_async_event_pool = nullptr;
   const GenArray<RgSemaphore> *m_semaphores = nullptr;
 };
 
@@ -635,8 +639,19 @@ public:
 
   auto get_texture_descriptor(RgTextureToken texture) const -> sh::Handle<void>;
 
+  template <sh::DescriptorOfKind<sh::DescriptorKind::Texture> T>
+  auto get_texture_descriptor(RgTextureToken texture) const -> sh::Handle<T> {
+    return sh::Handle<T>(get_texture_descriptor(texture));
+  }
+
   auto try_get_texture_descriptor(RgTextureToken texture) const
       -> sh::Handle<void>;
+
+  template <sh::DescriptorOfKind<sh::DescriptorKind::Texture> T>
+  auto try_get_texture_descriptor(RgTextureToken texture) const
+      -> sh::Handle<T> {
+    return sh::Handle<T>(try_get_texture_descriptor(texture));
+  }
 
   auto get_sampled_texture_descriptor(RgTextureToken texture) const
       -> sh::Handle<void>;
@@ -722,10 +737,15 @@ public:
     cmd.push_constants(pc);
   }
 
+  auto get_event_pool() const -> EventPool & {
+    return *m_event_pool;
+  }
+
 private:
   friend RenderGraph;
 
 private:
+  EventPool* m_event_pool = nullptr;
   RenderGraph *m_rg = nullptr;
 };
 

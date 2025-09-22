@@ -10,10 +10,11 @@ static const uvec2 LTM_LLM_GROUP_SIZE =
 static const uvec2 LTM_LLM_TILE_SIZE = LTM_LLM_GROUP_SIZE;
 
 struct LocalToneMappingLLMArgs {
-  Handle<Sampler2D> lightness;
-  Handle<Sampler2D> accumulator;
+  Handle<RWTexture2D> lightness;
+  Handle<RWTexture2D> accumulator;
   Handle<RWTexture2D> llm;
-  uint mip;
+  uint y_offset;
+  uint y_size;
 };
 
 } // namespace ren::sh

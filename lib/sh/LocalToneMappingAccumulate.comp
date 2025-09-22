@@ -3,6 +3,10 @@
 
 namespace ren::sh {
 
+static const uint LC_SIZE = 16;
+
+shared uint load_cache[LC_SIZE][LC_SIZE];
+
 [[vk::push_constant]] LocalToneMappingAccumulateArgs pc;
 
 // https://www.shadertoy.com/view/wtXXDl
@@ -21,39 +25,75 @@ vec4 filter(Sampler2D t, vec2 uv, vec2 inv_size, int mip) {
 
 [numthreads(LTM_ACCUMULATE_GROUP_SIZE_X * LTM_ACCUMULATE_GROUP_SIZE_Y)]
 void main() {
-  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_ACCUMULATE_GROUP_SIZE_X);
-
-  Sampler2D ltm_lightness = Get(pc.lightness);
-  Sampler2D ltm_weights = Get(pc.weights);
   RWTexture2D dst_accumulator = Get(pc.dst_accumulator);
 
+  ivec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_ACCUMULATE_GROUP_SIZE_X);
+
   if (IsNull(pc.src_accumulator)) {
-    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
-      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
-      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
+    [[unroll]] for (uint k = 0; k < 4; ++k) {
+      ivec2 gxy = swizzle_zz(k, 2);
+      ivec2 xy = ivec2(2 * gl_WorkGroupID.xy + gxy) * LTM_ACCUMULATE_GROUP_SIZE + ivec2(0, pc.y_offset) + lxy;
+      vec3 weight = CoherentLoad(pc.dst_weights, xy).rgg; 
       weight.b = 1.0f - weight.r - weight.g;
-      vec3 gaussian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb;
+      vec3 gaussian = CoherentLoad(pc.dst_lightness, xy).rgb;
       float accumulator = dot(gaussian, weight);
-      if (all(pos < TextureSize(dst_accumulator))) {
-        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+      if (all(xy < TextureSize(dst_accumulator)) && xy.y < pc.y_offset + pc.y_size) {
+        CoherentStore(pc.dst_accumulator, xy, vec4(accumulator, 0.0f, 0.0f, 0.0f));
       }
     }
   } else {
-    Sampler2D src_accumulator = Get(pc.src_accumulator);
-    vec2 inv_dst_size = 1.0f / TextureSize(dst_accumulator);
-    for (uint k = 0; k < LTM_ACCUMULATE_UNROLL_X * LTM_ACCUMULATE_UNROLL_Y; ++k) {
-      ivec2 pos = gl_WorkGroupID.xy * LTM_ACCUMULATE_TILE_SIZE + swizzle_zz(k, LTM_ACCUMULATE_UNROLL_X) * LTM_ACCUMULATE_GROUP_SIZE + lxy;
-      vec2 uv = (pos + 0.5f) * inv_dst_size;
-      vec3 weight = ltm_weights.Load(ivec3(pos, pc.dst_mip)).rgg; 
+    RWTexture2D src_lightness = Get(pc.src_lightness);
+    RWTexture2D src_accumulator = Get(pc.src_accumulator);
+
+    ivec2 base_load_xy = gl_WorkGroupID.xy * LTM_ACCUMULATE_GROUP_SIZE + ivec2(0, pc.y_offset / 2);
+    ivec2 min_load_xy = max(0, base_load_xy - 1);
+    ivec2 max_load_xy = min(TextureSize(src_lightness) - 1, base_load_xy + LTM_ACCUMULATE_GROUP_SIZE + 1);
+
+    [[unroll]] for (uint k = 0; k < 4; ++k) {
+      ivec2 gxy = swizzle_zz(k, 2);
+      ivec2 offset = gxy * LTM_ACCUMULATE_GROUP_SIZE + lxy - ivec2(4, 4);
+      ivec2 load_xy = clamp(base_load_xy + offset, min_load_xy, max_load_xy);
+      vec3 lightness = CoherentLoad(pc.src_lightness, load_xy).rgb;
+      float accumulator = CoherentLoad(pc.src_accumulator, load_xy).r;
+      load_cache[offset.y + 4][offset.x + 4] = packUnorm4x8(vec4(lightness, accumulator));
+    }
+
+    barrier();
+
+    for (uint k = 0; k < 4; ++k) {
+      ivec2 gxy = swizzle_zz(k, 2);
+      ivec2 xy = (2 * gl_WorkGroupID.xy + gxy) * LTM_ACCUMULATE_GROUP_SIZE + ivec2(0, pc.y_offset) + lxy;
+
+      vec3 dst_lightness = CoherentLoad(pc.dst_lightness, xy).rgb;
+      vec3 weight = CoherentLoad(pc.dst_weights, xy).rgg;
       weight.b = 1.0f - weight.r - weight.g;
-      vec3 laplacian = ltm_lightness.Load(ivec3(pos, pc.dst_mip)).rgb - filter(ltm_lightness, uv, inv_dst_size, pc.dst_mip + 1).rgb;
+      vec4 src = 0.0f;
+
+      vec2 a = (lxy % 2 + 0.5f) * 0.5f;
+      vec2 bq[3] = {
+        0.5f - a + 0.5f * a * a,
+        0.5f + a - a * a,
+        0.5f * a * a,
+      };
+      uint fx = (lxy.x + gxy.x * LTM_ACCUMULATE_GROUP_SIZE.x) / 2 + 3;
+      uint fy = (lxy.y + gxy.y * LTM_ACCUMULATE_GROUP_SIZE.y) / 2 + 3;
+      [[unroll]] for (uint j = 0; j < 3; ++j) {
+        [[unroll]] for (uint i = 0; i < 3; ++i) {
+          src += bq[i].x * bq[j].y * unpackUnorm4x8(load_cache[fy][fx]);
+        }
+      }
+      vec3 src_lightness = src.rgb;
+      float src_accumulator = src.a;
+
+      vec3 laplacian = dst_lightness - src_lightness;
       if (bool(pc.contrast_boost)) {
         weight *= (abs(laplacian) + 0.001f);
         weight /= (weight.r + weight.g + weight.b);
       }
-      float accumulator = filter(src_accumulator, uv, inv_dst_size, pc.dst_mip - pc.llm_mip + 1).r + dot(laplacian, weight);
-      if (all(pos < TextureSize(dst_accumulator))) {
-        dst_accumulator.Store(pos, vec4(accumulator, 0.0f, 0.0f, 1.0f));
+
+      float accumulator = src_accumulator + dot(laplacian, weight);
+      if (all(xy < TextureSize(dst_accumulator)) && xy.y < pc.y_offset + pc.y_size) {
+        CoherentStore(pc.dst_accumulator, xy, vec4(accumulator, 0.0f, 0.0f, 0.0f));
       }
     }
   }

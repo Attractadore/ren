@@ -229,14 +229,15 @@ auto set_event(CommandRecorder &cmd, EventPool &pool,
                TempSpan<const rhi::MemoryBarrier> memory_barriers,
                TempSpan<const TextureBarrier> texture_barriers) -> EventId;
 
-auto set_event(CommandRecorder &cmd, EventPool &pool,
-               const rhi::MemoryBarrier &barrier) -> EventId;
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
+                      const rhi::MemoryBarrier &barrier) -> EventId {
+  return set_event(cmd, pool, {&barrier, 1}, {});
+}
 
-auto set_event(CommandRecorder &cmd, EventPool &pool,
-               const rhi::MemoryBarrier &barrier) -> EventId;
-
-auto set_event(CommandRecorder &cmd, EventPool &pool,
-               const TextureBarrier &barrier) -> EventId;
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
+                      const TextureBarrier &barrier) -> EventId {
+  return set_event(cmd, pool, {}, {&barrier, 1});
+}
 
 void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId event);
 

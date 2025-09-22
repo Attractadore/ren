@@ -1521,9 +1521,11 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
 
     Span<const RgRtPass> passes = m_data->m_gfx_passes;
     Handle<CommandPool> cmd_pool = exec_info.gfx_cmd_pool;
+    rg.m_event_pool = exec_info.gfx_event_pool;
     if (queue_family == rhi::QueueFamily::Compute) {
       passes = m_data->m_async_passes;
       cmd_pool = exec_info.async_cmd_pool;
+      rg.m_event_pool = exec_info.async_event_pool;
     }
 
     for (const RgRtPass &pass : passes) {

@@ -10,11 +10,12 @@ static const uvec2 LTM_REDUCE_GROUP_SIZE =
 static const uvec2 LTM_REDUCE_TILE_SIZE = LTM_REDUCE_GROUP_SIZE;
 
 struct LocalToneMappingReduceArgs {
-  Handle<Sampler2D> src_lightness;
-  Handle<Sampler2D> src_weights;
+  Handle<RWTexture2D> src_lightness;
+  Handle<RWTexture2D> src_weights;
   Handle<RWTexture2D> dst_lightness;
   Handle<RWTexture2D> dst_weights;
-  uint src_mip;
+  uint y_offset;
+  uint y_size;
 };
 
 } // namespace ren::sh

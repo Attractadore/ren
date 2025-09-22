@@ -7,6 +7,8 @@ static const uint LC_SIZE = 24;
 shared float load_cache[LC_SIZE][LC_SIZE];
 shared float store_cache[LC_SIZE][8];
 
+static const float FILTER[] = { -0.04870331f, -0.07262685f, 0.16367737f, 0.45765278f };
+
 [[vk::push_constant]] LocalToneMappingLightnessArgs pc;
 
 void filter(uvec2 lxy, float gray, out vec3 lightness, out vec3 weight) {
@@ -14,14 +16,10 @@ void filter(uvec2 lxy, float gray, out vec3 lightness, out vec3 weight) {
     uint x = lxy.x;
     uint y = lxy.y + k * 8;
     float log_luminance = 0.0f;
-    log_luminance += -0.04870331f * load_cache[y][2 * x + 1];
-    log_luminance += -0.07262685f * load_cache[y][2 * x + 2];
-    log_luminance +=  0.16367737f * load_cache[y][2 * x + 3];
-    log_luminance +=  0.45765278f * load_cache[y][2 * x + 4];
-    log_luminance +=  0.45765278f * load_cache[y][2 * x + 5];
-    log_luminance +=  0.16367737f * load_cache[y][2 * x + 6];
-    log_luminance += -0.07262685f * load_cache[y][2 * x + 7];
-    log_luminance += -0.04870331f * load_cache[y][2 * x + 8];
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      log_luminance += FILTER[i] * load_cache[y][2 * x + i + 1];
+      log_luminance += FILTER[i] * load_cache[y][2 * x + 8 - i];
+    }
     store_cache[y][x] = log_luminance;
   }
   barrier();
@@ -30,14 +28,10 @@ void filter(uvec2 lxy, float gray, out vec3 lightness, out vec3 weight) {
   {
     uint x = lxy.x;
     uint y = lxy.y;
-    log_luminance += -0.04870331f * store_cache[2 * y + 1][x];
-    log_luminance += -0.07262685f * store_cache[2 * y + 2][x];
-    log_luminance +=  0.16367737f * store_cache[2 * y + 3][x];
-    log_luminance +=  0.45765278f * store_cache[2 * y + 4][x];
-    log_luminance +=  0.45765278f * store_cache[2 * y + 5][x];
-    log_luminance +=  0.16367737f * store_cache[2 * y + 6][x];
-    log_luminance += -0.07262685f * store_cache[2 * y + 7][x];
-    log_luminance += -0.04870331f * store_cache[2 * y + 8][x];
+    [[unroll]] for (uint i = 0; i < 4; ++i) {
+      log_luminance += FILTER[i] * store_cache[2 * y + i + 1][x];
+      log_luminance += FILTER[i] * store_cache[2 * y + 8 - i][x];
+    }
   }
   float luminance = pc.middle_gray * exp2(log_luminance);
 
@@ -59,7 +53,7 @@ void main() {
   RWTexture2D ltm_weights = Get(pc.weights);
 
   uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, LTM_LIGHTNESS_GROUP_SIZE_X);
-  ivec2 base_load_xy = ivec2(2 * gl_WorkGroupID.xy * LTM_LIGHTNESS_TILE_SIZE);
+  ivec2 base_load_xy = 2 * ivec2(gl_WorkGroupID.xy * LTM_LIGHTNESS_TILE_SIZE) + ivec2(0, 2 * pc.y_offset);
   ivec2 min_load_xy = max(0, base_load_xy - 3);
   ivec2 max_load_xy = min(TextureSize(hdr) - 1, base_load_xy + 2 * LTM_LIGHTNESS_TILE_SIZE + 2);
 
@@ -80,10 +74,10 @@ void main() {
   vec3 weight;
   filter(lxy, gray, lightness, weight);
 
-  ivec2 store_xy = gl_WorkGroupID.xy * LTM_LIGHTNESS_TILE_SIZE + lxy;
-  if (all(store_xy < TextureSize(ltm_lightness))) {
-    ltm_lightness.Store(store_xy, vec4(lightness, 0));
-    ltm_weights.Store(store_xy, vec4(weight.rg, 0));
+  ivec2 store_xy = gl_WorkGroupID.xy * LTM_LIGHTNESS_TILE_SIZE + ivec2(0, pc.y_offset) + lxy;
+  if (all(store_xy < TextureSize(ltm_lightness)) && store_xy.y < pc.y_offset + pc.y_size) {
+    CoherentStore(pc.lightness, store_xy, vec4(lightness, 0));
+    CoherentStore(pc.weights, store_xy, vec4(weight.rg, 0));
   }
 }
 
