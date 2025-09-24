@@ -395,8 +395,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
       if (info.base.culling_phase != CullingPhase::First or batch > 0) {
         ops.load = rhi::RenderPassLoadOp::Load;
       }
-      std::tie(*color_attachment, std::ignore) = pass.write_render_target(
-          info.base.color_attachment_names[i], *color_attachment, ops);
+      pass.write_render_target(info.base.color_attachment_names[i],
+                               color_attachment, ops);
     }
 
     if (*info.base.depth_attachment) {
@@ -408,9 +408,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
         if (info.base.culling_phase != CullingPhase::First or batch > 0) {
           ops.load = rhi::RenderPassLoadOp::Load;
         }
-        std::tie(*info.base.depth_attachment, std::ignore) =
-            pass.write_depth_stencil_target(info.base.depth_attachment_name,
-                                            *info.base.depth_attachment, ops);
+        pass.write_depth_stencil_target(info.base.depth_attachment_name,
+                                        info.base.depth_attachment, ops);
       }
     }
 

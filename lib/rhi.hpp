@@ -696,7 +696,6 @@ constexpr AccessMask WRITE_ONLY_ACCESS_MASK =
 
 enum class ImageLayout {
   Undefined,
-  ReadOnly,
   General,
   RenderTarget,
   TransferSrc,
@@ -781,18 +780,18 @@ public:
 constexpr ImageState VS_SAMPLED_IMAGE = {
     .stage_mask = PipelineStage::VertexShader,
     .access_mask = Access::ShaderImageRead,
-    .layout = ImageLayout::ReadOnly,
+    .layout = ImageLayout::General,
 };
 constexpr ImageState READ_DEPTH_STENCIL_TARGET = {
     .stage_mask = PipelineStage::EarlyFragmentTests,
     .access_mask = Access::DepthStencilRead,
-    .layout = ImageLayout::ReadOnly,
+    .layout = ImageLayout::General,
 };
 
 constexpr ImageState FS_RESOURCE_IMAGE = {
     .stage_mask = PipelineStage::FragmentShader,
     .access_mask = Access::ShaderImageRead,
-    .layout = ImageLayout::ReadOnly,
+    .layout = ImageLayout::General,
 };
 
 constexpr ImageState RENDER_TARGET = {
@@ -811,7 +810,7 @@ constexpr ImageState DEPTH_STENCIL_TARGET = {
 constexpr ImageState CS_RESOURCE_IMAGE = {
     .stage_mask = PipelineStage::ComputeShader,
     .access_mask = Access::ShaderImageRead,
-    .layout = ImageLayout::ReadOnly,
+    .layout = ImageLayout::General,
 };
 
 constexpr ImageState CS_UNORDERED_ACCESS_IMAGE = {

@@ -21,5 +21,5 @@ using usize = size_t;
 #if _MSC_VER
 #define NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
 #else
-#define NO_UNIQUE_ADDRESS
+#define NO_UNIQUE_ADDRESS [[no_unique_address]]
 #endif

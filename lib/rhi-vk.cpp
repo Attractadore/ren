@@ -342,7 +342,6 @@ template <>
 constexpr auto MAP<ImageLayout> = [] {
   std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
   map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
-  map(ImageLayout::ReadOnly, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
   map(ImageLayout::General, VK_IMAGE_LAYOUT_GENERAL);
   map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
   map(ImageLayout::TransferSrc, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -1681,7 +1680,7 @@ void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
   for (usize i : range(srvs.size())) {
     image_info[i] = {
         .imageView = srvs[i].handle,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     };
   }
   VkWriteDescriptorSet write_info = {
@@ -1703,7 +1702,7 @@ void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
     image_info[i] = {
         .sampler = samplers[i].handle,
         .imageView = srvs[i].handle,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
     };
   }
   VkWriteDescriptorSet write_info = {
@@ -2396,7 +2395,7 @@ void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
     render_targets[i] = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = rt.rtv.handle,
-        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp = to_vk(rt.ops.load),
         .storeOp = to_vk(rt.ops.store),
         .clearValue =
@@ -2420,8 +2419,8 @@ void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .imageView = dst.dsv.handle,
         .imageLayout = dst.ops.store == RenderPassStoreOp::None
-                           ? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
-                           : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                           ? VK_IMAGE_LAYOUT_GENERAL
+                           : VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
         .loadOp = to_vk(dst.ops.load),
         .storeOp = to_vk(dst.ops.store),
         .clearValue = {.depthStencil = {.depth = dst.ops.clear_depth}},
