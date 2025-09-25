@@ -109,6 +109,45 @@ inline float color_to_luminance(vec3 color) {
   return dot(color, vec3(0.2126f, 0.7152f, 0.0722f));
 }
 
+// clang-format off
+static const mat3 RGB_TO_XYZ_MATRIX = mat3(
+  0.49f, 0.17967f, 0.00f,
+  0.31f, 0.81240f, 0.01f,
+  0.20f, 0.01063f, 0.99f
+);
+// clang-format on
+static const mat3 XYZ_TO_RGB_MATRIX = inverse(RGB_TO_XYZ_MATRIX);
+
+inline vec3 rgb_to_xyz(vec3 color) { return RGB_TO_XYZ_MATRIX * color; }
+
+inline vec3 xyz_to_rgb(vec3 color) { return XYZ_TO_RGB_MATRIX * color; }
+
+inline vec3 xyz_to_xyY(vec3 color) {
+  float s = color.x + color.y + color.z;
+  return vec3(color.x / s, color.y / s, color.y);
+}
+
+inline vec3 xyY_to_xyz(vec3 color) {
+  float x = color.x;
+  float y = color.y;
+  float Y = color.z;
+  float z = 1.0f - x - y;
+  float S = Y / y;
+  return vec3(x * S, Y, z * S);
+}
+
+inline vec3 rgb_to_xyY(vec3 color) {
+  color = rgb_to_xyz(color);
+  color = xyz_to_xyY(color);
+  return color;
+}
+
+inline vec3 xyY_to_rgb(vec3 color) {
+  color = xyY_to_xyz(color);
+  color = xyz_to_rgb(color);
+  return color;
+}
+
 inline uvec2 linear_to_local_2d(const uvec3 WG_SIZE, uint index) {
   const uint NUM_QUADS_X = WG_SIZE.x / 2;
   uint quad_index = index / 4;

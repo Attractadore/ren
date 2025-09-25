@@ -4,7 +4,7 @@
 namespace ren::sh {
 
 struct ReduceLuminanceHistogramArgs {
-  DevicePtr<float> luminance_histogram;
+  DevicePtr<uint> luminance_histogram;
   DevicePtr<float> exposure;
   float exposure_compensation;
   float dark_adaptation_time;

@@ -5,7 +5,7 @@ namespace ren::sh {
 
 [[vk::push_constant]] ReduceLuminanceHistogramArgs pc;
 
-shared float luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+shared uint luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
 
 [numthreads(NUM_LUMINANCE_HISTOGRAM_BINS)]
 void main() {
@@ -19,7 +19,7 @@ void main() {
   }
 
   float log_luminance = MIN_LOG_LUMINANCE;
-  float weight = 1.0f;
+  uint weight = 1;
   for (int i = 1; i < NUM_LUMINANCE_HISTOGRAM_BINS; ++i) {
     float bin_log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, float(i) / (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
     log_luminance += bin_log_luminance * luminance_histogram[i];
@@ -27,8 +27,9 @@ void main() {
   }
   log_luminance /= weight;
 
-  float exposure = automatic_exposure(log_luminance, pc.exposure_compensation);
   float old_exposure = *pc.exposure;
+  log_luminance -= log2(old_exposure);
+  float exposure = automatic_exposure(log_luminance, pc.exposure_compensation);
   float adaptation_time = exposure > old_exposure ? pc.dark_adaptation_time : pc.bright_adaptation_time;
   // e^-5 ~= 0.6%
   float m = 1.0f - exp(-5.0f*pc.dt/adaptation_time);

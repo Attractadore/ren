@@ -5,91 +5,114 @@ namespace ren::sh {
 
 [[vk::push_constant]] PostProcessingArgs pc;
 
-shared float luminance_histogram[NUM_LUMINANCE_HISTOGRAM_BINS];
+static const uint HISTOGRAM_R = 4;
+shared float luminance_histogram[HISTOGRAM_R][NUM_LUMINANCE_HISTOGRAM_BINS + 1];
 
-[numthreads(8, 8)]
+static const uint LOAD_CACHE_SIZE = 4 * PP_GROUP_SIZE_X * PP_GROUP_SIZE_Y;
+shared uint lc_chroma[LOAD_CACHE_SIZE];
+shared float lc_luminance[LOAD_CACHE_SIZE];
+
+[numthreads(PP_GROUP_SIZE_X * PP_GROUP_SIZE_Y)]
 void main() {
   Texture2D hdr = Get(pc.hdr);
+  RWTexture2D sdr = Get(pc.sdr);
 
-  const ivec2 size = TextureSize(hdr);
-  const vec2 center = 0.5f * vec2(size);
-  const ivec2 stride = ivec2(gl_NumWorkGroups.xy * gl_WorkGroupSize.xy);
+  uvec2 lxy = swizzle_quads(gl_LocalInvocationIndex, PP_GROUP_SIZE_X);
+
+  const uvec2 size = TextureSize(hdr);
+
+  [[unroll]] for (uint k = 0; k < 4; ++k) {
+    uvec2 gxy = swizzle_zz(k, 2);
+    uvec2 xy = gl_WorkGroupID.xy * PP_TILE_SIZE + gxy * PP_GROUP_SIZE + lxy;
+    xy = min(xy, size - 1);
+    vec3 color = hdr.Load(int3(xy, 0)).rgb;
+    uint offset = gl_LocalInvocationIndex + k * PP_GROUP_SIZE_X * PP_GROUP_SIZE_Y;
+    color = rgb_to_xyY(color);
+    lc_chroma[offset] = packUnorm2x16(color.xy);
+    lc_luminance[offset] = color.z;
+  }
+  [[unroll]] for (uint k = gl_LocalInvocationIndex; k < HISTOGRAM_R * NUM_LUMINANCE_HISTOGRAM_BINS; k += gl_WorkGroupSize.x) {
+    uint p = k / NUM_LUMINANCE_HISTOGRAM_BINS;
+    uint i = k % NUM_LUMINANCE_HISTOGRAM_BINS;
+    luminance_histogram[p][i] = 0.0f;
+  }
+  barrier();
 
   if (pc.luminance_histogram) {
-    for (uint i = gl_LocalInvocationIndex; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
-      luminance_histogram[i] = 0.0f;
+    [[unroll]] for (uint k = 0; k < 4; ++k) {
+      uvec2 gxy = swizzle_zz(k, 2);
+      uvec2 xy = gl_WorkGroupID.xy * PP_TILE_SIZE + gxy * PP_GROUP_SIZE + lxy;
+      xy = min(xy, size - 1);
+
+      vec2 center = 0.5f * vec2(size);
+      float radius = length(2.0f * (vec2(xy + 0.5f) - center) / min(size.x, size.y));
+      float inner_radius = 0.5f * pc.metering_pattern_relative_inner_size;
+      float outer_radius = 0.5f * pc.metering_pattern_relative_outer_size;
+
+      float weight = 1.0f;
+      float spot_weight = radius < inner_radius ? 1.0f : 0.0f;
+      weight = pc.metering_mode == METERING_MODE_SPOT ? spot_weight : weight;
+      float cw_weight = 1.0f - smoothstep(inner_radius, outer_radius, radius);
+      weight = pc.metering_mode == METERING_MODE_CENTER_WEIGHTED ? cw_weight : weight;
+
+      uint offset = gl_LocalInvocationIndex + k * PP_GROUP_SIZE_X * PP_GROUP_SIZE_Y;
+      float luminance = lc_luminance[offset];
+      luminance = max(luminance, exp2(MIN_LOG_LUMINANCE));
+      float log_luminance = log2(luminance);
+      float alpha = saturate((log_luminance - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE));
+      uint bin = (uint)round(alpha * (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
+      uint p = gl_LocalInvocationIndex % HISTOGRAM_R;
+      atomicAdd(luminance_histogram[p][bin], weight);
     }
     barrier();
-  }
 
-  const ivec2 start = ivec2(gl_GlobalInvocationID.xy);
-  for (int x = start.x; x < size.x; x += stride.x) {
-    for (int y = start.y; y < size.y; y += stride.y) {
-      vec3 color = hdr.Load(int3(x, y, 0)).rgb;
-
-      if (pc.luminance_histogram) {
-        float weight = 1.0f;
-      
-        vec2 relative_centered_pos = 2.0f * (vec2(x + 0.5f, y + 0.5f) - center) / min(size.x, size.y);
-        if (pc.metering_mode == METERING_MODE_SPOT) {
-          float radius = 0.5f * pc.metering_pattern_relative_inner_size;
-          weight = length(relative_centered_pos) < radius ? 1.0f : 0.0f;
-        } else if (pc.metering_mode == METERING_MODE_CENTER_WEIGHTED) {
-          weight = 1.0f - smoothstep(
-            0.5f * pc.metering_pattern_relative_inner_size,
-            0.5f * pc.metering_pattern_relative_outer_size,
-            length(relative_centered_pos)
-          );
-        }
-
-        float luminance = max(color_to_luminance(color) / *pc.exposure, MIN_LUMINANCE);
-        float log_luminance = log2(luminance);
-        float alpha = saturate((log_luminance - MIN_LOG_LUMINANCE) / (MAX_LOG_LUMINANCE - MIN_LOG_LUMINANCE));
-        int lo_bin = int(alpha * (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
-        int hi_bin = min(lo_bin + 1, NUM_LUMINANCE_HISTOGRAM_BINS - 1);
-
-        float lo_log_luminance = mix(MIN_LOG_LUMINANCE, MAX_LOG_LUMINANCE, float(lo_bin) / (NUM_LUMINANCE_HISTOGRAM_BINS - 1));
-        float lo_weight = weight * (2.0f - log_luminance / lo_log_luminance);
-        float hi_weight = weight - lo_weight;
-
-        atomicAdd(luminance_histogram[lo_bin], lo_weight);
-        atomicAdd(luminance_histogram[hi_bin], hi_weight);
+    [[unroll]] for (uint s = HISTOGRAM_R / 2; s > 0; s /= 2) {
+      [[unroll]] for (uint k = gl_LocalInvocationIndex; k < s * NUM_LUMINANCE_HISTOGRAM_BINS; k += gl_WorkGroupSize.x) {
+        uint p = k / NUM_LUMINANCE_HISTOGRAM_BINS;
+        uint i = k % NUM_LUMINANCE_HISTOGRAM_BINS;
+        luminance_histogram[p][i] += luminance_histogram[p + s][i];
       }
-
-      if (!IsNull(pc.ltm_llm)) {
-        Sampler2D ltm_llm = Get(pc.ltm_llm);
-        vec2 uv = vec2(x + 0.5f, y + 0.5f) * pc.ltm_inv_size;
-        vec2 ab = ltm_llm.SampleLevel(uv, 0).xy;
-
-        float luminance = pc.middle_gray * color_to_luminance(color);
-        luminance = tone_map(luminance, pc.tone_mapper);
-        luminance = linear_to_srgb(luminance);
-        luminance = ab.x * luminance + ab.y;
-        luminance = srgb_to_linear(luminance);
-        luminance = inverse_tone_map(luminance, pc.tone_mapper);
-
-        color = luminance / color_to_luminance(color) * color;
-      } else {
-        color = pc.middle_gray * color;
-      }
-
-      color = tone_map(color, pc.tone_mapper);
-      if (bool(pc.dithering)) {
-        color = dither_srgb(color, 8, pc.noise_lut, uvec2(x, y));
-      }
-      color = linear_to_srgb(color);
-
-      Get(pc.sdr).Store(ivec2(x, y), vec4(color, 1.0f));
+      barrier();
     }
-  }
 
-  if (pc.luminance_histogram) {
-    barrier();
-    for (uint i = gl_LocalInvocationIndex; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+    [[unroll]] for (uint i = gl_LocalInvocationIndex; i < NUM_LUMINANCE_HISTOGRAM_BINS; i += gl_WorkGroupSize.x) {
+      uint delta = (uint)round(luminance_histogram[0][i] * 256.0f);
       // Ignore bin 0 and zero-valued bins
-      if (i > 0 && luminance_histogram[i] > 0.0f) {
-        atomicAdd(pc.luminance_histogram[i], luminance_histogram[i]);
+      if (i > 0 && delta > 0) {
+        atomicAdd(pc.luminance_histogram[i], delta);
       }
+    }
+  }
+
+  [[unroll]] for (uint k = 0; k < 4; ++k) {
+    uvec2 gxy = swizzle_zz(k, 2);
+    uvec2 xy = gl_WorkGroupID.xy * PP_TILE_SIZE + gxy * PP_GROUP_SIZE + lxy;
+    xy = min(xy, size - 1);
+
+    uint offset = gl_LocalInvocationIndex + k * PP_GROUP_SIZE_X * PP_GROUP_SIZE_Y;
+    vec3 color;
+    color.xy = unpackUnorm2x16(lc_chroma[offset]);
+    color.z = pc.middle_gray * lc_luminance[offset];
+
+    if (!IsNull(pc.ltm_llm)) {
+      vec2 uv = vec2(xy + 0.5f) * pc.ltm_inv_size;
+      vec2 ab = Get(pc.ltm_llm).SampleLevel(uv, 0).xy;
+      color.z = tone_map(color.z, pc.tone_mapper);
+      color.z = linear_to_srgb(color.z);
+      color.z = ab.x * color.z + ab.y;
+      color.z = srgb_to_linear(color.z);
+      color.z = inverse_tone_map(color.z, pc.tone_mapper);
+    }
+
+    color = xyY_to_rgb(color);
+    color = tone_map(color, pc.tone_mapper);
+    if (bool(pc.dithering)) {
+      color = dither_srgb(color, 8, pc.noise_lut, xy);
+    }
+    color = linear_to_srgb(color);
+
+    if (all(xy < TextureSize(sdr))) {
+      sdr.Store(xy, vec4(color, 1.0f));
     }
   }
 }

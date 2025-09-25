@@ -16,11 +16,11 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
   const SceneData &scene = *ccfg.scene;
 
-  RgBufferId<float> luminance_histogram;
+  RgBufferId<u32> luminance_histogram;
   if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
-    luminance_histogram = ccfg.rgb->create_buffer<float>({
+    luminance_histogram = ccfg.rgb->create_buffer<u32>({
         .count = sh::NUM_LUMINANCE_HISTOGRAM_BINS,
-        .init = 0.0f,
+        .init = 0,
         .init_queue = RgQueue::Async,
     });
   }
@@ -214,7 +214,6 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     if (luminance_histogram) {
       args.luminance_histogram =
           pass.write_buffer("luminance-histogram", &luminance_histogram);
-      args.exposure = pass.read_buffer(*cfg.exposure);
     }
 
     if (settings.local_tone_mapping) {
@@ -223,8 +222,11 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
       args.ltm_inv_size = 1.0f / glm::vec2(2u * ltm_size);
     }
 
-    pass.dispatch_grid_2d(ccfg.pipelines->post_processing, args, ccfg.viewport,
-                          {4, 4});
+    u32 num_groups_x = ceil_div(ccfg.viewport.x, sh::PP_TILE_SIZE.x);
+    u32 num_groups_y = ceil_div(ccfg.viewport.y, sh::PP_TILE_SIZE.y);
+
+    pass.dispatch(ccfg.pipelines->post_processing, args, num_groups_x,
+                  num_groups_y);
   }
 
   if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {

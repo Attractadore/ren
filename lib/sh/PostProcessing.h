@@ -4,15 +4,9 @@
 
 namespace ren::sh {
 
-// Absolute threshold of vision is 1e-6 cd/m^2
-static const float MIN_LUMINANCE = 1.0e-7f;
-// Eye damage is possible at 1e8 cd/m^2
-static const float MAX_LUMINANCE = 1.0e9f;
-
-static const float MIN_LOG_LUMINANCE = log2(MIN_LUMINANCE);
-static const float MAX_LOG_LUMINANCE = log2(MAX_LUMINANCE);
-
-static const uint NUM_LUMINANCE_HISTOGRAM_BINS = 64;
+static const uint NUM_LUMINANCE_HISTOGRAM_BINS = 32;
+static const float MIN_LOG_LUMINANCE = -15.0f;
+static const float MAX_LOG_LUMINANCE = 17.0f;
 
 static const float DEFAULT_MIDDLE_GRAY = 0.127f;
 
@@ -347,10 +341,14 @@ inline vec3 dither_srgb(vec3 color, uint bit_depth, DevicePtr<vec3> noise,
 
 #endif
 
+static const uint PP_GROUP_SIZE_X = 8;
+static const uint PP_GROUP_SIZE_Y = 8;
+static const uvec2 PP_GROUP_SIZE = uvec2(PP_GROUP_SIZE_X, PP_GROUP_SIZE_Y);
+static const uvec2 PP_TILE_SIZE = PP_GROUP_SIZE * uint(2);
+
 struct PostProcessingArgs {
   SH_RG_IGNORE(DevicePtr<vec3>) noise_lut;
-  DevicePtr<float> luminance_histogram;
-  DevicePtr<float> exposure;
+  DevicePtr<uint> luminance_histogram;
   float middle_gray;
   MeteringMode metering_mode;
   float metering_pattern_relative_inner_size;

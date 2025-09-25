@@ -1038,7 +1038,6 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
   VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_float_features = {
       .sType =
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
-      .shaderBufferFloat32AtomicAdd = true,
       .shaderSharedFloat32AtomicAdd = true,
   };
 
