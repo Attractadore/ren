@@ -48,3 +48,5 @@ if(REN_BUILD_EXAMPLES)
   message(STATUS "Build examples")
   add_subdirectory(examples)
 endif()
+
+add_subdirectory(editor)
