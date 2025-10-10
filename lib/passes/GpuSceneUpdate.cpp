@@ -135,10 +135,13 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
     {
       ZoneScopedN("Update mesh instance transforms");
       usize count = rcs.scene->mesh_instances.raw_size();
-      auto transforms = rg.allocate<glm::mat4x3>(count);
-      std::ranges::copy_n(rcs.scene->mesh_instance_transforms.raw_data(), count,
-                          transforms.host_ptr);
-      cmd.copy_buffer(transforms.slice, rg.get_buffer(rcs.transform_matrices));
+      if (count > 0) {
+        auto transforms = rg.allocate<glm::mat4x3>(count);
+        std::ranges::copy_n(rcs.scene->mesh_instance_transforms.raw_data(),
+                            count, transforms.host_ptr);
+        cmd.copy_buffer(transforms.slice,
+                        rg.get_buffer(rcs.transform_matrices));
+      }
     }
 
     for (auto s : range(NUM_DRAW_SETS)) {

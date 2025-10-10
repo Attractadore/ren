@@ -235,6 +235,7 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
 
 auto RgBuilder::create_buffer(RgDebugName name, rhi::MemoryHeap heap,
                               usize size) -> RgUntypedBufferId {
+  ren_assert(size > 0);
   RgUntypedBufferId buffer =
       create_virtual_buffer(NullHandle, std::move(name), NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;

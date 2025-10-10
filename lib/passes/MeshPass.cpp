@@ -38,6 +38,9 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   u32 num_batches = ds.batches.size();
 
   u32 num_instances = ds.size();
+  if (num_instances == 0) {
+    return;
+  }
 
   u32 num_meshlets = 0;
   for (auto i : range(ds.batches.size())) {
@@ -352,6 +355,9 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
   const DrawSetData &ds = info.base.gpu_scene->draw_sets[draw_set];
   const RgDrawSetData &rg_ds = info.base.rg_gpu_scene->draw_sets[draw_set];
+  if (ds.batches.empty()) {
+    return;
+  }
 
   const char *pass_type = "";
   if (info.base.culling_phase == CullingPhase::First) {
