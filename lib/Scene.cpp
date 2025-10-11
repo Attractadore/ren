@@ -96,6 +96,10 @@ auto create_scene(Renderer *renderer, SwapChain *swap_chain)
 
   ren_try_to(scene->next_frame());
 
+  scene->m_data.settings.async_compute = false;
+  scene->m_data.settings.present_from_compute = false;
+  scene->m_data.settings.ssao_full_res = true;
+
   return scene;
 }
 

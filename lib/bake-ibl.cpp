@@ -1,8 +1,8 @@
 #include "Baking.hpp"
 #include "core/IO.hpp"
-#include "core/StdDef.hpp"
 #include "core/Views.hpp"
 #include "ren/baking/baking.hpp"
+#include "ren/core/StdDef.hpp"
 
 #include "BakeIrradianceMap.comp.hpp"
 #include "BakeReflectionMap.comp.hpp"

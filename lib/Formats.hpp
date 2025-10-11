@@ -1,5 +1,5 @@
 #pragma once
-#include "core/StdDef.hpp"
+#include "ren/core/StdDef.hpp"
 #include "ren/tiny_imageformat.h"
 
 namespace ren {

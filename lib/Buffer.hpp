@@ -1,9 +1,9 @@
 #pragma once
 #include "DebugNames.hpp"
-#include "core/Assert.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Hash.hpp"
-#include "core/StdDef.hpp"
+#include "ren/core/Assert.hpp"
+#include "ren/core/StdDef.hpp"
 #include "rhi.hpp"
 
 namespace ren {

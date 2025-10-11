@@ -1,7 +1,7 @@
 #pragma once
 #define REN_RHI_VULKAN 1
 #if REN_RHI_VULKAN
-#include "core/StdDef.hpp"
+#include "ren/core/StdDef.hpp"
 #include "vma.hpp"
 
 struct VolkDeviceTable;

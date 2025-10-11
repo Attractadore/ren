@@ -10,9 +10,9 @@
 #include "core/GenArray.hpp"
 #include "core/GenMap.hpp"
 #include "core/NewType.hpp"
-#include "core/NotNull.hpp"
 #include "core/String.hpp"
 #include "core/Variant.hpp"
+#include "ren/core/NotNull.hpp"
 
 #include <functional>
 
@@ -577,8 +577,8 @@ private:
 struct RgExecuteInfo {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
-  EventPool* gfx_event_pool = nullptr;
-  EventPool* async_event_pool = nullptr;
+  EventPool *gfx_event_pool = nullptr;
+  EventPool *async_event_pool = nullptr;
   Handle<Semaphore> *frame_end_semaphore = nullptr;
   u64 *frame_end_time = nullptr;
 };
@@ -737,15 +737,13 @@ public:
     cmd.push_constants(pc);
   }
 
-  auto get_event_pool() const -> EventPool & {
-    return *m_event_pool;
-  }
+  auto get_event_pool() const -> EventPool & { return *m_event_pool; }
 
 private:
   friend RenderGraph;
 
 private:
-  EventPool* m_event_pool = nullptr;
+  EventPool *m_event_pool = nullptr;
   RenderGraph *m_rg = nullptr;
 };
 

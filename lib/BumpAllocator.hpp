@@ -186,8 +186,4 @@ using DeviceBumpAllocation = DeviceBumpAllocator::Allocation<T>;
 template <typename T>
 using UploadBumpAllocation = UploadBumpAllocator::Allocation<T>;
 
-constexpr usize KiB = 1024;
-
-constexpr usize MiB = 1024 * KiB;
-
 } // namespace ren

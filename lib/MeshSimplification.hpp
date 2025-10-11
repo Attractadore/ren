@@ -1,6 +1,6 @@
 #pragma once
-#include "core/NotNull.hpp"
 #include "core/Vector.hpp"
+#include "ren/core/NotNull.hpp"
 #include "sh/Geometry.h"
 
 #include <glm/glm.hpp>

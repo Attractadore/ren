@@ -1,7 +1,7 @@
 #pragma once
 #include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
-#include "core/StdDef.hpp"
+#include "ren/core/StdDef.hpp"
 #include "ren/ren.hpp"
 #include "rhi.hpp"
 

@@ -1,8 +1,11 @@
 include(GenerateExportHeader)
 
 add_library(ren-core
+  core/Arena.cpp
   core/IO.cpp
   core/Profiler.cpp
+  core/VmLinux.cpp
+  core/VmWin32.cpp
 )
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC glm::glm Boost::container fmt::fmt Tracy::TracyClient)

@@ -1,7 +1,6 @@
 #pragma once
-
 #if REN_ASSERTIONS
-#include "Macros.hpp"
+#include "ren/core/StdDef.hpp"
 
 #include <fmt/format.h>
 #include <source_location>

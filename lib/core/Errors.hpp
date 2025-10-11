@@ -1,6 +1,6 @@
 #pragma once
-#include "Macros.hpp"
 #include "String.hpp"
+#include "ren/core/StdDef.hpp"
 
 #include <fmt/format.h>
 #include <source_location>

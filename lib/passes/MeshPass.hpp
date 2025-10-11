@@ -2,8 +2,8 @@
 #include "../Camera.hpp"
 #include "../GpuScene.hpp"
 #include "../RenderGraph.hpp"
-#include "../core/NotNull.hpp"
 #include "../passes/Pass.hpp"
+#include "ren/core/NotNull.hpp"
 
 #include <fmt/format.h>
 
