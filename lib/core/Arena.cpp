@@ -15,9 +15,6 @@ auto make_arena() -> Arena {
   return arena;
 }
 
-void destroy(NotNull<Arena *> arena) {
-  vm_free(arena->ptr, arena->max_size);
-  *arena = {};
-}
+void destroy(Arena arena) { vm_free(arena.ptr, arena.max_size); }
 
 } // namespace ren

@@ -4,6 +4,7 @@
 #include "core/String.hpp"
 #include "core/Vector.hpp"
 #include "core/Views.hpp"
+#include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
 #include "sh/Std.h"
 
@@ -2043,9 +2044,11 @@ void destroy_event(Device device, Event event) {
 namespace vk {
 
 struct CommandPoolData {
+  Arena arena;
   VkCommandPool handle = nullptr;
-  SmallVector<VkCommandBuffer> cmd_buffers;
-  usize cmd_index = 0;
+  u32 num_cmd_buffers = 0;
+  VkCommandBuffer *cmd_buffers = nullptr;
+  u32 cmd_index = 0;
   QueueFamily queue_family = {};
 };
 
@@ -2054,10 +2057,15 @@ struct CommandPoolData {
 auto create_command_pool(Device device,
                          const CommandPoolCreateInfo &create_info)
     -> Result<CommandPool> {
-  const AdapterData &adapter = get_adapter(device);
-  CommandPool pool = new CommandPoolData{
+  Arena arena = make_arena();
+  CommandPool pool = allocate<CommandPoolData>(&arena);
+  *pool = {
+      .arena = arena,
+      .cmd_buffers = aligned_ptr<VkCommandBuffer>(arena),
       .queue_family = create_info.queue_family,
   };
+
+  const AdapterData &adapter = get_adapter(device);
   VkCommandPoolCreateInfo pool_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
@@ -2067,6 +2075,7 @@ auto create_command_pool(Device device,
   VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
                                                    nullptr, &pool->handle);
   if (result) {
+    destroy_command_pool(device, pool);
     return fail(result);
   }
   return pool;
@@ -2075,7 +2084,7 @@ auto create_command_pool(Device device,
 void destroy_command_pool(Device device, CommandPool pool) {
   if (pool) {
     device->vk.vkDestroyCommandPool(device->handle, pool->handle, nullptr);
-    delete pool;
+    destroy(pool->arena);
   }
 }
 
@@ -2099,18 +2108,19 @@ auto begin_command_buffer(Device device, CommandPool pool)
     -> Result<CommandBuffer> {
   VkResult result = VK_SUCCESS;
 
-  [[unlikely]] if (pool->cmd_index == pool->cmd_buffers.size()) {
-    u32 old_size = pool->cmd_buffers.size();
-    u32 new_size = std::max(old_size * 3 / 2 + 1, 1u);
-    pool->cmd_buffers.resize(new_size);
+  [[unlikely]] if (pool->cmd_index == pool->num_cmd_buffers) {
+    u32 num_allocate = std::max<u32>(pool->num_cmd_buffers * 3 / 2 + 1, 1) -
+                       pool->num_cmd_buffers;
+    pool->num_cmd_buffers += num_allocate;
     VkCommandBufferAllocateInfo allocate_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool = pool->handle,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = new_size - old_size,
+        .commandBufferCount = num_allocate,
     };
-    result = device->vk.vkAllocateCommandBuffers(device->handle, &allocate_info,
-                                                 &pool->cmd_buffers[old_size]);
+    result = device->vk.vkAllocateCommandBuffers(
+        device->handle, &allocate_info,
+        allocate<VkCommandBuffer>(&pool->arena, num_allocate));
     if (result) {
       return fail(result);
     }

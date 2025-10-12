@@ -18,7 +18,15 @@ struct Arena {
 
 auto make_arena() -> Arena;
 
-void destroy(NotNull<Arena *> arena);
+void destroy(Arena arena);
+
+inline void *aligned_ptr(const Arena &arena, usize alignment) {
+  return (u8 *)arena.ptr + ((arena.offset + alignment - 1) & ~(alignment - 1));
+}
+
+template <typename T> inline T *aligned_ptr(const Arena &arena) {
+  return (T *)aligned_ptr(arena, alignof(T));
+}
 
 inline void clear(NotNull<Arena *> arena) { arena->offset = 0; }
 
@@ -42,9 +50,8 @@ inline auto allocate(NotNull<Arena *> arena, usize size, usize alignment)
 }
 
 template <typename T>
-auto allocate(NotNull<Arena *> arena, usize count = 1,
-              usize alignment = alignof(T)) -> T * {
-  return (T *)allocate(arena, count * sizeof(T), alignment);
+auto allocate(NotNull<Arena *> arena, usize count = 1) -> T * {
+  return (T *)allocate(arena, count * sizeof(T), alignof(T));
 }
 
 } // namespace ren
