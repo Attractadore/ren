@@ -1,4 +1,5 @@
 #pragma once
+#include "core/Span.hpp"
 #include "core/Vector.hpp"
 #include "ren/core/NotNull.hpp"
 #include "sh/Geometry.h"
@@ -19,8 +20,8 @@ struct MeshSimplificationOptions {
   Vector<glm::vec2> *uvs = nullptr;
   Vector<glm::vec4> *colors = nullptr;
   NotNull<Vector<u32> *> indices;
-  NotNull<StaticVector<LOD, sh::MAX_NUM_LODS> *> lods;
-  u32 num_lods = sh::MAX_NUM_LODS;
+  NotNull<u32 *> num_lods;
+  NotNull<LOD *> lods;
   /// Percentage of triangles to retain at each LOD
   float threshold = 0.75f;
   /// Number of LOD triangles after which to stop simplification.

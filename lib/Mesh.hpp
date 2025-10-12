@@ -6,7 +6,6 @@
 #include "ren/core/StdDef.hpp"
 #include "sh/Geometry.h"
 
-#include <array>
 #include <glm/glm.hpp>
 
 namespace ren {
@@ -22,7 +21,7 @@ struct MeshPackageHeader {
   u64 num_indices = 0;
   u64 num_triangles = 0;
   u32 num_lods = 0;
-  std::array<sh::MeshLOD, sh::MAX_NUM_LODS> lods = {};
+  sh::MeshLOD lods[sh::MAX_NUM_LODS] = {};
   sh::PositionBoundingBox bb = {};
   float scale = 0.0f;
   sh::BoundingSquare uv_bs = {};
@@ -66,7 +65,8 @@ struct Mesh {
   u32 index_pool = -1;
   Handle<Buffer> meshlets;
   Handle<Buffer> indices;
-  StaticVector<sh::MeshLOD, sh::MAX_NUM_LODS> lods;
+  u32 num_lods = 0;
+  sh::MeshLOD lods[sh::MAX_NUM_LODS] = {};
 };
 
 struct IndexPool {

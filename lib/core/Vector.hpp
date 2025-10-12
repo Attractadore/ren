@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <boost/container/small_vector.hpp>
-#include <boost/container/static_vector.hpp>
 #include <iterator>
 #include <vector>
 
@@ -71,9 +70,5 @@ template <typename T> using Vector = detail::VectorExtension<std::vector<T>>;
 template <typename T, size_t N = 64 / sizeof(T)>
 using SmallVector =
     detail::VectorExtension<boost::container::small_vector<T, N>>;
-
-template <typename T, size_t N>
-using StaticVector =
-    detail::VectorExtension<boost::container::static_vector<T, N>>;
 
 } // namespace ren

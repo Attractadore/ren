@@ -146,7 +146,8 @@ struct RgDepthStencilTarget {
 };
 
 struct RgRenderPass {
-  StaticVector<RgRenderTarget, rhi::MAX_NUM_RENDER_TARGETS> render_targets;
+  u32 num_render_targets = 0;
+  RgRenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS] = {};
   RgDepthStencilTarget depth_stencil_target;
   RgRenderPassCallback cb;
 };

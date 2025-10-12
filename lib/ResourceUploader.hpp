@@ -23,7 +23,7 @@ class ResourceUploader {
   struct TextureCopy {
     BufferView src;
     Handle<Texture> dst;
-    StaticVector<usize, MAX_SRV_MIPS> mip_offsets;
+    usize mip_offsets[MAX_SRV_MIPS] = {};
   };
   Vector<TextureCopy> m_texture_copies;
 

@@ -406,7 +406,7 @@ constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
 struct AdapterData {
   VkPhysicalDevice physical_device = nullptr;
   AdapterFeatures features;
-  u32 queue_family_indices[ENUM_SIZE<QueueFamily>] = {};
+  u32 queue_families[ENUM_SIZE<QueueFamily>] = {};
   VkPhysicalDeviceProperties properties;
   MemoryHeapProperties heap_properties[ENUM_SIZE<MemoryHeap>] = {};
 };
@@ -433,7 +433,8 @@ namespace vk {
 struct InstanceData {
   VkInstance handle = nullptr;
   VkDebugReportCallbackEXT debug_callback = nullptr;
-  StaticVector<AdapterData, MAX_PHYSICAL_DEVICES> adapters;
+  u32 num_adapters = 0;
+  AdapterData adapters[MAX_PHYSICAL_DEVICES];
   bool headless = false;
 };
 
@@ -792,7 +793,7 @@ auto create_instance(const InstanceCreateInfo &create_info)
             compute_shader_derivatives_features.computeDerivativeGroupLinear,
     };
 
-    std::ranges::fill(adapter.queue_family_indices, QUEUE_FAMILY_UNAVAILABLE);
+    std::ranges::fill(adapter.queue_families, QUEUE_FAMILY_UNAVAILABLE);
 
     uint32_t num_queues = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, nullptr);
@@ -806,24 +807,24 @@ auto create_instance(const InstanceCreateInfo &create_info)
           VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
       if ((queue_flags & (graphics_queue_flags)) == graphics_queue_flags) {
         fmt::println("vk: {}: found graphics queue", device_name);
-        adapter.queue_family_indices[(usize)QueueFamily::Graphics] = i;
+        adapter.queue_families[(usize)QueueFamily::Graphics] = i;
         continue;
       }
       if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
         fmt::println("vk: {}: found compute queue", device_name);
-        adapter.queue_family_indices[(usize)QueueFamily::Compute] = i;
+        adapter.queue_families[(usize)QueueFamily::Compute] = i;
         continue;
       }
       if ((queue_flags & VK_QUEUE_TRANSFER_BIT) and
           adapter.properties.deviceType ==
               VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
         fmt::println("vk: {}: found transfer queue", device_name);
-        adapter.queue_family_indices[(usize)QueueFamily::Transfer] = i;
+        adapter.queue_families[(usize)QueueFamily::Transfer] = i;
         continue;
       }
     }
 
-    if (adapter.queue_family_indices[(usize)QueueFamily::Graphics] ==
+    if (adapter.queue_families[(usize)QueueFamily::Graphics] ==
         QUEUE_FAMILY_UNAVAILABLE) {
       fmt::println("vk: {}: disable, doesn't have a graphics queue",
                    device_name);
@@ -869,10 +870,10 @@ auto create_instance(const InstanceCreateInfo &create_info)
 
     fmt::println("vk: {}: enable", device_name);
 
-    instance->adapters.push_back(adapter);
+    instance->adapters[instance->num_adapters++] = adapter;
   }
 
-  if (instance->adapters.empty()) {
+  if (instance->num_adapters == 0) {
     destroy_instance(instance);
     return fail(Error::Unsupported);
   }
@@ -896,11 +897,11 @@ void destroy_instance(Instance instance) {
 
 auto get_adapter_count(Instance instance) -> u32 {
   ren_assert(instance->handle);
-  return instance->adapters.size();
+  return instance->num_adapters;
 }
 
 auto get_adapter(Instance instance, u32 adapter) -> Adapter {
-  ren_assert(adapter < instance->adapters.size());
+  ren_assert(adapter < instance->num_adapters);
   return {adapter};
 }
 
@@ -918,7 +919,7 @@ auto get_adapter_by_preference(Instance instance, AdapterPreference preference)
     return {0};
   }
 
-  for (u32 adapter : range(instance->adapters.size())) {
+  for (u32 adapter : range(instance->num_adapters)) {
     if (instance->adapters[adapter].properties.deviceType == preferred_type) {
       return {adapter};
     }
@@ -926,7 +927,7 @@ auto get_adapter_by_preference(Instance instance, AdapterPreference preference)
 
   if (preference == AdapterPreference::HighPerformance) {
     // Search again for an integrated GPU.
-    for (u32 adapter : range(instance->adapters.size())) {
+    for (u32 adapter : range(instance->num_adapters)) {
       if (instance->adapters[adapter].properties.deviceType ==
           VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
         return {adapter};
@@ -940,23 +941,23 @@ auto get_adapter_by_preference(Instance instance, AdapterPreference preference)
 auto get_adapter_features(Instance instance, Adapter adapter)
     -> AdapterFeatures {
   ren_assert(instance->handle);
-  ren_assert(adapter.index < instance->adapters.size());
+  ren_assert(adapter.index < instance->num_adapters);
   return instance->adapters[adapter.index].features;
 }
 
 auto is_queue_family_supported(Instance instance, Adapter adapter,
                                QueueFamily family) -> bool {
   ren_assert(instance->handle);
-  ren_assert(adapter.index < instance->adapters.size());
-  return instance->adapters[adapter.index]
-             .queue_family_indices[(usize)family] != QUEUE_FAMILY_UNAVAILABLE;
+  ren_assert(adapter.index < instance->num_adapters);
+  return instance->adapters[adapter.index].queue_families[(usize)family] !=
+         QUEUE_FAMILY_UNAVAILABLE;
 }
 
 auto create_device(Instance instance, const DeviceCreateInfo &create_info)
     -> Result<Device> {
   VkResult result = VK_SUCCESS;
 
-  ren_assert(create_info.adapter.index < instance->adapters.size());
+  ren_assert(create_info.adapter.index < instance->num_adapters);
   const AdapterData &adapter = instance->adapters[create_info.adapter.index];
   VkPhysicalDevice handle = adapter.physical_device;
   ren_assert(handle);
@@ -1072,16 +1073,16 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
 
   float queue_priority = 1.0f;
 
-  StaticVector<VkDeviceQueueCreateInfo, ENUM_SIZE<QueueFamily>>
-      queue_create_info;
+  u32 num_queues = 0;
+  VkDeviceQueueCreateInfo queue_create_info[ENUM_SIZE<QueueFamily>];
   for (u32 i : range(ENUM_SIZE<QueueFamily>)) {
-    if (adapter.queue_family_indices[i] != QUEUE_FAMILY_UNAVAILABLE) {
-      queue_create_info.push_back({
+    if (adapter.queue_families[i] != QUEUE_FAMILY_UNAVAILABLE) {
+      queue_create_info[num_queues++] = {
           .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
           .queueFamilyIndex = i,
           .queueCount = 1,
           .pQueuePriorities = &queue_priority,
-      });
+      };
     }
   }
 
@@ -1095,8 +1096,8 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
   VkDeviceCreateInfo device_info = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
       .pNext = pnext,
-      .queueCreateInfoCount = (u32)queue_create_info.size(),
-      .pQueueCreateInfos = queue_create_info.data(),
+      .queueCreateInfoCount = num_queues,
+      .pQueueCreateInfos = queue_create_info,
       .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
       .ppEnabledExtensionNames = extensions.data(),
   };
@@ -1116,7 +1117,7 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
   volkLoadDeviceTable(&device->vk, device->handle);
 
   for (usize i : range(ENUM_SIZE<QueueFamily>)) {
-    u32 qfi = adapter.queue_family_indices[i];
+    u32 qfi = adapter.queue_families[i];
     if (qfi != QUEUE_FAMILY_UNAVAILABLE) {
       device->vk.vkGetDeviceQueue(device->handle, qfi, 0,
                                   &device->queues[i].handle);
@@ -1428,9 +1429,13 @@ auto create_buffer(Device device, const BufferCreateInfo &create_info)
       device->instance->adapters[device->adapter.index]
           .heap_properties[(usize)create_info.heap];
 
-  StaticVector<u32, ENUM_SIZE<QueueFamily>> queue_family_indices(
-      get_adapter(device).queue_family_indices);
-  queue_family_indices.erase(QUEUE_FAMILY_UNAVAILABLE);
+  u32 num_queue_families = 0;
+  u32 queue_families[ENUM_SIZE<QueueFamily>];
+  for (u32 qf : get_adapter(device).queue_families) {
+    if (qf != QUEUE_FAMILY_UNAVAILABLE) {
+      queue_families[num_queue_families++] = qf;
+    }
+  }
 
   VkBufferCreateInfo buffer_info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -1441,11 +1446,10 @@ auto create_buffer(Device device, const BufferCreateInfo &create_info)
                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-      .sharingMode = queue_family_indices.size() > 1
-                         ? VK_SHARING_MODE_CONCURRENT
-                         : VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
-      .pQueueFamilyIndices = queue_family_indices.data(),
+      .sharingMode = num_queue_families > 1 ? VK_SHARING_MODE_CONCURRENT
+                                            : VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = num_queue_families,
+      .pQueueFamilyIndices = queue_families,
   };
 
   VmaAllocationCreateInfo allocation_info = {
@@ -1517,19 +1521,24 @@ auto create_image(Device device, const ImageCreateInfo &create_info)
 
   ImageUsageFlags usage = create_info.usage;
 
-  StaticVector<u32, ENUM_SIZE<QueueFamily>> queue_family_indices(
-      get_adapter(device).queue_family_indices);
-  if (!usage.is_any_set(ImageUsage::TransferSrc | ImageUsage::TransferDst)) {
-    queue_family_indices[(usize)QueueFamily::Transfer] =
-        QUEUE_FAMILY_UNAVAILABLE;
+  const AdapterData &adapter = get_adapter(device);
+
+  u32 gfx_qf = adapter.queue_families[(u32)QueueFamily::Graphics];
+  u32 async_qf = adapter.queue_families[(u32)QueueFamily::Compute];
+  u32 copy_qf = adapter.queue_families[(u32)QueueFamily::Transfer];
+
+  u32 num_queue_families = 1;
+  u32 queue_families[ENUM_SIZE<QueueFamily>] = {gfx_qf};
+  if (usage.is_any_set(ImageUsage::ShaderResource |
+                       ImageUsage::UnorderedAccess | ImageUsage::TransferSrc |
+                       ImageUsage::TransferDst) and
+      async_qf != QUEUE_FAMILY_UNAVAILABLE) {
+    queue_families[num_queue_families++] = async_qf;
   }
-  if (!usage.is_any_set(ImageUsage::ShaderResource |
-                        ImageUsage::UnorderedAccess)) {
-    queue_family_indices[(usize)QueueFamily::Compute] =
-        QUEUE_FAMILY_UNAVAILABLE;
+  if (usage.is_any_set(ImageUsage::TransferSrc | ImageUsage::TransferDst) and
+      copy_qf != QUEUE_FAMILY_UNAVAILABLE) {
+    queue_families[num_queue_families++] = copy_qf;
   }
-  queue_family_indices.erase(QUEUE_FAMILY_UNAVAILABLE);
-  ren_assert(not queue_family_indices.empty());
 
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -1543,11 +1552,10 @@ auto create_image(Device device, const ImageCreateInfo &create_info)
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .tiling = VK_IMAGE_TILING_OPTIMAL,
       .usage = to_vk(create_info.usage),
-      .sharingMode = queue_family_indices.size() > 1
-                         ? VK_SHARING_MODE_CONCURRENT
-                         : VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
-      .pQueueFamilyIndices = queue_family_indices.data(),
+      .sharingMode = num_queue_families > 1 ? VK_SHARING_MODE_CONCURRENT
+                                            : VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = num_queue_families,
+      .pQueueFamilyIndices = queue_families,
   };
 
   VmaAllocationCreateInfo alloc_info = {.usage = VMA_MEMORY_USAGE_AUTO};
@@ -2054,7 +2062,7 @@ auto create_command_pool(Device device,
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
       .queueFamilyIndex =
-          adapter.queue_family_indices[(usize)create_info.queue_family],
+          adapter.queue_families[(usize)create_info.queue_family],
   };
   VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
                                                    nullptr, &pool->handle);
@@ -2549,7 +2557,7 @@ auto is_queue_family_present_supported(Instance instance, Adapter handle,
                                        QueueFamily family, Surface surface)
     -> bool {
   ren_assert(instance->handle);
-  ren_assert(handle.index < instance->adapters.size());
+  ren_assert(handle.index < instance->num_adapters);
   ren_assert(surface.handle);
   VkResult result = VK_SUCCESS;
   if (!is_queue_family_supported(instance, handle, family)) {
@@ -2558,7 +2566,7 @@ auto is_queue_family_present_supported(Instance instance, Adapter handle,
   const AdapterData &adapter = instance->adapters[handle.index];
   VkBool32 supported = false;
   result = vkGetPhysicalDeviceSurfaceSupportKHR(
-      adapter.physical_device, adapter.queue_family_indices[(usize)family],
+      adapter.physical_device, adapter.queue_families[(usize)family],
       surface.handle, &supported);
   if (result) {
     return false;
@@ -2733,13 +2741,14 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       capabilities2.surfaceCapabilities;
   size = adjust_swap_chain_size(size, capabilities),
   num_images = adjust_swap_chain_image_count(num_images, capabilities);
-  StaticVector<u32, 2> queue_family_indices = {
-      adapter.queue_family_indices[(usize)QueueFamily::Graphics]};
+  u32 num_queue_families = 1;
+  u32 queue_families[2] = {
+      adapter.queue_families[(usize)QueueFamily::Graphics]};
   if (is_queue_family_present_supported(device->instance, device->adapter,
                                         QueueFamily::Compute,
                                         swap_chain->surface)) {
-    queue_family_indices.push_back(
-        adapter.queue_family_indices[(usize)QueueFamily::Compute]);
+    queue_families[num_queue_families++] =
+        adapter.queue_families[(usize)QueueFamily::Compute];
   }
   VkSwapchainKHR old_swap_chain = swap_chain->handle;
   VkSwapchainCreateInfoKHR vk_create_info = {
@@ -2751,11 +2760,10 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       .imageExtent = {size.x, size.y},
       .imageArrayLayers = 1,
       .imageUsage = swap_chain->usage,
-      .imageSharingMode = queue_family_indices.size() > 1
-                              ? VK_SHARING_MODE_CONCURRENT
-                              : VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = (u32)queue_family_indices.size(),
-      .pQueueFamilyIndices = queue_family_indices.data(),
+      .imageSharingMode = num_queue_families > 1 ? VK_SHARING_MODE_CONCURRENT
+                                                 : VK_SHARING_MODE_EXCLUSIVE,
+      .queueFamilyIndexCount = num_queue_families,
+      .pQueueFamilyIndices = queue_families,
       .preTransform = capabilities.currentTransform,
       .compositeAlpha = select_swap_chain_composite_alpha(capabilities),
       .presentMode = present_mode,

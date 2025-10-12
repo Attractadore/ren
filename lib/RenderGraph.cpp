@@ -740,14 +740,16 @@ void RgBuilder::init_runtime_passes() {
           [&](RgRenderPass &graphics_pass) {
             rt_pass.ext = RgRtRenderPass{
                 .base_render_target = u32(m_rt_data->m_render_targets.size()),
-                .num_render_targets = u32(graphics_pass.render_targets.size()),
+                .num_render_targets = u32(graphics_pass.num_render_targets),
                 .depth_stencil_target =
                     graphics_pass.depth_stencil_target.texture
                         ? Optional(m_rt_data->m_depth_stencil_targets.size())
                         : None,
                 .cb = std::move(graphics_pass.cb),
             };
-            m_rt_data->m_render_targets.append(graphics_pass.render_targets);
+            m_rt_data->m_render_targets.append(
+                Span(graphics_pass.render_targets,
+                     graphics_pass.num_render_targets));
             if (graphics_pass.depth_stencil_target.texture) {
               m_rt_data->m_depth_stencil_targets.push_back(
                   graphics_pass.depth_stencil_target);
@@ -1434,13 +1436,12 @@ auto RgPassBuilder::write_texture(RgDebugName name,
 
 void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
                                       const rhi::RenderTargetOperations &ops) {
-  auto &render_targets = m_builder->m_data->m_passes[m_pass]
-                             .ext.get_or_emplace<RgRenderPass>()
-                             .render_targets;
-  if (render_targets.size() <= index) {
-    render_targets.resize(index + 1);
+  RgRenderPass &rp =
+      m_builder->m_data->m_passes[m_pass].ext.get_or_emplace<RgRenderPass>();
+  if (rp.num_render_targets <= index) {
+    rp.num_render_targets = index + 1;
   }
-  render_targets[index] = {
+  rp.render_targets[index] = {
       .texture = texture,
       .ops = ops,
   };
@@ -1569,8 +1570,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
             [&](const RgRtRenderPass &pass) {
               glm::uvec2 viewport = {-1, -1};
 
-              StaticVector<RenderTarget, rhi::MAX_NUM_RENDER_TARGETS>
-                  render_targets(pass.num_render_targets);
+              RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
               for (usize i : range(pass.num_render_targets)) {
                 const RgRenderTarget &rt =
                     m_data->m_render_targets[pass.base_render_target + i];
@@ -1592,7 +1592,8 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
               }
 
               RenderPass render_pass = cmd.render_pass({
-                  .render_targets = render_targets,
+                  .render_targets =
+                      Span(render_targets, pass.num_render_targets),
                   .depth_stencil_target = depth_stencil_target,
               });
               render_pass.set_viewports({{.size = viewport}});

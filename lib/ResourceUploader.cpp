@@ -61,7 +61,6 @@ void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
       .src = staging.slice,
       .dst = texture,
   };
-  copy.mip_offsets.resize(ktx_texture->numLevels);
   for (u32 mip : range(ktx_texture->numLevels)) {
     ktxTexture_GetImageOffset(ktx_texture, mip, 0, 0, &copy.mip_offsets[mip]);
   }

@@ -9,11 +9,12 @@ void mesh_simplify(const MeshSimplificationOptions &opts) {
       opts.indices->size() * 1.0f / (1.0f - opts.threshold) + 1;
   opts.indices->reserve(max_num_indices);
 
-  *opts.lods = {{.num_indices = u32(opts.indices->size())}};
+  u32 num_lods = 1;
+  opts.lods[0] = {.num_indices = u32(opts.indices->size())};
 
   Vector<u32> lod_indices;
-  while (opts.lods->size() < sh::MAX_NUM_LODS) {
-    u32 num_prev_lod_indices = opts.lods->back().num_indices;
+  for (; num_lods < *opts.num_lods; ++num_lods) {
+    u32 num_prev_lod_indices = opts.lods[num_lods - 1].num_indices;
 
     u32 num_lod_target_indices = num_prev_lod_indices * opts.threshold;
     num_lod_target_indices -= num_lod_target_indices % 3;
@@ -39,12 +40,13 @@ void mesh_simplify(const MeshSimplificationOptions &opts) {
     opts.indices->insert(opts.indices->begin(), lod_indices.begin(),
                          lod_indices.end());
 
-    opts.lods->push_back({.num_indices = num_lod_indices});
+    opts.lods[num_lods] = {.num_indices = num_lod_indices};
   }
+  *opts.num_lods = num_lods;
 
-  for (usize lod = opts.lods->size() - 1; lod > 0; --lod) {
-    (*opts.lods)[lod - 1].base_index =
-        (*opts.lods)[lod].base_index + (*opts.lods)[lod].num_indices;
+  for (u32 lod = num_lods - 1; lod > 0; --lod) {
+    opts.lods[lod - 1].base_index =
+        opts.lods[lod].base_index + opts.lods[lod].num_indices;
   }
 }
 

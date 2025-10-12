@@ -164,8 +164,9 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
       .bb = header.bb,
       .scale = header.scale,
       .uv_bs = header.uv_bs,
-      .lods = {&header.lods[0], &header.lods[header.num_lods]},
+      .num_lods = header.num_lods,
   };
+  std::ranges::copy_n(header.lods, header.num_lods, mesh.lods);
 
   // Upload vertices
 
@@ -251,9 +252,10 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
       .bb = mesh.bb,
       .uv_bs = mesh.uv_bs,
       .index_pool = mesh.index_pool,
-      .num_lods = u32(mesh.lods.size()),
+      .num_lods = mesh.num_lods,
   });
-  std::ranges::copy(mesh.lods, scene->m_gpu_scene.mesh_update_data.back().lods);
+  std::ranges::copy_n(mesh.lods, mesh.num_lods,
+                      scene->m_gpu_scene.mesh_update_data.back().lods);
 
   return std::bit_cast<MeshId>(handle);
 }

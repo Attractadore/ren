@@ -48,14 +48,15 @@ struct MeshGenerateIndicesOptions {
 };
 
 void mesh_generate_indices(const MeshGenerateIndicesOptions &opts) {
-  StaticVector<meshopt_Stream, 5> streams;
+  u32 num_streams = 0;
+  meshopt_Stream streams[5];
   auto add_stream = [&]<typename T>(Vector<T> *stream) {
     if (stream) {
-      streams.push_back({
+      streams[num_streams++] = {
           .data = stream->data(),
           .size = sizeof(T),
           .stride = sizeof(T),
-      });
+      };
     }
   };
   add_stream(opts.positions.get());
@@ -72,8 +73,7 @@ void mesh_generate_indices(const MeshGenerateIndicesOptions &opts) {
   };
   Vector<u32> remap(num_vertices);
   num_vertices = meshopt_generateVertexRemapMulti(
-      remap.data(), indices, num_indices, num_vertices, streams.data(),
-      streams.size());
+      remap.data(), indices, num_indices, num_vertices, streams, num_streams);
   opts.indices->resize(num_indices);
   meshopt_remapIndexBuffer(opts.indices->data(), indices, num_indices,
                            remap.data());
@@ -503,7 +503,8 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
 
   // Generate LODs
 
-  StaticVector<LOD, sh::MAX_NUM_LODS> lods;
+  u32 num_lods = sh::MAX_NUM_LODS;
+  LOD lods[sh::MAX_NUM_LODS];
   mesh_simplify({
       .positions = &positions,
       .normals = &normals,
@@ -511,12 +512,13 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
       .uvs = uvs.size() ? &uvs : nullptr,
       .colors = colors.size() ? &colors : nullptr,
       .indices = &mesh_indices,
-      .lods = &lods,
+      .num_lods = &num_lods,
+      .lods = lods,
   });
 
   // Optimize each LOD separately
 
-  for (const LOD &lod : lods) {
+  for (const LOD &lod : Span(lods, num_lods)) {
     meshopt_optimizeVertexCache(&mesh_indices[lod.base_index],
                                 &mesh_indices[lod.base_index], lod.num_indices,
                                 positions.size());
@@ -552,7 +554,7 @@ auto bake_mesh(const MeshInfo &info) -> expected<BakedMesh> {
   mesh_generate_meshlets({
       .positions = positions,
       .indices = mesh_indices,
-      .lods = lods,
+      .lods = Span(lods, num_lods),
       .meshlets = &mesh.meshlets,
       .meshlet_indices = &mesh.indices,
       .meshlet_triangles = &mesh.triangles,
