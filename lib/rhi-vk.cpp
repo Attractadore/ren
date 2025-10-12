@@ -1588,8 +1588,6 @@ auto get_allocation(Device, Image image) -> Allocation {
   return image.allocation;
 }
 
-namespace {} // namespace
-
 auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
     -> Result<ImageView> {
   ren_assert(create_info.num_mips > 0);

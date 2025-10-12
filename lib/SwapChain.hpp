@@ -1,7 +1,6 @@
 #pragma once
 #include "Semaphore.hpp"
 #include "Texture.hpp"
-#include "core/Vector.hpp"
 #include "rhi.hpp"
 
 namespace ren {
@@ -24,12 +23,12 @@ struct SwapChain {
       -> Result<u32, Error>;
 
   auto get_texture(u32 i) -> Handle<Texture> {
-    ren_assert(i < m_textures.size());
+    ren_assert(i < m_num_textures);
     return m_textures[i];
   }
 
   auto get_semaphore(u32 i) -> Handle<Semaphore> {
-    ren_assert(i < m_semaphores.size());
+    ren_assert(i < m_num_textures);
     return m_semaphores[i];
   }
 
@@ -47,8 +46,9 @@ struct SwapChain {
   SDL_Window *m_window = nullptr;
   rhi::Surface m_surface = {};
   rhi::SwapChain m_swap_chain = {};
-  SmallVector<Handle<Texture>> m_textures;
-  SmallVector<Handle<Semaphore>> m_semaphores;
+  u32 m_num_textures = 0;
+  Handle<Texture> m_textures[8] = {};
+  Handle<Semaphore> m_semaphores[8] = {};
   TinyImageFormat m_format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags m_usage = {};
   glm::ivec2 m_size = {};

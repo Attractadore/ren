@@ -16,7 +16,7 @@ auto get_sdl_window_flags(Renderer *) -> uint32_t {
 
 auto create_swapchain(Arena scratch, NotNull<Arena *> arena, Renderer *renderer,
                       SDL_Window *window) -> expected<SwapChain *> {
-  auto *swap_chain = new SwapChain();
+  auto *swap_chain = allocate<SwapChain>(arena);
   ren_try_to(swap_chain->init(scratch, arena, *renderer, window));
   return swap_chain;
 }
@@ -27,13 +27,12 @@ void destroy_swap_chain(SwapChain *swap_chain) {
   }
   Renderer *renderer = swap_chain->m_renderer;
   renderer->wait_idle();
-  for (usize i : range(swap_chain->m_textures.size())) {
+  for (usize i : range(swap_chain->m_num_textures)) {
     renderer->destroy(swap_chain->m_textures[i]);
     renderer->destroy(swap_chain->m_semaphores[i]);
   }
   rhi::destroy_swap_chain(swap_chain->m_swap_chain);
   rhi::destroy_surface(renderer->m_instance, swap_chain->m_surface);
-  delete swap_chain;
 }
 
 void set_vsync(SwapChain *swap_chain, VSync vsync) {
@@ -120,7 +119,7 @@ auto SwapChain::init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
   ren_try_to(update_textures(scratch));
 
   fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
-               m_size.x, m_size.y, (int)present_mode, m_textures.size());
+               m_size.x, m_size.y, (int)present_mode, m_num_textures);
 
   return {};
 }
@@ -196,12 +195,10 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
 }
 
 auto SwapChain::update_textures(Arena scratch) -> Result<void, Error> {
-  u32 num_images = 0;
   rhi::Image *images = nullptr;
-  rhi::get_swap_chain_images(&scratch, m_swap_chain, &num_images, &images);
-  m_textures.resize(num_images);
-  m_semaphores.resize(num_images);
-  for (usize i : range(num_images)) {
+  rhi::get_swap_chain_images(&scratch, m_swap_chain, &m_num_textures, &images);
+  ren_assert(m_num_textures <= std::size(m_textures));
+  for (usize i : range(m_num_textures)) {
     m_textures[i] = m_renderer->create_external_texture({
         .name = fmt::format("Swap Chain Texture {}", i),
         .handle = images[i],
@@ -244,7 +241,7 @@ auto SwapChain::update(Arena scratch) -> Result<void, Error> {
       rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  for (usize i : range(m_textures.size())) {
+  for (usize i : range(m_num_textures)) {
     m_renderer->destroy(m_textures[i]);
     m_renderer->destroy(m_semaphores[i]);
   }
@@ -253,7 +250,7 @@ auto SwapChain::update(Arena scratch) -> Result<void, Error> {
   m_dirty = false;
 
   fmt::println("Updated swap chain: {}x{}, present mode: {}, {} images",
-               m_size.x, m_size.y, (int)*present_mode, m_textures.size());
+               m_size.x, m_size.y, (int)*present_mode, m_num_textures);
 
   return {};
 }
