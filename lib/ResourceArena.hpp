@@ -61,24 +61,30 @@ public:
     return insert(m_renderer->create_event());
   }
 
-  auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
+  auto create_graphics_pipeline(Arena scratch,
+                                const GraphicsPipelineCreateInfo &&create_info)
       -> Result<Handle<GraphicsPipeline>, Error>
     requires IsArenaResource<GraphicsPipeline>
   {
-    return insert(m_renderer->create_graphics_pipeline(std::move(create_info)));
+    return insert(
+        m_renderer->create_graphics_pipeline(scratch, std::move(create_info)));
   }
 
-  auto create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
+  auto create_compute_pipeline(Arena scratch,
+                               const ComputePipelineCreateInfo &&create_info)
       -> Result<Handle<ComputePipeline>, Error>
     requires IsArenaResource<ComputePipeline>
   {
-    return insert(m_renderer->create_compute_pipeline(std::move(create_info)));
+    return insert(
+        m_renderer->create_compute_pipeline(scratch, std::move(create_info)));
   }
 
-  auto create_command_pool(const CommandPoolCreateInfo &create_info)
+  auto create_command_pool(NotNull<Arena *> arena,
+                           const CommandPoolCreateInfo &create_info)
     requires IsArenaResource<CommandPool>
   {
-    return insert(m_renderer->create_command_pool(std::move(create_info)));
+    return insert(
+        m_renderer->create_command_pool(arena, std::move(create_info)));
   }
 
   template <typename H>

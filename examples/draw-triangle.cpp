@@ -39,10 +39,11 @@ public:
     std::free(blob_data);
 
     OK(ren::MaterialId material,
-       ren::create_material(scene, {
-                                       .roughness_factor = 0.5f,
-                                       .metallic_factor = 1.0f,
-                                   }));
+       ren::create_material(m_scratch, scene,
+                            {
+                                .roughness_factor = 0.5f,
+                                .metallic_factor = 1.0f,
+                            }));
 
     OK(ren::MeshInstanceId model,
        create_mesh_instance(scene, {

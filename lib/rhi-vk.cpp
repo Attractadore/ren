@@ -2,7 +2,6 @@
 #if REN_RHI_VULKAN
 #include "core/Span.hpp"
 #include "core/String.hpp"
-#include "core/Vector.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
@@ -16,6 +15,14 @@
 
 #define map(from, to) map[(usize)from] = to
 #define map_bit(from, to) map[std::countr_zero((usize)from)] = to;
+
+auto format_as(VkResult result) { return fmt::underlying(result); }
+
+#define VK_CHECK(result, message)                                              \
+  if (result) {                                                                \
+    fmt::println(stderr, message ": {}", result);                              \
+    std::exit(EXIT_FAILURE);                                                   \
+  }
 
 namespace ren::rhi {
 
@@ -950,8 +957,9 @@ auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
 
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
-  u32 num_extensions = 0;
+  u32 num_extensions = std::size(REQUIRED_DEVICE_EXTENSIONS);
   auto *extensions = allocate<const char *>(&scratch, adapter.num_extensions);
+  std::ranges::copy(REQUIRED_DEVICE_EXTENSIONS, extensions);
   if (not instance->headless) {
     std::ranges::copy(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS,
                       extensions + num_extensions);
@@ -1299,51 +1307,57 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
-auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
+auto queue_submit(Arena scratch, Queue queue,
+                  TempSpan<const rhi::CommandBuffer> cmd_buffers,
                   TempSpan<const rhi::SemaphoreState> wait_semaphores,
                   TempSpan<const rhi::SemaphoreState> signal_semaphores)
     -> Result<void> {
-  SmallVector<VkCommandBufferSubmitInfo> command_buffer_infos(
-      cmd_buffers.size());
+  auto *command_buffer_infos =
+      allocate<VkCommandBufferSubmitInfo>(&scratch, cmd_buffers.size());
   for (usize i : range(cmd_buffers.size())) {
     command_buffer_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = cmd_buffers[i].handle,
     };
   }
-  SmallVector<VkSemaphoreSubmitInfo> semaphore_submit_infos(
-      wait_semaphores.size() + signal_semaphores.size());
+
+  auto *wait_semaphore_submit_infos =
+      allocate<VkSemaphoreSubmitInfo>(&scratch, wait_semaphores.size());
   for (usize i : range(wait_semaphores.size())) {
-    semaphore_submit_infos[i] = {
+    wait_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = wait_semaphores[i].semaphore.handle,
         .value = wait_semaphores[i].value,
         .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     };
   }
+
+  auto *signal_semaphore_submit_infos =
+      allocate<VkSemaphoreSubmitInfo>(&scratch, signal_semaphores.size());
   for (usize i : range(signal_semaphores.size())) {
-    semaphore_submit_infos[wait_semaphores.size() + i] = {
+    signal_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = signal_semaphores[i].semaphore.handle,
         .value = signal_semaphores[i].value,
         .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
     };
   }
+
   VkSubmitInfo2 submit_info = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
       .waitSemaphoreInfoCount = (u32)wait_semaphores.size(),
-      .pWaitSemaphoreInfos = semaphore_submit_infos.data(),
+      .pWaitSemaphoreInfos = wait_semaphore_submit_infos,
       .commandBufferInfoCount = (u32)cmd_buffers.size(),
-      .pCommandBufferInfos = command_buffer_infos.data(),
+      .pCommandBufferInfos = command_buffer_infos,
       .signalSemaphoreInfoCount = (u32)signal_semaphores.size(),
-      .pSignalSemaphoreInfos =
-          semaphore_submit_infos.data() + wait_semaphores.size(),
+      .pSignalSemaphoreInfos = signal_semaphore_submit_infos,
   };
   VkResult result =
       queue.vk->vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr);
   if (result) {
     return fail(result);
   }
+
   return {};
 }
 
@@ -1379,21 +1393,22 @@ void destroy_semaphore(Device device, Semaphore semaphore) {
   device->vk.vkDestroySemaphore(device->handle, semaphore.handle, nullptr);
 }
 
-auto wait_for_semaphores(Device device,
+auto wait_for_semaphores(Arena scratch, Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
                          std::chrono::nanoseconds timeout)
     -> Result<WaitResult> {
-  SmallVector<VkSemaphore> semaphores(wait_infos.size());
-  SmallVector<u64> values(wait_infos.size());
-  for (usize i : range(wait_infos.size())) {
+  u32 cnt = wait_infos.size();
+  auto *semaphores = allocate<VkSemaphore>(&scratch, cnt);
+  auto *values = allocate<u64>(&scratch, cnt);
+  for (usize i : range(cnt)) {
     semaphores[i] = wait_infos[i].semaphore.handle;
     values[i] = wait_infos[i].value;
   }
   VkSemaphoreWaitInfo vk_wait_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-      .semaphoreCount = (u32)wait_infos.size(),
-      .pSemaphores = semaphores.data(),
-      .pValues = values.data(),
+      .semaphoreCount = cnt,
+      .pSemaphores = semaphores,
+      .pValues = values,
   };
   VkResult result = device->vk.vkWaitSemaphores(device->handle, &vk_wait_info,
                                                 timeout.count());
@@ -1651,11 +1666,12 @@ void destroy_sampler(Device device, Sampler sampler) {
   device->vk.vkDestroySampler(device->handle, sampler.handle, nullptr);
 }
 
-void write_sampler_descriptor_heap(Device device,
+void write_sampler_descriptor_heap(Arena scratch, Device device,
                                    TempSpan<const Sampler> samplers,
                                    u32 index) {
-  SmallVector<VkDescriptorImageInfo> image_info(samplers.size());
-  for (usize i : range(samplers.size())) {
+  u32 cnt = samplers.size();
+  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  for (usize i : range(cnt)) {
     image_info[i] = {.sampler = samplers[i].handle};
   }
   VkWriteDescriptorSet write_info = {
@@ -1663,17 +1679,18 @@ void write_sampler_descriptor_heap(Device device,
       .dstSet = device->descriptor_heap,
       .dstBinding = sh::SAMPLER_STATE_SLOT,
       .dstArrayElement = index,
-      .descriptorCount = (u32)image_info.size(),
+      .descriptorCount = cnt,
       .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
-      .pImageInfo = image_info.data(),
+      .pImageInfo = image_info,
   };
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
-                               u32 index) {
-  SmallVector<VkDescriptorImageInfo> image_info(srvs.size());
-  for (usize i : range(srvs.size())) {
+void write_srv_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> srvs, u32 index) {
+  u32 cnt = srvs.size();
+  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  for (usize i : range(cnt)) {
     image_info[i] = {
         .imageView = srvs[i].handle,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
@@ -1684,17 +1701,19 @@ void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
       .dstSet = device->descriptor_heap,
       .dstBinding = sh::TEXTURE_SLOT,
       .dstArrayElement = index,
-      .descriptorCount = (u32)image_info.size(),
+      .descriptorCount = cnt,
       .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-      .pImageInfo = image_info.data(),
+      .pImageInfo = image_info,
   };
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
+void write_cis_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> srvs,
                                TempSpan<const Sampler> samplers, u32 index) {
-  SmallVector<VkDescriptorImageInfo> image_info(srvs.size());
-  for (usize i : range(srvs.size())) {
+  u32 cnt = srvs.size();
+  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  for (usize i : range(cnt)) {
     image_info[i] = {
         .sampler = samplers[i].handle,
         .imageView = srvs[i].handle,
@@ -1706,17 +1725,18 @@ void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
       .dstSet = device->descriptor_heap,
       .dstBinding = sh::SAMPLER_SLOT,
       .dstArrayElement = index,
-      .descriptorCount = (u32)image_info.size(),
+      .descriptorCount = cnt,
       .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-      .pImageInfo = image_info.data(),
+      .pImageInfo = image_info,
   };
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
-                               u32 index) {
-  SmallVector<VkDescriptorImageInfo> image_info(uavs.size());
-  for (usize i : range(uavs.size())) {
+void write_uav_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> uavs, u32 index) {
+  u32 cnt = uavs.size();
+  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  for (usize i : range(cnt)) {
     image_info[i] = {
         .imageView = uavs[i].handle,
         .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
@@ -1727,14 +1747,14 @@ void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
       .dstSet = device->descriptor_heap,
       .dstBinding = sh::RW_TEXTURE_SLOT,
       .dstArrayElement = index,
-      .descriptorCount = (u32)image_info.size(),
+      .descriptorCount = cnt,
       .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-      .pImageInfo = image_info.data(),
+      .pImageInfo = image_info,
   };
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-auto create_graphics_pipeline(Device device,
+auto create_graphics_pipeline(Arena scratch, Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline> {
   VkResult result = VK_SUCCESS;
@@ -1756,26 +1776,18 @@ auto create_graphics_pipeline(Device device,
   VkPipelineShaderStageCreateInfo stage_info[MAX_NUM_STAGES] = {};
   VkSpecializationInfo specialization_info[MAX_NUM_STAGES] = {};
 
-  SmallVector<VkSpecializationMapEntry> specialization_map;
-  {
-    u32 specialization_map_size = 0;
-    for (const ShaderInfo *shader : shaders) {
-      specialization_map_size += shader->specialization.constants.size();
-    }
-    specialization_map.resize(specialization_map_size);
-  }
-
   u32 num_stages = 0;
-  u32 specialization_map_offset = 0;
   for (usize i : range(MAX_NUM_STAGES)) {
     const ShaderInfo &shader = *shaders[i];
     if (shader.code.empty()) {
       continue;
     }
     u32 num_specialization_constants = shader.specialization.constants.size();
+    auto *specialization_map = allocate<VkSpecializationMapEntry>(
+        &scratch, num_specialization_constants);
     for (usize j : range(num_specialization_constants)) {
       const SpecializationConstant &c = shader.specialization.constants[j];
-      specialization_map[specialization_map_offset + j] = {
+      specialization_map[j] = {
           .constantID = c.id,
           .offset = c.offset,
           .size = c.size,
@@ -1796,11 +1808,10 @@ auto create_graphics_pipeline(Device device,
     }
     specialization_info[num_stages] = {
         .mapEntryCount = num_specialization_constants,
-        .pMapEntries = specialization_map.data() + specialization_map_offset,
+        .pMapEntries = specialization_map,
         .dataSize = shader.specialization.data.size(),
         .pData = shader.specialization.data.data(),
     };
-    specialization_map_offset += num_specialization_constants;
     stage_info[num_stages] = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage_bits[i],
@@ -1941,7 +1952,7 @@ auto create_graphics_pipeline(Device device,
   return pipeline;
 }
 
-auto create_compute_pipeline(Device device,
+auto create_compute_pipeline(Arena scratch, Device device,
                              const ComputePipelineCreateInfo &create_info)
     -> Result<Pipeline> {
   VkResult result = VK_SUCCESS;
@@ -1960,8 +1971,9 @@ auto create_compute_pipeline(Device device,
     return fail(result);
   }
 
-  SmallVector<VkSpecializationMapEntry> specialization_map(
-      cs.specialization.constants.size());
+  u32 num_specialization_constants = cs.specialization.constants.size();
+  auto *specialization_map = allocate<VkSpecializationMapEntry>(
+      &scratch, num_specialization_constants);
   for (usize i : range(cs.specialization.constants.size())) {
     const SpecializationConstant &c = cs.specialization.constants[i];
     specialization_map[i] = {
@@ -1971,8 +1983,8 @@ auto create_compute_pipeline(Device device,
     };
   }
   VkSpecializationInfo specialization_info = {
-      .mapEntryCount = (u32)specialization_map.size(),
-      .pMapEntries = specialization_map.data(),
+      .mapEntryCount = num_specialization_constants,
+      .pMapEntries = specialization_map,
       .dataSize = cs.specialization.data.size(),
       .pData = cs.specialization.data.data(),
   };
@@ -2018,10 +2030,7 @@ auto create_event(Device device) -> Event {
   Event event;
   VkResult result = device->vk.vkCreateEvent(device->handle, &event_info,
                                              nullptr, &event.handle);
-  if (result) {
-    fmt::println(stderr, "VkEvent creation failed: {}", (i32)result);
-    std::exit(1);
-  }
+  VK_CHECK(result, "VkEvent creation failed");
   return event;
 }
 
@@ -2032,26 +2041,19 @@ void destroy_event(Device device, Event event) {
 namespace vk {
 
 struct CommandPoolData {
-  Arena arena;
   VkCommandPool handle = nullptr;
-  u32 num_cmd_buffers = 0;
-  VkCommandBuffer *cmd_buffers = nullptr;
   u32 cmd_index = 0;
   QueueFamily queue_family = {};
+  VkCommandBuffer cmd_buffers[8] = {};
 };
 
 } // namespace vk
 
-auto create_command_pool(Device device,
+auto create_command_pool(NotNull<Arena *> arena, Device device,
                          const CommandPoolCreateInfo &create_info)
     -> Result<CommandPool> {
-  Arena arena = make_arena();
-  CommandPool pool = allocate<CommandPoolData>(&arena);
-  *pool = {
-      .arena = arena,
-      .cmd_buffers = aligned_ptr<VkCommandBuffer>(arena),
-      .queue_family = create_info.queue_family,
-  };
+  CommandPool pool = allocate<CommandPoolData>(arena);
+  *pool = {.queue_family = create_info.queue_family};
 
   const AdapterData &adapter = get_adapter(device);
   VkCommandPoolCreateInfo pool_info = {
@@ -2066,13 +2068,21 @@ auto create_command_pool(Device device,
     destroy_command_pool(device, pool);
     return fail(result);
   }
+  VkCommandBufferAllocateInfo allocate_info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = pool->handle,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = (u32)std::size(pool->cmd_buffers),
+  };
+  result = device->vk.vkAllocateCommandBuffers(device->handle, &allocate_info,
+                                               pool->cmd_buffers);
+  VK_CHECK(result, "Failed to allocate command buffers");
   return pool;
 }
 
 void destroy_command_pool(Device device, CommandPool pool) {
   if (pool) {
     device->vk.vkDestroyCommandPool(device->handle, pool->handle, nullptr);
-    destroy(pool->arena);
   }
 }
 
@@ -2096,24 +2106,7 @@ auto begin_command_buffer(Device device, CommandPool pool)
     -> Result<CommandBuffer> {
   VkResult result = VK_SUCCESS;
 
-  [[unlikely]] if (pool->cmd_index == pool->num_cmd_buffers) {
-    u32 num_allocate = std::max<u32>(pool->num_cmd_buffers * 3 / 2 + 1, 1) -
-                       pool->num_cmd_buffers;
-    pool->num_cmd_buffers += num_allocate;
-    VkCommandBufferAllocateInfo allocate_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = pool->handle,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = num_allocate,
-    };
-    result = device->vk.vkAllocateCommandBuffers(
-        device->handle, &allocate_info,
-        allocate<VkCommandBuffer>(&pool->arena, num_allocate));
-    if (result) {
-      return fail(result);
-    }
-  }
-
+  ren_assert(pool->cmd_index < std::size(pool->cmd_buffers));
   CommandBuffer cmd = {
       .handle = pool->cmd_buffers[pool->cmd_index++],
       .device = device,
@@ -2151,11 +2144,12 @@ auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
   return {};
 }
 
-void cmd_pipeline_barrier(CommandBuffer cmd,
+void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers) {
   Adapter adapter = cmd.device->adapter;
-  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  auto *vk_memory_barriers =
+      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2166,8 +2160,8 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
         .dstAccessMask = to_vk(barrier.dst_access_mask),
     };
   }
-  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
-      image_barriers.size());
+  auto *vk_image_barriers =
+      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2191,19 +2185,20 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
-      .pMemoryBarriers = vk_memory_barriers.data(),
-      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
-      .pImageMemoryBarriers = vk_image_barriers.data(),
+      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers,
+      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
 }
 
-void cmd_set_event(CommandBuffer cmd, Event event,
+void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
                    TempSpan<const MemoryBarrier> memory_barriers,
                    TempSpan<const ImageBarrier> image_barriers) {
   Adapter adapter = cmd.device->adapter;
-  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  auto *vk_memory_barriers =
+      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2214,8 +2209,8 @@ void cmd_set_event(CommandBuffer cmd, Event event,
         .dstAccessMask = to_vk(barrier.dst_access_mask),
     };
   }
-  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
-      image_barriers.size());
+  auto *vk_image_barriers =
+      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2239,19 +2234,20 @@ void cmd_set_event(CommandBuffer cmd, Event event,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
-      .pMemoryBarriers = vk_memory_barriers.data(),
-      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
-      .pImageMemoryBarriers = vk_image_barriers.data(),
+      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers,
+      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdSetEvent2(cmd.handle, event.handle, &dependency_info);
 }
 
-void cmd_wait_event(CommandBuffer cmd, Event event,
+void cmd_wait_event(Arena scratch, CommandBuffer cmd, Event event,
                     TempSpan<const MemoryBarrier> memory_barriers,
                     TempSpan<const ImageBarrier> image_barriers) {
   Adapter adapter = cmd.device->adapter;
-  SmallVector<VkMemoryBarrier2, 16> vk_memory_barriers(memory_barriers.size());
+  auto *vk_memory_barriers =
+      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2262,8 +2258,8 @@ void cmd_wait_event(CommandBuffer cmd, Event event,
         .dstAccessMask = to_vk(barrier.dst_access_mask),
     };
   }
-  SmallVector<VkImageMemoryBarrier2, 16> vk_image_barriers(
-      image_barriers.size());
+  auto *vk_image_barriers =
+      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2287,10 +2283,10 @@ void cmd_wait_event(CommandBuffer cmd, Event event,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)vk_memory_barriers.size(),
-      .pMemoryBarriers = vk_memory_barriers.data(),
-      .imageMemoryBarrierCount = (u32)vk_image_barriers.size(),
-      .pImageMemoryBarriers = vk_image_barriers.data(),
+      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .pMemoryBarriers = vk_memory_barriers,
+      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdWaitEvents2(cmd.handle, 1, &event.handle,
                                   &dependency_info);
@@ -2572,77 +2568,74 @@ auto is_queue_family_present_supported(Instance instance, Adapter handle,
   return supported;
 }
 
-auto get_surface_present_modes(Instance instance, Adapter adapter,
-                               Surface surface, u32 *num_present_modes,
-                               PresentMode *present_modes) -> Result<void> {
-  VkPresentModeKHR vk_present_modes[ENUM_SIZE<PresentMode>];
-  u32 num_vk_present_modes = std::size(vk_present_modes);
-  VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(
+void get_surface_present_modes(NotNull<Arena *> arena, Instance instance,
+                               Adapter adapter, Surface surface,
+                               u32 *num_present_modes,
+                               PresentMode **present_modes) {
+  VkResult result = VK_SUCCESS;
+
+  u32 num_vk_present_modes = 0;
+  result = vkGetPhysicalDeviceSurfacePresentModesKHR(
+      instance->adapters[adapter.index].physical_device, surface.handle,
+      &num_vk_present_modes, nullptr);
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed");
+  auto *vk_present_modes =
+      allocate<VkPresentModeKHR>(arena, num_vk_present_modes);
+  result = vkGetPhysicalDeviceSurfacePresentModesKHR(
       instance->adapters[adapter.index].physical_device, surface.handle,
       &num_vk_present_modes, vk_present_modes);
-  if (result) {
-    ren_assert(result != VK_INCOMPLETE);
-    return fail(Error::Unknown);
-  }
-  if (present_modes) {
-    for (usize i : range(std::min(*num_present_modes, num_vk_present_modes))) {
-      present_modes[i] = from_vk<PresentMode>(vk_present_modes[i]);
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed");
+
+  *present_modes = allocate<PresentMode>(arena, num_vk_present_modes);
+  for (VkPresentModeKHR pm : Span(vk_present_modes, num_vk_present_modes)) {
+    switch (pm) {
+    default:
+      continue;
+    case VK_PRESENT_MODE_IMMEDIATE_KHR:
+    case VK_PRESENT_MODE_MAILBOX_KHR:
+    case VK_PRESENT_MODE_FIFO_KHR:
+    case VK_PRESENT_MODE_FIFO_RELAXED_KHR:
+      (*present_modes)[(*num_present_modes)++] = from_vk<PresentMode>(pm);
+      break;
     }
-    if (*num_present_modes < num_vk_present_modes) {
-      return fail(Error::Incomplete);
-    }
   }
-  *num_present_modes = num_vk_present_modes;
-  return {};
 }
 
-auto get_surface_formats(Instance instance, Adapter adapter, Surface surface,
-                         u32 *num_formats, TinyImageFormat *formats)
-    -> Result<void> {
+void get_surface_formats(NotNull<Arena *> arena, Instance instance,
+                         Adapter adapter, Surface surface, u32 *num_formats,
+                         TinyImageFormat **formats) {
   VkResult result = VK_SUCCESS;
   VkPhysicalDevice physical_device =
-      instance->adapters[adapter.index].physical_device;
+      get_adapter(instance, adapter).physical_device;
+
   u32 num_vk_formats = 0;
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
                                                 &num_vk_formats, nullptr);
-  if (result) {
-    return fail(Error::Unknown);
-  }
-  Vector<VkSurfaceFormatKHR> vk_formats(num_vk_formats);
-  result = vkGetPhysicalDeviceSurfaceFormatsKHR(
-      physical_device, surface.handle, &num_vk_formats, vk_formats.data());
-  if (result) {
-    return fail(Error::Unknown);
-  }
-  vk_formats.erase_if([](const VkSurfaceFormatKHR &vk_format) {
-    return !TinyImageFormat_FromVkFormat(
-        (TinyImageFormat_VkFormat)vk_format.format);
-  });
-  num_vk_formats = vk_formats.size();
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed");
+  auto *vk_formats = allocate<VkSurfaceFormatKHR>(arena, num_vk_formats);
+  result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
+                                                &num_vk_formats, vk_formats);
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed");
 
-  if (formats) {
-    for (usize i : range(std::min(*num_formats, num_vk_formats))) {
-      formats[i] = TinyImageFormat_FromVkFormat(
-          (TinyImageFormat_VkFormat)vk_formats[i].format);
-    }
-    if (*num_formats < num_vk_formats) {
-      return fail(Error::Incomplete);
+  *formats = allocate<TinyImageFormat>(arena, num_vk_formats);
+  for (VkSurfaceFormatKHR vk_format : Span(vk_formats, num_vk_formats)) {
+    TinyImageFormat format = TinyImageFormat_FromVkFormat(
+        (TinyImageFormat_VkFormat)vk_format.format);
+    if (format) {
+      (*formats)[(*num_formats)++] = format;
     }
   }
-  *num_formats = num_vk_formats;
-  return {};
 }
 
-auto get_surface_supported_image_usage(Instance instance, Adapter adapter,
-                                       Surface surface)
-    -> Result<Flags<ImageUsage>> {
+Flags<ImageUsage> get_surface_supported_image_usage(Instance instance,
+                                                    Adapter adapter,
+                                                    Surface surface) {
   VkPhysicalDevice physical_device =
-      instance->adapters[adapter.index].physical_device;
+      get_adapter(instance, adapter).physical_device;
   VkSurfaceCapabilitiesKHR capabilities;
-  if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface.handle,
-                                                &capabilities)) {
-    return fail(Error::Unknown);
-  }
+  VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+      physical_device, surface.handle, &capabilities);
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed");
   return from_vk<ImageUsage>(capabilities.supportedUsageFlags);
 }
 
@@ -2669,8 +2662,7 @@ namespace {
 auto adjust_swap_chain_image_count(u32 num_images,
                                    const VkSurfaceCapabilitiesKHR &capabilities)
     -> u32 {
-  num_images = std::clamp(num_images, capabilities.minImageCount,
-                          MAX_SWAP_CHAIN_IMAGE_COUNT);
+  num_images = std::max(num_images, capabilities.minImageCount);
   if (capabilities.maxImageCount) {
     num_images = std::min(num_images, capabilities.maxImageCount);
   }
@@ -2781,9 +2773,11 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
 
 } // namespace
 
-auto create_swap_chain(Device device, const SwapChainCreateInfo &create_info)
+auto create_swap_chain(NotNull<Arena *> arena, Device device,
+                       const SwapChainCreateInfo &create_info)
     -> Result<SwapChain> {
-  SwapChain swap_chain = new (SwapChainData){
+  SwapChain swap_chain = allocate<SwapChainData>(arena);
+  *swap_chain = {
       .device = device,
       .surface = create_info.surface,
       .format = to_vk(create_info.format),
@@ -2806,7 +2800,6 @@ void destroy_swap_chain(SwapChain swap_chain) {
   if (swap_chain) {
     swap_chain->device->vk.vkDestroySwapchainKHR(swap_chain->device->handle,
                                                  swap_chain->handle, nullptr);
-    delete swap_chain;
   }
 }
 
@@ -2814,27 +2807,22 @@ auto get_swap_chain_size(SwapChain swap_chain) -> glm::uvec2 {
   return swap_chain->size;
 }
 
-auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
-    -> Result<void> {
-  VkImage vk_images[MAX_SWAP_CHAIN_IMAGE_COUNT];
-  u32 num_vk_images = std::size(vk_images);
-  VkResult result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
-      swap_chain->device->handle, swap_chain->handle, &num_vk_images,
-      vk_images);
-  if (result) {
-    ren_assert(result != VK_INCOMPLETE);
-    return fail(Error::Unknown);
+void get_swap_chain_images(NotNull<Arena *> arena, SwapChain swap_chain,
+                           u32 *num_images, Image **images) {
+  VkResult result = VK_SUCCESS;
+
+  result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
+      swap_chain->device->handle, swap_chain->handle, num_images, nullptr);
+  VK_CHECK(result, "vkGetSwapchainImagesKHR failed");
+  auto *vk_images = allocate<VkImage>(arena, *num_images);
+  result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
+      swap_chain->device->handle, swap_chain->handle, num_images, vk_images);
+  VK_CHECK(result, "vkGetSwapchainImagesKHR failed");
+
+  *images = allocate<Image>(arena, *num_images);
+  for (usize i : range(*num_images)) {
+    (*images)[i] = {.handle = vk_images[i]};
   }
-  if (images) {
-    for (usize i : range(std::min(*num_images, num_vk_images))) {
-      images[i] = {.handle = vk_images[i]};
-    }
-    if (*num_images < num_vk_images) {
-      return fail(Error::Incomplete);
-    }
-  }
-  *num_images = num_vk_images;
-  return {};
 }
 
 auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,

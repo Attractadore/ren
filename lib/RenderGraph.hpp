@@ -497,7 +497,8 @@ public:
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
-  auto build(const RgBuildInfo &build_info) -> Result<RenderGraph, Error>;
+  auto build(Arena scratch, const RgBuildInfo &build_info)
+      -> Result<RenderGraph, Error>;
 
 private:
   friend RgPassBuilder;
@@ -563,7 +564,7 @@ private:
 
   void init_runtime_buffers();
 
-  auto init_runtime_textures() -> Result<void, Error>;
+  void init_runtime_textures(Arena scratch);
 
   void place_barriers_and_semaphores();
 
@@ -586,7 +587,8 @@ struct RgExecuteInfo {
 
 class RenderGraph {
 public:
-  auto execute(const RgExecuteInfo &execute_info) -> Result<void, Error>;
+  auto execute(Arena scratch, const RgExecuteInfo &execute_info)
+      -> Result<void, Error>;
 
 private:
   friend RgBuilder;

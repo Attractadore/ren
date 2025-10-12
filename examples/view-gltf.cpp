@@ -232,7 +232,7 @@ public:
     m_scene = scene;
   }
 
-  auto walk(int scene) -> Result<void> {
+  auto walk(ren::Arena scratch, int scene) -> Result<void> {
     if (not m_model.extensionsRequired.empty()) {
       bail("Required glTF extensions not supported: {}",
            m_model.extensionsRequired);
@@ -258,7 +258,7 @@ public:
       bail("Scene index {} out of bounds", scene);
     }
 
-    TRY_TO(walk_scene(m_model.scenes[scene]));
+    TRY_TO(walk_scene(scratch, m_model.scenes[scene]));
 
     return {};
   }
@@ -512,7 +512,8 @@ private:
     return get_sampler(m_model.samplers[sampler]);
   }
 
-  auto create_material(int index) -> Result<ren::MaterialId> {
+  auto create_material(ren::Arena scratch, int index)
+      -> Result<ren::MaterialId> {
     const tinygltf::Material &material = m_model.materials[index];
     ren::MaterialCreateInfo desc = {};
 
@@ -634,26 +635,29 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return ren::create_material(m_scene, desc)
+    return ren::create_material(scratch, m_scene, desc)
         .transform_error(get_error_string);
   }
 
-  auto get_or_create_material(int index) -> Result<ren::MaterialId> {
+  auto get_or_create_material(ren::Arena scratch, int index)
+      -> Result<ren::MaterialId> {
     assert(index >= 0);
     if (index >= m_material_cache.size()) {
       m_material_cache.resize(index + 1);
     }
     ren::MaterialId &material = m_material_cache[index];
     if (!material) {
-      OK(material, create_material(index));
+      OK(material, create_material(scratch, index));
     }
     return material;
   }
 
-  auto create_mesh_instance(const tinygltf::Primitive &primitive,
+  auto create_mesh_instance(ren::Arena scratch,
+                            const tinygltf::Primitive &primitive,
                             const glm::mat4 &transform)
       -> Result<ren::MeshInstanceId> {
-    OK(ren::MaterialId material, get_or_create_material(primitive.material));
+    OK(ren::MaterialId material,
+       get_or_create_material(scratch, primitive.material));
     OK(ren::MeshId mesh, get_or_create_mesh(primitive));
     OK(ren::MeshInstanceId mesh_instance,
        ren::create_mesh_instance(m_scene,
@@ -700,15 +704,15 @@ private:
     return local_transform;
   }
 
-  auto walk_node(const tinygltf::Node &node, const glm::mat4 &parent_transform)
-      -> Result<void> {
+  auto walk_node(ren::Arena scratch, const tinygltf::Node &node,
+                 const glm::mat4 &parent_transform) -> Result<void> {
     int node_index = &node - m_model.nodes.data();
     glm::mat4 transform = parent_transform * get_node_local_transform(node);
 
     if (node.mesh >= 0) {
       const tinygltf::Mesh &mesh = m_model.meshes[node.mesh];
       for (const tinygltf::Primitive &primitive : mesh.primitives) {
-        auto res = create_mesh_instance(primitive, transform);
+        auto res = create_mesh_instance(scratch, primitive, transform);
         if (not res.has_value()) {
           warn("Failed to create mesh instance for mesh {} "
                "primitive {} in node {}: {}",
@@ -731,17 +735,18 @@ private:
     }
 
     for (int child : node.children) {
-      TRY_TO(walk_node(m_model.nodes[child], transform));
+      TRY_TO(walk_node(scratch, m_model.nodes[child], transform));
     }
 
     return {};
   };
 
-  auto walk_scene(const tinygltf::Scene &scene) -> Result<void> {
+  auto walk_scene(ren::Arena scratch, const tinygltf::Scene &scene)
+      -> Result<void> {
     auto transform = glm::mat4_cast(
         glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     for (int node : scene.nodes) {
-      TRY_TO(walk_node(m_model.nodes[node], transform));
+      TRY_TO(walk_node(scratch, m_model.nodes[node], transform));
     }
     return {};
   }
@@ -768,7 +773,7 @@ public:
     TRY_TO(ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str()));
     OK(tinygltf::Model model, load_gltf(options.path));
     SceneWalker scene_walker(std::move(model), get_scene());
-    TRY_TO(scene_walker.walk(options.scene));
+    TRY_TO(scene_walker.walk(m_scratch, options.scene));
     ren::Scene *scene = get_scene();
 
     auto env_map = [&]() -> Result<ren::ImageId> {
@@ -792,7 +797,7 @@ public:
     }();
 
     if (env_map and *env_map) {
-      TRY_TO(ren::set_environment_map(scene, *env_map));
+      TRY_TO(ren::set_environment_map(m_scratch, scene, *env_map));
     } else {
       if (!env_map) {
         warn("Failed to load environment map: {}", env_map.error());

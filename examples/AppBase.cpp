@@ -39,10 +39,11 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     }
   }
 
-  ren::Arena scratch = ren::make_arena();
-  commit(&scratch, 1 * ren::MiB);
-  ren::Arena arena = ren::make_arena();
-  OK(m_renderer, ren::create_renderer(scratch, &arena, {.adapter = adapter}));
+  m_scratch = ren::make_arena();
+  commit(&m_scratch, 1 * ren::MiB);
+  m_arena = ren::make_arena();
+  OK(m_renderer,
+     ren::create_renderer(m_scratch, &m_arena, {.adapter = adapter}));
 
   m_window =
       SDL_CreateWindow(app_name, 1280, 720,
@@ -52,9 +53,10 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     bail("{}", SDL_GetError());
   }
 
-  OK(m_swapchain, ren::create_swapchain(m_renderer, m_window));
+  OK(m_swapchain,
+     ren::create_swapchain(m_scratch, &m_arena, m_renderer, m_window));
 
-  OK(m_scene, ren::create_scene(m_renderer, m_swapchain));
+  OK(m_scene, ren::create_scene(m_scratch, m_renderer, m_swapchain));
 
   OK(m_camera, ren::create_camera(m_scene));
   ren::set_camera(m_scene, m_camera);
@@ -96,7 +98,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(begin_frame());
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(ren::draw(m_scene, {.delta_time = dt.count() / 1e9f}));
+    TRY_TO(ren::draw(m_scratch, m_scene, {.delta_time = dt.count() / 1e9f}));
   }
 
   return {};

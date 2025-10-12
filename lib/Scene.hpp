@@ -141,7 +141,8 @@ public:
 
 // Data that can change between hot reloads.
 struct SceneInternalData {
-  ResourceArena m_arena;
+  Arena m_arena;
+  ResourceArena m_gfx_arena;
   Pipelines m_pipelines;
   DeviceBumpAllocator m_gfx_allocator;
   DeviceBumpAllocator m_async_allocator;
@@ -165,13 +166,13 @@ struct Scene {
 
   bool is_amd_anti_lag_enabled();
 
-  auto next_frame() -> Result<void, Error>;
+  auto next_frame(Arena scratch) -> Result<void, Error>;
 
-  [[nodiscard]] auto get_or_create_texture(Handle<Image> image,
-                                           const SamplerDesc &sampler_desc)
-      -> Result<sh::Handle<sh::Sampler2D>, Error>;
+  [[nodiscard]] sh::Handle<sh::Sampler2D>
+  get_or_create_texture(Arena scratch, Handle<Image> image,
+                        const SamplerDesc &sampler);
 
-  auto build_rg() -> Result<RenderGraph, Error>;
+  auto build_rg(Arena scratch) -> Result<RenderGraph, Error>;
 
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;

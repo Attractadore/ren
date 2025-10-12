@@ -68,8 +68,9 @@ auto load_mesh(ren::Scene *scene, const char *path) -> Result<ren::MeshId> {
   return mesh;
 }
 
-auto create_material(ren::Scene *scene) -> Result<ren::MaterialId> {
-  return create_material(scene,
+auto create_material(ren::Arena scratch, ren::Scene *scene)
+    -> Result<ren::MaterialId> {
+  return create_material(scratch, scene,
                          {
                              .metallic_factor = 0.0f,
                          })
@@ -177,7 +178,7 @@ public:
     ren::Scene *scene = get_scene();
     ren::CameraId camera = get_camera();
     OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
-    OK(ren::MaterialId material, create_material(scene));
+    OK(ren::MaterialId material, create_material(m_scratch, scene));
     auto rg = init_random(seed);
     TRY_TO(place_entities(rg, scene, mesh, material, num_entities));
     TRY_TO(place_light(scene));

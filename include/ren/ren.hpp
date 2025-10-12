@@ -206,8 +206,8 @@ namespace ren_export {
 
 void destroy_renderer(Renderer *renderer);
 
-[[nodiscard]] auto create_scene(Renderer *renderer, SwapChain *swapchain)
-    -> expected<Scene *>;
+[[nodiscard]] auto create_scene(Arena scratch, Renderer *renderer,
+                                SwapChain *swapchain) -> expected<Scene *>;
 
 void destroy_scene(Scene *scene);
 
@@ -215,7 +215,8 @@ void set_vsync(SwapChain *swap_chain, VSync vsync);
 
 auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
 
-[[nodiscard]] auto create_swapchain(Renderer *renderer, SDL_Window *window)
+[[nodiscard]] auto create_swapchain(Arena scratch, NotNull<Arena *> arena,
+                                    Renderer *renderer, SDL_Window *window)
     -> expected<SwapChain *>;
 
 void destroy_swap_chain(SwapChain *swap_chain);
@@ -243,7 +244,7 @@ void set_camera_transform(Scene *scene, CameraId camera,
 [[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
     -> expected<ImageId>;
 
-[[nodiscard]] auto create_material(Scene *scene,
+[[nodiscard]] auto create_material(Arena scratch, Scene *scene,
                                    const MaterialCreateInfo &create_info)
     -> expected<MaterialId>;
 
@@ -270,15 +271,16 @@ void set_directional_light(Scene *scene, DirectionalLightId light,
 
 void set_environment_color(Scene *scene, const glm::vec3 &luminance);
 
-auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
+auto set_environment_map(Arena scratch, Scene *scene, ImageId image)
+    -> expected<void>;
 
 // Call to use graphics driver low-latency APIs.
 [[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
 
-[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
+[[nodiscard]] auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
     -> expected<void>;
 
-auto init_imgui(Scene *scene) -> expected<void>;
+auto init_imgui(Arena scratch, Scene *scene) -> expected<void>;
 
 void draw_imgui(Scene *scene);
 
@@ -289,7 +291,7 @@ void draw_imgui(Scene *scene);
 namespace ren::hot_reload {
 
 void unload(Scene *scene);
-[[nodiscard]] auto load(Scene *scene) -> expected<void>;
+[[nodiscard]] auto load(Arena scratch, Scene *scene) -> expected<void>;
 
 struct Vtbl {
 #define ren_vtbl_f(name) decltype(ren_export::name) *name
@@ -345,9 +347,11 @@ inline auto get_sdl_window_flags(Renderer *renderer) -> uint32_t {
   return hot_reload::vtbl_ref->get_sdl_window_flags(renderer);
 }
 
-inline auto create_swapchain(Renderer *renderer, SDL_Window *window)
+inline auto create_swapchain(Arena scratch, NotNull<Arena *> arena,
+                             Renderer *renderer, SDL_Window *window)
     -> expected<SwapChain *> {
-  return hot_reload::vtbl_ref->create_swapchain(renderer, window);
+  return hot_reload::vtbl_ref->create_swapchain(scratch, arena, renderer,
+                                                window);
 }
 
 inline void destroy_swap_chain(SwapChain *swap_chain) {
@@ -358,9 +362,9 @@ inline void set_vsync(SwapChain *swap_chain, VSync vsync) {
   return hot_reload::vtbl_ref->set_vsync(swap_chain, vsync);
 }
 
-inline auto create_scene(Renderer *renderer, SwapChain *swap_chain)
-    -> expected<Scene *> {
-  return hot_reload::vtbl_ref->create_scene(renderer, swap_chain);
+inline auto create_scene(Arena scratch, Renderer *renderer,
+                         SwapChain *swap_chain) -> expected<Scene *> {
+  return hot_reload::vtbl_ref->create_scene(scratch, renderer, swap_chain);
 }
 
 inline void destroy_scene(Scene *scene) {
@@ -409,9 +413,10 @@ inline auto create_image(Scene *scene, std::span<const std::byte> blob)
   return hot_reload::vtbl_ref->create_image(scene, blob);
 }
 
-inline auto create_material(Scene *scene, const MaterialCreateInfo &create_info)
+inline auto create_material(Arena scratch, Scene *scene,
+                            const MaterialCreateInfo &create_info)
     -> expected<MaterialId> {
-  return hot_reload::vtbl_ref->create_material(scene, create_info);
+  return hot_reload::vtbl_ref->create_material(scratch, scene, create_info);
 }
 
 inline auto
@@ -454,19 +459,20 @@ inline void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   return hot_reload::vtbl_ref->set_environment_color(scene, luminance);
 }
 
-inline auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
-  return hot_reload::vtbl_ref->set_environment_map(scene, image);
+inline auto set_environment_map(Arena scratch, Scene *scene, ImageId image)
+    -> expected<void> {
+  return hot_reload::vtbl_ref->set_environment_map(scratch, scene, image);
 }
 
 inline auto delay_input(Scene *scene) -> expected<void> {
   return hot_reload::vtbl_ref->delay_input(scene);
 }
 
-[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
+[[nodiscard]] auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
     -> expected<void>;
 
-inline auto init_imgui(Scene *scene) -> expected<void> {
-  return hot_reload::vtbl_ref->init_imgui(scene);
+inline auto init_imgui(Arena scratch, Scene *scene) -> expected<void> {
+  return hot_reload::vtbl_ref->init_imgui(scratch, scene);
 }
 
 inline void draw_imgui(Scene *scene) {

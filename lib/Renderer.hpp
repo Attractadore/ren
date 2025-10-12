@@ -161,7 +161,8 @@ struct Renderer {
       -> Result<rhi::Sampler, Error>;
 
   [[nodiscard]] auto
-  create_graphics_pipeline(const GraphicsPipelineCreateInfo &&create_info)
+  create_graphics_pipeline(Arena scratch,
+                           const GraphicsPipelineCreateInfo &&create_info)
       -> Result<Handle<GraphicsPipeline>, Error>;
 
   void destroy(Handle<GraphicsPipeline> pipeline);
@@ -170,7 +171,8 @@ struct Renderer {
       -> const GraphicsPipeline &;
 
   [[nodiscard]] auto
-  create_compute_pipeline(const ComputePipelineCreateInfo &&create_info)
+  create_compute_pipeline(Arena scratch,
+                          const ComputePipelineCreateInfo &&create_info)
       -> Result<Handle<ComputePipeline>, Error>;
 
   void destroy(Handle<ComputePipeline> pipeline);
@@ -192,12 +194,13 @@ struct Renderer {
 
   void wait_idle();
 
-  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
+  [[nodiscard]] auto wait_for_semaphore(Arena scratch,
+                                        Handle<Semaphore> semaphore, u64 value,
                                         std::chrono::nanoseconds timeout) const
       -> Result<rhi::WaitResult, Error>;
 
-  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
-      -> Result<void, Error>;
+  [[nodiscard]] auto wait_for_semaphore(Arena scratch, Handle<Semaphore>,
+                                        u64 value) const -> Result<void, Error>;
 
   auto create_event() -> Handle<Event>;
   void destroy(Handle<Event>);
@@ -206,7 +209,8 @@ struct Renderer {
     return m_events[event];
   }
 
-  auto create_command_pool(const CommandPoolCreateInfo &create_info)
+  auto create_command_pool(NotNull<Arena *> arena,
+                           const CommandPoolCreateInfo &create_info)
       -> Result<Handle<CommandPool>, Error>;
 
   void destroy(Handle<CommandPool> pool);
@@ -215,7 +219,7 @@ struct Renderer {
 
   auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
 
-  auto submit(rhi::QueueFamily queue_family,
+  auto submit(Arena scratch, rhi::QueueFamily queue_family,
               TempSpan<const rhi::CommandBuffer> cmd_buffers,
               TempSpan<const SemaphoreState> wait_semaphores = {},
               TempSpan<const SemaphoreState> signal_semaphores = {})

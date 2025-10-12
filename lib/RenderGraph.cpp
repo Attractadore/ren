@@ -971,7 +971,7 @@ auto get_view_dimension(const RgPhysicalTexture &ptex)
 
 } // namespace
 
-auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
+void RgBuilder::init_runtime_textures(Arena scratch) {
   auto &rt_textures = m_rt_data->m_textures;
   const auto &texture_uses = m_data->m_texture_uses;
   const auto &physical_textures = m_rgp->m_physical_textures;
@@ -1011,12 +1011,11 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
           .dimension = get_view_dimension(physical_texture),
       };
       if (use.sampler) {
-        ren_try(descriptors.combined,
-                m_descriptor_allocator->allocate_sampled_texture(
-                    *m_renderer, srv, use.sampler));
+        descriptors.combined = m_descriptor_allocator->allocate_sampled_texture(
+            scratch, *m_renderer, srv, use.sampler);
       } else {
-        ren_try(descriptors.sampled,
-                m_descriptor_allocator->allocate_texture(*m_renderer, srv));
+        descriptors.sampled =
+            m_descriptor_allocator->allocate_texture(scratch, *m_renderer, srv);
       }
     }
     if (use.state.access_mask.is_set(rhi::Access::UnorderedAccess)) {
@@ -1024,21 +1023,19 @@ auto RgBuilder::init_runtime_textures() -> Result<void, Error> {
       descriptors.storage =
           &rt_storage_texture_descriptors[num_storage_texture_descriptors];
       for (u32 mip : range(descriptors.num_mips)) {
-        ren_try(sh::Handle<void> descriptor,
-                m_descriptor_allocator->allocate_storage_texture(
-                    *m_renderer,
-                    {
-                        .texture = physical_texture.handle,
-                        .dimension = get_view_dimension(physical_texture),
-                        .mip = use.base_mip + mip,
-                    }));
+        sh::Handle<void> descriptor =
+            m_descriptor_allocator->allocate_storage_texture(
+                scratch, *m_renderer,
+                {
+                    .texture = physical_texture.handle,
+                    .dimension = get_view_dimension(physical_texture),
+                    .mip = use.base_mip + mip,
+                });
         descriptors.storage[mip] = descriptor.m_id;
       }
       num_storage_texture_descriptors += descriptors.num_mips;
     }
   }
-
-  return {};
 }
 
 void RgBuilder::place_barriers_and_semaphores() {
@@ -1352,7 +1349,7 @@ void RgBuilder::place_barriers_and_semaphores() {
   }
 }
 
-auto RgBuilder::build(const RgBuildInfo &build_info)
+auto RgBuilder::build(Arena scratch, const RgBuildInfo &build_info)
     -> Result<RenderGraph, Error> {
   ZoneScoped;
 
@@ -1370,7 +1367,7 @@ auto RgBuilder::build(const RgBuildInfo &build_info)
 
   init_runtime_passes();
   init_runtime_buffers();
-  ren_try_to(init_runtime_textures());
+  init_runtime_textures(scratch);
 
   place_barriers_and_semaphores();
 
@@ -1494,7 +1491,7 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
   m_builder->signal_semaphore(m_pass, semaphore, value);
 }
 
-auto RenderGraph::execute(const RgExecuteInfo &exec_info)
+auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
     -> Result<void, Error> {
   ZoneScoped;
 
@@ -1516,7 +1513,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
       }
       ren_assert(cmd);
       ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-      ren_try_to(m_renderer->submit(queue_family, {cmd_buffer},
+      ren_try_to(m_renderer->submit(scratch, queue_family, {cmd_buffer},
                                     batch_wait_semaphores,
                                     batch_signal_semaphores));
       batch_wait_semaphores = {};
@@ -1563,7 +1560,7 @@ auto RenderGraph::execute(const RgExecuteInfo &exec_info)
           auto texture_barriers = Span(m_data->m_texture_barriers)
                                       .subspan(pass.base_texture_barrier,
                                                pass.num_texture_barriers);
-          cmd.pipeline_barrier(memory_barriers, texture_barriers);
+          cmd.pipeline_barrier(scratch, memory_barriers, texture_barriers);
         }
 
         pass.ext.visit(OverloadSet{

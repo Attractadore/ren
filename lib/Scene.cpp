@@ -28,42 +28,46 @@ namespace ren_export {
 
 namespace {
 
-auto init_scene_internal_data(Renderer *renderer,
+auto init_scene_internal_data(Arena scratch, Renderer *renderer,
                               DescriptorAllocator &descriptor_allocator)
     -> Result<std::unique_ptr<SceneInternalData>, Error> {
   auto sid = std::make_unique<SceneInternalData>();
-  sid->m_arena.init(renderer);
-  ren_try(sid->m_pipelines, load_pipelines(sid->m_arena));
+  sid->m_arena = make_arena();
+  sid->m_gfx_arena.init(renderer);
+  ren_try(sid->m_pipelines, load_pipelines(scratch, sid->m_gfx_arena));
 
-  sid->m_gfx_allocator.init(*renderer, sid->m_arena, 256 * MiB);
-  sid->m_gfx_event_pool = init_event_pool(sid->m_arena);
+  sid->m_gfx_allocator.init(*renderer, sid->m_gfx_arena, 256 * MiB);
+  sid->m_gfx_event_pool = init_event_pool(sid->m_gfx_arena);
   if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    sid->m_async_allocator.init(*renderer, sid->m_arena, 16 * MiB);
+    sid->m_async_allocator.init(*renderer, sid->m_gfx_arena, 16 * MiB);
     for (DeviceBumpAllocator &allocator : sid->m_shared_allocators) {
-      allocator.init(*renderer, sid->m_arena, 16 * MiB);
+      allocator.init(*renderer, sid->m_gfx_arena, 16 * MiB);
     }
-    sid->m_async_event_pool = init_event_pool(sid->m_arena);
+    sid->m_async_event_pool = init_event_pool(sid->m_gfx_arena);
   }
 
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
     ScenePerFrameResources &frcs = sid->m_per_frame_resources[i];
     ren_try(frcs.acquire_semaphore,
-            sid->m_arena.create_semaphore({
+            sid->m_gfx_arena.create_semaphore({
                 .name = fmt::format("Acquire semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
-    ren_try(frcs.gfx_cmd_pool, sid->m_arena.create_command_pool({
+    ren_try(frcs.gfx_cmd_pool,
+            sid->m_gfx_arena.create_command_pool(
+                &sid->m_arena, {
                                    .name = fmt::format("Command pool {}", i),
                                    .queue_family = rhi::QueueFamily::Graphics,
                                }));
     if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
       ren_try(frcs.async_cmd_pool,
-              sid->m_arena.create_command_pool({
-                  .name = fmt::format("Command pool {}", i),
-                  .queue_family = rhi::QueueFamily::Compute,
-              }));
+              sid->m_gfx_arena.create_command_pool(
+                  &sid->m_arena, {
+                                     .name = fmt::format("Command pool {}", i),
+                                     .queue_family = rhi::QueueFamily::Compute,
+                                 }));
     }
-    frcs.upload_allocator.init(*renderer, sid->m_arena, 64 * MiB);
+    frcs.upload_allocator.init(*renderer, sid->m_gfx_arena, 64 * MiB);
     ren_try_to(frcs.descriptor_allocator.init(descriptor_allocator));
   }
 
@@ -74,7 +78,7 @@ auto init_scene_internal_data(Renderer *renderer,
 
 } // namespace
 
-auto create_scene(Renderer *renderer, SwapChain *swap_chain)
+auto create_scene(Arena scratch, Renderer *renderer, SwapChain *swap_chain)
     -> expected<Scene *> {
   auto *scene = new Scene{
       .m_renderer = renderer,
@@ -91,10 +95,10 @@ auto create_scene(Renderer *renderer, SwapChain *swap_chain)
   scene->m_data.settings.amd_anti_lag =
       renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
-  ren_try(scene->m_sid,
-          init_scene_internal_data(renderer, scene->m_descriptor_allocator));
+  ren_try(scene->m_sid, init_scene_internal_data(
+                            scratch, renderer, scene->m_descriptor_allocator));
 
-  ren_try_to(scene->next_frame());
+  ren_try_to(scene->next_frame(scratch));
 
   scene->m_data.settings.async_compute = false;
   scene->m_data.settings.present_from_compute = false;
@@ -267,13 +271,14 @@ auto create_image(Scene *scene, std::span<const std::byte> blob)
   return std::bit_cast<ImageId>(image);
 }
 
-auto create_material(Scene *scene, const MaterialCreateInfo &info)
-    -> expected<MaterialId> {
+auto create_material(Arena scratch, Scene *scene,
+                     const MaterialCreateInfo &info) -> expected<MaterialId> {
   auto get_descriptor =
       [&](const auto &texture) -> Result<sh::Handle<sh::Sampler2D>, Error> {
     if (texture.image) {
       return scene->get_or_create_texture(
-          std::bit_cast<Handle<Image>>(texture.image), texture.sampler);
+          scratch, std::bit_cast<Handle<Image>>(texture.image),
+          texture.sampler);
     }
     return {};
   };
@@ -427,22 +432,22 @@ void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   scene->m_data.env_luminance = luminance;
 }
 
-auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
+auto set_environment_map(Arena scratch, Scene *scene, ImageId image)
+    -> expected<void> {
   if (!image) {
     scene->m_data.env_map = {};
     return {};
   }
   Handle<Texture> texture =
       scene->m_images[std::bit_cast<Handle<Image>>(image)];
-  ren_try(
-      scene->m_data.env_map,
+  scene->m_data.env_map =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::SamplerCube>(
-          *scene->m_renderer, SrvDesc{texture},
+          scratch, *scene->m_renderer, SrvDesc{texture},
           {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
               .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-          }));
+          });
   return {};
 }
 
@@ -453,7 +458,8 @@ auto delay_input(Scene *scene) -> expected<void> {
   return {};
 }
 
-auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
+auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
+    -> expected<void> {
   ZoneScoped;
 
   scene->m_data.settings.middle_gray =
@@ -463,19 +469,20 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   Renderer *renderer = scene->m_renderer;
   auto *frcs = scene->m_frcs;
 
-  ren_try_to(scene->m_resource_uploader.upload(*renderer,
+  ren_try_to(scene->m_resource_uploader.upload(scratch, *renderer,
                                                scene->m_frcs->gfx_cmd_pool));
 
-  ren_try(RenderGraph render_graph, scene->build_rg());
+  ren_try(RenderGraph render_graph, scene->build_rg(scratch));
 
-  ren_try_to(render_graph.execute({
-      .gfx_cmd_pool = frcs->gfx_cmd_pool,
-      .async_cmd_pool = frcs->async_cmd_pool,
-      .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
-      .async_event_pool = &scene->m_sid->m_async_event_pool,
-      .frame_end_semaphore = &frcs->end_semaphore,
-      .frame_end_time = &frcs->end_time,
-  }));
+  ren_try_to(render_graph.execute(
+      scratch, {
+                   .gfx_cmd_pool = frcs->gfx_cmd_pool,
+                   .async_cmd_pool = frcs->async_cmd_pool,
+                   .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
+                   .async_event_pool = &scene->m_sid->m_async_event_pool,
+                   .frame_end_semaphore = &frcs->end_semaphore,
+                   .frame_end_time = &frcs->end_time,
+               }));
 
   if (scene->is_amd_anti_lag_enabled()) {
     ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));
@@ -484,15 +491,15 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   auto present_qf = scene->m_data.settings.present_from_compute
                         ? rhi::QueueFamily::Compute
                         : rhi::QueueFamily::Graphics;
-  ren_try_to(scene->m_swap_chain->present(present_qf));
+  ren_try_to(scene->m_swap_chain->present(scratch, present_qf));
 
   FrameMark;
 
   scene->m_frame_index++;
-  return scene->next_frame();
+  return scene->next_frame(scratch);
 }
 
-auto init_imgui(Scene *scene) -> Result<void, Error> {
+auto init_imgui(Arena scratch, Scene *scene) -> Result<void, Error> {
 #if REN_IMGUI
   if (!ImGui::GetCurrentContext()) {
     return {};
@@ -518,17 +525,15 @@ auto init_imgui(Scene *scene) -> Result<void, Error> {
       scene->m_frcs->upload_allocator,
       Span((const std::byte *)data, width * height * bpp), texture);
   auto descriptor =
-      scene->m_descriptor_allocator
-          .allocate_sampled_texture<sh::Sampler2D>(
-              *scene->m_renderer, SrvDesc{texture},
-              {
-                  .mag_filter = rhi::Filter::Linear,
-                  .min_filter = rhi::Filter::Linear,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::Repeat,
-                  .address_mode_v = rhi::SamplerAddressMode::Repeat,
-              })
-          .value();
+      scene->m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
+          scratch, *scene->m_renderer, SrvDesc{texture},
+          {
+              .mag_filter = rhi::Filter::Linear,
+              .min_filter = rhi::Filter::Linear,
+              .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+              .address_mode_u = rhi::SamplerAddressMode::Repeat,
+              .address_mode_v = rhi::SamplerAddressMode::Repeat,
+          });
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor.m_id);
 #endif
   return {};
@@ -736,7 +741,7 @@ auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
   return {};
 }
 
-auto Scene::next_frame() -> Result<void, Error> {
+auto Scene::next_frame(Arena scratch) -> Result<void, Error> {
   ZoneScoped;
 
   m_frcs = &m_sid->m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
@@ -744,7 +749,7 @@ auto Scene::next_frame() -> Result<void, Error> {
   {
     ZoneScopedN("Scene::wait_for_previous_frame");
     if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
-      ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
+      ren_try_to(m_renderer->wait_for_semaphore(scratch, m_frcs->end_semaphore,
                                                 m_frcs->end_time));
     }
   }
@@ -757,15 +762,16 @@ auto Scene::next_frame() -> Result<void, Error> {
   {
     auto _ = cmd.debug_region("begin-frame");
     // Sync with previous event signals.
-    cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
+    cmd.memory_barrier(scratch, rhi::ALL_COMMANDS_BARRIER);
     reset_event_pool(cmd, m_sid->m_gfx_event_pool);
     // Sync with future event signals.
     // Also flush pipeline and cache so we can safely reuse the memory
     // allocator.
-    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+    cmd.memory_barrier(scratch, rhi::ALL_MEMORY_BARRIER);
   }
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-  ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
+  ren_try_to(
+      m_renderer->submit(scratch, rhi::QueueFamily::Graphics, {cmd_buffer}));
 
   if (m_data.settings.async_compute) {
     m_sid->m_async_allocator.reset();
@@ -775,28 +781,29 @@ auto Scene::next_frame() -> Result<void, Error> {
     ren_try_to(cmd.begin(*m_renderer, m_frcs->async_cmd_pool));
     {
       auto _ = cmd.debug_region("begin-frame");
-      cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
+      cmd.memory_barrier(scratch, rhi::ALL_COMMANDS_BARRIER);
       reset_event_pool(cmd, m_sid->m_async_event_pool);
-      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+      cmd.memory_barrier(scratch, rhi::ALL_MEMORY_BARRIER);
     }
     ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-    ren_try_to(m_renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer}));
+    ren_try_to(
+        m_renderer->submit(scratch, rhi::QueueFamily::Compute, {cmd_buffer}));
   }
 
   return {};
 }
 
-auto Scene::get_or_create_texture(Handle<Image> image,
-                                  const SamplerDesc &sampler_desc)
-    -> Result<sh::Handle<sh::Sampler2D>, Error> {
+sh::Handle<sh::Sampler2D>
+Scene::get_or_create_texture(Arena scratch, Handle<Image> image,
+                             const SamplerDesc &sampler) {
   return m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-      *m_renderer, SrvDesc{m_images[image]},
+      scratch, *m_renderer, SrvDesc{m_images[image]},
       {
-          .mag_filter = get_rhi_Filter(sampler_desc.mag_filter),
-          .min_filter = get_rhi_Filter(sampler_desc.min_filter),
-          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler_desc.mipmap_filter),
-          .address_mode_u = get_rhi_SamplerAddressMode(sampler_desc.wrap_u),
-          .address_mode_v = get_rhi_SamplerAddressMode(sampler_desc.wrap_v),
+          .mag_filter = get_rhi_Filter(sampler.mag_filter),
+          .min_filter = get_rhi_Filter(sampler.min_filter),
+          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler.mipmap_filter),
+          .address_mode_u = get_rhi_SamplerAddressMode(sampler.wrap_u),
+          .address_mode_v = get_rhi_SamplerAddressMode(sampler.wrap_v),
           .max_anisotropy = 16.0f,
       });
 }
@@ -827,7 +834,7 @@ bool Scene::is_amd_anti_lag_enabled() {
   return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
 }
 
-auto Scene::build_rg() -> Result<RenderGraph, Error> {
+auto Scene::build_rg(Arena scratch) -> Result<RenderGraph, Error> {
   ZoneScoped;
 
   const SceneGraphicsSettings &settings = m_data.settings;
@@ -1122,18 +1129,20 @@ auto Scene::build_rg() -> Result<RenderGraph, Error> {
 
   m_swap_chain->set_usage(swap_chain_usage);
 
-  setup_present_pass(cfg, PresentPassConfig{
-                              .src = sdr,
-                              .acquire_semaphore = m_frcs->acquire_semaphore,
-                              .swap_chain = m_swap_chain,
-                          });
+  setup_present_pass(scratch, cfg,
+                     PresentPassConfig{
+                         .src = sdr,
+                         .acquire_semaphore = m_frcs->acquire_semaphore,
+                         .swap_chain = m_swap_chain,
+                     });
 
-  return rgb.build({
-      .gfx_allocator = &m_sid->m_gfx_allocator,
-      .async_allocator = &m_sid->m_async_allocator,
-      .shared_allocator = &m_sid->m_shared_allocators[0],
-      .upload_allocator = &m_frcs->upload_allocator,
-  });
+  return rgb.build(scratch,
+                   {
+                       .gfx_allocator = &m_sid->m_gfx_allocator,
+                       .async_allocator = &m_sid->m_async_allocator,
+                       .shared_allocator = &m_sid->m_shared_allocators[0],
+                       .upload_allocator = &m_frcs->upload_allocator,
+                   });
 }
 
 } // namespace ren
@@ -1146,11 +1155,12 @@ void unload(Scene *scene) {
   unload(scene->m_renderer);
 }
 
-auto load(Scene *scene) -> expected<void> {
+auto load(Arena scratch, Scene *scene) -> expected<void> {
   ren_try_to(load(scene->m_renderer));
-  ren_try(scene->m_sid, init_scene_internal_data(
-                            scene->m_renderer, scene->m_descriptor_allocator));
-  ren_try_to(scene->next_frame());
+  ren_try(scene->m_sid,
+          init_scene_internal_data(scratch, scene->m_renderer,
+                                   scene->m_descriptor_allocator));
+  ren_try_to(scene->next_frame(scratch));
   return {};
 }
 

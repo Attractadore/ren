@@ -307,17 +307,18 @@ void Renderer::destroy(Handle<Event> handle) {
   }
 }
 
-auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
+auto Renderer::wait_for_semaphore(Arena scratch, Handle<Semaphore> semaphore,
+                                  u64 value,
                                   std::chrono::nanoseconds timeout) const
     -> Result<rhi::WaitResult, Error> {
   return rhi::wait_for_semaphores(
-      m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
+      scratch, m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
 }
 
-auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
-    -> Result<void, Error> {
+auto Renderer::wait_for_semaphore(Arena scratch, Handle<Semaphore> semaphore,
+                                  u64 value) const -> Result<void, Error> {
   ren_try(rhi::WaitResult wait_result,
-          wait_for_semaphore(semaphore, value,
+          wait_for_semaphore(scratch, semaphore, value,
                              std::chrono::nanoseconds(UINT64_MAX)));
   ren_assert(wait_result == rhi::WaitResult::Success);
   return {};
@@ -329,10 +330,11 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
   return m_semaphores[semaphore];
 }
 
-auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
+auto Renderer::create_command_pool(NotNull<Arena *> arena,
+                                   const CommandPoolCreateInfo &create_info)
     -> Result<Handle<CommandPool>, Error> {
   ren_try(rhi::CommandPool pool,
-          rhi::create_command_pool(m_device,
+          rhi::create_command_pool(arena, m_device,
                                    {.queue_family = create_info.queue_family}));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pool, create_info.name.c_str()));
@@ -360,7 +362,7 @@ auto Renderer::reset_command_pool(Handle<CommandPool> pool)
 }
 
 auto Renderer::create_graphics_pipeline(
-    const GraphicsPipelineCreateInfo &&create_info)
+    Arena scratch, const GraphicsPipelineCreateInfo &&create_info)
     -> Result<Handle<GraphicsPipeline>, Error> {
   u32 num_render_targets = 0;
   for (usize i : range(rhi::MAX_NUM_RENDER_TARGETS)) {
@@ -434,7 +436,7 @@ auto Renderer::create_graphics_pipeline(
   }
 
   ren_try(rhi::Pipeline pipeline,
-          rhi::create_graphics_pipeline(m_device, pipeline_info));
+          rhi::create_graphics_pipeline(scratch, m_device, pipeline_info));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
 #endif
@@ -456,7 +458,7 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 }
 
 auto Renderer::create_compute_pipeline(
-    const ComputePipelineCreateInfo &&create_info)
+    Arena scratch, const ComputePipelineCreateInfo &&create_info)
     -> Result<Handle<ComputePipeline>, Error> {
   Span<const std::byte> code = create_info.cs.code;
 
@@ -499,7 +501,7 @@ auto Renderer::create_compute_pipeline(
 
   ren_try(rhi::Pipeline pipeline,
           rhi::create_compute_pipeline(
-              m_device,
+              scratch, m_device,
               {
                   .cs =
                       {
@@ -535,7 +537,7 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
   return m_compute_pipelines[pipeline];
 }
 
-auto Renderer::submit(rhi::QueueFamily queue_family,
+auto Renderer::submit(Arena scratch, rhi::QueueFamily queue_family,
                       TempSpan<const rhi::CommandBuffer> cmd_buffers,
                       TempSpan<const SemaphoreState> wait_semaphores,
                       TempSpan<const SemaphoreState> signal_semaphores)
@@ -555,7 +557,7 @@ auto Renderer::submit(rhi::QueueFamily queue_family,
     };
   }
   return rhi::queue_submit(
-      rhi::get_queue(m_device, queue_family), cmd_buffers,
+      scratch, rhi::get_queue(m_device, queue_family), cmd_buffers,
       Span(semaphore_states.data(), wait_semaphores.size()),
       Span(semaphore_states.data() + wait_semaphores.size(),
            signal_semaphores.size()));

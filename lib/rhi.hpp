@@ -141,7 +141,8 @@ struct SemaphoreState {
   u64 value = 0;
 };
 
-auto queue_submit(Queue queue, TempSpan<const CommandBuffer> cmd_buffers,
+auto queue_submit(Arena scratch, Queue queue,
+                  TempSpan<const CommandBuffer> cmd_buffers,
                   TempSpan<const SemaphoreState> wait_semaphores,
                   TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void>;
@@ -177,7 +178,7 @@ struct SemaphoreWaitInfo {
   u64 value = 0;
 };
 
-auto wait_for_semaphores(Device device,
+auto wait_for_semaphores(Arena scratch, Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
                          std::chrono::nanoseconds timeout)
     -> Result<WaitResult>;
@@ -381,19 +382,20 @@ auto create_sampler(Device device, const SamplerCreateInfo &create_info)
 
 void destroy_sampler(Device device, Sampler sampler);
 
-void write_sampler_descriptor_heap(Device device,
+void write_sampler_descriptor_heap(Arena scratch, Device device,
                                    TempSpan<const Sampler> samplers,
                                    u32 base_index);
 
-void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> views,
-                               u32 base_index);
+void write_srv_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> views, u32 base_index);
 
-void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> views,
+void write_cis_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> views,
                                TempSpan<const Sampler> samplers,
                                u32 base_index);
 
-void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> views,
-                               u32 base_index);
+void write_uav_descriptor_heap(Arena scratch, Device device,
+                               TempSpan<const ImageView> views, u32 base_index);
 
 struct SpecializationConstant {
   u32 id = 0;
@@ -595,7 +597,7 @@ struct GraphicsPipelineCreateInfo {
   BlendStateInfo blend_state;
 };
 
-auto create_graphics_pipeline(Device device,
+auto create_graphics_pipeline(Arena scratch, Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline>;
 
@@ -603,7 +605,7 @@ struct ComputePipelineCreateInfo {
   ShaderInfo cs;
 };
 
-auto create_compute_pipeline(Device device,
+auto create_compute_pipeline(Arena scratch, Device device,
                              const ComputePipelineCreateInfo &create_info)
     -> Result<Pipeline>;
 
@@ -620,7 +622,7 @@ struct CommandPoolCreateInfo {
   QueueFamily queue_family = {};
 };
 
-auto create_command_pool(Device device,
+auto create_command_pool(NotNull<Arena *> arena, Device device,
                          const CommandPoolCreateInfo &create_info)
     -> Result<CommandPool>;
 
@@ -865,15 +867,15 @@ struct ImageBarrier {
   ImageLayout dst_layout = ImageLayout::Undefined;
 };
 
-void cmd_pipeline_barrier(CommandBuffer cmd,
+void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers);
 
-void cmd_set_event(CommandBuffer cmd, Event event,
+void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
                    TempSpan<const MemoryBarrier> memory_barriers,
                    TempSpan<const ImageBarrier> image_barriers);
 
-void cmd_wait_event(CommandBuffer cmd, Event event,
+void cmd_wait_event(Arena scratch, CommandBuffer cmd, Event event,
                     TempSpan<const MemoryBarrier> memory_barriers,
                     TempSpan<const ImageBarrier> image_barriers);
 
@@ -1075,17 +1077,18 @@ enum class PresentMode {
   Last = FifoRelaxed,
 };
 
-auto get_surface_present_modes(Instance instance, Adapter adapter,
-                               Surface surface, u32 *num_present_modes,
-                               PresentMode *present_modes) -> Result<void>;
+void get_surface_present_modes(NotNull<Arena *> arena, Instance instance,
+                               Adapter adapter, Surface surface,
+                               u32 *num_present_modes,
+                               PresentMode **present_modes);
 
-auto get_surface_formats(Instance instance, Adapter adapter, Surface surface,
-                         u32 *num_formats, TinyImageFormat *formats)
-    -> Result<void>;
+void get_surface_formats(NotNull<Arena *> arena, Instance instance,
+                         Adapter adapter, Surface surface, u32 *num_formats,
+                         TinyImageFormat **formats);
 
-auto get_surface_supported_image_usage(Instance instance, Adapter adapter,
-                                       Surface surface)
-    -> Result<Flags<ImageUsage>>;
+Flags<ImageUsage> get_surface_supported_image_usage(Instance instance,
+                                                    Adapter adapter,
+                                                    Surface surface);
 
 struct SwapChainCreateInfo {
   rhi::Surface surface;
@@ -1097,17 +1100,16 @@ struct SwapChainCreateInfo {
   PresentMode present_mode = PresentMode::Fifo;
 };
 
-constexpr u32 MAX_SWAP_CHAIN_IMAGE_COUNT = 8;
-
-auto create_swap_chain(Device device, const SwapChainCreateInfo &create_info)
+auto create_swap_chain(NotNull<Arena *> arena, Device device,
+                       const SwapChainCreateInfo &create_info)
     -> Result<SwapChain>;
 
 void destroy_swap_chain(SwapChain swap_chain);
 
 auto get_swap_chain_size(SwapChain swap_chain) -> glm::uvec2;
 
-auto get_swap_chain_images(SwapChain swap_chain, u32 *num_images, Image *images)
-    -> Result<void>;
+void get_swap_chain_images(NotNull<Arena *> arena, SwapChain swap_chain,
+                           u32 *num_images, Image **images);
 
 auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
                        ImageUsageFlags usage = {}) -> Result<void>;

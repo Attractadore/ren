@@ -9,7 +9,7 @@ struct PresentPassConfig {
   NotNull<SwapChain *> swap_chain;
 };
 
-void setup_present_pass(const PassCommonConfig &ccfg,
+void setup_present_pass(Arena scratch, const PassCommonConfig &ccfg,
                         const PresentPassConfig &cfg);
 
 } // namespace ren

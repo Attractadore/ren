@@ -2,7 +2,7 @@
 #include "../CommandRecorder.hpp"
 #include "../SwapChain.hpp"
 
-void ren::setup_present_pass(const PassCommonConfig &ccfg,
+void ren::setup_present_pass(Arena scratch, const PassCommonConfig &ccfg,
                              const PresentPassConfig &cfg) {
   RgBuilder &rgb = *ccfg.rgb;
 
@@ -11,7 +11,8 @@ void ren::setup_present_pass(const PassCommonConfig &ccfg,
         ccfg.rgp->create_semaphore("present-semaphore");
   }
 
-  Result<u32, Error> result = cfg.swap_chain->acquire(cfg.acquire_semaphore);
+  Result<u32, Error> result =
+      cfg.swap_chain->acquire(scratch, cfg.acquire_semaphore);
   ren_assert(result);
 
   rgb.set_external_texture(ccfg.rcs->backbuffer,

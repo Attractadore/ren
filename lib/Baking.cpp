@@ -22,16 +22,19 @@ auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
 
 #endif
 
-auto create_baker(Renderer *renderer) -> expected<Baker *> {
+auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
+    -> expected<Baker *> {
   auto baker = new Baker{.renderer = renderer};
   baker->session_arena.init(renderer);
   baker->arena.init(renderer);
   baker->rg.init(renderer);
   baker->rg.set_async_compute_enabled(false);
-  ren_try(baker->cmd_pool, baker->session_arena.create_command_pool({
-                               .name = "Baker command pool",
-                               .queue_family = rhi::QueueFamily::Graphics,
-                           }));
+  ren_try(baker->cmd_pool,
+          baker->session_arena.create_command_pool(
+              arena, {
+                         .name = "Baker command pool",
+                         .queue_family = rhi::QueueFamily::Graphics,
+                     }));
   ren_try_to(
       baker->descriptor_allocator.init(baker->session_descriptor_allocator));
   baker->allocator.init(*baker->renderer, baker->session_arena, 64 * MiB);

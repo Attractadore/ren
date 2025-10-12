@@ -22,14 +22,6 @@ void destroy(Arena arena);
 
 void commit(NotNull<Arena *> arena, usize size);
 
-inline void *aligned_ptr(const Arena &arena, usize alignment) {
-  return (u8 *)arena.ptr + ((arena.offset + alignment - 1) & ~(alignment - 1));
-}
-
-template <typename T> inline T *aligned_ptr(const Arena &arena) {
-  return (T *)aligned_ptr(arena, alignof(T));
-}
-
 inline void clear(NotNull<Arena *> arena) { arena->offset = 0; }
 
 inline auto allocate(NotNull<Arena *> arena, usize size, usize alignment)

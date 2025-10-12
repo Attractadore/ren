@@ -79,8 +79,8 @@ void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
   };
 }
 
-auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
-    -> Result<void, Error> {
+auto ResourceUploader::upload(Arena scratch, Renderer &renderer,
+                              Handle<CommandPool> pool) -> Result<void, Error> {
   if (m_buffer_copies.empty() and m_texture_copies.empty()) {
     return {};
   }
@@ -94,12 +94,13 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
       cmd.copy_buffer(src, dst);
     }
     m_buffer_copies.clear();
-    cmd.memory_barrier({
-        .src_stage_mask = rhi::PipelineStage::Transfer,
-        .src_access_mask = rhi::Access::TransferWrite,
-        .dst_stage_mask = rhi::PipelineStage::All,
-        .dst_access_mask = rhi::Access::MemoryRead,
-    });
+    cmd.memory_barrier(scratch,
+                       {
+                           .src_stage_mask = rhi::PipelineStage::Transfer,
+                           .src_access_mask = rhi::Access::TransferWrite,
+                           .dst_stage_mask = rhi::PipelineStage::All,
+                           .dst_access_mask = rhi::Access::MemoryRead,
+                       });
   }
 
   if (not m_texture_copies.empty()) {
@@ -113,7 +114,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
           .dst_layout = rhi::ImageLayout::TransferDst,
       };
     }
-    cmd.pipeline_barrier({}, barriers);
+    cmd.pipeline_barrier(scratch, {}, barriers);
     for (usize i : range(m_texture_copies.size())) {
       const TextureCopy &copy = m_texture_copies[i];
       const Texture &dst = renderer.get_texture(copy.dst);
@@ -131,13 +132,14 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
           .dst_layout = rhi::ImageLayout::General,
       };
     }
-    cmd.pipeline_barrier({}, barriers);
+    cmd.pipeline_barrier(scratch, {}, barriers);
     m_texture_copies.clear();
   }
 
   ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
 
-  ren_try_to(renderer.submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
+  ren_try_to(
+      renderer.submit(scratch, rhi::QueueFamily::Graphics, {cmd_buffer}));
 
   return {};
 }

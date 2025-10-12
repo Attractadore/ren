@@ -5,7 +5,6 @@
 #include "core/Views.hpp"
 
 #include <SDL3/SDL_video.h>
-#include <algorithm>
 #include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
@@ -15,10 +14,10 @@ auto get_sdl_window_flags(Renderer *) -> uint32_t {
   return rhi::SDL_WINDOW_FLAGS;
 }
 
-auto create_swapchain(Renderer *renderer, SDL_Window *window)
-    -> expected<SwapChain *> {
+auto create_swapchain(Arena scratch, NotNull<Arena *> arena, Renderer *renderer,
+                      SDL_Window *window) -> expected<SwapChain *> {
   auto *swap_chain = new SwapChain();
-  ren_try_to(swap_chain->init(*renderer, window));
+  ren_try_to(swap_chain->init(scratch, arena, *renderer, window));
   return swap_chain;
 }
 
@@ -60,8 +59,8 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 } // namespace
 
-auto SwapChain::init(Renderer &renderer, SDL_Window *window)
-    -> Result<void, Error> {
+auto SwapChain::init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
+                     SDL_Window *window) -> Result<void, Error> {
   m_renderer = &renderer;
   m_window = window;
 
@@ -73,26 +72,27 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
   rhi::Adapter adapter = m_renderer->get_adapter();
   rhi::Device device = m_renderer->get_rhi_device();
 
-  ren_try(rhi::PresentMode present_mode, select_present_mode());
+  ren_try(rhi::PresentMode present_mode, select_present_mode(scratch));
   ren_try(u32 num_images, select_image_count(present_mode));
 
   {
     u32 num_formats = 0;
-    ren_try_to(rhi::get_surface_formats(renderer.m_instance, adapter, m_surface,
-                                        &num_formats, nullptr));
-    SmallVector<TinyImageFormat> formats(num_formats);
-    ren_try_to(rhi::get_surface_formats(renderer.m_instance, adapter, m_surface,
-                                        &num_formats, formats.data()));
-    auto it = std::ranges::find_if(formats, [](TinyImageFormat format) {
-      return format == SWAP_CHAIN_FORMAT;
-    });
-    m_format = it != formats.end() ? *it : formats.front();
+    TinyImageFormat *formats = nullptr;
+    rhi::get_surface_formats(&scratch, renderer.m_instance, adapter, m_surface,
+                             &num_formats, &formats);
+    m_format = formats[0];
+    for (TinyImageFormat format : Span(formats, num_formats)) {
+      if (format == SWAP_CHAIN_FORMAT) {
+        m_format = format;
+        break;
+      }
+    }
   }
 
   {
-    ren_try(rhi::ImageUsageFlags supported_usage,
-            rhi::get_surface_supported_image_usage(renderer.m_instance, adapter,
-                                                   m_surface));
+    rhi::ImageUsageFlags supported_usage =
+        rhi::get_surface_supported_image_usage(renderer.m_instance, adapter,
+                                               m_surface);
     constexpr rhi::ImageUsageFlags REQUIRED_USAGE =
         rhi::ImageUsage::UnorderedAccess;
     ren_assert((supported_usage & REQUIRED_USAGE) == REQUIRED_USAGE);
@@ -104,20 +104,20 @@ auto SwapChain::init(Renderer &renderer, SDL_Window *window)
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
                num_images);
 
-  ren_try(m_swap_chain,
-          rhi::create_swap_chain(device, {
-                                             .surface = m_surface,
-                                             .width = (u32)m_size.x,
-                                             .height = (u32)m_size.y,
-                                             .format = m_format,
-                                             .usage = m_usage,
-                                             .num_images = num_images,
-                                             .present_mode = present_mode,
-                                         }));
+  ren_try(m_swap_chain, rhi::create_swap_chain(arena, device,
+                                               {
+                                                   .surface = m_surface,
+                                                   .width = (u32)m_size.x,
+                                                   .height = (u32)m_size.y,
+                                                   .format = m_format,
+                                                   .usage = m_usage,
+                                                   .num_images = num_images,
+                                                   .present_mode = present_mode,
+                                               }));
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  ren_try_to(update_textures());
+  ren_try_to(update_textures(scratch));
 
   fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
                m_size.x, m_size.y, (int)present_mode, m_textures.size());
@@ -132,14 +132,15 @@ void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
   }
 }
 
-auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
+auto SwapChain::select_present_mode(Arena scratch)
+    -> Result<rhi::PresentMode, Error> {
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
-    rhi::PresentMode present_modes[(usize)rhi::PresentMode::Last + 1];
-    u32 num_present_modes = std::size(present_modes);
-    ren_try_to(rhi::get_surface_present_modes(
-        m_renderer->m_instance, m_renderer->get_adapter(), m_surface,
-        &num_present_modes, present_modes));
+    u32 num_present_modes = 0;
+    rhi::PresentMode *present_modes = nullptr;
+    rhi::get_surface_present_modes(&scratch, m_renderer->m_instance,
+                                   m_renderer->get_adapter(), m_surface,
+                                   &num_present_modes, &present_modes);
     bool have_immediate = false;
     bool have_mailbox = false;
     for (usize i : range(num_present_modes)) {
@@ -194,10 +195,10 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   }
 }
 
-auto SwapChain::update_textures() -> Result<void, Error> {
-  rhi::Image images[rhi::MAX_SWAP_CHAIN_IMAGE_COUNT];
-  u32 num_images = std::size(images);
-  ren_try_to(rhi::get_swap_chain_images(m_swap_chain, &num_images, images));
+auto SwapChain::update_textures(Arena scratch) -> Result<void, Error> {
+  u32 num_images = 0;
+  rhi::Image *images = nullptr;
+  rhi::get_swap_chain_images(&scratch, m_swap_chain, &num_images, &images);
   m_textures.resize(num_images);
   m_semaphores.resize(num_images);
   for (usize i : range(num_images)) {
@@ -218,10 +219,10 @@ auto SwapChain::update_textures() -> Result<void, Error> {
   return {};
 }
 
-auto SwapChain::update() -> Result<void, Error> {
+auto SwapChain::update(Arena scratch) -> Result<void, Error> {
   m_renderer->wait_idle();
 
-  auto present_mode = select_present_mode();
+  auto present_mode = select_present_mode(scratch);
   if (!present_mode) {
     return Failure(present_mode.error());
   }
@@ -236,9 +237,8 @@ auto SwapChain::update() -> Result<void, Error> {
                *num_images);
 
   ren_try_to(rhi::set_present_mode(m_swap_chain, *present_mode));
-  ren_try(rhi::ImageUsageFlags supported_usage,
-          rhi::get_surface_supported_image_usage(
-              m_renderer->m_instance, m_renderer->get_adapter(), m_surface));
+  rhi::ImageUsageFlags supported_usage = rhi::get_surface_supported_image_usage(
+      m_renderer->m_instance, m_renderer->get_adapter(), m_surface);
   ren_assert(m_usage & supported_usage);
   ren_try_to(
       rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
@@ -248,7 +248,7 @@ auto SwapChain::update() -> Result<void, Error> {
     m_renderer->destroy(m_textures[i]);
     m_renderer->destroy(m_semaphores[i]);
   }
-  ren_try_to(update_textures());
+  ren_try_to(update_textures(scratch));
 
   m_dirty = false;
 
@@ -258,7 +258,7 @@ auto SwapChain::update() -> Result<void, Error> {
   return {};
 }
 
-auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
+auto SwapChain::acquire(Arena scratch, Handle<Semaphore> signal_semaphore)
     -> Result<u32, Error> {
   ZoneScoped;
 
@@ -276,7 +276,7 @@ auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
   }
 
   if (m_dirty) {
-    ren_try_to(update());
+    ren_try_to(update(scratch));
   }
 
   while (true) {
@@ -288,14 +288,15 @@ auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
       return m_image_index;
     }
     if (image.error() == rhi::Error::OutOfDate) {
-      ren_try_to(update());
+      ren_try_to(update(scratch));
       continue;
     }
     return Failure(image.error());
   }
 }
 
-auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
+auto SwapChain::present(Arena scratch, rhi::QueueFamily qf)
+    -> Result<void, Error> {
   ZoneScoped;
   auto result = rhi::present(
       rhi::get_queue(m_renderer->get_rhi_device(), qf), m_swap_chain,
@@ -303,7 +304,7 @@ auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
   m_image_index = -1;
   if (!result) {
     if (result.error() == rhi::Error::OutOfDate) {
-      return update();
+      return update(scratch);
     }
     return Failure(result.error());
   }

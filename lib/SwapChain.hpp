@@ -9,7 +9,8 @@ namespace ren {
 class Renderer;
 
 struct SwapChain {
-  auto init(Renderer &renderer, SDL_Window *window) -> Result<void, Error>;
+  auto init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
+            SDL_Window *window) -> Result<void, Error>;
 
   auto get_size() const -> glm::uvec2 { return m_size; }
 
@@ -19,7 +20,8 @@ struct SwapChain {
 
   void set_usage(rhi::ImageUsageFlags usage);
 
-  auto acquire(Handle<Semaphore> signal_semaphore) -> Result<u32, Error>;
+  auto acquire(Arena scratc, Handle<Semaphore> signal_semaphore)
+      -> Result<u32, Error>;
 
   auto get_texture(u32 i) -> Handle<Texture> {
     ren_assert(i < m_textures.size());
@@ -31,14 +33,15 @@ struct SwapChain {
     return m_semaphores[i];
   }
 
-  auto present(rhi::QueueFamily queue_family) -> Result<void, Error>;
+  auto present(Arena scratch, rhi::QueueFamily queue_family)
+      -> Result<void, Error>;
 
   auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
-  auto select_present_mode() -> Result<rhi::PresentMode, Error>;
+  auto select_present_mode(Arena scratch) -> Result<rhi::PresentMode, Error>;
   auto select_image_count(rhi::PresentMode present_mode) -> Result<u32, Error>;
-  auto update_textures() -> Result<void, Error>;
-  auto update() -> Result<void, Error>;
+  auto update_textures(Arena scratch) -> Result<void, Error>;
+  auto update(Arena scratch) -> Result<void, Error>;
 
   Renderer *m_renderer = nullptr;
   SDL_Window *m_window = nullptr;

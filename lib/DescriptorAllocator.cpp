@@ -3,35 +3,35 @@
 
 namespace ren {
 
-auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
+auto DescriptorAllocator::allocate_sampler(Arena scratch, Renderer &renderer,
                                            rhi::Sampler sampler)
     -> sh::Handle<sh::SamplerState> {
   u32 index = m_sampler_allocator.allocate();
   ren_assert(index < sh::MAX_NUM_SAMPLERS);
-  rhi::write_sampler_descriptor_heap(renderer.get_rhi_device(), {sampler},
-                                     index);
+  rhi::write_sampler_descriptor_heap(scratch, renderer.get_rhi_device(),
+                                     {sampler}, index);
   return sh::Handle<sh::SamplerState>(index);
 };
 
 auto DescriptorAllocator::try_allocate_sampler(
-    Renderer &renderer, rhi::Sampler sampler,
+    Arena scratch, Renderer &renderer, rhi::Sampler sampler,
     sh::Handle<sh::SamplerState> handle) -> sh::Handle<sh::SamplerState> {
   u32 index = m_sampler_allocator.allocate(handle.m_id);
   if (!index) {
     return {};
   }
   ren_assert(index == handle.m_id);
-  rhi::write_sampler_descriptor_heap(renderer.get_rhi_device(), {sampler},
-                                     index);
+  rhi::write_sampler_descriptor_heap(scratch, renderer.get_rhi_device(),
+                                     {sampler}, index);
   return handle;
 };
 
-auto DescriptorAllocator::allocate_sampler(Renderer &renderer,
+auto DescriptorAllocator::allocate_sampler(Arena scratch, Renderer &renderer,
                                            rhi::Sampler sampler,
                                            sh::Handle<sh::SamplerState> handle)
     -> sh::Handle<sh::SamplerState> {
   sh::Handle<sh::SamplerState> new_handle =
-      try_allocate_sampler(renderer, sampler, handle);
+      try_allocate_sampler(scratch, renderer, sampler, handle);
   ren_assert(new_handle == handle);
   return handle;
 };
@@ -40,11 +40,11 @@ void DescriptorAllocator::free_sampler(sh::Handle<sh::SamplerState> handle) {
   m_sampler_allocator.free(handle.m_id);
 }
 
-auto DescriptorAllocator::allocate_texture(Renderer &renderer, SrvDesc desc)
-    -> Result<sh::Handle<void>, Error> {
+auto DescriptorAllocator::allocate_texture(Arena scratch, Renderer &renderer,
+                                           SrvDesc desc) -> sh::Handle<void> {
   u32 index = m_srv_allocator.allocate();
-  ren_try(rhi::ImageView srv, renderer.get_srv(desc));
-  rhi::write_srv_descriptor_heap(renderer.get_rhi_device(), {srv}, index);
+  rhi::write_srv_descriptor_heap(scratch, renderer.get_rhi_device(),
+                                 {renderer.get_srv(desc).value()}, index);
   return sh::Handle(index, sh::DescriptorKind::Texture);
 };
 
@@ -53,13 +53,14 @@ void DescriptorAllocator::free_texture(sh::Handle<void> handle) {
   m_srv_allocator.free(handle.m_id);
 }
 
-auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
+auto DescriptorAllocator::allocate_sampled_texture(Arena scratch,
+                                                   Renderer &renderer,
                                                    SrvDesc desc,
                                                    rhi::Sampler sampler)
-    -> Result<sh::Handle<void>, Error> {
+    -> sh::Handle<void> {
   u32 index = m_cis_allocator.allocate();
-  ren_try(rhi::ImageView srv, renderer.get_srv(desc));
-  rhi::write_cis_descriptor_heap(renderer.get_rhi_device(), {srv}, {sampler},
+  rhi::write_cis_descriptor_heap(scratch, renderer.get_rhi_device(),
+                                 {renderer.get_srv(desc).value()}, {sampler},
                                  index);
   return sh::Handle(index, sh::DescriptorKind::Sampler);
 };
@@ -69,12 +70,13 @@ void DescriptorAllocator::free_sampled_texture(sh::Handle<void> handle) {
   m_cis_allocator.free(handle.m_id);
 }
 
-auto DescriptorAllocator::allocate_storage_texture(Renderer &renderer,
+auto DescriptorAllocator::allocate_storage_texture(Arena scratch,
+                                                   Renderer &renderer,
                                                    UavDesc desc)
-    -> Result<sh::Handle<void>, Error> {
+    -> sh::Handle<void> {
   u32 index = m_uav_allocator.allocate();
-  ren_try(rhi::ImageView uav, renderer.get_uav(desc));
-  rhi::write_uav_descriptor_heap(renderer.get_rhi_device(), {uav}, index);
+  rhi::write_uav_descriptor_heap(scratch, renderer.get_rhi_device(),
+                                 {renderer.get_uav(desc).value()}, index);
   return sh::Handle(index, sh::DescriptorKind::RWTexture);
 };
 
@@ -102,38 +104,42 @@ DescriptorAllocatorScope::operator=(DescriptorAllocatorScope &&other) noexcept {
   return *this;
 }
 
-auto DescriptorAllocatorScope::allocate_sampler(Renderer &renderer,
+auto DescriptorAllocatorScope::allocate_sampler(Arena scratch,
+                                                Renderer &renderer,
                                                 rhi::Sampler sampler)
     -> sh::Handle<sh::SamplerState> {
   sh::Handle<sh::SamplerState> handle =
-      m_allocator->allocate_sampler(renderer, sampler);
+      m_allocator->allocate_sampler(scratch, renderer, sampler);
   m_sampler.push_back(handle.m_id);
   return handle;
 }
 
-auto DescriptorAllocatorScope::allocate_texture(Renderer &renderer, SrvDesc srv)
-    -> Result<sh::Handle<void>, Error> {
-  ren_try(sh::Handle<void> handle,
-          m_allocator->allocate_texture(renderer, srv));
+auto DescriptorAllocatorScope::allocate_texture(Arena scratch,
+                                                Renderer &renderer, SrvDesc srv)
+    -> sh::Handle<void> {
+  sh::Handle<void> handle =
+      m_allocator->allocate_texture(scratch, renderer, srv);
   m_srv.push_back(handle.m_id);
   return handle;
 }
 
-auto DescriptorAllocatorScope::allocate_sampled_texture(Renderer &renderer,
+auto DescriptorAllocatorScope::allocate_sampled_texture(Arena scratch,
+                                                        Renderer &renderer,
                                                         SrvDesc srv,
                                                         rhi::Sampler sampler)
-    -> Result<sh::Handle<void>, Error> {
-  ren_try(sh::Handle<void> handle,
-          m_allocator->allocate_sampled_texture(renderer, srv, sampler));
+    -> sh::Handle<void> {
+  sh::Handle<void> handle =
+      m_allocator->allocate_sampled_texture(scratch, renderer, srv, sampler);
   m_cis.push_back(handle.m_id);
   return handle;
 }
 
-auto DescriptorAllocatorScope::allocate_storage_texture(Renderer &renderer,
+auto DescriptorAllocatorScope::allocate_storage_texture(Arena scratch,
+                                                        Renderer &renderer,
                                                         UavDesc uav)
-    -> Result<sh::Handle<void>, Error> {
-  ren_try(sh::Handle<void> handle,
-          m_allocator->allocate_storage_texture(renderer, uav));
+    -> sh::Handle<void> {
+  sh::Handle<void> handle =
+      m_allocator->allocate_storage_texture(scratch, renderer, uav);
   m_uav.push_back(handle.m_id);
   return handle;
 }

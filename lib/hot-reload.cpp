@@ -143,8 +143,9 @@ auto create_renderer(Arena scratch, NotNull<Arena *> arena,
   return hot_reload::vtbl_ref->create_renderer(scratch, arena, info);
 }
 
-auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
-  ren_try_to(hot_reload::vtbl_ref->draw(scene, draw_info));
+auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
+    -> expected<void> {
+  ren_try_to(hot_reload::vtbl_ref->draw(scratch, scene, draw_info));
 
 #if __linux__
   if (lib_watch_fd == -1) {
@@ -206,7 +207,7 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ren_assert(hot_reload::vtbl_ref);
 
   fmt::println("hot_reload: Run load hook");
-  auto reload_res = hot_reload::vtbl_ref->load(scene);
+  auto reload_res = hot_reload::vtbl_ref->load(scratch, scene);
   if (!reload_res) {
     fmt::println("hot_reload: Load hook failed");
     return reload_res;

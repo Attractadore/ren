@@ -34,23 +34,26 @@ auto fail(HRESULT hres) -> Failure<Error> {
 
 } // namespace
 
-auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
-    -> Result<DirectX::ScratchImage, Error> {
+auto bake_ibl(Arena scratch, Baker *baker, const TextureInfo &info,
+              bool compress) -> Result<DirectX::ScratchImage, Error> {
   HRESULT hres = S_OK;
 
   if (!baker->pipelines.reflection_map) {
     ren_try(baker->pipelines.reflection_map,
-            load_compute_pipeline(baker->session_arena, BakeReflectionMapCS,
+            load_compute_pipeline(scratch, baker->session_arena,
+                                  BakeReflectionMapCS,
                                   "Bake reflection environment map"));
   }
   if (!baker->pipelines.specular_map) {
     ren_try(baker->pipelines.specular_map,
-            load_compute_pipeline(baker->session_arena, BakeSpecularMapCS,
+            load_compute_pipeline(scratch, baker->session_arena,
+                                  BakeSpecularMapCS,
                                   "Bake specular environment map"));
   }
   if (!baker->pipelines.irradiance_map) {
     ren_try(baker->pipelines.irradiance_map,
-            load_compute_pipeline(baker->session_arena, BakeIrradianceMapCS,
+            load_compute_pipeline(scratch, baker->session_arena,
+                                  BakeIrradianceMapCS,
                                   "Bake irradiance environment map"));
   }
   const DirectX::Image &src_image = to_dxtex_image(info);
@@ -102,7 +105,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
           baker->uploader.create_texture(baker->arena, baker->upload_allocator,
                                          ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
-  ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
+  ren_try_to(
+      baker->uploader.upload(scratch, *baker->renderer, baker->cmd_pool));
 
   constexpr TinyImageFormat CUBE_MAP_FORMAT =
       TinyImageFormat_R32G32B32A32_SFLOAT;
@@ -129,17 +133,17 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
       RgTextureToken cube_map;
     } args;
 
-    ren_try(args.equirectangular_map,
-            baker->descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-                *baker->renderer, SrvDesc{env_map},
-                {
-                    .mag_filter = rhi::Filter::Linear,
-                    .min_filter = rhi::Filter::Linear,
-                    .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-                    .address_mode_u = rhi::SamplerAddressMode::Repeat,
-                    .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                    .max_anisotropy = 16.0f,
-                }));
+    args.equirectangular_map =
+        baker->descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
+            scratch, *baker->renderer, SrvDesc{env_map},
+            {
+                .mag_filter = rhi::Filter::Linear,
+                .min_filter = rhi::Filter::Linear,
+                .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+                .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                .max_anisotropy = 16.0f,
+            });
     args.cube_map = pass.write_texture("cube-map", &cube_map,
                                        rhi::CS_UNORDERED_ACCESS_IMAGE);
 
@@ -193,8 +197,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
       rgb.create_buffer("cube-map-readback", readback);
   rgb.copy_texture_to_buffer(cube_map, &cube_map_readback);
 
-  ren_try(RenderGraph rg, rgb.build({}));
-  ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
+  ren_try(RenderGraph rg, rgb.build(scratch, {}));
+  ren_try_to(rg.execute(scratch, {.gfx_cmd_pool = baker->cmd_pool}));
   baker->renderer->wait_idle();
 
   Vector<DirectX::Image> images;
@@ -234,9 +238,10 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   return compressed;
 }
 
-auto bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress)
-    -> Result<Blob, Error> {
-  ren_try(DirectX::ScratchImage image, bake_ibl(baker, info, compress));
+auto bake_ibl_to_memory(Arena scratch, Baker *baker, const TextureInfo &info,
+                        bool compress) -> Result<Blob, Error> {
+  ren_try(DirectX::ScratchImage image,
+          bake_ibl(scratch, baker, info, compress));
   ren_try(auto blob, write_ktx_to_memory(image));
   reset_baker(baker);
   auto [blob_data, blob_size] = blob;
@@ -275,7 +280,7 @@ int main(int argc, const char *argv[]) {
                            scratch, &arena, {.type = RendererType::Headless})
                            .value();
 
-  Baker *baker = create_baker(renderer).value();
+  Baker *baker = create_baker(&arena, renderer).value();
 
   FILE *f = fopen(in_path, "rb");
   if (!f) {
@@ -293,7 +298,7 @@ int main(int argc, const char *argv[]) {
   std::fclose(f);
 
   Blob blob =
-      bake_ibl_to_memory(baker,
+      bake_ibl_to_memory(scratch, baker,
                          {
                              .format = TinyImageFormat_R32G32B32A32_SFLOAT,
                              .width = (u32)w,

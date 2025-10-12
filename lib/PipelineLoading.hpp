@@ -28,6 +28,7 @@ struct Pipelines {
   Handle<GraphicsPipeline> imgui_pass;
 };
 
-auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error>;
+auto load_pipelines(Arena scratch, ResourceArena &arena)
+    -> Result<Pipelines, Error>;
 
 } // namespace ren
