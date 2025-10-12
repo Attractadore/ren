@@ -37,8 +37,9 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
                      }));
   ren_try_to(
       baker->descriptor_allocator.init(baker->session_descriptor_allocator));
-  baker->allocator.init(*baker->renderer, baker->session_arena, 64 * MiB);
-  baker->upload_allocator.init(*baker->renderer, baker->session_arena,
+  baker->allocator.init(arena, *baker->renderer, baker->session_arena,
+                        64 * MiB);
+  baker->upload_allocator.init(arena, *baker->renderer, baker->session_arena,
                                256 * MiB);
   return baker;
 }

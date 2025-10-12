@@ -7,6 +7,8 @@
 
 namespace ren {
 
+constexpr usize MAX_BUMP_ALLOCATOR_SIZE = 4 * GiB;
+
 class CommandRecorder;
 
 namespace detail {
@@ -18,10 +20,13 @@ public:
 
   BumpAllocator() = default;
 
-  void init(Renderer &renderer, ResourceArena &arena, usize block_size) {
+  void init(NotNull<Arena *> arena, Renderer &renderer,
+            ResourceArena &gfx_arena, usize block_size) {
     m_renderer = &renderer;
-    m_arena = &arena;
+    m_arena = &gfx_arena;
     m_block_size = block_size;
+    usize max_num_blocks = MAX_BUMP_ALLOCATOR_SIZE / block_size;
+    m_blocks = ren::allocate<Block>(arena, max_num_blocks);
     reset();
   }
 
@@ -36,7 +41,10 @@ public:
   BumpAllocator &operator=(BumpAllocator &&other) {
     m_renderer = other.m_renderer;
     m_arena = other.m_arena;
+    m_num_blocks = other.m_num_blocks;
+    other.m_num_blocks = 0;
     m_blocks = std::move(other.m_blocks);
+    other.m_blocks = nullptr;
     m_block_size = other.m_block_size;
     m_block = other.m_block;
     m_block_offset = other.m_block_offset;
@@ -54,10 +62,12 @@ public:
 
     [[unlikely]] if (m_block_offset + size > m_block_size) {
       m_block += 1;
-      [[unlikely]] if (m_block == m_blocks.size()) {
+      [[unlikely]] if (m_block == m_num_blocks) {
+        usize max_num_blocks = MAX_BUMP_ALLOCATOR_SIZE / m_block_size;
+        ren_assert(m_block < max_num_blocks);
         // FIXME: check for error.
-        m_blocks.push_back(
-            Policy::create_block(*m_renderer, *m_arena, m_block_size).value());
+        m_blocks[m_num_blocks++] =
+            Policy::create_block(*m_renderer, *m_arena, m_block_size).value();
       }
       m_block_offset = 0;
     }
@@ -79,7 +89,8 @@ private:
   using Block = Policy::Block;
   Renderer *m_renderer = nullptr;
   ResourceArena *m_arena = nullptr;
-  SmallVector<Block, 1> m_blocks;
+  Block *m_blocks = nullptr;
+  usize m_num_blocks = 0;
   usize m_block_size = 0;
   usize m_block = 0;
   usize m_block_offset = 0;

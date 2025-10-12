@@ -105,7 +105,8 @@ auto ResourceUploader::upload(Arena scratch, Renderer &renderer,
 
   if (not m_texture_copies.empty()) {
     auto _ = cmd.debug_region("upload-textures");
-    SmallVector<TextureBarrier, 16> barriers(m_texture_copies.size());
+    auto *barriers =
+        allocate<TextureBarrier>(&scratch, m_texture_copies.size());
     for (usize i : range(m_texture_copies.size())) {
       barriers[i] = {
           .resource = {m_texture_copies[i].dst},
@@ -114,7 +115,7 @@ auto ResourceUploader::upload(Arena scratch, Renderer &renderer,
           .dst_layout = rhi::ImageLayout::TransferDst,
       };
     }
-    cmd.pipeline_barrier(scratch, {}, barriers);
+    cmd.pipeline_barrier(scratch, {}, Span(barriers, m_texture_copies.size()));
     for (usize i : range(m_texture_copies.size())) {
       const TextureCopy &copy = m_texture_copies[i];
       const Texture &dst = renderer.get_texture(copy.dst);
@@ -132,7 +133,7 @@ auto ResourceUploader::upload(Arena scratch, Renderer &renderer,
           .dst_layout = rhi::ImageLayout::General,
       };
     }
-    cmd.pipeline_barrier(scratch, {}, barriers);
+    cmd.pipeline_barrier(scratch, {}, Span(barriers, m_texture_copies.size()));
     m_texture_copies.clear();
   }
 

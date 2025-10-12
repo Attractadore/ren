@@ -395,44 +395,34 @@ auto Renderer::create_graphics_pipeline(
       &pipeline_info.fs,
   };
 
-  SmallVector<rhi::SpecializationConstant> specialization_constants;
-  SmallVector<u32> specialization_data;
-  {
-    u32 num_specialization_constants = 0;
-    for (const ShaderInfo *shader : shaders) {
-      num_specialization_constants += shader->specialization_constants.size();
-    }
-    specialization_constants.resize(num_specialization_constants);
-    specialization_data.resize(num_specialization_constants);
-  }
-
-  u32 specialization_offset = 0;
   for (usize i : range(std::size(shaders))) {
     const ShaderInfo &shader = *shaders[i];
     u32 num_specialization_constants = shader.specialization_constants.size();
+    auto *specialization_constants = allocate<rhi::SpecializationConstant>(
+        &scratch, num_specialization_constants);
+    auto *specialization_data =
+        allocate<u32>(&scratch, num_specialization_constants);
+
     for (usize j : range(num_specialization_constants)) {
       const SpecializationConstant &c = shader.specialization_constants[j];
-      specialization_constants[specialization_offset + j] = {
+      specialization_constants[j] = {
           .id = c.id,
           .offset = u32(sizeof(u32) * j),
           .size = sizeof(u32),
       };
-      specialization_data[specialization_offset + j] = c.value;
+      specialization_data[j] = c.value;
     }
     *rhi_shaders[i] = {
         .code = shader.code,
         .entry_point = shader.entry_point,
         .specialization =
             {
-                .constants = Span(specialization_constants.data() +
-                                      specialization_offset,
+                .constants = Span(specialization_constants,
                                   num_specialization_constants),
-                .data = Span(specialization_data.data() + specialization_offset,
-                             num_specialization_constants)
+                .data = Span(specialization_data, num_specialization_constants)
                             .as_bytes(),
             },
     };
-    specialization_offset += num_specialization_constants;
   }
 
   ren_try(rhi::Pipeline pipeline,
@@ -486,9 +476,10 @@ auto Renderer::create_compute_pipeline(
 
   const ShaderInfo &cs = create_info.cs;
 
-  SmallVector<rhi::SpecializationConstant> specialization_constants(
-      cs.specialization_constants.size());
-  SmallVector<u32> specialization_data(cs.specialization_constants.size());
+  u32 num_spec_consts = cs.specialization_constants.size();
+  auto *specialization_constants =
+      allocate<rhi::SpecializationConstant>(&scratch, num_spec_consts);
+  u32 *specialization_data = allocate<u32>(&scratch, num_spec_consts);
   for (usize i : range(cs.specialization_constants.size())) {
     const SpecializationConstant &c = cs.specialization_constants[i];
     specialization_constants[i] = {
@@ -499,21 +490,24 @@ auto Renderer::create_compute_pipeline(
     specialization_data[i] = c.value;
   }
 
-  ren_try(rhi::Pipeline pipeline,
-          rhi::create_compute_pipeline(
-              scratch, m_device,
-              {
-                  .cs =
-                      {
-                          .code = create_info.cs.code,
-                          .entry_point = create_info.cs.entry_point,
-                          .specialization =
-                              {
-                                  .constants = specialization_constants,
-                                  .data = Span(specialization_data).as_bytes(),
-                              },
-                      },
-              }));
+  ren_try(
+      rhi::Pipeline pipeline,
+      rhi::create_compute_pipeline(
+          scratch, m_device,
+          {
+              .cs =
+                  {
+                      .code = create_info.cs.code,
+                      .entry_point = create_info.cs.entry_point,
+                      .specialization =
+                          {
+                              .constants = Span(specialization_constants,
+                                                num_spec_consts),
+                              .data = Span(specialization_data, num_spec_consts)
+                                          .as_bytes(),
+                          },
+                  },
+          }));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
 #endif
@@ -542,25 +536,26 @@ auto Renderer::submit(Arena scratch, rhi::QueueFamily queue_family,
                       TempSpan<const SemaphoreState> wait_semaphores,
                       TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void, Error> {
-  SmallVector<rhi::SemaphoreState> semaphore_states(wait_semaphores.size() +
-                                                    signal_semaphores.size());
+  auto *wait_states =
+      allocate<rhi::SemaphoreState>(&scratch, wait_semaphores.size());
   for (usize i : range(wait_semaphores.size())) {
-    semaphore_states[i] = {
+    wait_states[i] = {
         .semaphore = get_semaphore(wait_semaphores[i].semaphore).handle,
         .value = wait_semaphores[i].value,
     };
   }
+  auto *signal_states =
+      allocate<rhi::SemaphoreState>(&scratch, signal_semaphores.size());
   for (usize i : range(signal_semaphores.size())) {
-    semaphore_states[wait_semaphores.size() + i] = {
+    signal_states[i] = {
         .semaphore = get_semaphore(signal_semaphores[i].semaphore).handle,
         .value = signal_semaphores[i].value,
     };
   }
-  return rhi::queue_submit(
-      scratch, rhi::get_queue(m_device, queue_family), cmd_buffers,
-      Span(semaphore_states.data(), wait_semaphores.size()),
-      Span(semaphore_states.data() + wait_semaphores.size(),
-           signal_semaphores.size()));
+  return rhi::queue_submit(scratch, rhi::get_queue(m_device, queue_family),
+                           cmd_buffers,
+                           Span(wait_states, wait_semaphores.size()),
+                           Span(signal_states, signal_semaphores.size()));
 }
 
 bool Renderer::is_feature_supported(RendererFeature feature) const {
