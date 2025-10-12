@@ -20,6 +20,8 @@ auto make_arena() -> Arena;
 
 void destroy(Arena arena);
 
+void commit(NotNull<Arena *> arena, usize size);
+
 inline void *aligned_ptr(const Arena &arena, usize alignment) {
   return (u8 *)arena.ptr + ((arena.offset + alignment - 1) & ~(alignment - 1));
 }
@@ -50,8 +52,13 @@ inline auto allocate(NotNull<Arena *> arena, usize size, usize alignment)
 }
 
 template <typename T>
+  requires std::is_trivially_destructible_v<T>
 auto allocate(NotNull<Arena *> arena, usize count = 1) -> T * {
-  return (T *)allocate(arena, count * sizeof(T), alignof(T));
+  void *ptr = allocate(arena, count * sizeof(T), alignof(T));
+  if (not std::is_trivially_constructible_v<T>) {
+    return new (ptr) T[count];
+  }
+  return (T *)ptr;
 }
 
 } // namespace ren

@@ -65,8 +65,6 @@ struct Renderer {
 
   GenArray<CommandPool> m_command_pools;
 
-  auto init(const RendererInfo &info) -> Result<void, Error>;
-
   auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 
   auto get_rhi_device() const -> rhi::Device { return m_device; }

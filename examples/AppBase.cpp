@@ -39,7 +39,10 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     }
   }
 
-  OK(m_renderer, ren::create_renderer({.adapter = adapter}));
+  ren::Arena scratch = ren::make_arena();
+  commit(&scratch, 1 * ren::MiB);
+  ren::Arena arena = ren::make_arena();
+  OK(m_renderer, ren::create_renderer(scratch, &arena, {.adapter = adapter}));
 
   m_window =
       SDL_CreateWindow(app_name, 1280, 720,

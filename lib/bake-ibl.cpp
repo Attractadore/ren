@@ -268,8 +268,12 @@ int main(int argc, const char *argv[]) {
   auto in_path = result["in"].as<fs::path>();
   auto out_path = result["out"].as<fs::path>();
 
-  Renderer *renderer =
-      ren_export::create_renderer({.type = RendererType::Headless}).value();
+  ren::Arena scratch = ren::make_arena();
+  commit(&scratch, 1 * ren::MiB);
+  ren::Arena arena = ren::make_arena();
+  Renderer *renderer = ren_export::create_renderer(
+                           scratch, &arena, {.type = RendererType::Headless})
+                           .value();
 
   Baker *baker = create_baker(renderer).value();
 

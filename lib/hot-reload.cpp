@@ -104,7 +104,8 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
 
 } // namespace
 
-auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
+auto create_renderer(Arena scratch, NotNull<Arena *> arena,
+                     const RendererInfo &info) -> expected<Renderer *> {
   if (!hot_reload::vtbl_ref) {
 #if __linux__
     fmt::println("hot_reload: Create inotify instance");
@@ -139,7 +140,7 @@ auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
         (const hot_reload::Vtbl *)SDL_LoadFunction(lib_handle, "ren_vtbl");
     ren_assert(hot_reload::vtbl_ref);
   }
-  return hot_reload::vtbl_ref->create_renderer(info);
+  return hot_reload::vtbl_ref->create_renderer(scratch, arena, info);
 }
 
 auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {

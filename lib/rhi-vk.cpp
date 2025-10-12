@@ -400,7 +400,8 @@ constexpr auto MAP<PresentMode> = [] {
 
 #undef map
 
-const char *VK_LAYER_KHRONOS_VALIDATION_NAME = "VK_LAYER_KHRONOS_validation";
+constexpr const char *VK_LAYER_KHRONOS_VALIDATION_NAME =
+    "VK_LAYER_KHRONOS_validation";
 
 constexpr u32 QUEUE_FAMILY_UNAVAILABLE = -1;
 
@@ -410,16 +411,15 @@ struct AdapterData {
   u32 queue_families[ENUM_SIZE<QueueFamily>] = {};
   VkPhysicalDeviceProperties properties;
   MemoryHeapProperties heap_properties[ENUM_SIZE<MemoryHeap>] = {};
+  u32 num_extensions = 0;
 };
 
-constexpr usize MAX_PHYSICAL_DEVICES = 4;
-
-constexpr std::array REQUIRED_DEVICE_EXTENSIONS = {
+constexpr const char *REQUIRED_DEVICE_EXTENSIONS[] = {
     VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME,
     VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
 };
 
-constexpr std::array REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS = {
+constexpr const char *REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -435,7 +435,7 @@ struct InstanceData {
   VkInstance handle = nullptr;
   VkDebugReportCallbackEXT debug_callback = nullptr;
   u32 num_adapters = 0;
-  AdapterData adapters[MAX_PHYSICAL_DEVICES];
+  AdapterData *adapters = nullptr;
   bool headless = false;
 };
 
@@ -507,85 +507,70 @@ auto load(Instance instance) -> Result<void> {
   return {};
 }
 
-auto get_instance_features() -> Result<InstanceFeatures> {
-  VkResult result = VK_SUCCESS;
-
-  uint32_t num_extensions = 0;
-  result =
-      vkEnumerateInstanceExtensionProperties(nullptr, &num_extensions, nullptr);
-  if (result) {
-    return fail(result);
-  }
-  Vector<VkExtensionProperties> extensions(num_extensions);
-  result = vkEnumerateInstanceExtensionProperties(nullptr, &num_extensions,
-                                                  extensions.data());
-  if (result) {
-    return fail(Error::Unknown);
-  }
-
-  auto is_extension_supported = [&](StringView extension) {
-    auto it = std::ranges::find_if(extensions,
-                                   [&](const VkExtensionProperties &props) {
-                                     return extension == props.extensionName;
-                                   });
-    return it != extensions.end();
-  };
-
-  uint32_t num_layers = 0;
-  result = vkEnumerateInstanceLayerProperties(&num_layers, nullptr);
-  if (result) {
-    return fail(Error::Unknown);
-  }
-  Vector<VkLayerProperties> layers(num_layers);
-  result = vkEnumerateInstanceLayerProperties(&num_layers, layers.data());
-  if (result) {
-    return fail(Error::Unknown);
-  }
-
-  auto is_layer_supported = [&](StringView layer) {
-    auto it = std::ranges::find_if(layers, [&](const VkLayerProperties &props) {
-      return layer == props.layerName;
-    });
-    return it != layers.end();
-  };
-
-  return InstanceFeatures{
-      .debug_names = is_extension_supported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME),
-      .debug_layer = is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME),
-  };
-}
-
-auto create_instance(const InstanceCreateInfo &create_info)
+auto create_instance(Arena scratch, NotNull<Arena *> arena,
+                     const InstanceCreateInfo &create_info)
     -> Result<Instance> {
   VkResult result = VK_SUCCESS;
 
   fmt::println("vk: Create instance");
 
-  uint32_t num_supported_extensions = 0;
-  result = vkEnumerateInstanceExtensionProperties(
-      nullptr, &num_supported_extensions, nullptr);
+  u32 num_instance_layers = 0;
+  result = vkEnumerateInstanceLayerProperties(&num_instance_layers, nullptr);
   if (result) {
     return fail(Error::Unknown);
   }
-  Vector<VkExtensionProperties> supported_extensions(num_supported_extensions);
-  result = vkEnumerateInstanceExtensionProperties(
-      nullptr, &num_supported_extensions, supported_extensions.data());
+  auto *instance_layers =
+      allocate<VkLayerProperties>(&scratch, num_instance_layers);
+  result =
+      vkEnumerateInstanceLayerProperties(&num_instance_layers, instance_layers);
   if (result) {
     return fail(Error::Unknown);
   }
-
-  auto is_extension_supported = [&](StringView extension) {
-    auto it = std::ranges::find_if(supported_extensions,
-                                   [&](const VkExtensionProperties &props) {
-                                     return extension == props.extensionName;
-                                   });
-    return it != supported_extensions.end();
+  auto is_layer_supported = [&](StringView layer) {
+    for (usize e : range(num_instance_layers)) {
+      if (layer == instance_layers[e].layerName) {
+        return true;
+      }
+    }
+    return false;
   };
 
-  const InstanceFeatures &features = create_info.features;
+  u32 num_instance_extensions = 0;
+  result = vkEnumerateInstanceExtensionProperties(
+      nullptr, &num_instance_extensions, nullptr);
+  if (result) {
+    return fail(Error::Unknown);
+  }
+  auto *instance_extensions =
+      allocate<VkExtensionProperties>(&scratch, num_instance_extensions);
+  result = vkEnumerateInstanceExtensionProperties(
+      nullptr, &num_instance_extensions, instance_extensions);
+  if (result) {
+    return fail(Error::Unknown);
+  }
+  auto is_extension_supported = [&](StringView extension) {
+    for (usize e : range(num_instance_extensions)) {
+      if (extension == instance_extensions[e].extensionName) {
+        return true;
+      }
+    }
+    return false;
+  };
 
-  SmallVector<const char *> layers;
-  SmallVector<const char *> extensions;
+  u32 num_layers = 0;
+  auto *layers = allocate<const char *>(&scratch, num_instance_layers);
+  u32 num_extensions = 0;
+  auto *extensions = allocate<const char *>(&scratch, num_instance_extensions);
+
+  if (create_info.debug_layer and
+      is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME)) {
+    fmt::println("vk: Enable validation layer");
+    layers[num_layers++] = VK_LAYER_KHRONOS_VALIDATION_NAME;
+    if (is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
+      fmt::println("vk: Enable debug callback");
+      extensions[num_extensions++] = VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
+    }
+  }
 
   if (not create_info.headless) {
     fmt::println("vk: Enable SDL required extensions");
@@ -595,40 +580,37 @@ auto create_instance(const InstanceCreateInfo &create_info)
     if (!sdl_extensions) {
       return fail(Error::Unknown);
     }
-    extensions = Span(sdl_extensions, num_sdl_extensions);
+    std::ranges::copy_n(sdl_extensions, num_sdl_extensions,
+                        extensions + num_extensions);
+    num_extensions += num_sdl_extensions;
 
-    extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    extensions[num_extensions++] =
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME;
 
     if (is_extension_supported(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME)) {
       fmt::println("vk: Enable {}",
                    VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-      extensions.push_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+      extensions[num_extensions++] =
+          VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME;
     }
   }
 
-  if (features.debug_names) {
+  if (create_info.debug_names and
+      is_extension_supported(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
     fmt::println("vk: Enable debug names");
-    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    extensions[num_extensions++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
   }
 
-  if (features.debug_layer) {
-    fmt::println("vk: Enable validation layer");
-    layers.push_back(VK_LAYER_KHRONOS_VALIDATION_NAME);
-    if (is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
-      fmt::println("vk: Enable debug callback");
-      extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-    }
-  }
-
-  if (not layers.empty()) {
+  if (num_layers > 0) {
     fmt::println("vk: Enable layers:");
-    for (const char *layer : layers) {
+    for (const char *layer : Span(layers, num_layers)) {
       fmt::println("{}", layer);
     }
   }
-  if (not extensions.empty()) {
+
+  if (num_extensions > 0) {
     fmt::println("vk: Enable extensions:");
-    for (const char *extension : extensions) {
+    for (const char *extension : Span(extensions, num_extensions)) {
       fmt::println("{}", extension);
     }
   }
@@ -641,13 +623,14 @@ auto create_instance(const InstanceCreateInfo &create_info)
   VkInstanceCreateInfo instance_info = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
       .pApplicationInfo = &application_info,
-      .enabledLayerCount = static_cast<uint32_t>(layers.size()),
-      .ppEnabledLayerNames = layers.data(),
-      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-      .ppEnabledExtensionNames = extensions.data(),
+      .enabledLayerCount = num_layers,
+      .ppEnabledLayerNames = layers,
+      .enabledExtensionCount = num_extensions,
+      .ppEnabledExtensionNames = extensions,
   };
 
-  InstanceData *instance = new InstanceData{
+  auto *instance = allocate<InstanceData>(arena);
+  *instance = {
       .headless = create_info.headless,
   };
 
@@ -659,7 +642,7 @@ auto create_instance(const InstanceCreateInfo &create_info)
 
   volkLoadInstanceOnly(instance->handle);
 
-  if (features.debug_layer and
+  if (create_info.debug_layer and
       is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     // Try to create debug callback
 
@@ -686,10 +669,9 @@ auto create_instance(const InstanceCreateInfo &create_info)
                                    &instance->debug_callback);
   }
 
-  VkPhysicalDevice physical_devices[MAX_PHYSICAL_DEVICES];
-  uint32_t num_physical_devices = std::size(physical_devices);
+  uint32_t num_physical_devices = 0;
   result = vkEnumeratePhysicalDevices(instance->handle, &num_physical_devices,
-                                      physical_devices);
+                                      nullptr);
   if (result) {
     destroy_instance(instance);
     return fail(Error::Unknown);
@@ -698,9 +680,12 @@ auto create_instance(const InstanceCreateInfo &create_info)
     destroy_instance(instance);
     return fail(Error::Unsupported);
   }
+  auto *physical_devices =
+      allocate<VkPhysicalDevice>(&scratch, num_physical_devices);
+  result = vkEnumeratePhysicalDevices(instance->handle, &num_physical_devices,
+                                      physical_devices);
+  instance->adapters = allocate<AdapterData>(arena, num_physical_devices);
 
-  Vector<VkExtensionProperties> extension_properties;
-  Vector<VkQueueFamilyProperties> queues;
   for (VkPhysicalDevice handle : Span(physical_devices, num_physical_devices)) {
     bool skip = false;
 
@@ -709,27 +694,28 @@ auto create_instance(const InstanceCreateInfo &create_info)
     vkGetPhysicalDeviceProperties(handle, &adapter.properties);
     const char *device_name = adapter.properties.deviceName;
 
-    uint32_t num_extensions;
-    result = vkEnumerateDeviceExtensionProperties(handle, nullptr,
-                                                  &num_extensions, nullptr);
+    result = vkEnumerateDeviceExtensionProperties(
+        handle, nullptr, &adapter.num_extensions, nullptr);
     if (result) {
       destroy_instance(instance);
       return fail(Error::Unknown);
     }
-    extension_properties.resize(num_extensions);
+    auto *adapter_extensions =
+        allocate<VkExtensionProperties>(arena, adapter.num_extensions);
     result = vkEnumerateDeviceExtensionProperties(
-        handle, nullptr, &num_extensions, extension_properties.data());
+        handle, nullptr, &adapter.num_extensions, adapter_extensions);
     if (result) {
       destroy_instance(instance);
       return fail(Error::Unknown);
     }
 
     auto is_extension_supported = [&](StringView extension) {
-      return extension_properties.end() !=
-             std::ranges::find_if(extension_properties,
-                                  [&](const VkExtensionProperties &props) {
-                                    return extension == props.extensionName;
-                                  });
+      for (usize e : range(adapter.num_extensions)) {
+        if (extension == adapter_extensions[e].extensionName) {
+          return true;
+        }
+      }
+      return false;
     };
 
     for (const char *extension : REQUIRED_DEVICE_EXTENSIONS) {
@@ -798,9 +784,8 @@ auto create_instance(const InstanceCreateInfo &create_info)
 
     uint32_t num_queues = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, nullptr);
-    queues.resize(num_queues);
-    vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues,
-                                             queues.data());
+    auto *queues = allocate<VkQueueFamilyProperties>(&scratch, num_queues);
+    vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, queues);
 
     for (int i : range(num_queues)) {
       VkQueueFlags queue_flags = queues[i].queueFlags;
@@ -893,7 +878,6 @@ void destroy_instance(Instance instance) {
   if (instance->handle) {
     vkDestroyInstance(instance->handle, nullptr);
   }
-  delete instance;
 }
 
 auto get_adapter_count(Instance instance) -> u32 {
@@ -954,8 +938,8 @@ auto is_queue_family_supported(Instance instance, Adapter adapter,
          QUEUE_FAMILY_UNAVAILABLE;
 }
 
-auto create_device(Instance instance, const DeviceCreateInfo &create_info)
-    -> Result<Device> {
+auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
+                   const DeviceCreateInfo &create_info) -> Result<Device> {
   VkResult result = VK_SUCCESS;
 
   ren_assert(create_info.adapter.index < instance->num_adapters);
@@ -966,9 +950,12 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
 
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
-  Vector<const char *> extensions = REQUIRED_DEVICE_EXTENSIONS;
+  u32 num_extensions = 0;
+  auto *extensions = allocate<const char *>(&scratch, adapter.num_extensions);
   if (not instance->headless) {
-    extensions.append(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
+    std::ranges::copy(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS,
+                      extensions + num_extensions);
+    num_extensions += std::size(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
   }
 
   void *pnext = nullptr;
@@ -1055,7 +1042,7 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
 
   if (features.amd_anti_lag) {
     fmt::println("vk: Enable AMD Anti-Lag");
-    extensions.push_back(VK_AMD_ANTI_LAG_EXTENSION_NAME);
+    extensions[num_extensions++] = VK_AMD_ANTI_LAG_EXTENSION_NAME;
     add_features(amd_anti_lag_features);
   }
 
@@ -1068,7 +1055,8 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
 
   if (features.compute_shader_derivatives) {
     fmt::println("vk: Enable compute shader derivatives");
-    extensions.push_back(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
+    extensions[num_extensions++] =
+        VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;
     add_features(compute_shader_derivatives_features);
   }
 
@@ -1087,9 +1075,9 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
     }
   }
 
-  if (not extensions.empty()) {
+  if (num_extensions > 0) {
     fmt::println("vk: Enable extensions:");
-    for (const char *extension : extensions) {
+    for (const char *extension : Span(extensions, num_extensions)) {
       fmt::println("{}", extension);
     }
   }
@@ -1099,11 +1087,12 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
       .pNext = pnext,
       .queueCreateInfoCount = num_queues,
       .pQueueCreateInfos = queue_create_info,
-      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-      .ppEnabledExtensionNames = extensions.data(),
+      .enabledExtensionCount = num_extensions,
+      .ppEnabledExtensionNames = extensions,
   };
 
-  DeviceData *device = new DeviceData{
+  DeviceData *device = allocate<DeviceData>(arena);
+  *device = {
       .instance = instance,
       .adapter = create_info.adapter,
   };
@@ -1118,9 +1107,9 @@ auto create_device(Instance instance, const DeviceCreateInfo &create_info)
   volkLoadDeviceTable(&device->vk, device->handle);
 
   for (usize i : range(ENUM_SIZE<QueueFamily>)) {
-    u32 qfi = adapter.queue_families[i];
-    if (qfi != QUEUE_FAMILY_UNAVAILABLE) {
-      device->vk.vkGetDeviceQueue(device->handle, qfi, 0,
+    u32 qf = adapter.queue_families[i];
+    if (qf != QUEUE_FAMILY_UNAVAILABLE) {
+      device->vk.vkGetDeviceQueue(device->handle, qf, 0,
                                   &device->queues[i].handle);
       device->queues[i].vk = &device->vk;
     }
@@ -1281,7 +1270,6 @@ void destroy_device(Device device) {
     vmaDestroyAllocator(device->allocator);
     vk.vkDestroyDevice(handle, nullptr);
   }
-  delete device;
 }
 
 auto device_wait_idle(Device device) -> Result<void> {

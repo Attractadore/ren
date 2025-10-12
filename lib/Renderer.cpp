@@ -7,9 +7,49 @@
 
 namespace ren_export {
 
-auto create_renderer(const RendererInfo &info) -> expected<Renderer *> {
+auto create_renderer(Arena scratch, NotNull<Arena *> arena,
+                     const RendererInfo &info) -> expected<Renderer *> {
   auto *renderer = new Renderer();
-  ren_try_to(renderer->init(info));
+
+  bool headless = info.type == RendererType::Headless;
+
+  ren_try_to(rhi::load(headless));
+
+  ren_try(renderer->m_instance, rhi::create_instance(scratch, arena,
+                                                     {
+#if REN_DEBUG_NAMES
+                                                         .debug_names = true,
+#endif
+#if REN_DEBUG_LAYER
+                                                         .debug_layer = true,
+#endif
+                                                         .headless = headless,
+                                                     }));
+
+  if (info.adapter == DEFAULT_ADAPTER) {
+    renderer->m_adapter = rhi::get_adapter_by_preference(
+        renderer->m_instance, rhi::AdapterPreference::HighPerformance);
+  } else {
+    if (info.adapter >= rhi::get_adapter_count(renderer->m_instance)) {
+      throw std::runtime_error("Vulkan: Failed to find requested adapter");
+    }
+    renderer->m_adapter = rhi::get_adapter(renderer->m_instance, info.adapter);
+  }
+
+  rhi::AdapterFeatures adapter_features =
+      rhi::get_adapter_features(renderer->m_instance, renderer->m_adapter);
+
+  ren_try(renderer->m_device,
+          rhi::create_device(scratch, arena, renderer->m_instance,
+                             {
+                                 .adapter = renderer->m_adapter,
+                                 .features = adapter_features,
+                             }));
+
+  if (adapter_features.amd_anti_lag) {
+    renderer->m_features[(usize)RendererFeature::AmdAntiLag] = true;
+  }
+
   return renderer;
 }
 
@@ -22,58 +62,11 @@ void destroy_renderer(Renderer *renderer) {
   }
   rhi::destroy_device(renderer->m_device);
   rhi::destroy_instance(renderer->m_instance);
-  delete renderer;
 }
 
 } // namespace ren_export
 
 namespace ren {
-
-auto Renderer::init(const RendererInfo &info) -> Result<void, Error> {
-  bool headless = info.type == RendererType::Headless;
-
-  ren_try_to(rhi::load(headless));
-
-  ren_try(rhi::InstanceFeatures features, rhi::get_instance_features());
-
-#if !REN_DEBUG_NAMES
-  features.debug_names = false;
-#endif
-
-#if !REN_DEBUG_LAYER
-  features.debug_layer = false;
-#endif
-
-  ren_try(m_instance, rhi::create_instance({
-                          .features = features,
-                          .headless = headless,
-                      }));
-
-  if (info.adapter == DEFAULT_ADAPTER) {
-    m_adapter = rhi::get_adapter_by_preference(
-        m_instance, rhi::AdapterPreference::HighPerformance);
-  } else {
-    if (info.adapter >= rhi::get_adapter_count(m_instance)) {
-      throw std::runtime_error("Vulkan: Failed to find requested adapter");
-    }
-    m_adapter = rhi::get_adapter(m_instance, info.adapter);
-  }
-
-  rhi::AdapterFeatures adapter_features =
-      rhi::get_adapter_features(m_instance, m_adapter);
-
-  ren_try(m_device,
-          rhi::create_device(m_instance, {
-                                             .adapter = m_adapter,
-                                             .features = adapter_features,
-                                         }));
-
-  if (adapter_features.amd_anti_lag) {
-    m_features[(usize)RendererFeature::AmdAntiLag] = true;
-  }
-
-  return {};
-}
 
 auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
     -> bool {

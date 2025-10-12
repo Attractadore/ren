@@ -3,6 +3,7 @@
 #include "core/Result.hpp"
 #include "core/Span.hpp"
 #include "core/String.hpp"
+#include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/ren.hpp"
 #include "ren/tiny_imageformat.h"
@@ -54,19 +55,14 @@ template <typename T> using Result = Result<T, Error>;
 void unload(Instance instance);
 [[nodiscard]] auto load(Instance instance) -> Result<void>;
 
-struct InstanceFeatures {
-  bool debug_names : 1 = false;
-  bool debug_layer : 1 = false;
-};
-
-[[nodiscard]] auto get_instance_features() -> Result<InstanceFeatures>;
-
 struct InstanceCreateInfo {
-  InstanceFeatures features;
+  bool debug_names = false;
+  bool debug_layer = false;
   bool headless = false;
 };
 
-[[nodiscard]] auto create_instance(const InstanceCreateInfo &create_info)
+[[nodiscard]] auto create_instance(Arena scratch, NotNull<Arena *> arena,
+                                   const InstanceCreateInfo &create_info)
     -> Result<Instance>;
 
 void destroy_instance(Instance instance);
@@ -131,8 +127,8 @@ struct DeviceCreateInfo {
   AdapterFeatures features;
 };
 
-auto create_device(Instance instance, const DeviceCreateInfo &create_info)
-    -> Result<Device>;
+auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
+                   const DeviceCreateInfo &create_info) -> Result<Device>;
 
 void destroy_device(Device device);
 

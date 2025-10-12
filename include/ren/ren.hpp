@@ -1,4 +1,7 @@
 #pragma once
+#include "ren/core/Arena.hpp"
+#include "ren/core/NotNull.hpp"
+
 #include <expected>
 #include <glm/glm.hpp>
 #include <span>
@@ -197,7 +200,8 @@ struct DrawInfo {
 
 namespace ren_export {
 
-[[nodiscard]] auto create_renderer(const RendererInfo &info)
+[[nodiscard]] auto create_renderer(Arena scratch, NotNull<Arena *> arena,
+                                   const RendererInfo &info)
     -> expected<Renderer *>;
 
 void destroy_renderer(Renderer *renderer);
@@ -329,7 +333,8 @@ extern const ren::hot_reload::Vtbl *vtbl_ref;
 
 namespace ren {
 
-[[nodiscard]] auto create_renderer(const RendererInfo &info)
+[[nodiscard]] auto create_renderer(Arena scratch, NotNull<Arena *> arena,
+                                   const RendererInfo &info)
     -> expected<Renderer *>;
 
 inline void destroy_renderer(Renderer *renderer) {
