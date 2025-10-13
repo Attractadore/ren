@@ -140,13 +140,15 @@ auto get_texture_usage_flags(rhi::AccessMask accesses) -> rhi::ImageUsageFlags {
 
 } // namespace
 
-RgBuilder::RgBuilder(RgPersistent &rgp, Renderer &renderer,
-                     DescriptorAllocatorScope &descriptor_allocator) {
-  m_renderer = &renderer;
-  m_rgp = &rgp;
-  m_data = &rgp.m_build_data;
-  m_rt_data = &rgp.m_rt_data;
-  m_descriptor_allocator = &descriptor_allocator;
+void RgBuilder::init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
+                     NotNull<Renderer *> renderer,
+                     NotNull<DescriptorAllocatorScope *> descriptor_allocator) {
+  m_arena = arena;
+  m_renderer = renderer;
+  m_rgp = rgp;
+  m_data = &rgp->m_build_data;
+  m_rt_data = &rgp->m_rt_data;
+  m_descriptor_allocator = descriptor_allocator;
 
   for (auto &&[_, texture] : m_rgp->m_textures) {
     texture.def = {};
@@ -256,7 +258,7 @@ auto RgBuilder::read_buffer(RgPassId pass_id, RgUntypedBufferId buffer,
       .offset = offset,
       .usage = usage,
   });
-  pass.read_buffers.push_back(use);
+  pass.read_buffers.push(m_arena, use);
   return RgUntypedBufferToken(use);
 }
 
@@ -273,7 +275,7 @@ auto RgBuilder::write_buffer(RgPassId pass_id, RgDebugName name,
       .buffer = src,
       .usage = usage,
   });
-  pass.write_buffers.push_back(use);
+  pass.write_buffers.push(m_arena, use);
 #if REN_RG_DEBUG
   if (src_buffer.name == "rg#") {
     ren_assert(not name.empty());
@@ -359,7 +361,7 @@ auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
       .sampler = sampler,
       .state = usage,
   });
-  pass.read_textures.push_back(use);
+  pass.read_textures.push(m_arena, use);
   return RgTextureToken(use);
 }
 
@@ -380,7 +382,7 @@ auto RgBuilder::write_texture(RgTextureWriteInfo &&info) -> RgTextureToken {
       .state = info.usage,
       .base_mip = info.base_mip,
   });
-  m_data->m_passes[info.pass].write_textures.push_back(use);
+  m_data->m_passes[info.pass].write_textures.push(m_arena, use);
   *info.texture = create_virtual_texture(info.pass, std::move(info.name), src);
   return RgTextureToken(use);
 }
@@ -430,14 +432,14 @@ auto RgBuilder::add_semaphore_state(RgSemaphoreId semaphore, u64 value)
 
 void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                u64 value) {
-  m_data->m_passes[pass].wait_semaphores.push_back(
-      add_semaphore_state(semaphore, value));
+  m_data->m_passes[pass].wait_semaphores.push(
+      m_arena, add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                  u64 value) {
-  m_data->m_passes[pass].signal_semaphores.push_back(
-      add_semaphore_state(semaphore, value));
+  m_data->m_passes[pass].signal_semaphores.push(
+      m_arena, add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
@@ -446,14 +448,11 @@ void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
   m_rgp->m_semaphores[semaphore].handle = handle;
 }
 
-void RgBuilder::dump_pass_schedule() const {
+void RgBuilder::dump_pass_schedule(Arena scratch) const {
 #if REN_RG_DEBUG
-  SmallVector<RgUntypedBufferId> create_buffers;
-  SmallVector<RgUntypedBufferId> write_buffers;
-  SmallVector<RgTextureId> create_textures;
-  SmallVector<RgTextureId> write_textures;
 
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
+
     Span<const RgPassId> schedule = m_data->m_gfx_schedule;
     if (queue == RgQueue::Graphics) {
       fmt::println(stderr, "Graphics queue passes:");
@@ -473,32 +472,32 @@ void RgBuilder::dump_pass_schedule() const {
       const auto &buffers = m_data->m_buffers;
       const auto &buffer_uses = m_data->m_buffer_uses;
 
-      create_buffers.clear();
-      write_buffers.clear();
+      DynamicArray<RgUntypedBufferId> create_buffers;
+      DynamicArray<RgUntypedBufferId> write_buffers;
       for (RgBufferUseId use : pass.write_buffers) {
         RgUntypedBufferId id = buffer_uses[use].buffer;
         const RgBuffer &buffer = buffers[id];
         if (buffer.name.empty()) {
-          create_buffers.push_back(buffer.child);
+          create_buffers.push(&scratch, buffer.child);
         } else {
-          write_buffers.push_back(id);
+          write_buffers.push(&scratch, id);
         }
       }
 
-      if (not create_buffers.empty()) {
+      if (create_buffers.m_size > 0) {
         fmt::println(stderr, "    Creates buffers:");
         for (RgUntypedBufferId buffer : create_buffers) {
           fmt::println(stderr, "      - {}", buffers[buffer].name);
         }
       }
-      if (not pass.read_buffers.empty()) {
+      if (pass.read_buffers.m_size > 0) {
         fmt::println(stderr, "    Reads buffers:");
         for (RgBufferUseId use : pass.read_buffers) {
           fmt::println(stderr, "      - {}",
                        buffers[buffer_uses[use].buffer].name);
         }
       }
-      if (not write_buffers.empty()) {
+      if (write_buffers.m_size > 0) {
         fmt::println(stderr, "    Writes buffers:");
         for (RgUntypedBufferId src_id : write_buffers) {
           const RgBuffer &src = buffers[src_id];
@@ -510,33 +509,33 @@ void RgBuilder::dump_pass_schedule() const {
       const auto &textures = m_rgp->m_textures;
       const auto &texture_uses = m_data->m_texture_uses;
 
-      create_textures.clear();
-      write_textures.clear();
+      DynamicArray<RgTextureId> create_textures;
+      DynamicArray<RgTextureId> write_textures;
       for (RgTextureUseId use : pass.write_textures) {
         RgTextureId id = texture_uses[use].texture;
         const RgTexture &texture = textures[id];
         ren_assert(not texture.name.empty());
         if (texture.name.starts_with("rg#")) {
-          create_textures.push_back(texture.child);
+          create_textures.push(&scratch, texture.child);
         } else {
-          write_textures.push_back(id);
+          write_textures.push(&scratch, id);
         }
       }
 
-      if (not create_textures.empty()) {
+      if (create_textures.m_size > 0) {
         fmt::println(stderr, "    Creates textures:");
         for (RgTextureId texture : create_textures) {
           fmt::println(stderr, "      - {}", textures[texture].name);
         }
       }
-      if (not pass.read_textures.empty()) {
+      if (pass.read_textures.m_size > 0) {
         fmt::println(stderr, "    Reads textures:");
         for (RgTextureUseId use : pass.read_textures) {
           fmt::println(stderr, "      - {}",
                        textures[texture_uses[use].texture].name);
         }
       }
-      if (not write_textures.empty()) {
+      if (write_textures.m_size > 0) {
         fmt::println(stderr, "    Writes textures:");
         for (RgTextureId src_id : write_textures) {
           const RgTexture &src = textures[src_id];
@@ -548,7 +547,7 @@ void RgBuilder::dump_pass_schedule() const {
       const auto &semaphores = m_rgp->m_semaphores;
       const auto &semaphore_states = m_data->m_semaphore_states;
 
-      if (not pass.wait_semaphores.empty()) {
+      if (pass.wait_semaphores.m_size > 0) {
         fmt::println(stderr, "    Waits for semaphores:");
         for (RgSemaphoreStateId state_id : pass.wait_semaphores) {
           const RgSemaphoreState &state = semaphore_states[state_id];
@@ -562,7 +561,7 @@ void RgBuilder::dump_pass_schedule() const {
         }
       }
 
-      if (not pass.signal_semaphores.empty()) {
+      if (pass.signal_semaphores.m_size > 0) {
         fmt::println(stderr, "    Signals semaphores:");
         for (RgSemaphoreStateId state_id : pass.signal_semaphores) {
           const RgSemaphoreState &state = semaphore_states[state_id];
@@ -726,37 +725,23 @@ void RgBuilder::init_runtime_passes() {
       RgPass &pass = m_data->m_passes[pass_id];
       RgRtPass &rt_pass = rt_passes->emplace_back();
       rt_pass = {.pass = pass_id};
-      pass.ext.visit(OverloadSet{
-          [&](Monostate) {
-            unreachable("Callback for pass {} has not been "
-                        "set!",
-#if REN_RG_DEBUG
-                        m_rt_data->m_pass_names[pass_id]
-#else
-                        u32(pass_id)
-#endif
-            );
-          },
-          [&](RgRenderPass &graphics_pass) {
-            rt_pass.ext = RgRtRenderPass{
-                .base_render_target = u32(m_rt_data->m_render_targets.size()),
-                .num_render_targets = u32(graphics_pass.num_render_targets),
-                .depth_stencil_target =
-                    graphics_pass.depth_stencil_target.texture
-                        ? Optional(m_rt_data->m_depth_stencil_targets.size())
-                        : None,
-                .cb = std::move(graphics_pass.cb),
-            };
-            m_rt_data->m_render_targets.append(
-                Span(graphics_pass.render_targets,
-                     graphics_pass.num_render_targets));
-            if (graphics_pass.depth_stencil_target.texture) {
-              m_rt_data->m_depth_stencil_targets.push_back(
-                  graphics_pass.depth_stencil_target);
-            }
-          },
-          [&](RgCallback &cb) { rt_pass.ext = std::move(cb); },
-      });
+      if (pass.rp_cb) {
+        rt_pass.base_render_target = m_rt_data->m_render_targets.size();
+        rt_pass.num_render_targets = pass.num_render_targets;
+        rt_pass.depth_stencil_target =
+            pass.depth_stencil_target.texture
+                ? Optional(m_rt_data->m_depth_stencil_targets.size())
+                : None;
+        rt_pass.rp_cb = pass.rp_cb;
+        m_rt_data->m_render_targets.append(
+            Span(pass.render_targets, pass.num_render_targets));
+        if (pass.depth_stencil_target.texture) {
+          m_rt_data->m_depth_stencil_targets.push_back(
+              pass.depth_stencil_target);
+        }
+      } else {
+        rt_pass.cb = pass.cb;
+      }
     }
   }
 }
@@ -1342,10 +1327,10 @@ void RgBuilder::place_barriers_and_semaphores() {
     rt_pass.num_texture_barriers =
         new_texture_barrier_count - old_texture_barrier_count;
     rt_pass.base_wait_semaphore = old_semaphore_count;
-    rt_pass.num_wait_semaphores = pass.wait_semaphores.size();
+    rt_pass.num_wait_semaphores = pass.wait_semaphores.m_size;
     rt_pass.base_signal_semaphore =
         rt_pass.base_wait_semaphore + rt_pass.num_wait_semaphores;
-    rt_pass.num_signal_semaphores = pass.signal_semaphores.size();
+    rt_pass.num_signal_semaphores = pass.signal_semaphores.m_size;
   }
 }
 
@@ -1362,7 +1347,7 @@ auto RgBuilder::build(Arena scratch, const RgBuildInfo &build_info)
   add_inter_queue_semaphores();
 
 #if 0
-  dump_pass_schedule();
+  dump_pass_schedule(scratch);
 #endif
 
   init_runtime_passes();
@@ -1433,8 +1418,7 @@ auto RgPassBuilder::write_texture(RgDebugName name,
 
 void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
                                       const rhi::RenderTargetOperations &ops) {
-  RgRenderPass &rp =
-      m_builder->m_data->m_passes[m_pass].ext.get_or_emplace<RgRenderPass>();
+  RgPass &rp = m_builder->m_data->m_passes[m_pass];
   if (rp.num_render_targets <= index) {
     rp.num_render_targets = index + 1;
   }
@@ -1446,12 +1430,11 @@ void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
 
 void RgPassBuilder::add_depth_stencil_target(
     RgTextureToken texture, const rhi::DepthTargetOperations &ops) {
-  m_builder->m_data->m_passes[m_pass]
-      .ext.get_or_emplace<RgRenderPass>()
-      .depth_stencil_target = RgDepthStencilTarget{
-      .texture = texture,
-      .ops = ops,
-  };
+  m_builder->m_data->m_passes[m_pass].depth_stencil_target =
+      RgDepthStencilTarget{
+          .texture = texture,
+          .ops = ops,
+      };
 }
 
 auto RgPassBuilder::write_render_target(RgDebugName name,
@@ -1563,43 +1546,41 @@ auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
           cmd.pipeline_barrier(scratch, memory_barriers, texture_barriers);
         }
 
-        pass.ext.visit(OverloadSet{
-            [&](const RgRtRenderPass &pass) {
-              glm::uvec2 viewport = {-1, -1};
+        if (pass.rp_cb) {
+          glm::uvec2 viewport = {-1, -1};
 
-              RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
-              for (usize i : range(pass.num_render_targets)) {
-                const RgRenderTarget &rt =
-                    m_data->m_render_targets[pass.base_render_target + i];
-                if (!rt.texture) {
-                  continue;
-                }
-                Handle<Texture> texture = rg.get_texture(rt.texture);
-                viewport = m_renderer->get_texture(texture).size,
-                render_targets[i] = {.rtv = {texture}, .ops = rt.ops};
-              }
+          RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
+          for (usize i : range(pass.num_render_targets)) {
+            const RgRenderTarget &rt =
+                m_data->m_render_targets[pass.base_render_target + i];
+            if (!rt.texture) {
+              continue;
+            }
+            Handle<Texture> texture = rg.get_texture(rt.texture);
+            viewport = m_renderer->get_texture(texture).size,
+            render_targets[i] = {.rtv = {texture}, .ops = rt.ops};
+          }
 
-              DepthStencilTarget depth_stencil_target;
-              if (pass.depth_stencil_target) {
-                const RgDepthStencilTarget &dst =
-                    m_data->m_depth_stencil_targets[*pass.depth_stencil_target];
-                Handle<Texture> texture = rg.get_texture(dst.texture);
-                viewport = m_renderer->get_texture(texture).size,
-                depth_stencil_target = {.dsv = {texture}, .ops = dst.ops};
-              }
+          DepthStencilTarget depth_stencil_target;
+          if (pass.depth_stencil_target) {
+            const RgDepthStencilTarget &dst =
+                m_data->m_depth_stencil_targets[*pass.depth_stencil_target];
+            Handle<Texture> texture = rg.get_texture(dst.texture);
+            viewport = m_renderer->get_texture(texture).size,
+            depth_stencil_target = {.dsv = {texture}, .ops = dst.ops};
+          }
 
-              RenderPass render_pass = cmd.render_pass({
-                  .render_targets =
-                      Span(render_targets, pass.num_render_targets),
-                  .depth_stencil_target = depth_stencil_target,
-              });
-              render_pass.set_viewports({{.size = viewport}});
-              render_pass.set_scissor_rects({{.size = viewport}});
+          RenderPass render_pass = cmd.render_pass({
+              .render_targets = Span(render_targets, pass.num_render_targets),
+              .depth_stencil_target = depth_stencil_target,
+          });
+          render_pass.set_viewports({{.size = viewport}});
+          render_pass.set_scissor_rects({{.size = viewport}});
 
-              pass.cb(*m_renderer, rg, render_pass);
-            },
-            [&](const RgCallback &cb) { cb(*m_renderer, rg, cmd); },
-        });
+          pass.rp_cb(*m_renderer, rg, render_pass);
+        } else {
+          pass.cb(*m_renderer, rg, cmd);
+        }
       }
 
       if (pass.num_signal_semaphores > 0) {

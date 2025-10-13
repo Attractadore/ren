@@ -40,19 +40,18 @@ auto bake_ibl(Arena scratch, Baker *baker, const TextureInfo &info,
 
   if (!baker->pipelines.reflection_map) {
     ren_try(baker->pipelines.reflection_map,
-            load_compute_pipeline(scratch, baker->session_arena,
+            load_compute_pipeline(scratch, baker->gfx_arena,
                                   BakeReflectionMapCS,
                                   "Bake reflection environment map"));
   }
   if (!baker->pipelines.specular_map) {
     ren_try(baker->pipelines.specular_map,
-            load_compute_pipeline(scratch, baker->session_arena,
-                                  BakeSpecularMapCS,
+            load_compute_pipeline(scratch, baker->gfx_arena, BakeSpecularMapCS,
                                   "Bake specular environment map"));
   }
   if (!baker->pipelines.irradiance_map) {
     ren_try(baker->pipelines.irradiance_map,
-            load_compute_pipeline(scratch, baker->session_arena,
+            load_compute_pipeline(scratch, baker->gfx_arena,
                                   BakeIrradianceMapCS,
                                   "Bake irradiance environment map"));
   }
@@ -102,8 +101,8 @@ auto bake_ibl(Arena scratch, Baker *baker, const TextureInfo &info,
 
   ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
   ren_try(Handle<Texture> env_map,
-          baker->uploader.create_texture(baker->arena, baker->upload_allocator,
-                                         ktx_texture2));
+          baker->uploader.create_texture(
+              baker->frame_gfx_arena, baker->upload_allocator, ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   ren_try_to(
       baker->uploader.upload(scratch, *baker->renderer, baker->cmd_pool));
@@ -115,7 +114,9 @@ auto bake_ibl(Arena scratch, Baker *baker, const TextureInfo &info,
   constexpr usize NUM_CUBE_MAP_MIPS =
       ilog2(CUBE_MAP_SIZE / IRRADIANCE_SIZE) + 1;
 
-  RgBuilder rgb(baker->rg, *baker->renderer, baker->descriptor_allocator);
+  RgBuilder rgb;
+  rgb.init(&baker->frame_arena, &baker->rg, baker->renderer,
+           &baker->descriptor_allocator);
 
   RgTextureId cube_map = baker->rg.create_texture({
       .name = "cube-map",
@@ -187,7 +188,7 @@ auto bake_ibl(Arena scratch, Baker *baker, const TextureInfo &info,
   }
 
   ren_try(BufferView readback,
-          baker->arena.create_buffer({
+          baker->frame_gfx_arena.create_buffer({
               .heap = rhi::MemoryHeap::Readback,
               .size = get_mip_chain_byte_size(CUBE_MAP_FORMAT,
                                               {CUBE_MAP_SIZE, CUBE_MAP_SIZE, 1},

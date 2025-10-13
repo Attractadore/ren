@@ -21,9 +21,11 @@ struct BakerPipelines {
 };
 
 struct Baker {
+  Arena *arena = nullptr;
+  Arena frame_arena;
   Renderer *renderer = nullptr;
-  ResourceArena session_arena;
-  ResourceArena arena;
+  ResourceArena gfx_arena;
+  ResourceArena frame_gfx_arena;
   Handle<CommandPool> cmd_pool;
   RgPersistent rg;
   DescriptorAllocator session_descriptor_allocator;

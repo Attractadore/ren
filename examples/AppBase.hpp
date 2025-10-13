@@ -55,6 +55,7 @@ class AppBase {
 
 protected:
   ren::Arena m_scratch;
+  ren::Arena m_frame_arena;
   ren::Arena m_arena;
 
   AppBase() = default;

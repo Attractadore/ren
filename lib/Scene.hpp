@@ -174,6 +174,7 @@ struct Scene {
 
   auto build_rg(Arena scratch) -> Result<RenderGraph, Error>;
 
+  Arena *m_frame_arena = nullptr;
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;
   ResourceArena m_arena;

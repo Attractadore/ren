@@ -11,12 +11,36 @@
 #include "core/GenMap.hpp"
 #include "core/NewType.hpp"
 #include "core/String.hpp"
-#include "core/Variant.hpp"
 #include "ren/core/NotNull.hpp"
 
-#include <functional>
-
 namespace ren {
+
+template <class R, typename... Args> struct Function {
+  R (*m_callback)(void *, Args...) = nullptr;
+  void *m_payload = nullptr;
+
+  template <std::invocable<Args...> F>
+  void init(NotNull<Arena *> arena, F &&callable) {
+    using P = std::remove_cvref_t<F>;
+    static_assert(std::same_as<std::invoke_result_t<P, Args...>, R>);
+    static_assert(std::is_trivially_destructible_v<P>);
+    m_callback = &invoke<P>;
+    m_payload = allocate(arena, sizeof(P), alignof(P));
+    new (m_payload) P(std::forward<F>(callable));
+  }
+
+  template <typename F> static R invoke(void *callable, Args... args) {
+    return (*(F *)callable)(args...);
+  }
+
+  R operator()(Args... args) const {
+    ren_assert(m_callback);
+    ren_assert(m_payload);
+    m_callback(m_payload, args...);
+  }
+
+  explicit operator bool() const { return m_callback; }
+};
 
 #if REN_RG_DEBUG
 using RgDebugName = String;
@@ -40,7 +64,7 @@ concept CRgRenderPassCallback =
     std::invocable<F, Renderer &, const RgRuntime &, RenderPass &>;
 
 using RgRenderPassCallback =
-    std::function<void(Renderer &, const RgRuntime &, RenderPass &)>;
+    Function<void, Renderer &, const RgRuntime &, RenderPass &>;
 static_assert(CRgRenderPassCallback<RgRenderPassCallback>);
 
 template <typename F>
@@ -48,7 +72,7 @@ concept CRgCallback =
     std::invocable<F, Renderer &, const RgRuntime &, CommandRecorder &>;
 
 using RgCallback =
-    std::function<void(Renderer &, const RgRuntime &, CommandRecorder &)>;
+    Function<void, Renderer &, const RgRuntime &, CommandRecorder &>;
 static_assert(CRgCallback<RgCallback>);
 
 template <typename F>
@@ -56,7 +80,7 @@ concept CRgTextureInitCallback =
     std::invocable<F, Handle<Texture>, Renderer &, CommandRecorder &>;
 
 using RgTextureInitCallback =
-    std::function<void(Handle<Texture>, Renderer &, CommandRecorder &)>;
+    Function<void, Handle<Texture>, Renderer &, CommandRecorder &>;
 static_assert(CRgTextureInitCallback<RgTextureInitCallback>);
 
 struct RgPass;
@@ -145,26 +169,23 @@ struct RgDepthStencilTarget {
   rhi::DepthTargetOperations ops;
 };
 
-struct RgRenderPass {
-  u32 num_render_targets = 0;
-  RgRenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS] = {};
-  RgDepthStencilTarget depth_stencil_target;
-  RgRenderPassCallback cb;
-};
-
 struct RgPass {
+  RgRenderPassCallback rp_cb;
+  RgCallback cb;
   RgQueue queue = {};
   bool signal = false;
   bool wait = false;
   u64 signal_time = 0;
   u64 wait_time = 0;
-  SmallVector<RgBufferUseId> read_buffers;
-  SmallVector<RgBufferUseId> write_buffers;
-  SmallVector<RgTextureUseId> read_textures;
-  SmallVector<RgTextureUseId> write_textures;
-  SmallVector<RgSemaphoreStateId> wait_semaphores;
-  SmallVector<RgSemaphoreStateId> signal_semaphores;
-  Variant<Monostate, RgRenderPass, RgCallback> ext;
+  DynamicArray<RgBufferUseId> read_buffers;
+  DynamicArray<RgBufferUseId> write_buffers;
+  DynamicArray<RgTextureUseId> read_textures;
+  DynamicArray<RgTextureUseId> write_textures;
+  DynamicArray<RgSemaphoreStateId> wait_semaphores;
+  DynamicArray<RgSemaphoreStateId> signal_semaphores;
+  u32 num_render_targets = 0;
+  RgRenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
+  RgDepthStencilTarget depth_stencil_target;
 };
 
 template <typename T> struct RgBufferCreateInfo {
@@ -328,14 +349,11 @@ struct RgBuildData {
   Vector<RgSemaphoreState> m_semaphore_states;
 };
 
-struct RgRtRenderPass {
-  u32 base_render_target = 0;
-  u32 num_render_targets = 0;
-  Optional<u32> depth_stencil_target;
-  RgRenderPassCallback cb;
-};
+struct RgRtRenderPass {};
 
 struct RgRtPass {
+  RgRenderPassCallback rp_cb;
+  RgCallback cb;
   RgPassId pass;
   u32 base_memory_barrier = 0;
   u32 num_memory_barriers = 0;
@@ -345,7 +363,9 @@ struct RgRtPass {
   u32 num_wait_semaphores = 0;
   u32 base_signal_semaphore = 0;
   u32 num_signal_semaphores = 0;
-  Variant<RgRtRenderPass, RgCallback> ext;
+  u32 base_render_target = 0;
+  u32 num_render_targets = 0;
+  Optional<u32> depth_stencil_target;
 };
 
 struct RgTextureDescriptors {
@@ -439,8 +459,9 @@ struct RgTextureWriteInfo {
 
 class RgBuilder {
 public:
-  RgBuilder(RgPersistent &rgp, Renderer &renderer,
-            DescriptorAllocatorScope &descriptor_allocator);
+  void init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
+            NotNull<Renderer *> renderer,
+            NotNull<DescriptorAllocatorScope *> descriptor_allocator);
 
   [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
       -> RgPassBuilder;
@@ -536,17 +557,18 @@ private:
 
   void signal_semaphore(RgPassId pass, RgSemaphoreId semaphore, u64 value);
 
-  void set_render_pass_callback(RgPassId id, CRgRenderPassCallback auto cb) {
+  template <CRgRenderPassCallback F>
+  void set_render_pass_callback(RgPassId id, F &&cb) {
     RgPass &pass = m_data->m_passes[id];
     ren_assert(pass.queue == RgQueue::Graphics);
-    ren_assert(!pass.ext or pass.ext.get<RgRenderPass>());
-    pass.ext.get_or_emplace<RgRenderPass>().cb = std::move(cb);
+    ren_assert(!pass.cb);
+    pass.rp_cb.init(m_arena, std::forward<F>(cb));
   }
 
-  void set_callback(RgPassId id, CRgCallback auto cb) {
+  template <CRgCallback F> void set_callback(RgPassId id, F &&cb) {
     RgPass &pass = m_data->m_passes[id];
-    ren_assert(!pass.ext);
-    pass.ext = RgCallback(std::move(cb));
+    ren_assert(!pass.rp_cb);
+    pass.cb.init(m_arena, std::forward<F>(cb));
   }
 
   auto alloc_textures() -> Result<void, Error>;
@@ -558,7 +580,7 @@ private:
 
   void add_inter_queue_semaphores();
 
-  void dump_pass_schedule() const;
+  void dump_pass_schedule(Arena scratch) const;
 
   void init_runtime_passes();
 
@@ -569,6 +591,7 @@ private:
   void place_barriers_and_semaphores();
 
 private:
+  Arena *m_arena = nullptr;
   Renderer *m_renderer = nullptr;
   RgPersistent *m_rgp = nullptr;
   RgBuildData *m_data = nullptr;
@@ -907,12 +930,12 @@ public:
 
   void signal_semaphore(RgSemaphoreId semaphore, u64 value = 0);
 
-  void set_render_pass_callback(CRgRenderPassCallback auto cb) {
-    m_builder->set_render_pass_callback(m_pass, std::move(cb));
+  template <CRgRenderPassCallback F> void set_render_pass_callback(F &&cb) {
+    m_builder->set_render_pass_callback(m_pass, std::forward<F>(cb));
   }
 
-  void set_callback(CRgCallback auto cb) {
-    m_builder->set_callback(m_pass, std::move(cb));
+  template <CRgCallback F> void set_callback(F &&cb) {
+    m_builder->set_callback(m_pass, std::forward<F>(cb));
   }
 
   void dispatch(Handle<ComputePipeline> pipeline, const auto &args,

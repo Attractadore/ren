@@ -9,8 +9,8 @@ struct Arena;
 
 template <typename T> struct DynamicArray {
   T *m_data = nullptr;
-  usize m_size = 0;
-  usize m_capacity = 0;
+  u32 m_size = 0;
+  u32 m_capacity = 0;
 
 public:
   T *begin() { return m_data; }

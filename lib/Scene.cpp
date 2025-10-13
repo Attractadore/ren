@@ -81,9 +81,11 @@ auto init_scene_internal_data(Arena scratch, Renderer *renderer,
 
 } // namespace
 
-auto create_scene(Arena scratch, Renderer *renderer, SwapChain *swap_chain)
+auto create_scene(Arena scratch, NotNull<Arena *> frame_arena,
+                  Renderer *renderer, SwapChain *swap_chain)
     -> expected<Scene *> {
   auto *scene = new Scene{
+      .m_frame_arena = frame_arena,
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
   };
@@ -879,7 +881,8 @@ auto Scene::build_rg(Arena scratch) -> Result<RenderGraph, Error> {
     pass_rcs.sdr = pass_rcs.backbuffer;
   }
 
-  RgBuilder rgb(rgp, *m_renderer, m_frcs->descriptor_allocator);
+  RgBuilder rgb;
+  rgb.init(m_frame_arena, &rgp, m_renderer, &m_frcs->descriptor_allocator);
 
   PassCommonConfig cfg = {
       .rgp = &rgp,
