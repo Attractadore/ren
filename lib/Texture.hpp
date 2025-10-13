@@ -16,23 +16,7 @@ constexpr u32 MAX_SRV_SIZE = 4096;
 constexpr u32 MAX_SRV_MIPS = 13;
 static_assert(MAX_SRV_SIZE == (1 << (MAX_SRV_MIPS - 1)));
 
-struct ImageViewDesc {
-  rhi::ImageViewDimension dimension = {};
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  rhi::ComponentMapping components;
-  u32 base_mip = 0;
-  u32 num_mips = 0;
-  u32 base_layer = 0;
-  u32 num_layers = 0;
-
-public:
-  bool operator==(const ImageViewDesc &) const = default;
-};
-
-struct ImageView {
-  ImageViewDesc desc;
-  rhi::ImageView handle;
-};
+struct ImageView;
 
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");

@@ -7,7 +7,6 @@
 #include "Texture.hpp"
 #include "core/BitSet.hpp"
 #include "core/GenArray.hpp"
-#include "core/LinearMap.hpp"
 #include "core/Optional.hpp"
 #include "core/Span.hpp"
 #include "rhi.hpp"
@@ -27,6 +26,9 @@ enum class RendererFeature {
 
 constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
 
+struct ImageViewDesc;
+struct Sampler;
+
 struct Renderer {
   Arena *m_arena = nullptr;
   rhi::Instance m_instance = {};
@@ -39,7 +41,7 @@ struct Renderer {
 
   GenArray<Texture> m_textures;
 
-  LinearMap<rhi::SamplerCreateInfo, rhi::Sampler> m_samplers;
+  DynamicArray<Sampler> m_samplers;
 
   GenArray<Semaphore> m_semaphores;
   GenArray<Event> m_events;

@@ -7,9 +7,7 @@ namespace ren {
 
 struct Arena;
 
-template <typename T>
-  requires std::is_trivially_destructible_v<T>
-struct DynamicArray {
+template <typename T> struct DynamicArray {
   T *m_data = nullptr;
   usize m_size = 0;
   usize m_capacity = 0;
@@ -21,7 +19,9 @@ public:
   T *end() { return m_data + m_size; }
   const T *end() const { return m_data + m_size; }
 
-  void push(NotNull<Arena *> arena, T value) {
+  void push(NotNull<Arena *> arena, T value)
+    requires std::is_trivially_destructible_v<T>
+  {
     [[unlikely]] if (m_size + 1 > m_capacity) {
       usize new_capacity = m_capacity > 0 ? 2 * m_capacity : 1;
       if (!m_data or !ren::expand<T>(arena, m_data, m_capacity, new_capacity)) {

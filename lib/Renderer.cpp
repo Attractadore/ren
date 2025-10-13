@@ -5,6 +5,33 @@
 #include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
 
+namespace ren {
+
+struct ImageViewDesc {
+  rhi::ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ComponentMapping components;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
+
+public:
+  bool operator==(const ImageViewDesc &) const = default;
+};
+
+struct ImageView {
+  ImageViewDesc desc;
+  rhi::ImageView handle;
+};
+
+struct Sampler {
+  rhi::SamplerCreateInfo desc;
+  rhi::Sampler handle;
+};
+
+} // namespace ren
+
 namespace ren_export {
 
 expected<Renderer *> create_renderer(Arena scratch, NotNull<Arena *> arena,
@@ -58,8 +85,8 @@ void destroy_renderer(Renderer *renderer) {
   if (!renderer) {
     return;
   }
-  for (const auto &[_, sampler] : renderer->m_samplers) {
-    rhi::destroy_sampler(renderer->m_device, sampler);
+  for (const Sampler &sampler : renderer->m_samplers) {
+    rhi::destroy_sampler(renderer->m_device, sampler.handle);
   }
   rhi::destroy_device(renderer->m_device);
   rhi::destroy_instance(renderer->m_instance);
@@ -271,12 +298,13 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
 
 auto Renderer::get_sampler(const rhi::SamplerCreateInfo &create_info)
     -> Result<rhi::Sampler, Error> {
-  [[likely]] if (const rhi::Sampler *sampler =
-                     m_samplers.try_get(create_info)) {
-    return *sampler;
+  for (const Sampler &sampler : m_samplers) {
+    if (sampler.desc == create_info) {
+      return sampler.handle;
+    }
   }
   ren_try(rhi::Sampler sampler, rhi::create_sampler(m_device, create_info));
-  m_samplers.insert(create_info, sampler);
+  m_samplers.push(m_arena, {create_info, sampler});
   return sampler;
 }
 
