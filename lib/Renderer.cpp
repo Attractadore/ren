@@ -7,15 +7,16 @@
 
 namespace ren_export {
 
-auto create_renderer(Arena scratch, NotNull<Arena *> arena,
-                     const RendererInfo &info) -> expected<Renderer *> {
-  auto *renderer = new Renderer();
+expected<Renderer *> create_renderer(Arena scratch, NotNull<Arena *> arena,
+                                     const RendererInfo &info) {
+  auto *renderer = new Renderer;
+  renderer->m_arena = arena;
 
   bool headless = info.type == RendererType::Headless;
 
   ren_try_to(rhi::load(headless));
 
-  ren_try(renderer->m_instance, rhi::create_instance(scratch, arena,
+  ren_try(renderer->m_instance, rhi::create_instance(scratch, renderer->m_arena,
                                                      {
 #if REN_DEBUG_NAMES
                                                          .debug_names = true,
@@ -40,7 +41,7 @@ auto create_renderer(Arena scratch, NotNull<Arena *> arena,
       rhi::get_adapter_features(renderer->m_instance, renderer->m_adapter);
 
   ren_try(renderer->m_device,
-          rhi::create_device(scratch, arena, renderer->m_instance,
+          rhi::create_device(scratch, renderer->m_arena, renderer->m_instance,
                              {
                                  .adapter = renderer->m_adapter,
                                  .features = adapter_features,
@@ -62,6 +63,7 @@ void destroy_renderer(Renderer *renderer) {
   }
   rhi::destroy_device(renderer->m_device);
   rhi::destroy_instance(renderer->m_instance);
+  delete renderer;
 }
 
 } // namespace ren_export
@@ -181,13 +183,12 @@ auto Renderer::create_external_texture(
 
 void Renderer::destroy(Handle<Texture> handle) {
   if (Optional<Texture> texture = m_textures.try_pop(handle)) {
+    for (const ImageView &view : texture->views) {
+      rhi::destroy_image_view(m_device, view.handle);
+    }
     if (rhi::get_allocation(m_device, texture->handle)) {
       rhi::destroy_image(m_device, texture->handle);
     }
-    for (const auto &[desc, view] : m_image_views[handle]) {
-      rhi::destroy_image_view(m_device, view);
-    }
-    m_image_views.erase(handle);
   };
 }
 
@@ -232,7 +233,7 @@ auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error> {
 
 auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     -> Result<rhi::ImageView, Error> {
-  const Texture &texture = get_texture(handle);
+  Texture &texture = m_textures[handle];
   if (desc.format == TinyImageFormat_UNDEFINED) {
     desc.format = texture.format;
   }
@@ -243,10 +244,10 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     desc.num_layers = texture.num_layers - desc.base_layer;
   }
 
-  auto &image_views = m_image_views[handle];
-
-  [[likely]] if (const rhi::ImageView *view = image_views.try_get(desc)) {
-    return *view;
+  for (const ImageView &view : texture.views) {
+    if (view.desc == desc) {
+      return view.handle;
+    }
   }
 
   ren_try(rhi::ImageView view,
@@ -263,8 +264,7 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
                   .base_layer = desc.base_layer,
                   .num_layers = desc.num_layers,
               }));
-
-  image_views.insert(desc, view);
+  texture.views.push(m_arena, {desc, view});
 
   return view;
 }

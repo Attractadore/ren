@@ -7,7 +7,6 @@
 #include "Texture.hpp"
 #include "core/BitSet.hpp"
 #include "core/GenArray.hpp"
-#include "core/HashMap.hpp"
 #include "core/LinearMap.hpp"
 #include "core/Optional.hpp"
 #include "core/Span.hpp"
@@ -28,20 +27,8 @@ enum class RendererFeature {
 
 constexpr usize NUM_RENDERER_FEAUTURES = (usize)RendererFeature::Last + 1;
 
-struct ImageViewDesc {
-  rhi::ImageViewDimension dimension = {};
-  TinyImageFormat format = TinyImageFormat_UNDEFINED;
-  rhi::ComponentMapping components;
-  u32 base_mip = 0;
-  u32 num_mips = 0;
-  u32 base_layer = 0;
-  u32 num_layers = 0;
-
-public:
-  bool operator==(const ImageViewDesc &) const = default;
-};
-
 struct Renderer {
+  Arena *m_arena = nullptr;
   rhi::Instance m_instance = {};
   rhi::Adapter m_adapter;
   rhi::Device m_device = {};
@@ -51,9 +38,6 @@ struct Renderer {
   GenArray<Buffer> m_buffers;
 
   GenArray<Texture> m_textures;
-
-  HashMap<Handle<Texture>, SmallLinearMap<ImageViewDesc, rhi::ImageView, 3>>
-      m_image_views;
 
   LinearMap<rhi::SamplerCreateInfo, rhi::Sampler> m_samplers;
 

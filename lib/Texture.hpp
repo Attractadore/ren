@@ -1,6 +1,7 @@
 #pragma once
 #include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
+#include "ren/core/Array.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/ren.hpp"
 #include "rhi.hpp"
@@ -14,6 +15,24 @@ class Renderer;
 constexpr u32 MAX_SRV_SIZE = 4096;
 constexpr u32 MAX_SRV_MIPS = 13;
 static_assert(MAX_SRV_SIZE == (1 << (MAX_SRV_MIPS - 1)));
+
+struct ImageViewDesc {
+  rhi::ImageViewDimension dimension = {};
+  TinyImageFormat format = TinyImageFormat_UNDEFINED;
+  rhi::ComponentMapping components;
+  u32 base_mip = 0;
+  u32 num_mips = 0;
+  u32 base_layer = 0;
+  u32 num_layers = 0;
+
+public:
+  bool operator==(const ImageViewDesc &) const = default;
+};
+
+struct ImageView {
+  ImageViewDesc desc;
+  rhi::ImageView handle;
+};
 
 struct TextureCreateInfo {
   REN_DEBUG_NAME_FIELD("Texture");
@@ -54,6 +73,7 @@ struct Texture {
   bool cube_map = false;
   u32 num_mips = 0;
   u32 num_layers = 0;
+  DynamicArray<ImageView> views;
 };
 
 constexpr u32 ALL_MIPS = -1;
