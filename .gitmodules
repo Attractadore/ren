@@ -53,21 +53,6 @@
 [submodule "external/tinygltf"]
 	path = external/tinygltf
 	url = https://github.com/syoyo/tinygltf/
-[submodule "external/boost-container"]
-	path = external/boost-container
-	url = https://github.com/boostorg/container
-[submodule "external/boost-config"]
-	path = external/boost-config
-	url = https://github.com/boostorg/config
-[submodule "external/boost-assert"]
-	path = external/boost-assert
-	url = https://github.com/boostorg/assert
-[submodule "external/boost-move"]
-	path = external/boost-move
-	url = https://github.com/boostorg/move
-[submodule "external/boost-intrusive"]
-	path = external/boost-intrusive
-	url = https://github.com/boostorg/intrusive
 [submodule "external/stb"]
 	path = external/stb
 	url = https://github.com/nothings/stb

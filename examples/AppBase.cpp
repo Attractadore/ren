@@ -57,8 +57,8 @@ auto AppBase::init(const char *app_name) -> Result<void> {
   OK(m_swapchain,
      ren::create_swapchain(m_scratch, &m_arena, m_renderer, m_window));
 
-  OK(m_scene,
-     ren::create_scene(m_scratch, &m_frame_arena, m_renderer, m_swapchain));
+  OK(m_scene, ren::create_scene(m_scratch, &m_frame_arena, &m_arena, m_renderer,
+                                m_swapchain));
 
   OK(m_camera, ren::create_camera(m_scene));
   ren::set_camera(m_scene, m_camera);

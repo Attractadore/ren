@@ -79,12 +79,10 @@ public:
         m_renderer->create_compute_pipeline(scratch, std::move(create_info)));
   }
 
-  auto create_command_pool(NotNull<Arena *> arena,
-                           const CommandPoolCreateInfo &create_info)
+  auto create_command_pool(const CommandPoolCreateInfo &create_info)
     requires IsArenaResource<CommandPool>
   {
-    return insert(
-        m_renderer->create_command_pool(arena, std::move(create_info)));
+    return insert(m_renderer->create_command_pool(std::move(create_info)));
   }
 
   template <typename H>

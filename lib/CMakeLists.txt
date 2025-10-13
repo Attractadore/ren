@@ -8,7 +8,7 @@ add_library(ren-core
   core/VmWin32.cpp
 )
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
-target_link_libraries(ren-core PUBLIC glm::glm Boost::container fmt::fmt Tracy::TracyClient)
+target_link_libraries(ren-core PUBLIC glm::glm fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_23)
 target_compile_definitions(ren-core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 add_library(ren::core ALIAS ren-core)

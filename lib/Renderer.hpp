@@ -195,8 +195,7 @@ struct Renderer {
     return m_events[event];
   }
 
-  auto create_command_pool(NotNull<Arena *> arena,
-                           const CommandPoolCreateInfo &create_info)
+  auto create_command_pool(const CommandPoolCreateInfo &create_info)
       -> Result<Handle<CommandPool>, Error>;
 
   void destroy(Handle<CommandPool> pool);

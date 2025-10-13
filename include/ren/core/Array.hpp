@@ -34,6 +34,26 @@ public:
     }
     m_data[m_size++] = value;
   }
+
+  T &back() {
+    ren_assert(m_size > 0);
+    return m_data[m_size - 1];
+  }
+
+  const T &back() const {
+    ren_assert(m_size > 0);
+    return m_data[m_size - 1];
+  }
+
+  T &operator[](usize i) {
+    ren_assert(i < m_size);
+    return m_data[i];
+  }
+
+  const T &operator[](usize i) const {
+    ren_assert(i < m_size);
+    return m_data[i];
+  }
 };
 
 } // namespace ren

@@ -119,7 +119,7 @@ struct SceneData {
   Handle<Camera> camera;
   GenArray<Camera> cameras;
 
-  IndexPoolList index_pools;
+  DynamicArray<IndexPool> index_pools;
   GenArray<Mesh> meshes;
 
   GenArray<MeshInstance> mesh_instances;
@@ -141,7 +141,6 @@ public:
 
 // Data that can change between hot reloads.
 struct SceneInternalData {
-  Arena m_arena;
   ResourceArena m_gfx_arena;
   Pipelines m_pipelines;
   DeviceBumpAllocator m_gfx_allocator;
@@ -174,10 +173,12 @@ struct Scene {
 
   auto build_rg(Arena scratch) -> Result<RenderGraph, Error>;
 
+  Arena *m_arena = nullptr;
+  Arena m_internal_arena;
   Arena *m_frame_arena = nullptr;
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;
-  ResourceArena m_arena;
+  ResourceArena m_gfx_arena;
   DescriptorAllocator m_descriptor_allocator;
   u64 m_frame_index = 0;
   ScenePerFrameResources *m_frcs = nullptr;

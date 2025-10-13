@@ -322,8 +322,6 @@ struct MeshGenerateMeshletsOptions {
 void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
   ren_assert(opts.header->scale != 0.0f);
 
-  SmallVector<u32, sh::NUM_MESHLET_TRIANGLES * 3> opt_triangles;
-
   opts.header->num_lods = opts.lods.size();
   Vector<meshopt_Meshlet> lod_meshlets;
   for (isize l = opts.lods.size() - 1; l >= 0; --l) {
@@ -375,7 +373,7 @@ void mesh_generate_meshlets(const MeshGenerateMeshletsOptions &opts) {
                            .subspan(base_triangle + lod_meshlet.triangle_offset,
                                     lod_meshlet.triangle_count * 3);
 
-      opt_triangles = triangles;
+      Span<u8> opt_triangles = triangles;
 
       // Optimize meshlet.
       // TODO: replace with meshopt_optimizeMeshlet

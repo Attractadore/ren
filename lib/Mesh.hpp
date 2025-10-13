@@ -74,8 +74,6 @@ struct IndexPool {
   u32 num_free_indices = sh::INDEX_POOL_SIZE;
 };
 
-using IndexPoolList = SmallVector<IndexPool, 1>;
-
 auto create_index_pool(ResourceArena &arena) -> IndexPool;
 
 namespace sh {

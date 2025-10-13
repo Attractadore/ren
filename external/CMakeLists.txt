@@ -1,9 +1,3 @@
-add_subdirectory(boost-config)
-add_subdirectory(boost-assert)
-add_subdirectory(boost-move)
-add_subdirectory(boost-intrusive)
-add_subdirectory(boost-container)
-
 add_subdirectory(glm)
 
 add_subdirectory(fmt)

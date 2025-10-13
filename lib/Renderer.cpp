@@ -358,11 +358,10 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
   return m_semaphores[semaphore];
 }
 
-auto Renderer::create_command_pool(NotNull<Arena *> arena,
-                                   const CommandPoolCreateInfo &create_info)
+auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
     -> Result<Handle<CommandPool>, Error> {
   ren_try(rhi::CommandPool pool,
-          rhi::create_command_pool(arena, m_device,
+          rhi::create_command_pool(m_arena, m_device,
                                    {.queue_family = create_info.queue_family}));
 #if REN_DEBUG_NAMES
   ren_try_to(rhi::set_debug_name(m_device, pool, create_info.name.c_str()));

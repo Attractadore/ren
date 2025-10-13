@@ -31,12 +31,10 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
   baker->frame_gfx_arena.init(renderer);
   baker->rg.init(renderer);
   baker->rg.set_async_compute_enabled(false);
-  ren_try(baker->cmd_pool,
-          baker->gfx_arena.create_command_pool(
-              arena, {
-                         .name = "Baker command pool",
-                         .queue_family = rhi::QueueFamily::Graphics,
-                     }));
+  ren_try(baker->cmd_pool, baker->gfx_arena.create_command_pool({
+                               .name = "Baker command pool",
+                               .queue_family = rhi::QueueFamily::Graphics,
+                           }));
   ren_try_to(
       baker->descriptor_allocator.init(baker->session_descriptor_allocator));
   baker->allocator.init(arena, *baker->renderer, baker->gfx_arena, 64 * MiB);
