@@ -1,5 +1,4 @@
 #pragma once
-#include "Hash.hpp"
 #include "ren/core/StdDef.hpp"
 
 #include <bit>
@@ -41,19 +40,7 @@ protected:
   u32 index : 24 = 0;
 };
 
-template <> struct Hash<GenIndex> {
-  auto operator()(GenIndex gi) const -> u64 {
-    return Hash<u32>()(std::bit_cast<u32>(gi));
-  };
-};
-
 template <typename T> class Handle : public GenIndex {};
-
-template <typename T> struct Hash<Handle<T>> {
-  auto operator()(Handle<T> handle) const -> u64 {
-    return Hash<GenIndex>()(handle);
-  };
-};
 
 struct NullHandleT {
   template <typename T> operator Handle<T>() const { return Handle<T>(); }

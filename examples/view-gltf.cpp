@@ -1,5 +1,4 @@
 #include "ImGuiApp.hpp"
-#include "core/Hash.hpp"
 #include "core/IO.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
@@ -203,15 +202,22 @@ struct GltfMeshDesc {
   auto operator<=>(const GltfMeshDesc &) const = default;
 };
 
+// boost::hash_combine
+template <typename T>
+auto hash_combine(ren::u64 hash, const T &value) -> ren::u64 {
+  hash ^= std::hash<T>()(value) + 0x9e3779b9 + (hash << 6U) + (hash >> 2U);
+  return hash;
+}
+
 template <> struct std::hash<GltfMeshDesc> {
   auto operator()(const GltfMeshDesc &desc) const -> size_t {
     size_t seed = 0;
-    ren::hash_combine(seed, desc.positions);
-    ren::hash_combine(seed, desc.normals);
-    ren::hash_combine(seed, desc.tangents);
-    ren::hash_combine(seed, desc.colors);
-    ren::hash_combine(seed, desc.uvs);
-    ren::hash_combine(seed, desc.indices);
+    hash_combine(seed, desc.positions);
+    hash_combine(seed, desc.normals);
+    hash_combine(seed, desc.tangents);
+    hash_combine(seed, desc.colors);
+    hash_combine(seed, desc.uvs);
+    hash_combine(seed, desc.indices);
     return seed;
   }
 };

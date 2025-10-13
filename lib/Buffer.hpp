@@ -1,7 +1,6 @@
 #pragma once
 #include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
-#include "core/Hash.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/StdDef.hpp"
 #include "rhi.hpp"
@@ -62,15 +61,5 @@ public:
 };
 
 using BufferView = BufferSlice<std::byte>;
-
-template <> struct Hash<BufferView> {
-  auto operator()(const BufferView &value) const noexcept -> u64 {
-    u64 seed = 0;
-    seed = hash_combine(seed, value.buffer);
-    seed = hash_combine(seed, value.offset);
-    seed = hash_combine(seed, value.count);
-    return seed;
-  }
-};
 
 } // namespace ren
