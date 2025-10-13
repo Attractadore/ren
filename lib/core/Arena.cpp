@@ -17,14 +17,16 @@ auto make_arena() -> Arena {
 
 void destroy(Arena arena) { vm_free(arena.ptr, arena.max_size); }
 
-void commit(NotNull<Arena *> arena, usize size) {
-  size = (size + ARENA_PAGE_SIZE - 1) & ~(ARENA_PAGE_SIZE - 1);
-  size = std::min(size, arena->max_size);
-  size = std::max(size, arena->committed_size);
-  size = std::max(size, ARENA_PAGE_SIZE);
-  vm_commit((u8 *)arena->ptr + arena->committed_size,
-            size - arena->committed_size);
-  arena->committed_size = size;
+void *expand(NotNull<Arena *> arena, void *ptr, usize old_size,
+             usize new_size) {
+  ren_assert(ptr >= arena->ptr and ptr <= (u8 *)arena->ptr + arena->max_size);
+  usize offset = (u8 *)ptr - (u8 *)arena->ptr;
+  if (offset + old_size == arena->offset) {
+    commit(arena, offset + new_size);
+    arena->offset = arena->offset + new_size;
+    return ptr;
+  }
+  return nullptr;
 }
 
 } // namespace ren

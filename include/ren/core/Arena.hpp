@@ -20,26 +20,27 @@ auto make_arena() -> Arena;
 
 void destroy(Arena arena);
 
-void commit(NotNull<Arena *> arena, usize size);
-
 inline void clear(NotNull<Arena *> arena) { arena->offset = 0; }
+
+inline void commit(NotNull<Arena *> arena, usize size) {
+  ren_assert(size <= arena->max_size);
+  size = (size + ARENA_PAGE_SIZE - 1) & ~(ARENA_PAGE_SIZE - 1);
+  if (size <= arena->committed_size) {
+    return;
+  }
+  vm_commit((u8 *)arena->ptr + arena->committed_size,
+            size - arena->committed_size);
+  arena->committed_size = size;
+}
 
 inline auto allocate(NotNull<Arena *> arena, usize size, usize alignment)
     -> void * {
   usize aligned_offset = (arena->offset + alignment - 1) & ~(alignment - 1);
   usize new_arena_size = aligned_offset + size;
   ren_assert(new_arena_size <= arena->max_size);
-
-  [[unlikely]] if (new_arena_size >= arena->committed_size) {
-    usize commit_size =
-        std::max(new_arena_size - arena->committed_size, ARENA_PAGE_SIZE);
-    vm_commit((u8 *)arena->ptr + arena->committed_size, commit_size);
-    arena->committed_size += commit_size;
-  }
-
+  commit(arena, new_arena_size);
   void *ptr = (u8 *)arena->ptr + aligned_offset;
   arena->offset = new_arena_size;
-
   return ptr;
 }
 
@@ -51,6 +52,14 @@ auto allocate(NotNull<Arena *> arena, usize count = 1) -> T * {
     return new (ptr) T[count];
   }
   return (T *)ptr;
+}
+
+void *expand(NotNull<Arena *> arena, void *ptr, usize old_size, usize new_size);
+
+template <typename T>
+T *expand(NotNull<Arena *> arena, T *ptr, usize old_count, usize new_count) {
+  return (T *)expand(arena, (void *)ptr, old_count * sizeof(T),
+                     new_count * sizeof(T));
 }
 
 } // namespace ren
