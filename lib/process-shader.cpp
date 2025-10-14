@@ -1,13 +1,13 @@
 #include "core/IO.hpp"
 #include "core/Span.hpp"
-#include "core/String.hpp"
 #include "core/Vector.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/Format.hpp"
+#include "ren/core/String.hpp"
 
 #include <cxxopts.hpp>
 #include <filesystem>
-#include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <numeric>
@@ -31,8 +31,8 @@ struct CompileOptions {
 };
 
 struct Member {
-  String type;
-  String name;
+  String8 type;
+  String8 name;
 };
 
 } // namespace ren
@@ -75,6 +75,8 @@ auto get_stage_short_name(ShaderStage stage) -> const char * {
 }
 
 auto process(const CompileOptions &opts) -> int {
+  ScratchArena scratch;
+
   ShaderStage stage = get_file_shader_stage(opts.src.extension());
   if (stage == ShaderStage::Unknown) {
     fmt::println(stderr, "Unknown shader stage for input file {}", opts.src);
@@ -110,7 +112,7 @@ auto process(const CompileOptions &opts) -> int {
   u32 spv_bound = spirv[3];
 
   // Parse all structs.
-  Vector<StringView> struct_names(spv_bound);
+  Vector<String8> struct_names(spv_bound);
   Vector<u32> struct_member_counts(spv_bound);
   Vector<u32> struct_member_offsets(spv_bound);
   Vector<u32> id_def_words(spv_bound);
@@ -121,12 +123,12 @@ auto process(const CompileOptions &opts) -> int {
 
     if (op == SpvOpName) {
       u32 structure = spirv[word + 1];
-      StringView name = (const char *)&spirv[word + 2];
+      auto name = String8::init((const char *)&spirv[word + 2]);
       if (name.starts_with("ren.sh.")) {
-        name.remove_prefix(std::strlen("ren.sh."));
+        name = name.remove_prefix(std::strlen("ren.sh."));
       }
       if (name.ends_with("_natural")) {
-        name.remove_suffix(std::strlen("_natural"));
+        name = name.remove_suffix(std::strlen("_natural"));
       }
       struct_names[structure] = name;
     } else if (op == SpvOpTypeStruct) {
@@ -146,7 +148,7 @@ auto process(const CompileOptions &opts) -> int {
         ren_assert(tp_storage_class == SpvStorageClassPushConstant);
         u32 tp_type = spirv[tp_word + 3];
         pc_type = tp_type;
-        ren_assert(not struct_names[pc_type].empty());
+        ren_assert(struct_names[pc_type].m_size > 0);
       }
     }
 
@@ -158,7 +160,7 @@ auto process(const CompileOptions &opts) -> int {
       struct_member_offsets.back() + struct_member_counts.back();
 
   // Parse all struct members.
-  Vector<StringView> member_names(num_members);
+  Vector<String8> member_names(num_members);
   Vector<u32> member_offsets(num_members);
   for (usize word = 5; word < spirv.size();) {
     usize num_words = spirv[word] >> SpvWordCountShift;
@@ -167,7 +169,7 @@ auto process(const CompileOptions &opts) -> int {
     if (op == SpvOpMemberName) {
       u32 structure = spirv[word + 1];
       u32 member = spirv[word + 2];
-      StringView name = (const char *)&spirv[word + 3];
+      auto name = String8::init((const char *)&spirv[word + 3]);
       member_names[struct_member_offsets[structure] + member] = name;
     } else if (op == SpvOpMemberDecorate) {
       u32 structure = spirv[word + 1];
@@ -182,21 +184,19 @@ auto process(const CompileOptions &opts) -> int {
     word += num_words;
   }
 
-  String header, source;
-  header.reserve(128 * 1024);
-  source.reserve(128 * 1024);
-  fmt::format_to(std::back_inserter(header),
-                 "#pragma once\n#include \"{}\"\n\n",
-                 to_system_path(shader_header));
+  auto header = StringBuilder8::init(scratch, 128 * 1024);
+  auto source = StringBuilder8::init(scratch, 128 * 1024);
+  fmt::format_to(header.back_inserter(), "#pragma once\n#include \"{}\"\n\n",
+                 to_system_path(scratch, shader_header));
 
   // Generate static asserts for struct fields.
-  header += "#include <cstddef>\n\n";
+  header.push("#include <cstddef>\n\n");
   for (usize i : range(spv_bound)) {
-    if (struct_names[i].empty() or struct_member_counts[i] == 0) {
+    if (struct_names[i].m_size == 0 or struct_member_counts[i] == 0) {
       continue;
     }
 
-    StringView name = struct_names[i];
+    String8 name = struct_names[i];
 
     usize offset = struct_member_offsets[i];
 
@@ -209,42 +209,41 @@ auto process(const CompileOptions &opts) -> int {
       continue;
     }
 
-    fmt::format_to(std::back_inserter(header), "// {}\n", name);
+    fmt::format_to(header.back_inserter(), "// {}\n", name);
     for (usize m : range(struct_member_counts[i])) {
-      fmt::format_to(std::back_inserter(header),
+      fmt::format_to(header.back_inserter(),
                      "static_assert(offsetof(::ren::sh::{}, {}) == {});\n",
                      name, member_names[offset + m],
                      member_offsets[offset + m]);
     }
-    header += '\n';
+    header.push('\n');
   }
 
   // Generate render graph binding code.
   if (pc_type == -1) {
     fmt::println(stderr, "Failed to find push constant block in {}", opts.spv);
   } else {
-    StringView pc_name = struct_names[pc_type];
+    String8 pc_name = struct_names[pc_type];
 
-    String member_declarations;
-    String member_conversions;
-    String member_type;
+    auto member_declarations = StringBuilder8::init(scratch);
+    auto member_conversions = StringBuilder8::init(scratch);
     usize offset = struct_member_offsets[pc_type];
     for (usize i : range(struct_member_counts[pc_type])) {
-      StringView member_name = member_names[offset + i];
+      String8 member_name = member_names[offset + i];
 
-      member_type.clear();
-      fmt::format_to(std::back_inserter(member_type),
-                     "decltype(::ren::sh::{}::{})", pc_name, member_name);
+      auto member_type = StringBuilder8::init(scratch);
+      fmt::format_to(member_type.back_inserter(), "decltype(::ren::sh::{}::{})",
+                     pc_name, member_name);
 
-      fmt::format_to(std::back_inserter(member_declarations),
+      fmt::format_to(member_declarations.back_inserter(),
                      "  ::ren::RgPushConstant<{}> {};\n", member_type,
                      member_name);
-      fmt::format_to(std::back_inserter(member_conversions),
+      fmt::format_to(member_conversions.back_inserter(),
                      "    .{0} = rg.to_push_constant<{1}>(from.{0}),\n",
                      member_name, member_type);
     }
 
-    fmt::format_to(std::back_inserter(header),
+    fmt::format_to(header.back_inserter(),
                    R"(#ifndef Rg{0}_DEFINED
 #define Rg{0}_DEFINED
 
@@ -266,13 +265,14 @@ inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{0}& from) -> 
 
 )",
                    pc_name, member_declarations, member_conversions,
-                   to_system_path(fs::absolute(opts.project_src_dir)));
+                   to_system_path(scratch, fs::absolute(opts.project_src_dir)));
   }
 
-  String binary_variable_name =
-      fmt::format("{}{}", opts.src.stem(), get_stage_short_name(stage));
+  auto binary_variable_name = StringBuilder8::init(scratch);
+  fmt::format_to(binary_variable_name.back_inserter(), "{}{}", opts.src.stem(),
+                 get_stage_short_name(stage));
 
-  fmt::format_to(std::back_inserter(header),
+  fmt::format_to(header.back_inserter(),
                  R"(#include <cstddef>
 #include <cstdint>
 
@@ -284,7 +284,7 @@ extern const size_t {}Size;
 }})",
                  binary_variable_name, binary_variable_name);
 
-  fmt::format_to(std::back_inserter(source), R"(#include <cstddef>
+  fmt::format_to(source.back_inserter(), R"(#include <cstddef>
 #include <cstdint>
 
 namespace ren {{
@@ -303,7 +303,7 @@ const extern size_t {0}Size = sizeof({0}) / sizeof(uint32_t);
       fmt::println("Failed to open {} for writing", hpp_dst);
       return -1;
     }
-    f.write(header.data(), header.size());
+    f.write(header.m_buffer.m_data, header.m_buffer.m_size);
   }
 
   {
@@ -312,7 +312,7 @@ const extern size_t {0}Size = sizeof({0}) / sizeof(uint32_t);
       fmt::println("Failed to open {} for writing", hpp_dst);
       return -1;
     }
-    f.write(source.data(), source.size());
+    f.write(source.m_buffer.m_data, source.m_buffer.m_size);
   }
 
   return 0;
@@ -344,5 +344,6 @@ int main(int argc, const char *argv[]) {
   opts.spv = result["file"].as<fs::path>();
   opts.src = result["src"].as<fs::path>();
 
+  ScratchArena::init_allocator();
   return process(opts);
 }

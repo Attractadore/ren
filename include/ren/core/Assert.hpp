@@ -2,7 +2,7 @@
 #if REN_ASSERTIONS
 #include "ren/core/StdDef.hpp"
 
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <source_location>
 
 #define ren_assert_msg(condition, msg)                                         \

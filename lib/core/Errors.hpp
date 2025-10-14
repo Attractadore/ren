@@ -1,8 +1,7 @@
 #pragma once
-#include "String.hpp"
 #include "ren/core/StdDef.hpp"
 
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <source_location>
 #include <stdexcept>
 #include <utility>
@@ -24,8 +23,8 @@ template <typename P> void throw_if_failed(P *ptr, const char *msg) {
 template <typename... Ts>
 [[noreturn]] inline void unreachable(fmt::format_string<Ts...> fmt_str,
                                      Ts &&...args) {
-  fmt::print(stderr, "{}\n",
-             fmt::format(std::move(fmt_str), std::forward<Ts>(args)...));
+  fmt::println(stderr, std::move(fmt_str), std::forward<Ts>(args)...);
+  std::fputc('\n', stderr);
   ren_trap();
   std::abort();
 }
@@ -40,7 +39,7 @@ todo(std::source_location sl = std::source_location::current()) {
 
 template <typename... Ts>
 [[noreturn]] inline void
-todo(StringView message,
+todo(const char *message,
      std::source_location sl = std::source_location::current()) {
   fmt::println(stderr, "{}:{}: {}", sl.file_name(), sl.line(), message);
   ren_trap();

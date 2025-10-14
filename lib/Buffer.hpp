@@ -1,14 +1,14 @@
 #pragma once
-#include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/String.hpp"
 #include "rhi.hpp"
 
 namespace ren {
 
 struct BufferCreateInfo {
-  REN_DEBUG_NAME_FIELD("Buffer");
+  String8 name = "Buffer";
   rhi::MemoryHeap heap = rhi::MemoryHeap::Default;
   union {
     usize size = 0;

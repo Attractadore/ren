@@ -1,11 +1,11 @@
 #pragma once
-#include "DebugNames.hpp"
+#include "ren/core/String.hpp"
 #include "rhi.hpp"
 
 namespace ren {
 
 struct CommandPoolCreateInfo {
-  REN_DEBUG_NAME_FIELD("Command pool");
+  String8 name = "Command pool";
   rhi::QueueFamily queue_family = {};
 };
 

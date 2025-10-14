@@ -3,9 +3,9 @@
 #include "Renderer.hpp"
 #include "Scene.hpp"
 #include "core/Views.hpp"
+#include "ren/core/Format.hpp"
 
 #include <SDL3/SDL_video.h>
-#include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren_export {
@@ -14,10 +14,10 @@ auto get_sdl_window_flags(Renderer *) -> uint32_t {
   return rhi::SDL_WINDOW_FLAGS;
 }
 
-auto create_swapchain(Arena scratch, NotNull<Arena *> arena, Renderer *renderer,
+auto create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
                       SDL_Window *window) -> expected<SwapChain *> {
   auto *swap_chain = allocate<SwapChain>(arena);
-  ren_try_to(swap_chain->init(scratch, arena, *renderer, window));
+  ren_try_to(swap_chain->init(arena, *renderer, window));
   return swap_chain;
 }
 
@@ -58,8 +58,10 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 } // namespace
 
-auto SwapChain::init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
+auto SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
                      SDL_Window *window) -> Result<void, Error> {
+  ScratchArena scratch(arena);
+
   m_renderer = &renderer;
   m_window = window;
 
@@ -71,13 +73,13 @@ auto SwapChain::init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
   rhi::Adapter adapter = m_renderer->get_adapter();
   rhi::Device device = m_renderer->get_rhi_device();
 
-  ren_try(rhi::PresentMode present_mode, select_present_mode(scratch));
+  ren_try(rhi::PresentMode present_mode, select_present_mode());
   ren_try(u32 num_images, select_image_count(present_mode));
 
   {
     u32 num_formats = 0;
     TinyImageFormat *formats = nullptr;
-    rhi::get_surface_formats(&scratch, renderer.m_instance, adapter, m_surface,
+    rhi::get_surface_formats(scratch, renderer.m_instance, adapter, m_surface,
                              &num_formats, &formats);
     m_format = formats[0];
     for (TinyImageFormat format : Span(formats, num_formats)) {
@@ -116,7 +118,7 @@ auto SwapChain::init(Arena scratch, NotNull<Arena *> arena, Renderer &renderer,
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  ren_try_to(update_textures(scratch));
+  ren_try_to(update_textures());
 
   fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
                m_size.x, m_size.y, (int)present_mode, m_num_textures);
@@ -131,13 +133,13 @@ void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
   }
 }
 
-auto SwapChain::select_present_mode(Arena scratch)
-    -> Result<rhi::PresentMode, Error> {
+auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
+  ScratchArena scratch;
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
     u32 num_present_modes = 0;
     rhi::PresentMode *present_modes = nullptr;
-    rhi::get_surface_present_modes(&scratch, m_renderer->m_instance,
+    rhi::get_surface_present_modes(scratch, m_renderer->m_instance,
                                    m_renderer->get_adapter(), m_surface,
                                    &num_present_modes, &present_modes);
     bool have_immediate = false;
@@ -194,13 +196,14 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   }
 }
 
-auto SwapChain::update_textures(Arena scratch) -> Result<void, Error> {
+auto SwapChain::update_textures() -> Result<void, Error> {
+  ScratchArena scratch;
   rhi::Image *images = nullptr;
-  rhi::get_swap_chain_images(&scratch, m_swap_chain, &m_num_textures, &images);
+  rhi::get_swap_chain_images(scratch, m_swap_chain, &m_num_textures, &images);
   ren_assert(m_num_textures <= std::size(m_textures));
   for (usize i : range(m_num_textures)) {
     m_textures[i] = m_renderer->create_external_texture({
-        .name = fmt::format("Swap Chain Texture {}", i),
+        .name = format(scratch, "Swap Chain Texture {}", i),
         .handle = images[i],
         .format = m_format,
         .usage = m_usage,
@@ -209,17 +212,17 @@ auto SwapChain::update_textures(Arena scratch) -> Result<void, Error> {
     });
     ren_try(m_semaphores[i],
             m_renderer->create_semaphore({
-                .name = fmt::format("Swap Chain Semaphore {}", i),
+                .name = format(scratch, "Swap Chain Semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
   }
   return {};
 }
 
-auto SwapChain::update(Arena scratch) -> Result<void, Error> {
+auto SwapChain::update() -> Result<void, Error> {
   m_renderer->wait_idle();
 
-  auto present_mode = select_present_mode(scratch);
+  auto present_mode = select_present_mode();
   if (!present_mode) {
     return Failure(present_mode.error());
   }
@@ -245,7 +248,7 @@ auto SwapChain::update(Arena scratch) -> Result<void, Error> {
     m_renderer->destroy(m_textures[i]);
     m_renderer->destroy(m_semaphores[i]);
   }
-  ren_try_to(update_textures(scratch));
+  ren_try_to(update_textures());
 
   m_dirty = false;
 
@@ -255,7 +258,7 @@ auto SwapChain::update(Arena scratch) -> Result<void, Error> {
   return {};
 }
 
-auto SwapChain::acquire(Arena scratch, Handle<Semaphore> signal_semaphore)
+auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
     -> Result<u32, Error> {
   ZoneScoped;
 
@@ -273,7 +276,7 @@ auto SwapChain::acquire(Arena scratch, Handle<Semaphore> signal_semaphore)
   }
 
   if (m_dirty) {
-    ren_try_to(update(scratch));
+    ren_try_to(update());
   }
 
   while (true) {
@@ -285,15 +288,14 @@ auto SwapChain::acquire(Arena scratch, Handle<Semaphore> signal_semaphore)
       return m_image_index;
     }
     if (image.error() == rhi::Error::OutOfDate) {
-      ren_try_to(update(scratch));
+      ren_try_to(update());
       continue;
     }
     return Failure(image.error());
   }
 }
 
-auto SwapChain::present(Arena scratch, rhi::QueueFamily qf)
-    -> Result<void, Error> {
+auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
   ZoneScoped;
   auto result = rhi::present(
       rhi::get_queue(m_renderer->get_rhi_device(), qf), m_swap_chain,
@@ -301,7 +303,7 @@ auto SwapChain::present(Arena scratch, rhi::QueueFamily qf)
   m_image_index = -1;
   if (!result) {
     if (result.error() == rhi::Error::OutOfDate) {
-      return update(scratch);
+      return update();
     }
     return Failure(result.error());
   }

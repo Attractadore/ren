@@ -8,10 +8,9 @@
 #include "core/DynamicBitset.hpp"
 #include "core/Flags.hpp"
 #include "core/GenArray.hpp"
-#include "core/GenMap.hpp"
 #include "core/NewType.hpp"
-#include "core/String.hpp"
 #include "ren/core/NotNull.hpp"
+#include "ren/core/String.hpp"
 
 namespace ren {
 
@@ -41,14 +40,6 @@ template <class R, typename... Args> struct Function {
 
   explicit operator bool() const { return m_callback; }
 };
-
-#if REN_RG_DEBUG
-using RgDebugName = String;
-#else
-using RgDebugName = DummyString;
-#endif
-
-#define REN_RG_DEBUG_NAME_TYPE NO_UNIQUE_ADDRESS RgDebugName
 
 class CommandRecorder;
 class RenderPass;
@@ -155,7 +146,7 @@ namespace ren {
 using RgQueueMask = Flags<RgQueue>;
 
 struct RgPassCreateInfo {
-  REN_RG_DEBUG_NAME_TYPE name;
+  String8 name;
   RgQueue queue = RgQueue::Graphics;
 };
 
@@ -170,6 +161,7 @@ struct RgDepthStencilTarget {
 };
 
 struct RgPass {
+  String8 name;
   RgRenderPassCallback rp_cb;
   RgCallback cb;
   RgQueue queue = {};
@@ -190,7 +182,7 @@ struct RgPass {
 
 template <typename T> struct RgBufferCreateInfo {
   /// Buffer name.
-  REN_RG_DEBUG_NAME_TYPE name;
+  String8 name;
   /// Memory heap from which to allocate buffer.
   rhi::MemoryHeap heap = rhi::MemoryHeap::Default;
   /// Buffer size.
@@ -209,15 +201,11 @@ struct RgPhysicalBuffer {
 };
 
 struct RgBuffer {
-#if REN_RG_DEBUG
-  String name;
-#endif
+  String8 name;
   RgPhysicalBufferId parent;
   RgPassId def;
   RgPassId kill;
-#if REN_RG_DEBUG
   RgUntypedBufferId child;
-#endif
 };
 
 struct RgBufferUse {
@@ -228,7 +216,7 @@ struct RgBufferUse {
 
 struct RgTextureCreateInfo {
   /// Texture name
-  REN_RG_DEBUG_NAME_TYPE name;
+  String8 name;
   /// Texture format
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   /// Texture width
@@ -245,9 +233,7 @@ struct RgTextureCreateInfo {
 };
 
 struct RgPhysicalTexture {
-#if REN_RG_DEBUG
-  String name;
-#endif
+  String8 name;
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage = {};
   glm::uvec3 size = {};
@@ -264,9 +250,7 @@ struct RgPhysicalTexture {
 };
 
 struct RgTexture {
-#if REN_RG_DEBUG
-  String name;
-#endif
+  String8 name;
   RgPhysicalTextureId parent;
   RgPassId def;
   RgPassId kill;
@@ -281,9 +265,7 @@ struct RgTextureUse {
 };
 
 struct RgSemaphore {
-#if REN_RG_DEBUG
-  String name;
-#endif
+  String8 name;
   Handle<Semaphore> handle;
 };
 
@@ -352,6 +334,7 @@ struct RgBuildData {
 struct RgRtRenderPass {};
 
 struct RgRtPass {
+  String8 name;
   RgRenderPassCallback rp_cb;
   RgCallback cb;
   RgPassId pass;
@@ -378,9 +361,6 @@ struct RgTextureDescriptors {
 struct RgRtData {
   Vector<RgRtPass> m_gfx_passes;
   Vector<RgRtPass> m_async_passes;
-#if REN_RG_DEBUG
-  GenMap<String, RgPassId> m_pass_names;
-#endif
 
   Vector<RgRenderTarget> m_render_targets;
   Vector<RgDepthStencilTarget> m_depth_stencil_targets;
@@ -398,14 +378,17 @@ struct RgRtData {
 
 class RgPersistent {
 public:
-  void init(Renderer *renderer) { m_arena.init(renderer); }
+  void init(NotNull<Arena *> arena, NotNull<Renderer *> renderer) {
+    m_arena = arena;
+    m_gfx_arena.init(renderer);
+  }
 
-  [[nodiscard]] auto create_texture(RgTextureCreateInfo &&create_info)
+  [[nodiscard]] auto create_texture(const RgTextureCreateInfo &create_info)
       -> RgTextureId;
 
-  [[nodiscard]] auto create_texture(RgDebugName name) -> RgTextureId;
+  [[nodiscard]] auto create_texture(String8 name) -> RgTextureId;
 
-  [[nodiscard]] auto create_semaphore(RgDebugName name) -> RgSemaphoreId;
+  [[nodiscard]] auto create_semaphore(String8 name) -> RgSemaphoreId;
 
   void set_async_compute_enabled(bool enabled);
 
@@ -418,7 +401,8 @@ private:
   void rotate_textures();
 
 private:
-  ResourceArena m_arena;
+  Arena *m_arena = nullptr;
+  ResourceArena m_gfx_arena;
   Vector<RgPhysicalTexture> m_physical_textures;
   DynamicBitset m_persistent_textures;
   DynamicBitset m_external_textures;
@@ -449,7 +433,7 @@ struct RgBuildInfo {
 };
 
 struct RgTextureWriteInfo {
-  NO_UNIQUE_ADDRESS RgDebugName name;
+  String8 name;
   RgPassId pass;
   NotNull<RgTextureId *> texture;
   rhi::ImageState usage = rhi::CS_UNORDERED_ACCESS_IMAGE;
@@ -463,10 +447,10 @@ public:
             NotNull<Renderer *> renderer,
             NotNull<DescriptorAllocatorScope *> descriptor_allocator);
 
-  [[nodiscard]] auto create_pass(RgPassCreateInfo &&create_info)
+  [[nodiscard]] auto create_pass(const RgPassCreateInfo &create_info)
       -> RgPassBuilder;
 
-  [[nodiscard]] auto create_buffer(RgDebugName name, rhi::MemoryHeap heap,
+  [[nodiscard]] auto create_buffer(String8 name, rhi::MemoryHeap heap,
                                    usize size) -> RgUntypedBufferId;
 
   template <typename T>
@@ -474,8 +458,7 @@ public:
       -> RgBufferId<T>;
 
   template <typename T>
-  [[nodiscard]] auto create_buffer(RgDebugName name,
-                                   const BufferSlice<T> &slice)
+  [[nodiscard]] auto create_buffer(String8 name, const BufferSlice<T> &slice)
       -> RgBufferId<T> {
     RgBufferId<T> buffer = create_buffer<T>({
         .name = std::move(name),
@@ -487,11 +470,11 @@ public:
   }
 
   template <typename T>
-  void fill_buffer(RgDebugName name, RgBufferId<T> *buffer, const T &value,
+  void fill_buffer(String8 name, RgBufferId<T> *buffer, const T &value,
                    RgQueue queue = RgQueue::Graphics);
 
   template <typename T>
-  void copy_buffer(RgBufferId<T> src, RgDebugName name, RgBufferId<T> *dst,
+  void copy_buffer(RgBufferId<T> src, String8 name, RgBufferId<T> *dst,
                    RgQueue queue = RgQueue::Graphics);
 
   template <typename T>
@@ -500,10 +483,10 @@ public:
     copy_buffer(src, "rg#", dst, queue);
   }
 
-  void clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+  void clear_texture(String8 name, NotNull<RgTextureId *> texture,
                      const glm::vec4 &value, RgQueue queue = RgQueue::Graphics);
 
-  void copy_texture_to_buffer(RgTextureId src, RgDebugName name,
+  void copy_texture_to_buffer(RgTextureId src, String8 name,
                               RgUntypedBufferId *dst,
                               RgQueue queue = RgQueue::Graphics);
 
@@ -518,15 +501,14 @@ public:
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
-  auto build(Arena scratch, const RgBuildInfo &build_info)
-      -> Result<RenderGraph, Error>;
+  auto build(const RgBuildInfo &build_info) -> Result<RenderGraph, Error>;
 
 private:
   friend RgPassBuilder;
 
   [[nodiscard]] auto add_buffer_use(const RgBufferUse &use) -> RgBufferUseId;
 
-  [[nodiscard]] auto create_virtual_buffer(RgPassId pass, RgDebugName name,
+  [[nodiscard]] auto create_virtual_buffer(RgPassId pass, String8 name,
                                            RgUntypedBufferId parent)
       -> RgUntypedBufferId;
 
@@ -534,14 +516,14 @@ private:
                                  const rhi::BufferState &usage, u32 offset)
       -> RgUntypedBufferToken;
 
-  [[nodiscard]] auto write_buffer(RgPassId pass, RgDebugName name,
+  [[nodiscard]] auto write_buffer(RgPassId pass, String8 name,
                                   RgUntypedBufferId buffer,
                                   const rhi::BufferState &usage)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto add_texture_use(const RgTextureUse &use) -> RgTextureUseId;
 
-  [[nodiscard]] auto create_virtual_texture(RgPassId pass, RgDebugName name,
+  [[nodiscard]] auto create_virtual_texture(RgPassId pass, String8 name,
                                             RgTextureId parent) -> RgTextureId;
 
   [[nodiscard]] auto read_texture(RgPassId pass, RgTextureId texture,
@@ -580,13 +562,13 @@ private:
 
   void add_inter_queue_semaphores();
 
-  void dump_pass_schedule(Arena scratch) const;
+  void dump_pass_schedule() const;
 
   void init_runtime_passes();
 
   void init_runtime_buffers();
 
-  void init_runtime_textures(Arena scratch);
+  void init_runtime_textures();
 
   void place_barriers_and_semaphores();
 
@@ -610,8 +592,7 @@ struct RgExecuteInfo {
 
 class RenderGraph {
 public:
-  auto execute(Arena scratch, const RgExecuteInfo &execute_info)
-      -> Result<void, Error>;
+  auto execute(const RgExecuteInfo &execute_info) -> Result<void, Error>;
 
 private:
   friend RgBuilder;
@@ -795,12 +776,12 @@ public:
   }
 
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+  write_buffer(String8 name, RgUntypedBufferId buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
 
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+  write_buffer(String8 name, RgUntypedBufferId buffer,
                NotNull<RgUntypedBufferId *> new_buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgUntypedBufferToken {
@@ -810,7 +791,7 @@ public:
   }
 
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgUntypedBufferId *buffer,
+  write_buffer(String8 name, RgUntypedBufferId *buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgUntypedBufferToken {
     return write_buffer(std::move(name), *buffer, buffer, usage);
@@ -818,7 +799,7 @@ public:
 
   template <typename T>
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgBufferId<T> buffer,
+  write_buffer(String8 name, RgBufferId<T> buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
     auto [id, token] =
@@ -828,8 +809,7 @@ public:
 
   template <typename T>
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgBufferId<T> buffer,
-               RgBufferId<T> *new_buffer,
+  write_buffer(String8 name, RgBufferId<T> buffer, RgBufferId<T> *new_buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgBufferToken<T> {
     ren_assert(new_buffer);
@@ -840,7 +820,7 @@ public:
 
   template <typename T>
   [[nodiscard]] auto
-  write_buffer(RgDebugName name, RgBufferId<T> *buffer,
+  write_buffer(String8 name, RgBufferId<T> *buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgBufferToken<T> {
     ren_assert(buffer);
@@ -901,28 +881,27 @@ public:
   }
 
   auto
-  write_texture(RgDebugName name, RgTextureId texture,
+  write_texture(String8 name, RgTextureId texture,
                 const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
   auto
-  write_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+  write_texture(String8 name, NotNull<RgTextureId *> texture,
                 const rhi::ImageState &usage = rhi::CS_UNORDERED_ACCESS_IMAGE)
       -> RgTextureToken;
 
-  auto write_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+  auto write_texture(String8 name, NotNull<RgTextureId *> texture,
                      const rhi::ImageState &usage,
                      const rhi::SamplerCreateInfo &sampler, u32 base_mip = 0)
       -> RgTextureToken;
 
-  auto write_render_target(RgDebugName name, NotNull<RgTextureId *> texture,
+  auto write_render_target(String8 name, NotNull<RgTextureId *> texture,
                            const rhi::RenderTargetOperations &ops,
                            u32 index = 0) -> RgTextureToken;
 
   auto read_depth_stencil_target(RgTextureId texture) -> RgTextureToken;
 
-  auto write_depth_stencil_target(RgDebugName name,
-                                  NotNull<RgTextureId *> texture,
+  auto write_depth_stencil_target(String8 name, NotNull<RgTextureId *> texture,
                                   const rhi::DepthTargetOperations &ops)
       -> RgTextureToken;
 
@@ -1010,21 +989,19 @@ template <typename T>
                                        create_info.count * sizeof(T)));
   }
   RgBufferId<T> buffer(
-      create_buffer("", create_info.heap, create_info.count * sizeof(T)));
-  RgDebugName name = std::move(create_info.name);
-#if REN_RG_DEBUG
-  if (name.empty()) {
+      create_buffer({}, create_info.heap, create_info.count * sizeof(T)));
+  String8 name = std::move(create_info.name);
+  if (name.m_size == 0) {
     name = "rg#";
   }
-#endif
   fill_buffer(std::move(name), &buffer, *create_info.init,
               create_info.init_queue);
   return buffer;
 }
 
 template <typename T>
-void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
-                            const T &value, RgQueue queue) {
+void RgBuilder::fill_buffer(String8 name, RgBufferId<T> *buffer, const T &value,
+                            RgQueue queue) {
   auto pass = create_pass({.name = "fill-buffer", .queue = queue});
   auto token =
       pass.write_buffer(std::move(name), buffer, rhi::TRANSFER_DST_BUFFER);
@@ -1042,8 +1019,8 @@ void RgBuilder::fill_buffer(RgDebugName name, RgBufferId<T> *buffer,
 }
 
 template <typename T>
-void RgBuilder::copy_buffer(RgBufferId<T> src, RgDebugName name,
-                            RgBufferId<T> *dst, RgQueue queue) {
+void RgBuilder::copy_buffer(RgBufferId<T> src, String8 name, RgBufferId<T> *dst,
+                            RgQueue queue) {
   auto pass = create_pass({.name = "copy-buffer", .queue = queue});
   auto src_token = pass.read_buffer(src, rhi::TRANSFER_SRC_BUFFER);
   auto dst_token =

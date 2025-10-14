@@ -2,46 +2,37 @@
 #include "CommandRecorder.hpp"
 #include "core/Errors.hpp"
 #include "core/Views.hpp"
+#include "ren/core/Format.hpp"
 
-#include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
 
-auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
+auto RgPersistent::create_texture(const RgTextureCreateInfo &create_info)
     -> RgTextureId {
-#if REN_RG_DEBUG
-  ren_assert(not create_info.name.empty());
-#endif
+  ScratchArena scratch;
+
+  ren_assert(create_info.name.m_size > 0);
 
   RgPhysicalTextureId id(m_physical_textures.size());
   m_physical_textures.emplace_back();
   m_persistent_textures.push_back(create_info.persistent);
   m_external_textures.push_back(false);
 
-#if REN_RG_DEBUG
-  String handle_name = std::move(create_info.name);
-  String name;
+  String8 name = create_info.name;
   if (!create_info.persistent) {
-    name = fmt::format("rg#{}", handle_name);
-  } else {
-    name = handle_name;
+    name = format(scratch, "rg#{}", name);
   }
-#endif
 
   m_physical_textures.back() = RgPhysicalTexture{
-#if REN_RG_DEBUG
-      .name = std::move(handle_name),
-#endif
+      .name = create_info.name.copy(m_arena),
       .format = create_info.format,
       .size = {create_info.width, create_info.height, create_info.depth},
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
       .num_layers = create_info.num_layers,
       .id = m_textures.insert({
-#if REN_RG_DEBUG
-          .name = std::move(name),
-#endif
+          .name = name.copy(m_arena),
           .parent = id,
       }),
   };
@@ -51,29 +42,20 @@ auto RgPersistent::create_texture(RgTextureCreateInfo &&create_info)
   return m_physical_textures[id].id;
 }
 
-auto RgPersistent::create_texture(RgDebugName name) -> RgTextureId {
-#if REN_RG_DEBUG
-  ren_assert(not name.empty());
-#endif
+auto RgPersistent::create_texture(String8 name) -> RgTextureId {
+  ren_assert(name.m_size > 0);
+
+  ScratchArena scratch;
 
   RgPhysicalTextureId id(m_physical_textures.size());
   m_physical_textures.emplace_back();
   m_persistent_textures.push_back(false);
   m_external_textures.push_back(true);
 
-#if REN_RG_DEBUG
-  String handle_name = std::move(name);
-  name = fmt::format("rg#{}", handle_name);
-#endif
-
   m_physical_textures[id] = {
-#if REN_RG_DEBUG
-      .name = std::move(handle_name),
-#endif
+      .name = name.copy(m_arena),
       .id = m_textures.insert({
-#if REN_RG_DEBUG
-          .name = std::move(name),
-#endif
+          .name = format(scratch, "rg#{}", name).copy(m_arena),
           .parent = id,
       }),
   };
@@ -81,11 +63,9 @@ auto RgPersistent::create_texture(RgDebugName name) -> RgTextureId {
   return m_physical_textures[id].id;
 }
 
-auto RgPersistent::create_semaphore(RgDebugName name) -> RgSemaphoreId {
+auto RgPersistent::create_semaphore(String8 name) -> RgSemaphoreId {
   RgSemaphoreId semaphore = m_semaphores.emplace();
-#if REN_RG_DEBUG
-  m_semaphores[semaphore].name = std::move(name);
-#endif
+  m_semaphores[semaphore].name = name.copy(m_arena);
   return semaphore;
 }
 
@@ -94,7 +74,7 @@ void RgPersistent::set_async_compute_enabled(bool enabled) {
 }
 
 void RgPersistent::reset() {
-  m_arena.clear();
+  m_gfx_arena.clear();
   m_physical_textures.clear();
   m_persistent_textures.clear();
   m_external_textures.clear();
@@ -167,22 +147,21 @@ void RgBuilder::init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
   bd.m_semaphore_states.clear();
 
   auto &gd = *m_rt_data;
-#if REN_RG_DEBUG
-  gd.m_pass_names.clear();
-#endif
   gd.m_render_targets.clear();
   gd.m_depth_stencil_targets.clear();
 }
 
-auto RgBuilder::create_pass(RgPassCreateInfo &&create_info) -> RgPassBuilder {
+auto RgBuilder::create_pass(const RgPassCreateInfo &create_info)
+    -> RgPassBuilder {
+  ren_assert(create_info.name.m_size > 0);
   RgQueue queue = create_info.queue;
   if (!m_rgp->m_async_compute) {
     queue = RgQueue::Graphics;
   }
-  RgPassId pass_id = m_data->m_passes.emplace(RgPass{.queue = queue});
-#if REN_RG_DEBUG
-  m_rt_data->m_pass_names.insert(pass_id, std::move(create_info.name));
-#endif
+  RgPassId pass_id = m_data->m_passes.emplace(RgPass{
+      .name = create_info.name.copy(m_arena),
+      .queue = queue,
+  });
   if (queue == RgQueue::Async) {
     m_data->m_async_schedule.push_back(pass_id);
   } else {
@@ -199,7 +178,7 @@ auto RgBuilder::add_buffer_use(const RgBufferUse &use) -> RgBufferUseId {
   return id;
 };
 
-auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
+auto RgBuilder::create_virtual_buffer(RgPassId pass, String8 name,
                                       RgUntypedBufferId parent)
     -> RgUntypedBufferId {
   RgPhysicalBufferId physical_buffer;
@@ -212,9 +191,7 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
   }
 
   RgUntypedBufferId buffer = m_data->m_buffers.insert({
-#if REN_RG_DEBUG
-      .name = std::move(name),
-#endif
+      .name = name.copy(m_arena),
       .parent = physical_buffer,
       .def = pass,
   });
@@ -224,22 +201,20 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, RgDebugName name,
     m_data->m_buffers[parent].kill = pass;
   }
 
-#if REN_RG_DEBUG
   if (parent) {
     ren_assert_msg(!m_data->m_buffers[parent].child,
                    "Render graph buffers can only be written once");
     m_data->m_buffers[parent].child = buffer;
   }
-#endif
 
   return buffer;
 }
 
-auto RgBuilder::create_buffer(RgDebugName name, rhi::MemoryHeap heap,
-                              usize size) -> RgUntypedBufferId {
+auto RgBuilder::create_buffer(String8 name, rhi::MemoryHeap heap, usize size)
+    -> RgUntypedBufferId {
   ren_assert(size > 0);
   RgUntypedBufferId buffer =
-      create_virtual_buffer(NullHandle, std::move(name), NullHandle);
+      create_virtual_buffer(NullHandle, name, NullHandle);
   RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
   m_data->m_physical_buffers[physical_buffer] = {
       .heap = heap,
@@ -262,10 +237,11 @@ auto RgBuilder::read_buffer(RgPassId pass_id, RgUntypedBufferId buffer,
   return RgUntypedBufferToken(use);
 }
 
-auto RgBuilder::write_buffer(RgPassId pass_id, RgDebugName name,
+auto RgBuilder::write_buffer(RgPassId pass_id, String8 name,
                              RgUntypedBufferId src,
                              const rhi::BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
+  ScratchArena scratch;
   ren_assert(src);
   RgBuffer &src_buffer = m_data->m_buffers[src];
   ren_assert(src_buffer.def != pass_id);
@@ -276,33 +252,29 @@ auto RgBuilder::write_buffer(RgPassId pass_id, RgDebugName name,
       .usage = usage,
   });
   pass.write_buffers.push(m_arena, use);
-#if REN_RG_DEBUG
   if (src_buffer.name == "rg#") {
-    ren_assert(not name.empty());
-    src_buffer.name = fmt::format("rg#{}", name);
+    ren_assert(name.m_size > 0);
+    src_buffer.name = format(scratch, "rg#{}", name);
   }
-#endif
-  RgUntypedBufferId dst = create_virtual_buffer(pass_id, std::move(name), src);
+  RgUntypedBufferId dst = create_virtual_buffer(pass_id, name, src);
   return {dst, RgUntypedBufferToken(use)};
 }
 
-void RgBuilder::clear_texture(RgDebugName name, NotNull<RgTextureId *> texture,
+void RgBuilder::clear_texture(String8 name, NotNull<RgTextureId *> texture,
                               const glm::vec4 &color, RgQueue queue) {
   auto pass = create_pass({.name = "clear-texture", .queue = queue});
-  auto token =
-      pass.write_texture(std::move(name), texture, rhi::TRANSFER_DST_IMAGE);
+  auto token = pass.write_texture(name, texture, rhi::TRANSFER_DST_IMAGE);
   pass.set_callback(
       [token, color](Renderer &, const RgRuntime &rg, CommandRecorder &cmd) {
         cmd.clear_texture(rg.get_texture(token), color);
       });
 }
 
-void RgBuilder::copy_texture_to_buffer(RgTextureId src, RgDebugName name,
+void RgBuilder::copy_texture_to_buffer(RgTextureId src, String8 name,
                                        RgUntypedBufferId *dst, RgQueue queue) {
   auto pass = create_pass({.name = "copy-texture-to-buffer", .queue = queue});
   auto src_token = pass.read_texture(src, rhi::TRANSFER_SRC_IMAGE);
-  auto dst_token =
-      pass.write_buffer(std::move(name), dst, rhi::TRANSFER_DST_BUFFER);
+  auto dst_token = pass.write_buffer(name, dst, rhi::TRANSFER_DST_BUFFER);
   pass.set_callback([src_token, dst_token](Renderer &, const RgRuntime &rg,
                                            CommandRecorder &cmd) {
     cmd.copy_texture_to_buffer(rg.get_texture(src_token),
@@ -317,15 +289,13 @@ auto RgBuilder::add_texture_use(const RgTextureUse &use) -> RgTextureUseId {
   return id;
 }
 
-auto RgBuilder::create_virtual_texture(RgPassId pass, RgDebugName name,
+auto RgBuilder::create_virtual_texture(RgPassId pass, String8 name,
                                        RgTextureId parent) -> RgTextureId {
   ren_assert(pass);
   ren_assert(parent);
   RgPhysicalTextureId physical_texture = m_rgp->m_textures[parent].parent;
   RgTextureId texture = m_rgp->m_textures.insert({
-#if REN_RG_DEBUG
-      .name = std::move(name),
-#endif
+      .name = name.copy(m_arena),
       .parent = physical_texture,
       .def = pass,
   });
@@ -383,7 +353,7 @@ auto RgBuilder::write_texture(RgTextureWriteInfo &&info) -> RgTextureToken {
       .base_mip = info.base_mip,
   });
   m_data->m_passes[info.pass].write_textures.push(m_arena, use);
-  *info.texture = create_virtual_texture(info.pass, std::move(info.name), src);
+  *info.texture = create_virtual_texture(info.pass, info.name, src);
   return RgTextureToken(use);
 }
 
@@ -402,9 +372,7 @@ void RgBuilder::set_external_texture(RgTextureId id, Handle<Texture> handle) {
   ren_assert(m_rgp->m_external_textures[ptex_id]);
   RgPhysicalTexture &ptex = m_rgp->m_physical_textures[ptex_id];
   ptex = {
-#if REN_RG_DEBUG
-      .name = std::move(ptex.name),
-#endif
+      .name = ptex.name,
       .format = texture.format,
       .usage = texture.usage,
       .size = texture.size,
@@ -448,8 +416,8 @@ void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
   m_rgp->m_semaphores[semaphore].handle = handle;
 }
 
-void RgBuilder::dump_pass_schedule(Arena scratch) const {
-#if REN_RG_DEBUG
+void RgBuilder::dump_pass_schedule() const {
+  ScratchArena scratch;
 
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
 
@@ -467,7 +435,7 @@ void RgBuilder::dump_pass_schedule(Arena scratch) const {
     for (RgPassId pass_id : schedule) {
       const RgPass &pass = m_data->m_passes[pass_id];
 
-      fmt::println(stderr, "  * {}", m_rt_data->m_pass_names[pass_id]);
+      fmt::println(stderr, "  * {}", pass.name);
 
       const auto &buffers = m_data->m_buffers;
       const auto &buffer_uses = m_data->m_buffer_uses;
@@ -477,10 +445,10 @@ void RgBuilder::dump_pass_schedule(Arena scratch) const {
       for (RgBufferUseId use : pass.write_buffers) {
         RgUntypedBufferId id = buffer_uses[use].buffer;
         const RgBuffer &buffer = buffers[id];
-        if (buffer.name.empty()) {
-          create_buffers.push(&scratch, buffer.child);
+        if (buffer.name.m_size == 0) {
+          create_buffers.push(scratch, buffer.child);
         } else {
-          write_buffers.push(&scratch, id);
+          write_buffers.push(scratch, id);
         }
       }
 
@@ -514,11 +482,11 @@ void RgBuilder::dump_pass_schedule(Arena scratch) const {
       for (RgTextureUseId use : pass.write_textures) {
         RgTextureId id = texture_uses[use].texture;
         const RgTexture &texture = textures[id];
-        ren_assert(not texture.name.empty());
+        ren_assert(texture.name.m_size > 0);
         if (texture.name.starts_with("rg#")) {
-          create_textures.push(&scratch, texture.child);
+          create_textures.push(scratch, texture.child);
         } else {
-          write_textures.push(&scratch, id);
+          write_textures.push(scratch, id);
         }
       }
 
@@ -578,7 +546,6 @@ void RgBuilder::dump_pass_schedule(Arena scratch) const {
       fmt::println(stderr, "");
     }
   }
-#endif
 }
 
 auto RgBuilder::alloc_textures() -> Result<void, Error> {
@@ -610,23 +577,16 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
 
   usize num_gfx_passes = m_data->m_gfx_schedule.size();
 
-  m_rgp->m_arena.clear();
+  m_rgp->m_gfx_arena.clear();
   for (auto i : range(m_rgp->m_physical_textures.size())) {
     RgPhysicalTexture &physical_texture = m_rgp->m_physical_textures[i];
     // Skip unused temporal or external textures.
     if (!physical_texture.usage or m_rgp->m_external_textures[i]) {
       continue;
     }
-    // Preprocessor statement inside function-like macro is UB
-#if REN_RG_DEBUG
-#define name_eq_physical_texture_name .name = physical_texture.name,
-#else
-#define name_eq_physical_texture_name
-#endif
     ren_try(physical_texture.handle,
-            m_rgp->m_arena.create_texture({
-                // clang-format off
-                name_eq_physical_texture_name
+            m_rgp->m_gfx_arena.create_texture({
+                .name = physical_texture.name,
                 .format = physical_texture.format,
                 .usage = physical_texture.usage,
                 .width = physical_texture.size.x,
@@ -635,19 +595,20 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
                 .cube_map = physical_texture.cube_map,
                 .num_mips = physical_texture.num_mips,
                 .num_layers = physical_texture.num_layers,
-                // clang-format on
             }));
     physical_texture.layout = rhi::ImageLayout::Undefined;
   }
 
   ren_try(m_rgp->m_gfx_semaphore,
-          m_rgp->m_arena.create_semaphore({
-              .name = "Render graph graphics queue timeline",
-              .type = rhi::SemaphoreType::Timeline,
-              .initial_value = m_rgp->m_gfx_time,
-          }));
+          m_rgp->m_gfx_arena.create_semaphore(
+
+              {
+                  .name = "Render graph graphics queue timeline",
+                  .type = rhi::SemaphoreType::Timeline,
+                  .initial_value = m_rgp->m_gfx_time,
+              }));
   ren_try(m_rgp->m_async_semaphore,
-          m_rgp->m_arena.create_semaphore({
+          m_rgp->m_gfx_arena.create_semaphore({
               .name = "Render graph async compute queue timeline",
               .type = rhi::SemaphoreType::Timeline,
               .initial_value = m_rgp->m_async_time,
@@ -724,7 +685,10 @@ void RgBuilder::init_runtime_passes() {
     for (RgPassId pass_id : schedule) {
       RgPass &pass = m_data->m_passes[pass_id];
       RgRtPass &rt_pass = rt_passes->emplace_back();
-      rt_pass = {.pass = pass_id};
+      rt_pass = {
+          .name = pass.name,
+          .pass = pass_id,
+      };
       if (pass.rp_cb) {
         rt_pass.base_render_target = m_rt_data->m_render_targets.size();
         rt_pass.num_render_targets = pass.num_render_targets;
@@ -956,7 +920,7 @@ auto get_view_dimension(const RgPhysicalTexture &ptex)
 
 } // namespace
 
-void RgBuilder::init_runtime_textures(Arena scratch) {
+void RgBuilder::init_runtime_textures() {
   auto &rt_textures = m_rt_data->m_textures;
   const auto &texture_uses = m_data->m_texture_uses;
   const auto &physical_textures = m_rgp->m_physical_textures;
@@ -997,10 +961,10 @@ void RgBuilder::init_runtime_textures(Arena scratch) {
       };
       if (use.sampler) {
         descriptors.combined = m_descriptor_allocator->allocate_sampled_texture(
-            scratch, *m_renderer, srv, use.sampler);
+            *m_renderer, srv, use.sampler);
       } else {
         descriptors.sampled =
-            m_descriptor_allocator->allocate_texture(scratch, *m_renderer, srv);
+            m_descriptor_allocator->allocate_texture(*m_renderer, srv);
       }
     }
     if (use.state.access_mask.is_set(rhi::Access::UnorderedAccess)) {
@@ -1010,7 +974,7 @@ void RgBuilder::init_runtime_textures(Arena scratch) {
       for (u32 mip : range(descriptors.num_mips)) {
         sh::Handle<void> descriptor =
             m_descriptor_allocator->allocate_storage_texture(
-                scratch, *m_renderer,
+                *m_renderer,
                 {
                     .texture = physical_texture.handle,
                     .dimension = get_view_dimension(physical_texture),
@@ -1258,7 +1222,6 @@ void RgBuilder::place_barriers_and_semaphores() {
             dst_access_mask & rhi::WRITE_ONLY_ACCESS_MASK;
 
 #if 0
-#if REN_RG_DEBUG
         auto get_layout_name = [](rhi::ImageLayout layout) {
           switch (layout) {
           case rhi::ImageLayout::Undefined:
@@ -1286,7 +1249,6 @@ void RgBuilder::place_barriers_and_semaphores() {
                      m_rt_data->m_pass_names[rt_pass.pass],
                      m_rgp->m_textures[use.texture].name,
                      get_layout_name(ptex.layout), get_layout_name(dst_layout));
-#endif
 #endif
 
         m_texture_barriers.push_back({
@@ -1334,7 +1296,7 @@ void RgBuilder::place_barriers_and_semaphores() {
   }
 }
 
-auto RgBuilder::build(Arena scratch, const RgBuildInfo &build_info)
+auto RgBuilder::build(const RgBuildInfo &build_info)
     -> Result<RenderGraph, Error> {
   ZoneScoped;
 
@@ -1347,12 +1309,12 @@ auto RgBuilder::build(Arena scratch, const RgBuildInfo &build_info)
   add_inter_queue_semaphores();
 
 #if 0
-  dump_pass_schedule(scratch);
+  dump_pass_schedule();
 #endif
 
   init_runtime_passes();
   init_runtime_buffers();
-  init_runtime_textures(scratch);
+  init_runtime_textures();
 
   place_barriers_and_semaphores();
 
@@ -1377,37 +1339,35 @@ auto RgPassBuilder::read_buffer(RgUntypedBufferId buffer,
   return m_builder->read_buffer(m_pass, buffer, usage, offset);
 }
 
-auto RgPassBuilder::write_buffer(RgDebugName name, RgUntypedBufferId buffer,
+auto RgPassBuilder::write_buffer(String8 name, RgUntypedBufferId buffer,
                                  const rhi::BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
-  return m_builder->write_buffer(m_pass, std::move(name), buffer, usage);
+  return m_builder->write_buffer(m_pass, name, buffer, usage);
 }
 
-auto RgPassBuilder::write_texture(RgDebugName name, RgTextureId texture,
+auto RgPassBuilder::write_texture(String8 name, RgTextureId texture,
                                   const rhi::ImageState &usage)
     -> RgTextureToken {
-  return write_texture(std::move(name), &texture, usage);
+  return write_texture(name, &texture, usage);
 }
 
-auto RgPassBuilder::write_texture(RgDebugName name,
-                                  NotNull<RgTextureId *> texture,
+auto RgPassBuilder::write_texture(String8 name, NotNull<RgTextureId *> texture,
                                   const rhi::ImageState &usage)
     -> RgTextureToken {
   return m_builder->write_texture({
-      .name = std::move(name),
+      .name = name,
       .pass = m_pass,
       .texture = texture,
       .usage = usage,
   });
 }
 
-auto RgPassBuilder::write_texture(RgDebugName name,
-                                  NotNull<RgTextureId *> texture,
+auto RgPassBuilder::write_texture(String8 name, NotNull<RgTextureId *> texture,
                                   const rhi::ImageState &usage,
                                   const rhi::SamplerCreateInfo &sampler,
                                   u32 base_mip) -> RgTextureToken {
   return m_builder->write_texture({
-      .name = std::move(name),
+      .name = name,
       .pass = m_pass,
       .texture = texture,
       .usage = usage,
@@ -1437,12 +1397,11 @@ void RgPassBuilder::add_depth_stencil_target(
       };
 }
 
-auto RgPassBuilder::write_render_target(RgDebugName name,
+auto RgPassBuilder::write_render_target(String8 name,
                                         NotNull<RgTextureId *> texture,
                                         const rhi::RenderTargetOperations &ops,
                                         u32 index) -> RgTextureToken {
-  RgTextureToken token =
-      write_texture(std::move(name), texture, rhi::RENDER_TARGET);
+  RgTextureToken token = write_texture(name, texture, rhi::RENDER_TARGET);
   add_render_target(index, token, ops);
   return token;
 }
@@ -1458,10 +1417,10 @@ auto RgPassBuilder::read_depth_stencil_target(RgTextureId texture)
 }
 
 auto RgPassBuilder::write_depth_stencil_target(
-    RgDebugName name, NotNull<RgTextureId *> texture,
+    String8 name, NotNull<RgTextureId *> texture,
     const rhi::DepthTargetOperations &ops) -> RgTextureToken {
   RgTextureToken token =
-      write_texture(std::move(name), texture, rhi::DEPTH_STENCIL_TARGET);
+      write_texture(name, texture, rhi::DEPTH_STENCIL_TARGET);
   add_depth_stencil_target(token, ops);
   return token;
 }
@@ -1474,7 +1433,7 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
   m_builder->signal_semaphore(m_pass, semaphore, value);
 }
 
-auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
+auto RenderGraph::execute(const RgExecuteInfo &exec_info)
     -> Result<void, Error> {
   ZoneScoped;
 
@@ -1496,7 +1455,7 @@ auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
       }
       ren_assert(cmd);
       ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-      ren_try_to(m_renderer->submit(scratch, queue_family, {cmd_buffer},
+      ren_try_to(m_renderer->submit(queue_family, {cmd_buffer},
                                     batch_wait_semaphores,
                                     batch_signal_semaphores));
       batch_wait_semaphores = {};
@@ -1515,10 +1474,7 @@ auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
 
     for (const RgRtPass &pass : passes) {
       ZoneScopedN("RenderGraph::execute_pass");
-#if REN_RG_DEBUG
-      StringView pass_name = m_data->m_pass_names[pass.pass];
-      ZoneText(pass_name.data(), pass_name.size());
-#endif
+      ZoneText(pass.name.m_str, pass.name.m_size);
       if (pass.num_wait_semaphores > 0) {
         ren_try_to(submit_batch());
         batch_wait_semaphores =
@@ -1531,10 +1487,7 @@ auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
       }
 
       {
-#if REN_RG_DEBUG
-        DebugRegion debug_region =
-            cmd.debug_region(m_data->m_pass_names[pass.pass].c_str());
-#endif
+        DebugRegion debug_region = cmd.debug_region(pass.name);
 
         if (pass.num_memory_barriers > 0 or pass.num_texture_barriers > 0) {
           auto memory_barriers =
@@ -1543,7 +1496,7 @@ auto RenderGraph::execute(Arena scratch, const RgExecuteInfo &exec_info)
           auto texture_barriers = Span(m_data->m_texture_barriers)
                                       .subspan(pass.base_texture_barrier,
                                                pass.num_texture_barriers);
-          cmd.pipeline_barrier(scratch, memory_barriers, texture_barriers);
+          cmd.pipeline_barrier(memory_barriers, texture_barriers);
         }
 
         if (pass.rp_cb) {

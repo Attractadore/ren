@@ -33,26 +33,25 @@ public:
   {
     usize count = create_info.count;
     create_info.size = create_info.count * sizeof(T);
-    ren_try(Handle<Buffer> buffer,
-            m_renderer->create_buffer(std::move(create_info)));
+    ren_try(Handle<Buffer> buffer, m_renderer->create_buffer(create_info));
     return BufferSlice<T>{
         .buffer = insert(buffer),
         .count = count,
     };
   }
 
-  auto create_texture(const TextureCreateInfo &&create_info)
+  auto create_texture(const TextureCreateInfo &create_info)
       -> Result<Handle<Texture>, Error>
     requires IsArenaResource<Texture>
   {
-    return insert(m_renderer->create_texture(std::move(create_info)));
+    return insert(m_renderer->create_texture(create_info));
   }
 
-  auto create_semaphore(const SemaphoreCreateInfo &&create_info)
+  auto create_semaphore(const SemaphoreCreateInfo &create_info)
       -> Result<Handle<Semaphore>, Error>
     requires IsArenaResource<Semaphore>
   {
-    return insert(m_renderer->create_semaphore(std::move(create_info)));
+    return insert(m_renderer->create_semaphore(create_info));
   }
 
   auto create_event() -> Handle<Event>
@@ -61,28 +60,24 @@ public:
     return insert(m_renderer->create_event());
   }
 
-  auto create_graphics_pipeline(Arena scratch,
-                                const GraphicsPipelineCreateInfo &&create_info)
+  auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info)
       -> Result<Handle<GraphicsPipeline>, Error>
     requires IsArenaResource<GraphicsPipeline>
   {
-    return insert(
-        m_renderer->create_graphics_pipeline(scratch, std::move(create_info)));
+    return insert(m_renderer->create_graphics_pipeline(create_info));
   }
 
-  auto create_compute_pipeline(Arena scratch,
-                               const ComputePipelineCreateInfo &&create_info)
+  auto create_compute_pipeline(const ComputePipelineCreateInfo &create_info)
       -> Result<Handle<ComputePipeline>, Error>
     requires IsArenaResource<ComputePipeline>
   {
-    return insert(
-        m_renderer->create_compute_pipeline(scratch, std::move(create_info)));
+    return insert(m_renderer->create_compute_pipeline(create_info));
   }
 
   auto create_command_pool(const CommandPoolCreateInfo &create_info)
     requires IsArenaResource<CommandPool>
   {
-    return insert(m_renderer->create_command_pool(std::move(create_info)));
+    return insert(m_renderer->create_command_pool(create_info));
   }
 
   template <typename H>

@@ -1,19 +1,18 @@
 #include "Pipeline.hpp"
 #include "ResourceArena.hpp"
-
-#include <fmt/format.h>
+#include "ren/core/Format.hpp"
 
 namespace ren {
 
 #undef load_compute_pipeline
-auto load_compute_pipeline(Arena scratch, ResourceArena &arena,
-                           Span<const std::byte> shader, StringView name)
+auto load_compute_pipeline(ResourceArena &arena, Span<const std::byte> shader,
+                           String8 name)
     -> Result<Handle<ComputePipeline>, Error> {
-  return arena.create_compute_pipeline(
-      scratch, {
-                   .name = fmt::format("{} compute pipeline", name),
-                   .cs = {shader},
-               });
+  ScratchArena scratch;
+  return arena.create_compute_pipeline({
+      .name = format(scratch, "{} compute pipeline", name),
+      .cs = {shader},
+  });
 };
 
 } // namespace ren

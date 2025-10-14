@@ -1,13 +1,13 @@
 #pragma once
-#include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/String.hpp"
 #include "rhi.hpp"
 
 namespace ren {
 
 struct SemaphoreCreateInfo {
-  REN_DEBUG_NAME_FIELD("Semaphore");
+  String8 name = "Semaphore";
   rhi::SemaphoreType type = rhi::SemaphoreType::Timeline;
   u64 initial_value = 0;
 };

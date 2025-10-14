@@ -1,8 +1,8 @@
 #include "core/IO.hpp"
 #include "core/Result.hpp"
-#include "core/String.hpp"
 #include "core/Vector.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 
 #include <SDL3/SDL_loadso.h>
@@ -41,6 +41,8 @@ SDL_SharedObject *lib_handle = nullptr;
 // and doesn't unlock it until the process exits. Make a temporary copy of the
 // PDB and patch the temporary DLL to use it fix this.
 auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
+  ScratchArena scratch;
+
   if (from.extension() != ".dll") {
     return from;
   }
@@ -77,12 +79,13 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
 
     fmt::println("hot_reload: Change {} PDB path to {}", fs::relative(to),
                  fs::relative(to_pdb));
-    String from_pdb_str = to_system_path(from_pdb.string());
-    String to_pdb_str = to_system_path(to_pdb.string());
-    ren_assert(from_pdb_str.size() == to_pdb_str.size());
-    size_t offset = StringView(buffer.begin(), buffer.end()).find(from_pdb_str);
-    ren_assert(offset != StringView::npos);
-    std::ranges::copy(to_pdb_str, &buffer[offset]);
+    String8 from_pdb_str = to_system_path(scratch, from_pdb.string());
+    String8 to_pdb_str = to_system_path(scratch, to_pdb.string());
+    ren_assert(from_pdb_str.m_size == to_pdb_str.m_size);
+    char *offset =
+        String<char>(buffer.data(), buffer.size()).find(from_pdb_str).m_str;
+    ren_assert(offset);
+    std::ranges::copy_n(to_pdb_str.m_str, to_pdb_str.m_size, offset);
   }
 
   FILE *dst = fopen(to, "wb");
@@ -104,8 +107,8 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
 
 } // namespace
 
-auto create_renderer(Arena scratch, NotNull<Arena *> arena,
-                     const RendererInfo &info) -> expected<Renderer *> {
+auto create_renderer(NotNull<Arena *> arena, const RendererInfo &info)
+    -> expected<Renderer *> {
   if (!hot_reload::vtbl_ref) {
 #if __linux__
     fmt::println("hot_reload: Create inotify instance");
@@ -139,13 +142,13 @@ auto create_renderer(Arena scratch, NotNull<Arena *> arena,
     hot_reload::vtbl_ref =
         (const hot_reload::Vtbl *)SDL_LoadFunction(lib_handle, "ren_vtbl");
     ren_assert(hot_reload::vtbl_ref);
+    hot_reload::vtbl_ref->set_allocator(ScratchArena::get_allocator());
   }
-  return hot_reload::vtbl_ref->create_renderer(scratch, arena, info);
+  return hot_reload::vtbl_ref->create_renderer(arena, info);
 }
 
-auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
-    -> expected<void> {
-  ren_try_to(hot_reload::vtbl_ref->draw(scratch, scene, draw_info));
+auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
+  ren_try_to(hot_reload::vtbl_ref->draw(scene, draw_info));
 
 #if __linux__
   if (lib_watch_fd == -1) {
@@ -205,9 +208,10 @@ auto draw(Arena scratch, Scene *scene, const DrawInfo &draw_info)
   hot_reload::vtbl_ref =
       (const hot_reload::Vtbl *)SDL_LoadFunction(lib_handle, "ren_vtbl");
   ren_assert(hot_reload::vtbl_ref);
+  hot_reload::vtbl_ref->set_allocator(ScratchArena::get_allocator());
 
   fmt::println("hot_reload: Run load hook");
-  auto reload_res = hot_reload::vtbl_ref->load(scratch, scene);
+  auto reload_res = hot_reload::vtbl_ref->load(scene);
   if (!reload_res) {
     fmt::println("hot_reload: Load hook failed");
     return reload_res;

@@ -57,7 +57,7 @@ struct Renderer {
 
   auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
-  [[nodiscard]] auto create_buffer(const BufferCreateInfo &&create_info)
+  [[nodiscard]] auto create_buffer(const BufferCreateInfo &create_info)
       -> Result<Handle<Buffer>, Error>;
 
   void destroy(Handle<Buffer> buffer);
@@ -123,13 +123,13 @@ struct Renderer {
     return try_get_buffer_device_ptr<T>(slice.buffer, slice.offset);
   }
 
-  [[nodiscard]] auto create_texture(const TextureCreateInfo &&create_info)
+  [[nodiscard]] auto create_texture(const TextureCreateInfo &create_info)
       -> Result<Handle<Texture>, Error>;
 
   void destroy(Handle<Texture> texture);
 
   [[nodiscard]] auto
-  create_external_texture(const ExternalTextureCreateInfo &&create_info)
+  create_external_texture(const ExternalTextureCreateInfo &create_info)
       -> Handle<Texture>;
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
@@ -147,8 +147,7 @@ struct Renderer {
       -> Result<rhi::Sampler, Error>;
 
   [[nodiscard]] auto
-  create_graphics_pipeline(Arena scratch,
-                           const GraphicsPipelineCreateInfo &&create_info)
+  create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info)
       -> Result<Handle<GraphicsPipeline>, Error>;
 
   void destroy(Handle<GraphicsPipeline> pipeline);
@@ -157,8 +156,7 @@ struct Renderer {
       -> const GraphicsPipeline &;
 
   [[nodiscard]] auto
-  create_compute_pipeline(Arena scratch,
-                          const ComputePipelineCreateInfo &&create_info)
+  create_compute_pipeline(const ComputePipelineCreateInfo &create_info)
       -> Result<Handle<ComputePipeline>, Error>;
 
   void destroy(Handle<ComputePipeline> pipeline);
@@ -166,7 +164,7 @@ struct Renderer {
   auto get_compute_pipeline(Handle<ComputePipeline> pipeline) const
       -> const ComputePipeline &;
 
-  [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &&create_info)
+  [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &create_info)
       -> Result<Handle<Semaphore>, Error>;
 
   void destroy(Handle<Semaphore> semaphore);
@@ -180,13 +178,12 @@ struct Renderer {
 
   void wait_idle();
 
-  [[nodiscard]] auto wait_for_semaphore(Arena scratch,
-                                        Handle<Semaphore> semaphore, u64 value,
+  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                         std::chrono::nanoseconds timeout) const
       -> Result<rhi::WaitResult, Error>;
 
-  [[nodiscard]] auto wait_for_semaphore(Arena scratch, Handle<Semaphore>,
-                                        u64 value) const -> Result<void, Error>;
+  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
+      -> Result<void, Error>;
 
   auto create_event() -> Handle<Event>;
   void destroy(Handle<Event>);
@@ -204,7 +201,7 @@ struct Renderer {
 
   auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
 
-  auto submit(Arena scratch, rhi::QueueFamily queue_family,
+  auto submit(rhi::QueueFamily queue_family,
               TempSpan<const rhi::CommandBuffer> cmd_buffers,
               TempSpan<const SemaphoreState> wait_semaphores = {},
               TempSpan<const SemaphoreState> signal_semaphores = {})

@@ -2,10 +2,10 @@
 #include "Mesh.hpp"
 #include "Scene.hpp"
 #include "core/Views.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/ren.hpp"
 
 #include <algorithm>
-#include <fmt/format.h>
 
 namespace ren {
 
@@ -39,13 +39,22 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
                         MAX_NUM_DIRECTIONAL_LIGHTS),
   };
 
+  ScratchArena scratch;
+
   for (auto i : range(NUM_DRAW_SETS)) {
     auto s = (DrawSet)(1 << i);
     DrawSetData &ds = gpu_scene.draw_sets[i];
-    ds.cull_data = create_buffer(
-        sh::InstanceCullData,
-        fmt::format("Draw set {} mesh instances", get_draw_set_name(s)),
-        MAX_NUM_MESH_INSTANCES);
+    ds.cull_data =
+        arena
+            .create_buffer<sh ::InstanceCullData>(
+
+                {
+                    .name = format(scratch, "Draw set {} mesh instances",
+                                   get_draw_set_name(s)),
+                    .heap = HEAP,
+                    .count = MAX_NUM_MESH_INSTANCES,
+                })
+            .value();
   }
 
 #undef create_buffer

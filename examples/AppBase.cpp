@@ -29,6 +29,10 @@ auto throw_error(std::string err) -> std::string {
 auto AppBase::init(const char *app_name) -> Result<void> {
   m_app_name = app_name;
 
+  ren::ScratchArena::init_allocator();
+  m_arena = ren::make_arena();
+  m_frame_arena = ren::make_arena();
+
   unsigned adapter = ren::DEFAULT_ADAPTER;
   const char *user_adapter = std::getenv("REN_ADAPTER");
   if (user_adapter) {
@@ -39,12 +43,7 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     }
   }
 
-  m_scratch = ren::make_arena();
-  commit(&m_scratch, 1 * ren::MiB);
-  m_frame_arena = ren::make_arena();
-  m_arena = ren::make_arena();
-  OK(m_renderer,
-     ren::create_renderer(m_scratch, &m_arena, {.adapter = adapter}));
+  OK(m_renderer, ren::create_renderer(&m_arena, {.adapter = adapter}));
 
   m_window =
       SDL_CreateWindow(app_name, 1280, 720,
@@ -54,11 +53,10 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     bail("{}", SDL_GetError());
   }
 
-  OK(m_swapchain,
-     ren::create_swapchain(m_scratch, &m_arena, m_renderer, m_window));
+  OK(m_swapchain, ren::create_swapchain(&m_arena, m_renderer, m_window));
 
-  OK(m_scene, ren::create_scene(m_scratch, &m_frame_arena, &m_arena, m_renderer,
-                                m_swapchain));
+  OK(m_scene,
+     ren::create_scene(&m_frame_arena, &m_arena, m_renderer, m_swapchain));
 
   OK(m_camera, ren::create_camera(m_scene));
   ren::set_camera(m_scene, m_camera);
@@ -78,6 +76,8 @@ auto AppBase::loop() -> Result<void> {
   bool quit = false;
 
   while (!quit) {
+    m_frame_arena.clear();
+
     auto now = chrono::steady_clock::now();
     chrono::nanoseconds dt = now - last_time;
     last_time = now;
@@ -100,7 +100,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(begin_frame());
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
-    TRY_TO(ren::draw(m_scratch, m_scene, {.delta_time = dt.count() / 1e9f}));
+    TRY_TO(ren::draw(m_scene, {.delta_time = dt.count() / 1e9f}));
   }
 
   return {};

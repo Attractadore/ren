@@ -5,8 +5,6 @@
 #include "../passes/Pass.hpp"
 #include "ren/core/NotNull.hpp"
 
-#include <fmt/format.h>
-
 namespace ren {
 
 struct SceneData;
@@ -26,15 +24,15 @@ enum class CullingPhase {
 };
 
 struct MeshPassBaseInfo {
-  StringView pass_name;
+  String8 pass_name;
 
   TempSpan<const NotNull<RgTextureId *>> color_attachments;
   TempSpan<const rhi::RenderTargetOperations> color_attachment_ops;
-  TempSpan<const RgDebugName> color_attachment_names;
+  TempSpan<const String8> color_attachment_names;
 
   NotNull<RgTextureId *> depth_attachment;
   rhi::DepthTargetOperations depth_attachment_ops;
-  RgDebugName depth_attachment_name;
+  String8 depth_attachment_name;
 
   Camera camera;
   glm::uvec2 viewport = {};

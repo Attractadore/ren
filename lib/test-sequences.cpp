@@ -2,7 +2,7 @@
 #include "ren/core/StdDef.hpp"
 #include "sh/Random.h"
 
-#include <fmt/format.h>
+#include <fmt/base.h>
 
 using namespace ren;
 

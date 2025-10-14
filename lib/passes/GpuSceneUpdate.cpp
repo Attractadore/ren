@@ -2,9 +2,9 @@
 #include "../CommandRecorder.hpp"
 #include "../Scene.hpp"
 #include "../core/Views.hpp"
+#include "ren/core/Format.hpp"
 
 #include <algorithm>
-#include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -25,12 +25,14 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
           rgb.create_buffer("directional-lights", gpu_scene.directional_lights),
   };
 
+  ScratchArena scratch;
   for (auto i : range(NUM_DRAW_SETS)) {
     const DrawSetData &ds = gpu_scene.draw_sets[i];
     rg_gpu_scene.draw_sets[i] = {
-        .cull_data = rgb.create_buffer(
-            fmt::format("{}-draw-set", get_draw_set_name((DrawSet)(1 << i))),
-            ds.cull_data),
+        .cull_data =
+            rgb.create_buffer(format(scratch, "{}-draw-set",
+                                     get_draw_set_name((DrawSet)(1 << i))),
+                              ds.cull_data),
     };
   }
 
@@ -69,12 +71,13 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
                           rhi::TRANSFER_DST_BUFFER);
   }
 
+  ScratchArena scratch;
   for (auto i : range(NUM_DRAW_SETS)) {
     const DrawSetData &ds = cfg.gpu_scene->draw_sets[i];
     if (not ds.update_cull_data.empty() or not ds.delete_ids.empty()) {
       std::tie(cfg.rg_gpu_scene->draw_sets[i].cull_data, rcs.draw_sets[i]) =
-          pass.write_buffer(fmt::format("{}-draw-set-updated",
-                                        get_draw_set_name((DrawSet)(1 << i))),
+          pass.write_buffer(format(scratch, "{}-draw-set-updated",
+                                   get_draw_set_name((DrawSet)(1 << i))),
                             cfg.rg_gpu_scene->draw_sets[i].cull_data,
                             rhi::TRANSFER_SRC_BUFFER |
                                 rhi::TRANSFER_DST_BUFFER);

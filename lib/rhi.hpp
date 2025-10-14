@@ -2,9 +2,9 @@
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
 #include "core/Span.hpp"
-#include "core/String.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
@@ -25,19 +25,15 @@ struct Error {
     Incomplete,
   };
   Code code = {};
-  String description;
 
   Error() = default;
-  Error(Code code, String description = "") {
-    this->code = code;
-    this->description = std::move(description);
-  }
+  Error(Code code) { this->code = code; }
 
   operator ren::Error() const { return ren::Error::RHI; }
 };
 
-inline auto fail(Error::Code code, String description = "") -> Failure<Error> {
-  return Failure(Error(code, std::move(description)));
+inline auto fail(Error::Code code) -> Failure<Error> {
+  return Failure(Error(code));
 }
 
 inline bool operator==(const Error &error, Error::Code code) {
@@ -61,7 +57,7 @@ struct InstanceCreateInfo {
   bool headless = false;
 };
 
-[[nodiscard]] auto create_instance(Arena scratch, NotNull<Arena *> arena,
+[[nodiscard]] auto create_instance(NotNull<Arena *> arena,
                                    const InstanceCreateInfo &create_info)
     -> Result<Instance>;
 
@@ -127,7 +123,7 @@ struct DeviceCreateInfo {
   AdapterFeatures features;
 };
 
-auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
+auto create_device(NotNull<Arena *> arena, Instance instance,
                    const DeviceCreateInfo &create_info) -> Result<Device>;
 
 void destroy_device(Device device);
@@ -141,8 +137,7 @@ struct SemaphoreState {
   u64 value = 0;
 };
 
-auto queue_submit(Arena scratch, Queue queue,
-                  TempSpan<const CommandBuffer> cmd_buffers,
+auto queue_submit(Queue queue, TempSpan<const CommandBuffer> cmd_buffers,
                   TempSpan<const SemaphoreState> wait_semaphores,
                   TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void>;
@@ -165,8 +160,7 @@ auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
 
 void destroy_semaphore(Device device, Semaphore semaphore);
 
-auto set_debug_name(Device device, Semaphore semaphore, const char *name)
-    -> Result<void>;
+void set_debug_name(Device device, Semaphore semaphore, String8 name);
 
 enum class WaitResult {
   Success,
@@ -178,7 +172,7 @@ struct SemaphoreWaitInfo {
   u64 value = 0;
 };
 
-auto wait_for_semaphores(Arena scratch, Device device,
+auto wait_for_semaphores(Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
                          std::chrono::nanoseconds timeout)
     -> Result<WaitResult>;
@@ -195,8 +189,7 @@ auto create_buffer(Device device, const BufferCreateInfo &create_info)
 
 void destroy_buffer(Device device, Buffer buffer);
 
-auto set_debug_name(Device device, Buffer buffer, const char *name)
-    -> Result<void>;
+void set_debug_name(Device device, Buffer buffer, String8 name);
 
 auto get_allocation(Device device, Buffer buffer) -> Allocation;
 
@@ -264,8 +257,7 @@ auto create_image(Device device, const ImageCreateInfo &create_info)
 
 void destroy_image(Device device, Image image);
 
-auto set_debug_name(Device device, Image image, const char *name)
-    -> Result<void>;
+void set_debug_name(Device device, Image image, String8 name);
 
 auto get_allocation(Device device, Image image) -> Allocation;
 
@@ -382,20 +374,19 @@ auto create_sampler(Device device, const SamplerCreateInfo &create_info)
 
 void destroy_sampler(Device device, Sampler sampler);
 
-void write_sampler_descriptor_heap(Arena scratch, Device device,
+void write_sampler_descriptor_heap(Device device,
                                    TempSpan<const Sampler> samplers,
                                    u32 base_index);
 
-void write_srv_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> views, u32 base_index);
+void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> views,
+                               u32 base_index);
 
-void write_cis_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> views,
+void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> views,
                                TempSpan<const Sampler> samplers,
                                u32 base_index);
 
-void write_uav_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> views, u32 base_index);
+void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> views,
+                               u32 base_index);
 
 struct SpecializationConstant {
   u32 id = 0;
@@ -410,7 +401,7 @@ struct SpecializationInfo {
 
 struct ShaderInfo {
   Span<const std::byte> code;
-  const char *entry_point = "main";
+  String8 entry_point = "main";
   SpecializationInfo specialization;
 };
 
@@ -597,7 +588,7 @@ struct GraphicsPipelineCreateInfo {
   BlendStateInfo blend_state;
 };
 
-auto create_graphics_pipeline(Arena scratch, Device device,
+auto create_graphics_pipeline(Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline>;
 
@@ -605,14 +596,13 @@ struct ComputePipelineCreateInfo {
   ShaderInfo cs;
 };
 
-auto create_compute_pipeline(Arena scratch, Device device,
+auto create_compute_pipeline(Device device,
                              const ComputePipelineCreateInfo &create_info)
     -> Result<Pipeline>;
 
 void destroy_pipeline(Device device, Pipeline pipeline);
 
-auto set_debug_name(Device device, Pipeline pipeline, const char *name)
-    -> Result<void>;
+void set_debug_name(Device device, Pipeline pipeline, String8 name);
 
 auto create_event(Device device) -> Event;
 
@@ -628,8 +618,7 @@ auto create_command_pool(NotNull<Arena *> arena, Device device,
 
 void destroy_command_pool(Device device, CommandPool pool);
 
-auto set_debug_name(Device device, CommandPool pool, const char *name)
-    -> Result<void>;
+void set_debug_name(Device device, CommandPool pool, String8 name);
 
 auto reset_command_pool(Device device, CommandPool pool) -> Result<void>;
 
@@ -867,15 +856,15 @@ struct ImageBarrier {
   ImageLayout dst_layout = ImageLayout::Undefined;
 };
 
-void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
+void cmd_pipeline_barrier(CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers);
 
-void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
+void cmd_set_event(CommandBuffer cmd, Event event,
                    TempSpan<const MemoryBarrier> memory_barriers,
                    TempSpan<const ImageBarrier> image_barriers);
 
-void cmd_wait_event(Arena scratch, CommandBuffer cmd, Event event,
+void cmd_wait_event(CommandBuffer cmd, Event event,
                     TempSpan<const MemoryBarrier> memory_barriers,
                     TempSpan<const ImageBarrier> image_barriers);
 
@@ -1055,7 +1044,7 @@ void cmd_dispatch(CommandBuffer cmd, u32 num_groups_x, u32 num_groups_y,
 
 void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset);
 
-void cmd_begin_debug_label(CommandBuffer cmd, const char *label);
+void cmd_begin_debug_label(CommandBuffer cmd, String8 label);
 
 void cmd_end_debug_label(CommandBuffer cmd);
 

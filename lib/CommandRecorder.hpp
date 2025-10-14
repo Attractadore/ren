@@ -98,30 +98,29 @@ public:
 
   void clear_texture(Handle<Texture> texture, const glm::vec4 &color);
 
-  void pipeline_barrier(Arena scratch,
-                        TempSpan<const rhi::MemoryBarrier> memory_barriers,
+  void pipeline_barrier(TempSpan<const rhi::MemoryBarrier> memory_barriers,
                         TempSpan<const TextureBarrier> texture_barriers);
 
-  void memory_barrier(Arena scratch, const rhi::MemoryBarrier &barrier) {
-    pipeline_barrier(scratch, {&barrier, 1}, {});
+  void memory_barrier(const rhi::MemoryBarrier &barrier) {
+    pipeline_barrier({&barrier, 1}, {});
   }
 
-  void texture_barrier(Arena scratch, const TextureBarrier &barrier) {
-    pipeline_barrier(scratch, {}, {&barrier, 1});
+  void texture_barrier(const TextureBarrier &barrier) {
+    pipeline_barrier({}, {&barrier, 1});
   }
 
-  void set_event(Arena scratch, Handle<Event> event,
+  void set_event(Handle<Event> event,
                  TempSpan<const rhi::MemoryBarrier> memory_barriers,
                  TempSpan<const TextureBarrier> texture_barriers);
 
-  void wait_event(Arena scratch, Handle<Event> event,
+  void wait_event(Handle<Event> event,
                   TempSpan<const rhi::MemoryBarrier> memory_barriers,
                   TempSpan<const TextureBarrier> texture_barriers);
 
   void reset_event(Handle<Event> event,
                    rhi::PipelineStageMask stages = rhi::PipelineStage::All);
 
-  [[nodiscard]] auto debug_region(StringView) -> DebugRegion;
+  [[nodiscard]] auto debug_region(String8 label) -> DebugRegion;
 
 private:
   Renderer *m_renderer = nullptr;
@@ -200,7 +199,7 @@ public:
 
 private:
   friend class CommandRecorder;
-  DebugRegion(rhi::CommandBuffer cmd_buffer, StringView label);
+  DebugRegion(rhi::CommandBuffer cmd_buffer, String8 label);
 
 private:
   rhi::CommandBuffer m_cmd = {};
@@ -226,22 +225,21 @@ struct EventPool {
 
 auto init_event_pool(ResourceArena &arena) -> EventPool;
 
-auto set_event(Arena scratch, CommandRecorder &cmd, EventPool &pool,
+auto set_event(CommandRecorder &cmd, EventPool &pool,
                TempSpan<const rhi::MemoryBarrier> memory_barriers,
                TempSpan<const TextureBarrier> texture_barriers) -> EventId;
 
-inline auto set_event(Arena scratch, CommandRecorder &cmd, EventPool &pool,
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
                       const rhi::MemoryBarrier &barrier) -> EventId {
-  return set_event(scratch, cmd, pool, {&barrier, 1}, {});
+  return set_event(cmd, pool, {&barrier, 1}, {});
 }
 
-inline auto set_event(Arena scratch, CommandRecorder &cmd, EventPool &pool,
+inline auto set_event(CommandRecorder &cmd, EventPool &pool,
                       const TextureBarrier &barrier) -> EventId {
-  return set_event(scratch, cmd, pool, {}, {&barrier, 1});
+  return set_event(cmd, pool, {}, {&barrier, 1});
 }
 
-void wait_event(Arena scratch, CommandRecorder &cmd, const EventPool &pool,
-                EventId event);
+void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId event);
 
 void reset_event_pool(CommandRecorder &cmd, EventPool &pool);
 

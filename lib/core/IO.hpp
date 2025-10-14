@@ -1,8 +1,8 @@
 #pragma once
 #include "Result.hpp"
 #include "Span.hpp"
-#include "String.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 
 #include <cstdio>
@@ -13,7 +13,7 @@ namespace fs = std::filesystem;
 namespace ren {
 
 // Returns Linux path if running on Wine, otherwise the path.
-auto to_system_path(const fs::path &p) -> String;
+auto to_system_path(NotNull<Arena *> arena, const fs::path &p) -> String8;
 
 auto fopen(const fs::path &p, const char *mode) -> FILE *;
 

@@ -165,16 +165,16 @@ struct Scene {
 
   bool is_amd_anti_lag_enabled();
 
-  auto next_frame(Arena scratch) -> Result<void, Error>;
+  auto next_frame() -> Result<void, Error>;
 
   [[nodiscard]] sh::Handle<sh::Sampler2D>
-  get_or_create_texture(Arena scratch, Handle<Image> image,
-                        const SamplerDesc &sampler);
+  get_or_create_texture(Handle<Image> image, const SamplerDesc &sampler);
 
-  auto build_rg(Arena scratch) -> Result<RenderGraph, Error>;
+  auto build_rg() -> Result<RenderGraph, Error>;
 
   Arena *m_arena = nullptr;
   Arena m_internal_arena;
+  Arena m_rg_arena;
   Arena *m_frame_arena = nullptr;
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;

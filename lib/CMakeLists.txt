@@ -54,14 +54,6 @@ if(REN_DEBUG_LAYER)
   message(STATUS "Enable RHI debug layer")
   target_compile_definitions(ren-internal PUBLIC REN_DEBUG_LAYER)
 endif()
-if(REN_DEBUG_NAMES)
-  message(STATUS "Enable RHI object debug names")
-  target_compile_definitions(ren-internal PUBLIC REN_DEBUG_NAMES)
-endif()
-if(REN_RENDER_GRAPH_DEBUG)
-  message(STATUS "Enable render graph debug features")
-  target_compile_definitions(ren-internal PUBLIC REN_RG_DEBUG)
-endif()
 if(REN_HOT_RELOAD)
   message(STATUS "Enable hot reload support")
   target_compile_definitions(ren-core PUBLIC REN_HOT_RELOAD)
@@ -70,7 +62,6 @@ endif()
 add_library(ren STATIC 
   Camera.cpp
   GpuScene.cpp
-  Mesh.cpp
   PipelineLoading.cpp
   Scene.cpp
   SwapChain.cpp

@@ -118,10 +118,11 @@ void CommandRecorder::clear_texture(Handle<Texture> handle,
 }
 
 void CommandRecorder::pipeline_barrier(
-    Arena scratch, TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    TempSpan<const rhi::MemoryBarrier> memory_barriers,
     TempSpan<const TextureBarrier> texture_barriers) {
+  ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(&scratch, texture_barriers.size());
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
   for (usize i : range(texture_barriers.size())) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
@@ -139,16 +140,16 @@ void CommandRecorder::pipeline_barrier(
         .dst_layout = barrier.dst_layout,
     };
   }
-  rhi::cmd_pipeline_barrier(scratch, m_cmd, memory_barriers,
+  rhi::cmd_pipeline_barrier(m_cmd, memory_barriers,
                             Span(image_barriers, texture_barriers.size()));
 }
 
 void CommandRecorder::set_event(
-    Arena scratch, Handle<Event> event,
-    TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
     TempSpan<const TextureBarrier> texture_barriers) {
+  ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(&scratch, texture_barriers.size());
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
   for (usize i : range(texture_barriers.size())) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
@@ -166,17 +167,17 @@ void CommandRecorder::set_event(
         .dst_layout = barrier.dst_layout,
     };
   }
-  rhi::cmd_set_event(scratch, m_cmd, m_renderer->get_event(event).handle,
+  rhi::cmd_set_event(m_cmd, m_renderer->get_event(event).handle,
                      memory_barriers,
                      Span(image_barriers, texture_barriers.size()));
 }
 
 void CommandRecorder::wait_event(
-    Arena scratch, Handle<Event> event,
-    TempSpan<const rhi::MemoryBarrier> memory_barriers,
+    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
     TempSpan<const TextureBarrier> texture_barriers) {
+  ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(&scratch, texture_barriers.size());
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
   for (usize i : range(texture_barriers.size())) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
@@ -194,7 +195,7 @@ void CommandRecorder::wait_event(
         .dst_layout = barrier.dst_layout,
     };
   }
-  rhi::cmd_wait_event(scratch, m_cmd, m_renderer->get_event(event).handle,
+  rhi::cmd_wait_event(m_cmd, m_renderer->get_event(event).handle,
                       memory_barriers,
                       Span(image_barriers, texture_barriers.size()));
 }
@@ -381,20 +382,13 @@ void CommandRecorder::dispatch_indirect(
                              slice.offset);
 }
 
-auto CommandRecorder::debug_region(StringView label) -> DebugRegion {
+auto CommandRecorder::debug_region(String8 label) -> DebugRegion {
   return DebugRegion(m_cmd, label);
 }
 
-DebugRegion::DebugRegion(rhi::CommandBuffer cmd, StringView label) {
+DebugRegion::DebugRegion(rhi::CommandBuffer cmd, String8 label) {
   m_cmd = cmd;
-#if REN_DEBUG_NAMES
-  char label_c_str[128];
-  usize len = std::min(label.size(), std::size(label_c_str) - 1);
-  ren_assert(len == label.size());
-  std::ranges::copy_n(label.data(), len, label_c_str);
-  label_c_str[len] = '\0';
-  rhi::cmd_begin_debug_label(m_cmd, label_c_str);
-#endif
+  rhi::cmd_begin_debug_label(cmd, label);
 }
 
 DebugRegion::~DebugRegion() {
@@ -404,9 +398,7 @@ DebugRegion::~DebugRegion() {
 }
 
 void DebugRegion::end() {
-#if REN_DEBUG_NAMES
   rhi::cmd_end_debug_label(m_cmd);
-#endif
   m_cmd = {};
 }
 
@@ -418,7 +410,7 @@ auto init_event_pool(ResourceArena &arena) -> EventPool {
   };
 };
 
-auto set_event(Arena scratch, CommandRecorder &cmd, EventPool &pool,
+auto set_event(CommandRecorder &cmd, EventPool &pool,
                TempSpan<const rhi::MemoryBarrier> memory_barriers,
                TempSpan<const TextureBarrier> texture_barriers) -> EventId {
   [[unlikely]] if (pool.m_index == pool.m_events.size()) {
@@ -435,16 +427,15 @@ auto set_event(Arena scratch, CommandRecorder &cmd, EventPool &pool,
   pool.memory_barriers.append(memory_barriers);
   pool.texture_barriers.append(texture_barriers);
 
-  cmd.set_event(scratch, event.handle, memory_barriers, texture_barriers);
+  cmd.set_event(event.handle, memory_barriers, texture_barriers);
 
   return EventId(pool.m_index++);
 }
 
-void wait_event(Arena scratch, CommandRecorder &cmd, const EventPool &pool,
-                EventId id) {
+void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId id) {
   const EventData &event = pool.m_events[id];
   cmd.wait_event(
-      scratch, event.handle,
+      event.handle,
       Span(pool.memory_barriers)
           .subspan(event.memory_barrier_offset, event.memory_barrier_count),
       Span(pool.texture_barriers)

@@ -10,16 +10,32 @@
 
 namespace ren {
 
-auto to_system_path(const fs::path &path) -> String {
+auto to_system_path(NotNull<Arena *> arena, const fs::path &path) -> String8 {
 #if _WIN32
   static const LPSTR (*wine_get_unix_file_name)(LPCWSTR) =
       (decltype(wine_get_unix_file_name))GetProcAddress(
           GetModuleHandleA("KERNEL32"), "wine_get_unix_file_name");
   if (wine_get_unix_file_name) {
-    return wine_get_unix_file_name(path.c_str());
+    const char *str = wine_get_unix_file_name(path.c_str());
+    usize len = std::strlen(str);
+    char *buf = allocate<char>(arena, len);
+    std::memcpy(buf, str, len);
+    return {buf, len};
   }
+  int len = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), path.native().size(),
+                                nullptr, 0, nullptr, nullptr);
+  ren_assert(len > 0);
+  char *buf = allocate<char>(arena, len);
+  int res = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), path.native().size(),
+                                buf, len, nullptr, nullptr);
+  ren_assert(res == len);
+  return {buf, len};
+#else
+  usize len = path.native().size();
+  char *buf = allocate<char>(arena, len);
+  std::memcpy(buf, path.c_str(), len);
+  return {buf, len};
 #endif
-  return path.string();
 }
 
 auto fopen(const fs::path &p, const char *mode) -> FILE * {

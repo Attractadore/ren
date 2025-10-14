@@ -10,9 +10,7 @@
         "REN_BUILD_EXAMPLES": "ON",
         "REN_BUILD_IMGUI_PLUGIN": "ON",
         "REN_DEBUG_LAYER": "ON",
-        "REN_DEBUG_NAMES": "ON",
         "REN_HOT_RELOAD": "ON",
-        "REN_RENDER_GRAPH_DEBUG": "ON",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "ON",
         "CMAKE_COLOR_DIAGNOSTICS": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -55,9 +53,7 @@
         "CMAKE_BUILD_TYPE": "Release",
         "REN_ASSERTIONS": "OFF",
         "REN_DEBUG_LAYER": "OFF",
-        "REN_DEBUG_NAMES": "OFF",
         "REN_HOT_RELOAD": "OFF",
-        "REN_RENDER_GRAPH_DEBUG": "OFF",
         "REN_SHADER_SOURCE_LEVEL_DEBUG_INFO": "OFF"
       }
     },
@@ -66,14 +62,6 @@
       "inherits": "release",
       "cacheVariables": {
         "TRACY_ENABLE": "ON"
-      }
-    },
-    {
-      "name": "gpu-profile",
-      "inherits": "release",
-      "cacheVariables": {
-        "REN_DEBUG_NAMES": "ON",
-        "REN_RENDER_GRAPH_DEBUG": "ON"
       }
     }
   ]

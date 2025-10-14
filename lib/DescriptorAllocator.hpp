@@ -18,9 +18,9 @@ namespace detail {
 
 struct DescriptorAllocatorMixin {
   template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
-  auto allocate_sampled_texture(this auto &self, Arena scratch,
-                                Renderer &renderer, SrvDesc srv,
-                                rhi::Sampler sampler) -> sh::Handle<D> {
+  auto allocate_sampled_texture(this auto &self, Renderer &renderer,
+                                SrvDesc srv, rhi::Sampler sampler)
+      -> sh::Handle<D> {
     if constexpr (std::same_as<D, sh::Sampler2D>) {
       srv.dimension = rhi::ImageViewDimension::e2D;
     } else if constexpr (std::same_as<D, sh::SamplerCube>) {
@@ -28,17 +28,16 @@ struct DescriptorAllocatorMixin {
     } else if constexpr (std::same_as<D, sh::Sampler3D>) {
       srv.dimension = rhi::ImageViewDimension::e3D;
     }
-    return sh::Handle<D>(
-        self.allocate_sampled_texture(scratch, renderer, srv, sampler));
+    return sh::Handle<D>(self.allocate_sampled_texture(renderer, srv, sampler));
   }
 
   template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
-  auto allocate_sampled_texture(this auto &self, Arena scratch,
-                                Renderer &renderer, SrvDesc srv,
+  auto allocate_sampled_texture(this auto &self, Renderer &renderer,
+                                SrvDesc srv,
                                 const rhi::SamplerCreateInfo &sampler_info)
       -> sh::Handle<D> {
     return self.template allocate_sampled_texture<D>(
-        scratch, renderer, srv, renderer.get_sampler(sampler_info).value());
+        renderer, srv, renderer.get_sampler(sampler_info).value());
   }
 };
 
@@ -51,41 +50,39 @@ class DescriptorAllocator : public detail::DescriptorAllocatorMixin {
   FreeListAllocator m_sampler_allocator;
 
 public:
-  auto allocate_sampler(Arena scratch, Renderer &renderer, rhi::Sampler sampler)
+  auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
       -> sh::Handle<sh::SamplerState>;
 
-  auto try_allocate_sampler(Arena scratch, Renderer &renderer,
-                            rhi::Sampler sampler,
+  auto try_allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
                             sh::Handle<sh::SamplerState> id)
       -> sh::Handle<sh::SamplerState>;
 
-  auto allocate_sampler(Arena scratch, Renderer &renderer, rhi::Sampler sampler,
+  auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
                         sh::Handle<sh::SamplerState> handle)
       -> sh::Handle<sh::SamplerState>;
 
-  auto allocate_sampler(Arena scratch, Renderer &renderer,
+  auto allocate_sampler(Renderer &renderer,
                         const rhi::SamplerCreateInfo &sampler_info,
                         sh::Handle<sh::SamplerState> handle)
       -> sh::Handle<sh::SamplerState> {
-    return allocate_sampler(scratch, renderer,
+    return allocate_sampler(renderer,
                             renderer.get_sampler(sampler_info).value(), handle);
   }
 
   void free_sampler(sh::Handle<sh::SamplerState> sampler);
 
-  auto allocate_texture(Arena scratch, Renderer &renderer, SrvDesc srv)
-      -> sh::Handle<void>;
+  auto allocate_texture(Renderer &renderer, SrvDesc srv) -> sh::Handle<void>;
 
   void free_texture(sh::Handle<void> texture);
 
-  auto allocate_sampled_texture(Arena scratch, Renderer &renderer, SrvDesc srv,
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler) -> sh::Handle<void>;
 
   using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
 
   void free_sampled_texture(sh::Handle<void> texture);
 
-  auto allocate_storage_texture(Arena scratch, Renderer &renderer, UavDesc uav)
+  auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
       -> sh::Handle<void>;
 
   void free_storage_texture(sh::Handle<void> texture);
@@ -105,18 +102,17 @@ public:
 
   auto init(DescriptorAllocator &allocator) -> Result<void, Error>;
 
-  auto allocate_sampler(Arena scratch, Renderer &renderer, rhi::Sampler sampler)
+  auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
       -> sh::Handle<sh::SamplerState>;
 
-  auto allocate_texture(Arena scratch, Renderer &renderer, SrvDesc srv)
-      -> sh::Handle<void>;
+  auto allocate_texture(Renderer &renderer, SrvDesc srv) -> sh::Handle<void>;
 
-  auto allocate_sampled_texture(Arena scratch, Renderer &renderer, SrvDesc srv,
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler) -> sh::Handle<void>;
 
   using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
 
-  auto allocate_storage_texture(Arena scratch, Renderer &renderer, UavDesc uav)
+  auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
       -> sh::Handle<void>;
 
   void reset();

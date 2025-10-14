@@ -1,7 +1,6 @@
 #include "rhi.hpp"
 #if REN_RHI_VULKAN
 #include "core/Span.hpp"
-#include "core/String.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
@@ -28,7 +27,7 @@ namespace ren::rhi {
 
 namespace {
 
-inline auto fail(VkResult result, String description = "") -> Failure<Error> {
+inline auto fail(VkResult result) -> Failure<Error> {
   Error::Code code = Error::Unknown;
   ren_assert(result);
   switch (result) {
@@ -44,7 +43,7 @@ inline auto fail(VkResult result, String description = "") -> Failure<Error> {
     code = Error::Incomplete;
     break;
   }
-  return Failure(Error(code, std::move(description)));
+  return Failure(Error(code));
 }
 
 template <typename E>
@@ -463,21 +462,21 @@ struct DeviceData {
 
 namespace {
 
-auto set_debug_name(Device device, VkObjectType type, void *object,
-                    const char *name) -> Result<void> {
+void set_debug_name(Device device, VkObjectType type, void *object,
+                    String8 name) {
   if (vkSetDebugUtilsObjectNameEXT) {
+    ScratchArena scratch;
     VkDebugUtilsObjectNameInfoEXT name_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
         .objectType = type,
         .objectHandle = (u64)object,
-        .pObjectName = name,
+        .pObjectName = name.zero_terminated(scratch),
     };
     VkResult result = vkSetDebugUtilsObjectNameEXT(device->handle, &name_info);
     if (result) {
-      return fail(result);
+      fmt::println("vk: Failed to set debug name: {}", result);
     }
   }
-  return {};
 }
 
 } // namespace
@@ -514,9 +513,11 @@ auto load(Instance instance) -> Result<void> {
   return {};
 }
 
-auto create_instance(Arena scratch, NotNull<Arena *> arena,
+auto create_instance(NotNull<Arena *> arena,
                      const InstanceCreateInfo &create_info)
     -> Result<Instance> {
+  ScratchArena scratch(arena);
+
   VkResult result = VK_SUCCESS;
 
   fmt::println("vk: Create instance");
@@ -527,15 +528,15 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
     return fail(Error::Unknown);
   }
   auto *instance_layers =
-      allocate<VkLayerProperties>(&scratch, num_instance_layers);
+      allocate<VkLayerProperties>(scratch, num_instance_layers);
   result =
       vkEnumerateInstanceLayerProperties(&num_instance_layers, instance_layers);
   if (result) {
     return fail(Error::Unknown);
   }
-  auto is_layer_supported = [&](StringView layer) {
+  auto is_layer_supported = [&](const char *layer) {
     for (usize e : range(num_instance_layers)) {
-      if (layer == instance_layers[e].layerName) {
+      if (std::strcmp(layer, instance_layers[e].layerName) == 0) {
         return true;
       }
     }
@@ -549,15 +550,15 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
     return fail(Error::Unknown);
   }
   auto *instance_extensions =
-      allocate<VkExtensionProperties>(&scratch, num_instance_extensions);
+      allocate<VkExtensionProperties>(scratch, num_instance_extensions);
   result = vkEnumerateInstanceExtensionProperties(
       nullptr, &num_instance_extensions, instance_extensions);
   if (result) {
     return fail(Error::Unknown);
   }
-  auto is_extension_supported = [&](StringView extension) {
+  auto is_extension_supported = [&](const char *extension) {
     for (usize e : range(num_instance_extensions)) {
-      if (extension == instance_extensions[e].extensionName) {
+      if (std::strcmp(extension, instance_extensions[e].extensionName) == 0) {
         return true;
       }
     }
@@ -565,9 +566,9 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
   };
 
   u32 num_layers = 0;
-  auto *layers = allocate<const char *>(&scratch, num_instance_layers);
+  auto *layers = allocate<const char *>(scratch, num_instance_layers);
   u32 num_extensions = 0;
-  auto *extensions = allocate<const char *>(&scratch, num_instance_extensions);
+  auto *extensions = allocate<const char *>(scratch, num_instance_extensions);
 
   if (create_info.debug_layer and
       is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME)) {
@@ -688,7 +689,7 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
     return fail(Error::Unsupported);
   }
   auto *physical_devices =
-      allocate<VkPhysicalDevice>(&scratch, num_physical_devices);
+      allocate<VkPhysicalDevice>(scratch, num_physical_devices);
   result = vkEnumeratePhysicalDevices(instance->handle, &num_physical_devices,
                                       physical_devices);
   instance->adapters = allocate<AdapterData>(arena, num_physical_devices);
@@ -716,9 +717,9 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
       return fail(Error::Unknown);
     }
 
-    auto is_extension_supported = [&](StringView extension) {
+    auto is_extension_supported = [&](const char *extension) {
       for (usize e : range(adapter.num_extensions)) {
-        if (extension == adapter_extensions[e].extensionName) {
+        if (std::strcmp(extension, adapter_extensions[e].extensionName) == 0) {
           return true;
         }
       }
@@ -791,7 +792,7 @@ auto create_instance(Arena scratch, NotNull<Arena *> arena,
 
     uint32_t num_queues = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, nullptr);
-    auto *queues = allocate<VkQueueFamilyProperties>(&scratch, num_queues);
+    auto *queues = allocate<VkQueueFamilyProperties>(scratch, num_queues);
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, queues);
 
     for (int i : range(num_queues)) {
@@ -945,8 +946,10 @@ auto is_queue_family_supported(Instance instance, Adapter adapter,
          QUEUE_FAMILY_UNAVAILABLE;
 }
 
-auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
+auto create_device(NotNull<Arena *> arena, Instance instance,
                    const DeviceCreateInfo &create_info) -> Result<Device> {
+  ScratchArena scratch(arena);
+
   VkResult result = VK_SUCCESS;
 
   ren_assert(create_info.adapter.index < instance->num_adapters);
@@ -958,7 +961,7 @@ auto create_device(Arena scratch, NotNull<Arena *> arena, Instance instance,
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
   u32 num_extensions = std::size(REQUIRED_DEVICE_EXTENSIONS);
-  auto *extensions = allocate<const char *>(&scratch, adapter.num_extensions);
+  auto *extensions = allocate<const char *>(scratch, adapter.num_extensions);
   std::ranges::copy(REQUIRED_DEVICE_EXTENSIONS, extensions);
   if (not instance->headless) {
     std::ranges::copy(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS,
@@ -1307,13 +1310,14 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
-auto queue_submit(Arena scratch, Queue queue,
-                  TempSpan<const rhi::CommandBuffer> cmd_buffers,
+auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
                   TempSpan<const rhi::SemaphoreState> wait_semaphores,
                   TempSpan<const rhi::SemaphoreState> signal_semaphores)
     -> Result<void> {
+  ScratchArena scratch;
+
   auto *command_buffer_infos =
-      allocate<VkCommandBufferSubmitInfo>(&scratch, cmd_buffers.size());
+      allocate<VkCommandBufferSubmitInfo>(scratch, cmd_buffers.size());
   for (usize i : range(cmd_buffers.size())) {
     command_buffer_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
@@ -1322,7 +1326,7 @@ auto queue_submit(Arena scratch, Queue queue,
   }
 
   auto *wait_semaphore_submit_infos =
-      allocate<VkSemaphoreSubmitInfo>(&scratch, wait_semaphores.size());
+      allocate<VkSemaphoreSubmitInfo>(scratch, wait_semaphores.size());
   for (usize i : range(wait_semaphores.size())) {
     wait_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -1333,7 +1337,7 @@ auto queue_submit(Arena scratch, Queue queue,
   }
 
   auto *signal_semaphore_submit_infos =
-      allocate<VkSemaphoreSubmitInfo>(&scratch, signal_semaphores.size());
+      allocate<VkSemaphoreSubmitInfo>(scratch, signal_semaphores.size());
   for (usize i : range(signal_semaphores.size())) {
     signal_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
@@ -1393,13 +1397,18 @@ void destroy_semaphore(Device device, Semaphore semaphore) {
   device->vk.vkDestroySemaphore(device->handle, semaphore.handle, nullptr);
 }
 
-auto wait_for_semaphores(Arena scratch, Device device,
+void set_debug_name(Device device, Semaphore semaphore, String8 name) {
+  set_debug_name(device, VK_OBJECT_TYPE_SEMAPHORE, semaphore.handle, name);
+}
+
+auto wait_for_semaphores(Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
                          std::chrono::nanoseconds timeout)
     -> Result<WaitResult> {
+  ScratchArena scratch;
   u32 cnt = wait_infos.size();
-  auto *semaphores = allocate<VkSemaphore>(&scratch, cnt);
-  auto *values = allocate<u64>(&scratch, cnt);
+  auto *semaphores = allocate<VkSemaphore>(scratch, cnt);
+  auto *values = allocate<u64>(scratch, cnt);
   for (usize i : range(cnt)) {
     semaphores[i] = wait_infos[i].semaphore.handle;
     values[i] = wait_infos[i].value;
@@ -1493,9 +1502,8 @@ void destroy_buffer(Device device, Buffer buffer) {
   vmaDestroyBuffer(device->allocator, buffer.handle, buffer.allocation.handle);
 }
 
-auto set_debug_name(Device device, Buffer buffer, const char *name)
-    -> Result<void> {
-  return set_debug_name(device, VK_OBJECT_TYPE_BUFFER, buffer.handle, name);
+void set_debug_name(Device device, Buffer buffer, String8 name) {
+  set_debug_name(device, VK_OBJECT_TYPE_BUFFER, buffer.handle, name);
 }
 
 auto get_allocation(Device, Buffer buffer) -> Allocation {
@@ -1579,9 +1587,8 @@ void destroy_image(Device device, Image image) {
   vmaDestroyImage(device->allocator, image.handle, image.allocation.handle);
 }
 
-auto set_debug_name(Device device, Image image, const char *name)
-    -> Result<void> {
-  return set_debug_name(device, VK_OBJECT_TYPE_IMAGE, image.handle, name);
+void set_debug_name(Device device, Image image, String8 name) {
+  set_debug_name(device, VK_OBJECT_TYPE_IMAGE, image.handle, name);
 }
 
 auto get_allocation(Device, Image image) -> Allocation {
@@ -1664,11 +1671,12 @@ void destroy_sampler(Device device, Sampler sampler) {
   device->vk.vkDestroySampler(device->handle, sampler.handle, nullptr);
 }
 
-void write_sampler_descriptor_heap(Arena scratch, Device device,
+void write_sampler_descriptor_heap(Device device,
                                    TempSpan<const Sampler> samplers,
                                    u32 index) {
+  ScratchArena scratch;
   u32 cnt = samplers.size();
-  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {.sampler = samplers[i].handle};
   }
@@ -1684,10 +1692,11 @@ void write_sampler_descriptor_heap(Arena scratch, Device device,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_srv_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> srvs, u32 index) {
+void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
+                               u32 index) {
+  ScratchArena scratch;
   u32 cnt = srvs.size();
-  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
         .imageView = srvs[i].handle,
@@ -1706,11 +1715,11 @@ void write_srv_descriptor_heap(Arena scratch, Device device,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_cis_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> srvs,
+void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
                                TempSpan<const Sampler> samplers, u32 index) {
+  ScratchArena scratch;
   u32 cnt = srvs.size();
-  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
         .sampler = samplers[i].handle,
@@ -1730,10 +1739,11 @@ void write_cis_descriptor_heap(Arena scratch, Device device,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_uav_descriptor_heap(Arena scratch, Device device,
-                               TempSpan<const ImageView> uavs, u32 index) {
+void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
+                               u32 index) {
+  ScratchArena scratch;
   u32 cnt = uavs.size();
-  auto *image_info = allocate<VkDescriptorImageInfo>(&scratch, cnt);
+  auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
         .imageView = uavs[i].handle,
@@ -1752,9 +1762,11 @@ void write_uav_descriptor_heap(Arena scratch, Device device,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-auto create_graphics_pipeline(Arena scratch, Device device,
+auto create_graphics_pipeline(Device device,
                               const GraphicsPipelineCreateInfo &create_info)
     -> Result<Pipeline> {
+  ScratchArena scratch;
+
   VkResult result = VK_SUCCESS;
 
   const ShaderInfo *shaders[] = {
@@ -1782,7 +1794,7 @@ auto create_graphics_pipeline(Arena scratch, Device device,
     }
     u32 num_specialization_constants = shader.specialization.constants.size();
     auto *specialization_map = allocate<VkSpecializationMapEntry>(
-        &scratch, num_specialization_constants);
+        scratch, num_specialization_constants);
     for (usize j : range(num_specialization_constants)) {
       const SpecializationConstant &c = shader.specialization.constants[j];
       specialization_map[j] = {
@@ -1814,7 +1826,7 @@ auto create_graphics_pipeline(Arena scratch, Device device,
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = stage_bits[i],
         .module = modules[num_stages],
-        .pName = shader.entry_point,
+        .pName = shader.entry_point.zero_terminated(scratch),
         .pSpecializationInfo = &specialization_info[num_stages],
     };
     num_stages++;
@@ -1950,9 +1962,11 @@ auto create_graphics_pipeline(Arena scratch, Device device,
   return pipeline;
 }
 
-auto create_compute_pipeline(Arena scratch, Device device,
+auto create_compute_pipeline(Device device,
                              const ComputePipelineCreateInfo &create_info)
     -> Result<Pipeline> {
+  ScratchArena scratch;
+
   VkResult result = VK_SUCCESS;
 
   const ShaderInfo &cs = create_info.cs;
@@ -1970,8 +1984,8 @@ auto create_compute_pipeline(Arena scratch, Device device,
   }
 
   u32 num_specialization_constants = cs.specialization.constants.size();
-  auto *specialization_map = allocate<VkSpecializationMapEntry>(
-      &scratch, num_specialization_constants);
+  auto *specialization_map =
+      allocate<VkSpecializationMapEntry>(scratch, num_specialization_constants);
   for (usize i : range(cs.specialization.constants.size())) {
     const SpecializationConstant &c = cs.specialization.constants[i];
     specialization_map[i] = {
@@ -1994,7 +2008,7 @@ auto create_compute_pipeline(Arena scratch, Device device,
               .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
               .stage = VK_SHADER_STAGE_COMPUTE_BIT,
               .module = module,
-              .pName = cs.entry_point,
+              .pName = cs.entry_point.zero_terminated(scratch),
               .pSpecializationInfo = &specialization_info,
           },
       .layout = device->pipeline_layout,
@@ -2015,9 +2029,8 @@ void destroy_pipeline(Device device, Pipeline pipeline) {
   device->vk.vkDestroyPipeline(device->handle, pipeline.handle, nullptr);
 }
 
-auto set_debug_name(Device device, Pipeline pipeline, const char *name)
-    -> Result<void> {
-  return set_debug_name(device, VK_OBJECT_TYPE_PIPELINE, pipeline.handle, name);
+void set_debug_name(Device device, Pipeline pipeline, String8 name) {
+  set_debug_name(device, VK_OBJECT_TYPE_PIPELINE, pipeline.handle, name);
 }
 
 auto create_event(Device device) -> Event {
@@ -2084,10 +2097,8 @@ void destroy_command_pool(Device device, CommandPool pool) {
   }
 }
 
-auto set_debug_name(Device device, CommandPool pool, const char *name)
-    -> Result<void> {
-  return set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL, pool->handle,
-                        name);
+void set_debug_name(Device device, CommandPool pool, String8 name) {
+  set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL, pool->handle, name);
 }
 
 auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
@@ -2142,12 +2153,13 @@ auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
   return {};
 }
 
-void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
+void cmd_pipeline_barrier(CommandBuffer cmd,
                           TempSpan<const MemoryBarrier> memory_barriers,
                           TempSpan<const ImageBarrier> image_barriers) {
+  ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2159,7 +2171,7 @@ void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2191,12 +2203,13 @@ void cmd_pipeline_barrier(Arena scratch, CommandBuffer cmd,
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
 }
 
-void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
+void cmd_set_event(CommandBuffer cmd, Event event,
                    TempSpan<const MemoryBarrier> memory_barriers,
                    TempSpan<const ImageBarrier> image_barriers) {
+  ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2208,7 +2221,7 @@ void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2240,12 +2253,13 @@ void cmd_set_event(Arena scratch, CommandBuffer cmd, Event event,
   cmd.device->vk.vkCmdSetEvent2(cmd.handle, event.handle, &dependency_info);
 }
 
-void cmd_wait_event(Arena scratch, CommandBuffer cmd, Event event,
+void cmd_wait_event(CommandBuffer cmd, Event event,
                     TempSpan<const MemoryBarrier> memory_barriers,
                     TempSpan<const ImageBarrier> image_barriers) {
+  ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(&scratch, memory_barriers.size());
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
   for (usize i : range(memory_barriers.size())) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
@@ -2257,7 +2271,7 @@ void cmd_wait_event(Arena scratch, CommandBuffer cmd, Event event,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(&scratch, image_barriers.size());
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
   for (usize i : range(image_barriers.size())) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
@@ -2513,12 +2527,12 @@ void cmd_dispatch_indirect(CommandBuffer cmd, Buffer buffer, usize offset) {
   cmd.device->vk.vkCmdDispatchIndirect(cmd.handle, buffer.handle, offset);
 }
 
-void cmd_begin_debug_label(CommandBuffer cmd, const char *label) {
+void cmd_begin_debug_label(CommandBuffer cmd, String8 label) {
   if (vkCmdBeginDebugUtilsLabelEXT) {
-    ren_assert(label);
+    ScratchArena scratch;
     VkDebugUtilsLabelEXT label_info = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-        .pLabelName = label,
+        .pLabelName = label.zero_terminated(scratch),
     };
     vkCmdBeginDebugUtilsLabelEXT(cmd.handle, &label_info);
   }
@@ -2572,13 +2586,14 @@ void get_surface_present_modes(NotNull<Arena *> arena, Instance instance,
                                PresentMode **present_modes) {
   VkResult result = VK_SUCCESS;
 
+  ScratchArena scratch(arena);
   u32 num_vk_present_modes = 0;
   result = vkGetPhysicalDeviceSurfacePresentModesKHR(
       instance->adapters[adapter.index].physical_device, surface.handle,
       &num_vk_present_modes, nullptr);
   VK_CHECK(result, "vkGetPhysicalDeviceSurfacePresentModesKHR failed");
   auto *vk_present_modes =
-      allocate<VkPresentModeKHR>(arena, num_vk_present_modes);
+      scratch->allocate<VkPresentModeKHR>(num_vk_present_modes);
   result = vkGetPhysicalDeviceSurfacePresentModesKHR(
       instance->adapters[adapter.index].physical_device, surface.handle,
       &num_vk_present_modes, vk_present_modes);
@@ -2606,11 +2621,12 @@ void get_surface_formats(NotNull<Arena *> arena, Instance instance,
   VkPhysicalDevice physical_device =
       get_adapter(instance, adapter).physical_device;
 
+  ScratchArena scratch(arena);
   u32 num_vk_formats = 0;
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
                                                 &num_vk_formats, nullptr);
   VK_CHECK(result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed");
-  auto *vk_formats = allocate<VkSurfaceFormatKHR>(arena, num_vk_formats);
+  auto *vk_formats = scratch->allocate<VkSurfaceFormatKHR>(num_vk_formats);
   result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface.handle,
                                                 &num_vk_formats, vk_formats);
   VK_CHECK(result, "vkGetPhysicalDeviceSurfaceFormatsKHR failed");
@@ -2809,10 +2825,11 @@ void get_swap_chain_images(NotNull<Arena *> arena, SwapChain swap_chain,
                            u32 *num_images, Image **images) {
   VkResult result = VK_SUCCESS;
 
+  ScratchArena scratch(arena);
   result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
       swap_chain->device->handle, swap_chain->handle, num_images, nullptr);
   VK_CHECK(result, "vkGetSwapchainImagesKHR failed");
-  auto *vk_images = allocate<VkImage>(arena, *num_images);
+  auto *vk_images = scratch->allocate<VkImage>(*num_images);
   result = swap_chain->device->vk.vkGetSwapchainImagesKHR(
       swap_chain->device->handle, swap_chain->handle, num_images, vk_images);
   VK_CHECK(result, "vkGetSwapchainImagesKHR failed");

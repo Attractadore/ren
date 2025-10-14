@@ -48,7 +48,7 @@ public:
   void stage_texture(UploadBumpAllocator &allocator, Span<const std::byte> data,
                      Handle<Texture> texture);
 
-  auto upload(Arena scratch, Renderer &renderer, Handle<CommandPool> cmd_pool)
+  auto upload(Renderer &renderer, Handle<CommandPool> cmd_pool)
       -> Result<void, Error>;
 };
 

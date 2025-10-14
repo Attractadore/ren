@@ -12,8 +12,8 @@
 #include "MeshletSorting.comp.hpp"
 #include "Opaque.frag.hpp"
 #include "PrepareBatch.comp.hpp"
+#include "ren/core/Format.hpp"
 
-#include <fmt/format.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -370,27 +370,29 @@ void record_render_pass(const PassCommonConfig &ccfg,
       ccfg.rgb->create_buffer<sh::DrawIndexedIndirectCommand>(
           {.count = sh::MAX_DRAW_MESHLETS});
 
+  ScratchArena scratch;
   for (sh::BatchId batch : range(ds.batches.size())) {
     {
-      auto pass = ccfg.rgb->create_pass({fmt::format(
-          "{}{}-prepare-batch-{}", info.base.pass_name, pass_type, batch)});
+      auto pass = ccfg.rgb->create_pass(
+          {format(scratch, "{}{}-prepare-batch-{}", info.base.pass_name,
+                  pass_type, batch)});
 
       RgPrepareBatchArgs args = {
           .batch_offset = pass.read_buffer(cfg.batch_offsets, batch),
           .batch_size = pass.read_buffer(cfg.batch_sizes, batch),
           .command_descs = pass.read_buffer(cfg.batch_commands),
-          .commands = pass.write_buffer(fmt::format("{}{}-batch-{}-commands",
-                                                    info.base.pass_name,
-                                                    pass_type, batch),
-                                        &commands),
+          .commands =
+              pass.write_buffer(format(scratch, "{}{}-batch-{}-commands",
+                                       info.base.pass_name, pass_type, batch),
+                                &commands),
       };
 
       pass.dispatch_indirect(ccfg.pipelines->prepare_batch, args,
                              cfg.batch_prepare_commands, batch);
     }
 
-    auto pass = ccfg.rgb->create_pass(
-        {fmt::format("{}{}-batch-{}", info.base.pass_name, pass_type, batch)});
+    auto pass = ccfg.rgb->create_pass({format(
+        scratch, "{}{}-batch-{}", info.base.pass_name, pass_type, batch)});
 
     for (usize i = 0; i < info.base.color_attachments.size(); ++i) {
       NotNull<RgTextureId *> color_attachment = info.base.color_attachments[i];

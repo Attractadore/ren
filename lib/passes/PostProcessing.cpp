@@ -9,11 +9,12 @@
 #include "LocalToneMappingReduce.comp.hpp"
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
-
-#include <fmt/format.h>
+#include "ren/core/Format.hpp"
 
 void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
+  ScratchArena scratch;
+
   const SceneData &scene = *ccfg.scene;
 
   RgBufferId<u32> luminance_histogram;
@@ -113,16 +114,16 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     }
     for (u32 mip = 1; mip < num_mips; ++mip) {
       auto pass = ccfg.rgb->create_pass({
-          .name = fmt::format("local-tone-mapping-reduce-{}", mip),
+          .name = format(scratch, "local-tone-mapping-reduce-{}", mip),
           .queue = RgQueue::Async,
       });
       RgLocalToneMappingReduceArgs args = {
           .src_lightness = pass.write_texture(
-              fmt::format("ltm-lightness-{}", mip), &ltm_lightness,
+              format(scratch, "ltm-lightness-{}", mip), &ltm_lightness,
               rhi::CS_UNORDERED_ACCESS_IMAGE | rhi::CS_RESOURCE_IMAGE,
               rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip),
           .src_weights = pass.write_texture(
-              fmt::format("ltm-weights-{}", mip), &ltm_weights,
+              format(scratch, "ltm-weights-{}", mip), &ltm_weights,
               rhi::CS_UNORDERED_ACCESS_IMAGE | rhi::CS_RESOURCE_IMAGE,
               rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip),
           .dst_lightness = args.src_lightness,
@@ -136,12 +137,12 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
     }
     for (i32 mip = num_mips - 1; mip >= llm_mip; --mip) {
       auto pass = ccfg.rgb->create_pass({
-          .name = fmt::format("local-tone-mapping-accumulate-{}", mip),
+          .name = format(scratch, "local-tone-mapping-accumulate-{}", mip),
           .queue = RgQueue::Async,
       });
 
       RgTextureToken accumulator = pass.write_texture(
-          fmt::format("ltm-accumulator-{}", mip), &ltm_accumulator,
+          format(scratch, "ltm-accumulator-{}", mip), &ltm_accumulator,
           rhi::CS_UNORDERED_ACCESS_IMAGE | rhi::CS_RESOURCE_IMAGE,
           rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP, mip - llm_mip);
 

@@ -1,7 +1,7 @@
 #pragma once
-#include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
 #include "core/Span.hpp"
+#include "ren/core/String.hpp"
 #include "rhi.hpp"
 
 #include <glm/glm.hpp>
@@ -18,12 +18,12 @@ struct SpecializationConstant {
 
 struct ShaderInfo {
   Span<const std::byte> code;
-  const char *entry_point = "main";
+  String8 entry_point = "main";
   TempSpan<const SpecializationConstant> specialization_constants;
 };
 
 struct GraphicsPipelineCreateInfo {
-  REN_DEBUG_NAME_FIELD("Graphics pipeline");
+  String8 name = "Graphics pipeline";
   ShaderInfo ts;
   ShaderInfo ms;
   ShaderInfo vs;
@@ -42,7 +42,7 @@ struct GraphicsPipeline {
 };
 
 struct ComputePipelineCreateInfo {
-  REN_DEBUG_NAME_FIELD("Compute pipeline");
+  String8 name = "Compute pipeline";
   ShaderInfo cs;
 };
 
@@ -53,12 +53,11 @@ struct ComputePipeline {
 
 class ResourceArena;
 
-auto load_compute_pipeline(Arena scratch, ResourceArena &arena,
-                           Span<const std::byte> shader, StringView name)
+auto load_compute_pipeline(ResourceArena &arena, Span<const std::byte> shader,
+                           String8 name)
     -> Result<Handle<ComputePipeline>, Error>;
 
-#define load_compute_pipeline(scratch, arena, shader, name)                    \
-  load_compute_pipeline(scratch, arena, Span(shader, shader##Size).as_bytes(), \
-                        name)
+#define load_compute_pipeline(arena, shader, name)                             \
+  load_compute_pipeline(arena, Span(shader, shader##Size).as_bytes(), name)
 
 } // namespace ren

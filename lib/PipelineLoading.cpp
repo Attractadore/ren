@@ -2,6 +2,7 @@
 #include "Formats.hpp"
 #include "Mesh.hpp"
 #include "ResourceArena.hpp"
+#include "ren/core/Format.hpp"
 #include "sh/Opaque.h"
 
 #include "EarlyZ.vert.hpp"
@@ -27,29 +28,27 @@
 #include "SsaoFilter.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
 
-#include <fmt/format.h>
-
 namespace ren {
 
-auto load_early_z_pass_pipeline(Arena scratch, ResourceArena &arena)
+auto load_early_z_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(EarlyZVS, EarlyZVSSize).as_bytes();
-  return arena.create_graphics_pipeline(
-      scratch, GraphicsPipelineCreateInfo{
-                   .name = "Early Z pass graphics pipeline",
-                   .vs = {vs},
-                   .rasterization_state = {.cull_mode = rhi::CullMode::Back},
-                   .depth_stencil_state =
-                       {
-                           .depth_test_enable = true,
-                           .depth_compare_op = rhi::CompareOp::GreaterOrEqual,
-                       },
-                   .dsv_format = DEPTH_FORMAT,
-               });
+  return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
+      .name = "Early Z pass graphics pipeline",
+      .vs = {vs},
+      .rasterization_state = {.cull_mode = rhi::CullMode::Back},
+      .depth_stencil_state =
+          {
+              .depth_test_enable = true,
+              .depth_compare_op = rhi::CompareOp::GreaterOrEqual,
+          },
+      .dsv_format = DEPTH_FORMAT,
+  });
 }
 
-auto load_opaque_pass_pipelines(Arena scratch, ResourceArena &arena) -> Result<
+auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
     std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>, Error> {
+  ScratchArena scratch;
   auto vs = Span(OpaqueVS, OpaqueVSSize).as_bytes();
   auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
   std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
@@ -62,9 +61,9 @@ auto load_opaque_pass_pipelines(Arena scratch, ResourceArena &arena) -> Result<
     }};
     Result<Handle<GraphicsPipeline>, Error> result =
         arena.create_graphics_pipeline(
-            scratch,
+
             GraphicsPipelineCreateInfo{
-                .name = fmt::format("Opaque pass graphics pipeline {}", i),
+                .name = format(scratch, "Opaque pass graphics pipeline {}", i),
                 .vs =
                     {
                         .code = vs,
@@ -95,32 +94,30 @@ auto load_opaque_pass_pipelines(Arena scratch, ResourceArena &arena) -> Result<
   return pipelines;
 }
 
-auto load_skybox_pass_pipeline(Arena scratch, ResourceArena &arena)
+auto load_skybox_pass_pipeline(ResourceArena &arena)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(SkyboxVS, SkyboxVSSize).as_bytes();
   auto fs = Span(SkyboxFS, SkyboxFSSize).as_bytes();
-  return arena.create_graphics_pipeline(
-      scratch, GraphicsPipelineCreateInfo{
-                   .name = "Skybox pass graphics pipeline",
-                   .vs = {vs},
-                   .fs = {fs},
-                   .depth_stencil_state =
-                       {
-                           .depth_test_enable = true,
-                           .depth_compare_op = rhi::CompareOp::Equal,
-                       },
-                   .rtv_formats = {HDR_FORMAT},
-                   .dsv_format = DEPTH_FORMAT,
-               });
+  return arena.create_graphics_pipeline(GraphicsPipelineCreateInfo{
+      .name = "Skybox pass graphics pipeline",
+      .vs = {vs},
+      .fs = {fs},
+      .depth_stencil_state =
+          {
+              .depth_test_enable = true,
+              .depth_compare_op = rhi::CompareOp::Equal,
+          },
+      .rtv_formats = {HDR_FORMAT},
+      .dsv_format = DEPTH_FORMAT,
+  });
 }
 
-auto load_imgui_pipeline(Arena scratch, ResourceArena &arena,
-                         TinyImageFormat format)
+auto load_imgui_pipeline(ResourceArena &arena, TinyImageFormat format)
     -> Result<Handle<GraphicsPipeline>, Error> {
   auto vs = Span(ImGuiVS, ImGuiVSSize).as_bytes();
   auto fs = Span(ImGuiFS, ImGuiFSSize).as_bytes();
   return arena.create_graphics_pipeline(
-      scratch,
+
       {
           .name = "ImGui pass graphics pipeline",
           .vs = {vs},
@@ -143,11 +140,10 @@ auto load_imgui_pipeline(Arena scratch, ResourceArena &arena,
       });
 }
 
-auto load_pipelines(Arena scratch, ResourceArena &arena)
-    -> Result<Pipelines, Error> {
+auto load_pipelines(ResourceArena &arena) -> Result<Pipelines, Error> {
 
 #define compute_pipeline(shader, name)                                         \
-  load_compute_pipeline(scratch, arena, shader, name)
+  load_compute_pipeline(arena, shader, name)
 
   Pipelines pipelines;
   ren_try(
@@ -165,9 +161,9 @@ auto load_pipelines(Arena scratch, ResourceArena &arena)
   ren_try(pipelines.ssao_hi_z, compute_pipeline(SsaoHiZCS, "SSAO Hi-Z"));
   ren_try(pipelines.ssao, compute_pipeline(SsaoCS, "SSAO"));
   ren_try(pipelines.ssao_filter, compute_pipeline(SsaoFilterCS, "SSAO filter"));
-  ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(scratch, arena));
-  ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(scratch, arena));
-  ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(scratch, arena));
+  ren_try(pipelines.early_z_pass, load_early_z_pass_pipeline(arena));
+  ren_try(pipelines.opaque_pass, load_opaque_pass_pipelines(arena));
+  ren_try(pipelines.skybox_pass, load_skybox_pass_pipeline(arena));
   ren_try(pipelines.local_tone_mapping_lightness,
           compute_pipeline(LocalToneMappingLightnessCS,
                            "Local tone mapping lightness"));
@@ -185,8 +181,7 @@ auto load_pipelines(Arena scratch, ResourceArena &arena)
           compute_pipeline(ReduceLuminanceHistogramCS,
                            "Reduce luminance histogram"));
 #if REN_IMGUI
-  ren_try(pipelines.imgui_pass,
-          load_imgui_pipeline(scratch, arena, SDR_FORMAT));
+  ren_try(pipelines.imgui_pass, load_imgui_pipeline(arena, SDR_FORMAT));
 #endif
 
 #undef compute_pipeline

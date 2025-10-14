@@ -1,8 +1,8 @@
 #pragma once
-#include "DebugNames.hpp"
 #include "core/GenIndex.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 #include "rhi.hpp"
 
@@ -19,7 +19,7 @@ static_assert(MAX_SRV_SIZE == (1 << (MAX_SRV_MIPS - 1)));
 struct ImageView;
 
 struct TextureCreateInfo {
-  REN_DEBUG_NAME_FIELD("Texture");
+  String8 name = "Texture";
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage;
   u32 width = 1;
@@ -31,7 +31,7 @@ struct TextureCreateInfo {
 };
 
 struct ExternalTextureCreateInfo {
-  REN_DEBUG_NAME_FIELD("External Texture");
+  String8 name = "External Texture";
   rhi::Image handle = {};
   TinyImageFormat format = TinyImageFormat_UNDEFINED;
   rhi::ImageUsageFlags usage;

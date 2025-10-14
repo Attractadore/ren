@@ -34,7 +34,7 @@ struct Sampler {
 
 namespace ren_export {
 
-expected<Renderer *> create_renderer(Arena scratch, NotNull<Arena *> arena,
+expected<Renderer *> create_renderer(NotNull<Arena *> arena,
                                      const RendererInfo &info) {
   auto *renderer = new Renderer;
   renderer->m_arena = arena;
@@ -43,16 +43,14 @@ expected<Renderer *> create_renderer(Arena scratch, NotNull<Arena *> arena,
 
   ren_try_to(rhi::load(headless));
 
-  ren_try(renderer->m_instance, rhi::create_instance(scratch, renderer->m_arena,
-                                                     {
-#if REN_DEBUG_NAMES
-                                                         .debug_names = true,
-#endif
+  ren_try(renderer->m_instance,
+          rhi::create_instance(renderer->m_arena, {
+                                                      .debug_names = true,
 #if REN_DEBUG_LAYER
-                                                         .debug_layer = true,
+                                                      .debug_layer = true,
 #endif
-                                                         .headless = headless,
-                                                     }));
+                                                      .headless = headless,
+                                                  }));
 
   if (info.adapter == DEFAULT_ADAPTER) {
     renderer->m_adapter = rhi::get_adapter_by_preference(
@@ -68,7 +66,7 @@ expected<Renderer *> create_renderer(Arena scratch, NotNull<Arena *> arena,
       rhi::get_adapter_features(renderer->m_instance, renderer->m_adapter);
 
   ren_try(renderer->m_device,
-          rhi::create_device(scratch, renderer->m_arena, renderer->m_instance,
+          rhi::create_device(renderer->m_arena, renderer->m_instance,
                              {
                                  .adapter = renderer->m_adapter,
                                  .features = adapter_features,
@@ -104,7 +102,7 @@ auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
 
 void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
 
-auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
+auto Renderer::create_buffer(const BufferCreateInfo &create_info)
     -> Result<Handle<Buffer>, Error> {
   ren_assert(create_info.size > 0);
   ren_try(rhi::Buffer buffer,
@@ -112,9 +110,7 @@ auto Renderer::create_buffer(const BufferCreateInfo &&create_info)
                                            .size = create_info.size,
                                            .heap = create_info.heap,
                                        }));
-#if REN_DEBUG_NAMES
-  ren_try_to(rhi::set_debug_name(m_device, buffer, create_info.name.c_str()));
-#endif
+  rhi::set_debug_name(m_device, buffer, create_info.name);
   return m_buffers.emplace(Buffer{
       .handle = buffer,
       .ptr = (std::byte *)rhi::map(m_device, buffer),
@@ -158,7 +154,7 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   };
 };
 
-auto Renderer::create_texture(const TextureCreateInfo &&create_info)
+auto Renderer::create_texture(const TextureCreateInfo &create_info)
     -> Result<Handle<Texture>, Error> {
   ren_assert(create_info.width > 0);
   ren_assert(create_info.num_mips > 0);
@@ -174,9 +170,7 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
                                           .num_mips = create_info.num_mips,
                                           .num_layers = create_info.num_layers,
                                       }));
-#if REN_DEBUG_NAMES
-  ren_try_to(rhi::set_debug_name(m_device, image, create_info.name.c_str()));
-#endif
+  rhi::set_debug_name(m_device, image, create_info.name);
   return m_textures.emplace(Texture{
       .handle = image,
       .format = create_info.format,
@@ -191,11 +185,8 @@ auto Renderer::create_texture(const TextureCreateInfo &&create_info)
 }
 
 auto Renderer::create_external_texture(
-    const ExternalTextureCreateInfo &&create_info) -> Handle<Texture> {
-#if REN_DEBUG_NAMES
-  std::ignore = rhi::set_debug_name(m_device, create_info.handle,
-                                    create_info.name.c_str());
-#endif
+    const ExternalTextureCreateInfo &create_info) -> Handle<Texture> {
+  rhi::set_debug_name(m_device, create_info.handle, create_info.name);
   return m_textures.emplace(Texture{
       .handle = create_info.handle,
       .format = create_info.format,
@@ -308,7 +299,7 @@ auto Renderer::get_sampler(const rhi::SamplerCreateInfo &create_info)
   return sampler;
 }
 
-auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
+auto Renderer::create_semaphore(const SemaphoreCreateInfo &create_info)
     -> Result<Handle<Semaphore>, Error> {
   ren_try(rhi::Semaphore semaphore,
           rhi::create_semaphore(m_device,
@@ -316,6 +307,7 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &&create_info)
                                     .type = create_info.type,
                                     .initial_value = create_info.initial_value,
                                 }));
+  rhi::set_debug_name(m_device, semaphore, create_info.name);
   return m_semaphores.emplace(Semaphore{.handle = semaphore});
 }
 
@@ -335,18 +327,17 @@ void Renderer::destroy(Handle<Event> handle) {
   }
 }
 
-auto Renderer::wait_for_semaphore(Arena scratch, Handle<Semaphore> semaphore,
-                                  u64 value,
+auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
                                   std::chrono::nanoseconds timeout) const
     -> Result<rhi::WaitResult, Error> {
   return rhi::wait_for_semaphores(
-      scratch, m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
+      m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
 }
 
-auto Renderer::wait_for_semaphore(Arena scratch, Handle<Semaphore> semaphore,
-                                  u64 value) const -> Result<void, Error> {
+auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
+    -> Result<void, Error> {
   ren_try(rhi::WaitResult wait_result,
-          wait_for_semaphore(scratch, semaphore, value,
+          wait_for_semaphore(semaphore, value,
                              std::chrono::nanoseconds(UINT64_MAX)));
   ren_assert(wait_result == rhi::WaitResult::Success);
   return {};
@@ -363,9 +354,7 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   ren_try(rhi::CommandPool pool,
           rhi::create_command_pool(m_arena, m_device,
                                    {.queue_family = create_info.queue_family}));
-#if REN_DEBUG_NAMES
-  ren_try_to(rhi::set_debug_name(m_device, pool, create_info.name.c_str()));
-#endif
+  rhi::set_debug_name(m_device, pool, create_info.name);
   return m_command_pools.emplace(CommandPool{
       .handle = pool,
       .queue_family = create_info.queue_family,
@@ -389,8 +378,10 @@ auto Renderer::reset_command_pool(Handle<CommandPool> pool)
 }
 
 auto Renderer::create_graphics_pipeline(
-    Arena scratch, const GraphicsPipelineCreateInfo &&create_info)
+    const GraphicsPipelineCreateInfo &create_info)
     -> Result<Handle<GraphicsPipeline>, Error> {
+  ScratchArena scratch;
+
   u32 num_render_targets = 0;
   for (usize i : range(rhi::MAX_NUM_RENDER_TARGETS)) {
     if (create_info.rtv_formats[i]) {
@@ -426,9 +417,9 @@ auto Renderer::create_graphics_pipeline(
     const ShaderInfo &shader = *shaders[i];
     u32 num_specialization_constants = shader.specialization_constants.size();
     auto *specialization_constants = allocate<rhi::SpecializationConstant>(
-        &scratch, num_specialization_constants);
+        scratch, num_specialization_constants);
     auto *specialization_data =
-        allocate<u32>(&scratch, num_specialization_constants);
+        allocate<u32>(scratch, num_specialization_constants);
 
     for (usize j : range(num_specialization_constants)) {
       const SpecializationConstant &c = shader.specialization_constants[j];
@@ -453,10 +444,8 @@ auto Renderer::create_graphics_pipeline(
   }
 
   ren_try(rhi::Pipeline pipeline,
-          rhi::create_graphics_pipeline(scratch, m_device, pipeline_info));
-#if REN_DEBUG_NAMES
-  ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
-#endif
+          rhi::create_graphics_pipeline(m_device, pipeline_info));
+  rhi::set_debug_name(m_device, pipeline, create_info.name);
 
   return m_graphics_pipelines.emplace(GraphicsPipeline{.handle = pipeline});
 }
@@ -475,8 +464,10 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
 }
 
 auto Renderer::create_compute_pipeline(
-    Arena scratch, const ComputePipelineCreateInfo &&create_info)
+    const ComputePipelineCreateInfo &create_info)
     -> Result<Handle<ComputePipeline>, Error> {
+  ScratchArena scratch;
+
   Span<const std::byte> code = create_info.cs.code;
 
   Span<const u32> spirv((const u32 *)code.data(), code.size() / 4);
@@ -505,8 +496,8 @@ auto Renderer::create_compute_pipeline(
 
   u32 num_spec_consts = cs.specialization_constants.size();
   auto *specialization_constants =
-      allocate<rhi::SpecializationConstant>(&scratch, num_spec_consts);
-  u32 *specialization_data = allocate<u32>(&scratch, num_spec_consts);
+      allocate<rhi::SpecializationConstant>(scratch, num_spec_consts);
+  u32 *specialization_data = allocate<u32>(scratch, num_spec_consts);
   for (usize i : range(cs.specialization_constants.size())) {
     const SpecializationConstant &c = cs.specialization_constants[i];
     specialization_constants[i] = {
@@ -520,7 +511,7 @@ auto Renderer::create_compute_pipeline(
   ren_try(
       rhi::Pipeline pipeline,
       rhi::create_compute_pipeline(
-          scratch, m_device,
+          m_device,
           {
               .cs =
                   {
@@ -535,9 +526,7 @@ auto Renderer::create_compute_pipeline(
                           },
                   },
           }));
-#if REN_DEBUG_NAMES
-  ren_try_to(rhi::set_debug_name(m_device, pipeline, create_info.name.c_str()));
-#endif
+  rhi::set_debug_name(m_device, pipeline, create_info.name);
 
   return m_compute_pipelines.emplace(ComputePipeline{
       .handle = pipeline,
@@ -558,13 +547,14 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
   return m_compute_pipelines[pipeline];
 }
 
-auto Renderer::submit(Arena scratch, rhi::QueueFamily queue_family,
+auto Renderer::submit(rhi::QueueFamily queue_family,
                       TempSpan<const rhi::CommandBuffer> cmd_buffers,
                       TempSpan<const SemaphoreState> wait_semaphores,
                       TempSpan<const SemaphoreState> signal_semaphores)
     -> Result<void, Error> {
+  ScratchArena scratch;
   auto *wait_states =
-      allocate<rhi::SemaphoreState>(&scratch, wait_semaphores.size());
+      allocate<rhi::SemaphoreState>(scratch, wait_semaphores.size());
   for (usize i : range(wait_semaphores.size())) {
     wait_states[i] = {
         .semaphore = get_semaphore(wait_semaphores[i].semaphore).handle,
@@ -572,15 +562,14 @@ auto Renderer::submit(Arena scratch, rhi::QueueFamily queue_family,
     };
   }
   auto *signal_states =
-      allocate<rhi::SemaphoreState>(&scratch, signal_semaphores.size());
+      allocate<rhi::SemaphoreState>(scratch, signal_semaphores.size());
   for (usize i : range(signal_semaphores.size())) {
     signal_states[i] = {
         .semaphore = get_semaphore(signal_semaphores[i].semaphore).handle,
         .value = signal_semaphores[i].value,
     };
   }
-  return rhi::queue_submit(scratch, rhi::get_queue(m_device, queue_family),
-                           cmd_buffers,
+  return rhi::queue_submit(rhi::get_queue(m_device, queue_family), cmd_buffers,
                            Span(wait_states, wait_semaphores.size()),
                            Span(signal_states, signal_semaphores.size()));
 }
