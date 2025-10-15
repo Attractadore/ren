@@ -7,6 +7,7 @@
 #include "sh/Std.h"
 
 #include <SDL3/SDL_vulkan.h>
+#include <algorithm>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
 #include <utility>
@@ -570,8 +571,9 @@ auto create_instance(NotNull<Arena *> arena,
   u32 num_extensions = 0;
   auto *extensions = allocate<const char *>(scratch, num_instance_extensions);
 
-  if (create_info.debug_layer and
-      is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME)) {
+  bool debug_layer = create_info.debug_layer and
+                     is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME);
+  if (debug_layer) {
     fmt::println("vk: Enable validation layer");
     layers[num_layers++] = VK_LAYER_KHRONOS_VALIDATION_NAME;
     if (is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
@@ -650,7 +652,7 @@ auto create_instance(NotNull<Arena *> arena,
 
   volkLoadInstanceOnly(instance->handle);
 
-  if (create_info.debug_layer and
+  if (debug_layer and
       is_extension_supported(VK_EXT_DEBUG_REPORT_EXTENSION_NAME)) {
     // Try to create debug callback
 

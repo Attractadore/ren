@@ -7,7 +7,7 @@
 namespace ren {
 
 void *vm_allocate(usize size) {
-  return VirtualAlloc(nullptr, size, MEM_RESERVE, 0);
+  return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_NOACCESS);
 }
 
 void vm_commit(void *ptr, usize size) {

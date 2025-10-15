@@ -29,7 +29,7 @@ auto to_system_path(NotNull<Arena *> arena, const fs::path &path) -> String8 {
   int res = WideCharToMultiByte(CP_UTF8, 0, path.c_str(), path.native().size(),
                                 buf, len, nullptr, nullptr);
   ren_assert(res == len);
-  return {buf, len};
+  return {buf, (usize)len};
 #else
   usize len = path.native().size();
   char *buf = allocate<char>(arena, len);

@@ -12,6 +12,7 @@ Arena Arena::init() {
     }
     arena.m_max_size /= 2;
   }
+  ren_assert(arena.m_max_size > 0);
   return arena;
 }
 
