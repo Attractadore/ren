@@ -37,9 +37,10 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
                            }));
   ren_try_to(
       baker->descriptor_allocator.init(baker->session_descriptor_allocator));
-  baker->allocator.init(arena, *baker->renderer, baker->gfx_arena, 64 * MiB);
-  baker->upload_allocator.init(arena, *baker->renderer, baker->gfx_arena,
-                               256 * MiB);
+  baker->allocator =
+      DeviceBumpAllocator::init(*baker->renderer, baker->gfx_arena, 64 * MiB);
+  baker->upload_allocator =
+      UploadBumpAllocator::init(*baker->renderer, baker->gfx_arena, 256 * MiB);
   return baker;
 }
 

@@ -39,15 +39,15 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
   sid->m_gfx_arena.init(scene->m_renderer);
   ren_try(sid->m_pipelines, load_pipelines(sid->m_gfx_arena));
 
-  sid->m_gfx_allocator.init(&scene->m_internal_arena, *renderer,
-                            sid->m_gfx_arena, 256 * MiB);
+  sid->m_gfx_allocator =
+      DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 256 * MiB);
   sid->m_gfx_event_pool = init_event_pool(sid->m_gfx_arena);
   if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    sid->m_async_allocator.init(&scene->m_internal_arena, *renderer,
-                                sid->m_gfx_arena, 16 * MiB);
+    sid->m_async_allocator =
+        DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
     for (DeviceBumpAllocator &allocator : sid->m_shared_allocators) {
-      allocator.init(&scene->m_internal_arena, *renderer, sid->m_gfx_arena,
-                     16 * MiB);
+      allocator =
+          DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
     }
     sid->m_async_event_pool = init_event_pool(sid->m_gfx_arena);
   }
@@ -71,8 +71,8 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
                   .queue_family = rhi::QueueFamily::Compute,
               }));
     }
-    frcs.upload_allocator.init(&scene->m_internal_arena, *renderer,
-                               sid->m_gfx_arena, 64 * MiB);
+    frcs.upload_allocator =
+        UploadBumpAllocator::init(*renderer, sid->m_gfx_arena, 128 * MiB);
     ren_try_to(frcs.descriptor_allocator.init(scene->m_descriptor_allocator));
   }
 

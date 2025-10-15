@@ -7,50 +7,35 @@
 
 namespace ren {
 
-constexpr usize MAX_BUMP_ALLOCATOR_SIZE = 4 * GiB;
-
-class CommandRecorder;
-
 namespace detail {
 
-template <typename Policy> class BumpAllocator {
+constexpr usize MAX_BUMP_ALLOCATOR_BLOCKS = 8;
+
+template <typename Policy> struct BumpAllocator {
+  using Block = Policy::Block;
+
+  Renderer *m_renderer = nullptr;
+  ResourceArena *m_arena = nullptr;
+  Block m_blocks[MAX_BUMP_ALLOCATOR_BLOCKS] = {};
+  usize m_num_blocks = 0;
+  usize m_block_size = 0;
+  usize m_block = 0;
+  usize m_block_offset = 0;
+
 public:
+  [[nodiscard]] static BumpAllocator
+  init(Renderer &renderer, ResourceArena &gfx_arena, usize block_size) {
+    return {
+        .m_renderer = &renderer,
+        .m_arena = &gfx_arena,
+        .m_block_size = block_size,
+        .m_block = (usize)-1,
+        .m_block_offset = block_size,
+    };
+  }
+
   template <typename T = std::byte>
   using Allocation = Policy::template Allocation<T>;
-
-  BumpAllocator() = default;
-
-  void init(NotNull<Arena *> arena, Renderer &renderer,
-            ResourceArena &gfx_arena, usize block_size) {
-    m_renderer = &renderer;
-    m_arena = &gfx_arena;
-    m_block_size = block_size;
-    usize max_num_blocks = MAX_BUMP_ALLOCATOR_SIZE / block_size;
-    m_blocks = ren::allocate<Block>(arena, max_num_blocks);
-    reset();
-  }
-
-  BumpAllocator(const BumpAllocator &) = delete;
-
-  BumpAllocator(BumpAllocator &&other) { *this = std::move(other); }
-
-  ~BumpAllocator() = default;
-
-  BumpAllocator &operator=(const BumpAllocator &) = delete;
-
-  BumpAllocator &operator=(BumpAllocator &&other) {
-    m_renderer = other.m_renderer;
-    m_arena = other.m_arena;
-    m_num_blocks = other.m_num_blocks;
-    other.m_num_blocks = 0;
-    m_blocks = std::move(other.m_blocks);
-    other.m_blocks = nullptr;
-    m_block_size = other.m_block_size;
-    m_block = other.m_block;
-    m_block_offset = other.m_block_offset;
-    other.reset();
-    return *this;
-  }
 
   template <typename T = std::byte>
   auto allocate(usize count) -> Allocation<T> {
@@ -63,8 +48,7 @@ public:
     [[unlikely]] if (m_block_offset + size > m_block_size) {
       m_block += 1;
       [[unlikely]] if (m_block == m_num_blocks) {
-        usize max_num_blocks = MAX_BUMP_ALLOCATOR_SIZE / m_block_size;
-        ren_assert(m_block < max_num_blocks);
+        ren_assert(m_block < MAX_BUMP_ALLOCATOR_BLOCKS);
         // FIXME: check for error.
         m_blocks[m_num_blocks++] =
             Policy::create_block(*m_renderer, *m_arena, m_block_size).value();
@@ -84,16 +68,6 @@ public:
     m_block = -1;
     m_block_offset = m_block_size;
   }
-
-private:
-  using Block = Policy::Block;
-  Renderer *m_renderer = nullptr;
-  ResourceArena *m_arena = nullptr;
-  Block *m_blocks = nullptr;
-  usize m_num_blocks = 0;
-  usize m_block_size = 0;
-  usize m_block = 0;
-  usize m_block_offset = 0;
 };
 
 struct DeviceBumpAllocationPolicy {
