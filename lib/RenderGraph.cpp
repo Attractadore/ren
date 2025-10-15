@@ -241,7 +241,7 @@ auto RgBuilder::write_buffer(RgPassId pass_id, String8 name,
                              RgUntypedBufferId src,
                              const rhi::BufferState &usage)
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
-  ScratchArena scratch;
+  ScratchArena scratch(m_arena);
   ren_assert(src);
   RgBuffer &src_buffer = m_data->m_buffers[src];
   ren_assert(src_buffer.def != pass_id);
@@ -417,7 +417,7 @@ void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
 }
 
 void RgBuilder::dump_pass_schedule() const {
-  ScratchArena scratch;
+  ScratchArena scratch(m_arena);
 
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
 

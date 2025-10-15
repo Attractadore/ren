@@ -83,14 +83,12 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
 
 } // namespace
 
-auto create_scene(NotNull<Arena *> frame_arena, NotNull<Arena *> arena,
-                  Renderer *renderer, SwapChain *swap_chain)
-    -> expected<Scene *> {
+auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
+                  SwapChain *swap_chain) -> expected<Scene *> {
   auto *scene = new Scene{
       .m_arena = arena,
       .m_internal_arena = make_arena(),
       .m_rg_arena = make_arena(),
-      .m_frame_arena = frame_arena,
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
   };
@@ -480,8 +478,327 @@ auto delay_input(Scene *scene) -> expected<void> {
   return {};
 }
 
+auto build_rg(NotNull<Arena *> arena, Scene *scene)
+    -> Result<RenderGraph, Error> {
+  ZoneScoped;
+
+  Renderer *renderer = scene->m_renderer;
+  SceneData &data = scene->m_data;
+  const SceneGraphicsSettings &settings = data.settings;
+  SwapChain *swap_chain = scene->m_swap_chain;
+  SceneInternalData *sid = scene->m_sid.get();
+  GpuScene &gpu_scene = scene->m_gpu_scene;
+  ScenePerFrameResources *frcs = scene->m_frcs;
+
+  auto &pass_cfg = sid->m_pass_cfg;
+  PassPersistentResources &pass_rcs = sid->m_pass_rcs;
+  RgPersistent &rgp = sid->m_rgp;
+
+  bool dirty = false;
+  auto set_if_changed =
+      [&]<typename T>(T &config_value,
+                      const std::convertible_to<T> auto &new_value) {
+        if (config_value != new_value) {
+          config_value = new_value;
+          dirty = true;
+        }
+      };
+
+  set_if_changed(pass_cfg.async_compute, data.settings.async_compute);
+
+  set_if_changed(pass_cfg.exposure_mode, data.settings.exposure_mode);
+
+  set_if_changed(pass_cfg.viewport, swap_chain->get_size());
+
+  set_if_changed(pass_cfg.backbuffer_usage, swap_chain->get_usage());
+
+  set_if_changed(pass_cfg.ssao, data.settings.ssao);
+  set_if_changed(pass_cfg.ssao_half_res, data.settings.ssao_full_res);
+  set_if_changed(pass_cfg.local_tone_mapping, data.settings.local_tone_mapping);
+  set_if_changed(pass_cfg.ltm_pyramid_size, data.settings.ltm_pyramid_size);
+  set_if_changed(pass_cfg.ltm_pyramid_mip, data.settings.ltm_llm_mip);
+
+  if (dirty) {
+    rgp.reset();
+    scene->m_rg_arena.clear();
+    rgp.set_async_compute_enabled(pass_cfg.async_compute);
+    pass_rcs = {};
+    pass_rcs.backbuffer = rgp.create_texture("backbuffer");
+    pass_rcs.sdr = pass_rcs.backbuffer;
+  }
+
+  RgBuilder rgb;
+  rgb.init(arena, &rgp, renderer, &frcs->descriptor_allocator);
+
+  PassCommonConfig cfg = {
+      .rgp = &rgp,
+      .rgb = &rgb,
+      .allocator = &frcs->upload_allocator,
+      .pipelines = &sid->m_pipelines,
+      .scene = &data,
+      .rcs = &pass_rcs,
+      .viewport = swap_chain->get_size(),
+  };
+
+  RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, gpu_scene);
+  setup_gpu_scene_update_pass(cfg, GpuSceneUpdatePassConfig{
+                                       .gpu_scene = &gpu_scene,
+                                       .rg_gpu_scene = &rg_gpu_scene,
+                                   });
+  switch (settings.exposure_mode) {
+  case sh::EXPOSURE_MODE_MANUAL: {
+    float exposure = sh::manual_exposure(settings.manual_exposure,
+                                         settings.exposure_compensation);
+    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
+  } break;
+  case sh::EXPOSURE_MODE_CAMERA: {
+    float exposure = sh::camera_exposure(
+        settings.camera_aperture, settings.inv_camera_shutter_time,
+        settings.camera_iso, settings.exposure_compensation);
+    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
+
+  } break;
+  case sh::EXPOSURE_MODE_AUTOMATIC:
+    if (scene->m_frame_index == 0) {
+      rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, 1.0f);
+    }
+    break;
+  default:
+    break;
+  }
+
+  glm::uvec2 viewport = swap_chain->get_size();
+
+  if (!pass_rcs.depth_buffer) {
+    pass_rcs.depth_buffer = rgp.create_texture({
+        .name = "depth-buffer",
+        .format = DEPTH_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId depth_buffer = pass_rcs.depth_buffer;
+  RgTextureId hi_z;
+
+  setup_early_z_pass(cfg, EarlyZPassConfig{
+                              .gpu_scene = &gpu_scene,
+                              .rg_gpu_scene = &rg_gpu_scene,
+                              .culling_phase = CullingPhase::First,
+                              .depth_buffer = &depth_buffer,
+                          });
+  if (data.settings.instance_occulusion_culling or
+      data.settings.meshlet_occlusion_culling) {
+    setup_hi_z_pass(cfg,
+                    HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
+  }
+  setup_early_z_pass(cfg, EarlyZPassConfig{
+                              .gpu_scene = &gpu_scene,
+                              .rg_gpu_scene = &rg_gpu_scene,
+                              .culling_phase = CullingPhase::Second,
+                              .depth_buffer = &depth_buffer,
+                              .hi_z = hi_z,
+                          });
+
+  RgTextureId ssao_llm;
+  RgTextureId ssao_depth = pass_rcs.ssao_depth;
+  if (data.settings.ssao) {
+    glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
+                                 std::bit_floor(viewport.y)};
+    // Don't need the full mip chain since after a certain stage they become
+    // small enough to completely fit in cache but are much less detailed.
+    i32 num_ssao_hi_z_mips =
+        get_mip_chain_length(std::min(ssao_hi_z_size.x, ssao_hi_z_size.y));
+    num_ssao_hi_z_mips =
+        std::max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
+
+    if (!pass_rcs.ssao_hi_z) {
+      pass_rcs.ssao_hi_z = rgp.create_texture({
+          .name = "ssao-hi-z",
+          .format = TinyImageFormat_R16_SFLOAT,
+          .width = ssao_hi_z_size.x,
+          .height = ssao_hi_z_size.y,
+          .num_mips = (u32)num_ssao_hi_z_mips,
+      });
+    }
+    RgTextureId ssao_hi_z = pass_rcs.ssao_hi_z;
+
+    const Camera &camera = data.get_camera();
+    glm::mat4 proj = get_projection_matrix(camera, viewport);
+
+    {
+      auto pass = rgb.create_pass({.name = "ssao-hi-z"});
+      auto spd_counter = rgb.create_buffer<u32>({.init = 0});
+      RgSsaoHiZArgs args = {
+          .spd_counter =
+              pass.write_buffer("ssao-hi-z-spd-counter", &spd_counter),
+          .num_mips = (u32)num_ssao_hi_z_mips,
+          .dsts = pass.write_texture("ssao-hi-z", &ssao_hi_z),
+          .src = pass.read_texture(
+              depth_buffer,
+              {
+                  .mag_filter = rhi::Filter::Linear,
+                  .min_filter = rhi::Filter::Linear,
+                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
+                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
+                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+              }),
+          .znear = camera.near,
+      };
+      pass.dispatch_grid_2d(sid->m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
+                            {sh::SPD_THREAD_ELEMS_X, sh::SPD_THREAD_ELEMS_Y});
+    }
+
+    glm::uvec2 ssao_size =
+        data.settings.ssao_full_res ? viewport : viewport / 2u;
+
+    if (!pass_rcs.ssao) {
+      pass_rcs.ssao = rgp.create_texture({
+          .name = "ssao",
+          .format = TinyImageFormat_R16_UNORM,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
+      });
+    }
+    if (!data.settings.ssao_full_res and !pass_rcs.ssao_depth) {
+      pass_rcs.ssao_depth = rgp.create_texture({
+          .name = "ssao-depth",
+          .format = TinyImageFormat_R16_SFLOAT,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
+      });
+    }
+
+    RgTextureId ssao = pass_rcs.ssao;
+    ssao_depth = pass_rcs.ssao_depth;
+    {
+      auto pass = rgb.create_pass({.name = "ssao"});
+
+      auto noise_lut = frcs->upload_allocator.allocate<float>(
+          sh::SSAO_HILBERT_CURVE_SIZE * sh::SSAO_HILBERT_CURVE_SIZE);
+
+      for (u32 y : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
+        for (u32 x : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
+          u32 h = sh::hilbert_from_2d(sh::SSAO_HILBERT_CURVE_SIZE, x, y);
+          noise_lut.host_ptr[y * sh::SSAO_HILBERT_CURVE_SIZE + x] =
+              sh::r1_seq(h);
+        }
+      }
+
+      RgSsaoArgs args = {
+          .noise_lut = noise_lut.device_ptr,
+          .depth = pass.read_texture(depth_buffer, rhi::SAMPLER_NEAREST_CLAMP),
+          .hi_z = pass.read_texture(ssao_hi_z, rhi::SAMPLER_NEAREST_CLAMP),
+          .ssao = pass.write_texture("ssao", &ssao),
+          .ssao_depth = ssao_depth
+                            ? pass.write_texture("ssao-depth", &ssao_depth)
+                            : RgTextureToken(),
+          .num_samples = (u32)data.settings.ssao_num_samples,
+          .p00 = proj[0][0],
+          .p11 = proj[1][1],
+          .znear = camera.near,
+          .rcp_p00 = 1.0f / proj[0][0],
+          .rcp_p11 = 1.0f / proj[1][1],
+          .radius = data.settings.ssao_radius,
+          .lod_bias = data.settings.ssao_lod_bias,
+      };
+      pass.dispatch_grid_2d(sid->m_pipelines.ssao, args, ssao_size);
+    }
+
+    if (!pass_rcs.ssao_llm) {
+      pass_rcs.ssao_llm = rgp.create_texture({
+          .name = "ssao-llm",
+          .format = TinyImageFormat_R16G16_SFLOAT,
+          .width = ssao_size.x,
+          .height = ssao_size.y,
+      });
+    }
+    ssao_llm = pass_rcs.ssao_llm;
+    {
+      auto pass = rgb.create_pass({.name = "ssao-filter"});
+
+      RgSsaoFilterArgs args = {
+          .depth =
+              !ssao_depth ? pass.read_texture(depth_buffer) : RgTextureToken(),
+          .ssao = pass.read_texture(ssao),
+          .ssao_depth = pass.try_read_texture(ssao_depth),
+          .ssao_llm = pass.write_texture("ssao-llm", &ssao_llm),
+          .znear = camera.near,
+      };
+      pass.dispatch(sid->m_pipelines.ssao_filter, args,
+                    ceil_div(ssao_size.x, sh::SSAO_FILTER_GROUP_SIZE.x *
+                                              sh::SSAO_FILTER_UNROLL.x),
+                    ceil_div(ssao_size.y, sh::SSAO_FILTER_GROUP_SIZE.y *
+                                              sh::SSAO_FILTER_UNROLL.y));
+    }
+  }
+
+  if (!pass_rcs.hdr) {
+    pass_rcs.hdr = rgp.create_texture({
+        .name = "hdr",
+        .format = HDR_FORMAT,
+        .width = viewport.x,
+        .height = viewport.y,
+    });
+  }
+  RgTextureId hdr = pass_rcs.hdr;
+
+  setup_opaque_pass(cfg, OpaquePassConfig{
+                             .gpu_scene = &gpu_scene,
+                             .rg_gpu_scene = &rg_gpu_scene,
+                             .hdr = &hdr,
+                             .depth_buffer = &depth_buffer,
+                             .hi_z = hi_z,
+                             .ssao = ssao_llm,
+                         });
+
+  setup_skybox_pass(cfg, SkyboxPassConfig{
+                             .exposure = rg_gpu_scene.exposure,
+                             .hdr = &hdr,
+                             .depth_buffer = depth_buffer,
+                         });
+
+  if (!cfg.rcs->acquire_semaphore) {
+    cfg.rcs->acquire_semaphore = rgp.create_semaphore("acquire-semaphore");
+  }
+
+  rhi::ImageUsageFlags swap_chain_usage = rhi::ImageUsage::UnorderedAccess;
+
+  RgTextureId sdr;
+  setup_post_processing_passes(cfg, PostProcessingPassesConfig{
+                                        .frame_index = scene->m_frame_index,
+                                        .hdr = hdr,
+                                        .exposure = &rg_gpu_scene.exposure,
+                                        .sdr = &sdr,
+                                    });
+#if REN_IMGUI
+  if (ImGui::GetCurrentContext() and ImGui::GetDrawData()) {
+    swap_chain_usage |= rhi::ImageUsage::RenderTarget;
+    setup_imgui_pass(cfg, ImGuiPassConfig{
+                              .sdr = &sdr,
+                          });
+  }
+#endif
+
+  swap_chain->set_usage(swap_chain_usage);
+
+  setup_present_pass(cfg, PresentPassConfig{
+                              .src = sdr,
+                              .acquire_semaphore = frcs->acquire_semaphore,
+                              .swap_chain = swap_chain,
+                          });
+
+  return rgb.build({
+      .gfx_allocator = &sid->m_gfx_allocator,
+      .async_allocator = &sid->m_async_allocator,
+      .shared_allocator = &sid->m_shared_allocators[0],
+      .upload_allocator = &frcs->upload_allocator,
+  });
+}
+
 auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ZoneScoped;
+
+  ScratchArena scratch;
 
   scene->m_data.settings.middle_gray =
       glm::pow(scene->m_data.settings.brightness * 0.01f, 2.2f);
@@ -493,7 +810,7 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ren_try_to(scene->m_resource_uploader.upload(*renderer,
                                                scene->m_frcs->gfx_cmd_pool));
 
-  ren_try(RenderGraph render_graph, scene->build_rg());
+  ren_try(RenderGraph render_graph, build_rg(scratch, scene));
 
   ren_try_to(render_graph.execute({
       .gfx_cmd_pool = frcs->gfx_cmd_pool,
@@ -518,7 +835,6 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   scene->m_frame_index++;
   return scene->next_frame();
 }
-
 auto init_imgui(Scene *scene) -> Result<void, Error> {
 #if REN_IMGUI
   if (!ImGui::GetCurrentContext()) {
@@ -849,317 +1165,6 @@ bool Scene::is_amd_anti_lag_available() {
 
 bool Scene::is_amd_anti_lag_enabled() {
   return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
-}
-
-auto Scene::build_rg() -> Result<RenderGraph, Error> {
-  ZoneScoped;
-
-  const SceneGraphicsSettings &settings = m_data.settings;
-
-  auto &pass_cfg = m_sid->m_pass_cfg;
-  PassPersistentResources &pass_rcs = m_sid->m_pass_rcs;
-  RgPersistent &rgp = m_sid->m_rgp;
-
-  bool dirty = false;
-  auto set_if_changed =
-      [&]<typename T>(T &config_value,
-                      const std::convertible_to<T> auto &new_value) {
-        if (config_value != new_value) {
-          config_value = new_value;
-          dirty = true;
-        }
-      };
-
-  set_if_changed(pass_cfg.async_compute, m_data.settings.async_compute);
-
-  set_if_changed(pass_cfg.exposure_mode, m_data.settings.exposure_mode);
-
-  set_if_changed(pass_cfg.viewport, m_swap_chain->get_size());
-
-  set_if_changed(pass_cfg.backbuffer_usage, m_swap_chain->get_usage());
-
-  set_if_changed(pass_cfg.ssao, m_data.settings.ssao);
-  set_if_changed(pass_cfg.ssao_half_res, m_data.settings.ssao_full_res);
-  set_if_changed(pass_cfg.local_tone_mapping,
-                 m_data.settings.local_tone_mapping);
-  set_if_changed(pass_cfg.ltm_pyramid_size, m_data.settings.ltm_pyramid_size);
-  set_if_changed(pass_cfg.ltm_pyramid_mip, m_data.settings.ltm_llm_mip);
-
-  if (dirty) {
-    rgp.reset();
-    m_rg_arena.clear();
-    rgp.set_async_compute_enabled(pass_cfg.async_compute);
-    pass_rcs = {};
-    pass_rcs.backbuffer = rgp.create_texture("backbuffer");
-    pass_rcs.sdr = pass_rcs.backbuffer;
-  }
-
-  RgBuilder rgb;
-  rgb.init(m_frame_arena, &rgp, m_renderer, &m_frcs->descriptor_allocator);
-
-  PassCommonConfig cfg = {
-      .rgp = &rgp,
-      .rgb = &rgb,
-      .allocator = &m_frcs->upload_allocator,
-      .pipelines = &m_sid->m_pipelines,
-      .scene = &m_data,
-      .rcs = &pass_rcs,
-      .viewport = m_swap_chain->get_size(),
-  };
-
-  RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, m_gpu_scene);
-  setup_gpu_scene_update_pass(cfg, GpuSceneUpdatePassConfig{
-                                       .gpu_scene = &m_gpu_scene,
-                                       .rg_gpu_scene = &rg_gpu_scene,
-                                   });
-  switch (settings.exposure_mode) {
-  case sh::EXPOSURE_MODE_MANUAL: {
-    float exposure = sh::manual_exposure(settings.manual_exposure,
-                                         settings.exposure_compensation);
-    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
-  } break;
-  case sh::EXPOSURE_MODE_CAMERA: {
-    float exposure = sh::camera_exposure(
-        settings.camera_aperture, settings.inv_camera_shutter_time,
-        settings.camera_iso, settings.exposure_compensation);
-    rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, exposure);
-
-  } break;
-  case sh::EXPOSURE_MODE_AUTOMATIC:
-    if (m_frame_index == 0) {
-      rgb.fill_buffer("exposure", &rg_gpu_scene.exposure, 1.0f);
-    }
-    break;
-  default:
-    break;
-  }
-
-  glm::uvec2 viewport = m_swap_chain->get_size();
-
-  if (!pass_rcs.depth_buffer) {
-    pass_rcs.depth_buffer = rgp.create_texture({
-        .name = "depth-buffer",
-        .format = DEPTH_FORMAT,
-        .width = viewport.x,
-        .height = viewport.y,
-    });
-  }
-  RgTextureId depth_buffer = pass_rcs.depth_buffer;
-  RgTextureId hi_z;
-
-  setup_early_z_pass(cfg, EarlyZPassConfig{
-                              .gpu_scene = &m_gpu_scene,
-                              .rg_gpu_scene = &rg_gpu_scene,
-                              .culling_phase = CullingPhase::First,
-                              .depth_buffer = &depth_buffer,
-                          });
-  if (m_data.settings.instance_occulusion_culling or
-      m_data.settings.meshlet_occlusion_culling) {
-    setup_hi_z_pass(cfg,
-                    HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
-  }
-  setup_early_z_pass(cfg, EarlyZPassConfig{
-                              .gpu_scene = &m_gpu_scene,
-                              .rg_gpu_scene = &rg_gpu_scene,
-                              .culling_phase = CullingPhase::Second,
-                              .depth_buffer = &depth_buffer,
-                              .hi_z = hi_z,
-                          });
-
-  RgTextureId ssao_llm;
-  RgTextureId ssao_depth = pass_rcs.ssao_depth;
-  if (m_data.settings.ssao) {
-    glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
-                                 std::bit_floor(viewport.y)};
-    // Don't need the full mip chain since after a certain stage they become
-    // small enough to completely fit in cache but are much less detailed.
-    i32 num_ssao_hi_z_mips =
-        get_mip_chain_length(std::min(ssao_hi_z_size.x, ssao_hi_z_size.y));
-    num_ssao_hi_z_mips =
-        std::max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
-
-    if (!pass_rcs.ssao_hi_z) {
-      pass_rcs.ssao_hi_z = rgp.create_texture({
-          .name = "ssao-hi-z",
-          .format = TinyImageFormat_R16_SFLOAT,
-          .width = ssao_hi_z_size.x,
-          .height = ssao_hi_z_size.y,
-          .num_mips = (u32)num_ssao_hi_z_mips,
-      });
-    }
-    RgTextureId ssao_hi_z = pass_rcs.ssao_hi_z;
-
-    const Camera &camera = m_data.get_camera();
-    glm::mat4 proj = get_projection_matrix(camera, viewport);
-
-    {
-      auto pass = rgb.create_pass({.name = "ssao-hi-z"});
-      auto spd_counter = rgb.create_buffer<u32>({.init = 0});
-      RgSsaoHiZArgs args = {
-          .spd_counter =
-              pass.write_buffer("ssao-hi-z-spd-counter", &spd_counter),
-          .num_mips = (u32)num_ssao_hi_z_mips,
-          .dsts = pass.write_texture("ssao-hi-z", &ssao_hi_z),
-          .src = pass.read_texture(
-              depth_buffer,
-              {
-                  .mag_filter = rhi::Filter::Linear,
-                  .min_filter = rhi::Filter::Linear,
-                  .mipmap_mode = rhi::SamplerMipmapMode::Nearest,
-                  .address_mode_u = rhi::SamplerAddressMode::ClampToEdge,
-                  .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-              }),
-          .znear = camera.near,
-      };
-      pass.dispatch_grid_2d(m_sid->m_pipelines.ssao_hi_z, args, ssao_hi_z_size,
-                            {sh::SPD_THREAD_ELEMS_X, sh::SPD_THREAD_ELEMS_Y});
-    }
-
-    glm::uvec2 ssao_size =
-        m_data.settings.ssao_full_res ? viewport : viewport / 2u;
-
-    if (!pass_rcs.ssao) {
-      pass_rcs.ssao = rgp.create_texture({
-          .name = "ssao",
-          .format = TinyImageFormat_R16_UNORM,
-          .width = ssao_size.x,
-          .height = ssao_size.y,
-      });
-    }
-    if (!m_data.settings.ssao_full_res and !pass_rcs.ssao_depth) {
-      pass_rcs.ssao_depth = rgp.create_texture({
-          .name = "ssao-depth",
-          .format = TinyImageFormat_R16_SFLOAT,
-          .width = ssao_size.x,
-          .height = ssao_size.y,
-      });
-    }
-
-    RgTextureId ssao = pass_rcs.ssao;
-    ssao_depth = pass_rcs.ssao_depth;
-    {
-      auto pass = rgb.create_pass({.name = "ssao"});
-
-      auto noise_lut = m_frcs->upload_allocator.allocate<float>(
-          sh::SSAO_HILBERT_CURVE_SIZE * sh::SSAO_HILBERT_CURVE_SIZE);
-
-      for (u32 y : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
-        for (u32 x : range(sh::SSAO_HILBERT_CURVE_SIZE)) {
-          u32 h = sh::hilbert_from_2d(sh::SSAO_HILBERT_CURVE_SIZE, x, y);
-          noise_lut.host_ptr[y * sh::SSAO_HILBERT_CURVE_SIZE + x] =
-              sh::r1_seq(h);
-        }
-      }
-
-      RgSsaoArgs args = {
-          .noise_lut = noise_lut.device_ptr,
-          .depth = pass.read_texture(depth_buffer, rhi::SAMPLER_NEAREST_CLAMP),
-          .hi_z = pass.read_texture(ssao_hi_z, rhi::SAMPLER_NEAREST_CLAMP),
-          .ssao = pass.write_texture("ssao", &ssao),
-          .ssao_depth = ssao_depth
-                            ? pass.write_texture("ssao-depth", &ssao_depth)
-                            : RgTextureToken(),
-          .num_samples = (u32)m_data.settings.ssao_num_samples,
-          .p00 = proj[0][0],
-          .p11 = proj[1][1],
-          .znear = camera.near,
-          .rcp_p00 = 1.0f / proj[0][0],
-          .rcp_p11 = 1.0f / proj[1][1],
-          .radius = m_data.settings.ssao_radius,
-          .lod_bias = m_data.settings.ssao_lod_bias,
-      };
-      pass.dispatch_grid_2d(m_sid->m_pipelines.ssao, args, ssao_size);
-    }
-
-    if (!pass_rcs.ssao_llm) {
-      pass_rcs.ssao_llm = rgp.create_texture({
-          .name = "ssao-llm",
-          .format = TinyImageFormat_R16G16_SFLOAT,
-          .width = ssao_size.x,
-          .height = ssao_size.y,
-      });
-    }
-    ssao_llm = pass_rcs.ssao_llm;
-    {
-      auto pass = rgb.create_pass({.name = "ssao-filter"});
-
-      RgSsaoFilterArgs args = {
-          .depth =
-              !ssao_depth ? pass.read_texture(depth_buffer) : RgTextureToken(),
-          .ssao = pass.read_texture(ssao),
-          .ssao_depth = pass.try_read_texture(ssao_depth),
-          .ssao_llm = pass.write_texture("ssao-llm", &ssao_llm),
-          .znear = camera.near,
-      };
-      pass.dispatch(m_sid->m_pipelines.ssao_filter, args,
-                    ceil_div(ssao_size.x, sh::SSAO_FILTER_GROUP_SIZE.x *
-                                              sh::SSAO_FILTER_UNROLL.x),
-                    ceil_div(ssao_size.y, sh::SSAO_FILTER_GROUP_SIZE.y *
-                                              sh::SSAO_FILTER_UNROLL.y));
-    }
-  }
-
-  if (!pass_rcs.hdr) {
-    pass_rcs.hdr = rgp.create_texture({
-        .name = "hdr",
-        .format = HDR_FORMAT,
-        .width = viewport.x,
-        .height = viewport.y,
-    });
-  }
-  RgTextureId hdr = pass_rcs.hdr;
-
-  setup_opaque_pass(cfg, OpaquePassConfig{
-                             .gpu_scene = &m_gpu_scene,
-                             .rg_gpu_scene = &rg_gpu_scene,
-                             .hdr = &hdr,
-                             .depth_buffer = &depth_buffer,
-                             .hi_z = hi_z,
-                             .ssao = ssao_llm,
-                         });
-
-  setup_skybox_pass(cfg, SkyboxPassConfig{
-                             .exposure = rg_gpu_scene.exposure,
-                             .hdr = &hdr,
-                             .depth_buffer = depth_buffer,
-                         });
-
-  if (!cfg.rcs->acquire_semaphore) {
-    cfg.rcs->acquire_semaphore = rgp.create_semaphore("acquire-semaphore");
-  }
-
-  rhi::ImageUsageFlags swap_chain_usage = rhi::ImageUsage::UnorderedAccess;
-
-  RgTextureId sdr;
-  setup_post_processing_passes(cfg, PostProcessingPassesConfig{
-                                        .frame_index = m_frame_index,
-                                        .hdr = hdr,
-                                        .exposure = &rg_gpu_scene.exposure,
-                                        .sdr = &sdr,
-                                    });
-#if REN_IMGUI
-  if (ImGui::GetCurrentContext() and ImGui::GetDrawData()) {
-    swap_chain_usage |= rhi::ImageUsage::RenderTarget;
-    setup_imgui_pass(cfg, ImGuiPassConfig{
-                              .sdr = &sdr,
-                          });
-  }
-#endif
-
-  m_swap_chain->set_usage(swap_chain_usage);
-
-  setup_present_pass(cfg, PresentPassConfig{
-                              .src = sdr,
-                              .acquire_semaphore = m_frcs->acquire_semaphore,
-                              .swap_chain = m_swap_chain,
-                          });
-
-  return rgb.build({
-      .gfx_allocator = &m_sid->m_gfx_allocator,
-      .async_allocator = &m_sid->m_async_allocator,
-      .shared_allocator = &m_sid->m_shared_allocators[0],
-      .upload_allocator = &m_frcs->upload_allocator,
-  });
 }
 
 } // namespace ren

@@ -31,7 +31,6 @@ auto AppBase::init(const char *app_name) -> Result<void> {
 
   ren::ScratchArena::init_allocator();
   m_arena = ren::make_arena();
-  m_frame_arena = ren::make_arena();
 
   unsigned adapter = ren::DEFAULT_ADAPTER;
   const char *user_adapter = std::getenv("REN_ADAPTER");
@@ -55,8 +54,7 @@ auto AppBase::init(const char *app_name) -> Result<void> {
 
   OK(m_swapchain, ren::create_swapchain(&m_arena, m_renderer, m_window));
 
-  OK(m_scene,
-     ren::create_scene(&m_frame_arena, &m_arena, m_renderer, m_swapchain));
+  OK(m_scene, ren::create_scene(&m_arena, m_renderer, m_swapchain));
 
   OK(m_camera, ren::create_camera(m_scene));
   ren::set_camera(m_scene, m_camera);
@@ -76,8 +74,6 @@ auto AppBase::loop() -> Result<void> {
   bool quit = false;
 
   while (!quit) {
-    m_frame_arena.clear();
-
     auto now = chrono::steady_clock::now();
     chrono::nanoseconds dt = now - last_time;
     last_time = now;

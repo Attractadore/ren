@@ -170,12 +170,9 @@ struct Scene {
   [[nodiscard]] sh::Handle<sh::Sampler2D>
   get_or_create_texture(Handle<Image> image, const SamplerDesc &sampler);
 
-  auto build_rg() -> Result<RenderGraph, Error>;
-
   Arena *m_arena = nullptr;
   Arena m_internal_arena;
   Arena m_rg_arena;
-  Arena *m_frame_arena = nullptr;
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;
   ResourceArena m_gfx_arena;

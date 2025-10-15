@@ -441,7 +441,9 @@ struct RgTextureWriteInfo {
   u32 base_mip = 0;
 };
 
-class RgBuilder {
+struct RgBuilder {
+  Arena *m_arena = nullptr;
+
 public:
   void init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
             NotNull<Renderer *> renderer,
@@ -573,7 +575,6 @@ private:
   void place_barriers_and_semaphores();
 
 private:
-  Arena *m_arena = nullptr;
   Renderer *m_renderer = nullptr;
   RgPersistent *m_rgp = nullptr;
   RgBuildData *m_data = nullptr;

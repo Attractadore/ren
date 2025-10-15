@@ -54,7 +54,6 @@ class AppBase {
   std::string m_app_name;
 
 protected:
-  ren::Arena m_frame_arena;
   ren::Arena m_arena;
 
   AppBase() = default;

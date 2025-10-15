@@ -23,7 +23,7 @@ void *Arena::expand(void *ptr, usize old_size, usize new_size) {
   usize offset = (u8 *)ptr - (u8 *)m_ptr;
   if (offset + old_size == m_offset) {
     commit(offset + new_size);
-    m_offset = m_offset + new_size;
+    m_offset = offset + new_size;
     return ptr;
   }
   return nullptr;

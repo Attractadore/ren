@@ -13,7 +13,7 @@
 
 void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
-  ScratchArena scratch;
+  ScratchArena scratch(ccfg.rgb->m_arena);
 
   const SceneData &scene = *ccfg.scene;
 

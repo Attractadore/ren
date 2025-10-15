@@ -370,7 +370,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
       ccfg.rgb->create_buffer<sh::DrawIndexedIndirectCommand>(
           {.count = sh::MAX_DRAW_MESHLETS});
 
-  ScratchArena scratch;
+  ScratchArena scratch(ccfg.rgb->m_arena);
   for (sh::BatchId batch : range(ds.batches.size())) {
     {
       auto pass = ccfg.rgb->create_pass(

@@ -25,7 +25,7 @@ auto rg_import_gpu_scene(RgBuilder &rgb, const GpuScene &gpu_scene)
           rgb.create_buffer("directional-lights", gpu_scene.directional_lights),
   };
 
-  ScratchArena scratch;
+  ScratchArena scratch(rgb.m_arena);
   for (auto i : range(NUM_DRAW_SETS)) {
     const DrawSetData &ds = gpu_scene.draw_sets[i];
     rg_gpu_scene.draw_sets[i] = {
@@ -71,7 +71,7 @@ void setup_gpu_scene_update_pass(const PassCommonConfig &ccfg,
                           rhi::TRANSFER_DST_BUFFER);
   }
 
-  ScratchArena scratch;
+  ScratchArena scratch(rgb.m_arena);
   for (auto i : range(NUM_DRAW_SETS)) {
     const DrawSetData &ds = cfg.gpu_scene->draw_sets[i];
     if (not ds.update_cull_data.empty() or not ds.delete_ids.empty()) {

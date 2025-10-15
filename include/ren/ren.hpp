@@ -206,8 +206,7 @@ namespace ren_export {
 
 void destroy_renderer(Renderer *renderer);
 
-[[nodiscard]] auto create_scene(NotNull<Arena *> frame_arena,
-                                NotNull<Arena *> arena, Renderer *renderer,
+[[nodiscard]] auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
                                 SwapChain *swapchain) -> expected<Scene *>;
 
 void destroy_scene(Scene *scene);
@@ -362,11 +361,9 @@ inline void set_vsync(SwapChain *swap_chain, VSync vsync) {
   return hot_reload::vtbl_ref->set_vsync(swap_chain, vsync);
 }
 
-inline auto create_scene(NotNull<Arena *> frame_arena, NotNull<Arena *> arena,
-                         Renderer *renderer, SwapChain *swap_chain)
-    -> expected<Scene *> {
-  return hot_reload::vtbl_ref->create_scene(frame_arena, arena, renderer,
-                                            swap_chain);
+inline auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
+                         SwapChain *swap_chain) -> expected<Scene *> {
+  return hot_reload::vtbl_ref->create_scene(arena, renderer, swap_chain);
 }
 
 inline void destroy_scene(Scene *scene) {
