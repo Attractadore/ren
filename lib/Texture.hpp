@@ -16,7 +16,7 @@ constexpr u32 MAX_SRV_SIZE = 4096;
 constexpr u32 MAX_SRV_MIPS = 13;
 static_assert(MAX_SRV_SIZE == (1 << (MAX_SRV_MIPS - 1)));
 
-struct ImageView;
+struct ImageViewBlock;
 
 struct TextureCreateInfo {
   String8 name = "Texture";
@@ -57,7 +57,7 @@ struct Texture {
   bool cube_map = false;
   u32 num_mips = 0;
   u32 num_layers = 0;
-  DynamicArray<ImageView> views;
+  ImageViewBlock *views = nullptr;
 };
 
 constexpr u32 ALL_MIPS = -1;

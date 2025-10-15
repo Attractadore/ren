@@ -40,6 +40,7 @@ struct Renderer {
   GenArray<Buffer> m_buffers;
 
   GenArray<Texture> m_textures;
+  ImageViewBlock *m_image_view_free_list = nullptr;
 
   DynamicArray<Sampler> m_samplers;
 

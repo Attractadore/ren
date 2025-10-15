@@ -25,6 +25,12 @@ struct ImageView {
   rhi::ImageView handle;
 };
 
+struct alignas(64) ImageViewBlock {
+  ImageViewBlock *next = nullptr;
+  usize num_views = 0;
+  ImageView views[9];
+};
+
 struct Sampler {
   rhi::SamplerCreateInfo desc;
   rhi::Sampler handle;
@@ -171,6 +177,13 @@ auto Renderer::create_texture(const TextureCreateInfo &create_info)
                                           .num_layers = create_info.num_layers,
                                       }));
   rhi::set_debug_name(m_device, image, create_info.name);
+  if (!m_image_view_free_list) {
+    m_image_view_free_list = m_arena->allocate<ImageViewBlock>();
+  }
+  ImageViewBlock *views = m_image_view_free_list;
+  m_image_view_free_list = m_image_view_free_list->next;
+  views->next = nullptr;
+  views->num_views = 0;
   return m_textures.emplace(Texture{
       .handle = image,
       .format = create_info.format,
@@ -181,12 +194,20 @@ auto Renderer::create_texture(const TextureCreateInfo &create_info)
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
       .num_layers = create_info.num_layers,
+      .views = views,
   });
 }
 
 auto Renderer::create_external_texture(
     const ExternalTextureCreateInfo &create_info) -> Handle<Texture> {
   rhi::set_debug_name(m_device, create_info.handle, create_info.name);
+  if (!m_image_view_free_list) {
+    m_image_view_free_list = m_arena->allocate<ImageViewBlock>();
+  }
+  ImageViewBlock *views = m_image_view_free_list;
+  m_image_view_free_list = m_image_view_free_list->next;
+  views->next = nullptr;
+  views->num_views = 0;
   return m_textures.emplace(Texture{
       .handle = create_info.handle,
       .format = create_info.format,
@@ -196,14 +217,23 @@ auto Renderer::create_external_texture(
       .depth = create_info.depth,
       .num_mips = create_info.num_mips,
       .num_layers = create_info.num_layers,
+      .views = views,
   });
 }
 
 void Renderer::destroy(Handle<Texture> handle) {
   if (Optional<Texture> texture = m_textures.try_pop(handle)) {
-    for (const ImageView &view : texture->views) {
-      rhi::destroy_image_view(m_device, view.handle);
+    ImageViewBlock *last = nullptr;
+    ImageViewBlock *views = texture->views;
+    while (views) {
+      for (const ImageView &view : Span(views->views, views->num_views)) {
+        rhi::destroy_image_view(m_device, view.handle);
+      }
+      last = views;
+      views = views->next;
     }
+    last->next = m_image_view_free_list;
+    m_image_view_free_list = texture->views;
     if (rhi::get_allocation(m_device, texture->handle)) {
       rhi::destroy_image(m_device, texture->handle);
     }
@@ -262,10 +292,26 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     desc.num_layers = texture.num_layers - desc.base_layer;
   }
 
-  for (const ImageView &view : texture.views) {
-    if (view.desc == desc) {
-      return view.handle;
+  ImageViewBlock *last = nullptr;
+  ImageViewBlock *views = texture.views;
+  while (views) {
+    for (const ImageView &view : Span(views->views, views->num_views)) {
+      if (view.desc == desc) {
+        return view.handle;
+      }
     }
+    last = views;
+    views = views->next;
+  }
+  if (last->num_views == std::size(last->views)) {
+    if (!m_image_view_free_list) {
+      m_image_view_free_list = m_arena->allocate<ImageViewBlock>();
+    }
+    last->next = m_image_view_free_list;
+    m_image_view_free_list = m_image_view_free_list->next;
+    last = last->next;
+    last->next = nullptr;
+    last->num_views = 0;
   }
 
   ren_try(rhi::ImageView view,
@@ -282,7 +328,7 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
                   .base_layer = desc.base_layer,
                   .num_layers = desc.num_layers,
               }));
-  texture.views.push(m_arena, {desc, view});
+  last->views[last->num_views++] = {desc, view};
 
   return view;
 }
