@@ -7,9 +7,8 @@
 #include "RenderGraph.hpp"
 #include "ResourceUploader.hpp"
 #include "Texture.hpp"
-#include "core/GenArray.hpp"
-#include "core/GenMap.hpp"
 #include "passes/Pass.hpp"
+#include "ren/core/GenArray.hpp"
 #include "ren/ren.hpp"
 #include "sh/PostProcessing.h"
 
@@ -17,7 +16,17 @@ struct ImGuiContext;
 
 namespace ren {
 
-using Image = Handle<Texture>;
+struct Image {
+  Handle<Texture> handle;
+};
+
+struct Material {
+  sh::Material data;
+};
+
+struct DirectionalLight {
+  sh::DirectionalLight data;
+};
 
 constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
 
@@ -123,11 +132,11 @@ struct SceneData {
   GenArray<Mesh> meshes;
 
   GenArray<MeshInstance> mesh_instances;
-  GenMap<glm::mat4x3, Handle<MeshInstance>> mesh_instance_transforms;
+  DynamicArray<glm::mat4x3> mesh_instance_transforms;
 
-  GenArray<sh::Material> materials;
+  GenArray<Material> materials;
 
-  GenArray<sh::DirectionalLight> directional_lights;
+  GenArray<DirectionalLight> directional_lights;
 
   glm::vec3 env_luminance = {};
   sh::Handle<sh::SamplerCube> env_map;
@@ -156,8 +165,6 @@ struct SceneInternalData {
 };
 
 struct Scene {
-  auto get_camera(CameraId camera) -> Camera &;
-
   auto create_texture(const void *blob, usize size)
       -> expected<Handle<Texture>>;
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "ren/core/Arena.hpp"
+#include "ren/core/GenIndex.hpp"
 #include "ren/core/NotNull.hpp"
 
 #include <expected>
@@ -8,6 +9,12 @@
 
 struct SDL_Window;
 struct ImGuiContext;
+
+#if REN_HOT_RELOAD
+#define ren_export ren::hot_reload
+#else
+#define ren_export ren
+#endif
 
 namespace ren {
 
@@ -34,44 +41,15 @@ constexpr size_t MAX_NUM_MESH_INSTANCES = 1024 * 1024;
 constexpr size_t MAX_NUM_MATERIALS = 16 * 1024;
 constexpr size_t MAX_NUM_DIRECTIONAL_LIGHTS = 1;
 
-namespace detail {
-
-#if REN_HOT_RELOAD
-#define ren_export ren::hot_reload
-#else
-#define ren_export ren
-#endif
-
-struct NullIdImpl {};
-
-} // namespace detail
-
-constexpr detail::NullIdImpl NullId;
-
-#define ren_define_id(name)                                                    \
-  class name {                                                                 \
-  public:                                                                      \
-    name() = default;                                                          \
-    name(detail::NullIdImpl) : name() {}                                       \
-    explicit operator bool() const noexcept { return m_id; }                   \
-    operator unsigned() const noexcept { return m_id; }                        \
-                                                                               \
-  private:                                                                     \
-    unsigned m_id = 0;                                                         \
-  }
-
-ren_define_id(MeshId);
-ren_define_id(ImageId);
-ren_define_id(MaterialId);
-ren_define_id(MeshInstanceId);
-ren_define_id(DirectionalLightId);
-ren_define_id(CameraId);
-
-#undef ren_define_id
-
 struct Renderer;
 struct SwapChain;
 struct Scene;
+struct Camera;
+struct Mesh;
+struct MeshInstance;
+struct Material;
+struct Image;
+struct DirectionalLight;
 
 constexpr unsigned DEFAULT_ADAPTER = -1;
 
@@ -150,7 +128,7 @@ struct MaterialCreateInfo {
   glm::vec4 base_color_factor = {1.0f, 1.0f, 1.0f, 1.0f};
   /// Optional: color texture
   struct {
-    ImageId image;
+    Handle<Image> image;
     SamplerDesc sampler;
   } base_color_texture;
   /// Roughness factor, multiplied with channel G of the metallic-roughness
@@ -161,14 +139,14 @@ struct MaterialCreateInfo {
   float metallic_factor = 1.0f;
   /// Optional: occlusion-roughness-metallic texture
   struct {
-    ImageId image;
+    Handle<Image> image;
     SamplerDesc sampler;
     /// Controls occlusion effect strength
     float strength = 1.0f;
   } orm_texture;
   /// Optional: normal texture
   struct {
-    ImageId image;
+    Handle<Image> image;
     SamplerDesc sampler;
     /// Multiplier for sampled R and G channels
     float scale = 1.0f;
@@ -177,9 +155,9 @@ struct MaterialCreateInfo {
 
 struct MeshInstanceCreateInfo {
   /// The mesh that will be used to render this mesh instance
-  MeshId mesh;
+  Handle<Mesh> mesh;
   /// The material that will be used to render this mesh instance
-  MaterialId material;
+  Handle<Material> material;
 };
 
 /// Directional light descriptor
@@ -221,57 +199,57 @@ auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
 
 void destroy_swap_chain(SwapChain *swap_chain);
 
-[[nodiscard]] auto create_camera(Scene *scene) -> expected<CameraId>;
+[[nodiscard]] Handle<Camera> create_camera(Scene *scene);
 
-void destroy_camera(Scene *scene, CameraId camera);
+void destroy_camera(Scene *scene, Handle<Camera> camera);
 
 /// Set active scene camera.
-void set_camera(Scene *scene, CameraId camera);
+void set_camera(Scene *scene, Handle<Camera> camera);
 
 void set_camera_perspective_projection(
-    Scene *scene, CameraId camera, const CameraPerspectiveProjectionDesc &desc);
+    Scene *scene, Handle<Camera> camera,
+    const CameraPerspectiveProjectionDesc &desc);
 
 void set_camera_orthographic_projection(
-    Scene *scene, CameraId camera,
+    Scene *scene, Handle<Camera> camera,
     const CameraOrthographicProjectionDesc &desc);
 
-void set_camera_transform(Scene *scene, CameraId camera,
+void set_camera_transform(Scene *scene, Handle<Camera> camera,
                           const CameraTransformDesc &desc);
 
 [[nodiscard]] auto create_mesh(Scene *scene, std::span<const std::byte> blob)
-    -> expected<MeshId>;
+    -> Handle<Mesh>;
 
 [[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
-    -> expected<ImageId>;
+    -> Handle<Image>;
 
 [[nodiscard]] auto create_material(Scene *scene,
                                    const MaterialCreateInfo &create_info)
-    -> expected<MaterialId>;
+    -> Handle<Material>;
 
-[[nodiscard]] auto
-create_mesh_instances(Scene *scene,
-                      std::span<const MeshInstanceCreateInfo> create_info,
-                      std::span<MeshInstanceId> out) -> expected<void>;
+void create_mesh_instances(Scene *scene,
+                           std::span<const MeshInstanceCreateInfo> create_info,
+                           std::span<Handle<MeshInstance>> out);
 
-void destroy_mesh_instances(Scene *scene,
-                            std::span<const MeshInstanceId> mesh_instances);
+void destroy_mesh_instances(
+    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances);
 
 void set_mesh_instance_transforms(
-    Scene *scene, std::span<const MeshInstanceId> mesh_instances,
+    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
     std::span<const glm::mat4x3> transforms);
 
 [[nodiscard]] auto create_directional_light(Scene *scene,
                                             const DirectionalLightDesc &desc)
-    -> expected<DirectionalLightId>;
+    -> Handle<DirectionalLight>;
 
-void destroy_directional_light(Scene *scene, DirectionalLightId light);
+void destroy_directional_light(Scene *scene, Handle<DirectionalLight> light);
 
-void set_directional_light(Scene *scene, DirectionalLightId light,
+void set_directional_light(Scene *scene, Handle<DirectionalLight> light,
                            const DirectionalLightDesc &desc);
 
 void set_environment_color(Scene *scene, const glm::vec3 &luminance);
 
-auto set_environment_map(Scene *scene, ImageId image) -> expected<void>;
+auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void>;
 
 // Call to use graphics driver low-latency APIs.
 [[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
@@ -370,85 +348,85 @@ inline void destroy_scene(Scene *scene) {
   return hot_reload::vtbl_ref->destroy_scene(scene);
 }
 
-inline auto create_camera(Scene *scene) -> expected<CameraId> {
+inline auto create_camera(Scene *scene) {
   return hot_reload::vtbl_ref->create_camera(scene);
 }
 
-inline void destroy_camera(Scene *scene, CameraId camera) {
+inline void destroy_camera(Scene *scene, Handle<Camera> camera) {
   return hot_reload::vtbl_ref->destroy_camera(scene, camera);
 }
 
 /// Set active scene camera.
-inline void set_camera(Scene *scene, CameraId camera) {
+inline void set_camera(Scene *scene, Handle<Camera> camera) {
   return hot_reload::vtbl_ref->set_camera(scene, camera);
 }
 
 inline void
-set_camera_perspective_projection(Scene *scene, CameraId camera,
+set_camera_perspective_projection(Scene *scene, Handle<Camera> camera,
                                   const CameraPerspectiveProjectionDesc &desc) {
   return hot_reload::vtbl_ref->set_camera_perspective_projection(scene, camera,
                                                                  desc);
 }
 
 inline void set_camera_orthographic_projection(
-    Scene *scene, CameraId camera,
+    Scene *scene, Handle<Camera> camera,
     const CameraOrthographicProjectionDesc &desc) {
   return hot_reload::vtbl_ref->set_camera_orthographic_projection(scene, camera,
                                                                   desc);
 }
 
-inline void set_camera_transform(Scene *scene, CameraId camera,
+inline void set_camera_transform(Scene *scene, Handle<Camera> camera,
                                  const CameraTransformDesc &desc) {
   return hot_reload::vtbl_ref->set_camera_transform(scene, camera, desc);
 }
 
 inline auto create_mesh(Scene *scene, std::span<const std::byte> blob)
-    -> expected<MeshId> {
+    -> Handle<Mesh> {
   return hot_reload::vtbl_ref->create_mesh(scene, blob);
 }
 
 inline auto create_image(Scene *scene, std::span<const std::byte> blob)
-    -> expected<ImageId> {
+    -> Handle<Image> {
   return hot_reload::vtbl_ref->create_image(scene, blob);
 }
 
 inline auto create_material(Scene *scene, const MaterialCreateInfo &create_info)
-    -> expected<MaterialId> {
+    -> Handle<Material> {
   return hot_reload::vtbl_ref->create_material(scene, create_info);
 }
 
-inline auto
+inline void
 create_mesh_instances(Scene *scene,
                       std::span<const MeshInstanceCreateInfo> create_info,
-                      std::span<MeshInstanceId> out) -> expected<void> {
+                      std::span<Handle<MeshInstance>> out) {
   return hot_reload::vtbl_ref->create_mesh_instances(scene, create_info, out);
 }
 
 inline void
 destroy_mesh_instances(Scene *scene,
-                       std::span<const MeshInstanceId> mesh_instances) {
+                       std::span<const Handle<MeshInstance>> mesh_instances) {
   return hot_reload::vtbl_ref->destroy_mesh_instances(scene, mesh_instances);
 }
 
-inline void
-set_mesh_instance_transforms(Scene *scene,
-                             std::span<const MeshInstanceId> mesh_instances,
-                             std::span<const glm::mat4x3> transforms) {
+inline void set_mesh_instance_transforms(
+    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
+    std::span<const glm::mat4x3> transforms) {
   return hot_reload::vtbl_ref->set_mesh_instance_transforms(
       scene, mesh_instances, transforms);
 }
 
 inline auto create_directional_light(Scene *scene,
                                      const DirectionalLightDesc &desc)
-    -> expected<DirectionalLightId> {
+    -> Handle<DirectionalLight> {
   return hot_reload::vtbl_ref->create_directional_light(scene, desc);
 }
 
-inline void destroy_directional_light(Scene *scene, DirectionalLightId light) {
+inline void destroy_directional_light(Scene *scene,
+                                      Handle<DirectionalLight> light) {
   return hot_reload::vtbl_ref->destroy_directional_light(scene, light);
 }
 
-inline void set_directional_light(Scene *scene, DirectionalLightId light,
+inline void set_directional_light(Scene *scene, Handle<DirectionalLight> light,
                                   const DirectionalLightDesc &desc) {
   return hot_reload::vtbl_ref->set_directional_light(scene, light, desc);
 }
@@ -457,7 +435,8 @@ inline void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   return hot_reload::vtbl_ref->set_environment_color(scene, luminance);
 }
 
-inline auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
+inline auto set_environment_map(Scene *scene, Handle<Image> image)
+    -> expected<void> {
   return hot_reload::vtbl_ref->set_environment_map(scene, image);
 }
 
@@ -483,30 +462,31 @@ inline void draw_imgui(Scene *scene) {
 namespace ren {
 
 [[nodiscard]] auto inline create_mesh(Scene *scene, const void *blob_data,
-                                      size_t blob_size) -> expected<MeshId> {
+                                      size_t blob_size) -> Handle<Mesh> {
   return create_mesh(scene, std::span((const std::byte *)blob_data, blob_size));
 }
 
 [[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
-                                       size_t blob_size) -> expected<ImageId> {
+                                       size_t blob_size) -> Handle<Image> {
   return create_image(scene,
                       std::span((const std::byte *)blob_data, blob_size));
 }
 
 [[nodiscard]] inline auto
 create_mesh_instance(Scene *scene, const MeshInstanceCreateInfo &create_info)
-    -> expected<MeshInstanceId> {
-  MeshInstanceId mesh_instance;
-  return create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1})
-      .transform([&] { return mesh_instance; });
+    -> Handle<MeshInstance> {
+  Handle<MeshInstance> mesh_instance;
+  create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1});
+  return mesh_instance;
 }
 
-void inline destroy_mesh_instance(Scene *scene, MeshInstanceId mesh_instance) {
+void inline destroy_mesh_instance(Scene *scene,
+                                  Handle<MeshInstance> mesh_instance) {
   destroy_mesh_instances(scene, {&mesh_instance, 1});
 }
 
 void inline set_mesh_instance_transform(Scene *scene,
-                                        MeshInstanceId mesh_instance,
+                                        Handle<MeshInstance> mesh_instance,
                                         const glm::mat4x3 &transform) {
   set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
 }

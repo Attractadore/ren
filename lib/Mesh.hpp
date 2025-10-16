@@ -1,8 +1,7 @@
 #pragma once
 #include "DrawSet.hpp"
 #include "core/Flags.hpp"
-#include "core/GenIndex.hpp"
-#include "core/Vector.hpp"
+#include "ren/core/GenIndex.hpp"
 #include "ren/core/StdDef.hpp"
 #include "sh/Geometry.h"
 
@@ -76,13 +75,11 @@ struct IndexPool {
 
 auto create_index_pool(ResourceArena &arena) -> IndexPool;
 
-namespace sh {
 struct Material;
-}
 
 struct MeshInstance {
   Handle<Mesh> mesh;
-  Handle<sh::Material> material;
+  Handle<Material> material;
   DrawSetFlags draw_sets;
   std::array<DrawSetId, NUM_DRAW_SETS> draw_set_ids;
 };

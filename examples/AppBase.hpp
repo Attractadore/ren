@@ -49,7 +49,7 @@ class AppBase {
   ren::Renderer *m_renderer = nullptr;
   ren::SwapChain *m_swapchain = nullptr;
   ren::Scene *m_scene = nullptr;
-  ren::CameraId m_camera;
+  ren::Handle<ren::Camera> m_camera;
 
   std::string m_app_name;
 
@@ -65,7 +65,7 @@ protected:
 
   auto get_scene() const -> ren::Scene * { return m_scene; }
 
-  auto get_camera() const -> ren::CameraId { return m_camera; }
+  auto get_camera() const -> ren::Handle<ren::Camera> { return m_camera; }
 
   [[nodiscard]] virtual auto process_event(const SDL_Event &e) -> Result<void>;
 

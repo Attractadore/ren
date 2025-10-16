@@ -42,8 +42,17 @@ namespace ren_export {
 
 expected<Renderer *> create_renderer(NotNull<Arena *> arena,
                                      const RendererInfo &info) {
-  auto *renderer = new Renderer;
-  renderer->m_arena = arena;
+  auto *renderer = arena->allocate<Renderer>();
+  *renderer = {
+      .m_arena = arena,
+      .m_buffers = GenArray<Buffer>::init(arena),
+      .m_textures = GenArray<Texture>::init(arena),
+      .m_semaphores = GenArray<Semaphore>::init(arena),
+      .m_events = GenArray<Event>::init(arena),
+      .m_graphics_pipelines = GenArray<GraphicsPipeline>::init(arena),
+      .m_compute_pipelines = GenArray<ComputePipeline>::init(arena),
+      .m_command_pools = GenArray<CommandPool>::init(arena),
+  };
 
   bool headless = info.type == RendererType::Headless;
 
@@ -103,7 +112,6 @@ void destroy_renderer(Renderer *renderer) {
   }
   rhi::destroy_device(renderer->m_device);
   rhi::destroy_instance(renderer->m_instance);
-  delete renderer;
 }
 
 } // namespace ren_export
@@ -126,13 +134,14 @@ auto Renderer::create_buffer(const BufferCreateInfo &create_info)
                                            .heap = create_info.heap,
                                        }));
   rhi::set_debug_name(m_device, buffer, create_info.name);
-  return m_buffers.emplace(Buffer{
-      .handle = buffer,
-      .ptr = (std::byte *)rhi::map(m_device, buffer),
-      .address = rhi::get_device_ptr(m_device, buffer),
-      .size = create_info.size,
-      .heap = create_info.heap,
-  });
+  return m_buffers.insert(m_arena,
+                          Buffer{
+                              .handle = buffer,
+                              .ptr = (std::byte *)rhi::map(m_device, buffer),
+                              .address = rhi::get_device_ptr(m_device, buffer),
+                              .size = create_info.size,
+                              .heap = create_info.heap,
+                          });
 }
 
 void Renderer::destroy(Handle<Buffer> handle) {
@@ -193,18 +202,18 @@ auto Renderer::create_texture(const TextureCreateInfo &create_info)
   m_image_view_free_list = m_image_view_free_list->next;
   views->next = nullptr;
   views->num_views = 0;
-  return m_textures.emplace(Texture{
-      .handle = image,
-      .format = create_info.format,
-      .usage = create_info.usage,
-      .width = create_info.width,
-      .height = create_info.height,
-      .depth = create_info.depth,
-      .cube_map = create_info.cube_map,
-      .num_mips = create_info.num_mips,
-      .num_layers = create_info.num_layers,
-      .views = views,
-  });
+  return m_textures.insert(m_arena, Texture{
+                                        .handle = image,
+                                        .format = create_info.format,
+                                        .usage = create_info.usage,
+                                        .width = create_info.width,
+                                        .height = create_info.height,
+                                        .depth = create_info.depth,
+                                        .cube_map = create_info.cube_map,
+                                        .num_mips = create_info.num_mips,
+                                        .num_layers = create_info.num_layers,
+                                        .views = views,
+                                    });
 }
 
 auto Renderer::create_external_texture(
@@ -217,17 +226,17 @@ auto Renderer::create_external_texture(
   m_image_view_free_list = m_image_view_free_list->next;
   views->next = nullptr;
   views->num_views = 0;
-  return m_textures.emplace(Texture{
-      .handle = create_info.handle,
-      .format = create_info.format,
-      .usage = create_info.usage,
-      .width = create_info.width,
-      .height = create_info.height,
-      .depth = create_info.depth,
-      .num_mips = create_info.num_mips,
-      .num_layers = create_info.num_layers,
-      .views = views,
-  });
+  return m_textures.insert(m_arena, Texture{
+                                        .handle = create_info.handle,
+                                        .format = create_info.format,
+                                        .usage = create_info.usage,
+                                        .width = create_info.width,
+                                        .height = create_info.height,
+                                        .depth = create_info.depth,
+                                        .num_mips = create_info.num_mips,
+                                        .num_layers = create_info.num_layers,
+                                        .views = views,
+                                    });
 }
 
 void Renderer::destroy(Handle<Texture> handle) {
@@ -363,7 +372,7 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &create_info)
                                     .initial_value = create_info.initial_value,
                                 }));
   rhi::set_debug_name(m_device, semaphore, create_info.name);
-  return m_semaphores.emplace(Semaphore{.handle = semaphore});
+  return m_semaphores.insert(m_arena, Semaphore{.handle = semaphore});
 }
 
 void Renderer::destroy(Handle<Semaphore> handle) {
@@ -373,7 +382,7 @@ void Renderer::destroy(Handle<Semaphore> handle) {
 }
 
 auto Renderer::create_event() -> Handle<Event> {
-  return m_events.emplace(Event{.handle = rhi::create_event(m_device)});
+  return m_events.insert(m_arena, Event{.handle = rhi::create_event(m_device)});
 }
 
 void Renderer::destroy(Handle<Event> handle) {
@@ -415,10 +424,11 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
   rhi::CommandPool pool = free_list;
   free_list = free_list->next;
   rhi::set_debug_name(m_device, pool, create_info.name);
-  return m_command_pools.emplace(CommandPool{
-      .handle = pool,
-      .queue_family = create_info.queue_family,
-  });
+  return m_command_pools.insert(m_arena,
+                                CommandPool{
+                                    .handle = pool,
+                                    .queue_family = create_info.queue_family,
+                                });
 }
 
 void Renderer::destroy(Handle<CommandPool> handle) {
@@ -509,7 +519,8 @@ auto Renderer::create_graphics_pipeline(
           rhi::create_graphics_pipeline(m_device, pipeline_info));
   rhi::set_debug_name(m_device, pipeline, create_info.name);
 
-  return m_graphics_pipelines.emplace(GraphicsPipeline{.handle = pipeline});
+  return m_graphics_pipelines.insert(m_arena,
+                                     GraphicsPipeline{.handle = pipeline});
 }
 
 void Renderer::destroy(Handle<GraphicsPipeline> handle) {
@@ -590,10 +601,11 @@ auto Renderer::create_compute_pipeline(
           }));
   rhi::set_debug_name(m_device, pipeline, create_info.name);
 
-  return m_compute_pipelines.emplace(ComputePipeline{
-      .handle = pipeline,
-      .local_size = {local_size.x, local_size.y, local_size.z},
-  });
+  return m_compute_pipelines.insert(
+      m_arena, ComputePipeline{
+                   .handle = pipeline,
+                   .local_size = {local_size.x, local_size.y, local_size.z},
+               });
 }
 
 void Renderer::destroy(Handle<ComputePipeline> handle) {

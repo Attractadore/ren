@@ -1,6 +1,6 @@
 #pragma once
 #include "ResourceArena.hpp"
-#include "core/GenIndex.hpp"
+#include "ren/core/GenIndex.hpp"
 #include "sh/Geometry.h"
 
 namespace ren {

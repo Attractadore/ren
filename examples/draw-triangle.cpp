@@ -35,30 +35,30 @@ public:
                       .colors = colors,
                   }));
     auto [blob_data, blob_size] = blob;
-    OK(ren::MeshId mesh, create_mesh(scene, blob_data, blob_size));
+    ren::Handle<ren::Mesh> mesh = create_mesh(scene, blob_data, blob_size);
     std::free(blob_data);
 
-    OK(ren::MaterialId material,
-       ren::create_material(scene, {
-                                       .roughness_factor = 0.5f,
-                                       .metallic_factor = 1.0f,
-                                   }));
+    ren::Handle<ren::Material> material =
+        ren::create_material(scene, {
+                                        .roughness_factor = 0.5f,
+                                        .metallic_factor = 1.0f,
+                                    });
 
-    OK(ren::MeshInstanceId model,
-       create_mesh_instance(scene, {
-                                       .mesh = mesh,
-                                       .material = material,
-                                   }));
+    ren::Handle<ren::MeshInstance> model =
+        create_mesh_instance(scene, {
+                                        .mesh = mesh,
+                                        .material = material,
+                                    });
 
     // Ambient day light
-    OK(ren::DirectionalLightId light,
-       ren::create_directional_light(scene, {
-                                                .color = {1.0f, 1.0f, 1.0f},
-                                                .illuminance = 25'000.0f,
-                                                .origin = {0.0f, 0.0f, 1.0f},
-                                            }));
+    ren::Handle<ren::DirectionalLight> light =
+        ren::create_directional_light(scene, {
+                                                 .color = {1.0f, 1.0f, 1.0f},
+                                                 .illuminance = 25'000.0f,
+                                                 .origin = {0.0f, 0.0f, 1.0f},
+                                             });
 
-    ren::CameraId camera = get_camera();
+    ren::Handle<ren::Camera> camera = get_camera();
 
     ren::set_camera_orthographic_projection(scene, camera, {.width = 2.0f});
     ren::set_camera_transform(scene, camera,

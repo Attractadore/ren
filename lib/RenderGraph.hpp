@@ -7,8 +7,8 @@
 #include "Texture.hpp"
 #include "core/DynamicBitset.hpp"
 #include "core/Flags.hpp"
-#include "core/GenArray.hpp"
 #include "core/NewType.hpp"
+#include "ren/core/GenArray.hpp"
 #include "ren/core/NotNull.hpp"
 #include "ren/core/String.hpp"
 
@@ -318,12 +318,10 @@ struct RgSemaphoreState {
 };
 
 struct RgBuildData {
-  GenArray<RgPass> m_passes;
   Vector<RgPassId> m_gfx_schedule;
   Vector<RgPassId> m_async_schedule;
 
   Vector<RgPhysicalBuffer> m_physical_buffers;
-  GenArray<RgBuffer> m_buffers;
   Vector<RgBufferUse> m_buffer_uses;
 
   Vector<RgTextureUse> m_texture_uses;
@@ -378,10 +376,7 @@ struct RgRtData {
 
 class RgPersistent {
 public:
-  void init(NotNull<Arena *> arena, NotNull<Renderer *> renderer) {
-    m_arena = arena;
-    m_gfx_arena.init(renderer);
-  }
+  void init(NotNull<Renderer *> renderer) { m_gfx_arena.init(renderer); }
 
   [[nodiscard]] auto create_texture(const RgTextureCreateInfo &create_info)
       -> RgTextureId;
@@ -392,7 +387,7 @@ public:
 
   void set_async_compute_enabled(bool enabled);
 
-  void reset();
+  void reset(NotNull<Arena *> arena);
 
 private:
   friend class RgBuilder;
@@ -443,6 +438,8 @@ struct RgTextureWriteInfo {
 
 struct RgBuilder {
   Arena *m_arena = nullptr;
+  GenArray<RgPass> m_passes;
+  GenArray<RgBuffer> m_buffers;
 
 public:
   void init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
@@ -543,14 +540,14 @@ private:
 
   template <CRgRenderPassCallback F>
   void set_render_pass_callback(RgPassId id, F &&cb) {
-    RgPass &pass = m_data->m_passes[id];
+    RgPass &pass = m_passes[id];
     ren_assert(pass.queue == RgQueue::Graphics);
     ren_assert(!pass.cb);
     pass.rp_cb.init(m_arena, std::forward<F>(cb));
   }
 
   template <CRgCallback F> void set_callback(RgPassId id, F &&cb) {
-    RgPass &pass = m_data->m_passes[id];
+    RgPass &pass = m_passes[id];
     ren_assert(!pass.rp_cb);
     pass.cb.init(m_arena, std::forward<F>(cb));
   }

@@ -298,7 +298,7 @@ private:
     return &m_model.accessors[index];
   }
 
-  auto create_mesh(const GltfMeshDesc &desc) -> Result<ren::MeshId> {
+  auto create_mesh(const GltfMeshDesc &desc) -> Result<ren::Handle<ren::Mesh>> {
     const tinygltf::Accessor *positions = get_accessor(desc.positions);
     if (!positions) {
       bail("Primitive doesn't have POSITION attribute");
@@ -442,14 +442,15 @@ private:
                       .indices = indices_data.data(),
                   }));
     auto [blob_data, blob_size] = blob;
-    OK(ren::MeshId mesh, ren::create_mesh(m_scene, blob_data, blob_size));
+    ren::Handle<ren::Mesh> mesh =
+        ren::create_mesh(m_scene, blob_data, blob_size);
     std::free(blob_data);
 
     return mesh;
   }
 
   auto get_or_create_mesh(const tinygltf::Primitive &primitive)
-      -> Result<ren::MeshId> {
+      -> Result<ren::Handle<ren::Mesh>> {
     auto get_attribute_accessor_index =
         [&](const std::string &attribute) -> int {
       auto it = primitive.attributes.find(attribute);
@@ -466,7 +467,7 @@ private:
         .uvs = get_attribute_accessor_index("TEXCOORD_0"),
         .indices = primitive.indices,
     };
-    ren::MeshId &mesh = m_mesh_cache[desc];
+    ren::Handle<ren::Mesh> &mesh = m_mesh_cache[desc];
     if (!mesh) {
       std::string buffer;
       auto warn_unused_attribute = [&](std::string_view attribute, int start) {
@@ -518,7 +519,7 @@ private:
     return get_sampler(m_model.samplers[sampler]);
   }
 
-  auto create_material(int index) -> Result<ren::MaterialId> {
+  auto create_material(int index) -> Result<ren::Handle<ren::Material>> {
     const tinygltf::Material &material = m_model.materials[index];
     ren::MaterialCreateInfo desc = {};
 
@@ -535,12 +536,12 @@ private:
                base_color_texture.texCoord);
         }
         int src = m_model.textures[base_color_texture.index].source;
-        ren::ImageId &image = m_color_image_cache[src];
+        ren::Handle<ren::Image> &image = m_color_image_cache[src];
         if (!image) {
           OK(ren::TextureInfo texture_info, get_image_info(src, true));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          OK(image, create_image(m_scene, blob_data, blob_size));
+          image = create_image(m_scene, blob_data, blob_size);
           std::free(blob_data);
         }
         desc.base_color_texture.image = image;
@@ -573,7 +574,8 @@ private:
           occlusion_src = m_model.textures[occlusion_texture.index].source;
         }
         auto it = std::ranges::find_if(
-            m_orm_image_cache, [&](std::tuple<int, int, ren::ImageId> t) {
+            m_orm_image_cache,
+            [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
               auto [rm, o, i] = t;
               return rm == roughness_metallic_src and o == occlusion_src;
             });
@@ -589,8 +591,7 @@ private:
           OK(auto blob, ren::bake_orm_map_to_memory(roughness_metallic_info,
                                                     occlusion_info));
           auto [blob_data, blob_size] = blob;
-          OK(desc.orm_texture.image,
-             create_image(m_scene, blob_data, blob_size));
+          desc.orm_texture.image = create_image(m_scene, blob_data, blob_size);
           std::free(blob_data);
           m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
                                          desc.orm_texture.image);
@@ -612,12 +613,12 @@ private:
                normal_texture.texCoord);
         }
         int src = m_model.textures[normal_texture.index].source;
-        ren::ImageId &image = m_normal_image_cache[src];
+        ren::Handle<ren::Image> &image = m_normal_image_cache[src];
         if (!image) {
           OK(ren::TextureInfo texture_info, get_image_info(src));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          OK(image, create_image(m_scene, blob_data, blob_size));
+          image = create_image(m_scene, blob_data, blob_size);
           std::free(blob_data);
         }
         desc.normal_texture.image = image;
@@ -640,16 +641,15 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return ren::create_material(m_scene, desc)
-        .transform_error(get_error_string);
+    return ren::create_material(m_scene, desc);
   }
 
-  auto get_or_create_material(int index) -> Result<ren::MaterialId> {
+  auto get_or_create_material(int index) -> Result<ren::Handle<ren::Material>> {
     assert(index >= 0);
     if (index >= m_material_cache.size()) {
       m_material_cache.resize(index + 1);
     }
-    ren::MaterialId &material = m_material_cache[index];
+    ren::Handle<ren::Material> &material = m_material_cache[index];
     if (!material) {
       OK(material, create_material(index));
     }
@@ -658,16 +658,15 @@ private:
 
   auto create_mesh_instance(const tinygltf::Primitive &primitive,
                             const glm::mat4 &transform)
-      -> Result<ren::MeshInstanceId> {
-    OK(ren::MaterialId material, get_or_create_material(primitive.material));
-    OK(ren::MeshId mesh, get_or_create_mesh(primitive));
-    OK(ren::MeshInstanceId mesh_instance,
-       ren::create_mesh_instance(m_scene,
-                                 {
-                                     .mesh = mesh,
-                                     .material = material,
-                                 })
-           .transform_error(get_error_string));
+      -> Result<ren::Handle<ren::MeshInstance>> {
+    OK(ren::Handle<ren::Material> material,
+       get_or_create_material(primitive.material));
+    OK(ren::Handle<ren::Mesh> mesh, get_or_create_mesh(primitive));
+    ren::Handle<ren::MeshInstance> mesh_instance =
+        ren::create_mesh_instance(m_scene, {
+                                               .mesh = mesh,
+                                               .material = material,
+                                           });
     set_mesh_instance_transform(m_scene, mesh_instance, transform);
     return mesh_instance;
   }
@@ -755,11 +754,11 @@ private:
 private:
   tinygltf::Model m_model;
   ren::Scene *m_scene = nullptr;
-  std::unordered_map<GltfMeshDesc, ren::MeshId> m_mesh_cache;
-  std::unordered_map<int, ren::ImageId> m_color_image_cache;
-  std::vector<std::tuple<int, int, ren::ImageId>> m_orm_image_cache;
-  std::unordered_map<int, ren::ImageId> m_normal_image_cache;
-  std::vector<ren::MaterialId> m_material_cache;
+  std::unordered_map<GltfMeshDesc, ren::Handle<ren::Mesh>> m_mesh_cache;
+  std::unordered_map<int, ren::Handle<ren::Image>> m_color_image_cache;
+  std::vector<std::tuple<int, int, ren::Handle<ren::Image>>> m_orm_image_cache;
+  std::unordered_map<int, ren::Handle<ren::Image>> m_normal_image_cache;
+  std::vector<ren::Handle<ren::Material>> m_material_cache;
 };
 
 struct ViewGltfOptions {
@@ -777,7 +776,7 @@ public:
     TRY_TO(scene_walker.walk(options.scene));
     ren::Scene *scene = get_scene();
 
-    auto env_map = [&]() -> Result<ren::ImageId> {
+    auto env_map = [&]() -> Result<ren::Handle<ren::Image>> {
       if (options.env_map.empty()) {
         return {};
       }
@@ -794,7 +793,7 @@ public:
         bail("Failed to read from {}", options.env_map);
       }
 
-      return ren::create_image(scene, blob).transform_error(get_error_string);
+      return ren::create_image(scene, blob);
     }();
 
     if (env_map and *env_map) {
@@ -803,12 +802,12 @@ public:
       if (!env_map) {
         warn("Failed to load environment map: {}", env_map.error());
       }
-      OK(auto directional_light,
-         ren::create_directional_light(scene, {
-                                                  .color = {1.0f, 1.0f, 1.0f},
-                                                  .illuminance = 100'000.0f,
-                                                  .origin = {0.0f, 0.0f, 1.0f},
-                                              }));
+      ren::Handle<ren::DirectionalLight> directional_light =
+          ren::create_directional_light(scene, {
+                                                   .color = {1.0f, 1.0f, 1.0f},
+                                                   .illuminance = 100'000.0f,
+                                                   .origin = {0.0f, 0.0f, 1.0f},
+                                               });
       ren::set_environment_color(
           scene,
           glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
@@ -888,7 +887,7 @@ protected:
     glm::vec3 position = -m_distance * forward;
 
     {
-      ren::CameraId camera = get_camera();
+      ren::Handle<ren::Camera> camera = get_camera();
 
       ren::set_camera_transform(scene, camera,
                                 {

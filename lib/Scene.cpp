@@ -30,7 +30,7 @@ namespace {
 
 auto init_scene_internal_data(NotNull<Scene *> scene)
     -> Result<std::unique_ptr<SceneInternalData>, Error> {
-  ScratchArena scratch({&scene->m_internal_arena, &scene->m_rg_arena});
+  ScratchArena scratch({&scene->m_internal_arena});
 
   scene->m_sid.reset();
   scene->m_sid = std::make_unique<SceneInternalData>();
@@ -78,7 +78,7 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
     ren_try_to(frcs.descriptor_allocator.init(scene->m_descriptor_allocator));
   }
 
-  sid->m_rgp.init(&scene->m_rg_arena, renderer);
+  sid->m_rgp.init(renderer);
 
   return {};
 }
@@ -93,7 +93,17 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
       .m_rg_arena = make_arena(),
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
+      .m_images = GenArray<Image>::init(arena),
   };
+  scene->m_data = {
+      .cameras = GenArray<Camera>::init(arena),
+      .meshes = GenArray<Mesh>::init(arena),
+      .mesh_instances = GenArray<MeshInstance>::init(arena),
+      .materials = GenArray<Material>::init(arena),
+      .directional_lights = GenArray<DirectionalLight>::init(arena),
+  };
+  scene->m_data.mesh_instance_transforms.push(arena);
+
   scene->m_gfx_arena.init(renderer);
   scene->m_gpu_scene = init_gpu_scene(scene->m_gfx_arena);
 
@@ -124,20 +134,19 @@ void destroy_scene(Scene *scene) {
   delete scene;
 }
 
-auto create_mesh(Scene *scene, std::span<const std::byte> blob)
-    -> expected<MeshId> {
+Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
   ScratchArena scratch;
 
   if (blob.size() < sizeof(MeshPackageHeader)) {
-    return std::unexpected(Error::InvalidFormat);
+    return NullHandle;
   }
 
   const auto &header = *(const MeshPackageHeader *)blob.data();
   if (header.magic != MESH_PACKAGE_MAGIC) {
-    return std::unexpected(Error::InvalidFormat);
+    return NullHandle;
   }
   if (header.version != MESH_PACKAGE_VERSION) {
-    return std::unexpected(Error::InvalidVersion);
+    return NullHandle;
   }
 
   Span positions = {
@@ -211,16 +220,25 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
 
   u32 index = scene->m_data.meshes.size();
 
-  ren_try_to(upload_buffer(positions, mesh.positions,
-                           format(scratch, "Mesh {} positions", index)));
-  ren_try_to(upload_buffer(normals, mesh.normals,
-                           format(scratch, "Mesh {} normals", index)));
-  ren_try_to(upload_buffer(tangents, mesh.tangents,
-                           format(scratch, "Mesh {} tangents", index)));
-  ren_try_to(
-      upload_buffer(uvs, mesh.uvs, format(scratch, "Mesh {} uvs", index)));
-  ren_try_to(upload_buffer(colors, mesh.colors,
-                           format(scratch, "Mesh {} colors", index)));
+  if (!upload_buffer(positions, mesh.positions,
+                     format(scratch, "Mesh {} positions", index))) {
+    return NullHandle;
+  }
+  if (!upload_buffer(normals, mesh.normals,
+                     format(scratch, "Mesh {} normals", index))) {
+    return NullHandle;
+  }
+  if (!upload_buffer(tangents, mesh.tangents,
+                     format(scratch, "Mesh {} tangents", index))) {
+    return NullHandle;
+  }
+  if (!upload_buffer(uvs, mesh.uvs, format(scratch, "Mesh {} uvs", index))) {
+    return NullHandle;
+  }
+  if (!upload_buffer(colors, mesh.colors,
+                     format(scratch, "Mesh {} colors", index))) {
+    return NullHandle;
+  }
 
   // Find or allocate index pool
 
@@ -230,13 +248,16 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   if (scene->m_data.index_pools.m_size == 0 or
       scene->m_data.index_pools.back().num_free_indices <
           header.num_triangles * 3) {
-    ren_try(BufferSlice<u8> slice, scene->m_gfx_arena.create_buffer<u8>({
-                                       .name = "Mesh vertex indices pool",
-                                       .heap = rhi::MemoryHeap::Default,
-                                       .count = sh::INDEX_POOL_SIZE,
-                                   }));
+    expected<BufferSlice<u8>> slice = scene->m_gfx_arena.create_buffer<u8>({
+        .name = "Mesh vertex indices pool",
+        .heap = rhi::MemoryHeap::Default,
+        .count = sh::INDEX_POOL_SIZE,
+    });
+    if (!slice) {
+      return NullHandle;
+    }
     scene->m_data.index_pools.push(scene->m_arena,
-                                   {slice.buffer, sh::INDEX_POOL_SIZE});
+                                   {slice->buffer, sh::INDEX_POOL_SIZE});
   }
 
   mesh.index_pool = scene->m_data.index_pools.m_size - 1;
@@ -249,13 +270,17 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
 
   index_pool.num_free_indices -= header.num_triangles * 3;
 
-  ren_try_to(upload_buffer(indices, mesh.indices,
-                           format(scratch, "Mesh {} indices", index)));
+  if (!upload_buffer(indices, mesh.indices,
+                     format(scratch, "Mesh {} indices", index))) {
+    return NullHandle;
+  }
 
   // Upload meshlets
 
-  ren_try_to(upload_buffer(Span<const sh::Meshlet>(meshlets), mesh.meshlets,
-                           format(scratch, "Mesh {} meshlets", index)));
+  if (!upload_buffer(Span<const sh::Meshlet>(meshlets), mesh.meshlets,
+                     format(scratch, "Mesh {} meshlets", index))) {
+    return NullHandle;
+  }
 
   // Upload triangles
 
@@ -264,7 +289,7 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
       renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, header.num_triangles * 3));
 
-  Handle<Mesh> handle = scene->m_data.meshes.insert(mesh);
+  Handle<Mesh> handle = scene->m_data.meshes.insert(scene->m_arena, mesh);
 
   scene->m_gpu_scene.update_meshes.push_back(handle);
   scene->m_gpu_scene.mesh_update_data.push_back({
@@ -285,64 +310,64 @@ auto create_mesh(Scene *scene, std::span<const std::byte> blob)
   std::ranges::copy_n(mesh.lods, mesh.num_lods,
                       scene->m_gpu_scene.mesh_update_data.back().lods);
 
-  return std::bit_cast<MeshId>(handle);
+  return handle;
 }
 
-auto create_image(Scene *scene, std::span<const std::byte> blob)
-    -> expected<ImageId> {
-  ren_try(auto texture, scene->create_texture(blob.data(), blob.size()));
-  Handle<Image> image = scene->m_images.insert(texture);
-  return std::bit_cast<ImageId>(image);
+Handle<Image> create_image(Scene *scene, std::span<const std::byte> blob) {
+  expected<Handle<Texture>> texture =
+      scene->create_texture(blob.data(), blob.size());
+  if (!texture) {
+    return NullHandle;
+  }
+  return scene->m_images.insert(scene->m_arena, {*texture});
 }
 
-auto create_material(Scene *scene, const MaterialCreateInfo &info)
-    -> expected<MaterialId> {
-  auto get_descriptor =
-      [&](const auto &texture) -> Result<sh::Handle<sh::Sampler2D>, Error> {
+Handle<Material> create_material(Scene *scene, const MaterialCreateInfo &info) {
+  auto get_descriptor = [&](const auto &texture) -> sh::Handle<sh::Sampler2D> {
     if (texture.image) {
-      return scene->get_or_create_texture(
-          std::bit_cast<Handle<Image>>(texture.image), texture.sampler);
+      return scene->get_or_create_texture(texture.image, texture.sampler);
     }
     return {};
   };
 
-  ren_try(auto base_color_texture, get_descriptor(info.base_color_texture));
-  ren_try(auto orm_texture, get_descriptor(info.orm_texture));
-  ren_try(auto normal_texture, get_descriptor(info.normal_texture));
+  auto base_color_texture = get_descriptor(info.base_color_texture);
+  auto orm_texture = get_descriptor(info.orm_texture);
+  auto normal_texture = get_descriptor(info.normal_texture);
 
-  Handle<sh::Material> handle = scene->m_data.materials.insert({
-      .base_color = info.base_color_factor,
-      .base_color_texture = base_color_texture,
-      .occlusion_strength = info.orm_texture.strength,
-      .roughness = info.roughness_factor,
-      .metallic = info.metallic_factor,
-      .orm_texture = orm_texture,
-      .normal_scale = info.normal_texture.scale,
-      .normal_texture = normal_texture,
-  });
+  Handle<Material> handle = scene->m_data.materials.insert(
+      scene->m_arena, {{
+                          .base_color = info.base_color_factor,
+                          .base_color_texture = base_color_texture,
+                          .occlusion_strength = info.orm_texture.strength,
+                          .roughness = info.roughness_factor,
+                          .metallic = info.metallic_factor,
+                          .orm_texture = orm_texture,
+                          .normal_scale = info.normal_texture.scale,
+                          .normal_texture = normal_texture,
+                      }});
   scene->m_gpu_scene.update_materials.push_back(handle);
   scene->m_gpu_scene.material_update_data.push_back(
-      scene->m_data.materials[handle]);
+      scene->m_data.materials[handle].data);
 
-  return std::bit_cast<MaterialId>(handle);
-  ;
+  return handle;
 }
 
-auto create_camera(Scene *scene) -> expected<CameraId> {
-  return std::bit_cast<CameraId>(scene->m_data.cameras.emplace());
+Handle<Camera> create_camera(Scene *scene) {
+  return scene->m_data.cameras.insert(scene->m_arena);
 }
 
-void destroy_camera(Scene *scene, CameraId camera) {
-  scene->m_data.cameras.erase(std::bit_cast<Handle<Camera>>(camera));
+void destroy_camera(Scene *scene, Handle<Camera> camera) {
+  scene->m_data.cameras.erase(camera);
 }
 
-void set_camera(Scene *scene, CameraId camera) {
-  scene->m_data.camera = std::bit_cast<Handle<Camera>>(camera);
+void set_camera(Scene *scene, Handle<Camera> camera) {
+  scene->m_data.camera = camera;
 }
 
 void set_camera_perspective_projection(
-    Scene *scene, CameraId id, const CameraPerspectiveProjectionDesc &desc) {
-  Camera &camera = scene->get_camera(id);
+    Scene *scene, Handle<Camera> handle,
+    const CameraPerspectiveProjectionDesc &desc) {
+  Camera &camera = scene->m_data.cameras[handle];
   camera.proj = CameraProjection::Perspective;
   camera.persp_hfov = desc.hfov;
   camera.near = desc.near;
@@ -350,25 +375,26 @@ void set_camera_perspective_projection(
 }
 
 void set_camera_orthographic_projection(
-    Scene *scene, CameraId id, const CameraOrthographicProjectionDesc &desc) {
-  Camera &camera = scene->get_camera(id);
+    Scene *scene, Handle<Camera> handle,
+    const CameraOrthographicProjectionDesc &desc) {
+  Camera &camera = scene->m_data.cameras[handle];
   camera.proj = CameraProjection::Orthograpic;
   camera.ortho_width = desc.width;
   camera.near = desc.near;
   camera.far = desc.far;
 }
 
-void set_camera_transform(Scene *scene, CameraId id,
+void set_camera_transform(Scene *scene, Handle<Camera> handle,
                           const CameraTransformDesc &desc) {
-  Camera &camera = scene->get_camera(id);
+  Camera &camera = scene->m_data.cameras[handle];
   camera.position = desc.position;
   camera.forward = desc.forward;
   camera.up = desc.up;
 }
 
-auto create_mesh_instances(Scene *scene,
+void create_mesh_instances(Scene *scene,
                            std::span<const MeshInstanceCreateInfo> create_info,
-                           std::span<MeshInstanceId> out) -> expected<void> {
+                           std::span<Handle<MeshInstance>> out) {
   ren_assert(out.size() >= create_info.size());
   for (usize i : range(create_info.size())) {
     auto mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh);
@@ -376,32 +402,37 @@ auto create_mesh_instances(Scene *scene,
     auto material =
         std::bit_cast<Handle<sh::Material>>(create_info[i].material);
     ren_assert(material);
-    Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert({
-        .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
-        .material =
-            std::bit_cast<Handle<sh::Material>>(create_info[i].material),
-    });
+    Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert(
+        scene->m_arena,
+        {
+            .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
+            .material =
+                std::bit_cast<Handle<sh::Material>>(create_info[i].material),
+        });
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
       add_to_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
     }
-    scene->m_data.mesh_instance_transforms.insert(
-        handle,
-        sh::make_decode_position_matrix(scene->m_data.meshes[mesh].scale));
+    glm::mat4x3 transform =
+        sh::make_decode_position_matrix(scene->m_data.meshes[mesh].scale);
+    [[unlikely]] if (scene->m_data.mesh_instance_transforms.m_size == handle) {
+      scene->m_data.mesh_instance_transforms.push(scene->m_arena, transform);
+    } else {
+      ren_assert(handle < scene->m_data.mesh_instance_transforms.m_size);
+      scene->m_data.mesh_instance_transforms[handle] = transform;
+    }
     scene->m_gpu_scene.update_mesh_instances.push_back(handle);
     scene->m_gpu_scene.mesh_instance_update_data.push_back({
         .mesh = mesh,
         .material = material,
     });
-    out[i] = std::bit_cast<MeshInstanceId>(handle);
+    out[i] = handle;
   }
-  return {};
 }
 
-void destroy_mesh_instances(Scene *scene,
-                            std::span<const MeshInstanceId> mesh_instances) {
-  for (MeshInstanceId mesh_instance : mesh_instances) {
-    auto handle = std::bit_cast<Handle<MeshInstance>>(mesh_instance);
+void destroy_mesh_instances(
+    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances) {
+  for (Handle<MeshInstance> handle : mesh_instances) {
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
       remove_from_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
@@ -411,60 +442,55 @@ void destroy_mesh_instances(Scene *scene,
 }
 
 void set_mesh_instance_transforms(
-    Scene *scene, std::span<const MeshInstanceId> mesh_instances,
+    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
     std::span<const glm::mat4x3> matrices) {
   ren_assert(mesh_instances.size() == matrices.size());
   for (usize i : range(mesh_instances.size())) {
-    auto h = std::bit_cast<Handle<MeshInstance>>(mesh_instances[i]);
-    MeshInstance &mesh_instance = scene->m_data.mesh_instances[h];
+    auto handle = mesh_instances[i];
+    MeshInstance &mesh_instance = scene->m_data.mesh_instances[handle];
     const Mesh &mesh =
         scene->m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
-    scene->m_data.mesh_instance_transforms[h] =
+    scene->m_data.mesh_instance_transforms[handle] =
         matrices[i] * sh::make_decode_position_matrix(mesh.scale);
   }
 }
 
-auto create_directional_light(Scene *scene, const DirectionalLightDesc &desc)
-    -> expected<DirectionalLightId> {
-  Handle<sh::DirectionalLight> light =
-      scene->m_data.directional_lights.emplace();
-  auto id = std::bit_cast<DirectionalLightId>(light);
-  ren_export::set_directional_light(scene, id, desc);
-  return id;
+Handle<DirectionalLight>
+create_directional_light(Scene *scene, const DirectionalLightDesc &desc) {
+  Handle<DirectionalLight> handle =
+      scene->m_data.directional_lights.insert(scene->m_arena);
+  ren_export::set_directional_light(scene, handle, desc);
+  return handle;
 };
 
-void destroy_directional_light(Scene *scene, DirectionalLightId light) {
-  scene->m_data.directional_lights.erase(
-      std::bit_cast<Handle<sh::DirectionalLight>>(light));
+void destroy_directional_light(Scene *scene, Handle<DirectionalLight> handle) {
+  scene->m_data.directional_lights.erase(handle);
 }
 
-void set_directional_light(Scene *scene, DirectionalLightId light,
+void set_directional_light(Scene *scene, Handle<DirectionalLight> handle,
                            const DirectionalLightDesc &desc) {
-  auto handle = std::bit_cast<Handle<sh::DirectionalLight>>(light);
-  scene->m_data.directional_lights[handle] = {
+  scene->m_data.directional_lights[handle] = {{
       .color = desc.color,
       .illuminance = desc.illuminance,
       .origin = glm::normalize(desc.origin),
-  };
+  }};
   scene->m_gpu_scene.update_directional_lights.push_back(handle);
   scene->m_gpu_scene.directional_light_update_data.push_back(
-      scene->m_data.directional_lights[handle]);
+      scene->m_data.directional_lights[handle].data);
 };
 
 void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   scene->m_data.env_luminance = luminance;
 }
 
-auto set_environment_map(Scene *scene, ImageId image) -> expected<void> {
+auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void> {
   if (!image) {
     scene->m_data.env_map = {};
     return {};
   }
-  Handle<Texture> texture =
-      scene->m_images[std::bit_cast<Handle<Image>>(image)];
   scene->m_data.env_map =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::SamplerCube>(
-          *scene->m_renderer, SrvDesc{texture},
+          *scene->m_renderer, SrvDesc{scene->m_images[image].handle},
           {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
@@ -521,8 +547,8 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
   set_if_changed(pass_cfg.ltm_pyramid_mip, data.settings.ltm_llm_mip);
 
   if (dirty) {
-    rgp.reset();
     scene->m_rg_arena.clear();
+    rgp.reset(&scene->m_rg_arena);
     rgp.set_async_compute_enabled(pass_cfg.async_compute);
     pass_rcs = {};
     pass_rcs.backbuffer = rgp.create_texture("backbuffer");
@@ -1132,7 +1158,7 @@ auto Scene::next_frame() -> Result<void, Error> {
 sh::Handle<sh::Sampler2D>
 Scene::get_or_create_texture(Handle<Image> image, const SamplerDesc &sampler) {
   return m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-      *m_renderer, SrvDesc{m_images[image]},
+      *m_renderer, SrvDesc{m_images[image].handle},
       {
           .mag_filter = get_rhi_Filter(sampler.mag_filter),
           .min_filter = get_rhi_Filter(sampler.min_filter),
@@ -1155,10 +1181,6 @@ auto Scene::create_texture(const void *blob, usize size)
       m_gfx_arena, m_frcs->upload_allocator, ktx_texture2);
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   return res;
-}
-
-auto Scene::get_camera(CameraId camera) -> Camera & {
-  return m_data.cameras[std::bit_cast<Handle<Camera>>(camera)];
 }
 
 bool Scene::is_amd_anti_lag_available() {

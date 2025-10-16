@@ -65,7 +65,7 @@ auto init_gpu_scene(ResourceArena &arena) -> GpuScene {
 auto get_batch_desc(const SceneData &scene, const MeshInstance &mesh_instance)
     -> BatchDesc {
   const Mesh &mesh = scene.meshes.get(mesh_instance.mesh);
-  const sh::Material &material = scene.materials.get(mesh_instance.material);
+  const sh::Material &material = scene.materials[mesh_instance.material].data;
 
   MeshAttributeFlags attributes;
   if (mesh.uvs) {

@@ -31,10 +31,11 @@ auto RgPersistent::create_texture(const RgTextureCreateInfo &create_info)
       .cube_map = create_info.cube_map,
       .num_mips = create_info.num_mips,
       .num_layers = create_info.num_layers,
-      .id = m_textures.insert({
-          .name = name.copy(m_arena),
-          .parent = id,
-      }),
+      .id = m_textures.insert(m_arena,
+                              {
+                                  .name = name.copy(m_arena),
+                                  .parent = id,
+                              }),
   };
 
   m_persistent_textures[id] = create_info.persistent;
@@ -54,17 +55,19 @@ auto RgPersistent::create_texture(String8 name) -> RgTextureId {
 
   m_physical_textures[id] = {
       .name = name.copy(m_arena),
-      .id = m_textures.insert({
-          .name = format(scratch, "rg#{}", name).copy(m_arena),
-          .parent = id,
-      }),
+      .id = m_textures.insert(
+          m_arena,
+          {
+              .name = format(scratch, "rg#{}", name).copy(m_arena),
+              .parent = id,
+          }),
   };
 
   return m_physical_textures[id].id;
 }
 
 auto RgPersistent::create_semaphore(String8 name) -> RgSemaphoreId {
-  RgSemaphoreId semaphore = m_semaphores.emplace();
+  RgSemaphoreId semaphore = m_semaphores.insert(m_arena);
   m_semaphores[semaphore].name = name.copy(m_arena);
   return semaphore;
 }
@@ -73,13 +76,14 @@ void RgPersistent::set_async_compute_enabled(bool enabled) {
   m_async_compute = enabled;
 }
 
-void RgPersistent::reset() {
+void RgPersistent::reset(NotNull<Arena *> arena) {
+  m_arena = arena;
   m_gfx_arena.clear();
   m_physical_textures.clear();
   m_persistent_textures.clear();
   m_external_textures.clear();
-  m_textures.clear();
-  m_semaphores.clear();
+  m_textures = GenArray<RgTexture>::init(arena);
+  m_semaphores = GenArray<RgSemaphore>::init(arena);
   m_gfx_semaphore_id = {};
   m_async_semaphore_id = {};
 }
@@ -124,6 +128,8 @@ void RgBuilder::init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
                      NotNull<Renderer *> renderer,
                      NotNull<DescriptorAllocatorScope *> descriptor_allocator) {
   m_arena = arena;
+  m_passes = GenArray<RgPass>::init(arena);
+  m_buffers = GenArray<RgBuffer>::init(arena);
   m_renderer = renderer;
   m_rgp = rgp;
   m_data = &rgp->m_build_data;
@@ -137,11 +143,9 @@ void RgBuilder::init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
   }
 
   auto &bd = *m_data;
-  bd.m_passes.clear();
   bd.m_gfx_schedule.clear();
   bd.m_async_schedule.clear();
   bd.m_physical_buffers.clear();
-  bd.m_buffers.clear();
   bd.m_buffer_uses.clear();
   bd.m_texture_uses.clear();
   bd.m_semaphore_states.clear();
@@ -158,10 +162,11 @@ auto RgBuilder::create_pass(const RgPassCreateInfo &create_info)
   if (!m_rgp->m_async_compute) {
     queue = RgQueue::Graphics;
   }
-  RgPassId pass_id = m_data->m_passes.emplace(RgPass{
-      .name = create_info.name.copy(m_arena),
-      .queue = queue,
-  });
+  RgPassId pass_id =
+      m_passes.insert(m_arena, RgPass{
+                                   .name = create_info.name.copy(m_arena),
+                                   .queue = queue,
+                               });
   if (queue == RgQueue::Async) {
     m_data->m_async_schedule.push_back(pass_id);
   } else {
@@ -183,28 +188,29 @@ auto RgBuilder::create_virtual_buffer(RgPassId pass, String8 name,
     -> RgUntypedBufferId {
   RgPhysicalBufferId physical_buffer;
   if (parent) {
-    physical_buffer = m_data->m_buffers[parent].parent;
+    physical_buffer = m_buffers[parent].parent;
   } else {
     ren_assert(!pass);
     physical_buffer = RgPhysicalBufferId(m_data->m_physical_buffers.size());
     m_data->m_physical_buffers.emplace_back();
   }
 
-  RgUntypedBufferId buffer = m_data->m_buffers.insert({
-      .name = name.copy(m_arena),
-      .parent = physical_buffer,
-      .def = pass,
-  });
+  RgUntypedBufferId buffer =
+      m_buffers.insert(m_arena, {
+                                    .name = name.copy(m_arena),
+                                    .parent = physical_buffer,
+                                    .def = pass,
+                                });
 
   if (parent) {
     ren_assert(pass);
-    m_data->m_buffers[parent].kill = pass;
+    m_buffers[parent].kill = pass;
   }
 
   if (parent) {
-    ren_assert_msg(!m_data->m_buffers[parent].child,
+    ren_assert_msg(!m_buffers[parent].child,
                    "Render graph buffers can only be written once");
-    m_data->m_buffers[parent].child = buffer;
+    m_buffers[parent].child = buffer;
   }
 
   return buffer;
@@ -215,7 +221,7 @@ auto RgBuilder::create_buffer(String8 name, rhi::MemoryHeap heap, usize size)
   ren_assert(size > 0);
   RgUntypedBufferId buffer =
       create_virtual_buffer(NullHandle, name, NullHandle);
-  RgPhysicalBufferId physical_buffer = m_data->m_buffers[buffer].parent;
+  RgPhysicalBufferId physical_buffer = m_buffers[buffer].parent;
   m_data->m_physical_buffers[physical_buffer] = {
       .heap = heap,
       .size = size,
@@ -227,7 +233,7 @@ auto RgBuilder::read_buffer(RgPassId pass_id, RgUntypedBufferId buffer,
                             const rhi::BufferState &usage, u32 offset)
     -> RgUntypedBufferToken {
   ren_assert(buffer);
-  RgPass &pass = m_data->m_passes[pass_id];
+  RgPass &pass = m_passes[pass_id];
   RgBufferUseId use = add_buffer_use({
       .buffer = buffer,
       .offset = offset,
@@ -243,9 +249,9 @@ auto RgBuilder::write_buffer(RgPassId pass_id, String8 name,
     -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
   ScratchArena scratch(m_arena);
   ren_assert(src);
-  RgBuffer &src_buffer = m_data->m_buffers[src];
+  RgBuffer &src_buffer = m_buffers[src];
   ren_assert(src_buffer.def != pass_id);
-  RgPass &pass = m_data->m_passes[pass_id];
+  RgPass &pass = m_passes[pass_id];
   m_data->m_physical_buffers[src_buffer.parent].queues |= pass.queue;
   RgBufferUseId use = add_buffer_use({
       .buffer = src,
@@ -294,11 +300,12 @@ auto RgBuilder::create_virtual_texture(RgPassId pass, String8 name,
   ren_assert(pass);
   ren_assert(parent);
   RgPhysicalTextureId physical_texture = m_rgp->m_textures[parent].parent;
-  RgTextureId texture = m_rgp->m_textures.insert({
-      .name = name.copy(m_arena),
-      .parent = physical_texture,
-      .def = pass,
-  });
+  RgTextureId texture =
+      m_rgp->m_textures.insert(m_rgp->m_arena, {
+                                                   .name = name.copy(m_arena),
+                                                   .parent = physical_texture,
+                                                   .def = pass,
+                                               });
   m_rgp->m_frame_textures.push_back(texture);
   m_rgp->m_textures[parent].kill = pass;
   ren_assert_msg(!m_rgp->m_textures[parent].child,
@@ -315,7 +322,7 @@ auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
     ren_assert_msg(usage.access_mask.is_set(rhi::Access::ShaderImageRead),
                    "Sampler must be null if texture is not sampled");
   }
-  RgPass &pass = m_data->m_passes[pass_id];
+  RgPass &pass = m_passes[pass_id];
   for (RgTextureUseId use_id : pass.read_textures) {
     RgTextureUse &use = m_data->m_texture_uses[use_id];
     if (use.texture == texture) {
@@ -352,14 +359,14 @@ auto RgBuilder::write_texture(RgTextureWriteInfo &&info) -> RgTextureToken {
       .state = info.usage,
       .base_mip = info.base_mip,
   });
-  m_data->m_passes[info.pass].write_textures.push(m_arena, use);
+  m_passes[info.pass].write_textures.push(m_arena, use);
   *info.texture = create_virtual_texture(info.pass, info.name, src);
   return RgTextureToken(use);
 }
 
 void RgBuilder::set_external_buffer(RgUntypedBufferId id,
                                     const BufferView &view) {
-  RgPhysicalBufferId physical_buffer_id = m_data->m_buffers[id].parent;
+  RgPhysicalBufferId physical_buffer_id = m_buffers[id].parent;
   RgPhysicalBuffer &physical_buffer =
       m_data->m_physical_buffers[physical_buffer_id];
   ren_assert(!physical_buffer.view.buffer);
@@ -400,14 +407,14 @@ auto RgBuilder::add_semaphore_state(RgSemaphoreId semaphore, u64 value)
 
 void RgBuilder::wait_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                u64 value) {
-  m_data->m_passes[pass].wait_semaphores.push(
-      m_arena, add_semaphore_state(semaphore, value));
+  m_passes[pass].wait_semaphores.push(m_arena,
+                                      add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::signal_semaphore(RgPassId pass, RgSemaphoreId semaphore,
                                  u64 value) {
-  m_data->m_passes[pass].signal_semaphores.push(
-      m_arena, add_semaphore_state(semaphore, value));
+  m_passes[pass].signal_semaphores.push(m_arena,
+                                        add_semaphore_state(semaphore, value));
 }
 
 void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
@@ -433,11 +440,11 @@ void RgBuilder::dump_pass_schedule() const {
     }
 
     for (RgPassId pass_id : schedule) {
-      const RgPass &pass = m_data->m_passes[pass_id];
+      const RgPass &pass = m_passes[pass_id];
 
       fmt::println(stderr, "  * {}", pass.name);
 
-      const auto &buffers = m_data->m_buffers;
+      const auto &buffers = m_buffers;
       const auto &buffer_uses = m_data->m_buffer_uses;
 
       DynamicArray<RgUntypedBufferId> create_buffers;
@@ -566,7 +573,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
       }
     }
   };
-  for (const auto &[_, pass] : m_data->m_passes) {
+  for (const auto &[_, pass] : m_passes) {
     std::ranges::for_each(pass.read_textures, update_texture_usage_flags);
     std::ranges::for_each(pass.write_textures, update_texture_usage_flags);
   }
@@ -683,7 +690,7 @@ void RgBuilder::init_runtime_passes() {
     rt_passes->reserve(schedule.size());
 
     for (RgPassId pass_id : schedule) {
-      RgPass &pass = m_data->m_passes[pass_id];
+      RgPass &pass = m_passes[pass_id];
       RgRtPass &rt_pass = rt_passes->emplace_back();
       rt_pass = {
           .name = pass.name,
@@ -715,31 +722,30 @@ void RgBuilder::add_inter_queue_semaphores() {
   usize new_async_time = m_rgp->m_async_time;
 
   for (RgPassId pass_id : m_data->m_gfx_schedule) {
-    RgPass &pass = m_data->m_passes[pass_id];
+    RgPass &pass = m_passes[pass_id];
     pass.signal_time = ++new_gfx_time;
   }
 
   for (RgPassId pass_id : m_data->m_async_schedule) {
-    RgPass &pass = m_data->m_passes[pass_id];
+    RgPass &pass = m_passes[pass_id];
     pass.signal_time = ++new_async_time;
   }
 
   // Compute dependencies and update last-used info.
   for (auto schedule : {m_data->m_gfx_schedule, m_data->m_async_schedule}) {
     for (RgPassId pass_id : schedule) {
-      RgPass &pass = m_data->m_passes[pass_id];
+      RgPass &pass = m_passes[pass_id];
 
       for (RgBufferUseId use : pass.read_buffers) {
-        const RgBuffer &buffer =
-            m_data->m_buffers[m_data->m_buffer_uses[use].buffer];
+        const RgBuffer &buffer = m_buffers[m_data->m_buffer_uses[use].buffer];
         if (buffer.def) {
-          const RgPass &def = m_data->m_passes[buffer.def];
+          const RgPass &def = m_passes[buffer.def];
           if (def.queue != pass.queue) {
             pass.wait_time = std::max(pass.wait_time, def.signal_time);
           }
         }
         if (buffer.kill) {
-          RgPass &kill = m_data->m_passes[buffer.kill];
+          RgPass &kill = m_passes[buffer.kill];
           if (kill.queue != pass.queue) {
             kill.wait_time = std::max(kill.wait_time, pass.signal_time);
           }
@@ -747,10 +753,9 @@ void RgBuilder::add_inter_queue_semaphores() {
       }
 
       for (RgBufferUseId use : pass.write_buffers) {
-        const RgBuffer &buffer =
-            m_data->m_buffers[m_data->m_buffer_uses[use].buffer];
+        const RgBuffer &buffer = m_buffers[m_data->m_buffer_uses[use].buffer];
         if (buffer.def) {
-          const RgPass &def = m_data->m_passes[buffer.def];
+          const RgPass &def = m_passes[buffer.def];
           if (def.queue != pass.queue) {
             pass.wait_time = std::max(pass.wait_time, def.signal_time);
           }
@@ -762,7 +767,7 @@ void RgBuilder::add_inter_queue_semaphores() {
             m_rgp->m_textures[m_data->m_texture_uses[use].texture];
 
         if (texture.def) {
-          const RgPass &def = m_data->m_passes[texture.def];
+          const RgPass &def = m_passes[texture.def];
           if (def.queue != pass.queue) {
             pass.wait_time = std::max(pass.wait_time, def.signal_time);
           }
@@ -776,7 +781,7 @@ void RgBuilder::add_inter_queue_semaphores() {
         }
 
         if (texture.kill) {
-          RgPass &kill = m_data->m_passes[texture.kill];
+          RgPass &kill = m_passes[texture.kill];
           if (kill.queue != pass.queue) {
             kill.wait_time = std::max(kill.wait_time, pass.signal_time);
           }
@@ -792,7 +797,7 @@ void RgBuilder::add_inter_queue_semaphores() {
         const RgTexture &texture =
             m_rgp->m_textures[m_data->m_texture_uses[use].texture];
         if (texture.def) {
-          const RgPass &def = m_data->m_passes[texture.def];
+          const RgPass &def = m_passes[texture.def];
           if (def.queue != pass.queue) {
             pass.wait_time = std::max(pass.wait_time, def.signal_time);
           }
@@ -820,7 +825,7 @@ void RgBuilder::add_inter_queue_semaphores() {
     usize last_waited_time = 0;
 
     for (RgPassId pass_id : schedule) {
-      RgPass &pass = m_data->m_passes[pass_id];
+      RgPass &pass = m_passes[pass_id];
 
       for (RgTextureUseId use : pass.write_textures) {
         const RgTexture &src_texture =
@@ -845,13 +850,13 @@ void RgBuilder::add_inter_queue_semaphores() {
       if (pass.wait_time >= first_signaled_time) {
         RgPassId signal_pass_id =
             other_schedule[pass.wait_time - first_signaled_time];
-        RgPass &signal_pass = m_data->m_passes[signal_pass_id];
+        RgPass &signal_pass = m_passes[signal_pass_id];
         ren_assert(pass.wait_time == signal_pass.signal_time);
         signal_pass.signal = true;
       }
     }
     if (not schedule.empty()) {
-      m_data->m_passes[schedule.back()].signal = true;
+      m_passes[schedule.back()].signal = true;
     }
   }
 
@@ -865,7 +870,7 @@ void RgBuilder::add_inter_queue_semaphores() {
       other_semaphore = m_rgp->m_gfx_semaphore_id;
     }
     for (RgPassId pass_id : std::views::reverse(schedule)) {
-      RgPass &pass = m_data->m_passes[pass_id];
+      RgPass &pass = m_passes[pass_id];
       if (pass.signal) {
         signal_semaphore(pass_id, semaphore, pass.signal_time);
       }
@@ -893,7 +898,7 @@ void RgBuilder::init_runtime_buffers() {
   rt_buffers.resize(buffer_uses.size());
   for (auto i : range(buffer_uses.size())) {
     RgPhysicalBufferId physical_buffer_id =
-        m_data->m_buffers[buffer_uses[i].buffer].parent;
+        m_buffers[buffer_uses[i].buffer].parent;
     rt_buffers[i] = m_data->m_physical_buffers[physical_buffer_id].view.slice(
         buffer_uses[i].offset);
   }
@@ -1005,7 +1010,6 @@ void RgBuilder::place_barriers_and_semaphores() {
   m_texture_barriers.clear();
   m_semaphore_submit_info.clear();
   const auto &m_buffer_uses = m_data->m_buffer_uses;
-  const auto &m_buffers = m_data->m_buffers;
   const auto &m_texture_uses = m_data->m_texture_uses;
   const auto &m_textures = m_rgp->m_textures;
 
@@ -1027,9 +1031,9 @@ void RgBuilder::place_barriers_and_semaphores() {
         return rt_gfx_passes[gfx_i++];
       }
       RgRtPass &rt_gfx_pass = rt_gfx_passes[gfx_i];
-      const RgPass &gfx_pass = m_data->m_passes[rt_gfx_pass.pass];
+      const RgPass &gfx_pass = m_passes[rt_gfx_pass.pass];
       RgRtPass &rt_async_pass = rt_async_passes[async_i];
-      const RgPass &async_pass = m_data->m_passes[rt_async_pass.pass];
+      const RgPass &async_pass = m_passes[rt_async_pass.pass];
       if (gfx_pass.wait_time < async_pass.signal_time) {
         gfx_i++;
         return rt_gfx_pass;
@@ -1037,7 +1041,7 @@ void RgBuilder::place_barriers_and_semaphores() {
       async_i++;
       return rt_async_pass;
     }();
-    const RgPass &pass = m_data->m_passes[rt_pass.pass];
+    const RgPass &pass = m_passes[rt_pass.pass];
 
     usize old_memory_barrier_count = m_memory_barriers.size();
     usize old_texture_barrier_count = m_texture_barriers.size();
@@ -1045,11 +1049,9 @@ void RgBuilder::place_barriers_and_semaphores() {
 
     auto maybe_place_barrier_for_buffer = [&](RgBufferUseId use_id) {
       const RgBufferUse &use = m_buffer_uses[use_id];
-      const RgBuffer &buffer = m_data->m_buffers[use.buffer];
-      const RgPass *def_pass =
-          buffer.def ? &m_data->m_passes[buffer.def] : nullptr;
-      const RgPass *kill_pass =
-          buffer.kill ? &m_data->m_passes[buffer.kill] : nullptr;
+      const RgBuffer &buffer = m_buffers[use.buffer];
+      const RgPass *def_pass = buffer.def ? &m_passes[buffer.def] : nullptr;
+      const RgPass *kill_pass = buffer.kill ? &m_passes[buffer.kill] : nullptr;
       RgPhysicalBufferId pbuf_id = buffer.parent;
 
       rhi::PipelineStageMask dst_stage_mask = use.usage.stage_mask;
@@ -1132,10 +1134,9 @@ void RgBuilder::place_barriers_and_semaphores() {
     auto maybe_place_barrier_for_texture = [&](RgTextureUseId use_id) {
       const RgTextureUse &use = m_texture_uses[use_id];
       const RgTexture &texture = m_rgp->m_textures[use.texture];
-      const RgPass *def_pass =
-          texture.def ? &m_data->m_passes[texture.def] : nullptr;
+      const RgPass *def_pass = texture.def ? &m_passes[texture.def] : nullptr;
       const RgPass *kill_pass =
-          texture.kill ? &m_data->m_passes[texture.kill] : nullptr;
+          texture.kill ? &m_passes[texture.kill] : nullptr;
       RgPhysicalTextureId ptex_id = m_textures[use.texture].parent;
       RgPhysicalTexture &ptex = m_rgp->m_physical_textures[ptex_id];
 
@@ -1378,7 +1379,7 @@ auto RgPassBuilder::write_texture(String8 name, NotNull<RgTextureId *> texture,
 
 void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
                                       const rhi::RenderTargetOperations &ops) {
-  RgPass &rp = m_builder->m_data->m_passes[m_pass];
+  RgPass &rp = m_builder->m_passes[m_pass];
   if (rp.num_render_targets <= index) {
     rp.num_render_targets = index + 1;
   }
@@ -1390,11 +1391,10 @@ void RgPassBuilder::add_render_target(u32 index, RgTextureToken texture,
 
 void RgPassBuilder::add_depth_stencil_target(
     RgTextureToken texture, const rhi::DepthTargetOperations &ops) {
-  m_builder->m_data->m_passes[m_pass].depth_stencil_target =
-      RgDepthStencilTarget{
-          .texture = texture,
-          .ops = ops,
-      };
+  m_builder->m_passes[m_pass].depth_stencil_target = RgDepthStencilTarget{
+      .texture = texture,
+      .ops = ops,
+  };
 }
 
 auto RgPassBuilder::write_render_target(String8 name,

@@ -1,6 +1,5 @@
 #pragma once
-#include "core/GenIndex.hpp"
-#include "ren/core/Array.hpp"
+#include "ren/core/GenIndex.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"

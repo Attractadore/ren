@@ -6,9 +6,9 @@
 #include "Semaphore.hpp"
 #include "Texture.hpp"
 #include "core/BitSet.hpp"
-#include "core/GenArray.hpp"
-#include "core/Optional.hpp"
 #include "core/Span.hpp"
+#include "ren/core/GenArray.hpp"
+#include "ren/core/Optional.hpp"
 #include "rhi.hpp"
 
 #include <chrono>
@@ -53,6 +53,7 @@ struct Renderer {
   GenArray<CommandPool> m_command_pools;
   rhi::CommandPool m_cmd_pool_free_lists[(i32)rhi::QueueFamily::Last + 1] = {};
 
+public:
   auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 
   auto get_rhi_device() const -> rhi::Device { return m_device; }

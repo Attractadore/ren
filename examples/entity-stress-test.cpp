@@ -17,7 +17,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-auto load_mesh(ren::Scene *scene, const char *path) -> Result<ren::MeshId> {
+auto load_mesh(ren::Scene *scene, const char *path)
+    -> Result<ren::Handle<ren::Mesh>> {
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
   const aiScene *ai_scene = importer.ReadFile(
@@ -62,18 +63,16 @@ auto load_mesh(ren::Scene *scene, const char *path) -> Result<ren::MeshId> {
          .indices = indices.data(),
      }));
   auto [blob_data, blob_size] = blob;
-  OK(ren::MeshId mesh, create_mesh(scene, blob_data, blob_size));
+  ren::Handle<ren::Mesh> mesh = create_mesh(scene, blob_data, blob_size);
   std::free(blob_data);
 
   return mesh;
 }
 
-auto create_material(ren::Scene *scene) -> Result<ren::MaterialId> {
-  return create_material(scene,
-                         {
-                             .metallic_factor = 0.0f,
-                         })
-      .transform_error(get_error_string);
+auto create_material(ren::Scene *scene) -> Result<ren::Handle<ren::Material>> {
+  return create_material(scene, {
+                                    .metallic_factor = 0.0f,
+                                });
 }
 
 auto get_scene_bounds(unsigned num_entities) -> std::tuple<float, float> {
@@ -118,15 +117,16 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
   return transform;
 }
 
-auto place_entities(std::mt19937 &rg, ren::Scene *scene, ren::MeshId mesh,
-                    ren::MaterialId material, unsigned num_entities)
-    -> Result<void> {
+void place_entities(std::mt19937 &rg, ren::Scene *scene,
+                    ren::Handle<ren::Mesh> mesh,
+                    ren::Handle<ren::Material> material,
+                    unsigned num_entities) {
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;
 
   std::vector<ren::MeshInstanceCreateInfo> create_info(num_entities);
-  std::vector<ren::MeshInstanceId> entities(num_entities);
+  std::vector<ren::Handle<ren::MeshInstance>> entities(num_entities);
   std::vector<glm::mat4x3> transforms(num_entities);
   for (size_t i = 0; i < num_entities; ++i) {
     create_info[i] = {
@@ -137,22 +137,17 @@ auto place_entities(std::mt19937 &rg, ren::Scene *scene, ren::MeshId mesh,
         random_transform(rg, min_trans, max_trans, min_scale, max_scale);
   }
 
-  TRY_TO(create_mesh_instances(scene, create_info, entities));
+  create_mesh_instances(scene, create_info, entities);
   set_mesh_instance_transforms(scene, entities, transforms);
-
-  return {};
 }
 
-auto place_light(ren::Scene *scene) -> Result<void> {
-  OK(auto _, create_directional_light(scene,
-                                      {
-                                          .origin = {-1.0f, 0.0f, 1.0f},
-                                      })
-                 .transform_error(get_error_string));
-  return {};
+void place_light(ren::Scene *scene) {
+  create_directional_light(scene, {
+                                      .origin = {-1.0f, 0.0f, 1.0f},
+                                  });
 }
 
-void set_camera(ren::Scene *scene, ren::CameraId camera,
+void set_camera(ren::Scene *scene, ren::Handle<ren::Camera> camera,
                 unsigned num_entities) {
   auto [scene_min, _] = get_scene_bounds(num_entities);
 
@@ -175,12 +170,12 @@ public:
         fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
             .c_str()));
     ren::Scene *scene = get_scene();
-    ren::CameraId camera = get_camera();
-    OK(ren::MeshId mesh, load_mesh(scene, mesh_path));
-    OK(ren::MaterialId material, create_material(scene));
+    ren::Handle<ren::Camera> camera = get_camera();
+    OK(ren::Handle<ren::Mesh> mesh, load_mesh(scene, mesh_path));
+    OK(ren::Handle<ren::Material> material, create_material(scene));
     auto rg = init_random(seed);
-    TRY_TO(place_entities(rg, scene, mesh, material, num_entities));
-    TRY_TO(place_light(scene));
+    place_entities(rg, scene, mesh, material, num_entities);
+    place_light(scene);
     set_camera(scene, camera, num_entities);
     return {};
   }

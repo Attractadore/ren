@@ -29,7 +29,7 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
   baker->frame_arena = make_arena();
   baker->gfx_arena.init(renderer);
   baker->frame_gfx_arena.init(renderer);
-  baker->rg.init(&baker->frame_arena, renderer);
+  baker->rg.init(renderer);
   baker->rg.set_async_compute_enabled(false);
   ren_try(baker->cmd_pool, baker->gfx_arena.create_command_pool({
                                .name = "Baker command pool",
@@ -50,7 +50,7 @@ void reset_baker(Baker *baker) {
   baker->frame_arena.clear();
   baker->frame_gfx_arena.clear();
   std::ignore = baker->renderer->reset_command_pool(baker->cmd_pool);
-  baker->rg.reset();
+  baker->rg.reset(&baker->frame_arena);
   baker->descriptor_allocator.reset();
   baker->allocator.reset();
   baker->upload_allocator.reset();

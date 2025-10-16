@@ -52,11 +52,11 @@ struct GpuScene {
   std::array<DrawSetData, NUM_DRAW_SETS> draw_sets;
 
   BufferSlice<sh::Material> materials;
-  Vector<Handle<sh::Material>> update_materials;
+  Vector<Handle<Material>> update_materials;
   Vector<sh::Material> material_update_data;
 
   BufferSlice<sh::DirectionalLight> directional_lights;
-  Vector<Handle<sh::DirectionalLight>> update_directional_lights;
+  Vector<Handle<DirectionalLight>> update_directional_lights;
   Vector<sh::DirectionalLight> directional_light_update_data;
 };
 

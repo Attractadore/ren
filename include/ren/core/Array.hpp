@@ -28,7 +28,7 @@ public:
   T *end() { return m_data + m_size; }
   const T *end() const { return m_data + m_size; }
 
-  void push(NotNull<Arena *> arena, T value)
+  void push(NotNull<Arena *> arena, T value = {})
     requires std::is_trivially_destructible_v<T>
   {
     [[unlikely]] if (m_size + 1 > m_capacity) {
@@ -74,6 +74,13 @@ public:
       m_data = new_data;
     }
     m_capacity = new_capacity;
+  }
+
+  void clear() { m_size = 0; }
+
+  T pop() {
+    ren_assert(m_size > 0);
+    return m_data[--m_size];
   }
 };
 
