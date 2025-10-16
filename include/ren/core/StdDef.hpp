@@ -39,3 +39,6 @@ constexpr usize GiB = 1024 * MiB;
 #include <cstdlib>
 #define ren_trap std::abort
 #endif
+
+#define container_of(ptr, type, member)                                        \
+  ((type *)((ren::u8 *)ptr - offsetof(type, member)))

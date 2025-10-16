@@ -51,6 +51,7 @@ struct Renderer {
   GenArray<ComputePipeline> m_compute_pipelines;
 
   GenArray<CommandPool> m_command_pools;
+  rhi::CommandPool m_cmd_pool_free_lists[(i32)rhi::QueueFamily::Last + 1] = {};
 
   auto get_adapter() const -> rhi::Adapter { return m_adapter; }
 

@@ -89,6 +89,15 @@ void destroy_renderer(Renderer *renderer) {
   if (!renderer) {
     return;
   }
+
+  ren_assert(renderer->m_command_pools.empty());
+  for (rhi::CommandPool pool : renderer->m_cmd_pool_free_lists) {
+    while (pool) {
+      rhi::destroy_command_pool(renderer->m_device, pool);
+      pool = pool->next;
+    }
+  }
+
   for (const Sampler &sampler : renderer->m_samplers) {
     rhi::destroy_sampler(renderer->m_device, sampler.handle);
   }
@@ -397,9 +406,14 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
 
 auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
     -> Result<Handle<CommandPool>, Error> {
-  ren_try(rhi::CommandPool pool,
-          rhi::create_command_pool(m_arena, m_device,
-                                   {.queue_family = create_info.queue_family}));
+  auto &free_list = m_cmd_pool_free_lists[(i32)create_info.queue_family];
+  if (!free_list) {
+    ren_try(free_list,
+            rhi::create_command_pool(
+                m_arena, m_device, {.queue_family = create_info.queue_family}));
+  }
+  rhi::CommandPool pool = free_list;
+  free_list = free_list->next;
   rhi::set_debug_name(m_device, pool, create_info.name);
   return m_command_pools.emplace(CommandPool{
       .handle = pool,
@@ -409,7 +423,9 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
 
 void Renderer::destroy(Handle<CommandPool> handle) {
   if (Optional<CommandPool> pool = m_command_pools.try_pop(handle)) {
-    rhi::destroy_command_pool(m_device, pool->handle);
+    auto &free_list = m_cmd_pool_free_lists[(i32)pool->queue_family];
+    pool->handle->next = free_list;
+    free_list = pool->handle;
   }
 }
 

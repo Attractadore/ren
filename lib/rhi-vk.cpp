@@ -2054,9 +2054,9 @@ void destroy_event(Device device, Event event) {
 namespace vk {
 
 struct CommandPoolData {
+  CommandPoolHeader header;
   VkCommandPool handle = nullptr;
   u32 cmd_index = 0;
-  QueueFamily queue_family = {};
   VkCommandBuffer cmd_buffers[8] = {};
 };
 
@@ -2065,8 +2065,8 @@ struct CommandPoolData {
 auto create_command_pool(NotNull<Arena *> arena, Device device,
                          const CommandPoolCreateInfo &create_info)
     -> Result<CommandPool> {
-  CommandPool pool = allocate<CommandPoolData>(arena);
-  *pool = {.queue_family = create_info.queue_family};
+  CommandPoolData *pool = allocate<CommandPoolData>(arena);
+  pool->header.queue_family = create_info.queue_family;
 
   const AdapterData &adapter = get_adapter(device);
   VkCommandPoolCreateInfo pool_info = {
@@ -2078,7 +2078,7 @@ auto create_command_pool(NotNull<Arena *> arena, Device device,
   VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
                                                    nullptr, &pool->handle);
   if (result) {
-    destroy_command_pool(device, pool);
+    destroy_command_pool(device, &pool->header);
     return fail(result);
   }
   VkCommandBufferAllocateInfo allocate_info = {
@@ -2090,20 +2090,23 @@ auto create_command_pool(NotNull<Arena *> arena, Device device,
   result = device->vk.vkAllocateCommandBuffers(device->handle, &allocate_info,
                                                pool->cmd_buffers);
   VK_CHECK(result, "Failed to allocate command buffers");
-  return pool;
+  return &pool->header;
 }
 
-void destroy_command_pool(Device device, CommandPool pool) {
+void destroy_command_pool(Device device, CommandPool header) {
+  CommandPoolData *pool = container_of(header, CommandPoolData, header);
   if (pool) {
     device->vk.vkDestroyCommandPool(device->handle, pool->handle, nullptr);
   }
 }
 
-void set_debug_name(Device device, CommandPool pool, String8 name) {
+void set_debug_name(Device device, CommandPool header, String8 name) {
+  CommandPoolData *pool = container_of(header, CommandPoolData, header);
   set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL, pool->handle, name);
 }
 
-auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
+auto reset_command_pool(Device device, CommandPool header) -> Result<void> {
+  CommandPoolData *pool = container_of(header, CommandPoolData, header);
   VkResult result =
       device->vk.vkResetCommandPool(device->handle, pool->handle, 0);
   if (result) {
@@ -2113,8 +2116,10 @@ auto reset_command_pool(Device device, CommandPool pool) -> Result<void> {
   return {};
 }
 
-auto begin_command_buffer(Device device, CommandPool pool)
+auto begin_command_buffer(Device device, CommandPool header)
     -> Result<CommandBuffer> {
+  CommandPoolData *pool = container_of(header, CommandPoolData, header);
+
   VkResult result = VK_SUCCESS;
 
   ren_assert(pool->cmd_index < std::size(pool->cmd_buffers));
@@ -2132,13 +2137,13 @@ auto begin_command_buffer(Device device, CommandPool pool)
     return fail(result);
   }
 
-  if (pool->queue_family == QueueFamily::Graphics or
-      pool->queue_family == QueueFamily::Compute) {
+  if (header->queue_family == QueueFamily::Graphics or
+      header->queue_family == QueueFamily::Compute) {
     device->vk.vkCmdBindDescriptorSets(
         cmd.handle, VK_PIPELINE_BIND_POINT_COMPUTE, device->pipeline_layout, 0,
         1, &device->descriptor_heap, 0, nullptr);
   }
-  if (pool->queue_family == QueueFamily::Graphics) {
+  if (header->queue_family == QueueFamily::Graphics) {
     device->vk.vkCmdBindDescriptorSets(
         cmd.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, device->pipeline_layout, 0,
         1, &device->descriptor_heap, 0, nullptr);

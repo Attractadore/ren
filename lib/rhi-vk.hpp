@@ -72,9 +72,14 @@ struct Event : HandleBase {
   VkEvent handle = nullptr;
 };
 
+struct CommandPoolHeader {
+  CommandPoolHeader *next = nullptr;
+  QueueFamily queue_family = {};
+};
+
 struct CommandPoolData;
 
-using CommandPool = CommandPoolData *;
+using CommandPool = CommandPoolHeader *;
 
 struct CommandBuffer : HandleBase {
   VkCommandBuffer handle = nullptr;

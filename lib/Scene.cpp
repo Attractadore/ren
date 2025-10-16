@@ -31,6 +31,8 @@ namespace {
 auto init_scene_internal_data(NotNull<Scene *> scene)
     -> Result<std::unique_ptr<SceneInternalData>, Error> {
   ScratchArena scratch({&scene->m_internal_arena, &scene->m_rg_arena});
+
+  scene->m_sid.reset();
   scene->m_sid = std::make_unique<SceneInternalData>();
 
   Renderer *renderer = scene->m_renderer;
