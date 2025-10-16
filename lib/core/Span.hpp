@@ -1,9 +1,13 @@
 #pragma once
+#include "ren/core/Arena.hpp"
+#include "ren/core/NotNull.hpp"
 #include "ren/core/StdDef.hpp"
 
 #include <span>
 
 namespace ren {
+
+struct Arena;
 
 template <typename T> struct Span : std::span<T, std::dynamic_extent> {
   using std::span<T, std::dynamic_extent>::span;
@@ -14,6 +18,10 @@ template <typename T> struct Span : std::span<T, std::dynamic_extent> {
 
   auto as_bytes() -> Span<const std::byte> const {
     return {(const std::byte *)(this->data()), this->size_bytes()};
+  }
+
+  static const Span<T> allocate(NotNull<Arena *> arena, usize count) {
+    return {arena->allocate<T>(count), count};
   }
 };
 

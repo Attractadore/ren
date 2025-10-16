@@ -5,7 +5,6 @@
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Texture.hpp"
-#include "core/DynamicBitset.hpp"
 #include "core/Flags.hpp"
 #include "core/NewType.hpp"
 #include "ren/core/GenArray.hpp"
@@ -238,6 +237,8 @@ struct RgPhysicalTexture {
   rhi::ImageUsageFlags usage = {};
   glm::uvec3 size = {};
   bool cube_map = false;
+  bool persistent = false;
+  bool external = false;
   u32 num_mips = 1;
   u32 num_layers = 1;
   Handle<Texture> handle;
@@ -317,93 +318,24 @@ struct RgSemaphoreState {
   u64 value = 0;
 };
 
-struct RgBuildData {
-  Vector<RgPassId> m_gfx_schedule;
-  Vector<RgPassId> m_async_schedule;
-
-  Vector<RgPhysicalBuffer> m_physical_buffers;
-  Vector<RgBufferUse> m_buffer_uses;
-
-  Vector<RgTextureUse> m_texture_uses;
-
-  Vector<RgSemaphoreState> m_semaphore_states;
-};
-
-struct RgRtRenderPass {};
-
 struct RgRtPass {
   String8 name;
   RgRenderPassCallback rp_cb;
   RgCallback cb;
-  RgPassId pass;
-  u32 base_memory_barrier = 0;
-  u32 num_memory_barriers = 0;
-  u32 base_texture_barrier = 0;
-  u32 num_texture_barriers = 0;
-  u32 base_wait_semaphore = 0;
-  u32 num_wait_semaphores = 0;
-  u32 base_signal_semaphore = 0;
-  u32 num_signal_semaphores = 0;
-  u32 base_render_target = 0;
-  u32 num_render_targets = 0;
-  Optional<u32> depth_stencil_target;
+  Span<rhi::MemoryBarrier> memory_barriers;
+  Span<TextureBarrier> texture_barriers;
+  Span<SemaphoreState> wait_semaphores;
+  Span<SemaphoreState> signal_semaphores;
+  Span<const RgRenderTarget> render_targets;
+  RgDepthStencilTarget depth_stencil_target;
 };
 
-struct RgTextureDescriptors {
-  u32 num_mips = 0;
-  sh::Handle<void> sampled;
-  sh::Handle<void> combined;
-  u32 *storage = nullptr;
-};
-
-struct RgRtData {
-  Vector<RgRtPass> m_gfx_passes;
-  Vector<RgRtPass> m_async_passes;
-
-  Vector<RgRenderTarget> m_render_targets;
-  Vector<RgDepthStencilTarget> m_depth_stencil_targets;
-
-  Vector<BufferView> m_buffers;
-
-  Vector<Handle<Texture>> m_textures;
-  Vector<RgTextureDescriptors> m_texture_descriptors;
-  Vector<u32> m_storage_texture_descriptors;
-
-  Vector<rhi::MemoryBarrier> m_memory_barriers;
-  Vector<TextureBarrier> m_texture_barriers;
-  Vector<SemaphoreState> m_semaphore_submit_info;
-};
-
-class RgPersistent {
-public:
-  void init(NotNull<Renderer *> renderer) { m_gfx_arena.init(renderer); }
-
-  [[nodiscard]] auto create_texture(const RgTextureCreateInfo &create_info)
-      -> RgTextureId;
-
-  [[nodiscard]] auto create_texture(String8 name) -> RgTextureId;
-
-  [[nodiscard]] auto create_semaphore(String8 name) -> RgSemaphoreId;
-
-  void set_async_compute_enabled(bool enabled);
-
-  void reset(NotNull<Arena *> arena);
-
-private:
-  friend class RgBuilder;
-  friend class RenderGraph;
-
-  void rotate_textures();
-
-private:
+struct RgPersistent {
   Arena *m_arena = nullptr;
   ResourceArena m_gfx_arena;
-  Vector<RgPhysicalTexture> m_physical_textures;
-  DynamicBitset m_persistent_textures;
-  DynamicBitset m_external_textures;
-  GenArray<RgTexture> m_textures;
 
-  Vector<RgTextureId> m_frame_textures;
+  DynamicArray<RgPhysicalTexture> m_physical_textures;
+  GenArray<RgTexture> m_textures;
 
   GenArray<RgSemaphore> m_semaphores;
 
@@ -416,9 +348,57 @@ private:
   u64 m_gfx_time = 0;
   u64 m_async_time = 0;
 
-  RgBuildData m_build_data;
-  RgRtData m_rt_data;
+public:
+  void init(NotNull<Renderer *> renderer) { m_gfx_arena.init(renderer); }
+
+  [[nodiscard]] auto create_texture(const RgTextureCreateInfo &create_info)
+      -> RgTextureId;
+
+  [[nodiscard]] auto create_texture(String8 name) -> RgTextureId;
+
+  [[nodiscard]] auto create_semaphore(String8 name) -> RgSemaphoreId;
+
+  void reset(NotNull<Arena *> arena);
+
+private:
+  void rotate_textures();
 };
+
+struct RgRtTexture {
+  Handle<Texture> handle;
+  u32 num_mips = 0;
+  sh::Handle<void> sampled;
+  sh::Handle<void> combined;
+  u32 *storage = nullptr;
+};
+
+struct RenderGraph {
+  Renderer *m_renderer = nullptr;
+  RgPersistent *m_rgp = nullptr;
+
+  UploadBumpAllocator *m_upload_allocator = nullptr;
+  EventPool *m_gfx_event_pool = nullptr;
+  EventPool *m_async_event_pool = nullptr;
+
+  Span<RgRtPass> m_gfx_passes;
+  Span<RgRtPass> m_async_passes;
+
+  Span<BufferView> m_buffers;
+
+  Span<RgRtTexture> m_textures;
+};
+
+struct RgExecuteInfo {
+  Handle<CommandPool> gfx_cmd_pool;
+  Handle<CommandPool> async_cmd_pool;
+  EventPool *gfx_event_pool = nullptr;
+  EventPool *async_event_pool = nullptr;
+  Handle<Semaphore> *frame_end_semaphore = nullptr;
+  u64 *frame_end_time = nullptr;
+};
+
+auto execute(const RenderGraph &rg, const RgExecuteInfo &execute_info)
+    -> Result<void, Error>;
 
 struct RgBuildInfo {
   DeviceBumpAllocator *gfx_allocator = nullptr;
@@ -438,8 +418,23 @@ struct RgTextureWriteInfo {
 
 struct RgBuilder {
   Arena *m_arena = nullptr;
+  Renderer *m_renderer = nullptr;
+  RgPersistent *m_rgp = nullptr;
+  DescriptorAllocatorScope *m_descriptor_allocator = nullptr;
+  RenderGraph m_rg;
+
   GenArray<RgPass> m_passes;
+  DynamicArray<RgPassId> m_gfx_schedule;
+  DynamicArray<RgPassId> m_async_schedule;
+
   GenArray<RgBuffer> m_buffers;
+  DynamicArray<RgPhysicalBuffer> m_physical_buffers;
+  DynamicArray<RgBufferUse> m_buffer_uses;
+
+  DynamicArray<RgTextureUse> m_texture_uses;
+  DynamicArray<RgTextureId> m_frame_textures;
+
+  DynamicArray<RgSemaphoreState> m_semaphore_states;
 
 public:
   void init(NotNull<Arena *> arena, NotNull<RgPersistent *> rgp,
@@ -570,43 +565,12 @@ private:
   void init_runtime_textures();
 
   void place_barriers_and_semaphores();
-
-private:
-  Renderer *m_renderer = nullptr;
-  RgPersistent *m_rgp = nullptr;
-  RgBuildData *m_data = nullptr;
-  RgRtData *m_rt_data = nullptr;
-  DescriptorAllocatorScope *m_descriptor_allocator = nullptr;
 };
 
-struct RgExecuteInfo {
-  Handle<CommandPool> gfx_cmd_pool;
-  Handle<CommandPool> async_cmd_pool;
-  EventPool *gfx_event_pool = nullptr;
-  EventPool *async_event_pool = nullptr;
-  Handle<Semaphore> *frame_end_semaphore = nullptr;
-  u64 *frame_end_time = nullptr;
-};
+struct RgRuntime {
+  EventPool *m_event_pool = nullptr;
+  const RenderGraph *m_rg = nullptr;
 
-class RenderGraph {
-public:
-  auto execute(const RgExecuteInfo &execute_info) -> Result<void, Error>;
-
-private:
-  friend RgBuilder;
-  friend RgRuntime;
-
-private:
-  Renderer *m_renderer = nullptr;
-  RgPersistent *m_rgp = nullptr;
-  RgRtData *m_data = nullptr;
-  UploadBumpAllocator *m_upload_allocator = nullptr;
-  EventPool *m_gfx_event_pool = nullptr;
-  EventPool *m_async_event_pool = nullptr;
-  const GenArray<RgSemaphore> *m_semaphores = nullptr;
-};
-
-class RgRuntime {
 public:
   auto get_untyped_buffer(RgUntypedBufferToken buffer) const
       -> const BufferView &;
@@ -690,8 +654,6 @@ public:
     return get_allocator().allocate<T>(count);
   }
 
-  auto get_semaphore(RgSemaphoreId semaphore) const -> Handle<Semaphore>;
-
   template <typename T> static auto to_push_constant(const T &data) -> T {
     return data;
   }
@@ -741,15 +703,6 @@ public:
     auto pc = to_push_constants(*this, args);
     cmd.push_constants(pc);
   }
-
-  auto get_event_pool() const -> EventPool & { return *m_event_pool; }
-
-private:
-  friend RenderGraph;
-
-private:
-  EventPool *m_event_pool = nullptr;
-  RenderGraph *m_rg = nullptr;
 };
 
 class RgPassBuilder {

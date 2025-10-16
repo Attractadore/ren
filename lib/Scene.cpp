@@ -403,12 +403,10 @@ void create_mesh_instances(Scene *scene,
         std::bit_cast<Handle<sh::Material>>(create_info[i].material);
     ren_assert(material);
     Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert(
-        scene->m_arena,
-        {
-            .mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh),
-            .material =
-                std::bit_cast<Handle<sh::Material>>(create_info[i].material),
-        });
+        scene->m_arena, {
+                            .mesh = create_info[i].mesh,
+                            .material = create_info[i].material,
+                        });
     for (auto i : range(NUM_DRAW_SETS)) {
       DrawSet set = (DrawSet)(1 << i);
       add_to_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
@@ -549,7 +547,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
   if (dirty) {
     scene->m_rg_arena.clear();
     rgp.reset(&scene->m_rg_arena);
-    rgp.set_async_compute_enabled(pass_cfg.async_compute);
+    rgp.m_async_compute = pass_cfg.async_compute;
     pass_rcs = {};
     pass_rcs.backbuffer = rgp.create_texture("backbuffer");
     pass_rcs.sdr = pass_rcs.backbuffer;
@@ -840,14 +838,15 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
 
   ren_try(RenderGraph render_graph, build_rg(scratch, scene));
 
-  ren_try_to(render_graph.execute({
-      .gfx_cmd_pool = frcs->gfx_cmd_pool,
-      .async_cmd_pool = frcs->async_cmd_pool,
-      .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
-      .async_event_pool = &scene->m_sid->m_async_event_pool,
-      .frame_end_semaphore = &frcs->end_semaphore,
-      .frame_end_time = &frcs->end_time,
-  }));
+  ren_try_to(execute(render_graph,
+                     {
+                         .gfx_cmd_pool = frcs->gfx_cmd_pool,
+                         .async_cmd_pool = frcs->async_cmd_pool,
+                         .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
+                         .async_event_pool = &scene->m_sid->m_async_event_pool,
+                         .frame_end_semaphore = &frcs->end_semaphore,
+                         .frame_end_time = &frcs->end_time,
+                     }));
 
   if (scene->is_amd_anti_lag_enabled()) {
     ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));

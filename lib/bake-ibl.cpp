@@ -196,7 +196,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   rgb.copy_texture_to_buffer(cube_map, &cube_map_readback);
 
   ren_try(RenderGraph rg, rgb.build({}));
-  ren_try_to(rg.execute({.gfx_cmd_pool = baker->cmd_pool}));
+  ren_try_to(execute(rg, {.gfx_cmd_pool = baker->cmd_pool}));
   baker->renderer->wait_idle();
 
   Vector<DirectX::Image> images;

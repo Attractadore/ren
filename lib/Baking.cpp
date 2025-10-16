@@ -30,7 +30,7 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
   baker->gfx_arena.init(renderer);
   baker->frame_gfx_arena.init(renderer);
   baker->rg.init(renderer);
-  baker->rg.set_async_compute_enabled(false);
+  baker->rg.m_async_compute = false;
   ren_try(baker->cmd_pool, baker->gfx_arena.create_command_pool({
                                .name = "Baker command pool",
                                .queue_family = rhi::QueueFamily::Graphics,
