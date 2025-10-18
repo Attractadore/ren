@@ -73,15 +73,12 @@ struct IndexPool {
   u32 num_free_indices = sh::INDEX_POOL_SIZE;
 };
 
-auto create_index_pool(ResourceArena &arena) -> IndexPool;
-
 struct Material;
 
 struct MeshInstance {
   Handle<Mesh> mesh;
   Handle<Material> material;
-  DrawSetFlags draw_sets;
-  std::array<DrawSetId, NUM_DRAW_SETS> draw_set_ids;
+  DrawSetId draw_set_ids[NUM_DRAW_SETS] = {};
 };
 
 } // namespace ren

@@ -35,15 +35,15 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   const DrawSetData &ds = info.gpu_scene->draw_sets[cfg.draw_set];
   const RgDrawSetData &rg_ds = info.rg_gpu_scene->draw_sets[cfg.draw_set];
 
-  u32 num_batches = ds.batches.size();
+  u32 num_batches = ds.batches.m_size;
 
-  u32 num_instances = ds.size();
+  u32 num_instances = ds.items.m_size;
   if (num_instances == 0) {
     return;
   }
 
   u32 num_meshlets = 0;
-  for (auto i : range(ds.batches.size())) {
+  for (auto i : range(ds.batches.m_size)) {
     num_meshlets += ds.batches[i].num_meshlets;
   }
 
@@ -86,7 +86,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   {
     auto pass = rgb.create_pass({"instance-culling-and-lod"});
 
-    const SceneGraphicsSettings &settings = ccfg.scene->settings;
+    const SceneGraphicsSettings &settings = ccfg.scene->m_settings;
 
     u32 feature_mask = 0;
     if (settings.lod_selection) {
@@ -117,7 +117,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         .meshes = pass.read_buffer(info.rg_gpu_scene->meshes),
         .transform_matrices =
             pass.read_buffer(info.rg_gpu_scene->transform_matrices),
-        .cull_data = pass.read_buffer(rg_ds.cull_data),
+        .ds = pass.read_buffer(rg_ds.items),
         .meshlet_bucket_commands = pass.write_buffer("meshlet-bucket-commands",
                                                      &meshlet_bucket_commands),
         .meshlet_bucket_offsets = meshlet_bucket_offsets.device_ptr,
@@ -199,7 +199,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
         .eye = info.camera.position,
     };
 
-    const SceneGraphicsSettings &settings = ccfg.scene->settings;
+    const SceneGraphicsSettings &settings = ccfg.scene->m_settings;
 
     if (settings.meshlet_cone_culling) {
       args.feature_mask |= sh::MESHLET_CULLING_CONE_BIT;
@@ -309,7 +309,7 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
 
 auto get_render_pass_args(const PassCommonConfig &cfg,
                           const OpaqueMeshPassInfo &info, RgPassBuilder &pass) {
-  const SceneData &scene = *cfg.scene;
+  const Scene &scene = *cfg.scene;
   const RgGpuScene &gpu_scene = *info.base.rg_gpu_scene;
 
   return RgOpaqueArgs{
@@ -323,18 +323,19 @@ auto get_render_pass_args(const PassCommonConfig &cfg,
           pass.read_buffer(gpu_scene.materials, rhi::FS_RESOURCE_BUFFER),
       .directional_lights = pass.read_buffer(gpu_scene.directional_lights,
                                              rhi::FS_RESOURCE_BUFFER),
-      .num_directional_lights = u32(cfg.scene->directional_lights.size()),
+      .num_directional_lights = u32(cfg.scene->m_directional_lights.size()),
       .proj_view =
           get_projection_view_matrix(info.base.camera, info.base.viewport),
       .znear = info.base.camera.near,
       .eye = info.base.camera.position,
       .inv_viewport = 1.0f / glm::vec2(cfg.viewport),
-      .ssao = pass.try_read_texture(
-          info.ssao, rhi::FS_RESOURCE_IMAGE,
-          scene.settings.ssao_full_res ? rhi::SAMPLER_NEAREST_CLAMP
-                                       : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
-      .env_luminance = scene.env_luminance,
-      .env_map = scene.env_map,
+      .ssao =
+          pass.try_read_texture(info.ssao, rhi::FS_RESOURCE_IMAGE,
+                                scene.m_settings.ssao_full_res
+                                    ? rhi::SAMPLER_NEAREST_CLAMP
+                                    : rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
+      .env_luminance = scene.m_environment_luminance,
+      .env_map = scene.m_environment_map,
   };
 }
 
@@ -355,7 +356,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
   const DrawSetData &ds = info.base.gpu_scene->draw_sets[draw_set];
   const RgDrawSetData &rg_ds = info.base.rg_gpu_scene->draw_sets[draw_set];
-  if (ds.batches.empty()) {
+  if (ds.batches.m_size == 0) {
     return;
   }
 
@@ -371,7 +372,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
           {.count = sh::MAX_DRAW_MESHLETS});
 
   ScratchArena scratch(ccfg.rgb->m_arena);
-  for (sh::BatchId batch : range(ds.batches.size())) {
+  for (sh::BatchId batch : range(ds.batches.m_size)) {
     {
       auto pass = ccfg.rgb->create_pass(
           {format(scratch, "{}{}-prepare-batch-{}", info.base.pass_name,
@@ -422,16 +423,13 @@ void record_render_pass(const PassCommonConfig &ccfg,
     }
 
     struct {
-      Handle<GraphicsPipeline> pipeline;
-      BufferSlice<u8> indices;
+      DrawSetBatchDesc batch_desc;
       RgBufferToken<sh::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
     } rcs;
 
-    const BatchDesc &batch_desc =
+    rcs.batch_desc =
         info.base.gpu_scene->draw_sets[draw_set].batches[batch].desc;
-    rcs.pipeline = get_batch_pipeline(S, batch_desc, *ccfg.pipelines);
-    rcs.indices = get_batch_indices(batch_desc, *ccfg.scene);
     rcs.commands = pass.read_buffer(commands, rhi::INDIRECT_COMMAND_BUFFER);
     rcs.batch_sizes =
         pass.read_buffer(cfg.batch_sizes, rhi::INDIRECT_COMMAND_BUFFER, batch);
@@ -440,8 +438,8 @@ void record_render_pass(const PassCommonConfig &ccfg,
 
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
-      render_pass.bind_graphics_pipeline(rcs.pipeline);
-      render_pass.bind_index_buffer(rcs.indices);
+      render_pass.bind_graphics_pipeline(rcs.batch_desc.pipeline);
+      render_pass.bind_index_buffer(rcs.batch_desc.indices);
       rg.push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
                                               rg.get_buffer(rcs.batch_sizes));

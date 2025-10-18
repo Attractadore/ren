@@ -1,14 +1,11 @@
 #pragma once
 #include "../Camera.hpp"
-#include "../GpuScene.hpp"
 #include "../RenderGraph.hpp"
+#include "../Scene.hpp"
 #include "../passes/Pass.hpp"
 #include "ren/core/NotNull.hpp"
 
 namespace ren {
-
-struct SceneData;
-struct Samplers;
 
 namespace sh {
 struct Mesh;

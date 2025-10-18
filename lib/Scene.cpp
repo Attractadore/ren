@@ -4,7 +4,6 @@
 #include "SwapChain.hpp"
 #include "core/Span.hpp"
 #include "core/Views.hpp"
-#include "passes/GpuSceneUpdate.hpp"
 #include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
 #include "passes/MeshPass.hpp"
@@ -14,15 +13,67 @@
 #include "passes/Skybox.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/ren.hpp"
-#include "sh/Random.h"
-#include "sh/Transforms.h"
 
 #include "Ssao.comp.hpp"
 #include "SsaoFilter.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
+#include "sh/Random.h"
 
 #include <ktx.h>
 #include <tracy/Tracy.hpp>
+
+namespace ren {
+
+GpuScene GpuScene::init(NotNull<ResourceArena *> arena) {
+  constexpr rhi::MemoryHeap HEAP = rhi::MemoryHeap::Default;
+
+#define create_buffer(T, n, c)                                                 \
+  arena                                                                        \
+      ->create_buffer<T>({                                                     \
+          .name = n,                                                           \
+          .heap = HEAP,                                                        \
+          .count = c,                                                          \
+      })                                                                       \
+      .value()
+
+  constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(
+      MAX_NUM_MESH_INSTANCES, sh::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
+
+  GpuScene gpu_scene = {
+      .exposure = create_buffer(float, "Exposure", 1),
+      .meshes = create_buffer(sh::Mesh, "Scene meshes", MAX_NUM_MESHES),
+      .mesh_instances = create_buffer(sh::MeshInstance, "Scene mesh instances",
+                                      MAX_NUM_MESH_INSTANCES),
+      .mesh_instance_visibility = create_buffer(
+          sh::MeshInstanceVisibilityMask, "Scene mesh instance visibility",
+          NUM_MESH_INSTANCE_VISIBILITY_MASKS),
+      .materials =
+          create_buffer(sh::Material, "Scene materials", MAX_NUM_MATERIALS),
+  };
+
+  ScratchArena scratch;
+
+  for (auto i : range(NUM_DRAW_SETS)) {
+    auto s = (DrawSet)(1 << i);
+    DrawSetData &ds = gpu_scene.draw_sets[i];
+    ds.data = arena
+                  ->create_buffer<sh ::DrawSetItem>(
+
+                      {
+                          .name = format(scratch, "Draw set {} mesh instances",
+                                         get_draw_set_name(s)),
+                          .heap = HEAP,
+                          .count = MAX_NUM_MESH_INSTANCES,
+                      })
+                  .value();
+  }
+
+#undef create_buffer
+
+  return gpu_scene;
+}
+
+} // namespace ren
 
 namespace ren_export {
 
@@ -55,7 +106,7 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
   }
 
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
-    ScenePerFrameResources &frcs = sid->m_per_frame_resources[i];
+    FrameResources &frcs = sid->m_per_frame_resources[i];
     ren_try(frcs.acquire_semaphore,
             sid->m_gfx_arena.create_semaphore({
                 .name = format(scratch, "Acquire semaphore {}", i),
@@ -83,6 +134,105 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
   return {};
 }
 
+void next_frame(NotNull<Scene *> scene) {
+  ZoneScoped;
+
+  Renderer *renderer = scene->m_renderer;
+  SceneInternalData *id = scene->m_sid.get();
+  scene->m_frcs =
+      &id->m_per_frame_resources[scene->m_frame_index % NUM_FRAMES_IN_FLIGHT];
+  FrameResources *frcs = scene->m_frcs;
+
+  {
+    ZoneScopedN("Scene::wait_for_previous_frame");
+    if (renderer->try_get_semaphore(frcs->end_semaphore)) {
+      std::ignore =
+          renderer->wait_for_semaphore(frcs->end_semaphore, frcs->end_time);
+    }
+  }
+
+  frcs->upload_allocator.reset();
+  std::ignore = renderer->reset_command_pool(frcs->gfx_cmd_pool);
+  if (frcs->async_cmd_pool) {
+    std::ignore = renderer->reset_command_pool(frcs->async_cmd_pool);
+  }
+  frcs->descriptor_allocator.reset();
+  frcs->end_semaphore = {};
+  frcs->end_time = 0;
+
+  id->m_gfx_allocator.reset();
+  CommandRecorder cmd;
+  std::ignore = cmd.begin(*renderer, frcs->gfx_cmd_pool);
+  {
+    auto _ = cmd.debug_region("begin-frame");
+    // Sync with previous event signals.
+    cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
+    reset_event_pool(cmd, id->m_gfx_event_pool);
+    // Sync with future event signals.
+    // Also flush pipeline and cache so we can safely reuse the memory
+    // allocator.
+    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+  }
+  rhi::CommandBuffer cmd_buffer = cmd.end().value();
+  std::ignore = renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer});
+
+  if (scene->m_settings.async_compute) {
+    id->m_async_allocator.reset();
+    std::swap(id->m_shared_allocators[0], id->m_shared_allocators[1]);
+    id->m_shared_allocators[0].reset();
+    CommandRecorder cmd;
+    std::ignore = cmd.begin(*renderer, frcs->async_cmd_pool);
+    {
+      auto _ = cmd.debug_region("begin-frame");
+      cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
+      reset_event_pool(cmd, id->m_async_event_pool);
+      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
+    }
+    rhi::CommandBuffer cmd_buffer = cmd.end().value();
+    std::ignore = renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer});
+  }
+
+  scene->m_sid->m_transform_staging_buffers = {};
+  scene->m_gpu_scene_update = {};
+}
+
+sh::Handle<sh::Sampler2D> get_or_create_texture(NotNull<Scene *> scene,
+                                                Handle<Image> image,
+                                                const SamplerDesc &sampler) {
+  return scene->m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
+      *scene->m_renderer, SrvDesc{scene->m_images[image].handle},
+      {
+          .mag_filter = get_rhi_Filter(sampler.mag_filter),
+          .min_filter = get_rhi_Filter(sampler.min_filter),
+          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler.mipmap_filter),
+          .address_mode_u = get_rhi_SamplerAddressMode(sampler.wrap_u),
+          .address_mode_v = get_rhi_SamplerAddressMode(sampler.wrap_v),
+          .max_anisotropy = 16.0f,
+      });
+}
+
+auto create_texture(NotNull<Scene *> scene, const void *blob, usize size)
+    -> expected<Handle<Texture>> {
+  ktx_error_code_e err = KTX_SUCCESS;
+  ktxTexture2 *ktx_texture2 = nullptr;
+  err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
+  if (err) {
+    return Failure(Error::Unknown);
+  }
+  auto res = scene->m_resource_uploader.create_texture(
+      scene->m_gfx_arena, scene->m_frcs->upload_allocator, ktx_texture2);
+  ktxTexture_Destroy(ktxTexture(ktx_texture2));
+  return res;
+}
+
+bool is_amd_anti_lag_available(NotNull<Scene *> scene) {
+  return scene->m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
+}
+
+bool is_amd_anti_lag_enabled(NotNull<Scene *> scene) {
+  return is_amd_anti_lag_available(scene) and scene->m_settings.amd_anti_lag;
+}
+
 } // namespace
 
 auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
@@ -93,34 +243,27 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
       .m_rg_arena = make_arena(),
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
+      .m_cameras = GenArray<Camera>::init(arena),
+      .m_meshes = GenArray<Mesh>::init(arena),
+      .m_mesh_instances = GenArray<MeshInstance>::init(arena),
       .m_images = GenArray<Image>::init(arena),
+      .m_materials = GenArray<Material>::init(arena),
+      .m_directional_lights = GenArray<DirectionalLight>::init(arena),
   };
-  scene->m_data = {
-      .cameras = GenArray<Camera>::init(arena),
-      .meshes = GenArray<Mesh>::init(arena),
-      .mesh_instances = GenArray<MeshInstance>::init(arena),
-      .materials = GenArray<Material>::init(arena),
-      .directional_lights = GenArray<DirectionalLight>::init(arena),
-  };
-  scene->m_data.mesh_instance_transforms.push(arena);
 
   scene->m_gfx_arena.init(renderer);
-  scene->m_gpu_scene = init_gpu_scene(scene->m_gfx_arena);
+  scene->m_gpu_scene = GpuScene::init(&scene->m_gfx_arena);
 
-  scene->m_data.settings.async_compute =
+  scene->m_settings.async_compute =
       renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
-  scene->m_data.settings.present_from_compute =
+  scene->m_settings.present_from_compute =
       swap_chain->is_queue_family_supported(rhi::QueueFamily::Compute);
 
-  scene->m_data.settings.amd_anti_lag =
+  scene->m_settings.amd_anti_lag =
       renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
   ren_try_to(init_scene_internal_data(scene));
-  ren_try_to(scene->next_frame());
-
-  scene->m_data.settings.async_compute = false;
-  scene->m_data.settings.present_from_compute = false;
-  scene->m_data.settings.ssao_full_res = true;
+  next_frame(scene);
 
   return scene;
 }
@@ -134,7 +277,8 @@ void destroy_scene(Scene *scene) {
   delete scene;
 }
 
-Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
+Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
+                         std::span<const std::byte> blob) {
   ScratchArena scratch;
 
   if (blob.size() < sizeof(MeshPackageHeader)) {
@@ -218,7 +362,7 @@ Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
     return {};
   };
 
-  u32 index = scene->m_data.meshes.size();
+  u32 index = scene->m_meshes.size();
 
   if (!upload_buffer(positions, mesh.positions,
                      format(scratch, "Mesh {} positions", index))) {
@@ -245,9 +389,8 @@ Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
   ren_assert_msg(header.num_triangles * 3 <= sh::INDEX_POOL_SIZE,
                  "Index pool overflow");
 
-  if (scene->m_data.index_pools.m_size == 0 or
-      scene->m_data.index_pools.back().num_free_indices <
-          header.num_triangles * 3) {
+  if (scene->m_index_pools.m_size == 0 or
+      scene->m_index_pools.back().num_free_indices < header.num_triangles * 3) {
     expected<BufferSlice<u8>> slice = scene->m_gfx_arena.create_buffer<u8>({
         .name = "Mesh vertex indices pool",
         .heap = rhi::MemoryHeap::Default,
@@ -256,12 +399,12 @@ Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
     if (!slice) {
       return NullHandle;
     }
-    scene->m_data.index_pools.push(scene->m_arena,
-                                   {slice->buffer, sh::INDEX_POOL_SIZE});
+    scene->m_index_pools.push(scene->m_arena,
+                              {slice->buffer, sh::INDEX_POOL_SIZE});
   }
 
-  mesh.index_pool = scene->m_data.index_pools.m_size - 1;
-  IndexPool &index_pool = scene->m_data.index_pools.back();
+  mesh.index_pool = scene->m_index_pools.m_size - 1;
+  IndexPool &index_pool = scene->m_index_pools.back();
 
   u32 base_triangle = sh::INDEX_POOL_SIZE - index_pool.num_free_indices;
   for (sh::Meshlet &meshlet : meshlets) {
@@ -289,10 +432,9 @@ Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
       renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, header.num_triangles * 3));
 
-  Handle<Mesh> handle = scene->m_data.meshes.insert(scene->m_arena, mesh);
+  Handle<Mesh> handle = scene->m_meshes.insert(scene->m_arena, mesh);
 
-  scene->m_gpu_scene.update_meshes.push_back(handle);
-  scene->m_gpu_scene.mesh_update_data.push_back({
+  sh::Mesh gpu_mesh = {
       .positions =
           renderer->get_buffer_device_ptr<sh::Position>(mesh.positions),
       .normals = renderer->get_buffer_device_ptr<sh::Normal>(mesh.normals),
@@ -306,68 +448,67 @@ Handle<Mesh> create_mesh(Scene *scene, std::span<const std::byte> blob) {
       .uv_bs = mesh.uv_bs,
       .index_pool = mesh.index_pool,
       .num_lods = mesh.num_lods,
-  });
-  std::ranges::copy_n(mesh.lods, mesh.num_lods,
-                      scene->m_gpu_scene.mesh_update_data.back().lods);
+  };
+  std::ranges::copy_n(mesh.lods, mesh.num_lods, gpu_mesh.lods);
+
+  scene->m_gpu_scene_update.meshes.push(frame_arena, {handle, gpu_mesh});
 
   return handle;
 }
 
 Handle<Image> create_image(Scene *scene, std::span<const std::byte> blob) {
   expected<Handle<Texture>> texture =
-      scene->create_texture(blob.data(), blob.size());
+      create_texture(scene, blob.data(), blob.size());
   if (!texture) {
     return NullHandle;
   }
   return scene->m_images.insert(scene->m_arena, {*texture});
 }
 
-Handle<Material> create_material(Scene *scene, const MaterialCreateInfo &info) {
+Handle<Material> create_material(NotNull<Arena *> frame_arena, Scene *scene,
+                                 const MaterialCreateInfo &info) {
   auto get_descriptor = [&](const auto &texture) -> sh::Handle<sh::Sampler2D> {
     if (texture.image) {
-      return scene->get_or_create_texture(texture.image, texture.sampler);
+      return get_or_create_texture(scene, texture.image, texture.sampler);
     }
     return {};
   };
 
-  auto base_color_texture = get_descriptor(info.base_color_texture);
-  auto orm_texture = get_descriptor(info.orm_texture);
-  auto normal_texture = get_descriptor(info.normal_texture);
+  sh::Material gpu_material = {
+      .base_color = info.base_color_factor,
+      .base_color_texture = get_descriptor(info.base_color_texture),
+      .occlusion_strength = info.orm_texture.strength,
+      .roughness = info.roughness_factor,
+      .metallic = info.metallic_factor,
+      .orm_texture = get_descriptor(info.orm_texture),
+      .normal_scale = info.normal_texture.scale,
+      .normal_texture = get_descriptor(info.normal_texture),
+  };
 
-  Handle<Material> handle = scene->m_data.materials.insert(
-      scene->m_arena, {{
-                          .base_color = info.base_color_factor,
-                          .base_color_texture = base_color_texture,
-                          .occlusion_strength = info.orm_texture.strength,
-                          .roughness = info.roughness_factor,
-                          .metallic = info.metallic_factor,
-                          .orm_texture = orm_texture,
-                          .normal_scale = info.normal_texture.scale,
-                          .normal_texture = normal_texture,
-                      }});
-  scene->m_gpu_scene.update_materials.push_back(handle);
-  scene->m_gpu_scene.material_update_data.push_back(
-      scene->m_data.materials[handle].data);
+  Handle<Material> handle =
+      scene->m_materials.insert(scene->m_arena, {gpu_material});
+
+  scene->m_gpu_scene_update.materials.push(frame_arena, {handle, gpu_material});
 
   return handle;
 }
 
 Handle<Camera> create_camera(Scene *scene) {
-  return scene->m_data.cameras.insert(scene->m_arena);
+  return scene->m_cameras.insert(scene->m_arena);
 }
 
 void destroy_camera(Scene *scene, Handle<Camera> camera) {
-  scene->m_data.cameras.erase(camera);
+  scene->m_cameras.erase(camera);
 }
 
 void set_camera(Scene *scene, Handle<Camera> camera) {
-  scene->m_data.camera = camera;
+  scene->m_camera = camera;
 }
 
 void set_camera_perspective_projection(
     Scene *scene, Handle<Camera> handle,
     const CameraPerspectiveProjectionDesc &desc) {
-  Camera &camera = scene->m_data.cameras[handle];
+  Camera &camera = scene->m_cameras[handle];
   camera.proj = CameraProjection::Perspective;
   camera.persp_hfov = desc.hfov;
   camera.near = desc.near;
@@ -377,7 +518,7 @@ void set_camera_perspective_projection(
 void set_camera_orthographic_projection(
     Scene *scene, Handle<Camera> handle,
     const CameraOrthographicProjectionDesc &desc) {
-  Camera &camera = scene->m_data.cameras[handle];
+  Camera &camera = scene->m_cameras[handle];
   camera.proj = CameraProjection::Orthograpic;
   camera.ortho_width = desc.width;
   camera.near = desc.near;
@@ -386,69 +527,188 @@ void set_camera_orthographic_projection(
 
 void set_camera_transform(Scene *scene, Handle<Camera> handle,
                           const CameraTransformDesc &desc) {
-  Camera &camera = scene->m_data.cameras[handle];
+  Camera &camera = scene->m_cameras[handle];
   camera.position = desc.position;
   camera.forward = desc.forward;
   camera.up = desc.up;
 }
 
-void create_mesh_instances(Scene *scene,
+auto get_batch_desc(DrawSet ds, const Scene &scene,
+                    const MeshInstance &mesh_instance) -> DrawSetBatchDesc {
+  const Mesh &mesh = scene.m_meshes.get(mesh_instance.mesh);
+  const IndexPool &pool = scene.m_index_pools[mesh.index_pool];
+
+  BufferSlice<u8> indices = {
+      .buffer = pool.indices,
+      .count = sh::INDEX_POOL_SIZE,
+  };
+
+  switch (ds) {
+  case DrawSet::DepthOnly:
+    return {scene.m_sid->m_pipelines.early_z_pass, indices};
+  case DrawSet::Opaque: {
+    const sh::Material &material =
+        scene.m_materials[mesh_instance.material].data;
+
+    MeshAttributeFlags attributes;
+    if (mesh.uvs) {
+      attributes |= MeshAttribute::UV;
+    }
+    if (material.normal_texture) {
+      attributes |= MeshAttribute::Tangent;
+    }
+    if (mesh.colors) {
+      attributes |= MeshAttribute::Color;
+    }
+    return {scene.m_sid->m_pipelines.opaque_pass[(i32)attributes.get()],
+            indices};
+  };
+  }
+
+  std::unreachable();
+}
+
+void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
                            std::span<const MeshInstanceCreateInfo> create_info,
                            std::span<Handle<MeshInstance>> out) {
   ren_assert(out.size() >= create_info.size());
+  ren_assert(scene->m_mesh_instances.size() + create_info.size() <=
+             MAX_NUM_MESH_INSTANCES);
+
   for (usize i : range(create_info.size())) {
-    auto mesh = std::bit_cast<Handle<Mesh>>(create_info[i].mesh);
-    ren_assert(mesh);
-    auto material =
-        std::bit_cast<Handle<sh::Material>>(create_info[i].material);
-    ren_assert(material);
-    Handle<MeshInstance> handle = scene->m_data.mesh_instances.insert(
-        scene->m_arena, {
-                            .mesh = create_info[i].mesh,
-                            .material = create_info[i].material,
-                        });
-    for (auto i : range(NUM_DRAW_SETS)) {
-      DrawSet set = (DrawSet)(1 << i);
-      add_to_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
+    ren_assert(create_info[i].mesh);
+    ren_assert(create_info[i].material);
+
+    Handle<MeshInstance> handle = scene->m_mesh_instances.insert(
+        scene->m_arena, {create_info[i].mesh, create_info[i].material});
+    MeshInstance &mesh_instance = scene->m_mesh_instances[handle];
+
+    const Mesh &mesh = scene->m_meshes[create_info[i].mesh];
+    u32 num_meshlets = mesh.lods[0].num_meshlets;
+
+    for (auto k : range(NUM_DRAW_SETS)) {
+      DrawSetData &ds = scene->m_gpu_scene.draw_sets[k];
+
+      DrawSetBatchDesc batch_desc =
+          get_batch_desc((DrawSet)(1 << k), *scene, mesh_instance);
+      DrawSetBatch *batch = nullptr;
+      for (DrawSetBatch &b : ds.batches) {
+        if (b.desc == batch_desc) {
+          batch = &b;
+          break;
+        }
+      }
+      if (!batch) {
+        ds.batches.push(scene->m_arena, {batch_desc});
+        batch = &ds.batches.back();
+      }
+      batch->num_meshlets += num_meshlets;
+
+      DrawSetId id(ds.items.m_size);
+      ds.items.push(scene->m_arena, handle);
+      mesh_instance.draw_set_ids[k] = id;
+
+      sh::DrawSetItem gpu_item = {
+          .mesh = mesh_instance.mesh,
+          .mesh_instance = handle,
+          .batch = sh::BatchId(batch - ds.batches.m_data),
+      };
+      scene->m_gpu_scene_update.draw_sets[k].update.push(frame_arena,
+                                                         {id, gpu_item});
     }
-    glm::mat4x3 transform =
-        sh::make_decode_position_matrix(scene->m_data.meshes[mesh].scale);
-    [[unlikely]] if (scene->m_data.mesh_instance_transforms.m_size == handle) {
-      scene->m_data.mesh_instance_transforms.push(scene->m_arena, transform);
-    } else {
-      ren_assert(handle < scene->m_data.mesh_instance_transforms.m_size);
-      scene->m_data.mesh_instance_transforms[handle] = transform;
-    }
-    scene->m_gpu_scene.update_mesh_instances.push_back(handle);
-    scene->m_gpu_scene.mesh_instance_update_data.push_back({
-        .mesh = mesh,
-        .material = material,
-    });
+
+    scene->m_gpu_scene_update.mesh_instances.push(
+        frame_arena, {
+                         handle,
+                         {
+                             .mesh = mesh_instance.mesh,
+                             .material = mesh_instance.material,
+                         },
+                     });
+
     out[i] = handle;
   }
 }
 
 void destroy_mesh_instances(
-    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances) {
+    NotNull<Arena *> frame_arena, Scene *scene,
+    std::span<const Handle<MeshInstance>> mesh_instances) {
   for (Handle<MeshInstance> handle : mesh_instances) {
-    for (auto i : range(NUM_DRAW_SETS)) {
-      DrawSet set = (DrawSet)(1 << i);
-      remove_from_draw_set(scene->m_data, scene->m_gpu_scene, handle, set);
+    if (!handle) {
+      continue;
     }
-    scene->m_data.mesh_instances.erase(handle);
+
+    const MeshInstance &mesh_instance = scene->m_mesh_instances[handle];
+    const Mesh &mesh = scene->m_meshes.get(mesh_instance.mesh);
+    u32 num_meshlets = mesh.lods[0].num_meshlets;
+
+    for (auto k : range(NUM_DRAW_SETS)) {
+      DrawSetData &ds = scene->m_gpu_scene.draw_sets[k];
+
+      DrawSetBatchDesc batch_desc =
+          get_batch_desc((DrawSet)(1 << k), *scene, mesh_instance);
+      DrawSetBatch *batch = nullptr;
+      for (DrawSetBatch &b : ds.batches) {
+        if (b.desc == batch_desc) {
+          batch = &b;
+          break;
+        }
+      }
+      ren_assert(batch);
+      batch->num_meshlets -= num_meshlets;
+
+      DrawSetId id = mesh_instance.draw_set_ids[k];
+      ren_assert(id != InvalidDrawSetId);
+      scene->m_gpu_scene_update.draw_sets[k].remove.push(frame_arena, id);
+    }
+
+    scene->m_mesh_instances.erase(handle);
   }
 }
 
+struct StagingBufferIndexAndOffset {
+  usize index = 0;
+  usize offset = 0;
+};
+
+// If base size is 1, then
+// Index 0b000 maps to 0,
+// Indices 0b001 and 0b010 map to 1,
+// Indices 0b011, 0b100, 0b101, 0b110 map to 2.
+// Notice that the staging buffer index is equal to the MSB position of (index
+// + 1), and the offset into the staging buffer is all the bits except the
+// MSB.
+StagingBufferIndexAndOffset mesh_instance_index_to_sb_and_offset(usize index) {
+  index = index + MIN_TRANSFORM_STAGING_BUFFER_SIZE;
+  usize hi_bit = find_msb(index);
+  usize mask = (1 << hi_bit) - 1;
+  return {hi_bit - find_msb(MIN_TRANSFORM_STAGING_BUFFER_SIZE), index & mask};
+};
+
 void set_mesh_instance_transforms(
-    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
+    NotNull<Arena *> frame_arena, Scene *scene,
+    std::span<const Handle<MeshInstance>> mesh_instances,
     std::span<const glm::mat4x3> matrices) {
+  ZoneScoped;
+
   ren_assert(mesh_instances.size() == matrices.size());
+
+  usize raw_size = scene->m_mesh_instances.raw_size();
+  usize num_sbs = mesh_instance_index_to_sb_and_offset(raw_size - 1).index + 1;
+  for (usize i : range<usize>(scene->m_sid->m_transform_staging_buffers.m_size,
+                              num_sbs)) {
+    usize size = MIN_TRANSFORM_STAGING_BUFFER_SIZE << i;
+    scene->m_sid->m_transform_staging_buffers.push(
+        frame_arena,
+        scene->m_frcs->upload_allocator.allocate<glm::mat4x3>(size));
+  }
+
   for (usize i : range(mesh_instances.size())) {
-    auto handle = mesh_instances[i];
-    MeshInstance &mesh_instance = scene->m_data.mesh_instances[handle];
-    const Mesh &mesh =
-        scene->m_data.meshes[std::bit_cast<Handle<Mesh>>(mesh_instance.mesh)];
-    scene->m_data.mesh_instance_transforms[handle] =
+    Handle<MeshInstance> handle = mesh_instances[i];
+    const MeshInstance &mesh_instance = scene->m_mesh_instances[handle];
+    const Mesh &mesh = scene->m_meshes[mesh_instance.mesh];
+    auto [sb, offset] = mesh_instance_index_to_sb_and_offset(handle);
+    scene->m_sid->m_transform_staging_buffers[sb].host_ptr[offset] =
         matrices[i] * sh::make_decode_position_matrix(mesh.scale);
   }
 }
@@ -456,37 +716,35 @@ void set_mesh_instance_transforms(
 Handle<DirectionalLight>
 create_directional_light(Scene *scene, const DirectionalLightDesc &desc) {
   Handle<DirectionalLight> handle =
-      scene->m_data.directional_lights.insert(scene->m_arena);
+      scene->m_directional_lights.insert(scene->m_arena);
   ren_export::set_directional_light(scene, handle, desc);
   return handle;
 };
 
 void destroy_directional_light(Scene *scene, Handle<DirectionalLight> handle) {
-  scene->m_data.directional_lights.erase(handle);
+  scene->m_directional_lights.erase(handle);
 }
 
 void set_directional_light(Scene *scene, Handle<DirectionalLight> handle,
                            const DirectionalLightDesc &desc) {
-  scene->m_data.directional_lights[handle] = {{
+  sh::DirectionalLight gpu_light = {
       .color = desc.color,
       .illuminance = desc.illuminance,
       .origin = glm::normalize(desc.origin),
-  }};
-  scene->m_gpu_scene.update_directional_lights.push_back(handle);
-  scene->m_gpu_scene.directional_light_update_data.push_back(
-      scene->m_data.directional_lights[handle].data);
+  };
+  scene->m_directional_lights[handle] = {gpu_light};
 };
 
 void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
-  scene->m_data.env_luminance = luminance;
+  scene->m_environment_luminance = luminance;
 }
 
 auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void> {
   if (!image) {
-    scene->m_data.env_map = {};
+    scene->m_environment_map = {};
     return {};
   }
-  scene->m_data.env_map =
+  scene->m_environment_map =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::SamplerCube>(
           *scene->m_renderer, SrvDesc{scene->m_images[image].handle},
           {
@@ -498,10 +756,253 @@ auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void> {
 }
 
 auto delay_input(Scene *scene) -> expected<void> {
-  if (scene->is_amd_anti_lag_enabled()) {
+  if (is_amd_anti_lag_enabled(scene)) {
     return scene->m_renderer->amd_anti_lag_input(scene->m_frame_index);
   }
   return {};
+}
+
+RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
+                                 const PassCommonConfig &cfg) {
+  ScratchArena scratch(cfg.rgb->m_arena);
+
+  for (usize s : range(NUM_DRAW_SETS)) {
+    DrawSetData &data = scene->m_gpu_scene.draw_sets[s];
+    DrawSetUpdate &update = scene->m_gpu_scene_update.draw_sets[s];
+    std::ranges::sort(update.remove);
+    for (isize i = isize(update.remove.m_size) - 1; i >= 0; --i) {
+      DrawSetId id = update.remove[i];
+      if (id == data.items.m_size - 1) {
+        data.items.pop();
+        continue;
+      }
+
+      std::swap(data.items.back(), data.items[id]);
+      data.items.pop();
+
+      Handle<MeshInstance> handle = data.items[id];
+      MeshInstance &mesh_instance = scene->m_mesh_instances[handle];
+      mesh_instance.draw_set_ids[s] = id;
+
+      DrawSetBatchDesc batch_desc =
+          get_batch_desc((DrawSet)(1 << s), *scene, mesh_instance);
+      DrawSetBatch *batch = nullptr;
+      for (DrawSetBatch &b : data.batches) {
+        if (b.desc == batch_desc) {
+          batch = &b;
+          break;
+        }
+      }
+      ren_assert(batch);
+
+      sh::DrawSetItem gpu_item = {
+          .mesh = mesh_instance.mesh,
+          .mesh_instance = handle,
+          .batch = (sh::BatchId)(batch - data.batches.m_data),
+      };
+      update.overwrite.push(scratch, {id, gpu_item});
+    }
+    update.remove.clear();
+  }
+
+  RgBuilder &rgb = *cfg.rgb;
+
+  RgGpuScene rg_gpu_scene = {
+      .exposure = rgb.create_buffer("exposure", scene->m_gpu_scene.exposure),
+      .meshes = rgb.create_buffer("meshes", scene->m_gpu_scene.meshes),
+      .mesh_instances = rgb.create_buffer("mesh-instances",
+                                          scene->m_gpu_scene.mesh_instances),
+      .transform_matrices =
+          rgb.create_buffer<glm::mat4x3>({.count = MAX_NUM_MESH_INSTANCES}),
+      .mesh_instance_visibility =
+          rgb.create_buffer("mesh-instance-visibility",
+                            scene->m_gpu_scene.mesh_instance_visibility),
+      .materials = rgb.create_buffer("materials", scene->m_gpu_scene.materials),
+  };
+
+  for (auto i : range(NUM_DRAW_SETS)) {
+    const DrawSetData &ds = scene->m_gpu_scene.draw_sets[i];
+    rg_gpu_scene.draw_sets[i] = {
+        .items = rgb.create_buffer(format(scratch, "{}-draw-set",
+                                          get_draw_set_name((DrawSet)(1 << i))),
+                                   ds.data),
+    };
+  }
+
+  auto pass = rgb.create_pass({"gpu-scene-update"});
+
+  struct {
+    const Scene *scene = nullptr;
+    RgBufferToken<sh::Mesh> meshes;
+    RgBufferToken<sh::MeshInstance> mesh_instances;
+    std::array<RgBufferToken<sh::DrawSetItem>, NUM_DRAW_SETS> draw_sets;
+    RgBufferToken<glm::mat4x3> transform_matrices;
+    RgBufferToken<sh::Material> materials;
+    RgBufferToken<sh::DirectionalLight> directional_lights;
+  } rcs;
+
+  rcs.scene = scene;
+
+  if (scene->m_gpu_scene_update.meshes.m_size > 0) {
+    rcs.meshes = pass.write_buffer("meshes-updated", &rg_gpu_scene.meshes,
+                                   rhi::TRANSFER_DST_BUFFER);
+  }
+
+  if (scene->m_gpu_scene_update.mesh_instances.m_size > 0) {
+    rcs.mesh_instances = pass.write_buffer("mesh-instances-updated",
+                                           &rg_gpu_scene.mesh_instances,
+                                           rhi::TRANSFER_DST_BUFFER);
+  }
+
+  for (auto i : range(NUM_DRAW_SETS)) {
+    const DrawSetUpdate &ds = scene->m_gpu_scene_update.draw_sets[i];
+    if (ds.update.m_size > 0 or ds.overwrite.m_size > 0) {
+      rcs.draw_sets[i] = pass.write_buffer(
+          format(scratch, "{}-draw-set-updated",
+                 get_draw_set_name((DrawSet)(1 << i))),
+          &rg_gpu_scene.draw_sets[i].items,
+          rhi::TRANSFER_SRC_BUFFER | rhi::TRANSFER_DST_BUFFER);
+    }
+  }
+
+  rcs.transform_matrices =
+      pass.write_buffer("transform-matrices", &rg_gpu_scene.transform_matrices,
+                        rhi::TRANSFER_DST_BUFFER);
+
+  if (scene->m_gpu_scene_update.materials.m_size > 0) {
+    rcs.materials = pass.write_buffer(
+        "materials-updated", &rg_gpu_scene.materials, rhi::TRANSFER_DST_BUFFER);
+  }
+
+  rg_gpu_scene.directional_lights =
+      cfg.rgb->create_buffer<sh::DirectionalLight>({
+          .name = "directional-lights",
+          .count = scene->m_directional_lights.raw_size(),
+      });
+  rcs.directional_lights = pass.write_buffer("directional-lights-updated",
+                                             &rg_gpu_scene.directional_lights,
+                                             rhi::TRANSFER_DST_BUFFER);
+
+  pass.set_callback([rcs](Renderer &renderer, const RgRuntime &rg,
+                          CommandRecorder &cmd) {
+    const GpuSceneUpdate *gsu = &rcs.scene->m_gpu_scene_update;
+
+    if (rcs.meshes) {
+      auto _ = cmd.debug_region("Update meshes");
+      ZoneScopedN("Update meshes");
+      auto data = rg.allocate<sh::Mesh>(gsu->meshes.m_size);
+      BufferSlice<sh::Mesh> meshes = rg.get_buffer(rcs.meshes);
+      for (usize i : range(gsu->meshes.m_size)) {
+        data.host_ptr[i] = gsu->meshes[i].data;
+        cmd.copy_buffer(data.slice.slice(i, 1),
+                        meshes.slice(gsu->meshes[i].handle, 1));
+      }
+    }
+
+    if (rcs.mesh_instances) {
+      auto _ = cmd.debug_region("Update mesh instances");
+      ZoneScopedN("Update mesh instances");
+      auto data = rg.allocate<sh::MeshInstance>(gsu->mesh_instances.m_size);
+      BufferSlice<sh::MeshInstance> mesh_instances =
+          rg.get_buffer(rcs.mesh_instances);
+      for (usize i : range(gsu->mesh_instances.m_size)) {
+        data.host_ptr[i] = gsu->mesh_instances[i].data;
+        cmd.copy_buffer(data.slice.slice(i, 1),
+                        mesh_instances.slice(gsu->mesh_instances[i].handle, 1));
+      }
+    }
+
+    {
+      auto _ = cmd.debug_region("Update mesh instance transforms");
+      ZoneScopedN("Update mesh instance transforms");
+      Span<const UploadBumpAllocation<glm::mat4x3>> sbs =
+          rcs.scene->m_sid->m_transform_staging_buffers;
+      usize count = rcs.scene->m_mesh_instances.raw_size();
+      usize offset = 0;
+      for (usize sb : range(sbs.size())) {
+        usize sb_size = MIN_TRANSFORM_STAGING_BUFFER_SIZE << sb;
+
+        usize num_copy = std::min(sb_size, count);
+        BufferSlice<glm::mat4x3> src = sbs[sb].slice.slice(0, num_copy);
+        BufferSlice<glm::mat4x3> dst =
+            rg.get_buffer(rcs.transform_matrices).slice(offset, num_copy);
+        cmd.copy_buffer(src, dst);
+
+        count -= num_copy;
+        offset += sb_size;
+      }
+    }
+
+    for (auto s : range(NUM_DRAW_SETS)) {
+      if (!rcs.draw_sets[s]) {
+        continue;
+      }
+      const DrawSetUpdate &ds = gsu->draw_sets[s];
+
+      ScratchArena scratch;
+      auto _ = cmd.debug_region(format(scratch, "Update draw set {}", s));
+
+      if (ds.update.m_size) {
+        auto data = rg.allocate<sh::DrawSetItem>(ds.update.m_size);
+        for (usize i : range(ds.update.m_size)) {
+          data.host_ptr[i] = ds.update[i].data;
+          cmd.copy_buffer(
+              data.slice.slice(i, 1),
+              rg.get_buffer(rcs.draw_sets[s]).slice(ds.update[i].id));
+        }
+      }
+
+      if (ds.update.m_size > 0 and ds.overwrite.m_size > 0) {
+        cmd.memory_barrier({
+            .src_stage_mask = rhi::PipelineStage::Transfer,
+            .src_access_mask = rhi::Access::TransferWrite,
+            .dst_stage_mask = rhi::PipelineStage::Transfer,
+            .dst_access_mask = rhi::Access::TransferWrite,
+        });
+      }
+
+      if (ds.overwrite.m_size) {
+        auto data = rg.allocate<sh::DrawSetItem>(ds.overwrite.m_size);
+        for (usize i : range(ds.overwrite.m_size)) {
+          data.host_ptr[i] = ds.overwrite[i].data;
+          cmd.copy_buffer(
+              data.slice.slice(i, 1),
+              rg.get_buffer(rcs.draw_sets[s]).slice(ds.overwrite[i].id));
+        }
+      }
+    }
+
+    if (rcs.materials) {
+      auto _ = cmd.debug_region("Update materials");
+      ZoneScopedN("Update materials");
+      auto data = rg.allocate<sh::Material>(gsu->materials.m_size);
+      BufferSlice<sh::Material> materials = rg.get_buffer(rcs.materials);
+      for (auto i : range(gsu->materials.m_size)) {
+        data.host_ptr[i] = gsu->materials[i].data;
+        cmd.copy_buffer(data.slice.slice(i, 1),
+                        materials.slice(gsu->materials[i].handle, 1));
+      }
+    }
+
+    if (rcs.directional_lights) {
+      auto _ = cmd.debug_region("Update directional lights");
+      ZoneScopedN("Update directional lights");
+
+      ScratchArena scratch;
+      usize num_lights = rcs.scene->m_directional_lights.size();
+      if (num_lights > 0) {
+        DynamicArray<sh::DirectionalLight> packed;
+        for (auto &&[_, light] : rcs.scene->m_directional_lights) {
+          packed.push(scratch, light.data);
+        }
+        auto data = rg.allocate<sh::DirectionalLight>(packed.m_size);
+        std::ranges::copy(packed, data.host_ptr);
+        cmd.copy_buffer(data.slice, rg.get_buffer(rcs.directional_lights));
+      }
+    }
+  });
+
+  return rg_gpu_scene;
 }
 
 auto build_rg(NotNull<Arena *> arena, Scene *scene)
@@ -509,12 +1010,10 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
   ZoneScoped;
 
   Renderer *renderer = scene->m_renderer;
-  SceneData &data = scene->m_data;
-  const SceneGraphicsSettings &settings = data.settings;
   SwapChain *swap_chain = scene->m_swap_chain;
   SceneInternalData *sid = scene->m_sid.get();
   GpuScene &gpu_scene = scene->m_gpu_scene;
-  ScenePerFrameResources *frcs = scene->m_frcs;
+  FrameResources *frcs = scene->m_frcs;
 
   auto &pass_cfg = sid->m_pass_cfg;
   PassPersistentResources &pass_rcs = sid->m_pass_rcs;
@@ -530,19 +1029,20 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
         }
       };
 
-  set_if_changed(pass_cfg.async_compute, data.settings.async_compute);
+  set_if_changed(pass_cfg.async_compute, scene->m_settings.async_compute);
 
-  set_if_changed(pass_cfg.exposure_mode, data.settings.exposure_mode);
+  set_if_changed(pass_cfg.exposure_mode, scene->m_settings.exposure_mode);
 
   set_if_changed(pass_cfg.viewport, swap_chain->get_size());
 
   set_if_changed(pass_cfg.backbuffer_usage, swap_chain->get_usage());
 
-  set_if_changed(pass_cfg.ssao, data.settings.ssao);
-  set_if_changed(pass_cfg.ssao_half_res, data.settings.ssao_full_res);
-  set_if_changed(pass_cfg.local_tone_mapping, data.settings.local_tone_mapping);
-  set_if_changed(pass_cfg.ltm_pyramid_size, data.settings.ltm_pyramid_size);
-  set_if_changed(pass_cfg.ltm_pyramid_mip, data.settings.ltm_llm_mip);
+  set_if_changed(pass_cfg.ssao, scene->m_settings.ssao);
+  set_if_changed(pass_cfg.ssao_half_res, scene->m_settings.ssao_full_res);
+  set_if_changed(pass_cfg.local_tone_mapping,
+                 scene->m_settings.local_tone_mapping);
+  set_if_changed(pass_cfg.ltm_pyramid_size, scene->m_settings.ltm_pyramid_size);
+  set_if_changed(pass_cfg.ltm_pyramid_mip, scene->m_settings.ltm_llm_mip);
 
   if (dirty) {
     scene->m_rg_arena.clear();
@@ -561,16 +1061,15 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
       .rgb = &rgb,
       .allocator = &frcs->upload_allocator,
       .pipelines = &sid->m_pipelines,
-      .scene = &data,
+      .scene = scene,
       .rcs = &pass_rcs,
       .viewport = swap_chain->get_size(),
   };
 
-  RgGpuScene rg_gpu_scene = rg_import_gpu_scene(rgb, gpu_scene);
-  setup_gpu_scene_update_pass(cfg, GpuSceneUpdatePassConfig{
-                                       .gpu_scene = &gpu_scene,
-                                       .rg_gpu_scene = &rg_gpu_scene,
-                                   });
+  const SceneGraphicsSettings &settings = scene->m_settings;
+
+  RgGpuScene rg_gpu_scene = gpu_scene_update_pass(scene, cfg);
+
   switch (settings.exposure_mode) {
   case sh::EXPOSURE_MODE_MANUAL: {
     float exposure = sh::manual_exposure(settings.manual_exposure,
@@ -612,8 +1111,8 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
                               .culling_phase = CullingPhase::First,
                               .depth_buffer = &depth_buffer,
                           });
-  if (data.settings.instance_occulusion_culling or
-      data.settings.meshlet_occlusion_culling) {
+  if (scene->m_settings.instance_occulusion_culling or
+      scene->m_settings.meshlet_occlusion_culling) {
     setup_hi_z_pass(cfg,
                     HiZPassConfig{.depth_buffer = depth_buffer, .hi_z = &hi_z});
   }
@@ -627,7 +1126,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
 
   RgTextureId ssao_llm;
   RgTextureId ssao_depth = pass_rcs.ssao_depth;
-  if (data.settings.ssao) {
+  if (scene->m_settings.ssao) {
     glm::uvec2 ssao_hi_z_size = {std::bit_floor(viewport.x),
                                  std::bit_floor(viewport.y)};
     // Don't need the full mip chain since after a certain stage they become
@@ -648,7 +1147,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
     }
     RgTextureId ssao_hi_z = pass_rcs.ssao_hi_z;
 
-    const Camera &camera = data.get_camera();
+    const Camera &camera = scene->m_cameras[scene->m_camera];
     glm::mat4 proj = get_projection_matrix(camera, viewport);
 
     {
@@ -675,7 +1174,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
     }
 
     glm::uvec2 ssao_size =
-        data.settings.ssao_full_res ? viewport : viewport / 2u;
+        scene->m_settings.ssao_full_res ? viewport : viewport / 2u;
 
     if (!pass_rcs.ssao) {
       pass_rcs.ssao = rgp.create_texture({
@@ -685,7 +1184,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
           .height = ssao_size.y,
       });
     }
-    if (!data.settings.ssao_full_res and !pass_rcs.ssao_depth) {
+    if (!scene->m_settings.ssao_full_res and !pass_rcs.ssao_depth) {
       pass_rcs.ssao_depth = rgp.create_texture({
           .name = "ssao-depth",
           .format = TinyImageFormat_R16_SFLOAT,
@@ -718,14 +1217,14 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
           .ssao_depth = ssao_depth
                             ? pass.write_texture("ssao-depth", &ssao_depth)
                             : RgTextureToken(),
-          .num_samples = (u32)data.settings.ssao_num_samples,
+          .num_samples = (u32)scene->m_settings.ssao_num_samples,
           .p00 = proj[0][0],
           .p11 = proj[1][1],
           .znear = camera.near,
           .rcp_p00 = 1.0f / proj[0][0],
           .rcp_p11 = 1.0f / proj[1][1],
-          .radius = data.settings.ssao_radius,
-          .lod_bias = data.settings.ssao_lod_bias,
+          .radius = scene->m_settings.ssao_radius,
+          .lod_bias = scene->m_settings.ssao_lod_bias,
       };
       pass.dispatch_grid_2d(sid->m_pipelines.ssao, args, ssao_size);
     }
@@ -826,9 +1325,9 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
 
   ScratchArena scratch;
 
-  scene->m_data.settings.middle_gray =
-      glm::pow(scene->m_data.settings.brightness * 0.01f, 2.2f);
-  scene->m_data.delta_time = draw_info.delta_time;
+  scene->m_settings.middle_gray =
+      glm::pow(scene->m_settings.brightness * 0.01f, 2.2f);
+  scene->m_delta_time = draw_info.delta_time;
 
   Renderer *renderer = scene->m_renderer;
   auto *frcs = scene->m_frcs;
@@ -848,11 +1347,11 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
                          .frame_end_time = &frcs->end_time,
                      }));
 
-  if (scene->is_amd_anti_lag_enabled()) {
+  if (is_amd_anti_lag_enabled(scene)) {
     ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));
   }
 
-  auto present_qf = scene->m_data.settings.present_from_compute
+  auto present_qf = scene->m_settings.present_from_compute
                         ? rhi::QueueFamily::Compute
                         : rhi::QueueFamily::Graphics;
   ren_try_to(scene->m_swap_chain->present(present_qf));
@@ -860,8 +1359,11 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   FrameMark;
 
   scene->m_frame_index++;
-  return scene->next_frame();
+  next_frame(scene);
+
+  return {};
 }
+
 auto init_imgui(Scene *scene) -> Result<void, Error> {
 #if REN_IMGUI
   if (!ImGui::GetCurrentContext()) {
@@ -910,7 +1412,7 @@ void draw_imgui(Scene *scene) {
     return;
   }
 
-  SceneGraphicsSettings &settings = scene->m_data.settings;
+  SceneGraphicsSettings &settings = scene->m_settings;
 
   if (ImGui::TreeNode("Async compute")) {
     ImGui::BeginDisabled(!scene->m_renderer->is_queue_family_supported(
@@ -928,7 +1430,7 @@ void draw_imgui(Scene *scene) {
   }
 
   if (ImGui::TreeNode("Latency")) {
-    ImGui::BeginDisabled(!scene->is_amd_anti_lag_available());
+    ImGui::BeginDisabled(!is_amd_anti_lag_available(scene));
     ImGui::Checkbox("AMD Anti-Lag", &settings.amd_anti_lag);
     ImGui::EndDisabled();
 
@@ -1090,108 +1592,6 @@ void draw_imgui(Scene *scene) {
 
 } // namespace ren_export
 
-namespace ren {
-
-auto ScenePerFrameResources::reset(Renderer &renderer) -> Result<void, Error> {
-  upload_allocator.reset();
-  ren_try_to(renderer.reset_command_pool(gfx_cmd_pool));
-  if (async_cmd_pool) {
-    ren_try_to(renderer.reset_command_pool(async_cmd_pool));
-  }
-  descriptor_allocator.reset();
-  end_semaphore = {};
-  end_time = 0;
-  return {};
-}
-
-auto Scene::next_frame() -> Result<void, Error> {
-  ZoneScoped;
-
-  m_frcs = &m_sid->m_per_frame_resources[m_frame_index % NUM_FRAMES_IN_FLIGHT];
-
-  {
-    ZoneScopedN("Scene::wait_for_previous_frame");
-    if (m_renderer->try_get_semaphore(m_frcs->end_semaphore)) {
-      ren_try_to(m_renderer->wait_for_semaphore(m_frcs->end_semaphore,
-                                                m_frcs->end_time));
-    }
-  }
-
-  ren_try_to(m_frcs->reset(*m_renderer));
-
-  m_sid->m_gfx_allocator.reset();
-  CommandRecorder cmd;
-  ren_try_to(cmd.begin(*m_renderer, m_frcs->gfx_cmd_pool));
-  {
-    auto _ = cmd.debug_region("begin-frame");
-    // Sync with previous event signals.
-    cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
-    reset_event_pool(cmd, m_sid->m_gfx_event_pool);
-    // Sync with future event signals.
-    // Also flush pipeline and cache so we can safely reuse the memory
-    // allocator.
-    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
-  }
-  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-  ren_try_to(m_renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
-
-  if (m_data.settings.async_compute) {
-    m_sid->m_async_allocator.reset();
-    std::swap(m_sid->m_shared_allocators[0], m_sid->m_shared_allocators[1]);
-    m_sid->m_shared_allocators[0].reset();
-    CommandRecorder cmd;
-    ren_try_to(cmd.begin(*m_renderer, m_frcs->async_cmd_pool));
-    {
-      auto _ = cmd.debug_region("begin-frame");
-      cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
-      reset_event_pool(cmd, m_sid->m_async_event_pool);
-      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
-    }
-    ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-    ren_try_to(m_renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer}));
-  }
-
-  return {};
-}
-
-sh::Handle<sh::Sampler2D>
-Scene::get_or_create_texture(Handle<Image> image, const SamplerDesc &sampler) {
-  return m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-      *m_renderer, SrvDesc{m_images[image].handle},
-      {
-          .mag_filter = get_rhi_Filter(sampler.mag_filter),
-          .min_filter = get_rhi_Filter(sampler.min_filter),
-          .mipmap_mode = get_rhi_SamplerMipmapMode(sampler.mipmap_filter),
-          .address_mode_u = get_rhi_SamplerAddressMode(sampler.wrap_u),
-          .address_mode_v = get_rhi_SamplerAddressMode(sampler.wrap_v),
-          .max_anisotropy = 16.0f,
-      });
-}
-
-auto Scene::create_texture(const void *blob, usize size)
-    -> expected<Handle<Texture>> {
-  ktx_error_code_e err = KTX_SUCCESS;
-  ktxTexture2 *ktx_texture2 = nullptr;
-  err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
-  if (err) {
-    return Failure(Error::Unknown);
-  }
-  auto res = m_resource_uploader.create_texture(
-      m_gfx_arena, m_frcs->upload_allocator, ktx_texture2);
-  ktxTexture_Destroy(ktxTexture(ktx_texture2));
-  return res;
-}
-
-bool Scene::is_amd_anti_lag_available() {
-  return m_renderer->is_feature_supported(RendererFeature::AmdAntiLag);
-}
-
-bool Scene::is_amd_anti_lag_enabled() {
-  return is_amd_anti_lag_available() and m_data.settings.amd_anti_lag;
-}
-
-} // namespace ren
-
 namespace ren::hot_reload {
 
 void unload(Scene *scene) {
@@ -1205,7 +1605,7 @@ auto load(Scene *scene) -> expected<void> {
   scene->m_sid = nullptr;
   clear(&scene->m_internal_arena);
   ren_try_to(init_scene_internal_data(scene));
-  ren_try_to(scene->next_frame());
+  next_frame(scene);
   return {};
 }
 

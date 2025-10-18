@@ -15,10 +15,10 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {
   ScratchArena scratch(ccfg.rgb->m_arena);
 
-  const SceneData &scene = *ccfg.scene;
+  const Scene &scene = *ccfg.scene;
 
   RgBufferId<u32> luminance_histogram;
-  if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
+  if (scene.m_settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
     luminance_histogram = ccfg.rgb->create_buffer<u32>({
         .count = sh::NUM_LUMINANCE_HISTOGRAM_BINS,
         .init = 0,
@@ -28,7 +28,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
   *cfg.sdr = ccfg.rcs->sdr;
 
-  const SceneGraphicsSettings &settings = scene.settings;
+  const SceneGraphicsSettings &settings = scene.m_settings;
 
   auto noise_lut = ccfg.allocator->allocate<glm::vec3>(
       sh::PP_HILBERT_CURVE_SIZE * sh::PP_HILBERT_CURVE_SIZE);
@@ -192,12 +192,12 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
 
     float inner_size = settings.spot_metering_pattern_relative_diameter;
     float outer_size = inner_size;
-    if (scene.settings.metering_mode == sh::METERING_MODE_CENTER_WEIGHTED) {
+    if (scene.m_settings.metering_mode == sh::METERING_MODE_CENTER_WEIGHTED) {
       inner_size =
-          scene.settings
+          scene.m_settings
               .center_weighted_metering_pattern_relative_inner_diameter;
       outer_size = inner_size *
-                   scene.settings.center_weighted_metering_pattern_size_ratio;
+                   scene.m_settings.center_weighted_metering_pattern_size_ratio;
     };
 
     RgPostProcessingArgs args = {
@@ -230,24 +230,25 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                   num_groups_y);
   }
 
-  if (scene.settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
+  if (scene.m_settings.exposure_mode == sh::EXPOSURE_MODE_AUTOMATIC) {
     auto pass = ccfg.rgb->create_pass({
         .name = "reduce-luminance-histogram",
         .queue = RgQueue::Async,
     });
 
     bool temporal_adaptation =
-        cfg.frame_index > 0 and scene.settings.temporal_adaptation;
+        cfg.frame_index > 0 and scene.m_settings.temporal_adaptation;
 
     RgReduceLuminanceHistogramArgs args = {
         .luminance_histogram = pass.read_buffer(luminance_histogram),
         .exposure = pass.write_buffer("new-exposure", cfg.exposure.get()),
-        .exposure_compensation = scene.settings.exposure_compensation,
+        .exposure_compensation = scene.m_settings.exposure_compensation,
         .dark_adaptation_time =
-            temporal_adaptation ? scene.settings.dark_adaptation_time : 0.0f,
-        .bright_adaptation_time =
-            temporal_adaptation ? scene.settings.bright_adaptation_time : 0.0f,
-        .dt = scene.delta_time,
+            temporal_adaptation ? scene.m_settings.dark_adaptation_time : 0.0f,
+        .bright_adaptation_time = temporal_adaptation
+                                      ? scene.m_settings.bright_adaptation_time
+                                      : 0.0f,
+        .dt = scene.m_delta_time,
     };
 
     pass.dispatch_grid(ccfg.pipelines->reduce_luminance_histogram, args,

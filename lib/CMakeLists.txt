@@ -61,11 +61,9 @@ endif()
 
 add_library(ren STATIC 
   Camera.cpp
-  GpuScene.cpp
   PipelineLoading.cpp
   Scene.cpp
   SwapChain.cpp
-  passes/GpuSceneUpdate.cpp
   passes/HiZ.cpp
   passes/ImGui.cpp
   passes/MeshPass.cpp

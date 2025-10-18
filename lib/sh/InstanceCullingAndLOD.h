@@ -20,7 +20,7 @@ static const uint INSTANCE_CULLING_AND_LOD_SECOND_PHASE_BIT = 1 << 4;
 struct InstanceCullingAndLODArgs {
   DevicePtr<Mesh> meshes;
   DevicePtr<mat4x3> transform_matrices;
-  DevicePtr<InstanceCullData> cull_data;
+  DevicePtr<DrawSetItem> ds;
   DevicePtr<DispatchIndirectCommand> meshlet_bucket_commands;
   // These can't be push constants because they are indexed dynamically.
   SH_RG_IGNORE(DevicePtr<uint>) meshlet_bucket_offsets;

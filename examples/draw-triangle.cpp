@@ -4,6 +4,10 @@
 #include <glm/glm.hpp>
 
 class DrawTriangleApp : public AppBase {
+  ren::Handle<ren::Mesh> m_mesh;
+  ren::Handle<ren::Material> m_material;
+  ren::Handle<ren::MeshInstance> m_triangle;
+
 public:
   auto init() -> Result<void> {
     TRY_TO(AppBase::init("Draw Triangle"));
@@ -35,20 +39,14 @@ public:
                       .colors = colors,
                   }));
     auto [blob_data, blob_size] = blob;
-    ren::Handle<ren::Mesh> mesh = create_mesh(scene, blob_data, blob_size);
+    m_mesh = create_mesh(&m_frame_arena, scene, blob_data, blob_size);
     std::free(blob_data);
 
-    ren::Handle<ren::Material> material =
-        ren::create_material(scene, {
-                                        .roughness_factor = 0.5f,
-                                        .metallic_factor = 1.0f,
-                                    });
-
-    ren::Handle<ren::MeshInstance> model =
-        create_mesh_instance(scene, {
-                                        .mesh = mesh,
-                                        .material = material,
-                                    });
+    m_material = ren::create_material(&m_frame_arena, scene,
+                                      {
+                                          .roughness_factor = 0.5f,
+                                          .metallic_factor = 1.0f,
+                                      });
 
     // Ambient day light
     ren::Handle<ren::DirectionalLight> light =
@@ -68,6 +66,16 @@ public:
                                   .up = {0.0f, 1.0f, 0.0f},
                               });
 
+    return {};
+  }
+
+  [[nodiscard]] Result<void> process_frame(std::chrono::nanoseconds) override {
+    ren::Scene *scene = get_scene();
+    ren::destroy_mesh_instance(&m_frame_arena, scene, m_triangle);
+    m_triangle =
+        ren::create_mesh_instance(&m_frame_arena, scene, {m_mesh, m_material});
+    ren::set_mesh_instance_transform(&m_frame_arena, scene, m_triangle,
+                                     glm::mat4(1.0f));
     return {};
   }
 

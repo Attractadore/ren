@@ -217,25 +217,27 @@ void set_camera_orthographic_projection(
 void set_camera_transform(Scene *scene, Handle<Camera> camera,
                           const CameraTransformDesc &desc);
 
-[[nodiscard]] auto create_mesh(Scene *scene, std::span<const std::byte> blob)
-    -> Handle<Mesh>;
+[[nodiscard]] auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
+                               std::span<const std::byte> blob) -> Handle<Mesh>;
 
 [[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
     -> Handle<Image>;
 
-[[nodiscard]] auto create_material(Scene *scene,
+[[nodiscard]] auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
                                    const MaterialCreateInfo &create_info)
     -> Handle<Material>;
 
-void create_mesh_instances(Scene *scene,
+void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
                            std::span<const MeshInstanceCreateInfo> create_info,
                            std::span<Handle<MeshInstance>> out);
 
 void destroy_mesh_instances(
-    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances);
+    NotNull<Arena *> frame_arena, Scene *scene,
+    std::span<const Handle<MeshInstance>> mesh_instances);
 
 void set_mesh_instance_transforms(
-    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
+    NotNull<Arena *> frame_arena, Scene *scene,
+    std::span<const Handle<MeshInstance>> mesh_instances,
     std::span<const glm::mat4x3> transforms);
 
 [[nodiscard]] auto create_directional_light(Scene *scene,
@@ -380,9 +382,9 @@ inline void set_camera_transform(Scene *scene, Handle<Camera> camera,
   return hot_reload::vtbl_ref->set_camera_transform(scene, camera, desc);
 }
 
-inline auto create_mesh(Scene *scene, std::span<const std::byte> blob)
-    -> Handle<Mesh> {
-  return hot_reload::vtbl_ref->create_mesh(scene, blob);
+inline auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
+                        std::span<const std::byte> blob) -> Handle<Mesh> {
+  return hot_reload::vtbl_ref->create_mesh(frame_arena, scene, blob);
 }
 
 inline auto create_image(Scene *scene, std::span<const std::byte> blob)
@@ -390,29 +392,33 @@ inline auto create_image(Scene *scene, std::span<const std::byte> blob)
   return hot_reload::vtbl_ref->create_image(scene, blob);
 }
 
-inline auto create_material(Scene *scene, const MaterialCreateInfo &create_info)
+inline auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
+                            const MaterialCreateInfo &create_info)
     -> Handle<Material> {
-  return hot_reload::vtbl_ref->create_material(scene, create_info);
+  return hot_reload::vtbl_ref->create_material(frame_arena, scene, create_info);
 }
 
 inline void
-create_mesh_instances(Scene *scene,
+create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
                       std::span<const MeshInstanceCreateInfo> create_info,
                       std::span<Handle<MeshInstance>> out) {
-  return hot_reload::vtbl_ref->create_mesh_instances(scene, create_info, out);
+  return hot_reload::vtbl_ref->create_mesh_instances(frame_arena, scene,
+                                                     create_info, out);
 }
 
 inline void
-destroy_mesh_instances(Scene *scene,
+destroy_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
                        std::span<const Handle<MeshInstance>> mesh_instances) {
-  return hot_reload::vtbl_ref->destroy_mesh_instances(scene, mesh_instances);
+  return hot_reload::vtbl_ref->destroy_mesh_instances(frame_arena, scene,
+                                                      mesh_instances);
 }
 
 inline void set_mesh_instance_transforms(
-    Scene *scene, std::span<const Handle<MeshInstance>> mesh_instances,
+    NotNull<Arena *> frame_arena, Scene *scene,
+    std::span<const Handle<MeshInstance>> mesh_instances,
     std::span<const glm::mat4x3> transforms) {
   return hot_reload::vtbl_ref->set_mesh_instance_transforms(
-      scene, mesh_instances, transforms);
+      frame_arena, scene, mesh_instances, transforms);
 }
 
 inline auto create_directional_light(Scene *scene,
@@ -461,9 +467,11 @@ inline void draw_imgui(Scene *scene) {
 
 namespace ren {
 
-[[nodiscard]] auto inline create_mesh(Scene *scene, const void *blob_data,
+[[nodiscard]] auto inline create_mesh(NotNull<Arena *> frame_arena,
+                                      Scene *scene, const void *blob_data,
                                       size_t blob_size) -> Handle<Mesh> {
-  return create_mesh(scene, std::span((const std::byte *)blob_data, blob_size));
+  return create_mesh(frame_arena, scene,
+                     std::span((const std::byte *)blob_data, blob_size));
 }
 
 [[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
@@ -473,22 +481,26 @@ namespace ren {
 }
 
 [[nodiscard]] inline auto
-create_mesh_instance(Scene *scene, const MeshInstanceCreateInfo &create_info)
+create_mesh_instance(NotNull<Arena *> frame_arena, Scene *scene,
+                     const MeshInstanceCreateInfo &create_info)
     -> Handle<MeshInstance> {
   Handle<MeshInstance> mesh_instance;
-  create_mesh_instances(scene, {&create_info, 1}, {&mesh_instance, 1});
+  create_mesh_instances(frame_arena, scene, {&create_info, 1},
+                        {&mesh_instance, 1});
   return mesh_instance;
 }
 
-void inline destroy_mesh_instance(Scene *scene,
+void inline destroy_mesh_instance(NotNull<Arena *> frame_arena, Scene *scene,
                                   Handle<MeshInstance> mesh_instance) {
-  destroy_mesh_instances(scene, {&mesh_instance, 1});
+  destroy_mesh_instances(frame_arena, scene, {&mesh_instance, 1});
 }
 
-void inline set_mesh_instance_transform(Scene *scene,
+void inline set_mesh_instance_transform(NotNull<Arena *> frame_arena,
+                                        Scene *scene,
                                         Handle<MeshInstance> mesh_instance,
                                         const glm::mat4x3 &transform) {
-  set_mesh_instance_transforms(scene, {&mesh_instance, 1}, {&transform, 1});
+  set_mesh_instance_transforms(frame_arena, scene, {&mesh_instance, 1},
+                               {&transform, 1});
 }
 
 } // namespace ren

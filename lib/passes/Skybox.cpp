@@ -14,12 +14,12 @@ void setup_skybox_pass(const PassCommonConfig &ccfg,
                                .store = rhi::RenderPassStoreOp::Store,
                            });
   pass.read_depth_stencil_target(cfg.depth_buffer);
-  const Camera &camera = ccfg.scene->get_camera();
+  const Camera &camera = ccfg.scene->m_cameras[ccfg.scene->m_camera];
 
   RgSkyboxArgs args = {
       .exposure = pass.read_buffer(cfg.exposure, rhi::FS_RESOURCE_BUFFER),
-      .env_luminance = ccfg.scene->env_luminance,
-      .env_map = ccfg.scene->env_map,
+      .env_luminance = ccfg.scene->m_environment_luminance,
+      .env_map = ccfg.scene->m_environment_map,
       .inv_proj_view =
           glm::inverse(get_projection_view_matrix(camera, ccfg.viewport)),
       .eye = camera.position,

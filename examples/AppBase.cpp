@@ -30,7 +30,8 @@ auto AppBase::init(const char *app_name) -> Result<void> {
   m_app_name = app_name;
 
   ren::ScratchArena::init_allocator();
-  m_arena = ren::make_arena();
+  m_arena = ren::Arena::init();
+  m_frame_arena = ren::Arena::init();
 
   unsigned adapter = ren::DEFAULT_ADAPTER;
   const char *user_adapter = std::getenv("REN_ADAPTER");
@@ -97,6 +98,7 @@ auto AppBase::loop() -> Result<void> {
     TRY_TO(process_frame(dt));
     TRY_TO(end_frame());
     TRY_TO(ren::draw(m_scene, {.delta_time = dt.count() / 1e9f}));
+    m_frame_arena.clear();
   }
 
   return {};

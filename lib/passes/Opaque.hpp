@@ -1,5 +1,5 @@
 #pragma once
-#include "../GpuScene.hpp"
+#include "../Scene.hpp"
 #include "MeshPass.hpp"
 #include "Pass.hpp"
 

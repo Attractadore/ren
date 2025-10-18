@@ -17,7 +17,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-auto load_mesh(ren::Scene *scene, const char *path)
+auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
+               ren::NotNull<ren::Scene *> scene, const char *path)
     -> Result<ren::Handle<ren::Mesh>> {
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
@@ -63,16 +64,11 @@ auto load_mesh(ren::Scene *scene, const char *path)
          .indices = indices.data(),
      }));
   auto [blob_data, blob_size] = blob;
-  ren::Handle<ren::Mesh> mesh = create_mesh(scene, blob_data, blob_size);
+  ren::Handle<ren::Mesh> mesh =
+      ren::create_mesh(frame_arena, scene, blob_data, blob_size);
   std::free(blob_data);
 
   return mesh;
-}
-
-auto create_material(ren::Scene *scene) -> Result<ren::Handle<ren::Material>> {
-  return create_material(scene, {
-                                    .metallic_factor = 0.0f,
-                                });
 }
 
 auto get_scene_bounds(unsigned num_entities) -> std::tuple<float, float> {
@@ -117,17 +113,23 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
   return transform;
 }
 
-void place_entities(std::mt19937 &rg, ren::Scene *scene,
-                    ren::Handle<ren::Mesh> mesh,
-                    ren::Handle<ren::Material> material,
-                    unsigned num_entities) {
+void place_entities(
+    ren::NotNull<ren::Arena *> arena, ren::NotNull<ren::Arena *> frame_arena,
+    std::mt19937 &rg, ren::Scene *scene, ren::Handle<ren::Mesh> mesh,
+    ren::Handle<ren::Material> material, unsigned num_entities,
+    ren::NotNull<ren::Handle<ren::MeshInstance> **> out_entities,
+    ren::NotNull<glm::mat4x3 **> out_transforms) {
   auto [min_trans, max_trans] = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;
 
-  std::vector<ren::MeshInstanceCreateInfo> create_info(num_entities);
-  std::vector<ren::Handle<ren::MeshInstance>> entities(num_entities);
-  std::vector<glm::mat4x3> transforms(num_entities);
+  ren::ScratchArena scratch({arena, frame_arena});
+
+  auto *create_info =
+      scratch->allocate<ren::MeshInstanceCreateInfo>(num_entities);
+  auto *entities =
+      arena->allocate<ren::Handle<ren::MeshInstance>>(num_entities);
+  auto *transforms = arena->allocate<glm::mat4x3>(num_entities);
   for (size_t i = 0; i < num_entities; ++i) {
     create_info[i] = {
         .mesh = mesh,
@@ -136,9 +138,10 @@ void place_entities(std::mt19937 &rg, ren::Scene *scene,
     transforms[i] =
         random_transform(rg, min_trans, max_trans, min_scale, max_scale);
   }
-
-  create_mesh_instances(scene, create_info, entities);
-  set_mesh_instance_transforms(scene, entities, transforms);
+  ren::create_mesh_instances(frame_arena, scene, {create_info, num_entities},
+                             {entities, num_entities});
+  *out_entities = entities;
+  *out_transforms = transforms;
 }
 
 void place_light(ren::Scene *scene) {
@@ -163,20 +166,35 @@ void set_camera(ren::Scene *scene, ren::Handle<ren::Camera> camera,
 } // namespace
 
 class EntityStressTestApp : public ImGuiApp {
+  ren::usize m_num_entities = 0;
+  ren::Handle<ren::MeshInstance> *m_entities = nullptr;
+  glm::mat4x3 *m_transforms = nullptr;
+
 public:
   auto init(const char *mesh_path, unsigned num_entities, unsigned seed)
       -> Result<void> {
     TRY_TO(ImGuiApp::init(
         fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
             .c_str()));
+    m_num_entities = num_entities;
     ren::Scene *scene = get_scene();
     ren::Handle<ren::Camera> camera = get_camera();
-    OK(ren::Handle<ren::Mesh> mesh, load_mesh(scene, mesh_path));
-    OK(ren::Handle<ren::Material> material, create_material(scene));
+    OK(ren::Handle<ren::Mesh> mesh,
+       load_mesh(&m_frame_arena, scene, mesh_path));
+    ren::Handle<ren::Material> material =
+        ren::create_material(&m_frame_arena, scene, {.metallic_factor = 0.0f});
     auto rg = init_random(seed);
-    place_entities(rg, scene, mesh, material, num_entities);
+    place_entities(&m_arena, &m_frame_arena, rg, scene, mesh, material,
+                   m_num_entities, &m_entities, &m_transforms);
     place_light(scene);
     set_camera(scene, camera, num_entities);
+    return {};
+  }
+
+  Result<void> process_frame(std::chrono::nanoseconds) override {
+    ren::set_mesh_instance_transforms(&m_frame_arena, get_scene(),
+                                      {m_entities, m_num_entities},
+                                      {m_transforms, m_num_entities});
     return {};
   }
 

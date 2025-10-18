@@ -6,7 +6,6 @@
 
 namespace ren {
 
-struct SceneData;
 struct Pipelines;
 
 struct PassPersistentConfig {
@@ -44,7 +43,7 @@ struct PassCommonConfig {
   NotNull<RgBuilder *> rgb;
   NotNull<UploadBumpAllocator *> allocator;
   NotNull<const Pipelines *> pipelines;
-  NotNull<const SceneData *> scene;
+  NotNull<const Scene *> scene;
   NotNull<PassPersistentResources *> rcs;
   glm::uvec2 viewport = {};
 };

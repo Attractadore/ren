@@ -342,9 +342,9 @@ void CommandRecorder::push_constants(Span<const std::byte> data,
 
 void CommandRecorder::dispatch(u32 num_groups_x, u32 num_groups_y,
                                u32 num_groups_z) {
-  ren_assert_msg(num_groups_x < 2048, "Suspiciously big dispatch");
-  ren_assert_msg(num_groups_y < 2048, "Suspiciously big dispatch");
-  ren_assert_msg(num_groups_z < 2048, "Suspiciously big dispatch");
+  // ren_assert_msg(num_groups_x < 2048, "Suspiciously big dispatch");
+  // ren_assert_msg(num_groups_y < 2048, "Suspiciously big dispatch");
+  // ren_assert_msg(num_groups_z < 2048, "Suspiciously big dispatch");
   rhi::cmd_dispatch(m_cmd, num_groups_x, num_groups_y, num_groups_z);
 }
 

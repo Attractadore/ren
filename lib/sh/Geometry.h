@@ -220,7 +220,7 @@ static const uint MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE =
 
 static const uint MAX_DRAW_MESHLETS = 4 * 1024 * 1024;
 
-struct InstanceCullData {
+struct DrawSetItem {
   uint mesh;
   uint mesh_instance;
   BatchId batch;

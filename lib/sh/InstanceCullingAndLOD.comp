@@ -60,14 +60,14 @@ void main() {
   const bool frustum_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_FRUSTUM_BIT);
   const bool occlusion_culling = bool(pc.feature_mask & INSTANCE_CULLING_AND_LOD_OCCLUSION_BIT);
 
-  InstanceCullData cull_data = pc.cull_data[gl_GlobalInvocationID.x];
-  Mesh mesh = pc.meshes[cull_data.mesh];
+  DrawSetItem ds_item = pc.ds[gl_GlobalInvocationID.x];
+  Mesh mesh = pc.meshes[ds_item.mesh];
 
-  uint vis_idx = cull_data.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
-  uint vis_bit = cull_data.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  uint vis_idx = ds_item.mesh_instance / MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
+  uint vis_bit = ds_item.mesh_instance % MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE;
   MeshInstanceVisibilityMask vis_mask = MeshInstanceVisibilityMask(1) << vis_bit;
 
-  mat4 pvm = pc.proj_view * as_mat4(pc.transform_matrices[cull_data.mesh_instance]);
+  mat4 pvm = pc.proj_view * as_mat4(pc.transform_matrices[ds_item.mesh_instance]);
   ClipSpaceBoundingBox cs_bb = project_bb_to_cs(pvm, mesh.bb);
   // TODO: support finite far plane.
   float n = cs_bb.p[0].z;
@@ -109,9 +109,9 @@ void main() {
     uint bucket_stride = 1 << bucket;
 
     MeshletCullData meshlet_cull_data;
-    meshlet_cull_data.mesh = cull_data.mesh;
-    meshlet_cull_data.mesh_instance = cull_data.mesh_instance;
-    meshlet_cull_data.batch = cull_data.batch;
+    meshlet_cull_data.mesh = ds_item.mesh;
+    meshlet_cull_data.mesh_instance = ds_item.mesh_instance;
+    meshlet_cull_data.batch = ds_item.batch;
     meshlet_cull_data.base_meshlet = base_meshlet;
 
     base_meshlet += bucket_stride;

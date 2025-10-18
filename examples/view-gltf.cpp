@@ -233,8 +233,10 @@ auto deindex_attibute(std::span<const T> attribute,
 
 class SceneWalker {
 public:
-  SceneWalker(tinygltf::Model model, ren::Scene *scene) {
+  SceneWalker(tinygltf::Model model, ren::NotNull<ren::Arena *> frame_arena,
+              ren::NotNull<ren::Scene *> scene) {
     m_model = std::move(model);
+    m_frame_arena = frame_arena;
     m_scene = scene;
   }
 
@@ -443,7 +445,7 @@ private:
                   }));
     auto [blob_data, blob_size] = blob;
     ren::Handle<ren::Mesh> mesh =
-        ren::create_mesh(m_scene, blob_data, blob_size);
+        ren::create_mesh(m_frame_arena, m_scene, blob_data, blob_size);
     std::free(blob_data);
 
     return mesh;
@@ -641,7 +643,7 @@ private:
       bail("Double sided materials not implemented");
     }
 
-    return ren::create_material(m_scene, desc);
+    return ren::create_material(m_frame_arena, m_scene, desc);
   }
 
   auto get_or_create_material(int index) -> Result<ren::Handle<ren::Material>> {
@@ -663,11 +665,13 @@ private:
        get_or_create_material(primitive.material));
     OK(ren::Handle<ren::Mesh> mesh, get_or_create_mesh(primitive));
     ren::Handle<ren::MeshInstance> mesh_instance =
-        ren::create_mesh_instance(m_scene, {
-                                               .mesh = mesh,
-                                               .material = material,
-                                           });
-    set_mesh_instance_transform(m_scene, mesh_instance, transform);
+        ren::create_mesh_instance(m_frame_arena, m_scene,
+                                  {
+                                      .mesh = mesh,
+                                      .material = material,
+                                  });
+    ren::set_mesh_instance_transform(m_frame_arena, m_scene, mesh_instance,
+                                     transform);
     return mesh_instance;
   }
 
@@ -753,6 +757,7 @@ private:
 
 private:
   tinygltf::Model m_model;
+  ren::Arena *m_frame_arena = nullptr;
   ren::Scene *m_scene = nullptr;
   std::unordered_map<GltfMeshDesc, ren::Handle<ren::Mesh>> m_mesh_cache;
   std::unordered_map<int, ren::Handle<ren::Image>> m_color_image_cache;
@@ -772,7 +777,7 @@ public:
   auto init(const ViewGltfOptions &options) -> Result<void> {
     TRY_TO(ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str()));
     OK(tinygltf::Model model, load_gltf(options.path));
-    SceneWalker scene_walker(std::move(model), get_scene());
+    SceneWalker scene_walker(std::move(model), &m_frame_arena, get_scene());
     TRY_TO(scene_walker.walk(options.scene));
     ren::Scene *scene = get_scene();
 

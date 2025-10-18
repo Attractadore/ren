@@ -1,7 +1,6 @@
 #pragma once
 #include "Camera.hpp"
 #include "DescriptorAllocator.hpp"
-#include "GpuScene.hpp"
 #include "Mesh.hpp"
 #include "PipelineLoading.hpp"
 #include "RenderGraph.hpp"
@@ -10,11 +9,16 @@
 #include "passes/Pass.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/ren.hpp"
+#include "sh/Lighting.h"
 #include "sh/PostProcessing.h"
 
 struct ImGuiContext;
 
 namespace ren {
+
+constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
+
+constexpr usize MIN_TRANSFORM_STAGING_BUFFER_SIZE = 1024;
 
 struct Image {
   Handle<Texture> handle;
@@ -28,9 +32,91 @@ struct DirectionalLight {
   sh::DirectionalLight data;
 };
 
-constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
+struct DrawSetBatchDesc {
+  Handle<GraphicsPipeline> pipeline;
+  BufferSlice<u8> indices;
 
-struct ScenePerFrameResources {
+public:
+  bool operator==(const DrawSetBatchDesc &) const = default;
+};
+
+struct DrawSetBatch {
+  DrawSetBatchDesc desc;
+  u32 num_meshlets = 0;
+};
+
+struct DrawSetData {
+  DynamicArray<Handle<MeshInstance>> items;
+  BufferSlice<sh::DrawSetItem> data;
+  DynamicArray<DrawSetBatch> batches;
+};
+
+struct DrawSetItemUpdate {
+  DrawSetId id;
+  sh::DrawSetItem data;
+};
+
+struct DrawSetUpdate {
+  DynamicArray<DrawSetItemUpdate> update;
+  DynamicArray<DrawSetId> remove;
+  DynamicArray<DrawSetItemUpdate> overwrite;
+};
+
+struct GpuScene {
+  BufferSlice<float> exposure;
+  BufferSlice<sh::Mesh> meshes;
+  BufferSlice<sh::MeshInstance> mesh_instances;
+  BufferSlice<sh::MeshInstanceVisibilityMask> mesh_instance_visibility;
+  DrawSetData draw_sets[NUM_DRAW_SETS];
+  BufferSlice<sh::Material> materials;
+
+public:
+  static GpuScene init(NotNull<ResourceArena *> arena);
+};
+
+struct GpuSceneMeshUpdate {
+  Handle<Mesh> handle;
+  sh::Mesh data;
+};
+
+struct GpuSceneMeshInstanceUpdate {
+  Handle<MeshInstance> handle;
+  sh::MeshInstance data;
+};
+
+struct GpuSceneMaterialUpdate {
+  Handle<Material> handle;
+  sh::Material data;
+};
+
+struct GpuSceneDirectionalLightUpdate {
+  Handle<Material> handle;
+  sh::DirectionalLight data;
+};
+
+struct GpuSceneUpdate {
+  DrawSetUpdate draw_sets[NUM_DRAW_SETS];
+  DynamicArray<GpuSceneMeshUpdate> meshes;
+  DynamicArray<GpuSceneMeshInstanceUpdate> mesh_instances;
+  DynamicArray<GpuSceneMaterialUpdate> materials;
+};
+
+struct RgDrawSetData {
+  RgBufferId<sh::DrawSetItem> items;
+};
+
+struct RgGpuScene {
+  RgBufferId<float> exposure;
+  RgBufferId<sh::Mesh> meshes;
+  RgBufferId<sh::MeshInstance> mesh_instances;
+  RgBufferId<glm::mat4x3> transform_matrices;
+  RgBufferId<sh::MeshInstanceVisibilityMask> mesh_instance_visibility;
+  RgDrawSetData draw_sets[NUM_DRAW_SETS];
+  RgBufferId<sh::Material> materials;
+  RgBufferId<sh::DirectionalLight> directional_lights;
+};
+
+struct FrameResources {
   Handle<Semaphore> acquire_semaphore;
   UploadBumpAllocator upload_allocator;
   Handle<CommandPool> gfx_cmd_pool;
@@ -38,14 +124,11 @@ struct ScenePerFrameResources {
   DescriptorAllocatorScope descriptor_allocator;
   Handle<Semaphore> end_semaphore;
   u64 end_time = 0;
-
-public:
-  auto reset(Renderer &renderer) -> Result<void, Error>;
 };
 
 struct SceneGraphicsSettings {
-  bool async_compute = true;
-  bool present_from_compute = true;
+  bool async_compute = false;
+  bool present_from_compute = false;
 
   // Instance culling and LOD
   bool instance_frustum_culling = true;
@@ -120,34 +203,6 @@ struct SceneGraphicsSettings {
   bool amd_anti_lag = true;
 };
 
-struct SceneData {
-  float delta_time = 0.0f;
-
-  SceneGraphicsSettings settings;
-
-  Handle<Camera> camera;
-  GenArray<Camera> cameras;
-
-  DynamicArray<IndexPool> index_pools;
-  GenArray<Mesh> meshes;
-
-  GenArray<MeshInstance> mesh_instances;
-  DynamicArray<glm::mat4x3> mesh_instance_transforms;
-
-  GenArray<Material> materials;
-
-  GenArray<DirectionalLight> directional_lights;
-
-  glm::vec3 env_luminance = {};
-  sh::Handle<sh::SamplerCube> env_map;
-
-public:
-  const Camera &get_camera() const {
-    ren_assert(camera);
-    return cameras[camera];
-  }
-};
-
 // Data that can change between hot reloads.
 struct SceneInternalData {
   ResourceArena m_gfx_arena;
@@ -157,26 +212,15 @@ struct SceneInternalData {
   EventPool m_gfx_event_pool;
   EventPool m_async_event_pool;
   std::array<DeviceBumpAllocator, 2> m_shared_allocators;
-  std::array<ScenePerFrameResources, NUM_FRAMES_IN_FLIGHT>
-      m_per_frame_resources;
+  std::array<FrameResources, NUM_FRAMES_IN_FLIGHT> m_per_frame_resources;
   PassPersistentConfig m_pass_cfg;
   PassPersistentResources m_pass_rcs;
   RgPersistent m_rgp;
+  DynamicArray<UploadBumpAllocator::Allocation<glm::mat4x3>>
+      m_transform_staging_buffers;
 };
 
 struct Scene {
-  auto create_texture(const void *blob, usize size)
-      -> expected<Handle<Texture>>;
-
-  bool is_amd_anti_lag_available();
-
-  bool is_amd_anti_lag_enabled();
-
-  auto next_frame() -> Result<void, Error>;
-
-  [[nodiscard]] sh::Handle<sh::Sampler2D>
-  get_or_create_texture(Handle<Image> image, const SamplerDesc &sampler);
-
   Arena *m_arena = nullptr;
   Arena m_internal_arena;
   Arena m_rg_arena;
@@ -184,12 +228,34 @@ struct Scene {
   SwapChain *m_swap_chain = nullptr;
   ResourceArena m_gfx_arena;
   DescriptorAllocator m_descriptor_allocator;
+
+  SceneGraphicsSettings m_settings;
+
   u64 m_frame_index = 0;
-  ScenePerFrameResources *m_frcs = nullptr;
+  float m_delta_time = 0.0f;
+  FrameResources *m_frcs = nullptr;
+
+  Handle<Camera> m_camera;
+  GenArray<Camera> m_cameras;
+
+  DynamicArray<IndexPool> m_index_pools;
+  GenArray<Mesh> m_meshes;
+
+  GenArray<MeshInstance> m_mesh_instances;
+
   GenArray<Image> m_images;
   ResourceUploader m_resource_uploader;
-  SceneData m_data;
+
+  GenArray<Material> m_materials;
+
+  GenArray<DirectionalLight> m_directional_lights;
+
+  glm::vec3 m_environment_luminance = {};
+  sh::Handle<sh::SamplerCube> m_environment_map;
+
   GpuScene m_gpu_scene;
+  GpuSceneUpdate m_gpu_scene_update;
+
   std::unique_ptr<SceneInternalData> m_sid;
 };
 
