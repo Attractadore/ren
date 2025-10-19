@@ -113,7 +113,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 
   RgBuilder rgb;
   rgb.init(&baker->frame_arena, &baker->rg, baker->renderer,
-           &baker->descriptor_allocator);
+           &baker->frame_descriptor_allocator);
 
   RgTextureId cube_map = baker->rg.create_texture({
       .name = "cube-map",
@@ -132,16 +132,17 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     } args;
 
     args.equirectangular_map =
-        baker->descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-            *baker->renderer, SrvDesc{env_map},
-            {
-                .mag_filter = rhi::Filter::Linear,
-                .min_filter = rhi::Filter::Linear,
-                .mipmap_mode = rhi::SamplerMipmapMode::Linear,
-                .address_mode_u = rhi::SamplerAddressMode::Repeat,
-                .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
-                .max_anisotropy = 16.0f,
-            });
+        baker->frame_descriptor_allocator
+            .allocate_sampled_texture<sh::Sampler2D>(
+                *baker->renderer, SrvDesc{env_map},
+                {
+                    .mag_filter = rhi::Filter::Linear,
+                    .min_filter = rhi::Filter::Linear,
+                    .mipmap_mode = rhi::SamplerMipmapMode::Linear,
+                    .address_mode_u = rhi::SamplerAddressMode::Repeat,
+                    .address_mode_v = rhi::SamplerAddressMode::ClampToEdge,
+                    .max_anisotropy = 16.0f,
+                });
     args.cube_map = pass.write_texture("cube-map", &cube_map,
                                        rhi::CS_UNORDERED_ACCESS_IMAGE);
 

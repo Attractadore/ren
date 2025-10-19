@@ -1,8 +1,8 @@
 #pragma once
-#include "FreeListAllocator.hpp"
 #include "Renderer.hpp"
 #include "Texture.hpp"
 #include "core/Result.hpp"
+#include "ren/core/Array.hpp"
 #include "ren/ren.hpp"
 #include "sh/Std.h"
 
@@ -43,16 +43,24 @@ struct DescriptorAllocatorMixin {
 
 } // namespace detail
 
-class DescriptorAllocator : public detail::DescriptorAllocatorMixin {
-  FreeListAllocator m_srv_allocator;
-  FreeListAllocator m_cis_allocator;
-  FreeListAllocator m_uav_allocator;
-  FreeListAllocator m_sampler_allocator;
+struct DescriptorAllocator : public detail::DescriptorAllocatorMixin {
+  Arena *m_arena = nullptr;
+  u32 m_num_srvs = 1;
+  u32 m_num_cis = 1;
+  u32 m_num_uavs = 1;
+  u32 m_num_samplers = 1;
+  DynamicArray<u32> m_srv_free_list;
+  DynamicArray<u32> m_cis_free_list;
+  DynamicArray<u32> m_uav_free_list;
+  DynamicArray<u32> m_sampler_free_list;
 
 public:
+  [[nodiscard]] static DescriptorAllocator init(NotNull<Arena *> arena);
+
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
       -> sh::Handle<sh::SamplerState>;
 
+#if 0
   auto try_allocate_sampler(Renderer &renderer, rhi::Sampler sampler,
                             sh::Handle<sh::SamplerState> id)
       -> sh::Handle<sh::SamplerState>;
@@ -68,6 +76,7 @@ public:
     return allocate_sampler(renderer,
                             renderer.get_sampler(sampler_info).value(), handle);
   }
+#endif
 
   void free_sampler(sh::Handle<sh::SamplerState> sampler);
 
@@ -88,19 +97,16 @@ public:
   void free_storage_texture(sh::Handle<void> texture);
 };
 
-class DescriptorAllocatorScope : public detail::DescriptorAllocatorMixin {
+struct DescriptorAllocatorScope : public detail::DescriptorAllocatorMixin {
+  DescriptorAllocator *m_allocator = nullptr;
+  DynamicArray<u32> m_srv;
+  DynamicArray<u32> m_cis;
+  DynamicArray<u32> m_uav;
+  DynamicArray<u32> m_sampler;
+
 public:
-  DescriptorAllocatorScope() = default;
-  DescriptorAllocatorScope(const DescriptorAllocatorScope &) = delete;
-  DescriptorAllocatorScope(DescriptorAllocatorScope &&other) = default;
-  ~DescriptorAllocatorScope();
-
-  DescriptorAllocatorScope &
-  operator=(const DescriptorAllocatorScope &) = delete;
-  DescriptorAllocatorScope &
-  operator=(DescriptorAllocatorScope &&other) noexcept;
-
-  auto init(DescriptorAllocator &allocator) -> Result<void, Error>;
+  [[nodiscard]] static DescriptorAllocatorScope
+  init(NotNull<DescriptorAllocator *> allocator);
 
   auto allocate_sampler(Renderer &renderer, rhi::Sampler sampler)
       -> sh::Handle<sh::SamplerState>;
@@ -116,13 +122,6 @@ public:
       -> sh::Handle<void>;
 
   void reset();
-
-private:
-  DescriptorAllocator *m_allocator = nullptr;
-  Vector<u32> m_srv;
-  Vector<u32> m_cis;
-  Vector<u32> m_uav;
-  Vector<u32> m_sampler;
 };
 
 }; // namespace ren

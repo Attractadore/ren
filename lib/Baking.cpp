@@ -35,8 +35,9 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
                                .name = "Baker command pool",
                                .queue_family = rhi::QueueFamily::Graphics,
                            }));
-  ren_try_to(
-      baker->descriptor_allocator.init(baker->session_descriptor_allocator));
+  baker->descriptor_allocator = DescriptorAllocator::init(arena);
+  baker->frame_descriptor_allocator =
+      DescriptorAllocatorScope::init(&baker->descriptor_allocator);
   baker->allocator =
       DeviceBumpAllocator::init(*baker->renderer, baker->gfx_arena, 64 * MiB);
   baker->upload_allocator =
@@ -51,7 +52,7 @@ void reset_baker(Baker *baker) {
   baker->frame_gfx_arena.clear();
   std::ignore = baker->renderer->reset_command_pool(baker->cmd_pool);
   baker->rg.reset(&baker->frame_arena);
-  baker->descriptor_allocator.reset();
+  baker->frame_descriptor_allocator.reset();
   baker->allocator.reset();
   baker->upload_allocator.reset();
 }

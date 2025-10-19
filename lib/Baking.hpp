@@ -28,8 +28,8 @@ struct Baker {
   ResourceArena frame_gfx_arena;
   Handle<CommandPool> cmd_pool;
   RgPersistent rg;
-  DescriptorAllocator session_descriptor_allocator;
-  DescriptorAllocatorScope descriptor_allocator;
+  DescriptorAllocator descriptor_allocator;
+  DescriptorAllocatorScope frame_descriptor_allocator;
   DeviceBumpAllocator allocator;
   UploadBumpAllocator upload_allocator;
   ResourceUploader uploader;

@@ -124,7 +124,8 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
     }
     frcs.upload_allocator =
         UploadBumpAllocator::init(*renderer, sid->m_gfx_arena, 128 * MiB);
-    ren_try_to(frcs.descriptor_allocator.init(scene->m_descriptor_allocator));
+    frcs.descriptor_allocator =
+        DescriptorAllocatorScope::init(&scene->m_descriptor_allocator);
   }
 
   sid->m_rgp.init(renderer);
@@ -233,6 +234,7 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
       .m_rg_arena = make_arena(),
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
+      .m_descriptor_allocator = DescriptorAllocator::init(arena),
       .m_cameras = GenArray<Camera>::init(arena),
       .m_meshes = GenArray<Mesh>::init(arena),
       .m_mesh_instances = GenArray<MeshInstance>::init(arena),

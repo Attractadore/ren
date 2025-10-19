@@ -38,7 +38,6 @@ add_library(ren::rhi ALIAS ren-rhi)
 add_library(ren-internal 
   CommandRecorder.cpp
   DescriptorAllocator.cpp
-  FreeListAllocator.cpp
   Pipeline.cpp
   RenderGraph.cpp
   Renderer.cpp

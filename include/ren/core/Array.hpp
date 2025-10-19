@@ -44,6 +44,24 @@ public:
     m_data[m_size++] = value;
   }
 
+  void push(NotNull<Arena *> arena, const T *values, usize count) {
+    [[unlikely]] if (m_size + count > m_capacity) {
+      usize new_capacity = m_capacity > 0 ? 2 * m_capacity : 1;
+      while (new_capacity < m_size + count) {
+        new_capacity *= 2;
+      }
+      if (!m_data or !arena->expand(m_data, m_capacity, new_capacity)) {
+        T *new_data =
+            (T *)arena->allocate(new_capacity * sizeof(T), alignof(T));
+        std::memcpy(new_data, m_data, m_capacity * sizeof(T));
+        m_data = new_data;
+      }
+      m_capacity = new_capacity;
+    }
+    std::memcpy(&m_data[m_size], values, sizeof(T) * count);
+    m_size += count;
+  }
+
   T &back() {
     ren_assert(m_size > 0);
     return m_data[m_size - 1];
