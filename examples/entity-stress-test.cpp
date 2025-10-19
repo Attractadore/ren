@@ -51,24 +51,20 @@ auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
     }
   }
 
-  OK(auto blob,
-     ren::bake_mesh_to_memory({
-         .num_vertices = ai_mesh->mNumVertices,
-         .positions = reinterpret_cast<const glm::vec3 *>(ai_mesh->mVertices),
-         .normals = reinterpret_cast<const glm::vec3 *>(ai_mesh->mNormals),
-         .colors =
-             ai_mesh->HasVertexColors(0)
-                 ? reinterpret_cast<const glm::vec4 *>(ai_mesh->mColors[0])
-                 : nullptr,
-         .num_indices = indices.size(),
-         .indices = indices.data(),
-     }));
-  auto [blob_data, blob_size] = blob;
-  ren::Handle<ren::Mesh> mesh =
-      ren::create_mesh(frame_arena, scene, blob_data, blob_size);
-  std::free(blob_data);
-
-  return mesh;
+  ren::ScratchArena scratch;
+  ren::Blob blob = ren::bake_mesh_to_memory(
+      scratch,
+      {
+          .num_vertices = ai_mesh->mNumVertices,
+          .positions = reinterpret_cast<const glm::vec3 *>(ai_mesh->mVertices),
+          .normals = reinterpret_cast<const glm::vec3 *>(ai_mesh->mNormals),
+          .colors =
+              ai_mesh->HasVertexColors(0)
+                  ? reinterpret_cast<const glm::vec4 *>(ai_mesh->mColors[0])
+                  : nullptr,
+          .indices = indices,
+      });
+  return ren::create_mesh(frame_arena, scene, blob.data, blob.size);
 }
 
 auto get_scene_bounds(unsigned num_entities) -> std::tuple<float, float> {

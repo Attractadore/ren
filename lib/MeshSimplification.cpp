@@ -1,52 +1,58 @@
 #include "MeshSimplification.hpp"
+#include "ren/core/Array.hpp"
 
+#include <algorithm>
 #include <meshoptimizer.h>
 
 namespace ren {
 
-void mesh_simplify(const MeshSimplificationOptions &opts) {
-  usize max_num_indices =
-      opts.indices->size() * 1.0f / (1.0f - opts.threshold) + 1;
-  opts.indices->reserve(max_num_indices);
+void mesh_simplify(NotNull<Arena *> arena,
+                   const MeshSimplificationInput &input) {
+  ScratchArena scratch(arena);
 
-  u32 num_lods = 1;
-  opts.lods[0] = {.num_indices = u32(opts.indices->size())};
+  DynamicArray<Span<const u32>> lods;
+  lods.push(scratch, *input.indices);
+  for (u32 lod = 1; lod < *input.num_lods; ++lod) {
+    Span<const u32> prev_lod = lods.back();
 
-  Vector<u32> lod_indices;
-  for (; num_lods < *opts.num_lods; ++num_lods) {
-    u32 num_prev_lod_indices = opts.lods[num_lods - 1].num_indices;
-
-    u32 num_lod_target_indices = num_prev_lod_indices * opts.threshold;
+    u32 num_lod_target_indices = prev_lod.size() * input.threshold;
     num_lod_target_indices -= num_lod_target_indices % 3;
     num_lod_target_indices =
-        std::max(num_lod_target_indices, opts.min_num_triangles * 3);
-    if (num_lod_target_indices == num_prev_lod_indices) {
+        std::max(num_lod_target_indices, input.min_num_triangles * 3);
+    if (num_lod_target_indices == prev_lod.size()) {
       break;
     }
 
     constexpr float LOD_ERROR = 0.001f;
 
-    lod_indices.resize(num_prev_lod_indices);
+    u32 *indices = scratch->allocate<u32>(prev_lod.size());
     u32 num_lod_indices = meshopt_simplify(
-        lod_indices.data(), opts.indices->data(), num_prev_lod_indices,
-        (const float *)opts.positions->data(), opts.positions->size(),
+        indices, prev_lod.data(), prev_lod.size(),
+        (const float *)input.positions.get(), input.num_vertices,
         sizeof(glm::vec3), num_lod_target_indices, LOD_ERROR, 0, nullptr);
+    lods.push(scratch, {indices, num_lod_indices});
     if (num_lod_indices > num_lod_target_indices) {
       break;
     }
-    lod_indices.resize(num_lod_indices);
-
-    // Insert coarser LODs in front for vertex fetch optimization
-    opts.indices->insert(opts.indices->begin(), lod_indices.begin(),
-                         lod_indices.end());
-
-    opts.lods[num_lods] = {.num_indices = num_lod_indices};
   }
-  *opts.num_lods = num_lods;
+  *input.num_lods = lods.m_size;
 
-  for (u32 lod = num_lods - 1; lod > 0; --lod) {
-    opts.lods[lod - 1].base_index =
-        opts.lods[lod].base_index + opts.lods[lod].num_indices;
+  usize num_indices = 0;
+  for (Span<const u32> lod : lods) {
+    num_indices += lod.size();
+  }
+  *input.indices = Span<u32>::allocate(arena, num_indices);
+
+  // Insert coarser LODs in front for vertex fetch optimization
+  u32 base_index = 0;
+  for (isize lod = isize(lods.m_size) - 1; lod >= 0; --lod) {
+    u32 lod_size = lods[lod].size();
+    std::ranges::copy(lods[lod], &(*input.indices)[base_index]);
+    input.lods[lod] = {
+        .base_index = base_index,
+        .num_indices = lod_size,
+    };
+    base_index += lod_size;
   }
 }
 

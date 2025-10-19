@@ -433,22 +433,18 @@ private:
            indices->componentType, indices->type, indices->normalized);
     }());
 
-    OK(auto blob, ren::bake_mesh_to_memory({
-                      .num_vertices = positions_data.size(),
-                      .positions = positions_data.data(),
-                      .normals = normals_data.data(),
-                      .tangents = tangents_data.data(),
-                      .uvs = tex_coords_data.data(),
-                      .colors = colors_data.data(),
-                      .num_indices = indices_data.size(),
-                      .indices = indices_data.data(),
-                  }));
-    auto [blob_data, blob_size] = blob;
-    ren::Handle<ren::Mesh> mesh =
-        ren::create_mesh(m_frame_arena, m_scene, blob_data, blob_size);
-    std::free(blob_data);
-
-    return mesh;
+    ren::ScratchArena scratch;
+    ren::Blob blob = ren::bake_mesh_to_memory(
+        scratch, {
+                     .num_vertices = positions_data.size(),
+                     .positions = positions_data.data(),
+                     .normals = normals_data.data(),
+                     .tangents = tangents_data.data(),
+                     .uvs = tex_coords_data.data(),
+                     .colors = colors_data.data(),
+                     .indices = indices_data,
+                 });
+    return ren::create_mesh(m_frame_arena, m_scene, blob.data, blob.size);
   }
 
   auto get_or_create_mesh(const tinygltf::Primitive &primitive)

@@ -2,7 +2,6 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "SwapChain.hpp"
-#include "core/Span.hpp"
 #include "core/Views.hpp"
 #include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
@@ -12,6 +11,7 @@
 #include "passes/Present.hpp"
 #include "passes/Skybox.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/ren.hpp"
 
 #include "Ssao.comp.hpp"
@@ -279,7 +279,7 @@ void destroy_scene(Scene *scene) {
 
 Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                          std::span<const std::byte> blob) {
-  ScratchArena scratch;
+  ScratchArena scratch(frame_arena);
 
   if (blob.size() < sizeof(MeshPackageHeader)) {
     return NullHandle;
@@ -324,10 +324,9 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   };
 
   // Create a copy because we need to patch base triangle indices.
-  Vector<sh::Meshlet> meshlets = Span{
-      (const sh::Meshlet *)&blob[header.meshlets_offset],
-      header.num_meshlets,
-  };
+  auto meshlets = Span<sh::Meshlet>::allocate(scratch, header.num_meshlets);
+  std::ranges::copy_n((const sh::Meshlet *)&blob[header.meshlets_offset],
+                      header.num_meshlets, meshlets.data());
 
   Span triangles = {
       (const u8 *)&blob[header.triangles_offset],

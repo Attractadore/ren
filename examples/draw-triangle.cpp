@@ -32,15 +32,15 @@ public:
         {0.0f, 0.0f, 1.0f},
     };
 
-    OK(auto blob, ren::bake_mesh_to_memory({
-                      .num_vertices = 3,
-                      .positions = positions,
-                      .normals = normals,
-                      .colors = colors,
-                  }));
-    auto [blob_data, blob_size] = blob;
-    m_mesh = create_mesh(&m_frame_arena, scene, blob_data, blob_size);
-    std::free(blob_data);
+    ren::ScratchArena scratch;
+    ren::Blob blob =
+        ren::bake_mesh_to_memory(scratch, {
+                                              .num_vertices = 3,
+                                              .positions = positions,
+                                              .normals = normals,
+                                              .colors = colors,
+                                          });
+    m_mesh = create_mesh(&m_frame_arena, scene, blob.data, blob.size);
 
     m_material = ren::create_material(&m_frame_arena, scene,
                                       {
