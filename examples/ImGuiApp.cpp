@@ -45,7 +45,7 @@ auto ImGuiApp::init(const char *name) -> Result<void> {
     bail("ImGui-SDL3: failed to init backend");
   }
 
-  TRY_TO(ren::init_imgui(get_scene()));
+  TRY_TO(ren::init_imgui(&m_frame_arena, get_scene()));
   return {};
 }
 

@@ -185,6 +185,7 @@ void next_frame(NotNull<Scene *> scene) {
 
   scene->m_sid->m_transform_staging_buffers = {};
   scene->m_gpu_scene_update = {};
+  scene->m_sid->m_resource_uploader = {};
 }
 
 sh::Handle<sh::Sampler2D> get_or_create_texture(NotNull<Scene *> scene,
@@ -202,16 +203,17 @@ sh::Handle<sh::Sampler2D> get_or_create_texture(NotNull<Scene *> scene,
       });
 }
 
-auto create_texture(NotNull<Scene *> scene, const void *blob, usize size)
-    -> expected<Handle<Texture>> {
+auto create_texture(NotNull<Arena *> frame_arena, NotNull<Scene *> scene,
+                    const void *blob, usize size) -> expected<Handle<Texture>> {
   ktx_error_code_e err = KTX_SUCCESS;
   ktxTexture2 *ktx_texture2 = nullptr;
   err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
   if (err) {
     return Failure(Error::Unknown);
   }
-  auto res = scene->m_resource_uploader.create_texture(
-      scene->m_gfx_arena, scene->m_frcs->upload_allocator, ktx_texture2);
+  auto res = scene->m_sid->m_resource_uploader.create_texture(
+      frame_arena, scene->m_gfx_arena, scene->m_frcs->upload_allocator,
+      ktx_texture2);
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   return res;
 }
@@ -347,8 +349,9 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                                         .count = data.size(),
                                     }));
       buffer = slice.buffer;
-      scene->m_resource_uploader.stage_buffer(
-          *renderer, scene->m_frcs->upload_allocator, Span(data), slice);
+      scene->m_sid->m_resource_uploader.stage_buffer(
+          frame_arena, *renderer, scene->m_frcs->upload_allocator, Span(data),
+          slice);
     }
     return {};
   };
@@ -418,8 +421,8 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   // Upload triangles
 
-  scene->m_resource_uploader.stage_buffer(
-      *renderer, scene->m_frcs->upload_allocator, triangles,
+  scene->m_sid->m_resource_uploader.stage_buffer(
+      frame_arena, *renderer, scene->m_frcs->upload_allocator, triangles,
       renderer->get_buffer_slice<u8>(index_pool.indices)
           .slice(base_triangle, header.num_triangles * 3));
 
@@ -447,9 +450,10 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   return handle;
 }
 
-Handle<Image> create_image(Scene *scene, std::span<const std::byte> blob) {
+Handle<Image> create_image(NotNull<Arena *> frame_arena, Scene *scene,
+                           std::span<const std::byte> blob) {
   expected<Handle<Texture>> texture =
-      create_texture(scene, blob.data(), blob.size());
+      create_texture(frame_arena, scene, blob.data(), blob.size());
   if (!texture) {
     return NullHandle;
   }
@@ -1323,8 +1327,8 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   Renderer *renderer = scene->m_renderer;
   auto *frcs = scene->m_frcs;
 
-  ren_try_to(scene->m_resource_uploader.upload(*renderer,
-                                               scene->m_frcs->gfx_cmd_pool));
+  ren_try_to(scene->m_sid->m_resource_uploader.upload(
+      *renderer, scene->m_frcs->gfx_cmd_pool));
 
   ren_try(RenderGraph render_graph, build_rg(scratch, scene));
 
@@ -1353,7 +1357,8 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   return {};
 }
 
-auto init_imgui(Scene *scene) -> Result<void, Error> {
+auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
+    -> Result<void, Error> {
 #if REN_IMGUI
   if (!ImGui::GetCurrentContext()) {
     return {};
@@ -1375,8 +1380,8 @@ auto init_imgui(Scene *scene) -> Result<void, Error> {
                                     .height = (u32)height,
                                 })
                                 .value();
-  scene->m_resource_uploader.stage_texture(
-      scene->m_frcs->upload_allocator,
+  scene->m_sid->m_resource_uploader.stage_texture(
+      frame_arena, scene->m_frcs->upload_allocator,
       Span((const std::byte *)data, width * height * bpp), texture);
   auto descriptor =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(

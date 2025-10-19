@@ -216,6 +216,7 @@ struct SceneInternalData {
   RgPersistent m_rgp;
   DynamicArray<UploadBumpAllocator::Allocation<glm::mat4x3>>
       m_transform_staging_buffers;
+  ResourceUploader m_resource_uploader;
 };
 
 struct Scene {
@@ -242,7 +243,6 @@ struct Scene {
   GenArray<MeshInstance> m_mesh_instances;
 
   GenArray<Image> m_images;
-  ResourceUploader m_resource_uploader;
 
   GenArray<Material> m_materials;
 

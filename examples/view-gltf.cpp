@@ -539,7 +539,7 @@ private:
           OK(ren::TextureInfo texture_info, get_image_info(src, true));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          image = create_image(m_scene, blob_data, blob_size);
+          image = create_image(m_frame_arena, m_scene, blob_data, blob_size);
           std::free(blob_data);
         }
         desc.base_color_texture.image = image;
@@ -589,7 +589,8 @@ private:
           OK(auto blob, ren::bake_orm_map_to_memory(roughness_metallic_info,
                                                     occlusion_info));
           auto [blob_data, blob_size] = blob;
-          desc.orm_texture.image = create_image(m_scene, blob_data, blob_size);
+          desc.orm_texture.image =
+              create_image(m_frame_arena, m_scene, blob_data, blob_size);
           std::free(blob_data);
           m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
                                          desc.orm_texture.image);
@@ -616,7 +617,7 @@ private:
           OK(ren::TextureInfo texture_info, get_image_info(src));
           OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
           auto [blob_data, blob_size] = blob;
-          image = create_image(m_scene, blob_data, blob_size);
+          image = create_image(m_frame_arena, m_scene, blob_data, blob_size);
           std::free(blob_data);
         }
         desc.normal_texture.image = image;
@@ -794,7 +795,7 @@ public:
         bail("Failed to read from {}", options.env_map);
       }
 
-      return ren::create_image(scene, blob);
+      return ren::create_image(&m_frame_arena, scene, blob);
     }();
 
     if (env_map and *env_map) {

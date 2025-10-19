@@ -220,7 +220,8 @@ void set_camera_transform(Scene *scene, Handle<Camera> camera,
 [[nodiscard]] auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                                std::span<const std::byte> blob) -> Handle<Mesh>;
 
-[[nodiscard]] auto create_image(Scene *scene, std::span<const std::byte> blob)
+[[nodiscard]] auto create_image(NotNull<Arena *> frame_arena, Scene *scene,
+                                std::span<const std::byte> blob)
     -> Handle<Image>;
 
 [[nodiscard]] auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
@@ -259,7 +260,7 @@ auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void>;
 [[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
     -> expected<void>;
 
-auto init_imgui(Scene *scene) -> expected<void>;
+auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene) -> expected<void>;
 
 void draw_imgui(Scene *scene);
 
@@ -387,9 +388,9 @@ inline auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   return hot_reload::vtbl_ref->create_mesh(frame_arena, scene, blob);
 }
 
-inline auto create_image(Scene *scene, std::span<const std::byte> blob)
-    -> Handle<Image> {
-  return hot_reload::vtbl_ref->create_image(scene, blob);
+inline auto create_image(NotNull<Arena *> frame_arena, Scene *scene,
+                         std::span<const std::byte> blob) -> Handle<Image> {
+  return hot_reload::vtbl_ref->create_image(frame_arena, scene, blob);
 }
 
 inline auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
@@ -453,8 +454,9 @@ inline auto delay_input(Scene *scene) -> expected<void> {
 [[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
     -> expected<void>;
 
-inline auto init_imgui(Scene *scene) -> expected<void> {
-  return hot_reload::vtbl_ref->init_imgui(scene);
+inline auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
+    -> expected<void> {
+  return hot_reload::vtbl_ref->init_imgui(frame_arena, scene);
 }
 
 inline void draw_imgui(Scene *scene) {
@@ -474,9 +476,10 @@ namespace ren {
                      std::span((const std::byte *)blob_data, blob_size));
 }
 
-[[nodiscard]] auto inline create_image(Scene *scene, const void *blob_data,
+[[nodiscard]] auto inline create_image(NotNull<Arena *> frame_arena,
+                                       Scene *scene, const void *blob_data,
                                        size_t blob_size) -> Handle<Image> {
-  return create_image(scene,
+  return create_image(frame_arena, scene,
                       std::span((const std::byte *)blob_data, blob_size));
 }
 

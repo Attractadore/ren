@@ -100,7 +100,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
   ren_try(Handle<Texture> env_map,
           baker->uploader.create_texture(
-              baker->frame_gfx_arena, baker->upload_allocator, ktx_texture2));
+              &baker->frame_arena, baker->frame_gfx_arena,
+              baker->upload_allocator, ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
 

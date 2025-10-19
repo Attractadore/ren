@@ -7,7 +7,7 @@
 
 namespace ren {
 
-void ResourceUploader::stage_buffer(Renderer &renderer,
+void ResourceUploader::stage_buffer(NotNull<Arena *> arena, Renderer &renderer,
                                     UploadBumpAllocator &allocator,
                                     Span<const std::byte> data,
                                     const BufferView &buffer) {
@@ -15,13 +15,14 @@ void ResourceUploader::stage_buffer(Renderer &renderer,
   ren_assert(size <= buffer.size_bytes());
   auto [ptr, _, staging_buffer] = allocator.allocate(size);
   std::memcpy(ptr, data.data(), size);
-  m_buffer_copies.push_back({
-      .src = staging_buffer,
-      .dst = buffer,
-  });
+  m_buffer_copies.push(arena, {
+                                  .src = staging_buffer,
+                                  .dst = buffer,
+                              });
 }
 
-auto ResourceUploader::create_texture(ResourceArena &arena,
+auto ResourceUploader::create_texture(NotNull<Arena *> arena,
+                                      ResourceArena &gfx_arena,
                                       UploadBumpAllocator &allocator,
                                       ktxTexture2 *ktx_texture2)
     -> Result<Handle<Texture>, Error> {
@@ -30,7 +31,7 @@ auto ResourceUploader::create_texture(ResourceArena &arena,
   if (!format) {
     return std::unexpected(Error::InvalidFormat);
   }
-  ren_try(auto texture, arena.create_texture({
+  ren_try(auto texture, gfx_arena.create_texture({
                             .format = format,
                             .usage = rhi::ImageUsage::ShaderResource |
                                      rhi::ImageUsage::TransferSrc |
@@ -41,11 +42,12 @@ auto ResourceUploader::create_texture(ResourceArena &arena,
                             .cube_map = ktx_texture2->numFaces > 1,
                             .num_mips = ktx_texture2->numLevels,
                         }));
-  stage_texture(allocator, ktxTexture(ktx_texture2), texture);
+  stage_texture(arena, allocator, ktxTexture(ktx_texture2), texture);
   return texture;
 }
 
-void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
+void ResourceUploader::stage_texture(NotNull<Arena *> arena,
+                                     UploadBumpAllocator &allocator,
                                      ktxTexture *ktx_texture,
                                      Handle<Texture> texture) {
   auto staging = allocator.allocate(ktx_texture->dataSize);
@@ -56,39 +58,40 @@ void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
   } else {
     std::memcpy(staging.host_ptr, ktx_texture->pData, ktx_texture->dataSize);
   }
-  TextureCopy &copy = m_texture_copies.emplace_back();
-  copy = {
+  TextureCopy copy = {
       .src = staging.slice,
       .dst = texture,
   };
   for (u32 mip : range(ktx_texture->numLevels)) {
     ktxTexture_GetImageOffset(ktx_texture, mip, 0, 0, &copy.mip_offsets[mip]);
   }
+  m_texture_copies.push(arena, copy);
 }
 
-void ResourceUploader::stage_texture(UploadBumpAllocator &allocator,
+void ResourceUploader::stage_texture(NotNull<Arena *> arena,
+                                     UploadBumpAllocator &allocator,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
   auto staging = allocator.allocate(data.size());
   std::memcpy(staging.host_ptr, data.data(), data.size());
-  TextureCopy &copy = m_texture_copies.emplace_back();
-  copy = {
+  TextureCopy copy = {
       .src = staging.slice,
       .dst = texture,
       .mip_offsets = {0},
   };
+  m_texture_copies.push(arena, copy);
 }
 
 auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     -> Result<void, Error> {
-  if (m_buffer_copies.empty() and m_texture_copies.empty()) {
+  if (m_buffer_copies.m_size == 0 and m_texture_copies.m_size) {
     return {};
   }
 
   CommandRecorder cmd;
   ren_try_to(cmd.begin(renderer, pool));
 
-  if (not m_buffer_copies.empty()) {
+  if (m_buffer_copies.m_size > 0) {
     auto _ = cmd.debug_region("upload-buffers");
     for (const auto &[src, dst] : m_buffer_copies) {
       cmd.copy_buffer(src, dst);
@@ -102,11 +105,11 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     });
   }
 
-  if (not m_texture_copies.empty()) {
+  if (m_texture_copies.m_size > 0) {
     ScratchArena scratch;
     auto _ = cmd.debug_region("upload-textures");
-    auto *barriers = scratch->allocate<TextureBarrier>(m_texture_copies.size());
-    for (usize i : range(m_texture_copies.size())) {
+    auto *barriers = scratch->allocate<TextureBarrier>(m_texture_copies.m_size);
+    for (usize i : range(m_texture_copies.m_size)) {
       barriers[i] = {
           .resource = {m_texture_copies[i].dst},
           .dst_stage_mask = rhi::PipelineStage::Transfer,
@@ -114,8 +117,8 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
           .dst_layout = rhi::ImageLayout::TransferDst,
       };
     }
-    cmd.pipeline_barrier({}, Span(barriers, m_texture_copies.size()));
-    for (usize i : range(m_texture_copies.size())) {
+    cmd.pipeline_barrier({}, Span(barriers, m_texture_copies.m_size));
+    for (usize i : range(m_texture_copies.m_size)) {
       const TextureCopy &copy = m_texture_copies[i];
       const Texture &dst = renderer.get_texture(copy.dst);
       for (u32 mip : range(dst.num_mips)) {
@@ -132,7 +135,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
           .dst_layout = rhi::ImageLayout::General,
       };
     }
-    cmd.pipeline_barrier({}, Span(barriers, m_texture_copies.size()));
+    cmd.pipeline_barrier({}, Span(barriers, m_texture_copies.m_size));
     m_texture_copies.clear();
   }
 
