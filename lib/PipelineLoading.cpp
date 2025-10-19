@@ -59,7 +59,8 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
         {sh::S_OPAQUE_FEATURE_TS, flags.is_set(MeshAttribute::Tangent)},
         {sh::S_OPAQUE_FEATURE_UV, flags.is_set(MeshAttribute::UV)},
     }};
-    Result<Handle<GraphicsPipeline>, Error> result =
+    ren_try(
+        pipelines[i],
         arena.create_graphics_pipeline(
 
             GraphicsPipelineCreateInfo{
@@ -82,14 +83,7 @@ auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
                     },
                 .rtv_formats = {HDR_FORMAT},
                 .dsv_format = DEPTH_FORMAT,
-            });
-    if (!result) {
-      for (Handle<GraphicsPipeline> pipeline : Span(pipelines).subspan(0, i)) {
-        arena.destroy(pipeline);
-      }
-      return Failure(result.error());
-    }
-    pipelines[i] = *result;
+            }));
   };
   return pipelines;
 }

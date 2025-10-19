@@ -332,14 +332,14 @@ struct RgRtPass {
 
 struct RgPersistent {
   Arena *m_arena = nullptr;
-  ResourceArena m_gfx_arena;
+  ResourceArena m_rcs_arena;
 
   DynamicArray<RgPhysicalTexture> m_physical_textures;
   GenArray<RgTexture> m_textures;
 
   GenArray<RgSemaphore> m_semaphores;
 
-  bool m_async_compute = true;
+  bool m_async_compute = false;
 
   Handle<Semaphore> m_gfx_semaphore;
   Handle<Semaphore> m_async_semaphore;
@@ -349,7 +349,8 @@ struct RgPersistent {
   u64 m_async_time = 0;
 
 public:
-  void init(NotNull<Renderer *> renderer) { m_gfx_arena.init(renderer); }
+  [[nodiscard]] static RgPersistent init(NotNull<Arena *> arena,
+                                         NotNull<Renderer *> renderer);
 
   [[nodiscard]] auto create_texture(const RgTextureCreateInfo &create_info)
       -> RgTextureId;
@@ -358,7 +359,7 @@ public:
 
   [[nodiscard]] auto create_semaphore(String8 name) -> RgSemaphoreId;
 
-  void reset(NotNull<Arena *> arena);
+  void destroy();
 
 private:
   void rotate_textures();

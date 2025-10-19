@@ -1,136 +1,69 @@
 #pragma once
-#include "Renderer.hpp"
-#include "core/Vector.hpp"
+#include "Buffer.hpp"
+#include "ren/core/Arena.hpp"
+#include "ren/core/NotNull.hpp"
 
 namespace ren {
 
-namespace detail {
+struct Renderer;
+struct Texture;
+struct Semaphore;
+struct Event;
+struct GraphicsPipeline;
+struct ComputePipeline;
+struct CommandPool;
 
-template <typename... Ts> class ResourceArenaImpl {
-  template <typename T>
-  static constexpr bool IsArenaResource = (std::same_as<T, Ts> or ...);
+struct TextureCreateInfo;
+struct SemaphoreCreateInfo;
+struct SemaphoreCreateInfo;
+struct GraphicsPipelineCreateInfo;
+struct ComputePipelineCreateInfo;
+struct CommandPoolCreateInfo;
+
+struct ResourceArena {
+  Arena *m_arena = nullptr;
+  Renderer *m_renderer = nullptr;
+  DynamicArray<Handle<Buffer>> m_buffers;
+  DynamicArray<Handle<Texture>> m_textures;
+  DynamicArray<Handle<Semaphore>> m_semaphores;
+  DynamicArray<Handle<Event>> m_events;
+  DynamicArray<Handle<GraphicsPipeline>> m_graphics_pipelines;
+  DynamicArray<Handle<ComputePipeline>> m_compute_pipelines;
+  DynamicArray<Handle<CommandPool>> m_cmd_pools;
 
 public:
-  ResourceArenaImpl() = default;
-  void init(Renderer *renderer) { m_renderer = renderer; }
-  ResourceArenaImpl(const ResourceArenaImpl &) = delete;
-  ResourceArenaImpl(ResourceArenaImpl &&) = default;
-  ~ResourceArenaImpl() { clear(); }
-
-  ResourceArenaImpl &operator=(const ResourceArenaImpl &) = delete;
-
-  ResourceArenaImpl &operator=(ResourceArenaImpl &&other) {
-    clear();
-    m_renderer = other.m_renderer;
-    m_resources = std::move(other.m_resources);
-    return *this;
-  }
+  [[nodiscard]] static ResourceArena init(NotNull<Arena *> arena,
+                                          NotNull<Renderer *> renderer);
 
   template <typename T = std::byte>
-  auto create_buffer(BufferCreateInfo &&create_info)
-      -> Result<BufferSlice<T>, Error>
-    requires IsArenaResource<Buffer>
-  {
-    usize count = create_info.count;
+  auto create_buffer(BufferCreateInfo create_info)
+      -> Result<BufferSlice<T>, Error> {
     create_info.size = create_info.count * sizeof(T);
-    ren_try(Handle<Buffer> buffer, m_renderer->create_buffer(create_info));
-    return BufferSlice<T>{
-        .buffer = insert(buffer),
-        .count = count,
-    };
+    ren_try(BufferView view, create_buffer(create_info));
+    return BufferSlice<T>(view);
   }
+
+  auto create_buffer(const BufferCreateInfo &create_info)
+      -> Result<BufferView, Error>;
 
   auto create_texture(const TextureCreateInfo &create_info)
-      -> Result<Handle<Texture>, Error>
-    requires IsArenaResource<Texture>
-  {
-    return insert(m_renderer->create_texture(create_info));
-  }
+      -> Result<Handle<Texture>, Error>;
 
   auto create_semaphore(const SemaphoreCreateInfo &create_info)
-      -> Result<Handle<Semaphore>, Error>
-    requires IsArenaResource<Semaphore>
-  {
-    return insert(m_renderer->create_semaphore(create_info));
-  }
+      -> Result<Handle<Semaphore>, Error>;
 
-  auto create_event() -> Handle<Event>
-    requires IsArenaResource<Event>
-  {
-    return insert(m_renderer->create_event());
-  }
+  Handle<Event> create_event();
 
   auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info)
-      -> Result<Handle<GraphicsPipeline>, Error>
-    requires IsArenaResource<GraphicsPipeline>
-  {
-    return insert(m_renderer->create_graphics_pipeline(create_info));
-  }
+      -> Result<Handle<GraphicsPipeline>, Error>;
 
   auto create_compute_pipeline(const ComputePipelineCreateInfo &create_info)
-      -> Result<Handle<ComputePipeline>, Error>
-    requires IsArenaResource<ComputePipeline>
-  {
-    return insert(m_renderer->create_compute_pipeline(create_info));
-  }
+      -> Result<Handle<ComputePipeline>, Error>;
 
-  auto create_command_pool(const CommandPoolCreateInfo &create_info)
-    requires IsArenaResource<CommandPool>
-  {
-    return insert(m_renderer->create_command_pool(create_info));
-  }
+  Result<Handle<CommandPool>, Error>
+  create_command_pool(const CommandPoolCreateInfo &create_info);
 
-  template <typename H>
-    requires IsArenaResource<H>
-  void destroy(Handle<H> handle) {
-    m_renderer->destroy(handle);
-  }
-
-  void clear() {
-    usize count = (get_type_arena<Ts>().size() + ...);
-    if (count > 0) {
-      m_renderer->wait_idle();
-      (clear<Ts>(), ...);
-    }
-  }
-
-private:
-  template <typename T> auto get_type_arena() -> Vector<Handle<T>> & {
-    return std::get<Vector<Handle<T>>>(m_resources);
-  }
-
-  template <typename T> auto insert(Handle<T> handle) -> Handle<T> {
-    return get_type_arena<T>().emplace_back(std::move(handle));
-  }
-
-  template <typename T>
-  auto insert(Result<Handle<T>, Error> handle) -> Result<Handle<T>, Error> {
-    return handle.transform([&](Handle<T> handle) {
-      return get_type_arena<T>().emplace_back(std::move(handle));
-    });
-  }
-
-  template <typename T> void clear() {
-    Vector<Handle<T>> &arena = get_type_arena<T>();
-    for (Handle<T> handle : arena) {
-      m_renderer->destroy(handle);
-    }
-    arena.clear();
-  }
-
-private:
-  Renderer *m_renderer = nullptr;
-  std::tuple<Vector<Handle<Ts>>...> m_resources;
-};
-
-using ResourceArenaBase =
-    ResourceArenaImpl<Buffer, ComputePipeline, GraphicsPipeline, Semaphore,
-                      Event, Texture, CommandPool>;
-
-} // namespace detail
-
-class ResourceArena : public detail::ResourceArenaBase {
-  using detail::ResourceArenaBase::ResourceArenaBase;
+  void clear();
 };
 
 } // namespace ren

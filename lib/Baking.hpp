@@ -2,6 +2,7 @@
 #include "RenderGraph.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
+#include "core/Vector.hpp"
 #include "ren/baking/image.hpp"
 
 namespace DirectX {
@@ -24,8 +25,8 @@ struct Baker {
   Arena *arena = nullptr;
   Arena frame_arena;
   Renderer *renderer = nullptr;
-  ResourceArena gfx_arena;
-  ResourceArena frame_gfx_arena;
+  ResourceArena rcs_arena;
+  ResourceArena frame_rcs_arena;
   Handle<CommandPool> cmd_pool;
   RgPersistent rg;
   DescriptorAllocator descriptor_allocator;

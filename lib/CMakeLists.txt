@@ -41,6 +41,7 @@ add_library(ren-internal
   Pipeline.cpp
   RenderGraph.cpp
   Renderer.cpp
+  ResourceArena.cpp
   ResourceUploader.cpp
   Texture.cpp
 )

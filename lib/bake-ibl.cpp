@@ -40,17 +40,17 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 
   if (!baker->pipelines.reflection_map) {
     ren_try(baker->pipelines.reflection_map,
-            load_compute_pipeline(baker->gfx_arena, BakeReflectionMapCS,
+            load_compute_pipeline(baker->rcs_arena, BakeReflectionMapCS,
                                   "Bake reflection environment map"));
   }
   if (!baker->pipelines.specular_map) {
     ren_try(baker->pipelines.specular_map,
-            load_compute_pipeline(baker->gfx_arena, BakeSpecularMapCS,
+            load_compute_pipeline(baker->rcs_arena, BakeSpecularMapCS,
                                   "Bake specular environment map"));
   }
   if (!baker->pipelines.irradiance_map) {
     ren_try(baker->pipelines.irradiance_map,
-            load_compute_pipeline(baker->gfx_arena, BakeIrradianceMapCS,
+            load_compute_pipeline(baker->rcs_arena, BakeIrradianceMapCS,
                                   "Bake irradiance environment map"));
   }
   const DirectX::Image &src_image = to_dxtex_image(info);
@@ -100,7 +100,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
   ren_try(Handle<Texture> env_map,
           baker->uploader.create_texture(
-              &baker->frame_arena, baker->frame_gfx_arena,
+              &baker->frame_arena, baker->frame_rcs_arena,
               baker->upload_allocator, ktx_texture2));
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
@@ -187,7 +187,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   }
 
   ren_try(BufferView readback,
-          baker->frame_gfx_arena.create_buffer({
+          baker->frame_rcs_arena.create_buffer({
               .heap = rhi::MemoryHeap::Readback,
               .size = get_mip_chain_byte_size(CUBE_MAP_FORMAT,
                                               {CUBE_MAP_SIZE, CUBE_MAP_SIZE, 1},

@@ -26,12 +26,11 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
     -> expected<Baker *> {
   auto baker = new Baker{.renderer = renderer};
   baker->arena = arena;
-  baker->frame_arena = make_arena();
-  baker->gfx_arena.init(renderer);
-  baker->frame_gfx_arena.init(renderer);
-  baker->rg.init(renderer);
-  baker->rg.m_async_compute = false;
-  ren_try(baker->cmd_pool, baker->gfx_arena.create_command_pool({
+  baker->frame_arena = Arena::init();
+  baker->rcs_arena = ResourceArena::init(arena, renderer);
+  baker->frame_rcs_arena = ResourceArena::init(&baker->frame_arena, renderer);
+  baker->rg = RgPersistent::init(&baker->frame_arena, renderer);
+  ren_try(baker->cmd_pool, baker->rcs_arena.create_command_pool({
                                .name = "Baker command pool",
                                .queue_family = rhi::QueueFamily::Graphics,
                            }));
@@ -39,19 +38,28 @@ auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
   baker->frame_descriptor_allocator =
       DescriptorAllocatorScope::init(&baker->descriptor_allocator);
   baker->allocator =
-      DeviceBumpAllocator::init(*baker->renderer, baker->gfx_arena, 64 * MiB);
+      DeviceBumpAllocator::init(*baker->renderer, baker->rcs_arena, 64 * MiB);
   baker->upload_allocator =
-      UploadBumpAllocator::init(*baker->renderer, baker->gfx_arena, 256 * MiB);
+      UploadBumpAllocator::init(*baker->renderer, baker->rcs_arena, 256 * MiB);
   return baker;
 }
 
-void destroy_baker(Baker *baker) { delete baker; }
+void destroy_baker(Baker *baker) {
+  baker->renderer->wait_idle();
+  baker->rcs_arena.clear();
+  baker->frame_rcs_arena.clear();
+  baker->rg.destroy();
+  baker->frame_arena.destroy();
+  delete baker;
+}
 
 void reset_baker(Baker *baker) {
+  baker->renderer->wait_idle();
+  baker->rg.destroy();
   baker->frame_arena.clear();
-  baker->frame_gfx_arena.clear();
+  baker->frame_rcs_arena.clear();
+  baker->rg = RgPersistent::init(&baker->frame_arena, baker->renderer);
   std::ignore = baker->renderer->reset_command_pool(baker->cmd_pool);
-  baker->rg.reset(&baker->frame_arena);
   baker->frame_descriptor_allocator.reset();
   baker->allocator.reset();
   baker->upload_allocator.reset();

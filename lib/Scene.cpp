@@ -19,6 +19,7 @@
 #include "SsaoHiZ.comp.hpp"
 #include "sh/Random.h"
 
+#include <algorithm>
 #include <ktx.h>
 #include <tracy/Tracy.hpp>
 
@@ -79,65 +80,69 @@ namespace ren_export {
 
 namespace {
 
-auto init_scene_internal_data(NotNull<Scene *> scene)
-    -> Result<std::unique_ptr<SceneInternalData>, Error> {
+Result<void, Error> init_internal_data(NotNull<Scene *> scene) {
   ScratchArena scratch({&scene->m_internal_arena});
 
-  scene->m_sid.reset();
-  scene->m_sid = std::make_unique<SceneInternalData>();
+  scene->m_sid = scene->m_internal_arena.allocate<SceneInternalData>();
+  auto *id = scene->m_sid;
 
   Renderer *renderer = scene->m_renderer;
-  auto *sid = scene->m_sid.get();
 
-  sid->m_gfx_arena.init(scene->m_renderer);
-  ren_try(sid->m_pipelines, load_pipelines(sid->m_gfx_arena));
+  id->m_rcs_arena =
+      ResourceArena::init(&scene->m_internal_arena, scene->m_renderer);
+  ren_try(id->m_pipelines, load_pipelines(id->m_rcs_arena));
 
-  sid->m_gfx_allocator =
-      DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 256 * MiB);
+  id->m_gfx_allocator =
+      DeviceBumpAllocator::init(*renderer, id->m_rcs_arena, 256 * MiB);
   if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-    sid->m_async_allocator =
-        DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
-    for (DeviceBumpAllocator &allocator : sid->m_shared_allocators) {
+    id->m_async_allocator =
+        DeviceBumpAllocator::init(*renderer, id->m_rcs_arena, 16 * MiB);
+    for (DeviceBumpAllocator &allocator : id->m_shared_allocators) {
       allocator =
-          DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
+          DeviceBumpAllocator::init(*renderer, id->m_rcs_arena, 16 * MiB);
     }
   }
 
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
-    FrameResources &frcs = sid->m_per_frame_resources[i];
+    FrameResources &frcs = id->m_per_frame_resources[i];
     ren_try(frcs.acquire_semaphore,
-            sid->m_gfx_arena.create_semaphore({
+            id->m_rcs_arena.create_semaphore({
                 .name = format(scratch, "Acquire semaphore {}", i),
                 .type = rhi::SemaphoreType::Binary,
             }));
     ren_try(frcs.gfx_cmd_pool,
-            sid->m_gfx_arena.create_command_pool({
+            id->m_rcs_arena.create_command_pool({
                 .name = format(scratch, "Command pool {}", i),
                 .queue_family = rhi::QueueFamily::Graphics,
             }));
     if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
       ren_try(frcs.async_cmd_pool,
-              sid->m_gfx_arena.create_command_pool({
+              id->m_rcs_arena.create_command_pool({
                   .name = format(scratch, "Command pool {}", i),
                   .queue_family = rhi::QueueFamily::Compute,
               }));
     }
     frcs.upload_allocator =
-        UploadBumpAllocator::init(*renderer, sid->m_gfx_arena, 128 * MiB);
+        UploadBumpAllocator::init(*renderer, id->m_rcs_arena, 128 * MiB);
     frcs.descriptor_allocator =
         DescriptorAllocatorScope::init(&scene->m_descriptor_allocator);
   }
 
-  sid->m_rgp.init(renderer);
+  id->m_rgp = RgPersistent::init(&scene->m_rg_arena, renderer);
 
   return {};
+}
+
+void destroy_internal_data(NotNull<Scene *> scene) {
+  scene->m_sid->m_rcs_arena.clear();
+  scene->m_sid->m_rgp.destroy();
 }
 
 void next_frame(NotNull<Scene *> scene) {
   ZoneScoped;
 
   Renderer *renderer = scene->m_renderer;
-  SceneInternalData *id = scene->m_sid.get();
+  SceneInternalData *id = scene->m_sid;
   scene->m_frcs =
       &id->m_per_frame_resources[scene->m_frame_index % NUM_FRAMES_IN_FLIGHT];
   FrameResources *frcs = scene->m_frcs;
@@ -212,7 +217,7 @@ auto create_texture(NotNull<Arena *> frame_arena, NotNull<Scene *> scene,
     return Failure(Error::Unknown);
   }
   auto res = scene->m_sid->m_resource_uploader.create_texture(
-      frame_arena, scene->m_gfx_arena, scene->m_frcs->upload_allocator,
+      frame_arena, scene->m_rcs_arena, scene->m_frcs->upload_allocator,
       ktx_texture2);
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
   return res;
@@ -245,8 +250,8 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
       .m_directional_lights = GenArray<DirectionalLight>::init(arena),
   };
 
-  scene->m_gfx_arena.init(renderer);
-  scene->m_gpu_scene = GpuScene::init(&scene->m_gfx_arena);
+  scene->m_rcs_arena = ResourceArena::init(arena, renderer);
+  scene->m_gpu_scene = GpuScene::init(&scene->m_rcs_arena);
 
   scene->m_settings.async_compute =
       renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
@@ -256,7 +261,7 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
   scene->m_settings.amd_anti_lag =
       renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
-  ren_try_to(init_scene_internal_data(scene));
+  ren_try_to(init_internal_data(scene));
   next_frame(scene);
 
   return scene;
@@ -266,8 +271,11 @@ void destroy_scene(Scene *scene) {
   if (!scene) {
     return;
   }
-  destroy(scene->m_internal_arena);
-  destroy(scene->m_rg_arena);
+  scene->m_renderer->wait_idle();
+  scene->m_rcs_arena.clear();
+  destroy_internal_data(scene);
+  scene->m_internal_arena.destroy();
+  scene->m_rg_arena.destroy();
   delete scene;
 }
 
@@ -343,7 +351,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                                        Handle<Buffer> &buffer,
                                        String8 name) -> Result<void, Error> {
     if (not data.empty()) {
-      ren_try(BufferSlice<T> slice, scene->m_gfx_arena.create_buffer<T>({
+      ren_try(BufferSlice<T> slice, scene->m_rcs_arena.create_buffer<T>({
                                         .name = std::move(name),
                                         .heap = rhi::MemoryHeap::Default,
                                         .count = data.size(),
@@ -385,7 +393,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   if (scene->m_index_pools.m_size == 0 or
       scene->m_index_pools.back().num_free_indices < header.num_triangles * 3) {
-    expected<BufferSlice<u8>> slice = scene->m_gfx_arena.create_buffer<u8>({
+    expected<BufferSlice<u8>> slice = scene->m_rcs_arena.create_buffer<u8>({
         .name = "Mesh vertex indices pool",
         .heap = rhi::MemoryHeap::Default,
         .count = sh::INDEX_POOL_SIZE,
@@ -1006,7 +1014,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
 
   Renderer *renderer = scene->m_renderer;
   SwapChain *swap_chain = scene->m_swap_chain;
-  SceneInternalData *sid = scene->m_sid.get();
+  SceneInternalData *sid = scene->m_sid;
   GpuScene &gpu_scene = scene->m_gpu_scene;
   FrameResources *frcs = scene->m_frcs;
 
@@ -1040,8 +1048,10 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
   set_if_changed(pass_cfg.ltm_pyramid_mip, scene->m_settings.ltm_llm_mip);
 
   if (dirty) {
+    renderer->wait_idle();
+    rgp.destroy();
     scene->m_rg_arena.clear();
-    rgp.reset(&scene->m_rg_arena);
+    rgp = RgPersistent::init(&scene->m_rg_arena, renderer);
     rgp.m_async_compute = pass_cfg.async_compute;
     pass_rcs = {};
     pass_rcs.backbuffer = rgp.create_texture("backbuffer");
@@ -1370,7 +1380,7 @@ auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
   u8 *data;
   i32 width, height, bpp;
   io.Fonts->GetTexDataAsRGBA32(&data, &width, &height, &bpp);
-  Handle<Texture> texture = scene->m_gfx_arena
+  Handle<Texture> texture = scene->m_rcs_arena
                                 .create_texture({
                                     .name = "ImGui font atlas",
                                     .format = TinyImageFormat_R8G8B8A8_UNORM,
@@ -1590,15 +1600,16 @@ namespace ren::hot_reload {
 
 void unload(Scene *scene) {
   scene->m_renderer->wait_idle();
+  destroy_internal_data(scene);
+  scene->m_internal_arena.clear();
+  scene->m_rg_arena.clear();
   scene->m_sid = nullptr;
   unload(scene->m_renderer);
 }
 
 auto load(Scene *scene) -> expected<void> {
   ren_try_to(load(scene->m_renderer));
-  scene->m_sid = nullptr;
-  clear(&scene->m_internal_arena);
-  ren_try_to(init_scene_internal_data(scene));
+  ren_try_to(init_internal_data(scene));
   next_frame(scene);
   return {};
 }

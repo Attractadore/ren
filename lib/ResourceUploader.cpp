@@ -22,7 +22,7 @@ void ResourceUploader::stage_buffer(NotNull<Arena *> arena, Renderer &renderer,
 }
 
 auto ResourceUploader::create_texture(NotNull<Arena *> arena,
-                                      ResourceArena &gfx_arena,
+                                      ResourceArena &rcs_arena,
                                       UploadBumpAllocator &allocator,
                                       ktxTexture2 *ktx_texture2)
     -> Result<Handle<Texture>, Error> {
@@ -31,7 +31,7 @@ auto ResourceUploader::create_texture(NotNull<Arena *> arena,
   if (!format) {
     return std::unexpected(Error::InvalidFormat);
   }
-  ren_try(auto texture, gfx_arena.create_texture({
+  ren_try(auto texture, rcs_arena.create_texture({
                             .format = format,
                             .usage = rhi::ImageUsage::ShaderResource |
                                      rhi::ImageUsage::TransferSrc |

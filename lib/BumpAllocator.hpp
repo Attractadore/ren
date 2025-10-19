@@ -1,6 +1,7 @@
 #pragma once
 #include "Buffer.hpp"
 #include "DevicePtr.hpp"
+#include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "core/Math.hpp"
 #include "sh/Std.h"
@@ -24,10 +25,10 @@ template <typename Policy> struct BumpAllocator {
 
 public:
   [[nodiscard]] static BumpAllocator
-  init(Renderer &renderer, ResourceArena &gfx_arena, usize block_size) {
+  init(Renderer &renderer, ResourceArena &rcs_arena, usize block_size) {
     return {
         .m_renderer = &renderer,
-        .m_arena = &gfx_arena,
+        .m_arena = &rcs_arena,
         .m_block_size = block_size,
         .m_block = (usize)-1,
         .m_block_offset = block_size,

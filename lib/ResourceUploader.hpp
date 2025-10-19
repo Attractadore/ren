@@ -39,7 +39,7 @@ public:
                     UploadBumpAllocator &allocator, Span<const std::byte> data,
                     const BufferView &buffer);
 
-  auto create_texture(NotNull<Arena *> arena, ResourceArena &gfx_arena,
+  auto create_texture(NotNull<Arena *> arena, ResourceArena &rcs_arena,
                       UploadBumpAllocator &allocator, ktxTexture2 *ktx_texture)
       -> Result<Handle<Texture>, Error>;
 

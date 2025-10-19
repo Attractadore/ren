@@ -205,7 +205,7 @@ struct SceneGraphicsSettings {
 
 // Data that can change between hot reloads.
 struct SceneInternalData {
-  ResourceArena m_gfx_arena;
+  ResourceArena m_rcs_arena;
   Pipelines m_pipelines;
   DeviceBumpAllocator m_gfx_allocator;
   DeviceBumpAllocator m_async_allocator;
@@ -225,7 +225,7 @@ struct Scene {
   Arena m_rg_arena;
   Renderer *m_renderer = nullptr;
   SwapChain *m_swap_chain = nullptr;
-  ResourceArena m_gfx_arena;
+  ResourceArena m_rcs_arena;
   DescriptorAllocator m_descriptor_allocator;
 
   SceneGraphicsSettings m_settings;
@@ -254,7 +254,7 @@ struct Scene {
   GpuScene m_gpu_scene;
   GpuSceneUpdate m_gpu_scene_update;
 
-  std::unique_ptr<SceneInternalData> m_sid;
+  SceneInternalData *m_sid = nullptr;
 };
 
 } // namespace ren

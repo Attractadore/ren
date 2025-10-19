@@ -4,6 +4,7 @@
 #include "core/Views.hpp"
 #include "ren/core/Format.hpp"
 
+#include <algorithm>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -67,15 +68,17 @@ auto RgPersistent::create_semaphore(String8 name) -> RgSemaphoreId {
   return semaphore;
 }
 
-void RgPersistent::reset(NotNull<Arena *> arena) {
-  m_arena = arena;
-  m_gfx_arena.clear();
-  m_physical_textures = {};
-  m_textures = GenArray<RgTexture>::init(arena);
-  m_semaphores = GenArray<RgSemaphore>::init(arena);
-  m_gfx_semaphore_id = {};
-  m_async_semaphore_id = {};
+RgPersistent RgPersistent::init(NotNull<Arena *> arena,
+                                NotNull<Renderer *> renderer) {
+  return {
+      .m_arena = arena,
+      .m_rcs_arena = ResourceArena::init(arena, renderer),
+      .m_textures = GenArray<RgTexture>::init(arena),
+      .m_semaphores = GenArray<RgSemaphore>::init(arena),
+  };
 }
+
+void RgPersistent::destroy() { m_rcs_arena.clear(); }
 
 namespace {
 
@@ -549,13 +552,14 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
 
   usize num_gfx_passes = m_gfx_schedule.m_size;
 
-  m_rgp->m_gfx_arena.clear();
+  m_renderer->wait_idle();
+  m_rgp->m_rcs_arena.clear();
   for (RgPhysicalTexture &ptex : m_rgp->m_physical_textures) {
     // Skip unused temporal or external textures.
     if (!ptex.usage or ptex.external) {
       continue;
     }
-    ren_try(ptex.handle, m_rgp->m_gfx_arena.create_texture({
+    ren_try(ptex.handle, m_rgp->m_rcs_arena.create_texture({
                              .name = ptex.name,
                              .format = ptex.format,
                              .usage = ptex.usage,
@@ -570,7 +574,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
   }
 
   ren_try(m_rgp->m_gfx_semaphore,
-          m_rgp->m_gfx_arena.create_semaphore(
+          m_rgp->m_rcs_arena.create_semaphore(
 
               {
                   .name = "Render graph graphics queue timeline",
@@ -578,7 +582,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
                   .initial_value = m_rgp->m_gfx_time,
               }));
   ren_try(m_rgp->m_async_semaphore,
-          m_rgp->m_gfx_arena.create_semaphore({
+          m_rgp->m_rcs_arena.create_semaphore({
               .name = "Render graph async compute queue timeline",
               .type = rhi::SemaphoreType::Timeline,
               .initial_value = m_rgp->m_async_time,
