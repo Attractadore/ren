@@ -94,7 +94,6 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
 
   sid->m_gfx_allocator =
       DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 256 * MiB);
-  sid->m_gfx_event_pool = init_event_pool(sid->m_gfx_arena);
   if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
     sid->m_async_allocator =
         DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
@@ -102,7 +101,6 @@ auto init_scene_internal_data(NotNull<Scene *> scene)
       allocator =
           DeviceBumpAllocator::init(*renderer, sid->m_gfx_arena, 16 * MiB);
     }
-    sid->m_async_event_pool = init_event_pool(sid->m_gfx_arena);
   }
 
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
@@ -165,13 +163,7 @@ void next_frame(NotNull<Scene *> scene) {
   std::ignore = cmd.begin(*renderer, frcs->gfx_cmd_pool);
   {
     auto _ = cmd.debug_region("begin-frame");
-    // Sync with previous event signals.
     cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
-    reset_event_pool(cmd, id->m_gfx_event_pool);
-    // Sync with future event signals.
-    // Also flush pipeline and cache so we can safely reuse the memory
-    // allocator.
-    cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
   }
   rhi::CommandBuffer cmd_buffer = cmd.end().value();
   std::ignore = renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer});
@@ -185,8 +177,6 @@ void next_frame(NotNull<Scene *> scene) {
     {
       auto _ = cmd.debug_region("begin-frame");
       cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
-      reset_event_pool(cmd, id->m_async_event_pool);
-      cmd.memory_barrier(rhi::ALL_MEMORY_BARRIER);
     }
     rhi::CommandBuffer cmd_buffer = cmd.end().value();
     std::ignore = renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer});
@@ -1336,15 +1326,13 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
 
   ren_try(RenderGraph render_graph, build_rg(scratch, scene));
 
-  ren_try_to(execute(render_graph,
-                     {
-                         .gfx_cmd_pool = frcs->gfx_cmd_pool,
-                         .async_cmd_pool = frcs->async_cmd_pool,
-                         .gfx_event_pool = &scene->m_sid->m_gfx_event_pool,
-                         .async_event_pool = &scene->m_sid->m_async_event_pool,
-                         .frame_end_semaphore = &frcs->end_semaphore,
-                         .frame_end_time = &frcs->end_time,
-                     }));
+  ren_try_to(
+      execute(render_graph, {
+                                .gfx_cmd_pool = frcs->gfx_cmd_pool,
+                                .async_cmd_pool = frcs->async_cmd_pool,
+                                .frame_end_semaphore = &frcs->end_semaphore,
+                                .frame_end_time = &frcs->end_time,
+                            }));
 
   if (is_amd_anti_lag_enabled(scene)) {
     ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));

@@ -2,8 +2,6 @@
 #include "Buffer.hpp"
 #include "Texture.hpp"
 #include "core/NewType.hpp"
-#include "core/Span.hpp"
-#include "core/Vector.hpp"
 #include "rhi.hpp"
 #include "sh/Std.h"
 
@@ -215,11 +213,10 @@ struct EventData {
   u32 texture_barrier_count = 0;
 };
 
+#if 0
+
 struct EventPool {
   ResourceArena *m_arena = nullptr;
-  Vector<EventData> m_events;
-  Vector<rhi::MemoryBarrier> memory_barriers;
-  Vector<TextureBarrier> texture_barriers;
   u32 m_index = 0;
 };
 
@@ -242,5 +239,7 @@ inline auto set_event(CommandRecorder &cmd, EventPool &pool,
 void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId event);
 
 void reset_event_pool(CommandRecorder &cmd, EventPool &pool);
+
+#endif
 
 } // namespace ren

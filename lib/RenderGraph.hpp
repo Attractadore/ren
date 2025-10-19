@@ -377,8 +377,6 @@ struct RenderGraph {
   RgPersistent *m_rgp = nullptr;
 
   UploadBumpAllocator *m_upload_allocator = nullptr;
-  EventPool *m_gfx_event_pool = nullptr;
-  EventPool *m_async_event_pool = nullptr;
 
   Span<RgRtPass> m_gfx_passes;
   Span<RgRtPass> m_async_passes;
@@ -391,8 +389,6 @@ struct RenderGraph {
 struct RgExecuteInfo {
   Handle<CommandPool> gfx_cmd_pool;
   Handle<CommandPool> async_cmd_pool;
-  EventPool *gfx_event_pool = nullptr;
-  EventPool *async_event_pool = nullptr;
   Handle<Semaphore> *frame_end_semaphore = nullptr;
   u64 *frame_end_time = nullptr;
 };
@@ -568,7 +564,6 @@ private:
 };
 
 struct RgRuntime {
-  EventPool *m_event_pool = nullptr;
   const RenderGraph *m_rg = nullptr;
 
 public:

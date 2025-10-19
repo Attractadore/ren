@@ -1,6 +1,5 @@
 #include "CommandRecorder.hpp"
 #include "Renderer.hpp"
-#include "ResourceArena.hpp"
 #include "core/Math.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Assert.hpp"
@@ -402,6 +401,8 @@ void DebugRegion::end() {
   m_cmd = {};
 }
 
+#if 0
+
 auto init_event_pool(ResourceArena &arena) -> EventPool {
   return {
       .m_arena = &arena,
@@ -450,5 +451,7 @@ void reset_event_pool(CommandRecorder &cmd, EventPool &pool) {
   pool.texture_barriers.clear();
   pool.m_index = 1;
 }
+
+#endif
 
 } // namespace ren
