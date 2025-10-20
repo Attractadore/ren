@@ -4,9 +4,9 @@ add_library(ren-core
   core/Arena.cpp
   core/CmdLine.cpp
   core/IO.cpp
+  core/LinuxVm.cpp
   core/Profiler.cpp
-  core/VmLinux.cpp
-  core/VmWin32.cpp
+  core/Win32Vm.cpp
 )
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC glm::glm fmt::fmt Tracy::TracyClient)
