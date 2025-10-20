@@ -66,13 +66,11 @@ expected<Renderer *> create_renderer(NotNull<Arena *> arena,
                                                       .headless = headless,
                                                   }));
 
-  if (info.adapter == DEFAULT_ADAPTER) {
+  if (info.adapter == DEFAULT_ADAPTER or
+      info.adapter >= rhi::get_adapter_count(renderer->m_instance)) {
     renderer->m_adapter = rhi::get_adapter_by_preference(
         renderer->m_instance, rhi::AdapterPreference::HighPerformance);
   } else {
-    if (info.adapter >= rhi::get_adapter_count(renderer->m_instance)) {
-      throw std::runtime_error("Vulkan: Failed to find requested adapter");
-    }
     renderer->m_adapter = rhi::get_adapter(renderer->m_instance, info.adapter);
   }
 

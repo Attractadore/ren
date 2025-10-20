@@ -4,6 +4,8 @@
 #include "../Scene.hpp"
 #include "../sh/ImGui.h"
 
+#include <algorithm>
+
 namespace ren {
 
 namespace {

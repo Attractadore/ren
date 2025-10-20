@@ -5,6 +5,7 @@
 #include "rhi.hpp"
 #include "sh/Std.h"
 
+#include <bit>
 #include <glm/glm.hpp>
 
 namespace ren {
