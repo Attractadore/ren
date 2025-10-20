@@ -1,5 +1,4 @@
 #pragma once
-#include <compare>
 #include <type_traits>
 
 namespace ren {
@@ -82,7 +81,7 @@ public:
     return static_cast<Underlying>(m_value);
   }
 
-  constexpr auto operator<=>(const Flags &) const noexcept = default;
+  constexpr bool operator==(const Flags &) const noexcept = default;
 };
 
 template <CFlagsEnum E> constexpr E operator&(E l, E r) {

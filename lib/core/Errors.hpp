@@ -1,24 +1,13 @@
 #pragma once
 #include "ren/core/StdDef.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <fmt/base.h>
 #include <source_location>
-#include <stdexcept>
 #include <utility>
 
 namespace ren {
-
-template <typename R> void throw_if_failed(R r, const char *msg) {
-  [[unlikely]] if (r) { throw std::runtime_error{msg}; }
-}
-
-inline void throw_if_failed(bool good, const char *msg) {
-  [[unlikely]] if (!good) { throw std::runtime_error{msg}; }
-}
-
-template <typename P> void throw_if_failed(P *ptr, const char *msg) {
-  throw_if_failed(ptr != nullptr, msg);
-}
 
 template <typename... Ts>
 [[noreturn]] inline void unreachable(fmt::format_string<Ts...> fmt_str,

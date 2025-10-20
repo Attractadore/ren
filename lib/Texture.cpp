@@ -3,6 +3,8 @@
 #include "core/Math.hpp"
 #include "core/Views.hpp"
 
+#include <algorithm>
+
 namespace ren {
 
 auto get_mip_size(glm::uvec3 size, u32 mip) -> glm::uvec3 {

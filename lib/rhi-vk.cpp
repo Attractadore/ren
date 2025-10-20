@@ -1404,8 +1404,7 @@ void set_debug_name(Device device, Semaphore semaphore, String8 name) {
 
 auto wait_for_semaphores(Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
-                         std::chrono::nanoseconds timeout)
-    -> Result<WaitResult> {
+                         u64 timeout) -> Result<WaitResult> {
   ScratchArena scratch;
   u32 cnt = wait_infos.size();
   auto *semaphores = allocate<VkSemaphore>(scratch, cnt);
@@ -1420,8 +1419,8 @@ auto wait_for_semaphores(Device device,
       .pSemaphores = semaphores,
       .pValues = values,
   };
-  VkResult result = device->vk.vkWaitSemaphores(device->handle, &vk_wait_info,
-                                                timeout.count());
+  VkResult result =
+      device->vk.vkWaitSemaphores(device->handle, &vk_wait_info, timeout);
   if (result == VK_SUCCESS) {
     return WaitResult::Success;
   }

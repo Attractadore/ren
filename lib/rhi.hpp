@@ -1,15 +1,14 @@
 #pragma once
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
-#include "ren/core/Span.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 #include "ren/tiny_imageformat.h"
 #include "rhi-vk.hpp"
 
-#include <chrono>
 #include <glm/vec2.hpp>
 
 struct SDL_Window;
@@ -174,8 +173,7 @@ struct SemaphoreWaitInfo {
 
 auto wait_for_semaphores(Device device,
                          TempSpan<const SemaphoreWaitInfo> wait_infos,
-                         std::chrono::nanoseconds timeout)
-    -> Result<WaitResult>;
+                         u64 timeout) -> Result<WaitResult>;
 
 auto map(Device device, Allocation allocation) -> void *;
 
