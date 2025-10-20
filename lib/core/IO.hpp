@@ -1,6 +1,6 @@
 #pragma once
 #include "Result.hpp"
-#include "Span.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"

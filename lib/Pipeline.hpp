@@ -1,5 +1,5 @@
 #pragma once
-#include "core/Span.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/GenIndex.hpp"
 #include "ren/core/String.hpp"
 #include "rhi.hpp"

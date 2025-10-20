@@ -6,9 +6,9 @@
 #include "Semaphore.hpp"
 #include "Texture.hpp"
 #include "core/BitSet.hpp"
-#include "core/Span.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/core/Optional.hpp"
+#include "ren/core/Span.hpp"
 #include "rhi.hpp"
 
 #include <chrono>

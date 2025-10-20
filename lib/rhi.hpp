@@ -1,7 +1,7 @@
 #pragma once
 #include "core/Flags.hpp"
 #include "core/Result.hpp"
-#include "core/Span.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/String.hpp"

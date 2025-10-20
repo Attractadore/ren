@@ -1,6 +1,5 @@
 #include "rhi.hpp"
 #if REN_RHI_VULKAN
-#include "core/Span.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
