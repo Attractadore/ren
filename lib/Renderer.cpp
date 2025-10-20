@@ -1,6 +1,5 @@
 #include "Renderer.hpp"
 #include "SwapChain.hpp"
-#include "core/Views.hpp"
 
 #include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
@@ -392,7 +391,7 @@ void Renderer::destroy(Handle<Event> handle) {
 }
 
 auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
-                                  std::chrono::nanoseconds timeout) const
+                                  u64 timeout) const
     -> Result<rhi::WaitResult, Error> {
   return rhi::wait_for_semaphores(
       m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
@@ -401,8 +400,7 @@ auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
 auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
     -> Result<void, Error> {
   ren_try(rhi::WaitResult wait_result,
-          wait_for_semaphore(semaphore, value,
-                             std::chrono::nanoseconds(UINT64_MAX)));
+          wait_for_semaphore(semaphore, value, UINT64_MAX));
   ren_assert(wait_result == rhi::WaitResult::Success);
   return {};
 }

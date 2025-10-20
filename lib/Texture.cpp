@@ -1,7 +1,8 @@
 #include "Texture.hpp"
 #include "core/Errors.hpp"
 #include "core/Math.hpp"
-#include "core/Views.hpp"
+
+#include <algorithm>
 
 namespace ren {
 

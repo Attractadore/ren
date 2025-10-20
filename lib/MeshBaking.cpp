@@ -1,7 +1,6 @@
 #include "Mesh.hpp"
 #include "MeshSimplification.hpp"
 #include "core/Math.hpp"
-#include "core/Views.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/core/Span.hpp"

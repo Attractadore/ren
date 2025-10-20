@@ -1,7 +1,6 @@
 #include "ResourceUploader.hpp"
 #include "CommandRecorder.hpp"
 #include "Renderer.hpp"
-#include "core/Views.hpp"
 
 #include <ktx.h>
 

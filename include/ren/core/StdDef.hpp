@@ -20,6 +20,30 @@ constexpr usize KiB = 1024;
 constexpr usize MiB = 1024 * KiB;
 constexpr usize GiB = 1024 * MiB;
 
+template <typename I> struct Range {
+  I b = 0;
+  I e = 0;
+
+public:
+  struct Iterator {
+    I m_value = 0;
+
+  public:
+    I operator*() { return m_value; }
+    I operator++() { return ++m_value; }
+    I operator++(int) { return m_value++; }
+
+    bool operator==(const Iterator &) const = default;
+  };
+
+  Iterator begin() const { return {b}; }
+  Iterator end() const { return {e}; }
+};
+
+template <typename I> auto range(I begin, I end) { return Range(begin, end); }
+
+template <typename I> auto range(I end) { return Range(I(0), end); }
+
 } // namespace ren
 
 #if _MSC_VER

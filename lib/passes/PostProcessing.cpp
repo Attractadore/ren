@@ -1,7 +1,6 @@
 #include "PostProcessing.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
-#include "../core/Views.hpp"
 #include "../sh/Random.h"
 #include "LocalToneMappingAccumulate.comp.hpp"
 #include "LocalToneMappingLLM.comp.hpp"

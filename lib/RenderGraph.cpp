@@ -1,7 +1,6 @@
 #include "RenderGraph.hpp"
 #include "CommandRecorder.hpp"
 #include "core/Errors.hpp"
-#include "core/Views.hpp"
 #include "ren/core/Format.hpp"
 
 #include <algorithm>
@@ -818,7 +817,8 @@ void RgBuilder::add_inter_queue_semaphores() {
       semaphore = m_rgp->m_async_semaphore_id;
       other_semaphore = m_rgp->m_gfx_semaphore_id;
     }
-    for (RgPassId pass_id : std::views::reverse(schedule)) {
+    for (isize i = isize(schedule.size()) - 1; i >= 0; --i) {
+      RgPassId pass_id = schedule[i];
       RgPass &pass = m_passes[pass_id];
       if (pass.signal) {
         signal_semaphore(pass_id, semaphore, pass.signal_time);

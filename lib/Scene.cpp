@@ -2,7 +2,6 @@
 #include "CommandRecorder.hpp"
 #include "Formats.hpp"
 #include "SwapChain.hpp"
-#include "core/Views.hpp"
 #include "passes/HiZ.hpp"
 #include "passes/ImGui.hpp"
 #include "passes/MeshPass.hpp"

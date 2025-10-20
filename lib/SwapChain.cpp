@@ -2,7 +2,6 @@
 #include "Formats.hpp"
 #include "Renderer.hpp"
 #include "Scene.hpp"
-#include "core/Views.hpp"
 #include "ren/core/Format.hpp"
 
 #include <SDL3/SDL_video.h>

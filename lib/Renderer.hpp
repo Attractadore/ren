@@ -11,8 +11,6 @@
 #include "ren/core/Span.hpp"
 #include "rhi.hpp"
 
-#include <chrono>
-
 namespace ren {
 
 struct Event {
@@ -182,7 +180,7 @@ public:
   void wait_idle();
 
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
-                                        std::chrono::nanoseconds timeout) const
+                                        u64 timeout) const
       -> Result<rhi::WaitResult, Error>;
 
   [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const

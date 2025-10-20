@@ -2,7 +2,6 @@
 #include "../CommandRecorder.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
-#include "../core/Views.hpp"
 #include "../sh/MeshletCulling.h"
 #include "../sh/StreamScan.h"
 #include "EarlyZ.vert.hpp"

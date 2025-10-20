@@ -1,6 +1,5 @@
 #include "Baking.hpp"
 #include "core/IO.hpp"
-#include "core/Views.hpp"
 #include "ren/baking/baking.hpp"
 #include "ren/core/StdDef.hpp"
 
