@@ -802,7 +802,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
           .mesh_instance = handle,
           .batch = (sh::BatchId)(batch - data.batches.m_data),
       };
-      update.overwrite.push(scratch, {id, gpu_item});
+      update.overwrite.push(cfg.rgb->m_arena, {id, gpu_item});
     }
     update.remove.clear();
   }

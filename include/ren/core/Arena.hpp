@@ -48,7 +48,7 @@ public:
     requires std::is_trivially_destructible_v<T>
   auto allocate(usize count = 1) -> T * {
     void *ptr = allocate(count * sizeof(T), alignof(T));
-    if (not std::is_trivially_constructible_v<T>) {
+    if constexpr (not std::is_trivially_constructible_v<T>) {
       return new (ptr) T[count];
     }
     return (T *)ptr;
