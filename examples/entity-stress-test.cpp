@@ -1,29 +1,28 @@
 #include "ImGuiApp.hpp"
 #include "ren/baking/mesh.hpp"
+#include "ren/core/CmdLine.hpp"
+#include "ren/core/Format.hpp"
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <cmath>
 #include <cstdlib>
-#include <cxxopts.hpp>
-#include <filesystem>
 #include <fmt/format.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <numbers>
 #include <random>
 
-namespace fs = std::filesystem;
-
 namespace {
 
 auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
-               ren::NotNull<ren::Scene *> scene, const char *path)
+               ren::NotNull<ren::Scene *> scene, ren::String8 path)
     -> Result<ren::Handle<ren::Mesh>> {
+  ren::ScratchArena scratch(frame_arena);
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
   const aiScene *ai_scene = importer.ReadFile(
-      path,
+      path.zero_terminated(scratch),
       // clang-format off
       aiProcess_Triangulate |
       aiProcess_GenNormals |
@@ -51,7 +50,6 @@ auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
     }
   }
 
-  ren::ScratchArena scratch;
   ren::Blob blob = ren::bake_mesh_to_memory(
       scratch,
       {
@@ -167,7 +165,7 @@ class EntityStressTestApp : public ImGuiApp {
   glm::mat4x3 *m_transforms = nullptr;
 
 public:
-  auto init(const char *mesh_path, unsigned num_entities, unsigned seed)
+  auto init(ren::String8 mesh_path, unsigned num_entities, ren::u64 seed)
       -> Result<void> {
     TRY_TO(ImGuiApp::init(
         fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
@@ -194,35 +192,48 @@ public:
     return {};
   }
 
-  [[nodiscard]] static auto run(const char *mesh_path, unsigned num_entities,
+  [[nodiscard]] static auto run(ren::String8 mesh_path, unsigned num_entities,
                                 unsigned seed) -> int {
     return AppBase::run<EntityStressTestApp>(mesh_path, num_entities, seed);
   }
 };
 
-int main(int argc, const char *argv[]) {
-  cxxopts::Options options("entity-stress-test",
-                           "Draw call stress test for ren");
-  // clang-format off
-  options.add_options()
-    ("f,file", "Path to mesh", cxxopts::value<fs::path>())
-    ("n,num-entities", "Number of entities to draw", cxxopts::value<unsigned>()->default_value("10000"))
-    ("s,seed", "Random seed", cxxopts::value<unsigned>()->default_value("0"))
-    ("h,help", "Show this message");
-  // clang-format on
-  options.parse_positional({"file"});
-  options.positional_help("file");
+enum EntityStressTestOptions {
+  OPTION_FILE,
+  OPTION_NUM_ENTITIES,
+  OPTION_SEED,
+  OPTION_HELP,
+  OPTION_COUNT,
+};
 
-  cxxopts::ParseResult parse_result = options.parse(argc, argv);
-  if (parse_result.count("help") or not parse_result.count("file")) {
-    fmt::println("{}", options.help());
-    return 0;
+int main(int argc, const char *argv[]) {
+  ren::ScratchArena::init_allocator();
+
+  // clang-format off
+  ren::CmdLineOption options[] = {
+    {OPTION_FILE, ren::CmdLineString, "file", 'f', "Path to mesh", ren::CmdLinePositional},
+    {OPTION_NUM_ENTITIES, ren::CmdLineUInt, "num-entities", 'n', "Number of entities to draw"},
+    {OPTION_SEED, ren::CmdLineUInt, "seed", 's', "Random seed"},
+    {OPTION_HELP, ren::CmdLineFlag, "help", 'h', "Show this message"},
+  };
+  // clang-format on
+  ren::ParsedCmdLineOption parsed[OPTION_COUNT];
+  bool success = ren::parse_cmd_line(argv, options, parsed);
+  if (!success or parsed[OPTION_HELP].is_set) {
+    ren::ScratchArena scratch;
+    fmt::print("{}", ren::cmd_line_help(scratch, argv[0], options));
+    return EXIT_FAILURE;
   }
 
-  auto mesh_path = parse_result["file"].as<fs::path>();
-  auto num_entities = parse_result["num-entities"].as<unsigned>();
-  auto seed = parse_result["seed"].as<unsigned>();
+  ren::String8 mesh_path = parsed[OPTION_FILE].as_string;
+  ren::u32 num_entities = 100'000;
+  if (parsed[OPTION_NUM_ENTITIES].is_set) {
+    num_entities = parsed[OPTION_NUM_ENTITIES].as_uint;
+  }
+  ren::u64 seed = 0;
+  if (parsed[OPTION_SEED].is_set) {
+    seed = parsed[OPTION_SEED].as_uint;
+  }
 
-  return EntityStressTestApp::run(mesh_path.string().c_str(), num_entities,
-                                  seed);
+  return EntityStressTestApp::run(mesh_path, num_entities, seed);
 }

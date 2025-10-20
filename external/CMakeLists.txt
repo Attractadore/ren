@@ -2,10 +2,6 @@ add_subdirectory(glm)
 
 add_subdirectory(fmt)
 
-if (REN_BUILD_SHADER_COMPILER OR REN_BUILD_BAKING_TOOLS OR REN_BUILD_EXAMPLES)
-  add_subdirectory(cxxopts)
-endif()
-
 add_subdirectory(tracy)
 
 add_subdirectory(KTX-Software)

@@ -2,6 +2,7 @@ include(GenerateExportHeader)
 
 add_library(ren-core
   core/Arena.cpp
+  core/CmdLine.cpp
   core/IO.cpp
   core/Profiler.cpp
   core/VmLinux.cpp
@@ -110,7 +111,7 @@ if (REN_BUILD_IMGUI_PLUGIN)
 endif()
 
 add_executable(ren-process-shader process-shader.cpp)
-target_link_libraries(ren-process-shader ren::core cxxopts::cxxopts SPIRV-Headers)
+target_link_libraries(ren-process-shader ren::core SPIRV-Headers)
 add_executable(ren::process-shader ALIAS ren-process-shader)
 
 add_library(ren-baking
@@ -133,7 +134,7 @@ if (REN_BUILD_BAKING_TOOLS)
   target_link_libraries(ren-baking-internal PUBLIC ren-internal ren-baking)
 
   add_executable(ren-bake-ibl bake-ibl.cpp)
-  target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx cxxopts::cxxopts stb)
+  target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx stb)
 endif()
 
 add_subdirectory(sh)

@@ -1,13 +1,14 @@
 #include "Baking.hpp"
 #include "core/IO.hpp"
 #include "ren/baking/baking.hpp"
+#include "ren/core/CmdLine.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/StdDef.hpp"
 
 #include "BakeIrradianceMap.comp.hpp"
 #include "BakeReflectionMap.comp.hpp"
 #include "BakeSpecularMap.comp.hpp"
 
-#include <cxxopts.hpp>
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/std.h>
@@ -252,28 +253,38 @@ auto bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress)
 
 using namespace ren;
 
+enum BakeIblOptions {
+  OPTION_IN,
+  OPTION_OUT,
+  OPTION_NO_COMPRESS,
+  OPTION_HELP,
+  OPTION_COUNT,
+};
+
 int main(int argc, const char *argv[]) {
-  cxxopts::Options options("bake-ibl", "Bake IBL for ren");
+  ren::ScratchArena::init_allocator();
+
   // clang-format off
-  options.add_options()
-    ("in", "input HDR environment map path", cxxopts::value<fs::path>())
-    ("out", "output filtered HDR environment cube map path", cxxopts::value<fs::path>())
-    ("no-compress", "don't compress")
-    ("h,help", "show this message")
-  ;
+  CmdLineOption options[] = {
+    {OPTION_IN, CmdLineString, "in", 0, "input HDR environment map path", CmdLinePositional},
+    {OPTION_OUT, CmdLineString,  "out", 0, "output filtered HDR environment cube map path", CmdLinePositional},
+    {OPTION_NO_COMPRESS, CmdLineFlag, "no-compress", 0, "don't compress"},
+    {OPTION_HELP, CmdLineFlag, "help", 'h', "show this message"},
+  };
   // clang-format on
-  options.parse_positional({"in", "out"});
-  options.positional_help("in out");
-  cxxopts::ParseResult result = options.parse(argc, argv);
-  if (result.count("help") or not result.count("out")) {
-    fmt::println("{}", options.help());
-    return 0;
+  ParsedCmdLineOption parsed[OPTION_COUNT];
+  bool success = parse_cmd_line(argv, options, parsed);
+  if (!success or parsed[OPTION_HELP].is_set) {
+    ScratchArena scratch;
+    fmt::print("{}", cmd_line_help(scratch, argv[0], options));
+    return EXIT_FAILURE;
   }
 
-  auto in_path = result["in"].as<fs::path>();
-  auto out_path = result["out"].as<fs::path>();
+  fs::path in_path = std::string_view(parsed[OPTION_IN].as_string.m_str,
+                                      parsed[OPTION_IN].as_string.m_size);
+  fs::path out_path = std::string_view(parsed[OPTION_OUT].as_string.m_str,
+                                       parsed[OPTION_OUT].as_string.m_size);
 
-  ScratchArena::init_allocator();
   ren::Arena arena = ren::make_arena();
   Renderer *renderer =
       ren_export::create_renderer(&arena, {.type = RendererType::Headless})
@@ -304,7 +315,7 @@ int main(int argc, const char *argv[]) {
                              .height = (u32)h,
                              .data = buffer,
                          },
-                         not result.count("no-compress"))
+                         not parsed[OPTION_NO_COMPRESS].is_set)
           .value();
 
   fs::path out_dir = out_path.parent_path();

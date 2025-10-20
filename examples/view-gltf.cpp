@@ -2,9 +2,10 @@
 #include "core/IO.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
+#include "ren/core/CmdLine.hpp"
+#include "ren/core/Format.hpp"
 
 #include <cstdint>
-#include <cxxopts.hpp>
 #include <filesystem>
 #include <fmt/chrono.h>
 #include <fmt/ranges.h>
@@ -931,28 +932,48 @@ private:
   CameraParams m_camera_params;
 };
 
+enum ViewGltfCmdLineOptions {
+  OPTION_FILE,
+  OPTION_SCENE,
+  OPTION_ENV_MAP,
+  OPTION_HELP,
+  OPTION_COUNT,
+};
+
 int main(int argc, const char *argv[]) {
-  cxxopts::Options options("view-gltf", "A glTF 2.0 viewer for ren");
+  ren::ScratchArena::init_allocator();
+
   // clang-format off
-  options.add_options()
-      ("file", "path to glTF file", cxxopts::value<fs::path>())
-      ("scene", "index of scene to view", cxxopts::value<unsigned>()->default_value("0"))
-      ("env-map", "path to environment map", cxxopts::value<fs::path>())
-      ("h,help", "show this message")
-  ;
+  ren::CmdLineOption options[] = {
+      {OPTION_FILE, ren::CmdLineString, "file", 0, "path to glTF file", ren::CmdLinePositional},
+      {OPTION_SCENE, ren::CmdLineUInt, "scene", 0, "index of scene to view"},
+      {OPTION_ENV_MAP, ren::CmdLineString, "env-map", 0, "path to environment map"},
+      {OPTION_HELP, ren::CmdLineFlag, "help", 'h', "show this message"},
+  };
   // clang-format on
-  options.parse_positional({"file"});
-  options.positional_help("file");
-  cxxopts::ParseResult result = options.parse(argc, argv);
-  if (result.count("help") or not result.count("file")) {
-    fmt::println("{}", options.help());
-    return 0;
+  ren::ParsedCmdLineOption parsed[OPTION_COUNT];
+  bool success = parse_cmd_line(argv, options, parsed);
+  if (!success or parsed[OPTION_HELP].is_set) {
+    ren::ScratchArena scratch;
+    fmt::print("{}", cmd_line_help(scratch, argv[0], options));
+    return EXIT_FAILURE;
+  }
+
+  fs::path path = std::string_view(parsed[OPTION_FILE].as_string.m_str,
+                                   parsed[OPTION_FILE].as_string.m_size);
+  ren::u32 scene = 0;
+  if (parsed[OPTION_SCENE].is_set) {
+    scene = parsed[OPTION_SCENE].as_uint;
+  }
+  fs::path env_map;
+  if (parsed[OPTION_ENV_MAP].is_set) {
+    env_map = std::string_view(parsed[OPTION_ENV_MAP].as_string.m_str,
+                               parsed[OPTION_ENV_MAP].as_string.m_size);
   }
 
   return ViewGlTFApp::run({
-      .path = result["file"].as<fs::path>(),
-      .scene = result["scene"].as<unsigned>(),
-      .env_map = result.count("env-map") ? result["env-map"].as<fs::path>()
-                                         : fs::path(),
+      .path = path,
+      .scene = scene,
+      .env_map = env_map,
   });
 }

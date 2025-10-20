@@ -1,15 +1,16 @@
 #include "core/IO.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/CmdLine.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 
-#include <cxxopts.hpp>
 #include <filesystem>
 #include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <numeric>
 #include <spirv/unified1/spirv.h>
+#include <string_view>
 
 namespace fs = std::filesystem;
 
@@ -315,30 +316,41 @@ const extern size_t {0}Size = sizeof({0}) / sizeof(uint32_t);
 
 } // namespace
 
+enum ProcessShaderOptions {
+  OPTION_HELP,
+  OPTION_FILE,
+  OPTION_SRC,
+  OPTION_PROJECT,
+  OPTION_COUNT,
+};
+
 int main(int argc, const char *argv[]) {
-  CompileOptions opts;
-  cxxopts::Options cmd_opts("shader-compiler", "ren shader compiler tool");
+  ScratchArena::init_allocator();
+
   // clang-format off
-  cmd_opts.add_options()
-      ("file", "path to SPIR-V file", cxxopts::value<fs::path>())
-      ("src", "path to GLSL source file", cxxopts::value<fs::path>())
-      ("project-src-dir", "value of PROJECT_SOURCE_DIR", cxxopts::value<fs::path>())
-      ("h,help", "show this message")
-  ;
+  CmdLineOption options[] = {
+      {OPTION_FILE, CmdLineString, "file", 0, "path to SPIR-V file", CmdLinePositional},
+      {OPTION_SRC, CmdLineString, "src", 0, "path to GLSL source file", CmdLineRequired},
+      {OPTION_PROJECT, CmdLineString, "project-src-dir", 0, "value of PROJECT_SOURCE_DIR", CmdLineRequired},
+      {OPTION_HELP, CmdLineFlag, "help", 'h', "show this message"},
+  };
   // clang-format on
-  cmd_opts.parse_positional({"file"});
-  cmd_opts.positional_help("file");
-  cxxopts::ParseResult result = cmd_opts.parse(argc, argv);
-  if (result.count("help") or !result.count("src") or !result.count("file") or
-      !result.count("project-src-dir")) {
-    fmt::println("{}", cmd_opts.help());
-    return -1;
+  ParsedCmdLineOption parsed[OPTION_COUNT];
+  bool success = parse_cmd_line(argv, options, parsed);
+  if (!success or parsed[OPTION_HELP].is_set) {
+    ScratchArena scratch;
+    fmt::print("{}", cmd_line_help(scratch, argv[0], options));
+    return EXIT_FAILURE;
   }
 
-  opts.project_src_dir = result["project-src-dir"].as<fs::path>();
-  opts.spv = result["file"].as<fs::path>();
-  opts.src = result["src"].as<fs::path>();
+  CompileOptions opts;
+  opts.project_src_dir =
+      std::string_view(parsed[OPTION_PROJECT].as_string.m_str,
+                       parsed[OPTION_PROJECT].as_string.m_size);
+  opts.spv = std::string_view(parsed[OPTION_FILE].as_string.m_str,
+                              parsed[OPTION_FILE].as_string.m_size);
+  opts.src = std::string_view(parsed[OPTION_SRC].as_string.m_str,
+                              parsed[OPTION_SRC].as_string.m_size);
 
-  ScratchArena::init_allocator();
   return process(opts);
 }
