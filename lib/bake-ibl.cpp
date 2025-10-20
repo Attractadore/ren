@@ -201,17 +201,19 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   ren_try_to(execute(rg, {.gfx_cmd_pool = baker->cmd_pool}));
   baker->renderer->wait_idle();
 
-  Vector<DirectX::Image> images;
-  DirectX::TexMetadata mdata = to_dxtex_images(
-      {
-          .format = CUBE_MAP_FORMAT,
-          .width = CUBE_MAP_SIZE,
-          .height = CUBE_MAP_SIZE,
-          .cube_map = true,
-          .num_mips = NUM_CUBE_MAP_MIPS,
-          .data = baker->renderer->map_buffer(readback),
-      },
-      images);
+  ScratchArena scratch;
+  Span<DirectX::Image> images;
+  DirectX::TexMetadata mdata =
+      to_dxtex_images(scratch,
+                      {
+                          .format = CUBE_MAP_FORMAT,
+                          .width = CUBE_MAP_SIZE,
+                          .height = CUBE_MAP_SIZE,
+                          .cube_map = true,
+                          .num_mips = NUM_CUBE_MAP_MIPS,
+                          .data = baker->renderer->map_buffer(readback),
+                      },
+                      &images);
 
   DirectX::ScratchImage compressed;
 

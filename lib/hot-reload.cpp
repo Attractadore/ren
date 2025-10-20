@@ -1,6 +1,5 @@
 #include "core/IO.hpp"
 #include "core/Result.hpp"
-#include "core/Vector.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"
@@ -55,10 +54,11 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
     return {};
   }
 
-  Vector<char> buffer(fs::file_size(from));
-  usize num_read = std::fread(buffer.data(), 1, buffer.size(), src);
+  usize file_size = fs::file_size(from);
+  char *buffer = (char *)scratch->allocate(file_size, 8);
+  usize num_read = std::fread(buffer, 1, file_size, src);
   std::fclose(src);
-  if (num_read != buffer.size()) {
+  if (num_read != file_size) {
     fmt::println("hot_reload: Failed to read from {}", fs::relative(from));
     return Failure(Error::IO);
   }
@@ -82,8 +82,7 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
     String8 from_pdb_str = to_system_path(scratch, from_pdb.string());
     String8 to_pdb_str = to_system_path(scratch, to_pdb.string());
     ren_assert(from_pdb_str.m_size == to_pdb_str.m_size);
-    char *offset =
-        String<char>(buffer.data(), buffer.size()).find(from_pdb_str).m_str;
+    char *offset = String<char>(buffer, file_size).find(from_pdb_str).m_str;
     ren_assert(offset);
     std::ranges::copy_n(to_pdb_str.m_str, to_pdb_str.m_size, offset);
   }
@@ -95,9 +94,9 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
     return {};
   }
 
-  usize num_write = std::fwrite(buffer.data(), 1, buffer.size(), dst);
+  usize num_write = std::fwrite(buffer, 1, file_size, dst);
   std::fclose(dst);
-  if (num_write != buffer.size()) {
+  if (num_write != file_size) {
     fmt::println("hot_reload: Failed to write to {}", fs::relative(to));
     return Failure(Error::IO);
   }

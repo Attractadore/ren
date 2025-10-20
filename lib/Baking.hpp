@@ -2,7 +2,6 @@
 #include "RenderGraph.hpp"
 #include "ResourceArena.hpp"
 #include "ResourceUploader.hpp"
-#include "core/Vector.hpp"
 #include "ren/baking/image.hpp"
 
 namespace DirectX {
@@ -41,8 +40,9 @@ void reset_baker(Baker *baker);
 
 auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image;
 
-auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
-    -> DirectX::TexMetadata;
+DirectX::TexMetadata to_dxtex_images(NotNull<Arena *> arena,
+                                     const TextureInfo &info,
+                                     NotNull<Span<DirectX::Image> *> images);
 
 auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
     -> expected<ktxTexture2 *>;

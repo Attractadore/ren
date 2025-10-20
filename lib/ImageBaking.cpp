@@ -1,9 +1,9 @@
 #include "core/Errors.hpp"
 #include "core/Math.hpp"
 #include "core/Result.hpp"
-#include "core/Vector.hpp"
 #include "core/Views.hpp"
 #include "ren/baking/image.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/StdDef.hpp"
 
 #include <DirectXTex.h>
@@ -42,8 +42,9 @@ auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
   };
 }
 
-auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
-    -> DirectX::TexMetadata {
+DirectX::TexMetadata to_dxtex_images(NotNull<Arena *> arena,
+                                     const TextureInfo &info,
+                                     NotNull<Span<DirectX::Image> *> images) {
   u32 num_faces = info.cube_map ? 6 : 1;
   DirectX::TexMetadata mdata = {
       .width = info.width,
@@ -56,7 +57,8 @@ auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
       .dimension = info.depth > 1 ? DirectX::TEX_DIMENSION_TEXTURE3D
                                   : DirectX::TEX_DIMENSION_TEXTURE2D,
   };
-  images.resize(mdata.mipLevels * mdata.depth * mdata.arraySize);
+  *images = Span<DirectX::Image>::allocate(
+      arena, mdata.mipLevels * mdata.depth * mdata.arraySize);
   u8 *data = (u8 *)info.data;
   for (u32 mip : range(mdata.mipLevels)) {
     glm::uvec3 size = {mdata.width, mdata.height, mdata.depth};
@@ -67,7 +69,7 @@ auto to_dxtex_images(const TextureInfo &info, Vector<DirectX::Image> &images)
     ren_assert(SUCCEEDED(hres));
     for (u32 item : range(mdata.arraySize)) {
       for (u32 plane : range(mdata.depth)) {
-        images[mdata.ComputeIndex(mip, item, plane)] = {
+        (*images)[mdata.ComputeIndex(mip, item, plane)] = {
             .width = size.x,
             .height = size.y,
             .format = mdata.format,

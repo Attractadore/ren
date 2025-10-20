@@ -1,9 +1,8 @@
 #include "core/IO.hpp"
-#include "core/Span.hpp"
-#include "core/Vector.hpp"
 #include "core/Views.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 
 #include <cxxopts.hpp>
@@ -40,12 +39,6 @@ struct Member {
 using namespace ren;
 
 namespace {
-
-void read_file(const fs::path &p, Vector<char> &buffer) {
-  buffer.resize(fs::file_size(p));
-  std::ifstream f(p, std::ios::binary);
-  f.read(buffer.data(), buffer.size());
-}
 
 auto get_file_shader_stage(const fs::path &ext) -> ShaderStage {
   using enum ShaderStage;
@@ -92,30 +85,33 @@ auto process(const CompileOptions &opts) -> int {
   fs::path hpp_dst = fs::path(opts.spv).replace_extension(".hpp");
   fs::path cpp_dst = fs::path(opts.spv).replace_extension(".cpp");
 
-  Vector<char> buffer;
-  buffer.resize(fs::file_size(opts.spv));
-  FILE *f = fopen(opts.spv, "rb");
-  if (!f) {
-    fmt::println(stderr, "Failed to open {} for reading", opts.spv);
-    return -1;
-  }
-  usize num_read = std::fread(buffer.data(), 1, buffer.size(), f);
-  std::fclose(f);
-  if (num_read != buffer.size()) {
-    fmt::println(stderr, "Failed to read from {}", opts.spv);
-    return -1;
+  Span<const u32> spirv;
+  {
+    usize file_size = fs::file_size(opts.spv);
+    char *buffer = (char *)scratch->allocate(file_size, 8);
+    FILE *f = fopen(opts.spv, "rb");
+    if (!f) {
+      fmt::println(stderr, "Failed to open {} for reading", opts.spv);
+      return -1;
+    }
+    usize num_read = std::fread(buffer, 1, file_size, f);
+    std::fclose(f);
+    if (num_read != file_size) {
+      fmt::println(stderr, "Failed to read from {}", opts.spv);
+      return -1;
+    }
+    spirv = {(const u32 *)buffer, file_size / 4};
   }
 
-  Span<const u32> spirv((const u32 *)buffer.data(), buffer.size() / 4);
   // TODO: Verify
   ren_assert(spirv[0] == SpvMagicNumber);
   u32 spv_bound = spirv[3];
 
   // Parse all structs.
-  Vector<String8> struct_names(spv_bound);
-  Vector<u32> struct_member_counts(spv_bound);
-  Vector<u32> struct_member_offsets(spv_bound);
-  Vector<u32> id_def_words(spv_bound);
+  auto struct_names = Span<String8>::allocate(scratch, spv_bound);
+  auto struct_member_counts = Span<u32>::allocate(scratch, spv_bound);
+  auto struct_member_offsets = Span<u32>::allocate(scratch, spv_bound);
+  auto id_def_words = Span<u32>::allocate(scratch, spv_bound);
   u32 pc_type = -1;
   for (usize word = 5; word < spirv.size();) {
     usize num_words = spirv[word] >> SpvWordCountShift;
@@ -160,8 +156,8 @@ auto process(const CompileOptions &opts) -> int {
       struct_member_offsets.back() + struct_member_counts.back();
 
   // Parse all struct members.
-  Vector<String8> member_names(num_members);
-  Vector<u32> member_offsets(num_members);
+  auto member_names = Span<String8>::allocate(scratch, num_members);
+  auto member_offsets = Span<u32>::allocate(scratch, num_members);
   for (usize word = 5; word < spirv.size();) {
     usize num_words = spirv[word] >> SpvWordCountShift;
     SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
