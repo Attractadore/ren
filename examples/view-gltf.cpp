@@ -1,14 +1,12 @@
 #include "ImGuiApp.hpp"
-#include "core/IO.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/CmdLine.hpp"
+#include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 
 #include <cstdint>
-#include <filesystem>
 #include <fmt/chrono.h>
-#include <fmt/ranges.h>
 #include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/color_space.hpp>
@@ -17,7 +15,6 @@
 #include <tiny_gltf.h>
 
 namespace chrono = std::chrono;
-namespace fs = std::filesystem;
 
 enum Projection {
   PROJECTION_PERSPECTIVE,
@@ -55,14 +52,17 @@ auto duration_as_float(chrono::nanoseconds time) -> float {
   return chrono::duration_cast<chrono::duration<float>>(time).count();
 }
 
-auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
+auto load_gltf(ren::Path path) -> Result<tinygltf::Model> {
   tinygltf::TinyGLTF loader;
   tinygltf::Model model;
   std::string err;
   std::string warn;
 
-  if (not fs::exists(path)) {
-    bail("Failed to open file {}: doesn't exist", path);
+  {
+    ren::IoResult<bool> exists = path.exists();
+    if (exists.m_status != ren::IoSuccess or not exists.m_value) {
+      bail("Failed to open file {}: doesn't exist", path);
+    }
   }
 
   log("Load scene...");
@@ -70,9 +70,11 @@ auto load_gltf(const fs::path &path) -> Result<tinygltf::Model> {
 
   bool ret = true;
   if (path.extension() == ".gltf") {
-    ret = loader.LoadASCIIFromFile(&model, &err, &warn, path.string());
+    ret = loader.LoadASCIIFromFile(&model, &err, &warn,
+                                   {path.m_str.begin(), path.m_str.end()});
   } else if (path.extension() == ".glb") {
-    ret = loader.LoadBinaryFromFile(&model, &err, &warn, path.string());
+    ret = loader.LoadBinaryFromFile(&model, &err, &warn,
+                                    {path.m_str.begin(), path.m_str.end()});
   } else {
     bail("Failed to load glTF file {}: invalid extension {}", path,
          path.extension());
@@ -243,12 +245,11 @@ public:
 
   auto walk(int scene) -> Result<void> {
     if (not m_model.extensionsRequired.empty()) {
-      bail("Required glTF extensions not supported: {}",
-           m_model.extensionsRequired);
+      bail("Required glTF extensions not supported");
     }
 
     if (not m_model.extensionsUsed.empty()) {
-      warn("Ignoring used glTF extensions: {}", m_model.extensionsUsed);
+      warn("Ignoring used glTF extensions");
     }
 
     if (not m_model.animations.empty()) {
@@ -765,9 +766,9 @@ private:
 };
 
 struct ViewGltfOptions {
-  fs::path path;
+  ren::Path path;
   unsigned scene = 0;
-  fs::path env_map;
+  ren::Path env_map;
 };
 
 class ViewGlTFApp : public ImGuiApp {
@@ -780,22 +781,14 @@ public:
     ren::Scene *scene = get_scene();
 
     auto env_map = [&]() -> Result<ren::Handle<ren::Image>> {
-      if (options.env_map.empty()) {
+      if (!options.env_map) {
         return {};
       }
-
-      FILE *f = ren::fopen(options.env_map, "rb");
-      if (!f) {
-        bail("Failed to open {}", options.env_map);
+      ren::ScratchArena scratch;
+      auto [blob, status] = ren::read<std::byte>(scratch, options.env_map);
+      if (status != ren::IoSuccess) {
+        bail("Failed to read {}: {}", options.env_map, status);
       }
-
-      std::vector<std::byte> blob(fs::file_size(options.env_map));
-      size_t num_read = std::fread(blob.data(), 1, blob.size(), f);
-      std::fclose(f);
-      if (num_read != blob.size()) {
-        bail("Failed to read from {}", options.env_map);
-      }
-
       return ren::create_image(&m_frame_arena, scene, blob);
     }();
 
@@ -942,33 +935,32 @@ enum ViewGltfCmdLineOptions {
 
 int main(int argc, const char *argv[]) {
   ren::ScratchArena::init_allocator();
+  ren::Arena cmd_line = ren::Arena::init();
 
   // clang-format off
   ren::CmdLineOption options[] = {
-      {OPTION_FILE, ren::CmdLineString, "file", 0, "path to glTF file", ren::CmdLinePositional},
+      {OPTION_FILE, ren::CmdLinePath, "file", 0, "path to glTF file", ren::CmdLinePositional},
       {OPTION_SCENE, ren::CmdLineUInt, "scene", 0, "index of scene to view"},
-      {OPTION_ENV_MAP, ren::CmdLineString, "env-map", 0, "path to environment map"},
+      {OPTION_ENV_MAP, ren::CmdLinePath, "env-map", 0, "path to environment map"},
       {OPTION_HELP, ren::CmdLineFlag, "help", 'h', "show this message"},
   };
   // clang-format on
   ren::ParsedCmdLineOption parsed[OPTION_COUNT];
-  bool success = parse_cmd_line(argv, options, parsed);
+  bool success = parse_cmd_line(&cmd_line, argv, options, parsed);
   if (!success or parsed[OPTION_HELP].is_set) {
     ren::ScratchArena scratch;
     fmt::print("{}", cmd_line_help(scratch, argv[0], options));
     return EXIT_FAILURE;
   }
 
-  fs::path path = std::string_view(parsed[OPTION_FILE].as_string.m_str,
-                                   parsed[OPTION_FILE].as_string.m_size);
+  ren::Path path = parsed[OPTION_FILE].as_path;
   ren::u32 scene = 0;
   if (parsed[OPTION_SCENE].is_set) {
     scene = parsed[OPTION_SCENE].as_uint;
   }
-  fs::path env_map;
+  ren::Path env_map;
   if (parsed[OPTION_ENV_MAP].is_set) {
-    env_map = std::string_view(parsed[OPTION_ENV_MAP].as_string.m_str,
-                               parsed[OPTION_ENV_MAP].as_string.m_size);
+    env_map = parsed[OPTION_ENV_MAP].as_path;
   }
 
   return ViewGlTFApp::run({

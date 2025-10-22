@@ -1,7 +1,7 @@
 #include "Baking.hpp"
-#include "core/IO.hpp"
 #include "ren/baking/baking.hpp"
 #include "ren/core/CmdLine.hpp"
+#include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/StdDef.hpp"
 
@@ -9,9 +9,7 @@
 #include "BakeReflectionMap.comp.hpp"
 #include "BakeSpecularMap.comp.hpp"
 
-#include <filesystem>
 #include <fmt/base.h>
-#include <fmt/std.h>
 #include <ktx.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -263,49 +261,46 @@ enum BakeIblOptions {
 
 int main(int argc, const char *argv[]) {
   ren::ScratchArena::init_allocator();
+  ren::Arena arena = ren::make_arena();
 
   // clang-format off
   CmdLineOption options[] = {
-    {OPTION_IN, CmdLineString, "in", 0, "input HDR environment map path", CmdLinePositional},
-    {OPTION_OUT, CmdLineString,  "out", 0, "output filtered HDR environment cube map path", CmdLinePositional},
+    {OPTION_IN, CmdLinePath, "in", 0, "input HDR environment map path", CmdLinePositional},
+    {OPTION_OUT, CmdLinePath,  "out", 0, "output filtered HDR environment cube map path", CmdLinePositional},
     {OPTION_NO_COMPRESS, CmdLineFlag, "no-compress", 0, "don't compress"},
     {OPTION_HELP, CmdLineFlag, "help", 'h', "show this message"},
   };
   // clang-format on
   ParsedCmdLineOption parsed[OPTION_COUNT];
-  bool success = parse_cmd_line(argv, options, parsed);
+  bool success = parse_cmd_line(&arena, argv, options, parsed);
   if (!success or parsed[OPTION_HELP].is_set) {
     ScratchArena scratch;
     fmt::print("{}", cmd_line_help(scratch, argv[0], options));
     return EXIT_FAILURE;
   }
 
-  fs::path in_path = std::string_view(parsed[OPTION_IN].as_string.m_str,
-                                      parsed[OPTION_IN].as_string.m_size);
-  fs::path out_path = std::string_view(parsed[OPTION_OUT].as_string.m_str,
-                                       parsed[OPTION_OUT].as_string.m_size);
-
-  ren::Arena arena = ren::make_arena();
+  Path in_path = parsed[OPTION_IN].as_path;
+  Path out_path = parsed[OPTION_OUT].as_path;
   Renderer *renderer =
       ren_export::create_renderer(&arena, {.type = RendererType::Headless})
           .value();
 
   Baker *baker = create_baker(&arena, renderer).value();
 
-  FILE *f = fopen(in_path, "rb");
-  if (!f) {
-    fmt::println(stderr, "Failed to open {} for reading", in_path);
-    return -1;
+  IoResult<Span<stbi_uc>> buffer = read<stbi_uc>(&arena, in_path);
+  if (!buffer) {
+    fmt::println(stderr, "Failed to read {}: {}", in_path, buffer.m_status);
+    return EXIT_FAILURE;
   }
 
   int w, h;
-  const float *buffer = stbi_loadf_from_file(f, &w, &h, nullptr, 4);
-  if (!buffer) {
+  const float *hdr_map = stbi_loadf_from_memory(
+      buffer.m_value.data(), buffer.m_value.size_bytes(), &w, &h, nullptr, 4);
+  if (!hdr_map) {
     fmt::println(stderr, "Failed to read HDR environment map from {}: {}",
                  in_path, stbi_failure_reason());
-    return -1;
+    return EXIT_FAILURE;
   }
-  std::fclose(f);
 
   Blob blob =
       bake_ibl_to_memory(baker,
@@ -313,17 +308,17 @@ int main(int argc, const char *argv[]) {
                              .format = TinyImageFormat_R32G32B32A32_SFLOAT,
                              .width = (u32)w,
                              .height = (u32)h,
-                             .data = buffer,
+                             .data = hdr_map,
                          },
                          not parsed[OPTION_NO_COMPRESS].is_set)
           .value();
 
-  fs::path out_dir = out_path.parent_path();
-  if (not out_dir.empty()) {
-    fs::create_directory(out_dir);
+  std::ignore = create_directory(out_path.parent());
+  if (IoStatus status = write(out_path, blob.data, blob.size);
+      status != IoStatus::Success) {
+    fmt::println(stderr, "Failed to write {}: {}", out_path, status);
+    return EXIT_FAILURE;
   }
-
-  write_to_file(blob.data, blob.size, out_path).value();
 
   destroy_baker(baker);
 }

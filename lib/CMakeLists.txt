@@ -3,9 +3,11 @@ include(GenerateExportHeader)
 add_library(ren-core
   core/Arena.cpp
   core/CmdLine.cpp
-  core/IO.cpp
+  core/FileSystem.cpp
+  core/LinuxFileSystem.cpp
   core/LinuxVm.cpp
   core/Profiler.cpp
+  core/Win32FileSystem.cpp
   core/Win32Vm.cpp
 )
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})

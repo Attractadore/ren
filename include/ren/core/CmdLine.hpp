@@ -1,4 +1,5 @@
 #pragma once
+#include "FileSystem.hpp"
 #include "Span.hpp"
 #include "StdDef.hpp"
 #include "String.hpp"
@@ -10,11 +11,13 @@ enum class CmdLineOptionType {
   Int,
   UInt,
   String,
+  Path,
 };
 constexpr CmdLineOptionType CmdLineFlag = CmdLineOptionType::Flag;
 constexpr CmdLineOptionType CmdLineInt = CmdLineOptionType::Int;
 constexpr CmdLineOptionType CmdLineUInt = CmdLineOptionType::UInt;
 constexpr CmdLineOptionType CmdLineString = CmdLineOptionType::String;
+constexpr CmdLineOptionType CmdLinePath = CmdLineOptionType::Path;
 
 enum class CmdLineOptionCategory {
   Optional,
@@ -43,10 +46,15 @@ struct ParsedCmdLineOption {
     i64 as_int;
     u64 as_uint;
     String8 as_string = {};
+    Path as_path;
   };
 };
 
 bool parse_cmd_line(const char *argv[], Span<const CmdLineOption> options,
+                    Span<ParsedCmdLineOption> parsed);
+
+bool parse_cmd_line(Arena *arena, const char *argv[],
+                    Span<const CmdLineOption> options,
                     Span<ParsedCmdLineOption> parsed);
 
 String8 cmd_line_help(NotNull<Arena *> arena, const char *argv_0,

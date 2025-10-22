@@ -29,6 +29,9 @@ auto throw_error(std::string err) -> std::string {
 auto AppBase::init(const char *app_name) -> Result<void> {
   m_app_name = app_name;
 
+  if (!ren::ScratchArena::get_allocator()) {
+    ren::ScratchArena::init_allocator();
+  }
   m_arena = ren::Arena::init();
   m_frame_arena = ren::Arena::init();
 

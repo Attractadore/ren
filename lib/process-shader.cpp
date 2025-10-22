@@ -1,18 +1,13 @@
-#include "core/IO.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/CmdLine.hpp"
+#include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 
-#include <filesystem>
-#include <fmt/ranges.h>
-#include <fmt/std.h>
 #include <numeric>
 #include <spirv/unified1/spirv.h>
-#include <string_view>
-
-namespace fs = std::filesystem;
+#include <utility>
 
 namespace ren {
 
@@ -24,9 +19,9 @@ enum class ShaderStage {
 };
 
 struct CompileOptions {
-  fs::path src;
-  fs::path spv;
-  fs::path project_src_dir;
+  Path src;
+  Path spv;
+  Path project_src_dir;
 };
 
 struct Member {
@@ -40,7 +35,7 @@ using namespace ren;
 
 namespace {
 
-auto get_file_shader_stage(const fs::path &ext) -> ShaderStage {
+auto get_file_shader_stage(Path ext) -> ShaderStage {
   using enum ShaderStage;
   if (ext == ".vert") {
     return Vertex;
@@ -76,31 +71,48 @@ auto process(const CompileOptions &opts) -> int {
     return -1;
   }
 
-  fs::path shader_header = fs::absolute(opts.src).replace_extension(".h");
-  if (not fs::exists(shader_header)) {
-    fmt::println(stderr, "{} does not exist", shader_header);
-    return -1;
+  Path shader_header;
+  {
+    IoResult<Path> result = opts.src.absolute(scratch);
+    if (!result) {
+      fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
+                   result.m_status);
+      return EXIT_FAILURE;
+    }
+    shader_header = result.m_value.replace_extension(scratch, Path::init(".h"));
+  }
+  {
+    IoResult<bool> result = shader_header.exists();
+    if (!result or !result.m_value) {
+      fmt::println(stderr, "{} does not exist: {}", shader_header,
+                   result.m_status);
+      return EXIT_FAILURE;
+    }
   }
 
-  fs::path hpp_dst = fs::path(opts.spv).replace_extension(".hpp");
-  fs::path cpp_dst = fs::path(opts.spv).replace_extension(".cpp");
+  Path project_src_dir;
+  {
+    IoResult<Path> result = opts.project_src_dir.absolute(scratch);
+    if (!result) {
+      fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
+                   result.m_status);
+      return EXIT_FAILURE;
+    }
+    project_src_dir = result.m_value;
+  }
+
+  Path hpp_dst = opts.spv.replace_extension(scratch, Path::init(".hpp"));
+  Path cpp_dst = opts.spv.replace_extension(scratch, Path::init(".cpp"));
 
   Span<const u32> spirv;
   {
-    usize file_size = fs::file_size(opts.spv);
-    char *buffer = (char *)scratch->allocate(file_size, 8);
-    FILE *f = fopen(opts.spv, "rb");
-    if (!f) {
-      fmt::println(stderr, "Failed to open {} for reading", opts.spv);
-      return -1;
+    IoResult<Span<char>> buffer = read(scratch, opts.spv);
+    if (!buffer) {
+      fmt::println(stderr, "Failed to read {}:", opts.spv, buffer.m_status);
+      return EXIT_FAILURE;
     }
-    usize num_read = std::fread(buffer, 1, file_size, f);
-    std::fclose(f);
-    if (num_read != file_size) {
-      fmt::println(stderr, "Failed to read from {}", opts.spv);
-      return -1;
-    }
-    spirv = {(const u32 *)buffer, file_size / 4};
+    spirv = {(const u32 *)buffer.m_value.data(),
+             buffer.m_value.size_bytes() / 4};
   }
 
   // TODO: Verify
@@ -182,8 +194,8 @@ auto process(const CompileOptions &opts) -> int {
 
   auto header = StringBuilder8::init(scratch, 128 * 1024);
   auto source = StringBuilder8::init(scratch, 128 * 1024);
-  fmt::format_to(header.back_inserter(), "#pragma once\n#include \"{}\"\n\n",
-                 to_system_path(scratch, shader_header));
+  format_to(&header, "#pragma once\n#include \"{}\"\n\n",
+            shader_header.native(scratch));
 
   // Generate static asserts for struct fields.
   header.push("#include <cstddef>\n\n");
@@ -205,12 +217,10 @@ auto process(const CompileOptions &opts) -> int {
       continue;
     }
 
-    fmt::format_to(header.back_inserter(), "// {}\n", name);
+    format_to(&header, "// {}\n", name);
     for (usize m : range(struct_member_counts[i])) {
-      fmt::format_to(header.back_inserter(),
-                     "static_assert(offsetof(::ren::sh::{}, {}) == {});\n",
-                     name, member_names[offset + m],
-                     member_offsets[offset + m]);
+      format_to(&header, "static_assert(offsetof(::ren::sh::{}, {}) == {});\n",
+                name, member_names[offset + m], member_offsets[offset + m]);
     }
     header.push('\n');
   }
@@ -228,19 +238,18 @@ auto process(const CompileOptions &opts) -> int {
       String8 member_name = member_names[offset + i];
 
       auto member_type = StringBuilder8::init(scratch);
-      fmt::format_to(member_type.back_inserter(), "decltype(::ren::sh::{}::{})",
-                     pc_name, member_name);
+      format_to(&member_type, "decltype(::ren::sh::{}::{})", pc_name,
+                member_name);
 
-      fmt::format_to(member_declarations.back_inserter(),
-                     "  ::ren::RgPushConstant<{}> {};\n", member_type,
-                     member_name);
-      fmt::format_to(member_conversions.back_inserter(),
-                     "    .{0} = rg.to_push_constant<{1}>(from.{0}),\n",
-                     member_name, member_type);
+      format_to(&member_declarations, "  ::ren::RgPushConstant<{}> {};\n",
+                member_type, member_name);
+      format_to(&member_conversions,
+                "    .{0} = rg.to_push_constant<{1}>(from.{0}),\n", member_name,
+                member_type);
     }
 
-    fmt::format_to(header.back_inserter(),
-                   R"(#ifndef Rg{0}_DEFINED
+    format_to(&header,
+              R"(#ifndef Rg{0}_DEFINED
 #define Rg{0}_DEFINED
 
 #include "{3}/lib/RenderGraph.hpp"
@@ -260,16 +269,16 @@ inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{0}& from) -> 
 #endif // Rg{0}_DEFINED
 
 )",
-                   pc_name, member_declarations, member_conversions,
-                   to_system_path(scratch, fs::absolute(opts.project_src_dir)));
+              pc_name, member_declarations, member_conversions,
+              project_src_dir.native(scratch));
   }
 
   auto binary_variable_name = StringBuilder8::init(scratch);
-  fmt::format_to(binary_variable_name.back_inserter(), "{}{}", opts.src.stem(),
-                 get_stage_short_name(stage));
+  format_to(&binary_variable_name, "{}{}", opts.src.stem(),
+            get_stage_short_name(stage));
 
-  fmt::format_to(header.back_inserter(),
-                 R"(#include <cstddef>
+  format_to(&header,
+            R"(#include <cstddef>
 #include <cstdint>
 
 namespace ren {{
@@ -278,37 +287,38 @@ extern const uint32_t {}[];
 extern const size_t {}Size;
 
 }})",
-                 binary_variable_name, binary_variable_name);
+            binary_variable_name, binary_variable_name);
 
-  fmt::format_to(source.back_inserter(), R"(#include <cstddef>
+  StringBuilder spirv_str(scratch);
+  format_to(&spirv_str, "{:#010x}", spirv[0]);
+  for (usize i : range<usize>(1, spirv.size())) {
+    format_to(&spirv_str, ",\n  {:#010x}", spirv[i]);
+  }
+
+  format_to(&source, R"(#include <cstddef>
 #include <cstdint>
 
 namespace ren {{
 
 const extern uint32_t {0}[] = {{
-  {1:#010x}
+  {1}
 }};
 const extern size_t {0}Size = sizeof({0}) / sizeof(uint32_t);
 }}
 )",
-                 binary_variable_name, fmt::join(spirv, ",\n  "));
+            binary_variable_name, spirv_str);
 
-  {
-    std::ofstream f(hpp_dst, std::ios::binary);
-    if (!f) {
-      fmt::println("Failed to open {} for writing", hpp_dst);
-      return -1;
-    }
-    f.write(header.m_buffer.m_data, header.m_buffer.m_size);
+  if (IoStatus status =
+          write(hpp_dst, header.m_buffer.m_data, header.m_buffer.m_size);
+      status != IoSuccess) {
+    fmt::println(stderr, "Failed write {}: {}", hpp_dst, status);
+    return EXIT_FAILURE;
   }
-
-  {
-    std::ofstream f(cpp_dst, std::ios::binary);
-    if (!f) {
-      fmt::println("Failed to open {} for writing", hpp_dst);
-      return -1;
-    }
-    f.write(source.m_buffer.m_data, source.m_buffer.m_size);
+  if (IoStatus status =
+          write(cpp_dst, source.m_buffer.m_data, source.m_buffer.m_size);
+      status != IoSuccess) {
+    fmt::println(stderr, "Failed write {}: {}", cpp_dst, status);
+    return EXIT_FAILURE;
   }
 
   return 0;
@@ -326,31 +336,26 @@ enum ProcessShaderOptions {
 
 int main(int argc, const char *argv[]) {
   ScratchArena::init_allocator();
+  ScratchArena scratch;
 
   // clang-format off
   CmdLineOption options[] = {
-      {OPTION_FILE, CmdLineString, "file", 0, "path to SPIR-V file", CmdLinePositional},
-      {OPTION_SRC, CmdLineString, "src", 0, "path to GLSL source file", CmdLineRequired},
-      {OPTION_PROJECT, CmdLineString, "project-src-dir", 0, "value of PROJECT_SOURCE_DIR", CmdLineRequired},
+      {OPTION_FILE, CmdLinePath, "file", 0, "path to SPIR-V file", CmdLinePositional},
+      {OPTION_SRC, CmdLinePath, "src", 0, "path to GLSL source file", CmdLineRequired},
+      {OPTION_PROJECT, CmdLinePath, "project-src-dir", 0, "value of PROJECT_SOURCE_DIR", CmdLineRequired},
       {OPTION_HELP, CmdLineFlag, "help", 'h', "show this message"},
   };
   // clang-format on
   ParsedCmdLineOption parsed[OPTION_COUNT];
-  bool success = parse_cmd_line(argv, options, parsed);
+  bool success = parse_cmd_line(scratch, argv, options, parsed);
   if (!success or parsed[OPTION_HELP].is_set) {
-    ScratchArena scratch;
     fmt::print("{}", cmd_line_help(scratch, argv[0], options));
     return EXIT_FAILURE;
   }
 
-  CompileOptions opts;
-  opts.project_src_dir =
-      std::string_view(parsed[OPTION_PROJECT].as_string.m_str,
-                       parsed[OPTION_PROJECT].as_string.m_size);
-  opts.spv = std::string_view(parsed[OPTION_FILE].as_string.m_str,
-                              parsed[OPTION_FILE].as_string.m_size);
-  opts.src = std::string_view(parsed[OPTION_SRC].as_string.m_str,
-                              parsed[OPTION_SRC].as_string.m_size);
-
-  return process(opts);
+  return process({
+      .src = parsed[OPTION_SRC].as_path,
+      .spv = parsed[OPTION_FILE].as_path,
+      .project_src_dir = parsed[OPTION_PROJECT].as_path,
+  });
 }

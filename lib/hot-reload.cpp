@@ -1,20 +1,19 @@
-#include "core/IO.hpp"
 #include "core/Result.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/FileSystem.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 
 #include <SDL3/SDL_loadso.h>
-#include <filesystem>
+#include <algorithm>
+#include <cerrno>
 #include <fmt/base.h>
-#include <fmt/std.h>
 
 #if __linux__
 #include <sys/inotify.h>
 #include <unistd.h>
 #endif
-
-namespace fs = std::filesystem;
 
 namespace ren {
 
@@ -28,7 +27,7 @@ namespace {
 int lib_inotify_fd = -1;
 int lib_watch_fd = -1;
 #else
-fs::file_time_type lib_timestamp = {};
+u64 lib_timestamp = {};
 #endif
 
 SDL_SharedObject *lib_handle = nullptr;
@@ -39,66 +38,59 @@ SDL_SharedObject *lib_handle = nullptr;
 // Also, Visual Studio's debugger locks the DLL's PDB after it has been loaded
 // and doesn't unlock it until the process exits. Make a temporary copy of the
 // PDB and patch the temporary DLL to use it fix this.
-auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
+Path make_dll_copy(Path from) {
   ScratchArena scratch;
 
   if (from.extension() != ".dll") {
     return from;
   }
-  from.make_preferred();
 
-  FILE *src = fopen(from, "rb");
-  if (!src) {
-    fmt::println("hot_reload: Failed to open {} for reading: {}",
-                 fs::relative(from), std::strerror(errno));
+  Span<char> buffer;
+  {
+    IoResult<Span<char>> result = read(scratch, from);
+    if (!result) {
+      fmt::println(stderr, "hot_reload: Failed to read {}: {}", from,
+                   result.m_status);
+      return {};
+    }
+    buffer = result.m_value;
+  }
+
+  String<char> filename = from.filename().m_str.copy(scratch);
+  std::ranges::fill_n(filename.m_str, filename.m_size - 4, '_');
+  Path to = from.replace_filename(scratch, Path::init(filename));
+  ren_assert(from.m_str.m_size == to.m_str.m_size);
+
+  fmt::println("hot_reload: Copy {} to {}", from, to);
+
+  Path from_pdb = from.replace_extension(scratch, Path::init(".pdb"));
+  bool from_pdb_exists = false;
+  {
+    IoResult<bool> result = from_pdb.exists();
+    from_pdb_exists = result and result.m_value;
+  }
+  if (from_pdb_exists) {
+    Path to_pdb = to.replace_extension(scratch, Path::init(".pdb"));
+
+    fmt::println("hot_reload: Copy {} to {}", from_pdb, to_pdb);
+    IoStatus copy_result = copy_file(from_pdb, to_pdb);
+    if (copy_result != IoSuccess) {
+      fmt::println(stderr, "hot_reload: Failed to copy {} to {}: {}", from_pdb,
+                   to_pdb, copy_result);
+      return {};
+    }
+
+    fmt::println("hot_reload: Change {} PDB path to {}", to, to_pdb);
+    String<char> substr = String<char>(buffer.data(), buffer.size())
+                              .find(from_pdb.native(scratch));
+    ren_assert(substr.m_size > 0);
+    std::ranges::copy(to_pdb.native(scratch), substr.m_str);
+  }
+
+  IoStatus result = write(to, buffer);
+  if (result != IoSuccess) {
+    fmt::println(stderr, "hot_reload: Failed to write {}: {}", to, result);
     return {};
-  }
-
-  usize file_size = fs::file_size(from);
-  char *buffer = (char *)scratch->allocate(file_size, 8);
-  usize num_read = std::fread(buffer, 1, file_size, src);
-  std::fclose(src);
-  if (num_read != file_size) {
-    fmt::println("hot_reload: Failed to read from {}", fs::relative(from));
-    return Failure(Error::IO);
-  }
-
-  fs::path::string_type filename = from.filename().native();
-  std::ranges::fill_n(filename.data(), filename.size() - 4, '_');
-  fs::path to = fs::path(from).replace_filename(filename);
-
-  fmt::println("hot_reload: Copy {} to {}", fs::relative(from),
-               fs::relative(to));
-
-  fs::path from_pdb = fs::path(from).replace_extension(".pdb");
-  if (fs::exists(from_pdb)) {
-    fs::path to_pdb = fs::path(to).replace_extension(".pdb");
-    fmt::println("hot_reload: Copy {} to {}", fs::relative(from_pdb),
-                 fs::relative(to_pdb));
-    fs::copy(from_pdb, to_pdb, fs::copy_options::overwrite_existing);
-
-    fmt::println("hot_reload: Change {} PDB path to {}", fs::relative(to),
-                 fs::relative(to_pdb));
-    String8 from_pdb_str = to_system_path(scratch, from_pdb.string());
-    String8 to_pdb_str = to_system_path(scratch, to_pdb.string());
-    ren_assert(from_pdb_str.m_size == to_pdb_str.m_size);
-    char *offset = String<char>(buffer, file_size).find(from_pdb_str).m_str;
-    ren_assert(offset);
-    std::ranges::copy_n(to_pdb_str.m_str, to_pdb_str.m_size, offset);
-  }
-
-  FILE *dst = fopen(to, "wb");
-  if (!dst) {
-    fmt::println("hot_reload: Failed to open {} for writing: {}",
-                 fs::relative(to), std::strerror(errno));
-    return {};
-  }
-
-  usize num_write = std::fwrite(buffer, 1, file_size, dst);
-  std::fclose(dst);
-  if (num_write != file_size) {
-    fmt::println("hot_reload: Failed to write to {}", fs::relative(to));
-    return Failure(Error::IO);
   }
 
   return to;
@@ -109,30 +101,43 @@ auto make_dll_copy(fs::path from) -> Result<fs::path, Error> {
 auto create_renderer(NotNull<Arena *> arena, const RendererInfo &info)
     -> expected<Renderer *> {
   if (!hot_reload::vtbl_ref) {
+    ScratchArena scratch;
+
+    Path lib_path = Path::init(scratch, REN_LIB_PATH);
+
 #if __linux__
     fmt::println("hot_reload: Create inotify instance");
     lib_inotify_fd = inotify_init1(IN_NONBLOCK);
     if (lib_inotify_fd == -1) {
-      fmt::println("hot_reload: Failed to create inotify instance: {}",
+      fmt::println(stderr, "hot_reload: Failed to create inotify instance: {}",
                    strerror(errno));
     }
 
-    fmt::println("hot_reload: Add {} to watch list", fs::relative(REN_LIB_DIR));
+    fmt::println("hot_reload: Add {} to watch list", REN_LIB_DIR);
     lib_watch_fd =
         inotify_add_watch(lib_inotify_fd, REN_LIB_DIR, IN_CLOSE_WRITE);
     if (lib_watch_fd == -1) {
-      fmt::println("hot_reload: Failed to add inotify watch: {}",
+      fmt::println(stderr, "hot_reload: Failed to add inotify watch: {}",
                    strerror(errno));
     }
 #else
-    lib_timestamp = fs::last_write_time(REN_LIB_PATH);
+    auto [ts, status] = last_write_time(lib_path);
+    if (status != IoSuccess) {
+      fmt::println(stderr, "hot_reload: Failed to get DLL timestamp: {}",
+                   status);
+    } else {
+      lib_timestamp = ts;
+    }
 #endif
 
-    ren_try(fs::path load_path, make_dll_copy(REN_LIB_PATH));
-    fmt::println("hot_reload: Load {}", fs::relative(load_path));
-    lib_handle = SDL_LoadObject(load_path.string().c_str());
+    Path load_path = make_dll_copy(lib_path);
+    if (!load_path) {
+      return std::unexpected(Error::IO);
+    }
+    fmt::println("hot_reload: Load {}", load_path);
+    lib_handle = SDL_LoadObject(load_path.m_str.zero_terminated(scratch));
     if (!lib_handle) {
-      fmt::println("hot_reload: Failed to load {}: {}", fs::relative(load_path),
+      fmt::println(stderr, "hot_reload: Failed to load {}: {}", load_path,
                    SDL_GetError());
       return std::unexpected(Error::IO);
     }
@@ -149,6 +154,10 @@ auto create_renderer(NotNull<Arena *> arena, const RendererInfo &info)
 auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   ren_try_to(hot_reload::vtbl_ref->draw(scene, draw_info));
 
+  ScratchArena scratch;
+
+  Path lib_path = Path::init(scratch, REN_LIB_PATH);
+
 #if __linux__
   if (lib_watch_fd == -1) {
     return {};
@@ -156,10 +165,10 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   bool changed = false;
   while (true) {
     alignas(inotify_event) char buffer[2048];
-    ssize_t count = read(lib_inotify_fd, buffer, sizeof(buffer));
+    ssize_t count = ::read(lib_inotify_fd, buffer, sizeof(buffer));
     if (count == -1 and errno != EWOULDBLOCK) {
-      fmt::println("hot_reload: Failed to get inotify update: {}: {}", errno,
-                   strerror(errno));
+      fmt::println(stderr, "hot_reload: Failed to get inotify update: {}: {}",
+                   errno, strerror(errno));
       return std::unexpected(Error::IO);
     }
     if (count == -1 and errno == EWOULDBLOCK) {
@@ -178,15 +187,18 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
     return {};
   }
 #else
-  fs::file_time_type new_timestamp = fs::last_write_time(REN_LIB_PATH);
-  if (new_timestamp <= lib_timestamp) {
+  auto [ts, status] = last_write_time(lib_path);
+  if (status != IoSuccess) {
+    fmt::println(stderr, "hot_reload: Failed to get DLL timestamp: {}", status);
     return {};
   }
-  lib_timestamp = new_timestamp;
+  if (ts <= lib_timestamp) {
+    return {};
+  }
+  lib_timestamp = ts;
 #endif
 
-  fmt::println("hot_reload: {} has changed, reload",
-               fs::relative(REN_LIB_PATH));
+  fmt::println("hot_reload: {} has changed, reload", REN_LIB_PATH);
 
   fmt::println("hot_reload: Run unload hook");
   hot_reload::vtbl_ref->unload(scene);
@@ -194,11 +206,14 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   fmt::println("hot_reload: Unload old DLL");
   SDL_UnloadObject(lib_handle);
 
-  ren_try(fs::path load_path, make_dll_copy(REN_LIB_PATH));
+  Path load_path = make_dll_copy(lib_path);
+  if (!load_path) {
+    return std::unexpected(Error::IO);
+  }
   fmt::println("hot_reload: Load new DLL");
-  lib_handle = SDL_LoadObject(load_path.string().c_str());
+  lib_handle = SDL_LoadObject(load_path.m_str.zero_terminated(scratch));
   if (!lib_handle) {
-    fmt::println("hot_reload: Failed to load {}: {}", fs::relative(load_path),
+    fmt::println(stderr, "hot_reload: Failed to load {}: {}", load_path,
                  SDL_GetError());
     return std::unexpected(Error::IO);
   }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Array.hpp"
+#include "Span.hpp"
 #include "StdDef.hpp"
 
 #include <cstring>
@@ -73,7 +74,7 @@ public:
     return buf;
   }
 
-  String copy(NotNull<Arena *> arena) const {
+  String<char> copy(NotNull<Arena *> arena) const {
     char *buf = arena->allocate<char>(m_size);
     std::memcpy(buf, m_str, m_size);
     return {buf, m_size};
@@ -100,7 +101,77 @@ public:
     return find({needle, len});
   }
 
+  const char *find(char needle) const {
+    for (usize i : range(m_size)) {
+      if (m_str[i] == needle) {
+        return &m_str[i];
+      }
+    }
+    return nullptr;
+  }
+
+  const char *rfind(char needle) const {
+    for (isize i = m_size - 1; i >= 0; --i) {
+      if (m_str[i] == needle) {
+        return &m_str[i];
+      }
+    }
+    return nullptr;
+  }
+
+  C *begin() const { return m_str; }
+
+  C *end() const { return m_str + m_size; }
+
+  C &operator[](usize i) const { return m_str[i]; }
+
+  Span<String> split(NotNull<Arena *> arena, char separator) {
+    DynamicArray<String> items;
+
+    usize s = 0;
+    usize i = 0;
+    for (; i < m_size; ++i) {
+      if (m_str[i] == separator) {
+        items.push(arena, String(&m_str[s], i - s));
+        s = i + 1;
+      }
+    }
+    items.push(arena, String(&m_str[s], i - s));
+
+    return {items.m_data, items.m_size};
+  }
+
+  Span<String> split(NotNull<Arena *> arena, String<const char> separators) {
+    DynamicArray<String> items;
+
+    usize s = 0;
+    usize i = 0;
+    for (; i < m_size; ++i) {
+      bool is_separator = false;
+      for (char s : separators) {
+        if (m_str[i] == s) {
+          is_separator = true;
+          break;
+        }
+      }
+      if (is_separator) {
+        items.push(arena, String(&m_str[s], i - s));
+        s = i + 1;
+      }
+    }
+    items.push(arena, String(&m_str[s], i - s));
+
+    return {items.m_data, items.m_size};
+  }
+
   operator String<const char>() const { return {m_str, m_size}; }
+
+  explicit operator bool() const { return m_size > 0; }
+
+  String<C> substr(usize start, usize count) const {
+    ren_assert(start + count <= m_size);
+    return {m_str + start, count};
+  }
 };
 
 using String8 = String<const char>;
@@ -173,6 +244,17 @@ public:
   }
 
   void push(String8 str) { m_buffer.push(m_arena, str.m_str, str.m_size); }
+
+  char pop() { return m_buffer.pop(); }
+
+  void join(Span<String8> strs, String8 separator) {
+    [[unlikely]] if (strs.empty()) { return; }
+    push(strs[0]);
+    for (usize i : range<usize>(1, strs.size())) {
+      push(separator);
+      push(strs[i]);
+    }
+  }
 };
 
 using StringBuilder8 = StringBuilder;

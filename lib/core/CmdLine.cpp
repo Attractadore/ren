@@ -42,7 +42,7 @@ const CmdLineOption *parse_opt_name(const char *arg,
   return positional;
 }
 
-bool parse_opt_value(const char *arg, CmdLineOption opt,
+bool parse_opt_value(Arena *arena, const char *arg, CmdLineOption opt,
                      NotNull<ParsedCmdLineOption *> parsed) {
   *parsed = {};
   switch (opt.type) {
@@ -61,6 +61,9 @@ bool parse_opt_value(const char *arg, CmdLineOption opt,
   case CmdLineOptionType::String:
     parsed->as_string = String8::init(arg);
     break;
+  case CmdLineOptionType::Path:
+    parsed->as_path = Path::init(arena, String8::init(arg));
+    break;
   }
   parsed->is_set = true;
   return true;
@@ -70,9 +73,15 @@ bool parse_opt_value(const char *arg, CmdLineOption opt,
 
 bool parse_cmd_line(const char *argv[], Span<const CmdLineOption> options,
                     Span<ParsedCmdLineOption> parsed) {
+  return parse_cmd_line(nullptr, argv, options, parsed);
+}
+
+bool parse_cmd_line(Arena *arena, const char *argv[],
+                    Span<const CmdLineOption> options,
+                    Span<ParsedCmdLineOption> parsed) {
   ren_assert(options.size() == parsed.size());
 
-  ScratchArena scratch;
+  ScratchArena scratch = arena ? ScratchArena(arena) : ScratchArena();
 
   DynamicArray<CmdLineOption> positional_opts;
   for (CmdLineOption opt : options) {
@@ -112,7 +121,7 @@ bool parse_cmd_line(const char *argv[], Span<const CmdLineOption> options,
     if (!argv[0]) {
       return false;
     }
-    if (!parse_opt_value(argv[0], *opt, &parsed[opt->tag])) {
+    if (!parse_opt_value(arena, argv[0], *opt, &parsed[opt->tag])) {
       return false;
     }
     argv++;
@@ -176,6 +185,8 @@ String8 cmd_line_help(NotNull<Arena *> arena, const char *argv_0,
       break;
     case CmdLineOptionType::String:
       str.push(" string");
+    case CmdLineOptionType::Path:
+      str.push(" path");
       break;
     }
     usize line_width = str.m_buffer.m_size - offset;
