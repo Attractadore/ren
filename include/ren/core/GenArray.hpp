@@ -2,10 +2,10 @@
 #include "Assert.hpp"
 #include "GenIndexPool.hpp"
 #include "Iterator.hpp"
-#include "Optional.hpp"
 #include "TypeTraits.hpp"
 
 #include <concepts>
+#include <utility>
 
 namespace ren {
 
@@ -96,18 +96,10 @@ public:
     erase(*it);
   }
 
-  void erase(K key) { try_pop(key); }
+  void erase(K key) { pop(key); }
 
   auto pop(K key) -> T {
     ren_assert(contains(key));
-    m_indices.erase(key);
-    return m_values[key];
-  }
-
-  auto try_pop(K key) -> Optional<T> {
-    if (not contains(key)) {
-      return None;
-    }
     m_indices.erase(key);
     return m_values[key];
   }

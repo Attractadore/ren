@@ -11,6 +11,7 @@
 #include "ren/core/Array.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/core/NotNull.hpp"
+#include "ren/core/Optional.hpp"
 #include "ren/core/String.hpp"
 
 namespace ren {

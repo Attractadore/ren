@@ -1,10 +1,31 @@
 #pragma once
-#include <optional>
+#include "Assert.hpp"
 
 namespace ren {
 
-template <typename T> using Optional = std::optional<T>;
+template <typename T> struct Optional {
+  T m_value = T();
+  bool m_active = false;
 
-inline constexpr auto None = std::nullopt;
+public:
+  Optional() = default;
+
+  Optional(T value) {
+    m_value = value;
+    m_active = true;
+  }
+
+  explicit operator bool() const { return m_active; }
+
+  T &operator*() {
+    ren_assert(m_active);
+    return m_value;
+  }
+
+  const T &operator*() const {
+    ren_assert(m_active);
+    return m_value;
+  }
+};
 
 } // namespace ren

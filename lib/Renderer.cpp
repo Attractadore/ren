@@ -143,29 +143,13 @@ auto Renderer::create_buffer(const BufferCreateInfo &create_info)
 }
 
 void Renderer::destroy(Handle<Buffer> handle) {
-  if (Optional<Buffer> buffer = m_buffers.try_pop(handle)) {
-    rhi::destroy_buffer(m_device, buffer->handle);
-  };
+  Buffer buffer = m_buffers.pop(handle);
+  rhi::destroy_buffer(m_device, buffer.handle);
 }
-
-auto Renderer::try_get_buffer(Handle<Buffer> buffer) const -> const Buffer * {
-  return m_buffers.try_get(buffer);
-};
 
 auto Renderer::get_buffer(Handle<Buffer> buffer) const -> const Buffer & {
   ren_assert(m_buffers.contains(buffer));
   return m_buffers[buffer];
-};
-
-auto Renderer::try_get_buffer_view(Handle<Buffer> handle) const
-    -> Optional<BufferView> {
-  if (const Buffer *buffer = try_get_buffer(handle)) {
-    return BufferView{
-        .buffer = handle,
-        .count = buffer->size,
-    };
-  };
-  return {};
 };
 
 auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
@@ -238,22 +222,21 @@ auto Renderer::create_external_texture(
 }
 
 void Renderer::destroy(Handle<Texture> handle) {
-  if (Optional<Texture> texture = m_textures.try_pop(handle)) {
-    ImageViewBlock *last = nullptr;
-    ImageViewBlock *views = texture->views;
-    while (views) {
-      for (const ImageView &view : Span(views->views, views->num_views)) {
-        rhi::destroy_image_view(m_device, view.handle);
-      }
-      last = views;
-      views = views->next;
+  Texture texture = m_textures.pop(handle);
+  ImageViewBlock *last = nullptr;
+  ImageViewBlock *views = texture.views;
+  while (views) {
+    for (const ImageView &view : Span(views->views, views->num_views)) {
+      rhi::destroy_image_view(m_device, view.handle);
     }
-    last->next = m_image_view_free_list;
-    m_image_view_free_list = texture->views;
-    if (rhi::get_allocation(m_device, texture->handle)) {
-      rhi::destroy_image(m_device, texture->handle);
-    }
-  };
+    last = views;
+    views = views->next;
+  }
+  last->next = m_image_view_free_list;
+  m_image_view_free_list = texture.views;
+  if (rhi::get_allocation(m_device, texture.handle)) {
+    rhi::destroy_image(m_device, texture.handle);
+  }
 }
 
 auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
@@ -374,9 +357,8 @@ auto Renderer::create_semaphore(const SemaphoreCreateInfo &create_info)
 }
 
 void Renderer::destroy(Handle<Semaphore> handle) {
-  if (Optional<Semaphore> semaphore = m_semaphores.try_pop(handle)) {
-    rhi::destroy_semaphore(m_device, semaphore->handle);
-  }
+  Semaphore semaphore = m_semaphores.pop(handle);
+  rhi::destroy_semaphore(m_device, semaphore.handle);
 }
 
 auto Renderer::create_event() -> Handle<Event> {
@@ -384,9 +366,8 @@ auto Renderer::create_event() -> Handle<Event> {
 }
 
 void Renderer::destroy(Handle<Event> handle) {
-  if (Optional<Event> event = m_events.try_pop(handle)) {
-    rhi::destroy_event(m_device, event->handle);
-  }
+  Event event = m_events.pop(handle);
+  rhi::destroy_event(m_device, event.handle);
 }
 
 auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
@@ -429,11 +410,10 @@ auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
 }
 
 void Renderer::destroy(Handle<CommandPool> handle) {
-  if (Optional<CommandPool> pool = m_command_pools.try_pop(handle)) {
-    auto &free_list = m_cmd_pool_free_lists[(i32)pool->queue_family];
-    pool->handle->next = free_list;
-    free_list = pool->handle;
-  }
+  CommandPool pool = m_command_pools.pop(handle);
+  auto &free_list = m_cmd_pool_free_lists[(i32)pool.queue_family];
+  pool.handle->next = free_list;
+  free_list = pool.handle;
 }
 
 auto Renderer::get_command_pool(Handle<CommandPool> pool)
@@ -521,10 +501,8 @@ auto Renderer::create_graphics_pipeline(
 }
 
 void Renderer::destroy(Handle<GraphicsPipeline> handle) {
-  if (Optional<GraphicsPipeline> pipeline =
-          m_graphics_pipelines.try_pop(handle)) {
-    rhi::destroy_pipeline(m_device, pipeline->handle);
-  }
+  GraphicsPipeline pipeline = m_graphics_pipelines.pop(handle);
+  rhi::destroy_pipeline(m_device, pipeline.handle);
 }
 
 auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
@@ -606,10 +584,8 @@ auto Renderer::create_compute_pipeline(
 }
 
 void Renderer::destroy(Handle<ComputePipeline> handle) {
-  if (Optional<ComputePipeline> pipeline =
-          m_compute_pipelines.try_pop(handle)) {
-    rhi::destroy_pipeline(m_device, pipeline->handle);
-  }
+  ComputePipeline pipeline = m_compute_pipelines.pop(handle);
+  rhi::destroy_pipeline(m_device, pipeline.handle);
 }
 
 auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const

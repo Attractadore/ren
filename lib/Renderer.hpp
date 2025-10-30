@@ -6,7 +6,6 @@
 #include "Semaphore.hpp"
 #include "Texture.hpp"
 #include "ren/core/GenArray.hpp"
-#include "ren/core/Optional.hpp"
 #include "ren/core/Span.hpp"
 #include "rhi.hpp"
 
@@ -62,20 +61,9 @@ public:
 
   void destroy(Handle<Buffer> buffer);
 
-  auto try_get_buffer(Handle<Buffer> buffer) const -> const Buffer *;
-
   auto get_buffer(Handle<Buffer> buffer) const -> const Buffer &;
 
-  auto try_get_buffer_view(Handle<Buffer> buffer) const -> Optional<BufferView>;
-
   auto get_buffer_view(Handle<Buffer> buffer) const -> BufferView;
-
-  template <typename T>
-  auto try_get_buffer_slice(Handle<Buffer> buffer) const
-      -> Optional<BufferSlice<T>> {
-    try_get_buffer_view(buffer).transform(
-        [](const BufferView &view) { return BufferSlice<T>(view); });
-  }
 
   template <typename T>
   auto get_buffer_slice(Handle<Buffer> buffer) const -> BufferSlice<T> {
@@ -111,10 +99,11 @@ public:
   template <typename T>
   auto try_get_buffer_device_ptr(Handle<Buffer> handle,
                                  u64 map_offset = 0) const -> DevicePtr<T> {
-    if (const Buffer *buffer = try_get_buffer(handle)) {
-      return DevicePtr<T>(buffer->address ? (buffer->address + map_offset) : 0);
+    if (!handle) {
+      return {};
     }
-    return {};
+    const Buffer &buffer = get_buffer(handle);
+    return DevicePtr<T>(buffer.address ? (buffer.address + map_offset) : 0);
   }
 
   template <typename T>
