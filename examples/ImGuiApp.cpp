@@ -5,15 +5,17 @@
 #include <SDL3/SDL_video.h>
 #include <imgui.hpp>
 
-auto ImGuiApp::init(const char *name) -> Result<void> {
-  TRY_TO(AppBase::init(name));
+void ImGuiApp::init(const char *name) {
+  AppBase::init(name);
 
   if (!IMGUI_CHECKVERSION()) {
-    bail("ImGui: failed to check version");
+    fmt::println(stderr, "ImGui: failed to check version");
+    exit(EXIT_FAILURE);
   }
 
   if (!ImGui::CreateContext()) {
-    bail("ImGui: failed to create context");
+    fmt::println(stderr, "ImGui: failed to create context");
+    exit(EXIT_FAILURE);
   }
 
   ImGui::StyleColorsDark();
@@ -42,19 +44,20 @@ auto ImGuiApp::init(const char *name) -> Result<void> {
   style.ScaleAllSizes(display_scale / pixel_density);
 
   if (!ImGui_ImplSDL3_InitForVulkan(get_window())) {
-    bail("ImGui-SDL3: failed to init backend");
+    fmt::println(stderr, "ImGui-SDL3: failed to init backend");
+    exit(EXIT_FAILURE);
   }
 
-  TRY_TO(ren::init_imgui(&m_frame_arena, get_scene()));
-  return {};
+  ren::init_imgui(&m_frame_arena, get_scene());
 }
 
-ImGuiApp::~ImGuiApp() {
+void ImGuiApp::quit() {
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext();
+  AppBase::quit();
 }
 
-auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
+void ImGuiApp::process_event(const SDL_Event &event) {
   switch (event.type) {
   default: {
     ImGui_ImplSDL3_ProcessEvent(&event);
@@ -66,10 +69,10 @@ auto ImGuiApp::process_event(const SDL_Event &event) -> Result<void> {
       event.key.scancode == SDL_SCANCODE_G) {
     m_imgui_enabled = not m_imgui_enabled;
   }
-  return AppBase::process_event(event);
+  AppBase::process_event(event);
 }
 
-auto ImGuiApp::begin_frame() -> Result<void> {
+void ImGuiApp::begin_frame() {
   ImGui_ImplSDL3_NewFrame();
   ImGuiIO &io = ImGui::GetIO();
 
@@ -93,18 +96,15 @@ auto ImGuiApp::begin_frame() -> Result<void> {
   if (ImGui::CollapsingHeader("Renderer settings")) {
     ren::draw_imgui(get_scene());
   }
-
-  return {};
 }
 
-auto ImGuiApp::end_frame() -> Result<void> {
+void ImGuiApp::end_frame() {
   ImGui::End();
   ImGui::PopFont();
   if (m_imgui_enabled) {
     ImGui::Render();
   }
   ImGui::EndFrame();
-  return {};
 }
 
 auto ImGuiApp::imgui_wants_capture_keyboard() const -> bool {

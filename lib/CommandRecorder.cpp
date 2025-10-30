@@ -7,17 +7,14 @@
 
 namespace ren {
 
-auto CommandRecorder::begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
-    -> Result<void, Error> {
+void CommandRecorder::begin(Renderer &renderer, Handle<CommandPool> cmd_pool) {
   m_renderer = &renderer;
-  ren_try(m_cmd, rhi::begin_command_buffer(
-                     renderer.get_rhi_device(),
-                     renderer.get_command_pool(cmd_pool).handle));
-  return {};
+  m_cmd = rhi::begin_command_buffer(renderer.get_rhi_device(),
+                                    renderer.get_command_pool(cmd_pool).handle);
 }
 
-auto CommandRecorder::end() -> Result<rhi::CommandBuffer, Error> {
-  ren_try_to(rhi::end_command_buffer(m_cmd));
+rhi::CommandBuffer CommandRecorder::end() {
+  rhi::end_command_buffer(m_cmd);
   return std::exchange(m_cmd, {});
 }
 
@@ -223,7 +220,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
       continue;
     }
     render_targets[i] = {
-        .rtv = m_renderer->get_rtv(rt.rtv).value(),
+        .rtv = m_renderer->get_rtv(rt.rtv),
         .ops = rt.ops,
     };
     render_area = glm::min(
@@ -234,7 +231,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
   if (info.depth_stencil_target.dsv.texture) {
     const DepthStencilTarget &dst = info.depth_stencil_target;
     depth_stencil_target = {
-        .dsv = m_renderer->get_rtv(dst.dsv).value(),
+        .dsv = m_renderer->get_rtv(dst.dsv),
         .ops = dst.ops,
     };
     render_area = glm::min(

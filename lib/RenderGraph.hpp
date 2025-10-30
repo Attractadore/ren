@@ -5,7 +5,6 @@
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "Texture.hpp"
-#include "core/Flags.hpp"
 #include "core/NewType.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Array.hpp"
@@ -397,8 +396,7 @@ struct RgExecuteInfo {
   u64 *frame_end_time = nullptr;
 };
 
-auto execute(const RenderGraph &rg, const RgExecuteInfo &execute_info)
-    -> Result<void, Error>;
+void execute(const RenderGraph &rg, const RgExecuteInfo &execute_info);
 
 struct RgBuildInfo {
   DeviceBumpAllocator *gfx_allocator = nullptr;
@@ -495,7 +493,7 @@ public:
 
   void set_external_semaphore(RgSemaphoreId id, Handle<Semaphore> semaphore);
 
-  auto build(const RgBuildInfo &build_info) -> Result<RenderGraph, Error>;
+  RenderGraph build(const RgBuildInfo &build_info);
 
 private:
   friend RgPassBuilder;
@@ -546,7 +544,7 @@ private:
     pass.cb.init(m_arena, std::forward<F>(cb));
   }
 
-  auto alloc_textures() -> Result<void, Error>;
+  void alloc_textures();
 
   void alloc_buffers(DeviceBumpAllocator &gfx_allocator,
                      DeviceBumpAllocator &async_allocator,
@@ -773,9 +771,8 @@ public:
                                   const rhi::ImageState &usage,
                                   const rhi::SamplerCreateInfo &sampler_info)
       -> RgTextureToken {
-    return read_texture(
-        texture, usage,
-        m_builder->m_renderer->get_sampler(sampler_info).value());
+    return read_texture(texture, usage,
+                        m_builder->m_renderer->get_sampler(sampler_info));
   }
 
   [[nodiscard]] auto read_texture(RgTextureId texture,
@@ -798,9 +795,8 @@ public:
   try_read_texture(RgTextureId texture, const rhi::ImageState &usage,
                    const rhi::SamplerCreateInfo &sampler_info)
       -> RgTextureToken {
-    return try_read_texture(
-        texture, usage,
-        m_builder->m_renderer->get_sampler(sampler_info).value());
+    return try_read_texture(texture, usage,
+                            m_builder->m_renderer->get_sampler(sampler_info));
   }
 
   [[nodiscard]] auto

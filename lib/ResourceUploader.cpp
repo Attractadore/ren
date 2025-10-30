@@ -20,28 +20,28 @@ void ResourceUploader::stage_buffer(NotNull<Arena *> arena, Renderer &renderer,
                               });
 }
 
-auto ResourceUploader::create_texture(NotNull<Arena *> arena,
-                                      ResourceArena &rcs_arena,
-                                      UploadBumpAllocator &allocator,
-                                      ktxTexture2 *ktx_texture2)
-    -> Result<Handle<Texture>, Error> {
+rhi::Result<Handle<Texture>> ResourceUploader::create_texture(
+    NotNull<Arena *> arena, ResourceArena &rcs_arena,
+    UploadBumpAllocator &allocator, ktxTexture2 *ktx_texture2) {
   TinyImageFormat format = TinyImageFormat_FromVkFormat(
       (TinyImageFormat_VkFormat)ktx_texture2->vkFormat);
   if (!format) {
-    return std::unexpected(Error::InvalidFormat);
+    return rhi::Error::FeatureNotPresent;
   }
-  ren_try(auto texture, rcs_arena.create_texture({
-                            .format = format,
-                            .usage = rhi::ImageUsage::ShaderResource |
-                                     rhi::ImageUsage::TransferSrc |
-                                     rhi::ImageUsage::TransferDst,
-                            .width = ktx_texture2->baseWidth,
-                            .height = ktx_texture2->baseHeight,
-                            .depth = ktx_texture2->baseDepth,
-                            .cube_map = ktx_texture2->numFaces > 1,
-                            .num_mips = ktx_texture2->numLevels,
-                        }));
-  stage_texture(arena, allocator, ktxTexture(ktx_texture2), texture);
+  auto texture = rcs_arena.create_texture({
+      .format = format,
+      .usage = rhi::ImageUsage::ShaderResource | rhi::ImageUsage::TransferSrc |
+               rhi::ImageUsage::TransferDst,
+      .width = ktx_texture2->baseWidth,
+      .height = ktx_texture2->baseHeight,
+      .depth = ktx_texture2->baseDepth,
+      .cube_map = ktx_texture2->numFaces > 1,
+      .num_mips = ktx_texture2->numLevels,
+  });
+  if (!texture) {
+    return texture.error();
+  }
+  stage_texture(arena, allocator, ktxTexture(ktx_texture2), *texture);
   return texture;
 }
 
@@ -81,14 +81,13 @@ void ResourceUploader::stage_texture(NotNull<Arena *> arena,
   m_texture_copies.push(arena, copy);
 }
 
-auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
-    -> Result<void, Error> {
+void ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool) {
   if (m_buffer_copies.m_size == 0 and m_texture_copies.m_size == 0) {
-    return {};
+    return;
   }
 
   CommandRecorder cmd;
-  ren_try_to(cmd.begin(renderer, pool));
+  cmd.begin(renderer, pool);
 
   if (m_buffer_copies.m_size > 0) {
     auto _ = cmd.debug_region("upload-buffers");
@@ -138,11 +137,7 @@ auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     m_texture_copies.clear();
   }
 
-  ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-
-  ren_try_to(renderer.submit(rhi::QueueFamily::Graphics, {cmd_buffer}));
-
-  return {};
+  renderer.submit(rhi::QueueFamily::Graphics, {cmd.end()});
 }
 
 } // namespace ren

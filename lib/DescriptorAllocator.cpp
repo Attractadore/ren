@@ -62,7 +62,7 @@ auto DescriptorAllocator::allocate_texture(Renderer &renderer, SrvDesc desc)
     -> sh::Handle<void> {
   u32 index = free_list_allocate(&m_srv_free_list, &m_num_srvs);
   rhi::write_srv_descriptor_heap(renderer.get_rhi_device(),
-                                 {renderer.get_srv(desc).value()}, index);
+                                 {renderer.get_srv(desc)}, index);
   return sh::Handle(index, sh::DescriptorKind::Texture);
 };
 
@@ -77,8 +77,7 @@ auto DescriptorAllocator::allocate_sampled_texture(Renderer &renderer,
     -> sh::Handle<void> {
   u32 index = free_list_allocate(&m_cis_free_list, &m_num_cis);
   rhi::write_cis_descriptor_heap(renderer.get_rhi_device(),
-                                 {renderer.get_srv(desc).value()}, {sampler},
-                                 index);
+                                 {renderer.get_srv(desc)}, {sampler}, index);
   return sh::Handle(index, sh::DescriptorKind::Sampler);
 };
 
@@ -92,7 +91,7 @@ auto DescriptorAllocator::allocate_storage_texture(Renderer &renderer,
     -> sh::Handle<void> {
   u32 index = free_list_allocate(&m_uav_free_list, &m_num_uavs);
   rhi::write_uav_descriptor_heap(renderer.get_rhi_device(),
-                                 {renderer.get_uav(desc).value()}, index);
+                                 {renderer.get_uav(desc)}, index);
   return sh::Handle(index, sh::DescriptorKind::RWTexture);
 };
 

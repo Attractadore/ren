@@ -1,4 +1,5 @@
 #pragma once
+#include "../core/FileSystem.hpp"
 #include "../core/Span.hpp"
 #include "../ren.hpp"
 
@@ -14,8 +15,7 @@ struct MeshInfo {
   Span<const u32> indices;
 };
 
-[[nodiscard]] auto bake_mesh_to_file(const MeshInfo &info, FILE *out)
-    -> expected<void>;
+[[nodiscard]] IoResult<void> bake_mesh_to_file(const MeshInfo &info, File file);
 
 [[nodiscard]] Blob bake_mesh_to_memory(NotNull<Arena *> arena,
                                        const MeshInfo &info);

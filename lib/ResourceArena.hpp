@@ -37,30 +37,32 @@ public:
 
   template <typename T = std::byte>
   auto create_buffer(BufferCreateInfo create_info)
-      -> Result<BufferSlice<T>, Error> {
+      -> rhi::Result<BufferSlice<T>> {
     create_info.size = create_info.count * sizeof(T);
-    ren_try(BufferView view, create_buffer(create_info));
-    return BufferSlice<T>(view);
+    auto view = create_buffer(create_info);
+    if (!view) {
+      return view.error();
+    }
+    return BufferSlice<T>(*view);
   }
 
   auto create_buffer(const BufferCreateInfo &create_info)
-      -> Result<BufferView, Error>;
+      -> rhi::Result<BufferView>;
 
   auto create_texture(const TextureCreateInfo &create_info)
-      -> Result<Handle<Texture>, Error>;
+      -> rhi::Result<Handle<Texture>>;
 
-  auto create_semaphore(const SemaphoreCreateInfo &create_info)
-      -> Result<Handle<Semaphore>, Error>;
+  Handle<Semaphore> create_semaphore(const SemaphoreCreateInfo &create_info);
 
   Handle<Event> create_event();
 
-  auto create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info)
-      -> Result<Handle<GraphicsPipeline>, Error>;
+  Handle<GraphicsPipeline>
+  create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info);
 
-  auto create_compute_pipeline(const ComputePipelineCreateInfo &create_info)
-      -> Result<Handle<ComputePipeline>, Error>;
+  Handle<ComputePipeline>
+  create_compute_pipeline(const ComputePipelineCreateInfo &create_info);
 
-  Result<Handle<CommandPool>, Error>
+  Handle<CommandPool>
   create_command_pool(const CommandPoolCreateInfo &create_info);
 
   void clear();

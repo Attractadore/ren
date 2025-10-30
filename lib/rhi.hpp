@@ -1,8 +1,8 @@
 #pragma once
-#include "core/Flags.hpp"
-#include "core/Result.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
+#include "ren/core/Flags.hpp"
+#include "ren/core/Result.hpp"
 #include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 #include "ren/ren.hpp"
@@ -15,40 +15,17 @@ struct SDL_Window;
 
 namespace ren::rhi {
 
-struct Error {
-  enum Code {
-    Unknown,
-    Unsupported,
-    FeatureNotPresent,
-    OutOfDate,
-    Incomplete,
-  };
-  Code code = {};
-
-  Error() = default;
-  Error(Code code) { this->code = code; }
-
-  operator ren::Error() const { return ren::Error::RHI; }
+enum class Error {
+  OutOfMemory,
+  FeatureNotPresent,
+  Unknown,
 };
-
-inline auto fail(Error::Code code) -> Failure<Error> {
-  return Failure(Error(code));
-}
-
-inline bool operator==(const Error &error, Error::Code code) {
-  return error.code == code;
-}
-
-inline bool operator==(Error::Code code, const Error &error) {
-  return error == code;
-}
 
 template <typename T> using Result = Result<T, Error>;
 
-[[nodiscard]] auto load(bool headless) -> Result<void>;
+[[nodiscard]] Result<void> load(bool headless);
 
-void unload(Instance instance);
-[[nodiscard]] auto load(Instance instance) -> Result<void>;
+[[nodiscard]] Result<void> load(Instance instance);
 
 struct InstanceCreateInfo {
   bool debug_names = false;
@@ -122,12 +99,13 @@ struct DeviceCreateInfo {
   AdapterFeatures features;
 };
 
-auto create_device(NotNull<Arena *> arena, Instance instance,
-                   const DeviceCreateInfo &create_info) -> Result<Device>;
+[[nodiscard]] auto create_device(NotNull<Arena *> arena, Instance instance,
+                                 const DeviceCreateInfo &create_info)
+    -> Result<Device>;
 
 void destroy_device(Device device);
 
-auto device_wait_idle(Device device) -> Result<void>;
+void device_wait_idle(Device device);
 
 auto get_queue(Device device, QueueFamily family) -> Queue;
 
@@ -136,11 +114,11 @@ struct SemaphoreState {
   u64 value = 0;
 };
 
-auto queue_submit(Queue queue, Span<const CommandBuffer> cmd_buffers,
+void queue_submit(Queue queue, Span<const CommandBuffer> cmd_buffers,
                   Span<const SemaphoreState> wait_semaphores,
-                  Span<const SemaphoreState> signal_semaphores) -> Result<void>;
+                  Span<const SemaphoreState> signal_semaphores);
 
-auto queue_wait_idle(Queue queue) -> Result<void>;
+void queue_wait_idle(Queue queue);
 
 enum class SemaphoreType {
   Binary,
@@ -153,8 +131,8 @@ struct SemaphoreCreateInfo {
   u64 initial_value = 0;
 };
 
-auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
-    -> Result<Semaphore>;
+Semaphore create_semaphore(Device device,
+                           const SemaphoreCreateInfo &create_info);
 
 void destroy_semaphore(Device device, Semaphore semaphore);
 
@@ -170,11 +148,11 @@ struct SemaphoreWaitInfo {
   u64 value = 0;
 };
 
-auto wait_for_semaphores(Device device,
-                         Span<const SemaphoreWaitInfo> wait_infos, u64 timeout)
-    -> Result<WaitResult>;
+WaitResult wait_for_semaphores(Device device,
+                               Span<const SemaphoreWaitInfo> wait_infos,
+                               u64 timeout);
 
-auto map(Device device, Allocation allocation) -> void *;
+void *map(Device device, Allocation allocation);
 
 struct BufferCreateInfo {
   usize size = 0;
@@ -302,8 +280,8 @@ struct ImageViewCreateInfo {
   u32 num_layers = 0;
 };
 
-auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
-    -> Result<ImageView>;
+ImageView create_image_view(Device device,
+                            const ImageViewCreateInfo &create_info);
 
 void destroy_image_view(Device device, ImageView view);
 
@@ -366,8 +344,7 @@ constexpr SamplerCreateInfo SAMPLER_LINEAR_MIP_NEAREST_CLAMP = {
     .address_mode_w = SamplerAddressMode::ClampToEdge,
 };
 
-auto create_sampler(Device device, const SamplerCreateInfo &create_info)
-    -> Result<Sampler>;
+Sampler create_sampler(Device device, const SamplerCreateInfo &create_info);
 
 void destroy_sampler(Device device, Sampler sampler);
 
@@ -583,17 +560,16 @@ struct GraphicsPipelineCreateInfo {
   BlendStateInfo blend_state;
 };
 
-auto create_graphics_pipeline(Device device,
-                              const GraphicsPipelineCreateInfo &create_info)
-    -> Result<Pipeline>;
+Pipeline
+create_graphics_pipeline(Device device,
+                         const GraphicsPipelineCreateInfo &create_info);
 
 struct ComputePipelineCreateInfo {
   ShaderInfo cs;
 };
 
-auto create_compute_pipeline(Device device,
-                             const ComputePipelineCreateInfo &create_info)
-    -> Result<Pipeline>;
+Pipeline create_compute_pipeline(Device device,
+                                 const ComputePipelineCreateInfo &create_info);
 
 void destroy_pipeline(Device device, Pipeline pipeline);
 
@@ -607,20 +583,18 @@ struct CommandPoolCreateInfo {
   QueueFamily queue_family = {};
 };
 
-auto create_command_pool(NotNull<Arena *> arena, Device device,
-                         const CommandPoolCreateInfo &create_info)
-    -> Result<CommandPool>;
+CommandPool create_command_pool(NotNull<Arena *> arena, Device device,
+                                const CommandPoolCreateInfo &create_info);
 
 void destroy_command_pool(Device device, CommandPool pool);
 
 void set_debug_name(Device device, CommandPool pool, String8 name);
 
-auto reset_command_pool(Device device, CommandPool pool) -> Result<void>;
+void reset_command_pool(Device device, CommandPool pool);
 
-auto begin_command_buffer(Device device, CommandPool pool)
-    -> Result<CommandBuffer>;
+CommandBuffer begin_command_buffer(Device device, CommandPool pool);
 
-auto end_command_buffer(CommandBuffer cmd) -> Result<void>;
+void end_command_buffer(CommandBuffer cmd);
 
 // clang-format off
 REN_BEGIN_FLAGS_ENUM(PipelineStage){
@@ -1045,7 +1019,7 @@ void cmd_end_debug_label(CommandBuffer cmd);
 
 extern const uint32_t SDL_WINDOW_FLAGS;
 
-auto create_surface(Instance instance, SDL_Window *window) -> Result<Surface>;
+Surface create_surface(Instance instance, SDL_Window *window);
 
 void destroy_surface(Instance instance, Surface surface);
 
@@ -1084,9 +1058,8 @@ struct SwapChainCreateInfo {
   PresentMode present_mode = PresentMode::Fifo;
 };
 
-auto create_swap_chain(NotNull<Arena *> arena, Device device,
-                       const SwapChainCreateInfo &create_info)
-    -> Result<SwapChain>;
+SwapChain create_swap_chain(NotNull<Arena *> arena, Device device,
+                            const SwapChainCreateInfo &create_info);
 
 void destroy_swap_chain(SwapChain swap_chain);
 
@@ -1095,24 +1068,27 @@ auto get_swap_chain_size(SwapChain swap_chain) -> glm::uvec2;
 void get_swap_chain_images(NotNull<Arena *> arena, SwapChain swap_chain,
                            u32 *num_images, Image **images);
 
-auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
-                       ImageUsageFlags usage = {}) -> Result<void>;
+void resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                       ImageUsageFlags usage = {});
 
-auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
-    -> Result<void>;
+void set_present_mode(SwapChain swap_chain, PresentMode present_mode);
 
-auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32>;
+enum class SwapChainError {
+  OutOfDate,
+};
 
-auto present(Queue queue, SwapChain swap_chain, Semaphore semaphore)
-    -> Result<void>;
+template <typename T> using SwapChainResult = ren::Result<T, SwapChainError>;
 
-auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
-    -> Result<void>;
+SwapChainResult<u32> acquire_image(SwapChain swap_chain, Semaphore semaphore);
 
-auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
-    -> Result<void>;
+SwapChainResult<void> present(Queue queue, SwapChain swap_chain,
+                              Semaphore semaphore);
 
-auto load_gfx_debugger() -> Result<void>;
+void amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps);
+
+void amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps);
+
+void load_gfx_debugger();
 
 void start_gfx_capture();
 

@@ -53,9 +53,9 @@ struct ComputePipeline {
 
 class ResourceArena;
 
-auto load_compute_pipeline(ResourceArena &arena, Span<const std::byte> shader,
-                           String8 name)
-    -> Result<Handle<ComputePipeline>, Error>;
+Handle<ComputePipeline> load_compute_pipeline(ResourceArena &arena,
+                                              Span<const std::byte> shader,
+                                              String8 name);
 
 #define load_compute_pipeline(arena, shader, name)                             \
   load_compute_pipeline(arena, Span(shader, shader##Size).as_bytes(), name)

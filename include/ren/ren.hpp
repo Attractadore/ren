@@ -4,7 +4,6 @@
 #include "ren/core/NotNull.hpp"
 #include "ren/core/Span.hpp"
 
-#include <expected>
 #include <glm/glm.hpp>
 
 struct SDL_Window;
@@ -17,19 +16,6 @@ struct ImGuiContext;
 #endif
 
 namespace ren {
-
-enum class Error {
-  RHI,
-  System,
-  Runtime,
-  SDL,
-  InvalidFormat,
-  InvalidVersion,
-  IO,
-  Unknown,
-};
-
-template <typename T> using expected = std::expected<T, Error>;
 
 struct Blob {
   void *data = nullptr;
@@ -178,26 +164,25 @@ struct DrawInfo {
 
 namespace ren_export {
 
-[[nodiscard]] auto create_renderer(NotNull<Arena *> arena,
-                                   const RendererInfo &info)
-    -> expected<Renderer *>;
+[[nodiscard]] Renderer *create_renderer(NotNull<Arena *> arena,
+                                        const RendererInfo &info);
 
 void destroy_renderer(Renderer *renderer);
 
-[[nodiscard]] auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
-                                SwapChain *swapchain) -> expected<Scene *>;
+auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
 
-void destroy_scene(Scene *scene);
+[[nodiscard]] SwapChain *create_swapchain(NotNull<Arena *> arena,
+                                          Renderer *renderer,
+                                          SDL_Window *window);
+
+void destroy_swap_chain(SwapChain *swap_chain);
 
 void set_vsync(SwapChain *swap_chain, VSync vsync);
 
-auto get_sdl_window_flags(Renderer *renderer) -> uint32_t;
+[[nodiscard]] Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
+                                  SwapChain *swapchain);
 
-[[nodiscard]] auto create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
-                                    SDL_Window *window)
-    -> expected<SwapChain *>;
-
-void destroy_swap_chain(SwapChain *swap_chain);
+void destroy_scene(Scene *scene);
 
 [[nodiscard]] Handle<Camera> create_camera(Scene *scene);
 
@@ -250,15 +235,14 @@ void set_directional_light(Scene *scene, Handle<DirectionalLight> light,
 
 void set_environment_color(Scene *scene, const glm::vec3 &luminance);
 
-auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void>;
+void set_environment_map(Scene *scene, Handle<Image> image);
 
 // Call to use graphics driver low-latency APIs.
-[[nodiscard]] auto delay_input(Scene *scene) -> expected<void>;
+void delay_input(Scene *scene);
 
-[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
-    -> expected<void>;
+void draw(Scene *scene, const DrawInfo &draw_info);
 
-auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene) -> expected<void>;
+void init_imgui(NotNull<Arena *> frame_arena, Scene *scene);
 
 void draw_imgui(Scene *scene);
 
@@ -269,7 +253,7 @@ void draw_imgui(Scene *scene);
 namespace ren::hot_reload {
 
 void unload(Scene *scene);
-[[nodiscard]] auto load(Scene *scene) -> expected<void>;
+[[nodiscard]] bool load(Scene *scene);
 void set_allocator(void *allocator);
 
 struct Vtbl {
@@ -315,9 +299,8 @@ extern const ren::hot_reload::Vtbl *vtbl_ref;
 
 namespace ren {
 
-[[nodiscard]] auto create_renderer(NotNull<Arena *> arena,
-                                   const RendererInfo &info)
-    -> expected<Renderer *>;
+[[nodiscard]] Renderer *create_renderer(NotNull<Arena *> arena,
+                                        const RendererInfo &info);
 
 inline void destroy_renderer(Renderer *renderer) {
   return hot_reload::vtbl_ref->destroy_renderer(renderer);
@@ -327,8 +310,8 @@ inline auto get_sdl_window_flags(Renderer *renderer) -> uint32_t {
   return hot_reload::vtbl_ref->get_sdl_window_flags(renderer);
 }
 
-inline auto create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
-                             SDL_Window *window) -> expected<SwapChain *> {
+inline SwapChain *create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
+                                   SDL_Window *window) {
   return hot_reload::vtbl_ref->create_swapchain(arena, renderer, window);
 }
 
@@ -340,8 +323,8 @@ inline void set_vsync(SwapChain *swap_chain, VSync vsync) {
   return hot_reload::vtbl_ref->set_vsync(swap_chain, vsync);
 }
 
-inline auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
-                         SwapChain *swap_chain) -> expected<Scene *> {
+inline Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
+                           SwapChain *swap_chain) {
   return hot_reload::vtbl_ref->create_scene(arena, renderer, swap_chain);
 }
 
@@ -440,21 +423,18 @@ inline void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   return hot_reload::vtbl_ref->set_environment_color(scene, luminance);
 }
 
-inline auto set_environment_map(Scene *scene, Handle<Image> image)
-    -> expected<void> {
+inline void set_environment_map(Scene *scene, Handle<Image> image) {
   return hot_reload::vtbl_ref->set_environment_map(scene, image);
 }
 
-inline auto delay_input(Scene *scene) -> expected<void> {
+inline void delay_input(Scene *scene) {
   return hot_reload::vtbl_ref->delay_input(scene);
 }
 
-[[nodiscard]] auto draw(Scene *scene, const DrawInfo &draw_info)
-    -> expected<void>;
+void draw(Scene *scene, const DrawInfo &draw_info);
 
-inline auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
-    -> expected<void> {
-  return hot_reload::vtbl_ref->init_imgui(frame_arena, scene);
+inline void init_imgui(NotNull<Arena *> frame_arena, Scene *scene) {
+  hot_reload::vtbl_ref->init_imgui(frame_arena, scene);
 }
 
 inline void draw_imgui(Scene *scene) {

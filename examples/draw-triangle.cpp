@@ -9,8 +9,8 @@ class DrawTriangleApp : public AppBase {
   ren::Handle<ren::MeshInstance> m_triangle;
 
 public:
-  auto init() -> Result<void> {
-    TRY_TO(AppBase::init("Draw Triangle"));
+  void init() {
+    AppBase::init("Draw Triangle");
 
     ren::Scene *scene = get_scene();
 
@@ -65,23 +65,18 @@ public:
                                   .forward = {0.0f, 0.0f, -1.0f},
                                   .up = {0.0f, 1.0f, 0.0f},
                               });
-
-    return {};
   }
 
-  [[nodiscard]] Result<void> process_frame(std::chrono::nanoseconds) override {
+  void process_frame(std::chrono::nanoseconds) override {
     ren::Scene *scene = get_scene();
     ren::destroy_mesh_instance(&m_frame_arena, scene, m_triangle);
     m_triangle =
         ren::create_mesh_instance(&m_frame_arena, scene, {m_mesh, m_material});
     ren::set_mesh_instance_transform(&m_frame_arena, scene, m_triangle,
                                      glm::mat4(1.0f));
-    return {};
   }
 
-  [[nodiscard]] static auto run() -> int {
-    return AppBase::run<DrawTriangleApp>();
-  }
+  static void run() { AppBase::run<DrawTriangleApp>(); }
 };
 
-int main() { return DrawTriangleApp::run(); }
+int main() { DrawTriangleApp::run(); }

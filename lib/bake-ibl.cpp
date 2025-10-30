@@ -16,48 +16,37 @@
 
 #include <DirectXTex.h>
 
+#define HRESULT_CHECK(result, message)                                         \
+  if (FAILED(result)) {                                                        \
+    fmt::println(stderr, message ": {}", result);                              \
+    std::abort();                                                              \
+  }
+
 namespace ren {
 
-namespace {
-
-auto fail(HRESULT hres) -> Failure<Error> {
-  ren_assert(hres != E_INVALIDARG);
-  return Failure([&]() {
-    switch (hres) {
-    default:
-      return Error::Unknown;
-    }
-  }());
-}
-
-} // namespace
-
-auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
-    -> Result<DirectX::ScratchImage, Error> {
+DirectX::ScratchImage bake_ibl(Baker *baker, const TextureInfo &info,
+                               bool compress) {
   HRESULT hres = S_OK;
 
   if (!baker->pipelines.reflection_map) {
-    ren_try(baker->pipelines.reflection_map,
-            load_compute_pipeline(baker->rcs_arena, BakeReflectionMapCS,
-                                  "Bake reflection environment map"));
+    baker->pipelines.reflection_map =
+        load_compute_pipeline(baker->rcs_arena, BakeReflectionMapCS,
+                              "Bake reflection environment map");
   }
   if (!baker->pipelines.specular_map) {
-    ren_try(baker->pipelines.specular_map,
-            load_compute_pipeline(baker->rcs_arena, BakeSpecularMapCS,
-                                  "Bake specular environment map"));
+    baker->pipelines.specular_map = load_compute_pipeline(
+        baker->rcs_arena, BakeSpecularMapCS, "Bake specular environment map");
   }
   if (!baker->pipelines.irradiance_map) {
-    ren_try(baker->pipelines.irradiance_map,
-            load_compute_pipeline(baker->rcs_arena, BakeIrradianceMapCS,
-                                  "Bake irradiance environment map"));
+    baker->pipelines.irradiance_map =
+        load_compute_pipeline(baker->rcs_arena, BakeIrradianceMapCS,
+                              "Bake irradiance environment map");
   }
   const DirectX::Image &src_image = to_dxtex_image(info);
   DirectX::ScratchImage mip_chain;
   hres = mip_chain.Initialize2D(src_image.format, src_image.width,
                                 src_image.height, 1, 0);
-  if (FAILED(hres)) {
-    return fail(hres);
-  }
+  HRESULT_CHECK(hres, "DirectX::ScratchImage::Initialize2D failed");
   std::memcpy(mip_chain.GetImages()[0].pixels, src_image.pixels,
               src_image.slicePitch);
   for (u32 mip : range<u32>(1, mip_chain.GetMetadata().mipLevels)) {
@@ -97,13 +86,16 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 
   rhi::start_gfx_capture();
 
-  ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
-  ren_try(Handle<Texture> env_map,
-          baker->uploader.create_texture(
-              &baker->frame_arena, baker->frame_rcs_arena,
-              baker->upload_allocator, ktx_texture2));
+  ktxTexture2 *ktx_texture2 = create_ktx_texture(mip_chain);
+  rhi::Result<Handle<Texture>> env_map = baker->uploader.create_texture(
+      &baker->frame_arena, baker->frame_rcs_arena, baker->upload_allocator,
+      ktx_texture2);
+  if (!env_map) {
+    fmt::println(stderr, "Failed to create environment map");
+    exit(EXIT_FAILURE);
+  }
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
-  ren_try_to(baker->uploader.upload(*baker->renderer, baker->cmd_pool));
+  baker->uploader.upload(*baker->renderer, baker->cmd_pool);
 
   constexpr TinyImageFormat CUBE_MAP_FORMAT =
       TinyImageFormat_R32G32B32A32_SFLOAT;
@@ -135,7 +127,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     args.equirectangular_map =
         baker->frame_descriptor_allocator
             .allocate_sampled_texture<sh::Sampler2D>(
-                *baker->renderer, SrvDesc{env_map},
+                *baker->renderer, SrvDesc{*env_map},
                 {
                     .mag_filter = rhi::Filter::Linear,
                     .min_filter = rhi::Filter::Linear,
@@ -186,19 +178,22 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
         });
   }
 
-  ren_try(BufferView readback,
-          baker->frame_rcs_arena.create_buffer({
-              .heap = rhi::MemoryHeap::Readback,
-              .size = get_mip_chain_byte_size(CUBE_MAP_FORMAT,
-                                              {CUBE_MAP_SIZE, CUBE_MAP_SIZE, 1},
-                                              6, 0, NUM_CUBE_MAP_MIPS),
-          }));
+  rhi::Result<BufferView> readback = baker->frame_rcs_arena.create_buffer({
+      .heap = rhi::MemoryHeap::Readback,
+      .size = get_mip_chain_byte_size(CUBE_MAP_FORMAT,
+                                      {CUBE_MAP_SIZE, CUBE_MAP_SIZE, 1}, 6, 0,
+                                      NUM_CUBE_MAP_MIPS),
+  });
+  if (!readback) {
+    fmt::println(stderr, "Failed to create readback buffer");
+    exit(EXIT_FAILURE);
+  }
   RgUntypedBufferId cube_map_readback =
-      rgb.create_buffer("cube-map-readback", readback);
+      rgb.create_buffer("cube-map-readback", *readback);
   rgb.copy_texture_to_buffer(cube_map, &cube_map_readback);
 
-  ren_try(RenderGraph rg, rgb.build({}));
-  ren_try_to(execute(rg, {.gfx_cmd_pool = baker->cmd_pool}));
+  RenderGraph rg = rgb.build({});
+  execute(rg, {.gfx_cmd_pool = baker->cmd_pool});
   baker->renderer->wait_idle();
 
   rhi::end_gfx_capture();
@@ -213,7 +208,7 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
                           .height = CUBE_MAP_SIZE,
                           .cube_map = true,
                           .num_mips = NUM_CUBE_MAP_MIPS,
-                          .data = baker->renderer->map_buffer(readback),
+                          .data = baker->renderer->map_buffer(*readback),
                       },
                       &images);
 
@@ -230,25 +225,22 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     hres = DirectX::Compress(images.m_data, images.m_size, mdata,
                              DXGI_FORMAT_BC6H_UF16,
                              DirectX::TEX_COMPRESS_PARALLEL, 0.0f, compressed);
+    HRESULT_CHECK(hres, "DirectX::Compress failed");
   } else {
     hres = DirectX::Convert(images.m_data, images.m_size, mdata,
                             DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
                             DirectX::TEX_FILTER_DEFAULT, 0.0f, compressed);
-  }
-  if (FAILED(hres)) {
-    return fail(hres);
+    HRESULT_CHECK(hres, "DirectX::Convert failed");
   }
 
   return compressed;
 }
 
-auto bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress)
-    -> Result<Blob, Error> {
-  ren_try(DirectX::ScratchImage image, bake_ibl(baker, info, compress));
-  ren_try(auto blob, write_ktx_to_memory(image));
+Blob bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress) {
+  DirectX::ScratchImage image = bake_ibl(baker, info, compress);
+  Blob blob = write_ktx_to_memory(image);
   reset_baker(baker);
-  auto [blob_data, blob_size] = blob;
-  return {{blob_data, blob_size}};
+  return blob;
 }
 
 } // namespace ren
@@ -286,20 +278,22 @@ int main(int argc, const char *argv[]) {
   Path in_path = parsed[OPTION_IN].as_path;
   Path out_path = parsed[OPTION_OUT].as_path;
   Renderer *renderer =
-      ren_export::create_renderer(&arena, {.type = RendererType::Headless})
-          .value();
+      ren_export::create_renderer(&arena, {.type = RendererType::Headless});
+  if (!renderer) {
+    return EXIT_FAILURE;
+  }
 
-  Baker *baker = create_baker(&arena, renderer).value();
+  Baker *baker = create_baker(&arena, renderer);
 
   IoResult<Span<stbi_uc>> buffer = read<stbi_uc>(&arena, in_path);
   if (!buffer) {
-    fmt::println(stderr, "Failed to read {}: {}", in_path, buffer.m_status);
+    fmt::println(stderr, "Failed to read {}: {}", in_path, buffer.error());
     return EXIT_FAILURE;
   }
 
   int w, h;
   const float *hdr_map = stbi_loadf_from_memory(
-      buffer.m_value.m_data, buffer.m_value.size_bytes(), &w, &h, nullptr, 4);
+      buffer->m_data, buffer->size_bytes(), &w, &h, nullptr, 4);
   if (!hdr_map) {
     fmt::println(stderr, "Failed to read HDR environment map from {}: {}",
                  in_path, stbi_failure_reason());
@@ -314,15 +308,14 @@ int main(int argc, const char *argv[]) {
                              .height = (u32)h,
                              .data = hdr_map,
                          },
-                         not parsed[OPTION_NO_COMPRESS].is_set)
-          .value();
+                         not parsed[OPTION_NO_COMPRESS].is_set);
 
-  std::ignore = create_directory(out_path.parent());
-  if (IoStatus status = write(out_path, blob.data, blob.size);
-      status != IoStatus::Success) {
-    fmt::println(stderr, "Failed to write {}: {}", out_path, status);
+  IgnoreResult = create_directory(out_path.parent());
+  if (IoResult<void> result = write(out_path, blob.data, blob.size); !result) {
+    fmt::println(stderr, "Failed to write {}: {}", out_path, result.error());
     return EXIT_FAILURE;
   }
 
   destroy_baker(baker);
+  ren_export::destroy_renderer(renderer);
 }

@@ -6,20 +6,6 @@
 
 namespace ren {
 
-enum class IoStatus {
-  Success,
-  EUnknown,
-  EAccess,
-  ENotFound,
-  EExists,
-  EFragmented,
-};
-constexpr IoStatus IoSuccess = IoStatus::Success;
-
-String8 format_as(IoStatus status);
-
-template <typename T> using IoResult = Result2<T, IoStatus>;
-
 bool is_path(String8 path);
 
 String8 path_volume_name(String8 path);
@@ -73,7 +59,7 @@ String8 format_as(Path path);
 
 IoResult<Path> current_directory(NotNull<Arena *> arena);
 
-IoStatus create_directory(Path path);
+Result<void, IoError> create_directory(Path path);
 
 IoResult<u64> last_write_time(Path path);
 
@@ -105,9 +91,20 @@ using FileOpenFlags = Flags<FileOpen>;
 
 void close(File file);
 
+enum class SeekMode {
+  Set,
+  End,
+  Cur,
+};
+
+[[nodiscard]] IoResult<usize> seek(File file, isize offset, SeekMode mode);
+
 [[nodiscard]] IoResult<usize> read(File file, void *buffer, usize size);
 
 [[nodiscard]] IoResult<usize> write(File file, const void *buffer, usize size);
+
+[[nodiscard]] IoResult<void> write_all(File file, const void *buffer,
+                                       usize size);
 
 [[nodiscard]] IoResult<usize> file_size(File file);
 
@@ -117,27 +114,27 @@ template <typename T>
 [[nodiscard]] IoResult<Span<T>> read(NotNull<Arena *> arena, Path path) {
   IoResult<Span<char>> buffer = read(arena, path);
   if (!buffer) {
-    return buffer.m_status;
+    return buffer.error();
   }
-  if (buffer.m_value.m_size % sizeof(T) != 0) {
-    return IoStatus::EFragmented;
+  if (buffer->m_size % sizeof(T) != 0) {
+    return IoError::Fragmented;
   }
-  return Span<T>((T *)buffer.m_value.m_data, buffer.m_value.m_size / sizeof(T));
+  return Span<T>((T *)buffer->m_data, buffer->m_size / sizeof(T));
 }
 
-[[nodiscard]] IoStatus write(Path path, const void *buffer, usize size,
-                             FileOpenFlags flags = FileOpen::Create |
-                                                   FileOpen::Truncate);
+[[nodiscard]] IoResult<void> write(Path path, const void *buffer, usize size,
+                                   FileOpenFlags flags = FileOpen::Create |
+                                                         FileOpen::Truncate);
 
 template <typename T>
-[[nodiscard]] IoStatus write(Path path, Span<T> buffer,
-                             FileOpenFlags flags = FileOpen::Create |
-                                                   FileOpen::Truncate) {
+[[nodiscard]] IoResult<void> write(Path path, Span<T> buffer,
+                                   FileOpenFlags flags = FileOpen::Create |
+                                                         FileOpen::Truncate) {
   return write(path, buffer.m_data, buffer.size_bytes(), flags);
 }
 
-[[nodiscard]] IoStatus copy_file(Path from, Path to,
-                                 FileOpenFlags flags = FileOpen::Create |
-                                                       FileOpen::Truncate);
+[[nodiscard]] IoResult<void>
+copy_file(Path from, Path to,
+          FileOpenFlags flags = FileOpen::Create | FileOpen::Truncate);
 
 } // namespace ren

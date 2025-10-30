@@ -1,9 +1,7 @@
 #pragma once
+#include "../core/FileSystem.hpp"
 #include "../ren.hpp"
 #include "../tiny_imageformat.h"
-#include "baking.hpp"
-
-#include <cstdio>
 
 namespace ren {
 
@@ -17,22 +15,19 @@ struct TextureInfo {
   const void *data = nullptr;
 };
 
-auto bake_color_map_to_file(const TextureInfo &info, FILE *out)
-    -> expected<void>;
+IoResult<void> bake_color_map_to_file(const TextureInfo &info, File file);
 
-auto bake_color_map_to_memory(const TextureInfo &info) -> expected<Blob>;
+Blob bake_color_map_to_memory(const TextureInfo &info);
 
-auto bake_normal_map_to_file(const TextureInfo &info, FILE *out)
-    -> expected<void>;
+IoResult<void> bake_normal_map_to_file(const TextureInfo &info, File file);
 
-auto bake_normal_map_to_memory(const TextureInfo &info) -> expected<Blob>;
+Blob bake_normal_map_to_memory(const TextureInfo &info);
 
-auto bake_orm_map_to_file(const TextureInfo &roughness_metallic_info,
-                          const TextureInfo &occlusion_info, FILE *out)
-    -> expected<void>;
+IoResult<void> bake_orm_map_to_file(const TextureInfo &roughness_metallic_info,
+                                    const TextureInfo &occlusion_info,
+                                    File file);
 
-auto bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
-                            const TextureInfo &occlusion_info = {})
-    -> expected<Blob>;
+Blob bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
+                            const TextureInfo &occlusion_info = {});
 
 } // namespace ren

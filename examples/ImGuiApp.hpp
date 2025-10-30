@@ -5,15 +5,15 @@
 
 class ImGuiApp : public AppBase {
 public:
-  auto init(const char *name) -> Result<void>;
-  ~ImGuiApp();
+  void init(const char *name);
+  void quit();
 
 protected:
-  [[nodiscard]] auto process_event(const SDL_Event &e) -> Result<void> override;
+  void process_event(const SDL_Event &e) override;
 
-  [[nodiscard]] auto begin_frame() -> Result<void> override;
+  void begin_frame() override;
 
-  [[nodiscard]] auto end_frame() -> Result<void> override;
+  void end_frame() override;
 
   auto imgui_wants_capture_keyboard() const -> bool;
 

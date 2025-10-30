@@ -2,11 +2,9 @@
 
 class CreateDeviceApp : public AppBase {
 public:
-  auto init() -> Result<void> { return AppBase::init("Create Device"); }
+  void init() { AppBase::init("Create Device"); }
 
-  [[nodiscard]] static auto run() -> int {
-    return AppBase::run<CreateDeviceApp>();
-  }
+  static void run() { AppBase::run<CreateDeviceApp>(); }
 };
 
-int main() { return CreateDeviceApp::run(); }
+int main() { CreateDeviceApp::run(); }

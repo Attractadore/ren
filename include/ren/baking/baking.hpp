@@ -5,8 +5,7 @@ namespace ren {
 
 struct Baker;
 
-auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
-    -> expected<Baker *>;
+Baker *create_baker(NotNull<Arena *> arena, Renderer *renderer);
 
 void destroy_baker(Baker *baker);
 

@@ -1,28 +1,25 @@
-#include "core/Errors.hpp"
 #include "core/Math.hpp"
-#include "core/Result.hpp"
 #include "ren/baking/image.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
 #include "ren/core/StdDef.hpp"
 
 #include <DirectXTex.h>
 #include <ktx.h>
 
+#define KTX_CHECK(result, message)                                             \
+  if (result) {                                                                \
+    fmt::println(stderr, message ": {}", (i32)result);                         \
+    std::abort();                                                              \
+  }
+
+#define HRESULT_CHECK(result, message)                                         \
+  if (FAILED(result)) {                                                        \
+    fmt::println(stderr, message ": {}", result);                              \
+    std::abort();                                                              \
+  }
+
 namespace ren {
-
-namespace {
-
-auto fail(HRESULT hres) -> Failure<Error> {
-  ren_assert(hres != E_INVALIDARG);
-  return Failure([&]() {
-    switch (hres) {
-    default:
-      return Error::Unknown;
-    }
-  }());
-}
-
-} // namespace
 
 auto to_dxtex_image(const TextureInfo &info) -> DirectX::Image {
   ren_assert(info.depth == 1 and not info.cube_map);
@@ -83,8 +80,7 @@ DirectX::TexMetadata to_dxtex_images(NotNull<Arena *> arena,
   return mdata;
 };
 
-auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
-    -> expected<ktxTexture2 *> {
+ktxTexture2 *create_ktx_texture(const DirectX::ScratchImage &mip_chain) {
   ktx_error_code_e err = KTX_SUCCESS;
 
   const DirectX::TexMetadata &mdata = mip_chain.GetMetadata();
@@ -112,9 +108,7 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
   ktxTexture2 *ktx_texture2 = nullptr;
   err = ktxTexture2_Create(&create_info, KTX_TEXTURE_CREATE_ALLOC_STORAGE,
                            &ktx_texture2);
-  if (err) {
-    return std::unexpected(Error::Unknown);
-  }
+  KTX_CHECK(err, "ktxTexture2_Create failed");
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
   for (u32 mip : range(ktx_texture->numLevels)) {
@@ -124,10 +118,7 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
         ren_assert(image.rowPitch == ktxTexture_GetRowPitch(ktx_texture, mip));
         err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0, face + plane,
                                             image.pixels, image.slicePitch);
-        if (err) {
-          ktxTexture_Destroy(ktx_texture);
-          return std::unexpected(Error::Unknown);
-        }
+        KTX_CHECK(err, "ktxTexture_SetImageFromMemory failed");
       }
     }
   }
@@ -135,7 +126,7 @@ auto create_ktx_texture(const DirectX::ScratchImage &mip_chain)
   return ktx_texture2;
 }
 
-auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture2 *> {
+ktxTexture2 *create_ktx_texture(const TextureInfo &info) {
   ktx_error_code_e err = KTX_SUCCESS;
 
   ktxTextureCreateInfo create_info = {
@@ -154,9 +145,7 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture2 *> {
   ktxTexture2 *ktx_texture2 = nullptr;
   err = ktxTexture2_Create(&create_info, KTX_TEXTURE_CREATE_ALLOC_STORAGE,
                            &ktx_texture2);
-  if (err) {
-    return std::unexpected(Error::Unknown);
-  }
+  KTX_CHECK(err, "ktxTexture2_Create failed");
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
 
   const u8 *data = (const u8 *)info.data;
@@ -166,82 +155,64 @@ auto create_ktx_texture(const TextureInfo &info) -> expected<ktxTexture2 *> {
                  ktx_texture->baseDepth;
     err = ktxTexture_SetImageFromMemory(ktx_texture, mip, 0,
                                         KTX_FACESLICE_WHOLE_LEVEL, data, size);
-    if (err) {
-      ktxTexture_Destroy(ktx_texture);
-      return std::unexpected(Error::Unknown);
-    }
+    KTX_CHECK(err, "ktxTexture_SetImageFromMemory failed");
     data += size;
   }
 
   return ktx_texture2;
 }
 
-auto write_ktx_to_memory(const DirectX::ScratchImage &mip_chain)
-    -> expected<Blob> {
-  ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
+Blob write_ktx_to_memory(const DirectX::ScratchImage &mip_chain) {
+  ktxTexture2 *ktx_texture2 = create_ktx_texture(mip_chain);
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
   Blob blob;
   ktx_error_code_e err =
       ktxTexture_WriteToMemory(ktx_texture, (u8 **)&blob.data, &blob.size);
+  KTX_CHECK(err, "ktxTexture_WriteToMemory failed");
   ktxTexture_Destroy(ktx_texture);
-  if (err) {
-    return std::unexpected(Error::Unknown);
-  }
   return blob;
 }
 
-auto write_ktx_to_memory(const TextureInfo &info) -> expected<Blob> {
-  ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(info));
+Blob write_ktx_to_memory(const TextureInfo &info) {
+  ktxTexture2 *ktx_texture2 = create_ktx_texture(info);
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
   u8 *blob_data;
   size_t blob_size;
   ktx_error_code_e err =
       ktxTexture_WriteToMemory(ktx_texture, &blob_data, &blob_size);
+  KTX_CHECK(err, "ktxTexture_WriteToMemory failed");
   ktxTexture_Destroy(ktx_texture);
-  if (err) {
-    return std::unexpected(Error::Unknown);
-  }
-  return {{blob_data, blob_size}};
+  return {blob_data, blob_size};
 }
 
-auto bake_color_map(const TextureInfo &info)
-    -> expected<DirectX::ScratchImage> {
+DirectX::ScratchImage bake_color_map(const TextureInfo &info) {
   HRESULT hres = S_OK;
   DirectX::ScratchImage mip_chain;
   hres = DirectX::GenerateMipMaps(to_dxtex_image(info),
                                   DirectX::TEX_FILTER_LINEAR, 0, mip_chain);
-  if (FAILED(hres)) {
-    return std::unexpected(Error::Unknown);
-  }
+  HRESULT_CHECK(hres, "DirectX::GenerateMipMaps failed");
   return mip_chain;
 }
 
-auto bake_color_map_to_memory(const TextureInfo &info) -> expected<Blob> {
-  ren_try(DirectX::ScratchImage mip_chain, bake_color_map(info));
-  return write_ktx_to_memory(mip_chain);
+Blob bake_color_map_to_memory(const TextureInfo &info) {
+  return write_ktx_to_memory(bake_color_map(info));
 }
 
-auto bake_normal_map(const TextureInfo &info)
-    -> expected<DirectX::ScratchImage> {
+DirectX::ScratchImage bake_normal_map(const TextureInfo &info) {
   HRESULT hres = S_OK;
   DirectX::ScratchImage mip_chain;
   hres = DirectX::GenerateMipMaps(to_dxtex_image(info),
                                   DirectX::TEX_FILTER_LINEAR, 0, mip_chain);
-  if (FAILED(hres)) {
-    return std::unexpected(Error::Unknown);
-  }
+  HRESULT_CHECK(hres, "DirectX::GenerateMipMaps failed");
   return mip_chain;
 }
 
-auto bake_normal_map_to_memory(const TextureInfo &info) -> expected<Blob> {
-  ktx_error_code_e err = KTX_SUCCESS;
-  ren_try(DirectX::ScratchImage mip_chain, bake_normal_map(info));
-  return write_ktx_to_memory(mip_chain);
+Blob bake_normal_map_to_memory(const TextureInfo &info) {
+  return write_ktx_to_memory(bake_normal_map(info));
 }
 
-auto bake_orm_map(const TextureInfo &roughness_metallic_info,
-                  const TextureInfo &occlusion_info)
-    -> expected<DirectX::ScratchImage> {
+DirectX::ScratchImage bake_orm_map(const TextureInfo &roughness_metallic_info,
+                                   const TextureInfo &occlusion_info) {
   HRESULT hres = S_OK;
   ktx_error_code_e err = KTX_SUCCESS;
 
@@ -258,30 +229,24 @@ auto bake_orm_map(const TextureInfo &roughness_metallic_info,
           }
         },
         merged_data);
-    if (FAILED(hres)) {
-      return std::unexpected(Error::Unknown);
-    }
+    HRESULT_CHECK(hres, "DirectX::TransformImage failed");
     src = merged_data.GetImages()[0];
   } else if (occlusion_info.data != roughness_metallic_info.data) {
-    todo("Separate roughness-metallic and occlusions maps");
+    ren_todo("Separate roughness-metallic and occlusions maps");
   }
 
   DirectX::ScratchImage mip_chain;
   hres =
       DirectX::GenerateMipMaps(src, DirectX::TEX_FILTER_LINEAR, 0, mip_chain);
-  if (FAILED(hres)) {
-    return std::unexpected(Error::Unknown);
-  }
+  HRESULT_CHECK(hres, "DirectX::GenerateMipMaps failed");
 
   return mip_chain;
 }
 
-auto bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
-                            const TextureInfo &occlusion_info)
-    -> expected<Blob> {
-  ren_try(DirectX::ScratchImage mip_chain,
-          bake_orm_map(roughness_metallic_info, occlusion_info));
-  return write_ktx_to_memory(mip_chain);
+Blob bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
+                            const TextureInfo &occlusion_info) {
+  return write_ktx_to_memory(
+      bake_orm_map(roughness_metallic_info, occlusion_info));
 }
 
 } // namespace ren

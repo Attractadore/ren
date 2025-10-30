@@ -10,13 +10,11 @@ bool is_volume_name(char a, char b) {
 
 } // namespace
 
-String8 format_as(IoStatus status) {
-  switch (status) {
+String8 format_as(IoError error) {
+  switch (error) {
   default:
     return "Unknown";
-  case IoStatus::Success:
-    return "Success";
-  case IoStatus::EFragmented:
+  case IoError::Fragmented:
     return "Invalid size";
   }
 }
@@ -122,11 +120,11 @@ IoResult<Path> Path::absolute(NotNull<Arena *> arena) const {
     return copy(arena);
   }
   ScratchArena scratch(arena);
-  auto [cwd, status] = current_directory(scratch);
-  if (status != IoSuccess) {
-    return status;
+  IoResult<Path> cwd = current_directory(scratch);
+  if (!cwd) {
+    return cwd.error();
   }
-  return cwd.concat(arena, *this);
+  return cwd->concat(arena, *this);
 }
 
 Path Path::concat(NotNull<Arena *> arena, Path other) const {
@@ -142,56 +140,64 @@ Path Path::concat(NotNull<Arena *> arena, Path other) const {
 IoResult<Span<char>> read(NotNull<Arena *> arena, Path path) {
   IoResult<File> file = open(path, FileAccessMode::ReadOnly);
   if (!file) {
-    return file.m_status;
+    return file.error();
   }
-  IoResult<usize> size = file_size(file.m_value);
+  IoResult<usize> size = file_size(*file);
   if (!size) {
-    close(file.m_value);
-    return size.m_status;
+    close(*file);
+    return size.error();
   }
-  char *buffer = (char *)arena->allocate(size.m_value, 8);
+  char *buffer = (char *)arena->allocate(*size, 8);
   usize total_read = 0;
-  while (total_read < size.m_value) {
+  while (total_read < *size) {
     IoResult<usize> num_read =
-        read(file.m_value, &buffer[total_read], size.m_value - total_read);
+        read(*file, &buffer[total_read], *size - total_read);
     if (!num_read) {
-      close(file.m_value);
-      return num_read.m_status;
+      close(*file);
+      return num_read.error();
     }
-    total_read += num_read.m_value;
+    total_read += *num_read;
   }
-  close(file.m_value);
-  return Span<char>(buffer, size.m_value);
+  close(*file);
+  return Span<char>(buffer, *size);
 }
 
-IoStatus write(Path path, const void *void_buffer, usize size,
-               FileOpenFlags flags) {
-  IoResult<File> file = open(path, FileAccessMode::WriteOnly, flags);
-  if (!file) {
-    return file.m_status;
-  }
+IoResult<void> write_all(File file, const void *void_buffer, usize size) {
   const char *buffer = (const char *)void_buffer;
   usize total_written = 0;
   while (total_written < size) {
     IoResult<usize> num_written =
-        write(file.m_value, &buffer[total_written], size - total_written);
+        write(file, &buffer[total_written], size - total_written);
     if (!num_written) {
-      close(file.m_value);
-      return num_written.m_status;
+      return num_written.error();
     }
-    total_written += num_written.m_value;
+    ren_assert(*num_written > 0);
+    total_written += *num_written;
   }
-  close(file.m_value);
-  return IoStatus::Success;
+  return {};
 }
 
-IoStatus copy_file(Path from, Path to, FileOpenFlags flags) {
-  ScratchArena scratch;
-  auto [data, read_status] = read(scratch, from);
-  if (read_status != IoSuccess) {
-    return read_status;
+IoResult<void> write(Path path, const void *buffer, usize size,
+                     FileOpenFlags flags) {
+  IoResult<File> file = open(path, FileAccessMode::WriteOnly, flags);
+  if (!file) {
+    return file.error();
   }
-  return write(to, data, flags);
+  IoResult<void> result = write_all(*file, buffer, size);
+  close(*file);
+  if (!result) {
+    return result.error();
+  }
+  return {};
+}
+
+IoResult<void> copy_file(Path from, Path to, FileOpenFlags flags) {
+  ScratchArena scratch;
+  IoResult<Span<char>> data = read(scratch, from);
+  if (!data) {
+    return data.error();
+  }
+  return write(to, *data, flags);
 }
 
 } // namespace ren

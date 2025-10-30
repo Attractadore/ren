@@ -1,8 +1,8 @@
 #pragma once
+#include "Assert.hpp"
+
 #include <concepts>
 #include <type_traits>
-
-#include "ren/core/Assert.hpp"
 
 namespace ren {
 

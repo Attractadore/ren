@@ -39,9 +39,10 @@ public:
                     UploadBumpAllocator &allocator, Span<const std::byte> data,
                     const BufferView &buffer);
 
-  auto create_texture(NotNull<Arena *> arena, ResourceArena &rcs_arena,
-                      UploadBumpAllocator &allocator, ktxTexture2 *ktx_texture)
-      -> Result<Handle<Texture>, Error>;
+  rhi::Result<Handle<Texture>> create_texture(NotNull<Arena *> arena,
+                                              ResourceArena &rcs_arena,
+                                              UploadBumpAllocator &allocator,
+                                              ktxTexture2 *ktx_texture);
 
   void stage_texture(NotNull<Arena *> arena, UploadBumpAllocator &allocator,
                      ktxTexture *ktx_texture, Handle<Texture> texture);
@@ -49,8 +50,7 @@ public:
   void stage_texture(NotNull<Arena *> arena, UploadBumpAllocator &allocator,
                      Span<const std::byte> data, Handle<Texture> texture);
 
-  auto upload(Renderer &renderer, Handle<CommandPool> cmd_pool)
-      -> Result<void, Error>;
+  void upload(Renderer &renderer, Handle<CommandPool> cmd_pool);
 };
 
 } // namespace ren

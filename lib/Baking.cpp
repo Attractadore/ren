@@ -22,18 +22,17 @@ auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
 
 #endif
 
-auto create_baker(NotNull<Arena *> arena, Renderer *renderer)
-    -> expected<Baker *> {
+Baker *create_baker(NotNull<Arena *> arena, Renderer *renderer) {
   auto baker = new Baker{.renderer = renderer};
   baker->arena = arena;
   baker->frame_arena = Arena::init();
   baker->rcs_arena = ResourceArena::init(arena, renderer);
   baker->frame_rcs_arena = ResourceArena::init(&baker->frame_arena, renderer);
   baker->rg = RgPersistent::init(&baker->frame_arena, renderer);
-  ren_try(baker->cmd_pool, baker->rcs_arena.create_command_pool({
-                               .name = "Baker command pool",
-                               .queue_family = rhi::QueueFamily::Graphics,
-                           }));
+  baker->cmd_pool = baker->rcs_arena.create_command_pool({
+      .name = "Baker command pool",
+      .queue_family = rhi::QueueFamily::Graphics,
+  });
   baker->descriptor_allocator = DescriptorAllocator::init(arena);
   baker->frame_descriptor_allocator =
       DescriptorAllocatorScope::init(&baker->descriptor_allocator);
@@ -59,7 +58,7 @@ void reset_baker(Baker *baker) {
   baker->frame_arena.clear();
   baker->frame_rcs_arena.clear();
   baker->rg = RgPersistent::init(&baker->frame_arena, baker->renderer);
-  std::ignore = baker->renderer->reset_command_pool(baker->cmd_pool);
+  baker->renderer->reset_command_pool(baker->cmd_pool);
   baker->frame_descriptor_allocator.reset();
   baker->allocator.reset();
   baker->upload_allocator.reset();

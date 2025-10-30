@@ -25,48 +25,45 @@
 
 namespace ren {
 
-GpuScene GpuScene::init(NotNull<ResourceArena *> arena) {
+rhi::Result<GpuScene> GpuScene::init(NotNull<ResourceArena *> arena) {
   constexpr rhi::MemoryHeap HEAP = rhi::MemoryHeap::Default;
 
-#define create_buffer(T, n, c)                                                 \
-  arena                                                                        \
-      ->create_buffer<T>({                                                     \
-          .name = n,                                                           \
-          .heap = HEAP,                                                        \
-          .count = c,                                                          \
-      })                                                                       \
-      .value()
+#define create_buffer(out, T, n, c)                                            \
+  do {                                                                         \
+    auto view = arena->create_buffer<T>({                                      \
+        .name = n,                                                             \
+        .heap = HEAP,                                                          \
+        .count = c,                                                            \
+    });                                                                        \
+    if (!view) {                                                               \
+      return view.error();                                                     \
+    }                                                                          \
+    out = *view;                                                               \
+  } while (0)
 
   constexpr usize NUM_MESH_INSTANCE_VISIBILITY_MASKS = ceil_div(
       MAX_NUM_MESH_INSTANCES, sh::MESH_INSTANCE_VISIBILITY_MASK_BIT_SIZE);
 
-  GpuScene gpu_scene = {
-      .exposure = create_buffer(float, "Exposure", 1),
-      .meshes = create_buffer(sh::Mesh, "Scene meshes", MAX_NUM_MESHES),
-      .mesh_instances = create_buffer(sh::MeshInstance, "Scene mesh instances",
-                                      MAX_NUM_MESH_INSTANCES),
-      .mesh_instance_visibility = create_buffer(
-          sh::MeshInstanceVisibilityMask, "Scene mesh instance visibility",
-          NUM_MESH_INSTANCE_VISIBILITY_MASKS),
-      .materials =
-          create_buffer(sh::Material, "Scene materials", MAX_NUM_MATERIALS),
-  };
+  GpuScene gpu_scene;
+  create_buffer(gpu_scene.exposure, float, "Exposure", 1);
+  create_buffer(gpu_scene.meshes, sh::Mesh, "Scene meshes", MAX_NUM_MESHES);
+  create_buffer(gpu_scene.mesh_instances, sh::MeshInstance,
+                "Scene mesh instances", MAX_NUM_MESH_INSTANCES);
+  create_buffer(
+      gpu_scene.mesh_instance_visibility, sh::MeshInstanceVisibilityMask,
+      "Scene mesh instance visibility", NUM_MESH_INSTANCE_VISIBILITY_MASKS);
+  create_buffer(gpu_scene.materials, sh::Material, "Scene materials",
+                MAX_NUM_MATERIALS);
 
   ScratchArena scratch;
 
   for (auto i : range(NUM_DRAW_SETS)) {
     auto s = (DrawSet)(1 << i);
     DrawSetData &ds = gpu_scene.draw_sets[i];
-    ds.data = arena
-                  ->create_buffer<sh ::DrawSetItem>(
-
-                      {
-                          .name = format(scratch, "Draw set {} mesh instances",
-                                         get_draw_set_name(s)),
-                          .heap = HEAP,
-                          .count = MAX_NUM_MESH_INSTANCES,
-                      })
-                  .value();
+    create_buffer(
+        ds.data, sh::DrawSetItem,
+        format(scratch, "Draw set {} mesh instances", get_draw_set_name(s)),
+        MAX_NUM_MESH_INSTANCES);
   }
 
 #undef create_buffer
@@ -80,7 +77,7 @@ namespace ren_export {
 
 namespace {
 
-Result<void, Error> init_internal_data(NotNull<Scene *> scene) {
+void init_internal_data(NotNull<Scene *> scene) {
   ScratchArena scratch({&scene->m_internal_arena});
 
   scene->m_sid = scene->m_internal_arena.allocate<SceneInternalData>();
@@ -90,7 +87,7 @@ Result<void, Error> init_internal_data(NotNull<Scene *> scene) {
 
   id->m_rcs_arena =
       ResourceArena::init(&scene->m_internal_arena, scene->m_renderer);
-  ren_try(id->m_pipelines, load_pipelines(id->m_rcs_arena));
+  id->m_pipelines = load_pipelines(id->m_rcs_arena);
 
   id->m_gfx_allocator =
       DeviceBumpAllocator::init(*renderer, id->m_rcs_arena, 256 * MiB);
@@ -105,22 +102,19 @@ Result<void, Error> init_internal_data(NotNull<Scene *> scene) {
 
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
     FrameResources &frcs = id->m_per_frame_resources[i];
-    ren_try(frcs.acquire_semaphore,
-            id->m_rcs_arena.create_semaphore({
-                .name = format(scratch, "Acquire semaphore {}", i),
-                .type = rhi::SemaphoreType::Binary,
-            }));
-    ren_try(frcs.gfx_cmd_pool,
-            id->m_rcs_arena.create_command_pool({
-                .name = format(scratch, "Command pool {}", i),
-                .queue_family = rhi::QueueFamily::Graphics,
-            }));
+    frcs.acquire_semaphore = id->m_rcs_arena.create_semaphore({
+        .name = format(scratch, "Acquire semaphore {}", i),
+        .type = rhi::SemaphoreType::Binary,
+    });
+    frcs.gfx_cmd_pool = id->m_rcs_arena.create_command_pool({
+        .name = format(scratch, "Command pool {}", i),
+        .queue_family = rhi::QueueFamily::Graphics,
+    });
     if (renderer->is_queue_family_supported(rhi::QueueFamily::Compute)) {
-      ren_try(frcs.async_cmd_pool,
-              id->m_rcs_arena.create_command_pool({
-                  .name = format(scratch, "Command pool {}", i),
-                  .queue_family = rhi::QueueFamily::Compute,
-              }));
+      frcs.async_cmd_pool = id->m_rcs_arena.create_command_pool({
+          .name = format(scratch, "Command pool {}", i),
+          .queue_family = rhi::QueueFamily::Compute,
+      });
     }
     frcs.upload_allocator =
         UploadBumpAllocator::init(*renderer, id->m_rcs_arena, 128 * MiB);
@@ -129,8 +123,6 @@ Result<void, Error> init_internal_data(NotNull<Scene *> scene) {
   }
 
   id->m_rgp = RgPersistent::init(&scene->m_rg_arena, renderer);
-
-  return {};
 }
 
 void destroy_internal_data(NotNull<Scene *> scene) {
@@ -150,15 +142,14 @@ void next_frame(NotNull<Scene *> scene) {
   {
     ZoneScopedN("Scene::wait_for_previous_frame");
     if (renderer->try_get_semaphore(frcs->end_semaphore)) {
-      std::ignore =
-          renderer->wait_for_semaphore(frcs->end_semaphore, frcs->end_time);
+      renderer->wait_for_semaphore(frcs->end_semaphore, frcs->end_time);
     }
   }
 
   frcs->upload_allocator.reset();
-  std::ignore = renderer->reset_command_pool(frcs->gfx_cmd_pool);
+  renderer->reset_command_pool(frcs->gfx_cmd_pool);
   if (frcs->async_cmd_pool) {
-    std::ignore = renderer->reset_command_pool(frcs->async_cmd_pool);
+    renderer->reset_command_pool(frcs->async_cmd_pool);
   }
   frcs->descriptor_allocator.reset();
   frcs->end_semaphore = {};
@@ -166,26 +157,24 @@ void next_frame(NotNull<Scene *> scene) {
 
   id->m_gfx_allocator.reset();
   CommandRecorder cmd;
-  std::ignore = cmd.begin(*renderer, frcs->gfx_cmd_pool);
+  cmd.begin(*renderer, frcs->gfx_cmd_pool);
   {
     auto _ = cmd.debug_region("begin-frame");
     cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
   }
-  rhi::CommandBuffer cmd_buffer = cmd.end().value();
-  std::ignore = renderer->submit(rhi::QueueFamily::Graphics, {cmd_buffer});
+  renderer->submit(rhi::QueueFamily::Graphics, {cmd.end()});
 
   if (scene->m_settings.async_compute) {
     id->m_async_allocator.reset();
     std::swap(id->m_shared_allocators[0], id->m_shared_allocators[1]);
     id->m_shared_allocators[0].reset();
     CommandRecorder cmd;
-    std::ignore = cmd.begin(*renderer, frcs->async_cmd_pool);
+    cmd.begin(*renderer, frcs->async_cmd_pool);
     {
       auto _ = cmd.debug_region("begin-frame");
       cmd.memory_barrier(rhi::ALL_COMMANDS_BARRIER);
     }
-    rhi::CommandBuffer cmd_buffer = cmd.end().value();
-    std::ignore = renderer->submit(rhi::QueueFamily::Compute, {cmd_buffer});
+    renderer->submit(rhi::QueueFamily::Compute, {cmd.end()});
   }
 
   scene->m_sid->m_transform_staging_buffers = {};
@@ -208,19 +197,20 @@ sh::Handle<sh::Sampler2D> get_or_create_texture(NotNull<Scene *> scene,
       });
 }
 
-auto create_texture(NotNull<Arena *> frame_arena, NotNull<Scene *> scene,
-                    const void *blob, usize size) -> expected<Handle<Texture>> {
+Handle<Texture> create_texture(NotNull<Arena *> frame_arena,
+                               NotNull<Scene *> scene, const void *blob,
+                               usize size) {
   ktx_error_code_e err = KTX_SUCCESS;
   ktxTexture2 *ktx_texture2 = nullptr;
   err = ktxTexture2_CreateFromMemory((const u8 *)blob, size, 0, &ktx_texture2);
   if (err) {
-    return Failure(Error::Unknown);
+    return NullHandle;
   }
-  auto res = scene->m_sid->m_resource_uploader.create_texture(
+  auto handle = scene->m_sid->m_resource_uploader.create_texture(
       frame_arena, scene->m_rcs_arena, scene->m_frcs->upload_allocator,
       ktx_texture2);
   ktxTexture_Destroy(ktxTexture(ktx_texture2));
-  return res;
+  return handle.value_or(NullHandle);
 }
 
 bool is_amd_anti_lag_available(NotNull<Scene *> scene) {
@@ -233,8 +223,8 @@ bool is_amd_anti_lag_enabled(NotNull<Scene *> scene) {
 
 } // namespace
 
-auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
-                  SwapChain *swap_chain) -> expected<Scene *> {
+Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
+                    SwapChain *swap_chain) {
   auto *scene = new Scene{
       .m_arena = arena,
       .m_internal_arena = make_arena(),
@@ -251,7 +241,12 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
   };
 
   scene->m_rcs_arena = ResourceArena::init(arena, renderer);
-  scene->m_gpu_scene = GpuScene::init(&scene->m_rcs_arena);
+  rhi::Result<GpuScene> gpu_scene = GpuScene::init(&scene->m_rcs_arena);
+  if (!gpu_scene) {
+    ren_export::destroy_scene(scene);
+    return nullptr;
+  }
+  scene->m_gpu_scene = *gpu_scene;
 
   scene->m_settings.async_compute =
       renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
@@ -261,7 +256,7 @@ auto create_scene(NotNull<Arena *> arena, Renderer *renderer,
   scene->m_settings.amd_anti_lag =
       renderer->is_feature_supported(RendererFeature::AmdAntiLag);
 
-  ren_try_to(init_internal_data(scene));
+  init_internal_data(scene);
   next_frame(scene);
 
   return scene;
@@ -349,17 +344,20 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   auto upload_buffer = [&]<typename T>(Span<const T> data,
                                        Handle<Buffer> &buffer,
-                                       String8 name) -> Result<void, Error> {
+                                       String8 name) -> rhi::Result<void> {
     if (data.m_size > 0) {
-      ren_try(BufferSlice<T> slice, scene->m_rcs_arena.create_buffer<T>({
-                                        .name = std::move(name),
-                                        .heap = rhi::MemoryHeap::Default,
-                                        .count = data.m_size,
-                                    }));
-      buffer = slice.buffer;
+      auto slice = scene->m_rcs_arena.create_buffer<T>({
+          .name = std::move(name),
+          .heap = rhi::MemoryHeap::Default,
+          .count = data.m_size,
+      });
+      if (!slice) {
+        return slice.error();
+      }
+      buffer = slice->buffer;
       scene->m_sid->m_resource_uploader.stage_buffer(
           frame_arena, *renderer, scene->m_frcs->upload_allocator, Span(data),
-          slice);
+          *slice);
     }
     return {};
   };
@@ -393,7 +391,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   if (scene->m_index_pools.m_size == 0 or
       scene->m_index_pools.back().num_free_indices < header.num_triangles * 3) {
-    expected<BufferSlice<u8>> slice = scene->m_rcs_arena.create_buffer<u8>({
+    rhi::Result<BufferSlice<u8>> slice = scene->m_rcs_arena.create_buffer<u8>({
         .name = "Mesh vertex indices pool",
         .heap = rhi::MemoryHeap::Default,
         .count = sh::INDEX_POOL_SIZE,
@@ -460,12 +458,12 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
 Handle<Image> create_image(NotNull<Arena *> frame_arena, Scene *scene,
                            Span<const std::byte> blob) {
-  expected<Handle<Texture>> texture =
+  Handle<Texture> texture =
       create_texture(frame_arena, scene, blob.m_data, blob.m_size);
   if (!texture) {
     return NullHandle;
   }
-  return scene->m_images.insert(scene->m_arena, {*texture});
+  return scene->m_images.insert(scene->m_arena, {texture});
 }
 
 Handle<Material> create_material(NotNull<Arena *> frame_arena, Scene *scene,
@@ -741,10 +739,10 @@ void set_environment_color(Scene *scene, const glm::vec3 &luminance) {
   scene->m_environment_luminance = luminance;
 }
 
-auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void> {
+void set_environment_map(Scene *scene, Handle<Image> image) {
   if (!image) {
     scene->m_environment_map = {};
-    return {};
+    return;
   }
   scene->m_environment_map =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::SamplerCube>(
@@ -754,14 +752,12 @@ auto set_environment_map(Scene *scene, Handle<Image> image) -> expected<void> {
               .min_filter = rhi::Filter::Linear,
               .mipmap_mode = rhi::SamplerMipmapMode::Linear,
           });
-  return {};
 }
 
-auto delay_input(Scene *scene) -> expected<void> {
+void delay_input(Scene *scene) {
   if (is_amd_anti_lag_enabled(scene)) {
-    return scene->m_renderer->amd_anti_lag_input(scene->m_frame_index);
+    scene->m_renderer->amd_anti_lag_input(scene->m_frame_index);
   }
-  return {};
 }
 
 RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
@@ -1007,8 +1003,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
   return rg_gpu_scene;
 }
 
-auto build_rg(NotNull<Arena *> arena, Scene *scene)
-    -> Result<RenderGraph, Error> {
+RenderGraph build_rg(NotNull<Arena *> arena, Scene *scene) {
   ZoneScoped;
 
   Renderer *renderer = scene->m_renderer;
@@ -1324,7 +1319,7 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
   });
 }
 
-auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
+void draw(Scene *scene, const DrawInfo &draw_info) {
   ZoneScoped;
 
   ScratchArena scratch;
@@ -1336,41 +1331,37 @@ auto draw(Scene *scene, const DrawInfo &draw_info) -> expected<void> {
   Renderer *renderer = scene->m_renderer;
   auto *frcs = scene->m_frcs;
 
-  ren_try_to(scene->m_sid->m_resource_uploader.upload(
-      *renderer, scene->m_frcs->gfx_cmd_pool));
+  scene->m_sid->m_resource_uploader.upload(*renderer,
+                                           scene->m_frcs->gfx_cmd_pool);
 
-  ren_try(RenderGraph render_graph, build_rg(scratch, scene));
+  RenderGraph render_graph = build_rg(scratch, scene);
 
-  ren_try_to(
-      execute(render_graph, {
-                                .gfx_cmd_pool = frcs->gfx_cmd_pool,
-                                .async_cmd_pool = frcs->async_cmd_pool,
-                                .frame_end_semaphore = &frcs->end_semaphore,
-                                .frame_end_time = &frcs->end_time,
-                            }));
+  execute(render_graph, {
+                            .gfx_cmd_pool = frcs->gfx_cmd_pool,
+                            .async_cmd_pool = frcs->async_cmd_pool,
+                            .frame_end_semaphore = &frcs->end_semaphore,
+                            .frame_end_time = &frcs->end_time,
+                        });
 
   if (is_amd_anti_lag_enabled(scene)) {
-    ren_try_to(renderer->amd_anti_lag_present(scene->m_frame_index));
+    renderer->amd_anti_lag_present(scene->m_frame_index);
   }
 
   auto present_qf = scene->m_settings.present_from_compute
                         ? rhi::QueueFamily::Compute
                         : rhi::QueueFamily::Graphics;
-  ren_try_to(scene->m_swap_chain->present(present_qf));
+  scene->m_swap_chain->present(present_qf);
 
   FrameMark;
 
   scene->m_frame_index++;
   next_frame(scene);
-
-  return {};
 }
 
-auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
-    -> Result<void, Error> {
+void init_imgui(NotNull<Arena *> frame_arena, Scene *scene) {
 #if REN_IMGUI
   if (!ImGui::GetCurrentContext()) {
-    return {};
+    return;
   }
 
   ImGuiIO &io = ImGui::GetIO();
@@ -1379,22 +1370,22 @@ auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
   u8 *data;
   i32 width, height, bpp;
   io.Fonts->GetTexDataAsRGBA32(&data, &width, &height, &bpp);
-  Handle<Texture> texture = scene->m_rcs_arena
-                                .create_texture({
-                                    .name = "ImGui font atlas",
-                                    .format = TinyImageFormat_R8G8B8A8_UNORM,
-                                    .usage = rhi::ImageUsage::ShaderResource |
-                                             rhi::ImageUsage::TransferDst,
-                                    .width = (u32)width,
-                                    .height = (u32)height,
-                                })
-                                .value();
+  rhi::Result<Handle<Texture>> texture = scene->m_rcs_arena.create_texture({
+      .name = "ImGui font atlas",
+      .format = TinyImageFormat_R8G8B8A8_UNORM,
+      .usage = rhi::ImageUsage::ShaderResource | rhi::ImageUsage::TransferDst,
+      .width = (u32)width,
+      .height = (u32)height,
+  });
+  if (!texture) {
+    return;
+  }
   scene->m_sid->m_resource_uploader.stage_texture(
       frame_arena, scene->m_frcs->upload_allocator,
-      Span((const std::byte *)data, width * height * bpp), texture);
+      Span((const std::byte *)data, width * height * bpp), *texture);
   auto descriptor =
       scene->m_descriptor_allocator.allocate_sampled_texture<sh::Sampler2D>(
-          *scene->m_renderer, SrvDesc{texture},
+          *scene->m_renderer, SrvDesc{*texture},
           {
               .mag_filter = rhi::Filter::Linear,
               .min_filter = rhi::Filter::Linear,
@@ -1404,7 +1395,6 @@ auto init_imgui(NotNull<Arena *> frame_arena, Scene *scene)
           });
   io.Fonts->SetTexID((ImTextureID)(uintptr_t)descriptor.m_id);
 #endif
-  return {};
 }
 
 void draw_imgui(Scene *scene) {
@@ -1603,14 +1593,15 @@ void unload(Scene *scene) {
   scene->m_internal_arena.clear();
   scene->m_rg_arena.clear();
   scene->m_sid = nullptr;
-  unload(scene->m_renderer);
 }
 
-auto load(Scene *scene) -> expected<void> {
-  ren_try_to(load(scene->m_renderer));
-  ren_try_to(init_internal_data(scene));
+bool load(Scene *scene) {
+  if (!load(scene->m_renderer)) {
+    return false;
+  }
+  init_internal_data(scene);
   next_frame(scene);
-  return {};
+  return true;
 }
 
 } // namespace ren::hot_reload

@@ -57,7 +57,7 @@ public:
   auto is_queue_family_supported(rhi::QueueFamily queue_family) const -> bool;
 
   [[nodiscard]] auto create_buffer(const BufferCreateInfo &create_info)
-      -> Result<Handle<Buffer>, Error>;
+      -> rhi::Result<Handle<Buffer>>;
 
   void destroy(Handle<Buffer> buffer);
 
@@ -113,7 +113,7 @@ public:
   }
 
   [[nodiscard]] auto create_texture(const TextureCreateInfo &create_info)
-      -> Result<Handle<Texture>, Error>;
+      -> rhi::Result<Handle<Texture>>;
 
   void destroy(Handle<Texture> texture);
 
@@ -123,38 +123,34 @@ public:
 
   auto get_texture(Handle<Texture> texture) const -> const Texture &;
 
-  auto get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error>;
+  rhi::ImageView get_srv(SrvDesc srv);
 
-  auto get_uav(UavDesc uav) -> Result<rhi::ImageView, Error>;
+  rhi::ImageView get_uav(UavDesc uav);
 
-  auto get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error>;
+  rhi::ImageView get_rtv(RtvDesc rtv);
 
-  auto get_image_view(Handle<Texture> texture, ImageViewDesc view)
-      -> Result<rhi::ImageView, Error>;
+  rhi::ImageView get_image_view(Handle<Texture> texture, ImageViewDesc view);
 
-  [[nodiscard]] auto get_sampler(const rhi::SamplerCreateInfo &info)
-      -> Result<rhi::Sampler, Error>;
+  [[nodiscard]] rhi::Sampler get_sampler(const rhi::SamplerCreateInfo &info);
 
-  [[nodiscard]] auto
-  create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info)
-      -> Result<Handle<GraphicsPipeline>, Error>;
+  [[nodiscard]] Handle<GraphicsPipeline>
+  create_graphics_pipeline(const GraphicsPipelineCreateInfo &create_info);
 
   void destroy(Handle<GraphicsPipeline> pipeline);
 
   auto get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
       -> const GraphicsPipeline &;
 
-  [[nodiscard]] auto
-  create_compute_pipeline(const ComputePipelineCreateInfo &create_info)
-      -> Result<Handle<ComputePipeline>, Error>;
+  [[nodiscard]] Handle<ComputePipeline>
+  create_compute_pipeline(const ComputePipelineCreateInfo &create_info);
 
   void destroy(Handle<ComputePipeline> pipeline);
 
   auto get_compute_pipeline(Handle<ComputePipeline> pipeline) const
       -> const ComputePipeline &;
 
-  [[nodiscard]] auto create_semaphore(const SemaphoreCreateInfo &create_info)
-      -> Result<Handle<Semaphore>, Error>;
+  [[nodiscard]] Handle<Semaphore>
+  create_semaphore(const SemaphoreCreateInfo &create_info);
 
   void destroy(Handle<Semaphore> semaphore);
 
@@ -167,12 +163,10 @@ public:
 
   void wait_idle();
 
-  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
-                                        u64 timeout) const
-      -> Result<rhi::WaitResult, Error>;
+  [[nodiscard]] rhi::WaitResult
+  wait_for_semaphore(Handle<Semaphore> semaphore, u64 value, u64 timeout) const;
 
-  [[nodiscard]] auto wait_for_semaphore(Handle<Semaphore>, u64 value) const
-      -> Result<void, Error>;
+  void wait_for_semaphore(Handle<Semaphore>, u64 value) const;
 
   auto create_event() -> Handle<Event>;
   void destroy(Handle<Event>);
@@ -181,33 +175,29 @@ public:
     return m_events[event];
   }
 
-  auto create_command_pool(const CommandPoolCreateInfo &create_info)
-      -> Result<Handle<CommandPool>, Error>;
+  Handle<CommandPool>
+  create_command_pool(const CommandPoolCreateInfo &create_info);
 
   void destroy(Handle<CommandPool> pool);
 
   auto get_command_pool(Handle<CommandPool> pool) -> const CommandPool &;
 
-  auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
+  void reset_command_pool(Handle<CommandPool> pool);
 
-  auto submit(rhi::QueueFamily queue_family,
+  void submit(rhi::QueueFamily queue_family,
               Span<const rhi::CommandBuffer> cmd_buffers,
               Span<const SemaphoreState> wait_semaphores = {},
-              Span<const SemaphoreState> signal_semaphores = {})
-      -> Result<void, Error>;
+              Span<const SemaphoreState> signal_semaphores = {});
 
   bool is_feature_supported(RendererFeature feature) const;
 
-  auto amd_anti_lag_input(u64 frame, bool enable = true, u32 max_fps = 0)
-      -> Result<void, Error>;
+  void amd_anti_lag_input(u64 frame, bool enable = true, u32 max_fps = 0);
 
-  auto amd_anti_lag_present(u64 frame, bool enable = true, u32 max_fps = 0)
-      -> Result<void, Error>;
+  void amd_anti_lag_present(u64 frame, bool enable = true, u32 max_fps = 0);
 
   void create_device();
 };
 
-void unload(Renderer *renderer);
-auto load(Renderer *renderer) -> Result<void, Error>;
+[[nodiscard]] rhi::Result<void> load(Renderer *renderer);
 
 } // namespace ren

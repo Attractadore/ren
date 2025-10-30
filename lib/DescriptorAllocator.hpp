@@ -1,7 +1,6 @@
 #pragma once
 #include "Renderer.hpp"
 #include "Texture.hpp"
-#include "core/Result.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/ren.hpp"
 #include "sh/Std.h"
@@ -37,7 +36,7 @@ struct DescriptorAllocatorMixin {
                                 const rhi::SamplerCreateInfo &sampler_info)
       -> sh::Handle<D> {
     return self.template allocate_sampled_texture<D>(
-        renderer, srv, renderer.get_sampler(sampler_info).value());
+        renderer, srv, renderer.get_sampler(sampler_info));
   }
 };
 

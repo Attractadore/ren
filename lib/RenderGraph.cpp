@@ -1,6 +1,5 @@
 #include "RenderGraph.hpp"
 #include "CommandRecorder.hpp"
-#include "core/Errors.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
 
@@ -519,7 +518,7 @@ void RgBuilder::dump_pass_schedule() const {
   }
 }
 
-auto RgBuilder::alloc_textures() -> Result<void, Error> {
+void RgBuilder::alloc_textures() {
   bool need_alloc = false;
   auto update_texture_usage_flags = [&](RgTextureUseId use_id) {
     const RgTextureUse &use = m_texture_uses[use_id];
@@ -550,7 +549,7 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
     for (RgPhysicalTexture &ptex : m_rgp->m_physical_textures) {
       ptex.layout = ptex.persistent ? ptex.layout : rhi::ImageLayout::Undefined;
     }
-    return {};
+    return;
   }
 
   usize num_gfx_passes = m_gfx_schedule.m_size;
@@ -562,34 +561,37 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
     if (!ptex.usage or ptex.external) {
       continue;
     }
-    ren_try(ptex.handle, m_rgp->m_rcs_arena.create_texture({
-                             .name = ptex.name,
-                             .format = ptex.format,
-                             .usage = ptex.usage,
-                             .width = ptex.size.x,
-                             .height = ptex.size.y,
-                             .depth = ptex.size.z,
-                             .cube_map = ptex.cube_map,
-                             .num_mips = ptex.num_mips,
-                             .num_layers = ptex.num_layers,
-                         }));
+    auto handle = m_rgp->m_rcs_arena.create_texture({
+        .name = ptex.name,
+        .format = ptex.format,
+        .usage = ptex.usage,
+        .width = ptex.size.x,
+        .height = ptex.size.y,
+        .depth = ptex.size.z,
+        .cube_map = ptex.cube_map,
+        .num_mips = ptex.num_mips,
+        .num_layers = ptex.num_layers,
+    });
+    if (!handle) {
+      fmt::println(stderr, "RenderGraph render target allocation failed");
+      exit(EXIT_FAILURE);
+    }
+    ptex.handle = *handle;
     ptex.layout = rhi::ImageLayout::Undefined;
   }
 
-  ren_try(m_rgp->m_gfx_semaphore,
-          m_rgp->m_rcs_arena.create_semaphore(
+  m_rgp->m_gfx_semaphore = m_rgp->m_rcs_arena.create_semaphore(
 
-              {
-                  .name = "Render graph graphics queue timeline",
-                  .type = rhi::SemaphoreType::Timeline,
-                  .initial_value = m_rgp->m_gfx_time,
-              }));
-  ren_try(m_rgp->m_async_semaphore,
-          m_rgp->m_rcs_arena.create_semaphore({
-              .name = "Render graph async compute queue timeline",
-              .type = rhi::SemaphoreType::Timeline,
-              .initial_value = m_rgp->m_async_time,
-          }));
+      {
+          .name = "Render graph graphics queue timeline",
+          .type = rhi::SemaphoreType::Timeline,
+          .initial_value = m_rgp->m_gfx_time,
+      });
+  m_rgp->m_async_semaphore = m_rgp->m_rcs_arena.create_semaphore({
+      .name = "Render graph async compute queue timeline",
+      .type = rhi::SemaphoreType::Timeline,
+      .initial_value = m_rgp->m_async_time,
+  });
   if (!m_rgp->m_gfx_semaphore_id) {
     m_rgp->m_gfx_semaphore_id = m_rgp->create_semaphore("gfx-queue-timeline");
   }
@@ -610,8 +612,6 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
          &temp[m_gfx_schedule.m_size - num_gfx_passes]);
     copy(temp, &m_gfx_schedule[0]);
   }
-
-  return {};
 }
 
 void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
@@ -626,7 +626,7 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
     }
     switch (rhi::MemoryHeap heap = physical_buffer.heap) {
     default:
-      unreachable("Unsupported RenderGraph buffer heap: {}", int(heap));
+      std::unreachable();
     case rhi::MemoryHeap::Default: {
       DeviceBumpAllocator *allocator = nullptr;
       if (physical_buffer.queues == RgQueue::Graphics) {
@@ -1228,11 +1228,10 @@ void RgBuilder::place_barriers_and_semaphores() {
   }
 }
 
-auto RgBuilder::build(const RgBuildInfo &build_info)
-    -> Result<RenderGraph, Error> {
+RenderGraph RgBuilder::build(const RgBuildInfo &build_info) {
   ZoneScoped;
 
-  ren_try_to(alloc_textures());
+  alloc_textures();
   alloc_buffers(*build_info.gfx_allocator, *build_info.async_allocator,
                 *build_info.shared_allocator, *build_info.upload_allocator);
 
@@ -1302,7 +1301,7 @@ auto RgPassBuilder::write_texture(String8 name, NotNull<RgTextureId *> texture,
       .pass = m_pass,
       .texture = texture,
       .usage = usage,
-      .sampler = m_builder->m_renderer->get_sampler(sampler).value(),
+      .sampler = m_builder->m_renderer->get_sampler(sampler),
       .base_mip = base_mip,
   });
 }
@@ -1363,8 +1362,7 @@ void RgPassBuilder::signal_semaphore(RgSemaphoreId semaphore, u64 value) {
   m_builder->signal_semaphore(m_pass, semaphore, value);
 }
 
-auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
-    -> Result<void, Error> {
+void execute(const RenderGraph &rg, const RgExecuteInfo &exec_info) {
   ZoneScoped;
 
   RgRuntime rt;
@@ -1378,19 +1376,16 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
     Span<const SemaphoreState> batch_wait_semaphores;
     Span<const SemaphoreState> batch_signal_semaphores;
 
-    auto submit_batch = [&]() -> Result<void, Error> {
+    auto submit_batch = [&]() {
       if (!cmd and batch_wait_semaphores.m_size == 0 and
           batch_signal_semaphores.m_size == 0) {
-        return {};
+        return;
       }
       ren_assert(cmd);
-      ren_try(rhi::CommandBuffer cmd_buffer, cmd.end());
-      ren_try_to(rg.m_renderer->submit(queue_family, {cmd_buffer},
-                                       batch_wait_semaphores,
-                                       batch_signal_semaphores));
+      rg.m_renderer->submit(queue_family, {cmd.end()}, batch_wait_semaphores,
+                            batch_signal_semaphores);
       batch_wait_semaphores = {};
       batch_signal_semaphores = {};
-      return {};
     };
 
     Span<const RgRtPass> passes = rg.m_gfx_passes;
@@ -1404,12 +1399,12 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
       ZoneScopedN("RenderGraph::execute_pass");
       ZoneText(pass.name.m_str, pass.name.m_size);
       if (pass.wait_semaphores.m_size > 0) {
-        ren_try_to(submit_batch());
+        submit_batch();
         batch_wait_semaphores = pass.wait_semaphores;
       }
 
       if (!cmd) {
-        ren_try_to(cmd.begin(*rg.m_renderer, cmd_pool));
+        cmd.begin(*rg.m_renderer, cmd_pool);
       }
 
       {
@@ -1461,11 +1456,11 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
 
       if (pass.signal_semaphores.m_size > 0) {
         batch_signal_semaphores = pass.signal_semaphores;
-        ren_try_to(submit_batch());
+        submit_batch();
       }
     }
 
-    ren_try_to(submit_batch());
+    submit_batch();
   }
 
   if (exec_info.frame_end_semaphore) {
@@ -1477,8 +1472,6 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
       *exec_info.frame_end_time = rg.m_rgp->m_gfx_time;
     }
   }
-
-  return {};
 }
 
 auto RgRuntime::get_untyped_buffer(RgUntypedBufferToken buffer) const

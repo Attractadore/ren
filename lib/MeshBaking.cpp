@@ -671,44 +671,42 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
   return mesh;
 }
 
-auto bake_mesh_to_file(const MeshInfo &info, FILE *out) -> expected<void> {
+IoResult<void> bake_mesh_to_file(const MeshInfo &info, File file) {
   ScratchArena scratch;
   BakedMesh mesh = bake_mesh(scratch, info);
 
-  usize file_start = std::ftell(out);
+  IoResult<usize> file_start = seek(file, 0, SeekMode::Cur);
+  if (!file_start) {
+    return file_start.error();
+  }
 
-  bool success = [&]() {
-    if (std::fwrite(&mesh.header, sizeof(mesh.header), 1, out) != 1) {
-      return false;
-    }
+  if (IoResult<void> result =
+          write_all(file, &mesh.header, sizeof(mesh.header));
+      !result) {
+    return result.error();
+  }
 
 #define write_array(arr, size)                                                 \
   do {                                                                         \
-    if (!std::fseek(out, file_start + mesh.header.arr##_offset, SEEK_SET)) {   \
-      return false;                                                            \
+    if (IoResult<usize> result =                                               \
+            seek(file, *file_start + mesh.header.arr##_offset, SeekMode::Set); \
+        !result) {                                                             \
+      return result.error();                                                   \
     }                                                                          \
     usize sz = Span(mesh.arr, mesh.arr ? mesh.header.size : 0).size_bytes();   \
-    if (std::fwrite(mesh.arr, 1, sz, out) != sz) {                             \
-      return false;                                                            \
+    if (IoResult<void> result = write_all(file, mesh.arr, sz); !result) {      \
+      return result.error();                                                   \
     }                                                                          \
   } while (0)
-    write_array(positions, num_vertices);
-    write_array(normals, num_vertices);
-    write_array(tangents, num_vertices);
-    write_array(uvs, num_vertices);
-    write_array(colors, num_vertices);
-    write_array(meshlets, num_meshlets);
-    write_array(indices, num_indices);
-    write_array(triangles, num_triangles * 3);
+  write_array(positions, num_vertices);
+  write_array(normals, num_vertices);
+  write_array(tangents, num_vertices);
+  write_array(uvs, num_vertices);
+  write_array(colors, num_vertices);
+  write_array(meshlets, num_meshlets);
+  write_array(indices, num_indices);
+  write_array(triangles, num_triangles * 3);
 #undef write_array
-
-    return true;
-  }();
-
-  if (!success) {
-    std::fseek(out, file_start, SEEK_SET);
-    return std::unexpected(Error::IO);
-  }
 
   return {};
 }

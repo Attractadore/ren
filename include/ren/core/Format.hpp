@@ -1,4 +1,5 @@
 #pragma once
+#include "Result.hpp"
 #include "String.hpp"
 
 #include <fmt/format.h>
@@ -29,5 +30,7 @@ void format_to(NotNull<StringBuilder8 *> builder, fmt::format_string<T...> fmt,
   fmt::vformat_to(builder->back_inserter(), fmt.str,
                   fmt::vargs<T...>{{args...}});
 }
+
+String8 format_as(IoError status);
 
 } // namespace ren

@@ -19,30 +19,23 @@ auto format_as(VkResult result) { return fmt::underlying(result); }
 #define VK_CHECK(result, message)                                              \
   if (result) {                                                                \
     fmt::println(stderr, message ": {}", result);                              \
-    std::exit(EXIT_FAILURE);                                                   \
+    std::abort();                                                              \
   }
 
 namespace ren::rhi {
 
 namespace {
 
-inline auto fail(VkResult result) -> Failure<Error> {
-  Error::Code code = Error::Unknown;
+Error vk_result_to_rhi_status(VkResult result) {
   ren_assert(result);
   switch (result) {
   default:
-    break;
+    return Error::Unknown;
+  case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+    return Error::OutOfMemory;
   case VK_ERROR_FEATURE_NOT_PRESENT:
-    code = Error::FeatureNotPresent;
-    break;
-  case VK_ERROR_OUT_OF_DATE_KHR:
-    code = Error::OutOfDate;
-    break;
-  case VK_INCOMPLETE:
-    code = Error::Incomplete;
-    break;
+    return Error::FeatureNotPresent;
   }
-  return Failure(Error(code));
 }
 
 template <typename E>
@@ -480,33 +473,29 @@ void set_debug_name(Device device, VkObjectType type, void *object,
 
 } // namespace
 
-auto load(bool headless) -> Result<void> {
+Result<void> load(bool headless) {
   VkResult result = VK_SUCCESS;
-
-  std::ignore = rhi::load_gfx_debugger();
+  rhi::load_gfx_debugger();
   fmt::println("vk: Load Vulkan");
   if (not headless) {
     if (!SDL_Vulkan_LoadLibrary(nullptr)) {
-      return fail(VK_ERROR_UNKNOWN);
+      return Error::Unknown;
     }
   }
   result = volkInitialize();
   if (result) {
-    return fail(result);
+    return vk_result_to_rhi_status(result);
   }
-
   return {};
 }
 
-void unload(Instance instance) {}
-
-auto load(Instance instance) -> Result<void> {
+Result<void> load(Instance instance) {
   VkResult result = VK_SUCCESS;
-  std::ignore = rhi::load_gfx_debugger();
+  rhi::load_gfx_debugger();
   fmt::println("vk: Reload Vulkan");
   result = volkInitialize();
   if (result) {
-    return fail(result);
+    return vk_result_to_rhi_status(result);
   }
   volkLoadInstanceOnly(instance->handle);
   return {};
@@ -524,14 +513,14 @@ auto create_instance(NotNull<Arena *> arena,
   u32 num_instance_layers = 0;
   result = vkEnumerateInstanceLayerProperties(&num_instance_layers, nullptr);
   if (result) {
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
   auto *instance_layers =
       allocate<VkLayerProperties>(scratch, num_instance_layers);
   result =
       vkEnumerateInstanceLayerProperties(&num_instance_layers, instance_layers);
   if (result) {
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
   auto is_layer_supported = [&](const char *layer) {
     for (usize e : range(num_instance_layers)) {
@@ -546,14 +535,14 @@ auto create_instance(NotNull<Arena *> arena,
   result = vkEnumerateInstanceExtensionProperties(
       nullptr, &num_instance_extensions, nullptr);
   if (result) {
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
   auto *instance_extensions =
       allocate<VkExtensionProperties>(scratch, num_instance_extensions);
   result = vkEnumerateInstanceExtensionProperties(
       nullptr, &num_instance_extensions, instance_extensions);
   if (result) {
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
   auto is_extension_supported = [&](const char *extension) {
     for (usize e : range(num_instance_extensions)) {
@@ -586,7 +575,7 @@ auto create_instance(NotNull<Arena *> arena,
     const char *const *sdl_extensions =
         SDL_Vulkan_GetInstanceExtensions(&num_sdl_extensions);
     if (!sdl_extensions) {
-      return fail(Error::Unknown);
+      return vk_result_to_rhi_status(result);
     }
     copy(sdl_extensions, num_sdl_extensions, extensions + num_extensions);
     num_extensions += num_sdl_extensions;
@@ -644,7 +633,7 @@ auto create_instance(NotNull<Arena *> arena,
   result = vkCreateInstance(&instance_info, nullptr, &instance->handle);
   if (result) {
     destroy_instance(instance);
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
 
   volkLoadInstanceOnly(instance->handle);
@@ -681,11 +670,11 @@ auto create_instance(NotNull<Arena *> arena,
                                       nullptr);
   if (result) {
     destroy_instance(instance);
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
   if (num_physical_devices == 0) {
     destroy_instance(instance);
-    return fail(Error::Unsupported);
+    return vk_result_to_rhi_status(result);
   }
   auto *physical_devices =
       allocate<VkPhysicalDevice>(scratch, num_physical_devices);
@@ -705,7 +694,7 @@ auto create_instance(NotNull<Arena *> arena,
         handle, nullptr, &adapter.num_extensions, nullptr);
     if (result) {
       destroy_instance(instance);
-      return fail(Error::Unknown);
+      return vk_result_to_rhi_status(result);
     }
     auto *adapter_extensions =
         allocate<VkExtensionProperties>(arena, adapter.num_extensions);
@@ -713,7 +702,7 @@ auto create_instance(NotNull<Arena *> arena,
         handle, nullptr, &adapter.num_extensions, adapter_extensions);
     if (result) {
       destroy_instance(instance);
-      return fail(Error::Unknown);
+      return vk_result_to_rhi_status(result);
     }
 
     auto is_extension_supported = [&](const char *extension) {
@@ -868,7 +857,7 @@ auto create_instance(NotNull<Arena *> arena,
 
   if (instance->num_adapters == 0) {
     destroy_instance(instance);
-    return fail(Error::Unsupported);
+    return Error::FeatureNotPresent;
   }
 
   return instance;
@@ -1108,10 +1097,8 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
   };
 
   result = vkCreateDevice(handle, &device_info, nullptr, &device->handle);
-  if (result == VK_ERROR_FEATURE_NOT_PRESENT) {
-    return fail(Error::FeatureNotPresent);
-  } else if (result) {
-    return fail(Error::Unknown);
+  if (result) {
+    return vk_result_to_rhi_status(result);
   }
 
   volkLoadDeviceTable(&device->vk, device->handle);
@@ -1142,7 +1129,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
   result = vmaCreateAllocator(&allocator_info, &device->allocator);
   if (result) {
     destroy_device(device);
-    return fail(Error::Unknown);
+    return vk_result_to_rhi_status(result);
   }
 
   {
@@ -1197,7 +1184,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
         &device->descriptor_set_layout);
     if (result) {
       destroy_device(device);
-      return fail(result);
+      return vk_result_to_rhi_status(result);
     }
 
     VkPushConstantRange push_constants = {
@@ -1215,7 +1202,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
         device->handle, &layout_info, nullptr, &device->pipeline_layout);
     if (result) {
       destroy_device(device);
-      return fail(result);
+      return vk_result_to_rhi_status(result);
     }
   }
 
@@ -1249,7 +1236,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
         device->handle, &pool_info, nullptr, &device->descriptor_pool);
     if (result) {
       destroy_device(device);
-      return fail(result);
+      return vk_result_to_rhi_status(result);
     }
 
     VkDescriptorSetAllocateInfo set_info = {
@@ -1262,7 +1249,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
                                                  &device->descriptor_heap);
     if (result) {
       destroy_device(device);
-      return fail(result);
+      return vk_result_to_rhi_status(result);
     }
   }
 
@@ -1282,12 +1269,9 @@ void destroy_device(Device device) {
   }
 }
 
-auto device_wait_idle(Device device) -> Result<void> {
+void device_wait_idle(Device device) {
   VkResult result = device->vk.vkDeviceWaitIdle(device->handle);
-  if (result < 0) {
-    return fail(result);
-  }
-  return {};
+  VK_CHECK(result, "vkDeviceWaitIdle failed");
 }
 
 namespace {
@@ -1309,10 +1293,9 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
-auto queue_submit(Queue queue, Span<const rhi::CommandBuffer> cmd_buffers,
+void queue_submit(Queue queue, Span<const rhi::CommandBuffer> cmd_buffers,
                   Span<const rhi::SemaphoreState> wait_semaphores,
-                  Span<const rhi::SemaphoreState> signal_semaphores)
-    -> Result<void> {
+                  Span<const rhi::SemaphoreState> signal_semaphores) {
   ScratchArena scratch;
 
   auto *command_buffer_infos =
@@ -1357,23 +1340,16 @@ auto queue_submit(Queue queue, Span<const rhi::CommandBuffer> cmd_buffers,
   };
   VkResult result =
       queue.vk->vkQueueSubmit2(queue.handle, 1, &submit_info, nullptr);
-  if (result) {
-    return fail(result);
-  }
-
-  return {};
+  VK_CHECK(result, "vkQueueSubmit2 failed");
 }
 
-auto queue_wait_idle(Queue queue) -> Result<void> {
+void queue_wait_idle(Queue queue) {
   VkResult result = queue.vk->vkQueueWaitIdle(queue.handle);
-  if (result) {
-    return fail(result);
-  }
-  return {};
+  VK_CHECK(result, "vkQueueWaitIdle failed");
 }
 
-auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
-    -> Result<Semaphore> {
+Semaphore create_semaphore(Device device,
+                           const SemaphoreCreateInfo &create_info) {
   VkSemaphoreTypeCreateInfo type_info = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = to_vk(create_info.type),
@@ -1386,9 +1362,7 @@ auto create_semaphore(Device device, const SemaphoreCreateInfo &create_info)
   Semaphore semaphore;
   VkResult result = device->vk.vkCreateSemaphore(
       device->handle, &vk_create_info, nullptr, &semaphore.handle);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkCreateSemaphore failed");
   return semaphore;
 }
 
@@ -1400,9 +1374,9 @@ void set_debug_name(Device device, Semaphore semaphore, String8 name) {
   set_debug_name(device, VK_OBJECT_TYPE_SEMAPHORE, semaphore.handle, name);
 }
 
-auto wait_for_semaphores(Device device,
-                         Span<const SemaphoreWaitInfo> wait_infos, u64 timeout)
-    -> Result<WaitResult> {
+WaitResult wait_for_semaphores(Device device,
+                               Span<const SemaphoreWaitInfo> wait_infos,
+                               u64 timeout) {
   ScratchArena scratch;
   u32 cnt = wait_infos.m_size;
   auto *semaphores = allocate<VkSemaphore>(scratch, cnt);
@@ -1419,16 +1393,14 @@ auto wait_for_semaphores(Device device,
   };
   VkResult result =
       device->vk.vkWaitSemaphores(device->handle, &vk_wait_info, timeout);
-  if (result == VK_SUCCESS) {
-    return WaitResult::Success;
-  }
   if (result == VK_TIMEOUT) {
     return WaitResult::Timeout;
   }
-  return fail(result);
+  VK_CHECK(result, "vkWaitSemaphores failed");
+  return WaitResult::Success;
 }
 
-auto map(Device device, Allocation allocation) -> void * {
+void *map(Device device, Allocation allocation) {
   VmaAllocationInfo allocation_info;
   vmaGetAllocationInfo(device->allocator, allocation.handle, &allocation_info);
   return allocation_info.pMappedData;
@@ -1490,7 +1462,7 @@ auto create_buffer(Device device, const BufferCreateInfo &create_info)
       vmaCreateBuffer(device->allocator, &buffer_info, &allocation_info,
                       &buffer.handle, &buffer.allocation.handle, nullptr);
   if (result) {
-    return fail(result);
+    return vk_result_to_rhi_status(result);
   }
 
   return buffer;
@@ -1575,7 +1547,7 @@ auto create_image(Device device, const ImageCreateInfo &create_info)
       vmaCreateImage(device->allocator, &image_info, &alloc_info, &image.handle,
                      &image.allocation.handle, nullptr);
   if (result) {
-    return fail(result);
+    return vk_result_to_rhi_status(result);
   }
 
   return image;
@@ -1593,8 +1565,8 @@ auto get_allocation(Device, Image image) -> Allocation {
   return image.allocation;
 }
 
-auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
-    -> Result<ImageView> {
+ImageView create_image_view(Device device,
+                            const ImageViewCreateInfo &create_info) {
   ren_assert(create_info.num_mips > 0);
   ren_assert(create_info.num_layers > 0);
 
@@ -1627,9 +1599,7 @@ auto create_image_view(Device device, const ImageViewCreateInfo &create_info)
   ImageView view;
   VkResult result = device->vk.vkCreateImageView(device->handle, &view_info,
                                                  nullptr, &view.handle);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkCreateImageView failed");
   return view;
 }
 
@@ -1637,8 +1607,7 @@ void destroy_image_view(Device device, ImageView view) {
   device->vk.vkDestroyImageView(device->handle, view.handle, nullptr);
 }
 
-auto create_sampler(Device device, const SamplerCreateInfo &create_info)
-    -> Result<Sampler> {
+Sampler create_sampler(Device device, const SamplerCreateInfo &create_info) {
   VkSamplerReductionModeCreateInfo reduction_mode_info = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
       .reductionMode = to_vk(create_info.reduction_mode),
@@ -1659,9 +1628,7 @@ auto create_sampler(Device device, const SamplerCreateInfo &create_info)
   Sampler sampler;
   VkResult result = device->vk.vkCreateSampler(device->handle, &sampler_info,
                                                nullptr, &sampler.handle);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkCreateSampler");
   return sampler;
 }
 
@@ -1759,9 +1726,9 @@ void write_uav_descriptor_heap(Device device, Span<const ImageView> uavs,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-auto create_graphics_pipeline(Device device,
-                              const GraphicsPipelineCreateInfo &create_info)
-    -> Result<Pipeline> {
+Pipeline
+create_graphics_pipeline(Device device,
+                         const GraphicsPipelineCreateInfo &create_info) {
   ScratchArena scratch;
 
   VkResult result = VK_SUCCESS;
@@ -1807,12 +1774,7 @@ auto create_graphics_pipeline(Device device,
     };
     result = device->vk.vkCreateShaderModule(device->handle, &module_info,
                                              nullptr, &modules[num_stages]);
-    if (result) {
-      for (VkShaderModule module : modules) {
-        device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
-      }
-      return fail(result);
-    }
+    VK_CHECK(result, "vkCreateShaderModule failed");
     specialization_info[num_stages] = {
         .mapEntryCount = num_specialization_constants,
         .pMapEntries = specialization_map,
@@ -1949,19 +1911,16 @@ auto create_graphics_pipeline(Device device,
   Pipeline pipeline;
   result = device->vk.vkCreateGraphicsPipelines(
       device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  VK_CHECK(result, "vkCreateGraphicsPipelines failed");
   for (VkShaderModule module : modules) {
     device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
-  }
-  if (result) {
-    return fail(result);
   }
 
   return pipeline;
 }
 
-auto create_compute_pipeline(Device device,
-                             const ComputePipelineCreateInfo &create_info)
-    -> Result<Pipeline> {
+Pipeline create_compute_pipeline(Device device,
+                                 const ComputePipelineCreateInfo &create_info) {
   ScratchArena scratch;
 
   VkResult result = VK_SUCCESS;
@@ -1976,9 +1935,7 @@ auto create_compute_pipeline(Device device,
   VkShaderModule module;
   result = device->vk.vkCreateShaderModule(device->handle, &module_info,
                                            nullptr, &module);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkCreateShaderModule failed");
 
   u32 num_specialization_constants = cs.specialization.constants.m_size;
   auto *specialization_map =
@@ -2014,10 +1971,8 @@ auto create_compute_pipeline(Device device,
   Pipeline pipeline;
   result = device->vk.vkCreateComputePipelines(
       device->handle, nullptr, 1, &pipeline_info, nullptr, &pipeline.handle);
+  VK_CHECK(result, "vkCreateComputePipelines failed");
   device->vk.vkDestroyShaderModule(device->handle, module, nullptr);
-  if (result) {
-    return fail(result);
-  }
 
   return pipeline;
 }
@@ -2038,7 +1993,7 @@ auto create_event(Device device) -> Event {
   Event event;
   VkResult result = device->vk.vkCreateEvent(device->handle, &event_info,
                                              nullptr, &event.handle);
-  VK_CHECK(result, "VkEvent creation failed");
+  VK_CHECK(result, "vkCreateEvent failed");
   return event;
 }
 
@@ -2057,9 +2012,8 @@ struct CommandPoolData {
 
 } // namespace vk
 
-auto create_command_pool(NotNull<Arena *> arena, Device device,
-                         const CommandPoolCreateInfo &create_info)
-    -> Result<CommandPool> {
+CommandPool create_command_pool(NotNull<Arena *> arena, Device device,
+                                const CommandPoolCreateInfo &create_info) {
   CommandPoolData *pool = allocate<CommandPoolData>(arena);
   pool->header.queue_family = create_info.queue_family;
 
@@ -2072,10 +2026,7 @@ auto create_command_pool(NotNull<Arena *> arena, Device device,
   };
   VkResult result = device->vk.vkCreateCommandPool(device->handle, &pool_info,
                                                    nullptr, &pool->handle);
-  if (result) {
-    destroy_command_pool(device, &pool->header);
-    return fail(result);
-  }
+  VK_CHECK(result, "vkCreateCommandPool failed");
   VkCommandBufferAllocateInfo allocate_info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .commandPool = pool->handle,
@@ -2084,7 +2035,7 @@ auto create_command_pool(NotNull<Arena *> arena, Device device,
   };
   result = device->vk.vkAllocateCommandBuffers(device->handle, &allocate_info,
                                                pool->cmd_buffers);
-  VK_CHECK(result, "Failed to allocate command buffers");
+  VK_CHECK(result, "vkAllocateCommandBuffers failed");
   return &pool->header;
 }
 
@@ -2100,19 +2051,15 @@ void set_debug_name(Device device, CommandPool header, String8 name) {
   set_debug_name(device, VK_OBJECT_TYPE_COMMAND_POOL, pool->handle, name);
 }
 
-auto reset_command_pool(Device device, CommandPool header) -> Result<void> {
+void reset_command_pool(Device device, CommandPool header) {
   CommandPoolData *pool = container_of(header, CommandPoolData, header);
   VkResult result =
       device->vk.vkResetCommandPool(device->handle, pool->handle, 0);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkResetCommandPool failed");
   pool->cmd_index = 0;
-  return {};
 }
 
-auto begin_command_buffer(Device device, CommandPool header)
-    -> Result<CommandBuffer> {
+CommandBuffer begin_command_buffer(Device device, CommandPool header) {
   CommandPoolData *pool = container_of(header, CommandPoolData, header);
 
   VkResult result = VK_SUCCESS;
@@ -2128,9 +2075,7 @@ auto begin_command_buffer(Device device, CommandPool header)
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
   result = device->vk.vkBeginCommandBuffer(cmd.handle, &begin_info);
-  if (result) {
-    return fail(result);
-  }
+  VK_CHECK(result, "vkBeginCommandBuffer failed");
 
   if (header->queue_family == QueueFamily::Graphics or
       header->queue_family == QueueFamily::Compute) {
@@ -2147,12 +2092,9 @@ auto begin_command_buffer(Device device, CommandPool header)
   return cmd;
 }
 
-auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
+void end_command_buffer(CommandBuffer cmd) {
   VkResult result = cmd.device->vk.vkEndCommandBuffer(cmd.handle);
-  if (result) {
-    return fail(result);
-  }
-  return {};
+  VK_CHECK(result, "vkEndCommandBuffer");
 }
 
 void cmd_pipeline_barrier(CommandBuffer cmd,
@@ -2548,12 +2490,12 @@ void cmd_end_debug_label(CommandBuffer cmd) {
 
 extern const u32 SDL_WINDOW_FLAGS = SDL_WINDOW_VULKAN;
 
-auto create_surface(Instance instance, SDL_Window *window) -> Result<Surface> {
+Surface create_surface(Instance instance, SDL_Window *window) {
   Surface surface;
-  if (!SDL_Vulkan_CreateSurface(window, instance->handle, nullptr,
-                                &surface.handle)) {
-    return fail(Error::Unknown);
-  }
+  bool success = SDL_Vulkan_CreateSurface(window, instance->handle, nullptr,
+                                          &surface.handle);
+  VK_CHECK(success ? VK_SUCCESS : VK_ERROR_UNKNOWN,
+           "SDL_Vulkan_CreateSurface failed");
   return surface;
 }
 
@@ -2723,8 +2665,10 @@ auto select_swap_chain_composite_alpha(
 
 namespace {
 
-auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
-                         VkPresentModeKHR present_mode) -> Result<void> {
+void recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                         VkPresentModeKHR present_mode) {
+  VkResult result = VK_SUCCESS;
+
   Device device = swap_chain->device;
   const AdapterData &adapter = get_adapter(device);
   VkSurfacePresentModeEXT present_mode_info = {
@@ -2739,10 +2683,9 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
   VkSurfaceCapabilities2KHR capabilities2 = {
       .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
   };
-  if (vkGetPhysicalDeviceSurfaceCapabilities2KHR(
-          adapter.physical_device, &surface_info, &capabilities2)) {
-    return fail(Error::Unknown);
-  }
+  result = vkGetPhysicalDeviceSurfaceCapabilities2KHR(
+      adapter.physical_device, &surface_info, &capabilities2);
+  VK_CHECK(result, "vkGetPhysicalDeviceSurfaceCapabilities2KHR failed");
   const VkSurfaceCapabilitiesKHR capabilities =
       capabilities2.surfaceCapabilities;
   size = adjust_swap_chain_size(size, capabilities),
@@ -2776,22 +2719,19 @@ auto recreate_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
       .clipped = true,
       .oldSwapchain = old_swap_chain,
   };
-  if (device->vk.vkCreateSwapchainKHR(device->handle, &vk_create_info, nullptr,
-                                      &swap_chain->handle)) {
-    return fail(Error::Unknown);
-  }
+  result = device->vk.vkCreateSwapchainKHR(device->handle, &vk_create_info,
+                                           nullptr, &swap_chain->handle);
+  VK_CHECK(result, "vkCreateSwapchainKHR failed");
   device->vk.vkDestroySwapchainKHR(device->handle, old_swap_chain, nullptr);
   swap_chain->size = size;
   swap_chain->num_images = num_images;
   swap_chain->present_mode = present_mode;
-  return {};
 }
 
 } // namespace
 
-auto create_swap_chain(NotNull<Arena *> arena, Device device,
-                       const SwapChainCreateInfo &create_info)
-    -> Result<SwapChain> {
+SwapChain create_swap_chain(NotNull<Arena *> arena, Device device,
+                            const SwapChainCreateInfo &create_info) {
   SwapChain swap_chain = allocate<SwapChainData>(arena);
   *swap_chain = {
       .device = device,
@@ -2802,13 +2742,8 @@ auto create_swap_chain(NotNull<Arena *> arena, Device device,
       .num_images = create_info.num_images,
       .present_mode = to_vk(create_info.present_mode),
   };
-  Result<void> result =
-      recreate_swap_chain(swap_chain, swap_chain->size, swap_chain->num_images,
-                          swap_chain->present_mode);
-  if (!result) {
-    destroy_swap_chain(swap_chain);
-    return Failure(result.error());
-  }
+  recreate_swap_chain(swap_chain, swap_chain->size, swap_chain->num_images,
+                      swap_chain->present_mode);
   return swap_chain;
 }
 
@@ -2842,38 +2777,40 @@ void get_swap_chain_images(NotNull<Arena *> arena, SwapChain swap_chain,
   }
 }
 
-auto resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
-                       ImageUsageFlags usage) -> Result<void> {
+void resize_swap_chain(SwapChain swap_chain, glm::uvec2 size, u32 num_images,
+                       ImageUsageFlags usage) {
   VkImageUsageFlags vk_usage = to_vk(usage);
   if (!vk_usage) {
     vk_usage = swap_chain->usage;
   }
   swap_chain->usage = vk_usage;
-  return recreate_swap_chain(swap_chain, size, num_images,
-                             swap_chain->present_mode);
+  recreate_swap_chain(swap_chain, size, num_images, swap_chain->present_mode);
 }
 
-auto set_present_mode(SwapChain swap_chain, PresentMode present_mode)
-    -> Result<void> {
-  return recreate_swap_chain(swap_chain, swap_chain->size,
-                             swap_chain->num_images, to_vk(present_mode));
+void set_present_mode(SwapChain swap_chain, PresentMode present_mode) {
+  recreate_swap_chain(swap_chain, swap_chain->size, swap_chain->num_images,
+                      to_vk(present_mode));
 }
 
-auto acquire_image(SwapChain swap_chain, Semaphore semaphore) -> Result<u32> {
+SwapChainResult<u32> acquire_image(SwapChain swap_chain, Semaphore semaphore) {
   ren_assert(swap_chain);
   ren_assert(swap_chain->image == vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED);
   Device device = swap_chain->device;
   VkResult result = device->vk.vkAcquireNextImageKHR(
       device->handle, swap_chain->handle, UINT64_MAX, semaphore.handle, nullptr,
       &swap_chain->image);
-  if (result and result != VK_SUBOPTIMAL_KHR) {
-    return fail(result);
+  if (result == VK_SUBOPTIMAL_KHR) {
+    return swap_chain->image;
   }
+  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    return SwapChainError::OutOfDate;
+  }
+  VK_CHECK(result, "vkAcquireNextImageKHR failed");
   return swap_chain->image;
 }
 
-auto present(Queue queue, SwapChain swap_chain, Semaphore semaphore)
-    -> Result<void> {
+SwapChainResult<void> present(Queue queue, SwapChain swap_chain,
+                              Semaphore semaphore) {
   ren_assert(swap_chain);
   ren_assert(swap_chain->image != vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED);
   Device device = swap_chain->device;
@@ -2887,16 +2824,20 @@ auto present(Queue queue, SwapChain swap_chain, Semaphore semaphore)
   };
   VkResult result = device->vk.vkQueuePresentKHR(queue.handle, &present_info);
   swap_chain->image = vk::SWAP_CHAIN_IMAGE_NOT_ACQUIRED;
-  if (result and result != VK_SUBOPTIMAL_KHR) {
-    return fail(result);
+  if (result == VK_SUBOPTIMAL_KHR) {
+    return {};
   }
+  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    return SwapChainError::OutOfDate;
+  }
+  VK_CHECK(result, "vkQueuePresentKHR failed");
   return {};
 }
 
 namespace {
 
-auto amd_anti_lag(Device device, u64 frame, VkAntiLagStageAMD stage,
-                  bool enable, u32 max_fps) -> Result<void> {
+void amd_anti_lag(Device device, u64 frame, VkAntiLagStageAMD stage,
+                  bool enable, u32 max_fps) {
   VkAntiLagPresentationInfoAMD present_info = {
       .sType = VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD,
       .stage = stage,
@@ -2909,21 +2850,16 @@ auto amd_anti_lag(Device device, u64 frame, VkAntiLagStageAMD stage,
       .pPresentationInfo = &present_info,
   };
   device->vk.vkAntiLagUpdateAMD(device->handle, &anti_lag_data);
-  return {};
 }
 
 } // namespace
 
-auto amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps)
-    -> Result<void> {
-  return amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_INPUT_AMD, enable,
-                      max_fps);
+void amd_anti_lag_input(Device device, u64 frame, bool enable, u32 max_fps) {
+  amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_INPUT_AMD, enable, max_fps);
 }
 
-auto amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps)
-    -> Result<void> {
-  return amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_PRESENT_AMD, enable,
-                      max_fps);
+void amd_anti_lag_present(Device device, u64 frame, bool enable, u32 max_fps) {
+  amd_anti_lag(device, frame, VK_ANTI_LAG_STAGE_PRESENT_AMD, enable, max_fps);
 }
 
 } // namespace ren::rhi

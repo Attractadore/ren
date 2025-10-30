@@ -2,6 +2,8 @@
 #include "ren/core/Assert.hpp"
 #include "ren/core/StdDef.hpp"
 
+#include <type_traits>
+
 namespace ren {
 
 template <typename T> class DevicePtr {

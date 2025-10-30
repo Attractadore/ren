@@ -44,10 +44,9 @@ public:
   CommandRecorder(CommandRecorder &&) = delete;
   CommandRecorder &operator=(CommandRecorder &&) = delete;
 
-  auto begin(Renderer &renderer, Handle<CommandPool> cmd_pool)
-      -> Result<void, Error>;
+  void begin(Renderer &renderer, Handle<CommandPool> cmd_pool);
 
-  auto end() -> Result<rhi::CommandBuffer, Error>;
+  rhi::CommandBuffer end();
 
   explicit operator bool() const { return !!m_cmd; }
 

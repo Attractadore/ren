@@ -71,34 +71,25 @@ auto process(const CompileOptions &opts) -> int {
     return -1;
   }
 
-  Path shader_header;
-  {
-    IoResult<Path> result = opts.src.absolute(scratch);
-    if (!result) {
-      fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
-                   result.m_status);
-      return EXIT_FAILURE;
-    }
-    shader_header = result.m_value.replace_extension(scratch, Path::init(".h"));
+  IoResult<Path> shader_header = opts.src.absolute(scratch);
+  if (!shader_header) {
+    fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
+                 shader_header.error());
+    return EXIT_FAILURE;
   }
+  shader_header = shader_header->replace_extension(scratch, Path::init(".h"));
   {
-    IoResult<bool> result = shader_header.exists();
-    if (!result or !result.m_value) {
-      fmt::println(stderr, "{} does not exist: {}", shader_header,
-                   result.m_status);
+    if (not shader_header->exists().value_or(false)) {
+      fmt::println(stderr, "{} does not exist", *shader_header);
       return EXIT_FAILURE;
     }
   }
 
-  Path project_src_dir;
-  {
-    IoResult<Path> result = opts.project_src_dir.absolute(scratch);
-    if (!result) {
-      fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
-                   result.m_status);
-      return EXIT_FAILURE;
-    }
-    project_src_dir = result.m_value;
+  IoResult<Path> project_src_dir = opts.project_src_dir.absolute(scratch);
+  if (!project_src_dir) {
+    fmt::println(stderr, "Failed to get absolute path for {}: {}", opts.src,
+                 project_src_dir.error());
+    return EXIT_FAILURE;
   }
 
   Path hpp_dst = opts.spv.replace_extension(scratch, Path::init(".hpp"));
@@ -108,11 +99,10 @@ auto process(const CompileOptions &opts) -> int {
   {
     IoResult<Span<char>> buffer = read(scratch, opts.spv);
     if (!buffer) {
-      fmt::println(stderr, "Failed to read {}:", opts.spv, buffer.m_status);
+      fmt::println(stderr, "Failed to read {}:", opts.spv, buffer.error());
       return EXIT_FAILURE;
     }
-    spirv = {(const u32 *)buffer.m_value.m_data,
-             buffer.m_value.size_bytes() / 4};
+    spirv = {(const u32 *)buffer->m_data, buffer->size_bytes() / 4};
   }
 
   // TODO: Verify
@@ -194,7 +184,7 @@ auto process(const CompileOptions &opts) -> int {
   auto header = StringBuilder8::init(scratch, 128 * 1024);
   auto source = StringBuilder8::init(scratch, 128 * 1024);
   format_to(&header, "#pragma once\n#include \"{}\"\n\n",
-            shader_header.native(scratch));
+            shader_header->native(scratch));
 
   // Generate static asserts for struct fields.
   header.push("#include <cstddef>\n\n");
@@ -269,7 +259,7 @@ inline auto to_push_constants(const ::ren::RgRuntime& rg, const Rg{0}& from) -> 
 
 )",
               pc_name, member_declarations, member_conversions,
-              project_src_dir.native(scratch));
+              project_src_dir->native(scratch));
   }
 
   auto binary_variable_name = StringBuilder8::init(scratch);
@@ -307,16 +297,16 @@ const extern size_t {0}Size = sizeof({0}) / sizeof(uint32_t);
 )",
             binary_variable_name, spirv_str);
 
-  if (IoStatus status =
+  if (IoResult<void> result =
           write(hpp_dst, header.m_buffer.m_data, header.m_buffer.m_size);
-      status != IoSuccess) {
-    fmt::println(stderr, "Failed write {}: {}", hpp_dst, status);
+      !result) {
+    fmt::println(stderr, "Failed write {}: {}", hpp_dst, result.error());
     return EXIT_FAILURE;
   }
-  if (IoStatus status =
+  if (IoResult<void> result =
           write(cpp_dst, source.m_buffer.m_data, source.m_buffer.m_size);
-      status != IoSuccess) {
-    fmt::println(stderr, "Failed write {}: {}", cpp_dst, status);
+      !result) {
+    fmt::println(stderr, "Failed write {}: {}", cpp_dst, result.error());
     return EXIT_FAILURE;
   }
 

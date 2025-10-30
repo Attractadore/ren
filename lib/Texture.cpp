@@ -1,7 +1,8 @@
 #include "Texture.hpp"
-#include "core/Errors.hpp"
 #include "core/Math.hpp"
 #include "ren/core/Algorithm.hpp"
+
+#include <utility>
 
 namespace ren {
 
@@ -49,30 +50,26 @@ auto get_mip_chain_byte_size(TinyImageFormat format, glm::uvec3 base_size,
 
 auto get_rhi_Filter(Filter filter) -> rhi::Filter {
   switch (filter) {
-  default:
-    unreachable("Unknown filter {}", int(filter));
   case Filter::Nearest:
     return rhi::Filter::Nearest;
   case Filter::Linear:
     return rhi::Filter::Linear;
   }
+  std::unreachable();
 }
 
 auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode {
   switch (filter) {
-  default:
-    unreachable("Unknown filter {}", int(filter));
   case Filter::Nearest:
     return rhi::SamplerMipmapMode::Nearest;
   case Filter::Linear:
     return rhi::SamplerMipmapMode::Linear;
   }
+  std::unreachable();
 }
 
 auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode {
   switch (wrap) {
-  default:
-    unreachable("Unknown wrapping mode {}", int(wrap));
   case WrappingMode::Repeat:
     return rhi::SamplerAddressMode::Repeat;
   case WrappingMode::MirroredRepeat:
@@ -80,6 +77,7 @@ auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode {
   case WrappingMode::ClampToEdge:
     return rhi::SamplerAddressMode::ClampToEdge;
   }
+  std::unreachable();
 }
 
 } // namespace ren

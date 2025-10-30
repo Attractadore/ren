@@ -40,8 +40,7 @@ struct Sampler {
 
 namespace ren_export {
 
-expected<Renderer *> create_renderer(NotNull<Arena *> arena,
-                                     const RendererInfo &info) {
+Renderer *create_renderer(NotNull<Arena *> arena, const RendererInfo &info) {
   auto *renderer = arena->allocate<Renderer>();
   *renderer = {
       .m_arena = arena,
@@ -55,17 +54,24 @@ expected<Renderer *> create_renderer(NotNull<Arena *> arena,
   };
 
   bool headless = info.type == RendererType::Headless;
+  if (!rhi::load(headless)) {
+    ren_export::destroy_renderer(renderer);
+    return nullptr;
+  }
 
-  ren_try_to(rhi::load(headless));
-
-  ren_try(renderer->m_instance,
-          rhi::create_instance(renderer->m_arena, {
-                                                      .debug_names = true,
+  rhi::Result<rhi::Instance> instance =
+      rhi::create_instance(renderer->m_arena, {
+                                                  .debug_names = true,
 #if REN_DEBUG_LAYER
-                                                      .debug_layer = true,
+                                                  .debug_layer = true,
 #endif
-                                                      .headless = headless,
-                                                  }));
+                                                  .headless = headless,
+                                              });
+  if (!instance) {
+    ren_export::destroy_renderer(renderer);
+    return nullptr;
+  }
+  renderer->m_instance = *instance;
 
   if (info.adapter == DEFAULT_ADAPTER or
       info.adapter >= rhi::get_adapter_count(renderer->m_instance)) {
@@ -78,12 +84,17 @@ expected<Renderer *> create_renderer(NotNull<Arena *> arena,
   rhi::AdapterFeatures adapter_features =
       rhi::get_adapter_features(renderer->m_instance, renderer->m_adapter);
 
-  ren_try(renderer->m_device,
-          rhi::create_device(renderer->m_arena, renderer->m_instance,
-                             {
-                                 .adapter = renderer->m_adapter,
-                                 .features = adapter_features,
-                             }));
+  rhi::Result<rhi::Device> device =
+      rhi::create_device(renderer->m_arena, renderer->m_instance,
+                         {
+                             .adapter = renderer->m_adapter,
+                             .features = adapter_features,
+                         });
+  if (!device) {
+    ren_export::destroy_renderer(renderer);
+    return nullptr;
+  }
+  renderer->m_device = *device;
 
   if (adapter_features.amd_anti_lag) {
     renderer->m_features[(usize)RendererFeature::AmdAntiLag] = true;
@@ -121,22 +132,25 @@ auto Renderer::is_queue_family_supported(rhi::QueueFamily queue_family) const
   return rhi::is_queue_family_supported(m_instance, m_adapter, queue_family);
 }
 
-void Renderer::wait_idle() { rhi::device_wait_idle(m_device).value(); }
+void Renderer::wait_idle() { rhi::device_wait_idle(m_device); }
 
-auto Renderer::create_buffer(const BufferCreateInfo &create_info)
-    -> Result<Handle<Buffer>, Error> {
+rhi::Result<Handle<Buffer>>
+Renderer::create_buffer(const BufferCreateInfo &create_info) {
   ren_assert(create_info.size > 0);
-  ren_try(rhi::Buffer buffer,
-          rhi::create_buffer(m_device, {
-                                           .size = create_info.size,
-                                           .heap = create_info.heap,
-                                       }));
-  rhi::set_debug_name(m_device, buffer, create_info.name);
+  rhi::Result<rhi::Buffer> buffer =
+      rhi::create_buffer(m_device, {
+                                       .size = create_info.size,
+                                       .heap = create_info.heap,
+                                   });
+  if (!buffer) {
+    return buffer.error();
+  }
+  rhi::set_debug_name(m_device, *buffer, create_info.name);
   return m_buffers.insert(m_arena,
-                          Buffer{
-                              .handle = buffer,
-                              .ptr = (std::byte *)rhi::map(m_device, buffer),
-                              .address = rhi::get_device_ptr(m_device, buffer),
+                          {
+                              .handle = *buffer,
+                              .ptr = (std::byte *)rhi::map(m_device, *buffer),
+                              .address = rhi::get_device_ptr(m_device, *buffer),
                               .size = create_info.size,
                               .heap = create_info.heap,
                           });
@@ -160,23 +174,26 @@ auto Renderer::get_buffer_view(Handle<Buffer> handle) const -> BufferView {
   };
 };
 
-auto Renderer::create_texture(const TextureCreateInfo &create_info)
-    -> Result<Handle<Texture>, Error> {
+rhi::Result<Handle<Texture>>
+Renderer::create_texture(const TextureCreateInfo &create_info) {
   ren_assert(create_info.width > 0);
   ren_assert(create_info.num_mips > 0);
 
-  ren_try(rhi::Image image,
-          rhi::create_image(m_device, {
-                                          .format = create_info.format,
-                                          .usage = create_info.usage,
-                                          .width = create_info.width,
-                                          .height = create_info.height,
-                                          .depth = create_info.depth,
-                                          .cube_map = create_info.cube_map,
-                                          .num_mips = create_info.num_mips,
-                                          .num_layers = create_info.num_layers,
-                                      }));
-  rhi::set_debug_name(m_device, image, create_info.name);
+  rhi::Result<rhi::Image> image =
+      rhi::create_image(m_device, {
+                                      .format = create_info.format,
+                                      .usage = create_info.usage,
+                                      .width = create_info.width,
+                                      .height = create_info.height,
+                                      .depth = create_info.depth,
+                                      .cube_map = create_info.cube_map,
+                                      .num_mips = create_info.num_mips,
+                                      .num_layers = create_info.num_layers,
+                                  });
+  if (!image) {
+    return image.error();
+  }
+  rhi::set_debug_name(m_device, *image, create_info.name);
   if (!m_image_view_free_list) {
     m_image_view_free_list = m_arena->allocate<ImageViewBlock>();
   }
@@ -184,8 +201,8 @@ auto Renderer::create_texture(const TextureCreateInfo &create_info)
   m_image_view_free_list = m_image_view_free_list->next;
   views->next = nullptr;
   views->num_views = 0;
-  return m_textures.insert(m_arena, Texture{
-                                        .handle = image,
+  return m_textures.insert(m_arena, {
+                                        .handle = *image,
                                         .format = create_info.format,
                                         .usage = create_info.usage,
                                         .width = create_info.width,
@@ -244,7 +261,7 @@ auto Renderer::get_texture(Handle<Texture> texture) const -> const Texture & {
   return m_textures[texture];
 }
 
-auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error> {
+rhi::ImageView Renderer::get_srv(SrvDesc srv) {
   return get_image_view(srv.texture, ImageViewDesc{
                                          .dimension = srv.dimension,
                                          .format = srv.format,
@@ -256,7 +273,7 @@ auto Renderer::get_srv(SrvDesc srv) -> Result<rhi::ImageView, Error> {
                                      });
 }
 
-auto Renderer::get_uav(UavDesc uav) -> Result<rhi::ImageView, Error> {
+rhi::ImageView Renderer::get_uav(UavDesc uav) {
   return get_image_view(uav.texture, ImageViewDesc{
                                          .dimension = uav.dimension,
                                          .format = uav.format,
@@ -267,7 +284,7 @@ auto Renderer::get_uav(UavDesc uav) -> Result<rhi::ImageView, Error> {
                                      });
 }
 
-auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error> {
+rhi::ImageView Renderer::get_rtv(RtvDesc rtv) {
   return get_image_view(rtv.texture, ImageViewDesc{
                                          .dimension = rtv.dimension,
                                          .format = rtv.format,
@@ -278,8 +295,8 @@ auto Renderer::get_rtv(RtvDesc rtv) -> Result<rhi::ImageView, Error> {
                                      });
 }
 
-auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
-    -> Result<rhi::ImageView, Error> {
+rhi::ImageView Renderer::get_image_view(Handle<Texture> handle,
+                                        ImageViewDesc desc) {
   Texture &texture = m_textures[handle];
   if (desc.format == TinyImageFormat_UNDEFINED) {
     desc.format = texture.format;
@@ -313,45 +330,41 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     last->num_views = 0;
   }
 
-  ren_try(rhi::ImageView view,
-          rhi::create_image_view(
-              m_device,
-              {
-                  .image = texture.handle,
-                  .dimension = desc.dimension,
-                  .format = desc.format,
-                  .components = desc.components,
-                  .aspect_mask = rhi::get_format_aspect_mask(texture.format),
-                  .base_mip = desc.base_mip,
-                  .num_mips = desc.num_mips,
-                  .base_layer = desc.base_layer,
-                  .num_layers = desc.num_layers,
-              }));
+  rhi::ImageView view = rhi::create_image_view(
+      m_device, {
+                    .image = texture.handle,
+                    .dimension = desc.dimension,
+                    .format = desc.format,
+                    .components = desc.components,
+                    .aspect_mask = rhi::get_format_aspect_mask(texture.format),
+                    .base_mip = desc.base_mip,
+                    .num_mips = desc.num_mips,
+                    .base_layer = desc.base_layer,
+                    .num_layers = desc.num_layers,
+                });
   last->views[last->num_views++] = {desc, view};
 
   return view;
 }
 
-auto Renderer::get_sampler(const rhi::SamplerCreateInfo &create_info)
-    -> Result<rhi::Sampler, Error> {
+rhi::Sampler Renderer::get_sampler(const rhi::SamplerCreateInfo &create_info) {
   for (const Sampler &sampler : m_samplers) {
     if (sampler.desc == create_info) {
       return sampler.handle;
     }
   }
-  ren_try(rhi::Sampler sampler, rhi::create_sampler(m_device, create_info));
+  rhi::Sampler sampler = rhi::create_sampler(m_device, create_info);
   m_samplers.push(m_arena, {create_info, sampler});
   return sampler;
 }
 
-auto Renderer::create_semaphore(const SemaphoreCreateInfo &create_info)
-    -> Result<Handle<Semaphore>, Error> {
-  ren_try(rhi::Semaphore semaphore,
-          rhi::create_semaphore(m_device,
-                                {
-                                    .type = create_info.type,
-                                    .initial_value = create_info.initial_value,
-                                }));
+Handle<Semaphore>
+Renderer::create_semaphore(const SemaphoreCreateInfo &create_info) {
+  rhi::Semaphore semaphore = rhi::create_semaphore(
+      m_device, {
+                    .type = create_info.type,
+                    .initial_value = create_info.initial_value,
+                });
   rhi::set_debug_name(m_device, semaphore, create_info.name);
   return m_semaphores.insert(m_arena, Semaphore{.handle = semaphore});
 }
@@ -370,19 +383,17 @@ void Renderer::destroy(Handle<Event> handle) {
   rhi::destroy_event(m_device, event.handle);
 }
 
-auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value,
-                                  u64 timeout) const
-    -> Result<rhi::WaitResult, Error> {
+rhi::WaitResult Renderer::wait_for_semaphore(Handle<Semaphore> semaphore,
+                                             u64 value, u64 timeout) const {
   return rhi::wait_for_semaphores(
       m_device, {{get_semaphore(semaphore).handle, value}}, timeout);
 }
 
-auto Renderer::wait_for_semaphore(Handle<Semaphore> semaphore, u64 value) const
-    -> Result<void, Error> {
-  ren_try(rhi::WaitResult wait_result,
-          wait_for_semaphore(semaphore, value, UINT64_MAX));
+void Renderer::wait_for_semaphore(Handle<Semaphore> semaphore,
+                                  u64 value) const {
+  rhi::WaitResult wait_result =
+      wait_for_semaphore(semaphore, value, UINT64_MAX);
   ren_assert(wait_result == rhi::WaitResult::Success);
-  return {};
 }
 
 auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
@@ -391,13 +402,12 @@ auto Renderer::get_semaphore(Handle<Semaphore> semaphore) const
   return m_semaphores[semaphore];
 }
 
-auto Renderer::create_command_pool(const CommandPoolCreateInfo &create_info)
-    -> Result<Handle<CommandPool>, Error> {
+Handle<CommandPool>
+Renderer::create_command_pool(const CommandPoolCreateInfo &create_info) {
   auto &free_list = m_cmd_pool_free_lists[(i32)create_info.queue_family];
   if (!free_list) {
-    ren_try(free_list,
-            rhi::create_command_pool(
-                m_arena, m_device, {.queue_family = create_info.queue_family}));
+    free_list = rhi::create_command_pool(
+        m_arena, m_device, {.queue_family = create_info.queue_family});
   }
   rhi::CommandPool pool = free_list;
   free_list = free_list->next;
@@ -421,14 +431,12 @@ auto Renderer::get_command_pool(Handle<CommandPool> pool)
   return m_command_pools[pool];
 }
 
-auto Renderer::reset_command_pool(Handle<CommandPool> pool)
-    -> Result<void, Error> {
+void Renderer::reset_command_pool(Handle<CommandPool> pool) {
   return rhi::reset_command_pool(m_device, get_command_pool(pool).handle);
 }
 
-auto Renderer::create_graphics_pipeline(
-    const GraphicsPipelineCreateInfo &create_info)
-    -> Result<Handle<GraphicsPipeline>, Error> {
+Handle<GraphicsPipeline> Renderer::create_graphics_pipeline(
+    const GraphicsPipelineCreateInfo &create_info) {
   ScratchArena scratch;
 
   u32 num_render_targets = 0;
@@ -492,8 +500,8 @@ auto Renderer::create_graphics_pipeline(
     };
   }
 
-  ren_try(rhi::Pipeline pipeline,
-          rhi::create_graphics_pipeline(m_device, pipeline_info));
+  rhi::Pipeline pipeline =
+      rhi::create_graphics_pipeline(m_device, pipeline_info);
   rhi::set_debug_name(m_device, pipeline, create_info.name);
 
   return m_graphics_pipelines.insert(m_arena,
@@ -511,9 +519,8 @@ auto Renderer::get_graphics_pipeline(Handle<GraphicsPipeline> pipeline) const
   return m_graphics_pipelines[pipeline];
 }
 
-auto Renderer::create_compute_pipeline(
-    const ComputePipelineCreateInfo &create_info)
-    -> Result<Handle<ComputePipeline>, Error> {
+Handle<ComputePipeline> Renderer::create_compute_pipeline(
+    const ComputePipelineCreateInfo &create_info) {
   ScratchArena scratch;
 
   Span<const std::byte> code = create_info.cs.code;
@@ -556,24 +563,22 @@ auto Renderer::create_compute_pipeline(
     specialization_data[i] = c.value;
   }
 
-  ren_try(
-      rhi::Pipeline pipeline,
-      rhi::create_compute_pipeline(
-          m_device,
-          {
-              .cs =
-                  {
-                      .code = create_info.cs.code,
-                      .entry_point = create_info.cs.entry_point,
-                      .specialization =
-                          {
-                              .constants = Span(specialization_constants,
-                                                num_spec_consts),
-                              .data = Span(specialization_data, num_spec_consts)
-                                          .as_bytes(),
-                          },
-                  },
-          }));
+  rhi::Pipeline pipeline = rhi::create_compute_pipeline(
+      m_device,
+      {
+          .cs =
+              {
+                  .code = create_info.cs.code,
+                  .entry_point = create_info.cs.entry_point,
+                  .specialization =
+                      {
+                          .constants =
+                              Span(specialization_constants, num_spec_consts),
+                          .data = Span(specialization_data, num_spec_consts)
+                                      .as_bytes(),
+                      },
+              },
+      });
   rhi::set_debug_name(m_device, pipeline, create_info.name);
 
   return m_compute_pipelines.insert(
@@ -594,11 +599,10 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
   return m_compute_pipelines[pipeline];
 }
 
-auto Renderer::submit(rhi::QueueFamily queue_family,
+void Renderer::submit(rhi::QueueFamily queue_family,
                       Span<const rhi::CommandBuffer> cmd_buffers,
                       Span<const SemaphoreState> wait_semaphores,
-                      Span<const SemaphoreState> signal_semaphores)
-    -> Result<void, Error> {
+                      Span<const SemaphoreState> signal_semaphores) {
   ScratchArena scratch;
   auto *wait_states =
       allocate<rhi::SemaphoreState>(scratch, wait_semaphores.m_size);
@@ -627,21 +631,17 @@ bool Renderer::is_feature_supported(RendererFeature feature) const {
   return m_features[i];
 }
 
-auto Renderer::amd_anti_lag_input(u64 frame, bool enable, u32 max_fps)
-    -> Result<void, Error> {
+void Renderer::amd_anti_lag_input(u64 frame, bool enable, u32 max_fps) {
   ZoneScoped;
   return rhi::amd_anti_lag_input(m_device, frame, enable, max_fps);
 }
 
-auto Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps)
-    -> Result<void, Error> {
+void Renderer::amd_anti_lag_present(u64 frame, bool enable, u32 max_fps) {
   ZoneScoped;
   return rhi::amd_anti_lag_present(m_device, frame, enable, max_fps);
 }
 
-void unload(Renderer *renderer) { rhi::unload(renderer->m_instance); }
-
-auto load(Renderer *renderer) -> Result<void, Error> {
+rhi::Result<void> load(Renderer *renderer) {
   return rhi::load(renderer->m_instance);
 }
 

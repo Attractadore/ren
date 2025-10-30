@@ -15,9 +15,9 @@
 
 namespace {
 
-auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
-               ren::NotNull<ren::Scene *> scene, ren::String8 path)
-    -> Result<ren::Handle<ren::Mesh>> {
+ren::Handle<ren::Mesh> load_mesh(ren::NotNull<ren::Arena *> frame_arena,
+                                 ren::NotNull<ren::Scene *> scene,
+                                 ren::String8 path) {
   ren::ScratchArena scratch(frame_arena);
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
@@ -32,7 +32,8 @@ auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
       // clang-format on
   );
   if (!ai_scene) {
-    return Err(importer.GetErrorString());
+    fmt::println(stderr, "{}", importer.GetErrorString());
+    return ren::NullHandle;
   }
   assert(ai_scene->mNumMeshes > 0);
   const aiMesh *ai_mesh = ai_scene->mMeshes[0];
@@ -165,16 +166,14 @@ class EntityStressTestApp : public ImGuiApp {
   glm::mat4x3 *m_transforms = nullptr;
 
 public:
-  auto init(ren::String8 mesh_path, unsigned num_entities, ren::u64 seed)
-      -> Result<void> {
-    TRY_TO(ImGuiApp::init(
+  void init(ren::String8 mesh_path, unsigned num_entities, ren::u64 seed) {
+    ImGuiApp::init(
         fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
-            .c_str()));
+            .c_str());
     m_num_entities = num_entities;
     ren::Scene *scene = get_scene();
     ren::Handle<ren::Camera> camera = get_camera();
-    OK(ren::Handle<ren::Mesh> mesh,
-       load_mesh(&m_frame_arena, scene, mesh_path));
+    ren::Handle<ren::Mesh> mesh = load_mesh(&m_frame_arena, scene, mesh_path);
     ren::Handle<ren::Material> material =
         ren::create_material(&m_frame_arena, scene, {.metallic_factor = 0.0f});
     auto rg = init_random(seed);
@@ -182,19 +181,17 @@ public:
                    m_num_entities, &m_entities, &m_transforms);
     place_light(scene);
     set_camera(scene, camera, num_entities);
-    return {};
   }
 
-  Result<void> process_frame(std::chrono::nanoseconds) override {
+  void process_frame(std::chrono::nanoseconds) override {
     ren::set_mesh_instance_transforms(&m_frame_arena, get_scene(),
                                       {m_entities, m_num_entities},
                                       {m_transforms, m_num_entities});
-    return {};
   }
 
-  [[nodiscard]] static auto run(ren::String8 mesh_path, unsigned num_entities,
-                                unsigned seed) -> int {
-    return AppBase::run<EntityStressTestApp>(mesh_path, num_entities, seed);
+  static void run(ren::String8 mesh_path, unsigned num_entities,
+                  unsigned seed) {
+    AppBase::run<EntityStressTestApp>(mesh_path, num_entities, seed);
   }
 };
 
@@ -235,5 +232,5 @@ int main(int argc, const char *argv[]) {
     seed = parsed[OPTION_SEED].as_uint;
   }
 
-  return EntityStressTestApp::run(mesh_path, num_entities, seed);
+  EntityStressTestApp::run(mesh_path, num_entities, seed);
 }

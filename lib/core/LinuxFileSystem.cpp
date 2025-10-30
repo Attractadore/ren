@@ -3,6 +3,7 @@
 
 #include <cerrno>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -10,14 +11,13 @@ namespace ren {
 
 namespace {
 
-IoStatus io_status_from_errno() {
+IoError io_error_from_errno() {
+  ren_assert(errno);
   switch (errno) {
   default:
-    return IoStatus::EUnknown;
-  case 0:
-    return IoStatus::Success;
+    return IoError::Unknown;
   case EACCES:
-    return IoStatus::EAccess;
+    return IoError::Access;
   }
 }
 
@@ -59,15 +59,13 @@ String8 Path::native(NotNull<Arena *> arena) const { return m_str.copy(arena); }
 IoResult<bool> Path::exists() const {
   ScratchArena scratch;
   struct stat statbuf;
-  errno = 0;
-  ::stat(m_str.zero_terminated(scratch), &statbuf);
-  if (!errno) {
+  if (::stat(m_str.zero_terminated(scratch), &statbuf) == 0) {
     return true;
   }
   if (errno == ENOENT) {
     return false;
   }
-  return io_status_from_errno();
+  return io_error_from_errno();
 }
 
 IoResult<Path> current_directory(NotNull<Arena *> arena) {
@@ -75,23 +73,22 @@ IoResult<Path> current_directory(NotNull<Arena *> arena) {
   usize buffer_size = PATH_MAX;
   while (true) {
     char *buffer = scratch->allocate<char>(buffer_size);
-    errno = 0;
     if (::getcwd(buffer, buffer_size)) {
-      usize len = std::strlen(buffer);
-      return Path(String8(buffer, len)).copy(arena);
+      return Path(String8::init(buffer)).copy(arena);
     }
     if (errno == ERANGE) {
       continue;
     }
-    return io_status_from_errno();
+    return io_error_from_errno();
   }
 }
 
-IoStatus create_directory(Path path) {
+IoResult<void> create_directory(Path path) {
   ScratchArena scratch;
-  errno = 0;
-  ::mkdir(path.m_str.zero_terminated(scratch), 0755);
-  return io_status_from_errno();
+  if (::mkdir(path.m_str.zero_terminated(scratch), 0755)) {
+    return io_error_from_errno();
+  }
+  return {};
 }
 
 IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
@@ -114,34 +111,58 @@ IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
   if (flags.is_set(FileOpen::Truncate)) {
     posix_flags |= O_TRUNC;
   }
-  errno = 0;
   int fd = ::open(path.m_str.zero_terminated(scratch), posix_flags, 0644);
+  if (fd == -1) {
+    return io_error_from_errno();
+  }
   File file = {(uintptr_t)fd};
-  return {file, io_status_from_errno()};
+  return file;
 }
 
-void close(File file) {
-  errno = 0;
-  ::close(file.m_fd);
+void close(File file) { ::close(file.m_fd); }
+
+IoResult<usize> seek(File file, isize offset, SeekMode mode) {
+  int whence = 0;
+  switch (mode) {
+  case SeekMode::Set:
+    whence = SEEK_SET;
+    break;
+  case SeekMode::End:
+    whence = SEEK_END;
+    break;
+  case SeekMode::Cur:
+    whence = SEEK_CUR;
+    break;
+  }
+  offset = lseek(file.m_fd, offset, whence);
+  if (offset < 0) {
+    return io_error_from_errno();
+  }
+  return offset;
 }
 
 IoResult<usize> read(File file, void *buffer, usize size) {
-  errno = 0;
   ssize_t num_read = ::read(file.m_fd, buffer, size);
-  return {(usize)num_read, io_status_from_errno()};
+  if (num_read < 0) {
+    return io_error_from_errno();
+  }
+  return num_read;
 }
 
 IoResult<usize> write(File file, const void *buffer, usize size) {
-  errno = 0;
   ssize_t num_written = ::write(file.m_fd, buffer, size);
-  return {(usize)num_written, io_status_from_errno()};
+  if (num_written < 0) {
+    return io_error_from_errno();
+  }
+  return num_written;
 }
 
 IoResult<usize> file_size(File file) {
-  errno = 0;
-  struct stat64 statbuf;
-  ::fstat64(file.m_fd, &statbuf);
-  return {(usize)statbuf.st_size, io_status_from_errno()};
+  struct stat statbuf;
+  if (::fstat(file.m_fd, &statbuf) == -1) {
+    return io_error_from_errno();
+  }
+  return statbuf.st_size;
 }
 
 } // namespace ren

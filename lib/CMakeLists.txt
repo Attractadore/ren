@@ -2,6 +2,7 @@ include(GenerateExportHeader)
 
 add_library(ren-core
   core/Arena.cpp
+  core/Assert.cpp
   core/CmdLine.cpp
   core/FileSystem.cpp
   core/LinuxFileSystem.cpp

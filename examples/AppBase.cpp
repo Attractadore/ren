@@ -1,32 +1,9 @@
 #include "AppBase.hpp"
-
-#include <utility>
+#include "ren/core/Format.hpp"
 
 namespace chrono = std::chrono;
 
-auto get_error_string_impl(std::string err) -> std::string { return err; }
-
-auto get_error_string_impl(ren::Error err) -> std::string {
-  switch (err) {
-  case ren::Error::RHI:
-    return "ren: Vulkan error";
-  case ren::Error::System:
-    return "ren: System error";
-  case ren::Error::Runtime:
-    return "ren: Runtime error";
-  case ren::Error::SDL:
-    return fmt::format("ren: SDL error: {}", SDL_GetError());
-  case ren::Error::Unknown:
-    return "ren: Unknown error";
-  }
-  std::unreachable();
-}
-
-auto throw_error(std::string err) -> std::string {
-  throw std::runtime_error(std::move(err));
-}
-
-auto AppBase::init(const char *app_name) -> Result<void> {
+void AppBase::init(const char *app_name) {
   m_app_name = app_name;
 
   if (!ren::ScratchArena::get_allocator()) {
@@ -45,34 +22,40 @@ auto AppBase::init(const char *app_name) -> Result<void> {
     }
   }
 
-  OK(m_renderer, ren::create_renderer(&m_arena, {.adapter = adapter}));
+  m_renderer = ren::create_renderer(&m_arena, {.adapter = adapter});
+  if (!m_renderer) {
+    exit(EXIT_FAILURE);
+  }
 
   m_window =
       SDL_CreateWindow(app_name, 1280, 720,
                        SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE |
                            ren::get_sdl_window_flags(m_renderer));
   if (!m_window) {
-    bail("{}", SDL_GetError());
+    fmt::println(stderr, "{}", SDL_GetError());
+    exit(EXIT_FAILURE);
   }
 
-  OK(m_swapchain, ren::create_swapchain(&m_arena, m_renderer, m_window));
+  m_swapchain = ren::create_swapchain(&m_arena, m_renderer, m_window);
 
-  OK(m_scene, ren::create_scene(&m_arena, m_renderer, m_swapchain));
+  m_scene = ren::create_scene(&m_arena, m_renderer, m_swapchain);
+  if (!m_scene) {
+    fmt::println(stderr, "Scene initialization failed");
+    exit(EXIT_FAILURE);
+  }
 
   m_camera = ren::create_camera(m_scene);
   ren::set_camera(m_scene, m_camera);
-
-  return {};
 }
 
-AppBase::~AppBase() {
+void AppBase::quit() {
   ren::destroy_scene(m_scene);
   ren::destroy_swap_chain(m_swapchain);
   ren::destroy_renderer(m_renderer);
   SDL_DestroyWindow(m_window);
 }
 
-auto AppBase::loop() -> Result<void> {
+void AppBase::loop() {
   auto last_time = chrono::steady_clock::now();
   bool quit = false;
 
@@ -85,7 +68,7 @@ auto AppBase::loop() -> Result<void> {
     auto title = fmt::format("{} @ {:.1f} FPS", m_app_name, fps);
     SDL_SetWindowTitle(m_window, title.c_str());
 
-    TRY_TO(ren::delay_input(m_scene));
+    ren::delay_input(m_scene);
 
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -93,30 +76,27 @@ auto AppBase::loop() -> Result<void> {
                                        e.key.scancode == SDL_SCANCODE_ESCAPE)) {
         quit = true;
       }
-      TRY_TO(process_event(e));
+      process_event(e);
     }
 
-    TRY_TO(begin_frame());
-    TRY_TO(process_frame(dt));
-    TRY_TO(end_frame());
-    TRY_TO(ren::draw(m_scene, {.delta_time = dt.count() / 1e9f}));
+    begin_frame();
+    process_frame(dt);
+    end_frame();
+    ren::draw(m_scene, {.delta_time = dt.count() / 1e9f});
     m_frame_arena.clear();
   }
-
-  return {};
 }
 
-auto AppBase::process_event(const SDL_Event &event) -> Result<void> {
+void AppBase::process_event(const SDL_Event &event) {
   if (event.type == SDL_EVENT_KEY_DOWN and
       event.key.scancode == SDL_SCANCODE_F11) {
     bool is_fullscreen = SDL_GetWindowFlags(m_window) & SDL_WINDOW_FULLSCREEN;
     SDL_SetWindowFullscreen(m_window, not is_fullscreen);
   }
-  return {};
 }
 
-auto AppBase::begin_frame() -> Result<void> { return {}; }
+void AppBase::begin_frame() {}
 
-auto AppBase::process_frame(chrono::nanoseconds) -> Result<void> { return {}; }
+void AppBase::process_frame(chrono::nanoseconds) {}
 
-auto AppBase::end_frame() -> Result<void> { return {}; }
+void AppBase::end_frame() {}

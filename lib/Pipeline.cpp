@@ -5,9 +5,9 @@
 namespace ren {
 
 #undef load_compute_pipeline
-auto load_compute_pipeline(ResourceArena &arena, Span<const std::byte> shader,
-                           String8 name)
-    -> Result<Handle<ComputePipeline>, Error> {
+Handle<ComputePipeline> load_compute_pipeline(ResourceArena &arena,
+                                              Span<const std::byte> shader,
+                                              String8 name) {
   ScratchArena scratch;
   return arena.create_compute_pipeline({
       .name = format(scratch, "{} compute pipeline", name),

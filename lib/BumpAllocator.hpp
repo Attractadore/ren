@@ -7,6 +7,8 @@
 #include "ren/core/Algorithm.hpp"
 #include "sh/Std.h"
 
+#include <cstdio>
+
 namespace ren {
 
 namespace detail {
@@ -51,9 +53,12 @@ public:
       m_block += 1;
       [[unlikely]] if (m_block == m_num_blocks) {
         ren_assert(m_block < MAX_BUMP_ALLOCATOR_BLOCKS);
-        // FIXME: check for error.
-        m_blocks[m_num_blocks++] =
-            Policy::create_block(*m_renderer, *m_arena, m_block_size).value();
+        auto block = Policy::create_block(*m_renderer, *m_arena, m_block_size);
+        if (!block) {
+          std::fputs("Device arena block allocation failed\n", stderr);
+          exit(EXIT_FAILURE);
+        }
+        m_blocks[m_num_blocks++] = *block;
       }
       m_block_offset = 0;
     }
@@ -81,15 +86,18 @@ struct DeviceBumpAllocationPolicy {
   };
 
   static auto create_block(Renderer &renderer, ResourceArena &arena, usize size)
-      -> Result<Block, Error> {
-    ren_try(BufferView view, arena.create_buffer({
-                                 .name = "DeviceBumpAllocator block",
-                                 .heap = rhi::MemoryHeap::Default,
-                                 .size = size,
-                             }));
+      -> rhi::Result<Block> {
+    auto view = arena.create_buffer({
+        .name = "DeviceBumpAllocator block",
+        .heap = rhi::MemoryHeap::Default,
+        .size = size,
+    });
+    if (!view) {
+      return view.error();
+    }
     return Block{
-        .ptr = renderer.get_buffer_device_ptr(view),
-        .buffer = view.buffer,
+        .ptr = renderer.get_buffer_device_ptr(*view),
+        .buffer = view->buffer,
     };
   };
 
@@ -129,17 +137,20 @@ struct UploadBumpAllocationPolicy {
     BufferSlice<T> slice;
   };
 
-  static auto create_block(Renderer &renderer, ResourceArena &arena, usize size)
-      -> Result<Block, Error> {
-    ren_try(BufferView view, arena.create_buffer({
-                                 .name = "UploadBumpAllocator block",
-                                 .heap = rhi::MemoryHeap::Upload,
-                                 .size = size,
-                             }));
+  static rhi::Result<Block> create_block(Renderer &renderer,
+                                         ResourceArena &arena, usize size) {
+    auto view = arena.create_buffer({
+        .name = "UploadBumpAllocator block",
+        .heap = rhi::MemoryHeap::Upload,
+        .size = size,
+    });
+    if (!view) {
+      return view.error();
+    }
     return Block{
-        .host_ptr = renderer.map_buffer(view),
-        .device_ptr = renderer.get_buffer_device_ptr(view),
-        .buffer = view.buffer,
+        .host_ptr = renderer.map_buffer(*view),
+        .device_ptr = renderer.get_buffer_device_ptr(*view),
+        .buffer = view->buffer,
     };
   };
 

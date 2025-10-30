@@ -28,9 +28,9 @@ namespace ren::rhi {
 
 static const RENDERDOC_API_1_0_0 *rdapi = nullptr;
 
-auto load_gfx_debugger() -> Result<void> {
+void load_gfx_debugger() {
   if (rdapi) {
-    return {};
+    return;
   }
 
   fmt::println("rhi: Load RenderDoc API");
@@ -40,7 +40,7 @@ auto load_gfx_debugger() -> Result<void> {
   HMODULE module = GetModuleHandleA("renderdoc.dll");
   if (!module) {
     fmt::println("rhi: Failed to load RenderDoc API");
-    return fail(Error::FeatureNotPresent);
+    return;
   }
   RENDERDOC_GetAPI =
       (pRENDERDOC_GetAPI)GetProcAddress(module, "RENDERDOC_GetAPI");
@@ -48,17 +48,15 @@ auto load_gfx_debugger() -> Result<void> {
   void *lib_handle = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
   if (!lib_handle) {
     fmt::println("rhi: Failed to load RenderDoc API");
-    return fail(Error::FeatureNotPresent);
+    return;
   }
   RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(lib_handle, "RENDERDOC_GetAPI");
 #endif
   if (!RENDERDOC_GetAPI or
       !RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_0_0, (void **)&rdapi)) {
     fmt::println("rhi: Failed to load RenderDoc API");
-    return fail(Error::FeatureNotPresent);
+    return;
   }
-
-  return {};
 }
 
 void start_gfx_capture() {
@@ -79,9 +77,7 @@ void end_gfx_capture() {
 
 namespace ren::rhi {
 
-auto load_gfx_debugger() -> Result<void> {
-  return fail(Error::FeatureNotPresent);
-}
+void load_gfx_debugger() {}
 
 void start_gfx_capture() {}
 

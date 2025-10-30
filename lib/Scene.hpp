@@ -71,7 +71,7 @@ struct GpuScene {
   BufferSlice<sh::Material> materials;
 
 public:
-  static GpuScene init(NotNull<ResourceArena *> arena);
+  static rhi::Result<GpuScene> init(NotNull<ResourceArena *> arena);
 };
 
 struct GpuSceneMeshUpdate {

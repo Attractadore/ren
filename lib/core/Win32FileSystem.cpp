@@ -36,18 +36,17 @@ String8 wcs_to_utf8(NotNull<Arena *> arena, const wchar_t *wcs) {
   return String8(buf, len);
 }
 
-IoStatus win32_to_io_status(DWORD err = GetLastError()) {
+IoError win32_to_io_error(DWORD err = GetLastError()) {
+  ren_assert(err);
   switch (err) {
   default:
-    return IoStatus::EUnknown;
-  case 0:
-    return IoStatus::Success;
+    return IoError::Unknown;
   case ERROR_FILE_EXISTS:
-    return IoStatus::EExists;
+    return IoError::Exists;
   case ERROR_ACCESS_DENIED:
-    return IoStatus::EAccess;
+    return IoError::Access;
   case ERROR_FILE_NOT_FOUND:
-    return IoStatus::ENotFound;
+    return IoError::NotFound;
   }
 }
 
@@ -174,28 +173,28 @@ IoResult<bool> Path::exists() const {
   if (!err) {
     return false;
   }
-  return win32_to_io_status(err);
+  return win32_to_io_error(err);
 }
 
 IoResult<Path> current_directory(NotNull<Arena *> arena) {
   DWORD size = GetCurrentDirectoryW(0, nullptr);
   if (size == 0) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   ScratchArena scratch(arena);
   wchar_t *buffer = scratch->allocate<wchar_t>(size + 1);
   if (!GetCurrentDirectoryW(size + 1, buffer)) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   return Path::init(arena, wcs_to_utf8(scratch, buffer));
 }
 
-IoStatus create_directory(Path path) {
+IoResult<void> create_directory(Path path) {
   ScratchArena scratch;
   if (!CreateDirectoryW(utf8_to_wcs(scratch, path.m_str), nullptr)) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
-  return IoSuccess;
+  return {};
 }
 
 IoResult<u64> last_write_time(Path path) {
@@ -205,14 +204,14 @@ IoResult<u64> last_write_time(Path path) {
                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (!hfile) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   FILETIME time;
   bool success = GetFileTime(hfile, nullptr, nullptr, &time);
   DWORD err = GetLastError();
   CloseHandle(hfile);
   if (!success) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   return std::bit_cast<u64>(time);
 }
@@ -244,12 +243,33 @@ IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                   nullptr, disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (!hfile) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   return File{std::bit_cast<uintptr_t>(hfile)};
 };
 
 void close(File file) { CloseHandle(handle_from_file(file)); }
+
+IoResult<usize> seek(File file, isize offset, SeekMode mode) {
+  DWORD method = 0;
+  switch (mode) {
+  case SeekMode::Set:
+    method = FILE_BEGIN;
+    break;
+  case SeekMode::End:
+    method = FILE_END;
+    break;
+  case SeekMode::Cur:
+    method = FILE_CURRENT;
+    break;
+  }
+  LARGE_INTEGER distance = {.QuadPart = offset};
+  LARGE_INTEGER pos;
+  if (!SetFilePointerEx(handle_from_file(file), distance, &pos, method)) {
+    return win32_to_io_error();
+  }
+  return pos.QuadPart;
+}
 
 IoResult<usize> read(File file, void *buffer, usize size) {
   size = min<usize>(size, std::numeric_limits<DWORD>::max());
@@ -259,7 +279,7 @@ IoResult<usize> read(File file, void *buffer, usize size) {
     if (err == ERROR_MORE_DATA) {
       return num_read;
     }
-    return win32_to_io_status(err);
+    return win32_to_io_error(err);
   }
   return num_read;
 }
@@ -268,7 +288,7 @@ IoResult<usize> write(File file, const void *buffer, usize size) {
   size = min<usize>(size, std::numeric_limits<DWORD>::max());
   DWORD num_write = 0;
   if (!WriteFile(handle_from_file(file), buffer, size, &num_write, nullptr)) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   return num_write;
 }
@@ -276,7 +296,7 @@ IoResult<usize> write(File file, const void *buffer, usize size) {
 IoResult<usize> file_size(File file) {
   LARGE_INTEGER size = {};
   if (!GetFileSizeEx(handle_from_file(file), &size)) {
-    return win32_to_io_status();
+    return win32_to_io_error();
   }
   return size.QuadPart;
 }

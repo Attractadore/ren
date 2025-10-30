@@ -13,10 +13,10 @@ auto get_sdl_window_flags(Renderer *) -> uint32_t {
   return rhi::SDL_WINDOW_FLAGS;
 }
 
-auto create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
-                      SDL_Window *window) -> expected<SwapChain *> {
+SwapChain *create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
+                            SDL_Window *window) {
   auto *swap_chain = allocate<SwapChain>(arena);
-  ren_try_to(swap_chain->init(arena, *renderer, window));
+  swap_chain->init(arena, *renderer, window);
   return swap_chain;
 }
 
@@ -57,14 +57,13 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 } // namespace
 
-auto SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
-                     SDL_Window *window) -> Result<void, Error> {
+void SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
+                     SDL_Window *window) {
   ScratchArena scratch(arena);
 
   m_renderer = &renderer;
   m_window = window;
-
-  ren_try(m_surface, rhi::create_surface(renderer.m_instance, m_window));
+  m_surface = rhi::create_surface(renderer.m_instance, m_window);
 
   SDL_GetWindowSizeInPixels(m_window, &m_size.x, &m_size.y);
   m_fullscreen = get_fullscreen_state(m_window);
@@ -72,8 +71,8 @@ auto SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
   rhi::Adapter adapter = m_renderer->get_adapter();
   rhi::Device device = m_renderer->get_rhi_device();
 
-  ren_try(rhi::PresentMode present_mode, select_present_mode());
-  ren_try(u32 num_images, select_image_count(present_mode));
+  rhi::PresentMode present_mode = select_present_mode();
+  u32 num_images = select_image_count(present_mode);
 
   {
     u32 num_formats = 0;
@@ -104,25 +103,23 @@ auto SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
                num_images);
 
-  ren_try(m_swap_chain, rhi::create_swap_chain(arena, device,
-                                               {
-                                                   .surface = m_surface,
-                                                   .width = (u32)m_size.x,
-                                                   .height = (u32)m_size.y,
-                                                   .format = m_format,
-                                                   .usage = m_usage,
-                                                   .num_images = num_images,
-                                                   .present_mode = present_mode,
-                                               }));
+  m_swap_chain = rhi::create_swap_chain(arena, device,
+                                        {
+                                            .surface = m_surface,
+                                            .width = (u32)m_size.x,
+                                            .height = (u32)m_size.y,
+                                            .format = m_format,
+                                            .usage = m_usage,
+                                            .num_images = num_images,
+                                            .present_mode = present_mode,
+                                        });
 
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
-  ren_try_to(update_textures());
+  update_textures();
 
   fmt::println("Created swap chain: {}x{}, present mode: {}, {} images",
                m_size.x, m_size.y, (int)present_mode, m_num_textures);
-
-  return {};
 }
 
 void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
@@ -132,7 +129,7 @@ void SwapChain::set_usage(rhi::ImageUsageFlags usage) {
   }
 }
 
-auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
+rhi::PresentMode SwapChain::select_present_mode() {
   ScratchArena scratch;
   auto present_mode = rhi::PresentMode::Fifo;
   if (m_vsync == VSync::Off) {
@@ -158,7 +155,7 @@ auto SwapChain::select_present_mode() -> Result<rhi::PresentMode, Error> {
   return present_mode;
 }
 
-auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
+u32 SwapChain::select_image_count(rhi::PresentMode pm) {
   const char *wm = SDL_GetCurrentVideoDriver();
   if (std::strcmp(wm, "x11") == 0 or std::strcmp(wm, "wayland") == 0) {
     // On Linux, we need the following images:
@@ -195,7 +192,7 @@ auto SwapChain::select_image_count(rhi::PresentMode pm) -> Result<u32, Error> {
   }
 }
 
-auto SwapChain::update_textures() -> Result<void, Error> {
+void SwapChain::update_textures() {
   ScratchArena scratch;
   rhi::Image *images = nullptr;
   rhi::get_swap_chain_images(scratch, m_swap_chain, &m_num_textures, &images);
@@ -209,56 +206,44 @@ auto SwapChain::update_textures() -> Result<void, Error> {
         .width = (u32)m_size.x,
         .height = (u32)m_size.y,
     });
-    ren_try(m_semaphores[i],
-            m_renderer->create_semaphore({
-                .name = format(scratch, "Swap Chain Semaphore {}", i),
-                .type = rhi::SemaphoreType::Binary,
-            }));
+    m_semaphores[i] = m_renderer->create_semaphore({
+        .name = format(scratch, "Swap Chain Semaphore {}", i),
+        .type = rhi::SemaphoreType::Binary,
+    });
   }
-  return {};
 }
 
-auto SwapChain::update() -> Result<void, Error> {
+void SwapChain::update() {
   m_renderer->wait_idle();
 
-  auto present_mode = select_present_mode();
-  if (!present_mode) {
-    return Failure(present_mode.error());
-  }
+  rhi::PresentMode present_mode = select_present_mode();
 
-  auto num_images = select_image_count(*present_mode);
-  if (!num_images) {
-    return Failure(num_images.error());
-  }
+  u32 num_images = select_image_count(present_mode);
 
   fmt::println("Update swap chain: {}x{}, fullscreen: {}, vsync: {}, {} images",
                m_size.x, m_size.y, m_fullscreen, m_vsync == VSync::On,
-               *num_images);
+               num_images);
 
-  ren_try_to(rhi::set_present_mode(m_swap_chain, *present_mode));
+  rhi::set_present_mode(m_swap_chain, present_mode);
   rhi::ImageUsageFlags supported_usage = rhi::get_surface_supported_image_usage(
       m_renderer->m_instance, m_renderer->get_adapter(), m_surface);
   ren_assert(m_usage & supported_usage);
-  ren_try_to(
-      rhi::resize_swap_chain(m_swap_chain, m_size, *num_images, m_usage));
+  rhi::resize_swap_chain(m_swap_chain, m_size, num_images, m_usage);
   m_size = rhi::get_swap_chain_size(m_swap_chain);
 
   for (usize i : range(m_num_textures)) {
     m_renderer->destroy(m_textures[i]);
     m_renderer->destroy(m_semaphores[i]);
   }
-  ren_try_to(update_textures());
+  update_textures();
 
   m_dirty = false;
 
   fmt::println("Updated swap chain: {}x{}, present mode: {}, {} images",
-               m_size.x, m_size.y, (int)*present_mode, m_num_textures);
-
-  return {};
+               m_size.x, m_size.y, (int)present_mode, m_num_textures);
 }
 
-auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
-    -> Result<u32, Error> {
+u32 SwapChain::acquire(Handle<Semaphore> signal_semaphore) {
   ZoneScoped;
 
   glm::ivec2 size;
@@ -275,38 +260,30 @@ auto SwapChain::acquire(Handle<Semaphore> signal_semaphore)
   }
 
   if (m_dirty) {
-    ren_try_to(update());
+    update();
   }
 
   while (true) {
-    rhi::Result<u32> image = rhi::acquire_image(
+    auto image = rhi::acquire_image(
         m_swap_chain,
         rhi::Semaphore{m_renderer->get_semaphore(signal_semaphore).handle});
     if (image) {
       m_image_index = *image;
       return m_image_index;
     }
-    if (image.error() == rhi::Error::OutOfDate) {
-      ren_try_to(update());
-      continue;
-    }
-    return Failure(image.error());
+    update();
   }
 }
 
-auto SwapChain::present(rhi::QueueFamily qf) -> Result<void, Error> {
+void SwapChain::present(rhi::QueueFamily qf) {
   ZoneScoped;
-  auto result = rhi::present(
+  auto status = rhi::present(
       rhi::get_queue(m_renderer->get_rhi_device(), qf), m_swap_chain,
       m_renderer->get_semaphore(m_semaphores[m_image_index]).handle);
   m_image_index = -1;
-  if (!result) {
-    if (result.error() == rhi::Error::OutOfDate) {
-      return update();
-    }
-    return Failure(result.error());
+  if (!status) {
+    update();
   }
-  return {};
 }
 
 auto SwapChain::is_queue_family_supported(rhi::QueueFamily qf) const -> bool {

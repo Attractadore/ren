@@ -54,17 +54,15 @@ auto duration_as_float(chrono::nanoseconds time) -> float {
   return chrono::duration_cast<chrono::duration<float>>(time).count();
 }
 
-auto load_gltf(ren::Path path) -> Result<tinygltf::Model> {
+tinygltf::Model load_gltf(ren::Path path) {
   tinygltf::TinyGLTF loader;
   tinygltf::Model model;
   std::string err;
   std::string warn;
 
-  {
-    ren::IoResult<bool> exists = path.exists();
-    if (exists.m_status != ren::IoSuccess or not exists.m_value) {
-      bail("Failed to open file {}: doesn't exist", path);
-    }
+  if (not path.exists().value_or(false)) {
+    fmt::println(stderr, "Failed to open file {}: doesn't exist", path);
+    exit(EXIT_FAILURE);
   }
 
   log("Load scene...");
@@ -78,8 +76,9 @@ auto load_gltf(ren::Path path) -> Result<tinygltf::Model> {
     ret = loader.LoadBinaryFromFile(&model, &err, &warn,
                                     {path.m_str.begin(), path.m_str.end()});
   } else {
-    bail("Failed to load glTF file {}: invalid extension {}", path,
-         path.extension());
+    fmt::println(stderr, "Failed to load glTF file {}: invalid extension {}",
+                 path, path.extension());
+    exit(EXIT_FAILURE);
   }
 
   auto end = chrono::steady_clock::now();
@@ -90,18 +89,19 @@ auto load_gltf(ren::Path path) -> Result<tinygltf::Model> {
     while (not err.empty() and err.back() == '\n') {
       err.pop_back();
     }
-    bail("{}", std::move(err));
+    fmt::println(stderr, "{}", err);
+    exit(EXIT_FAILURE);
   }
 
   if (not warn.empty()) {
     fmt::println(stderr, "{}", warn);
   }
 
-  return std::move(model);
+  return model;
 }
 
-auto get_image_format(unsigned components, int pixel_type, bool srgb)
-    -> Result<TinyImageFormat> {
+TinyImageFormat get_image_format(unsigned components, int pixel_type,
+                                 bool srgb) {
   if (pixel_type == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
     if (components == 1) {
       return srgb ? TinyImageFormat_R8_SRGB : TinyImageFormat_R8_UNORM;
@@ -131,13 +131,16 @@ auto get_image_format(unsigned components, int pixel_type, bool srgb)
       return TinyImageFormat_R16G16B16A16_UNORM;
     }
   }
-  bail("Unknown format: {}/{}, sRGB: {}", components, pixel_type, srgb);
+  fmt::println(stderr, "Unknown format: {}/{}, sRGB: {}", components,
+               pixel_type, srgb);
+  return TinyImageFormat_UNDEFINED;
 }
 
-auto get_sampler_wrap_mode(int mode) -> Result<ren::WrappingMode> {
+ren::WrappingMode get_sampler_wrap_mode(int mode) {
   switch (mode) {
   default:
-    bail("Unknown sampler wrapping mode {}", mode);
+    fmt::println(stderr, "Unknown sampler wrapping mode {}", mode);
+    return ren::WrappingMode::ClampToEdge;
   case TINYGLTF_TEXTURE_WRAP_REPEAT:
     return ren::WrappingMode::Repeat;
   case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
@@ -147,11 +150,14 @@ auto get_sampler_wrap_mode(int mode) -> Result<ren::WrappingMode> {
   }
 }
 
-auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::SamplerDesc> {
+ren::SamplerDesc get_sampler(const tinygltf::Sampler &sampler) {
   ren::Filter mag_filter, min_filter, mip_filter;
   switch (sampler.magFilter) {
   default:
-    bail("Unknown sampler magnification filter {}", sampler.magFilter);
+    fmt::println(stderr, "Unknown sampler magnification filter {}",
+                 sampler.magFilter);
+    mag_filter = ren::Filter::Linear;
+    break;
   case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR:
     mag_filter = ren::Filter::Linear;
@@ -162,11 +168,21 @@ auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::SamplerDesc> {
   }
   switch (sampler.minFilter) {
   default:
-    bail("Unknown sampler magnification filter {}", sampler.magFilter);
+    fmt::println(stderr, "Unknown sampler magnification filter {}",
+                 sampler.magFilter);
+    min_filter = ren::Filter::Linear;
+    mip_filter = ren::Filter::Linear;
+    break;
   case TINYGLTF_TEXTURE_FILTER_LINEAR:
-    bail("Linear minification filter not implemented");
+    fmt::println(stderr, "Linear minification filter not implemented");
+    min_filter = ren::Filter::Linear;
+    mip_filter = ren::Filter::Linear;
+    break;
   case TINYGLTF_TEXTURE_FILTER_NEAREST:
-    bail("Nearest minification filter not implemented");
+    fmt::println(stderr, "Nearest minification filter not implemented");
+    min_filter = ren::Filter::Nearest;
+    mip_filter = ren::Filter::Nearest;
+    break;
   case -1:
   case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
     min_filter = ren::Filter::Linear;
@@ -185,8 +201,8 @@ auto get_sampler(const tinygltf::Sampler &sampler) -> Result<ren::SamplerDesc> {
     mip_filter = ren::Filter::Nearest;
     break;
   }
-  OK(ren::WrappingMode wrap_u, get_sampler_wrap_mode(sampler.wrapS));
-  OK(ren::WrappingMode wrap_v, get_sampler_wrap_mode(sampler.wrapT));
+  ren::WrappingMode wrap_u = get_sampler_wrap_mode(sampler.wrapS);
+  ren::WrappingMode wrap_v = get_sampler_wrap_mode(sampler.wrapT);
   return ren::SamplerDesc{
       .mag_filter = mag_filter,
       .min_filter = min_filter,
@@ -245,9 +261,10 @@ public:
     m_scene = scene;
   }
 
-  auto walk(int scene) -> Result<void> {
+  void walk(int scene) {
     if (not m_model.extensionsRequired.empty()) {
-      bail("Required glTF extensions not supported");
+      fmt::println(stderr, "Required glTF extensions not supported");
+      exit(EXIT_FAILURE);
     }
 
     if (not m_model.extensionsUsed.empty()) {
@@ -267,12 +284,11 @@ public:
     }
 
     if (scene >= m_model.scenes.size()) {
-      bail("Scene index {} out of bounds", scene);
+      fmt::println(stderr, "Scene index {} out of bounds", scene);
+      exit(EXIT_FAILURE);
     }
 
-    TRY_TO(walk_scene(m_model.scenes[scene]));
-
-    return {};
+    walk_scene(m_model.scenes[scene]);
   }
 
 private:
@@ -306,14 +322,16 @@ private:
     return &m_model.accessors[index];
   }
 
-  auto create_mesh(const GltfMeshDesc &desc) -> Result<ren::Handle<ren::Mesh>> {
+  ren::Handle<ren::Mesh> create_mesh(const GltfMeshDesc &desc) {
     const tinygltf::Accessor *positions = get_accessor(desc.positions);
     if (!positions) {
-      bail("Primitive doesn't have POSITION attribute");
+      fmt::println(stderr, "Primitive doesn't have POSITION attribute");
+      return ren::NullHandle;
     }
     const tinygltf::Accessor *normals = get_accessor(desc.normals);
     if (!normals) {
-      bail("Primitive doesn't have NORMAL attribute");
+      fmt::println(stderr, "Primitive doesn't have NORMAL attribute");
+      return ren::NullHandle;
     }
     const tinygltf::Accessor *tangents = get_accessor(desc.tangents);
     const tinygltf::Accessor *colors = get_accessor(desc.colors);
@@ -322,16 +340,18 @@ private:
 
     if (positions->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
         positions->type != TINYGLTF_TYPE_VEC3) {
-      bail("Invalid primitive POSITION attribute format: {}/{}",
-           positions->componentType, positions->type);
+      fmt::println(stderr, "Invalid primitive POSITION attribute format: {}/{}",
+                   positions->componentType, positions->type);
+      return ren::NullHandle;
     }
     std::vector<glm::vec3> positions_data =
         get_accessor_data<glm::vec3>(*positions);
 
     if (normals->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
         normals->type != TINYGLTF_TYPE_VEC3) {
-      bail("Invalid primitive NORMAL attribute format: {}/{}",
-           normals->componentType, normals->type);
+      fmt::println(stderr, "Invalid primitive NORMAL attribute format: {}/{}",
+                   normals->componentType, normals->type);
+      return ren::NullHandle;
     }
     std::vector<glm::vec3> normals_data =
         get_accessor_data<glm::vec3>(*normals);
@@ -340,13 +360,15 @@ private:
     if (tangents) {
       if (tangents->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
           tangents->type != TINYGLTF_TYPE_VEC4) {
-        bail("Invalid primitive TANGENT attribute format: {}/{}",
-             tangents->componentType, tangents->type);
+        fmt::println(stderr,
+                     "Invalid primitive TANGENT attribute format: {}/{}",
+                     tangents->componentType, tangents->type);
+        return ren::NullHandle;
       }
       tangents_data = get_accessor_data<glm::vec4>(*tangents);
     }
 
-    OK(auto colors_data, [&]() -> Result<std::vector<glm::vec4>> {
+    auto colors_data = [&]() -> std::vector<glm::vec4> {
       if (!colors) {
         return {};
       }
@@ -389,11 +411,14 @@ private:
           }
         }
       }
-      bail("Invalid primitive COLOR_0 attribute format: {}/{}, normalized: {}",
-           colors->componentType, colors->type, colors->normalized);
-    }());
+      fmt::println(
+          stderr,
+          "Invalid primitive COLOR_0 attribute format: {}/{}, normalized: {}",
+          colors->componentType, colors->type, colors->normalized);
+      return {};
+    }();
 
-    OK(auto tex_coords_data, [&]() -> Result<std::vector<glm::vec2>> {
+    auto tex_coords_data = [&]() -> std::vector<glm::vec2> {
       if (!uvs) {
         return {};
       }
@@ -415,12 +440,14 @@ private:
           }
         }
       }
-      bail("Invalid primitive TEXCOORD_0 attribute format: "
-           "{}/{}, normalized: {}",
-           uvs->componentType, uvs->type, uvs->normalized);
-    }());
+      fmt::println(stderr,
+                   "Invalid primitive TEXCOORD_0 attribute format: "
+                   "{}/{}, normalized: {}",
+                   uvs->componentType, uvs->type, uvs->normalized);
+      return {};
+    }();
 
-    OK(auto indices_data, [&]() -> Result<std::vector<uint32_t>> {
+    auto indices_data = [&]() -> std::vector<uint32_t> {
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
           return get_accessor_data<uint8_t>(
@@ -434,10 +461,12 @@ private:
           return get_accessor_data<uint32_t>(*indices);
         }
       }
-      bail("Invalid primitive indices format: "
-           "{}/{}, normalized: {}",
-           indices->componentType, indices->type, indices->normalized);
-    }());
+      fmt::println(stderr,
+                   "Invalid primitive indices format: "
+                   "{}/{}, normalized: {}",
+                   indices->componentType, indices->type, indices->normalized);
+      return {};
+    }();
 
     ren::ScratchArena scratch;
     ren::Blob blob = ren::bake_mesh_to_memory(
@@ -453,8 +482,8 @@ private:
     return ren::create_mesh(m_frame_arena, m_scene, blob.data, blob.size);
   }
 
-  auto get_or_create_mesh(const tinygltf::Primitive &primitive)
-      -> Result<ren::Handle<ren::Mesh>> {
+  ren::Handle<ren::Mesh>
+  get_or_create_mesh(const tinygltf::Primitive &primitive) {
     auto get_attribute_accessor_index =
         [&](const std::string &attribute) -> int {
       auto it = primitive.attributes.find(attribute);
@@ -489,41 +518,42 @@ private:
       warn_unused_attribute("JOINTS", 0);
       warn_unused_attribute("WEIGHTS", 0);
       if (primitive.mode != TINYGLTF_MODE_TRIANGLES) {
-        bail("Unsupported primitive mode {}", primitive.mode);
+        fmt::println(stderr, "Unsupported primitive mode {}", primitive.mode);
+        return ren::NullHandle;
       }
       if (not primitive.targets.empty()) {
         warn("Ignoring {} primitive morph targets", primitive.targets.size());
       }
-      OK(mesh, create_mesh(desc));
+      mesh = create_mesh(desc);
     }
     return mesh;
   }
 
-  auto get_image_info(int image, bool srgb = false)
-      -> Result<ren::TextureInfo> {
+  ren::TextureInfo get_image_info(int image, bool srgb = false) {
     const tinygltf::Image &gltf_image = m_model.images[image];
     assert(gltf_image.image.size() == gltf_image.width * gltf_image.height *
                                           gltf_image.component *
                                           gltf_image.bits / 8);
-    OK(TinyImageFormat format,
-       get_image_format(gltf_image.component, gltf_image.pixel_type, srgb));
-    return {{
+    TinyImageFormat format =
+        get_image_format(gltf_image.component, gltf_image.pixel_type, srgb);
+    return {
         .format = format,
         .width = unsigned(gltf_image.width),
         .height = unsigned(gltf_image.height),
         .data = gltf_image.image.data(),
-    }};
+    };
   }
 
-  auto get_texture_sampler(int texture) const -> Result<ren::SamplerDesc> {
+  ren::SamplerDesc get_texture_sampler(int texture) const {
     int sampler = m_model.textures[texture].sampler;
     if (sampler < 0) {
-      bail("Default sampler not implemented");
+      fmt::println(stderr, "Default sampler not implemented");
+      return {};
     }
     return get_sampler(m_model.samplers[sampler]);
   }
 
-  auto create_material(int index) -> Result<ren::Handle<ren::Material>> {
+  ren::Handle<ren::Material> create_material(int index) {
     const tinygltf::Material &material = m_model.materials[index];
     ren::MaterialCreateInfo desc = {};
 
@@ -536,21 +566,22 @@ private:
           material.pbrMetallicRoughness.baseColorTexture;
       if (base_color_texture.index >= 0) {
         if (base_color_texture.texCoord > 0) {
-          bail("Unsupported base color texture coordinate set {}",
-               base_color_texture.texCoord);
+          fmt::println(stderr,
+                       "Unsupported base color texture coordinate set {}",
+                       base_color_texture.texCoord);
+          return ren::NullHandle;
         }
         int src = m_model.textures[base_color_texture.index].source;
         ren::Handle<ren::Image> &image = m_color_image_cache[src];
         if (!image) {
-          OK(ren::TextureInfo texture_info, get_image_info(src, true));
-          OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
-          auto [blob_data, blob_size] = blob;
-          image = create_image(m_frame_arena, m_scene, blob_data, blob_size);
-          std::free(blob_data);
+          ren::TextureInfo texture_info = get_image_info(src, true);
+          auto blob = ren::bake_normal_map_to_memory(texture_info);
+          image = create_image(m_frame_arena, m_scene, blob.data, blob.size);
+          std::free(blob.data);
         }
         desc.base_color_texture.image = image;
-        OK(desc.base_color_texture.sampler,
-           get_texture_sampler(base_color_texture.index));
+        desc.base_color_texture.sampler =
+            get_texture_sampler(base_color_texture.index);
       }
     }
 
@@ -564,16 +595,21 @@ private:
           material.occlusionTexture;
       if (metallic_roughness_texture.index >= 0) {
         if (metallic_roughness_texture.texCoord > 0) {
-          bail("Unsupported metallic-roughness texture coordinate set {}",
-               metallic_roughness_texture.texCoord);
+          fmt::println(
+              stderr,
+              "Unsupported metallic-roughness texture coordinate set {}",
+              metallic_roughness_texture.texCoord);
+          return ren::NullHandle;
         }
         int roughness_metallic_src =
             m_model.textures[metallic_roughness_texture.index].source;
         int occlusion_src = -1;
         if (occlusion_texture.index >= 0) {
           if (occlusion_texture.texCoord > 0) {
-            bail("Unsupported occlusion texture coordinate set {}",
-                 occlusion_texture.texCoord);
+            fmt::println(stderr,
+                         "Unsupported occlusion texture coordinate set {}",
+                         occlusion_texture.texCoord);
+            return ren::NullHandle;
           }
           occlusion_src = m_model.textures[occlusion_texture.index].source;
         }
@@ -586,23 +622,22 @@ private:
         if (it) {
           desc.orm_texture.image = std::get<2>(*it);
         } else {
-          OK(ren::TextureInfo roughness_metallic_info,
-             get_image_info(roughness_metallic_src));
+          ren::TextureInfo roughness_metallic_info =
+              get_image_info(roughness_metallic_src);
           ren::TextureInfo occlusion_info;
           if (occlusion_src >= 0) {
-            OK(occlusion_info, get_image_info(occlusion_src));
+            occlusion_info = get_image_info(occlusion_src);
           }
-          OK(auto blob, ren::bake_orm_map_to_memory(roughness_metallic_info,
-                                                    occlusion_info));
-          auto [blob_data, blob_size] = blob;
+          auto blob = ren::bake_orm_map_to_memory(roughness_metallic_info,
+                                                  occlusion_info);
           desc.orm_texture.image =
-              create_image(m_frame_arena, m_scene, blob_data, blob_size);
-          std::free(blob_data);
+              create_image(m_frame_arena, m_scene, blob.data, blob.size);
+          std::free(blob.data);
           m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
                                          desc.orm_texture.image);
         }
-        OK(desc.orm_texture.sampler,
-           get_texture_sampler(metallic_roughness_texture.index));
+        desc.orm_texture.sampler =
+            get_texture_sampler(metallic_roughness_texture.index);
       } else if (occlusion_texture.index >= 0) {
         warn("Occlusion textures without a metallic-roughness texture are not "
              "supported");
@@ -614,59 +649,61 @@ private:
           material.normalTexture;
       if (normal_texture.index >= 0) {
         if (normal_texture.texCoord > 0) {
-          bail("Unsupported normal texture coordinate set {}",
-               normal_texture.texCoord);
+          fmt::println(stderr, "Unsupported normal texture coordinate set {}",
+                       normal_texture.texCoord);
+          return ren::NullHandle;
         }
         int src = m_model.textures[normal_texture.index].source;
         ren::Handle<ren::Image> &image = m_normal_image_cache[src];
         if (!image) {
-          OK(ren::TextureInfo texture_info, get_image_info(src));
-          OK(auto blob, ren::bake_normal_map_to_memory(texture_info));
-          auto [blob_data, blob_size] = blob;
-          image = create_image(m_frame_arena, m_scene, blob_data, blob_size);
-          std::free(blob_data);
+          ren::TextureInfo texture_info = get_image_info(src);
+          auto blob = ren::bake_normal_map_to_memory(texture_info);
+          image = create_image(m_frame_arena, m_scene, blob.data, blob.size);
+          std::free(blob.data);
         }
         desc.normal_texture.image = image;
-        OK(desc.normal_texture.sampler,
-           get_texture_sampler(normal_texture.index));
+        desc.normal_texture.sampler = get_texture_sampler(normal_texture.index);
         desc.normal_texture.scale = normal_texture.scale;
       }
     }
 
     if (material.emissiveTexture.index >= 0 or
         material.emissiveFactor != std::vector{0.0, 0.0, 0.0}) {
-      bail("Emissive materials not implemented");
+      fmt::println(stderr, "Emissive materials not implemented");
+      return ren::NullHandle;
     }
 
     if (material.alphaMode != "OPAQUE") {
-      bail("Translucent materials not implemented");
+      fmt::println(stderr, "Translucent materials not implemented");
+      return ren::NullHandle;
     }
 
     if (material.doubleSided) {
-      bail("Double sided materials not implemented");
+      fmt::println(stderr, "Double sided materials not implemented");
+      return ren::NullHandle;
     }
 
     return ren::create_material(m_frame_arena, m_scene, desc);
   }
 
-  auto get_or_create_material(int index) -> Result<ren::Handle<ren::Material>> {
+  ren::Handle<ren::Material> get_or_create_material(int index) {
     assert(index >= 0);
     if (index >= m_material_cache.size()) {
       m_material_cache.resize(index + 1);
     }
     ren::Handle<ren::Material> &material = m_material_cache[index];
     if (!material) {
-      OK(material, create_material(index));
+      material = create_material(index);
     }
     return material;
   }
 
-  auto create_mesh_instance(const tinygltf::Primitive &primitive,
-                            const glm::mat4 &transform)
-      -> Result<ren::Handle<ren::MeshInstance>> {
-    OK(ren::Handle<ren::Material> material,
-       get_or_create_material(primitive.material));
-    OK(ren::Handle<ren::Mesh> mesh, get_or_create_mesh(primitive));
+  ren::Handle<ren::MeshInstance>
+  create_mesh_instance(const tinygltf::Primitive &primitive,
+                       const glm::mat4 &transform) {
+    ren::Handle<ren::Material> material =
+        get_or_create_material(primitive.material);
+    ren::Handle<ren::Mesh> mesh = get_or_create_mesh(primitive);
     ren::Handle<ren::MeshInstance> mesh_instance =
         ren::create_mesh_instance(m_frame_arena, m_scene,
                                   {
@@ -712,20 +749,19 @@ private:
     return local_transform;
   }
 
-  auto walk_node(const tinygltf::Node &node, const glm::mat4 &parent_transform)
-      -> Result<void> {
+  void walk_node(const tinygltf::Node &node,
+                 const glm::mat4 &parent_transform) {
     int node_index = &node - m_model.nodes.data();
     glm::mat4 transform = parent_transform * get_node_local_transform(node);
 
     if (node.mesh >= 0) {
       const tinygltf::Mesh &mesh = m_model.meshes[node.mesh];
       for (const tinygltf::Primitive &primitive : mesh.primitives) {
-        auto res = create_mesh_instance(primitive, transform);
-        if (not res.has_value()) {
-          warn("Failed to create mesh instance for mesh {} "
-               "primitive {} in node {}: {}",
-               node.mesh, &primitive - &mesh.primitives[0], node_index,
-               res.error());
+        if (!create_mesh_instance(primitive, transform)) {
+          fmt::println(stderr,
+                       "Failed to create mesh instance for mesh {} "
+                       "primitive {} in node {}",
+                       node.mesh, &primitive - &mesh.primitives[0], node_index);
         }
       }
     }
@@ -743,19 +779,16 @@ private:
     }
 
     for (int child : node.children) {
-      TRY_TO(walk_node(m_model.nodes[child], transform));
+      walk_node(m_model.nodes[child], transform);
     }
-
-    return {};
   };
 
-  auto walk_scene(const tinygltf::Scene &scene) -> Result<void> {
+  void walk_scene(const tinygltf::Scene &scene) {
     auto transform = glm::mat4_cast(
         glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
     for (int node : scene.nodes) {
-      TRY_TO(walk_node(m_model.nodes[node], transform));
+      walk_node(m_model.nodes[node], transform);
     }
-    return {};
   }
 
 private:
@@ -777,31 +810,28 @@ struct ViewGltfOptions {
 
 class ViewGlTFApp : public ImGuiApp {
 public:
-  auto init(const ViewGltfOptions &options) -> Result<void> {
-    TRY_TO(ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str()));
-    OK(tinygltf::Model model, load_gltf(options.path));
+  void init(const ViewGltfOptions &options) {
+    ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str());
+    tinygltf::Model model = load_gltf(options.path);
     SceneWalker scene_walker(std::move(model), &m_frame_arena, get_scene());
-    TRY_TO(scene_walker.walk(options.scene));
+    scene_walker.walk(options.scene);
     ren::Scene *scene = get_scene();
 
-    auto env_map = [&]() -> Result<ren::Handle<ren::Image>> {
-      if (!options.env_map) {
-        return {};
-      }
+    ren::Handle<ren::Image> env_map;
+    if (options.env_map) {
       ren::ScratchArena scratch;
-      auto [blob, status] = ren::read<std::byte>(scratch, options.env_map);
-      if (status != ren::IoSuccess) {
-        bail("Failed to read {}: {}", options.env_map, status);
+      auto blob = ren::read<std::byte>(scratch, options.env_map);
+      if (!blob) {
+        fmt::println(stderr, "Failed to read {}: {}", options.env_map,
+                     blob.error());
+      } else {
+        env_map = ren::create_image(&m_frame_arena, scene, *blob);
       }
-      return ren::create_image(&m_frame_arena, scene, blob);
-    }();
+    }
 
-    if (env_map and *env_map) {
-      TRY_TO(ren::set_environment_map(scene, *env_map));
+    if (env_map) {
+      ren::set_environment_map(scene, env_map);
     } else {
-      if (!env_map) {
-        warn("Failed to load environment map: {}", env_map.error());
-      }
       ren::Handle<ren::DirectionalLight> directional_light =
           ren::create_directional_light(scene, {
                                                    .color = {1.0f, 1.0f, 1.0f},
@@ -812,16 +842,15 @@ public:
           scene,
           glm::convertSRGBToLinear(glm::vec3(78, 159, 229) / 255.0f) * 8000.0f);
     }
-    return {};
   }
 
-  [[nodiscard]] static auto run(const ViewGltfOptions &options) -> int {
+  static void run(const ViewGltfOptions &options) {
     return AppBase::run<ViewGlTFApp>(options);
   }
 
 protected:
-  auto process_event(const SDL_Event &event) -> Result<void> override {
-    TRY_TO(ImGuiApp::process_event(event));
+  void process_event(const SDL_Event &event) override {
+    ImGuiApp::process_event(event);
     ImGuiIO &io = ImGui::GetIO();
     switch (event.type) {
     default:
@@ -834,7 +863,6 @@ protected:
           m_distance * glm::pow(2.0f, event.wheel.y / m_zoom_sensitivity);
     } break;
     }
-    return {};
   }
 
   struct InputState {
@@ -860,7 +888,7 @@ protected:
     return input;
   }
 
-  auto process_frame(chrono::nanoseconds dt_ns) -> Result<void> override {
+  void process_frame(chrono::nanoseconds dt_ns) override {
     if (ImGui::GetCurrentContext()) {
       draw_camera_imgui(m_camera_params);
     }
@@ -907,8 +935,6 @@ protected:
       } break;
       }
     }
-
-    return {};
   }
 
 private:
@@ -967,7 +993,7 @@ int main(int argc, const char *argv[]) {
     env_map = parsed[OPTION_ENV_MAP].as_path;
   }
 
-  return ViewGlTFApp::run({
+  ViewGlTFApp::run({
       .path = path,
       .scene = scene,
       .env_map = env_map,
