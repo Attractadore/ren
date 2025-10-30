@@ -1,4 +1,5 @@
 #if _WIN32
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/FileSystem.hpp"
 
 #include <Windows.h>
@@ -251,7 +252,7 @@ IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
 void close(File file) { CloseHandle(handle_from_file(file)); }
 
 IoResult<usize> read(File file, void *buffer, usize size) {
-  size = std::min<usize>(size, std::numeric_limits<DWORD>::max());
+  size = min<usize>(size, std::numeric_limits<DWORD>::max());
   DWORD num_read = 0;
   if (!ReadFile(handle_from_file(file), buffer, size, &num_read, nullptr)) {
     DWORD err = GetLastError();
@@ -264,7 +265,7 @@ IoResult<usize> read(File file, void *buffer, usize size) {
 }
 
 IoResult<usize> write(File file, const void *buffer, usize size) {
-  size = std::min<usize>(size, std::numeric_limits<DWORD>::max());
+  size = min<usize>(size, std::numeric_limits<DWORD>::max());
   DWORD num_write = 0;
   if (!WriteFile(handle_from_file(file), buffer, size, &num_write, nullptr)) {
     return win32_to_io_status();

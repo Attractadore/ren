@@ -9,6 +9,7 @@
 #include "passes/PostProcessing.hpp"
 #include "passes/Present.hpp"
 #include "passes/Skybox.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
 #include "ren/ren.hpp"
@@ -326,8 +327,8 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   // Create a copy because we need to patch base triangle indices.
   auto meshlets = Span<sh::Meshlet>::allocate(scratch, header.num_meshlets);
-  std::ranges::copy_n((const sh::Meshlet *)&blob[header.meshlets_offset],
-                      header.num_meshlets, meshlets.data());
+  copy((const sh::Meshlet *)&blob[header.meshlets_offset], header.num_meshlets,
+       meshlets.data());
 
   Span triangles = {
       (const u8 *)&blob[header.triangles_offset],
@@ -340,7 +341,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
       .uv_bs = header.uv_bs,
       .num_lods = header.num_lods,
   };
-  std::ranges::copy_n(header.lods, header.num_lods, mesh.lods);
+  copy(header.lods, header.num_lods, mesh.lods);
 
   // Upload vertices
 
@@ -450,7 +451,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
       .index_pool = mesh.index_pool,
       .num_lods = mesh.num_lods,
   };
-  std::ranges::copy_n(mesh.lods, mesh.num_lods, gpu_mesh.lods);
+  copy(mesh.lods, mesh.num_lods, gpu_mesh.lods);
 
   scene->m_gpu_scene_update.meshes.push(frame_arena, {handle, gpu_mesh});
 
@@ -924,7 +925,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
       for (usize sb : range(sbs.size())) {
         usize sb_size = MIN_TRANSFORM_STAGING_BUFFER_SIZE << sb;
 
-        usize num_copy = std::min(sb_size, count);
+        usize num_copy = min(sb_size, count);
         BufferSlice<glm::mat4x3> src = sbs[sb].slice.slice(0, num_copy);
         BufferSlice<glm::mat4x3> dst =
             rg.get_buffer(rcs.transform_matrices).slice(offset, num_copy);
@@ -998,7 +999,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
           packed.push(scratch, light.data);
         }
         auto data = rg.allocate<sh::DirectionalLight>(packed.m_size);
-        std::ranges::copy(packed, data.host_ptr);
+        copy(Span(packed), data.host_ptr);
         cmd.copy_buffer(data.slice, rg.get_buffer(rcs.directional_lights));
       }
     }
@@ -1136,9 +1137,9 @@ auto build_rg(NotNull<Arena *> arena, Scene *scene)
     // Don't need the full mip chain since after a certain stage they become
     // small enough to completely fit in cache but are much less detailed.
     i32 num_ssao_hi_z_mips =
-        get_mip_chain_length(std::min(ssao_hi_z_size.x, ssao_hi_z_size.y));
+        get_mip_chain_length(min(ssao_hi_z_size.x, ssao_hi_z_size.y));
     num_ssao_hi_z_mips =
-        std::max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
+        max<i32>(num_ssao_hi_z_mips - get_mip_chain_length(32) + 1, 1);
 
     if (!pass_rcs.ssao_hi_z) {
       pass_rcs.ssao_hi_z = rgp.create_texture({

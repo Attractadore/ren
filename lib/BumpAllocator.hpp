@@ -4,6 +4,7 @@
 #include "Renderer.hpp"
 #include "ResourceArena.hpp"
 #include "core/Math.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "sh/Std.h"
 
 namespace ren {
@@ -114,7 +115,7 @@ struct DeviceBumpAllocationPolicy {
 
 struct UploadBumpAllocationPolicy {
   static constexpr auto ALIGNMENT =
-      std::max<usize>(sh::DEFAULT_DEVICE_PTR_ALIGNMENT, 64);
+      max<usize>(sh::DEFAULT_DEVICE_PTR_ALIGNMENT, 64);
 
   struct Block {
     std::byte *host_ptr = nullptr;

@@ -1,8 +1,8 @@
 #include "ImGuiApp.hpp"
+#include "ren/core/Algorithm.hpp"
 
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_video.h>
-#include <algorithm>
 #include <imgui.hpp>
 
 auto ImGuiApp::init(const char *name) -> Result<void> {
@@ -26,13 +26,13 @@ auto ImGuiApp::init(const char *name) -> Result<void> {
 
   ImGuiIO &io = ImGui::GetIO();
   ImFont *default_font = io.Fonts->AddFontDefault();
-  ImFontConfig font_config = *std::ranges::find_if(
-      io.Fonts->ConfigData, [&](const ImFontConfig &font_config) {
+  ImFontConfig font_config = *find_if(
+      ren::Span(io.Fonts->ConfigData), [&](const ImFontConfig &font_config) {
         return font_config.DstFont == default_font;
       });
   font_config.FontDataOwnedByAtlas = false;
   font_config.SizePixels = glm::floor(font_config.SizePixels * display_scale);
-  std::ranges::fill(font_config.Name, '\0');
+  fill(ren::Span(font_config.Name), '\0');
   font_config.DstFont = nullptr;
   m_font = io.Fonts->AddFont(&font_config);
   io.Fonts->Build();

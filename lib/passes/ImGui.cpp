@@ -4,8 +4,6 @@
 #include "../Scene.hpp"
 #include "../sh/ImGui.h"
 
-#include <algorithm>
-
 namespace ren {
 
 namespace {
@@ -29,11 +27,9 @@ void run_imgui_pass(Renderer &renderer, const RgRuntime &rg,
       rg.allocate<ImDrawIdx>(draw_data->TotalIdxCount);
 
   for (const ImDrawList *cmd_list : draw_data->CmdLists) {
-    std::ranges::copy_n(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size,
-                        vertices);
+    copy(cmd_list->VtxBuffer.Data, cmd_list->VtxBuffer.Size, vertices);
     vertices += cmd_list->VtxBuffer.Size;
-    std::ranges::copy_n(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size,
-                        indices);
+    copy(cmd_list->IdxBuffer.Data, cmd_list->IdxBuffer.Size, indices);
     indices += cmd_list->IdxBuffer.Size;
   }
 

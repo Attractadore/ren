@@ -1,5 +1,6 @@
 #include "Renderer.hpp"
 #include "SwapChain.hpp"
+#include "ren/core/Algorithm.hpp"
 
 #include <spirv/unified1/spirv.h>
 #include <tracy/Tracy.hpp>
@@ -465,7 +466,7 @@ auto Renderer::create_graphics_pipeline(
       .dsv_format = create_info.dsv_format,
       .blend_state = create_info.blend_state,
   };
-  std::ranges::copy(create_info.rtv_formats, pipeline_info.rtv_formats);
+  copy(Span(create_info.rtv_formats), pipeline_info.rtv_formats);
 
   const ShaderInfo *shaders[] = {
       &create_info.ts,

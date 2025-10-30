@@ -9,8 +9,7 @@ namespace ren {
 void setup_hi_z_pass(const PassCommonConfig &ccfg, const HiZPassConfig &cfg) {
   glm::uvec2 size = {std::bit_floor(ccfg.viewport.x),
                      std::bit_floor(ccfg.viewport.y)};
-  u32 num_mips =
-      std::max(std::countr_zero(size.x), std::countr_zero(size.y)) + 1;
+  u32 num_mips = max(std::countr_zero(size.x), std::countr_zero(size.y)) + 1;
   ren_assert(size.x < sh::SPD_MAX_SIZE and size.y < sh::SPD_MAX_SIZE);
 
   if (!ccfg.rcs->hi_z) {

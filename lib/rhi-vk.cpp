@@ -1,11 +1,11 @@
 #include "rhi.hpp"
 #if REN_RHI_VULKAN
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
 #include "sh/Std.h"
 
 #include <SDL3/SDL_vulkan.h>
-#include <algorithm>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
 #include <utility>
@@ -81,9 +81,9 @@ auto to_vk(TinyImageFormat format) -> VkFormat {
 template <typename From>
   requires std::is_scoped_enum_v<From>
 auto from_vk(typename decltype(MAP<From>)::value_type vk_value) -> From {
-  auto it = std::ranges::find(MAP<From>, vk_value);
-  ren_assert(it != MAP<From>.end());
-  return From(it - MAP<From>.begin());
+  auto it = find(Span(MAP<From>), vk_value);
+  ren_assert(it);
+  return From(it - &MAP<From>[0]);
 };
 
 template <CFlagsEnum From> auto from_vk(u64 vk_flags) -> Flags<From> {
@@ -395,7 +395,7 @@ template <>
 constexpr auto MAP<PresentMode> = [] {
   using enum PresentMode;
   std::array<VkPresentModeKHR, ENUM_SIZE<PresentMode>> map = {};
-  std::ranges::fill(map, VK_PRESENT_MODE_FIFO_KHR);
+  fill(Span(map), VK_PRESENT_MODE_FIFO_KHR);
   map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
   map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
   map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
@@ -588,8 +588,7 @@ auto create_instance(NotNull<Arena *> arena,
     if (!sdl_extensions) {
       return fail(Error::Unknown);
     }
-    std::ranges::copy_n(sdl_extensions, num_sdl_extensions,
-                        extensions + num_extensions);
+    copy(sdl_extensions, num_sdl_extensions, extensions + num_extensions);
     num_extensions += num_sdl_extensions;
 
     extensions[num_extensions++] =
@@ -788,7 +787,7 @@ auto create_instance(NotNull<Arena *> arena,
             compute_shader_derivatives_features.computeDerivativeGroupLinear,
     };
 
-    std::ranges::fill(adapter.queue_families, QUEUE_FAMILY_UNAVAILABLE);
+    fill(Span(adapter.queue_families), QUEUE_FAMILY_UNAVAILABLE);
 
     uint32_t num_queues = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(handle, &num_queues, nullptr);
@@ -962,10 +961,10 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
 
   u32 num_extensions = std::size(REQUIRED_DEVICE_EXTENSIONS);
   auto *extensions = allocate<const char *>(scratch, adapter.num_extensions);
-  std::ranges::copy(REQUIRED_DEVICE_EXTENSIONS, extensions);
+  copy(Span(REQUIRED_DEVICE_EXTENSIONS), extensions);
   if (not instance->headless) {
-    std::ranges::copy(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS,
-                      extensions + num_extensions);
+    copy(Span(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS),
+         extensions + num_extensions);
     num_extensions += std::size(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
   }
 
@@ -1148,8 +1147,8 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
 
   {
     VkDescriptorBindingFlags flags[4] = {};
-    std::ranges::fill(flags, VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                                 VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+    fill(Span(flags), VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                          VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
     VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
         .sType =
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
@@ -2680,9 +2679,9 @@ namespace {
 auto adjust_swap_chain_image_count(u32 num_images,
                                    const VkSurfaceCapabilitiesKHR &capabilities)
     -> u32 {
-  num_images = std::max(num_images, capabilities.minImageCount);
+  num_images = max(num_images, capabilities.minImageCount);
   if (capabilities.maxImageCount) {
-    num_images = std::min(num_images, capabilities.maxImageCount);
+    num_images = min(num_images, capabilities.maxImageCount);
   }
   return num_images;
 }

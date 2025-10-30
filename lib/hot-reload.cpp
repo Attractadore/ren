@@ -1,4 +1,5 @@
 #include "core/Result.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
@@ -6,7 +7,6 @@
 #include "ren/ren.hpp"
 
 #include <SDL3/SDL_loadso.h>
-#include <algorithm>
 #include <cerrno>
 #include <fmt/base.h>
 
@@ -57,7 +57,7 @@ Path make_dll_copy(Path from) {
   }
 
   String<char> filename = from.filename().m_str.copy(scratch);
-  std::ranges::fill_n(filename.m_str, filename.m_size - 4, '_');
+  fill(filename.m_str, filename.m_size - 4, '_');
   Path to = from.replace_filename(scratch, Path::init(filename));
   ren_assert(from.m_str.m_size == to.m_str.m_size);
 
@@ -84,7 +84,7 @@ Path make_dll_copy(Path from) {
     String<char> substr = String<char>(buffer.data(), buffer.size())
                               .find(from_pdb.native(scratch));
     ren_assert(substr.m_size > 0);
-    std::ranges::copy(to_pdb.native(scratch), substr.m_str);
+    copy(Span(to_pdb.native(scratch)), substr.m_str);
   }
 
   IoStatus result = write(to, buffer);

@@ -74,13 +74,13 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 
     for (usize y : range(dst_image.height)) {
       usize y12 = 2 * y;
-      usize y34 = std::min<usize>(2 * y + 1, src_image.height - 1);
+      usize y34 = min<usize>(2 * y + 1, src_image.height - 1);
       float sin_theta12 = glm::sin((y12 + 0.5f) * d_theta_src);
       float sin_theta34 = glm::sin((y34 + 0.5f) * d_theta_src);
       float sin_theta = glm::sin((y + 0.5f) * d_theta_dst);
       for (usize x : range(dst_image.width)) {
         usize x13 = 2 * x;
-        usize x24 = std::min<usize>(2 * x + 1, src_image.width - 1);
+        usize x24 = min<usize>(2 * x + 1, src_image.width - 1);
 
         glm::vec3 L1 = src_pixels[src_image.width * y12 + x13];
         glm::vec3 L2 = src_pixels[src_image.width * y12 + x24];

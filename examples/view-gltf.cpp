@@ -1,6 +1,7 @@
 #include "ImGuiApp.hpp"
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
@@ -573,13 +574,13 @@ private:
           }
           occlusion_src = m_model.textures[occlusion_texture.index].source;
         }
-        auto it = std::ranges::find_if(
-            m_orm_image_cache,
-            [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
-              auto [rm, o, i] = t;
-              return rm == roughness_metallic_src and o == occlusion_src;
-            });
-        if (it != m_orm_image_cache.end()) {
+        auto it = find_if(ren::Span(m_orm_image_cache),
+                          [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
+                            auto [rm, o, i] = t;
+                            return rm == roughness_metallic_src and
+                                   o == occlusion_src;
+                          });
+        if (it) {
           desc.orm_texture.image = std::get<2>(*it);
         } else {
           OK(ren::TextureInfo roughness_metallic_info,

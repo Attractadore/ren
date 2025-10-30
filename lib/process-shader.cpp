@@ -1,3 +1,4 @@
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/FileSystem.hpp"
@@ -5,7 +6,6 @@
 #include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 
-#include <numeric>
 #include <spirv/unified1/spirv.h>
 #include <utility>
 
@@ -162,8 +162,7 @@ auto process(const CompileOptions &opts) -> int {
 
     word += num_words;
   }
-  std::exclusive_scan(struct_member_counts.begin(), struct_member_counts.end(),
-                      struct_member_offsets.begin(), 0);
+  exclusive_scan(struct_member_counts, struct_member_offsets.data(), 0);
   usize num_members =
       struct_member_offsets.back() + struct_member_counts.back();
 

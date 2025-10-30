@@ -51,7 +51,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   for (u32 bucket : range(sh::NUM_MESHLET_CULLING_BUCKETS)) {
     bucket_offsets[bucket] = buckets_size;
     u32 bucket_stride = 1 << bucket;
-    u32 bucket_size = std::min(num_instances, num_meshlets / bucket_stride);
+    u32 bucket_size = min(num_instances, num_meshlets / bucket_stride);
     buckets_size += bucket_size;
   }
 
@@ -110,7 +110,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
 
     auto meshlet_bucket_offsets =
         ccfg.allocator->allocate<u32>(bucket_offsets.size());
-    std::ranges::copy(bucket_offsets, meshlet_bucket_offsets.host_ptr);
+    copy(Span(bucket_offsets), meshlet_bucket_offsets.host_ptr);
 
     RgInstanceCullingAndLODArgs args = {
         .meshes = pass.read_buffer(info.rg_gpu_scene->meshes),

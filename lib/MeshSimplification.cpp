@@ -1,7 +1,7 @@
 #include "MeshSimplification.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Array.hpp"
 
-#include <algorithm>
 #include <meshoptimizer.h>
 
 namespace ren {
@@ -18,7 +18,7 @@ void mesh_simplify(NotNull<Arena *> arena,
     u32 num_lod_target_indices = prev_lod.size() * input.threshold;
     num_lod_target_indices -= num_lod_target_indices % 3;
     num_lod_target_indices =
-        std::max(num_lod_target_indices, input.min_num_triangles * 3);
+        max(num_lod_target_indices, input.min_num_triangles * 3);
     if (num_lod_target_indices == prev_lod.size()) {
       break;
     }
@@ -47,7 +47,7 @@ void mesh_simplify(NotNull<Arena *> arena,
   u32 base_index = 0;
   for (isize lod = isize(lods.m_size) - 1; lod >= 0; --lod) {
     u32 lod_size = lods[lod].size();
-    std::ranges::copy(lods[lod], &(*input.indices)[base_index]);
+    copy(lods[lod], &(*input.indices)[base_index]);
     input.lods[lod] = {
         .base_index = base_index,
         .num_indices = lod_size,

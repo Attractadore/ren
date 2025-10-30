@@ -1,8 +1,7 @@
 #include "Texture.hpp"
 #include "core/Errors.hpp"
 #include "core/Math.hpp"
-
-#include <algorithm>
+#include "ren/core/Algorithm.hpp"
 
 namespace ren {
 
@@ -24,7 +23,7 @@ auto get_mip_byte_size(TinyImageFormat format, glm::uvec3 size, u32 num_layers)
 }
 
 auto get_mip_chain_length(u32 width, u32 height, u32 depth) -> u32 {
-  auto size = std::max({width, height, depth});
+  auto size = max({width, height, depth});
   return ilog2(size) + 1;
 }
 

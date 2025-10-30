@@ -1,9 +1,9 @@
 #include "RenderGraph.hpp"
 #include "CommandRecorder.hpp"
 #include "core/Errors.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
 
-#include <algorithm>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -538,8 +538,12 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
     }
   };
   for (const auto &[_, pass] : m_passes) {
-    std::ranges::for_each(pass.read_textures, update_texture_usage_flags);
-    std::ranges::for_each(pass.write_textures, update_texture_usage_flags);
+    for (RgTextureUseId use : pass.read_textures) {
+      update_texture_usage_flags(use);
+    }
+    for (RgTextureUseId use : pass.write_textures) {
+      update_texture_usage_flags(use);
+    }
   }
 
   if (not need_alloc) {
@@ -598,8 +602,13 @@ auto RgBuilder::alloc_textures() -> Result<void, Error> {
 
   // Schedule init passes before all other passes.
   if (m_gfx_schedule.m_size != num_gfx_passes) {
-    std::ranges::rotate(m_gfx_schedule,
-                        m_gfx_schedule.begin() + num_gfx_passes);
+    ScratchArena scratch(m_arena);
+    auto temp = Span<RgPassId>::allocate(scratch, m_gfx_schedule.m_size);
+    copy(m_gfx_schedule.begin() + num_gfx_passes, m_gfx_schedule.end(),
+         &temp[0]);
+    copy(m_gfx_schedule.begin(), m_gfx_schedule.begin() + num_gfx_passes,
+         &temp[m_gfx_schedule.m_size - num_gfx_passes]);
+    copy(temp, &m_gfx_schedule[0]);
   }
 
   return {};
@@ -689,13 +698,13 @@ void RgBuilder::add_inter_queue_semaphores() {
         if (buffer.def) {
           const RgPass &def = m_passes[buffer.def];
           if (def.queue != pass.queue) {
-            pass.wait_time = std::max(pass.wait_time, def.signal_time);
+            pass.wait_time = max(pass.wait_time, def.signal_time);
           }
         }
         if (buffer.kill) {
           RgPass &kill = m_passes[buffer.kill];
           if (kill.queue != pass.queue) {
-            kill.wait_time = std::max(kill.wait_time, pass.signal_time);
+            kill.wait_time = max(kill.wait_time, pass.signal_time);
           }
         }
       }
@@ -705,7 +714,7 @@ void RgBuilder::add_inter_queue_semaphores() {
         if (buffer.def) {
           const RgPass &def = m_passes[buffer.def];
           if (def.queue != pass.queue) {
-            pass.wait_time = std::max(pass.wait_time, def.signal_time);
+            pass.wait_time = max(pass.wait_time, def.signal_time);
           }
         }
       }
@@ -717,27 +726,27 @@ void RgBuilder::add_inter_queue_semaphores() {
         if (texture.def) {
           const RgPass &def = m_passes[texture.def];
           if (def.queue != pass.queue) {
-            pass.wait_time = std::max(pass.wait_time, def.signal_time);
+            pass.wait_time = max(pass.wait_time, def.signal_time);
           }
         } else {
           // Wait for signal from previous frame.
           const RgPhysicalTexture &ptex =
               m_rgp->m_physical_textures[texture.parent];
           if (pass.queue != ptex.last_queue) {
-            pass.wait_time = std::max(pass.wait_time, ptex.last_time);
+            pass.wait_time = max(pass.wait_time, ptex.last_time);
           }
         }
 
         if (texture.kill) {
           RgPass &kill = m_passes[texture.kill];
           if (kill.queue != pass.queue) {
-            kill.wait_time = std::max(kill.wait_time, pass.signal_time);
+            kill.wait_time = max(kill.wait_time, pass.signal_time);
           }
         } else {
           RgPhysicalTexture &ptex = m_rgp->m_physical_textures[texture.parent];
           ren_assert(ptex.queue == RgQueue::None or ptex.queue == pass.queue);
           ptex.queue = pass.queue;
-          ptex.time = std::max(ptex.time, pass.signal_time);
+          ptex.time = max(ptex.time, pass.signal_time);
         }
       }
 
@@ -747,14 +756,14 @@ void RgBuilder::add_inter_queue_semaphores() {
         if (texture.def) {
           const RgPass &def = m_passes[texture.def];
           if (def.queue != pass.queue) {
-            pass.wait_time = std::max(pass.wait_time, def.signal_time);
+            pass.wait_time = max(pass.wait_time, def.signal_time);
           }
         } else {
           // Wait for signal from previous frame.
           const RgPhysicalTexture &ptex =
               m_rgp->m_physical_textures[texture.parent];
           if (pass.queue != ptex.last_queue) {
-            pass.wait_time = std::max(pass.wait_time, ptex.last_time);
+            pass.wait_time = max(pass.wait_time, ptex.last_time);
           }
         }
       }
@@ -1175,19 +1184,26 @@ void RgBuilder::place_barriers_and_semaphores() {
 
     memory_barriers.clear();
     texture_barriers.clear();
-    std::ranges::for_each(pass->read_buffers, maybe_place_barrier_for_buffer);
-    std::ranges::for_each(pass->write_buffers, maybe_place_barrier_for_buffer);
-    std::ranges::for_each(pass->read_textures, maybe_place_barrier_for_texture);
-    std::ranges::for_each(pass->write_textures,
-                          maybe_place_barrier_for_texture);
+    for (RgBufferUseId use : pass->read_buffers) {
+      maybe_place_barrier_for_buffer(use);
+    }
+    for (RgBufferUseId use : pass->write_buffers) {
+      maybe_place_barrier_for_buffer(use);
+    }
+    for (RgTextureUseId use : pass->read_textures) {
+      maybe_place_barrier_for_texture(use);
+    }
+    for (RgTextureUseId use : pass->write_textures) {
+      maybe_place_barrier_for_texture(use);
+    }
 
     rt_pass->memory_barriers =
         Span<rhi::MemoryBarrier>::allocate(m_arena, memory_barriers.m_size);
-    std::ranges::copy(memory_barriers, rt_pass->memory_barriers.data());
+    copy(Span(memory_barriers), rt_pass->memory_barriers.data());
 
     rt_pass->texture_barriers =
         Span<TextureBarrier>::allocate(m_arena, texture_barriers.m_size);
-    std::ranges::copy(texture_barriers, rt_pass->texture_barriers.data());
+    copy(Span(texture_barriers), rt_pass->texture_barriers.data());
 
     rt_pass->wait_semaphores =
         Span<SemaphoreState>::allocate(m_arena, pass->wait_semaphores.m_size);

@@ -2,11 +2,11 @@
 #include "MeshSimplification.hpp"
 #include "core/Math.hpp"
 #include "ren/baking/mesh.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/core/Span.hpp"
 #include "sh/Transforms.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <glm/gtc/type_ptr.hpp>
 #include <meshoptimizer.h>
@@ -228,7 +228,7 @@ void mesh_compute_bounds(Span<const glm::vec3> positions,
   float size = 1.0f;
   for (const glm::vec3 &position : positions) {
     glm::vec3 abs_position = glm::abs(position);
-    size = std::max({size, abs_position.x, abs_position.y, abs_position.z});
+    size = max({size, abs_position.x, abs_position.y, abs_position.z});
     bb.min = glm::min(bb.min, position);
     bb.max = glm::max(bb.max, position);
   }
@@ -389,12 +389,11 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
           .num_triangles = meshlet.triangle_count,
       };
 
-      auto indices = Span(meshlet_indices)
-                         .subspan(meshlet.vertex_offset, meshlet.vertex_count);
+      auto indices =
+          Span(&meshlet_indices[meshlet.vertex_offset], meshlet.vertex_count);
 
-      auto triangles =
-          Span(meshlet_triangles)
-              .subspan(meshlet.triangle_offset, meshlet.triangle_count * 3);
+      auto triangles = Span(&meshlet_triangles[meshlet.triangle_offset],
+                            meshlet.triangle_count * 3);
 
       // Optimize meshlet.
       // TODO: replace with meshopt_optimizeMeshlet
@@ -414,8 +413,8 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
       indices = {opt_indices, indices.size()};
 
       // Compact triangle buffer.
-      std::ranges::copy(triangles, &meshlet_triangles[num_lod_triangles * 3]);
-      std::ranges::copy(indices, &meshlet_indices[num_lod_indices]);
+      copy(triangles, &meshlet_triangles[num_lod_triangles * 3]);
+      copy(indices, &meshlet_indices[num_lod_indices]);
 
       meshopt_Bounds bounds = meshopt_computeMeshletBounds(
           indices.data(), triangles.data(), meshlet.triangle_count,
@@ -483,11 +482,10 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
         .num_meshlets = (u32)lods[lod].meshlets.size(),
         .num_triangles = (u32)lods[lod].triangles.size() / 3,
     };
-    std::ranges::copy(lods[lod].meshlets, &(*opts.meshlets)[base_lod_meshlet]);
-    std::ranges::copy(lods[lod].indices,
-                      &(*opts.meshlet_indices)[base_lod_index]);
-    std::ranges::copy(lods[lod].triangles,
-                      &(*opts.meshlet_triangles)[3 * base_lod_triangle]);
+    copy(lods[lod].meshlets, &(*opts.meshlets)[base_lod_meshlet]);
+    copy(lods[lod].indices, &(*opts.meshlet_indices)[base_lod_index]);
+    copy(lods[lod].triangles,
+         &(*opts.meshlet_triangles)[3 * base_lod_triangle]);
     base_lod_meshlet += lods[lod].meshlets.size();
     base_lod_index += lods[lod].indices.size();
     base_lod_triangle += lods[lod].triangles.size() / 3;

@@ -7,6 +7,7 @@
 #include "Texture.hpp"
 #include "core/Flags.hpp"
 #include "core/NewType.hpp"
+#include "ren/core/Algorithm.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/core/NotNull.hpp"
 #include "ren/core/String.hpp"
@@ -959,7 +960,7 @@ void RgBuilder::fill_buffer(String8 name, RgBufferId<T> *buffer, const T &value,
           cmd.fill_buffer(buffer, value);
         } else {
           auto data = rg.allocate<T>(buffer.count);
-          std::ranges::fill_n(data.host_ptr, buffer.count, value);
+          fill(data.host_ptr, buffer.count, value);
           cmd.copy_buffer(data.slice, buffer);
         }
       });
