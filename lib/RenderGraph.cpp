@@ -211,18 +211,18 @@ auto RgBuilder::read_buffer(RgPassId pass_id, RgUntypedBufferId buffer,
   return RgUntypedBufferToken(use);
 }
 
-auto RgBuilder::write_buffer(RgPassId pass_id, String8 name,
-                             RgUntypedBufferId src,
-                             const rhi::BufferState &usage)
-    -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
+RgUntypedBufferToken
+RgBuilder::write_buffer(RgPassId pass_id, String8 name,
+                        NotNull<RgUntypedBufferId *> buffer,
+                        const rhi::BufferState &usage) {
   ScratchArena scratch(m_arena);
-  ren_assert(src);
-  RgBuffer &src_buffer = m_buffers[src];
+  ren_assert(*buffer);
+  RgBuffer &src_buffer = m_buffers[*buffer];
   ren_assert(src_buffer.def != pass_id);
   RgPass &pass = m_passes[pass_id];
   m_physical_buffers[src_buffer.parent].queues |= pass.queue;
   RgBufferUseId use = add_buffer_use({
-      .buffer = src,
+      .buffer = *buffer,
       .usage = usage,
   });
   pass.write_buffers.push(m_arena, use);
@@ -230,8 +230,8 @@ auto RgBuilder::write_buffer(RgPassId pass_id, String8 name,
     ren_assert(name.m_size > 0);
     src_buffer.name = format(scratch, "rg#{}", name);
   }
-  RgUntypedBufferId dst = create_virtual_buffer(pass_id, name, src);
-  return {dst, RgUntypedBufferToken(use)};
+  *buffer = create_virtual_buffer(pass_id, name, *buffer);
+  return RgUntypedBufferToken(use);
 }
 
 void RgBuilder::clear_texture(String8 name, NotNull<RgTextureId *> texture,
@@ -1270,9 +1270,9 @@ auto RgPassBuilder::read_buffer(RgUntypedBufferId buffer,
   return m_builder->read_buffer(m_pass, buffer, usage, offset);
 }
 
-auto RgPassBuilder::write_buffer(String8 name, RgUntypedBufferId buffer,
-                                 const rhi::BufferState &usage)
-    -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken> {
+RgUntypedBufferToken
+RgPassBuilder::write_buffer(String8 name, NotNull<RgUntypedBufferId *> buffer,
+                            const rhi::BufferState &usage) {
   return m_builder->write_buffer(m_pass, name, buffer, usage);
 }
 

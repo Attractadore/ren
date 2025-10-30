@@ -5,7 +5,6 @@
 #include "Pipeline.hpp"
 #include "Semaphore.hpp"
 #include "Texture.hpp"
-#include "core/BitSet.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/core/Optional.hpp"
 #include "ren/core/Span.hpp"
@@ -33,7 +32,7 @@ struct Renderer {
   rhi::Adapter m_adapter;
   rhi::Device m_device = {};
 
-  BitSet<NUM_RENDERER_FEAUTURES> m_features;
+  bool m_features[NUM_RENDERER_FEAUTURES] = {};
 
   GenArray<Buffer> m_buffers;
 

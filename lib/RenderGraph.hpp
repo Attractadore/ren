@@ -508,10 +508,9 @@ private:
                                  const rhi::BufferState &usage, u32 offset)
       -> RgUntypedBufferToken;
 
-  [[nodiscard]] auto write_buffer(RgPassId pass, String8 name,
-                                  RgUntypedBufferId buffer,
-                                  const rhi::BufferState &usage)
-      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
+  [[nodiscard]] RgUntypedBufferToken
+  write_buffer(RgPassId pass, String8 name, NotNull<RgUntypedBufferId *> buffer,
+               const rhi::BufferState &usage);
 
   [[nodiscard]] auto add_texture_use(const RgTextureUse &use) -> RgTextureUseId;
 
@@ -723,56 +722,37 @@ public:
     return read_buffer(buffer, rhi::CS_RESOURCE_BUFFER, offset);
   }
 
-  [[nodiscard]] auto
-  write_buffer(String8 name, RgUntypedBufferId buffer,
-               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
-      -> std::tuple<RgUntypedBufferId, RgUntypedBufferToken>;
+  [[nodiscard]] RgUntypedBufferToken
+  write_buffer(String8 name, NotNull<RgUntypedBufferId *> buffer,
+               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER);
 
   [[nodiscard]] auto
   write_buffer(String8 name, RgUntypedBufferId buffer,
                NotNull<RgUntypedBufferId *> new_buffer,
                const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
       -> RgUntypedBufferToken {
-    RgUntypedBufferToken token;
-    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
-    return token;
-  }
-
-  [[nodiscard]] auto
-  write_buffer(String8 name, RgUntypedBufferId *buffer,
-               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
-      -> RgUntypedBufferToken {
-    return write_buffer(std::move(name), *buffer, buffer, usage);
-  }
-
-  template <typename T>
-  [[nodiscard]] auto
-  write_buffer(String8 name, RgBufferId<T> buffer,
-               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
-      -> std::tuple<RgBufferId<T>, RgBufferToken<T>> {
-    auto [id, token] =
-        write_buffer(std::move(name), RgUntypedBufferId(buffer), usage);
-    return {RgBufferId<T>(id), RgBufferToken<T>(token)};
-  }
-
-  template <typename T>
-  [[nodiscard]] auto
-  write_buffer(String8 name, RgBufferId<T> buffer, RgBufferId<T> *new_buffer,
-               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
-      -> RgBufferToken<T> {
-    ren_assert(new_buffer);
-    RgBufferToken<T> token;
-    std::tie(*new_buffer, token) = write_buffer(std::move(name), buffer, usage);
+    RgUntypedBufferToken token = write_buffer(name, &buffer, usage);
+    *new_buffer = buffer;
     return token;
   }
 
   template <typename T>
-  [[nodiscard]] auto
-  write_buffer(String8 name, RgBufferId<T> *buffer,
-               const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER)
-      -> RgBufferToken<T> {
+  [[nodiscard]] RgBufferToken<T> write_buffer(
+      String8 name, RgBufferId<T> *buffer,
+      const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER) {
     ren_assert(buffer);
-    return write_buffer(std::move(name), *buffer, buffer, usage);
+    return (RgBufferToken<T>)write_buffer(name, (RgUntypedBufferId *)buffer,
+                                          usage);
+  }
+
+  template <typename T>
+  [[nodiscard]] RgBufferToken<T> write_buffer(
+      String8 name, RgBufferId<T> buffer, RgBufferId<T> *new_buffer,
+      const rhi::BufferState &usage = rhi::CS_UNORDERED_ACCESS_BUFFER) {
+    ren_assert(new_buffer);
+    RgBufferToken<T> token = write_buffer(name, &buffer, usage);
+    *new_buffer = buffer;
+    return token;
   }
 
   [[nodiscard]] auto
