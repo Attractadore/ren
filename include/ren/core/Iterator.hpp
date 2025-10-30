@@ -1,6 +1,5 @@
 #pragma once
-#include <cstddef>
-#include <iterator>
+#include <concepts>
 
 namespace ren {
 
@@ -169,6 +168,18 @@ struct IteratorFacade {
 };
 
 } // namespace ren
+
+namespace std {
+
+template <class Iter> struct iterator_traits;
+
+struct output_iterator_tag;
+struct input_iterator_tag;
+struct forward_iterator_tag;
+struct bidirectional_iterator_tag;
+struct random_access_iterator_tag;
+
+} // namespace std
 
 template <class Iter>
   requires std::derived_from<Iter, ren::IteratorFacade>
