@@ -2,10 +2,10 @@
 #include "ren/core/Arena.hpp"
 #include "ren/core/GenIndex.hpp"
 #include "ren/core/NotNull.hpp"
+#include "ren/core/Span.hpp"
 
 #include <expected>
 #include <glm/glm.hpp>
-#include <span>
 
 struct SDL_Window;
 struct ImGuiContext;
@@ -218,28 +218,26 @@ void set_camera_transform(Scene *scene, Handle<Camera> camera,
                           const CameraTransformDesc &desc);
 
 [[nodiscard]] auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
-                               std::span<const std::byte> blob) -> Handle<Mesh>;
+                               Span<const std::byte> blob) -> Handle<Mesh>;
 
 [[nodiscard]] auto create_image(NotNull<Arena *> frame_arena, Scene *scene,
-                                std::span<const std::byte> blob)
-    -> Handle<Image>;
+                                Span<const std::byte> blob) -> Handle<Image>;
 
 [[nodiscard]] auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
                                    const MaterialCreateInfo &create_info)
     -> Handle<Material>;
 
 void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
-                           std::span<const MeshInstanceCreateInfo> create_info,
-                           std::span<Handle<MeshInstance>> out);
+                           Span<const MeshInstanceCreateInfo> create_info,
+                           Span<Handle<MeshInstance>> out);
 
-void destroy_mesh_instances(
-    NotNull<Arena *> frame_arena, Scene *scene,
-    std::span<const Handle<MeshInstance>> mesh_instances);
+void destroy_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
+                            Span<const Handle<MeshInstance>> mesh_instances);
 
 void set_mesh_instance_transforms(
     NotNull<Arena *> frame_arena, Scene *scene,
-    std::span<const Handle<MeshInstance>> mesh_instances,
-    std::span<const glm::mat4x3> transforms);
+    Span<const Handle<MeshInstance>> mesh_instances,
+    Span<const glm::mat4x3> transforms);
 
 [[nodiscard]] auto create_directional_light(Scene *scene,
                                             const DirectionalLightDesc &desc)
@@ -384,12 +382,12 @@ inline void set_camera_transform(Scene *scene, Handle<Camera> camera,
 }
 
 inline auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
-                        std::span<const std::byte> blob) -> Handle<Mesh> {
+                        Span<const std::byte> blob) -> Handle<Mesh> {
   return hot_reload::vtbl_ref->create_mesh(frame_arena, scene, blob);
 }
 
 inline auto create_image(NotNull<Arena *> frame_arena, Scene *scene,
-                         std::span<const std::byte> blob) -> Handle<Image> {
+                         Span<const std::byte> blob) -> Handle<Image> {
   return hot_reload::vtbl_ref->create_image(frame_arena, scene, blob);
 }
 
@@ -401,23 +399,23 @@ inline auto create_material(NotNull<Arena *> frame_arena, Scene *scene,
 
 inline void
 create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
-                      std::span<const MeshInstanceCreateInfo> create_info,
-                      std::span<Handle<MeshInstance>> out) {
+                      Span<const MeshInstanceCreateInfo> create_info,
+                      Span<Handle<MeshInstance>> out) {
   return hot_reload::vtbl_ref->create_mesh_instances(frame_arena, scene,
                                                      create_info, out);
 }
 
 inline void
 destroy_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
-                       std::span<const Handle<MeshInstance>> mesh_instances) {
+                       Span<const Handle<MeshInstance>> mesh_instances) {
   return hot_reload::vtbl_ref->destroy_mesh_instances(frame_arena, scene,
                                                       mesh_instances);
 }
 
-inline void set_mesh_instance_transforms(
-    NotNull<Arena *> frame_arena, Scene *scene,
-    std::span<const Handle<MeshInstance>> mesh_instances,
-    std::span<const glm::mat4x3> transforms) {
+inline void
+set_mesh_instance_transforms(NotNull<Arena *> frame_arena, Scene *scene,
+                             Span<const Handle<MeshInstance>> mesh_instances,
+                             Span<const glm::mat4x3> transforms) {
   return hot_reload::vtbl_ref->set_mesh_instance_transforms(
       frame_arena, scene, mesh_instances, transforms);
 }
@@ -473,14 +471,14 @@ namespace ren {
                                       Scene *scene, const void *blob_data,
                                       size_t blob_size) -> Handle<Mesh> {
   return create_mesh(frame_arena, scene,
-                     std::span((const std::byte *)blob_data, blob_size));
+                     Span((const std::byte *)blob_data, blob_size));
 }
 
 [[nodiscard]] auto inline create_image(NotNull<Arena *> frame_arena,
                                        Scene *scene, const void *blob_data,
                                        size_t blob_size) -> Handle<Image> {
   return create_image(frame_arena, scene,
-                      std::span((const std::byte *)blob_data, blob_size));
+                      Span((const std::byte *)blob_data, blob_size));
 }
 
 [[nodiscard]] inline auto

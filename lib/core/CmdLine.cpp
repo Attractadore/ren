@@ -79,7 +79,7 @@ bool parse_cmd_line(const char *argv[], Span<const CmdLineOption> options,
 bool parse_cmd_line(Arena *arena, const char *argv[],
                     Span<const CmdLineOption> options,
                     Span<ParsedCmdLineOption> parsed) {
-  ren_assert(options.size() == parsed.size());
+  ren_assert(options.m_size == parsed.m_size);
 
   ScratchArena scratch = arena ? ScratchArena(arena) : ScratchArena();
 

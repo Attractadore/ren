@@ -23,9 +23,9 @@ enum class CullingPhase {
 struct MeshPassBaseInfo {
   String8 pass_name;
 
-  TempSpan<const NotNull<RgTextureId *>> color_attachments;
-  TempSpan<const rhi::RenderTargetOperations> color_attachment_ops;
-  TempSpan<const String8> color_attachment_names;
+  Span<const NotNull<RgTextureId *>> color_attachments;
+  Span<const rhi::RenderTargetOperations> color_attachment_ops;
+  Span<const String8> color_attachment_names;
 
   NotNull<RgTextureId *> depth_attachment;
   rhi::DepthTargetOperations depth_attachment_ops;

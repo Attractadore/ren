@@ -202,9 +202,9 @@ public:
   auto reset_command_pool(Handle<CommandPool> pool) -> Result<void, Error>;
 
   auto submit(rhi::QueueFamily queue_family,
-              TempSpan<const rhi::CommandBuffer> cmd_buffers,
-              TempSpan<const SemaphoreState> wait_semaphores = {},
-              TempSpan<const SemaphoreState> signal_semaphores = {})
+              Span<const rhi::CommandBuffer> cmd_buffers,
+              Span<const SemaphoreState> wait_semaphores = {},
+              Span<const SemaphoreState> signal_semaphores = {})
       -> Result<void, Error>;
 
   bool is_feature_supported(RendererFeature feature) const;

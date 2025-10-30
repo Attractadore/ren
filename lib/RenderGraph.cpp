@@ -402,7 +402,7 @@ void RgBuilder::dump_pass_schedule() const {
       fmt::println(stderr, "Graphics queue passes:");
     } else {
       schedule = m_async_schedule;
-      if (schedule.empty()) {
+      if (schedule.m_size == 0) {
         continue;
       }
       fmt::println(stderr, "Async compute queue passes:");
@@ -660,8 +660,8 @@ void RgBuilder::init_runtime_passes() {
       rt_passes = &m_rg.m_async_passes;
       schedule = m_async_schedule;
     }
-    *rt_passes = Span<RgRtPass>::allocate(m_arena, schedule.size());
-    for (usize i : range(schedule.size())) {
+    *rt_passes = Span<RgRtPass>::allocate(m_arena, schedule.m_size);
+    for (usize i : range(schedule.m_size)) {
       const RgPass &pass = m_passes[schedule[i]];
       (*rt_passes)[i] = {
           .name = pass.name,
@@ -812,7 +812,7 @@ void RgBuilder::add_inter_queue_semaphores() {
         signal_pass.signal = true;
       }
     }
-    if (not schedule.empty()) {
+    if (schedule.m_size > 0) {
       m_passes[schedule.back()].signal = true;
     }
   }
@@ -826,7 +826,7 @@ void RgBuilder::add_inter_queue_semaphores() {
       semaphore = m_rgp->m_async_semaphore_id;
       other_semaphore = m_rgp->m_gfx_semaphore_id;
     }
-    for (isize i = isize(schedule.size()) - 1; i >= 0; --i) {
+    for (isize i = isize(schedule.m_size) - 1; i >= 0; --i) {
       RgPassId pass_id = schedule[i];
       RgPass &pass = m_passes[pass_id];
       if (pass.signal) {
@@ -946,16 +946,16 @@ void RgBuilder::place_barriers_and_semaphores() {
   DynamicArray<rhi::MemoryBarrier> memory_barriers;
   DynamicArray<TextureBarrier> texture_barriers;
 
-  while (gfx_i < m_rg.m_gfx_passes.size() or
-         async_i < m_rg.m_async_passes.size()) {
+  while (gfx_i < m_rg.m_gfx_passes.m_size or
+         async_i < m_rg.m_async_passes.m_size) {
     RgRtPass *rt_pass = nullptr;
     const RgPass *pass = nullptr;
 
-    if (gfx_i == m_rg.m_gfx_passes.size()) {
+    if (gfx_i == m_rg.m_gfx_passes.m_size) {
       rt_pass = &m_rg.m_async_passes[async_i];
       pass = &m_passes[m_async_schedule[async_i]];
       async_i++;
-    } else if (async_i == m_rg.m_async_passes.size()) {
+    } else if (async_i == m_rg.m_async_passes.m_size) {
       rt_pass = &m_rg.m_gfx_passes[gfx_i];
       pass = &m_passes[m_gfx_schedule[gfx_i]];
       gfx_i++;
@@ -1199,11 +1199,11 @@ void RgBuilder::place_barriers_and_semaphores() {
 
     rt_pass->memory_barriers =
         Span<rhi::MemoryBarrier>::allocate(m_arena, memory_barriers.m_size);
-    copy(Span(memory_barriers), rt_pass->memory_barriers.data());
+    copy(Span(memory_barriers), rt_pass->memory_barriers.m_data);
 
     rt_pass->texture_barriers =
         Span<TextureBarrier>::allocate(m_arena, texture_barriers.m_size);
-    copy(Span(texture_barriers), rt_pass->texture_barriers.data());
+    copy(Span(texture_barriers), rt_pass->texture_barriers.m_data);
 
     rt_pass->wait_semaphores =
         Span<SemaphoreState>::allocate(m_arena, pass->wait_semaphores.m_size);
@@ -1379,8 +1379,8 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
     Span<const SemaphoreState> batch_signal_semaphores;
 
     auto submit_batch = [&]() -> Result<void, Error> {
-      if (!cmd and batch_wait_semaphores.empty() and
-          batch_signal_semaphores.empty()) {
+      if (!cmd and batch_wait_semaphores.m_size == 0 and
+          batch_signal_semaphores.m_size == 0) {
         return {};
       }
       ren_assert(cmd);
@@ -1403,7 +1403,7 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
     for (const RgRtPass &pass : passes) {
       ZoneScopedN("RenderGraph::execute_pass");
       ZoneText(pass.name.m_str, pass.name.m_size);
-      if (not pass.wait_semaphores.empty()) {
+      if (pass.wait_semaphores.m_size > 0) {
         ren_try_to(submit_batch());
         batch_wait_semaphores = pass.wait_semaphores;
       }
@@ -1415,8 +1415,8 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
       {
         DebugRegion debug_region = cmd.debug_region(pass.name);
 
-        if (not pass.memory_barriers.empty() or
-            not pass.texture_barriers.empty()) {
+        if (pass.memory_barriers.m_size > 0 or
+            pass.texture_barriers.m_size > 0) {
           cmd.pipeline_barrier(pass.memory_barriers, pass.texture_barriers);
         }
 
@@ -1424,7 +1424,7 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
           glm::uvec2 viewport = {-1, -1};
 
           RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
-          for (usize i : range(pass.render_targets.size())) {
+          for (usize i : range(pass.render_targets.m_size)) {
             const RgRenderTarget &rdt = pass.render_targets[i];
             if (!rdt.texture) {
               continue;
@@ -1447,7 +1447,7 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
 
           RenderPass render_pass = cmd.render_pass({
               .render_targets =
-                  Span(render_targets, pass.render_targets.size()),
+                  Span(render_targets, pass.render_targets.m_size),
               .depth_stencil_target = depth_stencil_target,
           });
           render_pass.set_viewports({{.size = viewport}});
@@ -1459,7 +1459,7 @@ auto execute(const RenderGraph &rg, const RgExecuteInfo &exec_info)
         }
       }
 
-      if (not pass.signal_semaphores.empty()) {
+      if (pass.signal_semaphores.m_size > 0) {
         batch_signal_semaphores = pass.signal_semaphores;
         ren_try_to(submit_batch());
       }

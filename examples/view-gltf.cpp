@@ -5,6 +5,7 @@
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Span.hpp"
 
 #include <cstdint>
 #include <fmt/chrono.h>
@@ -227,10 +228,10 @@ template <> struct std::hash<GltfMeshDesc> {
 };
 
 template <typename T>
-auto deindex_attibute(std::span<const T> attribute,
-                      std::span<const uint32_t> indices, std::span<T> out) {
-  assert(out.size() == indices.size());
-  for (size_t i = 0; i < indices.size(); ++i) {
+auto deindex_attibute(ren::Span<const T> attribute,
+                      ren::Span<const uint32_t> indices, ren::Span<T> out) {
+  ren_assert(out.m_size == indices.m_size);
+  for (size_t i = 0; i < indices.m_size; ++i) {
     out[i] = attribute[indices[i]];
   }
 }
@@ -281,7 +282,9 @@ private:
                          F transform = {}) const
       -> std::vector<std::invoke_result_t<F, T>> {
     const tinygltf::BufferView &view = m_model.bufferViews[accessor.bufferView];
-    std::span<const unsigned char> src_data = m_model.buffers[view.buffer].data;
+    ren::Span<const unsigned char> src_data(
+        m_model.buffers[view.buffer].data.data(),
+        m_model.buffers[view.buffer].data.size());
     src_data = src_data.subspan(view.byteOffset, view.byteLength);
     src_data = src_data.subspan(accessor.byteOffset);
     size_t stride = view.byteStride;
@@ -445,7 +448,7 @@ private:
                      .tangents = tangents_data.data(),
                      .uvs = tex_coords_data.data(),
                      .colors = colors_data.data(),
-                     .indices = indices_data,
+                     .indices = {indices_data.data(), indices_data.size()},
                  });
     return ren::create_mesh(m_frame_arena, m_scene, blob.data, blob.size);
   }
@@ -574,12 +577,12 @@ private:
           }
           occlusion_src = m_model.textures[occlusion_texture.index].source;
         }
-        auto it = find_if(ren::Span(m_orm_image_cache),
-                          [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
-                            auto [rm, o, i] = t;
-                            return rm == roughness_metallic_src and
-                                   o == occlusion_src;
-                          });
+        auto it = find_if(
+            ren::Span(m_orm_image_cache.data(), m_orm_image_cache.size()),
+            [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
+              auto [rm, o, i] = t;
+              return rm == roughness_metallic_src and o == occlusion_src;
+            });
         if (it) {
           desc.orm_texture.image = std::get<2>(*it);
         } else {

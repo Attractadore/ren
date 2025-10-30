@@ -13,7 +13,7 @@ void ResourceUploader::stage_buffer(NotNull<Arena *> arena, Renderer &renderer,
   usize size = data.size_bytes();
   ren_assert(size <= buffer.size_bytes());
   auto [ptr, _, staging_buffer] = allocator.allocate(size);
-  std::memcpy(ptr, data.data(), size);
+  std::memcpy(ptr, data.m_data, size);
   m_buffer_copies.push(arena, {
                                   .src = staging_buffer,
                                   .dst = buffer,
@@ -71,8 +71,8 @@ void ResourceUploader::stage_texture(NotNull<Arena *> arena,
                                      UploadBumpAllocator &allocator,
                                      Span<const std::byte> data,
                                      Handle<Texture> texture) {
-  auto staging = allocator.allocate(data.size());
-  std::memcpy(staging.host_ptr, data.data(), data.size());
+  auto staging = allocator.allocate(data.m_size);
+  std::memcpy(staging.host_ptr, data.m_data, data.m_size);
   TextureCopy copy = {
       .src = staging.slice,
       .dst = texture,

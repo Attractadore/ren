@@ -319,7 +319,7 @@ auto Renderer::get_image_view(Handle<Texture> handle, ImageViewDesc desc)
     last = views;
     views = views->next;
   }
-  if (last->num_views == std::size(last->views)) {
+  if (last->num_views == size(last->views)) {
     if (!m_image_view_free_list) {
       m_image_view_free_list = m_arena->allocate<ImageViewBlock>();
     }
@@ -482,9 +482,9 @@ auto Renderer::create_graphics_pipeline(
       &pipeline_info.fs,
   };
 
-  for (usize i : range(std::size(shaders))) {
+  for (usize i : range(size(shaders))) {
     const ShaderInfo &shader = *shaders[i];
-    u32 num_specialization_constants = shader.specialization_constants.size();
+    u32 num_specialization_constants = shader.specialization_constants.m_size;
     auto *specialization_constants = allocate<rhi::SpecializationConstant>(
         scratch, num_specialization_constants);
     auto *specialization_data =
@@ -540,11 +540,11 @@ auto Renderer::create_compute_pipeline(
 
   Span<const std::byte> code = create_info.cs.code;
 
-  Span<const u32> spirv((const u32 *)code.data(), code.size() / 4);
+  Span<const u32> spirv((const u32 *)code.m_data, code.m_size / 4);
   ren_assert(spirv[0] == SpvMagicNumber);
 
   glm::uvec3 local_size = {};
-  for (usize word = 5; word < spirv.size();) {
+  for (usize word = 5; word < spirv.m_size;) {
     usize num_words = spirv[word] >> SpvWordCountShift;
     SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
 
@@ -564,11 +564,11 @@ auto Renderer::create_compute_pipeline(
 
   const ShaderInfo &cs = create_info.cs;
 
-  u32 num_spec_consts = cs.specialization_constants.size();
+  u32 num_spec_consts = cs.specialization_constants.m_size;
   auto *specialization_constants =
       allocate<rhi::SpecializationConstant>(scratch, num_spec_consts);
   u32 *specialization_data = allocate<u32>(scratch, num_spec_consts);
-  for (usize i : range(cs.specialization_constants.size())) {
+  for (usize i : range(cs.specialization_constants.m_size)) {
     const SpecializationConstant &c = cs.specialization_constants[i];
     specialization_constants[i] = {
         .id = c.id,
@@ -619,30 +619,30 @@ auto Renderer::get_compute_pipeline(Handle<ComputePipeline> pipeline) const
 }
 
 auto Renderer::submit(rhi::QueueFamily queue_family,
-                      TempSpan<const rhi::CommandBuffer> cmd_buffers,
-                      TempSpan<const SemaphoreState> wait_semaphores,
-                      TempSpan<const SemaphoreState> signal_semaphores)
+                      Span<const rhi::CommandBuffer> cmd_buffers,
+                      Span<const SemaphoreState> wait_semaphores,
+                      Span<const SemaphoreState> signal_semaphores)
     -> Result<void, Error> {
   ScratchArena scratch;
   auto *wait_states =
-      allocate<rhi::SemaphoreState>(scratch, wait_semaphores.size());
-  for (usize i : range(wait_semaphores.size())) {
+      allocate<rhi::SemaphoreState>(scratch, wait_semaphores.m_size);
+  for (usize i : range(wait_semaphores.m_size)) {
     wait_states[i] = {
         .semaphore = get_semaphore(wait_semaphores[i].semaphore).handle,
         .value = wait_semaphores[i].value,
     };
   }
   auto *signal_states =
-      allocate<rhi::SemaphoreState>(scratch, signal_semaphores.size());
-  for (usize i : range(signal_semaphores.size())) {
+      allocate<rhi::SemaphoreState>(scratch, signal_semaphores.m_size);
+  for (usize i : range(signal_semaphores.m_size)) {
     signal_states[i] = {
         .semaphore = get_semaphore(signal_semaphores[i].semaphore).handle,
         .value = signal_semaphores[i].value,
     };
   }
   return rhi::queue_submit(rhi::get_queue(m_device, queue_family), cmd_buffers,
-                           Span(wait_states, wait_semaphores.size()),
-                           Span(signal_states, signal_semaphores.size()));
+                           Span(wait_states, wait_semaphores.m_size),
+                           Span(signal_states, signal_semaphores.m_size));
 }
 
 bool Renderer::is_feature_supported(RendererFeature feature) const {

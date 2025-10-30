@@ -1,68 +1,89 @@
 #pragma once
 #include "Arena.hpp"
+#include "Assert.hpp"
 #include "NotNull.hpp"
 #include "StdDef.hpp"
+#include "TypeTraits.hpp"
 
-#include <span>
+#include <initializer_list>
 
 namespace ren {
 
 struct Arena;
 
-template <typename T> struct Span : std::span<T, std::dynamic_extent> {
-  using std::span<T, std::dynamic_extent>::span;
+template <typename T> struct Span {
+  T *m_data = nullptr;
+  usize m_size = 0;
 
-  template <usize S>
-  Span(std::span<T, S> s)
-      : std::span<T, std::dynamic_extent>(s.begin(), s.end()) {}
+public:
+  constexpr Span() = default;
 
-  auto as_bytes() -> Span<const std::byte> const {
-    return {(const std::byte *)(this->data()), this->size_bytes()};
+  constexpr Span(T *ptr, usize size) {
+    m_data = ptr;
+    m_size = size;
+  }
+
+  constexpr Span(T *begin, T *end) {
+    ren_assert(begin <= end);
+    m_data = begin;
+    m_size = end - begin;
+  }
+
+  constexpr Span(std::initializer_list<T> elems) {
+    m_data = elems.begin();
+    m_size = elems.size();
+  }
+
+  template <typename U, usize N> constexpr Span(U (&array)[N]) {
+    m_data = array;
+    m_size = N;
+  }
+
+  template <typename R> constexpr Span(R &&r) {
+    m_data = r.begin();
+    m_size = r.end() - r.begin();
   }
 
   static const Span<T> allocate(NotNull<Arena *> arena, usize count) {
     return {arena->allocate<T>(count), count};
   }
-};
 
-template <std::ranges::contiguous_range R>
-Span(R &&r) -> Span<std::remove_reference_t<std::ranges::range_reference_t<R>>>;
+  constexpr T &operator[](usize i) const {
+    ren_assert(i < m_size);
+    return m_data[i];
+  }
 
-template <std::contiguous_iterator Iter>
-Span(Iter first, usize count)
-    -> Span<std::remove_reference_t<std::iter_reference_t<Iter>>>;
+  constexpr T *begin() const { return m_data; }
+  constexpr T *end() const { return m_data + m_size; }
 
-template <typename T> struct TempSpan : Span<T> {
-  using Span<T>::Span;
+  constexpr T &back() const {
+    ren_assert(m_size > 0);
+    return m_data[m_size - 1];
+  }
 
-  TempSpan(std::initializer_list<T> ilist)
-      : TempSpan(&*ilist.begin(), &*ilist.end()) {}
+  operator Span<std::add_const_t<T>>() const { return {m_data, m_size}; }
 
-  auto as_bytes() -> TempSpan<const std::byte> const {
-    return {(const std::byte *)(this->data()), this->size_bytes()};
+  usize size_bytes() const { return m_size * sizeof(T); }
+
+  Span<ConstLikeT<std::byte, T>> as_bytes() {
+    return {(ConstLikeT<std::byte, T> *)m_data, m_size * sizeof(T)};
+  }
+
+  Span<T> subspan(usize start, usize count) const {
+    ren_assert(start <= m_size);
+    ren_assert(start + count <= m_size);
+    return {m_data + start, count};
+  }
+
+  Span<T> subspan(usize start) const {
+    ren_assert(start <= m_size);
+    return {m_data + start, m_size - start};
   }
 };
 
-template <std::ranges::contiguous_range R>
-TempSpan(R &&r) -> TempSpan<std::ranges::range_value_t<R>>;
+template <typename R>
+Span(R &&r) -> Span<std::remove_pointer_t<decltype(std::declval<R>().begin())>>;
 
-template <std::contiguous_iterator Iter>
-TempSpan(Iter first, usize count)
-    -> TempSpan<std::remove_reference_t<std::iter_reference_t<Iter>>>;
+template <typename T, usize N> Span(T (&array)[N]) -> Span<T>;
 
 } // namespace ren
-
-namespace std::ranges {
-
-template <typename T>
-inline constexpr bool enable_borrowed_range<ren::Span<T>> = true;
-
-template <typename T> inline constexpr bool enable_view<ren::Span<T>> = true;
-
-template <typename T>
-inline constexpr bool enable_borrowed_range<ren::TempSpan<T>> = true;
-
-template <typename T>
-inline constexpr bool enable_view<ren::TempSpan<T>> = true;
-
-} // namespace std::ranges

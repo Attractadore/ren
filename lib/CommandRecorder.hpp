@@ -28,7 +28,7 @@ struct DepthStencilTarget {
 };
 
 struct RenderPassInfo {
-  TempSpan<const RenderTarget> render_targets;
+  Span<const RenderTarget> render_targets;
   DepthStencilTarget depth_stencil_target;
 };
 
@@ -97,8 +97,8 @@ public:
 
   void clear_texture(Handle<Texture> texture, const glm::vec4 &color);
 
-  void pipeline_barrier(TempSpan<const rhi::MemoryBarrier> memory_barriers,
-                        TempSpan<const TextureBarrier> texture_barriers);
+  void pipeline_barrier(Span<const rhi::MemoryBarrier> memory_barriers,
+                        Span<const TextureBarrier> texture_barriers);
 
   void memory_barrier(const rhi::MemoryBarrier &barrier) {
     pipeline_barrier({&barrier, 1}, {});
@@ -109,12 +109,12 @@ public:
   }
 
   void set_event(Handle<Event> event,
-                 TempSpan<const rhi::MemoryBarrier> memory_barriers,
-                 TempSpan<const TextureBarrier> texture_barriers);
+                 Span<const rhi::MemoryBarrier> memory_barriers,
+                 Span<const TextureBarrier> texture_barriers);
 
   void wait_event(Handle<Event> event,
-                  TempSpan<const rhi::MemoryBarrier> memory_barriers,
-                  TempSpan<const TextureBarrier> texture_barriers);
+                  Span<const rhi::MemoryBarrier> memory_barriers,
+                  Span<const TextureBarrier> texture_barriers);
 
   void reset_event(Handle<Event> event,
                    rhi::PipelineStageMask stages = rhi::PipelineStage::All);
@@ -137,9 +137,9 @@ public:
 
   void end();
 
-  void set_viewports(TempSpan<const rhi::Viewport> viewports);
+  void set_viewports(Span<const rhi::Viewport> viewports);
 
-  void set_scissor_rects(TempSpan<const rhi::Rect2D> rects);
+  void set_scissor_rects(Span<const rhi::Rect2D> rects);
 
   void bind_graphics_pipeline(Handle<GraphicsPipeline> pipeline);
 
@@ -224,8 +224,8 @@ struct EventPool {
 auto init_event_pool(ResourceArena &arena) -> EventPool;
 
 auto set_event(CommandRecorder &cmd, EventPool &pool,
-               TempSpan<const rhi::MemoryBarrier> memory_barriers,
-               TempSpan<const TextureBarrier> texture_barriers) -> EventId;
+               Span<const rhi::MemoryBarrier> memory_barriers,
+               Span<const TextureBarrier> texture_barriers) -> EventId;
 
 inline auto set_event(CommandRecorder &cmd, EventPool &pool,
                       const rhi::MemoryBarrier &barrier) -> EventId {

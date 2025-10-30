@@ -136,10 +136,9 @@ struct SemaphoreState {
   u64 value = 0;
 };
 
-auto queue_submit(Queue queue, TempSpan<const CommandBuffer> cmd_buffers,
-                  TempSpan<const SemaphoreState> wait_semaphores,
-                  TempSpan<const SemaphoreState> signal_semaphores)
-    -> Result<void>;
+auto queue_submit(Queue queue, Span<const CommandBuffer> cmd_buffers,
+                  Span<const SemaphoreState> wait_semaphores,
+                  Span<const SemaphoreState> signal_semaphores) -> Result<void>;
 
 auto queue_wait_idle(Queue queue) -> Result<void>;
 
@@ -172,8 +171,8 @@ struct SemaphoreWaitInfo {
 };
 
 auto wait_for_semaphores(Device device,
-                         TempSpan<const SemaphoreWaitInfo> wait_infos,
-                         u64 timeout) -> Result<WaitResult>;
+                         Span<const SemaphoreWaitInfo> wait_infos, u64 timeout)
+    -> Result<WaitResult>;
 
 auto map(Device device, Allocation allocation) -> void *;
 
@@ -372,18 +371,16 @@ auto create_sampler(Device device, const SamplerCreateInfo &create_info)
 
 void destroy_sampler(Device device, Sampler sampler);
 
-void write_sampler_descriptor_heap(Device device,
-                                   TempSpan<const Sampler> samplers,
+void write_sampler_descriptor_heap(Device device, Span<const Sampler> samplers,
                                    u32 base_index);
 
-void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> views,
+void write_srv_descriptor_heap(Device device, Span<const ImageView> views,
                                u32 base_index);
 
-void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> views,
-                               TempSpan<const Sampler> samplers,
-                               u32 base_index);
+void write_cis_descriptor_heap(Device device, Span<const ImageView> views,
+                               Span<const Sampler> samplers, u32 base_index);
 
-void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> views,
+void write_uav_descriptor_heap(Device device, Span<const ImageView> views,
                                u32 base_index);
 
 struct SpecializationConstant {
@@ -855,16 +852,16 @@ struct ImageBarrier {
 };
 
 void cmd_pipeline_barrier(CommandBuffer cmd,
-                          TempSpan<const MemoryBarrier> memory_barriers,
-                          TempSpan<const ImageBarrier> image_barriers);
+                          Span<const MemoryBarrier> memory_barriers,
+                          Span<const ImageBarrier> image_barriers);
 
 void cmd_set_event(CommandBuffer cmd, Event event,
-                   TempSpan<const MemoryBarrier> memory_barriers,
-                   TempSpan<const ImageBarrier> image_barriers);
+                   Span<const MemoryBarrier> memory_barriers,
+                   Span<const ImageBarrier> image_barriers);
 
 void cmd_wait_event(CommandBuffer cmd, Event event,
-                    TempSpan<const MemoryBarrier> memory_barriers,
-                    TempSpan<const ImageBarrier> image_barriers);
+                    Span<const MemoryBarrier> memory_barriers,
+                    Span<const ImageBarrier> image_barriers);
 
 void cmd_reset_event(CommandBuffer cmd, Event event, PipelineStageMask stages);
 
@@ -968,7 +965,7 @@ struct DepthStencilTarget {
 };
 
 struct RenderPassInfo {
-  TempSpan<const RenderTarget> render_targets;
+  Span<const RenderTarget> render_targets;
   DepthStencilTarget depth_stencil_target;
   glm::uvec2 render_area = {};
 };
@@ -984,14 +981,14 @@ struct Viewport {
   float max_depth = 1.0f;
 };
 
-void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports);
+void cmd_set_viewports(CommandBuffer cmd, Span<const Viewport> viewports);
 
 struct Rect2D {
   glm::uvec2 offset = {};
   glm::uvec2 size = {};
 };
 
-void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects);
+void cmd_set_scissor_rects(CommandBuffer cmd, Span<const Rect2D> rects);
 
 enum class IndexType {
   UInt8,

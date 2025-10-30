@@ -111,7 +111,7 @@ auto process(const CompileOptions &opts) -> int {
       fmt::println(stderr, "Failed to read {}:", opts.spv, buffer.m_status);
       return EXIT_FAILURE;
     }
-    spirv = {(const u32 *)buffer.m_value.data(),
+    spirv = {(const u32 *)buffer.m_value.m_data,
              buffer.m_value.size_bytes() / 4};
   }
 
@@ -125,7 +125,7 @@ auto process(const CompileOptions &opts) -> int {
   auto struct_member_offsets = Span<u32>::allocate(scratch, spv_bound);
   auto id_def_words = Span<u32>::allocate(scratch, spv_bound);
   u32 pc_type = -1;
-  for (usize word = 5; word < spirv.size();) {
+  for (usize word = 5; word < spirv.m_size;) {
     usize num_words = spirv[word] >> SpvWordCountShift;
     SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
 
@@ -162,14 +162,14 @@ auto process(const CompileOptions &opts) -> int {
 
     word += num_words;
   }
-  exclusive_scan(struct_member_counts, struct_member_offsets.data(), 0);
+  exclusive_scan(struct_member_counts, struct_member_offsets.m_data, 0);
   usize num_members =
       struct_member_offsets.back() + struct_member_counts.back();
 
   // Parse all struct members.
   auto member_names = Span<String8>::allocate(scratch, num_members);
   auto member_offsets = Span<u32>::allocate(scratch, num_members);
-  for (usize word = 5; word < spirv.size();) {
+  for (usize word = 5; word < spirv.m_size;) {
     usize num_words = spirv[word] >> SpvWordCountShift;
     SpvOp op = SpvOp(spirv[word] & SpvOpCodeMask);
 
@@ -290,7 +290,7 @@ extern const size_t {}Size;
 
   StringBuilder spirv_str(scratch);
   format_to(&spirv_str, "{:#010x}", spirv[0]);
-  for (usize i : range<usize>(1, spirv.size())) {
+  for (usize i : range<usize>(1, spirv.m_size)) {
     format_to(&spirv_str, ",\n  {:#010x}", spirv[i]);
   }
 

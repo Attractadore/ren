@@ -116,12 +116,12 @@ void CommandRecorder::clear_texture(Handle<Texture> handle,
 }
 
 void CommandRecorder::pipeline_barrier(
-    TempSpan<const rhi::MemoryBarrier> memory_barriers,
-    TempSpan<const TextureBarrier> texture_barriers) {
+    Span<const rhi::MemoryBarrier> memory_barriers,
+    Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
-  for (usize i : range(texture_barriers.size())) {
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+  for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
     image_barriers[i] = {
@@ -139,16 +139,16 @@ void CommandRecorder::pipeline_barrier(
     };
   }
   rhi::cmd_pipeline_barrier(m_cmd, memory_barriers,
-                            Span(image_barriers, texture_barriers.size()));
+                            Span(image_barriers, texture_barriers.m_size));
 }
 
-void CommandRecorder::set_event(
-    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
-    TempSpan<const TextureBarrier> texture_barriers) {
+void CommandRecorder::set_event(Handle<Event> event,
+                                Span<const rhi::MemoryBarrier> memory_barriers,
+                                Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
-  for (usize i : range(texture_barriers.size())) {
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+  for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
     image_barriers[i] = {
@@ -167,16 +167,16 @@ void CommandRecorder::set_event(
   }
   rhi::cmd_set_event(m_cmd, m_renderer->get_event(event).handle,
                      memory_barriers,
-                     Span(image_barriers, texture_barriers.size()));
+                     Span(image_barriers, texture_barriers.m_size));
 }
 
-void CommandRecorder::wait_event(
-    Handle<Event> event, TempSpan<const rhi::MemoryBarrier> memory_barriers,
-    TempSpan<const TextureBarrier> texture_barriers) {
+void CommandRecorder::wait_event(Handle<Event> event,
+                                 Span<const rhi::MemoryBarrier> memory_barriers,
+                                 Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.size());
-  for (usize i : range(texture_barriers.size())) {
+      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+  for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
     image_barriers[i] = {
@@ -195,7 +195,7 @@ void CommandRecorder::wait_event(
   }
   rhi::cmd_wait_event(m_cmd, m_renderer->get_event(event).handle,
                       memory_barriers,
-                      Span(image_barriers, texture_barriers.size()));
+                      Span(image_barriers, texture_barriers.m_size));
 }
 
 void CommandRecorder::reset_event(Handle<Event> event,
@@ -217,7 +217,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
   glm::uvec2 render_area = max_render_area;
 
   rhi::RenderTarget render_targets[rhi::MAX_NUM_RENDER_TARGETS];
-  for (usize i : range(info.render_targets.size())) {
+  for (usize i : range(info.render_targets.m_size)) {
     const RenderTarget &rt = info.render_targets[i];
     if (!rt.rtv.texture) {
       continue;
@@ -247,7 +247,7 @@ RenderPass::RenderPass(Renderer &renderer, rhi::CommandBuffer cmd,
   rhi::cmd_begin_render_pass(
       m_cmd,
       {
-          .render_targets = Span(render_targets, info.render_targets.size()),
+          .render_targets = Span(render_targets, info.render_targets.m_size),
           .depth_stencil_target = depth_stencil_target,
           .render_area = render_area,
       });
@@ -264,11 +264,11 @@ void RenderPass::end() {
   m_cmd = {};
 }
 
-void RenderPass::set_viewports(TempSpan<const rhi::Viewport> viewports) {
+void RenderPass::set_viewports(Span<const rhi::Viewport> viewports) {
   rhi::cmd_set_viewports(m_cmd, viewports);
 }
 
-void RenderPass::set_scissor_rects(TempSpan<const rhi::Rect2D> rects) {
+void RenderPass::set_scissor_rects(Span<const rhi::Rect2D> rects) {
   rhi::cmd_set_scissor_rects(m_cmd, rects);
 }
 
@@ -411,19 +411,19 @@ auto init_event_pool(ResourceArena &arena) -> EventPool {
 };
 
 auto set_event(CommandRecorder &cmd, EventPool &pool,
-               TempSpan<const rhi::MemoryBarrier> memory_barriers,
-               TempSpan<const TextureBarrier> texture_barriers) -> EventId {
-  [[unlikely]] if (pool.m_index == pool.m_events.size()) {
+               Span<const rhi::MemoryBarrier> memory_barriers,
+               Span<const TextureBarrier> texture_barriers) -> EventId {
+  [[unlikely]] if (pool.m_index == pool.m_events.m_size) {
     pool.m_events.push_back({
         .handle = pool.m_arena->create_event(),
     });
   }
 
   EventData &event = pool.m_events[pool.m_index];
-  event.memory_barrier_offset = pool.memory_barriers.size();
-  event.memory_barrier_count = memory_barriers.size();
-  event.texture_barrier_offset = pool.texture_barriers.size();
-  event.texture_barrier_count = texture_barriers.size();
+  event.memory_barrier_offset = pool.memory_barriers.m_size;
+  event.memory_barrier_count = memory_barriers.m_size;
+  event.texture_barrier_offset = pool.texture_barriers.m_size;
+  event.texture_barrier_count = texture_barriers.m_size;
   pool.memory_barriers.append(memory_barriers);
   pool.texture_barriers.append(texture_barriers);
 
@@ -443,7 +443,7 @@ void wait_event(CommandRecorder &cmd, const EventPool &pool, EventId id) {
 }
 
 void reset_event_pool(CommandRecorder &cmd, EventPool &pool) {
-  for (usize i : range<usize>(1, pool.m_events.size())) {
+  for (usize i : range<usize>(1, pool.m_events.m_size)) {
     cmd.reset_event(pool.m_events[i].handle);
   }
   pool.memory_barriers.clear();

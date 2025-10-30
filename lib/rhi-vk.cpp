@@ -1309,15 +1309,15 @@ auto get_queue(Device device, QueueFamily family) -> Queue {
   return queue;
 }
 
-auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
-                  TempSpan<const rhi::SemaphoreState> wait_semaphores,
-                  TempSpan<const rhi::SemaphoreState> signal_semaphores)
+auto queue_submit(Queue queue, Span<const rhi::CommandBuffer> cmd_buffers,
+                  Span<const rhi::SemaphoreState> wait_semaphores,
+                  Span<const rhi::SemaphoreState> signal_semaphores)
     -> Result<void> {
   ScratchArena scratch;
 
   auto *command_buffer_infos =
-      allocate<VkCommandBufferSubmitInfo>(scratch, cmd_buffers.size());
-  for (usize i : range(cmd_buffers.size())) {
+      allocate<VkCommandBufferSubmitInfo>(scratch, cmd_buffers.m_size);
+  for (usize i : range(cmd_buffers.m_size)) {
     command_buffer_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
         .commandBuffer = cmd_buffers[i].handle,
@@ -1325,8 +1325,8 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
   }
 
   auto *wait_semaphore_submit_infos =
-      allocate<VkSemaphoreSubmitInfo>(scratch, wait_semaphores.size());
-  for (usize i : range(wait_semaphores.size())) {
+      allocate<VkSemaphoreSubmitInfo>(scratch, wait_semaphores.m_size);
+  for (usize i : range(wait_semaphores.m_size)) {
     wait_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = wait_semaphores[i].semaphore.handle,
@@ -1336,8 +1336,8 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
   }
 
   auto *signal_semaphore_submit_infos =
-      allocate<VkSemaphoreSubmitInfo>(scratch, signal_semaphores.size());
-  for (usize i : range(signal_semaphores.size())) {
+      allocate<VkSemaphoreSubmitInfo>(scratch, signal_semaphores.m_size);
+  for (usize i : range(signal_semaphores.m_size)) {
     signal_semaphore_submit_infos[i] = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
         .semaphore = signal_semaphores[i].semaphore.handle,
@@ -1348,11 +1348,11 @@ auto queue_submit(Queue queue, TempSpan<const rhi::CommandBuffer> cmd_buffers,
 
   VkSubmitInfo2 submit_info = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-      .waitSemaphoreInfoCount = (u32)wait_semaphores.size(),
+      .waitSemaphoreInfoCount = (u32)wait_semaphores.m_size,
       .pWaitSemaphoreInfos = wait_semaphore_submit_infos,
-      .commandBufferInfoCount = (u32)cmd_buffers.size(),
+      .commandBufferInfoCount = (u32)cmd_buffers.m_size,
       .pCommandBufferInfos = command_buffer_infos,
-      .signalSemaphoreInfoCount = (u32)signal_semaphores.size(),
+      .signalSemaphoreInfoCount = (u32)signal_semaphores.m_size,
       .pSignalSemaphoreInfos = signal_semaphore_submit_infos,
   };
   VkResult result =
@@ -1401,10 +1401,10 @@ void set_debug_name(Device device, Semaphore semaphore, String8 name) {
 }
 
 auto wait_for_semaphores(Device device,
-                         TempSpan<const SemaphoreWaitInfo> wait_infos,
-                         u64 timeout) -> Result<WaitResult> {
+                         Span<const SemaphoreWaitInfo> wait_infos, u64 timeout)
+    -> Result<WaitResult> {
   ScratchArena scratch;
-  u32 cnt = wait_infos.size();
+  u32 cnt = wait_infos.m_size;
   auto *semaphores = allocate<VkSemaphore>(scratch, cnt);
   auto *values = allocate<u64>(scratch, cnt);
   for (usize i : range(cnt)) {
@@ -1669,11 +1669,10 @@ void destroy_sampler(Device device, Sampler sampler) {
   device->vk.vkDestroySampler(device->handle, sampler.handle, nullptr);
 }
 
-void write_sampler_descriptor_heap(Device device,
-                                   TempSpan<const Sampler> samplers,
+void write_sampler_descriptor_heap(Device device, Span<const Sampler> samplers,
                                    u32 index) {
   ScratchArena scratch;
-  u32 cnt = samplers.size();
+  u32 cnt = samplers.m_size;
   auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {.sampler = samplers[i].handle};
@@ -1690,10 +1689,10 @@ void write_sampler_descriptor_heap(Device device,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
+void write_srv_descriptor_heap(Device device, Span<const ImageView> srvs,
                                u32 index) {
   ScratchArena scratch;
-  u32 cnt = srvs.size();
+  u32 cnt = srvs.m_size;
   auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
@@ -1713,10 +1712,10 @@ void write_srv_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
-                               TempSpan<const Sampler> samplers, u32 index) {
+void write_cis_descriptor_heap(Device device, Span<const ImageView> srvs,
+                               Span<const Sampler> samplers, u32 index) {
   ScratchArena scratch;
-  u32 cnt = srvs.size();
+  u32 cnt = srvs.m_size;
   auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
@@ -1737,10 +1736,10 @@ void write_cis_descriptor_heap(Device device, TempSpan<const ImageView> srvs,
   device->vk.vkUpdateDescriptorSets(device->handle, 1, &write_info, 0, nullptr);
 }
 
-void write_uav_descriptor_heap(Device device, TempSpan<const ImageView> uavs,
+void write_uav_descriptor_heap(Device device, Span<const ImageView> uavs,
                                u32 index) {
   ScratchArena scratch;
-  u32 cnt = uavs.size();
+  u32 cnt = uavs.m_size;
   auto *image_info = allocate<VkDescriptorImageInfo>(scratch, cnt);
   for (usize i : range(cnt)) {
     image_info[i] = {
@@ -1787,10 +1786,10 @@ auto create_graphics_pipeline(Device device,
   u32 num_stages = 0;
   for (usize i : range(MAX_NUM_STAGES)) {
     const ShaderInfo &shader = *shaders[i];
-    if (shader.code.empty()) {
+    if (shader.code.m_size == 0) {
       continue;
     }
-    u32 num_specialization_constants = shader.specialization.constants.size();
+    u32 num_specialization_constants = shader.specialization.constants.m_size;
     auto *specialization_map = allocate<VkSpecializationMapEntry>(
         scratch, num_specialization_constants);
     for (usize j : range(num_specialization_constants)) {
@@ -1803,8 +1802,8 @@ auto create_graphics_pipeline(Device device,
     }
     VkShaderModuleCreateInfo module_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = shader.code.size(),
-        .pCode = (const u32 *)shader.code.data(),
+        .codeSize = shader.code.m_size,
+        .pCode = (const u32 *)shader.code.m_data,
     };
     result = device->vk.vkCreateShaderModule(device->handle, &module_info,
                                              nullptr, &modules[num_stages]);
@@ -1817,8 +1816,8 @@ auto create_graphics_pipeline(Device device,
     specialization_info[num_stages] = {
         .mapEntryCount = num_specialization_constants,
         .pMapEntries = specialization_map,
-        .dataSize = shader.specialization.data.size(),
-        .pData = shader.specialization.data.data(),
+        .dataSize = shader.specialization.data.m_size,
+        .pData = shader.specialization.data.m_data,
     };
     stage_info[num_stages] = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -1971,8 +1970,8 @@ auto create_compute_pipeline(Device device,
 
   VkShaderModuleCreateInfo module_info = {
       .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .codeSize = cs.code.size(),
-      .pCode = (const u32 *)cs.code.data(),
+      .codeSize = cs.code.m_size,
+      .pCode = (const u32 *)cs.code.m_data,
   };
   VkShaderModule module;
   result = device->vk.vkCreateShaderModule(device->handle, &module_info,
@@ -1981,10 +1980,10 @@ auto create_compute_pipeline(Device device,
     return fail(result);
   }
 
-  u32 num_specialization_constants = cs.specialization.constants.size();
+  u32 num_specialization_constants = cs.specialization.constants.m_size;
   auto *specialization_map =
       allocate<VkSpecializationMapEntry>(scratch, num_specialization_constants);
-  for (usize i : range(cs.specialization.constants.size())) {
+  for (usize i : range(cs.specialization.constants.m_size)) {
     const SpecializationConstant &c = cs.specialization.constants[i];
     specialization_map[i] = {
         .constantID = c.id,
@@ -1995,8 +1994,8 @@ auto create_compute_pipeline(Device device,
   VkSpecializationInfo specialization_info = {
       .mapEntryCount = num_specialization_constants,
       .pMapEntries = specialization_map,
-      .dataSize = cs.specialization.data.size(),
-      .pData = cs.specialization.data.data(),
+      .dataSize = cs.specialization.data.m_size,
+      .pData = cs.specialization.data.m_data,
   };
 
   VkComputePipelineCreateInfo pipeline_info = {
@@ -2157,13 +2156,13 @@ auto end_command_buffer(CommandBuffer cmd) -> Result<void> {
 }
 
 void cmd_pipeline_barrier(CommandBuffer cmd,
-                          TempSpan<const MemoryBarrier> memory_barriers,
-                          TempSpan<const ImageBarrier> image_barriers) {
+                          Span<const MemoryBarrier> memory_barriers,
+                          Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
-  for (usize i : range(memory_barriers.size())) {
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
+  for (usize i : range(memory_barriers.m_size)) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -2174,8 +2173,8 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
-  for (usize i : range(image_barriers.size())) {
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.m_size);
+  for (usize i : range(image_barriers.m_size)) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -2198,22 +2197,22 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .memoryBarrierCount = (u32)memory_barriers.m_size,
       .pMemoryBarriers = vk_memory_barriers,
-      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .imageMemoryBarrierCount = (u32)image_barriers.m_size,
       .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdPipelineBarrier2(cmd.handle, &dependency_info);
 }
 
 void cmd_set_event(CommandBuffer cmd, Event event,
-                   TempSpan<const MemoryBarrier> memory_barriers,
-                   TempSpan<const ImageBarrier> image_barriers) {
+                   Span<const MemoryBarrier> memory_barriers,
+                   Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
-  for (usize i : range(memory_barriers.size())) {
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
+  for (usize i : range(memory_barriers.m_size)) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -2224,8 +2223,8 @@ void cmd_set_event(CommandBuffer cmd, Event event,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
-  for (usize i : range(image_barriers.size())) {
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.m_size);
+  for (usize i : range(image_barriers.m_size)) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -2248,22 +2247,22 @@ void cmd_set_event(CommandBuffer cmd, Event event,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .memoryBarrierCount = (u32)memory_barriers.m_size,
       .pMemoryBarriers = vk_memory_barriers,
-      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .imageMemoryBarrierCount = (u32)image_barriers.m_size,
       .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdSetEvent2(cmd.handle, event.handle, &dependency_info);
 }
 
 void cmd_wait_event(CommandBuffer cmd, Event event,
-                    TempSpan<const MemoryBarrier> memory_barriers,
-                    TempSpan<const ImageBarrier> image_barriers) {
+                    Span<const MemoryBarrier> memory_barriers,
+                    Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
   Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
-      allocate<VkMemoryBarrier2>(scratch, memory_barriers.size());
-  for (usize i : range(memory_barriers.size())) {
+      allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
+  for (usize i : range(memory_barriers.m_size)) {
     const MemoryBarrier &barrier = memory_barriers[i];
     vk_memory_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -2274,8 +2273,8 @@ void cmd_wait_event(CommandBuffer cmd, Event event,
     };
   }
   auto *vk_image_barriers =
-      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.size());
-  for (usize i : range(image_barriers.size())) {
+      allocate<VkImageMemoryBarrier2>(scratch, image_barriers.m_size);
+  for (usize i : range(image_barriers.m_size)) {
     const ImageBarrier &barrier = image_barriers[i];
     vk_image_barriers[i] = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -2298,9 +2297,9 @@ void cmd_wait_event(CommandBuffer cmd, Event event,
   }
   VkDependencyInfo dependency_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .memoryBarrierCount = (u32)memory_barriers.size(),
+      .memoryBarrierCount = (u32)memory_barriers.m_size,
       .pMemoryBarriers = vk_memory_barriers,
-      .imageMemoryBarrierCount = (u32)image_barriers.size(),
+      .imageMemoryBarrierCount = (u32)image_barriers.m_size,
       .pImageMemoryBarriers = vk_image_barriers,
   };
   cmd.device->vk.vkCmdWaitEvents2(cmd.handle, 1, &event.handle,
@@ -2391,8 +2390,8 @@ void cmd_bind_pipeline(CommandBuffer cmd, PipelineBindPoint bind_point,
 void cmd_push_constants(CommandBuffer cmd, usize offset,
                         Span<const std::byte> data) {
   cmd.device->vk.vkCmdPushConstants(cmd.handle, cmd.device->pipeline_layout,
-                                    VK_SHADER_STAGE_ALL, offset, data.size(),
-                                    data.data());
+                                    VK_SHADER_STAGE_ALL, offset, data.m_size,
+                                    data.m_data);
 }
 
 void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
@@ -2400,7 +2399,7 @@ void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
   VkRenderingAttachmentInfo depth_stencil_target = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
   };
-  for (usize i : range(info.render_targets.size())) {
+  for (usize i : range(info.render_targets.m_size)) {
     const RenderTarget &rt = info.render_targets[i];
     if (!rt.rtv) {
       render_targets[i] = {
@@ -2446,7 +2445,7 @@ void cmd_begin_render_pass(CommandBuffer cmd, const RenderPassInfo &info) {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
       .renderArea = {.extent = {info.render_area.x, info.render_area.y}},
       .layerCount = 1,
-      .colorAttachmentCount = (u32)info.render_targets.size(),
+      .colorAttachmentCount = (u32)info.render_targets.m_size,
       .pColorAttachments = render_targets,
       .pDepthAttachment = &depth_stencil_target,
   };
@@ -2457,9 +2456,9 @@ void cmd_end_render_pass(CommandBuffer cmd) {
   cmd.device->vk.vkCmdEndRendering(cmd.handle);
 }
 
-void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports) {
+void cmd_set_viewports(CommandBuffer cmd, Span<const Viewport> viewports) {
   VkViewport vk_viewports[rhi::MAX_NUM_RENDER_TARGETS];
-  for (usize i : range(viewports.size())) {
+  for (usize i : range(viewports.m_size)) {
     const Viewport &vp = viewports[i];
     vk_viewports[i] = {
         .x = vp.offset.x,
@@ -2470,20 +2469,20 @@ void cmd_set_viewports(CommandBuffer cmd, TempSpan<const Viewport> viewports) {
         .maxDepth = vp.max_depth,
     };
   }
-  cmd.device->vk.vkCmdSetViewportWithCount(cmd.handle, viewports.size(),
+  cmd.device->vk.vkCmdSetViewportWithCount(cmd.handle, viewports.m_size,
                                            vk_viewports);
 }
 
-void cmd_set_scissor_rects(CommandBuffer cmd, TempSpan<const Rect2D> rects) {
+void cmd_set_scissor_rects(CommandBuffer cmd, Span<const Rect2D> rects) {
   VkRect2D vk_rects[rhi::MAX_NUM_RENDER_TARGETS];
-  for (usize i : range(rects.size())) {
+  for (usize i : range(rects.m_size)) {
     const Rect2D &rect = rects[i];
     vk_rects[i] = {
         .offset = {(i32)rect.offset.x, (i32)rect.offset.y},
         .extent = {rect.size.x, rect.size.y},
     };
   }
-  cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.size(), vk_rects);
+  cmd.device->vk.vkCmdSetScissorWithCount(cmd.handle, rects.m_size, vk_rects);
 }
 
 void cmd_bind_index_buffer(CommandBuffer cmd, Buffer buffer, usize offset,

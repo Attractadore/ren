@@ -57,9 +57,9 @@ void mesh_generate_indices(NotNull<Arena *> arena,
   const u32 *indices = nullptr;
   usize num_vertices = *opts.num_vertices;
   usize num_indices = num_vertices;
-  if (not opts.indices->empty()) {
-    indices = opts.indices->data();
-    num_indices = opts.indices->size();
+  if (opts.indices->m_size > 0) {
+    indices = opts.indices->m_data;
+    num_indices = opts.indices->m_size;
   };
 
   u32 num_streams = 0;
@@ -97,7 +97,7 @@ void mesh_generate_indices(NotNull<Arena *> arena,
   *opts.num_vertices = num_vertices;
 
   *opts.indices = Span<u32>::allocate(arena, num_indices);
-  meshopt_remapIndexBuffer(opts.indices->data(), indices, num_indices, remap);
+  meshopt_remapIndexBuffer(opts.indices->m_data, indices, num_indices, remap);
 }
 
 struct MeshGenerateTangentsOptions {
@@ -115,18 +115,18 @@ void mesh_generate_tangents(NotNull<Arena *> arena,
   ScratchArena scratch(arena);
 
   auto unindex_stream = [&]<typename T>(NotNull<T **> stream) {
-    T *unindexed_stream = scratch->allocate<T>(opts.indices->size());
-    for (usize i = 0; i < opts.indices->size(); ++i) {
+    T *unindexed_stream = scratch->allocate<T>(opts.indices->m_size);
+    for (usize i : range(opts.indices->m_size)) {
       usize index = (*opts.indices)[i];
       unindexed_stream[i] = (*stream)[index];
     }
     *stream = unindexed_stream;
   };
 
-  *opts.num_vertices = opts.indices->size();
+  *opts.num_vertices = opts.indices->m_size;
   unindex_stream(opts.positions);
   unindex_stream(opts.normals);
-  *opts.tangents = scratch->allocate<glm::vec4>(opts.indices->size());
+  *opts.tangents = scratch->allocate<glm::vec4>(opts.indices->m_size);
   unindex_stream(opts.uvs);
   if (*opts.colors) {
     unindex_stream(opts.colors);
@@ -240,8 +240,8 @@ void mesh_compute_bounds(Span<const glm::vec3> positions,
 sh::Position *mesh_encode_positions(NotNull<Arena *> arena,
                                     Span<const glm::vec3> positions,
                                     float scale) {
-  auto *enc_positions = arena->allocate<sh::Position>(positions.size());
-  for (usize i = 0; i < positions.size(); ++i) {
+  auto *enc_positions = arena->allocate<sh::Position>(positions.m_size);
+  for (usize i : range(positions.m_size)) {
     enc_positions[i] = sh::encode_position(positions[i], scale);
   }
   return enc_positions;
@@ -252,8 +252,8 @@ sh::Normal *mesh_encode_normals(NotNull<Arena *> arena,
   glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
   glm::mat3 encode_normal_matrix = sh::normal(encode_transform_matrix);
 
-  auto *enc_normals = arena->allocate<sh::Normal>(normals.size());
-  for (usize i = 0; i < normals.size(); ++i) {
+  auto *enc_normals = arena->allocate<sh::Normal>(normals.m_size);
+  for (usize i : range(normals.m_size)) {
     enc_normals[i] =
         sh::encode_normal(glm::normalize(encode_normal_matrix * normals[i]));
   }
@@ -266,8 +266,8 @@ sh::Tangent *mesh_encode_tangents(NotNull<Arena *> arena,
                                   Span<const sh::Normal> enc_normals) {
   glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
 
-  auto *enc_tangents = arena->allocate<sh::Tangent>(tangents.size());
-  for (usize i = 0; i < tangents.size(); ++i) {
+  auto *enc_tangents = arena->allocate<sh::Tangent>(tangents.m_size);
+  for (usize i : range(tangents.m_size)) {
     // Encoding and then decoding the normal can change how the
     // tangent basis is selected due to rounding errors. Since
     // shaders use the decoded normal to decode the tangent, use
@@ -308,8 +308,8 @@ sh::UV *mesh_encode_uvs(NotNull<Arena *> arena, Span<const glm::vec2> uvs,
                           glm::notEqual(uv_bs->max, glm::vec2(0.0f)));
   }
 
-  auto *enc_uvs = arena->allocate<sh::UV>(uvs.size());
-  for (usize i = 0; i < uvs.size(); ++i) {
+  auto *enc_uvs = arena->allocate<sh::UV>(uvs.m_size);
+  for (usize i : range(uvs.m_size)) {
     enc_uvs[i] = sh::encode_uv(uvs[i], *uv_bs);
   }
 
@@ -318,8 +318,8 @@ sh::UV *mesh_encode_uvs(NotNull<Arena *> arena, Span<const glm::vec2> uvs,
 
 [[nodiscard]] sh::Color *mesh_encode_colors(NotNull<Arena *> arena,
                                             Span<const glm::vec4> colors) {
-  auto *enc_colors = arena->allocate<sh::Color>(colors.size());
-  for (usize i = 0; i < colors.size(); ++i) {
+  auto *enc_colors = arena->allocate<sh::Color>(colors.m_size);
+  for (usize i : range(colors.m_size)) {
     enc_colors[i] = sh::encode_color(colors[i]);
   }
   return enc_colors;
@@ -357,7 +357,7 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
   usize base_lod_index = 0;
   usize base_lod_triangle = 0;
 
-  for (isize l = opts.lods.size() - 1; l >= 0; --l) {
+  for (isize l = isize(opts.lods.m_size) - 1; l >= 0; --l) {
     const LOD &lod = opts.lods[l];
     ren_assert(3 * base_lod_triangle == lod.base_index);
 
@@ -371,9 +371,9 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
         scratch, num_lod_meshlets * sh::NUM_MESHLET_TRIANGLES * 3);
 
     num_lod_meshlets = meshopt_buildMeshlets(
-        meshlets, meshlet_indices.data(), meshlet_triangles.data(),
+        meshlets, meshlet_indices.m_data, meshlet_triangles.m_data,
         &opts.indices[lod.base_index], lod.num_indices,
-        (const float *)opts.positions.data(), opts.positions.size(),
+        (const float *)opts.positions.m_data, opts.positions.m_size,
         sizeof(glm::vec3), sh::NUM_MESHLET_VERTICES, sh::NUM_MESHLET_TRIANGLES,
         opts.cone_weight);
 
@@ -399,26 +399,26 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
       // TODO: replace with meshopt_optimizeMeshlet
 
       u8 opt_triangles[sh::NUM_MESHLET_TRIANGLES * 3];
-      ren_assert(std::size(opt_triangles) >= triangles.size());
-      meshopt_optimizeVertexCache(opt_triangles, triangles.data(),
-                                  triangles.size(), meshlet.vertex_count);
-      triangles = {opt_triangles, triangles.size()};
+      ren_assert(size(opt_triangles) >= triangles.m_size);
+      meshopt_optimizeVertexCache(opt_triangles, triangles.m_data,
+                                  triangles.m_size, meshlet.vertex_count);
+      triangles = {opt_triangles, triangles.m_size};
 
       u32 opt_indices[sh::NUM_MESHLET_VERTICES];
-      ren_assert(std::size(opt_indices) >= indices.size());
+      ren_assert(size(opt_indices) >= indices.m_size);
       usize num_indices = meshopt_optimizeVertexFetch(
-          opt_indices, triangles.data(), triangles.size(), indices.data(),
-          indices.size(), sizeof(u32));
-      ren_assert(num_indices == indices.size());
-      indices = {opt_indices, indices.size()};
+          opt_indices, triangles.m_data, triangles.m_size, indices.m_data,
+          indices.m_size, sizeof(u32));
+      ren_assert(num_indices == indices.m_size);
+      indices = {opt_indices, indices.m_size};
 
       // Compact triangle buffer.
       copy(triangles, &meshlet_triangles[num_lod_triangles * 3]);
       copy(indices, &meshlet_indices[num_lod_indices]);
 
       meshopt_Bounds bounds = meshopt_computeMeshletBounds(
-          indices.data(), triangles.data(), meshlet.triangle_count,
-          (const float *)opts.positions.data(), opts.positions.size(),
+          indices.m_data, triangles.m_data, meshlet.triangle_count,
+          (const float *)opts.positions.m_data, opts.positions.m_size,
           sizeof(glm::vec3));
       glm::vec3 cone_apex = glm::make_vec3(bounds.cone_apex);
       glm::vec3 cone_axis = glm::make_vec3(bounds.cone_axis);
@@ -462,9 +462,9 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
             .triangles = meshlet_triangles.subspan(0, 3 * num_lod_triangles),
         });
   }
-  ren_assert(3 * base_lod_triangle == opts.indices.size());
+  ren_assert(3 * base_lod_triangle == opts.indices.m_size);
 
-  opts.header->num_vertices = opts.positions.size();
+  opts.header->num_vertices = opts.positions.m_size;
   *opts.meshlets = arena->allocate<sh::Meshlet>(base_lod_meshlet);
   opts.header->num_meshlets = base_lod_meshlet;
   *opts.meshlet_indices = arena->allocate<u32>(base_lod_index);
@@ -479,16 +479,16 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
   for (usize lod : range(lods.m_size)) {
     opts.header->lods[lod] = sh::MeshLOD{
         .base_meshlet = (u32)base_lod_meshlet,
-        .num_meshlets = (u32)lods[lod].meshlets.size(),
-        .num_triangles = (u32)lods[lod].triangles.size() / 3,
+        .num_meshlets = (u32)lods[lod].meshlets.m_size,
+        .num_triangles = (u32)lods[lod].triangles.m_size / 3,
     };
     copy(lods[lod].meshlets, &(*opts.meshlets)[base_lod_meshlet]);
     copy(lods[lod].indices, &(*opts.meshlet_indices)[base_lod_index]);
     copy(lods[lod].triangles,
          &(*opts.meshlet_triangles)[3 * base_lod_triangle]);
-    base_lod_meshlet += lods[lod].meshlets.size();
-    base_lod_index += lods[lod].indices.size();
-    base_lod_triangle += lods[lod].triangles.size() / 3;
+    base_lod_meshlet += lods[lod].meshlets.m_size;
+    base_lod_index += lods[lod].indices.m_size;
+    base_lod_triangle += lods[lod].triangles.m_size / 3;
   }
 }
 
@@ -513,11 +513,11 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
   glm::vec2 *uvs = (glm::vec2 *)info.uvs;
   glm::vec4 *colors = (glm::vec4 *)info.colors;
   Span<u32> indices =
-      Span<u32>((u32 *)info.indices.data(), info.indices.size());
+      Span<u32>((u32 *)info.indices.m_data, info.indices.m_size);
 
   ren_assert(num_vertices > 0);
-  if (indices.size() > 0) {
-    ren_assert(indices.size() % 3 == 0);
+  if (indices.m_size > 0) {
+    ren_assert(indices.m_size % 3 == 0);
   } else {
     ren_assert(num_vertices % 3 == 0);
   }
@@ -571,7 +571,7 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
 
   // Optimize each LOD separately
 
-  Span opt_indices = Span<u32>::allocate(scratch, indices.size());
+  Span opt_indices = Span<u32>::allocate(scratch, indices.m_size);
   for (const LOD &lod : Span(lods, num_lods)) {
     meshopt_optimizeVertexCache(&opt_indices[lod.base_index],
                                 &indices[lod.base_index], lod.num_indices,
@@ -585,7 +585,7 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
   {
     u32 *remap = scratch->allocate<u32>(num_vertices);
     usize num_unique_vertices = meshopt_optimizeVertexFetchRemap(
-        remap, indices.data(), indices.size(), num_vertices);
+        remap, indices.m_data, indices.m_size, num_vertices);
     mesh_remap_vertex_streams(scratch,
                               {
                                   .num_vertices = num_vertices,
@@ -598,9 +598,9 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
                                   .remap = remap,
                               });
     num_vertices = num_unique_vertices;
-    Span remapped_indices = Span<u32>::allocate(scratch, indices.size());
-    meshopt_remapIndexBuffer(remapped_indices.data(), indices.data(),
-                             indices.size(), remap);
+    Span remapped_indices = Span<u32>::allocate(scratch, indices.m_size);
+    meshopt_remapIndexBuffer(remapped_indices.m_data, indices.m_data,
+                             indices.m_size, remap);
     indices = remapped_indices;
   }
 #endif

@@ -119,10 +119,10 @@ template <typename T>
   if (!buffer) {
     return buffer.m_status;
   }
-  if (buffer.m_value.size() % sizeof(T) != 0) {
+  if (buffer.m_value.m_size % sizeof(T) != 0) {
     return IoStatus::EFragmented;
   }
-  return Span<T>((T *)buffer.m_value.data(), buffer.m_value.size() / sizeof(T));
+  return Span<T>((T *)buffer.m_value.m_data, buffer.m_value.m_size / sizeof(T));
 }
 
 [[nodiscard]] IoStatus write(Path path, const void *buffer, usize size,
@@ -133,7 +133,7 @@ template <typename T>
 [[nodiscard]] IoStatus write(Path path, Span<T> buffer,
                              FileOpenFlags flags = FileOpen::Create |
                                                    FileOpen::Truncate) {
-  return write(path, buffer.data(), buffer.size_bytes(), flags);
+  return write(path, buffer.m_data, buffer.size_bytes(), flags);
 }
 
 [[nodiscard]] IoStatus copy_file(Path from, Path to,

@@ -81,7 +81,7 @@ Path make_dll_copy(Path from) {
     }
 
     fmt::println("hot_reload: Change {} PDB path to {}", to, to_pdb);
-    String<char> substr = String<char>(buffer.data(), buffer.size())
+    String<char> substr = String<char>(buffer.m_data, buffer.m_size)
                               .find(from_pdb.native(scratch));
     ren_assert(substr.m_size > 0);
     copy(Span(to_pdb.native(scratch)), substr.m_str);

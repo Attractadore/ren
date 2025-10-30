@@ -60,7 +60,7 @@ auto load_mesh(ren::NotNull<ren::Arena *> frame_arena,
               ai_mesh->HasVertexColors(0)
                   ? reinterpret_cast<const glm::vec4 *>(ai_mesh->mColors[0])
                   : nullptr,
-          .indices = indices,
+          .indices = {indices.data(), indices.size()},
       });
   return ren::create_mesh(frame_arena, scene, blob.data, blob.size);
 }

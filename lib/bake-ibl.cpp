@@ -223,11 +223,11 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
 #endif
   if (compress) {
     fmt::println("Compress environment map");
-    hres = DirectX::Compress(images.data(), images.size(), mdata,
+    hres = DirectX::Compress(images.m_data, images.m_size, mdata,
                              DXGI_FORMAT_BC6H_UF16,
                              DirectX::TEX_COMPRESS_PARALLEL, 0.0f, compressed);
   } else {
-    hres = DirectX::Convert(images.data(), images.size(), mdata,
+    hres = DirectX::Convert(images.m_data, images.m_size, mdata,
                             DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
                             DirectX::TEX_FILTER_DEFAULT, 0.0f, compressed);
   }
@@ -295,7 +295,7 @@ int main(int argc, const char *argv[]) {
 
   int w, h;
   const float *hdr_map = stbi_loadf_from_memory(
-      buffer.m_value.data(), buffer.m_value.size_bytes(), &w, &h, nullptr, 4);
+      buffer.m_value.m_data, buffer.m_value.size_bytes(), &w, &h, nullptr, 4);
   if (!hdr_map) {
     fmt::println(stderr, "Failed to read HDR environment map from {}: {}",
                  in_path, stbi_failure_reason());

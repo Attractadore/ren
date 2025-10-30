@@ -5,7 +5,7 @@ namespace ren {
 template <typename S> S SuccessStatus = S();
 
 template <typename T, typename S> struct Result2 {
-  T m_value = {};
+  T m_value = T();
   S m_status = SuccessStatus<S>;
 
 public:

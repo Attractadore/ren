@@ -394,7 +394,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
     auto pass = ccfg.rgb->create_pass({format(
         scratch, "{}{}-batch-{}", info.base.pass_name, pass_type, batch)});
 
-    for (usize i = 0; i < info.base.color_attachments.size(); ++i) {
+    for (usize i : range(info.base.color_attachments.m_size)) {
       NotNull<RgTextureId *> color_attachment = info.base.color_attachments[i];
       if (!*color_attachment) {
         continue;

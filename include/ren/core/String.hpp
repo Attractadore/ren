@@ -248,9 +248,9 @@ public:
   char pop() { return m_buffer.pop(); }
 
   void join(Span<String8> strs, String8 separator) {
-    [[unlikely]] if (strs.empty()) { return; }
+    [[unlikely]] if (strs.m_size == 0) { return; }
     push(strs[0]);
-    for (usize i : range<usize>(1, strs.size())) {
+    for (usize i : range<usize>(1, strs.m_size)) {
       push(separator);
       push(strs[i]);
     }

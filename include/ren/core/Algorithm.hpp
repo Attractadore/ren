@@ -36,7 +36,7 @@ template <typename T> T min(std::initializer_list<T> elems) {
 }
 
 template <typename T, typename U> void copy(Span<T> from, U *to) {
-  for (usize i : range(from.size())) {
+  for (usize i : range(from.m_size)) {
     to[i] = from[i];
   }
 }
@@ -44,7 +44,7 @@ template <typename T, typename U> void copy(Span<T> from, U *to) {
 template <typename T, std::same_as<std::remove_const_t<T>> U>
   requires std::is_trivially_copyable_v<T>
 void copy(Span<T> from, U *to) {
-  std::memcpy(to, from.data(), from.size_bytes());
+  std::memcpy(to, from.m_data, from.size_bytes());
 }
 
 template <typename T, typename U> void copy(T *begin, T *end, U *to) {
@@ -58,7 +58,7 @@ template <typename T, typename U> void copy(T *begin, usize count, U *to) {
 
 template <typename T, typename U, typename V>
 void exclusive_scan(Span<T> input, U *output, V acc) {
-  for (usize i : range(input.size())) {
+  for (usize i : range(input.m_size)) {
     output[i] = acc;
     acc += input[i];
   }

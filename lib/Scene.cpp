@@ -280,14 +280,14 @@ void destroy_scene(Scene *scene) {
 }
 
 Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
-                         std::span<const std::byte> blob) {
+                         Span<const std::byte> blob) {
   ScratchArena scratch(frame_arena);
 
-  if (blob.size() < sizeof(MeshPackageHeader)) {
+  if (blob.m_size < sizeof(MeshPackageHeader)) {
     return NullHandle;
   }
 
-  const auto &header = *(const MeshPackageHeader *)blob.data();
+  const auto &header = *(const MeshPackageHeader *)blob.m_data;
   if (header.magic != MESH_PACKAGE_MAGIC) {
     return NullHandle;
   }
@@ -328,7 +328,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   // Create a copy because we need to patch base triangle indices.
   auto meshlets = Span<sh::Meshlet>::allocate(scratch, header.num_meshlets);
   copy((const sh::Meshlet *)&blob[header.meshlets_offset], header.num_meshlets,
-       meshlets.data());
+       meshlets.m_data);
 
   Span triangles = {
       (const u8 *)&blob[header.triangles_offset],
@@ -350,11 +350,11 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   auto upload_buffer = [&]<typename T>(Span<const T> data,
                                        Handle<Buffer> &buffer,
                                        String8 name) -> Result<void, Error> {
-    if (not data.empty()) {
+    if (data.m_size > 0) {
       ren_try(BufferSlice<T> slice, scene->m_rcs_arena.create_buffer<T>({
                                         .name = std::move(name),
                                         .heap = rhi::MemoryHeap::Default,
-                                        .count = data.size(),
+                                        .count = data.m_size,
                                     }));
       buffer = slice.buffer;
       scene->m_sid->m_resource_uploader.stage_buffer(
@@ -459,9 +459,9 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 }
 
 Handle<Image> create_image(NotNull<Arena *> frame_arena, Scene *scene,
-                           std::span<const std::byte> blob) {
+                           Span<const std::byte> blob) {
   expected<Handle<Texture>> texture =
-      create_texture(frame_arena, scene, blob.data(), blob.size());
+      create_texture(frame_arena, scene, blob.m_data, blob.m_size);
   if (!texture) {
     return NullHandle;
   }
@@ -572,13 +572,13 @@ auto get_batch_desc(DrawSet ds, const Scene &scene,
 }
 
 void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
-                           std::span<const MeshInstanceCreateInfo> create_info,
-                           std::span<Handle<MeshInstance>> out) {
-  ren_assert(out.size() >= create_info.size());
-  ren_assert(scene->m_mesh_instances.size() + create_info.size() <=
+                           Span<const MeshInstanceCreateInfo> create_info,
+                           Span<Handle<MeshInstance>> out) {
+  ren_assert(out.m_size >= create_info.m_size);
+  ren_assert(scene->m_mesh_instances.size() + create_info.m_size <=
              MAX_NUM_MESH_INSTANCES);
 
-  for (usize i : range(create_info.size())) {
+  for (usize i : range(create_info.m_size)) {
     ren_assert(create_info[i].mesh);
     ren_assert(create_info[i].material);
 
@@ -633,9 +633,8 @@ void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
   }
 }
 
-void destroy_mesh_instances(
-    NotNull<Arena *> frame_arena, Scene *scene,
-    std::span<const Handle<MeshInstance>> mesh_instances) {
+void destroy_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,
+                            Span<const Handle<MeshInstance>> mesh_instances) {
   for (Handle<MeshInstance> handle : mesh_instances) {
     if (!handle) {
       continue;
@@ -690,11 +689,11 @@ StagingBufferIndexAndOffset mesh_instance_index_to_sb_and_offset(usize index) {
 
 void set_mesh_instance_transforms(
     NotNull<Arena *> frame_arena, Scene *scene,
-    std::span<const Handle<MeshInstance>> mesh_instances,
-    std::span<const glm::mat4x3> matrices) {
+    Span<const Handle<MeshInstance>> mesh_instances,
+    Span<const glm::mat4x3> matrices) {
   ZoneScoped;
 
-  ren_assert(mesh_instances.size() == matrices.size());
+  ren_assert(mesh_instances.m_size == matrices.m_size);
 
   usize raw_size = scene->m_mesh_instances.raw_size();
   usize num_sbs = mesh_instance_index_to_sb_and_offset(raw_size - 1).index + 1;
@@ -706,7 +705,7 @@ void set_mesh_instance_transforms(
         scene->m_frcs->upload_allocator.allocate<glm::mat4x3>(size));
   }
 
-  for (usize i : range(mesh_instances.size())) {
+  for (usize i : range(mesh_instances.m_size)) {
     Handle<MeshInstance> handle = mesh_instances[i];
     const MeshInstance &mesh_instance = scene->m_mesh_instances[handle];
     const Mesh &mesh = scene->m_meshes[mesh_instance.mesh];
@@ -922,7 +921,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
           rcs.scene->m_sid->m_transform_staging_buffers;
       usize count = rcs.scene->m_mesh_instances.raw_size();
       usize offset = 0;
-      for (usize sb : range(sbs.size())) {
+      for (usize sb : range(sbs.m_size)) {
         usize sb_size = MIN_TRANSFORM_STAGING_BUFFER_SIZE << sb;
 
         usize num_copy = min(sb_size, count);

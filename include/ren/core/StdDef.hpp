@@ -44,6 +44,8 @@ template <typename I> auto range(I begin, I end) { return Range(begin, end); }
 
 template <typename I> auto range(I end) { return Range(I(0), end); }
 
+template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
+
 } // namespace ren
 
 #if _MSC_VER

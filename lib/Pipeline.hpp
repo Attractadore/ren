@@ -1,6 +1,6 @@
 #pragma once
-#include "ren/core/Span.hpp"
 #include "ren/core/GenIndex.hpp"
+#include "ren/core/Span.hpp"
 #include "ren/core/String.hpp"
 #include "rhi.hpp"
 
@@ -19,7 +19,7 @@ struct SpecializationConstant {
 struct ShaderInfo {
   Span<const std::byte> code;
   String8 entry_point = "main";
-  TempSpan<const SpecializationConstant> specialization_constants;
+  Span<const SpecializationConstant> specialization_constants;
 };
 
 struct GraphicsPipelineCreateInfo {
