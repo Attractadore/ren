@@ -47,7 +47,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
   }
 
   u32 buckets_size = 0;
-  std::array<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+  StackArray<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
   for (u32 bucket : range(sh::NUM_MESHLET_CULLING_BUCKETS)) {
     bucket_offsets[bucket] = buckets_size;
     u32 bucket_stride = 1 << bucket;
@@ -169,7 +169,7 @@ void record_culling(const PassCommonConfig &ccfg, const MeshPassBaseInfo &info,
     struct {
       Handle<ComputePipeline> pipeline;
       RgBufferToken<sh::DispatchIndirectCommand> meshlet_bucket_commands;
-      std::array<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
+      StackArray<u32, sh::NUM_MESHLET_CULLING_BUCKETS> bucket_offsets;
     } rcs;
 
     rcs.pipeline = ccfg.pipelines->meshlet_culling;

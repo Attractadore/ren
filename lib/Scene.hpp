@@ -209,8 +209,8 @@ struct SceneInternalData {
   Pipelines m_pipelines;
   DeviceBumpAllocator m_gfx_allocator;
   DeviceBumpAllocator m_async_allocator;
-  std::array<DeviceBumpAllocator, 2> m_shared_allocators;
-  std::array<FrameResources, NUM_FRAMES_IN_FLIGHT> m_per_frame_resources;
+  StackArray<DeviceBumpAllocator, 2> m_shared_allocators;
+  StackArray<FrameResources, NUM_FRAMES_IN_FLIGHT> m_per_frame_resources;
   PassPersistentConfig m_pass_cfg;
   PassPersistentResources m_pass_rcs;
   RgPersistent m_rgp;

@@ -8,6 +8,7 @@
 #include "core/Flags.hpp"
 #include "core/NewType.hpp"
 #include "ren/core/Algorithm.hpp"
+#include "ren/core/Array.hpp"
 #include "ren/core/GenArray.hpp"
 #include "ren/core/NotNull.hpp"
 #include "ren/core/String.hpp"
@@ -297,14 +298,14 @@ template <typename T> struct RgPushConstantImpl<sh::Handle<T>> {
 };
 
 template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T, usize N>
-struct RgPushConstantImpl<std::array<sh::Handle<T>, N>> {
+struct RgPushConstantImpl<StackArray<sh::Handle<T>, N>> {
   using type = RgTextureToken;
 };
 
 template <typename T> struct RWTextureArrayImpl : std::false_type {};
 
 template <sh::DescriptorOfKind<sh::DescriptorKind::RWTexture> T, usize N>
-struct RWTextureArrayImpl<std::array<sh::Handle<T>, N>> : std::true_type {};
+struct RWTextureArrayImpl<StackArray<sh::Handle<T>, N>> : std::true_type {};
 
 template <typename T>
 concept RWTextureArray = RWTextureArrayImpl<T>::value;

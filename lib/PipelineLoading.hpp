@@ -16,7 +16,7 @@ struct Pipelines {
   Handle<ComputePipeline> ssao;
   Handle<ComputePipeline> ssao_filter;
   Handle<GraphicsPipeline> early_z_pass;
-  std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>
+  StackArray<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>
       opaque_pass;
   Handle<GraphicsPipeline> skybox_pass;
   Handle<ComputePipeline> local_tone_mapping_lightness;

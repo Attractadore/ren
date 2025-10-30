@@ -99,7 +99,7 @@ template <CFlagsEnum From> auto from_vk(u64 vk_flags) -> Flags<From> {
 
 template <>
 constexpr auto MAP<SemaphoreType> = [] {
-  std::array<VkSemaphoreType, ENUM_SIZE<SemaphoreType>> map = {};
+  StackArray<VkSemaphoreType, ENUM_SIZE<SemaphoreType>> map = {};
   map(SemaphoreType::Binary, VK_SEMAPHORE_TYPE_BINARY);
   map(SemaphoreType::Timeline, VK_SEMAPHORE_TYPE_TIMELINE);
   return map;
@@ -107,7 +107,7 @@ constexpr auto MAP<SemaphoreType> = [] {
 
 template <>
 constexpr auto MAP<ImageAspect> = [] {
-  std::array<VkImageAspectFlagBits, ENUM_SIZE<ImageAspect>> map = {};
+  StackArray<VkImageAspectFlagBits, ENUM_SIZE<ImageAspect>> map = {};
   map_bit(ImageAspect::Color, VK_IMAGE_ASPECT_COLOR_BIT);
   map_bit(ImageAspect::Depth, VK_IMAGE_ASPECT_DEPTH_BIT);
   return map;
@@ -116,7 +116,7 @@ constexpr auto MAP<ImageAspect> = [] {
 template <>
 constexpr auto MAP<ImageUsage> = [] {
   using enum ImageUsage;
-  std::array<VkImageUsageFlagBits, ENUM_SIZE<ImageUsage>> map = {};
+  StackArray<VkImageUsageFlagBits, ENUM_SIZE<ImageUsage>> map = {};
   map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
   map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
   map_bit(ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -128,7 +128,7 @@ constexpr auto MAP<ImageUsage> = [] {
 
 template <>
 constexpr auto MAP<ImageViewDimension> = [] {
-  std::array<VkImageViewType, ENUM_SIZE<ImageViewDimension>> map = {};
+  StackArray<VkImageViewType, ENUM_SIZE<ImageViewDimension>> map = {};
   map(ImageViewDimension::e1D, VK_IMAGE_VIEW_TYPE_1D);
   map(ImageViewDimension::eArray1D, VK_IMAGE_VIEW_TYPE_1D_ARRAY);
   map(ImageViewDimension::e2D, VK_IMAGE_VIEW_TYPE_2D);
@@ -141,7 +141,7 @@ constexpr auto MAP<ImageViewDimension> = [] {
 
 template <>
 constexpr auto MAP<ComponentSwizzle> = [] {
-  std::array<VkComponentSwizzle, ENUM_SIZE<ComponentSwizzle>> map = {};
+  StackArray<VkComponentSwizzle, ENUM_SIZE<ComponentSwizzle>> map = {};
   map(ComponentSwizzle::Identity, VK_COMPONENT_SWIZZLE_IDENTITY);
   map(ComponentSwizzle::Zero, VK_COMPONENT_SWIZZLE_ZERO);
   map(ComponentSwizzle::One, VK_COMPONENT_SWIZZLE_ONE);
@@ -154,7 +154,7 @@ constexpr auto MAP<ComponentSwizzle> = [] {
 
 template <>
 constexpr auto MAP<Filter> = [] {
-  std::array<VkFilter, ENUM_SIZE<Filter>> map = {};
+  StackArray<VkFilter, ENUM_SIZE<Filter>> map = {};
   map(Filter::Nearest, VK_FILTER_NEAREST);
   map(Filter::Linear, VK_FILTER_LINEAR);
   return map;
@@ -162,7 +162,7 @@ constexpr auto MAP<Filter> = [] {
 
 template <>
 constexpr auto MAP<SamplerMipmapMode> = [] {
-  std::array<VkSamplerMipmapMode, ENUM_SIZE<SamplerMipmapMode>> map = {};
+  StackArray<VkSamplerMipmapMode, ENUM_SIZE<SamplerMipmapMode>> map = {};
   map(SamplerMipmapMode::Nearest, VK_SAMPLER_MIPMAP_MODE_NEAREST);
   map(SamplerMipmapMode::Linear, VK_SAMPLER_MIPMAP_MODE_LINEAR);
   return map;
@@ -170,7 +170,7 @@ constexpr auto MAP<SamplerMipmapMode> = [] {
 
 template <>
 constexpr auto MAP<SamplerAddressMode> = [] {
-  std::array<VkSamplerAddressMode, ENUM_SIZE<SamplerAddressMode>> map = {};
+  StackArray<VkSamplerAddressMode, ENUM_SIZE<SamplerAddressMode>> map = {};
   map(SamplerAddressMode::Repeat, VK_SAMPLER_ADDRESS_MODE_REPEAT);
   map(SamplerAddressMode::MirroredRepeat,
       VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT);
@@ -180,7 +180,7 @@ constexpr auto MAP<SamplerAddressMode> = [] {
 
 template <>
 constexpr auto MAP<SamplerReductionMode> = [] {
-  std::array<VkSamplerReductionMode, ENUM_SIZE<SamplerReductionMode>> map = {};
+  StackArray<VkSamplerReductionMode, ENUM_SIZE<SamplerReductionMode>> map = {};
   map(SamplerReductionMode::WeightedAverage,
       VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE);
   map(SamplerReductionMode::Min, VK_SAMPLER_REDUCTION_MODE_MIN);
@@ -190,7 +190,7 @@ constexpr auto MAP<SamplerReductionMode> = [] {
 
 template <>
 constexpr auto MAP<PrimitiveTopology> = [] {
-  std::array<VkPrimitiveTopology, ENUM_SIZE<PrimitiveTopology>> map = {};
+  StackArray<VkPrimitiveTopology, ENUM_SIZE<PrimitiveTopology>> map = {};
   map(PrimitiveTopology::PointList, VK_PRIMITIVE_TOPOLOGY_POINT_LIST);
   map(PrimitiveTopology::LineList, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
   map(PrimitiveTopology::TriangleList, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -199,7 +199,7 @@ constexpr auto MAP<PrimitiveTopology> = [] {
 
 template <>
 constexpr auto MAP<FillMode> = [] {
-  std::array<VkPolygonMode, ENUM_SIZE<FillMode>> map = {};
+  StackArray<VkPolygonMode, ENUM_SIZE<FillMode>> map = {};
   map(FillMode::Fill, VK_POLYGON_MODE_FILL);
   map(FillMode::Wireframe, VK_POLYGON_MODE_LINE);
   return map;
@@ -207,7 +207,7 @@ constexpr auto MAP<FillMode> = [] {
 
 template <>
 constexpr auto MAP<CullMode> = [] {
-  std::array<VkCullModeFlagBits, ENUM_SIZE<CullMode>> map = {};
+  StackArray<VkCullModeFlagBits, ENUM_SIZE<CullMode>> map = {};
   map(CullMode::None, VK_CULL_MODE_NONE);
   map(CullMode::Front, VK_CULL_MODE_FRONT_BIT);
   map(CullMode::Back, VK_CULL_MODE_BACK_BIT);
@@ -216,7 +216,7 @@ constexpr auto MAP<CullMode> = [] {
 
 template <>
 constexpr auto MAP<CompareOp> = [] {
-  std::array<VkCompareOp, ENUM_SIZE<CompareOp>> map = {};
+  StackArray<VkCompareOp, ENUM_SIZE<CompareOp>> map = {};
   map(CompareOp::Never, VK_COMPARE_OP_NEVER);
   map(CompareOp::Less, VK_COMPARE_OP_LESS);
   map(CompareOp::Equal, VK_COMPARE_OP_EQUAL);
@@ -230,7 +230,7 @@ constexpr auto MAP<CompareOp> = [] {
 
 template <>
 constexpr auto MAP<BlendFactor> = [] {
-  std::array<VkBlendFactor, ENUM_SIZE<BlendFactor>> map = {};
+  StackArray<VkBlendFactor, ENUM_SIZE<BlendFactor>> map = {};
   map(BlendFactor::Zero, VK_BLEND_FACTOR_ZERO);
   map(BlendFactor::One, VK_BLEND_FACTOR_ONE);
   map(BlendFactor::SrcColor, VK_BLEND_FACTOR_SRC_COLOR);
@@ -257,7 +257,7 @@ constexpr auto MAP<BlendFactor> = [] {
 
 template <>
 constexpr auto MAP<BlendOp> = [] {
-  std::array<VkBlendOp, ENUM_SIZE<BlendOp>> map = {};
+  StackArray<VkBlendOp, ENUM_SIZE<BlendOp>> map = {};
   map(BlendOp::Add, VK_BLEND_OP_ADD);
   map(BlendOp::Subtract, VK_BLEND_OP_SUBTRACT);
   map(BlendOp::ReverseSubtract, VK_BLEND_OP_REVERSE_SUBTRACT);
@@ -268,7 +268,7 @@ constexpr auto MAP<BlendOp> = [] {
 
 template <>
 constexpr auto MAP<LogicOp> = [] {
-  std::array<VkLogicOp, ENUM_SIZE<LogicOp>> map = {};
+  StackArray<VkLogicOp, ENUM_SIZE<LogicOp>> map = {};
   map(LogicOp::Clear, VK_LOGIC_OP_CLEAR);
   map(LogicOp::And, VK_LOGIC_OP_AND);
   map(LogicOp::AndReverse, VK_LOGIC_OP_AND_REVERSE);
@@ -291,7 +291,7 @@ constexpr auto MAP<LogicOp> = [] {
 template <>
 constexpr auto MAP<ColorComponent> = [] {
   using enum ImageUsage;
-  std::array<VkColorComponentFlagBits, ENUM_SIZE<ColorComponent>> map = {};
+  StackArray<VkColorComponentFlagBits, ENUM_SIZE<ColorComponent>> map = {};
   map_bit(ColorComponent::R, VK_COLOR_COMPONENT_R_BIT);
   map_bit(ColorComponent::G, VK_COLOR_COMPONENT_G_BIT);
   map_bit(ColorComponent::B, VK_COLOR_COMPONENT_B_BIT);
@@ -301,7 +301,7 @@ constexpr auto MAP<ColorComponent> = [] {
 
 template <>
 constexpr auto MAP<PipelineStage> = [] {
-  std::array<VkPipelineStageFlagBits2, ENUM_SIZE<PipelineStage>> map = {};
+  StackArray<VkPipelineStageFlagBits2, ENUM_SIZE<PipelineStage>> map = {};
   map_bit(PipelineStage::ExecuteIndirect,
           VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT);
   map_bit(PipelineStage::TaskShader, VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT);
@@ -324,7 +324,7 @@ constexpr auto MAP<PipelineStage> = [] {
 
 template <>
 constexpr auto MAP<Access> = [] {
-  std::array<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
+  StackArray<VkAccessFlagBits2, ENUM_SIZE<Access>> map = {};
   map_bit(Access::IndirectCommandRead, VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT);
   map_bit(Access::IndexRead, VK_ACCESS_2_INDEX_READ_BIT);
   map_bit(Access::ShaderBufferRead, VK_ACCESS_2_SHADER_STORAGE_READ_BIT);
@@ -346,7 +346,7 @@ constexpr auto MAP<Access> = [] {
 
 template <>
 constexpr auto MAP<ImageLayout> = [] {
-  std::array<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
+  StackArray<VkImageLayout, ENUM_SIZE<ImageLayout>> map = {};
   map(ImageLayout::Undefined, VK_IMAGE_LAYOUT_UNDEFINED);
   map(ImageLayout::General, VK_IMAGE_LAYOUT_GENERAL);
   map(ImageLayout::RenderTarget, VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL);
@@ -358,7 +358,7 @@ constexpr auto MAP<ImageLayout> = [] {
 
 template <>
 constexpr auto MAP<PipelineBindPoint> = [] {
-  std::array<VkPipelineBindPoint, ENUM_SIZE<PipelineBindPoint>> map = {};
+  StackArray<VkPipelineBindPoint, ENUM_SIZE<PipelineBindPoint>> map = {};
   map(PipelineBindPoint::Graphics, VK_PIPELINE_BIND_POINT_GRAPHICS);
   map(PipelineBindPoint::Compute, VK_PIPELINE_BIND_POINT_COMPUTE);
   return map;
@@ -366,7 +366,7 @@ constexpr auto MAP<PipelineBindPoint> = [] {
 
 template <>
 constexpr auto MAP<RenderPassLoadOp> = [] {
-  std::array<VkAttachmentLoadOp, ENUM_SIZE<RenderPassLoadOp>> map = {};
+  StackArray<VkAttachmentLoadOp, ENUM_SIZE<RenderPassLoadOp>> map = {};
   map(RenderPassLoadOp::Load, VK_ATTACHMENT_LOAD_OP_LOAD);
   map(RenderPassLoadOp::Clear, VK_ATTACHMENT_LOAD_OP_CLEAR);
   map(RenderPassLoadOp::Discard, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
@@ -375,7 +375,7 @@ constexpr auto MAP<RenderPassLoadOp> = [] {
 
 template <>
 constexpr auto MAP<RenderPassStoreOp> = [] {
-  std::array<VkAttachmentStoreOp, ENUM_SIZE<RenderPassStoreOp>> map = {};
+  StackArray<VkAttachmentStoreOp, ENUM_SIZE<RenderPassStoreOp>> map = {};
   map(RenderPassStoreOp::Store, VK_ATTACHMENT_STORE_OP_STORE);
   map(RenderPassStoreOp::Discard, VK_ATTACHMENT_STORE_OP_DONT_CARE);
   map(RenderPassStoreOp::None, VK_ATTACHMENT_STORE_OP_NONE);
@@ -384,7 +384,7 @@ constexpr auto MAP<RenderPassStoreOp> = [] {
 
 template <>
 constexpr auto MAP<IndexType> = [] {
-  std::array<VkIndexType, ENUM_SIZE<IndexType>> map = {};
+  StackArray<VkIndexType, ENUM_SIZE<IndexType>> map = {};
   map(IndexType::UInt8, VK_INDEX_TYPE_UINT8_EXT);
   map(IndexType::UInt16, VK_INDEX_TYPE_UINT16);
   map(IndexType::UInt32, VK_INDEX_TYPE_UINT32);
@@ -394,7 +394,7 @@ constexpr auto MAP<IndexType> = [] {
 template <>
 constexpr auto MAP<PresentMode> = [] {
   using enum PresentMode;
-  std::array<VkPresentModeKHR, ENUM_SIZE<PresentMode>> map = {};
+  StackArray<VkPresentModeKHR, ENUM_SIZE<PresentMode>> map = {};
   fill(Span(map), VK_PRESENT_MODE_FIFO_KHR);
   map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
   map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
@@ -449,7 +449,7 @@ struct DeviceData {
   VkDevice handle = nullptr;
   VmaAllocator allocator = nullptr;
   Adapter adapter = {};
-  std::array<Queue, ENUM_SIZE<QueueFamily>> queues = {};
+  StackArray<Queue, ENUM_SIZE<QueueFamily>> queues = {};
   VkDescriptorSetLayout descriptor_set_layout = nullptr;
   VkPipelineLayout pipeline_layout = nullptr;
   VkDescriptorPool descriptor_pool = nullptr;
@@ -2706,12 +2706,12 @@ auto adjust_swap_chain_size(glm::uvec2 size,
 auto select_swap_chain_composite_alpha(
     const VkSurfaceCapabilitiesKHR &capabilities)
     -> VkCompositeAlphaFlagBitsKHR {
-  constexpr std::array PREFERRED_ORDER = {
+  constexpr StackArray PREFERRED_ORDER = {{
       VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
       VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
       VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
       VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-  };
+  }};
   for (VkCompositeAlphaFlagBitsKHR composite_alpha : PREFERRED_ORDER) {
     if (capabilities.supportedCompositeAlpha & composite_alpha) {
       return composite_alpha;

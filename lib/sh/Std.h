@@ -3,10 +3,10 @@
 #if __cplusplus
 
 #include "../DevicePtr.hpp"
+#include "ren/core/Array.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/StdDef.hpp"
 
-#include <array>
 #include <concepts>
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -15,7 +15,7 @@
 #define SH_OUT(T) T &
 #define SH_INOUT(T) T &
 
-#define SH_ARRAY(T, name, SIZE) std::array<T, SIZE> name
+#define SH_ARRAY(T, name, SIZE) StackArray<T, SIZE> name
 
 namespace ren {
 

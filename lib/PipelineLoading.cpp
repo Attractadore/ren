@@ -47,14 +47,14 @@ auto load_early_z_pass_pipeline(ResourceArena &arena)
 }
 
 auto load_opaque_pass_pipelines(ResourceArena &arena) -> Result<
-    std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>, Error> {
+    StackArray<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS>, Error> {
   ScratchArena scratch;
   auto vs = Span(OpaqueVS, OpaqueVSSize).as_bytes();
   auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
-  std::array<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
+  StackArray<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
   for (int i = 0; i < sh::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
     MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
-    std::array<SpecializationConstant, 3> specialization_constants = {{
+    StackArray<SpecializationConstant, 3> specialization_constants = {{
         {sh::S_OPAQUE_FEATURE_VC, flags.is_set(MeshAttribute::Color)},
         {sh::S_OPAQUE_FEATURE_TS, flags.is_set(MeshAttribute::Tangent)},
         {sh::S_OPAQUE_FEATURE_UV, flags.is_set(MeshAttribute::UV)},

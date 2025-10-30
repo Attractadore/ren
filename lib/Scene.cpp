@@ -838,7 +838,7 @@ RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
     const Scene *scene = nullptr;
     RgBufferToken<sh::Mesh> meshes;
     RgBufferToken<sh::MeshInstance> mesh_instances;
-    std::array<RgBufferToken<sh::DrawSetItem>, NUM_DRAW_SETS> draw_sets;
+    StackArray<RgBufferToken<sh::DrawSetItem>, NUM_DRAW_SETS> draw_sets;
     RgBufferToken<glm::mat4x3> transform_matrices;
     RgBufferToken<sh::Material> materials;
     RgBufferToken<sh::DirectionalLight> directional_lights;

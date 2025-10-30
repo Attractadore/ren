@@ -102,4 +102,29 @@ public:
   }
 };
 
+template <typename T, usize S> struct StackArray {
+  T m_data[S] = {};
+
+public:
+  using value_type = T;
+
+  constexpr T &operator[](usize i) {
+    ren_assert(i < S);
+    return m_data[i];
+  }
+
+  constexpr const T &operator[](usize i) const {
+    ren_assert(i < S);
+    return m_data[i];
+  }
+
+  constexpr T *begin() { return m_data; }
+  constexpr const T *begin() const { return m_data; }
+
+  constexpr T *end() { return &m_data[S]; }
+  constexpr const T *end() const { return &m_data[S]; }
+
+  static constexpr usize size() { return S; }
+};
+
 } // namespace ren
