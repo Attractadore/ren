@@ -83,7 +83,7 @@ void ResourceUploader::stage_texture(NotNull<Arena *> arena,
 
 auto ResourceUploader::upload(Renderer &renderer, Handle<CommandPool> pool)
     -> Result<void, Error> {
-  if (m_buffer_copies.m_size == 0 and m_texture_copies.m_size) {
+  if (m_buffer_copies.m_size == 0 and m_texture_copies.m_size == 0) {
     return {};
   }
 

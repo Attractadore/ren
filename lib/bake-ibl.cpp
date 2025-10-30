@@ -95,6 +95,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
     }
   }
 
+  rhi::start_gfx_capture();
+
   ren_try(ktxTexture2 * ktx_texture2, create_ktx_texture(mip_chain));
   ren_try(Handle<Texture> env_map,
           baker->uploader.create_texture(
@@ -198,6 +200,8 @@ auto bake_ibl(Baker *baker, const TextureInfo &info, bool compress)
   ren_try(RenderGraph rg, rgb.build({}));
   ren_try_to(execute(rg, {.gfx_cmd_pool = baker->cmd_pool}));
   baker->renderer->wait_idle();
+
+  rhi::end_gfx_capture();
 
   ScratchArena scratch;
   Span<DirectX::Image> images;
