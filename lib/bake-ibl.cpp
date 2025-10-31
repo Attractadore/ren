@@ -236,9 +236,10 @@ DirectX::ScratchImage bake_ibl(Baker *baker, const TextureInfo &info,
   return compressed;
 }
 
-Blob bake_ibl_to_memory(Baker *baker, const TextureInfo &info, bool compress) {
+Blob bake_ibl_to_memory(NotNull<Arena *> arena, Baker *baker,
+                        const TextureInfo &info, bool compress) {
   DirectX::ScratchImage image = bake_ibl(baker, info, compress);
-  Blob blob = write_ktx_to_memory(image);
+  Blob blob = write_ktx_to_memory(arena, image);
   reset_baker(baker);
   return blob;
 }
@@ -300,8 +301,9 @@ int main(int argc, const char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  ScratchArena scratch;
   Blob blob =
-      bake_ibl_to_memory(baker,
+      bake_ibl_to_memory(scratch, baker,
                          {
                              .format = TinyImageFormat_R32G32B32A32_SFLOAT,
                              .width = (u32)w,

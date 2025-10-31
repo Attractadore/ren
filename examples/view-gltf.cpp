@@ -13,7 +13,6 @@
 #include <glm/gtc/color_space.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <iterator>
 #include <tiny_gltf.h>
 
 enum Projection {
@@ -217,24 +216,20 @@ struct GltfMeshDesc {
   auto operator<=>(const GltfMeshDesc &) const = default;
 };
 
-// boost::hash_combine
-template <typename T>
-auto hash_combine(ren::u64 hash, const T &value) -> ren::u64 {
-  hash ^= std::hash<T>()(value) + 0x9e3779b9 + (hash << 6U) + (hash >> 2U);
-  return hash;
-}
+struct MeshCacheItem {
+  GltfMeshDesc desc;
+  ren::Handle<ren::Mesh> handle;
+};
 
-template <> struct std::hash<GltfMeshDesc> {
-  auto operator()(const GltfMeshDesc &desc) const -> size_t {
-    size_t seed = 0;
-    hash_combine(seed, desc.positions);
-    hash_combine(seed, desc.normals);
-    hash_combine(seed, desc.tangents);
-    hash_combine(seed, desc.colors);
-    hash_combine(seed, desc.uvs);
-    hash_combine(seed, desc.indices);
-    return seed;
-  }
+struct ImageCacheItem {
+  int id = -1;
+  ren::Handle<ren::Image> handle;
+};
+
+struct OrmImageCacheItem {
+  int rm_id = -1;
+  int o_id = -1;
+  ren::Handle<ren::Image> handle;
 };
 
 template <typename T>
@@ -248,9 +243,11 @@ auto deindex_attibute(ren::Span<const T> attribute,
 
 class SceneWalker {
 public:
-  SceneWalker(tinygltf::Model model, ren::NotNull<ren::Arena *> frame_arena,
+  SceneWalker(tinygltf::Model model, ren::NotNull<ren::Arena *> load_arena,
+              ren::NotNull<ren::Arena *> frame_arena,
               ren::NotNull<ren::Scene *> scene) {
     m_model = std::move(model);
+    m_load_arena = load_arena;
     m_frame_arena = frame_arena;
     m_scene = scene;
   }
@@ -288,9 +285,10 @@ public:
 private:
   template <typename T,
             std::invocable<T> F = decltype([](T data) { return data; })>
-  auto get_accessor_data(const tinygltf::Accessor &accessor,
-                         F transform = {}) const
-      -> std::vector<std::invoke_result_t<F, T>> {
+  ren::Span<std::invoke_result_t<F, T>>
+  get_accessor_data(ren::NotNull<ren::Arena *> arena,
+                    const tinygltf::Accessor &accessor,
+                    F transform = {}) const {
     const tinygltf::BufferView &view = m_model.bufferViews[accessor.bufferView];
     ren::Span<const unsigned char> src_data(
         m_model.buffers[view.buffer].data.data(),
@@ -301,7 +299,8 @@ private:
     if (stride == 0) {
       stride = sizeof(T);
     }
-    std::vector<std::invoke_result_t<F, T>> data(accessor.count);
+    auto data =
+        ren::Span<std::invoke_result_t<F, T>>::allocate(arena, accessor.count);
     for (size_t i = 0; i < accessor.count; ++i) {
       data[i] = transform(*(T *)&src_data[i * stride]);
     }
@@ -317,6 +316,7 @@ private:
   }
 
   ren::Handle<ren::Mesh> create_mesh(const GltfMeshDesc &desc) {
+    ren::ScratchArena scratch(m_load_arena);
     const tinygltf::Accessor *positions = get_accessor(desc.positions);
     if (!positions) {
       fmt::println(stderr, "Primitive doesn't have POSITION attribute");
@@ -338,8 +338,8 @@ private:
                    positions->componentType, positions->type);
       return ren::NullHandle;
     }
-    std::vector<glm::vec3> positions_data =
-        get_accessor_data<glm::vec3>(*positions);
+    ren::Span<glm::vec3> positions_data =
+        get_accessor_data<glm::vec3>(scratch, *positions);
 
     if (normals->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
         normals->type != TINYGLTF_TYPE_VEC3) {
@@ -347,10 +347,10 @@ private:
                    normals->componentType, normals->type);
       return ren::NullHandle;
     }
-    std::vector<glm::vec3> normals_data =
-        get_accessor_data<glm::vec3>(*normals);
+    ren::Span<glm::vec3> normals_data =
+        get_accessor_data<glm::vec3>(scratch, *normals);
 
-    std::vector<glm::vec4> tangents_data;
+    ren::Span<glm::vec4> tangents_data;
     if (tangents) {
       if (tangents->componentType != TINYGLTF_COMPONENT_TYPE_FLOAT or
           tangents->type != TINYGLTF_TYPE_VEC4) {
@@ -359,28 +359,29 @@ private:
                      tangents->componentType, tangents->type);
         return ren::NullHandle;
       }
-      tangents_data = get_accessor_data<glm::vec4>(*tangents);
+      tangents_data = get_accessor_data<glm::vec4>(scratch, *tangents);
     }
 
-    auto colors_data = [&]() -> std::vector<glm::vec4> {
+    auto colors_data = [&]() -> ren::Span<glm::vec4> {
       if (!colors) {
         return {};
       }
       if (colors->type == TINYGLTF_TYPE_VEC3) {
         if (colors->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
           return get_accessor_data<glm::vec3>(
-              *colors, [](glm::vec3 color) { return glm::vec4(color, 1.0f); });
+              scratch, *colors,
+              [](glm::vec3 color) { return glm::vec4(color, 1.0f); });
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
             return get_accessor_data<glm::u8vec3>(
-                *colors, [](glm::u8vec3 color) {
+                scratch, *colors, [](glm::u8vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
             return get_accessor_data<glm::u16vec3>(
-                *colors, [](glm::u16vec3 color) {
+                scratch, *colors, [](glm::u16vec3 color) {
                   return glm::vec4(glm::unpackUnorm<float>(color), 1.0f);
                 });
           }
@@ -388,18 +389,18 @@ private:
       }
       if (colors->type == TINYGLTF_TYPE_VEC4) {
         if (colors->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-          return get_accessor_data<glm::vec4>(*colors);
+          return get_accessor_data<glm::vec4>(scratch, *colors);
         }
         if (colors->normalized) {
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
             return get_accessor_data<glm::u8vec4>(
-                *colors, [](glm::u8vec4 color) {
+                scratch, *colors, [](glm::u8vec4 color) {
                   return glm::unpackUnorm<float>(color);
                 });
           }
           if (colors->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
             return get_accessor_data<glm::u16vec4>(
-                *colors, [](glm::u16vec4 color) {
+                scratch, *colors, [](glm::u16vec4 color) {
                   return glm::unpackUnorm<float>(color);
                 });
           }
@@ -412,23 +413,24 @@ private:
       return {};
     }();
 
-    auto tex_coords_data = [&]() -> std::vector<glm::vec2> {
+    auto tex_coords_data = [&]() -> ren::Span<glm::vec2> {
       if (!uvs) {
         return {};
       }
       if (uvs->type == TINYGLTF_TYPE_VEC2) {
         if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-          return get_accessor_data<glm::vec2>(*uvs);
+          return get_accessor_data<glm::vec2>(scratch, *uvs);
         }
         if (uvs->normalized) {
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-            return get_accessor_data<glm::u8vec2>(*uvs, [](glm::u8vec2 color) {
-              return glm::unpackUnorm<float>(color);
-            });
+            return get_accessor_data<glm::u8vec2>(
+                scratch, *uvs, [](glm::u8vec2 color) {
+                  return glm::unpackUnorm<float>(color);
+                });
           }
           if (uvs->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
             return get_accessor_data<glm::u16vec2>(
-                *uvs, [](glm::u16vec2 color) {
+                scratch, *uvs, [](glm::u16vec2 color) {
                   return glm::unpackUnorm<float>(color);
                 });
           }
@@ -441,18 +443,20 @@ private:
       return {};
     }();
 
-    auto indices_data = [&]() -> std::vector<uint32_t> {
+    auto indices_data = [&]() -> ren::Span<uint32_t> {
       if (not indices->normalized and indices->type == TINYGLTF_TYPE_SCALAR) {
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
           return get_accessor_data<uint8_t>(
-              *indices, [](uint8_t index) -> uint32_t { return index; });
+              scratch, *indices,
+              [](uint8_t index) -> uint32_t { return index; });
         }
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
           return get_accessor_data<uint16_t>(
-              *indices, [](uint16_t index) -> uint32_t { return index; });
+              scratch, *indices,
+              [](uint16_t index) -> uint32_t { return index; });
         }
         if (indices->componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-          return get_accessor_data<uint32_t>(*indices);
+          return get_accessor_data<uint32_t>(scratch, *indices);
         }
       }
       fmt::println(stderr,
@@ -462,29 +466,28 @@ private:
       return {};
     }();
 
-    ren::ScratchArena scratch;
     ren::Blob blob = ren::bake_mesh_to_memory(
         scratch, {
-                     .num_vertices = positions_data.size(),
-                     .positions = positions_data.data(),
-                     .normals = normals_data.data(),
-                     .tangents = tangents_data.data(),
-                     .uvs = tex_coords_data.data(),
-                     .colors = colors_data.data(),
-                     .indices = {indices_data.data(), indices_data.size()},
+                     .num_vertices = positions_data.m_size,
+                     .positions = positions_data.m_data,
+                     .normals = normals_data.m_data,
+                     .tangents = tangents_data.m_data,
+                     .uvs = tex_coords_data.m_data,
+                     .colors = colors_data.m_data,
+                     .indices = indices_data,
                  });
     return ren::create_mesh(m_frame_arena, m_scene, blob.data, blob.size);
   }
 
   ren::Handle<ren::Mesh>
   get_or_create_mesh(const tinygltf::Primitive &primitive) {
-    auto get_attribute_accessor_index =
-        [&](const std::string &attribute) -> int {
-      auto it = primitive.attributes.find(attribute);
-      if (it == primitive.attributes.end()) {
-        return -1;
+    auto get_attribute_accessor_index = [&](ren::String8 attribute) -> int {
+      for (const auto &[key, value] : primitive.attributes) {
+        if (ren::String8(key.data(), key.size()) == attribute) {
+          return value;
+        }
       }
-      return it->second;
+      return -1;
     };
     GltfMeshDesc desc = {
         .positions = get_attribute_accessor_index("POSITION"),
@@ -494,32 +497,38 @@ private:
         .uvs = get_attribute_accessor_index("TEXCOORD_0"),
         .indices = primitive.indices,
     };
-    ren::Handle<ren::Mesh> &mesh = m_mesh_cache[desc];
-    if (!mesh) {
-      std::string buffer;
-      auto warn_unused_attribute = [&](std::string_view attribute, int start) {
-        for (int index = start;; ++index) {
-          buffer.clear();
-          fmt::format_to(std::back_inserter(buffer), "{}_{}", attribute, index);
-          if (get_attribute_accessor_index(buffer) < 0) {
-            break;
-          }
-          warn("Ignoring primitive attribute {}", buffer);
-        }
-      };
-      warn_unused_attribute("TEXCOORD", 1);
-      warn_unused_attribute("COLOR", 1);
-      warn_unused_attribute("JOINTS", 0);
-      warn_unused_attribute("WEIGHTS", 0);
-      if (primitive.mode != TINYGLTF_MODE_TRIANGLES) {
-        fmt::println(stderr, "Unsupported primitive mode {}", primitive.mode);
-        return ren::NullHandle;
-      }
-      if (not primitive.targets.empty()) {
-        warn("Ignoring {} primitive morph targets", primitive.targets.size());
-      }
-      mesh = create_mesh(desc);
+    const MeshCacheItem *cached =
+        ren::find_if(ren::Span(m_mesh_cache), [&](const MeshCacheItem &item) {
+          return item.desc == desc;
+        });
+    if (cached) {
+      return cached->handle;
     }
+
+    auto warn_unused_attribute = [&](ren::String8 attribute, int start) {
+      for (int index = start;; ++index) {
+        ren::ScratchArena scratch(m_load_arena);
+        auto buffer = ren::StringBuilder::init(scratch);
+        format_to(&buffer, "{}_{}", attribute, index);
+        if (get_attribute_accessor_index(buffer.string()) < 0) {
+          break;
+        }
+        warn("Ignoring primitive attribute {}", buffer);
+      }
+    };
+    warn_unused_attribute("TEXCOORD", 1);
+    warn_unused_attribute("COLOR", 1);
+    warn_unused_attribute("JOINTS", 0);
+    warn_unused_attribute("WEIGHTS", 0);
+    if (primitive.mode != TINYGLTF_MODE_TRIANGLES) {
+      fmt::println(stderr, "Unsupported primitive mode {}", primitive.mode);
+      return ren::NullHandle;
+    }
+    if (not primitive.targets.empty()) {
+      warn("Ignoring {} primitive morph targets", primitive.targets.size());
+    }
+    ren::Handle<ren::Mesh> mesh = create_mesh(desc);
+    m_mesh_cache.push(m_load_arena, {desc, mesh});
     return mesh;
   }
 
@@ -566,14 +575,20 @@ private:
           return ren::NullHandle;
         }
         int src = m_model.textures[base_color_texture.index].source;
-        ren::Handle<ren::Image> &image = m_color_image_cache[src];
-        if (!image) {
+        const ImageCacheItem *cached = ren::find_if(
+            ren::Span(m_color_image_cache),
+            [&](const ImageCacheItem &item) { return item.id == src; });
+        if (cached) {
+          desc.base_color_texture.image = cached->handle;
+        } else {
+          ren::ScratchArena scratch(m_load_arena);
           ren::TextureInfo texture_info = get_image_info(src, true);
-          auto blob = ren::bake_normal_map_to_memory(texture_info);
-          image = create_image(m_frame_arena, m_scene, blob.data, blob.size);
-          std::free(blob.data);
+          auto blob = ren::bake_normal_map_to_memory(scratch, texture_info);
+          ren::Handle<ren::Image> image =
+              create_image(m_frame_arena, m_scene, blob.data, blob.size);
+          m_color_image_cache.push(m_load_arena, {src, image});
+          desc.base_color_texture.image = image;
         }
-        desc.base_color_texture.image = image;
         desc.base_color_texture.sampler =
             get_texture_sampler(base_color_texture.index);
       }
@@ -607,28 +622,32 @@ private:
           }
           occlusion_src = m_model.textures[occlusion_texture.index].source;
         }
-        auto it = find_if(
-            ren::Span(m_orm_image_cache.data(), m_orm_image_cache.size()),
-            [&](std::tuple<int, int, ren::Handle<ren::Image>> t) {
-              auto [rm, o, i] = t;
-              return rm == roughness_metallic_src and o == occlusion_src;
+        const OrmImageCacheItem *cached = ren::find_if(
+            ren::Span(m_orm_image_cache), [&](const OrmImageCacheItem &item) {
+              return item.rm_id == roughness_metallic_src and
+                     item.o_id == occlusion_src;
             });
-        if (it) {
-          desc.orm_texture.image = std::get<2>(*it);
+        if (cached) {
+          desc.orm_texture.image = cached->handle;
         } else {
+          ren::ScratchArena scratch(m_load_arena);
           ren::TextureInfo roughness_metallic_info =
               get_image_info(roughness_metallic_src);
           ren::TextureInfo occlusion_info;
           if (occlusion_src >= 0) {
             occlusion_info = get_image_info(occlusion_src);
           }
-          auto blob = ren::bake_orm_map_to_memory(roughness_metallic_info,
-                                                  occlusion_info);
-          desc.orm_texture.image =
+          auto blob = ren::bake_orm_map_to_memory(
+              scratch, roughness_metallic_info, occlusion_info);
+          ren::Handle<ren::Image> image =
               create_image(m_frame_arena, m_scene, blob.data, blob.size);
-          std::free(blob.data);
-          m_orm_image_cache.emplace_back(roughness_metallic_src, occlusion_src,
-                                         desc.orm_texture.image);
+          m_orm_image_cache.push(m_load_arena,
+                                 {
+                                     .rm_id = roughness_metallic_src,
+                                     .o_id = occlusion_src,
+                                     .handle = image,
+                                 });
+          desc.orm_texture.image = image;
         }
         desc.orm_texture.sampler =
             get_texture_sampler(metallic_roughness_texture.index);
@@ -648,21 +667,29 @@ private:
           return ren::NullHandle;
         }
         int src = m_model.textures[normal_texture.index].source;
-        ren::Handle<ren::Image> &image = m_normal_image_cache[src];
-        if (!image) {
+        const ImageCacheItem *cached = ren::find_if(
+            ren::Span(m_normal_image_cache),
+            [&](const ImageCacheItem &item) { return item.id == src; });
+        if (cached) {
+          desc.normal_texture.image = cached->handle;
+        } else {
+          ren::ScratchArena scratch(m_load_arena);
           ren::TextureInfo texture_info = get_image_info(src);
-          auto blob = ren::bake_normal_map_to_memory(texture_info);
-          image = create_image(m_frame_arena, m_scene, blob.data, blob.size);
-          std::free(blob.data);
+          auto blob = ren::bake_normal_map_to_memory(scratch, texture_info);
+          ren::Handle<ren::Image> image =
+              create_image(m_frame_arena, m_scene, blob.data, blob.size);
+          m_normal_image_cache.push(m_load_arena, {src, image});
+          desc.normal_texture.image = image;
         }
-        desc.normal_texture.image = image;
+
         desc.normal_texture.sampler = get_texture_sampler(normal_texture.index);
         desc.normal_texture.scale = normal_texture.scale;
       }
     }
 
+    glm::vec3 emissive = glm::make_vec3(material.emissiveFactor.data());
     if (material.emissiveTexture.index >= 0 or
-        material.emissiveFactor != std::vector{0.0, 0.0, 0.0}) {
+        emissive != glm::vec3{0.0f, 0.0f, 0.0f}) {
       fmt::println(stderr, "Emissive materials not implemented");
       return ren::NullHandle;
     }
@@ -682,8 +709,8 @@ private:
 
   ren::Handle<ren::Material> get_or_create_material(int index) {
     assert(index >= 0);
-    if (index >= m_material_cache.size()) {
-      m_material_cache.resize(index + 1);
+    while (index >= m_material_cache.m_size) {
+      m_material_cache.push(m_load_arena);
     }
     ren::Handle<ren::Material> &material = m_material_cache[index];
     if (!material) {
@@ -787,13 +814,14 @@ private:
 
 private:
   tinygltf::Model m_model;
+  ren::Arena *m_load_arena = nullptr;
   ren::Arena *m_frame_arena = nullptr;
   ren::Scene *m_scene = nullptr;
-  std::unordered_map<GltfMeshDesc, ren::Handle<ren::Mesh>> m_mesh_cache;
-  std::unordered_map<int, ren::Handle<ren::Image>> m_color_image_cache;
-  std::vector<std::tuple<int, int, ren::Handle<ren::Image>>> m_orm_image_cache;
-  std::unordered_map<int, ren::Handle<ren::Image>> m_normal_image_cache;
-  std::vector<ren::Handle<ren::Material>> m_material_cache;
+  ren::DynamicArray<MeshCacheItem> m_mesh_cache;
+  ren::DynamicArray<ImageCacheItem> m_color_image_cache;
+  ren::DynamicArray<OrmImageCacheItem> m_orm_image_cache;
+  ren::DynamicArray<ImageCacheItem> m_normal_image_cache;
+  ren::DynamicArray<ren::Handle<ren::Material>> m_material_cache;
 };
 
 struct ViewGltfOptions {
@@ -807,14 +835,13 @@ public:
   void init(const ViewGltfOptions &options) {
     ren::ScratchArena scratch;
     ImGuiApp::init(format(scratch, "View glTF: {}", options.path));
-    tinygltf::Model model = load_gltf(options.path);
-    SceneWalker scene_walker(std::move(model), &m_frame_arena, get_scene());
+    SceneWalker scene_walker(load_gltf(options.path), scratch, &m_frame_arena,
+                             get_scene());
     scene_walker.walk(options.scene);
     ren::Scene *scene = get_scene();
 
     ren::Handle<ren::Image> env_map;
     if (options.env_map) {
-      ren::ScratchArena scratch;
       auto blob = ren::read<std::byte>(scratch, options.env_map);
       if (!blob) {
         fmt::println(stderr, "Failed to read {}: {}", options.env_map,

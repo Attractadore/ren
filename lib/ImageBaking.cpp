@@ -162,27 +162,35 @@ ktxTexture2 *create_ktx_texture(const TextureInfo &info) {
   return ktx_texture2;
 }
 
-Blob write_ktx_to_memory(const DirectX::ScratchImage &mip_chain) {
+Blob write_ktx_to_memory(NotNull<Arena *> arena,
+                         const DirectX::ScratchImage &mip_chain) {
   ktxTexture2 *ktx_texture2 = create_ktx_texture(mip_chain);
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
+  u8 *data;
   Blob blob;
   ktx_error_code_e err =
-      ktxTexture_WriteToMemory(ktx_texture, (u8 **)&blob.data, &blob.size);
+      ktxTexture_WriteToMemory(ktx_texture, &data, &blob.size);
   KTX_CHECK(err, "ktxTexture_WriteToMemory failed");
   ktxTexture_Destroy(ktx_texture);
+  blob.data = arena->allocate(blob.size, 8);
+  std::memcpy(blob.data, data, blob.size);
+  std::free(data);
   return blob;
 }
 
-Blob write_ktx_to_memory(const TextureInfo &info) {
+Blob write_ktx_to_memory(NotNull<Arena *> arena, const TextureInfo &info) {
   ktxTexture2 *ktx_texture2 = create_ktx_texture(info);
   ktxTexture *ktx_texture = ktxTexture(ktx_texture2);
-  u8 *blob_data;
-  size_t blob_size;
+  u8 *data;
+  Blob blob;
   ktx_error_code_e err =
-      ktxTexture_WriteToMemory(ktx_texture, &blob_data, &blob_size);
+      ktxTexture_WriteToMemory(ktx_texture, &data, &blob.size);
   KTX_CHECK(err, "ktxTexture_WriteToMemory failed");
   ktxTexture_Destroy(ktx_texture);
-  return {blob_data, blob_size};
+  blob.data = arena->allocate(blob.size, 8);
+  std::memcpy(blob.data, data, blob.size);
+  std::free(data);
+  return blob;
 }
 
 DirectX::ScratchImage bake_color_map(const TextureInfo &info) {
@@ -194,8 +202,8 @@ DirectX::ScratchImage bake_color_map(const TextureInfo &info) {
   return mip_chain;
 }
 
-Blob bake_color_map_to_memory(const TextureInfo &info) {
-  return write_ktx_to_memory(bake_color_map(info));
+Blob bake_color_map_to_memory(NotNull<Arena *> arena, const TextureInfo &info) {
+  return write_ktx_to_memory(arena, bake_color_map(info));
 }
 
 DirectX::ScratchImage bake_normal_map(const TextureInfo &info) {
@@ -207,8 +215,9 @@ DirectX::ScratchImage bake_normal_map(const TextureInfo &info) {
   return mip_chain;
 }
 
-Blob bake_normal_map_to_memory(const TextureInfo &info) {
-  return write_ktx_to_memory(bake_normal_map(info));
+Blob bake_normal_map_to_memory(NotNull<Arena *> arena,
+                               const TextureInfo &info) {
+  return write_ktx_to_memory(arena, bake_normal_map(info));
 }
 
 DirectX::ScratchImage bake_orm_map(const TextureInfo &roughness_metallic_info,
@@ -243,10 +252,11 @@ DirectX::ScratchImage bake_orm_map(const TextureInfo &roughness_metallic_info,
   return mip_chain;
 }
 
-Blob bake_orm_map_to_memory(const TextureInfo &roughness_metallic_info,
+Blob bake_orm_map_to_memory(NotNull<Arena *> arena,
+                            const TextureInfo &roughness_metallic_info,
                             const TextureInfo &occlusion_info) {
   return write_ktx_to_memory(
-      bake_orm_map(roughness_metallic_info, occlusion_info));
+      arena, bake_orm_map(roughness_metallic_info, occlusion_info));
 }
 
 } // namespace ren

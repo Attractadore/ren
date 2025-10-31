@@ -46,6 +46,7 @@ DirectX::TexMetadata to_dxtex_images(NotNull<Arena *> arena,
 
 ktxTexture2 *create_ktx_texture(const DirectX::ScratchImage &mip_chain);
 
-Blob write_ktx_to_memory(const DirectX::ScratchImage &mip_chain);
+Blob write_ktx_to_memory(NotNull<Arena *> arena,
+                         const DirectX::ScratchImage &mip_chain);
 
 } // namespace ren
