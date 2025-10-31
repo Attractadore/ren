@@ -2,21 +2,19 @@
 #include "ren/baking/image.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Algorithm.hpp"
+#include "ren/core/Chrono.hpp"
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
 
 #include <cstdint>
-#include <fmt/chrono.h>
-#include <fmt/std.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/color_space.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <iterator>
 #include <tiny_gltf.h>
-
-namespace chrono = std::chrono;
 
 enum Projection {
   PROJECTION_PERSPECTIVE,
@@ -50,10 +48,6 @@ void draw_camera_imgui(CameraParams &params) {
 #define warn(msg, ...) fmt::println("Warn: " msg __VA_OPT__(, ) __VA_ARGS__)
 #define log(msg, ...) fmt::println("Info: " msg __VA_OPT__(, ) __VA_ARGS__)
 
-auto duration_as_float(chrono::nanoseconds time) -> float {
-  return chrono::duration_cast<chrono::duration<float>>(time).count();
-}
-
 tinygltf::Model load_gltf(ren::Path path) {
   tinygltf::TinyGLTF loader;
   tinygltf::Model model;
@@ -66,7 +60,7 @@ tinygltf::Model load_gltf(ren::Path path) {
   }
 
   log("Load scene...");
-  auto start = chrono::steady_clock::now();
+  auto start = ren::clock();
 
   bool ret = true;
   if (path.extension() == ".gltf") {
@@ -81,9 +75,9 @@ tinygltf::Model load_gltf(ren::Path path) {
     exit(EXIT_FAILURE);
   }
 
-  auto end = chrono::steady_clock::now();
+  auto end = ren::clock();
 
-  log("Loaded scene in {:.3f}s", duration_as_float(end - start));
+  log("Loaded scene in {:.3f}s", (end - start) / 1e9);
 
   if (!ret) {
     while (not err.empty() and err.back() == '\n') {
@@ -811,7 +805,8 @@ struct ViewGltfOptions {
 class ViewGlTFApp : public ImGuiApp {
 public:
   void init(const ViewGltfOptions &options) {
-    ImGuiApp::init(fmt::format("View glTF: {}", options.path).c_str());
+    ren::ScratchArena scratch;
+    ImGuiApp::init(format(scratch, "View glTF: {}", options.path));
     tinygltf::Model model = load_gltf(options.path);
     SceneWalker scene_walker(std::move(model), &m_frame_arena, get_scene());
     scene_walker.walk(options.scene);
@@ -888,14 +883,14 @@ protected:
     return input;
   }
 
-  void process_frame(chrono::nanoseconds dt_ns) override {
+  void process_frame(ren::u64 dt_ns) override {
     if (ImGui::GetCurrentContext()) {
       draw_camera_imgui(m_camera_params);
     }
 
     ren::Scene *scene = get_scene();
 
-    float dt = duration_as_float(dt_ns);
+    float dt = dt_ns / 1e9f;
 
     InputState input = get_input_state();
 

@@ -1,11 +1,11 @@
 #pragma once
+#include "ren/core/String.hpp"
 #include "ren/ren.hpp"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_init.h>
-#include <chrono>
-#include <fmt/format.h>
+#include <fmt/base.h>
 
 class AppBase {
   SDL_Window *m_window = nullptr;
@@ -14,13 +14,13 @@ class AppBase {
   ren::Scene *m_scene = nullptr;
   ren::Handle<ren::Camera> m_camera;
 
-  std::string m_app_name;
+  ren::String8 m_app_name;
 
 protected:
   ren::Arena m_arena;
   ren::Arena m_frame_arena;
 
-  void init(const char *app_name);
+  void init(ren::String8 app_name);
   void quit();
 
   auto get_window() const -> SDL_Window * { return m_window; }
@@ -33,7 +33,7 @@ protected:
 
   virtual void begin_frame();
 
-  virtual void process_frame(std::chrono::nanoseconds dt);
+  virtual void process_frame(ren::u64 dt_ns);
 
   virtual void end_frame();
 

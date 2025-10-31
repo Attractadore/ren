@@ -5,7 +5,7 @@
 #include <SDL3/SDL_video.h>
 #include <imgui.hpp>
 
-void ImGuiApp::init(const char *name) {
+void ImGuiApp::init(ren::String8 name) {
   AppBase::init(name);
 
   if (!IMGUI_CHECKVERSION()) {

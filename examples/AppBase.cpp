@@ -1,16 +1,15 @@
 #include "AppBase.hpp"
+#include "ren/core/Chrono.hpp"
 #include "ren/core/Format.hpp"
 
-namespace chrono = std::chrono;
-
-void AppBase::init(const char *app_name) {
-  m_app_name = app_name;
-
+void AppBase::init(ren::String8 app_name) {
   if (!ren::ScratchArena::get_allocator()) {
     ren::ScratchArena::init_allocator();
   }
   m_arena = ren::Arena::init();
   m_frame_arena = ren::Arena::init();
+
+  m_app_name = app_name.copy(&m_arena);
 
   unsigned adapter = ren::DEFAULT_ADAPTER;
   const char *user_adapter = std::getenv("REN_ADAPTER");
@@ -27,8 +26,9 @@ void AppBase::init(const char *app_name) {
     exit(EXIT_FAILURE);
   }
 
+  ren::ScratchArena scratch;
   m_window =
-      SDL_CreateWindow(app_name, 1280, 720,
+      SDL_CreateWindow(app_name.zero_terminated(scratch), 1280, 720,
                        SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE |
                            ren::get_sdl_window_flags(m_renderer));
   if (!m_window) {
@@ -56,15 +56,15 @@ void AppBase::quit() {
 }
 
 void AppBase::loop() {
-  auto last_time = chrono::steady_clock::now();
+  ren::u64 last_time = ren::clock();
   bool quit = false;
 
   while (!quit) {
-    auto now = chrono::steady_clock::now();
-    chrono::nanoseconds dt = now - last_time;
+    ren::u64 now = ren::clock();
+    ren::u64 dt = now - last_time;
     last_time = now;
 
-    float fps = 1e9f / dt.count();
+    float fps = 1e9f / dt;
     auto title = fmt::format("{} @ {:.1f} FPS", m_app_name, fps);
     SDL_SetWindowTitle(m_window, title.c_str());
 
@@ -82,7 +82,7 @@ void AppBase::loop() {
     begin_frame();
     process_frame(dt);
     end_frame();
-    ren::draw(m_scene, {.delta_time = dt.count() / 1e9f});
+    ren::draw(m_scene, {.delta_time = dt / 1e9f});
     m_frame_arena.clear();
   }
 }
@@ -97,6 +97,6 @@ void AppBase::process_event(const SDL_Event &event) {
 
 void AppBase::begin_frame() {}
 
-void AppBase::process_frame(chrono::nanoseconds) {}
+void AppBase::process_frame(ren::u64 dt_ns) {}
 
 void AppBase::end_frame() {}

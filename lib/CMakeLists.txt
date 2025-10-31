@@ -5,9 +5,11 @@ add_library(ren-core
   core/Assert.cpp
   core/CmdLine.cpp
   core/FileSystem.cpp
+  core/LinuxChrono.cpp
   core/LinuxFileSystem.cpp
   core/LinuxVm.cpp
   core/Profiler.cpp
+  core/Win32Chrono.cpp
   core/Win32FileSystem.cpp
   core/Win32Vm.cpp
 )

@@ -67,7 +67,7 @@ public:
                               });
   }
 
-  void process_frame(std::chrono::nanoseconds) override {
+  void process_frame(ren::u64 dt_ns) override {
     ren::Scene *scene = get_scene();
     ren::destroy_mesh_instance(&m_frame_arena, scene, m_triangle);
     m_triangle =

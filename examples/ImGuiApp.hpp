@@ -5,7 +5,7 @@
 
 class ImGuiApp : public AppBase {
 public:
-  void init(const char *name);
+  void init(ren::String8 name);
   void quit();
 
 protected:

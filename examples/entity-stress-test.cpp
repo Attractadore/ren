@@ -167,9 +167,9 @@ class EntityStressTestApp : public ImGuiApp {
 
 public:
   void init(ren::String8 mesh_path, unsigned num_entities, ren::u64 seed) {
-    ImGuiApp::init(
-        fmt::format("Entity Stress Test: {} @ {}", mesh_path, num_entities)
-            .c_str());
+    ren::ScratchArena scratch;
+    ImGuiApp::init(format(scratch, "Entity Stress Test: {} @ {}", mesh_path,
+                          num_entities));
     m_num_entities = num_entities;
     ren::Scene *scene = get_scene();
     ren::Handle<ren::Camera> camera = get_camera();
@@ -183,7 +183,7 @@ public:
     set_camera(scene, camera, num_entities);
   }
 
-  void process_frame(std::chrono::nanoseconds) override {
+  void process_frame(ren::u64 dt_ns) override {
     ren::set_mesh_instance_transforms(&m_frame_arena, get_scene(),
                                       {m_entities, m_num_entities},
                                       {m_transforms, m_num_entities});
