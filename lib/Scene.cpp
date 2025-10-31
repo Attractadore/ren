@@ -225,7 +225,8 @@ bool is_amd_anti_lag_enabled(NotNull<Scene *> scene) {
 
 Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
                     SwapChain *swap_chain) {
-  auto *scene = new Scene{
+  Scene *scene = arena->allocate<Scene>();
+  *scene = {
       .m_arena = arena,
       .m_internal_arena = make_arena(),
       .m_rg_arena = make_arena(),
@@ -271,7 +272,6 @@ void destroy_scene(Scene *scene) {
   destroy_internal_data(scene);
   scene->m_internal_arena.destroy();
   scene->m_rg_arena.destroy();
-  delete scene;
 }
 
 Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,

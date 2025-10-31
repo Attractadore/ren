@@ -23,7 +23,8 @@ auto init_baker_samplers(ResourceArena &arena) -> Result<BakerSamplers, Error> {
 #endif
 
 Baker *create_baker(NotNull<Arena *> arena, Renderer *renderer) {
-  auto baker = new Baker{.renderer = renderer};
+  auto *baker = arena->allocate<Baker>();
+  baker->renderer = renderer;
   baker->arena = arena;
   baker->frame_arena = Arena::init();
   baker->rcs_arena = ResourceArena::init(arena, renderer);
@@ -49,7 +50,6 @@ void destroy_baker(Baker *baker) {
   baker->frame_rcs_arena.clear();
   baker->rg.destroy();
   baker->frame_arena.destroy();
-  delete baker;
 }
 
 void reset_baker(Baker *baker) {
