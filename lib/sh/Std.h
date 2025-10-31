@@ -1,19 +1,13 @@
 #pragma once
 
+#include "ren/core/sh/GLSL.h"
+
 #if __cplusplus
 
 #include "../DevicePtr.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/StdDef.hpp"
-
-#include <concepts>
-#include <cstdint>
-#include <glm/glm.hpp>
-
-#define SH_IN(T) const T &
-#define SH_OUT(T) T &
-#define SH_INOUT(T) T &
 
 #define SH_ARRAY(T, name, SIZE) StackArray<T, SIZE> name
 
@@ -30,22 +24,9 @@ template <typename T> struct RgIgnore {
 
 #define SH_RG_IGNORE(T) RgIgnore<T>
 
-namespace ren::sh {
-using namespace glm;
-}
-
 #endif
 
 #if __SLANG__
-
-import glsl;
-
-#define inline
-#define static_assert(expr)
-
-#define SH_IN(T) T
-#define SH_OUT(T) out T
-#define SH_INOUT(T) inout T
 
 #define SH_ARRAY(T, name, SIZE) T name[SIZE]
 

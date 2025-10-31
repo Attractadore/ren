@@ -12,6 +12,7 @@ set(SLANG_FLAGS
   -Wno-15205
   -Wno-39001
   -Wno-41012
+  -I ${PROJECT_SOURCE_DIR}/include
 )
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   list(APPEND SLANG_FLAGS -msvc-style-bitfield-packing)

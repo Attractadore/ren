@@ -1,7 +1,6 @@
 #include "PostProcessing.hpp"
 #include "../RenderGraph.hpp"
 #include "../Scene.hpp"
-#include "../sh/Random.h"
 #include "LocalToneMappingAccumulate.comp.hpp"
 #include "LocalToneMappingLLM.comp.hpp"
 #include "LocalToneMappingLightness.comp.hpp"
@@ -9,6 +8,7 @@
 #include "PostProcessing.comp.hpp"
 #include "ReduceLuminanceHistogram.comp.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/sh/Random.h"
 
 void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
                                        const PostProcessingPassesConfig &cfg) {

@@ -2,16 +2,15 @@
 #include "ren/baking/mesh.hpp"
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/sh/Random.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <cmath>
 #include <cstdlib>
-#include <fmt/format.h>
+#include <fmt/base.h>
 #include <glm/gtc/matrix_transform.hpp>
-#include <numbers>
-#include <random>
 
 namespace {
 
@@ -43,14 +42,13 @@ ren::Handle<ren::Mesh> load_mesh(ren::NotNull<ren::Arena *> frame_arena,
   assert(ai_mesh->HasNormals());
   static_assert(sizeof(glm::vec3) == sizeof(*ai_mesh->mNormals));
   static_assert(sizeof(glm::vec4) == sizeof(*ai_mesh->mColors[0]));
-  std::vector<unsigned> indices(ai_mesh->mNumFaces * 3);
+  auto indices = ren::Span<ren::u32>::allocate(scratch, ai_mesh->mNumFaces * 3);
   for (size_t f = 0; f < ai_mesh->mNumFaces; ++f) {
     assert(ai_mesh->mFaces[f].mNumIndices == 3);
     for (size_t i = 0; i < 3; ++i) {
       indices[f * 3 + i] = ai_mesh->mFaces[f].mIndices[i];
     }
   }
-
   ren::Blob blob = ren::bake_mesh_to_memory(
       scratch,
       {
@@ -61,44 +59,33 @@ ren::Handle<ren::Mesh> load_mesh(ren::NotNull<ren::Arena *> frame_arena,
               ai_mesh->HasVertexColors(0)
                   ? reinterpret_cast<const glm::vec4 *>(ai_mesh->mColors[0])
                   : nullptr,
-          .indices = {indices.data(), indices.size()},
+          .indices = indices,
       });
   return ren::create_mesh(frame_arena, scene, blob.data, blob.size);
 }
 
-auto get_scene_bounds(unsigned num_entities) -> std::tuple<float, float> {
+glm::vec2 get_scene_bounds(unsigned num_entities) {
   float s = std::cbrt(num_entities);
   return {-s, s};
 }
 
-auto init_random(unsigned seed) -> std::mt19937 {
-  return std::mt19937(seed ? seed : std::random_device()());
+glm::vec3 uniform_sample_sphere(glm::vec2 Xi) {
+  float phi = Xi.x * 6.2832f;
+  float z = 2.0f * Xi.y - 1.0f;
+  float r = glm::sqrt(1.0f - z * z);
+  return glm::vec3(r * cos(phi), r * sin(phi), z);
 }
 
-auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
+auto random_transform(float i, float min_trans, float max_trans,
                       float min_scale, float max_scale) -> glm::mat4x3 {
-  std::uniform_real_distribution<float> trans_dist(min_trans, max_trans);
-  std::uniform_int_distribution<int> axis_dist(INT_MIN, INT_MAX);
-  std::uniform_real_distribution<float> angle_dist(0.0f,
-                                                   2.0f * std::numbers::pi);
-  std::uniform_real_distribution<float> scale_dist(min_scale, max_scale);
+  glm::vec3 translate =
+      glm::mix(glm::vec3(min_trans), glm::vec3(max_trans), ren::sh::r3_seq(i));
 
-  glm::vec3 translate;
-  for (int i = 0; i < 3; ++i) {
-    translate[i] = trans_dist(rg);
-  }
+  glm::vec3 axis = uniform_sample_sphere(ren::sh::r2_seq(i));
+  float angle = 2.0f * glm::pi<float>() * ren::sh::r1_seq(i);
 
-  glm::vec3 axis;
-  for (int i = 0; i < 3; ++i) {
-    axis[i] = axis_dist(rg);
-  }
-  axis = normalize(axis);
-  float angle = angle_dist(rg);
-
-  glm::vec3 scale;
-  for (int i = 0; i < 3; ++i) {
-    scale[i] = scale_dist(rg);
-  }
+  glm::vec3 scale =
+      glm::mix(glm::vec3(min_scale), glm::vec3(max_scale), ren::sh::r3_seq(i));
 
   glm::mat4 transform(1.0f);
   transform = glm::translate(transform, translate);
@@ -110,11 +97,12 @@ auto random_transform(std::mt19937 &rg, float min_trans, float max_trans,
 
 void place_entities(
     ren::NotNull<ren::Arena *> arena, ren::NotNull<ren::Arena *> frame_arena,
-    std::mt19937 &rg, ren::Scene *scene, ren::Handle<ren::Mesh> mesh,
+    ren::Scene *scene, ren::Handle<ren::Mesh> mesh,
     ren::Handle<ren::Material> material, unsigned num_entities,
     ren::NotNull<ren::Handle<ren::MeshInstance> **> out_entities,
     ren::NotNull<glm::mat4x3 **> out_transforms) {
-  auto [min_trans, max_trans] = get_scene_bounds(num_entities);
+
+  glm::vec2 bounds = get_scene_bounds(num_entities);
   float min_scale = 0.5f;
   float max_scale = 1.0f;
 
@@ -131,7 +119,7 @@ void place_entities(
         .material = material,
     };
     transforms[i] =
-        random_transform(rg, min_trans, max_trans, min_scale, max_scale);
+        random_transform(i, bounds[0], bounds[1], min_scale, max_scale);
   }
   ren::create_mesh_instances(frame_arena, scene, {create_info, num_entities},
                              {entities, num_entities});
@@ -147,12 +135,12 @@ void place_light(ren::Scene *scene) {
 
 void set_camera(ren::Scene *scene, ren::Handle<ren::Camera> camera,
                 unsigned num_entities) {
-  auto [scene_min, _] = get_scene_bounds(num_entities);
+  glm::vec2 bounds = get_scene_bounds(num_entities);
 
   set_camera_perspective_projection(scene, camera, {});
   set_camera_transform(scene, camera,
                        {
-                           .position = {scene_min, 0.0f, 0.0f},
+                           .position = {bounds[0], 0.0f, 0.0f},
                            .forward = {1.0f, 0.0f, 0.0f},
                            .up = {0.0f, 0.0f, 1.0f},
                        });
@@ -166,7 +154,7 @@ class EntityStressTestApp : public ImGuiApp {
   glm::mat4x3 *m_transforms = nullptr;
 
 public:
-  void init(ren::String8 mesh_path, unsigned num_entities, ren::u64 seed) {
+  void init(ren::String8 mesh_path, unsigned num_entities) {
     ren::ScratchArena scratch;
     ImGuiApp::init(format(scratch, "Entity Stress Test: {} @ {}", mesh_path,
                           num_entities));
@@ -176,8 +164,7 @@ public:
     ren::Handle<ren::Mesh> mesh = load_mesh(&m_frame_arena, scene, mesh_path);
     ren::Handle<ren::Material> material =
         ren::create_material(&m_frame_arena, scene, {.metallic_factor = 0.0f});
-    auto rg = init_random(seed);
-    place_entities(&m_arena, &m_frame_arena, rg, scene, mesh, material,
+    place_entities(&m_arena, &m_frame_arena, scene, mesh, material,
                    m_num_entities, &m_entities, &m_transforms);
     place_light(scene);
     set_camera(scene, camera, num_entities);
@@ -189,16 +176,14 @@ public:
                                       {m_transforms, m_num_entities});
   }
 
-  static void run(ren::String8 mesh_path, unsigned num_entities,
-                  unsigned seed) {
-    AppBase::run<EntityStressTestApp>(mesh_path, num_entities, seed);
+  static void run(ren::String8 mesh_path, unsigned num_entities) {
+    AppBase::run<EntityStressTestApp>(mesh_path, num_entities);
   }
 };
 
 enum EntityStressTestOptions {
   OPTION_FILE,
   OPTION_NUM_ENTITIES,
-  OPTION_SEED,
   OPTION_HELP,
   OPTION_COUNT,
 };
@@ -210,7 +195,6 @@ int main(int argc, const char *argv[]) {
   ren::CmdLineOption options[] = {
     {OPTION_FILE, ren::CmdLineString, "file", 'f', "Path to mesh", ren::CmdLinePositional},
     {OPTION_NUM_ENTITIES, ren::CmdLineUInt, "num-entities", 'n', "Number of entities to draw"},
-    {OPTION_SEED, ren::CmdLineUInt, "seed", 's', "Random seed"},
     {OPTION_HELP, ren::CmdLineFlag, "help", 'h', "Show this message"},
   };
   // clang-format on
@@ -227,10 +211,6 @@ int main(int argc, const char *argv[]) {
   if (parsed[OPTION_NUM_ENTITIES].is_set) {
     num_entities = parsed[OPTION_NUM_ENTITIES].as_uint;
   }
-  ren::u64 seed = 0;
-  if (parsed[OPTION_SEED].is_set) {
-    seed = parsed[OPTION_SEED].as_uint;
-  }
 
-  EntityStressTestApp::run(mesh_path, num_entities, seed);
+  EntityStressTestApp::run(mesh_path, num_entities);
 }

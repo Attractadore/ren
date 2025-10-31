@@ -1,6 +1,6 @@
 #include "Ssao.h"
-#include "Random.h"
 #include "Transforms.h"
+#include "ren/core/sh/Random.h"
 
 namespace ren::sh {
 

@@ -1,6 +1,6 @@
 #include "BakeIrradianceMap.h"
-#include "Random.h"
 #include "Lighting.h"
+#include "ren/core/sh/Random.h"
 
 namespace ren::sh {
 

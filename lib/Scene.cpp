@@ -12,12 +12,12 @@
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Span.hpp"
+#include "ren/core/sh/Random.h"
 #include "ren/ren.hpp"
 
 #include "Ssao.comp.hpp"
 #include "SsaoFilter.comp.hpp"
 #include "SsaoHiZ.comp.hpp"
-#include "sh/Random.h"
 
 #include <algorithm>
 #include <ktx.h>
