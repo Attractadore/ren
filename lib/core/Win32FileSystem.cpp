@@ -46,6 +46,7 @@ IoError win32_to_io_error(DWORD err = GetLastError()) {
   case ERROR_ACCESS_DENIED:
     return IoError::Access;
   case ERROR_FILE_NOT_FOUND:
+  case ERROR_PATH_NOT_FOUND:
     return IoError::NotFound;
   }
 }
@@ -191,7 +192,8 @@ IoResult<Path> current_directory(NotNull<Arena *> arena) {
 
 IoResult<void> create_directory(Path path) {
   ScratchArena scratch;
-  if (!CreateDirectoryW(utf8_to_wcs(scratch, path.m_str), nullptr)) {
+  const wchar_t *wcs_path = utf8_to_wcs(scratch, path.m_str);
+  if (!CreateDirectoryW(wcs_path, nullptr)) {
     return win32_to_io_error();
   }
   return {};
@@ -299,6 +301,12 @@ IoResult<usize> file_size(File file) {
     return win32_to_io_error();
   }
   return size.QuadPart;
+}
+
+Path app_data_directory(NotNull<Arena *> arena) {
+  const char *app_data = std::getenv("APPDATA");
+  ren_assert(app_data);
+  return Path::init(arena, String8::init(app_data));
 }
 
 } // namespace ren

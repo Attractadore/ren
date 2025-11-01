@@ -18,6 +18,10 @@ IoError io_error_from_errno() {
     return IoError::Unknown;
   case EACCES:
     return IoError::Access;
+  case EEXIST:
+    return IoError::Exists;
+  case ENOENT:
+    return IoError::NotFound;
   }
 }
 
@@ -163,6 +167,17 @@ IoResult<usize> file_size(File file) {
     return io_error_from_errno();
   }
   return statbuf.st_size;
+}
+
+Path app_data_directory(NotNull<Arena *> arena) {
+  const char *xdg_data_home = std::getenv("XDG_DATA_HOME");
+  if (xdg_data_home) {
+    return Path::init(arena, String8::init(xdg_data_home));
+  }
+  const char *home = std::getenv("HOME");
+  ren_assert(home);
+  return Path::init(String8::init(home))
+      .concat(arena, Path::init(String8::init(".local/share")));
 }
 
 } // namespace ren

@@ -1,8 +1,12 @@
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Chrono.hpp"
+#include "ren/core/FileSystem.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/ren.hpp"
 
+#include <SDL3/SDL_dialog.h>
+#include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_init.h>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +14,10 @@
 #include <imgui.hpp>
 
 namespace ren {
+
+struct EditorUi {
+  SDL_PropertiesID m_create_project_dialog_properties = 0;
+};
 
 struct EditorContext {
   Arena m_arena;
@@ -21,6 +29,7 @@ struct EditorContext {
   ren::Handle<Camera> m_camera;
   ImFont *m_font = nullptr;
   bool m_quit = false;
+  EditorUi m_ui;
 };
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
@@ -114,6 +123,20 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
 };
 
+void SDLCALL new_project_callback(void *userdata, const char *const *filelist,
+                                  int filter) {
+  auto *ctx = (EditorContext *)userdata;
+  if (!filelist) {
+    fmt::println(stderr, "Failed to create new project: {}", SDL_GetError());
+    return;
+  }
+  const char *file = *filelist;
+  if (!file) {
+    return;
+  }
+  fmt::println("Create new project at {}", file);
+}
+
 void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
@@ -125,6 +148,35 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 #endif
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
+      if (ImGui::MenuItem("New")) {
+        SDL_PropertiesID &p = ctx->m_ui.m_create_project_dialog_properties;
+        if (!p) {
+          p = SDL_CreateProperties();
+          SDL_SetPointerProperty(p, SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                                 ctx->m_window);
+          SDL_SetBooleanProperty(p, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
+          SDL_SetStringProperty(p, SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                                "New Project");
+        }
+        ScratchArena scratch;
+        Path app_data = app_data_directory(scratch);
+        app_data = app_data.concat(scratch, Path::init("ren"));
+        app_data = app_data.concat(scratch, Path::init("projects"));
+        if (not app_data.exists().value_or(false)) {
+          if (IoResult<void> result = create_directories(app_data); !result) {
+            fmt::println(stderr, "Failed to create {}: {}", app_data,
+                         result.error());
+          }
+        }
+        if (!SDL_GetStringProperty(p, SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                                   nullptr)) {
+          const char *location = app_data.m_str.zero_terminated(&ctx->m_arena);
+          SDL_SetStringProperty(p, SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                                location);
+        }
+        SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
+                                         new_project_callback, ctx, p);
+      }
       if (ImGui::MenuItem("Quit")) {
         ctx->m_quit = true;
       }

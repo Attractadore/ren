@@ -38,6 +38,12 @@ Path Path::init(String8 path) {
 
 Path Path::copy(NotNull<Arena *> arena) const { return {m_str.copy(arena)}; }
 
+bool Path::is_root() const {
+  auto [str, sz] = m_str;
+  return (sz == 1 and str[0] == SEPARATOR) or
+         (sz == 3 and is_volume_name(str[0], str[1]) and str[2] == SEPARATOR);
+}
+
 Path Path::volume_name() const {
   const char *sep = m_str.find(Path::SEPARATOR);
   if (sep == m_str.m_str + 2 and is_volume_name(m_str[0], m_str[1])) {
@@ -47,17 +53,16 @@ Path Path::volume_name() const {
 }
 
 Path Path::parent() const {
+  if (is_root()) {
+    return *this;
+  }
   const char *sep = m_str.rfind(Path::SEPARATOR);
   if (!sep) {
     ren_assert(not is_absolute());
     return Path{"."};
   }
   usize sep_offset = sep - m_str.m_str;
-  Path root = this->volume_name();
-  if (sep_offset + 1 == root.m_str.m_size) {
-    return root;
-  }
-  return {String8(m_str.m_str, sep_offset - 1)};
+  return {String8(m_str.m_str, sep_offset)};
 }
 
 Path Path::filename() const {
@@ -135,6 +140,48 @@ Path Path::concat(NotNull<Arena *> arena, Path other) const {
   buffer[m_str.m_size] = SEPARATOR;
   std::memcpy(&buffer[m_str.m_size + 1], other.m_str.m_str, other.m_str.m_size);
   return {String8(buffer, new_size)};
+}
+
+IoResult<void> create_directories(Path path) {
+  IoResult<void> result = create_directory(path);
+  if (result or result.error() == IoError::Exists) {
+    return {};
+  }
+  if (result.error() != IoError::NotFound) {
+    return result.error();
+  }
+  ScratchArena scratch;
+  IoResult<Path> absolute = path.absolute(scratch);
+  if (!absolute) {
+    return absolute.error();
+  }
+  path = *absolute;
+  DynamicArray<Path> paths;
+  paths.push(scratch, path);
+  path = path.parent();
+  while (true) {
+    if (path.is_root()) {
+      return IoError::Access;
+    }
+    IoResult<void> result = create_directory(path);
+    if (result) {
+      break;
+    }
+    ren_assert(result.error() != IoError::Exists);
+    if (result.error() != IoError::NotFound) {
+      return result.error();
+    }
+    paths.push(scratch, path);
+    path = path.parent();
+  }
+  while (paths.m_size > 0) {
+    path = paths.pop();
+    IoResult<void> result = create_directory(path);
+    if (!result) {
+      return result.error();
+    }
+  }
+  return {};
 }
 
 IoResult<Span<char>> read(NotNull<Arena *> arena, Path path) {
