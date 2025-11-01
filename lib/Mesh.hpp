@@ -61,7 +61,7 @@ struct Mesh {
   Handle<Buffer> uvs;
   sh::BoundingSquare uv_bs = {};
   Handle<Buffer> colors;
-  u32 index_pool = -1;
+  u32 index_pool = (u32)-1;
   Handle<Buffer> meshlets;
   Handle<Buffer> indices;
   u32 num_lods = 0;

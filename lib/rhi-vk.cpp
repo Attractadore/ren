@@ -108,14 +108,14 @@ constexpr auto MAP<ImageAspect> = [] {
 
 template <>
 constexpr auto MAP<ImageUsage> = [] {
-  using enum ImageUsage;
   StackArray<VkImageUsageFlagBits, ENUM_SIZE<ImageUsage>> map = {};
-  map_bit(TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-  map_bit(TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-  map_bit(ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
-  map_bit(UnorderedAccess, VK_IMAGE_USAGE_STORAGE_BIT);
-  map_bit(RenderTarget, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-  map_bit(DepthStencilTarget, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+  map_bit(ImageUsage::TransferSrc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+  map_bit(ImageUsage::TransferDst, VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+  map_bit(ImageUsage::ShaderResource, VK_IMAGE_USAGE_SAMPLED_BIT);
+  map_bit(ImageUsage::UnorderedAccess, VK_IMAGE_USAGE_STORAGE_BIT);
+  map_bit(ImageUsage::RenderTarget, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+  map_bit(ImageUsage::DepthStencilTarget,
+          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
   return map;
 }();
 
@@ -283,7 +283,6 @@ constexpr auto MAP<LogicOp> = [] {
 
 template <>
 constexpr auto MAP<ColorComponent> = [] {
-  using enum ImageUsage;
   StackArray<VkColorComponentFlagBits, ENUM_SIZE<ColorComponent>> map = {};
   map_bit(ColorComponent::R, VK_COLOR_COMPONENT_R_BIT);
   map_bit(ColorComponent::G, VK_COLOR_COMPONENT_G_BIT);
@@ -386,13 +385,12 @@ constexpr auto MAP<IndexType> = [] {
 
 template <>
 constexpr auto MAP<PresentMode> = [] {
-  using enum PresentMode;
   StackArray<VkPresentModeKHR, ENUM_SIZE<PresentMode>> map = {};
   fill(Span(map), VK_PRESENT_MODE_FIFO_KHR);
-  map(Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
-  map(Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
-  map(Fifo, VK_PRESENT_MODE_FIFO_KHR);
-  map(FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
+  map(PresentMode::Immediate, VK_PRESENT_MODE_IMMEDIATE_KHR);
+  map(PresentMode::Mailbox, VK_PRESENT_MODE_MAILBOX_KHR);
+  map(PresentMode::Fifo, VK_PRESENT_MODE_FIFO_KHR);
+  map(PresentMode::FifoRelaxed, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
   return map;
 }();
 

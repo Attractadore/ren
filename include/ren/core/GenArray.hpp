@@ -125,17 +125,6 @@ private:
       };
     }
 
-  private:
-    template <bool> friend class Iterator;
-    friend IteratorFacade;
-    friend GenArray;
-
-    Iterator(GenIndexPool<K>::const_iterator it,
-             IteratorValueType<IsConst> *data) {
-      m_it = it;
-      m_data = data;
-    }
-
     template <bool IsOtherConst>
     bool equal(Iterator<IsOtherConst> other) const {
       return m_it == other.m_it;
@@ -146,6 +135,16 @@ private:
     auto dereference() const -> std::pair<K, IteratorValueType<IsConst> &> {
       K key = *m_it;
       return {key, m_data[key]};
+    }
+
+  private:
+    template <bool> friend class Iterator;
+    friend GenArray;
+
+    Iterator(GenIndexPool<K>::const_iterator it,
+             IteratorValueType<IsConst> *data) {
+      m_it = it;
+      m_data = data;
     }
 
   private:
