@@ -29,6 +29,8 @@ public:
 
   [[nodiscard]] IoResult<Path> relative(NotNull<Arena *> arena) const;
 
+  [[nodiscard]] bool is_root() const;
+
   [[nodiscard]] Path volume_name() const;
 
   [[nodiscard]] Path parent() const;
@@ -60,6 +62,8 @@ String8 format_as(Path path);
 IoResult<Path> current_directory(NotNull<Arena *> arena);
 
 Result<void, IoError> create_directory(Path path);
+
+Result<void, IoError> create_directories(Path path);
 
 IoResult<u64> last_write_time(Path path);
 
@@ -136,5 +140,7 @@ template <typename T>
 [[nodiscard]] IoResult<void>
 copy_file(Path from, Path to,
           FileOpenFlags flags = FileOpen::Create | FileOpen::Truncate);
+
+Path app_data_directory(NotNull<Arena *> arena);
 
 } // namespace ren

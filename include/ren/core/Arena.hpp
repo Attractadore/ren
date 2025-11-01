@@ -60,6 +60,8 @@ public:
     return (T *)expand((void *)ptr, old_count * sizeof(T),
                        new_count * sizeof(T));
   }
+
+  explicit operator bool() const { return m_ptr; }
 };
 
 inline Arena make_arena() { return Arena::init(); }

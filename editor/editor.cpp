@@ -1,15 +1,67 @@
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Chrono.hpp"
+#include "ren/core/FileSystem.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/ren.hpp"
 
+#include <SDL3/SDL_dialog.h>
+#include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_init.h>
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
 #include <imgui.hpp>
 
 namespace ren {
+
+namespace {
+
+struct InputTextCallback_UserData {
+  Arena *arena = nullptr;
+  DynamicArray<char> *buf = nullptr;
+};
+
+bool InputText(const char *label, NotNull<Arena *> arena,
+               NotNull<DynamicArray<char> *> buf, ImGuiInputFlags flags = 0) {
+  flags |= ImGuiInputTextFlags_CallbackResize;
+  InputTextCallback_UserData user_data = {.arena = arena, .buf = buf};
+  return ImGui::InputText(
+      label, buf->m_data, buf->m_capacity, flags,
+      [](ImGuiInputTextCallbackData *data) {
+        if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+          auto [arena, buf] = *(InputTextCallback_UserData *)data->UserData;
+          while (buf->m_size < data->BufTextLen + 1) {
+            buf->push(arena, 0);
+          }
+          buf->m_size = data->BufTextLen + 1;
+          (*buf)[data->BufTextLen] = 0;
+          data->Buf = buf->m_data;
+        }
+        return 0;
+      },
+      &user_data);
+}
+
+} // namespace
+
+struct NewProjectUi {
+  Arena m_arena;
+
+  Arena m_dialog_arena;
+  SDL_PropertiesID m_dialog_properties = 0;
+  bool m_dialog_active = false;
+  alignas(std::atomic<bool>) bool m_dialog_done = false;
+  Path m_dialog_path;
+
+  DynamicArray<char> m_title_buffer;
+  DynamicArray<char> m_location_buffer;
+};
+
+struct EditorUi {
+  NewProjectUi m_new_project;
+};
 
 struct EditorContext {
   Arena m_arena;
@@ -21,6 +73,7 @@ struct EditorContext {
   ren::Handle<Camera> m_camera;
   ImFont *m_font = nullptr;
   bool m_quit = false;
+  EditorUi m_ui;
 };
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
@@ -114,10 +167,46 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
 };
 
+void SDLCALL new_project_dialog_callback(void *userdata,
+                                         const char *const *filelist,
+                                         int filter) {
+  auto *ui = (NewProjectUi *)userdata;
+  if (!filelist) {
+    fmt::println(stderr, "Failed to select new project location: {}",
+                 SDL_GetError());
+  } else {
+    const char *file = *filelist;
+    if (file) {
+      ui->m_dialog_path = Path::init(&ui->m_dialog_arena, String8::init(file));
+    }
+  }
+  std::atomic_ref(ui->m_dialog_done).store(true, std::memory_order_release);
+}
+
+bool new_project(Path path, Path title) {
+  ScratchArena scratch;
+  Path project_file = title.replace_extension(scratch, Path::init(".json"));
+  project_file = path.concat(scratch, project_file);
+  if (IoResult<void> result = create_directories(path); !result) {
+    fmt::println(stderr, "Failed to create directory {}: {}", path,
+                 result.error());
+    return false;
+  }
+  const char buffer[] = {'{', '\n', '}', '\n'};
+  if (IoResult<void> result = write(project_file, Span(buffer)); !result) {
+    fmt::println(stderr, "Failed to create {}: {}", project_file,
+                 result.error());
+    return false;
+  }
+  return true;
+}
+
 void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
   ImGui::PushFont(ctx->m_font);
+
+  bool open_new_project_popup = false;
 
 #if 0
   bool open = true;
@@ -125,12 +214,132 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 #endif
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
+      if (ImGui::MenuItem("New...")) {
+        open_new_project_popup = true;
+      }
+
       if (ImGui::MenuItem("Quit")) {
         ctx->m_quit = true;
       }
       ImGui::EndMenu();
     }
     ImGui::EndMainMenuBar();
+  }
+
+  if (open_new_project_popup) {
+    ImGui::OpenPopup("New Project");
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal("New Project", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    NewProjectUi &ui = ctx->m_ui.m_new_project;
+    if (ImGui::IsWindowAppearing()) {
+      if (!ui.m_arena) {
+        ui.m_arena = Arena::init();
+      }
+
+      const char DEFAULT_TITLE[] = "New Project";
+      ui.m_title_buffer = {};
+      ui.m_title_buffer.push(&ui.m_arena, DEFAULT_TITLE, sizeof(DEFAULT_TITLE));
+
+      ScratchArena scratch;
+      Path default_location;
+      const char *project_home = std::getenv("REN_PROJECT_HOME");
+      if (project_home) {
+        default_location = Path::init(scratch, String8::init(project_home));
+      }
+      if (!default_location) {
+        default_location = app_data_directory(scratch).concat(
+            scratch, {Path::init("ren"), Path::init("projects")});
+      }
+      if (IoResult<void> result = create_directories(default_location);
+          !result) {
+        fmt::println(stderr, "Failed to create {}: {}", default_location,
+                     result.error());
+      }
+
+      ui.m_location_buffer = {};
+      ui.m_location_buffer.push(&ui.m_arena, default_location.m_str.m_str,
+                                default_location.m_str.m_size);
+      ui.m_location_buffer.push(&ui.m_arena, 0);
+    }
+
+    ImGui::Text("Title:");
+    InputText("##Title", &ui.m_arena, &ui.m_title_buffer);
+
+    if (ui.m_dialog_active) {
+      bool done =
+          std::atomic_ref(ui.m_dialog_done).load(std::memory_order_acquire);
+      if (done) {
+        if (ui.m_dialog_path) {
+          ui.m_location_buffer.clear();
+          auto [str, size] = ui.m_dialog_path.m_str;
+          ui.m_location_buffer.push(&ui.m_arena, str, size);
+          ui.m_location_buffer.push(&ui.m_arena, 0);
+        }
+        ui.m_dialog_active = false;
+        ui.m_dialog_done = false;
+        ui.m_dialog_path = {};
+        ui.m_dialog_arena.clear();
+      }
+    }
+
+    ImGui::Text("Location:");
+    InputText("##Location", &ui.m_arena, &ui.m_location_buffer);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(ui.m_dialog_active);
+    if (ImGui::Button("Browse...")) {
+      if (!ui.m_dialog_arena) {
+        ui.m_dialog_arena = Arena::init();
+      }
+      if (!ui.m_dialog_properties) {
+        ui.m_dialog_properties = SDL_CreateProperties();
+        SDL_SetPointerProperty(ui.m_dialog_properties,
+                               SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                               ctx->m_window);
+        SDL_SetBooleanProperty(ui.m_dialog_properties,
+                               SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
+        SDL_SetStringProperty(ui.m_dialog_properties,
+                              SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                              "New Project Location");
+      }
+      SDL_SetStringProperty(ui.m_dialog_properties,
+                            SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                            ui.m_location_buffer.m_data);
+      ui.m_dialog_active = true;
+      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
+                                       new_project_dialog_callback, &ui,
+                                       ui.m_dialog_properties);
+    }
+    ImGui::EndDisabled();
+
+    ScratchArena scratch;
+    Path location =
+        Path::init(scratch, String8::init(ui.m_location_buffer.m_data));
+    Path title = Path::init(scratch, String8::init(ui.m_title_buffer.m_data));
+    Path path = location.concat(scratch, title);
+    ImGui::Text("Path:");
+    ImGui::Text("%.*s", (int)path.m_str.m_size, path.m_str.m_str);
+
+    bool close = false;
+    ImGui::BeginDisabled(ui.m_dialog_active);
+    if (ImGui::Button("Create")) {
+      bool success = new_project(path, title);
+      close = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      close = true;
+    }
+    ImGui::EndDisabled();
+
+    if (close) {
+      ui.m_arena.clear();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
   }
 
   ImGui::PopFont();
@@ -173,6 +382,7 @@ void run_editor(NotNull<EditorContext *> ctx) {
     }
 
     draw_editor_ui(ctx);
+
     ren::draw(ctx->m_scene, {.delta_time = dt_ns / 1e9f});
   }
 }
