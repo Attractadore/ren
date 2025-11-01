@@ -23,16 +23,6 @@ public:
 
     using value_type = K;
 
-  private:
-    friend IteratorFacade;
-    friend GenIndexPool;
-
-    const_iterator(const GenIndex *generations, usize size, usize index = 0) {
-      m_generations = generations;
-      m_size = size;
-      m_index = index;
-    }
-
     bool equal(const_iterator other) const {
       return m_generations + m_index == other.m_generations + other.m_index;
     }
@@ -51,6 +41,15 @@ public:
       key.gen = m_generations[m_index];
       key.index = m_index;
       return key;
+    }
+
+  private:
+    friend GenIndexPool;
+
+    const_iterator(const GenIndex *generations, usize size, usize index = 0) {
+      m_generations = generations;
+      m_size = size;
+      m_index = index;
     }
 
   private:
