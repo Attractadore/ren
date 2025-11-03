@@ -1,0 +1,23 @@
+#pragma once
+#include "String.hpp"
+
+namespace ren {
+
+enum GltfComponentType {
+  GLTF_COMPONENT_BYTE = 5120,
+  GLTF_COMPONENT_UNSIGNED_BYTE = 5121,
+  GLTF_COMPONENT_SHORT = 5122,
+  GLTF_COMPONENT_UNSIGNED_SHORT = 5123,
+  GLTF_COMPONENT_UNSIGNED_INT = 5125,
+  GLTF_COMPONENT_FLOAT = 5126,
+};
+
+constexpr String8 GLTF_ACCESSOR_TYPE_SCALAR = "SCALAR";
+constexpr String8 GLTF_ACCESSOR_TYPE_VEC2 = "VEC2";
+constexpr String8 GLTF_ACCESSOR_TYPE_VEC3 = "VEC3";
+constexpr String8 GLTF_ACCESSOR_TYPE_VEC4 = "VEC4";
+constexpr String8 GLTF_ACCESSOR_TYPE_MAT2 = "MAT2";
+constexpr String8 GLTF_ACCESSOR_TYPE_MAT3 = "MAT3";
+constexpr String8 GLTF_ACCESSOR_TYPE_MAT4 = "MAT4";
+
+} // namespace ren

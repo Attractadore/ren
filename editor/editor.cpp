@@ -1,20 +1,111 @@
+#include "ren/baking/mesh.hpp"
 #include "ren/core/Algorithm.hpp"
+#include "ren/core/Assert.hpp"
 #include "ren/core/Chrono.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/JSON.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/glTF.hpp"
 #include "ren/ren.hpp"
 
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_init.h>
+#include <assimp/Exporter.hpp>
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
 #include <atomic>
+#include <blake3.h>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
 #include <imgui.hpp>
 
 namespace ren {
+
+namespace {
+
+const Path ASSET_DIR = Path::init("assets");
+const Path CONTENT_DIR = Path::init("content");
+const Path MESH_DIR = Path::init("mesh");
+
+template <usize Bytes> struct alignas(u32) Guid {
+  u8 m_data[Bytes] = {};
+};
+
+using Guid32 = Guid<4>;
+using Guid64 = Guid<8>;
+using Guid128 = Guid<16>;
+
+template <usize Bytes>
+String8 to_string(NotNull<Arena *> arena, Guid<Bytes> guid) {
+  ScratchArena scratch(arena);
+  auto builder = StringBuilder::init(scratch);
+  for (isize i = isize(Bytes) - 1; i >= 0; --i) {
+    const char MAP[] = {
+        '0', '1', '2', '3', '4', '5', '6', '7',
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
+    };
+    u8 b = guid.m_data[i];
+    u8 hi = b >> 4;
+    u8 lo = b & 0xf;
+    builder.push(MAP[hi]);
+    builder.push(MAP[lo]);
+  }
+  return builder.materialize(arena);
+}
+
+} // namespace
+
+enum class EditorState {
+  Startup,
+  Project,
+  Quit,
+};
+
+enum class EditorPopupMenu {
+  None,
+  NewProject,
+  ImportMesh,
+};
+
+struct NewProjectUI {
+  SDL_PropertiesID m_dialog_properties = 0;
+  DynamicArray<char> m_title_buffer;
+  DynamicArray<char> m_location_buffer;
+};
+
+struct ImportMeshUI {
+  SDL_PropertiesID m_dialog_properties = 0;
+  DynamicArray<char> m_path_buffer;
+  String8 m_import_error;
+};
+
+struct EditorUI {
+  ImFont *m_font = nullptr;
+  bool m_dialog_active = false;
+  alignas(std::atomic<bool>) bool m_dialog_done = false;
+  Path m_dialog_path;
+  NewProjectUI m_new_project;
+  ImportMeshUI m_import_mesh;
+};
+
+struct EditorContext {
+  Arena m_arena;
+  Arena m_frame_arena;
+  Arena m_popup_arena;
+  Arena m_dialog_arena;
+  Renderer *m_renderer = nullptr;
+  SDL_Window *m_window = nullptr;
+  SwapChain *m_swap_chain = nullptr;
+  Scene *m_scene = nullptr;
+  ren::Handle<Camera> m_camera;
+  EditorState m_state = EditorState::Startup;
+  Path m_project_directory;
+  EditorUI m_ui;
+};
 
 namespace {
 
@@ -44,37 +135,91 @@ bool InputText(const char *label, NotNull<Arena *> arena,
       &user_data);
 }
 
+void SDLCALL open_file_dialog_callback(void *userdata,
+                                       const char *const *filelist,
+                                       int filter) {
+  auto *ctx = (EditorContext *)userdata;
+  if (!filelist) {
+    fmt::println(stderr, "Failed to select file: {}", SDL_GetError());
+  } else {
+    const char *file = *filelist;
+    if (file) {
+      ctx->m_ui.m_dialog_path =
+          Path::init(&ctx->m_dialog_arena, String8::init(file));
+    }
+  }
+  std::atomic_ref(ctx->m_ui.m_dialog_done)
+      .store(true, std::memory_order_release);
+}
+
+void SDLCALL open_folder_dialog_callback(void *userdata,
+                                         const char *const *filelist,
+                                         int filter) {
+  auto *ctx = (EditorContext *)userdata;
+  if (!filelist) {
+    fmt::println(stderr, "Failed to select folder: {}", SDL_GetError());
+  } else {
+    const char *file = *filelist;
+    if (file) {
+      ctx->m_ui.m_dialog_path =
+          Path::init(&ctx->m_dialog_arena, String8::init(file));
+    }
+  }
+  std::atomic_ref(ctx->m_ui.m_dialog_done)
+      .store(true, std::memory_order_release);
+}
+
+void InputPath(String8 name, NotNull<EditorContext *> ctx,
+               NotNull<DynamicArray<char> *> buffer,
+               SDL_FileDialogType dialog_type,
+               SDL_PropertiesID dialog_properties) {
+  if (ctx->m_ui.m_dialog_active) {
+    bool done = std::atomic_ref(ctx->m_ui.m_dialog_done)
+                    .load(std::memory_order_acquire);
+    if (done) {
+      if (ctx->m_ui.m_dialog_path) {
+        buffer->clear();
+        auto [str, size] = ctx->m_ui.m_dialog_path.m_str;
+        buffer->push(&ctx->m_popup_arena, str, size);
+        buffer->push(&ctx->m_popup_arena, 0);
+      }
+      ctx->m_ui.m_dialog_active = false;
+      ctx->m_ui.m_dialog_done = false;
+      ctx->m_ui.m_dialog_path = {};
+      ctx->m_dialog_arena.clear();
+    }
+  }
+
+  ScratchArena scratch;
+
+  ImGui::Text("%.*s:", (int)name.m_size, name.m_str);
+  InputText(format(scratch, "##{}", name).zero_terminated(scratch),
+            &ctx->m_popup_arena, buffer);
+  ImGui::SameLine();
+  ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
+  if (ImGui::Button("Browse...")) {
+    SDL_SetStringProperty(dialog_properties,
+                          SDL_PROP_FILE_DIALOG_LOCATION_STRING, buffer->m_data);
+    ctx->m_ui.m_dialog_active = true;
+    switch (dialog_type) {
+    case SDL_FILEDIALOG_OPENFILE:
+      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFILE,
+                                       open_file_dialog_callback, ctx,
+                                       dialog_properties);
+      break;
+    case SDL_FILEDIALOG_SAVEFILE:
+      ren_assert_msg(false, "Not implemented");
+    case SDL_FILEDIALOG_OPENFOLDER:
+      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
+                                       open_folder_dialog_callback, ctx,
+                                       dialog_properties);
+      break;
+    }
+  }
+  ImGui::EndDisabled();
+}
+
 } // namespace
-
-struct NewProjectUi {
-  Arena m_arena;
-
-  Arena m_dialog_arena;
-  SDL_PropertiesID m_dialog_properties = 0;
-  bool m_dialog_active = false;
-  alignas(std::atomic<bool>) bool m_dialog_done = false;
-  Path m_dialog_path;
-
-  DynamicArray<char> m_title_buffer;
-  DynamicArray<char> m_location_buffer;
-};
-
-struct EditorUi {
-  NewProjectUi m_new_project;
-};
-
-struct EditorContext {
-  Arena m_arena;
-  Arena m_frame_arena;
-  Renderer *m_renderer = nullptr;
-  SDL_Window *m_window = nullptr;
-  SwapChain *m_swap_chain = nullptr;
-  Scene *m_scene = nullptr;
-  ren::Handle<Camera> m_camera;
-  ImFont *m_font = nullptr;
-  bool m_quit = false;
-  EditorUi m_ui;
-};
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
@@ -86,6 +231,8 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
 
   ctx->m_arena = Arena::init();
   ctx->m_frame_arena = Arena::init();
+  ctx->m_popup_arena = Arena::init();
+  ctx->m_dialog_arena = Arena::init();
 
   {
     u32 adapter = DEFAULT_ADAPTER;
@@ -153,7 +300,7 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   font_config.SizePixels = glm::floor(font_config.SizePixels * display_scale);
   fill(ren::Span(font_config.Name), '\0');
   font_config.DstFont = nullptr;
-  ctx->m_font = io.Fonts->AddFont(&font_config);
+  ctx->m_ui.m_font = io.Fonts->AddFont(&font_config);
   io.Fonts->Build();
   io.FontGlobalScale = 1.0f / pixel_density;
 
@@ -166,22 +313,6 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
 
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
 };
-
-void SDLCALL new_project_dialog_callback(void *userdata,
-                                         const char *const *filelist,
-                                         int filter) {
-  auto *ui = (NewProjectUi *)userdata;
-  if (!filelist) {
-    fmt::println(stderr, "Failed to select new project location: {}",
-                 SDL_GetError());
-  } else {
-    const char *file = *filelist;
-    if (file) {
-      ui->m_dialog_path = Path::init(&ui->m_dialog_arena, String8::init(file));
-    }
-  }
-  std::atomic_ref(ui->m_dialog_done).store(true, std::memory_order_release);
-}
 
 bool new_project(Path path, Path title) {
   ScratchArena scratch;
@@ -201,12 +332,253 @@ bool new_project(Path path, Path title) {
   return true;
 }
 
+JsonValue generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
+                                 Path filename) {
+  ScratchArena scratch(arena);
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+
+  Path stem = filename.stem().copy(arena);
+
+  Span<const JsonValue> meshes = json_array_value(gltf, "meshes");
+  DynamicArray<JsonValue> meta_meshes;
+  for (usize mesh_index : range(meshes.m_size)) {
+    String8 mesh_name = json_string_value_or(meshes[mesh_index], "name",
+                                             format(scratch, "{}", mesh_index))
+                            .copy(arena);
+    Span<const JsonValue> primitives =
+        json_array_value(meshes[mesh_index], "primitives");
+    for (usize primitive_index : range(primitives.m_size)) {
+      String8 primitive_name = format(arena, "{}", primitive_index);
+      blake3_hasher_reset(&hasher);
+      String8 name =
+          String8::join(arena, {stem.m_str, mesh_name, primitive_name}, "::");
+      blake3_hasher_update(&hasher, name.m_str, name.m_size);
+      Guid64 guid;
+      blake3_hasher_finalize(&hasher, guid.m_data, sizeof(guid));
+      DynamicArray<JsonKeyValue> meta_mesh;
+      meta_mesh.push(arena, {"name", JsonValue::init(name)});
+      meta_mesh.push(arena, {"file", JsonValue::init(stem.m_str)});
+      meta_mesh.push(arena, {"mesh", JsonValue::init(mesh_name)});
+      meta_mesh.push(arena, {"mesh_id", JsonValue::init(mesh_index)});
+      meta_mesh.push(arena, {"primitive", JsonValue::init(primitive_name)});
+      meta_mesh.push(arena, {"primitive_id", JsonValue::init(primitive_index)});
+      meta_mesh.push(arena, {"guid", JsonValue::init(to_string(arena, guid))});
+      meta_meshes.push(arena, JsonValue::init(meta_mesh));
+    }
+  }
+  auto *meta = arena->allocate<JsonKeyValue>();
+  *meta = {"meshes", JsonValue::init(meta_meshes)};
+  return JsonValue::init({meta, 1});
+}
+
+template <typename T>
+Span<const T> accessor_data(Span<const std::byte> bin, JsonValue gltf,
+                            usize accessor_index) {
+  Span<const JsonValue> accessors = json_array_value(gltf, "accessors");
+  Span<const JsonValue> buffer_views = json_array_value(gltf, "bufferViews");
+  JsonValue accessor = accessors[accessor_index];
+  JsonValue buffer_view =
+      buffer_views[json_integer_value(accessor, "bufferView")];
+  ren_assert(json_integer_value(buffer_view, "buffer") == 0);
+  usize in_view_offset = json_integer_value(accessor, "byteOffset");
+  usize bin_offset =
+      json_integer_value(buffer_view, "byteOffset") + in_view_offset;
+  usize count = json_integer_value(accessor, "count");
+  usize component_size = 0;
+  switch ((GltfComponentType)json_integer_value(accessor, "componentType")) {
+  case GLTF_COMPONENT_BYTE:
+    component_size = sizeof(i8);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_BYTE:
+    component_size = sizeof(u8);
+    break;
+  case GLTF_COMPONENT_SHORT:
+    component_size = sizeof(i16);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_SHORT:
+    component_size = sizeof(u16);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_INT:
+    component_size = sizeof(u32);
+    break;
+  case GLTF_COMPONENT_FLOAT:
+    component_size = sizeof(float);
+    break;
+  }
+  String8 accessor_type = json_string_value(accessor, "type");
+  usize component_count = 0;
+  if (accessor_type == GLTF_ACCESSOR_TYPE_SCALAR) {
+    component_count = 1;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC2) {
+    component_count = 2;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC3) {
+    component_count = 3;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC4) {
+    component_count = 4;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT2) {
+    component_count = 2 * 2;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT3) {
+    component_count = 3 * 3;
+  } else {
+    ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_MAT4);
+    component_count = 4 * 4;
+  }
+  ren_assert(sizeof(T) == component_size * component_count);
+  return {(const T *)&bin[bin_offset], count};
+}
+
+Span<std::byte> process_mesh(NotNull<Arena *> arena, JsonValue gltf,
+                             Span<const std::byte> bin, JsonValue meta,
+                             usize meta_index) {
+  Span<const JsonValue> meta_meshes = json_array_value(meta, "meshes");
+  JsonValue meta_mesh = meta_meshes[meta_index];
+  i64 mesh_index = json_integer_value(meta_mesh, "mesh_id");
+  i64 primitive_index = json_integer_value(meta_mesh, "primitive_id");
+  JsonValue gltf_mesh = json_array_value(gltf, "meshes")[mesh_index];
+  JsonValue gltf_primitive =
+      json_array_value(gltf_mesh, "primitives")[primitive_index];
+  JsonValue attributes = json_value(gltf_primitive, "attributes");
+  auto positions = accessor_data<glm::vec3>(
+      bin, gltf, json_integer_value(attributes, "POSITION"));
+  auto normals = accessor_data<glm::vec3>(
+      bin, gltf, json_integer_value(attributes, "NORMAL"));
+  Span<const glm::vec4> tangents;
+  JsonValue tangent_accessor = json_value(attributes, "TANGENT");
+  if (tangent_accessor) {
+    tangents =
+        accessor_data<glm::vec4>(bin, gltf, json_integer(tangent_accessor));
+  }
+  Span<const glm::vec2> uvs;
+  JsonValue uv_accessor = json_value(attributes, "TEXCOORD_0");
+  if (uv_accessor) {
+    uvs = accessor_data<glm::vec2>(bin, gltf, json_integer(uv_accessor));
+  }
+  Span<const glm::vec4> colors;
+  JsonValue color_accessor = json_value(attributes, "COLOR_0");
+  if (color_accessor) {
+    colors = accessor_data<glm::vec4>(bin, gltf, json_integer(color_accessor));
+  }
+  auto indices = accessor_data<const u32>(
+      bin, gltf, json_integer_value(gltf_primitive, "indices"));
+  Blob blob = bake_mesh_to_memory(arena, {
+                                             .num_vertices = positions.m_size,
+                                             .positions = positions.m_data,
+                                             .normals = normals.m_data,
+                                             .tangents = tangents.m_data,
+                                             .uvs = uvs.m_data,
+                                             .colors = colors.m_data,
+                                             .indices = indices,
+                                         });
+  return {(std::byte *)blob.data, blob.size};
+}
+
+Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
+  ScratchArena scratch;
+
+  Path mesh_directory =
+      ctx->m_project_directory.concat(scratch, {ASSET_DIR, MESH_DIR});
+  Path filename = path.filename();
+  Path mesh_filename = filename.replace_extension(scratch, Path::init(".gltf"));
+  Path bin_filename = filename.replace_extension(scratch, Path::init(".bin"));
+  Path meta_filename = filename.replace_extension(scratch, Path::init(".json"));
+  Path gltf_path = mesh_directory.concat(scratch, mesh_filename);
+  Path bin_path = mesh_directory.concat(scratch, bin_filename);
+  Path meta_path = mesh_directory.concat(scratch, meta_filename);
+  Path blob_directory =
+      ctx->m_project_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
+
+  if (IoResult<void> result = create_directories(mesh_directory); !result) {
+    return format(&ctx->m_popup_arena, "Failed to create {}: {}",
+                  mesh_directory, result.error());
+  }
+  if (IoResult<void> result = create_directories(blob_directory); !result) {
+    return format(&ctx->m_popup_arena, "Failed to create {}: {}",
+                  blob_directory, result.error());
+  }
+
+  // clang-format off
+  Assimp::Importer importer;
+  importer.SetPropertyInteger(
+      AI_CONFIG_PP_RVC_FLAGS,
+      aiComponent_MATERIALS |
+      aiComponent_CAMERAS |
+      aiComponent_TEXTURES |
+      aiComponent_LIGHTS
+  );
+  const aiScene *scene = importer.ReadFile(
+      path.m_str.zero_terminated(scratch),
+      aiProcess_FindInvalidData |
+      aiProcess_GenNormals |
+      aiProcess_OptimizeGraph |
+      aiProcess_RemoveComponent |
+      aiProcess_SortByPType |
+      aiProcess_Triangulate
+  );
+  // clang-format on
+  if (!scene) {
+    return String8::init(&ctx->m_popup_arena, importer.GetErrorString());
+  }
+  ren_assert(scene->mNumMeshes > 1);
+
+  Assimp::Exporter exporter;
+  Assimp::ExportProperties exporter_properties;
+  exporter_properties.SetPropertyString(
+      AI_CONFIG_EXPORT_BLOB_NAME,
+      filename.stem().m_str.zero_terminated(scratch));
+  const aiExportDataBlob *blob =
+      exporter.ExportToBlob(scene, "gltf2", 0, &exporter_properties);
+  if (!blob) {
+    return String8::init(&ctx->m_popup_arena, exporter.GetErrorString());
+  }
+  const aiExportDataBlob *bin = blob->next;
+
+  if (auto result = write(gltf_path, blob->data, blob->size); !result) {
+    return format(&ctx->m_popup_arena, "Failed to write {}: {}", gltf_path,
+                  result.error());
+  }
+  if (auto result = write(bin_path, bin->data, bin->size); !result) {
+    return format(&ctx->m_popup_arena, "Failed to write {}: {}", bin_path,
+                  result.error());
+  }
+
+  Result<JsonValue, JsonErrorInfo> gltf =
+      json_parse(scratch, String8((const char *)blob->data, blob->size));
+  if (!gltf) {
+    JsonErrorInfo error = gltf.error();
+    return format(&ctx->m_popup_arena, "Failed to parse glTF:\n{}:{}:{}: {}",
+                  gltf_path, error.line + 1, error.column + 1, error.error);
+  }
+
+  JsonValue meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
+  if (auto result = write(meta_path, json_serialize(scratch, meta)); !result) {
+    return format(&ctx->m_popup_arena, "Failed to write {}: {}", meta_path,
+                  result.error());
+  }
+
+  Span<const JsonValue> meta_meshes = json_array_value(meta, "meshes");
+  for (usize i : range(meta_meshes.m_size)) {
+    JsonValue meta_mesh = meta_meshes[i];
+    ScratchArena scratch;
+    Span<const std::byte> blob = process_mesh(
+        scratch, *gltf, {(const std::byte *)bin->data, bin->size}, meta, i);
+    Path blob_filename = Path::init(json_string_value(meta_mesh, "guid"));
+    Path blob_path = blob_directory.concat(scratch, blob_filename);
+    if (auto result = write(blob_path, blob); !result) {
+      return format(&ctx->m_popup_arena, "Failed to write {}: {}", blob_path,
+                    result.error());
+    }
+  }
+
+  return {};
+}
+
 void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
-  ImGui::PushFont(ctx->m_font);
+  ImGui::PushFont(ctx->m_ui.m_font);
 
-  bool open_new_project_popup = false;
+  EditorPopupMenu open_popup = EditorPopupMenu::None;
 
 #if 0
   bool open = true;
@@ -215,18 +587,28 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
       if (ImGui::MenuItem("New...")) {
-        open_new_project_popup = true;
+        open_popup = EditorPopupMenu::NewProject;
       }
 
       if (ImGui::MenuItem("Quit")) {
-        ctx->m_quit = true;
+        ctx->m_state = EditorState::Quit;
       }
       ImGui::EndMenu();
     }
+
+    if (ctx->m_state == EditorState::Project) {
+      if (ImGui::BeginMenu("Import")) {
+        if (ImGui::MenuItem("Mesh...")) {
+          open_popup = EditorPopupMenu::ImportMesh;
+        }
+        ImGui::EndMenu();
+      }
+    }
+
     ImGui::EndMainMenuBar();
   }
 
-  if (open_new_project_popup) {
+  if (open_popup == EditorPopupMenu::NewProject) {
     ImGui::OpenPopup("New Project");
   }
 
@@ -234,15 +616,12 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   if (ImGui::BeginPopupModal("New Project", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
-    NewProjectUi &ui = ctx->m_ui.m_new_project;
+    NewProjectUI &ui = ctx->m_ui.m_new_project;
     if (ImGui::IsWindowAppearing()) {
-      if (!ui.m_arena) {
-        ui.m_arena = Arena::init();
-      }
-
       const char DEFAULT_TITLE[] = "New Project";
       ui.m_title_buffer = {};
-      ui.m_title_buffer.push(&ui.m_arena, DEFAULT_TITLE, sizeof(DEFAULT_TITLE));
+      ui.m_title_buffer.push(&ctx->m_popup_arena, DEFAULT_TITLE,
+                             sizeof(DEFAULT_TITLE));
 
       ScratchArena scratch;
       Path default_location;
@@ -261,59 +640,28 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       }
 
       ui.m_location_buffer = {};
-      ui.m_location_buffer.push(&ui.m_arena, default_location.m_str.m_str,
+      ui.m_location_buffer.push(&ctx->m_popup_arena,
+                                default_location.m_str.m_str,
                                 default_location.m_str.m_size);
-      ui.m_location_buffer.push(&ui.m_arena, 0);
+      ui.m_location_buffer.push(&ctx->m_popup_arena, 0);
     }
 
     ImGui::Text("Title:");
-    InputText("##Title", &ui.m_arena, &ui.m_title_buffer);
+    InputText("##Title", &ctx->m_popup_arena, &ui.m_title_buffer);
 
-    if (ui.m_dialog_active) {
-      bool done =
-          std::atomic_ref(ui.m_dialog_done).load(std::memory_order_acquire);
-      if (done) {
-        if (ui.m_dialog_path) {
-          ui.m_location_buffer.clear();
-          auto [str, size] = ui.m_dialog_path.m_str;
-          ui.m_location_buffer.push(&ui.m_arena, str, size);
-          ui.m_location_buffer.push(&ui.m_arena, 0);
-        }
-        ui.m_dialog_active = false;
-        ui.m_dialog_done = false;
-        ui.m_dialog_path = {};
-        ui.m_dialog_arena.clear();
-      }
-    }
-
-    ImGui::Text("Location:");
-    InputText("##Location", &ui.m_arena, &ui.m_location_buffer);
-    ImGui::SameLine();
-    ImGui::BeginDisabled(ui.m_dialog_active);
-    if (ImGui::Button("Browse...")) {
-      if (!ui.m_dialog_arena) {
-        ui.m_dialog_arena = Arena::init();
-      }
-      if (!ui.m_dialog_properties) {
-        ui.m_dialog_properties = SDL_CreateProperties();
-        SDL_SetPointerProperty(ui.m_dialog_properties,
-                               SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-                               ctx->m_window);
-        SDL_SetBooleanProperty(ui.m_dialog_properties,
-                               SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-        SDL_SetStringProperty(ui.m_dialog_properties,
-                              SDL_PROP_FILE_DIALOG_TITLE_STRING,
-                              "New Project Location");
-      }
+    if (!ui.m_dialog_properties) {
+      ui.m_dialog_properties = SDL_CreateProperties();
+      SDL_SetPointerProperty(ui.m_dialog_properties,
+                             SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                             ctx->m_window);
+      SDL_SetBooleanProperty(ui.m_dialog_properties,
+                             SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
       SDL_SetStringProperty(ui.m_dialog_properties,
-                            SDL_PROP_FILE_DIALOG_LOCATION_STRING,
-                            ui.m_location_buffer.m_data);
-      ui.m_dialog_active = true;
-      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
-                                       new_project_dialog_callback, &ui,
-                                       ui.m_dialog_properties);
+                            SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                            "New Project Location");
     }
-    ImGui::EndDisabled();
+    InputPath("Location", ctx, &ui.m_location_buffer, SDL_FILEDIALOG_OPENFOLDER,
+              ui.m_dialog_properties);
 
     ScratchArena scratch;
     Path location =
@@ -324,9 +672,13 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::Text("%.*s", (int)path.m_str.m_size, path.m_str.m_str);
 
     bool close = false;
-    ImGui::BeginDisabled(ui.m_dialog_active);
+    ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
     if (ImGui::Button("Create")) {
       bool success = new_project(path, title);
+      if (success) {
+        ctx->m_project_directory = path.copy(&ctx->m_arena);
+        ctx->m_state = EditorState::Project;
+      }
       close = true;
     }
     ImGui::SameLine();
@@ -336,9 +688,69 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::EndDisabled();
 
     if (close) {
-      ui.m_arena.clear();
       ImGui::CloseCurrentPopup();
+      ctx->m_popup_arena.clear();
     }
+    ImGui::EndPopup();
+  }
+
+  if (open_popup == EditorPopupMenu::ImportMesh) {
+    ImGui::OpenPopup("Import Mesh");
+  }
+
+  center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal("Import Mesh", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    ScratchArena scratch;
+    ImportMeshUI &ui = ctx->m_ui.m_import_mesh;
+    if (ImGui::IsWindowAppearing()) {
+      auto [home_str, home_sz] = home_directory(scratch).m_str;
+      ui.m_path_buffer = {};
+      ui.m_path_buffer.push(&ctx->m_popup_arena, home_str, home_sz);
+      ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
+    }
+
+    if (!ui.m_dialog_properties) {
+      ui.m_dialog_properties = SDL_CreateProperties();
+      SDL_SetPointerProperty(ui.m_dialog_properties,
+                             SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                             ctx->m_window);
+      SDL_SetBooleanProperty(ui.m_dialog_properties,
+                             SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
+      SDL_SetStringProperty(ui.m_dialog_properties,
+                            SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                            "Import Mesh Path");
+    }
+    InputPath("Path", ctx, &ui.m_path_buffer, SDL_FILEDIALOG_OPENFILE,
+              ui.m_dialog_properties);
+
+    if (ui.m_import_error) {
+      ImGui::Text("Import failed:\n%.*s", (int)ui.m_import_error.m_size,
+                  ui.m_import_error.m_str);
+    }
+
+    bool close = false;
+    ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
+    if (ImGui::Button("Import")) {
+      Result<void, String8> result = import_mesh(
+          ctx, Path::init(scratch, String8::init(ui.m_path_buffer.m_data)));
+      if (result) {
+        close = true;
+      } else {
+        ui.m_import_error = result.error();
+      }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      close = true;
+    }
+    ImGui::EndDisabled();
+    if (close) {
+      ImGui::CloseCurrentPopup();
+      ctx->m_popup_arena.clear();
+    }
+
     ImGui::EndPopup();
   }
 
@@ -349,7 +761,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 
 void run_editor(NotNull<EditorContext *> ctx) {
   u64 time = clock();
-  while (not ctx->m_quit) {
+  while (ctx->m_state != EditorState::Quit) {
     u64 now = clock();
     u64 dt_ns = now - time;
     time = now;
@@ -376,15 +788,24 @@ void run_editor(NotNull<EditorContext *> ctx) {
         }
         break;
       case SDL_EVENT_QUIT:
-        ctx->m_quit = true;
+        ctx->m_state = EditorState::Quit;
         break;
       }
+    }
+
+    {
+      ScratchArena scratch;
+      String8 title = "ren editor";
+      if (ctx->m_project_directory) {
+        title = format(scratch, "ren editor: {}", ctx->m_project_directory);
+      }
+      SDL_SetWindowTitle(ctx->m_window, title.zero_terminated(scratch));
     }
 
     draw_editor_ui(ctx);
 
     ren::draw(ctx->m_scene, {.delta_time = dt_ns / 1e9f});
-  }
+  } // namespace ren
 }
 
 void quit_editor(NotNull<EditorContext *> ctx) {

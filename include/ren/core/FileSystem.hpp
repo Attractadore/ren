@@ -40,6 +40,8 @@ public:
   [[nodiscard]] Path replace_extension(NotNull<Arena *> arena,
                                        Path new_ext) const;
 
+  [[nodiscard]] Path add_extension(NotNull<Arena *> arena, Path ext) const;
+
   [[nodiscard]] Path stem() const;
 
   [[nodiscard]] Path filename() const;
@@ -53,6 +55,9 @@ public:
   [[nodiscard]] IoResult<bool> exists() const;
 
   [[nodiscard]] Path concat(NotNull<Arena *> arena, Path other) const;
+
+  [[nodiscard]] Path concat(NotNull<Arena *> arena,
+                            Span<const Path> other) const;
 };
 
 inline bool operator==(Path lhs, String8 rhs) { return lhs.m_str == rhs; }
@@ -137,10 +142,16 @@ template <typename T>
   return write(path, buffer.m_data, buffer.size_bytes(), flags);
 }
 
+[[nodiscard]] IoResult<void> write(Path path, String8 string,
+                                   FileOpenFlags flags = FileOpen::Create |
+                                                         FileOpen::Truncate);
+
 [[nodiscard]] IoResult<void>
 copy_file(Path from, Path to,
           FileOpenFlags flags = FileOpen::Create | FileOpen::Truncate);
 
 Path app_data_directory(NotNull<Arena *> arena);
+
+Path home_directory(NotNull<Arena *> arena);
 
 } // namespace ren

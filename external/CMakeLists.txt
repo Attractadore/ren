@@ -1,3 +1,5 @@
+add_subdirectory(BLAKE3/c)
+
 add_subdirectory(glm)
 
 add_subdirectory(fmt)

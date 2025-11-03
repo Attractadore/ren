@@ -19,7 +19,7 @@ public:
     m_size = size;
   }
 
-  template <usize N> String(const char (&cstr)[N]) {
+  template <usize N> constexpr String(const char (&cstr)[N]) {
     m_str = cstr;
     m_size = N - 1;
   }
@@ -28,6 +28,10 @@ public:
     requires std::is_const_v<C>
   {
     return {cstr, std::strlen(cstr)};
+  }
+
+  [[nodiscard]] static String init(NotNull<Arena *> arena, const char *cstr) {
+    return String<const char>(cstr, std::strlen(cstr)).copy(arena);
   }
 
   bool starts_with(const char *str) const {
@@ -172,6 +176,28 @@ public:
     ren_assert(start + count <= m_size);
     return {m_str + start, count};
   }
+
+  [[nodiscard]] static String<char> join(NotNull<Arena *> arena,
+                                         Span<const String<const char>> strs,
+                                         String<const char> separator) {
+    ren_assert(strs.m_size > 0);
+    usize len = 0;
+    for (String<const char> str : strs) {
+      len += str.m_size;
+    }
+    len += (strs.m_size - 1) * separator.m_size;
+    char *buffer = arena->allocate<char>(len);
+    usize offset = 0;
+    std::memcpy(buffer, strs[0].m_str, strs[0].m_size);
+    offset += strs[0].m_size;
+    for (usize i : range<usize>(1, strs.m_size)) {
+      std::memcpy(&buffer[offset], separator.m_str, separator.m_size);
+      offset += separator.m_size;
+      std::memcpy(&buffer[offset], strs[i].m_str, strs[i].m_size);
+      offset += strs[i].m_size;
+    }
+    return {buffer, len};
+  }
 };
 
 using String8 = String<const char>;
@@ -246,15 +272,6 @@ public:
   void push(String8 str) { m_buffer.push(m_arena, str.m_str, str.m_size); }
 
   char pop() { return m_buffer.pop(); }
-
-  void join(Span<String8> strs, String8 separator) {
-    [[unlikely]] if (strs.m_size == 0) { return; }
-    push(strs[0]);
-    for (usize i : range<usize>(1, strs.m_size)) {
-      push(separator);
-      push(strs[i]);
-    }
-  }
 };
 
 using StringBuilder8 = StringBuilder;

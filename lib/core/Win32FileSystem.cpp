@@ -309,6 +309,12 @@ Path app_data_directory(NotNull<Arena *> arena) {
   return Path::init(arena, String8::init(app_data));
 }
 
+Path home_directory(NotNull<Arena *> arena) {
+  const char *user_profile = std::getenv("USERPROFILE");
+  ren_assert(user_profile);
+  return Path::init(arena, String8::init(user_profile));
+}
+
 } // namespace ren
 
 #endif

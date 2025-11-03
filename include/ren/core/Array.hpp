@@ -15,6 +15,8 @@ template <typename T> struct DynamicArray {
   u32 m_capacity = 0;
 
 public:
+  using value_type = T;
+
   [[nodiscard]] static DynamicArray init(NotNull<Arena *> arena,
                                          usize capacity) {
     DynamicArray array;

@@ -11,6 +11,14 @@ namespace ren {
 
 struct Arena;
 
+namespace detail {
+
+template <typename R>
+using RangeValueType =
+    std::remove_pointer_t<decltype(std::declval<R>().begin())>;
+
+} // namespace detail
+
 template <typename T> struct Span {
   T *m_data = nullptr;
   usize m_size = 0;
@@ -39,7 +47,12 @@ public:
     m_size = N;
   }
 
-  template <typename R> constexpr Span(R &&r) {
+  template <typename R>
+  constexpr Span(R &&r)
+    requires std::same_as<detail::RangeValueType<R>, T> or
+             (std::is_const_v<T> and
+              std::same_as<const detail::RangeValueType<R>, T>)
+  {
     m_data = r.begin();
     m_size = r.end() - r.begin();
   }
@@ -81,8 +94,7 @@ public:
   }
 };
 
-template <typename R>
-Span(R &&r) -> Span<std::remove_pointer_t<decltype(std::declval<R>().begin())>>;
+template <typename R> Span(R &&r) -> Span<detail::RangeValueType<R>>;
 
 template <typename T, usize N> Span(T (&array)[N]) -> Span<T>;
 

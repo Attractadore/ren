@@ -42,6 +42,8 @@ public:
   [[nodiscard]] static JsonValue init(Span<const JsonValue> array);
   [[nodiscard]] static JsonValue init(String8 string);
   [[nodiscard]] static JsonValue init(i64 integer);
+
+  explicit operator bool() const { return type != JsonType::Null; }
 };
 
 struct JsonKeyValue {
@@ -76,6 +78,11 @@ inline String8 json_string(JsonValue value) {
   return value.string;
 }
 
+inline i64 json_integer(JsonValue value) {
+  ren_assert(value.type == JsonType::Integer);
+  return value.integer;
+}
+
 inline JsonValue json_value(JsonValue object, String8 key) {
   for (JsonKeyValue kv : json_object(object)) {
     if (kv.key == key) {
@@ -86,12 +93,11 @@ inline JsonValue json_value(JsonValue object, String8 key) {
 }
 
 inline Span<const JsonValue> json_array_value(JsonValue object, String8 key) {
-  for (JsonKeyValue kv : json_object(object)) {
-    if (kv.key == key) {
-      return json_array(kv.value);
-    }
-  }
-  return {};
+  return json_array(json_value(object, key));
+}
+
+inline String8 json_string_value(JsonValue object, String8 key) {
+  return json_string(json_value(object, key));
 }
 
 inline String8 json_string_value_or(JsonValue object, String8 key,
@@ -105,6 +111,10 @@ inline String8 json_string_value_or(JsonValue object, String8 key,
     }
   }
   return default_value;
+}
+
+inline i64 json_integer_value(JsonValue object, String8 key) {
+  return json_integer(json_value(object, key));
 }
 
 } // namespace ren

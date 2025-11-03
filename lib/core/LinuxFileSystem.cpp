@@ -180,5 +180,11 @@ Path app_data_directory(NotNull<Arena *> arena) {
       .concat(arena, Path::init(String8::init(".local/share")));
 }
 
+Path home_directory(NotNull<Arena *> arena) {
+  const char *home = std::getenv("HOME");
+  ren_assert(home);
+  return Path::init(arena, String8::init(home));
+}
+
 } // namespace ren
 #endif

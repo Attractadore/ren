@@ -142,6 +142,23 @@ Path Path::concat(NotNull<Arena *> arena, Path other) const {
   return {String8(buffer, new_size)};
 }
 
+Path Path::concat(NotNull<Arena *> arena, Span<const Path> others) const {
+  usize new_size = m_str.m_size;
+  for (Path other : others) {
+    ren_assert(not other.is_absolute());
+    new_size += other.m_str.m_size + 1;
+  }
+  char *buffer = arena->allocate<char>(new_size);
+  std::memcpy(buffer, m_str.m_str, m_str.m_size);
+  usize offset = m_str.m_size;
+  for (Path other : others) {
+    buffer[offset++] = SEPARATOR;
+    std::memcpy(&buffer[offset], other.m_str.m_str, other.m_str.m_size);
+    offset += other.m_str.m_size;
+  }
+  return {String8(buffer, new_size)};
+}
+
 IoResult<void> create_directories(Path path) {
   IoResult<void> result = create_directory(path);
   if (result or result.error() == IoError::Exists) {
@@ -236,6 +253,10 @@ IoResult<void> write(Path path, const void *buffer, usize size,
     return result.error();
   }
   return {};
+}
+
+IoResult<void> write(Path path, String8 string, FileOpenFlags flags) {
+  return write(path, string.m_str, string.m_size, flags);
 }
 
 IoResult<void> copy_file(Path from, Path to, FileOpenFlags flags) {
