@@ -5,6 +5,7 @@ add_library(ren-core
   core/Assert.cpp
   core/CmdLine.cpp
   core/FileSystem.cpp
+  core/JSON.cpp
   core/LinuxChrono.cpp
   core/LinuxFileSystem.cpp
   core/LinuxVm.cpp

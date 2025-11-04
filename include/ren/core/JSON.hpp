@@ -1,0 +1,110 @@
+#pragma once
+#include "Result.hpp"
+#include "String.hpp"
+
+namespace ren {
+
+enum class JsonError {
+  Unknown,
+  InvalidSyntax,
+  InvalidCodeUnit,
+  EndOfFile,
+};
+
+String8 format_as(JsonError error);
+
+enum class JsonType {
+  Null,
+  Object,
+  Array,
+  String,
+  Integer,
+  Number,
+  Boolean,
+};
+
+struct JsonValue;
+struct JsonKeyValue;
+
+struct JsonValue {
+  JsonType type = JsonType::Null;
+  union {
+    Span<const JsonKeyValue> object = {};
+    Span<const JsonValue> array;
+    String8 string;
+    i64 integer;
+    double number;
+    bool boolean;
+  };
+
+public:
+  [[nodiscard]] static JsonValue init(Span<const JsonKeyValue> object);
+  [[nodiscard]] static JsonValue init(Span<const JsonValue> array);
+  [[nodiscard]] static JsonValue init(String8 string);
+  [[nodiscard]] static JsonValue init(i64 integer);
+};
+
+struct JsonKeyValue {
+  String8 key;
+  JsonValue value;
+};
+
+struct JsonErrorInfo {
+  JsonError error = JsonError::Unknown;
+  usize offset = 0;
+  usize line = 0;
+  usize column = 0;
+};
+
+Result<JsonValue, JsonErrorInfo> json_parse(NotNull<Arena *> arena,
+                                            String8 buffer);
+
+String8 json_serialize(NotNull<Arena *> arena, JsonValue json);
+
+inline Span<const JsonKeyValue> json_object(JsonValue value) {
+  ren_assert(value.type == JsonType::Object);
+  return value.object;
+}
+
+inline Span<const JsonValue> json_array(JsonValue value) {
+  ren_assert(value.type == JsonType::Array);
+  return value.array;
+}
+
+inline String8 json_string(JsonValue value) {
+  ren_assert(value.type == JsonType::String);
+  return value.string;
+}
+
+inline JsonValue json_value(JsonValue object, String8 key) {
+  for (JsonKeyValue kv : json_object(object)) {
+    if (kv.key == key) {
+      return kv.value;
+    }
+  }
+  return {};
+}
+
+inline Span<const JsonValue> json_array_value(JsonValue object, String8 key) {
+  for (JsonKeyValue kv : json_object(object)) {
+    if (kv.key == key) {
+      return json_array(kv.value);
+    }
+  }
+  return {};
+}
+
+inline String8 json_string_value_or(JsonValue object, String8 key,
+                                    String8 default_value) {
+  for (JsonKeyValue kv : json_object(object)) {
+    if (kv.key == key) {
+      if (kv.value.type == JsonType::String) {
+        return json_string(kv.value);
+      }
+      break;
+    }
+  }
+  return default_value;
+}
+
+} // namespace ren
