@@ -128,9 +128,10 @@ void place_entities(
 }
 
 void place_light(ren::Scene *scene) {
-  create_directional_light(scene, {
-                                      .origin = {-1.0f, 0.0f, 1.0f},
-                                  });
+  std::ignore =
+      create_directional_light(scene, {
+                                          .origin = {-1.0f, 0.0f, 1.0f},
+                                      });
 }
 
 void set_camera(ren::Scene *scene, ren::Handle<ren::Camera> camera,

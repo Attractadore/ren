@@ -5,7 +5,7 @@
 
 namespace ren {
 
-class Renderer;
+struct Renderer;
 
 struct SwapChain {
   void init(NotNull<Arena *> arena, Renderer &renderer, SDL_Window *window);

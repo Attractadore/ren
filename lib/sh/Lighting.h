@@ -102,9 +102,7 @@ inline vec3 lighting(vec3 n, vec3 l, vec3 v, vec3 albedo, vec3 f0,
   vec3 h = normalize(v + l);
 
   float nl = dot(n, l);
-  float nl2 = nl * nl;
   float nv = dot(n, v);
-  float nv2 = nv * nv;
   float nh = dot(n, h);
   float nh2 = nh * nh;
   float lh = dot(l, h);

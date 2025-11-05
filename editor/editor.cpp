@@ -123,7 +123,7 @@ bool InputText(const char *label, NotNull<Arena *> arena,
       [](ImGuiInputTextCallbackData *data) {
         if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
           auto [arena, buf] = *(InputTextCallback_UserData *)data->UserData;
-          while (buf->m_size < data->BufTextLen + 1) {
+          while (buf->m_size < (u32)data->BufTextLen + 1) {
             buf->push(arena, 0);
           }
           buf->m_size = data->BufTextLen + 1;

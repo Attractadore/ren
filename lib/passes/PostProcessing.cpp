@@ -42,7 +42,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
   glm::uvec2 ltm_size = ccfg.viewport / 2u;
   RgTextureId ltm_llm;
   if (settings.local_tone_mapping) {
-    i32 num_mips = min<u32>(settings.ltm_pyramid_size,
+    u32 num_mips = min<u32>(settings.ltm_pyramid_size,
                             get_mip_chain_length(ltm_size.x, ltm_size.y));
     i32 llm_mip = min<u32>(settings.ltm_llm_mip, num_mips - 1);
     u32 pad_size = 1 << (num_mips - 1);
@@ -151,7 +151,7 @@ void ren::setup_post_processing_passes(const PassCommonConfig &ccfg,
           .weights = pass.read_texture(ltm_weights,
                                        rhi::SAMPLER_LINEAR_MIP_NEAREST_CLAMP),
           .src_accumulator =
-              mip < num_mips - 1 ? accumulator : RgTextureToken(),
+              mip < (i32)num_mips - 1 ? accumulator : RgTextureToken(),
           .dst_accumulator = accumulator,
           .dst_mip = u32(mip),
           .llm_mip = u32(llm_mip),

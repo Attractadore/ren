@@ -42,13 +42,17 @@ DirectX::TexMetadata to_dxtex_images(NotNull<Arena *> arena,
                                      const TextureInfo &info,
                                      NotNull<Span<DirectX::Image> *> images) {
   u32 num_faces = info.cube_map ? 6 : 1;
+  u32 misc_flags = 0;
+  if (info.cube_map) {
+    misc_flags |= DirectX::TEX_MISC_TEXTURECUBE;
+  }
   DirectX::TexMetadata mdata = {
       .width = info.width,
       .height = info.height,
       .depth = info.depth,
       .arraySize = num_faces,
       .mipLevels = info.num_mips,
-      .miscFlags = info.cube_map ? DirectX::TEX_MISC_TEXTURECUBE : 0,
+      .miscFlags = misc_flags,
       .format = (DXGI_FORMAT)TinyImageFormat_ToDXGI_FORMAT(info.format),
       .dimension = info.depth > 1 ? DirectX::TEX_DIMENSION_TEXTURE3D
                                   : DirectX::TEX_DIMENSION_TEXTURE2D,
@@ -223,7 +227,6 @@ Blob bake_normal_map_to_memory(NotNull<Arena *> arena,
 DirectX::ScratchImage bake_orm_map(const TextureInfo &roughness_metallic_info,
                                    const TextureInfo &occlusion_info) {
   HRESULT hres = S_OK;
-  ktx_error_code_e err = KTX_SUCCESS;
 
   DirectX::Image src = to_dxtex_image(roughness_metallic_info);
 

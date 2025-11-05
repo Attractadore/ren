@@ -9,7 +9,7 @@
 
 namespace ren {
 
-class Renderer;
+struct Renderer;
 
 constexpr u32 MAX_SRV_SIZE = 4096;
 constexpr u32 MAX_SRV_MIPS = 13;

@@ -34,7 +34,7 @@ struct MeshPackageHeader {
   u64 triangles_offset = 0;
 };
 
-class ResourceArena;
+struct ResourceArena;
 
 struct Buffer;
 

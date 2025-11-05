@@ -17,7 +17,7 @@
 auto format_as(VkResult result) { return fmt::underlying(result); }
 
 #define VK_CHECK(result, message)                                              \
-  if (result) {                                                                \
+  if ((result) != VK_SUCCESS) {                                                \
     fmt::println(stderr, message ": {}", result);                              \
     std::abort();                                                              \
   }
@@ -417,10 +417,6 @@ constexpr const char *REQUIRED_DEVICE_EXTENSIONS[] = {
 
 constexpr const char *REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
-constexpr const char *OPTIONAL_DEVICE_EXTENSIONS[] = {
-    VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME,
 };
 
 } // namespace
@@ -1520,10 +1516,13 @@ auto create_image(Device device, const ImageCreateInfo &create_info)
     queue_families[num_queue_families++] = copy_qf;
   }
 
+  VkImageCreateFlags flags = 0;
+  if (create_info.cube_map) {
+    flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+  }
   VkImageCreateInfo image_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .flags = create_info.cube_map ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-                                    : VkImageCreateFlags(0),
+      .flags = flags,
       .imageType = image_type,
       .format = (VkFormat)TinyImageFormat_ToVkFormat(create_info.format),
       .extent = {width, height, depth},
@@ -2099,7 +2098,6 @@ void cmd_pipeline_barrier(CommandBuffer cmd,
                           Span<const MemoryBarrier> memory_barriers,
                           Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
-  Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
       allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
   for (usize i : range(memory_barriers.m_size)) {
@@ -2149,7 +2147,6 @@ void cmd_set_event(CommandBuffer cmd, Event event,
                    Span<const MemoryBarrier> memory_barriers,
                    Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
-  Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
       allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
   for (usize i : range(memory_barriers.m_size)) {
@@ -2199,7 +2196,6 @@ void cmd_wait_event(CommandBuffer cmd, Event event,
                     Span<const MemoryBarrier> memory_barriers,
                     Span<const ImageBarrier> image_barriers) {
   ScratchArena scratch;
-  Adapter adapter = cmd.device->adapter;
   auto *vk_memory_barriers =
       allocate<VkMemoryBarrier2>(scratch, memory_barriers.m_size);
   for (usize i : range(memory_barriers.m_size)) {

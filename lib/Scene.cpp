@@ -1020,7 +1020,7 @@ RenderGraph build_rg(NotNull<Arena *> arena, Scene *scene) {
   auto set_if_changed =
       [&]<typename T>(T &config_value,
                       const std::convertible_to<T> auto &new_value) {
-        if (config_value != new_value) {
+        if (config_value != (T)new_value) {
           config_value = new_value;
           dirty = true;
         }

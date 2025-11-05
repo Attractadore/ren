@@ -139,7 +139,7 @@ auto process(const CompileOptions &opts) -> int {
       u32 type_pointer = spirv[word + 1];
       u32 storage_class = spirv[word + 3];
       if (storage_class == SpvStorageClassPushConstant) {
-        ren_assert(pc_type == -1);
+        ren_assert(pc_type == (u32)-1);
         u32 tp_word = id_def_words[type_pointer];
         ren_assert(tp_word != 0);
         u32 tp_storage_class = spirv[tp_word + 2];
@@ -215,7 +215,7 @@ auto process(const CompileOptions &opts) -> int {
   }
 
   // Generate render graph binding code.
-  if (pc_type == -1) {
+  if (pc_type == (u32)-1) {
     fmt::println(stderr, "Failed to find push constant block in {}", opts.spv);
   } else {
     String8 pc_name = struct_names[pc_type];
@@ -323,7 +323,7 @@ enum ProcessShaderOptions {
   OPTION_COUNT,
 };
 
-int main(int argc, const char *argv[]) {
+int main(int, const char *argv[]) {
   ScratchArena::init_allocator();
   ScratchArena scratch;
 

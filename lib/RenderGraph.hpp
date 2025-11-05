@@ -45,11 +45,11 @@ template <class R, typename... Args> struct Function {
 class CommandRecorder;
 class RenderPass;
 
-class RgPersistent;
-class RgBuilder;
+struct RgPersistent;
+struct RgBuilder;
 class RgPassBuilder;
-class RenderGraph;
-class RgRuntime;
+struct RenderGraph;
+struct RgRuntime;
 
 template <typename F>
 concept CRgRenderPassCallback =
@@ -891,7 +891,7 @@ public:
   }
 
 private:
-  friend class RgBuilder;
+  friend struct RgBuilder;
 
   RgPassBuilder(RgPassId pass, RgBuilder &builder);
 

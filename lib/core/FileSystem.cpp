@@ -5,7 +5,7 @@ namespace ren {
 namespace {
 
 bool is_volume_name(char a, char b) {
-  return (a >= 'a' and a <= 'z' or a >= 'A' and a <= 'Z') and b == ':';
+  return ((a >= 'a' and a <= 'z') or (a >= 'A' and a <= 'Z')) and b == ':';
 }
 
 } // namespace

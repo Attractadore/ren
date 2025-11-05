@@ -237,7 +237,6 @@ inline vec3 tone_map_khr_pbr_neutral(vec3 color) {
 inline float tone_map_khr_pbr_neutral(float x) {
   const float F0 = 0.04f;
   const float KS = 0.80f - F0;
-  const float KD = 0.15f;
   float p = x <= 2.0f * F0 ? x * x / (4.0f * F0) : x - F0;
   if (p <= KS) {
     return p;

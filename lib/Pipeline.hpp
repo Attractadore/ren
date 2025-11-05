@@ -51,7 +51,7 @@ struct ComputePipeline {
   glm::uvec3 local_size = {};
 };
 
-class ResourceArena;
+struct ResourceArena;
 
 Handle<ComputePipeline> load_compute_pipeline(ResourceArena &arena,
                                               Span<const std::byte> shader,

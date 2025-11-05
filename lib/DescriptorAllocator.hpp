@@ -7,9 +7,9 @@
 
 namespace ren {
 
-class Renderer;
+struct Renderer;
 
-class ResourceArena;
+struct ResourceArena;
 struct SrvDesc;
 struct UavDesc;
 

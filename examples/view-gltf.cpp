@@ -252,7 +252,7 @@ public:
     m_scene = scene;
   }
 
-  void walk(int scene) {
+  void walk(ren::u32 scene) {
     if (not m_model.extensionsRequired.empty()) {
       fmt::println(stderr, "Required glTF extensions not supported");
       exit(EXIT_FAILURE);
@@ -709,7 +709,7 @@ private:
 
   ren::Handle<ren::Material> get_or_create_material(int index) {
     assert(index >= 0);
-    while (index >= m_material_cache.m_size) {
+    while ((ren::u32)index >= m_material_cache.m_size) {
       m_material_cache.push(m_load_arena);
     }
     ren::Handle<ren::Material> &material = m_material_cache[index];
@@ -854,7 +854,7 @@ public:
     if (env_map) {
       ren::set_environment_map(scene, env_map);
     } else {
-      ren::Handle<ren::DirectionalLight> directional_light =
+      std::ignore =
           ren::create_directional_light(scene, {
                                                    .color = {1.0f, 1.0f, 1.0f},
                                                    .illuminance = 100'000.0f,
@@ -873,7 +873,6 @@ public:
 protected:
   void process_event(const SDL_Event &event) override {
     ImGuiApp::process_event(event);
-    ImGuiIO &io = ImGui::GetIO();
     switch (event.type) {
     default:
       break;

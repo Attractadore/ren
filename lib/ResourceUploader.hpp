@@ -8,7 +8,7 @@ struct ktxTexture2;
 
 namespace ren {
 
-class Renderer;
+struct Renderer;
 
 struct Texture;
 

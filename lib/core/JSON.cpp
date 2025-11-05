@@ -71,7 +71,7 @@ struct JsonParserContext {
 Result<Utf16Char, JsonErrorInfo>
 json_parse_utf16(NotNull<JsonParserContext *> ctx) {
   Utf16Char cu;
-  for (usize k : range(4)) {
+  for (auto _ : range(4)) {
     if (ctx->i == ctx->buffer.m_size) {
       return JSON_EOF_ERROR;
     }

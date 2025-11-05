@@ -65,7 +65,7 @@ if (REN_BUILD_BAKING_TOOLS)
   FetchContent_MakeAvailable(sal)
   
   add_library(DirectXMath INTERFACE)
-  target_include_directories(DirectXMath INTERFACE DirectXMath/Inc ${sal_SOURCE_DIR})
+  target_include_directories(DirectXMath SYSTEM INTERFACE DirectXMath/Inc ${sal_SOURCE_DIR})
   target_compile_features(DirectXMath INTERFACE cxx_std_11)
   add_library(Microsoft::DirectXMath ALIAS DirectXMath)
   
@@ -86,7 +86,7 @@ if (REN_BUILD_BAKING_TOOLS)
     DirectXTex/DirectXTex/DirectXTexTGA.cpp
     DirectXTex/DirectXTex/DirectXTexUtil.cpp
   )
-  target_include_directories(DirectXTex PUBLIC DirectXTex/DirectXTex)
+  target_include_directories(DirectXTex SYSTEM PUBLIC DirectXTex/DirectXTex)
   target_link_libraries(DirectXTex PUBLIC Microsoft::DirectXMath Microsoft::DirectX-Headers)
   find_package(OpenMP)
   if(TARGET OpenMP::OpenMP_CXX)

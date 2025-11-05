@@ -10,8 +10,8 @@
 
 namespace ren {
 
-class Renderer;
-class ResourceArena;
+struct Renderer;
+struct ResourceArena;
 struct CommandPool;
 struct ComputePipeline;
 struct GraphicsPipeline;

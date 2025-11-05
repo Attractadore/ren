@@ -54,7 +54,8 @@ function(add_shader target shader_slang)
 
   add_custom_command(
     OUTPUT ${shader_hpp} ${shader_cpp}
-    DEPENDS ${shader_spv} ren::process-shader
+    DEPENDS ${shader_spv}
+    # ren::process-shader
     COMMAND ren::process-shader --project-src-dir "${PROJECT_SOURCE_DIR}" --src "${shader_slang}" "${shader_spv}"
     COMMAND_EXPAND_LISTS VERBATIM)
 

@@ -185,6 +185,7 @@ String8 cmd_line_help(NotNull<Arena *> arena, const char *argv_0,
       break;
     case CmdLineOptionType::String:
       str.push(" string");
+      break;
     case CmdLineOptionType::Path:
       str.push(" path");
       break;

@@ -2,6 +2,7 @@
 #include "ren/baking/mesh.hpp"
 
 #include <glm/glm.hpp>
+#include <utility>
 
 class DrawTriangleApp : public AppBase {
   ren::Handle<ren::Mesh> m_mesh;
@@ -49,7 +50,7 @@ public:
                                       });
 
     // Ambient day light
-    ren::Handle<ren::DirectionalLight> light =
+    std::ignore =
         ren::create_directional_light(scene, {
                                                  .color = {1.0f, 1.0f, 1.0f},
                                                  .illuminance = 25'000.0f,

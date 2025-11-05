@@ -39,21 +39,21 @@ inline void to_utf8(Utf32Char cu, NotNull<StringBuilder *> builder) {
     builder->push(0x80 | ((cu.value >> 0) & 0x7F));
   }
   if (cu.value < 0x82080) {
-    builder->push(0xC0 | (cu.value >> 14) & 0x1F);
-    builder->push(0x80 | (cu.value >> 7) & 0x7F);
-    builder->push(0x80 | (cu.value >> 0) & 0x7F);
+    builder->push(0xC0 | ((cu.value >> 14) & 0x1F));
+    builder->push(0x80 | ((cu.value >> 7) & 0x7F));
+    builder->push(0x80 | ((cu.value >> 0) & 0x7F));
   }
   if (cu.value < 0x2082080) {
-    builder->push(0xE0 | (cu.value >> 21) & 0x0F);
-    builder->push(0x80 | (cu.value >> 14) & 0x7F);
-    builder->push(0x80 | (cu.value >> 7) & 0x7F);
-    builder->push(0x80 | (cu.value >> 0) & 0x7F);
+    builder->push(0xE0 | ((cu.value >> 21) & 0x0F));
+    builder->push(0x80 | ((cu.value >> 14) & 0x7F));
+    builder->push(0x80 | ((cu.value >> 7) & 0x7F));
+    builder->push(0x80 | ((cu.value >> 0) & 0x7F));
   }
-  builder->push(0xF0 | (cu.value >> 28) & 0x07);
-  builder->push(0x80 | (cu.value >> 21) & 0x7F);
-  builder->push(0x80 | (cu.value >> 14) & 0x7F);
-  builder->push(0x80 | (cu.value >> 7) & 0x7F);
-  builder->push(0x80 | (cu.value >> 0) & 0x7F);
+  builder->push(0xF0 | ((cu.value >> 28) & 0x07));
+  builder->push(0x80 | ((cu.value >> 21) & 0x7F));
+  builder->push(0x80 | ((cu.value >> 14) & 0x7F));
+  builder->push(0x80 | ((cu.value >> 7) & 0x7F));
+  builder->push(0x80 | ((cu.value >> 0) & 0x7F));
 }
 
 } // namespace ren

@@ -38,10 +38,40 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
 endif()
 
+# Use default warnings for external code
+add_subdirectory(external)
+
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+  add_compile_options(
+    -fno-strict-aliasing
+    -Wall
+    -Wextra
+    # -Werror
+    -Wno-missing-designated-field-initializers
+    -Wno-missing-field-initializers
+    -Wno-unused-parameter
+  )
+endif()
+
+if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(
+      -fno-strict-aliasing
+      /W4
+      # /WX
+      -Wno-deprecated-copy
+      -Wno-missing-designated-field-initializers
+      -Wno-missing-field-initializers
+      -Wno-unused-parameter
+    )
+  else()
+    add_compile_options(/Wall)
+  endif()
+endif()
+
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-add_subdirectory(external)
 add_subdirectory(lib)
 
 if(REN_BUILD_EXAMPLES)

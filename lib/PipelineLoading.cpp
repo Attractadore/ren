@@ -51,7 +51,7 @@ load_opaque_pass_pipelines(ResourceArena &arena) {
   auto vs = Span(OpaqueVS, OpaqueVSSize).as_bytes();
   auto fs = Span(OpaqueFS, OpaqueFSSize).as_bytes();
   StackArray<Handle<GraphicsPipeline>, sh::NUM_MESH_ATTRIBUTE_FLAGS> pipelines;
-  for (int i = 0; i < sh::NUM_MESH_ATTRIBUTE_FLAGS; ++i) {
+  for (usize i : range(sh::NUM_MESH_ATTRIBUTE_FLAGS)) {
     MeshAttributeFlags flags(static_cast<MeshAttribute>(i));
     StackArray<SpecializationConstant, 3> specialization_constants = {{
         {sh::S_OPAQUE_FEATURE_VC, flags.is_set(MeshAttribute::Color)},

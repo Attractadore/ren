@@ -299,7 +299,6 @@ auto RgBuilder::read_texture(RgPassId pass_id, RgTextureId texture,
       return RgTextureToken(use_id);
     }
   }
-  RgPhysicalTextureId physical_texture = m_rgp->m_textures[texture].parent;
   RgTextureUseId use = add_texture_use({
       .texture = texture,
       .sampler = sampler,
@@ -624,7 +623,7 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
     if (physical_buffer.view.buffer) {
       continue;
     }
-    switch (rhi::MemoryHeap heap = physical_buffer.heap) {
+    switch (physical_buffer.heap) {
     default:
       std::unreachable();
     case rhi::MemoryHeap::Default: {

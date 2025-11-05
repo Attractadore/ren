@@ -239,7 +239,7 @@ struct StringBuilder {
 
 public:
   [[nodiscard]] static StringBuilder init(NotNull<Arena *> arena) {
-    return {arena};
+    return {.m_arena = arena};
   }
 
   [[nodiscard]] static StringBuilder init(NotNull<Arena *> arena,

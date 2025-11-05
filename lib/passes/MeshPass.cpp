@@ -354,7 +354,6 @@ void record_render_pass(const PassCommonConfig &ccfg,
   u32 draw_set = get_draw_set_index(S);
 
   const DrawSetData &ds = info.base.gpu_scene->draw_sets[draw_set];
-  const RgDrawSetData &rg_ds = info.base.rg_gpu_scene->draw_sets[draw_set];
   if (ds.batches.m_size == 0) {
     return;
   }

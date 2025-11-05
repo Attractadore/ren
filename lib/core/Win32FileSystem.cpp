@@ -153,7 +153,7 @@ Path Path::init(NotNull<Arena *> arena, String8 path) {
 }
 
 String8 Path::native(NotNull<Arena *> arena) const {
-  static const LPSTR (*wine_get_unix_file_name)(LPCWSTR) =
+  static LPSTR (*const wine_get_unix_file_name)(LPCWSTR) =
       (decltype(wine_get_unix_file_name))GetProcAddress(
           GetModuleHandleA("KERNEL32"), "wine_get_unix_file_name");
   if (wine_get_unix_file_name) {
@@ -213,7 +213,7 @@ IoResult<u64> last_write_time(Path path) {
   DWORD err = GetLastError();
   CloseHandle(hfile);
   if (!success) {
-    return win32_to_io_error();
+    return win32_to_io_error(err);
   }
   return std::bit_cast<u64>(time);
 }
