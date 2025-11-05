@@ -198,8 +198,6 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
   ImGui::SameLine();
   ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
   if (ImGui::Button("Browse...")) {
-    SDL_SetStringProperty(dialog_properties,
-                          SDL_PROP_FILE_DIALOG_LOCATION_STRING, buffer->m_data);
     ctx->m_ui.m_dialog_active = true;
     switch (dialog_type) {
     case SDL_FILEDIALOG_OPENFILE:
@@ -210,6 +208,9 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
     case SDL_FILEDIALOG_SAVEFILE:
       ren_assert_msg(false, "Not implemented");
     case SDL_FILEDIALOG_OPENFOLDER:
+      SDL_SetStringProperty(dialog_properties,
+                            SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                            buffer->m_data);
       SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
                                        open_folder_dialog_callback, ctx,
                                        dialog_properties);
@@ -705,9 +706,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ScratchArena scratch;
     ImportMeshUI &ui = ctx->m_ui.m_import_mesh;
     if (ImGui::IsWindowAppearing()) {
-      auto [home_str, home_sz] = home_directory(scratch).m_str;
       ui.m_path_buffer = {};
-      ui.m_path_buffer.push(&ctx->m_popup_arena, home_str, home_sz);
       ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
     }
 
