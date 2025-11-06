@@ -28,6 +28,8 @@ namespace ren {
 namespace {
 
 const Path ASSET_DIR = Path::init("assets");
+const Path SCENE_DIR = Path::init("scene");
+
 const Path CONTENT_DIR = Path::init("content");
 const Path MESH_DIR = Path::init("mesh");
 
@@ -68,7 +70,7 @@ enum class EditorState {
 enum class EditorPopupMenu {
   None,
   NewProject,
-  ImportMesh,
+  ImportScene,
 };
 
 enum class EditorDialogClient {
@@ -86,7 +88,7 @@ struct OpenProjectUI {
   String8 m_error;
 };
 
-struct ImportMeshUI {
+struct ImportSceneUI {
   DynamicArray<char> m_path_buffer;
   String8 m_import_error;
 };
@@ -96,7 +98,7 @@ struct EditorUI {
 
   SDL_PropertiesID m_new_project_dialog_properties = 0;
   SDL_PropertiesID m_open_project_dialog_properties = 0;
-  SDL_PropertiesID m_import_mesh_dialog_properties = 0;
+  SDL_PropertiesID m_import_scene_dialog_properties = 0;
 
   EditorDialogClient m_dialog_client = EditorDialogClient::None;
   bool m_dialog_active = false;
@@ -104,7 +106,7 @@ struct EditorUI {
   Path m_dialog_path;
   NewProjectUI m_new_project;
   OpenProjectUI m_open_project;
-  ImportMeshUI m_import_mesh;
+  ImportSceneUI m_import_scene;
 };
 
 struct EditorProjectContext {
@@ -446,44 +448,93 @@ void close_project(NotNull<EditorContext *> ctx) {
   ctx->m_project_arena.clear();
 }
 
-JsonValue generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
+struct MetaMesh {
+  String8 name;
+  u32 id = 0;
+  Guid64 guid;
+};
+
+struct MetaEntity {
+  String8 name;
+  u32 id = 0;
+  Span<const MetaMesh> meshes;
+};
+
+struct MetaScene {
+  String8 scene;
+  Span<const MetaEntity> entities;
+};
+
+JsonValue to_json(NotNull<Arena *> arena, MetaScene scene) {
+  DynamicArray<JsonKeyValue> scene_json;
+  scene_json.push(arena, {"scene", JsonValue::init(arena, scene.scene)});
+  Span<JsonValue> json_entities =
+      Span<JsonValue>::allocate(arena, scene.entities.m_size);
+  for (usize entity_index : range(scene.entities.m_size)) {
+    MetaEntity entity = scene.entities[entity_index];
+    DynamicArray<JsonKeyValue> json_entity;
+    json_entity.push(arena, {"name", JsonValue::init(arena, entity.name)});
+    json_entity.push(arena, {"id", JsonValue::init(entity.id)});
+    auto json_meshes = Span<JsonValue>::allocate(arena, entity.meshes.m_size);
+    for (usize mesh_index : range(entity.meshes.m_size)) {
+      MetaMesh mesh = entity.meshes[mesh_index];
+      DynamicArray<JsonKeyValue> json_mesh;
+      json_mesh.push(arena, {"name", JsonValue::init(arena, mesh.name)});
+      json_mesh.push(arena, {"id", JsonValue::init(mesh.id)});
+      json_mesh.push(arena,
+                     {"guid", JsonValue::init(to_string(arena, mesh.guid))});
+      json_meshes[mesh_index] = JsonValue::init(json_mesh);
+    }
+    json_entity.push(arena, {"meshes", JsonValue::init(json_meshes)});
+    json_entities[entity_index] = JsonValue::init(json_entity);
+  }
+  scene_json.push(arena, {"entities", JsonValue::init(json_entities)});
+  return JsonValue::init(scene_json);
+}
+
+MetaScene generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
                                  Path filename) {
   ScratchArena scratch(arena);
   blake3_hasher hasher;
   blake3_hasher_init(&hasher);
 
-  Path stem = filename.stem().copy(arena);
+  Path stem = filename.stem();
 
   Span<const JsonValue> meshes = json_array_value(gltf, "meshes");
-  DynamicArray<JsonValue> meta_meshes;
-  for (usize mesh_index : range(meshes.m_size)) {
-    String8 mesh_name = json_string_value_or(meshes[mesh_index], "name",
-                                             format(scratch, "{}", mesh_index))
-                            .copy(arena);
+  auto meta_entities = Span<MetaEntity>::allocate(arena, meshes.m_size);
+  for (usize entity_index : range(meshes.m_size)) {
+    String8 entity_name =
+        json_string_value_or(meshes[entity_index], "name",
+                             format(scratch, "{}", entity_index))
+            .copy(arena);
     Span<const JsonValue> primitives =
-        json_array_value(meshes[mesh_index], "primitives");
-    for (usize primitive_index : range(primitives.m_size)) {
-      String8 primitive_name = format(arena, "{}", primitive_index);
+        json_array_value(meshes[entity_index], "primitives");
+    auto meta_meshes = Span<MetaMesh>::allocate(arena, primitives.m_size);
+    for (usize mesh_index : range(primitives.m_size)) {
+      String8 mesh_name = format(arena, "{}", mesh_index);
       blake3_hasher_reset(&hasher);
-      String8 name =
-          String8::join(arena, {stem.m_str, mesh_name, primitive_name}, "::");
-      blake3_hasher_update(&hasher, name.m_str, name.m_size);
+      String8 guid_src =
+          String8::join(scratch, {stem.m_str, entity_name, mesh_name}, "::");
+      blake3_hasher_update(&hasher, guid_src.m_str, guid_src.m_size);
       Guid64 guid;
       blake3_hasher_finalize(&hasher, guid.m_data, sizeof(guid));
-      DynamicArray<JsonKeyValue> meta_mesh;
-      meta_mesh.push(arena, {"name", JsonValue::init(name)});
-      meta_mesh.push(arena, {"file", JsonValue::init(stem.m_str)});
-      meta_mesh.push(arena, {"mesh", JsonValue::init(mesh_name)});
-      meta_mesh.push(arena, {"mesh_id", JsonValue::init(mesh_index)});
-      meta_mesh.push(arena, {"primitive", JsonValue::init(primitive_name)});
-      meta_mesh.push(arena, {"primitive_id", JsonValue::init(primitive_index)});
-      meta_mesh.push(arena, {"guid", JsonValue::init(to_string(arena, guid))});
-      meta_meshes.push(arena, JsonValue::init(meta_mesh));
+      meta_meshes[mesh_index] = {
+          .name = mesh_name,
+          .id = (u32)mesh_index,
+          .guid = guid,
+      };
     }
+    meta_entities[entity_index] = {
+        .name = entity_name,
+        .id = (u32)entity_index,
+        .meshes = meta_meshes,
+    };
   }
-  auto *meta = arena->allocate<JsonKeyValue>();
-  *meta = {"meshes", JsonValue::init(meta_meshes)};
-  return JsonValue::init({meta, 1});
+
+  return {
+      .scene = stem.m_str.copy(arena),
+      .entities = meta_entities,
+  };
 }
 
 template <typename T>
@@ -543,12 +594,8 @@ Span<const T> accessor_data(Span<const std::byte> bin, JsonValue gltf,
 }
 
 Span<std::byte> process_mesh(NotNull<Arena *> arena, JsonValue gltf,
-                             Span<const std::byte> bin, JsonValue meta,
-                             usize meta_index) {
-  Span<const JsonValue> meta_meshes = json_array_value(meta, "meshes");
-  JsonValue meta_mesh = meta_meshes[meta_index];
-  i64 mesh_index = json_integer_value(meta_mesh, "mesh_id");
-  i64 primitive_index = json_integer_value(meta_mesh, "primitive_id");
+                             Span<const std::byte> bin, usize mesh_index,
+                             usize primitive_index) {
   JsonValue gltf_mesh = json_array_value(gltf, "meshes")[mesh_index];
   JsonValue gltf_primitive =
       json_array_value(gltf_mesh, "primitives")[primitive_index];
@@ -587,24 +634,24 @@ Span<std::byte> process_mesh(NotNull<Arena *> arena, JsonValue gltf,
   return {(std::byte *)blob.data, blob.size};
 }
 
-Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
+Result<void, String8> import_scene(NotNull<EditorContext *> ctx, Path path) {
   ScratchArena scratch;
 
-  Path mesh_directory =
-      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, MESH_DIR});
+  Path scene_directory =
+      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, SCENE_DIR});
   Path filename = path.filename();
   Path mesh_filename = filename.replace_extension(scratch, Path::init(".gltf"));
   Path bin_filename = filename.replace_extension(scratch, Path::init(".bin"));
   Path meta_filename = filename.replace_extension(scratch, Path::init(".json"));
-  Path gltf_path = mesh_directory.concat(scratch, mesh_filename);
-  Path bin_path = mesh_directory.concat(scratch, bin_filename);
-  Path meta_path = mesh_directory.concat(scratch, meta_filename);
+  Path gltf_path = scene_directory.concat(scratch, mesh_filename);
+  Path bin_path = scene_directory.concat(scratch, bin_filename);
+  Path meta_path = scene_directory.concat(scratch, meta_filename);
   Path blob_directory =
       ctx->m_project->m_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
 
-  if (IoResult<void> result = create_directories(mesh_directory); !result) {
+  if (IoResult<void> result = create_directories(scene_directory); !result) {
     return format(&ctx->m_popup_arena, "Failed to create {}: {}",
-                  mesh_directory, result.error());
+                  scene_directory, result.error());
   }
   if (IoResult<void> result = create_directories(blob_directory); !result) {
     return format(&ctx->m_popup_arena, "Failed to create {}: {}",
@@ -622,6 +669,7 @@ Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
   );
   const aiScene *scene = importer.ReadFile(
       path.m_str.zero_terminated(scratch),
+      aiProcess_FindInstances |
       aiProcess_FindInvalidData |
       aiProcess_GenNormals |
       aiProcess_OptimizeGraph |
@@ -664,23 +712,28 @@ Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
                   gltf_path, error.line + 1, error.column + 1, error.error);
   }
 
-  JsonValue meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
-  if (auto result = write(meta_path, json_serialize(scratch, meta)); !result) {
+  MetaScene meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
+  if (auto result =
+          write(meta_path, json_serialize(scratch, to_json(scratch, meta)));
+      !result) {
     return format(&ctx->m_popup_arena, "Failed to write {}: {}", meta_path,
                   result.error());
   }
 
-  Span<const JsonValue> meta_meshes = json_array_value(meta, "meshes");
-  for (usize i : range(meta_meshes.m_size)) {
-    JsonValue meta_mesh = meta_meshes[i];
-    ScratchArena scratch;
-    Span<const std::byte> blob = process_mesh(
-        scratch, *gltf, {(const std::byte *)bin->data, bin->size}, meta, i);
-    Path blob_filename = Path::init(json_string_value(meta_mesh, "guid"));
-    Path blob_path = blob_directory.concat(scratch, blob_filename);
-    if (auto result = write(blob_path, blob); !result) {
-      return format(&ctx->m_popup_arena, "Failed to write {}: {}", blob_path,
-                    result.error());
+  for (usize entity_index : range(meta.entities.m_size)) {
+    MetaEntity meta_entity = meta.entities[entity_index];
+    for (usize mesh_index : range(meta_entity.meshes.m_size)) {
+      MetaMesh meta_mesh = meta_entity.meshes[mesh_index];
+      ScratchArena scratch;
+      Span<const std::byte> blob = process_mesh(
+          scratch, *gltf, {(const std::byte *)bin->data, bin->size},
+          entity_index, mesh_index);
+      Path blob_filename = Path::init(to_string(scratch, meta_mesh.guid));
+      Path blob_path = blob_directory.concat(scratch, blob_filename);
+      if (auto result = write(blob_path, blob); !result) {
+        return format(&ctx->m_popup_arena, "Failed to write {}: {}", blob_path,
+                      result.error());
+      }
     }
   }
 
@@ -744,7 +797,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     if (ctx->m_state == EditorState::Project) {
       if (ImGui::BeginMenu("Import")) {
         if (ImGui::MenuItem("Mesh...")) {
-          open_popup = EditorPopupMenu::ImportMesh;
+          open_popup = EditorPopupMenu::ImportScene;
         }
         ImGui::EndMenu();
       }
@@ -866,33 +919,33 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::EndPopup();
   }
 
-  if (open_popup == EditorPopupMenu::ImportMesh) {
-    ImGui::OpenPopup("Import Mesh");
+  if (open_popup == EditorPopupMenu::ImportScene) {
+    ImGui::OpenPopup("Import Scene");
   }
 
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal("Import Mesh", nullptr,
+  if (ImGui::BeginPopupModal("Import Scene", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ScratchArena scratch;
-    ImportMeshUI &ui = ctx->m_ui.m_import_mesh;
+    ImportSceneUI &ui = ctx->m_ui.m_import_scene;
     if (ImGui::IsWindowAppearing()) {
       ui = {};
       ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
     }
 
-    if (!ctx->m_ui.m_import_mesh_dialog_properties) {
-      ctx->m_ui.m_import_mesh_dialog_properties = SDL_CreateProperties();
-      SDL_SetPointerProperty(ctx->m_ui.m_import_mesh_dialog_properties,
+    if (!ctx->m_ui.m_import_scene_dialog_properties) {
+      ctx->m_ui.m_import_scene_dialog_properties = SDL_CreateProperties();
+      SDL_SetPointerProperty(ctx->m_ui.m_import_scene_dialog_properties,
                              SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
                              ctx->m_window);
-      SDL_SetBooleanProperty(ctx->m_ui.m_import_mesh_dialog_properties,
+      SDL_SetBooleanProperty(ctx->m_ui.m_import_scene_dialog_properties,
                              SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-      SDL_SetStringProperty(ctx->m_ui.m_import_mesh_dialog_properties,
+      SDL_SetStringProperty(ctx->m_ui.m_import_scene_dialog_properties,
                             SDL_PROP_FILE_DIALOG_TITLE_STRING,
-                            "Import Mesh Path");
+                            "Import Scene Path");
     }
     InputPath("Path", ctx, &ui.m_path_buffer, SDL_FILEDIALOG_OPENFILE,
-              ctx->m_ui.m_import_mesh_dialog_properties);
+              ctx->m_ui.m_import_scene_dialog_properties);
 
     if (ui.m_import_error) {
       ImGui::Text("Import failed:\n%.*s", (int)ui.m_import_error.m_size,
@@ -902,7 +955,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     bool close = false;
     ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
     if (ImGui::Button("Import")) {
-      Result<void, String8> result = import_mesh(
+      Result<void, String8> result = import_scene(
           ctx, Path::init(scratch, String8::init(ui.m_path_buffer.m_data)));
       if (result) {
         close = true;

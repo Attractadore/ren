@@ -55,6 +55,10 @@ JsonValue JsonValue::init(String8 string) {
   };
 }
 
+JsonValue JsonValue::init(NotNull<Arena *> arena, String8 string) {
+  return JsonValue::init(string.copy(arena));
+}
+
 JsonValue JsonValue::init(i64 integer) {
   return {
       .type = JsonType::Integer,

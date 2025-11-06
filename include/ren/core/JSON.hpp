@@ -41,6 +41,7 @@ public:
   [[nodiscard]] static JsonValue init(Span<const JsonKeyValue> object);
   [[nodiscard]] static JsonValue init(Span<const JsonValue> array);
   [[nodiscard]] static JsonValue init(String8 string);
+  [[nodiscard]] static JsonValue init(NotNull<Arena *> arena, String8 string);
   [[nodiscard]] static JsonValue init(i64 integer);
 
   explicit operator bool() const { return type != JsonType::Null; }
