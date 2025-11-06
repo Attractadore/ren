@@ -70,6 +70,8 @@ Result<void, IoError> create_directory(Path path);
 
 Result<void, IoError> create_directories(Path path);
 
+IoResult<bool> is_directory_empty(Path path);
+
 IoResult<u64> last_write_time(Path path);
 
 struct File {

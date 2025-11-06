@@ -2,6 +2,7 @@
 #include "ren/core/FileSystem.hpp"
 
 #include <cerrno>
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/limits.h>
 #include <sys/stat.h>
@@ -11,9 +12,9 @@ namespace ren {
 
 namespace {
 
-IoError io_error_from_errno() {
-  ren_assert(errno);
-  switch (errno) {
+IoError io_error_from_errno(int err = errno) {
+  ren_assert(err);
+  switch (err) {
   default:
     return IoError::Unknown;
   case EACCES:
@@ -93,6 +94,47 @@ IoResult<void> create_directory(Path path) {
     return io_error_from_errno();
   }
   return {};
+}
+
+IoResult<bool> is_directory_empty(Path path) {
+  ScratchArena scratch;
+  errno = 0;
+  DIR *dir = opendir(path.m_str.zero_terminated(scratch));
+  if (!dir) {
+    return io_error_from_errno();
+  }
+  struct dirent *file = nullptr;
+
+  errno = 0;
+  file = readdir(dir);
+  if (!file) {
+    int err = errno;
+    ren_assert(err);
+    closedir(dir);
+    return io_error_from_errno(err);
+  }
+
+  errno = 0;
+  file = readdir(dir);
+  if (!file) {
+    int err = errno;
+    ren_assert(err);
+    closedir(dir);
+    return io_error_from_errno(err);
+  }
+
+  errno = 0;
+  file = readdir(dir);
+  int err = errno;
+  closedir(dir);
+  if (!file and !err) {
+    return true;
+  }
+  if (err) {
+    return io_error_from_errno(err);
+  }
+
+  return false;
 }
 
 IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {

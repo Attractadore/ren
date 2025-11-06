@@ -199,6 +199,39 @@ IoResult<void> create_directory(Path path) {
   return {};
 }
 
+IoResult<bool> is_directory_empty(Path path) {
+  ScratchArena scratch;
+  // Init directly since '*' is not a valid path
+  path = path.concat(scratch, Path{"*"});
+  const wchar_t *wcs_path = utf8_to_wcs(scratch, path.m_str);
+  WIN32_FIND_DATAW find_data;
+
+  HANDLE handle = FindFirstFileW(wcs_path, &find_data);
+  if (!handle) {
+    return win32_to_io_error();
+  }
+
+  if (!FindNextFileW(handle, &find_data)) {
+    DWORD err = GetLastError();
+    FindClose(handle);
+    return win32_to_io_error(err);
+  }
+
+  DWORD err = 0;
+  if (!FindNextFileW(handle, &find_data)) {
+    err = GetLastError();
+  }
+  FindClose(handle);
+  if (err == ERROR_NO_MORE_FILES) {
+    return true;
+  }
+  if (err) {
+    return win32_to_io_error(err);
+  }
+
+  return false;
+}
+
 IoResult<u64> last_write_time(Path path) {
   ScratchArena scratch;
   HANDLE hfile =

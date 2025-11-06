@@ -71,29 +71,49 @@ enum class EditorPopupMenu {
   ImportMesh,
 };
 
+enum class EditorDialogClient {
+  None,
+  OpenProject,
+};
+
 struct NewProjectUI {
-  SDL_PropertiesID m_dialog_properties = 0;
   DynamicArray<char> m_title_buffer;
   DynamicArray<char> m_location_buffer;
+  String8 m_error;
+};
+
+struct OpenProjectUI {
+  String8 m_error;
 };
 
 struct ImportMeshUI {
-  SDL_PropertiesID m_dialog_properties = 0;
   DynamicArray<char> m_path_buffer;
   String8 m_import_error;
 };
 
 struct EditorUI {
   ImFont *m_font = nullptr;
+
+  SDL_PropertiesID m_new_project_dialog_properties = 0;
+  SDL_PropertiesID m_open_project_dialog_properties = 0;
+  SDL_PropertiesID m_import_mesh_dialog_properties = 0;
+
+  EditorDialogClient m_dialog_client = EditorDialogClient::None;
   bool m_dialog_active = false;
   alignas(std::atomic<bool>) bool m_dialog_done = false;
   Path m_dialog_path;
   NewProjectUI m_new_project;
+  OpenProjectUI m_open_project;
   ImportMeshUI m_import_mesh;
+};
+
+struct EditorProjectContext {
+  Path m_directory;
 };
 
 struct EditorContext {
   Arena m_arena;
+  Arena m_project_arena;
   Arena m_frame_arena;
   Arena m_popup_arena;
   Arena m_dialog_arena;
@@ -103,8 +123,8 @@ struct EditorContext {
   Scene *m_scene = nullptr;
   ren::Handle<Camera> m_camera;
   EditorState m_state = EditorState::Startup;
-  Path m_project_directory;
   EditorUI m_ui;
+  EditorProjectContext *m_project = nullptr;
 };
 
 namespace {
@@ -169,28 +189,98 @@ void SDLCALL open_folder_dialog_callback(void *userdata,
       .store(true, std::memory_order_release);
 }
 
-void InputPath(String8 name, NotNull<EditorContext *> ctx,
-               NotNull<DynamicArray<char> *> buffer,
-               SDL_FileDialogType dialog_type,
-               SDL_PropertiesID dialog_properties) {
+struct DialogFilter {
+  String8 name;
+  String8 pattern;
+};
+
+struct OpenDialogSettings {
+  EditorDialogClient client = EditorDialogClient::None;
+  SDL_FileDialogType type;
+  SDL_PropertiesID properties;
+  const char *location = nullptr;
+  // TODO: implement filters.
+  Span<const DialogFilter> filters;
+};
+
+void open_file_dialog(NotNull<EditorContext *> ctx,
+                      const OpenDialogSettings &settings) {
+  if (ctx->m_ui.m_dialog_active) {
+    return;
+  }
+  SDL_DialogFileFilter *dialog_filters = nullptr;
+  if (settings.filters.m_size > 0) {
+    dialog_filters = ctx->m_dialog_arena.allocate<SDL_DialogFileFilter>(
+        settings.filters.m_size);
+    for (usize i : range(settings.filters.m_size)) {
+      DialogFilter filter = settings.filters[i];
+      dialog_filters[i] = {
+          .name = filter.name.zero_terminated(&ctx->m_dialog_arena),
+          .pattern = filter.pattern.zero_terminated(&ctx->m_dialog_arena),
+      };
+    }
+    SDL_SetPointerProperty(settings.properties,
+                           SDL_PROP_FILE_DIALOG_FILTERS_POINTER,
+                           dialog_filters);
+    SDL_SetNumberProperty(settings.properties,
+                          SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER,
+                          settings.filters.m_size);
+  }
+  ctx->m_ui.m_dialog_client = settings.client;
+  ctx->m_ui.m_dialog_active = true;
+  switch (settings.type) {
+  case SDL_FILEDIALOG_OPENFILE: {
+    SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFILE,
+                                     open_file_dialog_callback, ctx,
+                                     settings.properties);
+  } break;
+  case SDL_FILEDIALOG_SAVEFILE:
+    ren_assert_msg(false, "Not implemented");
+  case SDL_FILEDIALOG_OPENFOLDER:
+    ren_assert(settings.location);
+    SDL_SetStringProperty(settings.properties,
+                          SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                          settings.location);
+    SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
+                                     open_folder_dialog_callback, ctx,
+                                     settings.properties);
+    break;
+  }
+  SDL_SetPointerProperty(settings.properties,
+                         SDL_PROP_FILE_DIALOG_FILTERS_POINTER, nullptr);
+  SDL_SetNumberProperty(settings.properties,
+                        SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, 0);
+  SDL_SetStringProperty(settings.properties,
+                        SDL_PROP_FILE_DIALOG_LOCATION_STRING, nullptr);
+}
+
+Path check_dialog_path(NotNull<Arena *> arena, NotNull<EditorContext *> ctx) {
+  Path path;
   if (ctx->m_ui.m_dialog_active) {
     bool done = std::atomic_ref(ctx->m_ui.m_dialog_done)
                     .load(std::memory_order_acquire);
     if (done) {
-      if (ctx->m_ui.m_dialog_path) {
-        buffer->clear();
-        auto [str, size] = ctx->m_ui.m_dialog_path.m_str;
-        buffer->push(&ctx->m_popup_arena, str, size);
-        buffer->push(&ctx->m_popup_arena, 0);
-      }
+      path = ctx->m_ui.m_dialog_path.copy(arena);
       ctx->m_ui.m_dialog_active = false;
       ctx->m_ui.m_dialog_done = false;
       ctx->m_ui.m_dialog_path = {};
       ctx->m_dialog_arena.clear();
     }
   }
+  return path;
+}
 
+void InputPath(String8 name, NotNull<EditorContext *> ctx,
+               NotNull<DynamicArray<char> *> buffer,
+               SDL_FileDialogType dialog_type,
+               SDL_PropertiesID dialog_properties) {
   ScratchArena scratch;
+  if (Path dialog_path = check_dialog_path(scratch, ctx)) {
+    buffer->clear();
+    auto [str, size] = dialog_path.m_str;
+    buffer->push(&ctx->m_popup_arena, str, size);
+    buffer->push(&ctx->m_popup_arena, 0);
+  }
 
   ImGui::Text("%.*s:", (int)name.m_size, name.m_str);
   InputText(format(scratch, "##{}", name).zero_terminated(scratch),
@@ -198,24 +288,11 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
   ImGui::SameLine();
   ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
   if (ImGui::Button("Browse...")) {
-    ctx->m_ui.m_dialog_active = true;
-    switch (dialog_type) {
-    case SDL_FILEDIALOG_OPENFILE:
-      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFILE,
-                                       open_file_dialog_callback, ctx,
-                                       dialog_properties);
-      break;
-    case SDL_FILEDIALOG_SAVEFILE:
-      ren_assert_msg(false, "Not implemented");
-    case SDL_FILEDIALOG_OPENFOLDER:
-      SDL_SetStringProperty(dialog_properties,
-                            SDL_PROP_FILE_DIALOG_LOCATION_STRING,
-                            buffer->m_data);
-      SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
-                                       open_folder_dialog_callback, ctx,
-                                       dialog_properties);
-      break;
-    }
+    open_file_dialog(ctx, {
+                              .type = dialog_type,
+                              .properties = dialog_properties,
+                              .location = buffer->m_data,
+                          });
   }
   ImGui::EndDisabled();
 }
@@ -231,6 +308,7 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ScratchArena::init_allocator();
 
   ctx->m_arena = Arena::init();
+  ctx->m_project_arena = Arena::init();
   ctx->m_frame_arena = Arena::init();
   ctx->m_popup_arena = Arena::init();
   ctx->m_dialog_arena = Arena::init();
@@ -315,22 +393,57 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
 };
 
-bool new_project(Path path, Path title) {
+bool new_project(NotNull<EditorContext *> ctx, Path project_directory) {
   ScratchArena scratch;
-  Path project_file = title.replace_extension(scratch, Path::init(".json"));
-  project_file = path.concat(scratch, project_file);
-  if (IoResult<void> result = create_directories(path); !result) {
-    fmt::println(stderr, "Failed to create directory {}: {}", path,
-                 result.error());
+  NewProjectUI &ui = ctx->m_ui.m_new_project;
+  Path title = project_directory.filename();
+  Path project_path = project_directory.concat(
+      scratch, title.replace_extension(scratch, Path::init(".json")));
+  if (project_directory.exists().value_or(false)) {
+    if (not is_directory_empty(project_directory).value_or(true)) {
+      ui.m_error =
+          format(&ctx->m_popup_arena, "{} is not empty!", project_directory);
+      return false;
+    }
+  }
+  if (IoResult<void> result = create_directories(project_directory); !result) {
+    ui.m_error =
+        format(&ctx->m_popup_arena, "Failed to create directory {}: {}",
+               project_directory, result.error());
     return false;
   }
   const char buffer[] = {'{', '\n', '}', '\n'};
-  if (IoResult<void> result = write(project_file, Span(buffer)); !result) {
-    fmt::println(stderr, "Failed to create {}: {}", project_file,
-                 result.error());
+  if (IoResult<void> result = write(project_path, Span(buffer)); !result) {
+    ui.m_error = format(&ctx->m_popup_arena, "Failed to create {}: {}",
+                        project_path, result.error());
     return false;
   }
+  ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
+  *ctx->m_project = {
+      .m_directory = project_directory.copy(&ctx->m_project_arena),
+  };
+  ctx->m_state = EditorState::Project;
   return true;
+}
+
+bool open_project(NotNull<EditorContext *> ctx, Path path) {
+  if (not path.exists().value_or(false)) {
+    ctx->m_ui.m_open_project.m_error =
+        format(&ctx->m_popup_arena, "Failed to open {}", path);
+    return false;
+  }
+  ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
+  *ctx->m_project = {
+      .m_directory = path.parent().copy(&ctx->m_project_arena),
+  };
+  ctx->m_state = EditorState::Project;
+  return true;
+}
+
+void close_project(NotNull<EditorContext *> ctx) {
+  ctx->m_state = EditorState::Startup;
+  ctx->m_project = nullptr;
+  ctx->m_project_arena.clear();
 }
 
 JsonValue generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
@@ -478,7 +591,7 @@ Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
   ScratchArena scratch;
 
   Path mesh_directory =
-      ctx->m_project_directory.concat(scratch, {ASSET_DIR, MESH_DIR});
+      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, MESH_DIR});
   Path filename = path.filename();
   Path mesh_filename = filename.replace_extension(scratch, Path::init(".gltf"));
   Path bin_filename = filename.replace_extension(scratch, Path::init(".bin"));
@@ -487,7 +600,7 @@ Result<void, String8> import_mesh(NotNull<EditorContext *> ctx, Path path) {
   Path bin_path = mesh_directory.concat(scratch, bin_filename);
   Path meta_path = mesh_directory.concat(scratch, meta_filename);
   Path blob_directory =
-      ctx->m_project_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
+      ctx->m_project->m_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
 
   if (IoResult<void> result = create_directories(mesh_directory); !result) {
     return format(&ctx->m_popup_arena, "Failed to create {}: {}",
@@ -587,13 +700,44 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 #endif
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("New...")) {
+      if (ImGui::MenuItem("New")) {
         open_popup = EditorPopupMenu::NewProject;
       }
+
+      if (ImGui::MenuItem("Open...")) {
+        OpenProjectUI &ui = ctx->m_ui.m_open_project;
+        ui = {};
+        if (!ctx->m_ui.m_open_project_dialog_properties) {
+          ctx->m_ui.m_open_project_dialog_properties = SDL_CreateProperties();
+          SDL_SetPointerProperty(ctx->m_ui.m_open_project_dialog_properties,
+                                 SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
+                                 ctx->m_window);
+          SDL_SetBooleanProperty(ctx->m_ui.m_open_project_dialog_properties,
+                                 SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
+          SDL_SetStringProperty(ctx->m_ui.m_open_project_dialog_properties,
+                                SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                                "Open Project");
+        }
+        open_file_dialog(
+            ctx,
+            {
+                .client = EditorDialogClient::OpenProject,
+                .type = SDL_FILEDIALOG_OPENFILE,
+                .properties = ctx->m_ui.m_open_project_dialog_properties,
+                .filters = {{.name = "Ren Project Files", .pattern = "json"}},
+            });
+      }
+
+      ImGui::BeginDisabled(!ctx->m_project);
+      if (ImGui::MenuItem("Close")) {
+        close_project(ctx);
+      }
+      ImGui::EndDisabled();
 
       if (ImGui::MenuItem("Quit")) {
         ctx->m_state = EditorState::Quit;
       }
+
       ImGui::EndMenu();
     }
 
@@ -609,18 +753,43 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::EndMainMenuBar();
   }
 
+  if (ctx->m_ui.m_dialog_client == EditorDialogClient::OpenProject) {
+    ScratchArena scratch;
+    Path path = check_dialog_path(scratch, ctx);
+    if (path) {
+      close_project(ctx);
+      if (!open_project(ctx, path)) {
+        ImGui::OpenPopup("##Open Project Failed");
+      }
+    }
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal("##Open Project Failed", nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    String8 error = ctx->m_ui.m_open_project.m_error;
+    ren_assert(error);
+    ImGui::Text("Opening project failed:\n%.*s", (int)error.m_size,
+                error.m_str);
+    if (ImGui::Button("OK")) {
+      ImGui::CloseCurrentPopup();
+      ctx->m_popup_arena.clear();
+    }
+    ImGui::EndPopup();
+  }
+
   if (open_popup == EditorPopupMenu::NewProject) {
     ImGui::OpenPopup("New Project");
   }
 
-  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   if (ImGui::BeginPopupModal("New Project", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     NewProjectUI &ui = ctx->m_ui.m_new_project;
     if (ImGui::IsWindowAppearing()) {
+      ui = {};
       const char DEFAULT_TITLE[] = "New Project";
-      ui.m_title_buffer = {};
       ui.m_title_buffer.push(&ctx->m_popup_arena, DEFAULT_TITLE,
                              sizeof(DEFAULT_TITLE));
 
@@ -640,7 +809,6 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                      result.error());
       }
 
-      ui.m_location_buffer = {};
       ui.m_location_buffer.push(&ctx->m_popup_arena,
                                 default_location.m_str.m_str,
                                 default_location.m_str.m_size);
@@ -650,19 +818,19 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::Text("Title:");
     InputText("##Title", &ctx->m_popup_arena, &ui.m_title_buffer);
 
-    if (!ui.m_dialog_properties) {
-      ui.m_dialog_properties = SDL_CreateProperties();
-      SDL_SetPointerProperty(ui.m_dialog_properties,
+    if (!ctx->m_ui.m_new_project_dialog_properties) {
+      ctx->m_ui.m_new_project_dialog_properties = SDL_CreateProperties();
+      SDL_SetPointerProperty(ctx->m_ui.m_new_project_dialog_properties,
                              SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
                              ctx->m_window);
-      SDL_SetBooleanProperty(ui.m_dialog_properties,
+      SDL_SetBooleanProperty(ctx->m_ui.m_new_project_dialog_properties,
                              SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-      SDL_SetStringProperty(ui.m_dialog_properties,
+      SDL_SetStringProperty(ctx->m_ui.m_new_project_dialog_properties,
                             SDL_PROP_FILE_DIALOG_TITLE_STRING,
                             "New Project Location");
     }
     InputPath("Location", ctx, &ui.m_location_buffer, SDL_FILEDIALOG_OPENFOLDER,
-              ui.m_dialog_properties);
+              ctx->m_ui.m_new_project_dialog_properties);
 
     ScratchArena scratch;
     Path location =
@@ -672,15 +840,18 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::Text("Path:");
     ImGui::Text("%.*s", (int)path.m_str.m_size, path.m_str.m_str);
 
+    if (ui.m_error) {
+      ImGui::Text("Project creation failed:\n%.*s", (int)ui.m_error.m_size,
+                  ui.m_error.m_str);
+    }
+
     bool close = false;
     ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
     if (ImGui::Button("Create")) {
-      bool success = new_project(path, title);
-      if (success) {
-        ctx->m_project_directory = path.copy(&ctx->m_arena);
-        ctx->m_state = EditorState::Project;
+      close_project(ctx);
+      if (new_project(ctx, path)) {
+        close = true;
       }
-      close = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Cancel")) {
@@ -699,30 +870,29 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::OpenPopup("Import Mesh");
   }
 
-  center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   if (ImGui::BeginPopupModal("Import Mesh", nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ScratchArena scratch;
     ImportMeshUI &ui = ctx->m_ui.m_import_mesh;
     if (ImGui::IsWindowAppearing()) {
-      ui.m_path_buffer = {};
+      ui = {};
       ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
     }
 
-    if (!ui.m_dialog_properties) {
-      ui.m_dialog_properties = SDL_CreateProperties();
-      SDL_SetPointerProperty(ui.m_dialog_properties,
+    if (!ctx->m_ui.m_import_mesh_dialog_properties) {
+      ctx->m_ui.m_import_mesh_dialog_properties = SDL_CreateProperties();
+      SDL_SetPointerProperty(ctx->m_ui.m_import_mesh_dialog_properties,
                              SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
                              ctx->m_window);
-      SDL_SetBooleanProperty(ui.m_dialog_properties,
+      SDL_SetBooleanProperty(ctx->m_ui.m_import_mesh_dialog_properties,
                              SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-      SDL_SetStringProperty(ui.m_dialog_properties,
+      SDL_SetStringProperty(ctx->m_ui.m_import_mesh_dialog_properties,
                             SDL_PROP_FILE_DIALOG_TITLE_STRING,
                             "Import Mesh Path");
     }
     InputPath("Path", ctx, &ui.m_path_buffer, SDL_FILEDIALOG_OPENFILE,
-              ui.m_dialog_properties);
+              ctx->m_ui.m_import_mesh_dialog_properties);
 
     if (ui.m_import_error) {
       ImGui::Text("Import failed:\n%.*s", (int)ui.m_import_error.m_size,
@@ -795,8 +965,8 @@ void run_editor(NotNull<EditorContext *> ctx) {
     {
       ScratchArena scratch;
       String8 title = "ren editor";
-      if (ctx->m_project_directory) {
-        title = format(scratch, "ren editor: {}", ctx->m_project_directory);
+      if (ctx->m_project) {
+        title = format(scratch, "ren editor: {}", ctx->m_project->m_directory);
       }
       SDL_SetWindowTitle(ctx->m_window, title.zero_terminated(scratch));
     }

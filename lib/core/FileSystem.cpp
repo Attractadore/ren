@@ -133,24 +133,35 @@ IoResult<Path> Path::absolute(NotNull<Arena *> arena) const {
 }
 
 Path Path::concat(NotNull<Arena *> arena, Path other) const {
-  ren_assert(not other.is_absolute());
-  usize new_size = m_str.m_size + 1 + other.m_str.m_size;
-  char *buffer = arena->allocate<char>(new_size);
-  std::memcpy(buffer, m_str.m_str, m_str.m_size);
-  buffer[m_str.m_size] = SEPARATOR;
-  std::memcpy(&buffer[m_str.m_size + 1], other.m_str.m_str, other.m_str.m_size);
-  return {String8(buffer, new_size)};
+  return concat(arena, {&other, 1});
 }
 
 Path Path::concat(NotNull<Arena *> arena, Span<const Path> others) const {
+  ren_assert(others.m_size > 0);
+
+  if (m_str == ".") {
+    ren_assert(not others[0].is_absolute());
+    if (others.m_size == 1) {
+      return others[0].copy(arena);
+    }
+    return others[0].concat(arena, others.subspan(1, others.m_size - 1));
+  }
+
   usize new_size = m_str.m_size;
   for (Path other : others) {
     ren_assert(not other.is_absolute());
     new_size += other.m_str.m_size + 1;
   }
+  if (is_root()) {
+    new_size -= 1;
+  }
+
   char *buffer = arena->allocate<char>(new_size);
-  std::memcpy(buffer, m_str.m_str, m_str.m_size);
   usize offset = m_str.m_size;
+  if (is_root()) {
+    offset -= 1;
+  }
+  std::memcpy(buffer, m_str.m_str, offset);
   for (Path other : others) {
     buffer[offset++] = SEPARATOR;
     std::memcpy(&buffer[offset], other.m_str.m_str, other.m_str.m_size);
