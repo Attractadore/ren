@@ -68,3 +68,14 @@ template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
 
 #define container_of(ptr, type, member)                                        \
   ((type *)((ren::u8 *)ptr - offsetof(type, member)))
+
+#if __GNUC__
+#define ALWAYS_INLINE __attribute__((always_inline)) inline
+#define NOINLINE __attribute__((noinline))
+#elif __clang__
+#define ALWAYS_INLINE __attribute__((always_inline)) inline
+#define NOINLINE __attribute__((noinline))
+#elif _MSC_VER
+#define ALWAYS_INLINE __forceinline inline
+#define NOINLINE __declspec(noinline)
+#endif
