@@ -13,7 +13,7 @@ option(REN_DEBUG_LAYER "Enable RHI debug layer" OFF)
 option(REN_HOT_RELOAD "Build with hot reload support" OFF)
 option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
 
-project(ren VERSION 0.1.0)
+project(ren VERSION 0.1.0 LANGUAGES C CXX ASM ASM_MASM)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")

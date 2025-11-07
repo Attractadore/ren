@@ -3,6 +3,7 @@ set(CMAKE_SYSTEM_PROCESSOR x86_64)
 
 set(CMAKE_C_COMPILER clang-cl)
 set(CMAKE_CXX_COMPILER clang-cl)
+set(CMAKE_ASM_MASM_COMPILER llvm-ml64)
 set(CMAKE_LINKER_TYPE LLD)
 
 include_directories(SYSTEM ~/msvc/crt/include ~/msvc/sdk/include/ucrt ~/msvc/sdk/include/um ~/msvc/sdk/include/shared ~/msvc/sdk/include/winrt)

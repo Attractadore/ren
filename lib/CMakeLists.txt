@@ -14,6 +14,12 @@ add_library(ren-core
   core/Win32FileSystem.cpp
   core/Win32Vm.cpp
 )
+if (CMAKE_SYSTEM_NAME STREQUAL Linux)
+  target_sources(ren-core PRIVATE core/LinuxFiber.s)
+endif()
+if (CMAKE_SYSTEM_NAME STREQUAL Windows)
+  target_sources(ren-core PRIVATE core/Win32Fiber.asm)
+endif()
 target_include_directories(ren-core PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${REN_INCLUDE})
 target_link_libraries(ren-core PUBLIC glm::glm fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_23)

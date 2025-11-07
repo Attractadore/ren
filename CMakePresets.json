@@ -24,7 +24,6 @@
         "ASSIMP_INSTALL": "OFF",
         "ASSIMP_NO_EXPORT": "OFF",
         "ASSIMP_WARNINGS_AS_ERRORS": "OFF",
-        "BLAKE3_SIMD_TYPE": "x86-intrinsics",
         "KTX_FEATURE_ETC_UNPACK": "OFF",
         "KTX_FEATURE_GL_UPLOAD": "OFF",
         "KTX_FEATURE_TESTS": "OFF",
