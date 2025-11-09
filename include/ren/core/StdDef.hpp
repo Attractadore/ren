@@ -20,6 +20,8 @@ constexpr usize KiB = 1024;
 constexpr usize MiB = 1024 * KiB;
 constexpr usize GiB = 1024 * MiB;
 
+constexpr usize CACHE_LINE_SIZE = 64;
+
 template <typename I> struct Range {
   I b = 0;
   I e = 0;

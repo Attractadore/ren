@@ -8,10 +8,12 @@ add_library(ren-core
   core/JSON.cpp
   core/LinuxChrono.cpp
   core/LinuxFileSystem.cpp
+  core/LinuxFutex.cpp
   core/LinuxVm.cpp
   core/Profiler.cpp
   core/Win32Chrono.cpp
   core/Win32FileSystem.cpp
+  core/Win32Futex.cpp
   core/Win32Vm.cpp
 )
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
