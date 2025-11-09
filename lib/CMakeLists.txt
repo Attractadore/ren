@@ -6,6 +6,8 @@ add_library(ren-core
   core/CmdLine.cpp
   core/FileSystem.cpp
   core/JSON.cpp
+  core/Job.cpp
+  core/JobTLS.cpp
   core/LinuxChrono.cpp
   core/LinuxFileSystem.cpp
   core/LinuxFutex.cpp
