@@ -10,6 +10,7 @@ add_library(ren-core
   core/LinuxFileSystem.cpp
   core/LinuxFutex.cpp
   core/LinuxVm.cpp
+  core/Mutex.cpp
   core/Profiler.cpp
   core/Win32Chrono.cpp
   core/Win32FileSystem.cpp
