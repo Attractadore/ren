@@ -1,7 +1,8 @@
 // TODO: Win32 support.
 #if __linux__
-#include "ren/core/Job.hpp"
 #include "ren/core/Fiber.hpp"
+#include "ren/core/Futex.hpp"
+#include "ren/core/Job.hpp"
 #include "ren/core/Mutex.hpp"
 #include "ren/core/Queue.hpp"
 
@@ -15,10 +16,13 @@ namespace {
 
 template <typename T> T *free_list_atomic_pop(T **free_list) {
   std::atomic_ref<T *> ref(*free_list);
-  T *head = ref.load(std::memory_order_relaxed);
+  // Sync with free list push.
+  T *head = ref.load(std::memory_order_acquire);
   while (head) {
+    T *next = head->next;
+    // Sync with free list push.
     bool success = ref.compare_exchange_weak(
-        head, head->next, std::memory_order_relaxed, std::memory_order_relaxed);
+        head, next, std::memory_order_acquire, std::memory_order_acquire);
     if (success) {
       return head;
     }
@@ -31,8 +35,10 @@ template <typename T> void free_list_atomic_push(T **free_list, T *node) {
   T *head = ref.load(std::memory_order_relaxed);
   while (true) {
     node->next = head;
-    bool success = ref.compare_exchange_weak(
-        head, node, std::memory_order_relaxed, std::memory_order_relaxed);
+    bool success = ref.compare_exchange_weak(head, node,
+                                             // Sync with free list pop.
+                                             std::memory_order_release,
+                                             std::memory_order_relaxed);
     if (success) {
       return;
     }
@@ -46,6 +52,8 @@ void job_tls_set_running_job(Job *job);
 
 FiberContext *job_tls_scheduler_fiber();
 
+static thread_local bool job_is_main_thread = false;
+
 struct alignas(FIBER_STACK_ALIGNMENT) StackFreeListNode {
   StackFreeListNode *next = nullptr;
 };
@@ -57,24 +65,25 @@ enum class JobState {
 };
 
 struct alignas(CACHE_LINE_SIZE) JobAtomicCounter {
-  u32 value = 0;
   JobAtomicCounter *next = nullptr;
+  u32 value = 0;
   JobState parent_job_state = JobState::Running;
 };
 
 struct alignas(CACHE_LINE_SIZE) Job {
+  // Read-only data.
   union {
     Job *next = nullptr;
     Job *parent;
   };
   JobPriority priority = {};
   bool is_main_job = false;
-  FiberContext context = {};
   JobFunction *function = nullptr;
   void *payload = nullptr;
-  StackFreeListNode *stack = nullptr;
   JobAtomicCounter *counter = nullptr;
-  JobAtomicCounter *child_counters = nullptr;
+
+  alignas(CACHE_LINE_SIZE) FiberContext context = {};
+  alignas(CACHE_LINE_SIZE) JobAtomicCounter *child_counters = nullptr;
 };
 
 struct alignas(CACHE_LINE_SIZE) QueuedJob {
@@ -82,58 +91,100 @@ struct alignas(CACHE_LINE_SIZE) QueuedJob {
 };
 
 struct JobServer {
-  Mutex m_arena_mutex;
-
-  Arena m_arena;
-  Span<pthread_t> m_workers;
-  MpMcQueue<QueuedJob> m_high_priority;
-  QueuedJob m_main_priority;
-  MpMcQueue<QueuedJob> m_normal_priority;
-
+  // Read-only data.
   usize m_page_size = 0;
-  StackFreeListNode *m_stack_free_list = nullptr;
-  Job *m_job_free_list = nullptr;
-  JobAtomicCounter *m_atomic_counter_free_list = nullptr;
+  Span<pthread_t> m_workers;
+
+  // Arena mutex.
+  alignas(CACHE_LINE_SIZE) Mutex m_arena_mutex;
+  // Arena data.
+  alignas(CACHE_LINE_SIZE) Arena m_arena;
+
+  // Scheduler mutex.
+  alignas(CACHE_LINE_SIZE) Mutex m_scheduler_mutex;
+  // Scheduler data.
+  alignas(CACHE_LINE_SIZE) int m_num_enqueued = 0;
+  Queue<QueuedJob> m_high_priority;
+  Queue<QueuedJob> m_normal_priority;
+
+  alignas(CACHE_LINE_SIZE) Job *m_main_job = nullptr;
+  int m_main_job_ready = false;
+
+  // Free lists.
+  alignas(CACHE_LINE_SIZE) StackFreeListNode *m_stack_free_list = nullptr;
+  alignas(CACHE_LINE_SIZE) Job *m_job_free_list = nullptr;
+  alignas(CACHE_LINE_SIZE)
+      JobAtomicCounter *m_atomic_counter_free_list = nullptr;
 };
 
 static JobServer job_server;
 
-static thread_local bool job_is_main_thread = false;
-
 static Job *job_schedule() {
   ZoneScoped;
-  Optional<QueuedJob> high_priority = job_server.m_high_priority.try_pop();
-  if (high_priority) {
-    return high_priority->job;
-  }
   if (job_is_main_thread) {
-    // Sync with enqueue.
-    Job *main_priority = std::atomic_ref(job_server.m_main_priority.job)
-                             .exchange(nullptr, std::memory_order_acquire);
-    if (main_priority) {
-      return main_priority;
+    while (true) {
+      int ready = std::atomic_ref(job_server.m_main_job_ready)
+                      .exchange(false, std::memory_order_acquire);
+      if (ready) {
+        return job_server.m_main_job;
+      }
+      futex_wait(&job_server.m_main_job_ready, false);
     }
   }
-  QueuedJob normal_priority = job_server.m_normal_priority.pop();
-  return normal_priority.job;
+
+retry:
+  job_server.m_scheduler_mutex.lock();
+  [[unlikely]] if (job_server.m_num_enqueued == 0) {
+    job_server.m_scheduler_mutex.unlock();
+    futex_wait(&job_server.m_num_enqueued, 0);
+    goto retry;
+  }
+
+  Job *job = []() {
+    Optional<QueuedJob> high_priority = job_server.m_high_priority.try_pop();
+    if (high_priority) {
+      return high_priority->job;
+    }
+    Optional<QueuedJob> normal_priority =
+        job_server.m_normal_priority.try_pop();
+    ren_assert(normal_priority);
+    return normal_priority->job;
+  }();
+  job_server.m_num_enqueued--;
+  job_server.m_scheduler_mutex.unlock();
+
+  return job;
 }
 
 static void job_enqueue(Job *job) {
   ZoneScoped;
+
+  if (job->is_main_job) {
+    std::atomic_ref(job_server.m_main_job_ready)
+        .store(true, std::memory_order_release);
+    futex_wake_one(&job_server.m_main_job_ready);
+    return;
+  }
+
+  job_server.m_scheduler_mutex.lock();
+
   if (job->priority == JobPriority::High) {
     job_server.m_high_priority.push({job});
-  } else if (job->is_main_job) {
-    // Sync with scheduler.
-    std::atomic_ref(job_server.m_main_priority.job)
-        .store(job, std::memory_order_release);
   } else {
     ren_assert(job->priority == JobPriority::Normal);
     job_server.m_normal_priority.push({job});
   }
+
+  [[unlikely]] if (job_server.m_num_enqueued++ == 0) {
+    futex_wake_one(&job_server.m_num_enqueued);
+  }
+
+  job_server.m_scheduler_mutex.unlock();
 }
 
 static void job_free(Job *job) {
   ZoneScoped;
+  ren_assert(not job->is_main_job);
 
   bool all_done = 1 == std::atomic_ref(job->counter->value)
                            .fetch_add(-1, std::memory_order_relaxed);
@@ -151,16 +202,17 @@ static void job_free(Job *job) {
     }
   }
 
-  free_list_atomic_push(&job_server.m_stack_free_list, job->stack);
+  auto *stack = (StackFreeListNode *)((u8 *)job->context.stack_bottom -
+                                      job->context.stack_size);
+  free_list_atomic_push(&job_server.m_stack_free_list, stack);
   JobAtomicCounter *counter = job->child_counters;
   while (counter) {
     JobAtomicCounter *next = counter->next;
     free_list_atomic_push(&job_server.m_atomic_counter_free_list, counter);
     counter = next;
   }
+  fiber_destroy_context(&job->context);
   free_list_atomic_push(&job_server.m_job_free_list, job);
-  // Sync with free list pop.
-  std::atomic_thread_fence(std::memory_order_release);
 }
 
 static StackFreeListNode *job_allocate_stack(usize stack_size) {
@@ -175,21 +227,27 @@ static StackFreeListNode *job_allocate_stack(usize stack_size) {
   return (StackFreeListNode *)new_stack;
 }
 
-static const usize JOB_SCHEDULER_STACK_SIZE = PTHREAD_STACK_MIN;
-
-static void job_server_scheduler_fiber() {
-  while (true) {
-    Job *next = job_schedule();
-    job_tls_set_running_job(next);
-    fiber_switch_context(job_tls_scheduler_fiber(), next->context);
-    Job *job = job_tls_running_job();
-    job_free(job);
-  }
-}
+#if !REN_TSAN
+static const usize JOB_WORKER_STACK_SIZE = PTHREAD_STACK_MIN;
+static const usize JOB_STACK_SIZE = 32 * KiB;
+#else
+static const usize JOB_WORKER_STACK_SIZE = 256 * KiB;
+static const usize JOB_STACK_SIZE = 256 * KiB;
+#endif
 
 static void *job_server_worker(void *) {
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, nullptr);
-  job_server_scheduler_fiber();
+  FiberContext *scheduler = job_tls_scheduler_fiber();
+  *scheduler = fiber_thread_context();
+  Job *job = nullptr;
+  while (true) {
+    Job *next = job_schedule();
+    ren_assert(next != job);
+    job_tls_set_running_job(next);
+    fiber_switch_context(scheduler, next->context);
+    job = job_tls_running_job();
+    job_free(job);
+  }
   return nullptr;
 }
 
@@ -197,8 +255,6 @@ static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
   if (std::atomic_ref(counter->value).load(std::memory_order_relaxed) == 0) {
     return;
   }
-
-  fiber_save_context(&job->context);
 
   std::atomic_ref job_state(counter->parent_job_state);
 
@@ -214,8 +270,10 @@ static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
   }
 
   Job *next = job_schedule();
-  job_tls_set_running_job(next);
-  fiber_switch_context(&job->context, next->context);
+  if (job != next) {
+    job_tls_set_running_job(next);
+    fiber_switch_context(&job->context, next->context);
+  }
 }
 
 static void job_wait_for_children(Job *job) {
@@ -231,16 +289,18 @@ static void job_fiber_main() {
   ren_assert(job);
   ren_assert(job->function);
   job->function(job->payload);
+  ren_assert(job == job_tls_running_job());
   job_wait_for_children(job);
   fiber_load_context(*job_tls_scheduler_fiber());
 }
 
 void launch_job_server() {
+  job_is_main_thread = true;
   job_server = {
-      .m_arena = Arena::init(),
-      .m_high_priority = MpMcQueue<QueuedJob>::init(),
-      .m_normal_priority = MpMcQueue<QueuedJob>::init(),
       .m_page_size = vm_page_size(),
+      .m_arena = Arena::init(),
+      .m_high_priority = Queue<QueuedJob>::init(),
+      .m_normal_priority = Queue<QueuedJob>::init(),
   };
   // TODO: retrieve the number of cores.
   usize num_cores = 8;
@@ -253,33 +313,25 @@ void launch_job_server() {
   pthread_attr_setsigmask_np(&attr, &signal_mask);
   for (pthread_t &worker : job_server.m_workers) {
     // TODO: set thread affinity.
-    void *stack = job_allocate_stack(JOB_SCHEDULER_STACK_SIZE);
-    pthread_attr_setstack(&attr, stack, JOB_SCHEDULER_STACK_SIZE);
+    pthread_attr_setstacksize(&attr, JOB_WORKER_STACK_SIZE);
     pthread_create(&worker, &attr, job_server_worker, nullptr);
   }
   pthread_attr_destroy(&attr);
   // At this points all workers haven't touched any
   // shared resources and have possibly gone to sleep. So no need to lock.
-  job_is_main_thread = true;
-  Job *main_job = job_server.m_arena.allocate<Job>();
-  *main_job = {.is_main_job = true};
-  job_enqueue(main_job);
-  void *stack = job_allocate_stack(JOB_SCHEDULER_STACK_SIZE);
-  FiberContext *scheduler = job_tls_scheduler_fiber();
-  *scheduler = {
-      .rip = job_server_scheduler_fiber,
-      .rsp = (u8 *)stack + JOB_SCHEDULER_STACK_SIZE,
+  job_server.m_main_job = job_server.m_arena.allocate<Job>();
+  *job_server.m_main_job = {
+      .is_main_job = true,
+      .context = fiber_thread_context(),
   };
-  // Initialize scheduler.
-  fiber_switch_context(&main_job->context, *scheduler);
+  job_tls_set_running_job(job_server.m_main_job);
 }
 
 void stop_job_server() {
   // Sync with enqueue.
-  Job *main_job = std::atomic_ref(job_server.m_main_priority.job)
-                      .load(std::memory_order_acquire);
-  ren_assert_msg(!main_job, "Job server must be stopped from the main thread");
-  main_job = job_tls_running_job();
+  Job *main_job = job_tls_running_job();
+  ren_assert_msg(main_job == job_server.m_main_job,
+                 "Job server must be stopped from the main thread");
   job_wait_for_children(main_job);
   for (pthread_t worker : job_server.m_workers) {
     pthread_cancel(worker);
@@ -303,47 +355,42 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
     counter = job_server.m_arena.allocate<JobAtomicCounter>();
     job_server.m_arena_mutex.unlock();
   }
-  // Sync with free list push.
-  std::atomic_thread_fence(std::memory_order_acquire);
 
   Job *parent = job_tls_running_job();
   ren_assert(parent);
-  *counter = {.value = (u32)jobs.m_size, .next = parent->child_counters};
+  *counter = {
+      .next = parent->child_counters,
+      .value = (u32)jobs.m_size,
+  };
   parent->child_counters = counter;
 
   for (JobDesc job_desc : jobs) {
     Job *job = free_list_atomic_pop(&job_server.m_job_free_list);
+    job = nullptr;
     [[unlikely]] if (!job) {
       job_server.m_arena_mutex.lock();
       job = job_server.m_arena.allocate<Job>();
       job_server.m_arena_mutex.unlock();
     }
 
-    usize stack_size = 32 * KiB;
+    usize stack_size = JOB_STACK_SIZE;
     StackFreeListNode *stack =
         free_list_atomic_pop(&job_server.m_stack_free_list);
     [[unlikely]] if (!stack) {
-      // TODO: add option to set stack size, or set stack size based on amount
-      // of stack space used by previous jobs with the same function pointer.
+      // TODO: add option to set stack size, or set stack size based on
+      // amount of stack space used by previous jobs with the same function
+      // pointer.
       stack = job_allocate_stack(stack_size);
     }
-
-    // Sync with free list push.
-    std::atomic_thread_fence(std::memory_order_acquire);
 
     *job = {
         .parent = parent,
         .priority = parent->priority == JobPriority::High ? JobPriority::High
                                                           : job_desc.priority,
-        .context =
-            {
-                .rip = job_fiber_main,
-                .rsp = (u8 *)stack + stack_size,
-            },
         .function = job_desc.function,
         .payload = job_desc.payload,
-        .stack = stack,
         .counter = counter,
+        .context = fiber_init_context(job_fiber_main, stack, stack_size),
     };
     job_enqueue(job);
   }
@@ -358,8 +405,10 @@ void job_wait(JobToken token) {
 }
 
 bool job_is_done(JobToken token) {
-  return std::atomic_ref(token.counter->value)
-             .load(std::memory_order_relaxed) == 0;
+  bool done =
+      0 ==
+      std::atomic_ref(token.counter->value).load(std::memory_order_relaxed);
+  return done;
   // TODO: return counter to pool.
 }
 

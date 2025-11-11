@@ -11,7 +11,7 @@ static void futex(int *location, int op, int value) {
   errno = 0;
   syscall(SYS_futex, location, op, value, (const struct timespec *)nullptr,
           (int *)nullptr, (int)0);
-  ren_assert(errno == 0);
+  // ren_assert(errno == 0);
 }
 
 void futex_wait(int *location, int value) {

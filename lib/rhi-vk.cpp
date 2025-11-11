@@ -554,6 +554,9 @@ auto create_instance(NotNull<Arena *> arena,
 
   bool debug_layer = create_info.debug_layer and
                      is_layer_supported(VK_LAYER_KHRONOS_VALIDATION_NAME);
+#if REN_TSAN
+  debug_layer = false;
+#endif
   if (debug_layer) {
     fmt::println("vk: Enable validation layer");
     layers[num_layers++] = VK_LAYER_KHRONOS_VALIDATION_NAME;

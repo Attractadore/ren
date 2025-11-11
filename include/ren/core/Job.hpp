@@ -1,6 +1,8 @@
 #pragma once
 #include "ren/core/Span.hpp"
 
+#include <utility>
+
 namespace ren {
 
 struct Job;
@@ -23,32 +25,21 @@ struct JobDesc {
 
 public:
   template <typename T>
-  [[nodiscard]] static JobDesc init(JobPriority priority, void (*function)(T *),
-                                    T *payload) {
+  [[nodiscard]] static JobDesc
+  init(JobPriority priority, std::invocable<T *> auto &&function, T *payload) {
     ren_assert(function);
     ren_assert(payload);
     return {
         .priority = priority,
-        .function = (JobFunction *)function,
-        .payload = payload,
+        .function = (JobFunction *)(+function),
+        .payload = (void *)payload,
     };
+    return init<T>(priority, +(function), payload);
   }
 
-  template <typename T>
-  [[nodiscard]] static JobDesc init(void (*function)(T *), T *payload) {
-    return init(JobPriority::Normal, function, payload);
-  }
-  template <typename T>
-  [[nodiscard]] static JobDesc
-  init(JobPriority priority, std::invocable<T *> auto &&function, T *payload) {
-    return init<T>(priority, static_cast<void (*)(T *)>(function), payload);
-  }
-
-  template <typename T>
-  [[nodiscard]] static JobDesc init(std::invocable<T *> auto &&function,
-                                    T *payload) {
-    return init<T>(JobPriority::Normal, static_cast<void (*)(T *)>(function),
-                   payload);
+  template <typename T, std::invocable<T *> F>
+  [[nodiscard]] static JobDesc init(F &&function, T *payload) {
+    return init<T>(JobPriority::Normal, std::forward<F>(function), payload);
   }
 
   [[nodiscard]] static JobDesc init(JobPriority priority, void (*function)()) {

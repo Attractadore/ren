@@ -1,5 +1,4 @@
 #pragma once
-#include "StdDef.hpp"
 
 namespace ren {
 
@@ -9,7 +8,7 @@ public:
   void unlock();
 
 private:
-  alignas(CACHE_LINE_SIZE) int m_lock_futex = 0;
+  int m_lock_futex = 0;
 };
 
 } // namespace ren

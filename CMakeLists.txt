@@ -38,6 +38,13 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+  # add_link_options(-fsanitize=address)
+  # add_compile_options(-fsanitize=thread)
+  # add_link_options(-fsanitize=thread)
+endif()
+
 # Use default warnings for external code
 add_subdirectory(external)
 

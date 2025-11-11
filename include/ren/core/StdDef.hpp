@@ -81,3 +81,11 @@ template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
 #define ALWAYS_INLINE __forceinline inline
 #define NOINLINE __declspec(noinline)
 #endif
+
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+#define REN_ASAN 1
+#endif
+
+#if defined(__SANITIZER_THREAD__) || __has_feature(thread_sanitizer)
+#define REN_TSAN 1
+#endif
