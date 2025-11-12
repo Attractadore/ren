@@ -64,6 +64,9 @@ private:
     u8 *bytes = (u8 *)m_data;
     vm_commit(&bytes[commit_size], new_commit_size - commit_size);
 
+    copy(m_data, m_front & (m_capacity - 1), &m_data[m_capacity]);
+    ren_assert((m_front & (new_capacity - 1)) > (m_back & (new_capacity - 1)));
+
     m_capacity = new_capacity;
   }
 };
