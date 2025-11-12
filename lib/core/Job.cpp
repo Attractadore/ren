@@ -1,4 +1,5 @@
 // TODO: Win32 support.
+#include "ren/core/Format.hpp"
 #if __linux__
 #include "ren/core/Fiber.hpp"
 #include "ren/core/Futex.hpp"
@@ -6,6 +7,7 @@
 #include "ren/core/Mutex.hpp"
 #include "ren/core/Queue.hpp"
 
+#include <common/TracySystem.hpp>
 #include <pthread.h>
 #include <signal.h>
 #include <tracy/Tracy.hpp>
@@ -120,8 +122,8 @@ struct JobServer {
 static JobServer job_server;
 
 static Job *job_schedule() {
-  ZoneScoped;
   if (job_is_main_thread) {
+    ZoneScopedN("Schedule main job");
     while (true) {
       int ready = std::atomic_ref(job_server.m_main_job_ready)
                       .exchange(false, std::memory_order_acquire);
@@ -132,6 +134,7 @@ static Job *job_schedule() {
     }
   }
 
+  ZoneScopedN("Schedule worker job");
 retry:
   job_server.m_scheduler_mutex.lock();
   [[unlikely]] if (job_server.m_num_enqueued == 0) {
@@ -235,17 +238,16 @@ static const usize JOB_WORKER_STACK_SIZE = 256 * KiB;
 static const usize JOB_STACK_SIZE = 256 * KiB;
 #endif
 
-static void *job_server_worker(void *) {
+static void *job_server_worker(void *name) {
   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, nullptr);
+  tracy::SetThreadName((const char *)name);
   FiberContext *scheduler = job_tls_scheduler_fiber();
   *scheduler = fiber_thread_context();
-  Job *job = nullptr;
   while (true) {
     Job *next = job_schedule();
-    ren_assert(next != job);
     job_tls_set_running_job(next);
     fiber_switch_context(scheduler, next->context);
-    job = job_tls_running_job();
+    Job *job = job_tls_running_job();
     job_free(job);
   }
   return nullptr;
@@ -285,12 +287,16 @@ static void job_wait_for_children(Job *job) {
 }
 
 static void job_fiber_main() {
-  Job *job = job_tls_running_job();
-  ren_assert(job);
-  ren_assert(job->function);
-  job->function(job->payload);
-  ren_assert(job == job_tls_running_job());
-  job_wait_for_children(job);
+  {
+    ZoneScoped;
+    Job *job = job_tls_running_job();
+    ZoneText(job->context.label, std::strlen(job->context.label));
+    ren_assert(job);
+    ren_assert(job->function);
+    job->function(job->payload);
+    ren_assert(job == job_tls_running_job());
+    job_wait_for_children(job);
+  }
   fiber_load_context(*job_tls_scheduler_fiber());
 }
 
@@ -311,10 +317,12 @@ void launch_job_server() {
   sigset_t signal_mask;
   sigemptyset(&signal_mask);
   pthread_attr_setsigmask_np(&attr, &signal_mask);
-  for (pthread_t &worker : job_server.m_workers) {
-    // TODO: set thread affinity.
+  for (usize i : range(num_cores)) {
+    ScratchArena scratch;
+    String8 name = format(scratch, "Job server worker {}", i);
     pthread_attr_setstacksize(&attr, JOB_WORKER_STACK_SIZE);
-    pthread_create(&worker, &attr, job_server_worker, nullptr);
+    pthread_create(&job_server.m_workers[i], &attr, job_server_worker,
+                   (void *)name.zero_terminated(&job_server.m_arena));
   }
   pthread_attr_destroy(&attr);
   // At this points all workers haven't touched any
@@ -366,7 +374,6 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
 
   for (JobDesc job_desc : jobs) {
     Job *job = free_list_atomic_pop(&job_server.m_job_free_list);
-    job = nullptr;
     [[unlikely]] if (!job) {
       job_server.m_arena_mutex.lock();
       job = job_server.m_arena.allocate<Job>();
@@ -390,7 +397,9 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
         .function = job_desc.function,
         .payload = job_desc.payload,
         .counter = counter,
-        .context = fiber_init_context(job_fiber_main, stack, stack_size),
+        .context =
+            fiber_init_context(job_fiber_main, stack, stack_size,
+                               job_desc.label ? job_desc.label : "Untitled"),
     };
     job_enqueue(job);
   }

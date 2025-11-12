@@ -64,7 +64,8 @@
       "name": "profile",
       "inherits": "release",
       "cacheVariables": {
-        "TRACY_ENABLE": "ON"
+        "TRACY_ENABLE": "ON",
+        "TRACY_FIBERS": "ON"
       }
     }
   ]

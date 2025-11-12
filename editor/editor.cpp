@@ -302,12 +302,12 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
 } // namespace
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
+  ScratchArena::init_allocator();
+
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     fmt::println(stderr, "Failed to init SDL3: {}", SDL_GetError());
     exit(EXIT_FAILURE);
   }
-
-  ScratchArena::init_allocator();
 
   ctx->m_arena = Arena::init();
   ctx->m_project_arena = Arena::init();

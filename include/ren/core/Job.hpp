@@ -22,36 +22,42 @@ struct JobDesc {
   JobPriority priority = JobPriority::Normal;
   JobFunction *function = nullptr;
   void *payload = nullptr;
+  const char *label = nullptr;
 
 public:
   template <typename T>
-  [[nodiscard]] static JobDesc
-  init(JobPriority priority, std::invocable<T *> auto &&function, T *payload) {
+  [[nodiscard]] static JobDesc init(const char *label, JobPriority priority,
+                                    std::invocable<T *> auto &&function,
+                                    T *payload) {
     ren_assert(function);
     ren_assert(payload);
     return {
         .priority = priority,
         .function = (JobFunction *)(+function),
         .payload = (void *)payload,
+        .label = label,
     };
-    return init<T>(priority, +(function), payload);
   }
 
   template <typename T, std::invocable<T *> F>
-  [[nodiscard]] static JobDesc init(F &&function, T *payload) {
-    return init<T>(JobPriority::Normal, std::forward<F>(function), payload);
+  [[nodiscard]] static JobDesc init(const char *label, F &&function,
+                                    T *payload) {
+    return init<T>(label, JobPriority::Normal, std::forward<F>(function),
+                   payload);
   }
 
-  [[nodiscard]] static JobDesc init(JobPriority priority, void (*function)()) {
+  [[nodiscard]] static JobDesc init(const char *label, JobPriority priority,
+                                    void (*function)()) {
     ren_assert(function);
     return {
         .priority = priority,
         .function = (JobFunction *)function,
+        .label = label,
     };
   }
 
-  [[nodiscard]] static JobDesc init(void (*function)()) {
-    return init(JobPriority::Normal, function);
+  [[nodiscard]] static JobDesc init(const char *label, void (*function)()) {
+    return init(label, JobPriority::Normal, function);
   }
 };
 

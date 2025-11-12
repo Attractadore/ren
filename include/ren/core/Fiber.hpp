@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -58,6 +59,7 @@ struct FiberContextSystemV {
   void *stack_bottom;
   usize stack_size;
   void *tsan;
+  const char *label;
 };
 
 extern "C" void fiber_save_context_system_v(FiberContextSystemV *context);
@@ -93,6 +95,7 @@ struct FiberContext_x64 {
   void *stack_bottom;
   usize stack_size;
   void *tsan;
+  const char *label;
 };
 
 extern "C" void fiber_save_context_x64(FiberContext_x64 *context);
@@ -117,6 +120,11 @@ using FiberContext = FiberContext_x64;
 #endif
 
 ALWAYS_INLINE void fiber_load_context(const FiberContext &context) {
+  if (context.label) {
+    TracyFiberEnter(context.label);
+  } else {
+    TracyFiberLeave;
+  }
   __tsan_switch_to_fiber(context.tsan, 0);
   // Target context must be passed by reference since ASAN thinks that the stack
   // is not longer valid after this call.
@@ -129,6 +137,11 @@ ALWAYS_INLINE void fiber_load_context(const FiberContext &context) {
 ALWAYS_INLINE void fiber_switch_context(NotNull<FiberContext *> this_context,
                                         const FiberContext &other_context) {
   ren_assert(this_context != &other_context);
+  if (other_context.label) {
+    TracyFiberEnter(other_context.label);
+  } else {
+    TracyFiberLeave;
+  }
   __tsan_switch_to_fiber(other_context.tsan, 0);
   void *fake_stack;
   __sanitizer_start_switch_fiber(&fake_stack, other_context.stack_bottom,
@@ -150,7 +163,8 @@ inline void fiber_panic() {
 };
 
 [[nodiscard]] inline FiberContext fiber_init_context(void (*fiber_main)(),
-                                                     void *stack, usize size) {
+                                                     void *stack, usize size,
+                                                     const char *label) {
   u8 *sp = (u8 *)stack + size;
 
   // Push return address.
@@ -168,6 +182,7 @@ inline void fiber_panic() {
       .stack_bottom = (u8 *)stack + size,
       .stack_size = size,
       .tsan = __tsan_create_fiber(0),
+      .label = label,
   };
 }
 
