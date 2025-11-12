@@ -1,11 +1,12 @@
 // TODO: Win32 support.
-#include "ren/core/Format.hpp"
 #if __linux__
-#include "ren/core/Fiber.hpp"
-#include "ren/core/Futex.hpp"
 #include "ren/core/Job.hpp"
+#include "ren/core/Fiber.hpp"
+#include "ren/core/Format.hpp"
+#include "ren/core/Futex.hpp"
 #include "ren/core/Mutex.hpp"
 #include "ren/core/Queue.hpp"
+#include "ren/core/Thread.hpp"
 
 #include <common/TracySystem.hpp>
 #include <pthread.h>
@@ -301,6 +302,8 @@ static void job_fiber_main() {
 }
 
 void launch_job_server() {
+  ScratchArena scratch;
+
   job_is_main_thread = true;
   job_server = {
       .m_page_size = vm_page_size(),
@@ -308,8 +311,36 @@ void launch_job_server() {
       .m_high_priority = Queue<QueuedJob>::init(),
       .m_normal_priority = Queue<QueuedJob>::init(),
   };
-  // TODO: retrieve the number of cores.
-  usize num_cores = 8;
+
+  auto topology = cpu_topology(scratch);
+  u32 num_cpus = 0;
+  u32 max_num_cores = 0;
+  for (Processor processor : topology) {
+    num_cpus = max(num_cpus, processor.id + 1);
+    max_num_cores = max(max_num_cores, processor.core_id + 1);
+  }
+  Span<bool> core_mask = Span<bool>::allocate(scratch, max_num_cores);
+  u32 package = topology[0].package_id;
+  u32 cluster = topology[0].cluster_id;
+  for (Processor processor : topology) {
+    core_mask[processor.core_id] =
+        processor.package_id == package and processor.cluster_id == cluster;
+  }
+  u32 num_cores = 0;
+  for (bool core_bit : core_mask) {
+    if (core_bit) {
+      num_cores++;
+    }
+  }
+  Span<u32> cores = Span<u32>::allocate(scratch, num_cores);
+  u32 core_offset = 0;
+  for (u32 core_id : range(max_num_cores)) {
+    if (core_mask[core_id]) {
+      cores[core_offset++] = core_id;
+    }
+  }
+  fmt::println("job_server: Found {} cores", num_cores);
+
   job_server.m_workers =
       Span<pthread_t>::allocate(&job_server.m_arena, num_cores);
   pthread_attr_t attr;
@@ -317,14 +348,31 @@ void launch_job_server() {
   sigset_t signal_mask;
   sigemptyset(&signal_mask);
   pthread_attr_setsigmask_np(&attr, &signal_mask);
+  cpu_set_t *cpu_mask = CPU_ALLOC(num_cpus);
   for (usize i : range(num_cores)) {
     ScratchArena scratch;
-    String8 name = format(scratch, "Job server worker {}", i);
+
+    String8 name =
+        format(scratch, "Job server worker {} on core {}", i, cores[i]);
+    fmt::println("job_server: Run worker {} on core {}", i, cores[i]);
+
     pthread_attr_setstacksize(&attr, JOB_WORKER_STACK_SIZE);
+
+    CPU_ZERO_S(num_cpus, cpu_mask);
+    for (Processor processor : topology) {
+      if (processor.cluster_id == cluster and
+          processor.package_id == package and processor.core_id == cores[i]) {
+        CPU_SET_S(processor.id, num_cpus, cpu_mask);
+      }
+    }
+    pthread_attr_setaffinity_np(&attr, num_cpus, cpu_mask);
+
     pthread_create(&job_server.m_workers[i], &attr, job_server_worker,
                    (void *)name.zero_terminated(&job_server.m_arena));
   }
   pthread_attr_destroy(&attr);
+  CPU_FREE(cpu_mask);
+
   // At this points all workers haven't touched any
   // shared resources and have possibly gone to sleep. So no need to lock.
   job_server.m_main_job = job_server.m_arena.allocate<Job>();

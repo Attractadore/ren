@@ -11,12 +11,14 @@ add_library(ren-core
   core/LinuxChrono.cpp
   core/LinuxFileSystem.cpp
   core/LinuxFutex.cpp
+  core/LinuxThread.cpp
   core/LinuxVm.cpp
   core/Mutex.cpp
   core/Profiler.cpp
   core/Win32Chrono.cpp
   core/Win32FileSystem.cpp
   core/Win32Futex.cpp
+  core/Win32Thread.cpp
   core/Win32Vm.cpp
 )
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)

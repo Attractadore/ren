@@ -5,6 +5,7 @@
 #include "StdDef.hpp"
 #include "TypeTraits.hpp"
 
+#include <cstring>
 #include <initializer_list>
 
 namespace ren {
@@ -58,7 +59,7 @@ public:
   }
 
   static const Span<T> allocate(NotNull<Arena *> arena, usize count) {
-    return {arena->allocate<T>(count), count};
+    return Span(arena->allocate<T>(count), count);
   }
 
   constexpr T &operator[](usize i) const {
@@ -91,6 +92,12 @@ public:
   Span<T> subspan(usize start) const {
     ren_assert(start <= m_size);
     return {m_data + start, m_size - start};
+  }
+
+  Span<std::remove_const_t<T>> copy(NotNull<Arena *> arena) const {
+    auto *data = arena->allocate<std::remove_const_t<T>>(m_size);
+    std::memcpy(data, m_data, m_size * sizeof(T));
+    return {data, m_size};
   }
 };
 
