@@ -64,8 +64,8 @@ public:
 struct JobAtomicCounter;
 
 struct JobToken {
-  // TODO: add generation tracking.
   JobAtomicCounter *counter = nullptr;
+  u64 generation = 0;
 };
 
 [[nodiscard]] JobToken job_dispatch(Span<const JobDesc> jobs);
