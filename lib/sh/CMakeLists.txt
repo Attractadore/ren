@@ -14,9 +14,6 @@ set(SLANG_FLAGS
   -Wno-41012
   -I ${PROJECT_SOURCE_DIR}/include
 )
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  list(APPEND SLANG_FLAGS -msvc-style-bitfield-packing)
-endif()
 if(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO)
   message(STATUS "Enable source-level debug info for shaders")
   list(APPEND SLANG_FLAGS -g3)
