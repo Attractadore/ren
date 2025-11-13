@@ -7,7 +7,7 @@
 namespace DirectX {
 
 struct Image;
-struct ScratchImage;
+class ScratchImage;
 struct TexMetadata;
 
 } // namespace DirectX

@@ -8,6 +8,10 @@
 #pragma GCC system_header
 #endif
 
+#if _MSC_VER
+#pragma system_header
+#endif
+
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>

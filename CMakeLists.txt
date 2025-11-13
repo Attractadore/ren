@@ -45,6 +45,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # add_link_options(-fsanitize=thread)
 endif()
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+
 # Use default warnings for external code
 add_subdirectory(external)
 
@@ -72,12 +74,11 @@ if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
       -Wno-unused-parameter
     )
   else()
-    add_compile_options(/Wall)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Wall>)
   endif()
 endif()
 
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
 add_subdirectory(lib)
 
