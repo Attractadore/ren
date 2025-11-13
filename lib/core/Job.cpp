@@ -17,6 +17,30 @@ namespace ren {
 
 namespace {
 
+template <typename T> void list_init(T *node) {
+  node->next = node;
+  node->prev = node;
+}
+
+template <typename T> void list_insert_after(T *list, T *node) {
+  T *next = list->next;
+
+  node->next = next;
+  node->prev = list;
+
+  list->next = node;
+  next->prev = node;
+}
+
+template <typename T> void list_remove(T *node) {
+  T *next = node->next;
+  T *prev = node->prev;
+  prev->next = next;
+  next->prev = prev;
+  node->next = nullptr;
+  node->prev = nullptr;
+}
+
 template <typename T> T *free_list_atomic_pop(T **free_list) {
   std::atomic_ref<T *> ref(*free_list);
   // Sync with free list push.
@@ -69,8 +93,10 @@ enum class JobState {
 
 struct alignas(CACHE_LINE_SIZE) JobAtomicCounter {
   JobAtomicCounter *next = nullptr;
+  JobAtomicCounter *prev = nullptr;
   u32 value = 0;
-  JobState parent_job_state = JobState::Running;
+  JobState job_state = JobState::Running;
+  u64 generation = 0;
 };
 
 struct alignas(CACHE_LINE_SIZE) Job {
@@ -86,7 +112,7 @@ struct alignas(CACHE_LINE_SIZE) Job {
   JobAtomicCounter *counter = nullptr;
 
   alignas(CACHE_LINE_SIZE) FiberContext context = {};
-  alignas(CACHE_LINE_SIZE) JobAtomicCounter *child_counters = nullptr;
+  alignas(CACHE_LINE_SIZE) JobAtomicCounter list_of_counters = {};
 };
 
 struct alignas(CACHE_LINE_SIZE) QueuedJob {
@@ -186,21 +212,27 @@ static void job_enqueue(Job *job) {
   job_server.m_scheduler_mutex.unlock();
 }
 
+static void job_free_atomic_counter(JobAtomicCounter *counter) {
+  list_remove(counter);
+  // Can be read by previous owner.
+  std::atomic_ref(counter->generation).fetch_add(1, std::memory_order_relaxed);
+  free_list_atomic_push(&job_server.m_atomic_counter_free_list, counter);
+}
+
 static void job_free(Job *job) {
   ZoneScoped;
   ren_assert(not job->is_main_job);
 
   bool all_done = 1 == std::atomic_ref(job->counter->value)
-                           .fetch_add(-1, std::memory_order_relaxed);
+                           .fetch_sub(1, std::memory_order_relaxed);
   if (all_done) {
     Job *parent = job->parent;
     ren_assert(parent);
 
-    std::atomic_ref parent_job_state(job->counter->parent_job_state);
-
-    JobState state = parent_job_state.exchange(JobState::Resumed,
-                                               // Sync with suspend.
-                                               std::memory_order_acq_rel);
+    JobState state = std::atomic_ref(job->counter->job_state)
+                         .exchange(JobState::Resumed,
+                                   // Sync with suspend.
+                                   std::memory_order_acq_rel);
     if (state == JobState::Suspended) {
       job_enqueue(parent);
     }
@@ -209,12 +241,6 @@ static void job_free(Job *job) {
   auto *stack = (StackFreeListNode *)((u8 *)job->context.stack_bottom -
                                       job->context.stack_size);
   free_list_atomic_push(&job_server.m_stack_free_list, stack);
-  JobAtomicCounter *counter = job->child_counters;
-  while (counter) {
-    JobAtomicCounter *next = counter->next;
-    free_list_atomic_push(&job_server.m_atomic_counter_free_list, counter);
-    counter = next;
-  }
   fiber_destroy_context(&job->context);
   free_list_atomic_push(&job_server.m_job_free_list, job);
 }
@@ -255,18 +281,18 @@ static void *job_server_worker(void *name) {
 }
 
 static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
+  // TODO: what memory order should this be?
   if (std::atomic_ref(counter->value).load(std::memory_order_relaxed) == 0) {
     return;
   }
 
-  std::atomic_ref job_state(counter->parent_job_state);
-
   JobState state = JobState::Running;
-  job_state.compare_exchange_strong(state, JobState::Suspended,
-                                    // Sync with future resume.
-                                    std::memory_order_release,
-                                    // Sync with already executed resume.
-                                    std::memory_order_acquire);
+  std::atomic_ref(counter->job_state)
+      .compare_exchange_strong(state, JobState::Suspended,
+                               // Sync with future resume.
+                               std::memory_order_release,
+                               // Sync with already executed resume.
+                               std::memory_order_acquire);
   if (state != JobState::Running) {
     ren_assert(state == JobState::Resumed);
     return;
@@ -279,14 +305,6 @@ static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
   }
 }
 
-static void job_wait_for_children(Job *job) {
-  JobAtomicCounter *counter = job->child_counters;
-  while (counter) {
-    job_wait_for_counter(job, counter);
-    counter = counter->next;
-  }
-}
-
 static void job_fiber_main() {
   {
     ZoneScoped;
@@ -296,7 +314,13 @@ static void job_fiber_main() {
     ren_assert(job->function);
     job->function(job->payload);
     ren_assert(job == job_tls_running_job());
-    job_wait_for_children(job);
+    JobAtomicCounter *counter = job->list_of_counters.next;
+    while (counter != &job->list_of_counters) {
+      JobAtomicCounter *next = counter->next;
+      job_wait_for_counter(job, counter);
+      job_free_atomic_counter(counter);
+      counter = next;
+    }
   }
   fiber_load_context(*job_tls_scheduler_fiber());
 }
@@ -380,6 +404,7 @@ void launch_job_server() {
       .is_main_job = true,
       .context = fiber_thread_context(),
   };
+  list_init(&job_server.m_main_job->list_of_counters);
   job_tls_set_running_job(job_server.m_main_job);
 }
 
@@ -388,7 +413,12 @@ void stop_job_server() {
   Job *main_job = job_tls_running_job();
   ren_assert_msg(main_job == job_server.m_main_job,
                  "Job server must be stopped from the main thread");
-  job_wait_for_children(main_job);
+  JobAtomicCounter *counter = main_job->list_of_counters.next;
+  while (counter != &main_job->list_of_counters) {
+    JobAtomicCounter *next = counter->next;
+    job_wait_for_counter(main_job, counter);
+    counter = next;
+  }
   for (pthread_t worker : job_server.m_workers) {
     pthread_cancel(worker);
   }
@@ -404,6 +434,9 @@ void stop_job_server() {
 JobToken job_dispatch(Span<const JobDesc> jobs) {
   ZoneScoped;
 
+  Job *parent = job_tls_running_job();
+  ren_assert(parent);
+
   JobAtomicCounter *counter =
       free_list_atomic_pop(&job_server.m_atomic_counter_free_list);
   [[unlikely]] if (!counter) {
@@ -411,14 +444,9 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
     counter = job_server.m_arena.allocate<JobAtomicCounter>();
     job_server.m_arena_mutex.unlock();
   }
-
-  Job *parent = job_tls_running_job();
-  ren_assert(parent);
-  *counter = {
-      .next = parent->child_counters,
-      .value = (u32)jobs.m_size,
-  };
-  parent->child_counters = counter;
+  counter->value = 0;
+  counter->job_state = JobState::Running;
+  list_insert_after(&parent->list_of_counters, counter);
 
   for (JobDesc job_desc : jobs) {
     Job *job = free_list_atomic_pop(&job_server.m_job_free_list);
@@ -449,24 +477,43 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
             fiber_init_context(job_fiber_main, stack, stack_size,
                                job_desc.label ? job_desc.label : "Untitled"),
     };
+    list_init(&job->list_of_counters);
     job_enqueue(job);
   }
 
-  return {counter};
+  return {counter, counter->generation};
 }
 
 void job_wait(JobToken token) {
+  // Might be in use on another thread if it has been freed.
+  u64 generation = std::atomic_ref(token.counter->generation)
+                       // TODO: what memory order should this be?
+                       .load(std::memory_order_acquire);
+  if (generation != token.generation) {
+    return;
+  }
   Job *job = job_tls_running_job();
   job_wait_for_counter(job, token.counter);
-  // TODO: return counter to pool after waiting.
+  job_free_atomic_counter(token.counter);
 }
 
 bool job_is_done(JobToken token) {
+  // Might be in use on another thread if it has been freed.
+  u64 generation = std::atomic_ref(token.counter->generation)
+                       // TODO: what memory order should this be?
+                       .load(std::memory_order_acquire);
+  if (generation != token.generation) {
+    return true;
+  }
+  // TODO: what memory order should this be?
   bool done =
       0 ==
       std::atomic_ref(token.counter->value).load(std::memory_order_relaxed);
-  return done;
-  // TODO: return counter to pool.
+  if (done) {
+    job_free_atomic_counter(token.counter);
+    return true;
+  }
+  return false;
 }
 
 } // namespace ren
