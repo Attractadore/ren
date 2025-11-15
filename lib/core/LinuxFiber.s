@@ -1,17 +1,20 @@
 .intel_syntax noprefix
 
-.type fiber_save_context_system_v, @function
-.global fiber_save_context_system_v
+.type ren_fiber_save_context_system_v, @function
+.global ren_fiber_save_context_system_v
 
-.type fiber_load_context_system_v, @function
-.global fiber_load_context_system_v
+.type ren_fiber_load_context_system_v, @function
+.global ren_fiber_load_context_system_v
 
-.type fiber_switch_context_system_v, @function
-.global fiber_switch_context_system_v
+.type ren_fiber_switch_context_system_v, @function
+.global ren_fiber_switch_context_system_v
+
+.type ren_fiber_start_system_v, @function
+.global ren_fiber_start_system_v
 
 .text
 
-fiber_save_context_system_v:
+ren_fiber_save_context_system_v:
   # Save RIP.
   mov r8, [rsp]
   mov [rdi + 8*0], r8
@@ -31,7 +34,7 @@ fiber_save_context_system_v:
   xor eax, eax
   ret
 
-fiber_load_context_system_v:
+ren_fiber_load_context_system_v:
   mov r8, [rdi + 8*0]
 
   # Load RSP.
@@ -51,7 +54,7 @@ fiber_load_context_system_v:
   xor eax, eax
   ret
 
-fiber_switch_context_system_v:
+ren_fiber_switch_context_system_v:
   # Save RIP.
   mov r8, [rsp]
   mov [rdi + 8*0], r8
@@ -86,3 +89,10 @@ fiber_switch_context_system_v:
 
   xor eax, eax
   ret
+
+ren_fiber_start_system_v:
+  mov rbx, [rsp+8]
+  mov rbp, [rsp+0]
+  call ren_fiber_start_cpp
+  push rbp
+  jmp rbx

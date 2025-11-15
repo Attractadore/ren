@@ -9,8 +9,9 @@
 namespace ren {
 
 auto vm_allocate(usize size) -> void * {
-  return mmap(nullptr, size, PROT_READ | PROT_WRITE,
-              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  void *ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  return ptr == MAP_FAILED ? nullptr : ptr;
 }
 
 void vm_commit(void *, usize) {}
@@ -40,6 +41,8 @@ usize vm_page_size() {
   ren_assert(errno == 0);
   return page_size;
 }
+
+usize vm_allocation_granularity() { return vm_page_size(); }
 
 } // namespace ren
 

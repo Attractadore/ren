@@ -4,11 +4,13 @@ add_library(ren-core
   core/Arena.cpp
   core/Assert.cpp
   core/CmdLine.cpp
+  core/Fiber.cpp
   core/FileSystem.cpp
   core/JSON.cpp
   core/Job.cpp
   core/JobTLS.cpp
   core/LinuxChrono.cpp
+  core/LinuxFiber.cpp
   core/LinuxFileSystem.cpp
   core/LinuxFutex.cpp
   core/LinuxThread.cpp
@@ -16,6 +18,7 @@ add_library(ren-core
   core/Mutex.cpp
   core/Profiler.cpp
   core/Win32Chrono.cpp
+  core/Win32Fiber.cpp
   core/Win32FileSystem.cpp
   core/Win32Futex.cpp
   core/Win32Thread.cpp
@@ -23,6 +26,7 @@ add_library(ren-core
 )
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
   target_sources(ren-core PRIVATE core/LinuxFiber.s)
+  target_link_libraries(ren-core PRIVATE numa)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_sources(ren-core PRIVATE core/Win32Fiber.asm)

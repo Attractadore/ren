@@ -62,13 +62,16 @@ struct FiberContextSystemV {
   const char *label;
 };
 
-extern "C" void fiber_save_context_system_v(FiberContextSystemV *context);
-
-extern "C" void fiber_load_context_system_v(const FiberContextSystemV *context);
+extern "C" void ren_fiber_save_context_system_v(FiberContextSystemV *context);
 
 extern "C" void
-fiber_switch_context_system_v(FiberContextSystemV *this_context,
-                              const FiberContextSystemV *other_context);
+ren_fiber_load_context_system_v(const FiberContextSystemV *context);
+
+extern "C" void
+ren_fiber_switch_context_system_v(FiberContextSystemV *this_context,
+                                  const FiberContextSystemV *other_context);
+
+extern "C" void ren_fiber_start_system_v();
 
 // x64 ABI.
 struct FiberContext_x64 {
@@ -98,26 +101,35 @@ struct FiberContext_x64 {
   const char *label;
 };
 
-extern "C" void fiber_save_context_x64(FiberContext_x64 *context);
+extern "C" void ren_fiber_save_context_x64(FiberContext_x64 *context);
 
-extern "C" void fiber_load_context_x64(const FiberContext_x64 *context);
+extern "C" void ren_fiber_load_context_x64(const FiberContext_x64 *context);
 
-extern "C" void fiber_switch_context_x64(FiberContext_x64 *this_context,
-                                         const FiberContext_x64 *other_context);
+extern "C" void
+ren_fiber_switch_context_x64(FiberContext_x64 *this_context,
+                             const FiberContext_x64 *other_context);
+
+extern "C" void ren_fiber_start_x64();
 
 #if __linux__
 using FiberContext = FiberContextSystemV;
-#define platform_fiber_save_context fiber_save_context_system_v
-#define platform_fiber_load_context fiber_load_context_system_v
-#define platform_fiber_switch_context fiber_switch_context_system_v
+#define ren_fiber_save_context ren_fiber_save_context_system_v
+#define ren_fiber_load_context ren_fiber_load_context_system_v
+#define ren_fiber_switch_context ren_fiber_switch_context_system_v
+#define ren_fiber_start ren_fiber_start_system_v
 #endif
 
 #if _WIN32
 using FiberContext = FiberContext_x64;
-#define platform_fiber_save_context fiber_save_context_x64
-#define platform_fiber_load_context fiber_load_context_x64
-#define platform_fiber_switch_context fiber_switch_context_x64
+#define ren_fiber_save_context ren_fiber_save_context_x64
+#define ren_fiber_load_context ren_fiber_load_context_x64
+#define ren_fiber_switch_context ren_fiber_switch_context_x64
+#define ren_fiber_start ren_fiber_start_x64
 #endif
+
+extern "C" void ren_fiber_start_cpp();
+
+void fiber_panic();
 
 ALWAYS_INLINE void fiber_load_context(const FiberContext &context) {
   if (context.label) {
@@ -131,7 +143,7 @@ ALWAYS_INLINE void fiber_load_context(const FiberContext &context) {
   __sanitizer_start_switch_fiber(nullptr, context.stack_bottom,
                                  context.stack_size);
   std::atomic_signal_fence(std::memory_order_release);
-  platform_fiber_load_context(&context);
+  ren_fiber_load_context(&context);
 }
 
 ALWAYS_INLINE void fiber_switch_context(NotNull<FiberContext *> this_context,
@@ -147,37 +159,21 @@ ALWAYS_INLINE void fiber_switch_context(NotNull<FiberContext *> this_context,
   __sanitizer_start_switch_fiber(&fake_stack, other_context.stack_bottom,
                                  other_context.stack_size);
   std::atomic_signal_fence(std::memory_order_release);
-  platform_fiber_switch_context(this_context, &other_context);
+  ren_fiber_switch_context(this_context, &other_context);
   std::atomic_signal_fence(std::memory_order_acquire);
   __sanitizer_finish_switch_fiber(fake_stack, nullptr, nullptr);
 }
-
-inline void fiber_start() {
-  std::atomic_signal_fence(std::memory_order_acquire);
-  __sanitizer_finish_switch_fiber(nullptr, nullptr, nullptr);
-}
-
-inline void fiber_panic() {
-  std::fputs("Tried to return from fiber\n", stderr);
-  std::abort();
-};
 
 [[nodiscard]] inline FiberContext fiber_init_context(void (*fiber_main)(),
                                                      void *stack, usize size,
                                                      const char *label) {
   u8 *sp = (u8 *)stack + size;
-
-  // Push return address.
-  sp -= 8;
-  *(void (**)())sp = fiber_panic;
-
-  // Call: push return address to fiber main.
-  // Don't align stack because it needs to be aligned before ret.
   sp -= 8;
   *(void (**)())sp = fiber_main;
-
+  sp -= 8;
+  *(void (**)())sp = fiber_panic;
   return {
-      .rip = fiber_start,
+      .rip = ren_fiber_start,
       .rsp = sp,
       .stack_bottom = (u8 *)stack + size,
       .stack_size = size,
@@ -186,21 +182,7 @@ inline void fiber_panic() {
   };
 }
 
-#if __linux__
-
-[[nodiscard]] ALWAYS_INLINE FiberContext fiber_thread_context() {
-  FiberContext fiber = {
-      .tsan = __tsan_create_fiber(0),
-  };
-  __tsan_switch_to_fiber(fiber.tsan, 0);
-  pthread_attr_t attr;
-  pthread_getattr_np(pthread_self(), &attr);
-  pthread_attr_getstack(&attr, &fiber.stack_bottom, &fiber.stack_size);
-  pthread_attr_destroy(&attr);
-  return fiber;
-}
-
-#endif
+FiberContext fiber_thread_context();
 
 inline void fiber_destroy_context(NotNull<FiberContext *> fiber) {
   __tsan_destroy_fiber(fiber->tsan);
