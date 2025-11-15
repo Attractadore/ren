@@ -5,6 +5,7 @@
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/JSON.hpp"
+#include "ren/core/Job.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/glTF.hpp"
 #include "ren/ren.hpp"
@@ -303,6 +304,10 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ScratchArena::init_allocator();
+  launch_job_server();
+
+  job_dispatch_and_wait(
+      JobDesc::init("Hello", []() { fmt::println("Hello from Job!"); }));
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     fmt::println(stderr, "Failed to init SDL3: {}", SDL_GetError());
@@ -983,10 +988,32 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 
 void run_editor(NotNull<EditorContext *> ctx) {
   u64 time = clock();
+
   while (ctx->m_state != EditorState::Quit) {
     u64 now = clock();
     u64 dt_ns = now - time;
     time = now;
+
+    u64 frame_time = time;
+
+    JobDesc jobs[] = {
+        JobDesc::init("Job time",
+                      []() { fmt::println("Job time is {}", clock()); }),
+#if 0
+        JobDesc::init(
+            [](const u64 *now) {
+              fmt::println("Main time is {}", std::atomic_ref(*now).load(
+                                                  std::memory_order_acquire));
+            },
+            &frame_time),
+#else
+        JobDesc::init(
+            "Non-atomic time",
+            [](const u64 *now) { fmt::println("Non-atomic time is {}", *now); },
+            &frame_time),
+#endif
+    };
+    JobToken job = job_dispatch(jobs);
 
     ImGuiIO &io = ImGui::GetIO();
 
@@ -1027,6 +1054,8 @@ void run_editor(NotNull<EditorContext *> ctx) {
     draw_editor_ui(ctx);
 
     ren::draw(ctx->m_scene, {.delta_time = dt_ns / 1e9f});
+
+    job_wait(job);
   } // namespace ren
 }
 
@@ -1038,6 +1067,7 @@ void quit_editor(NotNull<EditorContext *> ctx) {
   SDL_DestroyWindow(ctx->m_window);
   ren::destroy_renderer(ctx->m_renderer);
   SDL_Quit();
+  stop_job_server();
 }
 
 } // namespace ren
