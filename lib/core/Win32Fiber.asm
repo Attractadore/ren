@@ -1,10 +1,14 @@
-public fiber_save_context_x64
-public fiber_load_context_x64
-public fiber_switch_context_x64
+public ren_fiber_save_context_x64
+public ren_fiber_load_context_x64
+public ren_fiber_switch_context_x64
+public ren_fiber_start_x64
+
+extern ren_fiber_start_cpp: proc
+extern ren_fiber_panic_cpp: proc
 
 .code
 
-fiber_save_context_x64 proc
+ren_fiber_save_context_x64 proc
   ; Save RIP.
   mov r8, [rsp]
   mov [rcx + 8*0], r8
@@ -37,9 +41,9 @@ fiber_save_context_x64 proc
 
   xor eax, eax
   ret
-fiber_save_context_x64 endp
+ren_fiber_save_context_x64 endp
 
-fiber_load_context_x64 proc
+ren_fiber_load_context_x64 proc
   mov r8, [rcx + 8*0]
 
   ; Load RSP.
@@ -72,9 +76,9 @@ fiber_load_context_x64 proc
 
   xor eax, eax
   ret
-fiber_load_context_x64 endp
+ren_fiber_load_context_x64 endp
 
-fiber_switch_context_x64 proc
+ren_fiber_switch_context_x64 proc
   ; Save RIP.
   mov r8, [rsp]
   mov [rcx + 8*0], r8
@@ -137,6 +141,16 @@ fiber_switch_context_x64 proc
 
   xor eax, eax
   ret
-fiber_switch_context_x64 endp
+ren_fiber_switch_context_x64 endp
+
+ren_fiber_start_x64 proc
+  mov rbx, [rsp]
+  ; Allocate remaining home space.
+  sub rsp, 24
+  call ren_fiber_start_cpp
+  lea rax, ren_fiber_panic_cpp
+  push rax
+  jmp rbx
+ren_fiber_start_x64 endp
 
 end

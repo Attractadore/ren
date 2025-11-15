@@ -1,5 +1,3 @@
-// TODO: Win32 support.
-#if __linux__
 #include "ren/core/Job.hpp"
 #include "ren/core/Fiber.hpp"
 #include "ren/core/Format.hpp"
@@ -8,9 +6,6 @@
 #include "ren/core/Queue.hpp"
 #include "ren/core/Thread.hpp"
 
-#include <common/TracySystem.hpp>
-#include <pthread.h>
-#include <signal.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -121,7 +116,8 @@ struct alignas(CACHE_LINE_SIZE) QueuedJob {
 struct JobServer {
   // Read-only data.
   usize m_page_size = 0;
-  Span<pthread_t> m_workers;
+  usize m_allocation_granularity = 0;
+  Span<Thread> m_workers;
 
   // Arena mutex.
   alignas(CACHE_LINE_SIZE) Mutex m_arena_mutex;
@@ -147,6 +143,8 @@ struct JobServer {
 
 static JobServer job_server;
 
+static const int WORKER_EXIT = -1;
+
 static Job *job_schedule() {
   if (job_is_main_thread) {
     ZoneScopedN("Schedule main job");
@@ -167,6 +165,10 @@ retry:
     job_server.m_scheduler_mutex.unlock();
     futex_wait(&job_server.m_num_enqueued, 0);
     goto retry;
+  }
+  [[unlikely]] if (job_server.m_num_enqueued == WORKER_EXIT) {
+    job_server.m_scheduler_mutex.unlock();
+    thread_exit(EXIT_SUCCESS);
   }
 
   Job *job = []() {
@@ -244,25 +246,16 @@ static StackFreeListNode *job_allocate_stack(usize stack_size) {
   stack_size =
       (stack_size + job_server.m_page_size - 1) & ~(job_server.m_page_size - 1);
   usize guard_size = job_server.m_page_size;
-  u8 *new_stack = (u8 *)vm_allocate(guard_size + stack_size + guard_size);
+  usize allocated_size = guard_size + stack_size + guard_size;
+  u8 *new_stack = (u8 *)vm_allocate(allocated_size);
+  vm_commit(new_stack, allocated_size);
   new_stack += guard_size;
   vm_protect(new_stack - guard_size, guard_size, PagePermissionNone);
-  vm_commit(new_stack, stack_size);
   vm_protect(new_stack + stack_size, guard_size, PagePermissionNone);
   return (StackFreeListNode *)new_stack;
 }
 
-#if !REN_TSAN
-static const usize JOB_WORKER_STACK_SIZE = PTHREAD_STACK_MIN;
-static const usize JOB_STACK_SIZE = 32 * KiB;
-#else
-static const usize JOB_WORKER_STACK_SIZE = 256 * KiB;
-static const usize JOB_STACK_SIZE = 256 * KiB;
-#endif
-
-static void *job_server_worker(void *name) {
-  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, nullptr);
-  tracy::SetThreadName((const char *)name);
+static void job_server_worker(void *) {
   FiberContext *scheduler = job_tls_scheduler_fiber();
   *scheduler = fiber_thread_context();
   while (true) {
@@ -272,7 +265,6 @@ static void *job_server_worker(void *name) {
     Job *job = job_tls_running_job();
     job_free(job);
   }
-  return nullptr;
 }
 
 static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
@@ -319,6 +311,7 @@ void launch_job_server() {
   job_is_main_thread = true;
   job_server = {
       .m_page_size = vm_page_size(),
+      .m_allocation_granularity = vm_allocation_granularity(),
       .m_arena = Arena::init(),
       .m_high_priority = Queue<QueuedJob>::init(),
       .m_normal_priority = Queue<QueuedJob>::init(),
@@ -328,15 +321,13 @@ void launch_job_server() {
   u32 num_cpus = 0;
   u32 max_num_cores = 0;
   for (Processor processor : topology) {
-    num_cpus = max(num_cpus, processor.id + 1);
-    max_num_cores = max(max_num_cores, processor.core_id + 1);
+    num_cpus = max(num_cpus, processor.cpu + 1);
+    max_num_cores = max(max_num_cores, processor.core + 1);
   }
   Span<bool> core_mask = Span<bool>::allocate(scratch, max_num_cores);
-  u32 package = topology[0].package_id;
-  u32 cluster = topology[0].cluster_id;
+  u32 numa = topology[0].numa;
   for (Processor processor : topology) {
-    core_mask[processor.core_id] =
-        processor.package_id == package and processor.cluster_id == cluster;
+    core_mask[processor.core] = processor.numa == numa;
   }
   u32 num_cores = 0;
   for (bool core_bit : core_mask) {
@@ -353,14 +344,13 @@ void launch_job_server() {
   }
   fmt::println("job_server: Found {} cores", num_cores);
 
-  job_server.m_workers =
-      Span<pthread_t>::allocate(&job_server.m_arena, num_cores);
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  sigset_t signal_mask;
-  sigemptyset(&signal_mask);
-  pthread_attr_setsigmask_np(&attr, &signal_mask);
-  cpu_set_t *cpu_mask = CPU_ALLOC(num_cpus);
+  job_server.m_workers = Span<Thread>::allocate(&job_server.m_arena, num_cores);
+
+  usize job_worker_stack_size = thread_min_stack_size();
+#if REN_TSAN
+  job_worker_stack_size = max(256 * KiB, job_worker_stack_size);
+#endif
+
   for (usize i : range(num_cores)) {
     ScratchArena scratch;
 
@@ -368,22 +358,21 @@ void launch_job_server() {
         format(scratch, "Job server worker {} on core {}", i, cores[i]);
     fmt::println("job_server: Run worker {} on core {}", i, cores[i]);
 
-    pthread_attr_setstacksize(&attr, JOB_WORKER_STACK_SIZE);
-
-    CPU_ZERO_S(num_cpus, cpu_mask);
+    DynamicArray<u32> affinity;
     for (Processor processor : topology) {
-      if (processor.cluster_id == cluster and
-          processor.package_id == package and processor.core_id == cores[i]) {
-        CPU_SET_S(processor.id, num_cpus, cpu_mask);
+      if (processor.numa == numa and processor.core == cores[i]) {
+        affinity.push(scratch, processor.cpu);
       }
     }
-    pthread_attr_setaffinity_np(&attr, num_cpus, cpu_mask);
 
-    pthread_create(&job_server.m_workers[i], &attr, job_server_worker,
-                   (void *)name.zero_terminated(&job_server.m_arena));
+    job_server.m_workers[i] = thread_create({
+        .name = name.zero_terminated(&job_server.m_arena),
+        .proc = job_server_worker,
+        .param = nullptr,
+        .stack_size = job_worker_stack_size,
+        .affinity = affinity,
+    });
   }
-  pthread_attr_destroy(&attr);
-  CPU_FREE(cpu_mask);
 
   // At this points all workers haven't touched any
   // shared resources and have possibly gone to sleep. So no need to lock.
@@ -407,14 +396,17 @@ void stop_job_server() {
     job_wait_for_counter(main_job, counter);
     counter = next;
   }
-  for (pthread_t worker : job_server.m_workers) {
-    pthread_cancel(worker);
+
+  job_server.m_scheduler_mutex.lock();
+  job_server.m_num_enqueued = WORKER_EXIT;
+  job_server.m_scheduler_mutex.unlock();
+  futex_wake_all(&job_server.m_num_enqueued);
+
+  for (Thread worker : job_server.m_workers) {
+    int ret = thread_join(worker);
+    ren_assert(ret == EXIT_SUCCESS);
   }
-  for (pthread_t worker : job_server.m_workers) {
-    void *worker_exit_status;
-    pthread_join(worker, &worker_exit_status);
-    ren_assert(worker_exit_status == PTHREAD_CANCELED);
-  }
+
   // Zero and leak memory.
   job_server = {};
 }
@@ -444,7 +436,12 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
       job_server.m_arena_mutex.unlock();
     }
 
-    usize stack_size = JOB_STACK_SIZE;
+    usize stack_size =
+        max<isize>(32 * KiB, job_server.m_allocation_granularity -
+                                 2 * job_server.m_page_size);
+#if REN_TSAN
+    stack_size = max(256 * KiB, stack_size);
+#endif
     StackFreeListNode *stack =
         free_list_atomic_pop(&job_server.m_stack_free_list);
     [[unlikely]] if (!stack) {
@@ -509,4 +506,3 @@ bool job_is_done(JobToken token) {
 }
 
 } // namespace ren
-#endif

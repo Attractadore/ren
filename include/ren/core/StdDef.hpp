@@ -78,7 +78,7 @@ template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 #define NOINLINE __attribute__((noinline))
 #elif _MSC_VER
-#define ALWAYS_INLINE __forceinline inline
+#define ALWAYS_INLINE __forceinline
 #define NOINLINE __declspec(noinline)
 #endif
 

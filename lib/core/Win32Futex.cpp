@@ -4,6 +4,8 @@
 
 #include <Windows.h>
 
+#pragma comment(lib, "synchronization.lib")
+
 namespace ren {
 
 void futex_wait(int *location, int value) {

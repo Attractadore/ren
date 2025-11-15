@@ -5,9 +5,9 @@
 namespace ren {
 
 REN_BEGIN_FLAGS_ENUM(PagePermission){
-    Read,
-    Write,
-    Execute,
+    REN_FLAG(Read),
+    REN_FLAG(Write),
+    REN_FLAG(Execute),
 } REN_END_FLAGS_ENUM(PagePermission);
 
 }
@@ -29,5 +29,7 @@ void vm_free(void *ptr, usize size);
 void vm_protect(void *ptr, usize size, PagePermissionFlags permission);
 
 usize vm_page_size();
+
+usize vm_allocation_granularity();
 
 } // namespace ren
