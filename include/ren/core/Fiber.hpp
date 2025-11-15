@@ -186,21 +186,7 @@ inline void fiber_panic() {
   };
 }
 
-#if __linux__
-
-[[nodiscard]] ALWAYS_INLINE FiberContext fiber_thread_context() {
-  FiberContext fiber = {
-      .tsan = __tsan_create_fiber(0),
-  };
-  __tsan_switch_to_fiber(fiber.tsan, 0);
-  pthread_attr_t attr;
-  pthread_getattr_np(pthread_self(), &attr);
-  pthread_attr_getstack(&attr, &fiber.stack_bottom, &fiber.stack_size);
-  pthread_attr_destroy(&attr);
-  return fiber;
-}
-
-#endif
+FiberContext fiber_thread_context();
 
 inline void fiber_destroy_context(NotNull<FiberContext *> fiber) {
   __tsan_destroy_fiber(fiber->tsan);

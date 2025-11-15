@@ -3,8 +3,13 @@
 
 namespace ren {
 
+constexpr usize MAX_ARENA_SIZE = 4 * GiB;
+
 Arena Arena::init() {
-  Arena arena = {.m_max_size = ARENA_DEFAULT_SIZE};
+  Arena arena = {
+      .m_page_size = vm_page_size(),
+      .m_max_size = MAX_ARENA_SIZE,
+  };
   while (arena.m_max_size > 0) {
     arena.m_ptr = vm_allocate(arena.m_max_size);
     if (arena.m_ptr) {

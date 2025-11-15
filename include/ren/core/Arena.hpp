@@ -9,10 +9,10 @@
 namespace ren {
 
 constexpr usize ARENA_PAGE_SIZE = 4 * KiB;
-constexpr usize ARENA_DEFAULT_SIZE = 256 * MiB;
 
 struct Arena {
   void *m_ptr = nullptr;
+  usize m_page_size = 0;
   usize m_max_size = 0;
   usize m_committed_size = 0;
   usize m_offset = 0;
@@ -26,7 +26,7 @@ public:
 
   void commit(usize size) {
     ren_assert(size <= m_max_size);
-    size = (size + ARENA_PAGE_SIZE - 1) & ~(ARENA_PAGE_SIZE - 1);
+    size = (size + m_page_size - 1) & ~(m_page_size - 1);
     if (size <= m_committed_size) {
       return;
     }

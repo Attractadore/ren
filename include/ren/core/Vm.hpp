@@ -30,4 +30,6 @@ void vm_protect(void *ptr, usize size, PagePermissionFlags permission);
 
 usize vm_page_size();
 
+usize vm_allocation_granularity();
+
 } // namespace ren
