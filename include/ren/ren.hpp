@@ -254,7 +254,6 @@ namespace ren::hot_reload {
 
 void unload(Scene *scene);
 [[nodiscard]] bool load(Scene *scene);
-void set_allocator(void *allocator);
 
 struct Vtbl {
 #define ren_vtbl_f(name) decltype(ren_export::name) *name
@@ -287,7 +286,6 @@ struct Vtbl {
   ren_vtbl_f(draw);
   ren_vtbl_f(unload);
   ren_vtbl_f(load);
-  ren_vtbl_f(set_allocator);
   ren_vtbl_f(init_imgui);
   ren_vtbl_f(draw_imgui);
 #undef ren_vtbl_f

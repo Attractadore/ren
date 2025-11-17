@@ -117,7 +117,7 @@ void CommandRecorder::pipeline_barrier(
     Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+      scratch->allocate<rhi::ImageBarrier>(texture_barriers.m_size);
   for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
@@ -144,7 +144,7 @@ void CommandRecorder::set_event(Handle<Event> event,
                                 Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+      scratch->allocate<rhi::ImageBarrier>(texture_barriers.m_size);
   for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);
@@ -172,7 +172,7 @@ void CommandRecorder::wait_event(Handle<Event> event,
                                  Span<const TextureBarrier> texture_barriers) {
   ScratchArena scratch;
   auto *image_barriers =
-      allocate<rhi::ImageBarrier>(scratch, texture_barriers.m_size);
+      scratch->allocate<rhi::ImageBarrier>(texture_barriers.m_size);
   for (usize i : range(texture_barriers.m_size)) {
     const TextureBarrier &barrier = texture_barriers[i];
     const Texture &texture = m_renderer->get_texture(barrier.resource.handle);

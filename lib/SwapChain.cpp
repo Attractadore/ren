@@ -15,7 +15,7 @@ auto get_sdl_window_flags(Renderer *) -> uint32_t {
 
 SwapChain *create_swapchain(NotNull<Arena *> arena, Renderer *renderer,
                             SDL_Window *window) {
-  auto *swap_chain = allocate<SwapChain>(arena);
+  auto *swap_chain = arena->allocate<SwapChain>();
   swap_chain->init(arena, *renderer, window);
   return swap_chain;
 }
@@ -59,7 +59,7 @@ auto get_fullscreen_state(SDL_Window *window) -> bool {
 
 void SwapChain::init(NotNull<Arena *> arena, Renderer &renderer,
                      SDL_Window *window) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   m_renderer = &renderer;
   m_window = window;

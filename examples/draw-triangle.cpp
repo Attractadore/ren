@@ -80,4 +80,7 @@ public:
   static void run() { AppBase::run<DrawTriangleApp>(); }
 };
 
-int main() { DrawTriangleApp::run(); }
+int main() {
+  ren::ScratchArena::init_for_thread();
+  DrawTriangleApp::run();
+}

@@ -17,7 +17,7 @@ inline fmt::basic_string_view<char> format_as(StringBuilder str) {
 template <typename... T>
 [[nodiscard]] String8 format(NotNull<Arena *> arena,
                              fmt::format_string<T...> fmt, T &&...args) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto builder = StringBuilder8::init(scratch);
   fmt::vformat_to(builder.back_inserter(), fmt.str,
                   fmt::vargs<T...>{{args...}});

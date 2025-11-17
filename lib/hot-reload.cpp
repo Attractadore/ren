@@ -135,7 +135,6 @@ Renderer *create_renderer(NotNull<Arena *> arena, const RendererInfo &info) {
     hot_reload::vtbl_ref =
         (const hot_reload::Vtbl *)SDL_LoadFunction(lib_handle, "ren_vtbl");
     ren_assert(hot_reload::vtbl_ref);
-    hot_reload::vtbl_ref->set_allocator(ScratchArena::get_allocator());
   }
   return hot_reload::vtbl_ref->create_renderer(arena, info);
 }
@@ -212,7 +211,6 @@ void draw(Scene *scene, const DrawInfo &draw_info) {
   hot_reload::vtbl_ref =
       (const hot_reload::Vtbl *)SDL_LoadFunction(lib_handle, "ren_vtbl");
   ren_assert(hot_reload::vtbl_ref);
-  hot_reload::vtbl_ref->set_allocator(ScratchArena::get_allocator());
 
   fmt::println("hot_reload: Run load hook");
   if (auto result = hot_reload::vtbl_ref->load(scene); !result) {

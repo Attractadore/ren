@@ -473,10 +473,11 @@ Handle<GraphicsPipeline> Renderer::create_graphics_pipeline(
   for (usize i : range(size(shaders))) {
     const ShaderInfo &shader = *shaders[i];
     u32 num_specialization_constants = shader.specialization_constants.m_size;
-    auto *specialization_constants = allocate<rhi::SpecializationConstant>(
-        scratch, num_specialization_constants);
+    auto *specialization_constants =
+        scratch->allocate<rhi::SpecializationConstant>(
+            num_specialization_constants);
     auto *specialization_data =
-        allocate<u32>(scratch, num_specialization_constants);
+        scratch->allocate<u32>(num_specialization_constants);
 
     for (usize j : range(num_specialization_constants)) {
       const SpecializationConstant &c = shader.specialization_constants[j];
@@ -551,8 +552,8 @@ Handle<ComputePipeline> Renderer::create_compute_pipeline(
 
   u32 num_spec_consts = cs.specialization_constants.m_size;
   auto *specialization_constants =
-      allocate<rhi::SpecializationConstant>(scratch, num_spec_consts);
-  u32 *specialization_data = allocate<u32>(scratch, num_spec_consts);
+      scratch->allocate<rhi::SpecializationConstant>(num_spec_consts);
+  u32 *specialization_data = scratch->allocate<u32>(num_spec_consts);
   for (usize i : range(cs.specialization_constants.m_size)) {
     const SpecializationConstant &c = cs.specialization_constants[i];
     specialization_constants[i] = {
@@ -605,7 +606,7 @@ void Renderer::submit(rhi::QueueFamily queue_family,
                       Span<const SemaphoreState> signal_semaphores) {
   ScratchArena scratch;
   auto *wait_states =
-      allocate<rhi::SemaphoreState>(scratch, wait_semaphores.m_size);
+      scratch->allocate<rhi::SemaphoreState>(wait_semaphores.m_size);
   for (usize i : range(wait_semaphores.m_size)) {
     wait_states[i] = {
         .semaphore = get_semaphore(wait_semaphores[i].semaphore).handle,
@@ -613,7 +614,7 @@ void Renderer::submit(rhi::QueueFamily queue_family,
     };
   }
   auto *signal_states =
-      allocate<rhi::SemaphoreState>(scratch, signal_semaphores.m_size);
+      scratch->allocate<rhi::SemaphoreState>(signal_semaphores.m_size);
   for (usize i : range(signal_semaphores.m_size)) {
     signal_states[i] = {
         .semaphore = get_semaphore(signal_semaphores[i].semaphore).handle,

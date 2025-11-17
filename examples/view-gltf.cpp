@@ -316,7 +316,7 @@ private:
   }
 
   ren::Handle<ren::Mesh> create_mesh(const GltfMeshDesc &desc) {
-    ren::ScratchArena scratch(m_load_arena);
+    ren::ScratchArena scratch;
     const tinygltf::Accessor *positions = get_accessor(desc.positions);
     if (!positions) {
       fmt::println(stderr, "Primitive doesn't have POSITION attribute");
@@ -507,7 +507,7 @@ private:
 
     auto warn_unused_attribute = [&](ren::String8 attribute, int start) {
       for (int index = start;; ++index) {
-        ren::ScratchArena scratch(m_load_arena);
+        ren::ScratchArena scratch;
         auto buffer = ren::StringBuilder::init(scratch);
         format_to(&buffer, "{}_{}", attribute, index);
         if (get_attribute_accessor_index(buffer.string()) < 0) {
@@ -581,7 +581,7 @@ private:
         if (cached) {
           desc.base_color_texture.image = cached->handle;
         } else {
-          ren::ScratchArena scratch(m_load_arena);
+          ren::ScratchArena scratch;
           ren::TextureInfo texture_info = get_image_info(src, true);
           auto blob = ren::bake_normal_map_to_memory(scratch, texture_info);
           ren::Handle<ren::Image> image =
@@ -630,7 +630,7 @@ private:
         if (cached) {
           desc.orm_texture.image = cached->handle;
         } else {
-          ren::ScratchArena scratch(m_load_arena);
+          ren::ScratchArena scratch;
           ren::TextureInfo roughness_metallic_info =
               get_image_info(roughness_metallic_src);
           ren::TextureInfo occlusion_info;
@@ -673,7 +673,7 @@ private:
         if (cached) {
           desc.normal_texture.image = cached->handle;
         } else {
-          ren::ScratchArena scratch(m_load_arena);
+          ren::ScratchArena scratch;
           ren::TextureInfo texture_info = get_image_info(src);
           auto blob = ren::bake_normal_map_to_memory(scratch, texture_info);
           ren::Handle<ren::Image> image =
@@ -985,8 +985,8 @@ enum ViewGltfCmdLineOptions {
 };
 
 int main(int argc, const char *argv[]) {
-  ren::ScratchArena::init_allocator();
-  ren::Arena cmd_line = ren::Arena::init();
+  ren::ScratchArena::init_for_thread();
+  ren::ScratchArena scratch;
 
   // clang-format off
   ren::CmdLineOption options[] = {
@@ -997,7 +997,7 @@ int main(int argc, const char *argv[]) {
   };
   // clang-format on
   ren::ParsedCmdLineOption parsed[OPTION_COUNT];
-  bool success = parse_cmd_line(&cmd_line, argv, options, parsed);
+  bool success = parse_cmd_line(scratch, argv, options, parsed);
   if (!success or parsed[OPTION_HELP].is_set) {
     ren::ScratchArena scratch;
     fmt::print("{}", cmd_line_help(scratch, argv[0], options));

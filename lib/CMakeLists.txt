@@ -164,3 +164,6 @@ add_subdirectory(sh)
 
 add_executable(test-sequences test-sequences.cpp)
 target_link_libraries(test-sequences ren::core)
+
+add_executable(test-find-aligned-ones core/test-find-aligned-ones.cpp)
+target_link_libraries(test-find-aligned-ones ren::core)

@@ -53,7 +53,7 @@ Span<Processor> cpu_topology(NotNull<Arena *> arena) {
   const struct bitmask *cpus = numa_all_cpus_ptr;
   usize num_cpus = numa_num_possible_cpus();
 
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   DynamicArray<Processor> processors;
   for (usize cpu : range(num_cpus)) {
     if (not numa_bitmask_isbitset(cpus, cpu)) {

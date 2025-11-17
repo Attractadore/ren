@@ -5,6 +5,7 @@
 #include "ren/core/Mutex.hpp"
 #include "ren/core/Queue.hpp"
 #include "ren/core/Thread.hpp"
+#include "ren/core/Vm.hpp"
 
 #include <tracy/Tracy.hpp>
 
@@ -503,6 +504,11 @@ bool job_is_done(JobToken token) {
   }
 
   return false;
+}
+
+bool job_use_global_allocator() {
+  Job *job = job_tls_running_job();
+  return job and not job->is_main_job;
 }
 
 } // namespace ren

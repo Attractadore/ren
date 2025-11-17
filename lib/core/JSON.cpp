@@ -118,7 +118,7 @@ json_parse_utf16(NotNull<JsonParserContext *> ctx) {
 
 Result<String8, JsonErrorInfo>
 json_parse_string(NotNull<JsonParserContext *> ctx) {
-  ScratchArena scratch(ctx->arena);
+  ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
 top:
   if (ctx->i == ctx->buffer.m_size) {
@@ -348,7 +348,7 @@ parse_exponent:
 }
 
 Result<JsonValue, JsonErrorInfo> json_parse(NotNull<JsonParserContext *> ctx) {
-  ScratchArena scratch(ctx->arena);
+  ScratchArena scratch;
   JsonValue json = {};
 parse:
   if (ctx->i == ctx->buffer.m_size) {
@@ -629,7 +629,7 @@ void json_serialize(NotNull<StringBuilder *> builder, JsonValue json,
 }
 
 String8 json_serialize(NotNull<Arena *> arena, JsonValue json) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
   json_serialize(&builder, json, 0);
   return builder.materialize(arena);

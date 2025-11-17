@@ -257,8 +257,8 @@ enum BakeIblOptions {
 };
 
 int main(int argc, const char *argv[]) {
-  ren::ScratchArena::init_allocator();
-  ren::Arena arena = ren::make_arena();
+  ren::ScratchArena::init_for_thread();
+  ren::Arena arena = ren::Arena::init();
 
   // clang-format off
   CmdLineOption options[] = {

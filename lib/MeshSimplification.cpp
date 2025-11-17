@@ -8,7 +8,7 @@ namespace ren {
 
 void mesh_simplify(NotNull<Arena *> arena,
                    const MeshSimplificationInput &input) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   DynamicArray<Span<const u32>> lods;
   lods.push(scratch, *input.indices);

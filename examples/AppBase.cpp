@@ -3,9 +3,6 @@
 #include "ren/core/Format.hpp"
 
 void AppBase::init(ren::String8 app_name) {
-  if (!ren::ScratchArena::get_allocator()) {
-    ren::ScratchArena::init_allocator();
-  }
   m_arena = ren::Arena::init();
   m_frame_arena = ren::Arena::init();
 

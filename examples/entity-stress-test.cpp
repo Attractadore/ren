@@ -17,7 +17,7 @@ namespace {
 ren::Handle<ren::Mesh> load_mesh(ren::NotNull<ren::Arena *> frame_arena,
                                  ren::NotNull<ren::Scene *> scene,
                                  ren::String8 path) {
-  ren::ScratchArena scratch(frame_arena);
+  ren::ScratchArena scratch;
   Assimp::Importer importer;
   importer.SetPropertyBool(AI_CONFIG_PP_PTV_NORMALIZE, true);
   const aiScene *ai_scene = importer.ReadFile(
@@ -106,7 +106,7 @@ void place_entities(
   float min_scale = 0.5f;
   float max_scale = 1.0f;
 
-  ren::ScratchArena scratch({arena, frame_arena});
+  ren::ScratchArena scratch;
 
   auto *create_info =
       scratch->allocate<ren::MeshInstanceCreateInfo>(num_entities);
@@ -190,7 +190,7 @@ enum EntityStressTestOptions {
 };
 
 int main(int argc, const char *argv[]) {
-  ren::ScratchArena::init_allocator();
+  ren::ScratchArena::init_for_thread();
 
   // clang-format off
   ren::CmdLineOption options[] = {

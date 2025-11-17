@@ -7,4 +7,7 @@ public:
   static void run() { AppBase::run<CreateDeviceApp>(); }
 };
 
-int main() { CreateDeviceApp::run(); }
+int main() {
+  ren::ScratchArena::init_for_thread();
+  CreateDeviceApp::run();
+}

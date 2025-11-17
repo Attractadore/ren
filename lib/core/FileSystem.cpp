@@ -124,7 +124,7 @@ IoResult<Path> Path::absolute(NotNull<Arena *> arena) const {
   if (is_absolute()) {
     return copy(arena);
   }
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   IoResult<Path> cwd = current_directory(scratch);
   if (!cwd) {
     return cwd.error();

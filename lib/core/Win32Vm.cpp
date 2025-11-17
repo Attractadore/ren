@@ -3,10 +3,12 @@
 #include "ren/core/Vm.hpp"
 
 #include <Windows.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
 void *vm_allocate(usize size) {
+  ZoneScoped;
   usize granularity = vm_allocation_granularity();
   if (size < granularity) {
     fmt::println(
@@ -17,12 +19,17 @@ void *vm_allocate(usize size) {
 }
 
 void vm_commit(void *ptr, usize size) {
+  ZoneScoped;
   WIN32_CHECK(VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE));
 }
 
-void vm_free(void *ptr, usize size) { VirtualFree(ptr, 0, MEM_RELEASE); }
+void vm_free(void *ptr, usize size) {
+  ZoneScoped;
+  VirtualFree(ptr, 0, MEM_RELEASE);
+}
 
 void vm_protect(void *ptr, usize size, PagePermissionFlags permission) {
+  ZoneScoped;
   DWORD protect = PAGE_NOACCESS;
   if (permission.is_set(PagePermission::Execute)) {
     if (permission.is_set(PagePermission::Write)) {

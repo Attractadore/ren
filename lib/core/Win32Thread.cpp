@@ -4,6 +4,7 @@
 #include "ren/core/Futex.hpp"
 #include "ren/core/Math.hpp"
 #include "ren/core/Thread.hpp"
+#include "ren/core/Vm.hpp"
 
 #include <Windows.h>
 #include <atomic>
@@ -39,7 +40,7 @@ constexpr u32 NUM_GROUP_PROCESSORS = 64;
 } // namespace
 
 Span<Processor> cpu_topology(NotNull<Arena *> arena) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   DynamicArray<Processor> processors;
 

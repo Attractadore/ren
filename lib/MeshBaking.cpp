@@ -79,7 +79,7 @@ void mesh_generate_indices(NotNull<Arena *> arena,
   add_stream(*opts.uvs);
   add_stream(*opts.colors);
 
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   u32 *remap = scratch->allocate<u32>(num_vertices);
   num_vertices = meshopt_generateVertexRemapMulti(
       remap, indices, num_indices, num_vertices, streams, num_streams);
@@ -112,7 +112,7 @@ struct MeshGenerateTangentsOptions {
 
 void mesh_generate_tangents(NotNull<Arena *> arena,
                             const MeshGenerateTangentsOptions &opts) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   auto unindex_stream = [&]<typename T>(NotNull<T **> stream) {
     T *unindexed_stream = scratch->allocate<T>(opts.indices->m_size);
@@ -340,7 +340,7 @@ void mesh_generate_meshlets(NotNull<Arena *> arena,
                             const MeshGenerateMeshletsOptions &opts) {
   ren_assert(opts.header->scale != 0.0f);
 
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto *meshlets =
       scratch->allocate<meshopt_Meshlet>(meshopt_buildMeshletsBound(
           opts.lods[0].num_indices, sh::NUM_MESHLET_VERTICES,
@@ -522,7 +522,7 @@ BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
     ren_assert(num_vertices % 3 == 0);
   }
 
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   BakedMesh mesh;
 
@@ -712,7 +712,7 @@ IoResult<void> bake_mesh_to_file(const MeshInfo &info, File file) {
 }
 
 Blob bake_mesh_to_memory(NotNull<Arena *> arena, const MeshInfo &info) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   BakedMesh mesh = bake_mesh(scratch, info);
   u8 *buffer = (u8 *)arena->allocate(mesh.size, 8);
   std::memcpy(buffer, &mesh.header, sizeof(mesh.header));

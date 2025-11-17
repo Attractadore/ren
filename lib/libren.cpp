@@ -4,8 +4,6 @@
 
 namespace ren_export {
 
-void set_allocator(void *allocator) { ScratchArena::set_allocator(allocator); }
-
 } // namespace ren_export
 
 extern "C" REN_DLL_EXPORT ren::hot_reload::Vtbl ren_vtbl;
@@ -41,7 +39,6 @@ ren::hot_reload::Vtbl ren_vtbl = {
     ren_vtbl_f(draw),
     ren_vtbl_f(unload),
     ren_vtbl_f(load),
-    ren_vtbl_f(set_allocator),
     ren_vtbl_f(init_imgui),
     ren_vtbl_f(draw_imgui),
 };

@@ -43,7 +43,7 @@ using Guid128 = Guid<16>;
 
 template <usize Bytes>
 String8 to_string(NotNull<Arena *> arena, Guid<Bytes> guid) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
   for (isize i = isize(Bytes) - 1; i >= 0; --i) {
     const char MAP[] = {
@@ -302,7 +302,7 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
 } // namespace
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
-  ScratchArena::init_allocator();
+  ScratchArena::init_for_thread();
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     fmt::println(stderr, "Failed to init SDL3: {}", SDL_GetError());
@@ -494,7 +494,7 @@ JsonValue to_json(NotNull<Arena *> arena, MetaScene scene) {
 
 MetaScene generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
                                  Path filename) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   blake3_hasher hasher;
   blake3_hasher_init(&hasher);
 

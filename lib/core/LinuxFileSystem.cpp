@@ -44,7 +44,7 @@ bool is_path(String8 path) {
 
 Path Path::init(NotNull<Arena *> arena, String8 path) {
   bool is_root = path.m_size == 1 and path[0] == Path::SEPARATOR;
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
   bool prev_sep = false;
   for (char c : path) {
@@ -74,7 +74,7 @@ IoResult<bool> Path::exists() const {
 }
 
 IoResult<Path> current_directory(NotNull<Arena *> arena) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   usize buffer_size = PATH_MAX;
   while (true) {
     char *buffer = scratch->allocate<char>(buffer_size);

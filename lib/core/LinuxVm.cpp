@@ -4,11 +4,13 @@
 
 #include <cerrno>
 #include <sys/mman.h>
+#include <tracy/Tracy.hpp>
 #include <unistd.h>
 
 namespace ren {
 
 auto vm_allocate(usize size) -> void * {
+  ZoneScoped;
   void *ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   return ptr == MAP_FAILED ? nullptr : ptr;
@@ -17,11 +19,13 @@ auto vm_allocate(usize size) -> void * {
 void vm_commit(void *, usize) {}
 
 void vm_free(void *ptr, usize size) {
+  ZoneScoped;
   int ret = munmap(ptr, size);
   ren_assert(ret == 0);
 }
 
 void vm_protect(void *ptr, usize size, PagePermissionFlags permission) {
+  ZoneScoped;
   int prot = 0;
   if (permission.is_set(PagePermission::Read)) {
     prot |= PROT_READ;

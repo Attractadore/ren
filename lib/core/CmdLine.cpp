@@ -81,7 +81,7 @@ bool parse_cmd_line(Arena *arena, const char *argv[],
                     Span<ParsedCmdLineOption> parsed) {
   ren_assert(options.m_size == parsed.m_size);
 
-  ScratchArena scratch = arena ? ScratchArena(arena) : ScratchArena();
+  ScratchArena scratch;
 
   DynamicArray<CmdLineOption> positional_opts;
   for (CmdLineOption opt : options) {
@@ -141,7 +141,7 @@ bool parse_cmd_line(Arena *arena, const char *argv[],
 String8 cmd_line_help(NotNull<Arena *> arena, const char *argv_0,
                       Span<const CmdLineOption> options, usize tab_size,
                       usize width) {
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
 
   auto positional_args = StringBuilder8::init(scratch);
   for (CmdLineOption opt : options) {

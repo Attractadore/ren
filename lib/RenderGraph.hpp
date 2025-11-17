@@ -25,7 +25,7 @@ template <class R, typename... Args> struct Function {
     static_assert(std::same_as<std::invoke_result_t<P, Args...>, R>);
     static_assert(std::is_trivially_destructible_v<P>);
     m_callback = &invoke<P>;
-    m_payload = allocate(arena, sizeof(P), alignof(P));
+    m_payload = arena->allocate(sizeof(P), alignof(P));
     new (m_payload) P(std::forward<F>(callable));
   }
 

@@ -324,7 +324,7 @@ enum ProcessShaderOptions {
 };
 
 int main(int, const char *argv[]) {
-  ScratchArena::init_allocator();
+  ScratchArena::init_for_thread();
   ScratchArena scratch;
 
   // clang-format off

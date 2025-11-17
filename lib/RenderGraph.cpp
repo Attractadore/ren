@@ -214,7 +214,7 @@ RgUntypedBufferToken
 RgBuilder::write_buffer(RgPassId pass_id, String8 name,
                         NotNull<RgUntypedBufferId *> buffer,
                         const rhi::BufferState &usage) {
-  ScratchArena scratch(m_arena);
+  ScratchArena scratch;
   ren_assert(*buffer);
   RgBuffer &src_buffer = m_buffers[*buffer];
   ren_assert(src_buffer.def != pass_id);
@@ -391,7 +391,7 @@ void RgBuilder::set_external_semaphore(RgSemaphoreId semaphore,
 }
 
 void RgBuilder::dump_pass_schedule() const {
-  ScratchArena scratch(m_arena);
+  ScratchArena scratch;
 
   for (RgQueue queue : {RgQueue::Graphics, RgQueue::Async}) {
 
@@ -603,7 +603,7 @@ void RgBuilder::alloc_textures() {
 
   // Schedule init passes before all other passes.
   if (m_gfx_schedule.m_size != num_gfx_passes) {
-    ScratchArena scratch(m_arena);
+    ScratchArena scratch;
     auto temp = Span<RgPassId>::allocate(scratch, m_gfx_schedule.m_size);
     copy(m_gfx_schedule.begin() + num_gfx_passes, m_gfx_schedule.end(),
          &temp[0]);
@@ -926,7 +926,7 @@ void RgBuilder::init_runtime_textures() {
 }
 
 void RgBuilder::place_barriers_and_semaphores() {
-  ScratchArena scratch(m_arena);
+  ScratchArena scratch;
 
   auto *buffer_after_write_hazard_src_states =
       scratch->allocate<rhi::BufferState>(m_physical_buffers.m_size);

@@ -78,7 +78,7 @@ namespace ren_export {
 namespace {
 
 void init_internal_data(NotNull<Scene *> scene) {
-  ScratchArena scratch({&scene->m_internal_arena});
+  ScratchArena scratch;
 
   scene->m_sid = scene->m_internal_arena.allocate<SceneInternalData>();
   auto *id = scene->m_sid;
@@ -228,8 +228,8 @@ Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
   Scene *scene = arena->allocate<Scene>();
   *scene = {
       .m_arena = arena,
-      .m_internal_arena = make_arena(),
-      .m_rg_arena = make_arena(),
+      .m_internal_arena = Arena::init(),
+      .m_rg_arena = Arena::init(),
       .m_renderer = renderer,
       .m_swap_chain = swap_chain,
       .m_descriptor_allocator = DescriptorAllocator::init(arena),
@@ -276,7 +276,7 @@ void destroy_scene(Scene *scene) {
 
 Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                          Span<const std::byte> blob) {
-  ScratchArena scratch(frame_arena);
+  ScratchArena scratch;
 
   if (blob.m_size < sizeof(MeshPackageHeader)) {
     return NullHandle;
@@ -762,7 +762,7 @@ void delay_input(Scene *scene) {
 
 RgGpuScene gpu_scene_update_pass(NotNull<Scene *> scene,
                                  const PassCommonConfig &cfg) {
-  ScratchArena scratch(cfg.rgb->m_arena);
+  ScratchArena scratch;
 
   for (usize s : range(NUM_DRAW_SETS)) {
     DrawSetData &data = scene->m_gpu_scene.draw_sets[s];

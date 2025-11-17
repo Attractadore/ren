@@ -99,7 +99,7 @@ Path Path::init(NotNull<Arena *> arena, String8 path) {
     return {};
   }
 
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
 
   String8 vol = path_volume_name(path);
@@ -157,7 +157,7 @@ String8 Path::native(NotNull<Arena *> arena) const {
       (decltype(wine_get_unix_file_name))GetProcAddress(
           GetModuleHandleA("KERNEL32"), "wine_get_unix_file_name");
   if (wine_get_unix_file_name) {
-    ScratchArena scratch(arena);
+    ScratchArena scratch;
     const char *str = wine_get_unix_file_name(utf8_to_wcs(scratch, m_str));
     ren_assert(str);
     return String8::init(str).copy(arena);
@@ -182,7 +182,7 @@ IoResult<Path> current_directory(NotNull<Arena *> arena) {
   if (size == 0) {
     return win32_to_io_error();
   }
-  ScratchArena scratch(arena);
+  ScratchArena scratch;
   wchar_t *buffer = scratch->allocate<wchar_t>(size + 1);
   if (!GetCurrentDirectoryW(size + 1, buffer)) {
     return win32_to_io_error();
