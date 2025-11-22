@@ -3,6 +3,7 @@ include(GenerateExportHeader)
 add_library(ren-core
   core/Arena.cpp
   core/Assert.cpp
+  core/BlockAllocator.cpp
   core/CmdLine.cpp
   core/Fiber.cpp
   core/FileSystem.cpp

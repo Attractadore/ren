@@ -95,22 +95,4 @@ public:
   operator NotNull<Arena *>() & { return &m_arena; }
 };
 
-#if 0
-inline ArenaBlock *FreeListArena::allocate_block() {
-  switch (m_type) {
-  case ArenaType::Dedicated:
-    return nullptr;
-  case ArenaType::Thread:
-    if (ArenaBlock *head = ScratchArena::thread_free_list) {
-      ScratchArena::thread_free_list = head->next;
-      return head;
-    }
-    return (ArenaBlock *)ScratchArena::thread_pool.allocate(
-        FREE_LIST_ARENA_BLOCK_SIZE, alignof(ArenaBlock));
-  case ArenaType::Job:
-    return nullptr;
-  }
-}
-#endif
-
 } // namespace ren
