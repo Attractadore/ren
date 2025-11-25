@@ -5,19 +5,13 @@
 #include "ren/core/Math.hpp"
 #include "ren/core/Vm.hpp"
 
-#include <utility>
-
 namespace ren {
 
 thread_local BlockAllocator thread_allocator;
 
-void ScratchArena::init_for_thread() {
-  init_allocator(&thread_allocator, MIN_THREAD_ARENA_BLOCK_SIZE);
-}
-
-void ScratchArena::destroy_for_thread() {
-  destroy_allocator(&thread_allocator);
-}
+ArenaBlock *job_allocate_block(usize size);
+void job_free_block(ArenaBlock *block);
+bool job_use_global_allocator();
 
 Arena Arena::init() {
   Arena arena = {
@@ -45,12 +39,17 @@ void Arena::destroy() {
     auto *head = m_head;
     while (head) {
       ArenaBlock *next = head->next;
-      free_block(&thread_allocator, head, head->size);
+      free_block(&thread_allocator, head, head->block_size);
       head = next;
     }
   } break;
   case ArenaType::JobScratch:
-    std::abort();
+    auto *head = m_head;
+    while (head) {
+      ArenaBlock *next = head->next;
+      job_free_block(head);
+      head = next;
+    }
   }
 }
 
@@ -65,69 +64,75 @@ static void vm_arena_commit(NotNull<Arena *> arena, usize new_commit_size) {
 }
 
 void *Arena::allocate_slow(usize size, usize alignment) {
-  switch (m_type) {
-  case ArenaType::Dedicated: {
+  if (m_type == ArenaType::Dedicated) {
     usize aligned_offset = (m_offset + alignment - 1) & ~(alignment - 1);
     usize new_offset = aligned_offset + size;
     [[unlikely]] if (new_offset > m_size) { vm_arena_commit(this, new_offset); }
     m_offset = new_offset;
     return (u8 *)m_ptr + aligned_offset;
   }
-  case ArenaType::ThreadScratch: {
-    usize aligned_offset =
-        (sizeof(ArenaBlock) + alignment - 1) & ~(alignment - 1);
-    usize block_size =
-        max(MIN_THREAD_ARENA_BLOCK_SIZE, next_po2(aligned_offset + size));
-    ArenaBlock *head =
-        (ArenaBlock *)allocate_block(&thread_allocator, block_size);
-    head->next = m_head;
-    head->size = block_size;
-    m_head = head;
-    m_size = block_size;
-    m_offset = aligned_offset + size;
-    return (u8 *)head + aligned_offset;
+
+  usize aligned_offset =
+      (sizeof(ArenaBlock) + alignment - 1) & ~(alignment - 1);
+  usize block_size = 0;
+  ArenaBlock *head = nullptr;
+  if (m_type == ArenaType::ThreadScratch) {
+    block_size =
+        max(THREAD_ALLOCATOR_BLOCK_SIZE, next_po2(aligned_offset + size));
+    head = (ArenaBlock *)allocate_block(&thread_allocator, block_size);
+    head->block_size = block_size;
+    head->block_offset = 0;
+  } else {
+    ren_assert(m_type == ArenaType::JobScratch);
+    block_size = max(JOB_ALLOCATOR_BLOCK_SIZE, next_po2(aligned_offset + size));
+    head = job_allocate_block(block_size);
   }
-  case ArenaType::JobScratch:
-    std::abort();
-  }
-  std::unreachable();
+  head->next = m_head;
+  m_head = head;
+  m_size = block_size;
+  m_offset = aligned_offset + size;
+
+  return (u8 *)head + aligned_offset;
 }
 
 void *Arena::expand(void *ptr, usize old_size, usize new_size) {
-  usize offset = (u8 *)ptr - (u8 *)m_ptr;
-  if (offset + old_size == m_offset) {
-    switch (m_type) {
-    case ArenaType::Dedicated: {
-      ren_assert(ptr >= m_ptr and ptr <= (u8 *)m_ptr + m_allocation_size);
-      [[unlikely]] if (offset + new_size > m_size) {
-        vm_arena_commit(this, offset + new_size);
-      }
-      m_offset = offset + new_size;
-    } break;
-    case ArenaType::ThreadScratch: {
-      if (offset + new_size > MIN_THREAD_ARENA_BLOCK_SIZE) {
-        return nullptr;
-      }
-      m_offset = offset + new_size;
-    } break;
-    case ArenaType::JobScratch:
-      std::abort();
+  if (m_type == ArenaType::Dedicated) {
+    ren_assert(ptr >= m_ptr and ptr <= (u8 *)m_ptr + m_allocation_size);
+    usize offset = (u8 *)ptr - (u8 *)m_ptr;
+    if (offset + old_size != m_offset) {
+      return nullptr;
     }
+    [[unlikely]] if (offset + new_size > m_size) {
+      vm_arena_commit(this, offset + new_size);
+    }
+    m_offset = offset + new_size;
     return ptr;
   }
-  return nullptr;
+
+  if ((u8 *)ptr + old_size != (u8 *)m_ptr + m_offset) {
+    return nullptr;
+  }
+  usize offset = (u8 *)ptr - (u8 *)m_ptr;
+  if (offset + new_size > m_size) {
+    return nullptr;
+  }
+  m_offset = offset + new_size;
+
+  return ptr;
 }
 
-bool job_use_global_allocator();
+void ScratchArena::init_for_thread() {
+  init_allocator(&thread_allocator, THREAD_ALLOCATOR_BLOCK_SIZE);
+}
+
+void ScratchArena::destroy_for_thread() {
+  destroy_allocator(&thread_allocator);
+}
 
 ScratchArena::ScratchArena() {
-  if (job_use_global_allocator()) {
-    std::abort();
-  }
   m_arena = {
-      .m_size = MIN_THREAD_ARENA_BLOCK_SIZE,
-      .m_offset = MIN_THREAD_ARENA_BLOCK_SIZE,
-      .m_type = ArenaType::ThreadScratch,
+      .m_type = job_use_global_allocator() ? ArenaType::JobScratch
+                                           : ArenaType::ThreadScratch,
   };
 }
 

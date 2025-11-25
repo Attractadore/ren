@@ -1,4 +1,5 @@
 #include "ren/core/Job.hpp"
+#include "ren/core/BlockAllocator.hpp"
 #include "ren/core/Fiber.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Futex.hpp"
@@ -69,6 +70,9 @@ template <typename T> void free_list_atomic_push(T **free_list, T *node) {
 
 } // namespace
 
+constexpr usize THREAD_LOCAL_BIG_BLOCK_CACHE_SIZE = 8;
+constexpr usize JOB_LOCAL_BIG_BLOCK_CACHE_SIZE = 4;
+
 Job *job_tls_running_job();
 void job_tls_set_running_job(Job *job);
 
@@ -107,7 +111,12 @@ struct alignas(CACHE_LINE_SIZE) Job {
   JobAtomicCounter *counter = nullptr;
 
   alignas(CACHE_LINE_SIZE) FiberContext context = {};
+
   alignas(CACHE_LINE_SIZE) JobAtomicCounter list_of_counters = {};
+
+  alignas(CACHE_LINE_SIZE) u64
+      big_block_free_masks[JOB_LOCAL_BIG_BLOCK_CACHE_SIZE] = {};
+  void *big_blocks[JOB_LOCAL_BIG_BLOCK_CACHE_SIZE] = {};
 };
 
 struct alignas(CACHE_LINE_SIZE) QueuedJob {
@@ -140,9 +149,51 @@ struct JobServer {
   alignas(CACHE_LINE_SIZE) Job *m_job_free_list = nullptr;
   alignas(CACHE_LINE_SIZE)
       JobAtomicCounter *m_atomic_counter_free_list = nullptr;
+
+  alignas(CACHE_LINE_SIZE) Mutex m_allocator_mutex;
+  alignas(CACHE_LINE_SIZE) BlockAllocator m_allocator;
 };
 
 static JobServer job_server;
+
+static thread_local void
+    *thread_local_block_cache[THREAD_LOCAL_BIG_BLOCK_CACHE_SIZE] = {};
+
+static void *job_allocate_big_block() {
+  usize big_block_index = -1;
+  for (usize i : range(THREAD_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+    if (thread_local_block_cache[i]) {
+      big_block_index = i;
+    }
+  }
+  void *big_block = nullptr;
+  [[likely]] if (big_block_index != (u64)-1) {
+    big_block = thread_local_block_cache[big_block_index];
+    thread_local_block_cache[big_block_index] = nullptr;
+  } else {
+    job_server.m_allocator_mutex.lock();
+    big_block =
+        allocate_block(&job_server.m_allocator, JOB_ALLOCATOR_BIG_BLOCK_SIZE);
+    job_server.m_allocator_mutex.unlock();
+  }
+  return big_block;
+}
+
+static void job_free_big_block(void *big_block) {
+  usize big_block_index = -1;
+  for (usize i : range(THREAD_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+    if (!thread_local_block_cache[i]) {
+      big_block_index = i;
+    }
+  }
+  [[likely]] if (big_block_index != (u64)-1) {
+    thread_local_block_cache[big_block_index] = big_block;
+    return;
+  }
+  job_server.m_allocator_mutex.lock();
+  free_block(&job_server.m_allocator, big_block, JOB_ALLOCATOR_BIG_BLOCK_SIZE);
+  job_server.m_allocator_mutex.unlock();
+}
 
 static const int WORKER_EXIT = -1;
 
@@ -236,6 +287,12 @@ static void job_free(Job *job) {
     }
   }
 
+  for (void *big_block : job->big_blocks) {
+    if (big_block) {
+      job_free_big_block(big_block);
+    }
+  }
+
   auto *stack = (StackFreeListNode *)((u8 *)job->context.stack_bottom -
                                       job->context.stack_size);
   free_list_atomic_push(&job_server.m_stack_free_list, stack);
@@ -317,6 +374,7 @@ void launch_job_server() {
       .m_high_priority = Queue<QueuedJob>::init(),
       .m_normal_priority = Queue<QueuedJob>::init(),
   };
+  init_allocator(&job_server.m_allocator, JOB_ALLOCATOR_BIG_BLOCK_SIZE);
 
   auto topology = cpu_topology(scratch);
   u32 num_cpus = 0;
@@ -509,6 +567,123 @@ bool job_is_done(JobToken token) {
 bool job_use_global_allocator() {
   Job *job = job_tls_running_job();
   return job and not job->is_main_job;
+}
+
+ArenaBlock *job_allocate_block(usize size) {
+  Job *job = job_tls_running_job();
+  [[likely]] if (size <= JOB_ALLOCATOR_BIG_BLOCK_SIZE) {
+    usize num_blocks = size / JOB_ALLOCATOR_BLOCK_SIZE;
+    usize big_block_index = -1;
+    usize first_block = 0;
+    for (usize i : range(JOB_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+      u64 free_mask = job->big_block_free_masks[i];
+      usize first = [&]() {
+        switch (num_blocks) {
+        case 1:
+          return find_aligned_ones<1>(free_mask);
+        case 2:
+          return find_aligned_ones<2>(free_mask);
+        case 4:
+          return find_aligned_ones<4>(free_mask);
+        case 8:
+          return find_aligned_ones<8>(free_mask);
+        case 16:
+          return find_aligned_ones<16>(free_mask);
+        case 32:
+          return find_aligned_ones<32>(free_mask);
+        case 64:
+          return free_mask == (u64)-1 ? 0 : (u64)-1;
+        }
+        std::unreachable();
+      }();
+      if (first != (u64)-1) {
+        big_block_index = i;
+        first_block = first;
+      }
+    }
+
+    [[unlikely]] if (big_block_index == (u64)-1) {
+      void *big_block = job_allocate_big_block();
+
+      // Check if this new block can be added to the job cache.
+      for (usize i : range(JOB_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+        if (!job->big_blocks[i]) {
+          big_block_index = i;
+        }
+      }
+      // Job cache is full. Return allocated block as is.
+      [[unlikely]] if (big_block_index == (u64)-1) {
+        auto *block = (ArenaBlock *)big_block;
+        block->block_size = JOB_ALLOCATOR_BIG_BLOCK_SIZE;
+        block->block_offset = 0;
+        return block;
+      }
+
+      // Otherwise, suballocate from this new block.
+      job->big_blocks[big_block_index] = big_block;
+      job->big_block_free_masks[big_block_index] = -1;
+    }
+
+    u64 mask = ((u64)1 << num_blocks) - 1;
+    mask = mask << first_block;
+    mask = num_blocks == 64 ? (u64)-1 : mask;
+    job->big_block_free_masks[big_block_index] &= ~mask;
+
+    usize block_offset = first_block * JOB_ALLOCATOR_BLOCK_SIZE;
+    auto *block =
+        (ArenaBlock *)((u8 *)job->big_blocks[big_block_index] + block_offset);
+    block->block_size = size;
+    block->block_offset = block_offset;
+
+    return block;
+  }
+
+  job_server.m_allocator_mutex.lock();
+  auto *block = (ArenaBlock *)allocate_block(&job_server.m_allocator, size);
+  job_server.m_allocator_mutex.unlock();
+  block->block_size = size;
+  block->block_offset = 0;
+
+  return block;
+}
+
+void job_free_block(ArenaBlock *block) {
+  Job *job = job_tls_running_job();
+  [[likely]] if (block->block_size < JOB_ALLOCATOR_BIG_BLOCK_SIZE) {
+    void *big_block = (u8 *)block - block->block_offset;
+    usize big_block_index = -1;
+    for (usize i : range(JOB_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+      if (big_block == job->big_blocks[i]) {
+        big_block_index = i;
+      }
+    }
+    ren_assert(big_block_index != (u64)-1);
+    usize first_block = block->block_offset / JOB_ALLOCATOR_BLOCK_SIZE;
+    usize num_blocks = block->block_size / JOB_ALLOCATOR_BLOCK_SIZE;
+    usize mask = ((u64)1 << num_blocks) - 1;
+    mask = mask << first_block;
+    job->big_block_free_masks[big_block_index] |= mask;
+    return;
+  }
+  if (block->block_size == JOB_ALLOCATOR_BIG_BLOCK_SIZE) {
+    // Try to return to job cache.
+    usize big_block_index = -1;
+    for (usize i : range(JOB_LOCAL_BIG_BLOCK_CACHE_SIZE)) {
+      if (!job->big_blocks[i] or job->big_blocks[i] == block) {
+        big_block_index = i;
+      }
+    }
+    [[likely]] if (big_block_index != (u64)-1) {
+      job->big_blocks[big_block_index] = block;
+      job->big_block_free_masks[big_block_index] = -1;
+      return;
+    }
+    job_free_big_block(block);
+    return;
+  }
+  job_server.m_allocator_mutex.lock();
+  free_block(&job_server.m_allocator, block, block->block_size);
+  job_server.m_allocator_mutex.unlock();
 }
 
 } // namespace ren

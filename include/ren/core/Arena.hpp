@@ -12,17 +12,16 @@ enum class ArenaType {
 
 struct ArenaBlock {
   ArenaBlock *next;
-  usize size;
+  u32 block_size;
+  u32 block_offset;
 };
 
 constexpr usize MAX_DEDICATED_ARENA_SIZE = 4 * GiB;
 
-constexpr usize MIN_THREAD_ARENA_BLOCK_SIZE = 2 * MiB;
+constexpr usize THREAD_ALLOCATOR_BLOCK_SIZE = 2 * MiB;
 
-constexpr usize MAX_THREAD_ALLOCATOR_SIZE =
-    32 * 64 * MIN_THREAD_ARENA_BLOCK_SIZE;
-
-constexpr usize MIN_JOB_ARENA_BLOCK_SIZE = 2 * MiB;
+constexpr usize JOB_ALLOCATOR_BIG_BLOCK_SIZE = 2 * MiB;
+constexpr usize JOB_ALLOCATOR_BLOCK_SIZE = JOB_ALLOCATOR_BIG_BLOCK_SIZE / 64;
 
 struct Arena {
   union {
