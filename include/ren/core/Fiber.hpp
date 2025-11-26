@@ -164,10 +164,12 @@ ALWAYS_INLINE void fiber_switch_context(NotNull<FiberContext *> this_context,
   __sanitizer_finish_switch_fiber(fake_stack, nullptr, nullptr);
 }
 
-[[nodiscard]] inline FiberContext fiber_init_context(void (*fiber_main)(),
-                                                     void *stack, usize size,
-                                                     const char *label) {
-  u8 *sp = (u8 *)stack + size;
+[[nodiscard]] inline FiberContext
+fiber_init_context(void (*fiber_main)(), void *stack, usize stack_size,
+                   usize stack_reserve, const char *label) {
+  ren_assert(stack_reserve % FIBER_STACK_ALIGNMENT == 0);
+  u8 *sp = (u8 *)stack + stack_size;
+  sp -= stack_reserve;
   sp -= 8;
   *(void (**)())sp = fiber_main;
   sp -= 8;
@@ -175,8 +177,8 @@ ALWAYS_INLINE void fiber_switch_context(NotNull<FiberContext *> this_context,
   return {
       .rip = ren_fiber_start,
       .rsp = sp,
-      .stack_bottom = (u8 *)stack + size,
-      .stack_size = size,
+      .stack_bottom = (u8 *)stack + stack_size,
+      .stack_size = stack_size,
       .tsan = __tsan_create_fiber(0),
       .label = label,
   };

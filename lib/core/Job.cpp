@@ -509,16 +509,24 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
       // pointer.
       stack = job_allocate_stack(stack_size);
     }
+    usize stack_reserve = 0;
+    void *payload = job_desc.payload;
+    if (job_desc.payload_size > 0) {
+      payload = stack + stack_size - job_desc.payload_size;
+      std::memcpy(payload, job_desc.payload, job_desc.payload_size);
+      stack_reserve = (job_desc.payload_size + FIBER_STACK_ALIGNMENT - 1) &
+                      ~(FIBER_STACK_ALIGNMENT - 1);
+    }
 
     *job = {
         .parent = parent,
         .priority = parent->priority == JobPriority::High ? JobPriority::High
                                                           : job_desc.priority,
         .function = job_desc.function,
-        .payload = job_desc.payload,
+        .payload = payload,
         .counter = counter,
         .context =
-            fiber_init_context(job_fiber_main, stack, stack_size,
+            fiber_init_context(job_fiber_main, stack, stack_size, stack_reserve,
                                job_desc.label ? job_desc.label : "Untitled"),
     };
     list_init(&job->list_of_counters);

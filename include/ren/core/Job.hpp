@@ -22,42 +22,25 @@ struct JobDesc {
   JobPriority priority = JobPriority::Normal;
   JobFunction *function = nullptr;
   void *payload = nullptr;
+  usize payload_size = 0;
   const char *label = nullptr;
 
 public:
-  template <typename T>
-  [[nodiscard]] static JobDesc init(const char *label, JobPriority priority,
-                                    std::invocable<T *> auto &&function,
-                                    T *payload) {
-    ren_assert(function);
-    ren_assert(payload);
+  template <std::invocable F>
+    requires std::is_trivially_copyable_v<std::remove_reference_t<F>>
+  [[nodiscard]] static JobDesc init(NotNull<Arena *> arena, const char *label,
+                                    F &&callback) {
+    void *payload = arena->allocate(sizeof(F), alignof(F));
+    std::memcpy(payload, &callback, sizeof(F));
     return {
-        .priority = priority,
-        .function = (JobFunction *)(+function),
-        .payload = (void *)payload,
+        .function =
+            [](void *payload) {
+              (*(const std::remove_reference_t<F> *)payload)();
+            },
+        .payload = payload,
+        .payload_size = sizeof(F),
         .label = label,
     };
-  }
-
-  template <typename T, std::invocable<T *> F>
-  [[nodiscard]] static JobDesc init(const char *label, F &&function,
-                                    T *payload) {
-    return init<T>(label, JobPriority::Normal, std::forward<F>(function),
-                   payload);
-  }
-
-  [[nodiscard]] static JobDesc init(const char *label, JobPriority priority,
-                                    void (*function)()) {
-    ren_assert(function);
-    return {
-        .priority = priority,
-        .function = (JobFunction *)function,
-        .label = label,
-    };
-  }
-
-  [[nodiscard]] static JobDesc init(const char *label, void (*function)()) {
-    return init(label, JobPriority::Normal, function);
   }
 };
 
@@ -72,6 +55,12 @@ struct JobToken {
 
 [[nodiscard]] inline JobToken job_dispatch(JobDesc job) {
   return job_dispatch({&job, 1});
+}
+
+template <typename F>
+[[nodiscard]] JobToken job_dispatch(const char *label, F &&callback) {
+  ScratchArena scratch;
+  return job_dispatch(JobDesc::init(scratch, label, std::forward<F>(callback)));
 }
 
 void job_wait(JobToken token);
