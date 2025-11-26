@@ -24,6 +24,11 @@ public:
     m_size = N - 1;
   }
 
+  template <usize N> constexpr String(char (&cstr)[N]) {
+    m_str = cstr;
+    m_size = std::strlen(cstr);
+  }
+
   [[nodiscard]] static String init(const char *cstr)
     requires std::is_const_v<C>
   {
