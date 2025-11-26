@@ -61,7 +61,9 @@ public:
   ALWAYS_INLINE auto allocate(usize count = 1) -> T * {
     void *ptr = allocate(count * sizeof(T), alignof(T));
     if constexpr (not std::is_trivially_constructible_v<T>) {
-      return new (ptr) T[count];
+      for (usize i : range(count)) {
+        ((T *)ptr)[i] = {};
+      }
     }
     return (T *)ptr;
   }

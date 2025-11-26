@@ -1,4 +1,6 @@
 #pragma once
+#include "Algorithm.hpp"
+#include "Arena.hpp"
 #include "Array.hpp"
 #include "Span.hpp"
 #include "StdDef.hpp"
@@ -285,5 +287,68 @@ inline StringBuilderInserter &StringBuilderInserter::operator=(char c) {
   m_builder->push(c);
   return *this;
 }
+
+struct StringDeckNode {
+  StringDeckNode *next = nullptr;
+  char buffer[56] = {};
+};
+
+struct StringDeck {
+  StringDeckNode *m_head = nullptr;
+  usize m_size = 0;
+
+public:
+  [[nodiscard]] static StringDeck
+  init(NotNull<Arena *> arena, StringDeckNode **pfree_list, String8 str) {
+    StringDeckNode *free_list = *pfree_list;
+    StringDeckNode *head = nullptr;
+    StringDeckNode **ptail = &head;
+    for (usize i = 0; i < str.m_size;) {
+      StringDeckNode *node = nullptr;
+      if (free_list) {
+        node = free_list;
+        free_list = free_list->next;
+      } else {
+        node = arena->allocate<StringDeckNode>();
+      }
+      *ptail = node;
+      ptail = &node->next;
+      usize len = min(str.m_size - i, sizeof(free_list->buffer));
+      copy(&str[i], len, node->buffer);
+      i += len;
+    }
+    *pfree_list = free_list;
+    return {
+        .m_head = head,
+        .m_size = str.m_size,
+    };
+  }
+
+  void destroy(StringDeckNode **pfree_list) {
+    StringDeckNode *free_list = *pfree_list;
+    StringDeckNode *head = m_head;
+    while (head) {
+      StringDeckNode *next = head->next;
+      head->next = free_list;
+      free_list = head;
+      head = next;
+    }
+    *pfree_list = head;
+    m_head = nullptr;
+    m_size = 0;
+  }
+
+  [[nodiscard]] String8 to_string(NotNull<Arena *> arena) const {
+    char *buffer = arena->allocate<char>(m_size);
+    const StringDeckNode *node = m_head;
+    for (usize i = 0; i < m_size;) {
+      usize len = min(m_size - i, size(node->buffer));
+      copy(node->buffer, len, &buffer[i]);
+      node = node->next;
+      i += len;
+    }
+    return {buffer, m_size};
+  }
+};
 
 } // namespace ren
