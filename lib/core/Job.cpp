@@ -496,7 +496,7 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
     }
 
     usize stack_size =
-        max<isize>(32 * KiB, job_server.m_allocation_granularity -
+        max<isize>(64 * KiB, job_server.m_allocation_granularity -
                                  2 * job_server.m_page_size);
 #if REN_TSAN
     stack_size = max(256 * KiB, stack_size);
