@@ -28,15 +28,11 @@ struct Arena {
     void *m_ptr = nullptr;
     ArenaBlock *m_head;
   };
-  union {
-    struct {
-      usize m_page_size = 0;
-      usize m_allocation_size = 0;
-    };
-  };
+  usize m_page_size = 0;
+  usize m_allocation_size = 0;
   usize m_size = 0;
   usize m_offset = 0;
-  ArenaType m_type;
+  ArenaType m_type = {};
 
 public:
   [[nodiscard]] static Arena init();

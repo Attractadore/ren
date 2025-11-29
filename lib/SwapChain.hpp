@@ -51,7 +51,7 @@ struct SwapChain {
   glm::ivec2 m_size = {};
   VSync m_vsync = VSync::Off;
   bool m_fullscreen = false;
-  u32 m_image_index = -1;
+  u32 m_image_index = (u32)-1;
   bool m_dirty = false;
 };
 

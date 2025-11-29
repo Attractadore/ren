@@ -4,12 +4,26 @@
 
 namespace ren {
 
+#if __GNUC__ || __clang__
 inline u64 find_lsb(u64 value) { return __builtin_ffsll(value) - 1; }
 
 inline u64 find_msb(u64 x) {
   ren_assert(x > 0);
   return 63 - __builtin_clzll(x);
 }
+#elif _MSC_VER
+inline u64 find_lsb(u64 value) { 
+    unsigned long index;
+    return _BitScanForward64(&index, value) ? index : -1;
+}
+
+inline u64 find_msb(u64 x) {
+    ren_assert(x > 0);
+
+    unsigned long index;
+    return _BitScanReverse64(&index, x) ? index : -1;
+}
+#endif
 
 template <usize L> u64 find_aligned_ones_a(u64 value) {
   for (i32 s = 1; s < (i32)L; s *= 2) {
