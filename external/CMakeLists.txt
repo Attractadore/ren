@@ -104,6 +104,10 @@ if (REN_BUILD_BAKING_TOOLS)
 endif()
 
 if (REN_BUILD_EXAMPLES)
+  cmake_path(GET CMAKE_RC_COMPILER STEM rc)
+  if (rc STREQUAL llvm-rc)
+    set(CMAKE_RC_FLAGS "/C 1252")
+  endif()
   add_subdirectory(assimp)
 
   add_library(tinygltf tinygltf/tiny_gltf.cc)
