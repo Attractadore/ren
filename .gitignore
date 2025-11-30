@@ -1,5 +1,4 @@
 /.cache
-/.xwin-cache
 /build
 /compile_commands.json
 # DXVK log files

@@ -50,12 +50,11 @@ public:
                                       });
 
     // Ambient day light
-    std::ignore =
-        ren::create_directional_light(scene, {
-                                                 .color = {1.0f, 1.0f, 1.0f},
-                                                 .illuminance = 25'000.0f,
-                                                 .origin = {0.0f, 0.0f, 1.0f},
-                                             });
+    (void)ren::create_directional_light(scene, {
+                                                   .color = {1.0f, 1.0f, 1.0f},
+                                                   .illuminance = 25'000.0f,
+                                                   .origin = {0.0f, 0.0f, 1.0f},
+                                               });
 
     ren::Handle<ren::Camera> camera = get_camera();
 

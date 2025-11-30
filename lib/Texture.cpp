@@ -55,7 +55,7 @@ auto get_rhi_Filter(Filter filter) -> rhi::Filter {
   case Filter::Linear:
     return rhi::Filter::Linear;
   }
-  std::unreachable();
+  unreachable();
 }
 
 auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode {
@@ -65,7 +65,7 @@ auto get_rhi_SamplerMipmapMode(Filter filter) -> rhi::SamplerMipmapMode {
   case Filter::Linear:
     return rhi::SamplerMipmapMode::Linear;
   }
-  std::unreachable();
+  unreachable();
 }
 
 auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode {
@@ -77,7 +77,7 @@ auto get_rhi_SamplerAddressMode(WrappingMode wrap) -> rhi::SamplerAddressMode {
   case WrappingMode::ClampToEdge:
     return rhi::SamplerAddressMode::ClampToEdge;
   }
-  std::unreachable();
+  unreachable();
 }
 
 } // namespace ren

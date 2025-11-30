@@ -13,12 +13,16 @@ enum class PipelineBindPoint;
 
 namespace vk {
 
-struct HandleBase {
-  explicit operator bool(this const auto &self) { return self.handle; }
-  template <typename Self>
-  bool operator==(this const Self &self, const Self &other) {
-    return self.handle == other.handle;
-  };
+template <typename Self> struct HandleBase {
+  explicit operator bool() const {
+    return static_cast<const Self *>(this)->handle;
+  }
+};
+
+template <typename Self>
+bool operator==(const HandleBase<Self> &lhs, const HandleBase<Self> &rhs) {
+  return static_cast<const Self &>(lhs).handle ==
+         static_cast<const Self &>(rhs).handle;
 };
 
 struct InstanceData;
@@ -33,42 +37,42 @@ struct DeviceData;
 
 using Device = const DeviceData *;
 
-struct Queue : HandleBase {
+struct Queue : HandleBase<Queue> {
   VkQueue handle = nullptr;
   const VolkDeviceTable *vk = nullptr;
 };
 
-struct Semaphore : HandleBase {
+struct Semaphore : HandleBase<Semaphore> {
   VkSemaphore handle = nullptr;
 };
 
-struct Allocation : HandleBase {
+struct Allocation : HandleBase<Allocation> {
   VmaAllocation handle = nullptr;
 };
 
-struct Buffer : HandleBase {
+struct Buffer : HandleBase<Buffer> {
   VkBuffer handle = nullptr;
   Allocation allocation = {};
 };
 
-struct Image : HandleBase {
+struct Image : HandleBase<Image> {
   VkImage handle = nullptr;
   Allocation allocation = {};
 };
 
-struct ImageView : HandleBase {
+struct ImageView : HandleBase<ImageView> {
   VkImageView handle = nullptr;
 };
 
-struct Sampler : HandleBase {
+struct Sampler : HandleBase<Sampler> {
   VkSampler handle = nullptr;
 };
 
-struct Pipeline : HandleBase {
+struct Pipeline : HandleBase<Pipeline> {
   VkPipeline handle = nullptr;
 };
 
-struct Event : HandleBase {
+struct Event : HandleBase<Event> {
   VkEvent handle = nullptr;
 };
 
@@ -81,12 +85,12 @@ struct CommandPoolData;
 
 using CommandPool = CommandPoolHeader *;
 
-struct CommandBuffer : HandleBase {
+struct CommandBuffer : HandleBase<CommandBuffer> {
   VkCommandBuffer handle = nullptr;
   Device device = {};
 };
 
-struct Surface : HandleBase {
+struct Surface : HandleBase<Surface> {
   VkSurfaceKHR handle = nullptr;
 };
 

@@ -3,7 +3,6 @@
 #include "Assert.hpp"
 #include "NotNull.hpp"
 #include "StdDef.hpp"
-#include "TypeTraits.hpp"
 
 #include <cstring>
 #include <initializer_list>
@@ -79,8 +78,10 @@ public:
 
   usize size_bytes() const { return m_size * sizeof(T); }
 
-  Span<ConstLikeT<std::byte, T>> as_bytes() {
-    return {(ConstLikeT<std::byte, T> *)m_data, m_size * sizeof(T)};
+  auto as_bytes() const {
+    using Byte =
+        std::conditional_t<std::is_const_v<T>, const std::byte, std::byte>;
+    return Span<Byte>((Byte *)m_data, m_size * sizeof(T));
   }
 
   Span<T> subspan(usize start, usize count) const {

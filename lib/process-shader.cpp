@@ -52,7 +52,7 @@ auto get_stage_short_name(ShaderStage stage) -> const char * {
   ren_assert(stage != Unknown);
   switch (stage) {
   default:
-    std::unreachable();
+    unreachable();
   case ShaderStage::Vertex:
     return "VS";
   case ShaderStage::Fragment:

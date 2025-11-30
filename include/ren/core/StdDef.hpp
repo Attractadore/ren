@@ -82,10 +82,26 @@ template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
 #define NOINLINE __declspec(noinline)
 #endif
 
-#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+#if defined(__SANITIZE_ADDRESS__)
+#define REN_ASAN 1
+#elif __clang__
+#if __has_feature(address_sanitizer)
 #define REN_ASAN 1
 #endif
+#endif
 
-#if defined(__SANITIZER_THREAD__) || __has_feature(thread_sanitizer)
+#if defined(__SANITIZER_THREAD__)
 #define REN_TSAN 1
+#elif __clang__
+#if __has_feature(thread_sanitizer)
+#define REN_TSAN 1
+#endif
+#endif
+
+#if __GNUC__ || __clang__
+[[noreturn]] inline void unreachable() { __builtin_unreachable(); }
+#endif
+
+#if _MSC_VER && !__clang__
+[[noreturn]] inline void unreachable() { __assume(false); }
 #endif

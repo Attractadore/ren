@@ -4,7 +4,7 @@
 namespace ren {
 
 template <typename E>
-  requires std::is_scoped_enum_v<E>
+  requires std::is_enum_v<E> and (not std::is_convertible_v<E, int>)
 constexpr bool ENABLE_ENUM_FLAGS = false;
 
 struct EmptyFlagsT {};

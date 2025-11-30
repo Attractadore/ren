@@ -31,7 +31,7 @@ String8 format_as(JsonError error) {
   case JsonError::EndOfFile:
     return "Premature end of file";
   }
-  std::unreachable();
+  unreachable();
 }
 
 JsonValue JsonValue::init(Span<const JsonKeyValue> object) {

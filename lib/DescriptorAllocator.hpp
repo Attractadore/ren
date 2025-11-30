@@ -15,11 +15,13 @@ struct UavDesc;
 
 namespace detail {
 
-struct DescriptorAllocatorMixin {
+template <typename Self> struct DescriptorAllocatorMixin {
+  Self &self() { return *static_cast<Self *>(this); }
+  const Self &self() const { return *static_cast<const Self *>(this); }
+
   template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
-  auto allocate_sampled_texture(this auto &self, Renderer &renderer,
-                                SrvDesc srv, rhi::Sampler sampler)
-      -> sh::Handle<D> {
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
+                                rhi::Sampler sampler) -> sh::Handle<D> {
     if constexpr (std::same_as<D, sh::Sampler2D>) {
       srv.dimension = rhi::ImageViewDimension::e2D;
     } else if constexpr (std::same_as<D, sh::SamplerCube>) {
@@ -27,22 +29,23 @@ struct DescriptorAllocatorMixin {
     } else if constexpr (std::same_as<D, sh::Sampler3D>) {
       srv.dimension = rhi::ImageViewDimension::e3D;
     }
-    return sh::Handle<D>(self.allocate_sampled_texture(renderer, srv, sampler));
+    return sh::Handle<D>(
+        self().allocate_sampled_texture(renderer, srv, sampler));
   }
 
   template <sh::DescriptorOfKind<sh::DescriptorKind::Sampler> D>
-  auto allocate_sampled_texture(this auto &self, Renderer &renderer,
-                                SrvDesc srv,
+  auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 const rhi::SamplerCreateInfo &sampler_info)
       -> sh::Handle<D> {
-    return self.template allocate_sampled_texture<D>(
+    return self().template allocate_sampled_texture<D>(
         renderer, srv, renderer.get_sampler(sampler_info));
   }
 };
 
 } // namespace detail
 
-struct DescriptorAllocator : public detail::DescriptorAllocatorMixin {
+struct DescriptorAllocator
+    : public detail::DescriptorAllocatorMixin<DescriptorAllocator> {
   Arena *m_arena = nullptr;
   u32 m_num_srvs = 1;
   u32 m_num_cis = 1;
@@ -86,7 +89,8 @@ public:
   auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler) -> sh::Handle<void>;
 
-  using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
+  using detail::DescriptorAllocatorMixin<
+      DescriptorAllocator>::allocate_sampled_texture;
 
   void free_sampled_texture(sh::Handle<void> texture);
 
@@ -96,7 +100,8 @@ public:
   void free_storage_texture(sh::Handle<void> texture);
 };
 
-struct DescriptorAllocatorScope : public detail::DescriptorAllocatorMixin {
+struct DescriptorAllocatorScope
+    : public detail::DescriptorAllocatorMixin<DescriptorAllocatorScope> {
   DescriptorAllocator *m_allocator = nullptr;
   DynamicArray<u32> m_srv;
   DynamicArray<u32> m_cis;
@@ -115,7 +120,8 @@ public:
   auto allocate_sampled_texture(Renderer &renderer, SrvDesc srv,
                                 rhi::Sampler sampler) -> sh::Handle<void>;
 
-  using detail::DescriptorAllocatorMixin::allocate_sampled_texture;
+  using detail::DescriptorAllocatorMixin<
+      DescriptorAllocatorScope>::allocate_sampled_texture;
 
   auto allocate_storage_texture(Renderer &renderer, UavDesc uav)
       -> sh::Handle<void>;

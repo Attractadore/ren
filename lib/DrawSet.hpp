@@ -29,7 +29,7 @@ constexpr inline auto get_draw_set_name(DrawSet set) -> const char * {
   case DrawSet::Opaque:
     return "opaque";
   }
-  std::unreachable();
+  unreachable();
 }
 
 constexpr inline auto get_draw_set_index(DrawSet set) -> u32 {

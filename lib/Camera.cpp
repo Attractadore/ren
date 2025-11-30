@@ -48,7 +48,7 @@ glm::mat4 get_projection_matrix(const Camera &camera, float aspect_ratio) {
     return orthoRH_ReverseZ(width, height, camera.near, camera.far);
   }
   }
-  std::unreachable();
+  unreachable();
 }
 
 glm::mat4 get_projection_matrix(const Camera &camera, glm::uvec2 viewport) {

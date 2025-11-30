@@ -22,7 +22,8 @@ target_link_libraries(volk PUBLIC Vulkan::Headers)
 
 add_subdirectory(VulkanMemoryAllocator)
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+find_package(SDL3 GLOBAL)
+if (NOT SDL3::SDL3)
   if (REN_HOT_RELOAD)
     set(SDL_SHARED ON)
     set(SDL_STATIC OFF)
@@ -31,8 +32,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(SDL_STATIC ON)
   endif()
   add_subdirectory(SDL)
-else()
-  find_package(SDL3 REQUIRED GLOBAL)
 endif()
 
 if (REN_BUILD_IMGUI_PLUGIN)

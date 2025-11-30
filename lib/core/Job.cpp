@@ -602,7 +602,7 @@ ArenaBlock *job_allocate_block(usize size) {
         case 64:
           return free_mask == (u64)-1 ? 0 : (u64)-1;
         }
-        std::unreachable();
+        unreachable();
       }();
       if (first != (u64)-1) {
         big_block_index = i;

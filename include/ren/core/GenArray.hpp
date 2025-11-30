@@ -2,7 +2,6 @@
 #include "Assert.hpp"
 #include "GenIndexPool.hpp"
 #include "Iterator.hpp"
-#include "TypeTraits.hpp"
 
 #include <concepts>
 #include <utility>
@@ -28,21 +27,22 @@ public:
   using const_iterator = Iterator<true>;
   using iterator = Iterator<false>;
 
-  template <typename Self>
-  auto begin(this Self &self) -> Iterator<std::is_const_v<Self>> {
-    return {self.m_indices.begin(), self.m_values};
-  }
+  iterator begin() { return {m_indices.begin(), m_values}; }
+  const_iterator begin() const { return {m_indices.begin(), m_values}; }
 
-  template <typename Self>
-  auto end(this Self &self) -> Iterator<std::is_const_v<Self>> {
-    return {self.m_indices.end(), self.m_values};
-  }
+  iterator end() { return {m_indices.end(), m_values}; }
+  const_iterator end() const { return {m_indices.end(), m_values}; }
 
-  template <typename Self>
-  auto raw_data(this Self &self) -> ConstLikeT<T, Self> *
+  T *raw_data()
     requires std::is_trivially_copyable_v<T>
   {
-    return self.m_values;
+    return m_values;
+  }
+
+  const T *raw_data() const
+    requires std::is_trivially_copyable_v<T>
+  {
+    return m_values;
   }
 
   auto size() const -> usize { return m_indices.size(); }
@@ -53,24 +53,32 @@ public:
 
   bool contains(K key) const { return m_indices.contains(key); }
 
-  template <typename Self>
-  auto get(this Self &self, K key) -> ConstLikeT<T, Self> & {
-    ren_assert(self.contains(key));
-    return self.m_values[key];
+  T &get(K key) {
+    ren_assert(contains(key));
+    return m_values[key];
   }
 
-  template <typename Self>
-  auto try_get(this Self &self, K key) -> ConstLikeT<T, Self> * {
-    if (not self.contains(key)) {
+  const T &get(K key) const {
+    ren_assert(contains(key));
+    return m_values[key];
+  }
+
+  T *try_get(K key) {
+    if (not contains(key)) {
       return nullptr;
     }
-    return &self.m_values[key];
+    return &m_values[key];
   }
 
-  template <typename Self>
-  auto operator[](this Self &self, K key) -> ConstLikeT<T, Self> & {
-    return self.get(key);
+  const T *try_get(K key) const {
+    if (not contains(key)) {
+      return nullptr;
+    }
+    return &m_values[key];
   }
+
+  T &operator[](K key) { return get(key); }
+  const T &operator[](K key) const { return get(key); }
 
   K insert(NotNull<Arena *> arena, T value = {})
     requires std::is_trivially_destructible_v<T>
@@ -110,7 +118,8 @@ private:
   template <bool IsConst>
   using IteratorValueType = std::conditional_t<IsConst, const T, T>;
 
-  template <bool IsConst> class Iterator : public IteratorFacade {
+  template <bool IsConst>
+  class Iterator : public IteratorFacade<Iterator<IsConst>> {
   public:
     Iterator() = default;
 

@@ -39,7 +39,7 @@ Error vk_result_to_rhi_status(VkResult result) {
 }
 
 template <typename E>
-  requires std::is_scoped_enum_v<E>
+  requires std::is_enum_v<E>
 constexpr usize ENUM_SIZE = []() -> usize {
   if (CFlagsEnum<E>) {
     return std::countr_zero((usize)E::Last) + 1;
@@ -50,7 +50,7 @@ constexpr usize ENUM_SIZE = []() -> usize {
 template <typename From> constexpr auto MAP = nullptr;
 
 template <typename From>
-  requires std::is_scoped_enum_v<From>
+  requires std::is_enum_v<From>
 auto to_vk(From e) {
   return MAP<From>[(usize)e];
 };
@@ -72,7 +72,7 @@ auto to_vk(TinyImageFormat format) -> VkFormat {
 }
 
 template <typename From>
-  requires std::is_scoped_enum_v<From>
+  requires std::is_enum_v<From>
 auto from_vk(typename decltype(MAP<From>)::value_type vk_value) -> From {
   auto it = find(Span(MAP<From>), vk_value);
   ren_assert(it);
@@ -2655,7 +2655,7 @@ auto select_swap_chain_composite_alpha(
       return composite_alpha;
     }
   }
-  std::unreachable();
+  unreachable();
 }
 
 } // namespace

@@ -566,7 +566,7 @@ auto get_batch_desc(DrawSet ds, const Scene &scene,
   };
   }
 
-  std::unreachable();
+  unreachable();
 }
 
 void create_mesh_instances(NotNull<Arena *> frame_arena, Scene *scene,

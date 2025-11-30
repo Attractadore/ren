@@ -113,7 +113,7 @@ static void *allocate_block_slow(NotNull<BlockAllocator *> allocator,
     case 32 * 64:
       return find_first_block<32 * 64>(allocator);
     }
-    std::unreachable();
+    unreachable();
   }();
   usize offset = first_block * allocator->min_block_size;
   [[unlikely]] if (offset + size > allocator->commit_size) {

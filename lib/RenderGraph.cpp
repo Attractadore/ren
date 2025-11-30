@@ -625,7 +625,7 @@ void RgBuilder::alloc_buffers(DeviceBumpAllocator &gfx_allocator,
     }
     switch (physical_buffer.heap) {
     default:
-      std::unreachable();
+      unreachable();
     case rhi::MemoryHeap::Default: {
       DeviceBumpAllocator *allocator = nullptr;
       if (physical_buffer.queues == RgQueue::Graphics) {

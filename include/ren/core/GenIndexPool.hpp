@@ -17,7 +17,7 @@ template <std::derived_from<GenIndex> K> struct GenIndexPool {
   u32 m_num_free = 0;
 
 public:
-  class const_iterator : public IteratorFacade {
+  class const_iterator : public IteratorFacade<const_iterator> {
   public:
     const_iterator() = default;
 

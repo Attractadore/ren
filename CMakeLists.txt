@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_SCAN_FOR_MODULES FALSE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(BUILD_SHARED_LIBS OFF)
 
@@ -14,6 +15,12 @@ option(REN_HOT_RELOAD "Build with hot reload support" OFF)
 option(REN_SHADER_SOURCE_LEVEL_DEBUG_INFO "Compile shaders with source-level debug info" OFF)
 
 project(ren VERSION 0.1.0 LANGUAGES C CXX ASM ASM_MASM)
+
+find_program(ren_ccache ccache)
+if(ren_ccache)
+  set(CMAKE_C_COMPILER_LAUNCHER ${ren_ccache})
+  set(CMAKE_CXX_COMPILER_LAUNCHER ${ren_ccache})
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -74,7 +81,7 @@ if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
       -Wno-unused-parameter
     )
   else()
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Wall>)
+    # add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Wall>)
   endif()
 endif()
 

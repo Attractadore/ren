@@ -72,100 +72,113 @@ concept IsOutputIterator = CanWrite<Iter>;
 
 } // namespace detail
 
-struct IteratorFacade {
-  template <detail::CanDistanceTo Self>
-  void equal(this const Self &self, const Self &other) {
-    return self.distance_to(other) == 0;
+template <typename Self> struct IteratorFacade {
+  Self &self() { return *static_cast<Self *>(this); }
+
+  const Self &self() const { return *static_cast<const Self *>(this); }
+
+  bool equal(const Self &other) const
+    requires detail::CanDistanceTo<Self>
+  {
+    return self().distance_to(other) == 0;
   }
 
-  void increment(this detail::CanAdvance auto &self) { self.advance(1); }
+  void increment() { self().advance(1); }
 
-  void decrement(this detail::CanAdvance auto &self) { self.advance(-1); }
+  void decrement() { self().advance(-1); }
 
-  decltype(auto) operator*(this const detail::CanRead auto &self) {
-    return self.dereference();
+  decltype(auto) operator*() const
+    requires detail::CanRead<Self>
+  {
+    return self().dereference();
   }
 
-  template <typename Self>
-  auto *operator->(this const Self &self)
+  auto *operator->() const
     requires requires(Self &it) {
       {
         it.dereference()
       } -> std::convertible_to<const detail::DeduceIterValueTypeT<Self> &>;
     }
   {
-    return &self.dereference();
+    return &self().dereference();
   }
 
-  decltype(auto) operator[](this auto &self, std::ptrdiff_t index) {
-    return *(self + index);
+  decltype(auto) operator[](std::ptrdiff_t index) { return *(self() + index); }
+
+  Self &operator++()
+    requires detail::CanIncrement<Self>
+  {
+    self().increment();
+    return self();
   }
 
-  template <detail::CanIncrement Self>
-  auto operator++(this Self &self) -> Self & {
-    self.increment();
-    return self;
-  }
-
-  template <detail::CanIncrement Self>
-  auto operator++(this Self &self, int) -> Self {
-    Self old = self;
-    self.increment();
+  Self operator++(int)
+    requires detail::CanIncrement<Self>
+  {
+    Self old = self();
+    self().increment();
     return old;
   }
 
-  template <detail::CanDecrement Self>
-  auto operator--(this Self &self) -> Self & {
-    self.decrement();
-    return self;
+  Self &operator--()
+    requires detail::CanDecrement<Self>
+  {
+    self().decrement();
+    return self();
   }
 
-  template <detail::CanDecrement Self>
-  auto operator--(this Self &self, int) -> Self {
-    Self tmp = self;
-    self.decrement();
+  Self operator--(int)
+    requires detail::CanDecrement<Self>
+  {
+    Self tmp = self();
+    self().decrement();
     return tmp;
   }
 
-  template <detail::CanAdvance Self>
-  auto operator+=(this Self &self, std::ptrdiff_t n) -> Self & {
-    self.advance(n);
-    return self;
+  Self &operator+=(std::ptrdiff_t n)
+    requires detail::CanAdvance<Self>
+  {
+    self().advance(n);
+    return self();
   }
 
-  template <detail::CanAdvance Self>
-  auto operator-=(this Self &self, std::ptrdiff_t n) -> Self & {
-    self.advance(-n);
-    return self;
+  Self &operator-=(std::ptrdiff_t n)
+    requires detail::CanAdvance<Self>
+  {
+    self().advance(-n);
+    return self();
   }
 
-  template <typename Self>
-  auto operator+(this const Self &self, std::ptrdiff_t n) -> Self {
-    Self tmp = self;
+  Self operator+(std::ptrdiff_t n) const {
+    Self tmp = self();
     return tmp += n;
   }
 
-  template <typename Self>
-  auto operator-(this const Self &self, std::ptrdiff_t n) -> Self {
-    Self tmp = self;
+  Self operator-(std::ptrdiff_t n) const {
+    Self tmp = self();
     return tmp -= n;
   }
 
-  template <detail::CanDistanceTo Self>
-  auto operator-(this const Self &self, const Self &other) -> std::ptrdiff_t {
-    return other.distance_to(self);
+  std::ptrdiff_t operator-(const Self &other) const
+    requires detail::CanDistanceTo<Self>
+  {
+    return other.distance_to(self());
   }
 
-  template <detail::CanCompare Self>
-  bool operator==(this const Self &self, const Self &other) {
-    return self.equal(other);
-  }
-
-  template <detail::CanDistanceTo Self>
-  auto operator<=>(this const Self &self, const Self &other) {
-    return self.distance_to(other) <=> 0;
+  auto operator<=>(const Self &other) const
+    requires detail::CanDistanceTo<Self>
+  {
+    return self().distance_to(other) <=> 0;
   }
 };
+
+template <typename Self>
+bool operator==(const IteratorFacade<Self> &lhs,
+                const IteratorFacade<Self> &rhs)
+  requires detail::CanCompare<Self>
+{
+  return lhs.self().equal(rhs.self());
+}
 
 } // namespace ren
 
@@ -182,7 +195,7 @@ struct random_access_iterator_tag;
 } // namespace std
 
 template <class Iter>
-  requires std::derived_from<Iter, ren::IteratorFacade>
+  requires std::derived_from<Iter, ren::IteratorFacade<Iter>>
 struct std::iterator_traits<Iter> {
   static const Iter &it;
   using difference_type = std::ptrdiff_t;
