@@ -1,4 +1,5 @@
 /.cache
+/.xwin-cache
 /build
 /compile_commands.json
 # DXVK log files
@@ -7,3 +8,4 @@
 vkd3d-proton.cache.write
 vkd3d-proton.cache
 imgui.ini
+/msvc

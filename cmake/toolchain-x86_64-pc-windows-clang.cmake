@@ -8,8 +8,9 @@ set(CMAKE_RC_COMPILER llvm-rc)
 set(CMAKE_LINKER_TYPE LLD)
 
 if (NOT CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
-  include_directories(SYSTEM ~/msvc/crt/include ~/msvc/sdk/include/ucrt ~/msvc/sdk/include/um ~/msvc/sdk/include/shared ~/msvc/sdk/include/winrt)
-  link_directories(BEFORE ~/msvc/crt/lib/x64 ~/msvc/sdk/lib/ucrt/x64 ~/msvc/sdk/lib/um/x64)
+  set(msvc "${CMAKE_CURRENT_LIST_DIR}/../msvc")
+  include_directories(SYSTEM "${msvc}/crt/include" "${msvc}/sdk/include/ucrt" "${msvc}/sdk/include/um" "${msvc}/sdk/include/shared" "${msvc}/sdk/include/winrt")
+  link_directories(BEFORE "${msvc}/crt/lib/x64" "${msvc}/sdk/lib/ucrt/x64" "${msvc}/sdk/lib/um/x64")
   # To execute shader compiler
   set(CMAKE_CROSSCOMPILING_EMULATOR wine)
 endif()
