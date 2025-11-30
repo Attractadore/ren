@@ -71,7 +71,7 @@ endif()
 
 if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(
+    set(c_cxx_flags
       -fno-strict-aliasing
       /W4
       # /WX
@@ -80,6 +80,7 @@ if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
       -Wno-missing-field-initializers
       -Wno-unused-parameter
     )
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${c_cxx_flags}>")
   else()
     # add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Wall>)
   endif()
