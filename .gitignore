@@ -1,3 +1,5 @@
+/.vs
+/out
 /.cache
 /build
 /compile_commands.json
