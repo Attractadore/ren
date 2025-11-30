@@ -30,6 +30,7 @@
         "KTX_FEATURE_TESTS": "OFF",
         "KTX_FEATURE_TOOLS": "OFF",
         "KTX_FEATURE_VK_UPLOAD": "OFF",
+        "ASTCENC_WERROR": "OFF",
         "MESHOPT_INSTALL": "OFF",
         "TRACY_ENABLE": "OFF",
         "TRACY_ON_DEMAND": "ON",

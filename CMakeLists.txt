@@ -20,6 +20,9 @@ find_program(ren_ccache ccache)
 if(ren_ccache)
   set(CMAKE_C_COMPILER_LAUNCHER ${ren_ccache})
   set(CMAKE_CXX_COMPILER_LAUNCHER ${ren_ccache})
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Xclang;-fno-pch-timestamp>")
+  endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -80,7 +83,7 @@ if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
       -Wno-missing-field-initializers
       -Wno-unused-parameter
     )
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${c_cxx_flags}>")
+    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:${c_cxx_flags}>")
   else()
     # add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Wall>)
   endif()
