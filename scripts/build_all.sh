@@ -4,15 +4,11 @@ set -e
 src="$(dirname "$0")/.."
 build="$src/build"
 
-cmake --build $build/gcc-dev
-cmake --build $build/gcc-release
+cmake --build $build/linux-gcc-dev
+cmake --build $build/linux-gcc-release
 
-cmake --build $build/clang-dev
-cmake --build $build/clang-release
+cmake --build $build/linux-clang-dev
+cmake --build $build/linux-clang-release
 
-if [ -d "$src/msvc-dev" ]; then
-  cmake --build $build/msvc-dev
-fi
-if [ -d "$src/msvc-release" ]; then
-  cmake --build $build/msvc-release
-fi
+cmake --build $build/win-clang-dev
+cmake --build $build/win-clang-release
