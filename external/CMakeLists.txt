@@ -23,7 +23,7 @@ target_link_libraries(volk PUBLIC Vulkan::Headers)
 add_subdirectory(VulkanMemoryAllocator)
 
 find_package(SDL3 GLOBAL)
-if (NOT SDL3::SDL3)
+if (NOT SDL3_FOUND)
   if (REN_HOT_RELOAD)
     set(SDL_SHARED ON)
     set(SDL_STATIC OFF)
