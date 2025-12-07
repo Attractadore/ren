@@ -694,4 +694,24 @@ void job_free_block(ArenaBlock *block) {
   job_server.m_allocator_mutex.unlock();
 }
 
+ArenaTag job_new_tag() {
+  // TODO
+  return ArenaTag(1);
+}
+
+void job_reset_tag(ArenaTag tag) {
+  // TODO
+}
+
+void job_free_tag(NotNull<ArenaTag *> tag) {
+  // TODO
+  *tag = {};
+}
+
+void *job_tag_allocate(ArenaTag tag, usize size, usize alignment) {
+  // TODO
+  ren_assert(alignment <= alignof(max_align_t));
+  return malloc(size);
+}
+
 } // namespace ren

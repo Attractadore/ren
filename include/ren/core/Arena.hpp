@@ -2,10 +2,29 @@
 #include "NotNull.hpp"
 #include "StdDef.hpp"
 
+#include <new>
+
 namespace ren {
+
+enum class ArenaNamedTag {
+  None,
+};
+
+struct ArenaTag {
+public:
+  ArenaTag() = default;
+  ArenaTag(ArenaNamedTag name) { m_name = name; }
+  ArenaTag(u64 id) { m_id = id; }
+
+  union {
+    ArenaNamedTag m_name;
+    u64 m_id = 0;
+  };
+};
 
 enum class ArenaType {
   Dedicated,
+  Tagged,
   ThreadScratch,
   JobScratch,
 };
@@ -28,14 +47,20 @@ struct Arena {
     void *m_ptr = nullptr;
     ArenaBlock *m_head;
   };
-  usize m_page_size = 0;
-  usize m_allocation_size = 0;
+  union {
+    struct {
+      usize m_page_size;
+      usize m_allocation_size;
+    };
+    ArenaTag m_tag = ArenaNamedTag::None;
+  };
   usize m_size = 0;
   usize m_offset = 0;
   ArenaType m_type = {};
 
 public:
   [[nodiscard]] static Arena init();
+  [[nodiscard]] static Arena from_tag(ArenaTag tag);
 
   void destroy();
 
@@ -53,13 +78,12 @@ public:
   }
 
   template <typename T>
-    requires std::is_trivially_destructible_v<T>
+    requires std::is_trivially_destructible_v<T> and
+             std::is_default_constructible_v<T>
   ALWAYS_INLINE auto allocate(usize count = 1) -> T * {
     void *ptr = allocate(count * sizeof(T), alignof(T));
-    if constexpr (not std::is_trivially_constructible_v<T>) {
-      for (usize i : range(count)) {
-        ((T *)ptr)[i] = {};
-      }
+    if constexpr (not std::is_trivially_default_constructible_v<T>) {
+      new (ptr) T[count];
     }
     return (T *)ptr;
   }

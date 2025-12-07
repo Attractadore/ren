@@ -1,6 +1,8 @@
 #pragma once
 #include "ren/core/Span.hpp"
+#include "ren/core/StdDef.hpp"
 
+#include <new>
 #include <utility>
 
 namespace ren {
@@ -58,6 +60,7 @@ struct JobToken {
 }
 
 template <typename F>
+  requires std::same_as<std::invoke_result_t<F>, void>
 [[nodiscard]] JobToken job_dispatch(const char *label, F &&callback) {
   ScratchArena scratch;
   return job_dispatch(JobDesc::init(scratch, label, std::forward<F>(callback)));
@@ -75,6 +78,56 @@ inline void job_dispatch_and_wait(Span<const JobDesc> jobs) {
 inline void job_dispatch_and_wait(JobDesc job) {
   JobToken token = job_dispatch(job);
   job_wait(token);
+}
+
+ArenaTag job_new_tag();
+
+void job_reset_tag(ArenaTag tag);
+
+void job_free_tag(NotNull<ArenaTag *> tag);
+
+void *job_tag_allocate(ArenaTag tag, usize size, usize alignment);
+
+template <typename T> T *job_tag_allocate(ArenaTag tag, usize count = 1) {
+  return (T *)job_tag_allocate(tag, count * sizeof(T), alignof(T));
+}
+
+template <typename T>
+  requires IsTriviallyDestructible<T>
+struct JobFuture {
+  JobToken m_token;
+
+public:
+  JobFuture() = default;
+
+  JobFuture(JobToken token, T *value) {
+    m_token = token;
+    m_value = value;
+  }
+
+  explicit operator bool() const { return m_value; };
+
+  bool is_ready() const { return job_is_done(m_token); }
+
+  T &operator*() {
+    ren_assert(m_value);
+    ren_assert(is_ready());
+    return *m_value;
+  };
+
+private:
+  T *m_value = nullptr;
+};
+
+template <typename F>
+[[nodiscard]] auto job_dispatch(const char *label, ArenaTag tag, F &&callback) {
+  using R = std::invoke_result_t<F>;
+  R *result = job_tag_allocate<R>(tag);
+  JobToken token =
+      job_dispatch(label, [result, cb = std::forward<F>(callback)]() {
+        new (result) R(cb());
+      });
+  return JobFuture<R>(token, result);
 }
 
 } // namespace ren

@@ -101,14 +101,46 @@ template <typename E>
   requires std::is_trivially_destructible_v<E>
 class Result<void, E> {
   E m_error;
-  bool m_has_value = false;
-  bool m_was_checked = false;
+  bool m_has_value = true;
+  bool m_was_checked = true;
   friend ResultIgnorer;
 
 public:
-  Result() { m_has_value = true; }
+  Result() = default;
 
-  Result(std::convertible_to<E> auto error) { m_error = error; }
+  Result(std::convertible_to<E> auto error) {
+    m_error = error;
+    m_has_value = false;
+    m_was_checked = false;
+  }
+
+  Result(const Result &other) = delete;
+
+  Result(Result &&other) {
+    if (other.m_has_value) {
+      m_has_value = true;
+    } else {
+      m_error = other.m_error;
+      m_has_value = false;
+    }
+    m_was_checked = other.m_was_checked;
+    other.m_was_checked = true;
+  }
+
+  Result &operator=(const Result &other) = delete;
+
+  Result &operator=(Result &&other) {
+    ren_assert(m_was_checked);
+    if (other.m_has_value) {
+      m_has_value = true;
+    } else {
+      m_error = other.m_error;
+      m_has_value = false;
+    }
+    m_was_checked = other.m_was_checked;
+    other.m_was_checked = true;
+    return *this;
+  }
 
   ~Result() { ren_assert(m_was_checked); }
 
@@ -123,6 +155,9 @@ public:
     return m_error;
   }
 };
+
+template <typename T, typename E>
+constexpr bool IsTriviallyDestructible<Result<T, E>> = true;
 
 inline struct ResultIgnorer {
   template <typename E> ResultIgnorer &operator=(Result<void, E> &&result) {

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace ren {
 
@@ -105,3 +106,10 @@ template <typename T, usize N> constexpr usize size(T (&)[N]) { return N; }
 #if _MSC_VER && !__clang__
 [[noreturn]] inline void unreachable() { __assume(false); }
 #endif
+
+namespace ren {
+
+template <typename T>
+constexpr bool IsTriviallyDestructible = std::is_trivially_destructible_v<T>;
+
+}

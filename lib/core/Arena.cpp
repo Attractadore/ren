@@ -13,6 +13,8 @@ ArenaBlock *job_allocate_block(usize size);
 void job_free_block(ArenaBlock *block);
 bool job_use_global_allocator();
 
+void *job_tag_allocate(ArenaTag tag, usize size, usize alignment);
+
 Arena Arena::init() {
   Arena arena = {
       .m_page_size = vm_page_size(),
@@ -30,10 +32,21 @@ Arena Arena::init() {
   return arena;
 }
 
+Arena Arena::from_tag(ArenaTag tag) {
+  ren_assert(tag.m_id != 0);
+  Arena arena = {
+      .m_tag = tag,
+      .m_type = ArenaType::Tagged,
+  };
+  return arena;
+}
+
 void Arena::destroy() {
   switch (m_type) {
   case ArenaType::Dedicated:
     vm_free(m_ptr, m_allocation_size);
+    break;
+  case ArenaType::Tagged:
     break;
   case ArenaType::ThreadScratch: {
     auto *head = m_head;
@@ -43,13 +56,14 @@ void Arena::destroy() {
       head = next;
     }
   } break;
-  case ArenaType::JobScratch:
+  case ArenaType::JobScratch: {
     auto *head = m_head;
     while (head) {
       ArenaBlock *next = head->next;
       job_free_block(head);
       head = next;
     }
+  } break;
   }
 }
 
@@ -82,10 +96,18 @@ void *Arena::allocate_slow(usize size, usize alignment) {
     head = (ArenaBlock *)allocate_block(&thread_allocator, block_size);
     head->block_size = block_size;
     head->block_offset = 0;
-  } else {
-    ren_assert(m_type == ArenaType::JobScratch);
+  } else if (m_type == ArenaType::JobScratch) {
     block_size = max(JOB_ALLOCATOR_BLOCK_SIZE, next_po2(aligned_offset + size));
     head = job_allocate_block(block_size);
+  } else {
+    ren_assert(m_type == ArenaType::Tagged);
+    // TODO: pick a different block size when the tagged allocator is
+    // implemented.
+    block_size = max(4 * KiB, next_po2(aligned_offset + size));
+    head =
+        (ArenaBlock *)job_tag_allocate(m_tag, block_size, alignof(max_align_t));
+    head->block_size = block_size;
+    head->block_offset = 0;
   }
   head->next = m_head;
   m_head = head;
