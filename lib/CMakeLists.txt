@@ -7,6 +7,7 @@ add_library(ren-core
   core/CmdLine.cpp
   core/Fiber.cpp
   core/FileSystem.cpp
+  core/glTF.cpp
   core/JSON.cpp
   core/Job.cpp
   core/JobTLS.cpp
