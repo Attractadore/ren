@@ -5,7 +5,9 @@
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/JSON.hpp"
+#include "ren/core/Job.hpp"
 #include "ren/core/StdDef.hpp"
+#include "ren/core/String.hpp"
 #include "ren/core/glTF.hpp"
 #include "ren/ren.hpp"
 
@@ -88,9 +90,29 @@ struct OpenProjectUI {
   String8 m_error;
 };
 
+enum class ImportSceneUIState {
+  Initial,
+  Importing,
+  Failed,
+  Success,
+};
+
 struct ImportSceneUI {
+  ImportSceneUIState m_state = ImportSceneUIState::Initial;
   DynamicArray<char> m_path_buffer;
+  ArenaTag m_import_tag;
+  JobFuture<Result<void, String8>> m_import_future;
   String8 m_import_error;
+};
+
+enum class MessageSeverity {
+  Info,
+  Error,
+};
+
+struct Message {
+  MessageSeverity severity;
+  StringDeck info;
 };
 
 struct EditorUI {
@@ -109,8 +131,14 @@ struct EditorUI {
   ImportSceneUI m_import_scene;
 };
 
+struct EditorBackgroundJob {
+  JobToken token;
+  ArenaTag tag;
+};
+
 struct EditorProjectContext {
   Path m_directory;
+  DynamicArray<EditorBackgroundJob> m_background_jobs;
 };
 
 struct EditorContext {
@@ -119,6 +147,7 @@ struct EditorContext {
   Arena m_frame_arena;
   Arena m_popup_arena;
   Arena m_dialog_arena;
+
   Renderer *m_renderer = nullptr;
   SDL_Window *m_window = nullptr;
   SwapChain *m_swap_chain = nullptr;
@@ -393,6 +422,8 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   }
 
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
+
+  launch_job_server();
 };
 
 bool new_project(NotNull<EditorContext *> ctx, Path project_directory) {
@@ -443,6 +474,13 @@ bool open_project(NotNull<EditorContext *> ctx, Path path) {
 }
 
 void close_project(NotNull<EditorContext *> ctx) {
+  if (!ctx->m_project) {
+    return;
+  }
+  for (auto [token, tag] : ctx->m_project->m_background_jobs) {
+    job_wait(token);
+    job_free_tag(&tag);
+  }
   ctx->m_state = EditorState::Startup;
   ctx->m_project = nullptr;
   ctx->m_project_arena.clear();
@@ -634,110 +672,107 @@ Span<std::byte> process_mesh(NotNull<Arena *> arena, JsonValue gltf,
   return {(std::byte *)blob.data, blob.size};
 }
 
-Result<void, String8> import_scene(NotNull<EditorContext *> ctx, Path path) {
-  ScratchArena scratch;
+[[nodiscard]] JobFuture<Result<void, String8>>
+job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
+  JobFuture<Result<void, String8>> future = job_dispatch(
+      "Import Scene", tag, [ctx, tag, path]() -> Result<void, String8> {
+        ScratchArena scratch;
+        Arena output = Arena::from_tag(tag);
 
-  Path scene_directory =
-      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, SCENE_DIR});
-  Path filename = path.filename();
-  Path mesh_filename = filename.replace_extension(scratch, Path::init(".gltf"));
-  Path bin_filename = filename.replace_extension(scratch, Path::init(".bin"));
-  Path meta_filename = filename.replace_extension(scratch, Path::init(".json"));
-  Path gltf_path = scene_directory.concat(scratch, mesh_filename);
-  Path bin_path = scene_directory.concat(scratch, bin_filename);
-  Path meta_path = scene_directory.concat(scratch, meta_filename);
-  Path blob_directory =
-      ctx->m_project->m_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
+        Path scene_directory =
+            ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, SCENE_DIR});
+        Path filename = path.filename();
+        Path mesh_filename =
+            filename.replace_extension(scratch, Path::init(".gltf"));
+        Path bin_filename =
+            filename.replace_extension(scratch, Path::init(".bin"));
+        Path meta_filename =
+            filename.replace_extension(scratch, Path::init(".json"));
+        Path gltf_path = scene_directory.concat(scratch, mesh_filename);
+        Path bin_path = scene_directory.concat(scratch, bin_filename);
+        Path meta_path = scene_directory.concat(scratch, meta_filename);
+        Path blob_directory = ctx->m_project->m_directory.concat(
+            scratch, {CONTENT_DIR, MESH_DIR});
 
-  if (IoResult<void> result = create_directories(scene_directory); !result) {
-    return format(&ctx->m_popup_arena, "Failed to create {}: {}",
-                  scene_directory, result.error());
-  }
-  if (IoResult<void> result = create_directories(blob_directory); !result) {
-    return format(&ctx->m_popup_arena, "Failed to create {}: {}",
-                  blob_directory, result.error());
-  }
+        if (IoResult<void> result = create_directories(scene_directory);
+            !result) {
+          return format(&output, "Failed to create {}: {}", scene_directory,
+                        result.error());
+        }
+        if (IoResult<void> result = create_directories(blob_directory);
+            !result) {
+          return format(&output, "Failed to create {}: {}", blob_directory,
+                        result.error());
+        }
 
-  // clang-format off
-  Assimp::Importer importer;
-  importer.SetPropertyInteger(
-      AI_CONFIG_PP_RVC_FLAGS,
-      aiComponent_MATERIALS |
-      aiComponent_CAMERAS |
-      aiComponent_TEXTURES |
-      aiComponent_LIGHTS
-  );
-  const aiScene *scene = importer.ReadFile(
-      path.m_str.zero_terminated(scratch),
-      aiProcess_FindInstances |
-      aiProcess_FindInvalidData |
-      aiProcess_GenNormals |
-      aiProcess_OptimizeGraph |
-      aiProcess_RemoveComponent |
-      aiProcess_SortByPType |
-      aiProcess_Triangulate
-  );
-  // clang-format on
-  if (!scene) {
-    return String8::init(&ctx->m_popup_arena, importer.GetErrorString());
-  }
-  ren_assert(scene->mNumMeshes > 1);
+        // clang-format off
+    Assimp::Importer importer;
+    importer.SetPropertyInteger(
+        AI_CONFIG_PP_RVC_FLAGS,
+        aiComponent_MATERIALS |
+        aiComponent_CAMERAS |
+        aiComponent_TEXTURES |
+        aiComponent_LIGHTS
+    );
+    const aiScene *scene = importer.ReadFile(
+        path.m_str.zero_terminated(scratch),
+        aiProcess_FindInstances |
+        aiProcess_FindInvalidData |
+        aiProcess_GenNormals |
+        aiProcess_OptimizeGraph |
+        aiProcess_RemoveComponent |
+        aiProcess_SortByPType |
+        aiProcess_Triangulate
+    );
+        // clang-format on
+        if (!scene) {
+          return String8::init(&output, importer.GetErrorString());
+        }
+        ren_assert(scene->mNumMeshes > 1);
 
-  Assimp::Exporter exporter;
-  Assimp::ExportProperties exporter_properties;
-  exporter_properties.SetPropertyString(
-      AI_CONFIG_EXPORT_BLOB_NAME,
-      filename.stem().m_str.zero_terminated(scratch));
-  const aiExportDataBlob *blob =
-      exporter.ExportToBlob(scene, "gltf2", 0, &exporter_properties);
-  if (!blob) {
-    return String8::init(&ctx->m_popup_arena, exporter.GetErrorString());
-  }
-  const aiExportDataBlob *bin = blob->next;
+        Assimp::Exporter exporter;
+        Assimp::ExportProperties exporter_properties;
+        exporter_properties.SetPropertyString(
+            AI_CONFIG_EXPORT_BLOB_NAME,
+            filename.stem().m_str.zero_terminated(scratch));
+        const aiExportDataBlob *blob =
+            exporter.ExportToBlob(scene, "gltf2", 0, &exporter_properties);
+        if (!blob) {
+          return String8::init(&output, exporter.GetErrorString());
+        }
+        const aiExportDataBlob *bin = blob->next;
 
-  if (auto result = write(gltf_path, blob->data, blob->size); !result) {
-    return format(&ctx->m_popup_arena, "Failed to write {}: {}", gltf_path,
-                  result.error());
-  }
-  if (auto result = write(bin_path, bin->data, bin->size); !result) {
-    return format(&ctx->m_popup_arena, "Failed to write {}: {}", bin_path,
-                  result.error());
-  }
+        if (auto result = write(gltf_path, blob->data, blob->size); !result) {
+          return format(&output, "Failed to write {}: {}", gltf_path,
+                        result.error());
+        }
+        if (auto result = write(bin_path, bin->data, bin->size); !result) {
+          return format(&output, "Failed to write {}: {}", bin_path,
+                        result.error());
+        }
 
-  Result<JsonValue, JsonErrorInfo> gltf =
-      json_parse(scratch, String8((const char *)blob->data, blob->size));
-  if (!gltf) {
-    JsonErrorInfo error = gltf.error();
-    return format(&ctx->m_popup_arena, "Failed to parse glTF:\n{}:{}:{}: {}",
-                  gltf_path, error.line + 1, error.column + 1, error.error);
-  }
+        Result<JsonValue, JsonErrorInfo> gltf =
+            json_parse(scratch, String8((const char *)blob->data, blob->size));
+        if (!gltf) {
+          JsonErrorInfo error = gltf.error();
+          return format(&output, "Failed to parse glTF:\n{}:{}:{}: {}",
+                        gltf_path, error.line + 1, error.column + 1,
+                        error.error);
+        }
 
-  MetaScene meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
-  if (auto result =
-          write(meta_path, json_serialize(scratch, to_json(scratch, meta)));
-      !result) {
-    return format(&ctx->m_popup_arena, "Failed to write {}: {}", meta_path,
-                  result.error());
-  }
+        MetaScene meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
+        if (auto result = write(
+                meta_path, json_serialize(scratch, to_json(scratch, meta)));
+            !result) {
+          return format(&output, "Failed to write {}: {}", meta_path,
+                        result.error());
+        }
 
-  for (usize entity_index : range(meta.entities.m_size)) {
-    MetaEntity meta_entity = meta.entities[entity_index];
-    for (usize mesh_index : range(meta_entity.meshes.m_size)) {
-      MetaMesh meta_mesh = meta_entity.meshes[mesh_index];
-      ScratchArena scratch;
-      Span<const std::byte> blob = process_mesh(
-          scratch, *gltf, {(const std::byte *)bin->data, bin->size},
-          entity_index, mesh_index);
-      Path blob_filename = Path::init(to_string(scratch, meta_mesh.guid));
-      Path blob_path = blob_directory.concat(scratch, blob_filename);
-      if (auto result = write(blob_path, blob); !result) {
-        return format(&ctx->m_popup_arena, "Failed to write {}: {}", blob_path,
-                      result.error());
-      }
-    }
-  }
-
-  return {};
+        return {};
+      });
+  ctx->m_project->m_background_jobs.push(&ctx->m_project_arena,
+                                         {future.m_token, tag});
+  return future;
 }
 
 void draw_editor_ui(NotNull<EditorContext *> ctx) {
@@ -933,6 +968,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
     }
 
+    ImGui::BeginDisabled(ui.m_state == ImportSceneUIState::Importing);
     if (!ctx->m_ui.m_import_scene_dialog_properties) {
       ctx->m_ui.m_import_scene_dialog_properties = SDL_CreateProperties();
       SDL_SetPointerProperty(ctx->m_ui.m_import_scene_dialog_properties,
@@ -946,28 +982,51 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     }
     InputPath("Path", ctx, &ui.m_path_buffer, SDL_FILEDIALOG_OPENFILE,
               ctx->m_ui.m_import_scene_dialog_properties);
+    ImGui::EndDisabled();
 
-    if (ui.m_import_error) {
+    if (ui.m_import_future and ui.m_import_future.is_ready()) {
+      Result<void, String8> &import_result = *ui.m_import_future;
+      ui.m_state = import_result ? ImportSceneUIState::Success
+                                 : ImportSceneUIState::Failed;
+      if (!import_result) {
+        ui.m_import_error = import_result.error().copy(&ctx->m_popup_arena);
+      }
+      ui.m_import_future = {};
+      job_free_tag(&ui.m_import_tag);
+    }
+
+    if (ui.m_state == ImportSceneUIState::Importing) {
+      ImGui::Text("Importing...");
+    } else if (ui.m_state == ImportSceneUIState::Failed) {
       ImGui::Text("Import failed:\n%.*s", (int)ui.m_import_error.m_size,
                   ui.m_import_error.m_str);
+    } else if (ui.m_state == ImportSceneUIState::Success) {
+      ImGui::Text("Import succeeded!");
     }
 
     bool close = false;
-    ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
-    if (ImGui::Button("Import")) {
-      Result<void, String8> result = import_scene(
-          ctx, Path::init(scratch, String8::init(ui.m_path_buffer.m_data)));
-      if (result) {
+    if (ui.m_state == ImportSceneUIState::Success) {
+      if (ImGui::Button("Close")) {
         close = true;
-      } else {
-        ui.m_import_error = result.error();
       }
+    } else {
+      ImGui::BeginDisabled(ctx->m_ui.m_dialog_active or
+                           ui.m_state == ImportSceneUIState::Importing);
+      if (ImGui::Button("Import")) {
+        ui.m_state = ImportSceneUIState::Importing;
+        ui.m_import_tag = job_new_tag();
+        Path path = Path::init(&ctx->m_popup_arena,
+                               String8::init(ui.m_path_buffer.m_data));
+        ui.m_import_future = job_import_scene(ctx, ui.m_import_tag, path);
+        ui.m_import_error = {};
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel")) {
+        close = true;
+      }
+      ImGui::EndDisabled();
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
-      close = true;
-    }
-    ImGui::EndDisabled();
+
     if (close) {
       ImGui::CloseCurrentPopup();
       ctx->m_popup_arena.clear();
@@ -1024,13 +1083,27 @@ void run_editor(NotNull<EditorContext *> ctx) {
       SDL_SetWindowTitle(ctx->m_window, title.zero_terminated(scratch));
     }
 
+    if (ctx->m_project) {
+      for (usize i = 0; i < ctx->m_project->m_background_jobs.m_size;) {
+        if (job_is_done(ctx->m_project->m_background_jobs[i].token)) {
+          ctx->m_project->m_background_jobs[i] =
+              ctx->m_project->m_background_jobs.back();
+          ctx->m_project->m_background_jobs.pop();
+        } else {
+          i++;
+        }
+      }
+    }
+
     draw_editor_ui(ctx);
 
     ren::draw(ctx->m_scene, {.delta_time = dt_ns / 1e9f});
-  } // namespace ren
+  }
 }
 
 void quit_editor(NotNull<EditorContext *> ctx) {
+  stop_job_server();
+
   ImGui_ImplSDL3_Shutdown();
   ImGui::DestroyContext();
   destroy_scene(ctx->m_scene);
