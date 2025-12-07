@@ -14,4 +14,10 @@ if (NOT CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
   link_directories(BEFORE "${msvc}/crt/lib/x64" "${msvc}/sdk/lib/ucrt/x64" "${msvc}/sdk/lib/um/x64")
   # To execute shader compiler
   set(CMAKE_CROSSCOMPILING_EMULATOR wine)
+
+  set(CMAKE_FIND_ROOT_PATH ${msvc})
+  set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+  set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+  set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+  set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 endif()
