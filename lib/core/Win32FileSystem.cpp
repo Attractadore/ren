@@ -26,12 +26,13 @@ const wchar_t *utf8_to_wcs(NotNull<Arena *> arena, String8 str) {
 }
 
 String8 wcs_to_utf8(NotNull<Arena *> arena, const wchar_t *wcs) {
+  int wlen = std::wcslen(wcs);
   int len =
-      WideCharToMultiByte(CP_UTF8, 0, wcs, -1, nullptr, 0, nullptr, nullptr);
+      WideCharToMultiByte(CP_UTF8, 0, wcs, wlen, nullptr, 0, nullptr, nullptr);
   ren_assert(len > 0);
   char *buf = arena->allocate<char>(len);
   int res =
-      WideCharToMultiByte(CP_UTF8, 0, wcs, -1, buf, len, nullptr, nullptr);
+      WideCharToMultiByte(CP_UTF8, 0, wcs, wlen, buf, len, nullptr, nullptr);
   ren_assert(res == len);
   return String8(buf, len);
 }
@@ -41,6 +42,7 @@ IoError win32_to_io_error(DWORD err = GetLastError()) {
   switch (err) {
   default:
     return IoError::Unknown;
+  case ERROR_ALREADY_EXISTS:
   case ERROR_FILE_EXISTS:
     return IoError::Exists;
   case ERROR_ACCESS_DENIED:
@@ -346,6 +348,60 @@ Path home_directory(NotNull<Arena *> arena) {
   const char *user_profile = std::getenv("USERPROFILE");
   ren_assert(user_profile);
   return Path::init(arena, String8::init(user_profile));
+}
+
+struct Directory {
+  HANDLE handle = nullptr;
+  bool is_first_time = true;
+  WIN32_FIND_DATAW find_first_data = {};
+};
+
+IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *> arena,
+                                              Path path) {
+  ScratchArena scratch;
+
+  String8 str = path.m_str;
+  int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
+  ren_assert(wlen > 0);
+  // 4, 2, 1 bytes for \\?\, \* and null terminator, 7 extra in total.
+  wchar_t *wbuf = scratch->allocate<wchar_t>(wlen + 7);
+  wbuf[0] = L'\\';
+  wbuf[1] = L'\\';
+  wbuf[2] = L'?';
+  wbuf[3] = L'\\';
+  int res =
+      MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf + 4, wlen);
+  ren_assert(res == wlen);
+  wbuf[4 + wlen + 0] = L'\\';
+  wbuf[4 + wlen + 1] = L'*';
+  wbuf[4 + wlen + 2] = 0;
+
+  Directory *dir = arena->allocate<Directory>();
+  dir->handle = FindFirstFileW(wbuf, &dir->find_first_data);
+  if (dir->handle == INVALID_HANDLE_VALUE) {
+    return win32_to_io_error();
+  }
+
+  return NotNull<Directory *>(dir);
+}
+
+void close_directory(NotNull<Directory *> dir) { FindClose(dir->handle); }
+
+IoResult<Path> read_directory(NotNull<Arena *> arena,
+                              NotNull<Directory *> dir) {
+  if (dir->is_first_time) {
+    dir->is_first_time = false;
+    return Path::init(wcs_to_utf8(arena, dir->find_first_data.cFileName));
+  }
+  WIN32_FIND_DATAW find_data;
+  if (!FindNextFileW(dir->handle, &find_data)) {
+    DWORD err = GetLastError();
+    if (err == ERROR_NO_MORE_FILES) {
+      return Path();
+    }
+    return win32_to_io_error(err);
+  }
+  return Path::init(wcs_to_utf8(arena, find_data.cFileName));
 }
 
 } // namespace ren

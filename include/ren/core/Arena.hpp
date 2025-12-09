@@ -8,6 +8,8 @@ namespace ren {
 
 enum class ArenaNamedTag {
   None,
+  EditorProject,
+  FirstCustom,
 };
 
 struct ArenaTag {

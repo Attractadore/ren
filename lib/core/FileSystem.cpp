@@ -112,6 +112,16 @@ Path Path::replace_extension(NotNull<Arena *> arena, Path new_ext) const {
   return {String8(buffer, new_size)};
 }
 
+Path Path::add_extension(NotNull<Arena *> arena, Path ext) const {
+  auto [ext_str, ext_size] = ext.m_str;
+  ren_assert(ext_size == 0 or ext_str[0] == '.');
+  usize new_size = m_str.m_size + ext_size;
+  char *buffer = arena->allocate<char>(new_size);
+  std::memcpy(buffer, m_str.m_str, m_str.m_size);
+  std::memcpy(&buffer[m_str.m_size], ext_str, ext_size);
+  return {String8(buffer, new_size)};
+}
+
 bool Path::is_absolute() const {
   String8 vol = volume_name().m_str;
   if (vol != m_str.substr(0, vol.m_size)) {

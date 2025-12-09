@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <linux/limits.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 namespace ren {
@@ -227,6 +228,23 @@ Path home_directory(NotNull<Arena *> arena) {
   ren_assert(home);
   return Path::init(arena, String8::init(home));
 }
+
+IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *>, Path path) {
+  ScratchArena scratch;
+  auto *dir = (Directory *)::opendir(path.m_str.zero_terminated(scratch));
+  if (!dir) {
+    return io_error_from_errno();
+  }
+  return NotNull<Directory *>(dir);
+}
+
+IoResult<Path> read_directory(NotNull<Arena *> arena,
+                              NotNull<Directory *> dir) {
+  struct dirent *ent = ::readdir((DIR *)dir.get());
+  return Path::init(arena, String8::init(ent->d_name));
+}
+
+void close_directory(NotNull<Directory *> dir) { ::closedir((DIR *)dir.get()); }
 
 } // namespace ren
 #endif

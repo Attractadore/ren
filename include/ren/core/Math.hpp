@@ -14,14 +14,14 @@ inline u64 find_msb(u64 x) {
 #elif _MSC_VER
 inline u64 find_lsb(u64 value) { 
     unsigned long index;
-    return _BitScanForward64(&index, value) ? index : -1;
+    return _BitScanForward64(&index, value) ? index : (u64)-1;
 }
 
 inline u64 find_msb(u64 x) {
     ren_assert(x > 0);
 
     unsigned long index;
-    return _BitScanReverse64(&index, x) ? index : -1;
+    return _BitScanReverse64(&index, x) ? index : (u64)-1;
 }
 #endif
 

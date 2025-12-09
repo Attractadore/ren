@@ -512,7 +512,7 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
     usize stack_reserve = 0;
     void *payload = job_desc.payload;
     if (job_desc.payload_size > 0) {
-      payload = stack + stack_size - job_desc.payload_size;
+      payload = (u8 *)stack + stack_size - job_desc.payload_size;
       std::memcpy(payload, job_desc.payload, job_desc.payload_size);
       stack_reserve = (job_desc.payload_size + FIBER_STACK_ALIGNMENT - 1) &
                       ~(FIBER_STACK_ALIGNMENT - 1);
@@ -696,7 +696,7 @@ void job_free_block(ArenaBlock *block) {
 
 ArenaTag job_new_tag() {
   // TODO
-  return ArenaTag(1);
+  return ArenaTag(ArenaNamedTag::FirstCustom);
 }
 
 void job_reset_tag(ArenaTag tag) {

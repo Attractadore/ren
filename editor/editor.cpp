@@ -1,11 +1,15 @@
+#include "Meta.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Algorithm.hpp"
+#include "ren/core/Arena.hpp"
 #include "ren/core/Assert.hpp"
 #include "ren/core/Chrono.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/JSON.hpp"
 #include "ren/core/Job.hpp"
+#include "ren/core/Mutex.hpp"
+#include "ren/core/Queue.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
 #include "ren/core/glTF.hpp"
@@ -19,7 +23,6 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <atomic>
-#include <blake3.h>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
@@ -30,36 +33,11 @@ namespace ren {
 namespace {
 
 const Path ASSET_DIR = Path::init("assets");
-const Path SCENE_DIR = Path::init("scene");
+const Path GLTF_DIR = Path::init("glTF");
+const Path META_EXT = Path::init(".meta");
 
 const Path CONTENT_DIR = Path::init("content");
 const Path MESH_DIR = Path::init("mesh");
-
-template <usize Bytes> struct alignas(u32) Guid {
-  u8 m_data[Bytes] = {};
-};
-
-using Guid32 = Guid<4>;
-using Guid64 = Guid<8>;
-using Guid128 = Guid<16>;
-
-template <usize Bytes>
-String8 to_string(NotNull<Arena *> arena, Guid<Bytes> guid) {
-  ScratchArena scratch;
-  auto builder = StringBuilder::init(scratch);
-  for (isize i = isize(Bytes) - 1; i >= 0; --i) {
-    const char MAP[] = {
-        '0', '1', '2', '3', '4', '5', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
-    };
-    u8 b = guid.m_data[i];
-    u8 hi = b >> 4;
-    u8 lo = b & 0xf;
-    builder.push(MAP[hi]);
-    builder.push(MAP[lo]);
-  }
-  return builder.materialize(arena);
-}
 
 } // namespace
 
@@ -136,9 +114,17 @@ struct EditorBackgroundJob {
   ArenaTag tag;
 };
 
+struct EditorMesh {
+  String8 name;
+};
+
 struct EditorProjectContext {
   Path m_directory;
   DynamicArray<EditorBackgroundJob> m_background_jobs;
+  DynamicArray<EditorMesh> m_meshes;
+
+  alignas(64) Mutex m_mesh_update_mutex;
+  alignas(64) Queue<EditorMesh> m_update_meshes;
 };
 
 struct EditorContext {
@@ -189,6 +175,7 @@ bool InputText(const char *label, NotNull<Arena *> arena,
 void SDLCALL open_file_dialog_callback(void *userdata,
                                        const char *const *filelist,
                                        int filter) {
+  ScratchArena::init_for_thread();
   auto *ctx = (EditorContext *)userdata;
   if (!filelist) {
     fmt::println(stderr, "Failed to select file: {}", SDL_GetError());
@@ -201,11 +188,13 @@ void SDLCALL open_file_dialog_callback(void *userdata,
   }
   std::atomic_ref(ctx->m_ui.m_dialog_done)
       .store(true, std::memory_order_release);
+  ScratchArena::destroy_for_thread();
 }
 
 void SDLCALL open_folder_dialog_callback(void *userdata,
                                          const char *const *filelist,
                                          int filter) {
+  ScratchArena::init_for_thread();
   auto *ctx = (EditorContext *)userdata;
   if (!filelist) {
     fmt::println(stderr, "Failed to select folder: {}", SDL_GetError());
@@ -218,6 +207,7 @@ void SDLCALL open_folder_dialog_callback(void *userdata,
   }
   std::atomic_ref(ctx->m_ui.m_dialog_done)
       .store(true, std::memory_order_release);
+  ScratchArena::destroy_for_thread();
 }
 
 struct DialogFilter {
@@ -459,6 +449,60 @@ bool new_project(NotNull<EditorContext *> ctx, Path project_directory) {
   return true;
 }
 
+void open_project_register_meshes(NotNull<EditorContext *> ctx) {
+  ScratchArena scratch;
+  Path gltf_path =
+      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
+  IoResult<NotNull<Directory *>> dirit = open_directory(scratch, gltf_path);
+  if (!dirit) {
+    fmt::println(stderr, "Failed to open {}: {}", gltf_path, dirit.error());
+    return;
+  }
+  while (true) {
+    ScratchArena scratch;
+    IoResult<Path> entry_result = read_directory(scratch, *dirit);
+    if (!entry_result) {
+      fmt::println(stderr, "Failed to read directory entry in {}: {}",
+                   gltf_path, entry_result.error());
+      close_directory(*dirit);
+      break;
+    }
+    Path entry = *entry_result;
+    if (!entry) {
+      break;
+    }
+    if (entry.extension() != META_EXT) {
+      continue;
+    }
+    Path meta_path = gltf_path.concat(scratch, entry);
+    IoResult<Span<char>> buffer = read(scratch, meta_path);
+    if (!buffer) {
+      fmt::println(stderr, "Failed to read {}: {}", meta_path, buffer.error());
+      continue;
+    }
+    Result<JsonValue, JsonErrorInfo> json =
+        json_parse(scratch, {buffer->m_data, buffer->m_size});
+    if (!json) {
+      JsonErrorInfo error = json.error();
+      fmt::println(stderr, "{}:{}:{}: {}", meta_path, error.line, error.column,
+                   error.error);
+      continue;
+    }
+    Result<MetaGltf, MetaGltfErrorInfo> meta =
+        meta_gltf_from_json(scratch, *json);
+    if (!meta) {
+      fmt::println(stderr, "Failed to parse meta file {}: ", meta_path,
+                   to_string(scratch, meta.error()));
+      continue;
+    }
+    for (MetaMesh mesh : meta->meshes) {
+      ctx->m_project->m_meshes.push(&ctx->m_project_arena,
+                                    {mesh.name.copy(&ctx->m_project_arena)});
+    }
+  }
+  close_directory(*dirit);
+}
+
 bool open_project(NotNull<EditorContext *> ctx, Path path) {
   if (not path.exists().value_or(false)) {
     ctx->m_ui.m_open_project.m_error =
@@ -468,8 +512,10 @@ bool open_project(NotNull<EditorContext *> ctx, Path path) {
   ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
   *ctx->m_project = {
       .m_directory = path.parent().copy(&ctx->m_project_arena),
+      .m_update_meshes = Queue<EditorMesh>::init(),
   };
   ctx->m_state = EditorState::Project;
+  open_project_register_meshes(ctx);
   return true;
 }
 
@@ -481,98 +527,11 @@ void close_project(NotNull<EditorContext *> ctx) {
     job_wait(token);
     job_free_tag(&tag);
   }
+  ctx->m_project->m_update_meshes.destroy();
   ctx->m_state = EditorState::Startup;
   ctx->m_project = nullptr;
   ctx->m_project_arena.clear();
-}
-
-struct MetaMesh {
-  String8 name;
-  u32 id = 0;
-  Guid64 guid;
-};
-
-struct MetaEntity {
-  String8 name;
-  u32 id = 0;
-  Span<const MetaMesh> meshes;
-};
-
-struct MetaScene {
-  String8 scene;
-  Span<const MetaEntity> entities;
-};
-
-JsonValue to_json(NotNull<Arena *> arena, MetaScene scene) {
-  DynamicArray<JsonKeyValue> scene_json;
-  scene_json.push(arena, {"scene", JsonValue::init(arena, scene.scene)});
-  Span<JsonValue> json_entities =
-      Span<JsonValue>::allocate(arena, scene.entities.m_size);
-  for (usize entity_index : range(scene.entities.m_size)) {
-    MetaEntity entity = scene.entities[entity_index];
-    DynamicArray<JsonKeyValue> json_entity;
-    json_entity.push(arena, {"name", JsonValue::init(arena, entity.name)});
-    json_entity.push(arena, {"id", JsonValue::init(entity.id)});
-    auto json_meshes = Span<JsonValue>::allocate(arena, entity.meshes.m_size);
-    for (usize mesh_index : range(entity.meshes.m_size)) {
-      MetaMesh mesh = entity.meshes[mesh_index];
-      DynamicArray<JsonKeyValue> json_mesh;
-      json_mesh.push(arena, {"name", JsonValue::init(arena, mesh.name)});
-      json_mesh.push(arena, {"id", JsonValue::init(mesh.id)});
-      json_mesh.push(arena,
-                     {"guid", JsonValue::init(to_string(arena, mesh.guid))});
-      json_meshes[mesh_index] = JsonValue::init(json_mesh);
-    }
-    json_entity.push(arena, {"meshes", JsonValue::init(json_meshes)});
-    json_entities[entity_index] = JsonValue::init(json_entity);
-  }
-  scene_json.push(arena, {"entities", JsonValue::init(json_entities)});
-  return JsonValue::init(scene_json);
-}
-
-MetaScene generate_mesh_metadata(NotNull<Arena *> arena, JsonValue gltf,
-                                 Path filename) {
-  ScratchArena scratch;
-  blake3_hasher hasher;
-  blake3_hasher_init(&hasher);
-
-  Path stem = filename.stem();
-
-  Span<const JsonValue> meshes = json_array_value(gltf, "meshes");
-  auto meta_entities = Span<MetaEntity>::allocate(arena, meshes.m_size);
-  for (usize entity_index : range(meshes.m_size)) {
-    String8 entity_name =
-        json_string_value_or(meshes[entity_index], "name",
-                             format(scratch, "{}", entity_index))
-            .copy(arena);
-    Span<const JsonValue> primitives =
-        json_array_value(meshes[entity_index], "primitives");
-    auto meta_meshes = Span<MetaMesh>::allocate(arena, primitives.m_size);
-    for (usize mesh_index : range(primitives.m_size)) {
-      String8 mesh_name = format(arena, "{}", mesh_index);
-      blake3_hasher_reset(&hasher);
-      String8 guid_src =
-          String8::join(scratch, {stem.m_str, entity_name, mesh_name}, "::");
-      blake3_hasher_update(&hasher, guid_src.m_str, guid_src.m_size);
-      Guid64 guid;
-      blake3_hasher_finalize(&hasher, guid.m_data, sizeof(guid));
-      meta_meshes[mesh_index] = {
-          .name = mesh_name,
-          .id = (u32)mesh_index,
-          .guid = guid,
-      };
-    }
-    meta_entities[entity_index] = {
-        .name = entity_name,
-        .id = (u32)entity_index,
-        .meshes = meta_meshes,
-    };
-  }
-
-  return {
-      .scene = stem.m_str.copy(arena),
-      .entities = meta_entities,
-  };
+  job_reset_tag(ArenaNamedTag::EditorProject);
 }
 
 template <typename T>
@@ -680,15 +639,14 @@ job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
         Arena output = Arena::from_tag(tag);
 
         Path scene_directory =
-            ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, SCENE_DIR});
+            ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
         Path filename = path.filename();
-        Path mesh_filename =
+        Path gltf_filename =
             filename.replace_extension(scratch, Path::init(".gltf"));
         Path bin_filename =
             filename.replace_extension(scratch, Path::init(".bin"));
-        Path meta_filename =
-            filename.replace_extension(scratch, Path::init(".json"));
-        Path gltf_path = scene_directory.concat(scratch, mesh_filename);
+        Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
+        Path gltf_path = scene_directory.concat(scratch, gltf_filename);
         Path bin_path = scene_directory.concat(scratch, bin_filename);
         Path meta_path = scene_directory.concat(scratch, meta_filename);
         Path blob_directory = ctx->m_project->m_directory.concat(
@@ -756,16 +714,24 @@ job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
         if (!gltf) {
           JsonErrorInfo error = gltf.error();
           return format(&output, "Failed to parse glTF:\n{}:{}:{}: {}",
-                        gltf_path, error.line + 1, error.column + 1,
-                        error.error);
+                        gltf_path, error.line, error.column, error.error);
         }
 
-        MetaScene meta = generate_mesh_metadata(scratch, *gltf, mesh_filename);
+        MetaGltf meta = meta_gltf_generate(scratch, *gltf, gltf_filename);
         if (auto result = write(
                 meta_path, json_serialize(scratch, to_json(scratch, meta)));
             !result) {
           return format(&output, "Failed to write {}: {}", meta_path,
                         result.error());
+        }
+
+        Arena project_arena = Arena::from_tag(ArenaNamedTag::EditorProject);
+        for (MetaMesh meta_mesh : meta.meshes) {
+          EditorMesh mesh = {
+              .name = meta_mesh.name.copy(&project_arena),
+          };
+          AutoMutex _(ctx->m_project->m_mesh_update_mutex);
+          ctx->m_project->m_update_meshes.push(mesh);
         }
 
         return {};
@@ -831,14 +797,53 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
 
     if (ctx->m_state == EditorState::Project) {
       if (ImGui::BeginMenu("Import")) {
-        if (ImGui::MenuItem("Mesh...")) {
+        if (ImGui::MenuItem("Scene...")) {
           open_popup = EditorPopupMenu::ImportScene;
         }
         ImGui::EndMenu();
       }
     }
+  }
+  float menu_height = ImGui::GetWindowHeight();
+  ImGui::EndMainMenuBar();
 
-    ImGui::EndMainMenuBar();
+  if (ctx->m_project) {
+    constexpr ImGuiWindowFlags SIDE_PANEL_FLAGS =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration;
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
+    ImVec2 side_panel_pos = {0, viewport->Size.y};
+    ImGui::SetNextWindowPos(side_panel_pos, ImGuiCond_Always,
+                            ImVec2(0.0f, 1.0f));
+    ImVec2 side_panel_size = viewport->Size;
+    side_panel_size.x *= 0.2f;
+    side_panel_size.y -= menu_height;
+    ImGui::SetNextWindowSize(side_panel_size);
+    if (ImGui::Begin("##assets", nullptr, SIDE_PANEL_FLAGS)) {
+      if (ImGui::BeginTabBar("Asset tab bar",
+                             ImGuiTabBarFlags_NoCloseWithMiddleMouseButton |
+                                 ImGuiTabBarFlags_FittingPolicyResizeDown)) {
+        if (ImGui::BeginTabItem("Scene", nullptr)) {
+          ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Meshes", nullptr)) {
+          Span<const EditorMesh> meshes = ctx->m_project->m_meshes;
+          ImGuiListClipper clipper;
+          clipper.Begin(meshes.m_size);
+          while (clipper.Step()) {
+            for (i32 i : range(clipper.DisplayStart, clipper.DisplayEnd)) {
+              String8 name = meshes[i].name;
+              ImGui::Text("%.*s", (int)name.m_size, name.m_str);
+            }
+          }
+          ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+      }
+    }
+    ImGui::End();
   }
 
   if (ctx->m_ui.m_dialog_client == EditorDialogClient::OpenProject) {
@@ -1091,6 +1096,17 @@ void run_editor(NotNull<EditorContext *> ctx) {
           ctx->m_project->m_background_jobs.pop();
         } else {
           i++;
+        }
+      }
+
+      {
+        AutoMutex _(ctx->m_project->m_mesh_update_mutex);
+        while (true) {
+          Optional<EditorMesh> mesh = ctx->m_project->m_update_meshes.try_pop();
+          if (!mesh) {
+            break;
+          }
+          ctx->m_project->m_meshes.push(&ctx->m_project_arena, *mesh);
         }
       }
     }

@@ -520,6 +520,8 @@ Result<JsonValue, JsonErrorInfo> json_parse(NotNull<Arena *> arena,
     }
     error.column++;
   }
+  error.line = error.line + 1;
+  error.column = error.column + 1;
   return error;
 }
 

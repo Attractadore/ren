@@ -55,12 +55,14 @@ struct JsonKeyValue {
 struct JsonErrorInfo {
   JsonError error = JsonError::Unknown;
   usize offset = 0;
+  // 1-based.
   usize line = 0;
+  // 1-based.
   usize column = 0;
 };
 
-Result<JsonValue, JsonErrorInfo> json_parse(NotNull<Arena *> arena,
-                                            String8 buffer);
+[[nodiscard]] Result<JsonValue, JsonErrorInfo>
+json_parse(NotNull<Arena *> arena, String8 buffer);
 
 String8 json_serialize(NotNull<Arena *> arena, JsonValue json);
 

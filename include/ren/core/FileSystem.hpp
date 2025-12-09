@@ -61,6 +61,7 @@ public:
 };
 
 inline bool operator==(Path lhs, String8 rhs) { return lhs.m_str == rhs; }
+inline bool operator==(Path lhs, Path rhs) { return lhs.m_str == rhs.m_str; }
 
 String8 format_as(Path path);
 
@@ -155,5 +156,13 @@ copy_file(Path from, Path to,
 Path app_data_directory(NotNull<Arena *> arena);
 
 Path home_directory(NotNull<Arena *> arena);
+
+struct Directory;
+
+IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *> arena,
+                                              Path path);
+void close_directory(NotNull<Directory *> dir);
+
+IoResult<Path> read_directory(NotNull<Arena *> arena, NotNull<Directory *> dir);
 
 } // namespace ren
