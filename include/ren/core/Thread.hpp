@@ -32,4 +32,6 @@ Thread thread_create(const ThreadDesc &desc);
 
 int thread_join(Thread thread);
 
+bool is_main_thread();
+
 } // namespace ren

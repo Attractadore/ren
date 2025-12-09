@@ -43,10 +43,10 @@ template <usize Bytes> Optional<Guid<Bytes>> guid_from_string(String8 str) {
     bool is_hi_byte = i % 2 == 0;
     usize byte_index = Bytes - 1 - i / 2;
     char c = str[i];
-    u32 value = -1;
-    value = c >= '0' and c <= '9' ? value = c - '0' : value;
-    value = c >= 'A' and c <= 'F' ? value = c - 'A' + 0xA : value;
-    value = c >= 'a' and c <= 'f' ? value = c - 'a' + 0xA : value;
+    i32 value = -1;
+    value = c >= '0' and c <= '9' ? c - '0' : value;
+    value = c >= 'A' and c <= 'F' ? c - 'A' + 0xA : value;
+    value = c >= 'a' and c <= 'f' ? c - 'a' + 0xA : value;
     if (value == -1) {
       return {};
     }

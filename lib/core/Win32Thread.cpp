@@ -177,6 +177,9 @@ int thread_join(Thread thread) {
   return ret;
 }
 
+static const DWORD MAIN_THREAD = GetCurrentThreadId();
+bool is_main_thread() { return GetCurrentThreadId() == MAIN_THREAD; }
+
 } // namespace ren
 
 #endif

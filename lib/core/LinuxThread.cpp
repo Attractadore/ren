@@ -150,5 +150,8 @@ int thread_join(Thread thread) {
   return (uintptr_t)ret;
 }
 
+static const pthread_t MAIN_THREAD = pthread_self();
+bool is_main_thread() { return pthread_self() == MAIN_THREAD; }
+
 } // namespace ren
 #endif

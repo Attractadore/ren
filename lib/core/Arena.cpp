@@ -144,6 +144,7 @@ void *Arena::expand(void *ptr, usize old_size, usize new_size) {
 }
 
 void ScratchArena::init_for_thread() {
+  ren_assert(!thread_allocator.pool);
   init_allocator(&thread_allocator, THREAD_ALLOCATOR_BLOCK_SIZE);
 }
 

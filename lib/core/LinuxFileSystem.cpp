@@ -231,6 +231,7 @@ Path home_directory(NotNull<Arena *> arena) {
 
 IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *>, Path path) {
   ScratchArena scratch;
+  errno = 0;
   auto *dir = (Directory *)::opendir(path.m_str.zero_terminated(scratch));
   if (!dir) {
     return io_error_from_errno();
@@ -240,11 +241,21 @@ IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *>, Path path) {
 
 IoResult<Path> read_directory(NotNull<Arena *> arena,
                               NotNull<Directory *> dir) {
+  errno = 0;
   struct dirent *ent = ::readdir((DIR *)dir.get());
+  if (!ent) {
+    if (errno == 0) {
+      return Path();
+    }
+    return io_error_from_errno();
+  }
   return Path::init(arena, String8::init(ent->d_name));
 }
 
-void close_directory(NotNull<Directory *> dir) { ::closedir((DIR *)dir.get()); }
+void close_directory(NotNull<Directory *> dir) {
+  errno = 0;
+  ::closedir((DIR *)dir.get());
+}
 
 } // namespace ren
 #endif

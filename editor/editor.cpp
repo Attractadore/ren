@@ -12,6 +12,7 @@
 #include "ren/core/Queue.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
+#include "ren/core/Thread.hpp"
 #include "ren/core/glTF.hpp"
 #include "ren/ren.hpp"
 
@@ -175,7 +176,9 @@ bool InputText(const char *label, NotNull<Arena *> arena,
 void SDLCALL open_file_dialog_callback(void *userdata,
                                        const char *const *filelist,
                                        int filter) {
-  ScratchArena::init_for_thread();
+  if (not is_main_thread()) {
+    ScratchArena::init_for_thread();
+  }
   auto *ctx = (EditorContext *)userdata;
   if (!filelist) {
     fmt::println(stderr, "Failed to select file: {}", SDL_GetError());
@@ -188,13 +191,17 @@ void SDLCALL open_file_dialog_callback(void *userdata,
   }
   std::atomic_ref(ctx->m_ui.m_dialog_done)
       .store(true, std::memory_order_release);
-  ScratchArena::destroy_for_thread();
+  if (not is_main_thread()) {
+    ScratchArena::destroy_for_thread();
+  }
 }
 
 void SDLCALL open_folder_dialog_callback(void *userdata,
                                          const char *const *filelist,
                                          int filter) {
-  ScratchArena::init_for_thread();
+  if (not is_main_thread()) {
+    ScratchArena::init_for_thread();
+  }
   auto *ctx = (EditorContext *)userdata;
   if (!filelist) {
     fmt::println(stderr, "Failed to select folder: {}", SDL_GetError());
@@ -207,7 +214,9 @@ void SDLCALL open_folder_dialog_callback(void *userdata,
   }
   std::atomic_ref(ctx->m_ui.m_dialog_done)
       .store(true, std::memory_order_release);
-  ScratchArena::destroy_for_thread();
+  if (not is_main_thread()) {
+    ScratchArena::destroy_for_thread();
+  }
 }
 
 struct DialogFilter {
