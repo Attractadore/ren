@@ -42,16 +42,32 @@ const Path MESH_DIR = Path::init("mesh");
 
 } // namespace
 
+Path editor_settings_directory(NotNull<Arena *> arena) {
+  ScratchArena scratch;
+  return app_data_directory(scratch).concat(
+      arena, {Path::init("ren"), Path::init("editor")});
+}
+
+Path editor_recently_opened_list_path(NotNull<Arena *> arena) {
+  ScratchArena scratch;
+  return editor_settings_directory(scratch).concat(
+      arena, Path::init("recently-opened.txt"));
+}
+
+Path editor_default_project_directory(NotNull<Arena *> arena) {
+  const char *project_home = std::getenv("REN_PROJECT_HOME");
+  if (project_home) {
+    return Path::init(arena, String8::init(project_home));
+  }
+  ScratchArena scratch;
+  return app_data_directory(scratch).concat(
+      arena, {Path::init("ren"), Path::init("projects")});
+}
+
 enum class EditorState {
   Startup,
   Project,
   Quit,
-};
-
-enum class EditorPopupMenu {
-  None,
-  NewProject,
-  ImportScene,
 };
 
 enum class EditorDialogClient {
@@ -143,6 +159,8 @@ struct EditorContext {
   EditorState m_state = EditorState::Startup;
   EditorUI m_ui;
   EditorProjectContext *m_project = nullptr;
+
+  DynamicArray<Path> m_recently_opened;
 };
 
 namespace {
@@ -329,6 +347,45 @@ void InputPath(String8 name, NotNull<EditorContext *> ctx,
 
 } // namespace
 
+void load_recently_opened_list(NotNull<EditorContext *> ctx) {
+  ScratchArena scratch;
+  Path load_path = editor_recently_opened_list_path(scratch);
+  IoResult<Span<char>> buffer = read(scratch, load_path);
+  if (!buffer) {
+    fmt::println(stderr, "Failed to read {}: {}", load_path, buffer.error());
+    return;
+  }
+  String8 str(buffer->m_data, buffer->m_size);
+  Span<String8> paths = str.split(scratch, '\n');
+  ctx->m_recently_opened.clear();
+  for (String8 path : paths) {
+    path = path.strip_right('\r');
+    if (!path) {
+      continue;
+    }
+    ctx->m_recently_opened.push(&ctx->m_arena, Path::init(&ctx->m_arena, path));
+  }
+}
+
+void save_recently_opened_list(NotNull<EditorContext *> ctx) {
+  ScratchArena scratch;
+  StringBuilder builder(scratch);
+  Span<const Path> recent = ctx->m_recently_opened;
+  if (recent.m_size == 0) {
+    return;
+  }
+  for (Path path : recent) {
+    builder.push(path.m_str);
+    builder.push('\n');
+  }
+  Path save_path = editor_recently_opened_list_path(scratch);
+  std::ignore = create_directories(save_path.parent());
+  IoResult<void> result = write(save_path, builder.string());
+  if (!result) {
+    fmt::println(stderr, "Failed to write {}: {}", save_path, result.error());
+  }
+}
+
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ScratchArena::init_for_thread();
 
@@ -423,40 +480,9 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
 
   launch_job_server();
-};
 
-bool new_project(NotNull<EditorContext *> ctx, Path project_directory) {
-  ScratchArena scratch;
-  NewProjectUI &ui = ctx->m_ui.m_new_project;
-  Path title = project_directory.filename();
-  Path project_path = project_directory.concat(
-      scratch, title.replace_extension(scratch, Path::init(".json")));
-  if (project_directory.exists().value_or(false)) {
-    if (not is_directory_empty(project_directory).value_or(true)) {
-      ui.m_error =
-          format(&ctx->m_popup_arena, "{} is not empty!", project_directory);
-      return false;
-    }
-  }
-  if (IoResult<void> result = create_directories(project_directory); !result) {
-    ui.m_error =
-        format(&ctx->m_popup_arena, "Failed to create directory {}: {}",
-               project_directory, result.error());
-    return false;
-  }
-  const char buffer[] = {'{', '\n', '}', '\n'};
-  if (IoResult<void> result = write(project_path, Span(buffer)); !result) {
-    ui.m_error = format(&ctx->m_popup_arena, "Failed to create {}: {}",
-                        project_path, result.error());
-    return false;
-  }
-  ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
-  *ctx->m_project = {
-      .m_directory = project_directory.copy(&ctx->m_project_arena),
-  };
-  ctx->m_state = EditorState::Project;
-  return true;
-}
+  load_recently_opened_list(ctx);
+};
 
 void open_project_register_meshes(NotNull<EditorContext *> ctx) {
   ScratchArena scratch;
@@ -512,11 +538,24 @@ void open_project_register_meshes(NotNull<EditorContext *> ctx) {
   close_directory(*dirit);
 }
 
-bool open_project(NotNull<EditorContext *> ctx, Path path) {
+Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
+  ScratchArena scratch;
+
+  IoResult<Path> abs_path = path.absolute(&ctx->m_arena);
+  if (abs_path) {
+    DynamicArray<Path> &recent = ctx->m_recently_opened;
+    for (usize i : range(recent.m_size)) {
+      if (recent[i] == *abs_path) {
+        copy_overlapped(recent.m_data + i + 1, recent.m_size - i - 1,
+                        &recent[i]);
+        recent.pop();
+        break;
+      }
+    }
+  }
+
   if (not path.exists().value_or(false)) {
-    ctx->m_ui.m_open_project.m_error =
-        format(&ctx->m_popup_arena, "Failed to open {}", path);
-    return false;
+    return format(&ctx->m_popup_arena, "Failed to open {}", path);
   }
   ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
   *ctx->m_project = {
@@ -525,7 +564,13 @@ bool open_project(NotNull<EditorContext *> ctx, Path path) {
   };
   ctx->m_state = EditorState::Project;
   open_project_register_meshes(ctx);
-  return true;
+
+  if (abs_path) {
+    ctx->m_recently_opened.push(&ctx->m_arena, *abs_path);
+    save_recently_opened_list(ctx);
+  }
+
+  return {};
 }
 
 void close_project(NotNull<EditorContext *> ctx) {
@@ -541,6 +586,29 @@ void close_project(NotNull<EditorContext *> ctx) {
   ctx->m_project = nullptr;
   ctx->m_project_arena.clear();
   job_reset_tag(ArenaNamedTag::EditorProject);
+}
+
+Result<void, String8> new_project(NotNull<EditorContext *> ctx,
+                                  Path project_directory) {
+  ScratchArena scratch;
+  Path title = project_directory.filename();
+  Path project_path = project_directory.concat(
+      scratch, title.replace_extension(scratch, Path::init(".json")));
+  if (project_directory.exists().value_or(false)) {
+    if (not is_directory_empty(project_directory).value_or(true)) {
+      return format(&ctx->m_popup_arena, "{} is not empty!", project_directory);
+    }
+  }
+  if (IoResult<void> result = create_directories(project_directory); !result) {
+    return format(&ctx->m_popup_arena, "Failed to create directory {}: {}",
+                  project_directory, result.error());
+  }
+  const char buffer[] = {'{', '\n', '}', '\n'};
+  if (IoResult<void> result = write(project_path, Span(buffer)); !result) {
+    return format(&ctx->m_popup_arena, "Failed to create {}: {}", project_path,
+                  result.error());
+  }
+  return open_project(ctx, project_path);
 }
 
 template <typename T>
@@ -755,7 +823,13 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui::NewFrame();
   ImGui::PushFont(ctx->m_ui.m_font);
 
-  EditorPopupMenu open_popup = EditorPopupMenu::None;
+  const char *NEW_PROJECT_POPUP_TEXT = "New Project";
+  ImGuiID new_project_popup = ImGui::GetID(NEW_PROJECT_POPUP_TEXT);
+  const char *OPEN_PROJECT_FAILED_POPUP_TEXT = "Open Project Failed";
+  ImGuiID open_project_failed_popup =
+      ImGui::GetID(OPEN_PROJECT_FAILED_POPUP_TEXT);
+  const char *IMPORT_SCENE_POPUP_TEXT = "Import Scene";
+  ImGuiID import_scene_popup = ImGui::GetID(IMPORT_SCENE_POPUP_TEXT);
 
 #if 0
   bool open = true;
@@ -764,7 +838,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
       if (ImGui::MenuItem("New")) {
-        open_popup = EditorPopupMenu::NewProject;
+        ImGui::OpenPopup(new_project_popup);
       }
 
       if (ImGui::MenuItem("Open...")) {
@@ -790,6 +864,25 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                 .filters = {{.name = "Ren Project Files", .pattern = "json"}},
             });
       }
+      if (ImGui::BeginMenu("Recent Projects",
+                           ctx->m_recently_opened.m_size > 0)) {
+        ScratchArena scratch;
+        constexpr i32 NUM_RECENT = 5;
+        Span<const Path> recent = ctx->m_recently_opened;
+        isize oldest_index = max<isize>(recent.m_size - NUM_RECENT, 0);
+        for (isize i = (isize)recent.m_size - 1; i >= oldest_index; --i) {
+          Path path = recent[i];
+          if (ImGui::MenuItem(path.m_str.zero_terminated(scratch))) {
+            close_project(ctx);
+            Result<void, String8> open_result = open_project(ctx, path);
+            if (!open_result) {
+              ImGui::OpenPopup(open_project_failed_popup);
+              ctx->m_ui.m_open_project.m_error = open_result.error();
+            }
+          }
+        }
+        ImGui::EndMenu();
+      }
 
       ImGui::BeginDisabled(!ctx->m_project);
       if (ImGui::MenuItem("Close")) {
@@ -800,14 +893,13 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       if (ImGui::MenuItem("Quit")) {
         ctx->m_state = EditorState::Quit;
       }
-
       ImGui::EndMenu();
     }
 
     if (ctx->m_state == EditorState::Project) {
       if (ImGui::BeginMenu("Import")) {
         if (ImGui::MenuItem("Scene...")) {
-          open_popup = EditorPopupMenu::ImportScene;
+          ImGui::OpenPopup(import_scene_popup);
         }
         ImGui::EndMenu();
       }
@@ -860,15 +952,17 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     Path path = check_dialog_path(scratch, ctx);
     if (path) {
       close_project(ctx);
-      if (!open_project(ctx, path)) {
-        ImGui::OpenPopup("##Open Project Failed");
+      Result<void, String8> open_result = open_project(ctx, path);
+      if (!open_result) {
+        ImGui::OpenPopup(open_project_failed_popup);
+        ctx->m_ui.m_open_project.m_error = open_result.error();
       }
     }
   }
 
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal("##Open Project Failed", nullptr,
+  if (ImGui::BeginPopupModal(OPEN_PROJECT_FAILED_POPUP_TEXT, nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     String8 error = ctx->m_ui.m_open_project.m_error;
     ren_assert(error);
@@ -881,12 +975,8 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::EndPopup();
   }
 
-  if (open_popup == EditorPopupMenu::NewProject) {
-    ImGui::OpenPopup("New Project");
-  }
-
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal("New Project", nullptr,
+  if (ImGui::BeginPopupModal(NEW_PROJECT_POPUP_TEXT, nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     NewProjectUI &ui = ctx->m_ui.m_new_project;
     if (ImGui::IsWindowAppearing()) {
@@ -896,15 +986,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                              sizeof(DEFAULT_TITLE));
 
       ScratchArena scratch;
-      Path default_location;
-      const char *project_home = std::getenv("REN_PROJECT_HOME");
-      if (project_home) {
-        default_location = Path::init(scratch, String8::init(project_home));
-      }
-      if (!default_location) {
-        default_location = app_data_directory(scratch).concat(
-            scratch, {Path::init("ren"), Path::init("projects")});
-      }
+      Path default_location = editor_default_project_directory(scratch);
       if (IoResult<void> result = create_directories(default_location);
           !result) {
         fmt::println(stderr, "Failed to create {}: {}", default_location,
@@ -951,8 +1033,11 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
     if (ImGui::Button("Create")) {
       close_project(ctx);
-      if (new_project(ctx, path)) {
+      Result<void, String8> result = new_project(ctx, path);
+      if (result) {
         close = true;
+      } else {
+        ui.m_error = result.error();
       }
     }
     ImGui::SameLine();
@@ -968,12 +1053,8 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::EndPopup();
   }
 
-  if (open_popup == EditorPopupMenu::ImportScene) {
-    ImGui::OpenPopup("Import Scene");
-  }
-
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal("Import Scene", nullptr,
+  if (ImGui::BeginPopupModal(IMPORT_SCENE_POPUP_TEXT, nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
     ScratchArena scratch;
     ImportSceneUI &ui = ctx->m_ui.m_import_scene;

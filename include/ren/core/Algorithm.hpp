@@ -41,10 +41,14 @@ template <typename T, typename U> void copy(Span<T> from, U *to) {
   }
 }
 
-template <typename T, std::same_as<std::remove_const_t<T>> U>
-  requires std::is_trivially_copyable_v<T>
-void copy(Span<T> from, U *to) {
+template <typename T> void copy(Span<const T> from, T *to) {
+  ren_assert(to + from.m_size <= from.m_data or
+             from.m_data + from.m_size <= to);
   std::memcpy(to, from.m_data, from.size_bytes());
+}
+
+template <typename T> void copy(Span<T> from, T *to) {
+  return copy(Span<const T>(from), to);
 }
 
 template <typename T, typename U> void copy(T *begin, T *end, U *to) {
@@ -54,6 +58,22 @@ template <typename T, typename U> void copy(T *begin, T *end, U *to) {
 
 template <typename T, typename U> void copy(T *begin, usize count, U *to) {
   return copy(Span<T>(begin, count), to);
+}
+
+template <typename T> void copy_overlapped(Span<const T> from, T *to) {
+  ::memmove(to, from.m_data, from.size_bytes());
+}
+
+template <typename T> void copy_overlapped(Span<T> from, T *to) {
+  ::memmove(to, from.m_data, from.size_bytes());
+}
+
+template <typename T> void copy_overlapped(const T *from, usize count, T *to) {
+  return copy_overlapped(Span(from, count), to);
+}
+
+template <typename T> void copy_overlapped(T *from, usize count, T *to) {
+  return copy_overlapped(Span(from, count), to);
 }
 
 template <typename T, typename U, typename V>

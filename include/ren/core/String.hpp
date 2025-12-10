@@ -136,7 +136,7 @@ public:
 
   C &operator[](usize i) const { return m_str[i]; }
 
-  Span<String> split(NotNull<Arena *> arena, char separator) {
+  [[nodiscard]] Span<String> split(NotNull<Arena *> arena, char separator) {
     DynamicArray<String> items;
 
     usize s = 0;
@@ -204,6 +204,19 @@ public:
       offset += strs[i].m_size;
     }
     return {buffer, len};
+  }
+
+  String<C> strip_left(char c) const;
+
+  String<C> strip_right(char c) const {
+    usize end = m_size;
+    while (end > 0) {
+      if (m_str[end - 1] != c) {
+        break;
+      }
+      --end;
+    }
+    return {m_str, end};
   }
 };
 
