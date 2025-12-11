@@ -2,6 +2,7 @@
 #include "Arena.hpp"
 #include "NotNull.hpp"
 #include "StdDef.hpp"
+#include "ren/core/Span.hpp"
 
 #include <cstring>
 
@@ -46,7 +47,15 @@ public:
     m_data[m_size++] = value;
   }
 
-  void push(NotNull<Arena *> arena, const T *values, usize count) {
+  void push(T value)
+    requires std::is_trivially_destructible_v<T>
+  {
+    m_data[m_size++] = value;
+  }
+
+  void push(NotNull<Arena *> arena, const T *values, usize count)
+    requires std::is_trivially_destructible_v<T>
+  {
     [[unlikely]] if (m_size + count > m_capacity) {
       usize new_capacity = m_capacity > 0 ? 2 * m_capacity : 1;
       while (new_capacity < m_size + count) {
@@ -62,6 +71,14 @@ public:
     }
     std::memcpy(&m_data[m_size], values, sizeof(T) * count);
     m_size += count;
+  }
+
+  void push(Span<const T> values)
+    requires std::is_trivially_destructible_v<T>
+  {
+    ren_assert(m_size + values.m_size <= m_capacity);
+    std::memcpy(&m_data[m_size], values.m_data, values.size_bytes());
+    m_size += values.m_size;
   }
 
   T &back() {
