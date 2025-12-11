@@ -15,6 +15,7 @@ static Arena s_opened_dialog_arena;
 struct FileDialog {
   FileDialogGuid guid;
   String8 title;
+  Path previous_path;
 };
 
 static DynamicArray<FileDialog> s_dialogs;
@@ -23,23 +24,86 @@ static FileDialog *s_opened_dialog = nullptr;
 static bool s_opened_dialog_done = false;
 static Path s_opened_dialog_path;
 
-FileDialogGuid FileDialogGuidFromName(String8 title) {
-  ZoneScoped;
+Path editor_settings_directory(NotNull<Arena *> arena);
 
-  ren_assert(is_main_thread());
+Path editor_dialog_list_path(NotNull<Arena *> arena) {
+  ScratchArena scratch;
+  return editor_settings_directory(scratch).concat(arena,
+                                                   Path::init("dialogs.txt"));
+}
 
-  blake3_hasher hasher;
-  blake3_hasher_init(&hasher);
-  blake3_hasher_update(&hasher, title.m_str, title.m_size);
-  FileDialogGuid guid;
-  blake3_hasher_finalize(&hasher, guid.m_data, sizeof(guid));
-
-  for (FileDialog dialog : s_dialogs) {
-    if (dialog.guid == guid) {
-      return guid;
-    }
+static void load_dialog_paths() {
+  ScratchArena scratch;
+  Path load_path = editor_dialog_list_path(scratch);
+  IoResult<Span<char>> buffer = read(scratch, load_path);
+  if (!buffer) {
+    fmt::println(stderr, "Failed to read {}: {}", load_path, buffer.error());
+    return;
   }
+  String8 str(buffer->m_data, buffer->m_size);
+  Span<String8> pairs = str.split(scratch, '\n');
+  ren_assert(s_dialogs.m_size == 0);
+  for (String8 pair : pairs) {
+    pair = pair.strip_right('\r');
+    if (!pair) {
+      continue;
+    }
+    const char *split = pair.find(':');
+    if (!split) {
+      continue;
+    }
+    usize split_pos = split - pair.m_str;
+    String8 guid_str = pair.substr(0, split_pos);
+    String8 path_str =
+        pair.substr(split_pos + 1, pair.m_size - guid_str.m_size - 1);
+    Optional<FileDialogGuid> guid =
+        guid_from_string<sizeof(FileDialogGuid)>(guid_str);
+    if (!guid) {
+      continue;
+    }
+    Path path = Path::init(scratch, path_str);
+    IoResult<Path> abs_path = path.absolute(scratch);
+    if (!abs_path) {
+      continue;
+    }
+    if (not abs_path->exists().value_or(false)) {
+      continue;
+    }
+    s_dialogs.push(&s_dialog_arena,
+                   {
+                       .guid = *guid,
+                       .previous_path = abs_path->copy(&s_dialog_arena),
+                   });
+  }
+}
 
+static void save_dialog_paths() {
+  ScratchArena scratch;
+  StringBuilder builder(scratch);
+  for (FileDialog dialog : s_dialogs) {
+    if (!dialog.previous_path) {
+      continue;
+    }
+    IoResult<Path> abs_path = dialog.previous_path.absolute(scratch);
+    if (!abs_path) {
+      fmt::println("Failed to get absolute path for {}: {}",
+                   dialog.previous_path, abs_path.error());
+      continue;
+    }
+    builder.push(to_string(scratch, dialog.guid));
+    builder.push(':');
+    builder.push(abs_path->m_str);
+    builder.push('\n');
+  }
+  Path save_path = editor_dialog_list_path(scratch);
+  std::ignore = create_directories(save_path.parent());
+  IoResult<void> result = write(save_path, builder.string());
+  if (!result) {
+    fmt::println(stderr, "Failed to write {}: {}", save_path, result.error());
+  }
+}
+
+String8 file_dialog_display_title(String8 title) {
   bool prev_hash = false;
   usize display_title_size = title.m_size;
 
@@ -50,14 +114,38 @@ FileDialogGuid FileDialogGuidFromName(String8 title) {
     }
     prev_hash = title[i] == '#';
   }
-  String8 display_title = title.substr(0, display_title_size);
+  return title.substr(0, display_title_size);
+}
 
-  [[unlikely]] if (!s_dialog_arena) { s_dialog_arena = Arena::init(); }
-  s_dialogs.push(&s_dialog_arena,
-                 {
-                     .guid = guid,
-                     .title = display_title.copy(&s_dialog_arena),
-                 });
+FileDialogGuid FileDialogGuidFromName(String8 title) {
+  ZoneScoped;
+
+  ren_assert(is_main_thread());
+
+  [[unlikely]] if (!s_dialog_arena) {
+    s_dialog_arena = Arena::init();
+    load_dialog_paths();
+  }
+
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+  blake3_hasher_update(&hasher, title.m_str, title.m_size);
+  FileDialogGuid guid;
+  blake3_hasher_finalize(&hasher, guid.m_data, sizeof(guid));
+
+  for (FileDialog &dialog : s_dialogs) {
+    if (dialog.guid == guid) {
+      [[unlikely]] if (!dialog.title) {
+        dialog.title = title.copy(&s_dialog_arena);
+      }
+      return guid;
+    }
+  }
+
+  s_dialogs.push(&s_dialog_arena, {
+                                      .guid = guid,
+                                      .title = title.copy(&s_dialog_arena),
+                                  });
 
   return guid;
 }
@@ -107,10 +195,27 @@ bool OpenFileDialog(const FileDialogOptions &options) {
   SDL_PropertiesID properties = SDL_CreateProperties();
   SDL_SetPointerProperty(properties, SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
                          options.modal_window);
-  if (options.location) {
-    SDL_SetStringProperty(properties, SDL_PROP_FILE_DIALOG_LOCATION_STRING,
-                          options.location.m_str.zero_terminated(scratch));
+
+  bool previous_path_exists = false;
+  if (s_opened_dialog->previous_path) {
+    previous_path_exists =
+        s_opened_dialog->previous_path.exists().value_or(false);
   }
+
+  Path start_path;
+  if (options.start_path and (not previous_path_exists or options.force_path)) {
+    start_path = options.start_path;
+  } else if (previous_path_exists) {
+    start_path = s_opened_dialog->previous_path;
+  } else {
+    start_path = home_directory(scratch);
+  }
+  SDL_SetStringProperty(properties, SDL_PROP_FILE_DIALOG_LOCATION_STRING,
+                        start_path.m_str.zero_terminated(scratch));
+
+  SDL_SetStringProperty(properties, SDL_PROP_FILE_DIALOG_TITLE_STRING,
+                        file_dialog_display_title(s_opened_dialog->title)
+                            .zero_terminated(scratch));
 
   SDL_DialogFileFilter *dialog_filters = nullptr;
   if (options.filters.m_size > 0) {
@@ -175,6 +280,12 @@ Path FileDialogPath(FileDialogGuid guid) {
 
 void CloseFileDialog(FileDialogGuid guid) {
   ren_assert(IsFileDialogDone(guid));
+
+  if (s_opened_dialog_path) {
+    s_opened_dialog->previous_path = s_opened_dialog_path.copy(&s_dialog_arena);
+    save_dialog_paths();
+  }
+
   s_opened_dialog = nullptr;
   s_opened_dialog_done = false;
   s_opened_dialog_path = {};
@@ -213,7 +324,7 @@ void InputPath(String8 name, NotNull<Arena *> arena,
   ScratchArena scratch;
 
   if (buffer->m_size == 0) {
-    String8 path = file_dialog_options.location.m_str;
+    String8 path = file_dialog_options.start_path.m_str;
     buffer->push(arena, path.m_str, path.m_size);
     buffer->push(arena, 0);
   }
@@ -234,10 +345,10 @@ void InputPath(String8 name, NotNull<Arena *> arena,
   ImGui::SameLine();
   ImGui::BeginDisabled(IsFileDialogOpen(file_dialog_options.guid));
   if (ImGui::Button("Browse...")) {
-    Path location = Path::init(scratch, String8::init(buffer->m_data));
-    if (location) {
-      file_dialog_options.location = location;
-      file_dialog_options.force_location = true;
+    Path path = Path::init(scratch, String8::init(buffer->m_data));
+    if (path and path != file_dialog_options.start_path) {
+      file_dialog_options.start_path = path;
+      file_dialog_options.force_path = true;
     }
     OpenFileDialog(file_dialog_options);
   }

@@ -29,9 +29,9 @@ struct FileDialogOptions {
   FileDialogType type = {};
   SDL_Window *modal_window = nullptr;
   /// Location where to start browsing.
-  Path location;
+  Path start_path;
   /// Force the location instead of using the previous one.
-  bool force_location = false;
+  bool force_path = false;
   Span<const FileDialogFilter> filters;
 };
 

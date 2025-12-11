@@ -654,7 +654,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
             .guid = open_project_file_dialog_guid,
             .type = FileDialogType::OpenFile,
             .modal_window = ctx->m_window,
-            .location = editor_default_project_directory(scratch),
+            .start_path = editor_default_project_directory(scratch),
             .filters = {{.name = "Ren Project Files", .pattern = "json"}},
         });
       }
@@ -774,18 +774,22 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   if (ImGui::BeginPopupModal(NEW_PROJECT_POPUP_TEXT, nullptr,
                              ImGuiWindowFlags_AlwaysAutoResize)) {
+    ScratchArena scratch;
+
     NewProjectUI &ui = ctx->m_ui.m_new_project;
     if (ImGui::IsWindowAppearing()) {
       ui = {};
       const char DEFAULT_TITLE[] = "New Project";
       ui.m_title_buffer.push(&ctx->m_popup_arena, DEFAULT_TITLE,
                              sizeof(DEFAULT_TITLE));
+      Path default_dir = editor_default_project_directory(scratch);
+      if (not default_dir.exists().value_or(false)) {
+        std::ignore = create_directories(default_dir);
+      }
     }
 
     ImGui::Text("Title:");
     InputText("##Title", &ctx->m_popup_arena, &ui.m_title_buffer);
-
-    ScratchArena scratch;
 
     FileDialogGuid file_dialog_guid = FileDialogGuidFromName("New Project");
     InputPath("Location", &ctx->m_popup_arena, &ui.m_location_buffer,
@@ -793,7 +797,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                   .guid = file_dialog_guid,
                   .type = FileDialogType::OpenFolder,
                   .modal_window = ctx->m_window,
-                  .location = editor_default_project_directory(scratch),
+                  .start_path = editor_default_project_directory(scratch),
               });
 
     Path location =

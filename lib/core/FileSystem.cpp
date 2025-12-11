@@ -12,11 +12,18 @@ bool is_volume_name(char a, char b) {
 
 String8 format_as(IoError error) {
   switch (error) {
-  default:
-    return "Unknown";
+  case IoError::NotFound:
+    return "File not found";
   case IoError::Fragmented:
     return "Invalid size";
+  case IoError::Unknown:
+    return "Unknown";
+  case IoError::Access:
+    return "Access denied";
+  case IoError::Exists:
+    return "Already exists";
   }
+  return "Unknown";
 }
 
 String8 path_volume_name(String8 path) {
