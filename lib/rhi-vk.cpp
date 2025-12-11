@@ -407,7 +407,7 @@ struct AdapterData {
   u32 queue_families[ENUM_SIZE<QueueFamily>] = {};
   VkPhysicalDeviceProperties properties;
   MemoryHeapProperties heap_properties[ENUM_SIZE<MemoryHeap>] = {};
-  u32 num_extensions = 0;
+  Span<VkExtensionProperties> extensions;
 };
 
 constexpr const char *REQUIRED_DEVICE_EXTENSIONS[] = {
@@ -687,24 +687,26 @@ auto create_instance(NotNull<Arena *> arena,
     vkGetPhysicalDeviceProperties(handle, &adapter.properties);
     const char *device_name = adapter.properties.deviceName;
 
-    result = vkEnumerateDeviceExtensionProperties(
-        handle, nullptr, &adapter.num_extensions, nullptr);
+    u32 num_extensions = 0;
+    result = vkEnumerateDeviceExtensionProperties(handle, nullptr,
+                                                  &num_extensions, nullptr);
     if (result) {
       destroy_instance(instance);
       return vk_result_to_rhi_status(result);
     }
-    auto *adapter_extensions =
-        arena->allocate<VkExtensionProperties>(adapter.num_extensions);
+    adapter.extensions =
+        Span<VkExtensionProperties>::allocate(arena, num_extensions);
     result = vkEnumerateDeviceExtensionProperties(
-        handle, nullptr, &adapter.num_extensions, adapter_extensions);
+        handle, nullptr, &num_extensions, adapter.extensions.m_data);
     if (result) {
       destroy_instance(instance);
       return vk_result_to_rhi_status(result);
     }
 
     auto is_extension_supported = [&](const char *extension) {
-      for (usize e : range(adapter.num_extensions)) {
-        if (std::strcmp(extension, adapter_extensions[e].extensionName) == 0) {
+      for (const VkExtensionProperties &adapter_extension :
+           adapter.extensions) {
+        if (std::strcmp(extension, adapter_extension.extensionName) == 0) {
           return true;
         }
       }
@@ -945,13 +947,24 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
 
   fmt::println("vk: Create device for {}", adapter.properties.deviceName);
 
-  u32 num_extensions = std::size(REQUIRED_DEVICE_EXTENSIONS);
-  auto *extensions = scratch->allocate<const char *>(adapter.num_extensions);
-  copy(Span(REQUIRED_DEVICE_EXTENSIONS), extensions);
+  auto is_extension_supported = [&](const char *extension) {
+    for (usize e : range(adapter.extensions.m_size)) {
+      if (std::strcmp(extension, adapter.extensions[e].extensionName) == 0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  DynamicArray<const char *> extensions;
+  extensions.reserve(scratch, adapter.extensions.m_size);
+  extensions.push(REQUIRED_DEVICE_EXTENSIONS);
   if (not instance->headless) {
-    copy(Span(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS),
-         extensions + num_extensions);
-    num_extensions += std::size(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
+    extensions.push(REQUIRED_NON_HEADLESS_DEVICE_EXTENSIONS);
+  }
+  // Shut up the validation layer.
+  if (is_extension_supported(VK_GOOGLE_USER_TYPE_EXTENSION_NAME)) {
+    extensions.push(VK_GOOGLE_USER_TYPE_EXTENSION_NAME);
   }
 
   void *pnext = nullptr;
@@ -1038,7 +1051,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
 
   if (features.amd_anti_lag) {
     fmt::println("vk: Enable AMD Anti-Lag");
-    extensions[num_extensions++] = VK_AMD_ANTI_LAG_EXTENSION_NAME;
+    extensions.push(VK_AMD_ANTI_LAG_EXTENSION_NAME);
     add_features(amd_anti_lag_features);
   }
 
@@ -1051,8 +1064,7 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
 
   if (features.compute_shader_derivatives) {
     fmt::println("vk: Enable compute shader derivatives");
-    extensions[num_extensions++] =
-        VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;
+    extensions.push(VK_NV_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME);
     add_features(compute_shader_derivatives_features);
   }
 
@@ -1071,9 +1083,9 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
     }
   }
 
-  if (num_extensions > 0) {
+  if (extensions.m_size > 0) {
     fmt::println("vk: Enable extensions:");
-    for (const char *extension : Span(extensions, num_extensions)) {
+    for (const char *extension : extensions) {
       fmt::println("{}", extension);
     }
   }
@@ -1083,8 +1095,8 @@ auto create_device(NotNull<Arena *> arena, Instance instance,
       .pNext = pnext,
       .queueCreateInfoCount = num_queues,
       .pQueueCreateInfos = queue_create_info,
-      .enabledExtensionCount = num_extensions,
-      .ppEnabledExtensionNames = extensions,
+      .enabledExtensionCount = extensions.m_size,
+      .ppEnabledExtensionNames = extensions.m_data,
   };
 
   DeviceData *device = arena->allocate<DeviceData>();
