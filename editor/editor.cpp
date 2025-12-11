@@ -1,4 +1,5 @@
 #include "Meta.hpp"
+#include "UiWidgets.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Arena.hpp"
@@ -12,7 +13,6 @@
 #include "ren/core/Queue.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
-#include "ren/core/Thread.hpp"
 #include "ren/core/glTF.hpp"
 #include "ren/ren.hpp"
 
@@ -23,7 +23,6 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
-#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
@@ -70,11 +69,6 @@ enum class EditorState {
   Quit,
 };
 
-enum class EditorDialogClient {
-  None,
-  OpenProject,
-};
-
 struct NewProjectUI {
   DynamicArray<char> m_title_buffer;
   DynamicArray<char> m_location_buffer;
@@ -112,15 +106,6 @@ struct Message {
 
 struct EditorUI {
   ImFont *m_font = nullptr;
-
-  SDL_PropertiesID m_new_project_dialog_properties = 0;
-  SDL_PropertiesID m_open_project_dialog_properties = 0;
-  SDL_PropertiesID m_import_scene_dialog_properties = 0;
-
-  EditorDialogClient m_dialog_client = EditorDialogClient::None;
-  bool m_dialog_active = false;
-  alignas(std::atomic<bool>) bool m_dialog_done = false;
-  Path m_dialog_path;
   NewProjectUI m_new_project;
   OpenProjectUI m_open_project;
   ImportSceneUI m_import_scene;
@@ -162,190 +147,6 @@ struct EditorContext {
 
   DynamicArray<Path> m_recently_opened;
 };
-
-namespace {
-
-struct InputTextCallback_UserData {
-  Arena *arena = nullptr;
-  DynamicArray<char> *buf = nullptr;
-};
-
-bool InputText(const char *label, NotNull<Arena *> arena,
-               NotNull<DynamicArray<char> *> buf, ImGuiInputFlags flags = 0) {
-  flags |= ImGuiInputTextFlags_CallbackResize;
-  InputTextCallback_UserData user_data = {.arena = arena, .buf = buf};
-  return ImGui::InputText(
-      label, buf->m_data, buf->m_capacity, flags,
-      [](ImGuiInputTextCallbackData *data) {
-        if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
-          auto [arena, buf] = *(InputTextCallback_UserData *)data->UserData;
-          while (buf->m_size < (u32)data->BufTextLen + 1) {
-            buf->push(arena, 0);
-          }
-          buf->m_size = data->BufTextLen + 1;
-          (*buf)[data->BufTextLen] = 0;
-          data->Buf = buf->m_data;
-        }
-        return 0;
-      },
-      &user_data);
-}
-
-void SDLCALL open_file_dialog_callback(void *userdata,
-                                       const char *const *filelist,
-                                       int filter) {
-  if (not is_main_thread()) {
-    ScratchArena::init_for_thread();
-  }
-  auto *ctx = (EditorContext *)userdata;
-  if (!filelist) {
-    fmt::println(stderr, "Failed to select file: {}", SDL_GetError());
-  } else {
-    const char *file = *filelist;
-    if (file) {
-      ctx->m_ui.m_dialog_path =
-          Path::init(&ctx->m_dialog_arena, String8::init(file));
-    }
-  }
-  std::atomic_ref(ctx->m_ui.m_dialog_done)
-      .store(true, std::memory_order_release);
-  if (not is_main_thread()) {
-    ScratchArena::destroy_for_thread();
-  }
-}
-
-void SDLCALL open_folder_dialog_callback(void *userdata,
-                                         const char *const *filelist,
-                                         int filter) {
-  if (not is_main_thread()) {
-    ScratchArena::init_for_thread();
-  }
-  auto *ctx = (EditorContext *)userdata;
-  if (!filelist) {
-    fmt::println(stderr, "Failed to select folder: {}", SDL_GetError());
-  } else {
-    const char *file = *filelist;
-    if (file) {
-      ctx->m_ui.m_dialog_path =
-          Path::init(&ctx->m_dialog_arena, String8::init(file));
-    }
-  }
-  std::atomic_ref(ctx->m_ui.m_dialog_done)
-      .store(true, std::memory_order_release);
-  if (not is_main_thread()) {
-    ScratchArena::destroy_for_thread();
-  }
-}
-
-struct DialogFilter {
-  String8 name;
-  String8 pattern;
-};
-
-struct OpenDialogSettings {
-  EditorDialogClient client = EditorDialogClient::None;
-  SDL_FileDialogType type;
-  SDL_PropertiesID properties;
-  const char *location = nullptr;
-  // TODO: implement filters.
-  Span<const DialogFilter> filters;
-};
-
-void open_file_dialog(NotNull<EditorContext *> ctx,
-                      const OpenDialogSettings &settings) {
-  if (ctx->m_ui.m_dialog_active) {
-    return;
-  }
-  SDL_DialogFileFilter *dialog_filters = nullptr;
-  if (settings.filters.m_size > 0) {
-    dialog_filters = ctx->m_dialog_arena.allocate<SDL_DialogFileFilter>(
-        settings.filters.m_size);
-    for (usize i : range(settings.filters.m_size)) {
-      DialogFilter filter = settings.filters[i];
-      dialog_filters[i] = {
-          .name = filter.name.zero_terminated(&ctx->m_dialog_arena),
-          .pattern = filter.pattern.zero_terminated(&ctx->m_dialog_arena),
-      };
-    }
-    SDL_SetPointerProperty(settings.properties,
-                           SDL_PROP_FILE_DIALOG_FILTERS_POINTER,
-                           dialog_filters);
-    SDL_SetNumberProperty(settings.properties,
-                          SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER,
-                          settings.filters.m_size);
-  }
-  ctx->m_ui.m_dialog_client = settings.client;
-  ctx->m_ui.m_dialog_active = true;
-  switch (settings.type) {
-  case SDL_FILEDIALOG_OPENFILE: {
-    SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFILE,
-                                     open_file_dialog_callback, ctx,
-                                     settings.properties);
-  } break;
-  case SDL_FILEDIALOG_SAVEFILE:
-    ren_assert_msg(false, "Not implemented");
-  case SDL_FILEDIALOG_OPENFOLDER:
-    ren_assert(settings.location);
-    SDL_SetStringProperty(settings.properties,
-                          SDL_PROP_FILE_DIALOG_LOCATION_STRING,
-                          settings.location);
-    SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFOLDER,
-                                     open_folder_dialog_callback, ctx,
-                                     settings.properties);
-    break;
-  }
-  SDL_SetPointerProperty(settings.properties,
-                         SDL_PROP_FILE_DIALOG_FILTERS_POINTER, nullptr);
-  SDL_SetNumberProperty(settings.properties,
-                        SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, 0);
-  SDL_SetStringProperty(settings.properties,
-                        SDL_PROP_FILE_DIALOG_LOCATION_STRING, nullptr);
-}
-
-Path check_dialog_path(NotNull<Arena *> arena, NotNull<EditorContext *> ctx) {
-  Path path;
-  if (ctx->m_ui.m_dialog_active) {
-    bool done = std::atomic_ref(ctx->m_ui.m_dialog_done)
-                    .load(std::memory_order_acquire);
-    if (done) {
-      path = ctx->m_ui.m_dialog_path.copy(arena);
-      ctx->m_ui.m_dialog_active = false;
-      ctx->m_ui.m_dialog_done = false;
-      ctx->m_ui.m_dialog_path = {};
-      ctx->m_dialog_arena.clear();
-    }
-  }
-  return path;
-}
-
-void InputPath(String8 name, NotNull<EditorContext *> ctx,
-               NotNull<DynamicArray<char> *> buffer,
-               SDL_FileDialogType dialog_type,
-               SDL_PropertiesID dialog_properties) {
-  ScratchArena scratch;
-  if (Path dialog_path = check_dialog_path(scratch, ctx)) {
-    buffer->clear();
-    auto [str, size] = dialog_path.m_str;
-    buffer->push(&ctx->m_popup_arena, str, size);
-    buffer->push(&ctx->m_popup_arena, 0);
-  }
-
-  ImGui::Text("%.*s:", (int)name.m_size, name.m_str);
-  InputText(format(scratch, "##{}", name).zero_terminated(scratch),
-            &ctx->m_popup_arena, buffer);
-  ImGui::SameLine();
-  ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
-  if (ImGui::Button("Browse...")) {
-    open_file_dialog(ctx, {
-                              .type = dialog_type,
-                              .properties = dialog_properties,
-                              .location = buffer->m_data,
-                          });
-  }
-  ImGui::EndDisabled();
-}
-
-} // namespace
 
 void load_recently_opened_list(NotNull<EditorContext *> ctx) {
   ScratchArena scratch;
@@ -823,6 +624,11 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui::NewFrame();
   ImGui::PushFont(ctx->m_ui.m_font);
 
+#if 0
+  bool open = true;
+  ImGui::ShowDemoWindow(&open);
+#endif
+
   const char *NEW_PROJECT_POPUP_TEXT = "New Project";
   ImGuiID new_project_popup = ImGui::GetID(NEW_PROJECT_POPUP_TEXT);
   const char *OPEN_PROJECT_FAILED_POPUP_TEXT = "Open Project Failed";
@@ -831,11 +637,9 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   const char *IMPORT_SCENE_POPUP_TEXT = "Import Scene";
   ImGuiID import_scene_popup = ImGui::GetID(IMPORT_SCENE_POPUP_TEXT);
 
-#if 0
-  bool open = true;
-  ImGui::ShowDemoWindow(&open);
-#endif
   if (ImGui::BeginMainMenuBar()) {
+    FileDialogGuid open_project_file_dialog_guid =
+        FileDialogGuidFromName("Open Project");
     if (ImGui::BeginMenu("File")) {
       if (ImGui::MenuItem("New")) {
         ImGui::OpenPopup(new_project_popup);
@@ -844,26 +648,17 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       if (ImGui::MenuItem("Open...")) {
         OpenProjectUI &ui = ctx->m_ui.m_open_project;
         ui = {};
-        if (!ctx->m_ui.m_open_project_dialog_properties) {
-          ctx->m_ui.m_open_project_dialog_properties = SDL_CreateProperties();
-          SDL_SetPointerProperty(ctx->m_ui.m_open_project_dialog_properties,
-                                 SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-                                 ctx->m_window);
-          SDL_SetBooleanProperty(ctx->m_ui.m_open_project_dialog_properties,
-                                 SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-          SDL_SetStringProperty(ctx->m_ui.m_open_project_dialog_properties,
-                                SDL_PROP_FILE_DIALOG_TITLE_STRING,
-                                "Open Project");
-        }
-        open_file_dialog(
-            ctx,
-            {
-                .client = EditorDialogClient::OpenProject,
-                .type = SDL_FILEDIALOG_OPENFILE,
-                .properties = ctx->m_ui.m_open_project_dialog_properties,
-                .filters = {{.name = "Ren Project Files", .pattern = "json"}},
-            });
+
+        ScratchArena scratch;
+        OpenFileDialog({
+            .guid = open_project_file_dialog_guid,
+            .type = FileDialogType::OpenFile,
+            .modal_window = ctx->m_window,
+            .location = editor_default_project_directory(scratch),
+            .filters = {{.name = "Ren Project Files", .pattern = "json"}},
+        });
       }
+
       if (ImGui::BeginMenu("Recent Projects",
                            ctx->m_recently_opened.m_size > 0)) {
         ScratchArena scratch;
@@ -894,6 +689,20 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
         ctx->m_state = EditorState::Quit;
       }
       ImGui::EndMenu();
+    }
+
+    if (IsFileDialogDone(open_project_file_dialog_guid)) {
+      ScratchArena scratch;
+      Path path =
+          FileDialogCopyPathAndClose(scratch, open_project_file_dialog_guid);
+      if (path) {
+        close_project(ctx);
+        Result<void, String8> open_result = open_project(ctx, path);
+        if (!open_result) {
+          ImGui::OpenPopup(open_project_failed_popup);
+          ctx->m_ui.m_open_project.m_error = open_result.error();
+        }
+      }
     }
 
     if (ctx->m_state == EditorState::Project) {
@@ -947,19 +756,6 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImGui::End();
   }
 
-  if (ctx->m_ui.m_dialog_client == EditorDialogClient::OpenProject) {
-    ScratchArena scratch;
-    Path path = check_dialog_path(scratch, ctx);
-    if (path) {
-      close_project(ctx);
-      Result<void, String8> open_result = open_project(ctx, path);
-      if (!open_result) {
-        ImGui::OpenPopup(open_project_failed_popup);
-        ctx->m_ui.m_open_project.m_error = open_result.error();
-      }
-    }
-  }
-
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
   if (ImGui::BeginPopupModal(OPEN_PROJECT_FAILED_POPUP_TEXT, nullptr,
@@ -984,39 +780,22 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       const char DEFAULT_TITLE[] = "New Project";
       ui.m_title_buffer.push(&ctx->m_popup_arena, DEFAULT_TITLE,
                              sizeof(DEFAULT_TITLE));
-
-      ScratchArena scratch;
-      Path default_location = editor_default_project_directory(scratch);
-      if (IoResult<void> result = create_directories(default_location);
-          !result) {
-        fmt::println(stderr, "Failed to create {}: {}", default_location,
-                     result.error());
-      }
-
-      ui.m_location_buffer.push(&ctx->m_popup_arena,
-                                default_location.m_str.m_str,
-                                default_location.m_str.m_size);
-      ui.m_location_buffer.push(&ctx->m_popup_arena, 0);
     }
 
     ImGui::Text("Title:");
     InputText("##Title", &ctx->m_popup_arena, &ui.m_title_buffer);
 
-    if (!ctx->m_ui.m_new_project_dialog_properties) {
-      ctx->m_ui.m_new_project_dialog_properties = SDL_CreateProperties();
-      SDL_SetPointerProperty(ctx->m_ui.m_new_project_dialog_properties,
-                             SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-                             ctx->m_window);
-      SDL_SetBooleanProperty(ctx->m_ui.m_new_project_dialog_properties,
-                             SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-      SDL_SetStringProperty(ctx->m_ui.m_new_project_dialog_properties,
-                            SDL_PROP_FILE_DIALOG_TITLE_STRING,
-                            "New Project Location");
-    }
-    InputPath("Location", ctx, &ui.m_location_buffer, SDL_FILEDIALOG_OPENFOLDER,
-              ctx->m_ui.m_new_project_dialog_properties);
-
     ScratchArena scratch;
+
+    FileDialogGuid file_dialog_guid = FileDialogGuidFromName("New Project");
+    InputPath("Location", &ctx->m_popup_arena, &ui.m_location_buffer,
+              {
+                  .guid = file_dialog_guid,
+                  .type = FileDialogType::OpenFolder,
+                  .modal_window = ctx->m_window,
+                  .location = editor_default_project_directory(scratch),
+              });
+
     Path location =
         Path::init(scratch, String8::init(ui.m_location_buffer.m_data));
     Path title = Path::init(scratch, String8::init(ui.m_title_buffer.m_data));
@@ -1030,7 +809,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     }
 
     bool close = false;
-    ImGui::BeginDisabled(ctx->m_ui.m_dialog_active);
+    ImGui::BeginDisabled(IsFileDialogOpen(file_dialog_guid));
     if (ImGui::Button("Create")) {
       close_project(ctx);
       Result<void, String8> result = new_project(ctx, path);
@@ -1060,23 +839,16 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     ImportSceneUI &ui = ctx->m_ui.m_import_scene;
     if (ImGui::IsWindowAppearing()) {
       ui = {};
-      ui.m_path_buffer.push(&ctx->m_popup_arena, 0);
     }
 
     ImGui::BeginDisabled(ui.m_state == ImportSceneUIState::Importing);
-    if (!ctx->m_ui.m_import_scene_dialog_properties) {
-      ctx->m_ui.m_import_scene_dialog_properties = SDL_CreateProperties();
-      SDL_SetPointerProperty(ctx->m_ui.m_import_scene_dialog_properties,
-                             SDL_PROP_FILE_DIALOG_WINDOW_POINTER,
-                             ctx->m_window);
-      SDL_SetBooleanProperty(ctx->m_ui.m_import_scene_dialog_properties,
-                             SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
-      SDL_SetStringProperty(ctx->m_ui.m_import_scene_dialog_properties,
-                            SDL_PROP_FILE_DIALOG_TITLE_STRING,
-                            "Import Scene Path");
-    }
-    InputPath("Path", ctx, &ui.m_path_buffer, SDL_FILEDIALOG_OPENFILE,
-              ctx->m_ui.m_import_scene_dialog_properties);
+    FileDialogGuid file_dialog_guid = FileDialogGuidFromName("Import Scene");
+    InputPath("Path", &ctx->m_popup_arena, &ui.m_path_buffer,
+              {
+                  .guid = file_dialog_guid,
+                  .type = FileDialogType::OpenFile,
+                  .modal_window = ctx->m_window,
+              });
     ImGui::EndDisabled();
 
     if (ui.m_import_future and ui.m_import_future.is_ready()) {
@@ -1105,7 +877,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
         close = true;
       }
     } else {
-      ImGui::BeginDisabled(ctx->m_ui.m_dialog_active or
+      ImGui::BeginDisabled(IsFileDialogOpen(file_dialog_guid) or
                            ui.m_state == ImportSceneUIState::Importing);
       if (ImGui::Button("Import")) {
         ui.m_state = ImportSceneUIState::Importing;
