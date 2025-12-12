@@ -2,11 +2,6 @@
 #include "ren/core/JSON.hpp"
 
 namespace ren {
-constexpr u32 GLB_MAGIC = 0x46546C67;
-constexpr u32 GLB_VERSION = 2;
-constexpr u32 GLB_CHUNK_JSON = 0x4E4F534A;
-constexpr u32 GLB_CHUNK_BIN = 0x004E4942;
-
 static inline bool try_get_json_string(JsonValue json, String8 key,
                                        String8 &out) {
   JsonValue val = json_value(json, key);
@@ -276,9 +271,9 @@ static GltfAccessor parse_accessor(NotNull<Arena *> arena, JsonValue json) {
     accessor.max = DynamicArray<float>::init(arena, max_values.m_size);
     for (i32 i = 0; i < max_values.m_size; i++) {
       if (max_values[i].type == JsonType::Number) {
-        accessor.max.push(arena, (float) max_values[i].number);
+        accessor.max.push(arena, (float)max_values[i].number);
       } else if (max_values[i].type == JsonType::Integer) {
-        accessor.max.push(arena, (float) max_values[i].integer);
+        accessor.max.push(arena, (float)max_values[i].integer);
       }
     }
   }
@@ -377,78 +372,6 @@ static Result<Gltf, GltfError> gltf_parse_json(NotNull<Arena *> arena,
 
   return gltf;
 }
-static Result<Gltf, GltfError> gltf_parse_glb(NotNull<Arena *> arena,
-                                              Span<u8> buffer) {
-  if (buffer.m_size < 12) {
-    return GLTF_ERROR_INVALID_SOURCE;
-  }
-
-  const u8 *data = (const u8 *)buffer.m_data;
-  usize length = buffer.m_size;
-
-  u32 magic = *(u32 *)data;
-  u32 version = *(u32 *)(data + 4);
-  u32 file_length = *(u32 *)(data + 8);
-
-  if (magic != GLB_MAGIC || version != GLB_VERSION) {
-    return GLTF_ERROR_INVALID_SOURCE;
-  }
-  if (file_length > length) {
-    return GLTF_ERROR_INVALID_SOURCE;
-  }
-
-  usize offset = 12;
-  Result<Gltf, GltfError> gltf_result = GLTF_ERROR_INVALID_SOURCE;
-  const u8 *bin_data = nullptr;
-  u32 bin_length = 0;
-
-  while (offset < length) {
-    if (offset + 8 > length)
-      break;
-
-    u32 chunk_length = *(u32 *)(data + offset);
-    u32 chunk_type = *(u32 *)(data + offset + 4);
-    offset += 8;
-
-    if (offset + chunk_length > length) {
-      return GLTF_ERROR_INVALID_SOURCE;
-    }
-
-    if (chunk_type == GLB_CHUNK_JSON) {
-      String8 json_str = {(const char *)(data + offset), chunk_length};
-      Result<JsonValue, JsonErrorInfo> json = json_parse(arena, json_str);
-      if (!json) {
-        return GLTF_ERROR_INVALID_SOURCE;
-      }
-      gltf_result = gltf_parse_json(arena, *json);
-      if (!gltf_result) {
-        return gltf_result.error();
-      }
-    } else if (chunk_type == GLB_CHUNK_BIN) {
-      bin_data = data + offset;
-      bin_length = chunk_length;
-    }
-
-    offset += chunk_length;
-  }
-
-  if (!gltf_result) {
-    return GLTF_ERROR_INVALID_SOURCE;
-  }
-
-  if (bin_data && bin_length > 0 && gltf_result->buffers.m_size > 0) {
-    GltfBuffer &first_buffer = gltf_result->buffers[0];
-    if (!first_buffer.uri) {
-      first_buffer.data = DynamicArray<u8>::init(arena, bin_length);
-      first_buffer.data.m_size = bin_length;
-      memcpy(first_buffer.data.m_data, bin_data, bin_length);
-      first_buffer.byte_length = bin_length;
-    }
-  }
-
-  return gltf_result;
-}
-
 static bool is_data_uri(String8 uri) { return uri.starts_with("data:"); }
 static Result<Span<u8>, GltfError> decode_data_uri(NotNull<Arena *> arena,
                                                    String8 uri) {
@@ -516,7 +439,7 @@ static Result<void, GltfError> gltf_load_buffers(NotNull<Arena *> arena,
       }
 
       buffer.data.m_data = decoded->m_data;
-      buffer.data.m_capacity = buffer.data.m_size = decoded->m_size; 
+      buffer.data.m_capacity = buffer.data.m_size = decoded->m_size;
       buffer.byte_length = (i32)decoded->m_size;
     } else {
       Path buffer_path = base_path.concat(arena, Path::init(buffer.uri));
@@ -535,18 +458,22 @@ static Result<void, GltfError> gltf_load_buffers(NotNull<Arena *> arena,
   return {};
 }
 
+Result<Gltf, GltfError> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer) {
+  Result<JsonValue, JsonErrorInfo> json =
+      json_parse(arena, String8((const char *)buffer.m_data, buffer.m_size));
+  if (!json) {
+    return GLTF_ERROR_INVALID_SOURCE;
+  }
+  return gltf_parse_json(arena, *json);
+}
+
 Result<Gltf, GltfError> gltf_parse_file(NotNull<Arena *> arena, Path path) {
   IoResult<Span<u8>> file_data = read<u8>(arena, path);
   if (!file_data) {
     return GLTF_ERROR_INVALID_SOURCE;
   }
 
-  GltfParseMode parse_mode = GLTF_PARSE_ASCII;
-  Path extension = path.extension();
-  if (extension == ".glb") {
-    parse_mode = GLTF_PARSE_BIN;
-  }
-  Result<Gltf, GltfError> gltf = gltf_parse(arena, parse_mode, *file_data);
+  Result<Gltf, GltfError> gltf = gltf_parse(arena, *file_data);
   if (!gltf) {
     return gltf.error();
   }
@@ -561,21 +488,5 @@ Result<Gltf, GltfError> gltf_parse_file(NotNull<Arena *> arena, Path path) {
   }
 
   return gltf;
-}
-
-Result<Gltf, GltfError> gltf_parse(NotNull<Arena *> arena,
-                                   GltfParseMode parse_mode, Span<u8> buffer) {
-  if (parse_mode == GLTF_PARSE_ASCII) {
-    Result<JsonValue, JsonErrorInfo> json =
-        json_parse(arena, String8((const char *)buffer.m_data, buffer.m_size));
-    if (!json) {
-      return GLTF_ERROR_INVALID_SOURCE;
-    }
-    return gltf_parse_json(arena, *json);
-  } else if (parse_mode == GLTF_PARSE_BIN) {
-    return gltf_parse_glb(arena, buffer);
-  }
-
-  return GLTF_ERROR_NOT_SUPPORTED;
 }
 } // namespace ren
