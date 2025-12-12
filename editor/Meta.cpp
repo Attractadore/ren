@@ -84,7 +84,7 @@ String8 to_string(NotNull<Arena *> arena, MetaGltfErrorInfo error) {
   return "Unknown error";
 }
 
-MetaGltf meta_gltf_generate(NotNull<Arena *> arena, JsonValue gltf,
+MetaGltf meta_gltf_generate(NotNull<Arena *> arena, Gltf gltf,
                             Path filename) {
   ScratchArena scratch;
   blake3_hasher hasher;
@@ -92,24 +92,14 @@ MetaGltf meta_gltf_generate(NotNull<Arena *> arena, JsonValue gltf,
 
   Path stem = filename.stem();
 
-  Span<const JsonValue> gltf_meshes = json_array_value(gltf, "meshes");
-  usize num_meta_meshes = 0;
-  for (usize mesh_index : range(gltf_meshes.m_size)) {
-    Span<const JsonValue> gltf_primitives =
-        json_array_value(gltf_meshes[mesh_index], "primitives");
-    num_meta_meshes += gltf_primitives.m_size;
-  }
-  auto meta_meshes = Span<MetaMesh>::allocate(arena, num_meta_meshes);
+  auto meta_meshes = Span<MetaMesh>::allocate(arena, gltf.meshes.m_size);
   usize meta_mesh_offset = 0;
 
-  for (usize gltf_mesh_index : range(gltf_meshes.m_size)) {
-    String8 gltf_mesh_name =
-        json_string_value_or(gltf_meshes[gltf_mesh_index], "name",
-                             format(scratch, "{}", gltf_mesh_index))
-            .copy(arena);
-    Span<const JsonValue> gltf_primitives =
-        json_array_value(gltf_meshes[gltf_mesh_index], "primitives");
-    for (usize gltf_primitive_index : range(gltf_primitives.m_size)) {
+  for (usize gltf_mesh_index : range(gltf.meshes.m_size)) {
+    String8 gltf_mesh_name = 
+        gltf.meshes[gltf_mesh_index].name;
+    for (usize gltf_primitive_index :
+         range(gltf.meshes[gltf_mesh_index].primitives.m_size)) {
       String8 gltf_primitive_name = format(scratch, "{}", gltf_primitive_index);
       blake3_hasher_reset(&hasher);
       String8 guid_src = String8::join(
