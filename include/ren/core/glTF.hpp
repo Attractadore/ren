@@ -12,11 +12,6 @@ enum GltfError {
   GLTF_ERROR_NOT_SUPPORTED,
 };
 
-enum GltfParseMode {
-    GLTF_PARSE_ASCII,
-    GLTF_PARSE_BIN
-};
-
 enum GltfComponentType {
   GLTF_COMPONENT_TYPE_BYTE = 5120,
   GLTF_COMPONENT_TYPE_UNSIGNED_BYTE = 5121,
@@ -161,8 +156,6 @@ struct Gltf {
 };
 
 Result<Gltf, GltfError> gltf_parse_file(NotNull<Arena *> arena, Path path);
-Result<Gltf, GltfError> gltf_parse(NotNull<Arena *> arena, GltfParseMode parse_mode,
-                                   Span<u8> buffer);
 
 constexpr String8 GLTF_ACCESSOR_TYPE_SCALAR = "SCALAR";
 constexpr String8 GLTF_ACCESSOR_TYPE_VEC2 = "VEC2";
