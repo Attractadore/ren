@@ -7,10 +7,9 @@
 #include "ren/core/Chrono.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/GenArray.hpp"
 #include "ren/core/JSON.hpp"
 #include "ren/core/Job.hpp"
-#include "ren/core/Mutex.hpp"
-#include "ren/core/Queue.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
 #include "ren/core/glTF.hpp"
@@ -27,6 +26,12 @@
 #include <cstring>
 #include <fmt/base.h>
 #include <imgui.hpp>
+#include <tracy/Tracy.hpp>
+
+#if __linux__
+#include <sys/inotify.h>
+#include <unistd.h>
+#endif
 
 namespace ren {
 
@@ -116,17 +121,78 @@ struct EditorBackgroundJob {
   ArenaTag tag;
 };
 
+template <typename T> struct HandleList {
+  Handle<T> prev;
+  Handle<T> next;
+
+public:
+  explicit operator bool() const {
+    ren_assert((!prev and !next) or (prev and next));
+    return prev;
+  }
+};
+
+#define ren_handle_list_insert_after(gen_array, field, prev_handle,            \
+                                     node_handle)                              \
+  {                                                                            \
+    auto &prev = gen_array[prev_handle];                                       \
+    auto next_handle = prev.field.next;                                        \
+    auto &node = gen_array[node_handle];                                       \
+    auto &next = gen_array[next_handle];                                       \
+    prev.field.next = node_handle;                                             \
+    node.field.prev = prev_handle;                                             \
+    node.field.next = next_handle;                                             \
+    next.field.prev = node_handle;                                             \
+  }
+
+#define ren_handle_list_remove(gen_array, field, node_handle)                  \
+  {                                                                            \
+    auto &node = gen_array[node_handle];                                       \
+    auto &prev = gen_array[node.field.prev];                                   \
+    auto &next = gen_array[node.field.next];                                   \
+    prev.field.next = node.field.next;                                         \
+    next.field.prev = node.field.prev;                                         \
+  }
+
+#define ren_handle_list_init(gen_array, field, head_handle)                    \
+  {                                                                            \
+    auto &head = gen_array[head_handle];                                       \
+    head.field = {.prev = head_handle, .next = head_handle};                   \
+  }
+
+struct EditorMesh;
+
+struct EditorGltfScene {
+  Path bin_filename;
+  Path gltf_filename;
+  Path meta_filename;
+  Handle<EditorMesh> first_mesh;
+  HandleList<EditorGltfScene> list;
+};
+
 struct EditorMesh {
+  Guid64 guid = {};
   String8 name;
+  Handle<EditorMesh> next;
+
+  HandleList<EditorMesh> dirty_list;
 };
 
 struct EditorProjectContext {
   Path m_directory;
   DynamicArray<EditorBackgroundJob> m_background_jobs;
-  DynamicArray<EditorMesh> m_meshes;
 
-  alignas(64) Mutex m_mesh_update_mutex;
-  alignas(64) Queue<EditorMesh> m_update_meshes;
+  GenArray<EditorGltfScene> m_gltf_scenes;
+  GenArray<EditorMesh> m_meshes;
+
+  Handle<EditorGltfScene> m_gltf_scenes_head;
+  Handle<EditorMesh> m_mesh_dirty_list_head;
+
+#if __linux__
+  int m_inotify_fd = -1;
+  int m_assets_watch_fd = -1;
+  int m_gltf_watch_fd = -1;
+#endif
 };
 
 struct EditorContext {
@@ -285,21 +351,121 @@ void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx) {
   load_recently_opened_list(ctx);
 };
 
-void open_project_register_meshes(NotNull<EditorContext *> ctx) {
+void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
+                         Path meta_filename) {
   ScratchArena scratch;
-  Path gltf_path =
+  EditorProjectContext *project = ctx->m_project;
+
+  Path assets = project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
+  Path gltf_filename = meta_filename.remove_extension();
+  Path bin_filename =
+      gltf_filename.replace_extension(scratch, Path::init(".bin"));
+  Path gtlf_path = assets.concat(scratch, gltf_filename);
+  Path bin_path = assets.concat(scratch, bin_filename);
+  Path meta_path = assets.concat(scratch, meta_filename);
+
+  // Avoid endless recompilation loops if we can't read a file's modification
+  // time by treating it as old as the universe itself.
+  u64 gltf_mtime = last_write_time(gtlf_path).value_or(0);
+  u64 bin_mtime = last_write_time(bin_path).value_or(0);
+  u64 meta_mtime = last_write_time(meta_path).value_or(0);
+
+  Path content = project->m_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
+
+  Handle<EditorMesh> first_mesh_handle;
+  for (MetaMesh meta_mesh : meta.meshes) {
+    String8 guid_str = to_string(scratch, meta_mesh.guid);
+    Path mesh_path = content.concat(scratch, Path::init(guid_str));
+    u64 mtime = last_write_time(mesh_path).value_or(0);
+
+    first_mesh_handle = project->m_meshes.insert(
+        &ctx->m_project_arena,
+        {
+            .guid = meta_mesh.guid,
+            .name = meta_mesh.name.copy(&ctx->m_project_arena),
+            .next = first_mesh_handle,
+        });
+    if (mtime < max({gltf_mtime, bin_mtime, meta_mtime})) {
+      ren_handle_list_insert_after(project->m_meshes, dirty_list,
+                                   project->m_mesh_dirty_list_head,
+                                   first_mesh_handle);
+    }
+  }
+  Handle<EditorGltfScene> handle = project->m_gltf_scenes.insert(
+      &ctx->m_project_arena,
+      {
+          .bin_filename = bin_filename.copy(&ctx->m_project_arena),
+          .gltf_filename = gltf_filename.copy(&ctx->m_project_arena),
+          .meta_filename = meta_filename.copy(&ctx->m_project_arena),
+          .first_mesh = first_mesh_handle,
+      });
+  ren_handle_list_insert_after(project->m_gltf_scenes, list,
+                               project->m_gltf_scenes_head, handle);
+}
+
+void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path) {
+  ren_assert(meta_path.is_absolute());
+  ScratchArena scratch;
+  IoResult<Span<char>> buffer = read(scratch, meta_path);
+  if (!buffer) {
+    fmt::println(stderr, "Failed to read {}: {}", meta_path, buffer.error());
+    return;
+  }
+  Result<JsonValue, JsonErrorInfo> json =
+      json_parse(scratch, {buffer->m_data, buffer->m_size});
+  if (!json) {
+    JsonErrorInfo error = json.error();
+    fmt::println(stderr, "{}:{}:{}: {}", meta_path, error.line, error.column,
+                 error.error);
+    return;
+  }
+  Result<MetaGltf, MetaGltfErrorInfo> meta =
+      meta_gltf_from_json(scratch, *json);
+  if (!meta) {
+    fmt::println(stderr, "Failed to parse meta file {}: ", meta_path,
+                 to_string(scratch, meta.error()));
+    return;
+  }
+  register_gltf_scene(ctx, *meta, meta_path.filename());
+}
+
+void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
+  // TODO: fix linear search, it's slow.
+  EditorProjectContext *project = ctx->m_project;
+  for (auto &&[handle, gltf_scene] : project->m_gltf_scenes) {
+    if (gltf_scene.meta_filename == meta_filename) {
+      Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
+      while (mesh_handle) {
+        const EditorMesh &mesh = project->m_meshes[mesh_handle];
+        Handle<EditorMesh> next = mesh.next;
+        if (mesh.dirty_list) {
+          ren_handle_list_remove(project->m_meshes, dirty_list, mesh_handle);
+        }
+        project->m_meshes.erase(mesh_handle);
+        mesh_handle = next;
+      }
+      ren_handle_list_remove(project->m_gltf_scenes, list, handle);
+      project->m_gltf_scenes.erase(handle);
+      return;
+    }
+  }
+}
+
+void register_all_gltf_scenes(NotNull<EditorContext *> ctx) {
+  ScratchArena scratch;
+  Path assets =
       ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
-  IoResult<NotNull<Directory *>> dirit = open_directory(scratch, gltf_path);
+  IoResult<NotNull<Directory *>> dirit = open_directory(scratch, assets);
   if (!dirit) {
-    fmt::println(stderr, "Failed to open {}: {}", gltf_path, dirit.error());
+    fmt::println(stderr, "Failed to open {}: {}", assets, dirit.error());
     return;
   }
   while (true) {
     ScratchArena scratch;
     IoResult<Path> entry_result = read_directory(scratch, *dirit);
     if (!entry_result) {
-      fmt::println(stderr, "Failed to read directory entry in {}: {}",
-                   gltf_path, entry_result.error());
+      fmt::println(stderr, "Failed to read directory entry in {}: {}", assets,
+                   entry_result.error());
       close_directory(*dirit);
       break;
     }
@@ -310,33 +476,172 @@ void open_project_register_meshes(NotNull<EditorContext *> ctx) {
     if (entry.extension() != META_EXT) {
       continue;
     }
-    Path meta_path = gltf_path.concat(scratch, entry);
-    IoResult<Span<char>> buffer = read(scratch, meta_path);
-    if (!buffer) {
-      fmt::println(stderr, "Failed to read {}: {}", meta_path, buffer.error());
-      continue;
-    }
-    Result<JsonValue, JsonErrorInfo> json =
-        json_parse(scratch, {buffer->m_data, buffer->m_size});
-    if (!json) {
-      JsonErrorInfo error = json.error();
-      fmt::println(stderr, "{}:{}:{}: {}", meta_path, error.line, error.column,
-                   error.error);
-      continue;
-    }
-    Result<MetaGltf, MetaGltfErrorInfo> meta =
-        meta_gltf_from_json(scratch, *json);
-    if (!meta) {
-      fmt::println(stderr, "Failed to parse meta file {}: ", meta_path,
-                   to_string(scratch, meta.error()));
-      continue;
-    }
-    for (MetaMesh mesh : meta->meshes) {
-      ctx->m_project->m_meshes.push(&ctx->m_project_arena,
-                                    {mesh.name.copy(&ctx->m_project_arena)});
-    }
+    Path meta_path = assets.concat(scratch, entry);
+    register_gltf_scene(ctx, meta_path);
   }
   close_directory(*dirit);
+}
+
+void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx) {
+  EditorProjectContext *project = ctx->m_project;
+
+  project->m_gltf_scenes.clear();
+  project->m_meshes.clear();
+
+  project->m_gltf_scenes_head =
+      project->m_gltf_scenes.insert(&ctx->m_project_arena);
+  ren_handle_list_init(project->m_gltf_scenes, list,
+                       project->m_gltf_scenes_head);
+  project->m_mesh_dirty_list_head =
+      project->m_meshes.insert(&ctx->m_project_arena);
+  ren_handle_list_init(project->m_meshes, dirty_list,
+                       project->m_mesh_dirty_list_head);
+}
+
+void mark_gltf_scene_dirty(NotNull<EditorContext *> ctx, Path meta_filename) {
+  // TODO: fix linear search, it's slow.
+  EditorProjectContext *project = ctx->m_project;
+  for (auto &&[_, gltf_scene] : project->m_gltf_scenes) {
+    if (gltf_scene.meta_filename == meta_filename) {
+      Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
+      while (mesh_handle) {
+        const EditorMesh &mesh = project->m_meshes[mesh_handle];
+        Handle<EditorMesh> next = mesh.next;
+        if (!mesh.dirty_list) {
+          ren_handle_list_insert_after(project->m_meshes, dirty_list,
+                                       project->m_mesh_dirty_list_head,
+                                       mesh_handle);
+        }
+        mesh_handle = next;
+      }
+      return;
+    }
+  }
+}
+
+void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
+                               Path meta_filename) {
+  // TODO: fix linear search, it's slow.
+  EditorProjectContext *project = ctx->m_project;
+  for (auto &&[_, gltf_scene] : project->m_gltf_scenes) {
+    if (gltf_scene.meta_filename == meta_filename) {
+      Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
+      while (mesh_handle) {
+        const EditorMesh &mesh = project->m_meshes[mesh_handle];
+        Handle<EditorMesh> next = mesh.next;
+        if (mesh.dirty_list) {
+          ren_handle_list_remove(project->m_meshes, dirty_list,
+
+                                 mesh_handle);
+        }
+        mesh_handle = next;
+      }
+      return;
+    }
+  }
+}
+
+void start_asset_watcher(NotNull<EditorContext *> ctx) {
+  ZoneScoped;
+#if __linux__
+  EditorProjectContext *project = ctx->m_project;
+  ScratchArena scratch;
+  project->m_inotify_fd = inotify_init1(IN_NONBLOCK);
+  if (project->m_inotify_fd == -1) {
+    fmt::println(stderr, "Failed to create inotify instance: {}",
+                 strerror(errno));
+    return;
+  }
+
+  Path assets = ctx->m_project->m_directory.concat(scratch, ASSET_DIR);
+  Path gltf = assets.concat(scratch, GLTF_DIR);
+
+  std::ignore = create_directories(assets);
+  project->m_assets_watch_fd = inotify_add_watch(
+      project->m_inotify_fd, assets.m_str.zero_terminated(scratch),
+      IN_ALL_EVENTS | IN_EXCL_UNLINK);
+  if (project->m_assets_watch_fd == -1) {
+    fmt::println(stderr, "Failed to add {} to inotify watch list: {}", assets,
+                 strerror(errno));
+  }
+
+  std::ignore = create_directories(gltf);
+  project->m_gltf_watch_fd = inotify_add_watch(
+      project->m_inotify_fd, gltf.m_str.zero_terminated(scratch),
+      IN_ALL_EVENTS | IN_EXCL_UNLINK);
+  if (project->m_gltf_watch_fd == -1) {
+    fmt::println(stderr, "Failed to add {} to inotify watch list: {}", gltf,
+                 strerror(errno));
+  }
+#endif
+}
+
+void stop_asset_watcher(NotNull<EditorContext *> ctx) {
+#if __linux__
+  ::close(ctx->m_project->m_inotify_fd);
+  ctx->m_project->m_inotify_fd = -1;
+#endif
+}
+
+void run_asset_watcher(NotNull<EditorContext *> ctx) {
+  ZoneScoped;
+#if __linux__
+  EditorProjectContext *project = ctx->m_project;
+  if (project->m_inotify_fd == -1) {
+    return;
+  }
+  ScratchArena scratch;
+  Path gltf_dir =
+      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
+  while (true) {
+    ScratchArena scratch;
+    alignas(inotify_event) char buffer[2048];
+    ssize_t count = ::read(project->m_inotify_fd, buffer, sizeof(buffer));
+    if (count == -1 and errno != EWOULDBLOCK) {
+      fmt::println(stderr, "Failed to read inotify update: {}",
+                   strerror(errno));
+      return;
+    }
+    if (count == -1 and errno == EWOULDBLOCK) {
+      return;
+    }
+    ssize_t offset = 0;
+    while (offset < count) {
+      const auto *event = (const inotify_event *)&buffer[offset];
+      if (event->mask & (IN_Q_OVERFLOW | IN_IGNORED | IN_MOVE_SELF)) {
+        stop_asset_watcher(ctx);
+        unregister_all_gltf_scenes(ctx);
+        start_asset_watcher(ctx);
+        register_all_gltf_scenes(ctx);
+        return;
+      }
+      if (event->len > 0 and event->wd == project->m_gltf_watch_fd) {
+        u32 delete_mask = IN_DELETE | IN_MOVED_FROM;
+        u32 modify_mask = IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_TO;
+        Path filename = Path::init(String8::init(event->name));
+        Path path = gltf_dir.concat(scratch, filename);
+        bool is_meta = filename.extension() == META_EXT;
+        if (is_meta) {
+          if (event->mask & delete_mask) {
+            unregister_gltf_scene(ctx, filename);
+          } else if (event->mask & modify_mask) {
+            unregister_gltf_scene(ctx, filename);
+            register_gltf_scene(ctx, path);
+          }
+        } else {
+          Path gltf_filename = filename.replace_extension(scratch, ".gltf");
+          Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
+          if (event->mask & delete_mask) {
+            mark_gltf_scene_not_dirty(ctx, meta_filename);
+          } else if (event->mask & modify_mask) {
+            mark_gltf_scene_dirty(ctx, meta_filename);
+          }
+        }
+      }
+      offset += sizeof(*event) + event->len;
+    }
+  }
+#endif
 }
 
 Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
@@ -361,10 +666,28 @@ Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
   ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
   *ctx->m_project = {
       .m_directory = path.parent().copy(&ctx->m_project_arena),
-      .m_update_meshes = Queue<EditorMesh>::init(),
+      .m_gltf_scenes = GenArray<EditorGltfScene>::init(&ctx->m_project_arena),
+      .m_meshes = GenArray<EditorMesh>::init(&ctx->m_project_arena),
+  };
+
+  Handle<EditorGltfScene> gltf_scene_list_head =
+      ctx->m_project->m_gltf_scenes.insert(&ctx->m_project_arena);
+  ctx->m_project->m_gltf_scenes_head = gltf_scene_list_head;
+  ctx->m_project->m_gltf_scenes[gltf_scene_list_head].list = {
+      .prev = gltf_scene_list_head,
+      .next = gltf_scene_list_head,
+  };
+
+  Handle<EditorMesh> mesh_dirty_list_head =
+      ctx->m_project->m_meshes.insert(&ctx->m_project_arena);
+  ctx->m_project->m_mesh_dirty_list_head = mesh_dirty_list_head;
+  ctx->m_project->m_meshes[mesh_dirty_list_head].dirty_list = {
+      .prev = mesh_dirty_list_head,
+      .next = mesh_dirty_list_head,
   };
   ctx->m_state = EditorState::Project;
-  open_project_register_meshes(ctx);
+  start_asset_watcher(ctx);
+  register_all_gltf_scenes(ctx);
 
   if (abs_path) {
     ctx->m_recently_opened.push(&ctx->m_arena, *abs_path);
@@ -382,7 +705,7 @@ void close_project(NotNull<EditorContext *> ctx) {
     job_wait(token);
     job_free_tag(&tag);
   }
-  ctx->m_project->m_update_meshes.destroy();
+  stop_asset_watcher(ctx);
   ctx->m_state = EditorState::Startup;
   ctx->m_project = nullptr;
   ctx->m_project_arena.clear();
@@ -564,7 +887,7 @@ job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
         if (!scene) {
           return String8::init(&output, importer.GetErrorString());
         }
-        ren_assert(scene->mNumMeshes > 1);
+        ren_assert(scene->mNumMeshes > 0);
 
         Assimp::Exporter exporter;
         Assimp::ExportProperties exporter_properties;
@@ -601,15 +924,6 @@ job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
             !result) {
           return format(&output, "Failed to write {}: {}", meta_path,
                         result.error());
-        }
-
-        Arena project_arena = Arena::from_tag(ArenaNamedTag::EditorProject);
-        for (MetaMesh meta_mesh : meta.meshes) {
-          EditorMesh mesh = {
-              .name = meta_mesh.name.copy(&project_arena),
-          };
-          AutoMutex _(ctx->m_project->m_mesh_update_mutex);
-          ctx->m_project->m_update_meshes.push(mesh);
         }
 
         return {};
@@ -739,14 +1053,43 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
           ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Meshes", nullptr)) {
-          Span<const EditorMesh> meshes = ctx->m_project->m_meshes;
-          ImGuiListClipper clipper;
-          clipper.Begin(meshes.m_size);
-          while (clipper.Step()) {
-            for (i32 i : range(clipper.DisplayStart, clipper.DisplayEnd)) {
-              String8 name = meshes[i].name;
-              ImGui::Text("%.*s", (int)name.m_size, name.m_str);
+          ScratchArena scratch;
+          Handle<EditorGltfScene> head = ctx->m_project->m_gltf_scenes_head;
+          Handle<EditorGltfScene> handle =
+              ctx->m_project->m_gltf_scenes[head].list.next;
+          while (handle != head) {
+            const EditorGltfScene &scene =
+                ctx->m_project->m_gltf_scenes[handle];
+            bool is_expanded = ImGui::TreeNode(
+                scene.gltf_filename.m_str.zero_terminated(scratch));
+            if (ImGui::BeginPopupContextItem()) {
+              if (ImGui::Button("Delete")) {
+                Path assets = ctx->m_project->m_directory.concat(
+                    scratch, {ASSET_DIR, GLTF_DIR});
+                Path gltf_path = assets.concat(scratch, scene.gltf_filename);
+                Path meta_path = assets.concat(scratch, scene.meta_filename);
+                if (IoResult<void> result = unlink(gltf_path); !result) {
+                  fmt::println(stderr, "Failed to delete {}: {}", gltf_path,
+                               result.error());
+                }
+                if (IoResult<void> result = unlink(meta_path); !result) {
+                  fmt::println(stderr, "Failed to delete {}: {}", meta_path,
+                               result.error());
+                }
+                ImGui::CloseCurrentPopup();
+              }
+              ImGui::EndPopup();
             }
+            if (is_expanded) {
+              Handle<EditorMesh> mesh_handle = scene.first_mesh;
+              while (mesh_handle) {
+                const EditorMesh &mesh = ctx->m_project->m_meshes[mesh_handle];
+                ImGui::Text("%.*s", (int)mesh.name.m_size, mesh.name.m_str);
+                mesh_handle = mesh.next;
+              }
+              ImGui::TreePop();
+            }
+            handle = scene.list.next;
           }
           ImGui::EndTabItem();
         }
@@ -964,17 +1307,7 @@ void run_editor(NotNull<EditorContext *> ctx) {
           i++;
         }
       }
-
-      {
-        AutoMutex _(ctx->m_project->m_mesh_update_mutex);
-        while (true) {
-          Optional<EditorMesh> mesh = ctx->m_project->m_update_meshes.try_pop();
-          if (!mesh) {
-            break;
-          }
-          ctx->m_project->m_meshes.push(&ctx->m_project_arena, *mesh);
-        }
-      }
+      run_asset_watcher(ctx);
     }
 
     draw_editor_ui(ctx);

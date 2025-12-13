@@ -15,13 +15,33 @@ const char Path::SEPARATOR = '\\';
 
 namespace {
 
-const wchar_t *utf8_to_wcs(NotNull<Arena *> arena, String8 str) {
+const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str) {
   int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
   ren_assert(wlen > 0);
   wchar_t *wbuf = arena->allocate<wchar_t>(wlen + 1);
   int res = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf, wlen);
   ren_assert(res == wlen);
   wbuf[wlen] = 0;
+  return wbuf;
+}
+
+const wchar_t *utf8_to_unrestricted_path(NotNull<Arena *> arena, String8 str,
+                                         const wchar_t *suffix = nullptr) {
+  int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
+  int suflen = suffix ? std::wcslen(suffix) : 0;
+  ren_assert(wlen > 0);
+  wchar_t *wbuf = arena->allocate<wchar_t>(4 + wlen + suflen + 1);
+  wbuf[0] = L'\\';
+  wbuf[1] = L'\\';
+  wbuf[2] = L'?';
+  wbuf[3] = L'\\';
+  int res =
+      MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf + 4, wlen);
+  ren_assert(res == wlen);
+  if (suffix) {
+    copy(suffix, suflen, &wbuf[4 + wlen]);
+  }
+  wbuf[4 + wlen + suflen] = 0;
   return wbuf;
 }
 
@@ -160,7 +180,7 @@ String8 Path::native(NotNull<Arena *> arena) const {
           GetModuleHandleA("KERNEL32"), "wine_get_unix_file_name");
   if (wine_get_unix_file_name) {
     ScratchArena scratch;
-    const char *str = wine_get_unix_file_name(utf8_to_wcs(scratch, m_str));
+    const char *str = wine_get_unix_file_name(utf8_to_path(scratch, m_str));
     ren_assert(str);
     return String8::init(str).copy(arena);
   }
@@ -169,7 +189,7 @@ String8 Path::native(NotNull<Arena *> arena) const {
 
 IoResult<bool> Path::exists() const {
   ScratchArena scratch;
-  if (PathFileExistsW(utf8_to_wcs(scratch, m_str))) {
+  if (PathFileExistsW(utf8_to_path(scratch, m_str))) {
     return true;
   }
   DWORD err = GetLastError();
@@ -194,7 +214,7 @@ IoResult<Path> current_directory(NotNull<Arena *> arena) {
 
 IoResult<void> create_directory(Path path) {
   ScratchArena scratch;
-  const wchar_t *wcs_path = utf8_to_wcs(scratch, path.m_str);
+  const wchar_t *wcs_path = utf8_to_path(scratch, path.m_str);
   if (!CreateDirectoryW(wcs_path, nullptr)) {
     return win32_to_io_error();
   }
@@ -205,7 +225,7 @@ IoResult<bool> is_directory_empty(Path path) {
   ScratchArena scratch;
   // Init directly since '*' is not a valid path
   path = path.concat(scratch, Path{"*"});
-  const wchar_t *wcs_path = utf8_to_wcs(scratch, path.m_str);
+  const wchar_t *wcs_path = utf8_to_path(scratch, path.m_str);
   WIN32_FIND_DATAW find_data;
 
   HANDLE handle = FindFirstFileW(wcs_path, &find_data);
@@ -237,7 +257,7 @@ IoResult<bool> is_directory_empty(Path path) {
 IoResult<u64> last_write_time(Path path) {
   ScratchArena scratch;
   HANDLE hfile =
-      CreateFileW(utf8_to_wcs(scratch, path.m_str), 0,
+      CreateFileW(utf8_to_path(scratch, path.m_str), 0,
                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (!hfile) {
@@ -251,6 +271,14 @@ IoResult<u64> last_write_time(Path path) {
     return win32_to_io_error(err);
   }
   return std::bit_cast<u64>(time);
+}
+
+IoResult<void> unlink(Path path) {
+  ScratchArena scratch;
+  if (!DeleteFileW(utf8_to_unrestricted_path(scratch, path.m_str))) {
+    return win32_to_io_error();
+  }
+  return {};
 }
 
 IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
@@ -276,7 +304,7 @@ IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
         flags.is_set(FileOpen::Truncate) ? TRUNCATE_EXISTING : OPEN_EXISTING;
   }
   HANDLE hfile =
-      CreateFileW(utf8_to_wcs(scratch, path.m_str), access,
+      CreateFileW(utf8_to_path(scratch, path.m_str), access,
                   FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                   nullptr, disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (!hfile) {
@@ -359,29 +387,13 @@ struct Directory {
 IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *> arena,
                                               Path path) {
   ScratchArena scratch;
-
-  String8 str = path.m_str;
-  int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
-  ren_assert(wlen > 0);
-  // 4, 2, 1 bytes for \\?\, \* and null terminator, 7 extra in total.
-  wchar_t *wbuf = scratch->allocate<wchar_t>(wlen + 7);
-  wbuf[0] = L'\\';
-  wbuf[1] = L'\\';
-  wbuf[2] = L'?';
-  wbuf[3] = L'\\';
-  int res =
-      MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf + 4, wlen);
-  ren_assert(res == wlen);
-  wbuf[4 + wlen + 0] = L'\\';
-  wbuf[4 + wlen + 1] = L'*';
-  wbuf[4 + wlen + 2] = 0;
-
   Directory *dir = arena->allocate<Directory>();
-  dir->handle = FindFirstFileW(wbuf, &dir->find_first_data);
+  dir->handle =
+      FindFirstFileW(utf8_to_unrestricted_path(scratch, path.m_str, L"\\*"),
+                     &dir->find_first_data);
   if (dir->handle == INVALID_HANDLE_VALUE) {
     return win32_to_io_error();
   }
-
   return NotNull<Directory *>(dir);
 }
 

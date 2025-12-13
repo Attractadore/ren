@@ -38,7 +38,7 @@ public:
     auto dereference() const -> K {
       ren_assert(m_index < m_size);
       K key;
-      key.gen = m_generations[m_index];
+      key.gen = m_generations[m_index].gen;
       key.index = m_index;
       return key;
     }

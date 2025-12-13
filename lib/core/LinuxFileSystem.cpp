@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <linux/limits.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -97,6 +98,15 @@ IoResult<void> create_directory(Path path) {
   return {};
 }
 
+IoResult<void> unlink(Path path) {
+  ScratchArena scratch;
+  errno = 0;
+  if (::unlink(path.m_str.zero_terminated(scratch))) {
+    return io_error_from_errno();
+  }
+  return {};
+}
+
 IoResult<bool> is_directory_empty(Path path) {
   ScratchArena scratch;
   errno = 0;
@@ -136,6 +146,17 @@ IoResult<bool> is_directory_empty(Path path) {
   }
 
   return false;
+}
+
+IoResult<u64> last_write_time(Path path) {
+  ScratchArena scratch;
+  struct stat statbuf;
+  errno = 0;
+  if (::stat(path.m_str.zero_terminated(scratch), &statbuf)) {
+    return io_error_from_errno();
+  }
+  u64 ns = statbuf.st_mtim.tv_sec * 1'000'000'000 + statbuf.st_mtim.tv_nsec;
+  return ns;
 }
 
 IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {

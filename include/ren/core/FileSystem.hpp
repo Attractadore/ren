@@ -40,7 +40,19 @@ public:
   [[nodiscard]] Path replace_extension(NotNull<Arena *> arena,
                                        Path new_ext) const;
 
+  template <usize N>
+  [[nodiscard]] Path replace_extension(NotNull<Arena *> arena,
+                                       const char (&ext)[N]) const {
+    return replace_extension(arena, Path::init(ext));
+  }
+
+  template <usize N>
+  [[nodiscard]] Path replace_extension(NotNull<Arena *> arena,
+                                       char (&ext)[N]) const = delete;
+
   [[nodiscard]] Path add_extension(NotNull<Arena *> arena, Path ext) const;
+
+  [[nodiscard]] Path remove_extension() const;
 
   [[nodiscard]] Path stem() const;
 
@@ -74,6 +86,8 @@ Result<void, IoError> create_directories(Path path);
 IoResult<bool> is_directory_empty(Path path);
 
 IoResult<u64> last_write_time(Path path);
+
+IoResult<void> unlink(Path path);
 
 struct File {
   uintptr_t m_fd;

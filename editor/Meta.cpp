@@ -7,7 +7,6 @@ namespace ren {
 
 JsonValue to_json(NotNull<Arena *> arena, MetaGltf meta) {
   DynamicArray<JsonKeyValue> json;
-  json.push(arena, {"src", JsonValue::init(arena, meta.src)});
   Span<JsonValue> json_meshes =
       Span<JsonValue>::allocate(arena, meta.meshes.m_size);
   for (usize mesh_index : range(meta.meshes.m_size)) {
@@ -28,11 +27,6 @@ JsonValue to_json(NotNull<Arena *> arena, MetaGltf meta) {
 Result<MetaGltf, MetaGltfErrorInfo> meta_gltf_from_json(NotNull<Arena *> arena,
                                                         JsonValue json) {
   if (json.type != JsonType::Object) {
-    return MetaGltfErrorInfo{};
-  }
-
-  JsonValue json_src = json_value(json, "src");
-  if (json_src.type != JsonType::String) {
     return MetaGltfErrorInfo{};
   }
 
@@ -82,7 +76,6 @@ Result<MetaGltf, MetaGltfErrorInfo> meta_gltf_from_json(NotNull<Arena *> arena,
   }
 
   return MetaGltf{
-      .src = json_string(json_src),
       .meshes = meta_meshes,
   };
 }
@@ -134,7 +127,6 @@ MetaGltf meta_gltf_generate(NotNull<Arena *> arena, JsonValue gltf,
   }
 
   return {
-      .src = stem.m_str.copy(arena),
       .meshes = meta_meshes,
   };
 }

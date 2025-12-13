@@ -16,7 +16,6 @@ struct MetaMesh {
 };
 
 struct MetaGltf {
-  String8 src;
   Span<const MetaMesh> meshes;
 };
 

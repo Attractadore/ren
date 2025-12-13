@@ -129,6 +129,15 @@ Path Path::add_extension(NotNull<Arena *> arena, Path ext) const {
   return {String8(buffer, new_size)};
 }
 
+Path Path::remove_extension() const {
+  const char *dot = m_str.rfind('.');
+  if (!dot) {
+    return *this;
+  }
+  usize size = dot - m_str.m_str;
+  return {m_str.substr(0, size)};
+}
+
 bool Path::is_absolute() const {
   String8 vol = volume_name().m_str;
   if (vol != m_str.substr(0, vol.m_size)) {
