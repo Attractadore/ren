@@ -4,7 +4,7 @@ set -e
 sudo apt update -y
 sudo apt upgrade -y
 
-sudo apt install -y build-essential ccache cmake ninja-build clang llvm libnuma-dev
+sudo apt install -y build-essential ccache cmake ninja-build clang llvm libnuma-dev mold
 
 if ! command -v wslinfo >/dev/null 2>&1; then
   # For xwin and clang-cl

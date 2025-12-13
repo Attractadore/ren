@@ -25,6 +25,13 @@ if(ren_ccache)
   endif()
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+find_program(ren_mold mold)
+if(ren_mold)
+  set(CMAKE_LINKER_TYPE MOLD)
+endif()
+endif()
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wa,-mbig-obj")
