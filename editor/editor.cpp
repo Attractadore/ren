@@ -1,3 +1,4 @@
+#include "FileWatcher.hpp"
 #include "Meta.hpp"
 #include "UiWidgets.hpp"
 #include "ren/baking/mesh.hpp"
@@ -27,17 +28,6 @@
 #include <fmt/base.h>
 #include <imgui.hpp>
 #include <tracy/Tracy.hpp>
-
-#if __linux__
-#include <sys/inotify.h>
-#include <unistd.h>
-#endif
-
-#if _WIN32
-#include "core/Win32.hpp"
-
-#include <Windows.h>
-#endif
 
 namespace ren {
 
@@ -194,17 +184,7 @@ struct EditorProjectContext {
   Handle<EditorGltfScene> m_gltf_scenes_head;
   Handle<EditorMesh> m_mesh_dirty_list_head;
 
-#if __linux__
-  int m_inotify_fd = -1;
-  int m_assets_watch_fd = -1;
-  int m_gltf_watch_fd = -1;
-#endif
-#if _WIN32
-  HANDLE m_root_watch_handle = INVALID_HANDLE_VALUE;
-  HANDLE m_root_watch_event = INVALID_HANDLE_VALUE;
-  OVERLAPPED m_root_watch_overlapped = {};
-  alignas(DWORD) char m_root_watch_buffer[2048];
-#endif
+  FileWatcher *m_asset_watcher = nullptr;
 };
 
 struct EditorContext {
@@ -556,231 +536,79 @@ void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
 
 void start_asset_watcher(NotNull<EditorContext *> ctx) {
   ZoneScoped;
-#if __linux__
   EditorProjectContext *project = ctx->m_project;
-  ScratchArena scratch;
-  project->m_inotify_fd = inotify_init1(IN_NONBLOCK);
-  if (project->m_inotify_fd == -1) {
-    fmt::println(stderr, "Failed to create inotify instance: {}",
-                 strerror(errno));
+  Path root = project->m_directory;
+  project->m_asset_watcher = start_file_watcher(&ctx->m_project_arena, root);
+  if (!project->m_asset_watcher) {
     return;
   }
-
-  Path assets = ctx->m_project->m_directory.concat(scratch, ASSET_DIR);
-  Path gltf = assets.concat(scratch, GLTF_DIR);
-
-  std::ignore = create_directories(assets);
-  project->m_assets_watch_fd = inotify_add_watch(
-      project->m_inotify_fd, assets.m_str.zero_terminated(scratch),
-      IN_ONLYDIR | IN_ALL_EVENTS | IN_EXCL_UNLINK);
-  if (project->m_assets_watch_fd == -1) {
-    fmt::println(stderr, "Failed to add {} to inotify watch list: {}", assets,
-                 strerror(errno));
-  }
-
-  std::ignore = create_directories(gltf);
-  project->m_gltf_watch_fd = inotify_add_watch(
-      project->m_inotify_fd, gltf.m_str.zero_terminated(scratch),
-      IN_ONLYDIR | IN_ALL_EVENTS | IN_EXCL_UNLINK);
-  if (project->m_gltf_watch_fd == -1) {
-    fmt::println(stderr, "Failed to add {} to inotify watch list: {}", gltf,
-                 strerror(errno));
-  }
-#endif
-#if _WIN32
   ScratchArena scratch;
-  EditorProjectContext *project = ctx->m_project;
-  project->m_root_watch_handle = CreateFileW(
-      utf8_to_raw_path(scratch, project->m_directory.m_str), GENERIC_READ,
-      FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
-      nullptr);
-  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
-    fmt::println(stderr, "CreateFile for {} failed: {}", project->m_directory,
-                 GetLastError());
-    return;
-  }
-  project->m_root_watch_event = CreateEventW(nullptr, true, false, nullptr);
-  if (project->m_root_watch_event == INVALID_HANDLE_VALUE) {
-    fmt::println(stderr, "CreateEventW failed: {}", GetLastError());
-    CloseHandle(project->m_root_watch_handle);
-    project->m_root_watch_handle = INVALID_HANDLE_VALUE;
-  }
-#endif
+  Path assets_relative_path = ASSET_DIR;
+  Path gltf_relative_path = assets_relative_path.concat(scratch, GLTF_DIR);
+  watch_directory(&ctx->m_project_arena, project->m_asset_watcher,
+                  assets_relative_path);
+  watch_directory(&ctx->m_project_arena, project->m_asset_watcher,
+                  gltf_relative_path);
 }
 
 void stop_asset_watcher(NotNull<EditorContext *> ctx) {
-#if __linux__
-  ::close(ctx->m_project->m_inotify_fd);
-  ctx->m_project->m_inotify_fd = -1;
-#endif
-#if _WIN32
   EditorProjectContext *project = ctx->m_project;
-  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
+  if (!project->m_asset_watcher) {
     return;
   }
-  if (project->m_root_watch_overlapped.hEvent) {
-    CancelIo(project->m_root_watch_handle);
-  }
-  CloseHandle(project->m_root_watch_handle);
-  CloseHandle(project->m_root_watch_event);
-  project->m_root_watch_handle = INVALID_HANDLE_VALUE;
-  project->m_root_watch_event = INVALID_HANDLE_VALUE;
-  project->m_root_watch_overlapped = {};
-#endif
+  stop_file_watcher(project->m_asset_watcher);
+  project->m_asset_watcher = nullptr;
 }
 
 void run_asset_watcher(NotNull<EditorContext *> ctx) {
   ZoneScoped;
-#if __linux__
+
   EditorProjectContext *project = ctx->m_project;
-  if (project->m_inotify_fd == -1) {
+  if (!project->m_asset_watcher) {
     return;
   }
+
   ScratchArena scratch;
-  Path gltf_dir =
-      ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
+  Path gltf_relative_path = ASSET_DIR.concat(scratch, GLTF_DIR);
+  Path gltf_path =
+      ctx->m_project->m_directory.concat(scratch, gltf_relative_path);
   while (true) {
-    alignas(inotify_event) char buffer[2048];
-    ssize_t count = ::read(project->m_inotify_fd, buffer, sizeof(buffer));
-    if (count == -1 and errno != EWOULDBLOCK) {
-      fmt::println(stderr, "Failed to read inotify update: {}",
-                   strerror(errno));
+    Optional<FileWatchEvent> event =
+        read_watch_event(scratch, project->m_asset_watcher);
+    if (!event) {
       return;
     }
-    if (count == -1 and errno == EWOULDBLOCK) {
+
+    if (event->type == FileWatchEventType::QueueOverflow or
+        (event->type == FileWatchEventType::Removed and !event->filename)) {
+      stop_asset_watcher(ctx);
+      unregister_all_gltf_scenes(ctx);
+      start_asset_watcher(ctx);
+      register_all_gltf_scenes(ctx);
       return;
     }
-    ssize_t offset = 0;
-    while (offset < count) {
-      const auto *event = (const inotify_event *)&buffer[offset];
-      if (event->mask & (IN_Q_OVERFLOW | IN_IGNORED | IN_MOVE_SELF)) {
-        stop_asset_watcher(ctx);
-        unregister_all_gltf_scenes(ctx);
-        start_asset_watcher(ctx);
-        register_all_gltf_scenes(ctx);
-        return;
-      }
-      if (event->len > 0 and event->wd == project->m_gltf_watch_fd) {
-        u32 delete_mask = IN_DELETE | IN_MOVED_FROM;
-        u32 modify_mask = IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_TO;
-        Path filename = Path::init(String8::init(event->name));
-        Path path = gltf_dir.concat(scratch, filename);
-        bool is_meta = filename.extension() == META_EXT;
-        if (is_meta) {
-          if (event->mask & delete_mask) {
-            unregister_gltf_scene(ctx, filename);
-          } else if (event->mask & modify_mask) {
-            unregister_gltf_scene(ctx, filename);
-            register_gltf_scene(ctx, path);
-          }
-        } else {
-          Path gltf_filename = filename.replace_extension(scratch, ".gltf");
-          Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
-          if (event->mask & delete_mask) {
-            mark_gltf_scene_not_dirty(ctx, meta_filename);
-          } else if (event->mask & modify_mask) {
-            mark_gltf_scene_dirty(ctx, meta_filename);
-          }
+
+    if (event->parent == gltf_relative_path and event->filename) {
+      if (event->filename.extension() == META_EXT) {
+        if (event->type == FileWatchEventType::Removed) {
+          unregister_gltf_scene(ctx, event->filename);
+        } else if (event->type == FileWatchEventType::CreatedOrModified) {
+          unregister_gltf_scene(ctx, event->filename);
+          register_gltf_scene(ctx, gltf_path.concat(scratch, event->filename));
+        }
+      } else if (event->filename.extension() == ".gltf" or
+                 event->filename.extension() == ".bin") {
+        Path gltf_filename =
+            event->filename.replace_extension(scratch, ".gltf");
+        Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
+        if (event->type == FileWatchEventType::Removed) {
+          mark_gltf_scene_not_dirty(ctx, meta_filename);
+        } else if (event->type == FileWatchEventType::CreatedOrModified) {
+          mark_gltf_scene_dirty(ctx, meta_filename);
         }
       }
-      offset += sizeof(*event) + event->len;
     }
   }
-#endif
-#if _WIN32
-  EditorProjectContext *project = ctx->m_project;
-  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
-    return;
-  }
-
-  [[likely]] if (project->m_root_watch_overlapped.hEvent) {
-    DWORD num_returned = 0;
-    if (!GetOverlappedResult(project->m_root_watch_handle,
-                             &project->m_root_watch_overlapped, &num_returned,
-                             false)) {
-      DWORD err = GetLastError();
-      if (err != ERROR_IO_INCOMPLETE) {
-        fmt::println(stderr, "GetOverlappedResult failed: {}", err);
-      }
-      return;
-    }
-    if (num_returned == 0) {
-      goto reset;
-    }
-
-    ScratchArena scratch;
-    Path gltf_relative_path = ASSET_DIR.concat(scratch, GLTF_DIR);
-    Path gltf_path =
-        ctx->m_project->m_directory.concat(scratch, gltf_relative_path);
-    for (usize offset = 0; offset < num_returned;) {
-      const auto *event = (const FILE_NOTIFY_INFORMATION *)&project
-                              ->m_root_watch_buffer[offset];
-      bool is_modify = event->Action == FILE_ACTION_ADDED or
-                       event->Action == FILE_ACTION_MODIFIED or
-                       event->Action == FILE_ACTION_RENAMED_NEW_NAME;
-      bool is_delete = event->Action == FILE_ACTION_REMOVED or
-                       event->Action == FILE_ACTION_RENAMED_OLD_NAME;
-      Span<const wchar_t> wcs_relative_path(
-          event->FileName, event->FileNameLength / sizeof(wchar_t));
-      Path relative_path = Path::init(wcs_to_utf8(scratch, wcs_relative_path));
-      Path filename = relative_path.filename();
-
-      if (relative_path.parent() == gltf_relative_path) {
-        Path path = gltf_path.concat(scratch, filename);
-        bool is_meta = filename.extension() == META_EXT;
-        if (is_meta) {
-          if (is_delete) {
-            unregister_gltf_scene(ctx, filename);
-          } else if (is_modify) {
-            unregister_gltf_scene(ctx, filename);
-            register_gltf_scene(ctx, path);
-          }
-        } else {
-          Path gltf_filename = filename.replace_extension(scratch, ".gltf");
-          Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
-          if (is_delete) {
-            mark_gltf_scene_not_dirty(ctx, meta_filename);
-          } else if (is_modify) {
-            mark_gltf_scene_dirty(ctx, meta_filename);
-          }
-        }
-      }
-
-      if (is_delete and relative_path == gltf_relative_path) {
-        goto reset;
-      }
-
-      if (is_delete and relative_path == ASSET_DIR) {
-        goto reset;
-      }
-
-      if (event->NextEntryOffset == 0) {
-        break;
-      }
-      offset += event->NextEntryOffset;
-    }
-  }
-
-  project->m_root_watch_overlapped = {.hEvent = project->m_root_watch_event};
-  if (!ReadDirectoryChangesW(
-          project->m_root_watch_handle, project->m_root_watch_buffer,
-          sizeof(project->m_root_watch_buffer), true,
-          FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_FILE_NAME |
-              FILE_NOTIFY_CHANGE_LAST_WRITE,
-          nullptr, &project->m_root_watch_overlapped, nullptr)) {
-    fmt::println(stderr, "ReadDirectoryChangesW failed: {}", GetLastError());
-  }
-
-  return;
-
-reset:
-  stop_asset_watcher(ctx);
-  unregister_all_gltf_scenes(ctx);
-  start_asset_watcher(ctx);
-  register_all_gltf_scenes(ctx);
-  return;
-#endif
 }
 
 Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
