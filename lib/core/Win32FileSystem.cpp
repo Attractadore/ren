@@ -1,4 +1,5 @@
 #if _WIN32
+#include "Win32.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/FileSystem.hpp"
 
@@ -14,48 +15,6 @@ namespace ren {
 const char Path::SEPARATOR = '\\';
 
 namespace {
-
-const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str) {
-  int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
-  ren_assert(wlen > 0);
-  wchar_t *wbuf = arena->allocate<wchar_t>(wlen + 1);
-  int res = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf, wlen);
-  ren_assert(res == wlen);
-  wbuf[wlen] = 0;
-  return wbuf;
-}
-
-const wchar_t *utf8_to_unrestricted_path(NotNull<Arena *> arena, String8 str,
-                                         const wchar_t *suffix = nullptr) {
-  int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
-  int suflen = suffix ? std::wcslen(suffix) : 0;
-  ren_assert(wlen > 0);
-  wchar_t *wbuf = arena->allocate<wchar_t>(4 + wlen + suflen + 1);
-  wbuf[0] = L'\\';
-  wbuf[1] = L'\\';
-  wbuf[2] = L'?';
-  wbuf[3] = L'\\';
-  int res =
-      MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf + 4, wlen);
-  ren_assert(res == wlen);
-  if (suffix) {
-    copy(suffix, suflen, &wbuf[4 + wlen]);
-  }
-  wbuf[4 + wlen + suflen] = 0;
-  return wbuf;
-}
-
-String8 wcs_to_utf8(NotNull<Arena *> arena, const wchar_t *wcs) {
-  int wlen = std::wcslen(wcs);
-  int len =
-      WideCharToMultiByte(CP_UTF8, 0, wcs, wlen, nullptr, 0, nullptr, nullptr);
-  ren_assert(len > 0);
-  char *buf = arena->allocate<char>(len);
-  int res =
-      WideCharToMultiByte(CP_UTF8, 0, wcs, wlen, buf, len, nullptr, nullptr);
-  ren_assert(res == len);
-  return String8(buf, len);
-}
 
 IoError win32_to_io_error(DWORD err = GetLastError()) {
   ren_assert(err);
@@ -275,7 +234,7 @@ IoResult<u64> last_write_time(Path path) {
 
 IoResult<void> unlink(Path path) {
   ScratchArena scratch;
-  if (!DeleteFileW(utf8_to_unrestricted_path(scratch, path.m_str))) {
+  if (!DeleteFileW(utf8_to_raw_path(scratch, path.m_str))) {
     return win32_to_io_error();
   }
   return {};
@@ -388,9 +347,8 @@ IoResult<NotNull<Directory *>> open_directory(NotNull<Arena *> arena,
                                               Path path) {
   ScratchArena scratch;
   Directory *dir = arena->allocate<Directory>();
-  dir->handle =
-      FindFirstFileW(utf8_to_unrestricted_path(scratch, path.m_str, L"\\*"),
-                     &dir->find_first_data);
+  dir->handle = FindFirstFileW(utf8_to_raw_path(scratch, path.m_str, L"\\*"),
+                               &dir->find_first_data);
   if (dir->handle == INVALID_HANDLE_VALUE) {
     return win32_to_io_error();
   }

@@ -18,6 +18,7 @@ add_library(ren-core
   core/LinuxVm.cpp
   core/Mutex.cpp
   core/Profiler.cpp
+  core/Win32.cpp
   core/Win32Chrono.cpp
   core/Win32Fiber.cpp
   core/Win32FileSystem.cpp
