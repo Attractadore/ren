@@ -33,6 +33,12 @@
 #include <unistd.h>
 #endif
 
+#if _WIN32
+#include "core/Win32.hpp"
+
+#include <Windows.h>
+#endif
+
 namespace ren {
 
 namespace {
@@ -192,6 +198,12 @@ struct EditorProjectContext {
   int m_inotify_fd = -1;
   int m_assets_watch_fd = -1;
   int m_gltf_watch_fd = -1;
+#endif
+#if _WIN32
+  HANDLE m_root_watch_handle = INVALID_HANDLE_VALUE;
+  HANDLE m_root_watch_event = INVALID_HANDLE_VALUE;
+  OVERLAPPED m_root_watch_overlapped = {};
+  alignas(DWORD) char m_root_watch_buffer[2048];
 #endif
 };
 
@@ -394,6 +406,7 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
   Handle<EditorGltfScene> handle = project->m_gltf_scenes.insert(
       &ctx->m_project_arena,
       {
+          /// FIXME: file names are leaked when a file is unregistered.
           .bin_filename = bin_filename.copy(&ctx->m_project_arena),
           .gltf_filename = gltf_filename.copy(&ctx->m_project_arena),
           .meta_filename = meta_filename.copy(&ctx->m_project_arena),
@@ -559,7 +572,7 @@ void start_asset_watcher(NotNull<EditorContext *> ctx) {
   std::ignore = create_directories(assets);
   project->m_assets_watch_fd = inotify_add_watch(
       project->m_inotify_fd, assets.m_str.zero_terminated(scratch),
-      IN_ALL_EVENTS | IN_EXCL_UNLINK);
+      IN_ONLYDIR | IN_ALL_EVENTS | IN_EXCL_UNLINK);
   if (project->m_assets_watch_fd == -1) {
     fmt::println(stderr, "Failed to add {} to inotify watch list: {}", assets,
                  strerror(errno));
@@ -568,10 +581,30 @@ void start_asset_watcher(NotNull<EditorContext *> ctx) {
   std::ignore = create_directories(gltf);
   project->m_gltf_watch_fd = inotify_add_watch(
       project->m_inotify_fd, gltf.m_str.zero_terminated(scratch),
-      IN_ALL_EVENTS | IN_EXCL_UNLINK);
+      IN_ONLYDIR | IN_ALL_EVENTS | IN_EXCL_UNLINK);
   if (project->m_gltf_watch_fd == -1) {
     fmt::println(stderr, "Failed to add {} to inotify watch list: {}", gltf,
                  strerror(errno));
+  }
+#endif
+#if _WIN32
+  ScratchArena scratch;
+  EditorProjectContext *project = ctx->m_project;
+  project->m_root_watch_handle = CreateFileW(
+      utf8_to_raw_path(scratch, project->m_directory.m_str), GENERIC_READ,
+      FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+      nullptr);
+  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
+    fmt::println(stderr, "CreateFile for {} failed: {}", project->m_directory,
+                 GetLastError());
+    return;
+  }
+  project->m_root_watch_event = CreateEventW(nullptr, true, false, nullptr);
+  if (project->m_root_watch_event == INVALID_HANDLE_VALUE) {
+    fmt::println(stderr, "CreateEventW failed: {}", GetLastError());
+    CloseHandle(project->m_root_watch_handle);
+    project->m_root_watch_handle = INVALID_HANDLE_VALUE;
   }
 #endif
 }
@@ -580,6 +613,20 @@ void stop_asset_watcher(NotNull<EditorContext *> ctx) {
 #if __linux__
   ::close(ctx->m_project->m_inotify_fd);
   ctx->m_project->m_inotify_fd = -1;
+#endif
+#if _WIN32
+  EditorProjectContext *project = ctx->m_project;
+  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
+    return;
+  }
+  if (project->m_root_watch_overlapped.hEvent) {
+    CancelIo(project->m_root_watch_handle);
+  }
+  CloseHandle(project->m_root_watch_handle);
+  CloseHandle(project->m_root_watch_event);
+  project->m_root_watch_handle = INVALID_HANDLE_VALUE;
+  project->m_root_watch_event = INVALID_HANDLE_VALUE;
+  project->m_root_watch_overlapped = {};
 #endif
 }
 
@@ -594,7 +641,6 @@ void run_asset_watcher(NotNull<EditorContext *> ctx) {
   Path gltf_dir =
       ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
   while (true) {
-    ScratchArena scratch;
     alignas(inotify_event) char buffer[2048];
     ssize_t count = ::read(project->m_inotify_fd, buffer, sizeof(buffer));
     if (count == -1 and errno != EWOULDBLOCK) {
@@ -641,6 +687,99 @@ void run_asset_watcher(NotNull<EditorContext *> ctx) {
       offset += sizeof(*event) + event->len;
     }
   }
+#endif
+#if _WIN32
+  EditorProjectContext *project = ctx->m_project;
+  if (project->m_root_watch_handle == INVALID_HANDLE_VALUE) {
+    return;
+  }
+
+  [[likely]] if (project->m_root_watch_overlapped.hEvent) {
+    DWORD num_returned = 0;
+    if (!GetOverlappedResult(project->m_root_watch_handle,
+                             &project->m_root_watch_overlapped, &num_returned,
+                             false)) {
+      DWORD err = GetLastError();
+      if (err != ERROR_IO_INCOMPLETE) {
+        fmt::println(stderr, "GetOverlappedResult failed: {}", err);
+      }
+      return;
+    }
+    if (num_returned == 0) {
+      goto reset;
+    }
+
+    ScratchArena scratch;
+    Path gltf_relative_path = ASSET_DIR.concat(scratch, GLTF_DIR);
+    Path gltf_path =
+        ctx->m_project->m_directory.concat(scratch, gltf_relative_path);
+    for (usize offset = 0; offset < num_returned;) {
+      const auto *event = (const FILE_NOTIFY_INFORMATION *)&project
+                              ->m_root_watch_buffer[offset];
+      bool is_modify = event->Action == FILE_ACTION_ADDED or
+                       event->Action == FILE_ACTION_MODIFIED or
+                       event->Action == FILE_ACTION_RENAMED_NEW_NAME;
+      bool is_delete = event->Action == FILE_ACTION_REMOVED or
+                       event->Action == FILE_ACTION_RENAMED_OLD_NAME;
+      Span<const wchar_t> wcs_relative_path(
+          event->FileName, event->FileNameLength / sizeof(wchar_t));
+      Path relative_path = Path::init(wcs_to_utf8(scratch, wcs_relative_path));
+      Path filename = relative_path.filename();
+
+      if (relative_path.parent() == gltf_relative_path) {
+        Path path = gltf_path.concat(scratch, filename);
+        bool is_meta = filename.extension() == META_EXT;
+        if (is_meta) {
+          if (is_delete) {
+            unregister_gltf_scene(ctx, filename);
+          } else if (is_modify) {
+            unregister_gltf_scene(ctx, filename);
+            register_gltf_scene(ctx, path);
+          }
+        } else {
+          Path gltf_filename = filename.replace_extension(scratch, ".gltf");
+          Path meta_filename = gltf_filename.add_extension(scratch, META_EXT);
+          if (is_delete) {
+            mark_gltf_scene_not_dirty(ctx, meta_filename);
+          } else if (is_modify) {
+            mark_gltf_scene_dirty(ctx, meta_filename);
+          }
+        }
+      }
+
+      if (is_delete and relative_path == gltf_relative_path) {
+        goto reset;
+      }
+
+      if (is_delete and relative_path == ASSET_DIR) {
+        goto reset;
+      }
+
+      if (event->NextEntryOffset == 0) {
+        break;
+      }
+      offset += event->NextEntryOffset;
+    }
+  }
+
+  project->m_root_watch_overlapped = {.hEvent = project->m_root_watch_event};
+  if (!ReadDirectoryChangesW(
+          project->m_root_watch_handle, project->m_root_watch_buffer,
+          sizeof(project->m_root_watch_buffer), true,
+          FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_FILE_NAME |
+              FILE_NOTIFY_CHANGE_LAST_WRITE,
+          nullptr, &project->m_root_watch_overlapped, nullptr)) {
+    fmt::println(stderr, "ReadDirectoryChangesW failed: {}", GetLastError());
+  }
+
+  return;
+
+reset:
+  stop_asset_watcher(ctx);
+  unregister_all_gltf_scenes(ctx);
+  start_asset_watcher(ctx);
+  register_all_gltf_scenes(ctx);
+  return;
 #endif
 }
 
