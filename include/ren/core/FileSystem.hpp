@@ -29,6 +29,8 @@ public:
 
   [[nodiscard]] IoResult<Path> relative(NotNull<Arena *> arena) const;
 
+  [[nodiscard]] Path relative(Path root) const;
+
   [[nodiscard]] bool is_root() const;
 
   [[nodiscard]] Path volume_name() const;

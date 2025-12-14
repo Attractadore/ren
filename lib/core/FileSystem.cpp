@@ -158,6 +158,14 @@ IoResult<Path> Path::absolute(NotNull<Arena *> arena) const {
   return cwd->concat(arena, *this);
 }
 
+Path Path::relative(Path root) const {
+  [[unlikely]] if (root.m_str.m_size == m_str.m_size) { return {"."}; }
+  ren_assert(m_str.substr(0, root.m_str.m_size) == root.m_str);
+  usize offset = root.m_str.m_size + 1;
+  usize new_size = m_str.m_size - offset;
+  return {String8(&m_str[offset], new_size)};
+}
+
 Path Path::concat(NotNull<Arena *> arena, Path other) const {
   return concat(arena, {&other, 1});
 }
