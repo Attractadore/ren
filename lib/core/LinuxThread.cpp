@@ -1,6 +1,5 @@
 #if __linux__
 #include "Posix.hpp"
-#include "ren/core/Algorithm.hpp"
 #include "ren/core/Array.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
@@ -125,19 +124,6 @@ Thread thread_create(const ThreadDesc &desc) {
   sigset_t signal_mask;
   POSIX_CHECK(sigfillset(&signal_mask));
   POSIX_CHECK(pthread_attr_setsigmask_np(&attr, &signal_mask));
-
-  if (desc.affinity.m_size > 0) {
-    u32 num_cpus = 0;
-    for (u32 cpu : desc.affinity) {
-      num_cpus = max(num_cpus, cpu + 1);
-    }
-    cpu_set_t *cpu_mask = CPU_ALLOC(num_cpus);
-    for (u32 cpu : desc.affinity) {
-      CPU_SET_S(cpu, num_cpus, cpu_mask);
-    }
-    POSIX_CHECK(pthread_attr_setaffinity_np(&attr, num_cpus, cpu_mask));
-    CPU_FREE(cpu_mask);
-  }
 
   if (desc.stack_size) {
     POSIX_CHECK(pthread_attr_setstacksize(&attr, desc.stack_size));
