@@ -28,7 +28,6 @@ add_library(ren-core
 )
 if (CMAKE_SYSTEM_NAME STREQUAL Linux)
   target_sources(ren-core PRIVATE core/LinuxFiber.s)
-  target_link_libraries(ren-core PRIVATE numa)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL Windows)
   target_sources(ren-core PRIVATE core/Win32Fiber.asm)

@@ -11,7 +11,6 @@
 #include <common/TracySystem.hpp>
 #include <fcntl.h>
 #include <fmt/base.h>
-#include <numa.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -42,56 +41,77 @@ void *posix_thread_start(void *void_param) {
   return (void *)(uintptr_t)(EXIT_SUCCESS);
 }
 
-} // namespace
+i32 read_int(Path path) {
+  ScratchArena scratch;
 
-Span<Processor> cpu_topology(NotNull<Arena *> arena) {
-  if (numa_available() == -1) {
-    fmt::println(stderr, "libnuma is not available");
+  errno = 0;
+  int fd = ::open(path.m_str.zero_terminated(scratch), O_RDONLY);
+  if (fd == -1) {
+    fmt::println(stderr, "Failed to open {}: {}", path, strerror(errno));
     exit(EXIT_FAILURE);
   }
 
-  const struct bitmask *cpus = numa_all_cpus_ptr;
-  usize num_cpus = numa_num_possible_cpus();
+  char buffer[2048];
+  errno = 0;
+  ssize_t num_read = ::read(fd, buffer, sizeof(buffer) - 1);
+  if (num_read < 0) {
+    fmt::println(stderr, "Failed to read {}: {}", path, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  buffer[num_read] = 0;
 
+  int value = -1;
+  if (std::sscanf(buffer, "%d", &value) != 1) {
+    fmt::println(stderr, "Failed to parse {}: \"{}\"", path, buffer);
+    exit(EXIT_FAILURE);
+  }
+
+  return value;
+}
+
+} // namespace
+
+Span<Processor> cpu_topology(NotNull<Arena *> arena) {
+  ren_assert(is_main_thread());
   ScratchArena scratch;
+
+  i32 num_cpus = 1;
+  cpu_set_t *cpus = nullptr;
+retry:
+  cpus = CPU_ALLOC(num_cpus);
+  errno = 0;
+  pthread_getaffinity_np(pthread_self(), CPU_ALLOC_SIZE(num_cpus), cpus);
+  if (errno == EINVAL) {
+    CPU_FREE(cpus);
+    num_cpus *= 2;
+    goto retry;
+  }
+  if (errno) {
+    fmt::println(stderr, "Failed to get main thread affinity: {}",
+                 strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  num_cpus = CPU_COUNT_S(CPU_ALLOC_SIZE(num_cpus), cpus);
+
   DynamicArray<Processor> processors;
   for (usize cpu : range(num_cpus)) {
-    if (not numa_bitmask_isbitset(cpus, cpu)) {
+    if (not CPU_ISSET_S(cpu, CPU_ALLOC_SIZE(num_cpus), cpus)) {
       continue;
     }
-
-    Processor processor = {};
-    processor.cpu = cpu;
-
-    char core_buffer[128];
-    char path[256];
-    usize len =
-        fmt::format_to_n(path, sizeof(path),
-                         "/sys/devices/system/cpu/cpu{}/topology/core_id", cpu)
-            .size;
-    ren_assert(len + 1 <= sizeof(path));
-    path[len] = 0;
-    IoResult<File> file = open(Path::init(path), FileAccessMode::ReadOnly);
-    if (!file) {
-      fmt::println(stderr, "thread: failed to open {}: {}", path, file.error());
-      exit(EXIT_FAILURE);
-    }
-    if (IoResult<usize> result = read(*file, core_buffer, sizeof(core_buffer));
-        !result) {
-      fmt::println(stderr, "thread: failed to read {}: {}", path,
-                   result.error());
-      exit(EXIT_FAILURE);
-    }
-    close(*file);
-    file = {};
-
-    int cnt = std::sscanf(core_buffer, "%u", &processor.core);
-    ren_assert(cnt == 1);
-
-    processor.numa = numa_node_of_cpu(cpu);
-
-    processors.push(scratch, processor);
+    processors.push(
+        scratch,
+        {
+            .cpu = (u32)cpu,
+            .core = (u32)read_int(Path::init(
+                format(scratch,
+                       "/sys/devices/system/cpu/cpu{}/topology/core_id", cpu))),
+            .numa = (u32)read_int(Path::init(format(
+                scratch,
+                "/sys/devices/system/cpu/cpu{}/topology/physical_package_id",
+                cpu))),
+        });
   }
+  CPU_FREE(cpus);
 
   return Span(processors).copy(arena);
 }
