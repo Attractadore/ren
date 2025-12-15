@@ -1,15 +1,19 @@
 #pragma once
 #include "Array.hpp"
-#include "String.hpp"
-#include "Span.hpp"
-#include "Result.hpp"
 #include "FileSystem.hpp"
+#include "Result.hpp"
+#include "Span.hpp"
+#include "String.hpp"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace ren {
-enum GltfError { 
-  GLTF_OK,
-  GLTF_ERROR_INVALID_SOURCE,
-  GLTF_ERROR_NOT_SUPPORTED,
+enum class GltfError { InvalidFormat, IO, Unknown };
+
+struct GltfErrorInfo {
+  GltfError error;
+  String8 desc;
 };
 
 enum GltfComponentType {
@@ -55,26 +59,33 @@ struct GltfAsset {
   // TODO: Extras
 };
 
+struct GltfImage {
+  String8 name;
+  i32 buffer_view = -1;
+  String8 mime_type;
+  String8 uri;
+};
+
 struct GltfAccessor {
   String8 name;
-  i32 buffer_view;
-  i32 buffer_offset;
+  i32 buffer_view = -1;
+  i32 buffer_offset = -1;
   GltfComponentType component_type;
-  bool normalized;
-  i32 count;
-  GltfType type;
-  DynamicArray<float> min;
-  DynamicArray<float> max;
+  bool normalized = false;
+  i32 count = 0;
+  GltfType type = GLTF_TYPE_SCALAR;
+  float min[16];
+  float max[16];
   // NOTE: Sparse is not needed for now.
   // TODO: Extras
 };
 
 struct GltfBufferView {
   String8 name;
-  i32 buffer;
-  i32 byte_offset;
-  i32 byte_length;
-  i32 byte_stride;
+  i32 buffer = -1;
+  i32 byte_offset = -1;
+  i32 byte_length = -1;
+  i32 byte_stride = -1;
   GltfBufferTarget target;
   // TODO: Extras
 };
@@ -82,47 +93,46 @@ struct GltfBufferView {
 struct GltfBuffer {
   String8 name;
   String8 uri;
-  i32 byte_length;
   DynamicArray<u8> data;
   // TODO: Extras
 };
 
 struct GltfAttribute {
   String8 name;
-  i32 accessor;
+  i32 accessor = -1;
 };
 
 struct GltfPrimitive {
   DynamicArray<GltfAttribute> attributes;
-  i32 indices;
-  i32 material;
+  i32 indices = -1;
+  i32 material = -1;
   GltfTopology mode;
-  // NOTE: According to the specification, there should also be a field Array<Array<GltfAttribute>> targets here.
+  // NOTE: According to the specification, there should also be a field
+  // Array<Array<GltfAttribute>> targets here.
   // TODO: Extras
 };
 
 struct GltfMesh {
   String8 name;
   DynamicArray<GltfPrimitive> primitives;
-  DynamicArray<float> weights;
   // TODO: Extras
 };
 
 struct GltfNode {
   String8 name;
-  i32 camera;
-  i32 mesh;
-  i32 skin;
+  i32 camera = -1;
+  i32 mesh = -1;
+  i32 skin = -1;
   DynamicArray<i32> children;
 
-  bool has_matrix;
-  float matrix[16];
+  glm::mat4 matrix = glm::identity<glm::mat4>();
 
-  float translation[3];
-  float rotation[4];
-  float scale[3];
+  glm::vec3 translation = {0.0f, 0.0f, 0.0f};
+  glm::quat rotation = {1.0f, 0.0f, 0.0f, 0.0f};
+  glm::vec3 scale = {1.0f, 1.0f, 1.0f};
 
-  // NOTE: According to the specification, there should also be an Array<float> weights field here.
+  // NOTE: According to the specification, there should also be an Array<float>
+  // weights field here.
   // TODO: Extras
 };
 
@@ -141,7 +151,7 @@ struct Gltf {
   DynamicArray<GltfMesh> meshes;
   // TODO: materials
   // TODO: textures
-  // TODO: images
+  DynamicArray<GltfImage> images;
   // TODO: samplers
   DynamicArray<GltfAccessor> accessors;
   DynamicArray<GltfBufferView> buffer_views;
@@ -155,7 +165,8 @@ struct Gltf {
   // TODO: Extras
 };
 
-Result<Gltf, GltfError> gltf_parse_file(NotNull<Arena *> arena, Path path);
+Result<Gltf, GltfErrorInfo> gltf_parse_file(NotNull<Arena *> arena, Path path);
+String8 gltf_serialize_to_string(NotNull<Arena *> arena, const Gltf &gltf);
 
 constexpr String8 GLTF_ACCESSOR_TYPE_SCALAR = "SCALAR";
 constexpr String8 GLTF_ACCESSOR_TYPE_VEC2 = "VEC2";
