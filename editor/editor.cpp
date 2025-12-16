@@ -1003,15 +1003,18 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration;
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoScrollWithMouse;
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImVec2 side_panel_pos = {0, viewport->Size.y};
     ImGui::SetNextWindowPos(side_panel_pos, ImGuiCond_Always,
                             ImVec2(0.0f, 1.0f));
-    ImVec2 side_panel_size = viewport->Size;
-    side_panel_size.x *= 0.2f;
-    side_panel_size.y -= menu_height;
+    ImVec2 side_panel_size = {
+        viewport->Size.x * 0.2f,
+        viewport->Size.y - menu_height,
+    };
     ImGui::SetNextWindowSize(side_panel_size);
+
     if (ImGui::Begin("##assets", nullptr, SIDE_PANEL_FLAGS)) {
       if (ImGui::BeginTabBar("Asset tab bar",
                              ImGuiTabBarFlags_NoCloseWithMiddleMouseButton |
@@ -1020,44 +1023,53 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
           ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Meshes", nullptr)) {
-          ScratchArena scratch;
-          Handle<EditorGltfScene> head = ctx->m_project->m_gltf_scenes_head;
-          Handle<EditorGltfScene> handle =
-              ctx->m_project->m_gltf_scenes[head].list.next;
-          while (handle != head) {
-            const EditorGltfScene &scene =
-                ctx->m_project->m_gltf_scenes[handle];
-            bool is_expanded = ImGui::TreeNode(
-                scene.gltf_filename.m_str.zero_terminated(scratch));
-            if (ImGui::BeginPopupContextItem()) {
-              if (ImGui::Button("Delete")) {
-                Path assets = ctx->m_project->m_directory.concat(
-                    scratch, {ASSET_DIR, GLTF_DIR});
-                Path gltf_path = assets.concat(scratch, scene.gltf_filename);
-                Path meta_path = assets.concat(scratch, scene.meta_filename);
-                if (IoResult<void> result = unlink(gltf_path); !result) {
-                  fmt::println(stderr, "Failed to delete {}: {}", gltf_path,
-                               result.error());
+          if (ImGui::BeginChild("##tree", {0.0f, 0.0f}, ImGuiChildFlags_None,
+                                ImGuiWindowFlags_None)) {
+            ScratchArena scratch;
+            Handle<EditorGltfScene> head = ctx->m_project->m_gltf_scenes_head;
+            Handle<EditorGltfScene> handle =
+                ctx->m_project->m_gltf_scenes[head].list.next;
+            while (handle != head) {
+              const EditorGltfScene &scene =
+                  ctx->m_project->m_gltf_scenes[handle];
+              bool is_expanded = ImGui::TreeNodeEx(
+                  scene.gltf_filename.m_str.zero_terminated(scratch),
+                  ImGuiTreeNodeFlags_DefaultOpen);
+              if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::Button("Delete")) {
+                  Path assets = ctx->m_project->m_directory.concat(
+                      scratch, {ASSET_DIR, GLTF_DIR});
+                  Path bin_path = assets.concat(scratch, scene.bin_filename);
+                  Path gltf_path = assets.concat(scratch, scene.gltf_filename);
+                  Path meta_path = assets.concat(scratch, scene.meta_filename);
+                  for (Path path : {bin_path, gltf_path, meta_path}) {
+                    if (IoResult<void> result = unlink(path); !result) {
+                      fmt::println(stderr, "Failed to delete {}: {}", path,
+                                   result.error());
+                    }
+                  }
+                  ImGui::CloseCurrentPopup();
                 }
-                if (IoResult<void> result = unlink(meta_path); !result) {
-                  fmt::println(stderr, "Failed to delete {}: {}", meta_path,
-                               result.error());
+                ImGui::EndPopup();
+              }
+              if (is_expanded) {
+                Handle<EditorMesh> mesh_handle = scene.first_mesh;
+                while (mesh_handle) {
+                  const EditorMesh &mesh =
+                      ctx->m_project->m_meshes[mesh_handle];
+                  if (ImGui::TreeNodeEx(mesh.name.zero_terminated(scratch),
+                                        ImGuiTreeNodeFlags_Leaf |
+                                            ImGuiTreeNodeFlags_Bullet)) {
+                    ImGui::TreePop();
+                  }
+                  mesh_handle = mesh.next;
                 }
-                ImGui::CloseCurrentPopup();
+                ImGui::TreePop();
               }
-              ImGui::EndPopup();
+              handle = scene.list.next;
             }
-            if (is_expanded) {
-              Handle<EditorMesh> mesh_handle = scene.first_mesh;
-              while (mesh_handle) {
-                const EditorMesh &mesh = ctx->m_project->m_meshes[mesh_handle];
-                ImGui::Text("%.*s", (int)mesh.name.m_size, mesh.name.m_str);
-                mesh_handle = mesh.next;
-              }
-              ImGui::TreePop();
-            }
-            handle = scene.list.next;
           }
+          ImGui::EndChild();
           ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
