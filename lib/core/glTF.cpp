@@ -462,9 +462,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
         return GltfErrorInfo{.error = GltfError::IO,
                              .desc = "Failed reading buffer."};
       }
-
-      buffer.data.m_data = file_data->m_data;
-      buffer.data.m_capacity = buffer.data.m_size = file_data->m_size;
+      buffer.data = *file_data;
     }
   }
 

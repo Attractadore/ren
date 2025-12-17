@@ -93,7 +93,7 @@ struct GltfBufferView {
 struct GltfBuffer {
   String8 name;
   String8 uri;
-  DynamicArray<u8> data;
+  Span<u8> data;
   // TODO: Extras
 };
 
