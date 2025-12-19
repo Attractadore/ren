@@ -1,5 +1,5 @@
 #if __linux__
-#include "FileWatcher.hpp"
+#include "ren/core/FileWatcher.hpp"
 #include "ren/core/Format.hpp"
 
 #include <cerrno>

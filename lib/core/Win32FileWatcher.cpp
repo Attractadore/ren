@@ -1,6 +1,6 @@
 #if _WIN32
-#include "FileWatcher.hpp"
-#include "core/Win32.hpp"
+#include "Win32.hpp"
+#include "ren/core/FileWatcher.hpp"
 #include "ren/core/Format.hpp"
 
 #include <Windows.h>

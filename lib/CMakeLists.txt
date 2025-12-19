@@ -13,6 +13,7 @@ add_library(ren-core
   core/LinuxChrono.cpp
   core/LinuxFiber.cpp
   core/LinuxFileSystem.cpp
+  core/LinuxFileWatcher.cpp
   core/LinuxFutex.cpp
   core/LinuxThread.cpp
   core/LinuxVm.cpp
@@ -22,6 +23,7 @@ add_library(ren-core
   core/Win32Chrono.cpp
   core/Win32Fiber.cpp
   core/Win32FileSystem.cpp
+  core/Win32FileWatcher.cpp
   core/Win32Futex.cpp
   core/Win32Thread.cpp
   core/Win32Vm.cpp
