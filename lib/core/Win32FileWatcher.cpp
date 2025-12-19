@@ -68,6 +68,9 @@ Optional<FileWatchEvent> read_watch_event(NotNull<Arena *> arena,
                                  &watcher->m_root_watch_overlapped,
                                  &num_returned, false)) {
           DWORD err = GetLastError();
+          if (err == ERROR_NOTIFY_ENUM_DIR) {
+            return FileWatchEvent{.type = FileWatchEventType::QueueOverflow};
+          }
           if (err != ERROR_IO_INCOMPLETE) {
             fmt::println(stderr, "GetOverlappedResult failed: {}", err);
           }
