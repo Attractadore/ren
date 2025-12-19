@@ -31,7 +31,8 @@ String8 wcs_to_utf8(NotNull<Arena *> arena, const wchar_t *wcs);
 
 String8 wcs_to_utf8(NotNull<Arena *> arena, Span<const wchar_t> wcs);
 
-const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str);
+const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str,
+                            Span<const wchar_t> suffix = L"");
 
 const wchar_t *utf8_to_raw_path(NotNull<Arena *> arena, String8 str,
                                 const wchar_t *suffix = nullptr);

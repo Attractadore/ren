@@ -5,13 +5,15 @@
 
 namespace ren {
 
-const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str) {
+const wchar_t *utf8_to_path(NotNull<Arena *> arena, String8 str,
+                            Span<const wchar_t> suffix) {
+  ren_assert(suffix.m_size > 0 and suffix.back() == 0);
   int wlen = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, nullptr, 0);
   ren_assert(wlen > 0);
-  wchar_t *wbuf = arena->allocate<wchar_t>(wlen + 1);
+  wchar_t *wbuf = arena->allocate<wchar_t>(wlen + suffix.m_size);
   int res = MultiByteToWideChar(CP_UTF8, 0, str.m_str, str.m_size, wbuf, wlen);
   ren_assert(res == wlen);
-  wbuf[wlen] = 0;
+  copy(suffix, &wbuf[wlen]);
   return wbuf;
 }
 

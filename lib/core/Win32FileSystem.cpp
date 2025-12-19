@@ -6,6 +6,7 @@
 #include <Windows.h>
 #include <bit>
 #include <limits>
+#include <shellapi.h>
 #include <shlwapi.h>
 
 #pragma comment(lib, "shlwapi.lib")
@@ -244,6 +245,24 @@ IoResult<void> remove_directory(Path path) {
   ScratchArena scratch;
   if (!RemoveDirectoryW(utf8_to_raw_path(scratch, path.m_str))) {
     return win32_to_io_error();
+  }
+  return {};
+}
+
+IoResult<void> remove_directory_tree(Path path) {
+  ScratchArena scratch;
+  IoResult<Path> abs_path = path.absolute(scratch);
+  if (!abs_path) {
+    return abs_path.error();
+  }
+  SHFILEOPSTRUCTW file_op = {
+      .wFunc = FO_DELETE,
+      // Path is required to be double zero terminated.
+      .pFrom = utf8_to_path(scratch, abs_path->m_str, L"\0"),
+      .fFlags = FOF_NO_UI,
+  };
+  if (SHFileOperationW(&file_op)) {
+    return IoError::Unknown;
   }
   return {};
 }
