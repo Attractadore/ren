@@ -23,6 +23,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
@@ -95,6 +96,11 @@ struct ImportSceneUI {
   String8 m_import_error;
 };
 
+struct AssetCompilationUI {
+  bool was_done = false;
+  Span<String8> compilation_errors;
+};
+
 enum class MessageSeverity {
   Info,
   Error,
@@ -110,6 +116,7 @@ struct EditorUI {
   NewProjectUI m_new_project;
   OpenProjectUI m_open_project;
   ImportSceneUI m_import_scene;
+  AssetCompilationUI m_asset_compilation;
 };
 
 struct EditorBackgroundJob {
@@ -170,8 +177,24 @@ struct EditorMesh {
   Guid64 guid = {};
   String8 name;
   Handle<EditorMesh> next;
+  bool is_dirty : 1 = false;
+};
 
-  HandleList<EditorMesh> dirty_list;
+struct alignas(CACHE_LINE_SIZE) MeshCompileJobResult {
+  Guid64 guid;
+  String8 error;
+};
+
+struct EditorAssetCompilerSession {
+  JobToken m_job;
+  u32 m_num_jobs = 0;
+  alignas(CACHE_LINE_SIZE) bool m_stop_token = false;
+  alignas(CACHE_LINE_SIZE) u32 m_num_finished_jobs = 0;
+  Span<MeshCompileJobResult> m_job_results = {};
+};
+
+struct EditorAssetCompiler {
+  EditorAssetCompilerSession m_session;
 };
 
 struct EditorProjectContext {
@@ -181,10 +204,9 @@ struct EditorProjectContext {
   GenArray<EditorGltfScene> m_gltf_scenes;
   GenArray<EditorMesh> m_meshes;
 
-  Handle<EditorGltfScene> m_gltf_scenes_head;
-  Handle<EditorMesh> m_mesh_dirty_list_head;
-
   FileWatcher *m_asset_watcher = nullptr;
+
+  EditorAssetCompiler m_asset_compiler;
 };
 
 struct EditorContext {
@@ -376,24 +398,18 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
             .guid = meta_mesh.guid,
             .name = meta_mesh.name.copy(&ctx->m_project_arena),
             .next = first_mesh_handle,
+            .is_dirty = mtime < max({gltf_mtime, bin_mtime, meta_mtime}),
         });
-    if (mtime < max({gltf_mtime, bin_mtime, meta_mtime})) {
-      ren_handle_list_insert_after(project->m_meshes, dirty_list,
-                                   project->m_mesh_dirty_list_head,
-                                   first_mesh_handle);
-    }
   }
-  Handle<EditorGltfScene> handle = project->m_gltf_scenes.insert(
+  project->m_gltf_scenes.insert(
       &ctx->m_project_arena,
       {
-          /// FIXME: file names are leaked when a file is unregistered.
+          // FIXME: file names are leaked when a file is unregistered.
           .bin_filename = bin_filename.copy(&ctx->m_project_arena),
           .gltf_filename = gltf_filename.copy(&ctx->m_project_arena),
           .meta_filename = meta_filename.copy(&ctx->m_project_arena),
           .first_mesh = first_mesh_handle,
       });
-  ren_handle_list_insert_after(project->m_gltf_scenes, list,
-                               project->m_gltf_scenes_head, handle);
 }
 
 void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path) {
@@ -422,6 +438,16 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path) {
   register_gltf_scene(ctx, *meta, meta_path.filename());
 }
 
+/// 1. For scenes we need (relatively) fast insertion + (relatively) fast
+/// deletion by filename. Scenes also need to be sortable for display in the UI.
+/// This needs to be done only once when sort settings or contents change
+/// though, and can later be reused.
+/// 2. For meshes we need fast insertion, fast deletion, fast insertion into the
+/// dirty list by guid, for removal from dirty list by guid, fast access by
+/// guid for cross-referencing in the UI.
+/// This means that for both cases we need to map a hash to a Handle. For
+/// scenes a hash can be generated from the file name.
+
 void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
   // TODO: fix linear search, it's slow.
   EditorProjectContext *project = ctx->m_project;
@@ -431,9 +457,6 @@ void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
       while (mesh_handle) {
         const EditorMesh &mesh = project->m_meshes[mesh_handle];
         Handle<EditorMesh> next = mesh.next;
-        if (mesh.dirty_list) {
-          ren_handle_list_remove(project->m_meshes, dirty_list, mesh_handle);
-        }
         project->m_meshes.erase(mesh_handle);
         mesh_handle = next;
       }
@@ -480,15 +503,6 @@ void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx) {
 
   project->m_gltf_scenes.clear();
   project->m_meshes.clear();
-
-  project->m_gltf_scenes_head =
-      project->m_gltf_scenes.insert(&ctx->m_project_arena);
-  ren_handle_list_init(project->m_gltf_scenes, list,
-                       project->m_gltf_scenes_head);
-  project->m_mesh_dirty_list_head =
-      project->m_meshes.insert(&ctx->m_project_arena);
-  ren_handle_list_init(project->m_meshes, dirty_list,
-                       project->m_mesh_dirty_list_head);
 }
 
 void mark_gltf_scene_dirty(NotNull<EditorContext *> ctx, Path meta_filename) {
@@ -498,14 +512,9 @@ void mark_gltf_scene_dirty(NotNull<EditorContext *> ctx, Path meta_filename) {
     if (gltf_scene.meta_filename == meta_filename) {
       Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
       while (mesh_handle) {
-        const EditorMesh &mesh = project->m_meshes[mesh_handle];
-        Handle<EditorMesh> next = mesh.next;
-        if (!mesh.dirty_list) {
-          ren_handle_list_insert_after(project->m_meshes, dirty_list,
-                                       project->m_mesh_dirty_list_head,
-                                       mesh_handle);
-        }
-        mesh_handle = next;
+        EditorMesh &mesh = project->m_meshes[mesh_handle];
+        mesh.is_dirty = true;
+        mesh_handle = mesh.next;
       }
       return;
     }
@@ -520,14 +529,9 @@ void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
     if (gltf_scene.meta_filename == meta_filename) {
       Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
       while (mesh_handle) {
-        const EditorMesh &mesh = project->m_meshes[mesh_handle];
-        Handle<EditorMesh> next = mesh.next;
-        if (mesh.dirty_list) {
-          ren_handle_list_remove(project->m_meshes, dirty_list,
-
-                                 mesh_handle);
-        }
-        mesh_handle = next;
+        EditorMesh &mesh = project->m_meshes[mesh_handle];
+        mesh.is_dirty = false;
+        mesh_handle = mesh.next;
       }
       return;
     }
@@ -549,6 +553,12 @@ void start_asset_watcher(NotNull<EditorContext *> ctx) {
                   assets_relative_path);
   watch_directory(&ctx->m_project_arena, project->m_asset_watcher,
                   gltf_relative_path);
+  Path content_relative_path = CONTENT_DIR;
+  Path mesh_relative_path = content_relative_path.concat(scratch, MESH_DIR);
+  watch_directory(&ctx->m_project_arena, project->m_asset_watcher,
+                  content_relative_path);
+  watch_directory(&ctx->m_project_arena, project->m_asset_watcher,
+                  mesh_relative_path);
 }
 
 void stop_asset_watcher(NotNull<EditorContext *> ctx) {
@@ -572,6 +582,7 @@ void run_asset_watcher(NotNull<EditorContext *> ctx) {
   Path gltf_relative_path = ASSET_DIR.concat(scratch, GLTF_DIR);
   Path gltf_path =
       ctx->m_project->m_directory.concat(scratch, gltf_relative_path);
+  Path mesh_relative_path = CONTENT_DIR.concat(scratch, MESH_DIR);
   while (true) {
     Optional<FileWatchEvent> event =
         read_watch_event(scratch, project->m_asset_watcher);
@@ -588,7 +599,25 @@ void run_asset_watcher(NotNull<EditorContext *> ctx) {
       return;
     }
 
-    if (event->parent == gltf_relative_path and event->filename) {
+    if (event->type != FileWatchEventType::CreatedOrModified and
+        event->type != FileWatchEventType::Removed) {
+      continue;
+    }
+
+    if (event->parent == mesh_relative_path and event->filename) {
+      Optional<Guid64> guid =
+          guid_from_string<sizeof(Guid64)>(event->filename.m_str);
+      if (!guid) {
+        continue;
+      }
+      // FIXME: linear search is slow.
+      for (auto &&[_, mesh] : project->m_meshes) {
+        if (mesh.guid == *guid) {
+          mesh.is_dirty = event->type == FileWatchEventType::Removed;
+          break;
+        }
+      }
+    } else if (event->parent == gltf_relative_path and event->filename) {
       if (event->filename.extension() == META_EXT) {
         if (event->type == FileWatchEventType::Removed) {
           unregister_gltf_scene(ctx, event->filename);
@@ -635,22 +664,6 @@ Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
       .m_directory = path.parent().copy(&ctx->m_project_arena),
       .m_gltf_scenes = GenArray<EditorGltfScene>::init(&ctx->m_project_arena),
       .m_meshes = GenArray<EditorMesh>::init(&ctx->m_project_arena),
-  };
-
-  Handle<EditorGltfScene> gltf_scene_list_head =
-      ctx->m_project->m_gltf_scenes.insert(&ctx->m_project_arena);
-  ctx->m_project->m_gltf_scenes_head = gltf_scene_list_head;
-  ctx->m_project->m_gltf_scenes[gltf_scene_list_head].list = {
-      .prev = gltf_scene_list_head,
-      .next = gltf_scene_list_head,
-  };
-
-  Handle<EditorMesh> mesh_dirty_list_head =
-      ctx->m_project->m_meshes.insert(&ctx->m_project_arena);
-  ctx->m_project->m_mesh_dirty_list_head = mesh_dirty_list_head;
-  ctx->m_project->m_meshes[mesh_dirty_list_head].dirty_list = {
-      .prev = mesh_dirty_list_head,
-      .next = mesh_dirty_list_head,
   };
   ctx->m_state = EditorState::Project;
   start_asset_watcher(ctx);
@@ -702,107 +715,10 @@ Result<void, String8> new_project(NotNull<EditorContext *> ctx,
   return open_project(ctx, project_path);
 }
 
-template <typename T>
-Span<const T> accessor_data(Span<const std::byte> bin, JsonValue gltf,
-                            usize accessor_index) {
-  Span<const JsonValue> accessors = json_array_value(gltf, "accessors");
-  Span<const JsonValue> buffer_views = json_array_value(gltf, "bufferViews");
-  JsonValue accessor = accessors[accessor_index];
-  JsonValue buffer_view =
-      buffer_views[json_integer_value(accessor, "bufferView")];
-  ren_assert(json_integer_value(buffer_view, "buffer") == 0);
-  usize in_view_offset = json_integer_value(accessor, "byteOffset");
-  usize bin_offset =
-      json_integer_value(buffer_view, "byteOffset") + in_view_offset;
-  usize count = json_integer_value(accessor, "count");
-  usize component_size = 0;
-  switch ((GltfComponentType)json_integer_value(accessor, "componentType")) {
-  case GLTF_COMPONENT_BYTE:
-    component_size = sizeof(i8);
-    break;
-  case GLTF_COMPONENT_UNSIGNED_BYTE:
-    component_size = sizeof(u8);
-    break;
-  case GLTF_COMPONENT_SHORT:
-    component_size = sizeof(i16);
-    break;
-  case GLTF_COMPONENT_UNSIGNED_SHORT:
-    component_size = sizeof(u16);
-    break;
-  case GLTF_COMPONENT_UNSIGNED_INT:
-    component_size = sizeof(u32);
-    break;
-  case GLTF_COMPONENT_FLOAT:
-    component_size = sizeof(float);
-    break;
-  }
-  String8 accessor_type = json_string_value(accessor, "type");
-  usize component_count = 0;
-  if (accessor_type == GLTF_ACCESSOR_TYPE_SCALAR) {
-    component_count = 1;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC2) {
-    component_count = 2;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC3) {
-    component_count = 3;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC4) {
-    component_count = 4;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT2) {
-    component_count = 2 * 2;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT3) {
-    component_count = 3 * 3;
-  } else {
-    ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_MAT4);
-    component_count = 4 * 4;
-  }
-  ren_assert(sizeof(T) == component_size * component_count);
-  return {(const T *)&bin[bin_offset], count};
-}
-
-Span<std::byte> process_mesh(NotNull<Arena *> arena, JsonValue gltf,
-                             Span<const std::byte> bin, usize mesh_index,
-                             usize primitive_index) {
-  JsonValue gltf_mesh = json_array_value(gltf, "meshes")[mesh_index];
-  JsonValue gltf_primitive =
-      json_array_value(gltf_mesh, "primitives")[primitive_index];
-  JsonValue attributes = json_value(gltf_primitive, "attributes");
-  auto positions = accessor_data<glm::vec3>(
-      bin, gltf, json_integer_value(attributes, "POSITION"));
-  auto normals = accessor_data<glm::vec3>(
-      bin, gltf, json_integer_value(attributes, "NORMAL"));
-  Span<const glm::vec4> tangents;
-  JsonValue tangent_accessor = json_value(attributes, "TANGENT");
-  if (tangent_accessor) {
-    tangents =
-        accessor_data<glm::vec4>(bin, gltf, json_integer(tangent_accessor));
-  }
-  Span<const glm::vec2> uvs;
-  JsonValue uv_accessor = json_value(attributes, "TEXCOORD_0");
-  if (uv_accessor) {
-    uvs = accessor_data<glm::vec2>(bin, gltf, json_integer(uv_accessor));
-  }
-  Span<const glm::vec4> colors;
-  JsonValue color_accessor = json_value(attributes, "COLOR_0");
-  if (color_accessor) {
-    colors = accessor_data<glm::vec4>(bin, gltf, json_integer(color_accessor));
-  }
-  auto indices = accessor_data<const u32>(
-      bin, gltf, json_integer_value(gltf_primitive, "indices"));
-  Blob blob = bake_mesh_to_memory(arena, {
-                                             .num_vertices = positions.m_size,
-                                             .positions = positions.m_data,
-                                             .normals = normals.m_data,
-                                             .tangents = tangents.m_data,
-                                             .uvs = uvs.m_data,
-                                             .colors = colors.m_data,
-                                             .indices = indices,
-                                         });
-  return {(std::byte *)blob.data, blob.size};
-}
-
 [[nodiscard]] JobFuture<Result<void, String8>>
 job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
   JobFuture<Result<void, String8>> future = job_dispatch(
-      "Import Scene", tag, [ctx, tag, path]() -> Result<void, String8> {
+      tag, "Import Scene", [ctx, tag, path]() -> Result<void, String8> {
         ScratchArena scratch;
         Arena output = Arena::from_tag(tag);
 
@@ -900,6 +816,267 @@ job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path) {
   return future;
 }
 
+template <typename T>
+Span<const T> accessor_data(Span<const char> bin, JsonValue gltf,
+                            usize accessor_index) {
+  Span<const JsonValue> accessors = json_array_value(gltf, "accessors");
+  Span<const JsonValue> buffer_views = json_array_value(gltf, "bufferViews");
+  JsonValue accessor = accessors[accessor_index];
+  JsonValue buffer_view =
+      buffer_views[json_integer_value(accessor, "bufferView")];
+  ren_assert(json_integer_value(buffer_view, "buffer") == 0);
+  usize in_view_offset = json_integer_value(accessor, "byteOffset");
+  usize bin_offset =
+      json_integer_value(buffer_view, "byteOffset") + in_view_offset;
+  usize count = json_integer_value(accessor, "count");
+  usize component_size = 0;
+  switch ((GltfComponentType)json_integer_value(accessor, "componentType")) {
+  case GLTF_COMPONENT_BYTE:
+    component_size = sizeof(i8);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_BYTE:
+    component_size = sizeof(u8);
+    break;
+  case GLTF_COMPONENT_SHORT:
+    component_size = sizeof(i16);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_SHORT:
+    component_size = sizeof(u16);
+    break;
+  case GLTF_COMPONENT_UNSIGNED_INT:
+    component_size = sizeof(u32);
+    break;
+  case GLTF_COMPONENT_FLOAT:
+    component_size = sizeof(float);
+    break;
+  }
+  String8 accessor_type = json_string_value(accessor, "type");
+  usize component_count = 0;
+  if (accessor_type == GLTF_ACCESSOR_TYPE_SCALAR) {
+    component_count = 1;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC2) {
+    component_count = 2;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC3) {
+    component_count = 3;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC4) {
+    component_count = 4;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT2) {
+    component_count = 2 * 2;
+  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT3) {
+    component_count = 3 * 3;
+  } else {
+    ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_MAT4);
+    component_count = 4 * 4;
+  }
+  ren_assert(sizeof(T) == component_size * component_count);
+  return {(const T *)&bin[bin_offset], count};
+}
+
+Result<void, String8> compile_mesh(NotNull<Arena *> arena, Guid64 guid,
+                                   Path gltf_path, Path blob_path) {
+  ScratchArena scratch;
+
+  Path bin_path = gltf_path.replace_extension(scratch, ".bin");
+  Path meta_path = gltf_path.add_extension(scratch, META_EXT);
+
+  MetaMesh meta_mesh;
+  {
+    IoResult<Span<char>> buffer = read(scratch, meta_path);
+    if (!buffer) {
+      return format(arena, "Failed to read {}: {}", meta_path, buffer.error());
+    }
+    Result<JsonValue, JsonErrorInfo> json =
+        json_parse(scratch, {buffer->m_data, buffer->m_size});
+    if (!json) {
+      JsonErrorInfo error = json.error();
+      return format(arena, "{}:{}:{}: {}", meta_path, error.line, error.column,
+                    error.error);
+    }
+    Result<MetaGltf, MetaGltfErrorInfo> meta =
+        meta_gltf_from_json(scratch, *json);
+    if (!meta) {
+      return format(arena, "Failed to parse meta file {}: ", meta_path,
+                    to_string(scratch, meta.error()));
+    }
+    for (const MetaMesh &mesh : meta->meshes) {
+      if (mesh.guid == guid) {
+        meta_mesh = mesh;
+        break;
+      }
+    }
+  }
+  if (!meta_mesh.guid) {
+    return format(arena, "Failed to find {} in {}", to_string(scratch, guid),
+                  meta_path);
+  }
+
+  JsonValue gltf;
+  {
+    IoResult<Span<char>> buffer = read(scratch, gltf_path);
+    if (!buffer) {
+      return format(arena, "Failed to read {}: {}", gltf_path, buffer.error());
+    }
+    Result<JsonValue, JsonErrorInfo> json_parse_result =
+        json_parse(scratch, {buffer->m_data, buffer->m_size});
+    if (!json_parse_result) {
+      JsonErrorInfo error = json_parse_result.error();
+      return format(arena, "{}:{}:{}: {}", gltf_path, error.line, error.column,
+                    error.error);
+    }
+    gltf = *json_parse_result;
+    // TODO(mbargatin): gltf parsing.
+  }
+
+  IoResult<Span<char>> bin = read(scratch, bin_path);
+  if (!bin) {
+    return format(arena, "Failed to read {}: {}", bin_path, bin.error());
+  }
+
+  JsonValue gltf_mesh = json_array_value(gltf, "meshes")[meta_mesh.mesh_id];
+  JsonValue gltf_primitive =
+      json_array_value(gltf_mesh, "primitives")[meta_mesh.primitive_id];
+  JsonValue attributes = json_value(gltf_primitive, "attributes");
+  auto positions = accessor_data<glm::vec3>(
+      *bin, gltf, json_integer_value(attributes, "POSITION"));
+  auto normals = accessor_data<glm::vec3>(
+      *bin, gltf, json_integer_value(attributes, "NORMAL"));
+  Span<const glm::vec4> tangents;
+  JsonValue tangent_accessor = json_value(attributes, "TANGENT");
+  if (tangent_accessor) {
+    tangents =
+        accessor_data<glm::vec4>(*bin, gltf, json_integer(tangent_accessor));
+  }
+  Span<const glm::vec2> uvs;
+  JsonValue uv_accessor = json_value(attributes, "TEXCOORD_0");
+  if (uv_accessor) {
+    uvs = accessor_data<glm::vec2>(*bin, gltf, json_integer(uv_accessor));
+  }
+  Span<const glm::vec4> colors;
+  JsonValue color_accessor = json_value(attributes, "COLOR_0");
+  if (color_accessor) {
+    colors = accessor_data<glm::vec4>(*bin, gltf, json_integer(color_accessor));
+  }
+  auto indices = accessor_data<const u32>(
+      *bin, gltf, json_integer_value(gltf_primitive, "indices"));
+
+  Blob blob = bake_mesh_to_memory(scratch, {
+                                               .num_vertices = positions.m_size,
+                                               .positions = positions.m_data,
+                                               .normals = normals.m_data,
+                                               .tangents = tangents.m_data,
+                                               .uvs = uvs.m_data,
+                                               .colors = colors.m_data,
+                                               .indices = indices,
+                                           });
+
+  // TODO(mbargatin): save file safely (avoid saving a partially written file by
+  // first writing to a temp file, flushing to disk and then renaming).
+  std::ignore = create_directories(blob_path.parent());
+  IoResult<void> write_result =
+      write(blob_path, Span((const char *)blob.data, blob.size));
+  if (!write_result) {
+    return format(arena, "Failed to write {}: {}", blob_path,
+                  write_result.error());
+  }
+
+  return {};
+}
+
+struct MeshCompileJobPayload {
+  Path gltf_path;
+  Path blob_path;
+  Guid64 guid;
+};
+
+enum class AssetCompilationScope {
+  Dirty,
+  All,
+};
+
+void launch_asset_compilation(
+    NotNull<EditorContext *> ctx,
+    AssetCompilationScope scope = AssetCompilationScope::Dirty) {
+  EditorProjectContext *project = ctx->m_project;
+  EditorAssetCompilerSession *session = &project->m_asset_compiler.m_session;
+  *session = {};
+
+  ScratchArena scratch;
+  Arena arena = Arena::from_tag(ArenaNamedTag::EditorCompile);
+
+  auto job_data = Span<MeshCompileJobPayload>::allocate(
+      &arena, project->m_meshes.raw_size());
+  usize num_jobs = 0;
+
+  for (const auto &[_, gltf] : project->m_gltf_scenes) {
+    Handle<EditorMesh> cursor = gltf.first_mesh;
+    Path gltf_path = project->m_directory.concat(
+        &arena, {ASSET_DIR, GLTF_DIR, gltf.gltf_filename});
+    while (cursor) {
+      const EditorMesh &mesh = project->m_meshes[cursor];
+      cursor = mesh.next;
+      if (scope == AssetCompilationScope::Dirty and not mesh.is_dirty) {
+        continue;
+      }
+      job_data[num_jobs++] = {
+          .gltf_path = gltf_path,
+          .blob_path = project->m_directory.concat(
+              &arena, {CONTENT_DIR, MESH_DIR,
+                       Path::init(to_string(scratch, mesh.guid))}),
+          .guid = mesh.guid,
+      };
+    }
+  }
+
+  session->m_num_jobs = num_jobs;
+  session->m_job_results =
+      Span<MeshCompileJobResult>::allocate(&arena, num_jobs);
+  job_data = job_data.subspan(0, num_jobs);
+
+  auto job_batcher_callback = [job_data, session]() -> void {
+    constexpr usize MAX_BATCH_SIZE = 64;
+    for (usize job_base_index = 0; job_base_index < job_data.m_size;
+         job_base_index += MAX_BATCH_SIZE) {
+      if (std::atomic_ref(session->m_stop_token)
+              .load(std::memory_order_relaxed)) {
+        return;
+      }
+      ScratchArena scratch;
+      usize num_batch_jobs =
+          min(MAX_BATCH_SIZE, job_data.m_size - job_base_index);
+      JobDesc batch_jobs[MAX_BATCH_SIZE];
+      for (usize batch_job_index : range(num_batch_jobs)) {
+        usize job_index = job_base_index + batch_job_index;
+        const MeshCompileJobPayload *payload = &job_data[job_index];
+        batch_jobs[batch_job_index] = JobDesc::init(
+            scratch, "Compile Mesh",
+            [stop_token = &session->m_stop_token, payload,
+             results = session->m_job_results,
+             num_finished = &session->m_num_finished_jobs]() {
+              if (std::atomic_ref(*stop_token)
+                      .load(std::memory_order_relaxed)) {
+                return;
+              }
+              Arena arena = Arena::from_tag(ArenaNamedTag::EditorCompile);
+              Result<void, String8> compile_result =
+                  compile_mesh(&arena, payload->guid, payload->gltf_path,
+                               payload->blob_path);
+              usize output_index = std::atomic_ref(*num_finished)
+                                       .fetch_add(1, std::memory_order_relaxed);
+              results[output_index] = {
+                  .guid = payload->guid,
+                  .error = compile_result ? "" : compile_result.error(),
+              };
+            });
+      }
+      job_dispatch_and_wait(Span(batch_jobs, num_batch_jobs));
+    }
+  };
+  session->m_job =
+      job_dispatch("Compile Batcher", std::move(job_batcher_callback));
+  project->m_background_jobs.push(
+      &ctx->m_project_arena, {session->m_job, ArenaNamedTag::EditorCompile});
+}
+
 void draw_editor_ui(NotNull<EditorContext *> ctx) {
   ImGui_ImplSDL3_NewFrame();
   ImGui::NewFrame();
@@ -917,6 +1094,8 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       ImGui::GetID(OPEN_PROJECT_FAILED_POPUP_TEXT);
   const char *IMPORT_SCENE_POPUP_TEXT = "Import Scene";
   ImGuiID import_scene_popup = ImGui::GetID(IMPORT_SCENE_POPUP_TEXT);
+  const char *COMPILING_ASSETS_POPUP_TEXT = "Compiling Assets";
+  ImGuiID compiling_assets_popup = ImGui::GetID(COMPILING_ASSETS_POPUP_TEXT);
 
   if (ImGui::BeginMainMenuBar()) {
     FileDialogGuid open_project_file_dialog_guid =
@@ -987,9 +1166,38 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
     }
 
     if (ctx->m_state == EditorState::Project) {
-      if (ImGui::BeginMenu("Import")) {
-        if (ImGui::MenuItem("Scene...")) {
-          ImGui::OpenPopup(import_scene_popup);
+      if (ImGui::BeginMenu("Assets")) {
+        if (ImGui::BeginMenu("Import")) {
+          if (ImGui::MenuItem("Scene")) {
+            ImGui::OpenPopup(import_scene_popup);
+          }
+          ImGui::EndMenu();
+        }
+        if (ImGui::MenuItem("Compile")) {
+          launch_asset_compilation(ctx);
+          ImGui::OpenPopup(compiling_assets_popup);
+        }
+        if (ImGui::MenuItem("Clean Compiled")) {
+          ScratchArena scratch;
+          Path content =
+              ctx->m_project->m_directory.concat(scratch, CONTENT_DIR);
+          IoResult<void> remove_result = remove_directory_tree(content);
+          if (!remove_result) {
+            fmt::println("Failed to remove {}: {}", content,
+                         remove_result.error());
+          }
+        }
+        if (ImGui::MenuItem("Recompile All")) {
+          ScratchArena scratch;
+          Path content =
+              ctx->m_project->m_directory.concat(scratch, CONTENT_DIR);
+          IoResult<void> remove_result = remove_directory_tree(content);
+          if (!remove_result) {
+            fmt::println("Failed to remove {}: {}", content,
+                         remove_result.error());
+          }
+          launch_asset_compilation(ctx, AssetCompilationScope::All);
+          ImGui::OpenPopup(compiling_assets_popup);
         }
         ImGui::EndMenu();
       }
@@ -997,6 +1205,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
   }
   float menu_height = ImGui::GetWindowHeight();
   ImGui::EndMainMenuBar();
+  const ImGuiViewport *viewport = ImGui::GetMainViewport();
 
   if (ctx->m_project) {
     constexpr ImGuiWindowFlags SIDE_PANEL_FLAGS =
@@ -1005,7 +1214,6 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDecoration |
         ImGuiWindowFlags_NoScrollWithMouse;
-    const ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImVec2 side_panel_pos = {0, viewport->Size.y};
     ImGui::SetNextWindowPos(side_panel_pos, ImGuiCond_Always,
                             ImVec2(0.0f, 1.0f));
@@ -1026,12 +1234,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
           if (ImGui::BeginChild("##tree", {0.0f, 0.0f}, ImGuiChildFlags_None,
                                 ImGuiWindowFlags_None)) {
             ScratchArena scratch;
-            Handle<EditorGltfScene> head = ctx->m_project->m_gltf_scenes_head;
-            Handle<EditorGltfScene> handle =
-                ctx->m_project->m_gltf_scenes[head].list.next;
-            while (handle != head) {
-              const EditorGltfScene &scene =
-                  ctx->m_project->m_gltf_scenes[handle];
+            for (const auto &[_, scene] : ctx->m_project->m_gltf_scenes) {
               bool is_expanded = ImGui::TreeNodeEx(
                   scene.gltf_filename.m_str.zero_terminated(scratch),
                   ImGuiTreeNodeFlags_DefaultOpen);
@@ -1057,16 +1260,23 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                 while (mesh_handle) {
                   const EditorMesh &mesh =
                       ctx->m_project->m_meshes[mesh_handle];
+                  if (mesh.is_dirty) {
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Text,
+                        ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                  }
                   if (ImGui::TreeNodeEx(mesh.name.zero_terminated(scratch),
                                         ImGuiTreeNodeFlags_Leaf |
                                             ImGuiTreeNodeFlags_Bullet)) {
                     ImGui::TreePop();
                   }
+                  if (mesh.is_dirty) {
+                    ImGui::PopStyleColor();
+                  }
                   mesh_handle = mesh.next;
                 }
                 ImGui::TreePop();
               }
-              handle = scene.list.next;
             }
           }
           ImGui::EndChild();
@@ -1225,6 +1435,91 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
       ctx->m_popup_arena.clear();
     }
 
+    ImGui::EndPopup();
+  }
+
+  ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal(COMPILING_ASSETS_POPUP_TEXT, nullptr,
+                             ImGuiWindowFlags_AlwaysAutoResize)) {
+    AssetCompilationUI &ui = ctx->m_ui.m_asset_compilation;
+    if (ImGui::IsWindowAppearing()) {
+      ui = {};
+    }
+    const EditorAssetCompilerSession *session =
+        &ctx->m_project->m_asset_compiler.m_session;
+    u32 num_finished = std::atomic_ref(session->m_num_finished_jobs)
+                           .load(std::memory_order_acquire);
+    u32 num_launched = session->m_num_jobs;
+    bool is_done = ui.was_done or job_is_done(session->m_job);
+    if (is_done and not ui.was_done) {
+      ScratchArena scratch;
+      DynamicArray<String8> compilation_errors;
+      for (const MeshCompileJobResult &job_result :
+           session->m_job_results.subspan(0, num_finished)) {
+        if (job_result.error) {
+          String8 name;
+          // FIXME(mbargatin): linear search is slow.
+          for (const auto &[_, mesh] : ctx->m_project->m_meshes) {
+            if (mesh.guid == job_result.guid) {
+              name = mesh.name;
+              break;
+            }
+          }
+          String8 error = format(
+              &ctx->m_popup_arena, "{} ({}): {}", name ? name : "Unknown",
+              to_string(scratch, job_result.guid), job_result.error);
+          compilation_errors.push(&ctx->m_popup_arena, error);
+        }
+      }
+      ui.compilation_errors = compilation_errors;
+      ui.was_done = true;
+      job_reset_tag(ArenaNamedTag::EditorCompile);
+    }
+    bool is_canceled =
+        std::atomic_ref(session->m_stop_token).load(std::memory_order_relaxed);
+    if (not is_done) {
+      if (is_canceled) {
+        ImGui::Text("Canceling...");
+      } else {
+        ImGui::Text("Compiling assets: %d/%d...", num_finished, num_launched);
+      }
+      ImGui::ProgressBar(
+          num_launched > 0.0f ? (float)num_finished / num_launched : 1.0f);
+    } else {
+      if (ui.compilation_errors.m_size > 0) {
+        ScratchArena scratch;
+        ImGui::Text("Failed: compiled %d/%d assets", num_finished,
+                    num_launched);
+        ImGui::Text("Got %d errors:", (int)ui.compilation_errors.m_size);
+        if (ImGui::BeginChild("##errors", viewport->Size * 0.3f)) {
+          for (String8 error : ui.compilation_errors) {
+            ImGui::TextWrapped(error.zero_terminated(scratch));
+          }
+        }
+        ImGui::EndChild();
+      } else if (is_canceled) {
+        ImGui::Text("Canceled: compiled %d/%d assets", num_finished,
+                    num_launched);
+      } else {
+        ImGui::Text("Done: successfully compiled %d assets", num_launched);
+      }
+    }
+
+    ImGui::BeginDisabled(is_done or is_canceled);
+    if (ImGui::Button("Cancel")) {
+      std::atomic_ref(ctx->m_project->m_asset_compiler.m_session.m_stop_token)
+          .store(true, std::memory_order_relaxed);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(not is_done);
+    if (ImGui::Button("Close")) {
+      ren_assert(is_done);
+      ctx->m_project->m_asset_compiler.m_session = {};
+      ctx->m_popup_arena.clear();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
     ImGui::EndPopup();
   }
 

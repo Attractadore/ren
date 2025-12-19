@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <linux/limits.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -25,6 +26,8 @@ IoError io_error_from_errno(int err = errno) {
     return IoError::Exists;
   case ENOENT:
     return IoError::NotFound;
+  case ENOTEMPTY:
+    return IoError::NotEmpty;
   }
 }
 
@@ -102,6 +105,30 @@ IoResult<void> unlink(Path path) {
   ScratchArena scratch;
   errno = 0;
   if (::unlink(path.m_str.zero_terminated(scratch))) {
+    return io_error_from_errno();
+  }
+  return {};
+}
+
+IoResult<void> remove_directory(Path path) {
+  ScratchArena scratch;
+  errno = 0;
+  if (::rmdir(path.m_str.zero_terminated(scratch))) {
+    return io_error_from_errno();
+  }
+  return {};
+}
+
+IoResult<void> remove_directory_tree(Path path) {
+  ScratchArena scratch;
+  errno = 0;
+  int res = nftw(
+      path.m_str.zero_terminated(scratch),
+      [](const char *path, const struct stat *, int, struct FTW *) -> int {
+        return ::remove(path);
+      },
+      4, FTW_DEPTH | FTW_PHYS);
+  if (res != 0) {
     return io_error_from_errno();
   }
   return {};

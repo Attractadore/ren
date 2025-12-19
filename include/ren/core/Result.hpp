@@ -170,6 +170,7 @@ enum class IoError {
   Unknown,
   Access,
   NotFound,
+  NotEmpty,
   Exists,
   Fragmented,
 };

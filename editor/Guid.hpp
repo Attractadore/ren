@@ -10,6 +10,8 @@ template <usize Bytes> struct alignas(u32) Guid {
 
 public:
   bool operator==(const Guid &other) const = default;
+
+  explicit operator bool() const { return *this != Guid(); }
 };
 
 using Guid32 = Guid<4>;

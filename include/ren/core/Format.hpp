@@ -25,6 +25,17 @@ template <typename... T>
 }
 
 template <typename... T>
+[[nodiscard]] const char *format_zero_terminated(NotNull<Arena *> arena,
+                                                 fmt::format_string<T...> fmt,
+                                                 T &&...args) {
+  ScratchArena scratch;
+  auto builder = StringBuilder8::init(scratch);
+  fmt::vformat_to(builder.back_inserter(), fmt.str,
+                  fmt::vargs<T...>{{args...}});
+  return builder.materialize_zero_terminated(arena);
+}
+
+template <typename... T>
 void format_to(NotNull<StringBuilder8 *> builder, fmt::format_string<T...> fmt,
                T &&...args) {
   fmt::vformat_to(builder->back_inserter(), fmt.str,

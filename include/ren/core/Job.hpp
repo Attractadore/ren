@@ -51,6 +51,9 @@ struct JobAtomicCounter;
 struct JobToken {
   JobAtomicCounter *counter = nullptr;
   u64 generation = 0;
+
+public:
+  explicit operator bool() const { return counter; }
 };
 
 [[nodiscard]] JobToken job_dispatch(Span<const JobDesc> jobs);
@@ -109,6 +112,16 @@ public:
 
   bool is_ready() const { return job_is_done(m_token); }
 
+  const T &receive() const {
+    job_wait(m_token);
+    return *m_value;
+  }
+
+  T &receive() {
+    job_wait(m_token);
+    return *m_value;
+  }
+
   T &operator*() {
     ren_assert(m_value);
     ren_assert(is_ready());
@@ -120,9 +133,21 @@ private:
 };
 
 template <typename F>
-[[nodiscard]] auto job_dispatch(const char *label, ArenaTag tag, F &&callback) {
+[[nodiscard]] auto job_dispatch(ArenaTag tag, const char *label, F &&callback) {
   using R = std::invoke_result_t<F>;
   R *result = job_tag_allocate<R>(tag);
+  JobToken token =
+      job_dispatch(label, [result, cb = std::forward<F>(callback)]() {
+        new (result) R(cb());
+      });
+  return JobFuture<R>(token, result);
+}
+
+template <typename F>
+[[nodiscard]] auto job_dispatch(NotNull<Arena *> arena, const char *label,
+                                F &&callback) {
+  using R = std::invoke_result_t<F>;
+  R *result = arena->allocate<R>();
   JobToken token =
       job_dispatch(label, [result, cb = std::forward<F>(callback)]() {
         new (result) R(cb());

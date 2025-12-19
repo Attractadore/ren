@@ -22,6 +22,8 @@ String8 format_as(IoError error) {
     return "Access denied";
   case IoError::Exists:
     return "Already exists";
+  case IoError::NotEmpty:
+    return "Directory is not empty";
   }
   return "Unknown";
 }

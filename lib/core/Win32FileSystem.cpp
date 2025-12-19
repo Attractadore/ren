@@ -240,6 +240,14 @@ IoResult<void> unlink(Path path) {
   return {};
 }
 
+IoResult<void> remove_directory(Path path) {
+  ScratchArena scratch;
+  if (!RemoveDirectoryW(utf8_to_raw_path(scratch, path.m_str))) {
+    return win32_to_io_error();
+  }
+  return {};
+}
+
 IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
   ScratchArena scratch;
   DWORD access = 0;

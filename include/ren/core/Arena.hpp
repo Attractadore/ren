@@ -9,6 +9,7 @@ namespace ren {
 enum class ArenaNamedTag {
   None,
   EditorProject,
+  EditorCompile,
   FirstCustom,
 };
 

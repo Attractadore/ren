@@ -278,6 +278,13 @@ public:
     return {str, m_buffer.m_size};
   }
 
+  const char *materialize_zero_terminated(NotNull<Arena *> arena) const {
+    char *str = arena->allocate<char>(m_buffer.m_size + 1);
+    std::memcpy(str, m_buffer.m_data, m_buffer.m_size);
+    str[m_buffer.m_size] = 0;
+    return str;
+  }
+
   StringBuilderInserter back_inserter() { return {this}; }
 
   void reserve(usize capacity) { m_buffer.reserve(m_arena, capacity); };

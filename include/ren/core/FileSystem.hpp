@@ -91,6 +91,12 @@ IoResult<u64> last_write_time(Path path);
 
 IoResult<void> unlink(Path path);
 
+/// Remove empty directory.
+IoResult<void> remove_directory(Path path);
+
+/// Remove directory and all of its children.
+IoResult<void> remove_directory_tree(Path path);
+
 struct File {
   uintptr_t m_fd;
 };
