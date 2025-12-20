@@ -3,13 +3,12 @@
 #include "ren/core/Optional.hpp"
 
 namespace ren {
-bool try_get_json_string(JsonValue json, String8 key, String8 &out) {
+Optional<String8> try_get_json_string(JsonValue json, String8 key) {
   JsonValue val = json_value(json, key);
   if (val.type == JsonType::String) {
-    out = json_string(val);
-    return true;
+    return json_string(val);
   }
-  return false;
+  return {};
 }
 
 i32 json_get_int(JsonValue json, String8 key, i32 default_val) {
@@ -28,15 +27,6 @@ float json_get_float(JsonValue json, String8 key, float default_val) {
     return (float)val.integer;
   }
   return default_val;
-}
-
-bool try_get_json_string_required(JsonValue json, String8 key, String8 &out) {
-  JsonValue val = json_value(json, key);
-  if (val.type != JsonType::Null) {
-    out = json_string(val);
-    return true;
-  }
-  return false;
 }
 
 bool json_get_bool(JsonValue json, String8 key, bool default_val) {
@@ -79,15 +69,22 @@ static Result<GltfAsset, GltfErrorInfo> parse_asset(JsonValue json) {
   }
 
   GltfAsset asset;
-
-  if (!try_get_json_string(json, "version", asset.version)) {
+  if (Optional<String8> result = try_get_json_string(json, "version")) {
+    asset.version = *result;
+  } else {
     return GltfErrorInfo{.error = GltfError::InvalidFormat,
                          .desc = "Expected filed \"version\" not found."};
   }
 
-  try_get_json_string(json, "generator", asset.generator);
-  try_get_json_string(json, "copyright", asset.copyright);
-  try_get_json_string(json, "minVersion", asset.min_version);
+  if (Optional<String8> result = try_get_json_string(json, "generator")) {
+    asset.generator = *result;
+  }
+  if (Optional<String8> result = try_get_json_string(json, "copyright")) {
+    asset.copyright = *result;
+  }
+  if (Optional<String8> result = try_get_json_string(json, "minVersion")) {
+    asset.min_version = *result;
+  }
 
   return asset;
 }
@@ -100,7 +97,9 @@ static Result<GltfScene, GltfErrorInfo> parse_scene(NotNull<Arena *> arena, Json
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", scene.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    scene.name = *result;
+  }
 
   JsonValue nodes = json_value(json, "nodes");
   if (nodes.type == JsonType::Array) {
@@ -125,7 +124,10 @@ static Result<GltfNode, GltfErrorInfo> parse_node(NotNull<Arena *> arena, JsonVa
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", node.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    node.name = *result;
+  }
+
   node.camera = json_get_int(json, "camera", -1);
   node.mesh = json_get_int(json, "mesh", -1);
   node.skin = json_get_int(json, "skin", -1);
@@ -208,7 +210,9 @@ static Result<GltfMesh, GltfErrorInfo> parse_mesh(NotNull<Arena *> arena, JsonVa
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", mesh.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    mesh.name = *result;
+  }
 
   JsonValue prims = json_value(json, "primitives");
   if (prims.type == JsonType::Array) {
@@ -236,10 +240,19 @@ static Result<GltfImage, GltfErrorInfo> parse_image(NotNull<Arena *> arena, Json
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", image.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    image.name = *result;
+  }
+
   image.buffer_view = json_get_int(json, "bufferView", -1);
-  try_get_json_string(json, "mimeType", image.mime_type);
-  try_get_json_string(json, "uri", image.uri);
+
+  if (Optional<String8> result = try_get_json_string(json, "mimeType")) {
+    image.mime_type = *result;
+  }
+
+  if (Optional<String8> result = try_get_json_string(json, "uri")) {
+    image.uri = *result;
+  }
 
   return image;
 }
@@ -252,7 +265,10 @@ static Result<GltfAccessor, GltfErrorInfo> parse_accessor(NotNull<Arena *> arena
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", accessor.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    accessor.name = *result;
+  }
+
   accessor.buffer_view = json_get_int(json, "bufferView", -1);
   accessor.buffer_offset = json_get_int(json, "byteOffset", 0);
   accessor.component_type =
@@ -315,7 +331,10 @@ static Result<GltfBufferView, GltfErrorInfo> parse_buffer_view(NotNull<Arena *> 
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", view.name);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    view.name = *result;
+  }
+
   view.buffer = json_get_int(json, "buffer", 0);
   view.byte_offset = json_get_int(json, "byteOffset", 0);
   view.byte_length = json_get_int(json, "byteLength", 0);
@@ -333,8 +352,12 @@ static Result<GltfBuffer, GltfErrorInfo> parse_buffer(NotNull<Arena *> arena, Js
                          .desc = "Expected object."};
   }
 
-  try_get_json_string(json, "name", buffer.name);
-  try_get_json_string(json, "uri", buffer.uri);
+  if (Optional<String8> result = try_get_json_string(json, "name")) {
+    buffer.name = *result;
+  }
+  if (Optional<String8> result = try_get_json_string(json, "uri")) {
+    buffer.uri = *result;
+  }
 
   return buffer;
 }
