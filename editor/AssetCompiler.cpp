@@ -23,22 +23,22 @@ Span<const T> accessor_data(Span<const char> bin, JsonValue gltf,
   usize count = json_integer_value(accessor, "count");
   usize component_size = 0;
   switch ((GltfComponentType)json_integer_value(accessor, "componentType")) {
-  case GLTF_COMPONENT_BYTE:
+  case GLTF_COMPONENT_TYPE_BYTE:
     component_size = sizeof(i8);
     break;
-  case GLTF_COMPONENT_UNSIGNED_BYTE:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
     component_size = sizeof(u8);
     break;
-  case GLTF_COMPONENT_SHORT:
+  case GLTF_COMPONENT_TYPE_SHORT:
     component_size = sizeof(i16);
     break;
-  case GLTF_COMPONENT_UNSIGNED_SHORT:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
     component_size = sizeof(u16);
     break;
-  case GLTF_COMPONENT_UNSIGNED_INT:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
     component_size = sizeof(u32);
     break;
-  case GLTF_COMPONENT_FLOAT:
+  case GLTF_COMPONENT_TYPE_FLOAT:
     component_size = sizeof(float);
     break;
   }
