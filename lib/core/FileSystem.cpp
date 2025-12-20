@@ -169,6 +169,9 @@ Path Path::relative(Path root) const {
 }
 
 Path Path::concat(NotNull<Arena *> arena, Path other) const {
+  if (other == ".") {
+    return copy(arena);
+  }
   return concat(arena, {&other, 1});
 }
 

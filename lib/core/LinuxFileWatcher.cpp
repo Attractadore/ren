@@ -24,7 +24,8 @@ struct FileWatcher {
   usize buffer_offset = 0;
 };
 
-FileWatcher *start_file_watcher(NotNull<Arena *> arena, Path root) {
+FileWatcher *start_file_watcher(NotNull<Arena *> arena, Path root,
+                                u64 event_report_timeout_ns) {
   auto *watcher = arena->allocate<FileWatcher>();
   *watcher = {
       .m_root = root.copy(arena),
@@ -89,11 +90,41 @@ top: {
   if (event->mask & IN_Q_OVERFLOW) {
     return FileWatchEvent{.type = FileWatchEventType::QueueOverflow};
   }
+
+  if (event->mask & IN_MOVE_SELF) {
+    inotify_rm_watch(watcher->m_inotify_fd, event->wd);
+    goto top;
+  }
+
+  if (event->mask & IN_IGNORED) {
+    usize wi_index = -1;
+    for (usize i : range(watcher->m_watch_items.m_size)) {
+      if (watcher->m_watch_items[i].wd == event->wd) {
+        wi_index = i;
+        break;
+      }
+    }
+    ren_assert(wi_index < watcher->m_watch_items.m_size);
+    std::swap(watcher->m_watch_items[wi_index], watcher->m_watch_items.back());
+    watcher->m_watch_items.pop();
+    goto top;
+  }
+
+  if (event->len == 0) {
+    goto top;
+  }
+
   FileWatchEventType type = FileWatchEventType::Other;
-  if (event->mask & (IN_DELETE | IN_MOVED_FROM | IN_MOVE_SELF | IN_IGNORED)) {
+  if (event->mask & IN_CREATE) {
+    type = FileWatchEventType::Created;
+  } else if (event->mask & IN_MOVED_TO) {
+    type = FileWatchEventType::RenamedTo;
+  } else if (event->mask & (IN_ATTRIB | IN_CLOSE_WRITE)) {
+    type = FileWatchEventType::Modified;
+  } else if (event->mask & IN_DELETE) {
     type = FileWatchEventType::Removed;
-  } else if (event->mask & (IN_ATTRIB | IN_CLOSE_WRITE | IN_MOVED_TO)) {
-    type = FileWatchEventType::CreatedOrModified;
+  } else if (event->mask & IN_MOVED_FROM) {
+    type = FileWatchEventType::RenamedFrom;
   }
 
   Path parent;
@@ -104,21 +135,8 @@ top: {
     };
   }
   ren_assert(parent);
-  Path filename;
-  if (event->len > 0) {
-    filename = Path::init(String8::init(event->name));
-  }
-
-  // Don't generate an event when a watched child is removed.
-  if ((event->mask & IN_ISDIR) and
-      (event->mask & (IN_DELETE | IN_MOVED_FROM))) {
-    for (WatchItem wi : watcher->m_watch_items) {
-      if (wi.relative_path.parent() == parent and
-          wi.relative_path.filename() == filename) {
-        goto top;
-      };
-    }
-  }
+  ren_assert(event->len > 0);
+  Path filename = Path::init(String8::init(event->name));
 
   return FileWatchEvent{
       .type = type,

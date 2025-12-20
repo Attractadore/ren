@@ -25,20 +25,25 @@ struct EditorMesh {
 
 struct EditorContext;
 
+void register_all_assets(NotNull<EditorContext *> ctx);
+void unregister_all_assets(NotNull<EditorContext *> ctx);
+
 void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
                          Path meta_filename);
 void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path);
-
 void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename);
 
 void register_all_gltf_scenes(NotNull<EditorContext *> ctx);
-
 void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx);
 
-void mark_gltf_scene_dirty(NotNull<EditorContext *> ctx, Path meta_filename);
+void register_all_content(NotNull<EditorContext *> ctx);
+void unregister_all_content(NotNull<EditorContext *> ctx);
 
-void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
-                               Path meta_filename);
+void register_all_mesh_content(NotNull<EditorContext*> ctx);
+void unregister_all_mesh_content(NotNull<EditorContext*> ctx);
+
+void register_mesh_content(NotNull<EditorContext*> ctx, Guid64 guid);
+void unregister_mesh_content(NotNull<EditorContext*> ctx, Guid64 guid);
 
 [[nodiscard]] JobFuture<Result<void, String8>>
 job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path);

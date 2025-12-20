@@ -224,7 +224,7 @@ Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
   };
   ctx->m_state = EditorState::Project;
   start_asset_watcher(ctx);
-  register_all_gltf_scenes(ctx);
+  register_all_assets(ctx);
 
   if (abs_path) {
     ctx->m_recently_opened.push(&ctx->m_arena, *abs_path);

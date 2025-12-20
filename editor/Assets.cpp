@@ -7,8 +7,27 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <fmt/base.h>
+#include <tracy/Tracy.hpp>
+
+/// 1. For scenes we need (relatively) fast insertion + (relatively) fast
+/// deletion by filename. Scenes also need to be sortable for display in the UI.
+/// This needs to be done only once when sort settings or contents change
+/// though, and can later be reused.
+/// 2. For meshes we need fast insertion, fast deletion, fast insertion into the
+/// dirty list by guid, for removal from dirty list by guid, fast access by
+/// guid for cross-referencing in the UI.
+/// This means that for both cases we need to map a hash to a Handle. For
+/// scenes a hash can be generated from the file name.
 
 namespace ren {
+
+void register_all_assets(NotNull<EditorContext *> ctx) {
+  register_all_gltf_scenes(ctx);
+}
+
+void unregister_all_assets(NotNull<EditorContext *> ctx) {
+  unregister_all_gltf_scenes(ctx);
+}
 
 void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
                          Path meta_filename) {
@@ -57,9 +76,11 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
       });
 }
 
-void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path) {
-  ren_assert(meta_path.is_absolute());
+void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
+  ren_assert(not meta_filename.is_absolute());
   ScratchArena scratch;
+  Path meta_path = ctx->m_project->m_directory.concat(
+      scratch, {ASSET_DIR, GLTF_DIR, meta_filename});
   IoResult<Span<char>> buffer = read(scratch, meta_path);
   if (!buffer) {
     fmt::println(stderr, "Failed to read {}: {}", meta_path, buffer.error());
@@ -83,16 +104,6 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, Path meta_path) {
   register_gltf_scene(ctx, *meta, meta_path.filename());
 }
 
-/// 1. For scenes we need (relatively) fast insertion + (relatively) fast
-/// deletion by filename. Scenes also need to be sortable for display in the UI.
-/// This needs to be done only once when sort settings or contents change
-/// though, and can later be reused.
-/// 2. For meshes we need fast insertion, fast deletion, fast insertion into the
-/// dirty list by guid, for removal from dirty list by guid, fast access by
-/// guid for cross-referencing in the UI.
-/// This means that for both cases we need to map a hash to a Handle. For
-/// scenes a hash can be generated from the file name.
-
 void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
   // TODO: fix linear search, it's slow.
   EditorProjectContext *project = ctx->m_project;
@@ -112,6 +123,7 @@ void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
 }
 
 void register_all_gltf_scenes(NotNull<EditorContext *> ctx) {
+  ZoneScoped;
   ScratchArena scratch;
   Path assets =
       ctx->m_project->m_directory.concat(scratch, {ASSET_DIR, GLTF_DIR});
@@ -121,7 +133,6 @@ void register_all_gltf_scenes(NotNull<EditorContext *> ctx) {
     return;
   }
   while (true) {
-    ScratchArena scratch;
     IoResult<Path> entry_result = read_directory(scratch, *dirit);
     if (!entry_result) {
       fmt::println(stderr, "Failed to read directory entry in {}: {}", assets,
@@ -136,48 +147,78 @@ void register_all_gltf_scenes(NotNull<EditorContext *> ctx) {
     if (entry.extension() != META_EXT) {
       continue;
     }
-    Path meta_path = assets.concat(scratch, entry);
-    register_gltf_scene(ctx, meta_path);
+    register_gltf_scene(ctx, entry);
   }
   close_directory(*dirit);
 }
 
 void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx) {
   EditorProjectContext *project = ctx->m_project;
-
   project->m_gltf_scenes.clear();
   project->m_meshes.clear();
 }
 
-void mark_gltf_scene_dirty(NotNull<EditorContext *> ctx, Path meta_filename) {
-  // TODO: fix linear search, it's slow.
-  EditorProjectContext *project = ctx->m_project;
-  for (auto &&[_, gltf_scene] : project->m_gltf_scenes) {
-    if (gltf_scene.meta_filename == meta_filename) {
-      Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
-      while (mesh_handle) {
-        EditorMesh &mesh = project->m_meshes[mesh_handle];
-        mesh.is_dirty = true;
-        mesh_handle = mesh.next;
-      }
-      return;
+void register_all_content(NotNull<EditorContext *> ctx) {
+  register_all_mesh_content(ctx);
+}
+
+void unregister_all_content(NotNull<EditorContext *> ctx) {
+  unregister_all_mesh_content(ctx);
+}
+
+void register_all_mesh_content(NotNull<EditorContext *> ctx) {
+  ScratchArena scratch;
+  Path mesh_content_path =
+      ctx->m_project->m_directory.concat(scratch, {CONTENT_DIR, MESH_DIR});
+  IoResult<NotNull<Directory *>> dirit =
+      open_directory(scratch, mesh_content_path);
+  if (!dirit) {
+    fmt::println(stderr, "Failed to open {}: {}", mesh_content_path,
+                 dirit.error());
+    return;
+  }
+  while (true) {
+    ScratchArena scratch;
+    IoResult<Path> entry_result = read_directory(scratch, *dirit);
+    if (!entry_result) {
+      fmt::println(stderr, "Failed to read directory entry in {}: {}",
+                   mesh_content_path, entry_result.error());
+      close_directory(*dirit);
+      break;
+    }
+    Path entry = *entry_result;
+    if (!entry) {
+      break;
+    }
+    Optional<Guid64> guid = guid_from_string<sizeof(Guid64)>(entry);
+    if (!guid) {
+      continue;
+    }
+    register_mesh_content(ctx, *guid);
+  }
+  close_directory(*dirit);
+}
+
+void unregister_all_mesh_content(NotNull<EditorContext *> ctx) {
+  for (auto &&[_, mesh] : ctx->m_project->m_meshes) {
+    mesh.is_dirty = true;
+  }
+}
+
+void register_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid) {
+  for (auto &&[_, mesh] : ctx->m_project->m_meshes) {
+    if (mesh.guid == guid) {
+      mesh.is_dirty = false;
+      break;
     }
   }
 }
 
-void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
-                               Path meta_filename) {
-  // TODO: fix linear search, it's slow.
-  EditorProjectContext *project = ctx->m_project;
-  for (auto &&[_, gltf_scene] : project->m_gltf_scenes) {
-    if (gltf_scene.meta_filename == meta_filename) {
-      Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
-      while (mesh_handle) {
-        EditorMesh &mesh = project->m_meshes[mesh_handle];
-        mesh.is_dirty = false;
-        mesh_handle = mesh.next;
-      }
-      return;
+void unregister_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid) {
+  for (auto &&[_, mesh] : ctx->m_project->m_meshes) {
+    if (mesh.guid == guid) {
+      mesh.is_dirty = true;
+      break;
     }
   }
 }

@@ -72,9 +72,10 @@ public:
 
   [[nodiscard]] Path concat(NotNull<Arena *> arena,
                             Span<const Path> other) const;
+
+  operator String8() const { return m_str; }
 };
 
-inline bool operator==(Path lhs, String8 rhs) { return lhs.m_str == rhs; }
 inline bool operator==(Path lhs, Path rhs) { return lhs.m_str == rhs.m_str; }
 
 String8 format_as(Path path);

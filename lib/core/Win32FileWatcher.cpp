@@ -1,144 +1,109 @@
 #if _WIN32
 #include "Win32.hpp"
+#include "ren/core/Chrono.hpp"
 #include "ren/core/FileWatcher.hpp"
-#include "ren/core/Format.hpp"
 
 #include <Windows.h>
+#include <fmt/base.h>
+#include <tracy/Tracy.hpp>
+
+#include "ren/core/Format.hpp"
 
 namespace ren {
 
-struct FileWatcher {
-  Path m_root;
-  HANDLE m_root_watch_handle = INVALID_HANDLE_VALUE;
-  HANDLE m_root_watch_event = INVALID_HANDLE_VALUE;
-  OVERLAPPED m_root_watch_overlapped = {};
-  DynamicArray<Path> m_watch_directories;
-  alignas(DWORD) char m_root_watch_buffer[2048];
-  usize m_buffer_offset = 0;
-  usize m_buffer_size = 0;
+struct FileWatchItem {
+  Path relative_path;
+  HANDLE handle = INVALID_HANDLE_VALUE;
+  u64 last_event_time_ns = UINT64_MAX;
 };
 
-FileWatcher *start_file_watcher(NotNull<Arena *> arena, Path root) {
+struct FileWatcher {
+  Path m_root;
+  u64 m_report_timeout_ns = 0;
+  usize m_num_watch_items = 0;
+  FileWatchItem m_watch_items[64] = {};
+};
+
+FileWatcher *start_file_watcher(NotNull<Arena *> arena, Path root,
+                                u64 event_report_timeout_ns) {
   ScratchArena scratch;
   auto *watcher = arena->allocate<FileWatcher>();
   *watcher = {
       .m_root = root.copy(arena),
+      .m_report_timeout_ns = event_report_timeout_ns,
   };
-  watcher->m_root_watch_handle = CreateFileW(
-      utf8_to_raw_path(scratch, root.m_str), GENERIC_READ, FILE_SHARE_READ,
-      nullptr, OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
-      nullptr);
-  if (watcher->m_root_watch_handle == INVALID_HANDLE_VALUE) {
-    fmt::println(stderr, "CreateFile for {} failed: {}", root, GetLastError());
-    return nullptr;
-  }
-  watcher->m_root_watch_event = CreateEventW(nullptr, true, false, nullptr);
-  if (watcher->m_root_watch_event == INVALID_HANDLE_VALUE) {
-    fmt::println(stderr, "CreateEventW failed: {}", GetLastError());
-    CloseHandle(watcher->m_root_watch_handle);
-    return nullptr;
-  }
   return watcher;
 }
 
 void stop_file_watcher(NotNull<FileWatcher *> watcher) {
-  if (watcher->m_root_watch_overlapped.hEvent) {
-    CancelIo(watcher->m_root_watch_handle);
+  for (usize i : range(watcher->m_num_watch_items)) {
+    FindCloseChangeNotification(watcher->m_watch_items[i].handle);
   }
-  CloseHandle(watcher->m_root_watch_handle);
-  CloseHandle(watcher->m_root_watch_event);
+  watcher->m_num_watch_items = 0;
 }
 
 void watch_directory(NotNull<Arena *> arena, NotNull<FileWatcher *> watcher,
                      Path relative_path) {
+  ren_assert_msg(watcher->m_num_watch_items < 64,
+                 "WaitForMultipleObjects can't wait for more than 64 handles");
   ScratchArena scratch;
-  std::ignore =
-      create_directories(watcher->m_root.concat(scratch, relative_path));
-  watcher->m_watch_directories.push(arena, relative_path.copy(arena));
+  Path path = watcher->m_root.concat(scratch, relative_path);
+  std::ignore = create_directories(path);
+  fmt::println(stderr, "FindFirstChangeNotificationW for {}", path);
+  HANDLE handle = FindFirstChangeNotificationW(
+      utf8_to_raw_path(scratch, path), false,
+      FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+          FILE_NOTIFY_CHANGE_LAST_WRITE);
+  if (handle == INVALID_HANDLE_VALUE) {
+    fmt::println(stderr, "FindFirstChangeNotificationW failed: {}",
+                 GetLastError());
+    return;
+  }
+  watcher->m_watch_items[watcher->m_num_watch_items++] = {
+      .relative_path = relative_path.copy(arena),
+      .handle = handle,
+  };
 }
 
 Optional<FileWatchEvent> read_watch_event(NotNull<Arena *> arena,
                                           NotNull<FileWatcher *> watcher) {
-  while (true) {
-    if (watcher->m_buffer_offset == watcher->m_buffer_size) {
-      [[likely]] if (watcher->m_root_watch_overlapped.hEvent) {
-        DWORD num_returned = 0;
-        if (!GetOverlappedResult(watcher->m_root_watch_handle,
-                                 &watcher->m_root_watch_overlapped,
-                                 &num_returned, false)) {
-          DWORD err = GetLastError();
-          if (err == ERROR_NOTIFY_ENUM_DIR) {
-            return FileWatchEvent{.type = FileWatchEventType::QueueOverflow};
-          }
-          if (err != ERROR_IO_INCOMPLETE) {
-            fmt::println(stderr, "GetOverlappedResult failed: {}", err);
-          }
-          return {};
-        }
-        watcher->m_root_watch_overlapped = {};
-        watcher->m_buffer_offset = 0;
-        watcher->m_buffer_size = num_returned;
-        if (num_returned == 0) {
-          return FileWatchEvent{.type = FileWatchEventType::QueueOverflow};
-        }
-      } else {
-        watcher->m_root_watch_overlapped = {
-            .hEvent = watcher->m_root_watch_event,
-        };
-        if (!ReadDirectoryChangesW(
-                watcher->m_root_watch_handle, watcher->m_root_watch_buffer,
-                sizeof(watcher->m_root_watch_buffer), true,
-                FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_FILE_NAME |
-                    FILE_NOTIFY_CHANGE_LAST_WRITE,
-                nullptr, &watcher->m_root_watch_overlapped, nullptr)) {
-          fmt::println(stderr, "ReadDirectoryChangesW failed: {}",
-                       GetLastError());
-        }
-        return {};
-      }
-    }
+  ZoneScoped;
 
-    const auto *event = (const FILE_NOTIFY_INFORMATION *)&watcher
-                            ->m_root_watch_buffer[watcher->m_buffer_offset];
-    if (event->NextEntryOffset == 0) {
-      watcher->m_buffer_offset = watcher->m_buffer_size;
-    } else {
-      watcher->m_buffer_offset += event->NextEntryOffset;
-    }
-
-    FileWatchEventType type = FileWatchEventType::Other;
-    if (event->Action == FILE_ACTION_ADDED or
-        event->Action == FILE_ACTION_MODIFIED or
-        event->Action == FILE_ACTION_RENAMED_NEW_NAME) {
-      type = FileWatchEventType::CreatedOrModified;
-    } else if (event->Action == FILE_ACTION_REMOVED or
-               event->Action == FILE_ACTION_RENAMED_OLD_NAME) {
-      type = FileWatchEventType::Removed;
-    }
-
-    Span<const wchar_t> wcs_relative_path(
-        event->FileName, event->FileNameLength / sizeof(wchar_t));
-    Path relative_path = Path::init(wcs_to_utf8(arena, wcs_relative_path));
-
-    for (Path watch_path : watcher->m_watch_directories) {
-      if (watch_path == relative_path) {
-        return FileWatchEvent{
-            .type = type,
-            .parent = relative_path,
-        };
-      }
-    }
-    for (Path watch_path : watcher->m_watch_directories) {
-      if (watch_path == relative_path.parent()) {
-        return FileWatchEvent{
-            .type = type,
-            .parent = relative_path.parent(),
-            .filename = relative_path.filename(),
-        };
-      }
+  HANDLE wait_handles[64];
+  for (usize i : range(watcher->m_num_watch_items)) {
+    wait_handles[i] = watcher->m_watch_items[i].handle;
+  }
+  DWORD wait_result = WaitForMultipleObjects(watcher->m_num_watch_items,
+                                             wait_handles, false, 0);
+  ren_assert(wait_result < WAIT_ABANDONED_0 or
+             wait_result >= WAIT_ABANDONED_0 + watcher->m_num_watch_items);
+  if (wait_result == WAIT_FAILED) {
+    fmt::println(stderr, "WaitForMultipleObjects failed: {}", GetLastError());
+    return {};
+  }
+  u64 now_ns = clock();
+  if (wait_result != WAIT_TIMEOUT) {
+    usize ready_index = wait_result - WAIT_OBJECT_0;
+    ren_assert(ready_index < 64);
+    watcher->m_watch_items[ready_index].last_event_time_ns = now_ns;
+    if (!FindNextChangeNotification(
+            watcher->m_watch_items[ready_index].handle)) {
+      fmt::println(stderr, "FindNextChangeNotification failed: {}",
+                   GetLastError());
     }
   }
+  for (FileWatchItem &wi :
+       Span(watcher->m_watch_items, watcher->m_num_watch_items)) {
+    if (wi.last_event_time_ns < now_ns and
+        wi.last_event_time_ns + watcher->m_report_timeout_ns < now_ns) {
+      wi.last_event_time_ns = UINT64_MAX;
+      return FileWatchEvent{
+          .type = FileWatchEventType::Fuzzy,
+          .parent = wi.relative_path.copy(arena),
+      };
+    }
+  }
+  return {};
 }
 
 } // namespace ren
