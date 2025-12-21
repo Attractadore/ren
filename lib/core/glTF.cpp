@@ -62,7 +62,7 @@ Optional<Span<float>> json_get_float_array(NotNull<Arena *> arena,
   return out.copy(arena);
 }
 
-static Result<GltfAsset, GltfErrorInfo> parse_asset(JsonValue json) {
+static Result<GltfAsset, GltfErrorInfo> gltf_parse_asset(JsonValue json) {
   if (json.type != JsonType::Object) {
     return GltfErrorInfo{.error = GltfError::InvalidFormat,
                          .desc = "Expected object type."};
@@ -89,7 +89,8 @@ static Result<GltfAsset, GltfErrorInfo> parse_asset(JsonValue json) {
   return asset;
 }
 
-static Result<GltfScene, GltfErrorInfo> parse_scene(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfScene, GltfErrorInfo> gltf_parse_scene(NotNull<Arena *> arena,
+                                                         JsonValue json) {
   GltfScene scene = {};
 
   if (json.type != JsonType::Object) {
@@ -116,7 +117,8 @@ static Result<GltfScene, GltfErrorInfo> parse_scene(NotNull<Arena *> arena, Json
   return scene;
 }
 
-static Result<GltfNode, GltfErrorInfo> parse_node(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfNode, GltfErrorInfo> gltf_parse_node(NotNull<Arena *> arena,
+                                                       JsonValue json) {
   GltfNode node = {};
 
   if (json.type != JsonType::Object) {
@@ -173,7 +175,8 @@ static Result<GltfNode, GltfErrorInfo> parse_node(NotNull<Arena *> arena, JsonVa
   return node;
 }
 
-static Result<GltfPrimitive, GltfErrorInfo> parse_primitive(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfPrimitive, GltfErrorInfo>
+gltf_parse_primitive(NotNull<Arena *> arena, JsonValue json) {
   GltfPrimitive prim = {};
 
   if (json.type != JsonType::Object) {
@@ -202,7 +205,8 @@ static Result<GltfPrimitive, GltfErrorInfo> parse_primitive(NotNull<Arena *> are
   return prim;
 }
 
-static Result<GltfMesh, GltfErrorInfo> parse_mesh(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfMesh, GltfErrorInfo> gltf_parse_mesh(NotNull<Arena *> arena,
+                                                       JsonValue json) {
   GltfMesh mesh = {};
 
   if (json.type != JsonType::Object) {
@@ -221,7 +225,7 @@ static Result<GltfMesh, GltfErrorInfo> parse_mesh(NotNull<Arena *> arena, JsonVa
 
     for (const JsonValue &prim_json : prim_arr) {
       Result<GltfPrimitive, GltfErrorInfo> parse_result =
-          parse_primitive(arena, prim_json);
+          gltf_parse_primitive(arena, prim_json);
       if (!parse_result) {
         return parse_result.error();
       }
@@ -232,7 +236,8 @@ static Result<GltfMesh, GltfErrorInfo> parse_mesh(NotNull<Arena *> arena, JsonVa
   return mesh;
 }
 
-static Result<GltfImage, GltfErrorInfo> parse_image(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfImage, GltfErrorInfo> gltf_parse_image(NotNull<Arena *> arena,
+                                                         JsonValue json) {
   GltfImage image = {};
 
   if (json.type != JsonType::Object) {
@@ -257,7 +262,8 @@ static Result<GltfImage, GltfErrorInfo> parse_image(NotNull<Arena *> arena, Json
   return image;
 }
 
-static Result<GltfAccessor, GltfErrorInfo> parse_accessor(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfAccessor, GltfErrorInfo>
+gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
   GltfAccessor accessor = {};
 
   if (json.type != JsonType::Object) {
@@ -322,7 +328,8 @@ static Result<GltfAccessor, GltfErrorInfo> parse_accessor(NotNull<Arena *> arena
   return accessor;
 }
 
-static Result<GltfBufferView, GltfErrorInfo> parse_buffer_view(NotNull<Arena *> arena,
+static Result<GltfBufferView, GltfErrorInfo>
+gltf_parse_buffer_view(NotNull<Arena *> arena,
                                         JsonValue json) {
   GltfBufferView view = {};
 
@@ -344,7 +351,8 @@ static Result<GltfBufferView, GltfErrorInfo> parse_buffer_view(NotNull<Arena *> 
   return view;
 }
 
-static Result<GltfBuffer, GltfErrorInfo> parse_buffer(NotNull<Arena *> arena, JsonValue json) {
+static Result<GltfBuffer, GltfErrorInfo>
+gltf_parse_buffer(NotNull<Arena *> arena, JsonValue json) {
   GltfBuffer buffer = {};
 
   if (json.type != JsonType::Object) {
@@ -363,9 +371,8 @@ static Result<GltfBuffer, GltfErrorInfo> parse_buffer(NotNull<Arena *> arena, Js
 }
 
 template <typename T>
-static Result<DynamicArray<T>, GltfErrorInfo> parse_array(
-    NotNull<Arena *> arena, JsonValue arr,
-    Result<T, GltfErrorInfo> (*parse_func)(NotNull<Arena *>, JsonValue)) {
+static Result<DynamicArray<T>, GltfErrorInfo> gltf_parse_array(
+    NotNull<Arena *> arena, JsonValue arr) {
   if (arr.type != JsonType::Array) {
     return GltfErrorInfo{.error = GltfError::InvalidFormat,
                          .desc = "Expected array."};
@@ -375,7 +382,24 @@ static Result<DynamicArray<T>, GltfErrorInfo> parse_array(
   DynamicArray<T> out = DynamicArray<T>::init(arena, values.m_size);
 
   for (const JsonValue &val : values) {
-    Result<T, GltfErrorInfo> parse_result = parse_func(arena, val);
+    Result<T, GltfErrorInfo> parse_result = {
+        GltfErrorInfo{.error = GltfError::InvalidFormat}};
+    if constexpr (std::is_same_v<T, GltfScene>) {
+      parse_result = gltf_parse_scene(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfNode>) {
+      parse_result = gltf_parse_node(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfMesh>) {
+      parse_result = gltf_parse_mesh(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfImage>) {
+      parse_result = gltf_parse_image(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfAccessor>) {
+      parse_result = gltf_parse_accessor(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfBufferView>) {
+      parse_result = gltf_parse_buffer_view(arena, val);
+    } else if constexpr (std::is_same_v<T, GltfBuffer>) {
+      parse_result = gltf_parse_buffer(arena, val);
+    }
+
     if (!parse_result) {
       return parse_result.error();
     }
@@ -401,7 +425,8 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
 
   Gltf gltf{};
 
-  Result<GltfAsset, GltfErrorInfo> asset_parse_result = parse_asset(json_value(*json, "asset"));
+  Result<GltfAsset, GltfErrorInfo> asset_parse_result =
+      gltf_parse_asset(json_value(*json, "asset"));
   if (!asset_parse_result) {
     return asset_parse_result.error();
   }
@@ -413,7 +438,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "scenes");
   if (arr) {
     Result<DynamicArray<GltfScene>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_scene);
+        gltf_parse_array<GltfScene>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -422,7 +447,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "nodes");
   if (arr) {
     Result<DynamicArray<GltfNode>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_node);
+        gltf_parse_array<GltfNode>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -431,7 +456,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "meshes");
   if (arr) {
     Result<DynamicArray<GltfMesh>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_mesh);
+        gltf_parse_array<GltfMesh>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -440,7 +465,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "images");
   if (arr) {
     Result<DynamicArray<GltfImage>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_image);
+        gltf_parse_array<GltfImage>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -449,7 +474,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "accessors");
   if (arr) {
     Result<DynamicArray<GltfAccessor>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_accessor);
+        gltf_parse_array<GltfAccessor>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -458,7 +483,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "bufferViews");
   if (arr) {
     Result<DynamicArray<GltfBufferView>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_buffer_view);
+        gltf_parse_array<GltfBufferView>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -467,7 +492,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   arr = json_value(*json, "buffers");
   if (arr) {
     Result<DynamicArray<GltfBuffer>, GltfErrorInfo> parse_result =
-        parse_array(arena, arr, parse_buffer);
+        gltf_parse_array<GltfBuffer>(arena, arr);
     if (!parse_result) {
       return parse_result.error();
     }
@@ -512,9 +537,9 @@ Result<Gltf, GltfErrorInfo> gltf_parse_file(NotNull<Arena *> arena, Path path) {
   return gltf;
 }
 
-static JsonValue serialize_asset(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_asset(NotNull<Arena *> arena,
                                  const GltfAsset &asset) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
   kv_pairs.push(arena, {"version", JsonValue::init(arena, asset.version)});
 
   if (asset.generator) {
@@ -534,16 +559,16 @@ static JsonValue serialize_asset(NotNull<Arena *> arena,
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_scene(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
                                  const GltfScene &scene) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (scene.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, scene.name)});
   }
 
   if (scene.nodes.m_size > 0) {
-    DynamicArray<JsonValue> node_arr;
+    DynamicArray<JsonValue> node_arr = {};
     for (i32 node : scene.nodes) {
       node_arr.push(arena, JsonValue::init((i64)node));
     }
@@ -555,8 +580,9 @@ static JsonValue serialize_scene(NotNull<Arena *> arena,
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+static JsonValue gltf_serialize_node(NotNull<Arena *> arena,
+                                     const GltfNode &node) {
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (node.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, node.name)});
@@ -575,15 +601,12 @@ static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
   }
 
   if (node.matrix != glm::identity<glm::mat4>()) {
-    DynamicArray<JsonValue> matrix_arr;
+    DynamicArray<JsonValue> matrix_arr = {};
     float buffer[16];
     memcpy(buffer, &node.matrix[0], sizeof(glm::mat4));
 
     for (usize i = 0; i < 16; ++i) {
-      JsonValue val;
-      val.type = JsonType::Number;
-      val.number = buffer[i];
-      matrix_arr.push(arena, val);
+      matrix_arr.push(arena, JsonValue::init(buffer[i]));
     }
     kv_pairs.push(arena,
                   {"matrix", JsonValue::init(Span<const JsonValue>(
@@ -598,12 +621,9 @@ static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
         node.scale[0] != 1.0f || node.scale[1] != 1.0f || node.scale[2] != 1.0f;
 
     if (has_translation) {
-      DynamicArray<JsonValue> trans_arr;
+      DynamicArray<JsonValue> trans_arr = {};
       for (usize i = 0; i < 3; ++i) {
-        JsonValue val;
-        val.type = JsonType::Number;
-        val.number = node.translation[i];
-        trans_arr.push(arena, val);
+        trans_arr.push(arena, JsonValue::init(node.translation[i]));
       }
       kv_pairs.push(arena,
                     {"translation", JsonValue::init(Span<const JsonValue>(
@@ -611,24 +631,18 @@ static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
     }
 
     if (has_rotation) {
-      DynamicArray<JsonValue> rot_arr;
+      DynamicArray<JsonValue> rot_arr = {};
       for (usize i = 0; i < 4; ++i) {
-        JsonValue val;
-        val.type = JsonType::Number;
-        val.number = node.rotation[i];
-        rot_arr.push(arena, val);
+        rot_arr.push(arena, JsonValue::init(node.rotation[i]));
       }
       kv_pairs.push(arena, {"rotation", JsonValue::init(Span<const JsonValue>(
                                             rot_arr.m_data, rot_arr.m_size))});
     }
 
     if (has_scale) {
-      DynamicArray<JsonValue> scale_arr;
+      DynamicArray<JsonValue> scale_arr = {};
       for (usize i = 0; i < 3; ++i) {
-        JsonValue val;
-        val.type = JsonType::Number;
-        val.number = node.scale[i];
-        scale_arr.push(arena, val);
+        scale_arr.push(arena, JsonValue::init(node.scale[i]));
       }
       kv_pairs.push(arena, {"scale", JsonValue::init(Span<const JsonValue>(
                                          scale_arr.m_data, scale_arr.m_size))});
@@ -636,7 +650,7 @@ static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
   }
 
   if (node.children.m_size > 0) {
-    DynamicArray<JsonValue> children_arr;
+    DynamicArray<JsonValue> children_arr = {};
     for (i32 child : node.children) {
       children_arr.push(arena, JsonValue::init((i64)child));
     }
@@ -649,9 +663,9 @@ static JsonValue serialize_node(NotNull<Arena *> arena, const GltfNode &node) {
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_primitive(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
                                      const GltfPrimitive &prim) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (prim.attributes.m_size > 0) {
     DynamicArray<JsonKeyValue> attrs;
@@ -679,8 +693,9 @@ static JsonValue serialize_primitive(NotNull<Arena *> arena,
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_mesh(NotNull<Arena *> arena, const GltfMesh &mesh) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
+                                     const GltfMesh &mesh) {
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (mesh.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, mesh.name)});
@@ -689,7 +704,7 @@ static JsonValue serialize_mesh(NotNull<Arena *> arena, const GltfMesh &mesh) {
   if (mesh.primitives.m_size > 0) {
     DynamicArray<JsonValue> prim_arr;
     for (const GltfPrimitive &prim : mesh.primitives) {
-      prim_arr.push(arena, serialize_primitive(arena, prim));
+      prim_arr.push(arena, gltf_serialize_primitive(arena, prim));
     }
     kv_pairs.push(arena,
                   {"primitives", JsonValue::init(Span<const JsonValue>(
@@ -700,9 +715,9 @@ static JsonValue serialize_mesh(NotNull<Arena *> arena, const GltfMesh &mesh) {
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_image(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
                                  const GltfImage &image) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (image.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, image.name)});
@@ -725,9 +740,9 @@ static JsonValue serialize_image(NotNull<Arena *> arena,
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_accessor(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
                                     const GltfAccessor &accessor) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (accessor.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, accessor.name)});
@@ -746,12 +761,7 @@ static JsonValue serialize_accessor(NotNull<Arena *> arena,
   kv_pairs.push(
       arena, {"componentType", JsonValue::init((i64)accessor.component_type)});
 
-  if (accessor.normalized) {
-    JsonValue bool_val;
-    bool_val.type = JsonType::Boolean;
-    bool_val.boolean = true;
-    kv_pairs.push(arena, {"normalized", bool_val});
-  }
+  kv_pairs.push(arena, {"normalized", JsonValue::init(accessor.normalized)});
 
   kv_pairs.push(arena, {"count", JsonValue::init((i64)accessor.count)});
 
@@ -789,22 +799,16 @@ static JsonValue serialize_accessor(NotNull<Arena *> arena,
   }
   kv_pairs.push(arena, {"type", JsonValue::init(arena, type_str)});
 
-  DynamicArray<JsonValue> min_arr;
+  DynamicArray<JsonValue> min_arr = {};
   for (i32 i = 0; i < element_count; ++i) {
-    JsonValue json_val;
-    json_val.type = JsonType::Number;
-    json_val.number = accessor.min[i];
-    min_arr.push(arena, json_val);
+    min_arr.push(arena, JsonValue::init(accessor.min[i]));
   }
   kv_pairs.push(arena, {"min", JsonValue::init(Span<const JsonValue>(
                                    min_arr.m_data, min_arr.m_size))});
 
-  DynamicArray<JsonValue> max_arr;
+  DynamicArray<JsonValue> max_arr = {};
   for (i32 i = 0; i < element_count; ++i) {
-    JsonValue json_val;
-    json_val.type = JsonType::Number;
-    json_val.number = accessor.max[i];
-    max_arr.push(arena, json_val);
+    max_arr.push(arena, JsonValue::init(accessor.max[i]));
   }
   kv_pairs.push(arena, {"max", JsonValue::init(Span<const JsonValue>(
                                    max_arr.m_data, max_arr.m_size))});
@@ -812,9 +816,9 @@ static JsonValue serialize_accessor(NotNull<Arena *> arena,
   return JsonValue::init(
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
-static JsonValue serialize_buffer_view(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
                                        const GltfBufferView &view) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (view.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, view.name)});
@@ -842,9 +846,9 @@ static JsonValue serialize_buffer_view(NotNull<Arena *> arena,
       Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
 }
 
-static JsonValue serialize_buffers(NotNull<Arena *> arena,
+static JsonValue gltf_serialize_buffers(NotNull<Arena *> arena,
                                    const GltfBuffer &buffer) {
-  DynamicArray<JsonKeyValue> kv_pairs;
+  DynamicArray<JsonKeyValue> kv_pairs = {};
 
   if (buffer.name) {
     kv_pairs.push(arena, {"name", JsonValue::init(arena, buffer.name)});
@@ -863,15 +867,31 @@ static JsonValue serialize_buffers(NotNull<Arena *> arena,
 
 template <typename T>
 static JsonValue
-serialize_array(NotNull<Arena *> arena, const DynamicArray<T> &arr,
-                JsonValue (*serialize_func)(NotNull<Arena *>, const T &)) {
+gltf_serialize_array(NotNull<Arena *> arena, const DynamicArray<T> &arr) {
   if (arr.m_size == 0) {
     return {};
   }
 
-  DynamicArray<JsonValue> json_arr;
+  DynamicArray<JsonValue> json_arr = {};
   for (const T &item : arr) {
-    json_arr.push(arena, serialize_func(arena, item));
+    if constexpr (std::is_same_v<T, GltfScene>) {
+      json_arr.push(arena, gltf_serialize_scene(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfNode>) {
+      json_arr.push(arena, gltf_serialize_node(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfMesh>) {
+      json_arr.push(arena, gltf_serialize_mesh(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfImage>) {
+      json_arr.push(arena, gltf_serialize_image(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfAccessor>) {
+      json_arr.push(arena, gltf_serialize_accessor(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfBufferView>) {
+      json_arr.push(arena, gltf_serialize_buffer_view(arena, item));
+    } else if constexpr (std::is_same_v<T, GltfBuffer>) {
+      json_arr.push(arena, gltf_serialize_buffers(arena, item));
+    } else {
+      static_assert(false,
+                    "Unsupported value type. Should be part of Gltf library.");
+    }
   }
 
   return JsonValue::init(
@@ -879,47 +899,41 @@ serialize_array(NotNull<Arena *> arena, const DynamicArray<T> &arr,
 }
 
 JsonValue gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf) {
-  DynamicArray<JsonKeyValue> root;
+  DynamicArray<JsonKeyValue> root = {};
 
-  root.push(arena, {"asset", serialize_asset(arena, gltf.asset)});
+  root.push(arena, {"asset", gltf_serialize_asset(arena, gltf.asset)});
 
   if (gltf.scene >= 0) {
     root.push(arena, {"scene", JsonValue::init((i64)gltf.scene)});
   }
 
   if (gltf.scenes.m_size > 0) {
-    root.push(arena,
-              {"scenes", serialize_array(arena, gltf.scenes, serialize_scene)});
+    root.push(arena, {"scenes", gltf_serialize_array(arena, gltf.scenes)});
   }
 
   if (gltf.nodes.m_size > 0) {
-    root.push(arena,
-              {"nodes", serialize_array(arena, gltf.nodes, serialize_node)});
+    root.push(arena, {"nodes", gltf_serialize_array(arena, gltf.nodes)});
   }
 
   if (gltf.meshes.m_size > 0) {
-    root.push(arena,
-              {"meshes", serialize_array(arena, gltf.meshes, serialize_mesh)});
+    root.push(arena, {"meshes", gltf_serialize_array(arena, gltf.meshes)});
   }
 
   if (gltf.images.m_size > 0) {
-    root.push(arena,
-              {"images", serialize_array(arena, gltf.images, serialize_image)});
+    root.push(arena, {"images", gltf_serialize_array(arena, gltf.images)});
   }
 
   if (gltf.accessors.m_size > 0) {
-    root.push(arena, {"accessors", serialize_array(arena, gltf.accessors,
-                                                   serialize_accessor)});
+    root.push(arena, {"accessors", gltf_serialize_array(arena, gltf.accessors)});
   }
 
   if (gltf.buffer_views.m_size > 0) {
-    root.push(arena, {"bufferViews", serialize_array(arena, gltf.buffer_views,
-                                                     serialize_buffer_view)});
+    root.push(arena,
+              {"bufferViews", gltf_serialize_array(arena, gltf.buffer_views)});
   }
 
   if (gltf.buffers.m_size > 0) {
-    root.push(arena, {"buffers",
-                      serialize_array(arena, gltf.buffers, serialize_buffers)});
+    root.push(arena, {"buffers", gltf_serialize_array(arena, gltf.buffers)});
   }
 
   return JsonValue::init(Span<const JsonKeyValue>(root.m_data, root.m_size));

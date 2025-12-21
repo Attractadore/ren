@@ -227,7 +227,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           }
         }
 
-        ren_assert(gltf_result->meshes.m_size > 1);
+        ren_assert(gltf_result->meshes.m_size > 0);
 
         auto get_component_size = [](GltfComponentType type) -> i32 {
           switch (type) {
@@ -241,7 +241,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           case GLTF_COMPONENT_TYPE_FLOAT:
             return 4;
           default:
-            return 0;
+            ren_assert(false && "Unknown component type");
           }
         };
 
@@ -262,7 +262,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           case GLTF_TYPE_MAT4:
             return 16;
           default:
-            return 0;
+            ren_assert(false && "Unknown value type");
           }
         };
 
@@ -356,9 +356,9 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           }
           scene.nodes.push(scratch, new_node);
         }
-
+        
         GltfBuffer new_buffer = {
-            .name = filename.replace_extension(scratch, Path::init("")).m_str,
+            .name = filename.remove_extension().m_str,
             .uri = bin_filename.m_str,
             .data = Span<u8>::allocate(scratch, whole_buffer_size)};
         scene.buffers.push(scratch, new_buffer);
