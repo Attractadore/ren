@@ -155,4 +155,13 @@ template <typename F>
   return JobFuture<R>(token, result);
 }
 
+void job_move_to_default_queue();
+
+void job_move_to_io_queue();
+
+struct JobIoQueueScope {
+  JobIoQueueScope() { job_move_to_io_queue(); }
+  ~JobIoQueueScope() { job_move_to_default_queue(); }
+};
+
 } // namespace ren

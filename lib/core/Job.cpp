@@ -1,6 +1,6 @@
 #include "ren/core/Job.hpp"
+#include "Job.hpp"
 #include "ren/core/BlockAllocator.hpp"
-#include "ren/core/Fiber.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/Futex.hpp"
 #include "ren/core/Mutex.hpp"
@@ -73,11 +73,6 @@ template <typename T> void free_list_atomic_push(T **free_list, T *node) {
 constexpr usize THREAD_LOCAL_BIG_BLOCK_CACHE_SIZE = 8;
 constexpr usize JOB_LOCAL_BIG_BLOCK_CACHE_SIZE = 4;
 
-Job *job_tls_running_job();
-void job_tls_set_running_job(Job *job);
-
-FiberContext *job_tls_scheduler_fiber();
-
 static thread_local bool job_is_main_thread = false;
 
 struct alignas(FIBER_STACK_ALIGNMENT) StackFreeListNode {
@@ -128,6 +123,7 @@ struct JobServer {
   usize m_page_size = 0;
   usize m_allocation_granularity = 0;
   Span<Thread> m_workers;
+  Span<Thread> m_io_workers;
 
   // Arena mutex.
   alignas(CACHE_LINE_SIZE) Mutex m_arena_mutex;
@@ -138,11 +134,15 @@ struct JobServer {
   alignas(CACHE_LINE_SIZE) Mutex m_scheduler_mutex;
   // Scheduler data.
   alignas(CACHE_LINE_SIZE) int m_num_enqueued = 0;
-  Queue<QueuedJob> m_high_priority;
-  Queue<QueuedJob> m_normal_priority;
+  Queue<QueuedJob> m_high_priority_queue;
+  Queue<QueuedJob> m_normal_priority_queue;
 
   alignas(CACHE_LINE_SIZE) Job *m_main_job = nullptr;
   int m_main_job_ready = false;
+
+  alignas(CACHE_LINE_SIZE) Mutex m_io_scheduler_mutex;
+  alignas(CACHE_LINE_SIZE) int m_num_io_enqueued = 0;
+  Queue<QueuedJob> m_io_queue;
 
   // Free lists.
   alignas(CACHE_LINE_SIZE) StackFreeListNode *m_stack_free_list = nullptr;
@@ -224,12 +224,13 @@ retry:
   }
 
   Job *job = []() {
-    Optional<QueuedJob> high_priority = job_server.m_high_priority.try_pop();
+    Optional<QueuedJob> high_priority =
+        job_server.m_high_priority_queue.try_pop();
     if (high_priority) {
       return high_priority->job;
     }
     Optional<QueuedJob> normal_priority =
-        job_server.m_normal_priority.try_pop();
+        job_server.m_normal_priority_queue.try_pop();
     ren_assert(normal_priority);
     return normal_priority->job;
   }();
@@ -237,6 +238,28 @@ retry:
   job_server.m_scheduler_mutex.unlock();
 
   return job;
+}
+
+static Job *job_schedule_from_io_queue() {
+  ZoneScopedN("Schedule IO worker job");
+retry:
+  job_server.m_io_scheduler_mutex.lock();
+  [[unlikely]] if (job_server.m_num_io_enqueued == 0) {
+    job_server.m_io_scheduler_mutex.unlock();
+    futex_wait(&job_server.m_num_io_enqueued, 0);
+    goto retry;
+  }
+  [[unlikely]] if (job_server.m_num_io_enqueued == WORKER_EXIT) {
+    job_server.m_io_scheduler_mutex.unlock();
+    thread_exit(EXIT_SUCCESS);
+  }
+
+  Optional<QueuedJob> job = job_server.m_io_queue.try_pop();
+  ren_assert(job);
+  job_server.m_num_io_enqueued--;
+  job_server.m_io_scheduler_mutex.unlock();
+
+  return job->job;
 }
 
 static void job_enqueue(Job *job) {
@@ -252,10 +275,10 @@ static void job_enqueue(Job *job) {
   job_server.m_scheduler_mutex.lock();
 
   if (job->priority == JobPriority::High) {
-    job_server.m_high_priority.push({job});
+    job_server.m_high_priority_queue.push({job});
   } else {
     ren_assert(job->priority == JobPriority::Normal);
-    job_server.m_normal_priority.push({job});
+    job_server.m_normal_priority_queue.push({job});
   }
 
   [[unlikely]] if (job_server.m_num_enqueued++ == 0) {
@@ -263,6 +286,15 @@ static void job_enqueue(Job *job) {
   }
 
   job_server.m_scheduler_mutex.unlock();
+}
+
+static void job_enqueue_to_io_queue(Job *job) {
+  ZoneScoped;
+  AutoMutex lock(job_server.m_io_scheduler_mutex);
+  job_server.m_io_queue.push({job});
+  [[unlikely]] if (job_server.m_num_io_enqueued++ == 0) {
+    futex_wake_one(&job_server.m_num_io_enqueued);
+  }
 }
 
 static void job_free_atomic_counter(JobAtomicCounter *counter) {
@@ -313,15 +345,47 @@ static StackFreeListNode *job_allocate_stack(usize stack_size) {
   return (StackFreeListNode *)new_stack;
 }
 
-static void job_server_worker(void *) {
+static void job_load_scheduler(JobSchedulerCommand cmd) {
+  ren_assert(job_tls_running_job() or cmd == JobSchedulerCommand::Schedule);
+  job_tls_set_scheduler_command(cmd);
+  fiber_load_context(*job_tls_scheduler_fiber());
+}
+
+static void job_switch_to_scheduler(JobSchedulerCommand cmd) {
+  Job *job = job_tls_running_job();
+  ren_assert(job or cmd == JobSchedulerCommand::Schedule);
+  job_tls_set_scheduler_command(cmd);
+  fiber_switch_context(&job->context, *job_tls_scheduler_fiber());
+}
+
+enum class JobServerWorkerQueue {
+  Default,
+  IO,
+};
+
+template <JobServerWorkerQueue Q> static void job_server_worker(void *) {
   FiberContext *scheduler = job_tls_scheduler_fiber();
   *scheduler = fiber_thread_context();
   while (true) {
-    Job *next = job_schedule();
+    JobSchedulerCommand cmd = job_tls_get_scheduler_command();
+    if (cmd != JobSchedulerCommand::Schedule) {
+      Job *job = job_tls_running_job();
+      if (cmd == JobSchedulerCommand::Free) {
+        job_free(job);
+      } else if (cmd == JobSchedulerCommand::MoveToDefaultQueue) {
+        job_enqueue(job);
+      } else if (cmd == JobSchedulerCommand::MoveToIoQueue) {
+        job_enqueue_to_io_queue(job);
+      }
+    }
+    Job *next = nullptr;
+    if constexpr (Q == JobServerWorkerQueue::Default) {
+      next = job_schedule();
+    } else if constexpr (Q == JobServerWorkerQueue::IO) {
+      next = job_schedule_from_io_queue();
+    }
     job_tls_set_running_job(next);
     fiber_switch_context(scheduler, next->context);
-    Job *job = job_tls_running_job();
-    job_free(job);
   }
 }
 
@@ -335,12 +399,7 @@ static void job_wait_for_counter(Job *job, JobAtomicCounter *counter) {
     ren_assert(state == JobState::Done);
     return;
   }
-
-  Job *next = job_schedule();
-  if (job != next) {
-    job_tls_set_running_job(next);
-    fiber_switch_context(&job->context, next->context);
-  }
+  job_switch_to_scheduler(JobSchedulerCommand::Schedule);
 }
 
 static void job_fiber_main() {
@@ -360,7 +419,7 @@ static void job_fiber_main() {
       counter = next;
     }
   }
-  fiber_load_context(*job_tls_scheduler_fiber());
+  job_load_scheduler(JobSchedulerCommand::Free);
 }
 
 void launch_job_server() {
@@ -371,8 +430,9 @@ void launch_job_server() {
       .m_page_size = vm_page_size(),
       .m_allocation_granularity = vm_allocation_granularity(),
       .m_arena = Arena::init(),
-      .m_high_priority = Queue<QueuedJob>::init(),
-      .m_normal_priority = Queue<QueuedJob>::init(),
+      .m_high_priority_queue = Queue<QueuedJob>::init(),
+      .m_normal_priority_queue = Queue<QueuedJob>::init(),
+      .m_io_queue = Queue<QueuedJob>::init(),
   };
   init_allocator(&job_server.m_allocator, JOB_ALLOCATOR_BIG_BLOCK_SIZE);
 
@@ -403,13 +463,12 @@ void launch_job_server() {
   }
   fmt::println("job_server: Found {} cores", num_cores);
 
-  job_server.m_workers = Span<Thread>::allocate(&job_server.m_arena, num_cores);
-
   usize job_worker_stack_size = thread_min_stack_size();
 #if REN_TSAN
   job_worker_stack_size = max(256 * KiB, job_worker_stack_size);
 #endif
 
+  job_server.m_workers = Span<Thread>::allocate(&job_server.m_arena, num_cores);
   for (usize i : range(num_cores)) {
     ScratchArena scratch;
 
@@ -426,10 +485,26 @@ void launch_job_server() {
 
     job_server.m_workers[i] = thread_create({
         .name = name.zero_terminated(&job_server.m_arena),
-        .proc = job_server_worker,
+        .proc = job_server_worker<JobServerWorkerQueue::Default>,
         .param = nullptr,
         .stack_size = job_worker_stack_size,
         .affinity = affinity,
+    });
+  }
+
+  constexpr usize NUM_CORE_IO_WORKERS = 3;
+  usize num_io_workers = num_cores * NUM_CORE_IO_WORKERS;
+  fmt::println("job_server: Run {} IO workers", num_io_workers);
+  job_server.m_io_workers =
+      Span<Thread>::allocate(&job_server.m_arena, num_io_workers);
+  for (usize i : range(num_io_workers)) {
+    ScratchArena scratch;
+    String8 name = format(scratch, "Job server IO worker {}", i);
+    job_server.m_io_workers[i] = thread_create({
+        .name = name.zero_terminated(&job_server.m_arena),
+        .proc = job_server_worker<JobServerWorkerQueue::IO>,
+        .param = nullptr,
+        .stack_size = job_worker_stack_size,
     });
   }
 
@@ -712,6 +787,21 @@ void *job_tag_allocate(ArenaTag tag, usize size, usize alignment) {
   // TODO
   ren_assert(alignment <= alignof(max_align_t));
   return malloc(size);
+}
+
+void job_move_to_io_queue() {
+  [[unlikely]] if (job_is_main_thread) {
+    fmt::println(
+        stderr,
+        "job_server: warning: performing blocking IO on the main thread");
+    return;
+  }
+  job_switch_to_scheduler(JobSchedulerCommand::MoveToIoQueue);
+}
+
+void job_move_to_default_queue() {
+  [[unlikely]] if (job_is_main_thread) { return; }
+  job_switch_to_scheduler(JobSchedulerCommand::MoveToDefaultQueue);
 }
 
 } // namespace ren
