@@ -6,8 +6,7 @@
 #include <Windows.h>
 #include <fmt/base.h>
 #include <tracy/Tracy.hpp>
-
-#include "ren/core/Format.hpp"
+#include <utility>
 
 namespace ren {
 
@@ -49,7 +48,6 @@ void watch_directory(NotNull<Arena *> arena, NotNull<FileWatcher *> watcher,
   ScratchArena scratch;
   Path path = watcher->m_root.concat(scratch, relative_path);
   std::ignore = create_directories(path);
-  fmt::println(stderr, "FindFirstChangeNotificationW for {}", path);
   HANDLE handle = FindFirstChangeNotificationW(
       utf8_to_raw_path(scratch, path), false,
       FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
@@ -81,6 +79,7 @@ Optional<FileWatchEvent> read_watch_event(NotNull<Arena *> arena,
     fmt::println(stderr, "WaitForMultipleObjects failed: {}", GetLastError());
     return {};
   }
+
   u64 now_ns = clock();
   if (wait_result != WAIT_TIMEOUT) {
     usize ready_index = wait_result - WAIT_OBJECT_0;
@@ -92,6 +91,7 @@ Optional<FileWatchEvent> read_watch_event(NotNull<Arena *> arena,
                    GetLastError());
     }
   }
+
   for (FileWatchItem &wi :
        Span(watcher->m_watch_items, watcher->m_num_watch_items)) {
     if (wi.last_event_time_ns < now_ns and
@@ -103,6 +103,7 @@ Optional<FileWatchEvent> read_watch_event(NotNull<Arena *> arena,
       };
     }
   }
+
   return {};
 }
 
