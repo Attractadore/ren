@@ -66,6 +66,20 @@ JsonValue JsonValue::init(i64 integer) {
   };
 }
 
+JsonValue JsonValue::init(double number) {
+  return {
+      .type = JsonType::Number,
+      .number = number,
+  };
+}
+
+JsonValue JsonValue::init(bool boolean) {
+  return {
+      .type = JsonType::Boolean,
+      .boolean = boolean,
+  };
+}
+
 struct JsonParserContext {
   Arena *arena;
   String8 buffer;

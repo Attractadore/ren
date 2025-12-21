@@ -43,6 +43,8 @@ public:
   [[nodiscard]] static JsonValue init(String8 string);
   [[nodiscard]] static JsonValue init(NotNull<Arena *> arena, String8 string);
   [[nodiscard]] static JsonValue init(i64 integer);
+  [[nodiscard]] static JsonValue init(double number);
+  [[nodiscard]] static JsonValue init(bool boolean);
 
   explicit operator bool() const { return type != JsonType::Null; }
 };
