@@ -91,12 +91,17 @@ MetaGltf meta_gltf_generate(NotNull<Arena *> arena, Gltf gltf,
 
   Path stem = filename.stem();
 
-  auto meta_meshes = Span<MetaMesh>::allocate(arena, gltf.meshes.m_size);
+  usize num_meta_meshes = 0;
+  for (usize gltf_mesh_index : range(gltf.meshes.m_size)) {
+    num_meta_meshes += gltf.meshes[gltf_mesh_index].primitives.m_size;
+  }
+
+  auto meta_meshes = Span<MetaMesh>::allocate(arena, num_meta_meshes);
   usize meta_mesh_offset = 0;
 
   for (usize gltf_mesh_index : range(gltf.meshes.m_size)) {
-    String8 gltf_mesh_name = 
-        gltf.meshes[gltf_mesh_index].name;
+    String8 gltf_mesh_name = gltf.meshes[gltf_mesh_index].name;
+
     for (usize gltf_primitive_index :
          range(gltf.meshes[gltf_mesh_index].primitives.m_size)) {
       String8 gltf_primitive_name = format(scratch, "{}", gltf_primitive_index);
