@@ -122,4 +122,22 @@ inline i64 json_integer_value(JsonValue object, String8 key) {
   return json_integer(json_value(object, key));
 }
 
+inline i64 json_integer_value_or(JsonValue object, String8 key,
+                                 i64 default_val) {
+  JsonValue val = json_value(object, key);
+  if (val.type == JsonType::Integer) {
+    return json_integer(val);
+  }
+  return default_val;
+}
+
+inline bool json_bool_value_or(JsonValue object, String8 key,
+                               bool default_val) {
+  JsonValue val = json_value(object, key);
+  if (val.type == JsonType::Boolean) {
+    return val.boolean;
+  }
+  return default_val;
+}
+
 } // namespace ren
