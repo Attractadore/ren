@@ -215,16 +215,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
             gltf_parse_file(scratch, path);
         if (!gltf_result) {
           GltfErrorInfo error_info = gltf_result.error();
-          switch (error_info.error) {
-          case GltfError::InvalidFormat: {
-            return error_info.desc.copy(&output);
-          }
-          case GltfError::IO: {
-            return error_info.desc.copy(&output);
-          }
-          default:
-            break;
-          }
+          return error_info.desc.copy(&output);
         }
 
         ren_assert(gltf_result->meshes.m_size > 0);
