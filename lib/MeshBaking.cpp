@@ -11,6 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <meshoptimizer.h>
 #include <mikktspace.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -54,6 +55,7 @@ struct MeshGenerateIndicesOptions {
 
 void mesh_generate_indices(NotNull<Arena *> arena,
                            const MeshGenerateIndicesOptions &opts) {
+  ZoneScoped;
   const u32 *indices = nullptr;
   usize num_vertices = *opts.num_vertices;
   usize num_indices = num_vertices;
@@ -112,6 +114,8 @@ struct MeshGenerateTangentsOptions {
 
 void mesh_generate_tangents(NotNull<Arena *> arena,
                             const MeshGenerateTangentsOptions &opts) {
+  ZoneScoped;
+
   ScratchArena scratch;
 
   auto unindex_stream = [&]<typename T>(NotNull<T **> stream) {
@@ -219,6 +223,8 @@ void mesh_generate_tangents(NotNull<Arena *> arena,
 void mesh_compute_bounds(Span<const glm::vec3> positions,
                          NotNull<sh::PositionBoundingBox *> pbb,
                          NotNull<float *> scale) {
+  ZoneScoped;
+
   sh::BoundingBox bb = {
       .min = glm::vec3(std::numeric_limits<float>::infinity()),
       .max = -glm::vec3(std::numeric_limits<float>::infinity()),
@@ -240,6 +246,7 @@ void mesh_compute_bounds(Span<const glm::vec3> positions,
 sh::Position *mesh_encode_positions(NotNull<Arena *> arena,
                                     Span<const glm::vec3> positions,
                                     float scale) {
+  ZoneScoped;
   auto *enc_positions = arena->allocate<sh::Position>(positions.m_size);
   for (usize i : range(positions.m_size)) {
     enc_positions[i] = sh::encode_position(positions[i], scale);
@@ -249,6 +256,7 @@ sh::Position *mesh_encode_positions(NotNull<Arena *> arena,
 
 sh::Normal *mesh_encode_normals(NotNull<Arena *> arena,
                                 Span<const glm::vec3> normals, float scale) {
+  ZoneScoped;
   glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
   glm::mat3 encode_normal_matrix = sh::normal(encode_transform_matrix);
 
@@ -264,6 +272,8 @@ sh::Normal *mesh_encode_normals(NotNull<Arena *> arena,
 sh::Tangent *mesh_encode_tangents(NotNull<Arena *> arena,
                                   Span<const glm::vec4> tangents, float scale,
                                   Span<const sh::Normal> enc_normals) {
+  ZoneScoped;
+
   glm::mat3 encode_transform_matrix = sh::make_encode_position_matrix(scale);
 
   auto *enc_tangents = arena->allocate<sh::Tangent>(tangents.m_size);
@@ -291,6 +301,8 @@ sh::Tangent *mesh_encode_tangents(NotNull<Arena *> arena,
 
 sh::UV *mesh_encode_uvs(NotNull<Arena *> arena, Span<const glm::vec2> uvs,
                         NotNull<sh::BoundingSquare *> uv_bs) {
+  ZoneScoped;
+
   for (glm::vec2 uv : uvs) {
     uv_bs->min = glm::min(uv_bs->min, uv);
     uv_bs->max = glm::max(uv_bs->max, uv);
@@ -318,6 +330,7 @@ sh::UV *mesh_encode_uvs(NotNull<Arena *> arena, Span<const glm::vec2> uvs,
 
 [[nodiscard]] sh::Color *mesh_encode_colors(NotNull<Arena *> arena,
                                             Span<const glm::vec4> colors) {
+  ZoneScoped;
   auto *enc_colors = arena->allocate<sh::Color>(colors.m_size);
   for (usize i : range(colors.m_size)) {
     enc_colors[i] = sh::encode_color(colors[i]);
@@ -338,6 +351,7 @@ struct MeshGenerateMeshletsOptions {
 
 void mesh_generate_meshlets(NotNull<Arena *> arena,
                             const MeshGenerateMeshletsOptions &opts) {
+  ZoneScoped;
   ren_assert(opts.header->scale != 0.0f);
 
   ScratchArena scratch;
@@ -506,6 +520,8 @@ struct BakedMesh {
 };
 
 BakedMesh bake_mesh(NotNull<Arena *> arena, const MeshInfo &info) {
+  ZoneScoped;
+
   usize num_vertices = info.num_vertices;
   glm::vec3 *positions = (glm::vec3 *)info.positions.get();
   glm::vec3 *normals = (glm::vec3 *)info.normals.get();
@@ -712,6 +728,8 @@ IoResult<void> bake_mesh_to_file(const MeshInfo &info, File file) {
 }
 
 Blob bake_mesh_to_memory(NotNull<Arena *> arena, const MeshInfo &info) {
+  ZoneScoped;
+
   ScratchArena scratch;
   BakedMesh mesh = bake_mesh(scratch, info);
   u8 *buffer = (u8 *)arena->allocate(mesh.size, 8);

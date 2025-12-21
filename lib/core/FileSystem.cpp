@@ -1,4 +1,8 @@
 #include "ren/core/FileSystem.hpp"
+#include "FileSystem.hpp"
+#include "ren/core/Job.hpp"
+
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
@@ -251,6 +255,40 @@ IoResult<void> create_directories(Path path) {
   return {};
 }
 
+IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
+  IoResult<File> file = open_sync(path, mode, flags);
+  if (file) {
+    file->m_mode = is_job() ? FileMode::Job : FileMode::Thread;
+  }
+  return file;
+}
+
+IoResult<usize> read(File file, void *buffer, usize size) {
+  ZoneScoped;
+  ZoneValue(size);
+  JobIoQueueScope _(file.m_mode == FileMode::Job and
+                    size >= JOB_IO_MIN_READ_SIZE);
+  IoResult<usize> read_result = read_sync(file, buffer, size);
+  return read_result;
+}
+
+IoResult<void> read_all(File file, void *buffer, usize size) {
+  ZoneScoped;
+  ZoneValue(size);
+  JobIoQueueScope _(file.m_mode == FileMode::Job and
+                    size >= JOB_IO_MIN_READ_SIZE);
+  usize total_read = 0;
+  while (total_read < size) {
+    IoResult<usize> num_read =
+        read_sync(file, (u8 *)buffer + total_read, size - total_read);
+    if (!num_read) {
+      return num_read.error();
+    }
+    total_read += *num_read;
+  }
+  return {};
+}
+
 IoResult<Span<char>> read(NotNull<Arena *> arena, Path path) {
   IoResult<File> file = open(path, FileAccessMode::ReadOnly);
   if (!file) {
@@ -262,26 +300,33 @@ IoResult<Span<char>> read(NotNull<Arena *> arena, Path path) {
     return size.error();
   }
   char *buffer = (char *)arena->allocate(*size, 8);
-  usize total_read = 0;
-  while (total_read < *size) {
-    IoResult<usize> num_read =
-        read(*file, &buffer[total_read], *size - total_read);
-    if (!num_read) {
-      close(*file);
-      return num_read.error();
-    }
-    total_read += *num_read;
-  }
+  IoResult<void> read_result = read_all(*file, buffer, *size);
   close(*file);
+  if (!read_result) {
+    return read_result.error();
+  }
   return Span<char>(buffer, *size);
 }
 
+IoResult<usize> write(File file, const void *buffer, usize size) {
+  ZoneScoped;
+  ZoneValue(size);
+  JobIoQueueScope _(file.m_mode == FileMode::Job and
+                    size >= JOB_IO_MIN_WRITE_SIZE);
+  IoResult<usize> write_result = write_sync(file, buffer, size);
+  return write_result;
+}
+
 IoResult<void> write_all(File file, const void *void_buffer, usize size) {
+  ZoneScoped;
+  ZoneValue(size);
+  JobIoQueueScope _(file.m_mode == FileMode::Job and
+                    size >= JOB_IO_MIN_WRITE_SIZE);
   const char *buffer = (const char *)void_buffer;
   usize total_written = 0;
   while (total_written < size) {
     IoResult<usize> num_written =
-        write(file, &buffer[total_written], size - total_written);
+        write_sync(file, &buffer[total_written], size - total_written);
     if (!num_written) {
       return num_written.error();
     }

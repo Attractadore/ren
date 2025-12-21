@@ -3,11 +3,14 @@
 #include "ren/core/Array.hpp"
 
 #include <meshoptimizer.h>
+#include <tracy/Tracy.hpp>
 
 namespace ren {
 
 void mesh_simplify(NotNull<Arena *> arena,
                    const MeshSimplificationInput &input) {
+  ZoneScoped;
+
   ScratchArena scratch;
 
   DynamicArray<Span<const u32>> lods;

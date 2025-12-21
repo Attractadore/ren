@@ -492,7 +492,7 @@ void launch_job_server() {
     });
   }
 
-  constexpr usize NUM_CORE_IO_WORKERS = 3;
+  constexpr usize NUM_CORE_IO_WORKERS = 2;
   usize num_io_workers = num_cores * NUM_CORE_IO_WORKERS;
   fmt::println("job_server: Run {} IO workers", num_io_workers);
   job_server.m_io_workers =
@@ -531,12 +531,24 @@ void stop_job_server() {
     counter = next;
   }
 
-  job_server.m_scheduler_mutex.lock();
-  job_server.m_num_enqueued = WORKER_EXIT;
-  job_server.m_scheduler_mutex.unlock();
+  {
+    AutoMutex lock(job_server.m_scheduler_mutex);
+    job_server.m_num_enqueued = WORKER_EXIT;
+  }
   futex_wake_all(&job_server.m_num_enqueued);
 
+  {
+    AutoMutex lock(job_server.m_io_scheduler_mutex);
+    job_server.m_num_io_enqueued = WORKER_EXIT;
+  }
+  futex_wake_all(&job_server.m_num_io_enqueued);
+
   for (Thread worker : job_server.m_workers) {
+    int ret = thread_join(worker);
+    ren_assert(ret == EXIT_SUCCESS);
+  }
+
+  for (Thread worker : job_server.m_io_workers) {
     int ret = thread_join(worker);
     ren_assert(ret == EXIT_SUCCESS);
   }
@@ -647,7 +659,7 @@ bool job_is_done(JobToken token) {
   return false;
 }
 
-bool job_use_global_allocator() {
+bool is_job() {
   Job *job = job_tls_running_job();
   return job and not job->is_main_job;
 }

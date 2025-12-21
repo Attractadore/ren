@@ -11,7 +11,7 @@ thread_local BlockAllocator thread_allocator;
 
 ArenaBlock *job_allocate_block(usize size);
 void job_free_block(ArenaBlock *block);
-bool job_use_global_allocator();
+bool is_job();
 
 void *job_tag_allocate(ArenaTag tag, usize size, usize alignment);
 
@@ -154,8 +154,7 @@ void ScratchArena::destroy_for_thread() {
 
 ScratchArena::ScratchArena() {
   m_arena = {
-      .m_type = job_use_global_allocator() ? ArenaType::JobScratch
-                                           : ArenaType::ThreadScratch,
+      .m_type = is_job() ? ArenaType::JobScratch : ArenaType::ThreadScratch,
   };
 }
 

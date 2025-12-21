@@ -267,7 +267,7 @@ IoResult<void> remove_directory_tree(Path path) {
   return {};
 }
 
-IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
+IoResult<File> open_sync(Path path, FileAccessMode mode, FileOpenFlags flags) {
   ScratchArena scratch;
   DWORD access = 0;
   switch (mode) {
@@ -296,7 +296,7 @@ IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
   if (!hfile) {
     return win32_to_io_error();
   }
-  return File{std::bit_cast<uintptr_t>(hfile)};
+  return File{.m_fd = std::bit_cast<uintptr_t>(hfile)};
 };
 
 void close(File file) { CloseHandle(handle_from_file(file)); }
@@ -322,7 +322,7 @@ IoResult<usize> seek(File file, isize offset, SeekMode mode) {
   return pos.QuadPart;
 }
 
-IoResult<usize> read(File file, void *buffer, usize size) {
+IoResult<usize> read_sync(File file, void *buffer, usize size) {
   size = min<usize>(size, std::numeric_limits<DWORD>::max());
   DWORD num_read = 0;
   if (!ReadFile(handle_from_file(file), buffer, size, &num_read, nullptr)) {
@@ -335,7 +335,7 @@ IoResult<usize> read(File file, void *buffer, usize size) {
   return num_read;
 }
 
-IoResult<usize> write(File file, const void *buffer, usize size) {
+IoResult<usize> write_sync(File file, const void *buffer, usize size) {
   size = min<usize>(size, std::numeric_limits<DWORD>::max());
   DWORD num_write = 0;
   if (!WriteFile(handle_from_file(file), buffer, size, &num_write, nullptr)) {

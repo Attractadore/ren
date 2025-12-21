@@ -4,6 +4,7 @@
 #include "ren/core/Unicode.hpp"
 
 #include <cmath>
+#include <tracy/Tracy.hpp>
 #include <utility>
 
 namespace ren {
@@ -118,6 +119,7 @@ json_parse_utf16(NotNull<JsonParserContext *> ctx) {
 
 Result<String8, JsonErrorInfo>
 json_parse_string(NotNull<JsonParserContext *> ctx) {
+  ZoneScoped;
   ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
 top:
@@ -213,6 +215,7 @@ top:
 
 Result<JsonValue, JsonErrorInfo>
 json_parse_number(NotNull<JsonParserContext *> ctx) {
+  ZoneScoped;
   // FIXME: EOF != invalid syntax.
   // FIXME: overflow checks.
   // FIXME: accurate double parsing.
@@ -501,6 +504,8 @@ parse:
 
 Result<JsonValue, JsonErrorInfo> json_parse(NotNull<Arena *> arena,
                                             String8 buffer) {
+  ZoneScoped;
+
   JsonParserContext ctx = {
       .arena = arena,
       .buffer = buffer,

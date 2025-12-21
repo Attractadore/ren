@@ -213,6 +213,7 @@ void launch_asset_compilation(NotNull<EditorContext *> ctx,
   job_data = job_data.subspan(0, num_jobs);
 
   auto job_batcher_callback = [job_data, session]() -> void {
+    ScratchArena scratch;
     constexpr usize MAX_BATCH_SIZE = 64;
     for (usize job_base_index = 0; job_base_index < job_data.m_size;
          job_base_index += MAX_BATCH_SIZE) {
@@ -220,7 +221,6 @@ void launch_asset_compilation(NotNull<EditorContext *> ctx,
               .load(std::memory_order_relaxed)) {
         return;
       }
-      ScratchArena scratch;
       usize num_batch_jobs =
           min(MAX_BATCH_SIZE, job_data.m_size - job_base_index);
       JobDesc batch_jobs[MAX_BATCH_SIZE];
@@ -228,7 +228,8 @@ void launch_asset_compilation(NotNull<EditorContext *> ctx,
         usize job_index = job_base_index + batch_job_index;
         const MeshCompileJobPayload *payload = &job_data[job_index];
         batch_jobs[batch_job_index] = JobDesc::init(
-            scratch, "Compile Mesh",
+            scratch,
+            format_zero_terminated(scratch, "Compile Mesh {}", job_index),
             [stop_token = &session->m_stop_token, payload,
              results = session->m_job_results,
              num_finished = &session->m_num_finished_jobs]() {

@@ -98,8 +98,14 @@ IoResult<void> remove_directory(Path path);
 /// Remove directory and all of its children.
 IoResult<void> remove_directory_tree(Path path);
 
+enum class FileMode {
+  Thread,
+  Job,
+};
+
 struct File {
   uintptr_t m_fd;
+  FileMode m_mode = FileMode::Thread;
 };
 
 enum class FileAccessMode {
@@ -136,12 +142,7 @@ enum class SeekMode {
 
 [[nodiscard]] IoResult<usize> read(File file, void *buffer, usize size);
 
-[[nodiscard]] IoResult<usize> write(File file, const void *buffer, usize size);
-
-[[nodiscard]] IoResult<void> write_all(File file, const void *buffer,
-                                       usize size);
-
-[[nodiscard]] IoResult<usize> file_size(File file);
+[[nodiscard]] IoResult<void> read_all(File file, void *buffer, usize size);
 
 [[nodiscard]] IoResult<Span<char>> read(NotNull<Arena *> arena, Path path);
 
@@ -156,6 +157,13 @@ template <typename T>
   }
   return Span<T>((T *)buffer->m_data, buffer->m_size / sizeof(T));
 }
+
+[[nodiscard]] IoResult<usize> write(File file, const void *buffer, usize size);
+
+[[nodiscard]] IoResult<void> write_all(File file, const void *buffer,
+                                       usize size);
+
+[[nodiscard]] IoResult<usize> file_size(File file);
 
 [[nodiscard]] IoResult<void> write(Path path, const void *buffer, usize size,
                                    FileOpenFlags flags = FileOpen::Create |

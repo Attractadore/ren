@@ -1,4 +1,5 @@
 #if __linux__
+#include "FileSystem.hpp"
 #include "ren/core/FileSystem.hpp"
 
 #include <cerrno>
@@ -186,7 +187,7 @@ IoResult<u64> last_write_time(Path path) {
   return ns;
 }
 
-IoResult<File> open(Path path, FileAccessMode mode, FileOpenFlags flags) {
+IoResult<File> open_sync(Path path, FileAccessMode mode, FileOpenFlags flags) {
   ScratchArena scratch;
   int posix_flags = 0;
   switch (mode) {
@@ -236,7 +237,7 @@ IoResult<usize> seek(File file, isize offset, SeekMode mode) {
   return offset;
 }
 
-IoResult<usize> read(File file, void *buffer, usize size) {
+IoResult<usize> read_sync(File file, void *buffer, usize size) {
   ssize_t num_read = ::read(file.m_fd, buffer, size);
   if (num_read < 0) {
     return io_error_from_errno();
@@ -244,7 +245,7 @@ IoResult<usize> read(File file, void *buffer, usize size) {
   return num_read;
 }
 
-IoResult<usize> write(File file, const void *buffer, usize size) {
+IoResult<usize> write_sync(File file, const void *buffer, usize size) {
   ssize_t num_written = ::write(file.m_fd, buffer, size);
   if (num_written < 0) {
     return io_error_from_errno();

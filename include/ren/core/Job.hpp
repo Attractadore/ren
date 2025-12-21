@@ -159,9 +159,28 @@ void job_move_to_default_queue();
 
 void job_move_to_io_queue();
 
-struct JobIoQueueScope {
-  JobIoQueueScope() { job_move_to_io_queue(); }
-  ~JobIoQueueScope() { job_move_to_default_queue(); }
+class JobIoQueueScope {
+public:
+  JobIoQueueScope(bool active = false) {
+    m_active = active;
+    if (m_active) {
+      job_move_to_io_queue();
+    }
+  }
+
+  ~JobIoQueueScope() {
+    if (m_active) {
+      job_move_to_default_queue();
+    }
+  }
+
+private:
+  bool m_active = false;
 };
+
+constexpr usize JOB_IO_MIN_READ_SIZE = 1 * MiB;
+constexpr usize JOB_IO_MIN_WRITE_SIZE = 1 * MiB;
+
+bool is_job();
 
 } // namespace ren
