@@ -3,40 +3,6 @@
 #include "ren/core/Optional.hpp"
 
 namespace ren {
-Optional<String8> try_get_json_string(JsonValue json, String8 key) {
-  JsonValue val = json_value(json, key);
-  if (val.type == JsonType::String) {
-    return json_string(val);
-  }
-  return {};
-}
-
-i32 json_get_int(JsonValue json, String8 key, i32 default_val) {
-  JsonValue val = json_value(json, key);
-  if (val.type == JsonType::Integer) {
-    return (i32)json_integer(val);
-  }
-  return default_val;
-}
-
-float json_get_float(JsonValue json, String8 key, float default_val) {
-  JsonValue val = json_value(json, key);
-  if (val.type == JsonType::Number) {
-    return (float)val.number;
-  } else if (val.type == JsonType::Integer) {
-    return (float)val.integer;
-  }
-  return default_val;
-}
-
-bool json_get_bool(JsonValue json, String8 key, bool default_val) {
-  JsonValue val = json_value(json, key);
-  if (val.type == JsonType::Boolean) {
-    return val.boolean;
-  }
-  return default_val;
-}
-
 Optional<Span<float>> json_get_float_array(NotNull<Arena *> arena,
                                            JsonValue json, String8 key) {
   ScratchArena scratch;
@@ -69,22 +35,15 @@ static Result<GltfAsset, GltfErrorInfo> gltf_parse_asset(JsonValue json) {
   }
 
   GltfAsset asset;
-  if (Optional<String8> result = try_get_json_string(json, "version")) {
-    asset.version = *result;
-  } else {
+  asset.version = json_string_value_or(json, "version", "");
+  if (!asset.version) {
     return GltfErrorInfo{.error = GltfError::InvalidFormat,
                          .desc = "Expected filed \"version\" not found."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "generator")) {
-    asset.generator = *result;
-  }
-  if (Optional<String8> result = try_get_json_string(json, "copyright")) {
-    asset.copyright = *result;
-  }
-  if (Optional<String8> result = try_get_json_string(json, "minVersion")) {
-    asset.min_version = *result;
-  }
+  asset.generator = json_string_value_or(json, "generator", "unknown");
+  asset.copyright = json_string_value_or(json, "copyright", "");
+  asset.min_version = json_string_value_or(json, "minVersion", "");
 
   return asset;
 }
@@ -98,9 +57,7 @@ static Result<GltfScene, GltfErrorInfo> gltf_parse_scene(NotNull<Arena *> arena,
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    scene.name = *result;
-  }
+  scene.name = json_string_value_or(json, "name", "");
 
   JsonValue nodes = json_value(json, "nodes");
   if (nodes.type == JsonType::Array) {
@@ -126,13 +83,10 @@ static Result<GltfNode, GltfErrorInfo> gltf_parse_node(NotNull<Arena *> arena,
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    node.name = *result;
-  }
-
-  node.camera = json_get_int(json, "camera", -1);
-  node.mesh = json_get_int(json, "mesh", -1);
-  node.skin = json_get_int(json, "skin", -1);
+  node.name = json_string_value_or(json, "name", "");
+  node.camera = json_integer_value_or(json, "camera", -1);
+  node.mesh = json_integer_value_or(json, "mesh", -1);
+  node.skin = json_integer_value_or(json, "skin", -1);
 
   JsonValue matrix_val = json_value(json, "matrix");
   if (matrix_val && matrix_val.type != JsonType::Array) {
@@ -184,9 +138,10 @@ gltf_parse_primitive(NotNull<Arena *> arena, JsonValue json) {
                          .desc = "Expected object."};
   }
 
-  prim.indices = json_get_int(json, "indices", -1);
-  prim.material = json_get_int(json, "material", -1);
-  prim.mode = (GltfTopology)json_get_int(json, "mode", GLTF_TOPOLOGY_TRIANGLES);
+  prim.indices = json_integer_value_or(json, "indices", -1);
+  prim.material = json_integer_value_or(json, "material", -1);
+  prim.mode = (GltfTopology)json_integer_value_or(json, "mode",
+                                                  GLTF_TOPOLOGY_TRIANGLES);
 
   JsonValue attrs = json_value(json, "attributes");
   if (attrs.type == JsonType::Object) {
@@ -214,9 +169,7 @@ static Result<GltfMesh, GltfErrorInfo> gltf_parse_mesh(NotNull<Arena *> arena,
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    mesh.name = *result;
-  }
+  mesh.name = json_string_value_or(json, "name", "");
 
   JsonValue prims = json_value(json, "primitives");
   if (prims.type == JsonType::Array) {
@@ -245,19 +198,10 @@ static Result<GltfImage, GltfErrorInfo> gltf_parse_image(NotNull<Arena *> arena,
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    image.name = *result;
-  }
-
-  image.buffer_view = json_get_int(json, "bufferView", -1);
-
-  if (Optional<String8> result = try_get_json_string(json, "mimeType")) {
-    image.mime_type = *result;
-  }
-
-  if (Optional<String8> result = try_get_json_string(json, "uri")) {
-    image.uri = *result;
-  }
+  image.name = json_string_value_or(json, "name", "");
+  image.buffer_view = json_integer_value_or(json, "bufferView", -1);
+  image.mime_type = json_string_value_or(json, "mimeType", "");
+  image.uri = json_string_value_or(json, "uri", "");
 
   return image;
 }
@@ -271,16 +215,13 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    accessor.name = *result;
-  }
-
-  accessor.buffer_view = json_get_int(json, "bufferView", -1);
-  accessor.buffer_offset = json_get_int(json, "byteOffset", 0);
+  accessor.name = json_string_value_or(json, "name", "");
+  accessor.buffer_view = json_integer_value_or(json, "bufferView", -1);
+  accessor.buffer_offset = json_integer_value_or(json, "byteOffset", 0);
   accessor.component_type =
-      (GltfComponentType)json_get_int(json, "componentType", 0);
-  accessor.normalized = json_get_bool(json, "normalized", false);
-  accessor.count = json_get_int(json, "count", 0);
+      (GltfComponentType)json_integer_value_or(json, "componentType", 0);
+  accessor.normalized = json_bool_value_or(json, "normalized", false);
+  accessor.count = json_integer_value_or(json, "count", 0);
 
   String8 type_str = json_string_value_or(json, "type", "SCALAR");
   if (type_str == "SCALAR") {
@@ -338,15 +279,12 @@ gltf_parse_buffer_view(NotNull<Arena *> arena,
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    view.name = *result;
-  }
-
-  view.buffer = json_get_int(json, "buffer", 0);
-  view.byte_offset = json_get_int(json, "byteOffset", 0);
-  view.byte_length = json_get_int(json, "byteLength", 0);
-  view.byte_stride = json_get_int(json, "byteStride", 0);
-  view.target = (GltfBufferTarget)json_get_int(json, "target", 0);
+  view.name = json_string_value_or(json, "name", "");
+  view.buffer = json_integer_value_or(json, "buffer", 0);
+  view.byte_offset = json_integer_value_or(json, "byteOffset", 0);
+  view.byte_length = json_integer_value_or(json, "byteLength", 0);
+  view.byte_stride = json_integer_value_or(json, "byteStride", 0);
+  view.target = (GltfBufferTarget)json_integer_value_or(json, "target", 0);
 
   return view;
 }
@@ -360,12 +298,8 @@ gltf_parse_buffer(NotNull<Arena *> arena, JsonValue json) {
                          .desc = "Expected object."};
   }
 
-  if (Optional<String8> result = try_get_json_string(json, "name")) {
-    buffer.name = *result;
-  }
-  if (Optional<String8> result = try_get_json_string(json, "uri")) {
-    buffer.uri = *result;
-  }
+  buffer.name = json_string_value_or(json, "name", "");
+  buffer.uri = json_string_value_or(json, "uri", "");
 
   return buffer;
 }
@@ -382,23 +316,25 @@ static Result<DynamicArray<T>, GltfErrorInfo> gltf_parse_array(
   DynamicArray<T> out = DynamicArray<T>::init(arena, values.m_size);
 
   for (const JsonValue &val : values) {
-    Result<T, GltfErrorInfo> parse_result = {
-        GltfErrorInfo{.error = GltfError::InvalidFormat}};
-    if constexpr (std::is_same_v<T, GltfScene>) {
-      parse_result = gltf_parse_scene(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfNode>) {
-      parse_result = gltf_parse_node(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfMesh>) {
-      parse_result = gltf_parse_mesh(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfImage>) {
-      parse_result = gltf_parse_image(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfAccessor>) {
-      parse_result = gltf_parse_accessor(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfBufferView>) {
-      parse_result = gltf_parse_buffer_view(arena, val);
-    } else if constexpr (std::is_same_v<T, GltfBuffer>) {
-      parse_result = gltf_parse_buffer(arena, val);
-    }
+    Result<T, GltfErrorInfo> parse_result = [&]() -> Result<T, GltfErrorInfo> {
+      if constexpr (std::is_same_v<T, GltfScene>) {
+        return gltf_parse_scene(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfNode>) {
+        return gltf_parse_node(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfMesh>) {
+        return gltf_parse_mesh(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfImage>) {
+        return gltf_parse_image(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfAccessor>) {
+        return gltf_parse_accessor(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfBufferView>) {
+        return gltf_parse_buffer_view(arena, val);
+      } else if constexpr (std::is_same_v<T, GltfBuffer>) {
+        return gltf_parse_buffer(arena, val);
+      } else {
+        return GltfErrorInfo{.error = GltfError::InvalidFormat};
+      }
+    }();
 
     if (!parse_result) {
       return parse_result.error();
@@ -432,7 +368,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   }
   gltf.asset = *asset_parse_result;
 
-  gltf.scene = json_get_int(*json, "scene", -1);
+  gltf.scene = json_integer_value_or(*json, "scene", -1);
 
   JsonValue arr;
   arr = json_value(*json, "scenes");
@@ -517,7 +453,7 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   return gltf;
 }
 
-Result<Gltf, GltfErrorInfo> gltf_parse_file(NotNull<Arena *> arena, Path path) {
+Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
   IoResult<Span<u8>> file_data = read<u8>(arena, path);
   if (!file_data) {
     return GltfErrorInfo{.error = GltfError::InvalidFormat,
@@ -939,7 +875,7 @@ JsonValue gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf) {
   return JsonValue::init(Span<const JsonKeyValue>(root.m_data, root.m_size));
 }
 
-String8 gltf_serialize_to_string(NotNull<Arena *> arena, const Gltf &gltf) {
+String8 to_string(NotNull<Arena *> arena, const Gltf &gltf) {
   JsonValue json = gltf_serialize(arena, gltf);
   return json_serialize(arena, json);
 }

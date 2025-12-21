@@ -69,13 +69,13 @@ struct GltfImage {
 struct GltfAccessor {
   String8 name;
   i32 buffer_view = -1;
-  i32 buffer_offset = -1;
-  GltfComponentType component_type;
+  u32 buffer_offset = 0;
+  GltfComponentType component_type = GLTF_COMPONENT_TYPE_BYTE;
   bool normalized = false;
-  i32 count = 0;
+  u32 count = 0;
   GltfType type = GLTF_TYPE_SCALAR;
-  float min[16];
-  float max[16];
+  StackArray<float, 16> min = {};
+  StackArray<float, 16> max = {};
   // NOTE: Sparse is not needed for now.
   // TODO: Extras
 };
@@ -83,9 +83,9 @@ struct GltfAccessor {
 struct GltfBufferView {
   String8 name;
   i32 buffer = -1;
-  i32 byte_offset = -1;
-  i32 byte_length = -1;
-  i32 byte_stride = -1;
+  u32 byte_offset = 0;
+  u32 byte_length = 1;
+  u32 byte_stride = 4;
   GltfBufferTarget target;
   // TODO: Extras
 };
@@ -144,7 +144,7 @@ struct GltfScene {
 
 struct Gltf {
   GltfAsset asset;
-  i32 scene;
+  i32 scene = -1;
 
   DynamicArray<GltfScene> scenes;
   DynamicArray<GltfNode> nodes;
@@ -165,8 +165,8 @@ struct Gltf {
   // TODO: Extras
 };
 
-Result<Gltf, GltfErrorInfo> gltf_parse_file(NotNull<Arena *> arena, Path path);
-String8 gltf_serialize_to_string(NotNull<Arena *> arena, const Gltf &gltf);
+Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path);
+String8 to_string(NotNull<Arena *> arena, const Gltf &gltf);
 
 constexpr String8 GLTF_ACCESSOR_TYPE_SCALAR = "SCALAR";
 constexpr String8 GLTF_ACCESSOR_TYPE_VEC2 = "VEC2";
