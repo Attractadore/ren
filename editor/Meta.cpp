@@ -13,9 +13,8 @@ JsonValue to_json(NotNull<Arena *> arena, MetaGltf meta) {
     MetaMesh meta_mesh = meta.meshes[mesh_index];
     DynamicArray<JsonKeyValue> json_mesh;
     json_mesh.push(arena, {"name", JsonValue::init(arena, meta_mesh.name)});
-    json_mesh.push(arena, {"mesh_id", JsonValue::init(meta_mesh.mesh_id)});
-    json_mesh.push(arena,
-                   {"primitive_id", JsonValue::init(meta_mesh.primitive_id)});
+    json_mesh.push(arena, {"mesh_id", JsonValue::init((i64)meta_mesh.mesh_id)});
+    json_mesh.push(arena, {"primitive_id", JsonValue::init((i64)meta_mesh.primitive_id)});
     json_mesh.push(arena,
                    {"guid", JsonValue::init(to_string(arena, meta_mesh.guid))});
     json_meshes[mesh_index] = JsonValue::init(json_mesh);
