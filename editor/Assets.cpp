@@ -211,8 +211,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                         result.error());
         }
 
-        Result<Gltf, GltfErrorInfo> gltf_result =
-            gltf_parse_file(scratch, path);
+        Result<Gltf, GltfErrorInfo> gltf_result = load_gltf(scratch, path);
         if (!gltf_result) {
           GltfErrorInfo error_info = gltf_result.error();
           return error_info.desc.copy(&output);
@@ -220,7 +219,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
 
         ren_assert(gltf_result->meshes.m_size > 0);
 
-        auto get_component_size = [](GltfComponentType type) -> i32 {
+        auto get_component_size = [](GltfComponentType type) -> usize {
           switch (type) {
           case GLTF_COMPONENT_TYPE_BYTE:
           case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
@@ -236,7 +235,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           }
         };
 
-        auto get_type_count = [](GltfType type) -> i32 {
+        auto get_type_count = [](GltfType type) -> usize {
           switch (type) {
           case GLTF_TYPE_SCALAR:
             return 1;
@@ -259,24 +258,28 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
 
         auto primitives_match = [&](const GltfPrimitive &a,
                                     const GltfPrimitive &b) -> bool {
-          if (a.indices != b.indices)
+          if (a.indices != b.indices) {
             return false;
-          if (a.attributes.m_size != b.attributes.m_size)
+          }
+          if (a.attributes.m_size != b.attributes.m_size) {
             return false;
-          if (a.mode != b.mode)
+          }
+          if (a.mode != b.mode) {
             return false;
+          }
 
-          for (u32 i = 0; i < a.attributes.m_size; ++i) {
+          for (usize i = 0; i < a.attributes.m_size; ++i) {
             bool found = false;
-            for (u32 j = 0; j < b.attributes.m_size; ++j) {
+            for (usize j = 0; j < b.attributes.m_size; ++j) {
               if (a.attributes[i].name == b.attributes[j].name &&
                   a.attributes[i].accessor == b.attributes[j].accessor) {
                 found = true;
                 break;
               }
             }
-            if (!found)
+            if (!found) {
               return false;
+            }
           }
           return true;
         };
@@ -287,17 +290,17 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
         DynamicArray<i32> unique_mesh_indices;
         unique_mesh_indices.reserve(scratch, gltf_result->meshes.m_size);
 
-        for (u32 i = 0; i < gltf_result->meshes.m_size; ++i) {
+        for (usize i = 0; i < gltf_result->meshes.m_size; ++i) {
           const GltfMesh &mesh = gltf_result->meshes[i];
 
           i32 found_index = -1;
-          for (u32 j = 0; j < unique_mesh_indices.m_size; ++j) {
+          for (usize j = 0; j < unique_mesh_indices.m_size; ++j) {
             const GltfMesh &unique_mesh =
                 gltf_result->meshes[unique_mesh_indices[j]];
 
             if (mesh.primitives.m_size == unique_mesh.primitives.m_size) {
               bool all_match = true;
-              for (u32 p = 0; p < mesh.primitives.m_size; ++p) {
+              for (usize p = 0; p < mesh.primitives.m_size; ++p) {
                 if (!primitives_match(mesh.primitives[p],
                                       unique_mesh.primitives[p])) {
                   all_match = false;
@@ -305,7 +308,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                 }
               }
               if (all_match) {
-                found_index = j;
+                found_index = (i32)j;
                 break;
               }
             }
@@ -319,25 +322,25 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           }
         }
 
-        i32 whole_buffer_size = 0;
+        usize whole_buffer_size = 0;
         for (const GltfAccessor &accessor : gltf_result->accessors) {
           const GltfBufferView &buffer_view =
               gltf_result->buffer_views[accessor.buffer_view];
 
-          i32 component_size = get_component_size(accessor.component_type);
-          i32 type_count = get_type_count(accessor.type);
-          i32 element_size = component_size * type_count;
-          i32 stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
+          usize component_size = get_component_size(accessor.component_type);
+          usize type_count = get_type_count(accessor.type);
+          usize element_size = component_size * type_count;
+          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
                                                    : element_size;
-          i32 data_size = stride * (accessor.count - 1) + element_size;
+          usize data_size = stride * (accessor.count - 1) + element_size;
 
           whole_buffer_size += data_size;
         }
 
-        Gltf scene = {};
-        scene.asset = gltf_result->asset;
-        scene.scene = gltf_result->scene;
-        scene.scenes = gltf_result->scenes;
+        Gltf scene = {.asset = gltf_result->asset,
+                      .scene = gltf_result->scene,
+                      .scenes = gltf_result->scenes
+        };
 
         scene.nodes.reserve(scratch, gltf_result->nodes.m_size);
         for (const GltfNode &node : gltf_result->nodes) {
@@ -354,15 +357,13 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
             .data = Span<u8>::allocate(scratch, whole_buffer_size)};
         scene.buffers.push(scratch, new_buffer);
 
-        DynamicArray<i32> accessor_mapping;
-        accessor_mapping.reserve(scratch, gltf_result->accessors.m_size);
-        for (u32 i = 0; i < gltf_result->accessors.m_size; ++i) {
-          accessor_mapping.push(scratch, -1);
-        }
+        Span<i32> accessor_mapping =
+            Span<i32>::allocate(scratch, gltf_result->accessors.m_size);
+        std::fill_n(accessor_mapping.begin(), accessor_mapping.m_size, -1);
+        
+        usize buffer_offset = 0;
 
-        i32 buffer_offset = 0;
-
-        for (u32 mesh_idx : unique_mesh_indices) {
+        for (i32 mesh_idx : unique_mesh_indices) {
           const GltfMesh &mesh = gltf_result->meshes[mesh_idx];
           GltfMesh new_mesh = {.name = mesh.name};
 
@@ -380,16 +381,16 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                 const GltfBuffer &buffer =
                     gltf_result->buffers[buffer_view.buffer];
 
-                i32 component_size =
+                usize component_size =
                     get_component_size(accessor.component_type);
-                i32 type_count = get_type_count(accessor.type);
-                i32 element_size = component_size * type_count;
-                i32 stride = buffer_view.byte_stride > 0
+                usize type_count = get_type_count(accessor.type);
+                usize element_size = component_size * type_count;
+                usize stride = buffer_view.byte_stride > 0
                                  ? buffer_view.byte_stride
                                  : element_size;
-                i32 data_size = stride * (accessor.count - 1) + element_size;
+                usize data_size = stride * (accessor.count - 1) + element_size;
 
-                i32 src_offset =
+                usize src_offset =
                     buffer_view.byte_offset + accessor.buffer_offset;
                 const u8 *src_data_ptr = &buffer.data[src_offset];
                 u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
@@ -397,8 +398,8 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
 
                 GltfBufferView new_buffer_view = {.name = buffer_view.name,
                                                   .buffer = 0,
-                                                  .byte_offset = buffer_offset,
-                                                  .byte_length = data_size,
+                                                  .byte_offset = (u32)buffer_offset,
+                                                  .byte_length = (u32)data_size,
                                                   .byte_stride =
                                                       buffer_view.byte_stride,
                                                   .target = buffer_view.target};
@@ -412,10 +413,10 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                     .normalized = accessor.normalized,
                     .count = accessor.count,
                     .type = accessor.type};
-                std::memcpy(&new_accessor.min, accessor.min,
-                            sizeof(new_accessor.min));
-                std::memcpy(&new_accessor.max, accessor.max,
-                            sizeof(new_accessor.max));
+                copy(accessor.min.begin(), accessor.min.end(),
+                     new_accessor.min.begin());
+                copy(accessor.max.begin(), accessor.max.end(),
+                     new_accessor.max.begin());
                 scene.accessors.push(scratch, new_accessor);
 
                 accessor_mapping[old_accessor_idx] =
@@ -440,16 +441,16 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                 const GltfBuffer &buffer =
                     gltf_result->buffers[buffer_view.buffer];
 
-                i32 component_size =
+                usize component_size =
                     get_component_size(accessor.component_type);
-                i32 type_count = get_type_count(accessor.type);
-                i32 element_size = component_size * type_count;
-                i32 stride = buffer_view.byte_stride > 0
+                usize type_count = get_type_count(accessor.type);
+                usize element_size = component_size * type_count;
+                usize stride = buffer_view.byte_stride > 0
                                  ? buffer_view.byte_stride
                                  : element_size;
-                i32 data_size = stride * (accessor.count - 1) + element_size;
+                usize data_size = stride * (accessor.count - 1) + element_size;
 
-                i32 src_offset =
+                usize src_offset =
                     buffer_view.byte_offset + accessor.buffer_offset;
                 const u8 *src_data_ptr = &buffer.data[src_offset];
                 u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
@@ -457,8 +458,8 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
 
                 GltfBufferView new_buffer_view = {.name = buffer_view.name,
                                                   .buffer = 0,
-                                                  .byte_offset = buffer_offset,
-                                                  .byte_length = data_size,
+                                                  .byte_offset = (u32)buffer_offset,
+                                                  .byte_length = (u32)data_size,
                                                   .byte_stride =
                                                       buffer_view.byte_stride,
                                                   .target = buffer_view.target};
@@ -472,10 +473,10 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                     .normalized = accessor.normalized,
                     .count = accessor.count,
                     .type = accessor.type};
-                std::memcpy(&new_accessor.min, accessor.min,
-                            sizeof(new_accessor.min));
-                std::memcpy(&new_accessor.max, accessor.max,
-                            sizeof(new_accessor.max));
+                copy(accessor.min.begin(), accessor.min.end(),
+                     new_accessor.min.begin());
+                copy(accessor.max.begin(), accessor.max.end(),
+                     new_accessor.max.begin());
                 scene.accessors.push(scratch, new_accessor);
 
                 accessor_mapping[old_accessor_idx] =
@@ -492,10 +493,9 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
           scene.meshes.push(scratch, new_mesh);
         }
 
-        String8 new_gltf_scene_data = gltf_serialize_to_string(scratch, scene);
+        String8 new_gltf_scene_data = to_string(scratch, scene);
 
-        if (auto result = write(gltf_path, new_gltf_scene_data.m_str,
-                                new_gltf_scene_data.m_size);
+        if (auto result = write(gltf_path, new_gltf_scene_data);
             !result) {
           return format(&output, "Failed to write {}: {}", gltf_path,
                         result.error());
