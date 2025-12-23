@@ -240,7 +240,7 @@ void close_project(NotNull<EditorContext *> ctx) {
   }
   for (auto [token, tag] : ctx->m_project->m_background_jobs) {
     job_wait(token);
-    job_free_tag(&tag);
+    job_reset_tag(tag);
   }
   stop_asset_watcher(ctx);
   ctx->m_state = EditorState::Startup;

@@ -83,11 +83,7 @@ inline void job_dispatch_and_wait(JobDesc job) {
   job_wait(token);
 }
 
-ArenaTag job_new_tag();
-
 void job_reset_tag(ArenaTag tag);
-
-void job_free_tag(NotNull<ArenaTag *> tag);
 
 void *job_tag_allocate(ArenaTag tag, usize size, usize alignment);
 

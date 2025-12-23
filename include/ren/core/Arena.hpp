@@ -10,6 +10,7 @@ enum class ArenaNamedTag {
   None,
   EditorProject,
   EditorCompile,
+  EditorImportScene,
   FirstCustom,
 };
 

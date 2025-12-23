@@ -367,7 +367,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
         ui.m_import_error = import_result.error().copy(&ctx->m_popup_arena);
       }
       ui.m_import_future = {};
-      job_free_tag(&ui.m_import_tag);
+      job_reset_tag(ArenaNamedTag::EditorImportScene);
     }
 
     if (ui.m_state == ImportSceneUIState::Importing) {
@@ -389,10 +389,10 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                            ui.m_state == ImportSceneUIState::Importing);
       if (ImGui::Button("Import")) {
         ui.m_state = ImportSceneUIState::Importing;
-        ui.m_import_tag = job_new_tag();
         Path path = Path::init(&ctx->m_popup_arena,
                                String8::init(ui.m_path_buffer.m_data));
-        ui.m_import_future = job_import_scene(ctx, ui.m_import_tag, path);
+        ui.m_import_future =
+            job_import_scene(ctx, ArenaNamedTag::EditorImportScene, path);
         ui.m_import_error = {};
       }
       ImGui::SameLine();

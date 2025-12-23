@@ -118,6 +118,16 @@ struct alignas(CACHE_LINE_SIZE) QueuedJob {
   Job *job = nullptr;
 };
 
+struct alignas(CACHE_LINE_SIZE) TagBlock {
+  usize size = CACHE_LINE_SIZE;
+  usize offset = CACHE_LINE_SIZE;
+  TagBlock *next = nullptr;
+};
+
+struct TagAllocation {
+  TagBlock *head = nullptr;
+};
+
 struct JobServer {
   // Read-only data.
   usize m_page_size = 0;
@@ -152,6 +162,11 @@ struct JobServer {
 
   alignas(CACHE_LINE_SIZE) Mutex m_allocator_mutex;
   alignas(CACHE_LINE_SIZE) BlockAllocator m_allocator;
+
+  alignas(CACHE_LINE_SIZE) TagBlock
+      m_tail_tag_blocks[(usize)ArenaNamedTag::FirstCustom];
+  alignas(CACHE_LINE_SIZE)
+      TagAllocation m_tag_allocations[(usize)ArenaNamedTag::FirstCustom];
 };
 
 static JobServer job_server;
@@ -435,6 +450,9 @@ void launch_job_server() {
       .m_io_queue = Queue<QueuedJob>::init(),
   };
   init_allocator(&job_server.m_allocator, JOB_ALLOCATOR_BIG_BLOCK_SIZE);
+  for (usize i : range(size(job_server.m_tag_allocations))) {
+    job_server.m_tag_allocations[i].head = &job_server.m_tail_tag_blocks[i];
+  }
 
   auto topology = cpu_topology(scratch);
   u32 num_cpus = 0;
@@ -781,24 +799,55 @@ void job_free_block(ArenaBlock *block) {
   job_server.m_allocator_mutex.unlock();
 }
 
-ArenaTag job_new_tag() {
-  // TODO
-  return ArenaTag(ArenaNamedTag::FirstCustom);
-}
-
 void job_reset_tag(ArenaTag tag) {
-  // TODO
-}
-
-void job_free_tag(NotNull<ArenaTag *> tag) {
-  // TODO
-  *tag = {};
+  auto *tagged_allocation = &job_server.m_tag_allocations[tag.m_id];
+  TagBlock *head = tagged_allocation->head;
+  TagBlock *tail = &job_server.m_tail_tag_blocks[tag.m_id];
+  while (head != tail) {
+    TagBlock *next = head->next;
+    usize block_size = head->size;
+    {
+      AutoMutex lock(job_server.m_allocator_mutex);
+      free_block(&job_server.m_allocator, head, block_size);
+    }
+    head = next;
+  }
+  tagged_allocation->head = tail;
 }
 
 void *job_tag_allocate(ArenaTag tag, usize size, usize alignment) {
-  // TODO
-  ren_assert(alignment <= alignof(max_align_t));
-  return malloc(size);
+  ren_assert(alignment <= CACHE_LINE_SIZE);
+  size = (size + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1);
+  auto *tag_allocation = &job_server.m_tag_allocations[tag.m_id];
+top:
+  TagBlock *head =
+      std::atomic_ref(tag_allocation->head).load(std::memory_order_acquire);
+  usize offset =
+      std::atomic_ref(head->offset).fetch_add(size, std::memory_order_acquire);
+  [[unlikely]] if (offset + size > head->size) {
+    TagBlock *new_block = nullptr;
+    usize block_size =
+        max(next_po2(CACHE_LINE_SIZE + size), JOB_ALLOCATOR_BIG_BLOCK_SIZE);
+    {
+      AutoMutex lock(job_server.m_allocator_mutex);
+      new_block =
+          (TagBlock *)allocate_block(&job_server.m_allocator, block_size);
+    }
+    new_block->size = block_size;
+    new_block->offset = CACHE_LINE_SIZE + size;
+    new_block->next = tag_allocation->head;
+    bool swapped =
+        std::atomic_ref(tag_allocation->head)
+            .compare_exchange_strong(head, new_block, std::memory_order_release,
+                                     std::memory_order_relaxed);
+    [[unlikely]] if (not swapped) {
+      AutoMutex lock(job_server.m_allocator_mutex);
+      free_block(&job_server.m_allocator, new_block, block_size);
+      goto top;
+    }
+    return (u8 *)new_block + CACHE_LINE_SIZE;
+  }
+  return (u8 *)head + offset;
 }
 
 void job_move_to_io_queue() {

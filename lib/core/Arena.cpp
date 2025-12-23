@@ -85,6 +85,14 @@ void *Arena::allocate_slow(usize size, usize alignment) {
     m_offset = new_offset;
     return (u8 *)m_ptr + aligned_offset;
   }
+  if (m_type == ArenaType::Tagged) {
+    ren_assert(alignment <= CACHE_LINE_SIZE);
+    usize block_size = max(4 * KiB, next_po2(size));
+    m_ptr = job_tag_allocate(m_tag, block_size, CACHE_LINE_SIZE);
+    m_size = block_size;
+    m_offset = size;
+    return m_ptr;
+  }
 
   usize aligned_offset =
       (sizeof(ArenaBlock) + alignment - 1) & ~(alignment - 1);
@@ -99,15 +107,6 @@ void *Arena::allocate_slow(usize size, usize alignment) {
   } else if (m_type == ArenaType::JobScratch) {
     block_size = max(JOB_ALLOCATOR_BLOCK_SIZE, next_po2(aligned_offset + size));
     head = job_allocate_block(block_size);
-  } else {
-    ren_assert(m_type == ArenaType::Tagged);
-    // TODO: pick a different block size when the tagged allocator is
-    // implemented.
-    block_size = max(4 * KiB, next_po2(aligned_offset + size));
-    head =
-        (ArenaBlock *)job_tag_allocate(m_tag, block_size, alignof(max_align_t));
-    head->block_size = block_size;
-    head->block_offset = 0;
   }
   head->next = m_head;
   m_head = head;

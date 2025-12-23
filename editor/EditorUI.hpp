@@ -30,7 +30,6 @@ enum class ImportSceneUIState {
 struct ImportSceneUI {
   ImportSceneUIState m_state = ImportSceneUIState::Initial;
   DynamicArray<char> m_path_buffer;
-  ArenaTag m_import_tag;
   JobFuture<Result<void, String8>> m_import_future;
   String8 m_import_error;
 };
