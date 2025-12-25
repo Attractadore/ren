@@ -456,6 +456,8 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   return handle;
 }
 
+void destroy_mesh(NotNull<Scene *> scene, Handle<Mesh> mesh) {}
+
 Handle<Image> create_image(NotNull<Arena *> frame_arena, Scene *scene,
                            Span<const std::byte> blob) {
   Handle<Texture> texture =

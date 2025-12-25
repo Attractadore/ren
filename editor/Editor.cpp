@@ -216,6 +216,19 @@ Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
   if (not path.exists().value_or(false)) {
     return format(&ctx->m_popup_arena, "Failed to open {}", path);
   }
+
+  destroy_scene(ctx->m_scene);
+  ctx->m_scene =
+      create_scene(&ctx->m_arena, ctx->m_renderer, ctx->m_swap_chain);
+  if (!ctx->m_scene) {
+    exit(EXIT_FAILURE);
+  }
+
+  ctx->m_camera = create_camera(ctx->m_scene);
+  set_camera(ctx->m_scene, ctx->m_camera);
+
+  ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
+
   ctx->m_project = ctx->m_project_arena.allocate<EditorProjectContext>();
   *ctx->m_project = {
       .m_directory = path.parent().copy(&ctx->m_project_arena),
@@ -243,6 +256,19 @@ void close_project(NotNull<EditorContext *> ctx) {
     job_reset_tag(tag);
   }
   stop_asset_watcher(ctx);
+
+  destroy_scene(ctx->m_scene);
+  ctx->m_scene =
+      create_scene(&ctx->m_arena, ctx->m_renderer, ctx->m_swap_chain);
+  if (!ctx->m_scene) {
+    exit(EXIT_FAILURE);
+  }
+
+  ctx->m_camera = create_camera(ctx->m_scene);
+  set_camera(ctx->m_scene, ctx->m_camera);
+
+  ren::init_imgui(&ctx->m_frame_arena, ctx->m_scene);
+
   ctx->m_state = EditorState::Startup;
   ctx->m_project = nullptr;
   ctx->m_project_arena.clear();

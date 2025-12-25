@@ -1,6 +1,7 @@
 #include "Assets.hpp"
 #include "Editor.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/ren.hpp"
 
 #include <assimp/Exporter.hpp>
 #include <assimp/Importer.hpp>
@@ -52,9 +53,23 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
 
   Handle<EditorMesh> first_mesh_handle;
   for (MetaMesh meta_mesh : meta.meshes) {
+    ScratchArena scratch;
+
     String8 guid_str = to_string(scratch, meta_mesh.guid);
     Path mesh_path = content.concat(scratch, Path::init(guid_str));
     u64 mtime = last_write_time(mesh_path).value_or(0);
+
+    Handle<Mesh> gfx_handle;
+    {
+      IoResult<Span<char>> buffer = read(scratch, mesh_path);
+      if (!buffer and buffer.error() != IoError::NotFound) {
+        fmt::println(stderr, "Failed to open {}: {}", mesh_path,
+                     buffer.error());
+      } else if (buffer) {
+        gfx_handle =
+            create_mesh(&ctx->m_frame_arena, ctx->m_scene, buffer->as_bytes());
+      }
+    }
 
     first_mesh_handle = project->m_meshes.insert(
         &ctx->m_project_arena,
@@ -62,6 +77,7 @@ void register_gltf_scene(NotNull<EditorContext *> ctx, const MetaGltf &meta,
             .guid = meta_mesh.guid,
             .name = meta_mesh.name.copy(&ctx->m_project_arena),
             .next = first_mesh_handle,
+            .gfx_handle = gfx_handle,
             .is_dirty = mtime < max({gltf_mtime, bin_mtime, meta_mtime}),
         });
   }
@@ -112,6 +128,7 @@ void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
       Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
       while (mesh_handle) {
         const EditorMesh &mesh = project->m_meshes[mesh_handle];
+        destroy_mesh(ctx->m_scene, mesh.gfx_handle);
         Handle<EditorMesh> next = mesh.next;
         project->m_meshes.erase(mesh_handle);
         mesh_handle = next;
@@ -208,6 +225,23 @@ void unregister_all_mesh_content(NotNull<EditorContext *> ctx) {
 void register_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid) {
   for (auto &&[_, mesh] : ctx->m_project->m_meshes) {
     if (mesh.guid == guid) {
+      ScratchArena scratch;
+      Path mesh_path = ctx->m_project->m_directory.concat(
+          scratch,
+          {CONTENT_DIR, MESH_DIR, Path::init(to_string(scratch, guid))});
+      Handle<Mesh> gfx_handle;
+      IoResult<Span<char>> buffer = read(scratch, mesh_path);
+      if (!buffer) {
+        fmt::println(stderr, "Failed to open {}: {}", mesh_path,
+                     buffer.error());
+      } else {
+        gfx_handle =
+            create_mesh(&ctx->m_frame_arena, ctx->m_scene, buffer->as_bytes());
+      }
+      if (gfx_handle) {
+        destroy_mesh(ctx->m_scene, mesh.gfx_handle);
+        mesh.gfx_handle = gfx_handle;
+      }
       mesh.is_dirty = false;
       break;
     }

@@ -8,6 +8,7 @@
 namespace ren {
 
 struct EditorMesh;
+struct Mesh;
 
 struct EditorGltfScene {
   Path bin_filename;
@@ -20,6 +21,7 @@ struct EditorMesh {
   Guid64 guid = {};
   String8 name;
   Handle<EditorMesh> next;
+  Handle<Mesh> gfx_handle;
   bool is_dirty : 1 = false;
 };
 
@@ -39,11 +41,11 @@ void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx);
 void register_all_content(NotNull<EditorContext *> ctx);
 void unregister_all_content(NotNull<EditorContext *> ctx);
 
-void register_all_mesh_content(NotNull<EditorContext*> ctx);
-void unregister_all_mesh_content(NotNull<EditorContext*> ctx);
+void register_all_mesh_content(NotNull<EditorContext *> ctx);
+void unregister_all_mesh_content(NotNull<EditorContext *> ctx);
 
-void register_mesh_content(NotNull<EditorContext*> ctx, Guid64 guid);
-void unregister_mesh_content(NotNull<EditorContext*> ctx, Guid64 guid);
+void register_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid);
+void unregister_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid);
 
 [[nodiscard]] JobFuture<Result<void, String8>>
 job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path);
