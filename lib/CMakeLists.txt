@@ -45,6 +45,17 @@ if (REN_ASSERTIONS)
   target_compile_definitions(ren-core PUBLIC REN_ASSERTIONS)
 endif()
 
+set(amd_uprof_home "$ENV{AMD_UPROF_HOME}")
+if (amd_uprof_home AND CMAKE_SYSTEM_NAME STREQUAL Linux)
+  message(STATUS "Found AMD uProf instrumentation library")
+  add_library(amd-uprof STATIC IMPORTED)
+  set_target_properties(amd-uprof PROPERTIES IMPORTED_LOCATION "${amd_uprof_home}/lib/x64/libAMDProfileController.a")
+  target_include_directories(amd-uprof INTERFACE "${amd_uprof_home}/include")
+  target_compile_definitions(amd-uprof INTERFACE AMD_UPROF)
+
+  target_link_libraries(ren-core PUBLIC amd-uprof)
+endif()
+
 if (REN_HOT_RELOAD)
   add_library(ren-vma SHARED vma.cpp)
 else()
