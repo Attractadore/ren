@@ -179,6 +179,245 @@ void mark_gltf_scene_not_dirty(NotNull<EditorContext *> ctx,
   }
 }
 
+static usize get_gltf_component_type_size(GltfComponentType type) {
+  switch (type) {
+  case GLTF_COMPONENT_TYPE_BYTE:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+    return 1;
+  case GLTF_COMPONENT_TYPE_SHORT:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+    return 2;
+  case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
+  case GLTF_COMPONENT_TYPE_FLOAT:
+    return 4;
+  default:
+    ren_assert(false && "Unknown component type");
+  }
+}
+
+static usize get_gltf_type_element_count(GltfType type) {
+  switch (type) {
+  case GLTF_TYPE_SCALAR:
+    return 1;
+  case GLTF_TYPE_VEC2:
+    return 2;
+  case GLTF_TYPE_VEC3:
+    return 3;
+  case GLTF_TYPE_VEC4:
+    return 4;
+  case GLTF_TYPE_MAT2:
+    return 4;
+  case GLTF_TYPE_MAT3:
+    return 9;
+  case GLTF_TYPE_MAT4:
+    return 16;
+  default:
+    ren_assert(false && "Unknown value type");
+  }
+}
+
+Gltf process_gltf_mesh(NotNull<Arena *> arena, Gltf gltf, Path bin_path) {
+  DynamicArray<i32> mesh_mapping;
+  mesh_mapping.reserve(arena, gltf.meshes.m_size);
+
+  DynamicArray<i32> unique_mesh_indices;
+  unique_mesh_indices.reserve(arena, gltf.meshes.m_size);
+
+  for (usize i = 0; i < gltf.meshes.m_size; ++i) {
+    const GltfMesh &mesh = gltf.meshes[i];
+
+    i32 found_index = -1;
+    for (usize j = 0; j < unique_mesh_indices.m_size; ++j) {
+      const GltfMesh &unique_mesh = gltf.meshes[unique_mesh_indices[j]];
+
+      if (mesh.primitives.m_size == unique_mesh.primitives.m_size) {
+        bool all_match = true;
+        for (usize p = 0; p < mesh.primitives.m_size; ++p) {
+          if (mesh.primitives[p] != unique_mesh.primitives[p]) {
+            all_match = false;
+            break;
+          }
+        }
+        if (all_match) {
+          found_index = (i32)j;
+          break;
+        }
+      }
+    }
+
+    if (found_index == -1) {
+      mesh_mapping.push(arena, unique_mesh_indices.m_size);
+      unique_mesh_indices.push(arena, i);
+    } else {
+      mesh_mapping.push(arena, found_index);
+    }
+  }
+
+  usize whole_buffer_size = 0;
+  for (const GltfAccessor &accessor : gltf.accessors) {
+    const GltfBufferView &buffer_view =
+        gltf.buffer_views[accessor.buffer_view];
+
+    usize component_size =
+        get_gltf_component_type_size(accessor.component_type);
+    usize type_count = get_gltf_type_element_count(accessor.type);
+    usize element_size = component_size * type_count;
+    usize stride =
+        buffer_view.byte_stride > 0 ? buffer_view.byte_stride : element_size;
+    usize data_size = stride * (accessor.count - 1) + element_size;
+
+    whole_buffer_size += data_size;
+  }
+
+  Gltf scene = {.asset = gltf.asset,
+                .scene = gltf.scene,
+                .scenes = gltf.scenes};
+
+  scene.nodes.reserve(arena, gltf.nodes.m_size);
+  for (const GltfNode &node : gltf.nodes) {
+    GltfNode new_node = node;
+    if (node.mesh != -1) {
+      new_node.mesh = mesh_mapping[node.mesh];
+    }
+    scene.nodes.push(arena, new_node);
+  }
+
+  GltfBuffer new_buffer = {.name = bin_path.remove_extension().m_str,
+                           .uri = bin_path.m_str,
+                           .data =
+                               Span<u8>::allocate(arena, whole_buffer_size)};
+  scene.buffers.push(arena, new_buffer);
+
+  Span<i32> accessor_mapping =
+      Span<i32>::allocate(arena, gltf.accessors.m_size);
+  std::fill_n(accessor_mapping.begin(), accessor_mapping.m_size, -1);
+
+  usize buffer_offset = 0;
+
+  for (i32 mesh_idx : unique_mesh_indices) {
+    const GltfMesh &mesh = gltf.meshes[mesh_idx];
+    GltfMesh new_mesh = {.name = mesh.name};
+
+    for (const GltfPrimitive &primitive : mesh.primitives) {
+      GltfPrimitive new_primitive = {.mode = primitive.mode};
+
+      for (const GltfAttribute &attribute : primitive.attributes) {
+        i32 old_accessor_idx = attribute.accessor;
+
+        if (accessor_mapping[old_accessor_idx] == -1) {
+          const GltfAccessor &accessor =
+              gltf.accessors[old_accessor_idx];
+          const GltfBufferView &buffer_view =
+              gltf.buffer_views[accessor.buffer_view];
+          const GltfBuffer &buffer = gltf.buffers[buffer_view.buffer];
+
+          usize component_size =
+              get_gltf_component_type_size(accessor.component_type);
+          usize type_count = get_gltf_type_element_count(accessor.type);
+          usize element_size = component_size * type_count;
+          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
+                                                     : element_size;
+          usize data_size = stride * (accessor.count - 1) + element_size;
+
+          usize src_offset = buffer_view.byte_offset + accessor.buffer_offset;
+          const u8 *src_data_ptr = &buffer.data[src_offset];
+          u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
+          std::memcpy(dst_data_ptr, src_data_ptr, data_size);
+
+          GltfBufferView new_buffer_view = {.name = buffer_view.name,
+                                            .buffer = 0,
+                                            .byte_offset = (u32)buffer_offset,
+                                            .byte_length = (u32)data_size,
+                                            .byte_stride =
+                                                buffer_view.byte_stride,
+                                            .target = buffer_view.target};
+          scene.buffer_views.push(arena, new_buffer_view);
+
+          GltfAccessor new_accessor = {
+              .name = accessor.name,
+              .buffer_view = (i32)scene.buffer_views.m_size - 1,
+              .buffer_offset = 0,
+              .component_type = accessor.component_type,
+              .normalized = accessor.normalized,
+              .count = accessor.count,
+              .type = accessor.type};
+          copy(accessor.min.begin(), accessor.min.end(),
+               new_accessor.min.begin());
+          copy(accessor.max.begin(), accessor.max.end(),
+               new_accessor.max.begin());
+          scene.accessors.push(arena, new_accessor);
+
+          accessor_mapping[old_accessor_idx] = (i32)scene.accessors.m_size - 1;
+          buffer_offset += data_size;
+        }
+
+        GltfAttribute new_attribute = {.name = attribute.name,
+                                       .accessor =
+                                           accessor_mapping[old_accessor_idx]};
+        new_primitive.attributes.push(arena, new_attribute);
+      }
+
+      if (primitive.indices != -1) {
+        i32 old_accessor_idx = primitive.indices;
+
+        if (accessor_mapping[old_accessor_idx] == -1) {
+          const GltfAccessor &accessor =
+              gltf.accessors[old_accessor_idx];
+          const GltfBufferView &buffer_view =
+              gltf.buffer_views[accessor.buffer_view];
+          const GltfBuffer &buffer = gltf.buffers[buffer_view.buffer];
+
+          usize component_size =
+              get_gltf_component_type_size(accessor.component_type);
+          usize type_count = get_gltf_type_element_count(accessor.type);
+          usize element_size = component_size * type_count;
+          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
+                                                     : element_size;
+          usize data_size = stride * (accessor.count - 1) + element_size;
+
+          usize src_offset = buffer_view.byte_offset + accessor.buffer_offset;
+          const u8 *src_data_ptr = &buffer.data[src_offset];
+          u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
+          std::memcpy(dst_data_ptr, src_data_ptr, data_size);
+
+          GltfBufferView new_buffer_view = {.name = buffer_view.name,
+                                            .buffer = 0,
+                                            .byte_offset = (u32)buffer_offset,
+                                            .byte_length = (u32)data_size,
+                                            .byte_stride =
+                                                buffer_view.byte_stride,
+                                            .target = buffer_view.target};
+          scene.buffer_views.push(arena, new_buffer_view);
+
+          GltfAccessor new_accessor = {
+              .name = accessor.name,
+              .buffer_view = (i32)scene.buffer_views.m_size - 1,
+              .buffer_offset = 0,
+              .component_type = accessor.component_type,
+              .normalized = accessor.normalized,
+              .count = accessor.count,
+              .type = accessor.type};
+          copy(accessor.min.begin(), accessor.min.end(),
+               new_accessor.min.begin());
+          copy(accessor.max.begin(), accessor.max.end(),
+               new_accessor.max.begin());
+          scene.accessors.push(arena, new_accessor);
+
+          accessor_mapping[old_accessor_idx] = (i32)scene.accessors.m_size - 1;
+          buffer_offset += data_size;
+        }
+
+        new_primitive.indices = accessor_mapping[old_accessor_idx];
+      }
+
+      new_mesh.primitives.push(arena, new_primitive);
+    }
+
+    scene.meshes.push(arena, new_mesh);
+  }
+  return scene;
+}
+
 JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                                                   ArenaTag tag, Path path) {
   JobFuture<Result<void, String8>> future = job_dispatch(
@@ -219,280 +458,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
 
         ren_assert(gltf_result->meshes.m_size > 0);
 
-        auto get_component_size = [](GltfComponentType type) -> usize {
-          switch (type) {
-          case GLTF_COMPONENT_TYPE_BYTE:
-          case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-            return 1;
-          case GLTF_COMPONENT_TYPE_SHORT:
-          case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-            return 2;
-          case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
-          case GLTF_COMPONENT_TYPE_FLOAT:
-            return 4;
-          default:
-            ren_assert(false && "Unknown component type");
-          }
-        };
-
-        auto get_type_count = [](GltfType type) -> usize {
-          switch (type) {
-          case GLTF_TYPE_SCALAR:
-            return 1;
-          case GLTF_TYPE_VEC2:
-            return 2;
-          case GLTF_TYPE_VEC3:
-            return 3;
-          case GLTF_TYPE_VEC4:
-            return 4;
-          case GLTF_TYPE_MAT2:
-            return 4;
-          case GLTF_TYPE_MAT3:
-            return 9;
-          case GLTF_TYPE_MAT4:
-            return 16;
-          default:
-            ren_assert(false && "Unknown value type");
-          }
-        };
-
-        auto primitives_match = [&](const GltfPrimitive &a,
-                                    const GltfPrimitive &b) -> bool {
-          if (a.indices != b.indices) {
-            return false;
-          }
-          if (a.attributes.m_size != b.attributes.m_size) {
-            return false;
-          }
-          if (a.mode != b.mode) {
-            return false;
-          }
-
-          for (usize i = 0; i < a.attributes.m_size; ++i) {
-            bool found = false;
-            for (usize j = 0; j < b.attributes.m_size; ++j) {
-              if (a.attributes[i].name == b.attributes[j].name &&
-                  a.attributes[i].accessor == b.attributes[j].accessor) {
-                found = true;
-                break;
-              }
-            }
-            if (!found) {
-              return false;
-            }
-          }
-          return true;
-        };
-
-        DynamicArray<i32> mesh_mapping;
-        mesh_mapping.reserve(scratch, gltf_result->meshes.m_size);
-
-        DynamicArray<i32> unique_mesh_indices;
-        unique_mesh_indices.reserve(scratch, gltf_result->meshes.m_size);
-
-        for (usize i = 0; i < gltf_result->meshes.m_size; ++i) {
-          const GltfMesh &mesh = gltf_result->meshes[i];
-
-          i32 found_index = -1;
-          for (usize j = 0; j < unique_mesh_indices.m_size; ++j) {
-            const GltfMesh &unique_mesh =
-                gltf_result->meshes[unique_mesh_indices[j]];
-
-            if (mesh.primitives.m_size == unique_mesh.primitives.m_size) {
-              bool all_match = true;
-              for (usize p = 0; p < mesh.primitives.m_size; ++p) {
-                if (!primitives_match(mesh.primitives[p],
-                                      unique_mesh.primitives[p])) {
-                  all_match = false;
-                  break;
-                }
-              }
-              if (all_match) {
-                found_index = (i32)j;
-                break;
-              }
-            }
-          }
-
-          if (found_index == -1) {
-            mesh_mapping.push(scratch, unique_mesh_indices.m_size);
-            unique_mesh_indices.push(scratch, i);
-          } else {
-            mesh_mapping.push(scratch, found_index);
-          }
-        }
-
-        usize whole_buffer_size = 0;
-        for (const GltfAccessor &accessor : gltf_result->accessors) {
-          const GltfBufferView &buffer_view =
-              gltf_result->buffer_views[accessor.buffer_view];
-
-          usize component_size = get_component_size(accessor.component_type);
-          usize type_count = get_type_count(accessor.type);
-          usize element_size = component_size * type_count;
-          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
-                                                   : element_size;
-          usize data_size = stride * (accessor.count - 1) + element_size;
-
-          whole_buffer_size += data_size;
-        }
-
-        Gltf scene = {.asset = gltf_result->asset,
-                      .scene = gltf_result->scene,
-                      .scenes = gltf_result->scenes
-        };
-
-        scene.nodes.reserve(scratch, gltf_result->nodes.m_size);
-        for (const GltfNode &node : gltf_result->nodes) {
-          GltfNode new_node = node;
-          if (node.mesh != -1) {
-            new_node.mesh = mesh_mapping[node.mesh];
-          }
-          scene.nodes.push(scratch, new_node);
-        }
-        
-        GltfBuffer new_buffer = {
-            .name = filename.remove_extension().m_str,
-            .uri = bin_filename.m_str,
-            .data = Span<u8>::allocate(scratch, whole_buffer_size)};
-        scene.buffers.push(scratch, new_buffer);
-
-        Span<i32> accessor_mapping =
-            Span<i32>::allocate(scratch, gltf_result->accessors.m_size);
-        std::fill_n(accessor_mapping.begin(), accessor_mapping.m_size, -1);
-        
-        usize buffer_offset = 0;
-
-        for (i32 mesh_idx : unique_mesh_indices) {
-          const GltfMesh &mesh = gltf_result->meshes[mesh_idx];
-          GltfMesh new_mesh = {.name = mesh.name};
-
-          for (const GltfPrimitive &primitive : mesh.primitives) {
-            GltfPrimitive new_primitive = {.mode = primitive.mode};
-
-            for (const GltfAttribute &attribute : primitive.attributes) {
-              i32 old_accessor_idx = attribute.accessor;
-
-              if (accessor_mapping[old_accessor_idx] == -1) {
-                const GltfAccessor &accessor =
-                    gltf_result->accessors[old_accessor_idx];
-                const GltfBufferView &buffer_view =
-                    gltf_result->buffer_views[accessor.buffer_view];
-                const GltfBuffer &buffer =
-                    gltf_result->buffers[buffer_view.buffer];
-
-                usize component_size =
-                    get_component_size(accessor.component_type);
-                usize type_count = get_type_count(accessor.type);
-                usize element_size = component_size * type_count;
-                usize stride = buffer_view.byte_stride > 0
-                                 ? buffer_view.byte_stride
-                                 : element_size;
-                usize data_size = stride * (accessor.count - 1) + element_size;
-
-                usize src_offset =
-                    buffer_view.byte_offset + accessor.buffer_offset;
-                const u8 *src_data_ptr = &buffer.data[src_offset];
-                u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
-                std::memcpy(dst_data_ptr, src_data_ptr, data_size);
-
-                GltfBufferView new_buffer_view = {.name = buffer_view.name,
-                                                  .buffer = 0,
-                                                  .byte_offset = (u32)buffer_offset,
-                                                  .byte_length = (u32)data_size,
-                                                  .byte_stride =
-                                                      buffer_view.byte_stride,
-                                                  .target = buffer_view.target};
-                scene.buffer_views.push(scratch, new_buffer_view);
-
-                GltfAccessor new_accessor = {
-                    .name = accessor.name,
-                    .buffer_view = (i32)scene.buffer_views.m_size - 1,
-                    .buffer_offset = 0,
-                    .component_type = accessor.component_type,
-                    .normalized = accessor.normalized,
-                    .count = accessor.count,
-                    .type = accessor.type};
-                copy(accessor.min.begin(), accessor.min.end(),
-                     new_accessor.min.begin());
-                copy(accessor.max.begin(), accessor.max.end(),
-                     new_accessor.max.begin());
-                scene.accessors.push(scratch, new_accessor);
-
-                accessor_mapping[old_accessor_idx] =
-                    (i32)scene.accessors.m_size - 1;
-                buffer_offset += data_size;
-              }
-
-              GltfAttribute new_attribute = {
-                  .name = attribute.name,
-                  .accessor = accessor_mapping[old_accessor_idx]};
-              new_primitive.attributes.push(scratch, new_attribute);
-            }
-
-            if (primitive.indices != -1) {
-              i32 old_accessor_idx = primitive.indices;
-
-              if (accessor_mapping[old_accessor_idx] == -1) {
-                const GltfAccessor &accessor =
-                    gltf_result->accessors[old_accessor_idx];
-                const GltfBufferView &buffer_view =
-                    gltf_result->buffer_views[accessor.buffer_view];
-                const GltfBuffer &buffer =
-                    gltf_result->buffers[buffer_view.buffer];
-
-                usize component_size =
-                    get_component_size(accessor.component_type);
-                usize type_count = get_type_count(accessor.type);
-                usize element_size = component_size * type_count;
-                usize stride = buffer_view.byte_stride > 0
-                                 ? buffer_view.byte_stride
-                                 : element_size;
-                usize data_size = stride * (accessor.count - 1) + element_size;
-
-                usize src_offset =
-                    buffer_view.byte_offset + accessor.buffer_offset;
-                const u8 *src_data_ptr = &buffer.data[src_offset];
-                u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
-                std::memcpy(dst_data_ptr, src_data_ptr, data_size);
-
-                GltfBufferView new_buffer_view = {.name = buffer_view.name,
-                                                  .buffer = 0,
-                                                  .byte_offset = (u32)buffer_offset,
-                                                  .byte_length = (u32)data_size,
-                                                  .byte_stride =
-                                                      buffer_view.byte_stride,
-                                                  .target = buffer_view.target};
-                scene.buffer_views.push(scratch, new_buffer_view);
-
-                GltfAccessor new_accessor = {
-                    .name = accessor.name,
-                    .buffer_view = (i32)scene.buffer_views.m_size - 1,
-                    .buffer_offset = 0,
-                    .component_type = accessor.component_type,
-                    .normalized = accessor.normalized,
-                    .count = accessor.count,
-                    .type = accessor.type};
-                copy(accessor.min.begin(), accessor.min.end(),
-                     new_accessor.min.begin());
-                copy(accessor.max.begin(), accessor.max.end(),
-                     new_accessor.max.begin());
-                scene.accessors.push(scratch, new_accessor);
-
-                accessor_mapping[old_accessor_idx] =
-                    (i32)scene.accessors.m_size - 1;
-                buffer_offset += data_size;
-              }
-
-              new_primitive.indices = accessor_mapping[old_accessor_idx];
-            }
-
-            new_mesh.primitives.push(scratch, new_primitive);
-          }
-
-          scene.meshes.push(scratch, new_mesh);
-        }
-
+        Gltf scene = process_gltf_mesh(scratch, *gltf_result, bin_filename);
         String8 new_gltf_scene_data = to_string(scratch, scene);
 
         if (auto result = write(gltf_path, new_gltf_scene_data);

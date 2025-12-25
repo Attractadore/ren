@@ -9,7 +9,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace ren {
-enum class GltfError { InvalidFormat, IO, Unknown };
+enum class GltfError { InvalidFormat, IO };
 
 struct GltfErrorInfo {
   GltfError error;
@@ -102,6 +102,10 @@ struct GltfAttribute {
   i32 accessor = -1;
 };
 
+inline bool operator==(const GltfAttribute& lhs, const GltfAttribute& rhs) {
+  return lhs.accessor == rhs.accessor && lhs.name == rhs.name;
+}
+
 struct GltfPrimitive {
   DynamicArray<GltfAttribute> attributes;
   i32 indices = -1;
@@ -111,6 +115,29 @@ struct GltfPrimitive {
   // Array<Array<GltfAttribute>> targets here.
   // TODO: Extras
 };
+
+inline bool operator==(const GltfPrimitive& lhs, const GltfPrimitive& rhs) {
+  if (lhs.indices != rhs.indices) {
+    return false;
+  }
+  if (lhs.attributes.m_size != rhs.attributes.m_size) {
+    return false;
+  }
+  if (lhs.mode != rhs.mode) {
+    return false;
+  }
+
+  for (usize i = 0; i < rhs.attributes.m_size; ++i) {
+    if (lhs.attributes[i] != rhs.attributes[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline bool operator!=(const GltfPrimitive& lhs, const GltfPrimitive& rhs) {
+  return !(lhs == rhs);
+}
 
 struct GltfMesh {
   String8 name;
