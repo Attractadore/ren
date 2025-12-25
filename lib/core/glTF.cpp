@@ -270,12 +270,18 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
     accessor.type = GLTF_TYPE_MAT3;
   } else if (type_str == "MAT4") {
     accessor.type = GLTF_TYPE_MAT4;
+  } else {
+    return GltfErrorInfo{.error = GltfError::InvalidFormat,
+                         .desc = "Unknown type of accessor."};
   }
 
   JsonValue min_arr = json_value(json, "min");
   if (min_arr.type == JsonType::Array) {
     Span<const JsonValue> min_values = json_array(min_arr);
-    ren_assert(min_values.m_size < 16 && "Min values overflow.");
+    if (min_values.m_size > 16) {
+      return GltfErrorInfo{.error = GltfError::InvalidFormat,
+                           .desc = "Too many elements."};
+    }
     for (i32 i = 0; i < min_values.m_size; i++) {
       if (min_values[i].type == JsonType::Number) {
         accessor.min[i] = (float)min_values[i].number;
@@ -288,7 +294,10 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
   JsonValue max_arr = json_value(json, "max");
   if (max_arr.type == JsonType::Array) {
     Span<const JsonValue> max_values = json_array(max_arr);
-    ren_assert(max_values.m_size < 16 && "Max values overflow.");
+    if (max_values.m_size > 16) {
+      return GltfErrorInfo{.error = GltfError::InvalidFormat,
+                           .desc = "Too many elements."};
+    }
     for (i32 i = 0; i < max_values.m_size; i++) {
       if (max_values[i].type == JsonType::Number) {
         accessor.max[i] = (float)max_values[i].number;
@@ -496,9 +505,6 @@ Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
   }
 
   Path base_path = path.parent();
-  if (!base_path) {
-    base_path = Path::init(".");
-  }
 
   Result<Gltf, GltfErrorInfo> gltf = gltf_parse(arena, *file_data, base_path);
   if (!gltf) {
@@ -526,8 +532,7 @@ static JsonValue gltf_serialize_asset(NotNull<Arena *> arena,
                   {"minVersion", JsonValue::init(arena, asset.min_version)});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
@@ -547,8 +552,7 @@ static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
                                        node_arr.m_data, node_arr.m_size))});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_node(NotNull<Arena *> arena,
@@ -573,11 +577,11 @@ static JsonValue gltf_serialize_node(NotNull<Arena *> arena,
 
   if (node.matrix != glm::identity<glm::mat4>()) {
     DynamicArray<JsonValue> matrix_arr = {};
-    float buffer[16];
-    memcpy(buffer, &node.matrix[0], sizeof(glm::mat4));
+    matrix_arr.reserve(arena, 16);
+    const float *matrix_ptr = glm::value_ptr(node.matrix);
 
     for (usize i = 0; i < 16; ++i) {
-      matrix_arr.push(arena, JsonValue::init(buffer[i]));
+      matrix_arr.push(JsonValue::init(matrix_ptr[i]));
     }
     kv_pairs.push(arena,
                   {"matrix", JsonValue::init(Span<const JsonValue>(
@@ -630,8 +634,7 @@ static JsonValue gltf_serialize_node(NotNull<Arena *> arena,
                                    children_arr.m_data, children_arr.m_size))});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
@@ -660,8 +663,7 @@ static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
     kv_pairs.push(arena, {"mode", JsonValue::init((i64)prim.mode)});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
@@ -682,8 +684,7 @@ static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
                                      prim_arr.m_data, prim_arr.m_size))});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
@@ -707,8 +708,7 @@ static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
     kv_pairs.push(arena, {"uri", JsonValue::init(arena, image.uri)});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
@@ -784,8 +784,7 @@ static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
   kv_pairs.push(arena, {"max", JsonValue::init(Span<const JsonValue>(
                                    max_arr.m_data, max_arr.m_size))});
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
                                        const GltfBufferView &view) {
@@ -813,8 +812,7 @@ static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
     kv_pairs.push(arena, {"target", JsonValue::init((i64)view.target)});
   }
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 static JsonValue gltf_serialize_buffers(NotNull<Arena *> arena,
@@ -832,8 +830,7 @@ static JsonValue gltf_serialize_buffers(NotNull<Arena *> arena,
   kv_pairs.push(arena,
                 {"byteLength", JsonValue::init((i64)buffer.data.m_size)});
 
-  return JsonValue::init(
-      Span<const JsonKeyValue>(kv_pairs.m_data, kv_pairs.m_size));
+  return JsonValue::init(kv_pairs);
 }
 
 template <typename T>
@@ -865,8 +862,7 @@ gltf_serialize_array(NotNull<Arena *> arena, const DynamicArray<T> &arr) {
     }
   }
 
-  return JsonValue::init(
-      Span<const JsonValue>(json_arr.m_data, json_arr.m_size));
+  return JsonValue::init(json_arr);
 }
 
 JsonValue gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf) {
