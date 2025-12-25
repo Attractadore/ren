@@ -125,7 +125,6 @@ static void *allocate_block_slow(NotNull<BlockAllocator *> allocator,
 }
 
 void *allocate_block(NotNull<BlockAllocator *> allocator, usize size) {
-  ZoneScoped;
   [[likely]] if (size == allocator->min_block_size) {
     usize free_mask = find_lsb(allocator->free_masks);
     [[unlikely]] if (free_mask == (u64)-1) {

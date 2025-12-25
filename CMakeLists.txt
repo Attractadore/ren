@@ -96,6 +96,10 @@ if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
   endif()
 endif()
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL GNU OR CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+  add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-march=x86-64-v3>")
+endif()
+
 set(REN_INCLUDE ${PROJECT_SOURCE_DIR}/include)
 
 add_subdirectory(lib)

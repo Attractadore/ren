@@ -5,6 +5,8 @@
 #include "ren/core/Math.hpp"
 #include "ren/core/Vm.hpp"
 
+#include <tracy/Tracy.hpp>
+
 namespace ren {
 
 thread_local BlockAllocator thread_allocator;
@@ -78,6 +80,8 @@ static void vm_arena_commit(NotNull<Arena *> arena, usize new_commit_size) {
 }
 
 void *Arena::allocate_slow(usize size, usize alignment) {
+  ZoneScoped;
+
   if (m_type == ArenaType::Dedicated) {
     usize aligned_offset = (m_offset + alignment - 1) & ~(alignment - 1);
     usize new_offset = aligned_offset + size;

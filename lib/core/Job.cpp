@@ -683,6 +683,8 @@ bool is_job() {
 }
 
 ArenaBlock *job_allocate_block(usize size) {
+  ZoneScoped;
+
   Job *job = job_tls_running_job();
   [[likely]] if (size <= JOB_ALLOCATOR_BIG_BLOCK_SIZE) {
     usize num_blocks = size / JOB_ALLOCATOR_BLOCK_SIZE;
@@ -816,6 +818,8 @@ void job_reset_tag(ArenaTag tag) {
 }
 
 void *job_tag_allocate(ArenaTag tag, usize size, usize alignment) {
+  ZoneScoped;
+
   ren_assert(alignment <= CACHE_LINE_SIZE);
   size = (size + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1);
   auto *tag_allocation = &job_server.m_tag_allocations[tag.m_id];

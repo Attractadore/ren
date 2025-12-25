@@ -1,11 +1,12 @@
 #include "ren/core/JSON.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Math.hpp"
 #include "ren/core/Unicode.hpp"
 
 #include <cmath>
+#include <immintrin.h>
 #include <tracy/Tracy.hpp>
-#include <utility>
 
 namespace ren {
 
@@ -119,7 +120,89 @@ json_parse_utf16(NotNull<JsonParserContext *> ctx) {
 
 Result<String8, JsonErrorInfo>
 json_parse_string(NotNull<JsonParserContext *> ctx) {
-  ZoneScoped;
+  usize start = ctx->i;
+  usize aligned_start = start & ~(CACHE_LINE_SIZE - 1);
+  usize end = ctx->buffer.m_size;
+  ren_assert(end % CACHE_LINE_SIZE == 0);
+  const char *str = ctx->buffer.m_str;
+  ren_assert(str[start] != '"');
+
+  const __m128i BACKSLASH = _mm_set1_epi8('\\');
+  const __m128i DOUBLE_QUOTE = _mm_set1_epi8('"');
+  const __m128i ONES = _mm_set1_epi8(0xFF);
+
+  usize len = UINT64_MAX;
+  __m128i is_lane_bs = _mm_set1_epi8(0x00);
+  {
+    const __m128i *base = (const __m128i *)&str[aligned_start];
+    __m128i chars0 = _mm_loadu_si128(base + 0);
+    __m128i chars1 = _mm_loadu_si128(base + 1);
+    __m128i chars2 = _mm_loadu_si128(base + 2);
+    __m128i chars3 = _mm_loadu_si128(base + 3);
+
+    is_lane_bs |= _mm_cmpeq_epi8(chars0, BACKSLASH);
+    is_lane_bs |= _mm_cmpeq_epi8(chars1, BACKSLASH);
+    is_lane_bs |= _mm_cmpeq_epi8(chars2, BACKSLASH);
+    is_lane_bs |= _mm_cmpeq_epi8(chars3, BACKSLASH);
+
+    __m128i is_lane_dq_0 = _mm_cmpeq_epi8(chars0, DOUBLE_QUOTE);
+    __m128i is_lane_dq_1 = _mm_cmpeq_epi8(chars1, DOUBLE_QUOTE);
+    __m128i is_lane_dq_2 = _mm_cmpeq_epi8(chars2, DOUBLE_QUOTE);
+    __m128i is_lane_dq_3 = _mm_cmpeq_epi8(chars3, DOUBLE_QUOTE);
+
+    u64 dq_mask = 0;
+    dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_3) << 48;
+    dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_2) << 32;
+    dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_1) << 16;
+    dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_0);
+    dq_mask = dq_mask >> (start - aligned_start);
+    len = find_lsb(dq_mask);
+  }
+  [[unlikely]] if (len == UINT64_MAX) {
+    for (usize i = aligned_start + CACHE_LINE_SIZE; i < end;
+         i += CACHE_LINE_SIZE) {
+      const __m128i *base = (const __m128i *)&str[i];
+      __m128i chars0 = _mm_loadu_si128(base + 0);
+      __m128i chars1 = _mm_loadu_si128(base + 1);
+      __m128i chars2 = _mm_loadu_si128(base + 2);
+      __m128i chars3 = _mm_loadu_si128(base + 3);
+
+      is_lane_bs |= _mm_cmpeq_epi8(chars0, BACKSLASH);
+      is_lane_bs |= _mm_cmpeq_epi8(chars1, BACKSLASH);
+      is_lane_bs |= _mm_cmpeq_epi8(chars2, BACKSLASH);
+      is_lane_bs |= _mm_cmpeq_epi8(chars3, BACKSLASH);
+
+      __m128i is_lane_dq_0 = _mm_cmpeq_epi8(chars0, DOUBLE_QUOTE);
+      __m128i is_lane_dq_1 = _mm_cmpeq_epi8(chars1, DOUBLE_QUOTE);
+      __m128i is_lane_dq_2 = _mm_cmpeq_epi8(chars2, DOUBLE_QUOTE);
+      __m128i is_lane_dq_3 = _mm_cmpeq_epi8(chars3, DOUBLE_QUOTE);
+
+      __m128i is_lane_dq =
+          is_lane_dq_0 | is_lane_dq_1 | is_lane_dq_2 | is_lane_dq_3;
+      [[likely]] if (_mm_test_all_zeros(ONES, is_lane_dq)) { continue; }
+
+      u64 dq_mask = 0;
+      dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_3) << 48;
+      dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_2) << 32;
+      dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_1) << 16;
+      dq_mask |= (u64)_mm_movemask_epi8(is_lane_dq_0);
+      ren_assert(dq_mask);
+      len = i - start + find_lsb(dq_mask);
+      break;
+    }
+  }
+  [[unlikely]] if (len == UINT_MAX) { return JSON_EOF_ERROR; }
+
+  bool had_bs = _mm_movemask_epi8(is_lane_bs);
+  if (not had_bs) {
+    ren_assert(str[start + len] == '"');
+    Span<char> buffer = Span<char>::allocate(ctx->arena, len);
+    copy(&str[start], len, buffer.m_data);
+    ctx->i = start + len + 1;
+    return String8(buffer.m_data, buffer.m_size);
+  }
+
+  // Fallback slow path.
   ScratchArena scratch;
   auto builder = StringBuilder::init(scratch);
 top:
@@ -505,6 +588,19 @@ parse:
 Result<JsonValue, JsonErrorInfo> json_parse(NotNull<Arena *> arena,
                                             String8 buffer) {
   ZoneScoped;
+  ScratchArena scratch;
+  if ((uintptr_t)buffer.m_str % CACHE_LINE_SIZE != 0 or
+      buffer.m_size % CACHE_LINE_SIZE != 0) {
+    ZoneScopedN("Copy input buffer");
+    usize size = (buffer.m_size + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1);
+    char *aligned_buffer = (char *)scratch->allocate(size, CACHE_LINE_SIZE);
+    copy(Span(buffer), aligned_buffer);
+    usize pad_size = size - buffer.m_size;
+    for (usize i : range(pad_size)) {
+      aligned_buffer[buffer.m_size + i] = ' ';
+    }
+    buffer = {aligned_buffer, size};
+  }
 
   JsonParserContext ctx = {
       .arena = arena,
