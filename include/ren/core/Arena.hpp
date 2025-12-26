@@ -8,6 +8,9 @@ namespace ren {
 
 enum class ArenaNamedTag {
   None,
+  FrameData0,
+  FrameData1,
+  FrameDataLast = FrameData1,
   EditorProject,
   EditorCompile,
   EditorImportScene,

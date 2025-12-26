@@ -128,7 +128,7 @@ void unregister_gltf_scene(NotNull<EditorContext *> ctx, Path meta_filename) {
       Handle<EditorMesh> mesh_handle = gltf_scene.first_mesh;
       while (mesh_handle) {
         const EditorMesh &mesh = project->m_meshes[mesh_handle];
-        destroy_mesh(ctx->m_scene, mesh.gfx_handle);
+        destroy_mesh(&ctx->m_frame_arena, ctx->m_scene, mesh.gfx_handle);
         Handle<EditorMesh> next = mesh.next;
         project->m_meshes.erase(mesh_handle);
         mesh_handle = next;
@@ -172,6 +172,9 @@ void register_all_gltf_scenes(NotNull<EditorContext *> ctx) {
 void unregister_all_gltf_scenes(NotNull<EditorContext *> ctx) {
   EditorProjectContext *project = ctx->m_project;
   project->m_gltf_scenes.clear();
+  for (const auto &[_, mesh] : project->m_meshes) {
+    destroy_mesh(&ctx->m_frame_arena, ctx->m_scene, mesh.gfx_handle);
+  }
   project->m_meshes.clear();
 }
 
@@ -239,7 +242,7 @@ void register_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid) {
             create_mesh(&ctx->m_frame_arena, ctx->m_scene, buffer->as_bytes());
       }
       if (gfx_handle) {
-        destroy_mesh(ctx->m_scene, mesh.gfx_handle);
+        destroy_mesh(&ctx->m_frame_arena, ctx->m_scene, mesh.gfx_handle);
         mesh.gfx_handle = gfx_handle;
       }
       mesh.is_dirty = false;

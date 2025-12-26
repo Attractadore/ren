@@ -11,7 +11,9 @@
 #include "passes/Skybox.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Job.hpp"
 #include "ren/core/Span.hpp"
+#include "ren/core/Tlsf.hpp"
 #include "ren/core/sh/Random.h"
 #include "ren/ren.hpp"
 
@@ -100,8 +102,12 @@ void init_internal_data(NotNull<Scene *> scene) {
     }
   }
 
+  static_assert((u64)ArenaNamedTag::FrameData0 + NUM_FRAMES_IN_FLIGHT - 1 ==
+                (u64)ArenaNamedTag::FrameDataLast);
   for (auto i : range(NUM_FRAMES_IN_FLIGHT)) {
     FrameResources &frcs = id->m_per_frame_resources[i];
+    frcs.tag = ArenaTag((u64)ArenaNamedTag::FrameData0 + i);
+    job_reset_tag(frcs.tag);
     frcs.acquire_semaphore = id->m_rcs_arena.create_semaphore({
         .name = format(scratch, "Acquire semaphore {}", i),
         .type = rhi::SemaphoreType::Binary,
@@ -145,6 +151,13 @@ void next_frame(NotNull<Scene *> scene) {
       renderer->wait_for_semaphore(frcs->end_semaphore, frcs->end_time);
     }
   }
+
+  for (Handle<Buffer> buffer : frcs->buffer_delete_queue) {
+    renderer->destroy(buffer);
+  }
+  frcs->buffer_delete_queue = {};
+  job_reset_tag(frcs->tag);
+  frcs->arena = Arena::from_tag(frcs->tag);
 
   frcs->upload_allocator.reset();
   renderer->reset_command_pool(frcs->gfx_cmd_pool);
@@ -249,6 +262,21 @@ Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
   }
   scene->m_gpu_scene = *gpu_scene;
 
+  rhi::Result<Handle<Buffer>> index_buffer = renderer->create_buffer({
+      .name = "Index buffer",
+      .heap = rhi::MemoryHeap::Default,
+      .size = sh::INDEX_POOL_SIZE,
+  });
+  if (!index_buffer) {
+    ren_export::destroy_scene(scene);
+    return nullptr;
+  }
+  scene->m_index_buffer = {
+      .buffer = *index_buffer,
+      .count = sh::INDEX_POOL_SIZE,
+  };
+  scene->m_index_allocator = tlsf_init(scene->m_arena, sh::INDEX_POOL_SIZE);
+
   scene->m_settings.async_compute =
       renderer->is_queue_family_supported(rhi::QueueFamily::Compute);
   scene->m_settings.present_from_compute =
@@ -263,11 +291,23 @@ Scene *create_scene(NotNull<Arena *> arena, Renderer *renderer,
   return scene;
 }
 
+void free_mesh_resources(NotNull<Scene *> scene, const Mesh &mesh);
+
 void destroy_scene(Scene *scene) {
   if (!scene) {
     return;
   }
+  for (const auto &[_, mesh] : scene->m_meshes) {
+    free_mesh_resources(scene, mesh);
+  }
+  scene->m_frcs->buffer_delete_queue.push(&scene->m_frcs->arena,
+                                          scene->m_index_buffer.buffer);
   scene->m_renderer->wait_idle();
+  for (const FrameResources &rcs : scene->m_sid->m_per_frame_resources) {
+    for (Handle<Buffer> buffer : rcs.buffer_delete_queue) {
+      scene->m_renderer->destroy(buffer);
+    }
+  }
   scene->m_rcs_arena.clear();
   destroy_internal_data(scene);
   scene->m_internal_arena.destroy();
@@ -346,18 +386,23 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                                        Handle<Buffer> &buffer,
                                        String8 name) -> rhi::Result<void> {
     if (data.m_size > 0) {
-      auto slice = scene->m_rcs_arena.create_buffer<T>({
-          .name = std::move(name),
-          .heap = rhi::MemoryHeap::Default,
-          .count = data.m_size,
-      });
-      if (!slice) {
-        return slice.error();
+      rhi::Result<Handle<Buffer>> buffer_result =
+          scene->m_renderer->create_buffer({
+              .name = std::move(name),
+              .heap = rhi::MemoryHeap::Default,
+              .size = data.m_size * sizeof(T),
+          });
+      if (!buffer_result) {
+        return buffer_result.error();
       }
-      buffer = slice->buffer;
+      buffer = *buffer_result;
+      BufferSlice<T> slice = {
+          .buffer = *buffer_result,
+          .count = data.m_size,
+      };
       scene->m_sid->m_resource_uploader.stage_buffer(
           frame_arena, *renderer, scene->m_frcs->upload_allocator, Span(data),
-          *slice);
+          slice);
     }
     return {};
   };
@@ -385,35 +430,15 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   }
 
   // Find or allocate index pool
-
-  ren_assert_msg(header.num_triangles * 3 <= sh::INDEX_POOL_SIZE,
-                 "Index pool overflow");
-
-  if (scene->m_index_pools.m_size == 0 or
-      scene->m_index_pools.back().num_free_indices < header.num_triangles * 3) {
-    rhi::Result<BufferSlice<u8>> slice = scene->m_rcs_arena.create_buffer<u8>({
-        .name = "Mesh vertex indices pool",
-        .heap = rhi::MemoryHeap::Default,
-        .count = sh::INDEX_POOL_SIZE,
-    });
-    if (!slice) {
-      return NullHandle;
-    }
-    scene->m_index_pools.push(scene->m_arena,
-                              {slice->buffer, sh::INDEX_POOL_SIZE});
-  }
-
-  mesh.index_pool = scene->m_index_pools.m_size - 1;
-  IndexPool &index_pool = scene->m_index_pools.back();
-
-  u32 base_triangle = sh::INDEX_POOL_SIZE - index_pool.num_free_indices;
+  mesh.triangles = tlsf_allocate(scene->m_arena, scene->m_index_allocator,
+                                 header.num_triangles * 3);
+  ren_assert_msg(mesh.triangles, "Index pool overflow");
+  u32 base_triangle = mesh.triangles->offset;
   for (sh::Meshlet &meshlet : meshlets) {
     meshlet.base_triangle += base_triangle;
   }
 
-  index_pool.num_free_indices -= header.num_triangles * 3;
-
-  if (!upload_buffer(indices, mesh.indices,
+  if (!upload_buffer(indices, mesh.meshlet_indices,
                      format(scratch, "Mesh {} indices", index))) {
     return NullHandle;
   }
@@ -429,8 +454,7 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
 
   scene->m_sid->m_resource_uploader.stage_buffer(
       frame_arena, *renderer, scene->m_frcs->upload_allocator, triangles,
-      renderer->get_buffer_slice<u8>(index_pool.indices)
-          .slice(base_triangle, header.num_triangles * 3));
+      scene->m_index_buffer.slice(base_triangle, header.num_triangles * 3));
 
   Handle<Mesh> handle = scene->m_meshes.insert(scene->m_arena, mesh);
 
@@ -443,10 +467,10 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
       .uvs = renderer->try_get_buffer_device_ptr<sh::UV>(mesh.uvs),
       .colors = renderer->try_get_buffer_device_ptr<sh::Color>(mesh.colors),
       .meshlets = renderer->get_buffer_device_ptr<sh::Meshlet>(mesh.meshlets),
-      .meshlet_indices = renderer->get_buffer_device_ptr<u32>(mesh.indices),
+      .meshlet_indices =
+          renderer->get_buffer_device_ptr<u32>(mesh.meshlet_indices),
       .bb = mesh.bb,
       .uv_bs = mesh.uv_bs,
-      .index_pool = mesh.index_pool,
       .num_lods = mesh.num_lods,
   };
   copy(mesh.lods, mesh.num_lods, gpu_mesh.lods);
@@ -456,7 +480,33 @@ Handle<Mesh> create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
   return handle;
 }
 
-void destroy_mesh(NotNull<Scene *> scene, Handle<Mesh> mesh) {}
+void free_mesh_resources(NotNull<Scene *> scene, const Mesh &mesh) {
+  FrameResources *rcs = scene->m_frcs;
+  rcs->buffer_delete_queue.push(&rcs->arena, mesh.positions);
+  rcs->buffer_delete_queue.push(&rcs->arena, mesh.normals);
+  if (mesh.tangents) {
+    rcs->buffer_delete_queue.push(&rcs->arena, mesh.tangents);
+  }
+  if (mesh.uvs) {
+    rcs->buffer_delete_queue.push(&rcs->arena, mesh.uvs);
+  }
+  if (mesh.colors) {
+    rcs->buffer_delete_queue.push(&rcs->arena, mesh.colors);
+  }
+  rcs->buffer_delete_queue.push(&rcs->arena, mesh.meshlets);
+  rcs->buffer_delete_queue.push(&rcs->arena, mesh.meshlet_indices);
+  tlsf_free(scene->m_index_allocator, mesh.triangles);
+}
+
+void destroy_mesh(NotNull<Arena *> frame_arena, NotNull<Scene *> scene,
+                  Handle<Mesh> handle) {
+  if (!handle) {
+    return;
+  }
+  free_mesh_resources(scene, scene->m_meshes.pop(handle));
+  scene->m_gpu_scene_update.meshes.push(
+      frame_arena, {.handle = handle, .data = {.num_lods = 1}});
+}
 
 Handle<Image> create_image(NotNull<Arena *> frame_arena, Scene *scene,
                            Span<const std::byte> blob) {
@@ -539,16 +589,10 @@ void set_camera_transform(Scene *scene, Handle<Camera> handle,
 auto get_batch_desc(DrawSet ds, const Scene &scene,
                     const MeshInstance &mesh_instance) -> DrawSetBatchDesc {
   const Mesh &mesh = scene.m_meshes.get(mesh_instance.mesh);
-  const IndexPool &pool = scene.m_index_pools[mesh.index_pool];
-
-  BufferSlice<u8> indices = {
-      .buffer = pool.indices,
-      .count = sh::INDEX_POOL_SIZE,
-  };
 
   switch (ds) {
   case DrawSet::DepthOnly:
-    return {scene.m_sid->m_pipelines.early_z_pass, indices};
+    return {scene.m_sid->m_pipelines.early_z_pass};
   case DrawSet::Opaque: {
     const sh::Material &material =
         scene.m_materials[mesh_instance.material].data;
@@ -563,8 +607,7 @@ auto get_batch_desc(DrawSet ds, const Scene &scene,
     if (mesh.colors) {
       attributes |= MeshAttribute::Color;
     }
-    return {scene.m_sid->m_pipelines.opaque_pass[(i32)attributes.get()],
-            indices};
+    return {scene.m_sid->m_pipelines.opaque_pass[(i32)attributes.get()]};
   };
   }
 

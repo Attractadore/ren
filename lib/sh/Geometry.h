@@ -202,7 +202,6 @@ struct Mesh {
   DevicePtr<uint> meshlet_indices;
   PositionBoundingBox bb;
   BoundingSquare uv_bs;
-  uint index_pool;
   uint num_lods;
   MeshLOD lods[MAX_NUM_LODS];
 };

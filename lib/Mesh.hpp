@@ -9,6 +9,11 @@
 
 namespace ren {
 
+struct Buffer;
+struct Material;
+struct ResourceArena;
+struct TlsfAllocation;
+
 constexpr u32 MESH_PACKAGE_MAGIC = ('m' << 24) | ('n' << 16) | ('e' << 8) | 'r';
 constexpr u32 MESH_PACKAGE_VERSION = 0;
 
@@ -34,10 +39,6 @@ struct MeshPackageHeader {
   u64 triangles_offset = 0;
 };
 
-struct ResourceArena;
-
-struct Buffer;
-
 enum class MeshAttribute {
   UV = sh::MESH_ATTRIBUTE_UV_BIT,
   Tangent = sh::MESH_ATTRIBUTE_TANGENT_BIT,
@@ -61,19 +62,12 @@ struct Mesh {
   Handle<Buffer> uvs;
   sh::BoundingSquare uv_bs = {};
   Handle<Buffer> colors;
-  u32 index_pool = (u32)-1;
   Handle<Buffer> meshlets;
-  Handle<Buffer> indices;
+  Handle<Buffer> meshlet_indices;
+  TlsfAllocation *triangles = nullptr;
   u32 num_lods = 0;
   sh::MeshLOD lods[sh::MAX_NUM_LODS] = {};
 };
-
-struct IndexPool {
-  Handle<Buffer> indices;
-  u32 num_free_indices = sh::INDEX_POOL_SIZE;
-};
-
-struct Material;
 
 struct MeshInstance {
   Handle<Mesh> mesh;

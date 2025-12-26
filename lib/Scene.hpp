@@ -16,6 +16,8 @@ struct ImGuiContext;
 
 namespace ren {
 
+struct TlsfAllocator;
+
 constexpr usize NUM_FRAMES_IN_FLIGHT = 2;
 
 constexpr usize MIN_TRANSFORM_STAGING_BUFFER_SIZE = 1024;
@@ -34,7 +36,6 @@ struct DirectionalLight {
 
 struct DrawSetBatchDesc {
   Handle<GraphicsPipeline> pipeline;
-  BufferSlice<u8> indices;
 
 public:
   bool operator==(const DrawSetBatchDesc &) const = default;
@@ -117,6 +118,8 @@ struct RgGpuScene {
 };
 
 struct FrameResources {
+  ArenaTag tag;
+  Arena arena;
   Handle<Semaphore> acquire_semaphore;
   UploadBumpAllocator upload_allocator;
   Handle<CommandPool> gfx_cmd_pool;
@@ -124,6 +127,7 @@ struct FrameResources {
   DescriptorAllocatorScope descriptor_allocator;
   Handle<Semaphore> end_semaphore;
   u64 end_time = 0;
+  DynamicArray<Handle<Buffer>> buffer_delete_queue;
 };
 
 struct SceneGraphicsSettings {
@@ -237,7 +241,8 @@ struct Scene {
   Handle<Camera> m_camera;
   GenArray<Camera> m_cameras;
 
-  DynamicArray<IndexPool> m_index_pools;
+  TlsfAllocator *m_index_allocator = nullptr;
+  BufferSlice<u8> m_index_buffer;
   GenArray<Mesh> m_meshes;
 
   GenArray<MeshInstance> m_mesh_instances;

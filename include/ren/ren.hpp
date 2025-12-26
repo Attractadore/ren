@@ -205,7 +205,8 @@ void set_camera_transform(Scene *scene, Handle<Camera> camera,
 [[nodiscard]] auto create_mesh(NotNull<Arena *> frame_arena, Scene *scene,
                                Span<const std::byte> blob) -> Handle<Mesh>;
 
-void destroy_mesh(NotNull<Scene *> scene, Handle<Mesh> mesh);
+void destroy_mesh(NotNull<Arena *> frame_arena, NotNull<Scene *> scene,
+                  Handle<Mesh> mesh);
 
 [[nodiscard]] auto create_image(NotNull<Arena *> frame_arena, Scene *scene,
                                 Span<const std::byte> blob) -> Handle<Image>;

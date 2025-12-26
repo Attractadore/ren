@@ -424,6 +424,7 @@ void record_render_pass(const PassCommonConfig &ccfg,
       DrawSetBatchDesc batch_desc;
       RgBufferToken<sh::DrawIndexedIndirectCommand> commands;
       RgBufferToken<u32> batch_sizes;
+      BufferSlice<u8> indices;
     } rcs;
 
     rcs.batch_desc =
@@ -431,13 +432,14 @@ void record_render_pass(const PassCommonConfig &ccfg,
     rcs.commands = pass.read_buffer(commands, rhi::INDIRECT_COMMAND_BUFFER);
     rcs.batch_sizes =
         pass.read_buffer(cfg.batch_sizes, rhi::INDIRECT_COMMAND_BUFFER, batch);
+    rcs.indices = ccfg.scene->m_index_buffer;
 
     auto args = get_render_pass_args(ccfg, info, pass);
 
     pass.set_render_pass_callback([rcs, args](Renderer &, const RgRuntime &rg,
                                               RenderPass &render_pass) {
       render_pass.bind_graphics_pipeline(rcs.batch_desc.pipeline);
-      render_pass.bind_index_buffer(rcs.batch_desc.indices);
+      render_pass.bind_index_buffer(rcs.indices);
       rg.push_constants(render_pass, args);
       render_pass.draw_indexed_indirect_count(rg.get_buffer(rcs.commands),
                                               rg.get_buffer(rcs.batch_sizes));
