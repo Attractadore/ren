@@ -1,5 +1,6 @@
 #include "ren/core/glTF.hpp"
 #include "ren/core/JSON.hpp"
+#include "ren/core/Format.hpp"
 #include "ren/core/Optional.hpp"
 
 #include <glm/gtc/type_ptr.hpp>
@@ -30,18 +31,21 @@ Optional<Span<float>> json_get_float_array(NotNull<Arena *> arena,
   return out.copy(arena);
 }
 
-static Result<GltfAsset, GltfErrorInfo> gltf_parse_asset(JsonValue json) {
+static Result<GltfAsset, GltfErrorInfo> gltf_parse_asset(NotNull<Arena *> arena,
+                                                         JsonValue json) {
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc =
-                             "An object type is expected for the \"asset\", "
-                             "but it does not match."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena,
+                       "An object type is expected for the \"asset\", "
+                       "but type is {}.",
+                       json.type)};
   }
 
   GltfAsset asset;
   asset.version = json_string_value_or(json, "version", "");
   if (!asset.version) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
+    return GltfErrorInfo{.error = GltfError::JSON_EpectedFieldNotFound,
                          .desc = "Expected filed \"version\" not found."};
   }
 
@@ -57,9 +61,12 @@ static Result<GltfScene, GltfErrorInfo> gltf_parse_scene(NotNull<Arena *> arena,
   GltfScene scene = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "An object type is expected for the \"scene\", "
-                                 "but it does not match."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena,
+                       "An object type is expected for the \"scene\", "
+                       "but type is {}.",
+                       json.type)};
   }
 
   scene.name = json_string_value_or(json, "name", "");
@@ -84,9 +91,12 @@ static Result<GltfNode, GltfErrorInfo> gltf_parse_node(NotNull<Arena *> arena,
   GltfNode node = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "An object type is expected for the \"node\", "
-                                 "but it does not match."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena,
+                       "An object type is expected for the \"node\", "
+                       "but type is {}.",
+                       json.type)};
   }
 
   node.name = json_string_value_or(json, "name", "");
@@ -96,7 +106,7 @@ static Result<GltfNode, GltfErrorInfo> gltf_parse_node(NotNull<Arena *> arena,
 
   JsonValue matrix_val = json_value(json, "matrix");
   if (matrix_val && matrix_val.type != JsonType::Array) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
+    return GltfErrorInfo{.error = GltfError::JSON_UnexpectedValue,
                          .desc = "\"matrix\" should be array."};
   }
 
@@ -121,22 +131,29 @@ static Result<GltfNode, GltfErrorInfo> gltf_parse_node(NotNull<Arena *> arena,
   }
 
   JsonValue children = json_value(json, "children");
-  if (children.type != JsonType::Array) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "The expected type for the \"children\" field "
-                                 "is array, but it does not match."};
-  }
-
-  Span<const JsonValue> child_arr = json_array(children);
-  node.children = DynamicArray<i32>::init(arena, child_arr.m_size);
-
-  for (const JsonValue &child : child_arr) {
-    if (child.type != JsonType::Integer) {
+  if (children) {
+    if (children.type != JsonType::Array) {
       return GltfErrorInfo{
-          .error = GltfError::InvalidFormat,
-          .desc = "The expected data type is Integer, but it does not match."};
+          .error = GltfError::JSON_UnexpectedValue,
+          .desc = format(arena,
+                         "The expected type for the \"children\" field "
+                         "is array, but type is {}.",
+                         children.type)};
     }
-    node.children.push(arena, (i32)child.integer);
+
+    Span<const JsonValue> child_arr = json_array(children);
+    node.children = DynamicArray<i32>::init(arena, child_arr.m_size);
+
+    for (const JsonValue &child : child_arr) {
+      if (child.type != JsonType::Integer) {
+        return GltfErrorInfo{
+            .error = GltfError::JSON_UnexpectedValue,
+            .desc = format(arena,
+                           "The expected data type is Integer, but type is {}.",
+                           child.type)};
+      }
+      node.children.push(arena, (i32)child.integer);
+    }
   }
 
   return node;
@@ -147,9 +164,11 @@ gltf_parse_primitive(NotNull<Arena *> arena, JsonValue json) {
   GltfPrimitive prim = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc =
-                             "A \"primitive\" must be an object, but it is not."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc =
+            format(arena, "A \"primitive\" must be an object, but type is {}.",
+                   json.type)};
   }
 
   prim.indices = json_integer_value_or(json, "indices", -1);
@@ -159,9 +178,12 @@ gltf_parse_primitive(NotNull<Arena *> arena, JsonValue json) {
 
   JsonValue attrs = json_value(json, "attributes");
   if (attrs.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "The expected type for \"attributes\" is an "
-                                 "object, but it does not match."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena,
+                       "The expected type for \"attributes\" is an "
+                       "object, but type is {}.",
+                       attrs.type)};
   }
 
   prim.attributes = DynamicArray<GltfAttribute>::init(arena, 0);
@@ -169,9 +191,10 @@ gltf_parse_primitive(NotNull<Arena *> arena, JsonValue json) {
   for (const JsonKeyValue &kv : obj) {
     if (kv.value.type != JsonType::Integer) {
       return GltfErrorInfo{
-          .error = GltfError::InvalidFormat,
-          .desc =
-              "The expected accesor type is Integer, but it does not match."};
+          .error = GltfError::JSON_UnexpectedValue,
+          .desc = format(
+              arena, "The expected accesor type is Integer, but type is {}.",
+              kv.value.type)};
     }
 
     GltfAttribute attr;
@@ -188,9 +211,12 @@ static Result<GltfMesh, GltfErrorInfo> gltf_parse_mesh(NotNull<Arena *> arena,
   GltfMesh mesh = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "The expected type of the \"mesh\" is an object, "
-                                 "but it does not match."};
+    return GltfErrorInfo{
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena,
+                       "The expected type of the \"mesh\" is an object, "
+                       "but type is {}.",
+                       json.type)};
   }
 
   mesh.name = json_string_value_or(json, "name", "");
@@ -198,9 +224,11 @@ static Result<GltfMesh, GltfErrorInfo> gltf_parse_mesh(NotNull<Arena *> arena,
   JsonValue prims = json_value(json, "primitives");
   if (prims.type != JsonType::Array) {
     return GltfErrorInfo{
-        .error = GltfError::InvalidFormat,
-        .desc =
-            "The primitives field is expected to be an array, but it is not."};
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(
+            arena,
+            "The primitives field is expected to be an array, but type is {}.",
+            prims.type)};
   }
 
   Span<const JsonValue> prim_arr = json_array(prims);
@@ -224,9 +252,11 @@ static Result<GltfImage, GltfErrorInfo> gltf_parse_image(NotNull<Arena *> arena,
 
   if (json.type != JsonType::Object) {
     return GltfErrorInfo{
-        .error = GltfError::InvalidFormat,
-        .desc =
-            "An object type is expected for the \"image\", but it does not match."};
+        .error = GltfError::JSON_UnexpectedValue,
+        .desc = format(
+            arena,
+            "An object type is expected for the \"image\", but type is {}.",
+            json.type)};
   }
 
   image.name = json_string_value_or(json, "name", "");
@@ -242,9 +272,11 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
   GltfAccessor accessor = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "An object type is expected for the "
-                                 "\"accessor\", but it does not match."};
+    return GltfErrorInfo{.error = GltfError::JSON_UnexpectedValue,
+                         .desc = format(arena,
+                                        "An object type is expected for the "
+                                        "\"accessor\", but type is {}.",
+                                        json.type)};
   }
 
   accessor.name = json_string_value_or(json, "name", "");
@@ -271,16 +303,17 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
   } else if (type_str == "MAT4") {
     accessor.type = GLTF_TYPE_MAT4;
   } else {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "Unknown type of accessor."};
+    return GltfErrorInfo{.error = GltfError::VALUE_UnknownType,
+                         .desc =
+                             format(arena, "Unknown data type: {}.", type_str)};
   }
 
   JsonValue min_arr = json_value(json, "min");
   if (min_arr.type == JsonType::Array) {
     Span<const JsonValue> min_values = json_array(min_arr);
     if (min_values.m_size > 16) {
-      return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                           .desc = "Too many elements."};
+      return GltfErrorInfo{.error = GltfError::VALUE_OutOfRange,
+                           .desc = "The maximum array size is 16."};
     }
     for (i32 i = 0; i < min_values.m_size; i++) {
       if (min_values[i].type == JsonType::Number) {
@@ -295,8 +328,8 @@ gltf_parse_accessor(NotNull<Arena *> arena, JsonValue json) {
   if (max_arr.type == JsonType::Array) {
     Span<const JsonValue> max_values = json_array(max_arr);
     if (max_values.m_size > 16) {
-      return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                           .desc = "Too many elements."};
+      return GltfErrorInfo{.error = GltfError::VALUE_OutOfRange,
+                           .desc = "The maximum array size is 16."};
     }
     for (i32 i = 0; i < max_values.m_size; i++) {
       if (max_values[i].type == JsonType::Number) {
@@ -316,9 +349,11 @@ gltf_parse_buffer_view(NotNull<Arena *> arena,
   GltfBufferView view = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "An object type is expected for the "
-                                 "\"buffer_view\", but it does not match."};
+    return GltfErrorInfo{.error = GltfError::JSON_UnexpectedValue,
+                         .desc = format(arena,
+                                        "An object type is expected for the "
+                                        "\"buffer_view\", but type is {}.",
+                                        json.type)};
   }
 
   view.name = json_string_value_or(json, "name", "");
@@ -336,9 +371,10 @@ gltf_parse_buffer(NotNull<Arena *> arena, JsonValue json) {
   GltfBuffer buffer = {};
 
   if (json.type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "An object type is expected for the "
-                                 "\"buffer\", but it does not match."};
+    return GltfErrorInfo{.error = GltfError::JSON_UnexpectedValue,
+                         .desc =
+                             format(arena, "An object type is expected for the "
+                                           "\"buffer\", but type is {}.", json.type)};
   }
 
   buffer.name = json_string_value_or(json, "name", "");
@@ -352,8 +388,11 @@ static Result<DynamicArray<T>, GltfErrorInfo> gltf_parse_array(
     NotNull<Arena *> arena, JsonValue arr) {
   if (arr.type != JsonType::Array) {
     return GltfErrorInfo{
-        .error = GltfError::InvalidFormat,
-        .desc = "An array type is expected, but it does not match."};
+        .error = GltfError::JSON_UnexpectedValue,
+                         .desc =
+                             format(arena,
+                                    "The expected value type is an array, but "
+                                    "the received object type is: {}.", arr.type)};
   }
 
   Span<const JsonValue> values = json_array(arr);
@@ -394,19 +433,23 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
   Result<JsonValue, JsonErrorInfo> json =
       json_parse(arena, String8((const char *)buffer.m_data, buffer.m_size));
   if (!json) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "Invalid json format."};
+    JsonErrorInfo error_info = json.error();
+    return GltfErrorInfo{
+        .error = GltfError::JSON_ParseError,
+        .desc = format(arena, "Failed to parse gltf file. {} at {}:{}.",
+                       error_info.error, error_info.line, error_info.column)};
   }
 
   if (json->type != JsonType::Object) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "Expected object type."};
+    return GltfErrorInfo{.error = GltfError::JSON_UnexpectedValue,
+        .desc = format(arena, "Object type expected, but received: {}",
+                       json->type)};
   }
 
   Gltf gltf{};
 
   Result<GltfAsset, GltfErrorInfo> asset_parse_result =
-      gltf_parse_asset(json_value(*json, "asset"));
+      gltf_parse_asset(arena, json_value(*json, "asset"));
   if (!asset_parse_result) {
     return asset_parse_result.error();
   }
@@ -487,8 +530,8 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
 
       IoResult<Span<u8>> file_data = read<u8>(arena, buffer_path);
       if (!file_data) {
-        return GltfErrorInfo{.error = GltfError::IO,
-                             .desc = "Failed reading buffer."};
+        return GltfErrorInfo{.error = GltfError::IO_Error,
+                             .desc = "The file could not be opened."};
       }
       buffer.data = *file_data;
     }
@@ -500,8 +543,8 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<Arena *> arena, Span<u8> buffer,
 Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
   IoResult<Span<u8>> file_data = read<u8>(arena, path);
   if (!file_data) {
-    return GltfErrorInfo{.error = GltfError::InvalidFormat,
-                         .desc = "Invalid json file."};
+    return GltfErrorInfo{.error = GltfError::IO_Error,
+                         .desc = "The file could not be opened."};
   }
 
   Path base_path = path.parent();

@@ -9,7 +9,14 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace ren {
-enum class GltfError { InvalidFormat, IO };
+enum class GltfError {
+  IO_Error,
+  JSON_ParseError,
+  JSON_UnexpectedValue,
+  JSON_EpectedFieldNotFound,
+  VALUE_OutOfRange,
+  VALUE_UnknownType
+};
 
 struct GltfErrorInfo {
   GltfError error;
