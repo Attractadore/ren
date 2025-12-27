@@ -10,12 +10,10 @@
 
 namespace ren {
 enum class GltfError {
-  IO_Error,
-  JSON_ParseError,
-  JSON_UnexpectedValue,
-  JSON_EpectedFieldNotFound,
-  VALUE_OutOfRange,
-  VALUE_UnknownType
+  IO,
+  JSON,
+  FormatError,
+  ValidationError
 };
 
 struct GltfErrorInfo {
