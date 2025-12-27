@@ -23,6 +23,8 @@ enum class JsonType {
   Boolean,
 };
 
+String8 format_as(JsonType type);
+
 struct JsonValue;
 struct JsonKeyValue;
 
