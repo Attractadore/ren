@@ -36,6 +36,26 @@ String8 format_as(JsonError error) {
   unreachable();
 }
 
+String8 format_as(JsonType type) {
+  switch (type) {
+  case JsonType::Null:
+    return "Null";
+  case JsonType::Object:
+    return "Object";
+  case JsonType::Array:
+    return "Array";
+  case JsonType::String:
+    return "String";
+  case JsonType::Integer:
+    return "Integer";
+  case JsonType::Number:
+    return "Number";
+  case JsonType::Boolean:
+    return "Boolean";
+  }
+  unreachable();
+}
+
 JsonValue JsonValue::init(Span<const JsonKeyValue> object) {
   return {
       .type = JsonType::Object,
@@ -65,6 +85,20 @@ JsonValue JsonValue::init(i64 integer) {
   return {
       .type = JsonType::Integer,
       .integer = integer,
+  };
+}
+
+JsonValue JsonValue::init(double number) {
+  return {
+      .type = JsonType::Number,
+      .number = number,
+  };
+}
+
+JsonValue JsonValue::init(bool boolean) {
+  return {
+      .type = JsonType::Boolean,
+      .boolean = boolean,
   };
 }
 

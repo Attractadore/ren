@@ -23,6 +23,8 @@ enum class JsonType {
   Boolean,
 };
 
+String8 format_as(JsonType type);
+
 struct JsonValue;
 struct JsonKeyValue;
 
@@ -43,6 +45,8 @@ public:
   [[nodiscard]] static JsonValue init(String8 string);
   [[nodiscard]] static JsonValue init(NotNull<Arena *> arena, String8 string);
   [[nodiscard]] static JsonValue init(i64 integer);
+  [[nodiscard]] static JsonValue init(double number);
+  [[nodiscard]] static JsonValue init(bool boolean);
 
   explicit operator bool() const { return type != JsonType::Null; }
 };
@@ -118,6 +122,24 @@ inline String8 json_string_value_or(JsonValue object, String8 key,
 
 inline i64 json_integer_value(JsonValue object, String8 key) {
   return json_integer(json_value(object, key));
+}
+
+inline i64 json_integer_value_or(JsonValue object, String8 key,
+                                 i64 default_val) {
+  JsonValue val = json_value(object, key);
+  if (val.type == JsonType::Integer) {
+    return json_integer(val);
+  }
+  return default_val;
+}
+
+inline bool json_bool_value_or(JsonValue object, String8 key,
+                               bool default_val) {
+  JsonValue val = json_value(object, key);
+  if (val.type == JsonType::Boolean) {
+    return val.boolean;
+  }
+  return default_val;
 }
 
 } // namespace ren

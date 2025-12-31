@@ -4,10 +4,7 @@
 #include "ren/core/Random.hpp"
 #include "ren/ren.hpp"
 
-#include <assimp/Exporter.hpp>
-#include <assimp/Importer.hpp>
-#include <assimp/postprocess.h>
-#include <assimp/scene.h>
+#include "ren/core/glTF.hpp"
 #include <fmt/base.h>
 #include <tracy/Tracy.hpp>
 
@@ -251,6 +248,245 @@ void unregister_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid) {
   }
 }
 
+static usize get_gltf_component_type_size(GltfComponentType type) {
+  switch (type) {
+  case GLTF_COMPONENT_TYPE_BYTE:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+    return 1;
+  case GLTF_COMPONENT_TYPE_SHORT:
+  case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+    return 2;
+  case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
+  case GLTF_COMPONENT_TYPE_FLOAT:
+    return 4;
+  default:
+    ren_assert(false && "Unknown component type");
+  }
+}
+
+static usize get_gltf_type_element_count(GltfType type) {
+  switch (type) {
+  case GLTF_TYPE_SCALAR:
+    return 1;
+  case GLTF_TYPE_VEC2:
+    return 2;
+  case GLTF_TYPE_VEC3:
+    return 3;
+  case GLTF_TYPE_VEC4:
+    return 4;
+  case GLTF_TYPE_MAT2:
+    return 4;
+  case GLTF_TYPE_MAT3:
+    return 9;
+  case GLTF_TYPE_MAT4:
+    return 16;
+  default:
+    ren_assert(false && "Unknown value type");
+  }
+}
+
+Gltf process_gltf_mesh(NotNull<Arena *> arena, Gltf gltf, Path bin_path) {
+  DynamicArray<i32> mesh_mapping;
+  mesh_mapping.reserve(arena, gltf.meshes.m_size);
+
+  DynamicArray<i32> unique_mesh_indices;
+  unique_mesh_indices.reserve(arena, gltf.meshes.m_size);
+
+  for (usize i = 0; i < gltf.meshes.m_size; ++i) {
+    const GltfMesh &mesh = gltf.meshes[i];
+
+    i32 found_index = -1;
+    for (usize j = 0; j < unique_mesh_indices.m_size; ++j) {
+      const GltfMesh &unique_mesh = gltf.meshes[unique_mesh_indices[j]];
+
+      if (mesh.primitives.m_size == unique_mesh.primitives.m_size) {
+        bool all_match = true;
+        for (usize p = 0; p < mesh.primitives.m_size; ++p) {
+          if (mesh.primitives[p] != unique_mesh.primitives[p]) {
+            all_match = false;
+            break;
+          }
+        }
+        if (all_match) {
+          found_index = (i32)j;
+          break;
+        }
+      }
+    }
+
+    if (found_index == -1) {
+      mesh_mapping.push(arena, unique_mesh_indices.m_size);
+      unique_mesh_indices.push(arena, i);
+    } else {
+      mesh_mapping.push(arena, found_index);
+    }
+  }
+
+  usize whole_buffer_size = 0;
+  for (const GltfAccessor &accessor : gltf.accessors) {
+    const GltfBufferView &buffer_view =
+        gltf.buffer_views[accessor.buffer_view];
+
+    usize component_size =
+        get_gltf_component_type_size(accessor.component_type);
+    usize type_count = get_gltf_type_element_count(accessor.type);
+    usize element_size = component_size * type_count;
+    usize stride =
+        buffer_view.byte_stride > 0 ? buffer_view.byte_stride : element_size;
+    usize data_size = stride * (accessor.count - 1) + element_size;
+
+    whole_buffer_size += data_size;
+  }
+
+  Gltf scene = {.asset = gltf.asset,
+                .scene = gltf.scene,
+                .scenes = gltf.scenes};
+
+  scene.nodes.reserve(arena, gltf.nodes.m_size);
+  for (const GltfNode &node : gltf.nodes) {
+    GltfNode new_node = node;
+    if (node.mesh != -1) {
+      new_node.mesh = mesh_mapping[node.mesh];
+    }
+    scene.nodes.push(arena, new_node);
+  }
+
+  GltfBuffer new_buffer = {.name = bin_path.remove_extension().m_str,
+                           .uri = bin_path.m_str,
+                           .data =
+                               Span<u8>::allocate(arena, whole_buffer_size)};
+  scene.buffers.push(arena, new_buffer);
+
+  Span<i32> accessor_mapping =
+      Span<i32>::allocate(arena, gltf.accessors.m_size);
+  std::fill_n(accessor_mapping.begin(), accessor_mapping.m_size, -1);
+
+  usize buffer_offset = 0;
+
+  for (i32 mesh_idx : unique_mesh_indices) {
+    const GltfMesh &mesh = gltf.meshes[mesh_idx];
+    GltfMesh new_mesh = {.name = mesh.name};
+
+    for (const GltfPrimitive &primitive : mesh.primitives) {
+      GltfPrimitive new_primitive = {.mode = primitive.mode};
+
+      for (const GltfAttribute &attribute : primitive.attributes) {
+        i32 old_accessor_idx = attribute.accessor;
+
+        if (accessor_mapping[old_accessor_idx] == -1) {
+          const GltfAccessor &accessor =
+              gltf.accessors[old_accessor_idx];
+          const GltfBufferView &buffer_view =
+              gltf.buffer_views[accessor.buffer_view];
+          const GltfBuffer &buffer = gltf.buffers[buffer_view.buffer];
+
+          usize component_size =
+              get_gltf_component_type_size(accessor.component_type);
+          usize type_count = get_gltf_type_element_count(accessor.type);
+          usize element_size = component_size * type_count;
+          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
+                                                     : element_size;
+          usize data_size = stride * (accessor.count - 1) + element_size;
+
+          usize src_offset = buffer_view.byte_offset + accessor.buffer_offset;
+          const u8 *src_data_ptr = &buffer.data[src_offset];
+          u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
+          std::memcpy(dst_data_ptr, src_data_ptr, data_size);
+
+          GltfBufferView new_buffer_view = {.name = buffer_view.name,
+                                            .buffer = 0,
+                                            .byte_offset = (u32)buffer_offset,
+                                            .byte_length = (u32)data_size,
+                                            .byte_stride =
+                                                buffer_view.byte_stride,
+                                            .target = buffer_view.target};
+          scene.buffer_views.push(arena, new_buffer_view);
+
+          GltfAccessor new_accessor = {
+              .name = accessor.name,
+              .buffer_view = (i32)scene.buffer_views.m_size - 1,
+              .buffer_offset = 0,
+              .component_type = accessor.component_type,
+              .normalized = accessor.normalized,
+              .count = accessor.count,
+              .type = accessor.type};
+          copy(accessor.min.begin(), accessor.min.end(),
+               new_accessor.min.begin());
+          copy(accessor.max.begin(), accessor.max.end(),
+               new_accessor.max.begin());
+          scene.accessors.push(arena, new_accessor);
+
+          accessor_mapping[old_accessor_idx] = (i32)scene.accessors.m_size - 1;
+          buffer_offset += data_size;
+        }
+
+        GltfAttribute new_attribute = {.name = attribute.name,
+                                       .accessor =
+                                           accessor_mapping[old_accessor_idx]};
+        new_primitive.attributes.push(arena, new_attribute);
+      }
+
+      if (primitive.indices != -1) {
+        i32 old_accessor_idx = primitive.indices;
+
+        if (accessor_mapping[old_accessor_idx] == -1) {
+          const GltfAccessor &accessor =
+              gltf.accessors[old_accessor_idx];
+          const GltfBufferView &buffer_view =
+              gltf.buffer_views[accessor.buffer_view];
+          const GltfBuffer &buffer = gltf.buffers[buffer_view.buffer];
+
+          usize component_size =
+              get_gltf_component_type_size(accessor.component_type);
+          usize type_count = get_gltf_type_element_count(accessor.type);
+          usize element_size = component_size * type_count;
+          usize stride = buffer_view.byte_stride > 0 ? buffer_view.byte_stride
+                                                     : element_size;
+          usize data_size = stride * (accessor.count - 1) + element_size;
+
+          usize src_offset = buffer_view.byte_offset + accessor.buffer_offset;
+          const u8 *src_data_ptr = &buffer.data[src_offset];
+          u8 *dst_data_ptr = &new_buffer.data[buffer_offset];
+          std::memcpy(dst_data_ptr, src_data_ptr, data_size);
+
+          GltfBufferView new_buffer_view = {.name = buffer_view.name,
+                                            .buffer = 0,
+                                            .byte_offset = (u32)buffer_offset,
+                                            .byte_length = (u32)data_size,
+                                            .byte_stride =
+                                                buffer_view.byte_stride,
+                                            .target = buffer_view.target};
+          scene.buffer_views.push(arena, new_buffer_view);
+
+          GltfAccessor new_accessor = {
+              .name = accessor.name,
+              .buffer_view = (i32)scene.buffer_views.m_size - 1,
+              .buffer_offset = 0,
+              .component_type = accessor.component_type,
+              .normalized = accessor.normalized,
+              .count = accessor.count,
+              .type = accessor.type};
+          copy(accessor.min.begin(), accessor.min.end(),
+               new_accessor.min.begin());
+          copy(accessor.max.begin(), accessor.max.end(),
+               new_accessor.max.begin());
+          scene.accessors.push(arena, new_accessor);
+
+          accessor_mapping[old_accessor_idx] = (i32)scene.accessors.m_size - 1;
+          buffer_offset += data_size;
+        }
+
+        new_primitive.indices = accessor_mapping[old_accessor_idx];
+      }
+
+      new_mesh.primitives.push(arena, new_primitive);
+    }
+
+    scene.meshes.push(arena, new_mesh);
+  }
+  return scene;
+}
+
 JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                                                   ArenaTag tag, Path path) {
   JobFuture<Result<void, String8>> future = job_dispatch(
@@ -283,61 +519,30 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                         result.error());
         }
 
-        // clang-format off
-    Assimp::Importer importer;
-    importer.SetPropertyInteger(
-        AI_CONFIG_PP_RVC_FLAGS,
-        aiComponent_MATERIALS |
-        aiComponent_CAMERAS |
-        aiComponent_TEXTURES |
-        aiComponent_LIGHTS
-    );
-    const aiScene *scene = importer.ReadFile(
-        path.m_str.zero_terminated(scratch),
-        aiProcess_FindInstances |
-        aiProcess_FindInvalidData |
-        aiProcess_GenNormals |
-        aiProcess_OptimizeGraph |
-        aiProcess_RemoveComponent |
-        aiProcess_SortByPType |
-        aiProcess_Triangulate
-    );
-        // clang-format on
-        if (!scene) {
-          return String8::init(&output, importer.GetErrorString());
+        Result<Gltf, GltfErrorInfo> gltf_result = load_gltf(scratch, path);
+        if (!gltf_result) {
+          GltfErrorInfo error_info = gltf_result.error();
+          return error_info.desc.copy(&output);
         }
-        ren_assert(scene->mNumMeshes > 0);
 
-        Assimp::Exporter exporter;
-        Assimp::ExportProperties exporter_properties;
-        exporter_properties.SetPropertyString(
-            AI_CONFIG_EXPORT_BLOB_NAME,
-            filename.stem().m_str.zero_terminated(scratch));
-        const aiExportDataBlob *blob =
-            exporter.ExportToBlob(scene, "gltf2", 0, &exporter_properties);
-        if (!blob) {
-          return String8::init(&output, exporter.GetErrorString());
-        }
-        const aiExportDataBlob *bin = blob->next;
+        ren_assert(gltf_result->meshes.m_size > 0);
 
-        if (auto result = write(gltf_path, blob->data, blob->size); !result) {
+        Gltf scene = process_gltf_mesh(scratch, *gltf_result, bin_filename);
+        String8 new_gltf_scene_data = to_string(scratch, scene);
+
+        if (auto result = write(gltf_path, new_gltf_scene_data);
+            !result) {
           return format(&output, "Failed to write {}: {}", gltf_path,
                         result.error());
         }
-        if (auto result = write(bin_path, bin->data, bin->size); !result) {
+
+        if (auto result = write(bin_path, scene.buffers[0].data); !result) {
           return format(&output, "Failed to write {}: {}", bin_path,
                         result.error());
         }
 
-        Result<JsonValue, JsonErrorInfo> gltf =
-            json_parse(scratch, String8((const char *)blob->data, blob->size));
-        if (!gltf) {
-          JsonErrorInfo error = gltf.error();
-          return format(&output, "Failed to parse glTF:\n{}:{}:{}: {}",
-                        gltf_path, error.line, error.column, error.error);
-        }
-
-        MetaGltf meta = meta_gltf_generate(scratch, *gltf, gltf_filename);
+        MetaGltf meta =
+            meta_gltf_generate(scratch, *gltf_result, gltf_filename);
         if (auto result = write(
                 meta_path, json_serialize(scratch, to_json(scratch, meta)));
             !result) {
