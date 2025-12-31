@@ -15,6 +15,7 @@ add_library(ren-core
   core/LinuxFileSystem.cpp
   core/LinuxFileWatcher.cpp
   core/LinuxFutex.cpp
+  core/LinuxRandom.cpp
   core/LinuxThread.cpp
   core/LinuxVm.cpp
   core/Mutex.cpp
@@ -26,6 +27,7 @@ add_library(ren-core
   core/Win32FileSystem.cpp
   core/Win32FileWatcher.cpp
   core/Win32Futex.cpp
+  core/Win32Random.cpp
   core/Win32Thread.cpp
   core/Win32Vm.cpp
 )

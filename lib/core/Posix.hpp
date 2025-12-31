@@ -2,6 +2,7 @@
 #if __linux__
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fmt/base.h>
 

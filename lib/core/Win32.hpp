@@ -16,6 +16,16 @@
     }                                                                          \
   } while (0)
 
+#define NTSTATUS_CHECK(expr)                                                   \
+  do {                                                                         \
+    NTSTATUS status = expr;                                                    \
+    if (!status) {                                                             \
+      fmt::println(stderr, #expr " failed: {}", status);                       \
+      ren_trap();                                                              \
+      exit(EXIT_FAILURE);                                                      \
+    }                                                                          \
+  } while (0)
+
 #define WIN32_CHECK_ERROR(err, message)                                        \
   do {                                                                         \
     if (err) {                                                                 \
