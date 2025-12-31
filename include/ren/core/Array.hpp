@@ -119,6 +119,12 @@ public:
     ren_assert(m_size > 0);
     return m_data[--m_size];
   }
+
+  usize size() const { return m_size; }
+
+  const T *data() const { return m_data; }
+
+  T *data() { return m_data; }
 };
 
 template <typename T, usize S> struct StackArray {

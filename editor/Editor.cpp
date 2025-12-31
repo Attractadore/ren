@@ -234,8 +234,10 @@ Result<void, String8> open_project(NotNull<EditorContext *> ctx, Path path) {
       .m_directory = path.parent().copy(&ctx->m_project_arena),
       .m_gltf_scenes = GenArray<EditorGltfScene>::init(&ctx->m_project_arena),
       .m_meshes = GenArray<EditorMesh>::init(&ctx->m_project_arena),
+      .m_scene_nodes = GenArray<EditorSceneNode>::init(&ctx->m_project_arena),
   };
   ctx->m_state = EditorState::Project;
+  add_scene_root_node(ctx);
   start_asset_watcher(ctx);
   register_all_assets(ctx);
 

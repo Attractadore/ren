@@ -5,6 +5,9 @@
 #include "ren/core/GenIndex.hpp"
 #include "ren/core/Job.hpp"
 
+#include <glm/ext/quaternion_float.hpp>
+#include <glm/vec3.hpp>
+
 namespace ren {
 
 struct EditorMesh;
@@ -49,5 +52,35 @@ void unregister_mesh_content(NotNull<EditorContext *> ctx, Guid64 guid);
 
 [[nodiscard]] JobFuture<Result<void, String8>>
 job_import_scene(NotNull<EditorContext *> ctx, ArenaTag tag, Path path);
+
+struct EditorSceneNode {
+  Guid64 guid;
+  String8 name;
+  Handle<EditorSceneNode> parent;
+  Handle<EditorSceneNode> first_child;
+  Handle<EditorSceneNode> last_child;
+  Handle<EditorSceneNode> prev_sibling;
+  Handle<EditorSceneNode> next_sibling;
+  glm::vec3 translation = {0.0f, 0.0f, 0.0f};
+  glm::quat rotation = glm::identity<glm::quat>();
+  glm::vec3 scale = {1.0f, 1.0f, 1.0f};
+};
+
+Handle<EditorSceneNode> add_scene_root_node(NotNull<EditorContext *> ctx);
+
+/// Add a new scene node.
+/// If insert_after is null, insert in the beginning.
+Handle<EditorSceneNode> add_scene_node(NotNull<EditorContext *> ctx,
+                                       Handle<EditorSceneNode> parent,
+                                       Handle<EditorSceneNode> insert_after,
+                                       String8 name);
+
+void remove_scene_node(NotNull<EditorContext *> ctx,
+                       Handle<EditorSceneNode> node);
+
+void remove_scene_node_with_children(NotNull<EditorContext *> ctx,
+                                     Handle<EditorSceneNode> node);
+
+Guid64 generate_guid(NotNull<EditorContext *> ctx);
 
 } // namespace ren

@@ -100,6 +100,14 @@ public:
     std::memcpy(data, m_data, m_size * sizeof(T));
     return {data, m_size};
   }
+
+  usize size() const {
+    return m_size;
+  }
+
+  T* data() const {
+    return m_data;
+  }
 };
 
 template <typename R> Span(R &&r) -> Span<detail::RangeValueType<R>>;

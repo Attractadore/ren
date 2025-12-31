@@ -47,6 +47,8 @@ struct EditorProjectContext {
 
   GenArray<EditorGltfScene> m_gltf_scenes;
   GenArray<EditorMesh> m_meshes;
+  Handle<EditorSceneNode> m_sceen_root;
+  GenArray<EditorSceneNode> m_scene_nodes;
 
   FileWatcher *m_asset_watcher = nullptr;
 

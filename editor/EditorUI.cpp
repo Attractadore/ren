@@ -1,6 +1,7 @@
 #include "EditorUI.hpp"
 #include "Editor.hpp"
 #include "UIWidgets.hpp"
+#include "imgui_internal.h"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
 
@@ -28,6 +29,110 @@ void load_recently_opened_list(NotNull<EditorContext *> ctx) {
     }
     ctx->m_recently_opened.push(&ctx->m_arena, Path::init(&ctx->m_arena, path));
   }
+}
+
+static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
+                               Handle<EditorSceneNode> node_handle) {
+  ScratchArena scratch;
+  EditorProjectContext *project = ctx->m_project;
+  const auto &nodes = project->m_scene_nodes;
+  EditorSceneNode node = project->m_scene_nodes[node_handle];
+
+  constexpr ImGuiTreeNodeFlags LEAF_FLAGS =
+      ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
+  bool is_leaf = !node.first_child;
+  auto id = std::bit_cast<ImGuiID>(node_handle);
+  ImGui::SetNextItemStorageID(id);
+  bool expanded = ImGui::TreeNodeEx(node.name.zero_terminated(scratch),
+                                    is_leaf ? LEAF_FLAGS : 0);
+
+  bool removed = false;
+  bool force_expand = false;
+  if (ImGui::BeginPopupContextItem()) {
+    if (ImGui::Button("Add child node")) {
+      add_scene_node(ctx, node_handle, node.last_child, "New node");
+      force_expand = true;
+      ImGui::CloseCurrentPopup();
+    }
+
+    if (ImGui::Button("Add node before")) {
+      add_scene_node(ctx, node.parent, node.prev_sibling, "New node");
+      ImGui::CloseCurrentPopup();
+    }
+
+    if (ImGui::Button("Add node after")) {
+      add_scene_node(ctx, node.parent, node_handle, "New node");
+      ImGui::CloseCurrentPopup();
+    }
+
+    if (ImGui::Button("Remove")) {
+      remove_scene_node(ctx, node_handle);
+      removed = true;
+      ImGui::CloseCurrentPopup();
+    }
+
+    if (ImGui::Button("Remove with children")) {
+      remove_scene_node_with_children(ctx, node_handle);
+      removed = true;
+      ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
+  }
+  if (force_expand) {
+    ImGui::TreeNodeSetOpen(id, true);
+  }
+
+  if (not is_leaf and expanded and not removed) {
+    Handle<EditorSceneNode> cursor = node.first_child;
+    usize id = 0;
+    while (cursor) {
+      Handle<EditorSceneNode> next = nodes[cursor].next_sibling;
+      ImGui::PushID(id++);
+      draw_scene_node_ui(ctx, cursor);
+      ImGui::PopID();
+      cursor = next;
+    }
+  }
+
+  if (expanded) {
+    ImGui::TreePop();
+  }
+}
+
+static void draw_scene_hierarchy_ui(NotNull<EditorContext *> ctx) {
+  if (!ImGui::BeginChild("##hierarchy", {0.0f, 0.0f}, ImGuiChildFlags_None,
+                         ImGuiWindowFlags_None)) {
+    ImGui::EndChild();
+    return;
+  }
+
+  ScratchArena scratch;
+
+  EditorProjectContext *project = ctx->m_project;
+  const auto &nodes = project->m_scene_nodes;
+  Handle<EditorSceneNode> root_handle = project->m_sceen_root;
+  const EditorSceneNode &root = nodes[root_handle];
+
+  if (ImGui::BeginPopupContextWindow()) {
+    if (ImGui::Button("Add node")) {
+      add_scene_node(ctx, root_handle, root.last_child, "New root node");
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+
+  Handle<EditorSceneNode> cursor = root.first_child;
+  usize id = 0;
+  while (cursor) {
+    Handle<EditorSceneNode> next = nodes[cursor].next_sibling;
+    ImGui::PushID(id++);
+    draw_scene_node_ui(ctx, cursor);
+    ImGui::PopID();
+    cursor = next;
+  }
+
+  ImGui::EndChild();
 }
 
 void save_recently_opened_list(NotNull<EditorContext *> ctx) {
@@ -200,6 +305,7 @@ void draw_editor_ui(NotNull<EditorContext *> ctx) {
                              ImGuiTabBarFlags_NoCloseWithMiddleMouseButton |
                                  ImGuiTabBarFlags_FittingPolicyResizeDown)) {
         if (ImGui::BeginTabItem("Scene", nullptr)) {
+          draw_scene_hierarchy_ui(ctx);
           ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Meshes", nullptr)) {

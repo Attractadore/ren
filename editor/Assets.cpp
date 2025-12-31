@@ -1,6 +1,7 @@
 #include "Assets.hpp"
 #include "Editor.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/Random.hpp"
 #include "ren/ren.hpp"
 
 #include <assimp/Exporter.hpp>
@@ -9,16 +10,6 @@
 #include <assimp/scene.h>
 #include <fmt/base.h>
 #include <tracy/Tracy.hpp>
-
-/// 1. For scenes we need (relatively) fast insertion + (relatively) fast
-/// deletion by filename. Scenes also need to be sortable for display in the UI.
-/// This needs to be done only once when sort settings or contents change
-/// though, and can later be reused.
-/// 2. For meshes we need fast insertion, fast deletion, fast insertion into the
-/// dirty list by guid, for removal from dirty list by guid, fast access by
-/// guid for cross-referencing in the UI.
-/// This means that for both cases we need to map a hash to a Handle. For
-/// scenes a hash can be generated from the file name.
 
 namespace ren {
 
@@ -359,6 +350,108 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
   ctx->m_project->m_background_jobs.push(&ctx->m_project_arena,
                                          {future.m_token, tag});
   return future;
+}
+
+Guid64 generate_guid(NotNull<EditorContext *>) {
+  return std::bit_cast<Guid64>(sys_random());
+}
+
+Handle<EditorSceneNode> add_scene_root_node(NotNull<EditorContext *> ctx) {
+  EditorProjectContext *project = ctx->m_project;
+  ren_assert_msg(!project->m_sceen_root, "Scene root has already been created");
+  project->m_sceen_root = project->m_scene_nodes.insert(&ctx->m_project_arena);
+  return project->m_sceen_root;
+}
+
+Handle<EditorSceneNode> add_scene_node(NotNull<EditorContext *> ctx,
+                                       Handle<EditorSceneNode> parent_handle,
+                                       Handle<EditorSceneNode> prev_handle,
+                                       String8 name) {
+  EditorProjectContext *project = ctx->m_project;
+  auto &nodes = project->m_scene_nodes;
+
+  Handle<EditorSceneNode> node_handle = nodes.insert(&ctx->m_project_arena);
+  EditorSceneNode &parent = nodes[parent_handle];
+  EditorSceneNode *prev = prev_handle ? &nodes[prev_handle] : nullptr;
+  Handle<EditorSceneNode> *left_update_ptr =
+      prev_handle ? &prev->next_sibling : &parent.first_child;
+  Handle<EditorSceneNode> next_handle = *left_update_ptr;
+  Handle<EditorSceneNode> *right_update_ptr =
+      prev_handle == parent.last_child ? &parent.last_child
+                                       : &nodes[next_handle].prev_sibling;
+
+  nodes[node_handle] = {
+      .guid = generate_guid(ctx),
+      .name = name.copy(&ctx->m_project_arena),
+      .parent = parent_handle,
+      .prev_sibling = prev_handle,
+      .next_sibling = next_handle,
+  };
+  *left_update_ptr = node_handle;
+  *right_update_ptr = node_handle;
+
+  return node_handle;
+}
+
+void remove_scene_node(NotNull<EditorContext *> ctx,
+                       Handle<EditorSceneNode> node_handle) {
+  EditorProjectContext *project = ctx->m_project;
+  auto &nodes = project->m_scene_nodes;
+
+  EditorSceneNode node = nodes.pop(node_handle);
+
+  EditorSceneNode &parent = nodes[node.parent];
+  Handle<EditorSceneNode> *left_update_ptr =
+      node.prev_sibling ? &nodes[node.prev_sibling].next_sibling
+                        : &parent.first_child;
+  Handle<EditorSceneNode> *right_update_ptr =
+      node.next_sibling ? &nodes[node.next_sibling].prev_sibling
+                        : &parent.last_child;
+  *left_update_ptr = node.first_child;
+  *right_update_ptr = node.last_child;
+
+  Handle<EditorSceneNode> cursor = node.first_child;
+  while (cursor) {
+    EditorSceneNode &child = nodes[cursor];
+    child.parent = node.parent;
+    cursor = child.next_sibling;
+  }
+  EditorSceneNode sentinel;
+  EditorSceneNode *first_child =
+      node.first_child ? &nodes[node.first_child] : &sentinel;
+  EditorSceneNode *last_child =
+      node.last_child ? &nodes[node.last_child] : &sentinel;
+  first_child->prev_sibling = node.prev_sibling;
+  last_child->next_sibling = node.next_sibling;
+}
+
+void remove_scene_node_children(NotNull<EditorProjectContext *> project,
+                                const EditorSceneNode &node) {
+  Handle<EditorSceneNode> cursor = node.first_child;
+  while (cursor) {
+    EditorSceneNode child = project->m_scene_nodes.pop(cursor);
+    remove_scene_node_children(project, child);
+    cursor = child.next_sibling;
+  }
+}
+
+void remove_scene_node_with_children(NotNull<EditorContext *> ctx,
+                                     Handle<EditorSceneNode> node_handle) {
+  EditorProjectContext *project = ctx->m_project;
+  auto &nodes = project->m_scene_nodes;
+  EditorSceneNode node = nodes.pop(node_handle);
+  EditorSceneNode &parent = nodes[node.parent];
+
+  Handle<EditorSceneNode> *left_update_ptr =
+      node.prev_sibling ? &nodes[node.prev_sibling].next_sibling
+                        : &parent.first_child;
+  Handle<EditorSceneNode> *right_update_ptr =
+      node.next_sibling ? &nodes[node.next_sibling].prev_sibling
+                        : &parent.last_child;
+  *left_update_ptr = node.next_sibling;
+  *right_update_ptr = node.prev_sibling;
+
+  remove_scene_node_children(project, node);
 }
 
 } // namespace ren
