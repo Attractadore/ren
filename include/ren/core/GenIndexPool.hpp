@@ -60,7 +60,7 @@ public:
 
   static GenIndexPool init(NotNull<Arena *> arena) {
     GenIndexPool pool;
-    pool.m_generations.push(arena, {0, FREE_LIST_END});
+    pool.m_generations.push(arena, GenIndex{0, FREE_LIST_END});
     return pool;
   }
 
@@ -93,7 +93,7 @@ public:
       m_num_free--;
     } else {
       index = m_generations.m_size;
-      m_generations.push(arena, {0, ACTIVE});
+      m_generations.push(arena, GenIndex{0, ACTIVE});
     }
     ren_assert(index < m_generations.m_size);
     K key;

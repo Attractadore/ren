@@ -37,7 +37,9 @@ public:
     m_size = end - begin;
   }
 
-  constexpr Span(std::initializer_list<T> elems) {
+  constexpr Span(std::initializer_list<T> elems)
+    requires std::is_const_v<T>
+  {
     m_data = elems.begin();
     m_size = elems.size();
   }
@@ -101,17 +103,17 @@ public:
     return {data, m_size};
   }
 
-  usize size() const {
-    return m_size;
-  }
+  usize size() const { return m_size; }
 
-  T* data() const {
-    return m_data;
-  }
+  bool is_empty() const { return size() == 0; }
+
+  T *data() const { return m_data; }
 };
 
 template <typename R> Span(R &&r) -> Span<detail::RangeValueType<R>>;
 
 template <typename T, usize N> Span(T (&array)[N]) -> Span<T>;
+
+template <typename T> Span(std::initializer_list<T>) -> Span<const T>;
 
 } // namespace ren

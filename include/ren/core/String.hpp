@@ -184,6 +184,8 @@ public:
     return {m_str + start, count};
   }
 
+  String<C> substr(usize start) const { return substr(start, m_size - start); }
+
   [[nodiscard]] static String<char> join(NotNull<Arena *> arena,
                                          Span<const String<const char>> strs,
                                          String<const char> separator) {
@@ -218,6 +220,8 @@ public:
     }
     return {m_str, end};
   }
+
+  const C *data() const { return m_str; }
 };
 
 using String8 = String<const char>;

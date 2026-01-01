@@ -4,6 +4,7 @@
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Algorithm.hpp"
 #include "ren/core/Array.hpp"
+#include "ren/core/GLTF.hpp"
 #include "ren/core/Span.hpp"
 #include "sh/Transforms.h"
 
@@ -747,6 +748,65 @@ Blob bake_mesh_to_memory(NotNull<Arena *> arena, const MeshInfo &info) {
   write_array(triangles, num_triangles * 3);
 #undef write_array
   return {buffer, mesh.size};
+}
+
+template <typename T>
+static Span<const T> gltf_accessor_data(Span<const std::byte> bin,
+                                        const Gltf &gltf, i32 accessor_index) {
+  if (accessor_index == -1) {
+    return {};
+  }
+  GltfAccessor accessor = gltf.accessors[accessor_index];
+  GltfBufferView buffer_view = gltf.buffer_views[accessor.buffer_view];
+  ren_assert(buffer_view.buffer == 0);
+  usize bin_offset = buffer_view.byte_offset + accessor.byte_offset;
+  ren_assert(sizeof(T) == gltf_accessor_packed_stride(accessor.type,
+                                                      accessor.component_type));
+  return {(const T *)&bin[bin_offset], accessor.count};
+}
+
+MeshInfo gltf_primitive_to_mesh_info(Span<const std::byte> blob,
+                                     const Gltf &gltf,
+                                     const GltfPrimitive &primitive) {
+  auto positions = gltf_accessor_data<glm::vec3>(
+      blob, gltf,
+      gltf_find_attribute_by_semantic(primitive,
+                                      GltfAttributeSemantic::POSITION)
+          ->accessor);
+  auto normals = gltf_accessor_data<glm::vec3>(
+      blob, gltf,
+      gltf_find_attribute_by_semantic(primitive, GltfAttributeSemantic::NORMAL)
+          ->accessor);
+  Span<const glm::vec4> tangents;
+  Optional<GltfAttribute> tangent_attribute = gltf_find_attribute_by_semantic(
+      primitive, GltfAttributeSemantic::TANGENT);
+  if (tangent_attribute) {
+    tangents =
+        gltf_accessor_data<glm::vec4>(blob, gltf, tangent_attribute->accessor);
+  }
+  Span<const glm::vec2> uvs;
+  Optional<GltfAttribute> uv_attribute = gltf_find_attribute_by_semantic(
+      primitive, GltfAttributeSemantic::TEXCOORD);
+  if (uv_attribute) {
+    uvs = gltf_accessor_data<glm::vec2>(blob, gltf, uv_attribute->accessor);
+  }
+  Span<const glm::vec4> colors;
+  Optional<GltfAttribute> color_attribute =
+      gltf_find_attribute_by_semantic(primitive, GltfAttributeSemantic::COLOR);
+  if (color_attribute) {
+    colors =
+        gltf_accessor_data<glm::vec4>(blob, gltf, color_attribute->accessor);
+  }
+  auto indices = gltf_accessor_data<const u32>(blob, gltf, primitive.indices);
+  return {
+      .num_vertices = positions.m_size,
+      .positions = positions.m_data,
+      .normals = normals.m_data,
+      .tangents = tangents.m_data,
+      .uvs = uvs.m_data,
+      .colors = colors.m_data,
+      .indices = indices,
+  };
 }
 
 } // namespace ren

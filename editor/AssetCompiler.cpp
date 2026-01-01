@@ -2,67 +2,11 @@
 #include "Editor.hpp"
 #include "ren/baking/mesh.hpp"
 #include "ren/core/Format.hpp"
-#include "ren/core/glTF.hpp"
+#include "ren/core/GLTF.hpp"
 
 #include <atomic>
 
 namespace ren {
-
-template <typename T>
-Span<const T> accessor_data(Span<const char> bin, JsonValue gltf,
-                            usize accessor_index) {
-  Span<const JsonValue> accessors = json_array_value(gltf, "accessors");
-  Span<const JsonValue> buffer_views = json_array_value(gltf, "bufferViews");
-  JsonValue accessor = accessors[accessor_index];
-  JsonValue buffer_view =
-      buffer_views[json_integer_value(accessor, "bufferView")];
-  ren_assert(json_integer_value(buffer_view, "buffer") == 0);
-  usize in_view_offset = json_integer_value(accessor, "byteOffset");
-  usize bin_offset =
-      json_integer_value(buffer_view, "byteOffset") + in_view_offset;
-  usize count = json_integer_value(accessor, "count");
-  usize component_size = 0;
-  switch ((GltfComponentType)json_integer_value(accessor, "componentType")) {
-  case GLTF_COMPONENT_TYPE_BYTE:
-    component_size = sizeof(i8);
-    break;
-  case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-    component_size = sizeof(u8);
-    break;
-  case GLTF_COMPONENT_TYPE_SHORT:
-    component_size = sizeof(i16);
-    break;
-  case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-    component_size = sizeof(u16);
-    break;
-  case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
-    component_size = sizeof(u32);
-    break;
-  case GLTF_COMPONENT_TYPE_FLOAT:
-    component_size = sizeof(float);
-    break;
-  }
-  String8 accessor_type = json_string_value(accessor, "type");
-  usize component_count = 0;
-  if (accessor_type == GLTF_ACCESSOR_TYPE_SCALAR) {
-    component_count = 1;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC2) {
-    component_count = 2;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC3) {
-    component_count = 3;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_VEC4) {
-    component_count = 4;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT2) {
-    component_count = 2 * 2;
-  } else if (accessor_type == GLTF_ACCESSOR_TYPE_MAT3) {
-    component_count = 3 * 3;
-  } else {
-    ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_MAT4);
-    component_count = 4 * 4;
-  }
-  ren_assert(sizeof(T) == component_size * component_count);
-  return {(const T *)&bin[bin_offset], count};
-}
 
 Result<void, String8> compile_mesh(NotNull<Arena *> arena, Guid64 guid,
                                    Path gltf_path, Path blob_path) {
@@ -102,64 +46,30 @@ Result<void, String8> compile_mesh(NotNull<Arena *> arena, Guid64 guid,
                   meta_path);
   }
 
-  JsonValue gltf;
-  {
-    IoResult<Span<char>> buffer = read(scratch, gltf_path);
-    if (!buffer) {
-      return format(arena, "Failed to read {}: {}", gltf_path, buffer.error());
-    }
-    Result<JsonValue, JsonErrorInfo> json_parse_result =
-        json_parse(scratch, {buffer->m_data, buffer->m_size});
-    if (!json_parse_result) {
-      JsonErrorInfo error = json_parse_result.error();
-      return format(arena, "{}:{}:{}: {}", gltf_path, error.line, error.column,
-                    error.error);
-    }
-    gltf = *json_parse_result;
-    // TODO(mbargatin): gltf parsing.
+  Result<Gltf, GltfErrorInfo> gltf = load_gltf(scratch, gltf_path);
+  if (!gltf) {
+    return gltf.error().message.copy(arena);
   }
 
-  IoResult<Span<char>> bin = read(scratch, bin_path);
+  IoResult<Span<std::byte>> bin = read<std::byte>(scratch, bin_path);
   if (!bin) {
     return format(arena, "Failed to read {}: {}", bin_path, bin.error());
   }
 
-  JsonValue gltf_mesh = json_array_value(gltf, "meshes")[meta_mesh.mesh_id];
-  JsonValue gltf_primitive =
-      json_array_value(gltf_mesh, "primitives")[meta_mesh.primitive_id];
-  JsonValue attributes = json_value(gltf_primitive, "attributes");
-  auto positions = accessor_data<glm::vec3>(
-      *bin, gltf, json_integer_value(attributes, "POSITION"));
-  auto normals = accessor_data<glm::vec3>(
-      *bin, gltf, json_integer_value(attributes, "NORMAL"));
-  Span<const glm::vec4> tangents;
-  JsonValue tangent_accessor = json_value(attributes, "TANGENT");
-  if (tangent_accessor) {
-    tangents =
-        accessor_data<glm::vec4>(*bin, gltf, json_integer(tangent_accessor));
+  if (gltf->meshes.size() <= meta_mesh.mesh_id) {
+    return format(arena, "Failed to find mesh {} in {}", meta_mesh.mesh_id,
+                  gltf_path);
   }
-  Span<const glm::vec2> uvs;
-  JsonValue uv_accessor = json_value(attributes, "TEXCOORD_0");
-  if (uv_accessor) {
-    uvs = accessor_data<glm::vec2>(*bin, gltf, json_integer(uv_accessor));
-  }
-  Span<const glm::vec4> colors;
-  JsonValue color_accessor = json_value(attributes, "COLOR_0");
-  if (color_accessor) {
-    colors = accessor_data<glm::vec4>(*bin, gltf, json_integer(color_accessor));
-  }
-  auto indices = accessor_data<const u32>(
-      *bin, gltf, json_integer_value(gltf_primitive, "indices"));
+  GltfMesh gltf_mesh = gltf->meshes[meta_mesh.mesh_id];
 
-  Blob blob = bake_mesh_to_memory(scratch, {
-                                               .num_vertices = positions.m_size,
-                                               .positions = positions.m_data,
-                                               .normals = normals.m_data,
-                                               .tangents = tangents.m_data,
-                                               .uvs = uvs.m_data,
-                                               .colors = colors.m_data,
-                                               .indices = indices,
-                                           });
+  if (gltf_mesh.primitives.size() <= meta_mesh.primitive_id) {
+    return format(arena, "Failed to find primitive {} for mesh {} in {}",
+                  meta_mesh.mesh_id, meta_mesh.primitive_id, gltf_path);
+  }
+  GltfPrimitive gltf_primitive = gltf_mesh.primitives[meta_mesh.primitive_id];
+
+  Blob blob = bake_mesh_to_memory(
+      scratch, gltf_primitive_to_mesh_info(*bin, *gltf, gltf_primitive));
 
   // TODO(mbargatin): save file safely (avoid saving a partially written file by
   // first writing to a temp file, flushing to disk and then renaming).

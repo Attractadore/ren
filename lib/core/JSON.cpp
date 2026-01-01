@@ -70,32 +70,32 @@ JsonValue JsonValue::init(Span<const JsonValue> array) {
   };
 }
 
-JsonValue JsonValue::init(String8 string) {
+JsonValue JsonValue::from_string(String8 string) {
   return {
       .type = JsonType::String,
       .string = string,
   };
 }
 
-JsonValue JsonValue::init(NotNull<Arena *> arena, String8 string) {
-  return JsonValue::init(string.copy(arena));
+JsonValue JsonValue::from_string(NotNull<Arena *> arena, String8 string) {
+  return JsonValue::from_string(string.copy(arena));
 }
 
-JsonValue JsonValue::init(i64 integer) {
+JsonValue JsonValue::from_integer(i64 integer) {
   return {
       .type = JsonType::Integer,
       .integer = integer,
   };
 }
 
-JsonValue JsonValue::init(double number) {
+JsonValue JsonValue::from_float(double number) {
   return {
       .type = JsonType::Number,
       .number = number,
   };
 }
 
-JsonValue JsonValue::init(bool boolean) {
+JsonValue JsonValue::from_boolean(bool boolean) {
   return {
       .type = JsonType::Boolean,
       .boolean = boolean,

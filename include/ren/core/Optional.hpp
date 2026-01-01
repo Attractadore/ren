@@ -5,6 +5,9 @@
 
 namespace ren {
 
+struct NullOptT {
+} constexpr NullOpt;
+
 template <typename T>
   requires std::is_trivially_destructible_v<T>
 struct Optional {
@@ -18,6 +21,8 @@ public:
     m_value = value;
     m_active = true;
   }
+
+  Optional(decltype(NullOpt)) {}
 
   explicit operator bool() const { return m_active; }
 

@@ -73,6 +73,12 @@ public:
     m_size += count;
   }
 
+  void push(NotNull<Arena *> arena, Span<const T> values)
+    requires std::is_trivially_destructible_v<T>
+  {
+    push(arena, values.data(), values.size());
+  }
+
   void push(Span<const T> values)
     requires std::is_trivially_destructible_v<T>
   {
@@ -121,6 +127,8 @@ public:
   }
 
   usize size() const { return m_size; }
+
+  bool is_empty() const { return size() == 0; }
 
   const T *data() const { return m_data; }
 

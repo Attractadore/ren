@@ -1,9 +1,8 @@
 #pragma once
 #include "Guid.hpp"
 #include "ren/core/FileSystem.hpp"
+#include "ren/core/GLTF.hpp"
 #include "ren/core/JSON.hpp"
-#include "ren/core/glTF.hpp"
-#include "ren/core/Optional.hpp"
 #include "ren/core/StdDef.hpp"
 #include "ren/core/String.hpp"
 
@@ -29,7 +28,6 @@ String8 to_string(NotNull<Arena *> arena, MetaGltfErrorInfo error);
 Result<MetaGltf, MetaGltfErrorInfo> meta_gltf_from_json(NotNull<Arena *> arena,
                                                         JsonValue value);
 
-MetaGltf meta_gltf_generate(NotNull<Arena *> arena, Gltf gltf,
-                            Path filename);
+MetaGltf meta_gltf_generate(NotNull<Arena *> arena, Gltf gltf, Path filename);
 
 } // namespace ren

@@ -1,0 +1,1767 @@
+#include "ren/core/GLTF.hpp"
+#include "ren/core/Format.hpp"
+#include "ren/core/JSON.hpp"
+#include "ren/core/Optional.hpp"
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtc/packing.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+#include <tracy/Tracy.hpp>
+
+namespace ren {
+
+String8 format_as(GltfAttributeSemantic semantic) {
+  switch (semantic) {
+  case GltfAttributeSemantic::POSITION:
+    return "POSITION";
+  case GltfAttributeSemantic::NORMAL:
+    return "NORMAL";
+  case GltfAttributeSemantic::TANGENT:
+    return "TANGENT";
+  case GltfAttributeSemantic::TEXCOORD:
+    return "TEXCOORD";
+  case GltfAttributeSemantic::COLOR:
+    return "COLOR";
+  case GltfAttributeSemantic::JOINTS:
+    return "JOINTS";
+  case GltfAttributeSemantic::WEIGHTS:
+    return "WEIGHTS";
+  case GltfAttributeSemantic::USER:
+    return "USER";
+  }
+  unreachable();
+}
+
+Optional<GltfAttribute>
+gltf_find_attribute_by_semantic(GltfPrimitive primitive,
+                                GltfAttributeSemantic semantic, i32 set_index) {
+  for (GltfAttribute attribute : primitive.attributes) {
+    if (attribute.semantic == semantic and attribute.set_index == set_index) {
+      return attribute;
+    }
+  }
+  return NullOpt;
+}
+
+struct GltfParserContext {
+  Arena *arena = nullptr;
+  Arena *scratch = nullptr;
+  DynamicArray<String8> path;
+};
+
+class GltfJsonPathScope {
+public:
+  GltfJsonPathScope(NotNull<GltfParserContext *> ctx, usize i) {
+    m_ctx = ctx;
+    m_previous = m_ctx->path.back();
+    m_ctx->path.back() = format(ctx->scratch, "{}[{}]", m_previous, i);
+  }
+
+  GltfJsonPathScope(NotNull<GltfParserContext *> ctx, String8 name) {
+    m_ctx = ctx;
+    m_ctx->path.push(ctx->scratch, name);
+  }
+
+  ~GltfJsonPathScope() {
+    if (!m_previous) {
+      m_ctx->path.pop();
+    } else {
+      m_ctx->path.back() = m_previous;
+    }
+  }
+
+private:
+  GltfParserContext *m_ctx = nullptr;
+  String8 m_previous;
+};
+
+#define GLTF_ERROR(error_value, description, ...)                              \
+  GltfErrorInfo {                                                              \
+    .error = error_value,                                                      \
+    .message = format(ctx->arena, "Failed to parse GLTF: {}: " description,    \
+                      String8::join(ctx->scratch, ctx->path, ".")              \
+                          __VA_OPT__(, ) __VA_ARGS__),                         \
+  }
+
+#define GLTF_ERROR_MISSING_FIELD(field)                                        \
+  GLTF_ERROR(GltfError::InvalidFormat, "Missing required field \"{}\"", field)
+
+#define GLTF_JSON_PATH_SCOPE(name)                                             \
+  GltfJsonPathScope ren_cat(gltf_json_path_scope_, __COUNTER__)(ctx, name);
+
+#define GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(value, expected)             \
+  if (!json_try_cast<expected>(value)) {                                       \
+    String8 path = String8::join(ctx->scratch, ctx->path, ".");                \
+    path = path ? path : "document";                                           \
+    return GltfErrorInfo{                                                      \
+        .error = GltfError::InvalidFormat,                                     \
+        .message = format(ctx->arena,                                          \
+                          "Failed to parse GLTF: {}: Invalid JSON type: "      \
+                          "expected {}, got {}",                               \
+                          path, expected, value.type),                         \
+    };                                                                         \
+  }
+
+#define GLTF_JSON_CAST_OR_RETURN_ERROR(dst, json, expected)                    \
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, expected);                   \
+  dst = json_cast<expected>(json);
+
+#define GLTF_WARN_IGNORED                                                      \
+  fmt::println("gltf: warn: Ignoring {}",                                      \
+               String8::join(ctx->scratch, ctx->path, "."))
+
+#define GLTF_UNIQUE_RESULT ren_cat(result, __LINE__)
+#define GLTF_TRY(dst, expr, ...)                                               \
+  auto GLTF_UNIQUE_RESULT = expr __VA_OPT__(, ) __VA_ARGS__;                   \
+  if (!GLTF_UNIQUE_RESULT) {                                                   \
+    return GLTF_UNIQUE_RESULT.error();                                         \
+  }                                                                            \
+  dst = *GLTF_UNIQUE_RESULT
+
+static Result<GltfVersion, GltfErrorInfo>
+gltf_parse_version(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::String);
+  GltfVersion version;
+  int count = std::sscanf(json_string(json).zero_terminated(ctx->scratch),
+                          "%u.%u ", &version.major, &version.minor);
+  if (count != 2) {
+    return GLTF_ERROR(GltfError::InvalidFormat,
+                      "Failed to parse version \"{}\"", json_string(json));
+  }
+  return version;
+}
+
+static Result<GltfAsset, GltfErrorInfo>
+gltf_parse_asset(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+
+  Optional<GltfVersion> version;
+  Optional<GltfVersion> min_version;
+
+  GltfAsset asset;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "version") {
+      GLTF_TRY(version, gltf_parse_version(ctx, value));
+    } else if (key == "minVersion") {
+      GLTF_TRY(min_version, gltf_parse_version(ctx, value));
+    } else if (key == "generator") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(asset.generator, value, JsonType::String);
+      asset.generator = asset.generator.copy(ctx->arena);
+    } else if (key == "copyright") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(asset.copyright, value, JsonType::String);
+      asset.copyright = asset.copyright.copy(ctx->arena);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+
+  if (!version) {
+    return GLTF_ERROR_MISSING_FIELD("version");
+  }
+  if (!min_version) {
+    min_version = version;
+  }
+
+  if (min_version->major > 2 or
+      (min_version->major == 2 and min_version->minor > 0)) {
+    return GLTF_ERROR(GltfError::Unsupported, "Unsupported glTF version {}.{}",
+                      min_version->major, min_version->minor);
+  }
+
+  return asset;
+}
+
+static Result<GltfScene, GltfErrorInfo>
+gltf_parse_scene(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+
+  GltfScene scene;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(scene.name, value, JsonType::String);
+      scene.name = scene.name.copy(ctx->arena);
+    } else if (key == "nodes") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> nodes, value,
+                                     JsonType::Array);
+      scene.nodes = Span<i32>::allocate(ctx->arena, nodes.size());
+      for (usize i : range(nodes.size())) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_JSON_CAST_OR_RETURN_ERROR(scene.nodes[i], nodes[i],
+                                       JsonType::Integer);
+      }
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+
+  return scene;
+}
+
+static Result<GltfNode, GltfErrorInfo>
+gltf_parse_node(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+
+  GltfNode node;
+  bool has_matrix = false;
+  String8 transform_field;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(node.name, value, JsonType::String);
+      node.name = node.name.copy(ctx->arena);
+    } else if (key == "mesh") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(node.mesh, value, JsonType::Integer);
+    } else if (key == "matrix") {
+      if (transform_field) {
+        return GLTF_ERROR(
+            GltfError::InvalidFormat,
+            "Can't specify matrix when {} was previously specified",
+            transform_field);
+      }
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> matrix, value,
+                                     JsonType::Array);
+      if (matrix.m_size != 16) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 16");
+      }
+      for (usize i : range(16)) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_JSON_CAST_OR_RETURN_ERROR(glm::value_ptr(node.matrix)[i],
+                                       matrix[i], JsonType::Number);
+      }
+      has_matrix = true;
+    } else if (key == "translation" or key == "rotation" or key == "scale") {
+      if (has_matrix) {
+        return GLTF_ERROR(
+            GltfError::InvalidFormat,
+            "Can't specify {} when matrix was previously specified", key);
+      }
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> array, value,
+                                     JsonType::Array);
+      if (key == "translation") {
+        if (array.size() != 3) {
+          return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 3");
+        }
+        for (usize i : range(3)) {
+          GLTF_JSON_PATH_SCOPE(i);
+          GLTF_JSON_CAST_OR_RETURN_ERROR(node.translation[i], array[i],
+                                         JsonType::Number);
+        }
+      } else if (key == "rotation") {
+        if (array.size() != 4) {
+          return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 4");
+        }
+        float rotation[4];
+        for (usize i : range(4)) {
+          GLTF_JSON_PATH_SCOPE(i);
+          GLTF_JSON_CAST_OR_RETURN_ERROR(rotation[i], array[i],
+                                         JsonType::Number);
+        }
+        node.rotation.x = rotation[0];
+        node.rotation.y = rotation[1];
+        node.rotation.z = rotation[2];
+        node.rotation.w = rotation[3];
+        node.rotation = glm::normalize(node.rotation);
+      } else {
+        ren_assert(key == "scale");
+        if (array.size() != 3) {
+          return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 3");
+        }
+        for (usize i : range(3)) {
+          GLTF_JSON_PATH_SCOPE(i);
+          GLTF_JSON_CAST_OR_RETURN_ERROR(node.rotation[i], array[i],
+                                         JsonType::Number);
+        }
+      }
+      transform_field = key;
+    } else if (key == "children") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> children, value,
+                                     JsonType::Array);
+      node.children = Span<i32>::allocate(ctx->arena, children.size());
+      for (usize i : range(children.size())) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_JSON_CAST_OR_RETURN_ERROR(node.children[i], children[i],
+                                       JsonType::Integer);
+      }
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (not has_matrix) {
+    node.matrix = glm::translate(node.matrix, node.translation);
+    node.matrix = node.matrix * glm::mat4(node.rotation);
+    node.matrix = glm::scale(node.matrix, node.scale);
+  }
+
+  return node;
+}
+
+static Result<GltfPrimitive, GltfErrorInfo>
+gltf_parse_primitive(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+
+  GltfPrimitive primitive;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "indices") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(primitive.indices, value,
+                                     JsonType::Integer);
+    } else if (key == "mode") {
+      i32 topology = 0;
+      GLTF_JSON_CAST_OR_RETURN_ERROR(topology, value, JsonType::Integer);
+      switch (topology) {
+      case GLTF_TOPOLOGY_POINTS:
+      case GLTF_TOPOLOGY_LINES:
+      case GLTF_TOPOLOGY_LINE_LOOP:
+      case GLTF_TOPOLOGY_LINE_STRIP:
+      case GLTF_TOPOLOGY_TRIANGLES:
+      case GLTF_TOPOLOGY_TRIANGLE_STRIP:
+      case GLTF_TOPOLOGY_TRIANGLE_FAN:
+        break;
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid topology value {}",
+                          topology);
+      }
+      primitive.mode = (GltfTopology)topology;
+    } else if (key == "attributes") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonKeyValue> attributes, value,
+                                     JsonType::Object);
+      if (attributes.is_empty()) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Size must be > 0");
+      }
+      primitive.attributes =
+          Span<GltfAttribute>::allocate(ctx->arena, attributes.size());
+      usize i = 0;
+      for (auto [attribute_name, attribute_accessor] : attributes) {
+        GLTF_JSON_PATH_SCOPE(attribute_name);
+        GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(attribute_accessor,
+                                                  JsonType::Integer);
+        if (attribute_name == "") {
+          return GLTF_ERROR(GltfError::InvalidFormat,
+                            "Empty attribute name is not allowed");
+        }
+        Optional<GltfAttributeSemantic> semantic;
+        i32 set_index = 0;
+        if (attribute_name[0] == '_') {
+          semantic = GltfAttributeSemantic::USER;
+        } else {
+          if (attribute_name == "POSITION") {
+            semantic = GltfAttributeSemantic::POSITION;
+          } else if (attribute_name == "NORMAL") {
+            semantic = GltfAttributeSemantic::NORMAL;
+          } else if (attribute_name == "TANGENT") {
+            semantic = GltfAttributeSemantic::TANGENT;
+          } else {
+            const char *underscore_pos = attribute_name.find('_');
+            if (!underscore_pos) {
+              return GLTF_ERROR(GltfError::InvalidFormat,
+                                "Failed to parse attribute semantic");
+            }
+            usize underscore_offset = underscore_pos - attribute_name.data();
+            String8 semantic_str = attribute_name.substr(0, underscore_offset);
+            if (semantic_str == "TEXCOORD") {
+              semantic = GltfAttributeSemantic::TEXCOORD;
+            } else if (semantic_str == "COLOR") {
+              semantic = GltfAttributeSemantic::COLOR;
+            } else if (semantic_str == "JOINTS") {
+              semantic = GltfAttributeSemantic::JOINTS;
+            } else if (semantic_str == "WEIGHTS") {
+              semantic = GltfAttributeSemantic::WEIGHTS;
+            } else {
+              return GLTF_ERROR(GltfError::InvalidFormat,
+                                "Unknown attribute semantic");
+            }
+            String8 set_index_str =
+                attribute_name.substr(underscore_offset + 1);
+            int count = std::sscanf(set_index_str.zero_terminated(ctx->scratch),
+                                    "%u", &set_index);
+            if (count != 1) {
+              return GLTF_ERROR(GltfError::InvalidFormat,
+                                "Failed to parse attribute set index");
+            }
+          }
+        }
+        primitive.attributes[i++] = {
+            .name = attribute_name,
+            .semantic = *semantic,
+            .set_index = set_index,
+            .accessor = (i32)json_integer(attribute_accessor),
+        };
+      }
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (primitive.attributes.is_empty()) {
+    return GLTF_ERROR_MISSING_FIELD("attributes");
+  }
+
+  return primitive;
+}
+
+static Result<GltfMesh, GltfErrorInfo>
+gltf_parse_mesh(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+
+  GltfMesh mesh;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(mesh.name, value, JsonType::String);
+      mesh.name = mesh.name.copy(ctx->arena);
+    } else if (key == "primitives") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> primitives, value,
+                                     JsonType::Array);
+      if (primitives.is_empty()) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Size must be > 0");
+      }
+      mesh.primitives =
+          Span<GltfPrimitive>::allocate(ctx->arena, primitives.size());
+      for (usize i : range(primitives.size())) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_TRY(mesh.primitives[i], gltf_parse_primitive(ctx, primitives[i]));
+      }
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (mesh.primitives.is_empty()) {
+    return GLTF_ERROR_MISSING_FIELD("primitives");
+  }
+
+  return mesh;
+}
+
+static Result<GltfImage, GltfErrorInfo>
+gltf_parse_image(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfImage image;
+  bool has_buffer = false;
+  bool has_uri = false;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(image.name, value, JsonType::String);
+      image.name = image.name.copy(ctx->arena);
+    } else if (key == "bufferView") {
+      if (has_uri) {
+        return GLTF_ERROR(
+            GltfError::InvalidFormat,
+            "Can't define \"bufferView\" after \"uri\" has been defined");
+      }
+      GLTF_JSON_CAST_OR_RETURN_ERROR(image.buffer_view, value,
+                                     JsonType::Integer);
+      has_buffer = true;
+    } else if (key == "mimeType") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(image.mime_type, value, JsonType::String);
+      if (image.mime_type != "image/jpeg" and image.mime_type != "image/png") {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid mime type {}",
+                          image.mime_type);
+      }
+      image.mime_type = image.mime_type.copy(ctx->arena);
+    } else if (key == "uri") {
+      if (has_buffer) {
+        return GLTF_ERROR(
+            GltfError::InvalidFormat,
+            "Can't define \"uri\" after \"bufferView\" has been defined");
+      }
+      GLTF_JSON_CAST_OR_RETURN_ERROR(image.uri, value, JsonType::String);
+      if (!image.uri) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Empty uri is not allowed");
+      }
+      image.uri = image.uri.copy(ctx->arena);
+      has_uri = true;
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (not has_buffer and not has_uri) {
+    return GLTF_ERROR(GltfError::InvalidFormat,
+                      "Either \"bufferView\" or \"uri\" must be defined");
+  }
+  if (image.buffer_view >= 0 and !image.mime_type) {
+    return GLTF_ERROR(
+        GltfError::InvalidFormat,
+        "\"mimeType\" must be defined if \"bufferView\" is defined");
+  }
+  return image;
+}
+
+static Result<GltfAccessor, GltfErrorInfo>
+gltf_parse_accessor(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfAccessor accessor;
+  bool has_component_type = false;
+  bool has_count = false;
+  bool has_type = false;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(accessor.name, value, JsonType::String);
+      accessor.name = accessor.name.copy(ctx->arena);
+    } else if (key == "bufferView") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(accessor.buffer_view, value,
+                                     JsonType::Integer);
+      if (accessor.buffer_view < 0) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid value {}",
+                          accessor.buffer_view);
+      }
+    } else if (key == "byteOffset") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(accessor.byte_offset, value,
+                                     JsonType::Integer);
+    } else if (key == "componentType") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(i32 component_type, value,
+                                     JsonType::Integer);
+      switch (component_type) {
+      case GLTF_COMPONENT_TYPE_BYTE:
+      case GLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+      case GLTF_COMPONENT_TYPE_SHORT:
+      case GLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+      case GLTF_COMPONENT_TYPE_UNSIGNED_INT:
+      case GLTF_COMPONENT_TYPE_FLOAT:
+        break;
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid component type {}",
+                          component_type);
+      }
+      accessor.component_type = (GltfComponentType)component_type;
+      has_component_type = true;
+    } else if (key == "normalized") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(accessor.normalized, value,
+                                     JsonType::Boolean);
+    } else if (key == "count") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(accessor.count, value, JsonType::Integer);
+      if (accessor.count == 0) {
+        return GLTF_ERROR(GltfError::InvalidFormat,
+                          "Accessor count must be > 0");
+      }
+      has_count = true;
+    } else if (key == "type") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(String8 type, value, JsonType::String);
+      if (type == "SCALAR") {
+        accessor.type = GLTF_ACCESSOR_TYPE_SCALAR;
+      } else if (type == "VEC2") {
+        accessor.type = GLTF_ACCESSOR_TYPE_VEC2;
+      } else if (type == "VEC3") {
+        accessor.type = GLTF_ACCESSOR_TYPE_VEC3;
+      } else if (type == "VEC4") {
+        accessor.type = GLTF_ACCESSOR_TYPE_VEC4;
+      } else if (type == "MAT2") {
+        accessor.type = GLTF_ACCESSOR_TYPE_MAT2;
+      } else if (type == "MAT3") {
+        accessor.type = GLTF_ACCESSOR_TYPE_MAT3;
+      } else if (type == "MAT4") {
+        accessor.type = GLTF_ACCESSOR_TYPE_MAT4;
+      } else {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid accessor type {}",
+                          type);
+      }
+      has_type = true;
+    } else if (key == "min" or key == "max") {
+      // Process later when we know the accessor's type.
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (accessor.buffer_view < 0) {
+    return GLTF_ERROR_MISSING_FIELD("bufferView");
+  }
+  if (not has_component_type) {
+    return GLTF_ERROR_MISSING_FIELD("componentType");
+  }
+  if (not has_count) {
+    return GLTF_ERROR_MISSING_FIELD("count");
+  }
+  if (not has_type) {
+    return GLTF_ERROR_MISSING_FIELD("type");
+  }
+
+  return accessor;
+}
+
+static Result<GltfBufferView, GltfErrorInfo>
+gltf_parse_buffer_view(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfBufferView view;
+  bool has_length = false;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(view.name, value, JsonType::String);
+      view.name = view.name.copy(ctx->arena);
+    } else if (key == "buffer") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(view.buffer, value, JsonType::Integer);
+      if (view.buffer < 0) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid value {}",
+                          view.buffer);
+      }
+    } else if (key == "byteOffset") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(view.byte_offset, value,
+                                     JsonType::Integer);
+    } else if (key == "byteLength") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(view.byte_length, value,
+                                     JsonType::Integer);
+      has_length = true;
+    } else if (key == "byteStride") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(view.byte_stride, value,
+                                     JsonType::Integer);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (view.buffer == -1) {
+    return GLTF_ERROR_MISSING_FIELD("bufferView");
+  }
+  if (not has_length) {
+    return GLTF_ERROR_MISSING_FIELD("byteLength");
+  }
+  return view;
+}
+
+static Result<GltfBuffer, GltfErrorInfo>
+gltf_parse_buffer(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfBuffer buffer;
+  bool has_length = false;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(buffer.name, value, JsonType::String);
+      buffer.name = buffer.name.copy(ctx->arena);
+    } else if (key == "uri") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(buffer.uri, value, JsonType::String);
+      buffer.uri = buffer.uri.copy(ctx->arena);
+    } else if (key == "byteLength") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(buffer.byte_length, value,
+                                     JsonType::Integer);
+      has_length = true;
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (not has_length) {
+    return GLTF_ERROR_MISSING_FIELD("byteLength");
+  }
+  return buffer;
+}
+
+template <typename T>
+static Result<Span<T>, GltfErrorInfo>
+gltf_parse_array(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_CAST_OR_RETURN_ERROR(auto json_array, json, JsonType::Array);
+  auto array = Span<T>::allocate(ctx->arena, json_array.size());
+  for (usize i : range(array.size())) {
+    GLTF_JSON_PATH_SCOPE(i);
+    Result<T, GltfErrorInfo> parse_result = [&]() {
+      if constexpr (std::is_same_v<T, GltfScene>) {
+        return gltf_parse_scene(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfNode>) {
+        return gltf_parse_node(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfMesh>) {
+        return gltf_parse_mesh(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfImage>) {
+        return gltf_parse_image(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfAccessor>) {
+        return gltf_parse_accessor(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfBufferView>) {
+        return gltf_parse_buffer_view(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfBuffer>) {
+        return gltf_parse_buffer(ctx, json_array[i]);
+      } else {
+        static_assert(false);
+      }
+    }();
+    if (!parse_result) {
+      return parse_result.error();
+    }
+    array[i] = *parse_result;
+  }
+  return array;
+}
+
+Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<GltfParserContext *> ctx,
+                                       JsonValue json) {
+  ZoneScoped;
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  Gltf gltf;
+  bool has_asset = false;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "asset") {
+      GLTF_TRY(gltf.asset, gltf_parse_asset(ctx, value));
+      has_asset = true;
+    } else if (key == "scene") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(gltf.scene, value, JsonType::Integer);
+    } else if (key == "scenes") {
+      GLTF_TRY(gltf.scenes, gltf_parse_array<GltfScene>(ctx, value));
+    } else if (key == "nodes") {
+      GLTF_TRY(gltf.nodes, gltf_parse_array<GltfNode>(ctx, value));
+    } else if (key == "meshes") {
+      GLTF_TRY(gltf.meshes, gltf_parse_array<GltfMesh>(ctx, value));
+    } else if (key == "images") {
+      GLTF_TRY(gltf.images, gltf_parse_array<GltfImage>(ctx, value));
+    } else if (key == "accessors") {
+      GLTF_TRY(gltf.accessors, gltf_parse_array<GltfAccessor>(ctx, value));
+    } else if (key == "bufferViews") {
+      GLTF_TRY(gltf.buffer_views, gltf_parse_array<GltfBufferView>(ctx, value));
+    } else if (key == "buffers") {
+      GLTF_TRY(gltf.buffers, gltf_parse_array<GltfBuffer>(ctx, value));
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  if (not has_asset) {
+    return GLTF_ERROR_MISSING_FIELD("asset");
+  }
+  return gltf;
+}
+
+Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
+  ZoneScoped;
+  ScratchArena scratch;
+  IoResult<Span<char>> buffer = read<char>(scratch, path);
+  if (!buffer) {
+    return GltfErrorInfo{
+        .error = GltfError::IO,
+        .message = format(arena, "Failed to read {}: {}", path, buffer.error()),
+    };
+  }
+  Result<JsonValue, JsonErrorInfo> json =
+      json_parse(scratch, {buffer->data(), buffer->size()});
+  if (!json) {
+    JsonErrorInfo error_info = json.error();
+    return GltfErrorInfo{
+        .error = GltfError::JSON,
+        .message = format(arena, "{}:{}:{}: {}", path, error_info.line,
+                          error_info.column, error_info.error),
+    };
+  }
+  GltfParserContext ctx = {
+      .arena = arena,
+      .scratch = scratch,
+  };
+  return gltf_parse(&ctx, *json);
+}
+
+Result<void, GltfErrorInfo> load_gltf_blobs(NotNull<Arena *> arena,
+                                            NotNull<Gltf *> gltf,
+                                            Path parent_path) {
+  ScratchArena scratch;
+  gltf->blobs = Span<Span<std::byte>>::allocate(arena, gltf->buffers.size());
+  for (usize buffer_index : range(gltf->buffers.size())) {
+    GltfBuffer buffer = gltf->buffers[buffer_index];
+    Path path = parent_path.concat(scratch, Path::init(scratch, buffer.uri));
+    IoResult<Span<std::byte>> blob = read<std::byte>(arena, path);
+    if (!blob) {
+      return GltfErrorInfo{
+          .error = GltfError::IO,
+          .message =
+              format(arena, "Failed to load GLTF blobs: Failed to read {}: {}",
+                     path, blob.error()),
+      };
+    }
+    gltf->blobs[buffer_index] = *blob;
+  }
+  return {};
+}
+
+Result<Gltf, GltfErrorInfo> load_gltf_with_blobs(NotNull<Arena *> arena,
+                                                 Path path) {
+  Result<Gltf, GltfErrorInfo> load_result = load_gltf(arena, path);
+  if (!load_result) {
+    return load_result.error();
+  }
+  Result<void, GltfErrorInfo> blob_result =
+      load_gltf_blobs(arena, &*load_result, path.parent());
+  if (!blob_result) {
+    return blob_result.error();
+  }
+  return *load_result;
+}
+
+static JsonValue gltf_serialize_asset(NotNull<Arena *> arena,
+                                      const GltfAsset &asset) {
+  DynamicArray<JsonKeyValue> json;
+  json.push(arena, {"version", JsonValue::from_string("2.0")});
+  if (asset.generator) {
+    json.push(arena, {"generator", JsonValue::from_string("ren GLTF")});
+  }
+  if (asset.copyright) {
+    json.push(arena,
+              {"copyright", JsonValue::from_string(arena, asset.copyright)});
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
+                                      const GltfScene &scene) {
+  DynamicArray<JsonKeyValue> json;
+  if (scene.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, scene.name)});
+  }
+  if (scene.nodes.m_size > 0) {
+    Span<JsonValue> nodes =
+        Span<JsonValue>::allocate(arena, scene.nodes.size());
+    for (usize i : range(nodes.size())) {
+      nodes[i] = JsonValue::from_integer(scene.nodes[i]);
+    }
+    json.push(arena, {"nodes", JsonValue::init(nodes)});
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_node(NotNull<Arena *> arena, GltfNode node) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (node.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, node.name)});
+  }
+
+  if (node.mesh >= 0) {
+    json.push(arena, {"mesh", JsonValue::from_integer(node.mesh)});
+  }
+
+  glm::mat4 transform = glm::identity<glm::mat4>();
+  transform = glm::translate(transform, node.translation);
+  transform = transform * glm::mat4(node.rotation);
+  transform = glm::scale(transform, node.scale);
+  if (node.matrix == transform) {
+    node.matrix = glm::identity<glm::mat4>();
+  } else {
+    glm::vec3 scale;
+    glm::quat rotation;
+    glm::vec3 translation;
+    glm::vec3 skew;
+    glm::vec4 perspective;
+    if (glm::decompose(transform, scale, rotation, translation, skew,
+                       perspective)) {
+      if (perspective == glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) and
+          glm::dot(skew, skew) < 0.001f) {
+        node.matrix = glm::identity<glm::mat4>();
+        node.translation = translation;
+        node.rotation = rotation;
+        node.scale = scale;
+      }
+    }
+  }
+
+  if (node.matrix != glm::identity<glm::mat4>()) {
+    auto matrix = Span<JsonValue>::allocate(arena, 16);
+    for (usize i : range(16)) {
+      matrix[i] = JsonValue::from_float(glm::value_ptr(node.matrix)[i]);
+    }
+    json.push(arena, {"matrix", JsonValue::init(matrix)});
+  } else {
+    auto translation = Span<JsonValue>::allocate(arena, 3);
+    for (usize i : range(3)) {
+      translation[i] = JsonValue::from_float(node.translation[i]);
+    }
+    json.push(arena, {"translation", JsonValue::init(translation)});
+
+    auto rotation = Span<JsonValue>::allocate(arena, 4);
+    rotation[0] = JsonValue::from_float(node.rotation.x);
+    rotation[1] = JsonValue::from_float(node.rotation.y);
+    rotation[2] = JsonValue::from_float(node.rotation.z);
+    rotation[3] = JsonValue::from_float(node.rotation.w);
+    json.push(arena, {"rotation", JsonValue::init(rotation)});
+
+    auto scale = Span<JsonValue>::allocate(arena, 3);
+    for (usize i : range(3)) {
+      scale[i] = JsonValue::from_float(node.scale[i]);
+    }
+    json.push(arena, {"scale", JsonValue::init(scale)});
+  }
+
+  if (node.children.m_size > 0) {
+    auto children = Span<JsonValue>::allocate(arena, node.children.size());
+    for (usize i : range(children.size())) {
+      children[i] = JsonValue::from_integer(node.children[i]);
+    }
+    json.push(arena, {"children", JsonValue::init(children)});
+  }
+
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
+                                          const GltfPrimitive &primitive) {
+  DynamicArray<JsonKeyValue> json;
+
+  auto attributes =
+      Span<JsonKeyValue>::allocate(arena, primitive.attributes.size());
+  for (usize i : range(attributes.size())) {
+    GltfAttribute attribute = primitive.attributes[i];
+    String8 name;
+    switch (attribute.semantic) {
+    case GltfAttributeSemantic::POSITION:
+    case GltfAttributeSemantic::NORMAL:
+    case GltfAttributeSemantic::TANGENT:
+      name = format(arena, "{}", attribute.semantic);
+      break;
+    case GltfAttributeSemantic::TEXCOORD:
+    case GltfAttributeSemantic::COLOR:
+    case GltfAttributeSemantic::JOINTS:
+    case GltfAttributeSemantic::WEIGHTS:
+      name = format(arena, "{}_{}", attribute.semantic, attribute.set_index);
+      break;
+    case GltfAttributeSemantic::USER:
+      name = attribute.name.copy(arena);
+      break;
+    }
+    attributes[i] = {
+        name,
+        JsonValue::from_integer(primitive.attributes[i].accessor),
+    };
+  }
+  json.push(arena, {"attributes", JsonValue::init(attributes)});
+
+  if (primitive.indices >= 0) {
+    json.push(arena, {"indices", JsonValue::from_integer(primitive.indices)});
+  }
+
+  json.push(arena, {"mode", JsonValue::from_integer(primitive.mode)});
+
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
+                                     const GltfMesh &mesh) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (mesh.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, mesh.name)});
+  }
+
+  auto primitives = Span<JsonValue>::allocate(arena, mesh.primitives.size());
+  for (usize i : range(primitives.size())) {
+    primitives[i] = gltf_serialize_primitive(arena, mesh.primitives[i]);
+  }
+  json.push(arena, {"primitives", JsonValue::init(primitives)});
+
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
+                                      const GltfImage &image) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (image.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, image.name)});
+  }
+
+  if (image.buffer_view >= 0) {
+    json.push(arena,
+              {"bufferView", JsonValue::from_integer(image.buffer_view)});
+  }
+
+  if (image.mime_type) {
+    json.push(arena,
+              {"mimeType", JsonValue::from_string(arena, image.mime_type)});
+  }
+
+  if (image.uri) {
+    json.push(arena, {"uri", JsonValue::from_string(arena, image.uri)});
+  }
+
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
+                                         const GltfAccessor &accessor) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (accessor.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, accessor.name)});
+  }
+
+  if (accessor.buffer_view >= 0) {
+    json.push(arena,
+              {"bufferView", JsonValue::from_integer(accessor.buffer_view)});
+  }
+
+  if (accessor.byte_offset > 0) {
+    json.push(arena,
+              {"byteOffset", JsonValue::from_integer(accessor.byte_offset)});
+  }
+
+  json.push(arena, {"componentType",
+                    JsonValue::from_integer(accessor.component_type)});
+
+  json.push(arena,
+            {"normalized", JsonValue::from_boolean(accessor.normalized)});
+
+  json.push(arena, {"count", JsonValue::from_integer(accessor.count)});
+
+  String8 ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_MAT4 + 1];
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_SCALAR] = "SCALAR";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_VEC2] = "VEC2";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_VEC3] = "VEC3";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_VEC4] = "VEC4";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_MAT2] = "MAT2";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_MAT3] = "MAT3";
+  ACCESSOR_TYPE_MAP[GLTF_ACCESSOR_TYPE_MAT4] = "MAT4";
+  json.push(arena, {"type", JsonValue::from_string(
+                                arena, ACCESSOR_TYPE_MAP[accessor.type])});
+
+  return JsonValue::init(json);
+}
+static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
+                                            const GltfBufferView &view) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (view.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, view.name)});
+  }
+
+  json.push(arena, {"buffer", JsonValue::from_integer(view.buffer)});
+
+  if (view.byte_offset > 0) {
+    json.push(arena, {"byteOffset", JsonValue::from_integer(view.byte_offset)});
+  }
+
+  json.push(arena, {"byteLength", JsonValue::from_integer(view.byte_length)});
+
+  if (view.byte_stride > 0) {
+    json.push(arena, {"byteStride", JsonValue::from_integer(view.byte_stride)});
+  }
+
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize_buffer(NotNull<Arena *> arena,
+                                       const GltfBuffer &buffer) {
+  DynamicArray<JsonKeyValue> json;
+
+  if (buffer.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, buffer.name)});
+  }
+
+  if (buffer.uri) {
+    json.push(arena, {"uri", JsonValue::from_string(arena, buffer.uri)});
+  }
+
+  json.push(arena, {"byteLength", JsonValue::from_integer(buffer.byte_length)});
+
+  return JsonValue::init(json);
+}
+
+template <typename T>
+static JsonValue gltf_serialize_array(NotNull<Arena *> arena, Span<T> array) {
+  Span<JsonValue> json = Span<JsonValue>::allocate(arena, array.size());
+  for (usize i : range(array.size())) {
+    if constexpr (std::is_same_v<T, GltfScene>) {
+      json[i] = gltf_serialize_scene(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfNode>) {
+      json[i] = gltf_serialize_node(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfMesh>) {
+      json[i] = gltf_serialize_mesh(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfImage>) {
+      json[i] = gltf_serialize_image(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfAccessor>) {
+      json[i] = gltf_serialize_accessor(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfBufferView>) {
+      json[i] = gltf_serialize_buffer_view(arena, array[i]);
+    } else if constexpr (std::is_same_v<T, GltfBuffer>) {
+      json[i] = gltf_serialize_buffer(arena, array[i]);
+    } else {
+      static_assert(false);
+    }
+  }
+  return JsonValue::init(json);
+}
+
+JsonValue to_json(NotNull<Arena *> arena, const Gltf &gltf) {
+  DynamicArray<JsonKeyValue> json;
+
+  json.push(arena, {"asset", gltf_serialize_asset(arena, gltf.asset)});
+
+  if (gltf.scene != -1) {
+    json.push(arena, {"scene", JsonValue::from_integer(gltf.scene)});
+  }
+
+  if (gltf.scenes.m_size > 0) {
+    json.push(arena, {"scenes", gltf_serialize_array(arena, gltf.scenes)});
+  }
+
+  if (gltf.nodes.m_size > 0) {
+    json.push(arena, {"nodes", gltf_serialize_array(arena, gltf.nodes)});
+  }
+
+  if (gltf.meshes.m_size > 0) {
+    json.push(arena, {"meshes", gltf_serialize_array(arena, gltf.meshes)});
+  }
+
+  if (not gltf.images.is_empty()) {
+    json.push(arena, {"images", gltf_serialize_array(arena, gltf.images)});
+  }
+
+  if (gltf.accessors.m_size > 0) {
+    json.push(arena,
+              {"accessors", gltf_serialize_array(arena, gltf.accessors)});
+  }
+
+  if (gltf.buffer_views.m_size > 0) {
+    json.push(arena,
+              {"bufferViews", gltf_serialize_array(arena, gltf.buffer_views)});
+  }
+
+  if (gltf.buffers.m_size > 0) {
+    json.push(arena, {"buffers", gltf_serialize_array(arena, gltf.buffers)});
+  }
+
+  return JsonValue::init(Span(json));
+}
+
+String8 gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf) {
+  ZoneScoped;
+  ScratchArena scratch;
+  JsonValue json = to_json(scratch, gltf);
+  return json_serialize(arena, json);
+}
+
+void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
+                   Path bin_filename, GltfOptimizeFlags flags) {
+  ZoneScoped;
+
+  ScratchArena scratch;
+
+  Span<GltfNode> nodes = gltf->nodes.copy(scratch);
+  Span<GltfScene> scenes = gltf->scenes.copy(scratch);
+
+  for (GltfNode &node : nodes) {
+    node.camera = flags.is_set(GltfOptimize::RemoveCameras) ? -1 : node.camera;
+    node.skin = flags.is_set(GltfOptimize::RemoveSkins) ? -1 : node.skin;
+  }
+
+  if (flags.is_set(GltfOptimize::RemoveRedundantNodes)) {
+    Span<i32> node_parents = Span<i32>::allocate(scratch, nodes.size());
+    fill(node_parents, -1);
+    for (usize node_index : range(nodes.size())) {
+      const GltfNode &node = nodes[node_index];
+      for (i32 child : node.children) {
+        node_parents[child] = node_index;
+      }
+    }
+
+    Span<bool> keep_node = Span<bool>::allocate(scratch, nodes.size());
+
+    // Discover unreferenced nodes.
+    DynamicArray<i32> stack;
+    stack.reserve(scratch, nodes.size());
+    for (const GltfScene &scene : scenes) {
+      for (i32 node_index : scene.nodes) {
+        stack.push(scratch, node_index);
+      }
+    }
+    while (not stack.is_empty()) {
+      i32 node_index = stack.pop();
+      keep_node[node_index] = true;
+      for (i32 child : nodes[node_index].children) {
+        stack.push(child);
+      }
+    }
+
+    // TODO(mbargatin): delete dangling nodes that don't affect the hierarchy in
+    // any meaningful way.
+
+    Span<i32> node_remap = Span<i32>::allocate(scratch, nodes.size());
+    DynamicArray<GltfNode> remapped_nodes;
+    remapped_nodes.reserve(scratch, nodes.size());
+    for (usize node_index : range(nodes.size())) {
+      if (keep_node[node_index]) {
+        i32 remapped_node_index = remapped_nodes.size();
+        remapped_nodes.push(nodes[node_index]);
+        node_remap[node_index] = remapped_node_index;
+      }
+    }
+
+    for (GltfScene &scene : scenes) {
+      DynamicArray<i32> scene_nodes;
+      scene_nodes.reserve(scratch, scene.nodes.size());
+      for (i32 node_index : scene.nodes) {
+        if (keep_node[node_index]) {
+          scene_nodes.push(node_remap[node_index]);
+        }
+      }
+      scene.nodes = scene_nodes;
+    }
+
+    for (GltfNode &node : remapped_nodes) {
+      DynamicArray<i32> children;
+      children.reserve(scratch, node.children.size());
+      for (i32 child_node_index : node.children) {
+        if (keep_node[child_node_index]) {
+          children.push(node_remap[child_node_index]);
+        }
+      }
+      node.children = children;
+    }
+
+    nodes = remapped_nodes;
+  }
+
+  if (flags.is_set(GltfOptimize::RemoveEmptyScenes)) {
+    DynamicArray<GltfScene> non_empty_scenes;
+    non_empty_scenes.reserve(scratch, scenes.size());
+    for (const GltfScene &scene : scenes) {
+      if (not scene.nodes.is_empty()) {
+        non_empty_scenes.push(scene);
+      }
+    }
+    scenes = non_empty_scenes;
+  }
+
+  Span<GltfMesh> meshes = gltf->meshes.copy(scratch);
+
+  if (flags.is_set(GltfOptimize::RemoveRedundantMeshes)) {
+    Span<bool> keep_mesh = Span<bool>::allocate(scratch, meshes.size());
+    for (const GltfNode &node : nodes) {
+      if (node.mesh != -1) {
+        keep_mesh[node.mesh] = true;
+      }
+    }
+
+    Span<i32> mesh_mapping = Span<i32>::allocate(scratch, meshes.size());
+
+    DynamicArray<i32> unique_mesh_indices;
+    unique_mesh_indices.reserve(scratch, meshes.m_size);
+
+    for (usize mesh_index : range(meshes.size())) {
+      if (not keep_mesh[mesh_index]) {
+        continue;
+      }
+      const GltfMesh &mesh = meshes[mesh_index];
+
+      i32 found_index = -1;
+      for (usize j = 0; j < unique_mesh_indices.m_size; ++j) {
+        const GltfMesh &unique_mesh = meshes[unique_mesh_indices[j]];
+
+        if (mesh.primitives.m_size == unique_mesh.primitives.m_size) {
+          bool all_match = true;
+          for (usize p = 0; p < mesh.primitives.m_size; ++p) {
+            if (mesh.primitives[p] != unique_mesh.primitives[p]) {
+              all_match = false;
+              break;
+            }
+          }
+          if (all_match) {
+            found_index = (i32)j;
+            break;
+          }
+        }
+      }
+
+      if (found_index == -1) {
+        found_index = unique_mesh_indices.m_size;
+        unique_mesh_indices.push(mesh_index);
+      }
+      mesh_mapping[mesh_index] = found_index;
+    }
+
+    for (GltfNode &node : nodes) {
+      node.mesh = node.mesh == -1 ? -1 : mesh_mapping[node.mesh];
+    }
+
+    auto remapped_meshes =
+        Span<GltfMesh>::allocate(scratch, unique_mesh_indices.size());
+    for (usize mesh_index : range(remapped_meshes.size())) {
+      remapped_meshes[mesh_index] = meshes[unique_mesh_indices[mesh_index]];
+    }
+    meshes = remapped_meshes;
+  }
+
+  DynamicArray<GltfBufferView> buffer_views;
+  DynamicArray<GltfAccessor> accessors;
+  DynamicArray<GltfAccessor> src_accessors;
+
+  auto remap_mesh_accessor = [&](usize src_accessor_index,
+                                 Optional<GltfAttributeSemantic> semantic) {
+    const GltfAccessor &accessor = gltf->accessors[src_accessor_index];
+
+    GltfComponentType component_type = accessor.component_type;
+    bool normalized = accessor.normalized;
+    u32 count = accessor.count;
+    GltfAccessorType accessor_type = accessor.type;
+
+    i32 buffer_view_index = buffer_views.size();
+    i32 accessor_index = accessors.size();
+
+    if (flags.is_set(GltfOptimize::ConvertMeshAccessors)) {
+      if (semantic) {
+        // TODO(mbargatin): need to verify semantics when loading the GLTF file.
+        switch (*semantic) {
+        case GltfAttributeSemantic::POSITION:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC3);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT);
+          break;
+        case GltfAttributeSemantic::NORMAL:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC3);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT);
+          break;
+        case GltfAttributeSemantic::TANGENT:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC4);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT);
+          break;
+        case GltfAttributeSemantic::TEXCOORD:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC2);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE and
+                      normalized) or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_SHORT and
+                      normalized));
+          component_type = GLTF_COMPONENT_TYPE_FLOAT;
+          normalized = false;
+          break;
+        case GltfAttributeSemantic::COLOR:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC3 or
+                     accessor_type == GLTF_ACCESSOR_TYPE_VEC4);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE and
+                      normalized) or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_SHORT and
+                      normalized));
+          accessor_type = GLTF_ACCESSOR_TYPE_VEC4;
+          component_type = GLTF_COMPONENT_TYPE_FLOAT;
+          normalized = false;
+          break;
+        case GltfAttributeSemantic::JOINTS:
+          ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC4);
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE or
+                     component_type == GLTF_COMPONENT_TYPE_UNSIGNED_SHORT);
+          break;
+        case GltfAttributeSemantic::WEIGHTS:
+          ren_assert(component_type == GLTF_COMPONENT_TYPE_FLOAT or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE and
+                      normalized) or
+                     (component_type == GLTF_COMPONENT_TYPE_UNSIGNED_SHORT and
+                      normalized));
+          break;
+        case GltfAttributeSemantic::USER:
+          break;
+        }
+      } else {
+        ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_SCALAR);
+        ren_assert(component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE or
+                   component_type == GLTF_COMPONENT_TYPE_UNSIGNED_SHORT or
+                   component_type == GLTF_COMPONENT_TYPE_UNSIGNED_INT);
+        ren_assert(not normalized);
+        accessor_type = GLTF_ACCESSOR_TYPE_SCALAR;
+        component_type = GLTF_COMPONENT_TYPE_UNSIGNED_INT;
+      }
+      src_accessors.push(scratch, accessor);
+    }
+
+    usize stride = gltf_accessor_packed_stride(accessor_type, component_type);
+    usize size = stride * accessor.count;
+
+    buffer_views.push(
+        scratch, {
+                     .name = format(arena, "Buffer View {}", buffer_view_index),
+                     .buffer = 0,
+                     .byte_length = (u32)size,
+                 });
+
+    accessors.push(scratch,
+                   {
+                       .name = format(arena, "Accessor {}", accessor_index),
+                       .buffer_view = buffer_view_index,
+                       .byte_offset = 0,
+                       .component_type = component_type,
+                       .normalized = normalized,
+                       .count = count,
+                       .type = accessor_type,
+                   });
+
+    return accessor_index;
+  };
+
+  struct RemappedAttributeAccessor {
+    GltfAttributeSemantic semantic = {};
+    i32 src_accessor = -1;
+    i32 remapped_accessor = -1;
+  };
+
+  DynamicArray<RemappedAttributeAccessor> attribute_accessor_mapping;
+
+  Span<i32> index_accessor_mapping =
+      Span<i32>::allocate(scratch, gltf->accessors.size());
+  fill(index_accessor_mapping, -1);
+
+  for (usize mesh_index : range(meshes.size())) {
+    GltfMesh &mesh = meshes[mesh_index];
+    mesh.primitives = mesh.primitives.copy(arena);
+
+    for (usize primitive_index : range(mesh.primitives.size())) {
+      GltfPrimitive &primitive = mesh.primitives[primitive_index];
+      primitive.attributes = primitive.attributes.copy(arena);
+
+      for (usize attribute_index : range(primitive.attributes.size())) {
+        GltfAttribute &attribute = primitive.attributes[attribute_index];
+        i32 src_accessor_index = attribute.accessor;
+        i32 accessor_index = -1;
+        for (usize i : range(attribute_accessor_mapping.size())) {
+          if (attribute_accessor_mapping[i].semantic == attribute.semantic and
+              attribute_accessor_mapping[i].src_accessor ==
+                  src_accessor_index) {
+            accessor_index = attribute_accessor_mapping[i].remapped_accessor;
+            break;
+          }
+        }
+        if (accessor_index == -1) {
+          accessor_index =
+              remap_mesh_accessor(attribute.accessor, attribute.semantic);
+          attribute_accessor_mapping.push(
+              scratch,
+              {attribute.semantic, src_accessor_index, accessor_index});
+        }
+        primitive.attributes[attribute_index].accessor = accessor_index;
+      }
+
+      if (primitive.indices != -1) {
+        i32 src_accessor_index = primitive.indices;
+        i32 accessor_index = index_accessor_mapping[src_accessor_index];
+        if (accessor_index == -1) {
+          accessor_index = remap_mesh_accessor(primitive.indices, {});
+          index_accessor_mapping[src_accessor_index] = accessor_index;
+        }
+        primitive.indices = accessor_index;
+      }
+    }
+  }
+
+  usize blob_size = 0;
+  for (const GltfBufferView &buffer_view : buffer_views) {
+    usize size = (buffer_view.byte_length + 3) & ~3;
+    blob_size += size;
+  }
+  Span<std::byte> blob = Span<std::byte>::allocate(arena, blob_size);
+  usize blob_offset = 0;
+
+  for (usize accessor_index : range(accessors.size())) {
+    GltfAccessor accessor = accessors[accessor_index];
+    GltfBufferView *buffer_view = &buffer_views[accessor_index];
+    buffer_view->byte_offset = blob_offset;
+    GltfAccessor src_accessor = src_accessors[accessor_index];
+    GltfBufferView src_buffer_view =
+        gltf->buffer_views[src_accessor.buffer_view];
+    Span<const std::byte> src_blob =
+        gltf->blobs[src_buffer_view.buffer].subspan(
+            src_accessor.byte_offset + src_buffer_view.byte_offset);
+
+    ren_assert(accessor.count == src_accessor.count);
+    usize count = accessor.count;
+
+    usize src_packed_stride = gltf_accessor_packed_stride(
+        src_accessor.type, src_accessor.component_type);
+    usize src_stride = src_buffer_view.byte_stride ? src_buffer_view.byte_stride
+                                                   : src_packed_stride;
+    usize dst_stride =
+        gltf_accessor_packed_stride(accessor.type, accessor.component_type);
+    usize dst_size = count * dst_stride;
+
+    if (src_accessor.component_type == accessor.component_type and
+        src_accessor.type == accessor.type) {
+      if (src_stride == dst_stride) {
+        usize src_size = count * src_packed_stride;
+        ren_assert(blob_offset + src_size <= blob.size());
+        copy(src_blob.subspan(0, src_size), &blob[blob_offset]);
+      } else {
+        for (usize i : range(count)) {
+          for (usize j : range(dst_stride)) {
+            blob[blob_offset + i * dst_stride + j] =
+                src_blob[i * src_stride + j];
+          }
+        }
+      }
+    } else {
+      ScratchArena scratch;
+      if (src_stride != src_packed_stride) {
+        Span<std::byte> packed_blob =
+            Span<std::byte>::allocate(scratch, src_packed_stride * count);
+        for (usize i : range(count)) {
+          for (usize j : range(src_packed_stride)) {
+            packed_blob[i * src_packed_stride + j] =
+                src_blob[i * src_stride + j];
+          }
+        }
+        src_blob = packed_blob;
+      }
+
+      if (accessor.component_type == GLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+        if (src_accessor.component_type == GLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+          copy(Span((const u8 *)src_blob.data(), count),
+               (u32 *)&blob[blob_offset]);
+        } else {
+          ren_assert(src_accessor.component_type ==
+                     GLTF_COMPONENT_TYPE_UNSIGNED_SHORT);
+          copy(Span((const u16 *)src_blob.data(), count),
+               (u32 *)&blob[blob_offset]);
+        }
+      } else {
+        ren_assert(accessor.component_type == GLTF_COMPONENT_TYPE_FLOAT);
+        ren_assert(src_accessor.component_type == GLTF_COMPONENT_TYPE_FLOAT or
+                   src_accessor.normalized);
+        if (src_accessor.type == GLTF_ACCESSOR_TYPE_VEC2) {
+          ren_assert(accessor.type == GLTF_ACCESSOR_TYPE_VEC2);
+          Span dst((glm::vec2 *)&blob[blob_offset], count);
+          if (src_accessor.component_type ==
+              GLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+            Span src((const glm::vec<2, u8> *)src_blob.data(), count);
+            for (usize i : range(count)) {
+              dst[i] = glm::unpackUnorm<float>(src[i]);
+            }
+          } else {
+            ren_assert(src_accessor.component_type ==
+                       GLTF_COMPONENT_TYPE_UNSIGNED_SHORT);
+            Span src((const glm::vec<2, u16> *)src_blob.data(), count);
+            for (usize i : range(count)) {
+              dst[i] = glm::unpackUnorm<float>(src[i]);
+            }
+          }
+        } else {
+          ren_assert(accessor.type == GLTF_ACCESSOR_TYPE_VEC4);
+          Span dst((glm::vec4 *)&blob[blob_offset], count);
+          if (src_accessor.type == GLTF_ACCESSOR_TYPE_VEC3) {
+            if (src_accessor.component_type ==
+                GLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+              Span src((const glm::vec<3, u8> *)src_blob.data(), count);
+              for (usize i : range(count)) {
+                dst[i] = {glm::unpackUnorm<float>(src[i]), 1.0f};
+              }
+            } else if (src_accessor.component_type ==
+                       GLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+              Span src((const glm::vec<3, u16> *)src_blob.data(), count);
+              for (usize i : range(count)) {
+                dst[i] = {glm::unpackUnorm<float>(src[i]), 1.0f};
+              }
+            } else {
+              ren_assert(src_accessor.component_type ==
+                         GLTF_COMPONENT_TYPE_FLOAT);
+              Span src((const glm::vec3 *)src_blob.data(), count);
+              for (usize i : range(count)) {
+                dst[i] = {src[i], 1.0f};
+              }
+            }
+          } else {
+            ren_assert(src_accessor.type == GLTF_ACCESSOR_TYPE_VEC4);
+            if (src_accessor.component_type ==
+                GLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+              Span src((const glm::vec<4, u8> *)src_blob.data(), count);
+              for (usize i : range(count)) {
+                dst[i] = glm::unpackUnorm<float>(src[i]);
+              }
+            } else {
+              ren_assert(src_accessor.component_type ==
+                         GLTF_COMPONENT_TYPE_UNSIGNED_SHORT);
+              Span src((const glm::vec<4, u16> *)src_blob.data(), count);
+              for (usize i : range(count)) {
+                dst[i] = glm::unpackUnorm<float>(src[i]);
+              }
+            }
+          }
+        }
+      }
+    }
+    blob_offset = (blob_offset + dst_size + 3) & ~3;
+  }
+  ren_assert(blob_offset == blob.size());
+
+  if (flags.is_set(GltfOptimize::NormalizeSceneBounds)) {
+    usize primitive_count = 0;
+    Span<usize> primitive_offsets =
+        Span<usize>::allocate(scratch, meshes.size());
+    for (usize mesh_index : range(meshes.size())) {
+      primitive_offsets[mesh_index] = primitive_count;
+      primitive_count += meshes[mesh_index].primitives.size();
+    }
+
+    struct BB {
+      glm::vec3 min = glm::vec3(FLT_MAX);
+      glm::vec3 max = glm::vec3(FLT_MIN);
+    };
+    Span<BB> primitive_bbs = Span<BB>::allocate(scratch, primitive_count);
+    for (usize mesh_index : range(meshes.size())) {
+      const GltfMesh &mesh = meshes[mesh_index];
+      for (usize primitive_index : range(mesh.primitives.size())) {
+        i32 position_accessor_index =
+            gltf_find_attribute_by_semantic(mesh.primitives[primitive_index],
+                                            GltfAttributeSemantic::POSITION)
+                ->accessor;
+        GltfAccessor positions = accessors[position_accessor_index];
+        GltfBufferView buffer_view = buffer_views[positions.buffer_view];
+        ren_assert(positions.byte_offset == 0);
+        ren_assert(positions.type == GLTF_ACCESSOR_TYPE_VEC3);
+        ren_assert(positions.component_type == GLTF_COMPONENT_TYPE_FLOAT);
+        BB bb;
+        for (glm::vec3 position :
+             Span((const glm::vec3 *)&blob[buffer_view.byte_offset],
+                  positions.count)) {
+          bb.min = glm::min(bb.min, position);
+          bb.max = glm::max(bb.max, position);
+        }
+        primitive_bbs[primitive_offsets[mesh_index] + primitive_index] = bb;
+      }
+    }
+
+    Span<i32> node_parents = Span<i32>::allocate(scratch, nodes.size());
+    fill(node_parents, -1);
+    for (usize node_index : range(nodes.size())) {
+      const GltfNode &node = nodes[node_index];
+      for (i32 child_node_index : node.children) {
+        node_parents[child_node_index] = node_index;
+      }
+    }
+
+    Span<glm::mat4> node_global_transforms =
+        Span<glm::mat4>::allocate(scratch, nodes.size());
+
+    DynamicArray<i32> stack;
+    for (usize node_index : range(nodes.size())) {
+      if (node_parents[node_index] == -1) {
+        node_global_transforms[node_index] = nodes[node_index].matrix;
+        stack.push(scratch, nodes[node_index].children);
+      }
+    }
+    while (not stack.is_empty()) {
+      i32 node_index = stack.pop();
+      i32 parent_index = node_parents[node_index];
+      const GltfNode &node = nodes[node_index];
+      stack.push(scratch, node.children);
+      node_global_transforms[node_index] =
+          node_global_transforms[parent_index] * node.matrix;
+    }
+
+    Span<GltfNode> new_nodes =
+        Span<GltfNode>::allocate(scratch, nodes.size() + scenes.size());
+    copy(nodes, new_nodes.data());
+    i32 root_node_index = nodes.size();
+    for (GltfScene &scene : scenes) {
+      BB bb;
+      stack.push(scratch, scene.nodes);
+      while (not stack.is_empty()) {
+        i32 node_index = stack.pop();
+        const GltfNode &node = nodes[node_index];
+        stack.push(scratch, node.children);
+        if (node.mesh == -1) {
+          continue;
+        }
+        const GltfMesh &mesh = meshes[node.mesh];
+        for (usize primitive_index : range(mesh.primitives.size())) {
+          BB primitive_bb =
+              primitive_bbs[primitive_offsets[node.mesh] + primitive_index];
+          glm::mat4 transform = node_global_transforms[node_index];
+          glm::vec4 transformed_min =
+              transform * glm::vec4(primitive_bb.min, 1.0f);
+          transformed_min /= transformed_min.w;
+          glm::vec4 transformed_max =
+              transform * glm::vec4(primitive_bb.max, 1.0f);
+          transformed_max /= transformed_max.w;
+          glm::vec3 bb_min = glm::min(transformed_min, transformed_max);
+          glm::vec3 bb_max = glm::max(transformed_min, transformed_max);
+          bb.min = glm::min(bb.min, bb_min);
+          bb.max = glm::max(bb.max, bb_max);
+        }
+      }
+      glm::vec3 max_abs = glm::max(glm::abs(bb.min), glm::abs(bb.max));
+      float scale =
+          1.0f / (glm::max(max_abs.x, glm::max(max_abs.y, max_abs.z)));
+      GltfNode root = {
+          .name = "Root",
+          .children = scene.nodes,
+          .matrix = glm::scale(glm::vec3(scale)),
+      };
+      new_nodes[root_node_index] = root;
+      scene.nodes = Span({root_node_index}).copy(scratch);
+    }
+    nodes = new_nodes;
+  }
+
+  if (flags.is_set(GltfOptimize::CollapseSceneHierarchy)) {
+    Span<i32> node_parents = Span<i32>::allocate(scratch, nodes.size());
+    fill(node_parents, -1);
+    for (usize node_index : range(nodes.size())) {
+      const GltfNode &node = nodes[node_index];
+      for (i32 child : node.children) {
+        node_parents[child] = node_index;
+      }
+    }
+
+    Span<glm::mat4> node_global_transforms =
+        Span<glm::mat4>::allocate(scratch, nodes.size());
+
+    DynamicArray<i32> stack;
+    for (usize node_index : range(nodes.size())) {
+      if (node_parents[node_index] == -1) {
+        node_global_transforms[node_index] = nodes[node_index].matrix;
+        stack.push(scratch, nodes[node_index].children);
+      }
+    }
+    while (not stack.is_empty()) {
+      i32 node_index = stack.pop();
+      i32 parent_index = node_parents[node_index];
+      const GltfNode &node = nodes[node_index];
+      stack.push(scratch, node.children);
+      node_global_transforms[node_index] =
+          node_global_transforms[parent_index] * node.matrix;
+    }
+
+    Span<i32> node_remap = Span<i32>::allocate(scratch, nodes.size());
+    DynamicArray<GltfNode> remapped_nodes;
+    remapped_nodes.reserve(scratch, nodes.size());
+    for (usize node_index : range(nodes.size())) {
+      GltfNode node = nodes[node_index];
+      if (node.children.is_empty()) {
+        node_remap[node_index] = remapped_nodes.size();
+        node.name = {};
+        node.matrix = node_global_transforms[node_index];
+        remapped_nodes.push(node);
+      } else {
+        node_remap[node_index] = -1;
+      }
+    }
+    for (GltfScene &scene : scenes) {
+      DynamicArray<i32> scene_nodes;
+      stack.clear();
+      stack.push(scratch, scene.nodes);
+      while (not stack.is_empty()) {
+        i32 node_index = stack.pop();
+        const GltfNode &node = nodes[node_index];
+        if (not node.children.is_empty()) {
+          stack.push(scratch, node.children);
+          continue;
+        }
+        ren_assert(node_remap[node_index] != -1);
+        scene_nodes.push(scratch, node_remap[node_index]);
+      }
+      scene.nodes = scene_nodes;
+    }
+    nodes = remapped_nodes;
+  }
+
+  gltf->scenes = scenes.copy(arena);
+  for (GltfScene &scene : gltf->scenes) {
+    scene.nodes = scene.nodes.copy(arena);
+  }
+
+  gltf->nodes = nodes.copy(arena);
+  for (GltfNode &node : gltf->nodes) {
+    node.children = node.children.copy(arena);
+  }
+
+  gltf->meshes = meshes.copy(arena);
+  if (flags.is_set(GltfOptimize::RemoveImages)) {
+    gltf->images = {};
+  }
+  gltf->accessors = Span(accessors).copy(arena);
+  gltf->buffer_views = Span(buffer_views).copy(arena);
+  gltf->buffers = Span({GltfBuffer{
+                           .uri = bin_filename,
+                           .byte_length = blob.size(),
+                       }})
+                      .copy(arena);
+  gltf->blobs = Span({blob}).copy(arena);
+}
+
+} // namespace ren

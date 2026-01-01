@@ -5,6 +5,9 @@
 
 namespace ren {
 
+struct Gltf;
+struct GltfPrimitive;
+
 struct MeshInfo {
   size_t num_vertices = 0;
   NotNull<const glm::vec3 *> positions;
@@ -19,5 +22,9 @@ struct MeshInfo {
 
 [[nodiscard]] Blob bake_mesh_to_memory(NotNull<Arena *> arena,
                                        const MeshInfo &info);
+
+[[nodiscard]] MeshInfo gltf_primitive_to_mesh_info(Span<const std::byte> blob,
+                                     const Gltf &gltf,
+                                     const GltfPrimitive &primitive);
 
 } // namespace ren
