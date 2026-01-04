@@ -101,10 +101,10 @@ template <CFlagsEnum E> constexpr Flags<E> operator|(E l, Flags<E> r) {
 
 #define REN_BEGIN_FLAGS_ENUM(E)                                                \
   namespace detail::E##Impl {                                                  \
-    constexpr auto FIRST = __LINE__;                                           \
+    constexpr auto FIRST = __COUNTER__;                                           \
     enum class E
 
-#define REN_FLAG(Flag) Flag = 1 << (__LINE__ - FIRST - 1)
+#define REN_FLAG(Flag) Flag = 1 << (__COUNTER__ - FIRST - 1)
 
 #define REN_END_FLAGS_ENUM(E)                                                  \
   ;                                                                            \
