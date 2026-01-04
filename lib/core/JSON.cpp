@@ -588,20 +588,8 @@ parse:
     if (!string) {
       return string.error();
     }
-
-    if (*string == "null") {
-      json.type = JsonType::Null;
-    } else if (*string == "true") {
-      json.type = JsonType::Boolean;
-      json.boolean = true;
-    } else if (*string == "false") {
-      json.type = JsonType::Boolean;
-      json.boolean = false;
-    } else {
-      json.type = JsonType::String;
-      json.string = *string;
-    }
-
+    json.type = JsonType::String;
+    json.string = *string;
     return json;
   }
   case '-':
@@ -616,6 +604,26 @@ parse:
   case '8':
   case '9':
     return json_parse_number(ctx);
+  case 't':
+  case 'f':
+  case 'n': {
+    String8 substr = ctx->buffer.substr(ctx->i);
+    if (substr.starts_with("null")) {
+      json.type = JsonType::Null;
+      ctx->i += 4;
+    } else if (substr.starts_with("true")) {
+      json.type = JsonType::Boolean;
+      json.boolean = true;
+      ctx->i += 4;
+    } else if (substr.starts_with("false")) {
+      json.type = JsonType::Boolean;
+      json.boolean = false;
+      ctx->i += 5;
+    } else {
+      return JSON_SYNTAX_ERROR;
+    }
+    return json;
+  }
   }
   return JSON_SYNTAX_ERROR;
 }
@@ -667,7 +675,7 @@ void json_serialize(NotNull<StringBuilder *> builder, JsonValue json,
                     usize indent) {
   switch (json.type) {
   case JsonType::Null: {
-    builder->push("\"null\"");
+    builder->push("null");
     return;
   }
   case JsonType::Object: {
@@ -757,9 +765,9 @@ void json_serialize(NotNull<StringBuilder *> builder, JsonValue json,
   }
   case JsonType::Boolean: {
     if (json.boolean) {
-      builder->push("\"true\"");
+      builder->push("true");
     } else {
-      builder->push("\"false\"");
+      builder->push("false");
     }
     return;
   }
