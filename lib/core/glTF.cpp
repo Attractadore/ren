@@ -461,7 +461,7 @@ static Result<DynamicArray<T>, GltfErrorInfo> gltf_parse_array(
       } else if constexpr (std::is_same_v<T, GltfBuffer>) {
         return gltf_parse_buffer(arena, val);
       } else {
-        return GltfErrorInfo{.error = GltfError::InvalidFormat};
+        return GltfErrorInfo{.error = GltfError::FormatError};
       }
     }();
 
