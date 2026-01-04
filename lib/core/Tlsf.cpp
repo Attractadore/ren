@@ -32,7 +32,7 @@ NotNull<TlsfAllocator *> tlsf_init(NotNull<Arena *> arena, usize size) {
     }
   }
   TlsfAllocation *allocation = arena->allocate<TlsfAllocation>();
-  *allocation = {.size = size};
+  allocation->size = size;
   list_insert_after(&allocator->m_physical_list, &allocation->physical_list);
   tlsf_insert(allocator, allocation);
   return allocator;
@@ -64,10 +64,8 @@ TlsfAllocation *tlsf_allocate(NotNull<Arena *> arena,
         } else {
           allocator->m_free_list = remainder->next_free;
         }
-        *remainder = {
-            .size = remainder_size,
-            .offset = allocation->offset + size,
-        };
+        remainder->size = remainder_size;
+        remainder->offset = allocation->offset + size;
         list_insert_after(&allocation->physical_list,
                           &remainder->physical_list);
         tlsf_insert(allocator, remainder);
@@ -119,7 +117,8 @@ void tlsf_expand(NotNull<Arena *> arena, NotNull<TlsfAllocator *> allocator,
   } else {
     allocator->m_free_list = allocation->next_free;
   }
-  *allocation = {.size = new_size, .offset = old_size};
+  allocation->size = new_size;
+  allocation->offset = new_size;
   tlsf_insert(allocator, allocation);
 }
 
