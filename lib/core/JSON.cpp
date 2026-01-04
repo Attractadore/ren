@@ -174,10 +174,10 @@ json_parse_string(NotNull<JsonParserContext *> ctx) {
     __m128i chars2 = _mm_loadu_si128(base + 2);
     __m128i chars3 = _mm_loadu_si128(base + 3);
 
-    is_lane_bs |= _mm_cmpeq_epi8(chars0, BACKSLASH);
-    is_lane_bs |= _mm_cmpeq_epi8(chars1, BACKSLASH);
-    is_lane_bs |= _mm_cmpeq_epi8(chars2, BACKSLASH);
-    is_lane_bs |= _mm_cmpeq_epi8(chars3, BACKSLASH);
+    is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars0, BACKSLASH));
+    is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars1, BACKSLASH));
+    is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars2, BACKSLASH));
+    is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars3, BACKSLASH));
 
     __m128i is_lane_dq_0 = _mm_cmpeq_epi8(chars0, DOUBLE_QUOTE);
     __m128i is_lane_dq_1 = _mm_cmpeq_epi8(chars1, DOUBLE_QUOTE);
@@ -201,10 +201,10 @@ json_parse_string(NotNull<JsonParserContext *> ctx) {
       __m128i chars2 = _mm_loadu_si128(base + 2);
       __m128i chars3 = _mm_loadu_si128(base + 3);
 
-      is_lane_bs |= _mm_cmpeq_epi8(chars0, BACKSLASH);
-      is_lane_bs |= _mm_cmpeq_epi8(chars1, BACKSLASH);
-      is_lane_bs |= _mm_cmpeq_epi8(chars2, BACKSLASH);
-      is_lane_bs |= _mm_cmpeq_epi8(chars3, BACKSLASH);
+      is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars0, BACKSLASH));
+      is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars1, BACKSLASH));
+      is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars2, BACKSLASH));
+      is_lane_bs = _mm_or_si128(is_lane_bs, _mm_cmpeq_epi8(chars3, BACKSLASH));
 
       __m128i is_lane_dq_0 = _mm_cmpeq_epi8(chars0, DOUBLE_QUOTE);
       __m128i is_lane_dq_1 = _mm_cmpeq_epi8(chars1, DOUBLE_QUOTE);
@@ -212,7 +212,8 @@ json_parse_string(NotNull<JsonParserContext *> ctx) {
       __m128i is_lane_dq_3 = _mm_cmpeq_epi8(chars3, DOUBLE_QUOTE);
 
       __m128i is_lane_dq =
-          is_lane_dq_0 | is_lane_dq_1 | is_lane_dq_2 | is_lane_dq_3;
+          _mm_or_si128(_mm_or_si128(is_lane_dq_0, is_lane_dq_1),
+                       _mm_or_si128(is_lane_dq_2, is_lane_dq_3));
       [[likely]] if (_mm_test_all_zeros(ONES, is_lane_dq)) { continue; }
 
       u64 dq_mask = 0;
