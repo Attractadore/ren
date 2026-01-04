@@ -72,6 +72,7 @@ struct EditorContext {
   EditorProjectContext *m_project = nullptr;
 
   DynamicArray<Path> m_recently_opened;
+  DynamicArray<char> m_input_buffer;
 };
 
 void init_editor(int argc, const char *argv[], NotNull<EditorContext *> ctx);

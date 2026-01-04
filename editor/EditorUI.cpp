@@ -36,15 +36,22 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
   ScratchArena scratch;
   EditorProjectContext *project = ctx->m_project;
   const auto &nodes = project->m_scene_nodes;
-  EditorSceneNode node = project->m_scene_nodes[node_handle];
+  EditorSceneNode& node = project->m_scene_nodes[node_handle];
 
   constexpr ImGuiTreeNodeFlags LEAF_FLAGS =
       ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
   bool is_leaf = !node.first_child;
   auto id = std::bit_cast<ImGuiID>(node_handle);
   ImGui::SetNextItemStorageID(id);
-  bool expanded = ImGui::TreeNodeEx(node.name.zero_terminated(scratch),
-                                    is_leaf ? LEAF_FLAGS : 0);
+
+  bool editing_done = false;
+  bool expanded =
+      EditableTreeNode(node.name, &ctx->m_popup_arena, &ctx->m_input_buffer,
+                       editing_done, is_leaf ? LEAF_FLAGS : 0);
+
+  if (editing_done) {
+    node.name = String8::init(&ctx->m_project_arena, ctx->m_input_buffer.m_data);
+  }
 
   bool removed = false;
   bool force_expand = false;
