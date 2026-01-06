@@ -60,8 +60,4 @@ void InputPath(String8 label, NotNull<Arena *> arena,
                NotNull<DynamicArray<char> *> buffer,
                FileDialogOptions file_dialog_options);
 
-bool EditableTreeNode(String8 name, NotNull<Arena *> arena,
-              NotNull<DynamicArray<char> *> buf, bool &editing_done,
-              ImGuiTreeNodeFlags tree_flags = 0);
-
 } // namespace ren

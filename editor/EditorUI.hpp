@@ -1,5 +1,6 @@
 #pragma once
 #include "ren/core/Array.hpp"
+#include "ren/core/GenIndex.hpp"
 #include "ren/core/Job.hpp"
 #include "ren/core/Result.hpp"
 #include "ren/core/String.hpp"
@@ -9,6 +10,7 @@ struct ImFont;
 namespace ren {
 
 struct EditorContext;
+struct EditorSceneNode;
 
 struct NewProjectUI {
   DynamicArray<char> m_title_buffer;
@@ -39,12 +41,18 @@ struct AssetCompilationUI {
   Span<String8> compilation_errors;
 };
 
+struct SceneHierarchyUI {
+  Handle<EditorSceneNode> edit_node;
+  DynamicArray<char> edit_buffer;
+};
+
 struct EditorUI {
   ImFont *m_font = nullptr;
   NewProjectUI m_new_project;
   OpenProjectUI m_open_project;
   ImportSceneUI m_import_scene;
   AssetCompilationUI m_asset_compilation;
+  SceneHierarchyUI m_scene_hierarchy;
 };
 
 void load_recently_opened_list(NotNull<EditorContext *> ctx);

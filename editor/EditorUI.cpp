@@ -36,21 +36,47 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
   ScratchArena scratch;
   EditorProjectContext *project = ctx->m_project;
   const auto &nodes = project->m_scene_nodes;
-  EditorSceneNode& node = project->m_scene_nodes[node_handle];
-
-  constexpr ImGuiTreeNodeFlags LEAF_FLAGS =
-      ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
+  EditorSceneNode &node = project->m_scene_nodes[node_handle];
   bool is_leaf = !node.first_child;
+
+  SceneHierarchyUI &ui = ctx->m_ui.m_scene_hierarchy;
+
   auto id = std::bit_cast<ImGuiID>(node_handle);
   ImGui::SetNextItemStorageID(id);
 
-  bool editing_done = false;
-  bool expanded =
-      EditableTreeNode(node.name, &ctx->m_popup_arena, &ctx->m_input_buffer,
-                       editing_done, is_leaf ? LEAF_FLAGS : 0);
+  const char *c_str = node.name.zero_terminated(scratch);
 
-  if (editing_done) {
-    node.name = String8::init(&ctx->m_project_arena, ctx->m_input_buffer.m_data);
+  ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow;
+  if (is_leaf) {
+    node_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
+  }
+  if (node_handle != ui.edit_node) {
+    node_flags |= ImGuiTreeNodeFlags_SpanFullWidth;
+  }
+
+  bool expanded = ImGui::TreeNodeEx(c_str, node_flags, "%s",
+                                    node_handle == ui.edit_node ? "" : c_str);
+  if (ImGui::IsItemHovered() &&
+      (ImGui::IsKeyPressed(ImGuiKey_F2) ||
+       ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))) {
+    ui.edit_node = node_handle;
+    ui.edit_buffer = {};
+    ui.edit_buffer.push(&ctx->m_popup_arena, node.name);
+    ui.edit_buffer.push(&ctx->m_popup_arena, 0);
+    // Focus input field.
+    ImGui::SetKeyboardFocusHere();
+  }
+
+  if (node_handle == ui.edit_node) {
+    ImGui::SameLine();
+    InputText("##rename", &ctx->m_popup_arena, &ui.edit_buffer,
+              ImGuiInputTextFlags_AutoSelectAll);
+    if (ImGui::IsItemDeactivated()) {
+      node.name = String8::init(&ctx->m_project_arena, ui.edit_buffer.data());
+      ui.edit_node = NullHandle;
+      ui.edit_buffer = {};
+      ctx->m_popup_arena.clear();
+    }
   }
 
   bool removed = false;
