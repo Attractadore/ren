@@ -362,6 +362,10 @@ Handle<EditorSceneNode> add_scene_node(NotNull<EditorContext *> ctx,
   *left_update_ptr = node_handle;
   *right_update_ptr = node_handle;
 
+  SceneHierarchyUI &ui = ctx->m_ui.m_scene_hierarchy;
+  ui.selected_node = node_handle;
+  ui.rename_node = true;
+
   return node_handle;
 }
 

@@ -42,7 +42,9 @@ struct AssetCompilationUI {
 };
 
 struct SceneHierarchyUI {
+  Handle<EditorSceneNode> selected_node;
   Handle<EditorSceneNode> edit_node;
+  bool rename_node = false;
   DynamicArray<char> edit_buffer;
 };
 

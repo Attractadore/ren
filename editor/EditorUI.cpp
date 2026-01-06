@@ -46,37 +46,68 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
 
   const char *c_str = node.name.zero_terminated(scratch);
 
-  ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow;
+  ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnDoubleClick;
   if (is_leaf) {
     node_flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
   }
   if (node_handle != ui.edit_node) {
-    node_flags |= ImGuiTreeNodeFlags_SpanFullWidth;
+    node_flags |=
+        ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_SpanFullWidth;
+  }
+  if (node_handle == ui.selected_node) {
+    node_flags |= ImGuiTreeNodeFlags_Selected;
   }
 
   bool expanded = ImGui::TreeNodeEx(c_str, node_flags, "%s",
                                     node_handle == ui.edit_node ? "" : c_str);
-  if (ImGui::IsItemHovered() &&
-      (ImGui::IsKeyPressed(ImGuiKey_F2) ||
-       ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))) {
-    ui.edit_node = node_handle;
-    ui.edit_buffer = {};
-    ui.edit_buffer.push(&ctx->m_popup_arena, node.name);
-    ui.edit_buffer.push(&ctx->m_popup_arena, 0);
-    // Focus input field.
-    ImGui::SetKeyboardFocusHere();
+
+#if 0
+  static double last_click_time = 0.0;
+  double current_time = ImGui::GetTime();
+  const double click_detection_time = 0.3;
+  static int click_count = 0;
+  static Handle<EditorSceneNode> clicked_node = {};
+
+  bool single_click = false;
+  bool double_click = false;
+
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+    if (click_count++ == 0) {
+      clicked_node = node_handle;
+      last_click_time = current_time;
+    } 
+
+    if (click_count != 0 && clicked_node != node_handle) {
+      click_count = 1;
+      clicked_node = node_handle;
+      last_click_time = current_time;
+    }
   }
 
-  if (node_handle == ui.edit_node) {
-    ImGui::SameLine();
-    InputText("##rename", &ctx->m_popup_arena, &ui.edit_buffer,
-              ImGuiInputTextFlags_AutoSelectAll);
-    if (ImGui::IsItemDeactivated()) {
-      node.name = String8::init(&ctx->m_project_arena, ui.edit_buffer.data());
-      ui.edit_node = NullHandle;
-      ui.edit_buffer = {};
-      ctx->m_popup_arena.clear();
+  if (click_count != 0) {
+    if ((current_time - last_click_time) > click_detection_time) {
+      single_click = click_count == 1;
+      double_click = click_count == 2;
+      click_count = 0;
     }
+  }
+
+  if (single_click) {
+    if (clicked_node != ui.selected_node) {
+      ui.selected_node = clicked_node;
+    } else {
+      ui.rename_node = true;
+    }
+  }
+#else
+  if (ImGui::IsItemClicked(ImGuiMouseButton_Left) ||
+      ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+    ui.selected_node = node_handle;
+  }
+#endif
+
+  if (node_handle == ui.selected_node && ImGui::IsKeyPressed(ImGuiKey_F2)) {
+    ui.rename_node = true;
   }
 
   bool removed = false;
@@ -98,6 +129,11 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
       ImGui::CloseCurrentPopup();
     }
 
+    if (ImGui::Button("Rename")) {
+      ui.rename_node = true;
+      ImGui::CloseCurrentPopup();
+    }
+
     if (ImGui::Button("Remove")) {
       remove_scene_node(ctx, node_handle);
       removed = true;
@@ -114,6 +150,29 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
   }
   if (force_expand) {
     ImGui::TreeNodeSetOpen(id, true);
+  }
+
+  if (ui.rename_node && node_handle == ui.selected_node) {
+    ui.rename_node = false;
+
+    ui.edit_node = ui.selected_node;
+    ui.edit_buffer = {};
+    ui.edit_buffer.push(&ctx->m_popup_arena, node.name);
+    ui.edit_buffer.push(&ctx->m_popup_arena, 0);
+    // Focus input field.
+    ImGui::SetKeyboardFocusHere();
+  }
+
+  if (node_handle == ui.edit_node) {
+    ImGui::SameLine();
+    InputText("##rename", &ctx->m_popup_arena, &ui.edit_buffer,
+              ImGuiInputTextFlags_AutoSelectAll);
+    if (ImGui::IsItemDeactivated()) {
+      node.name = String8::init(&ctx->m_project_arena, ui.edit_buffer.data());
+      ui.edit_node = NullHandle;
+      ui.edit_buffer = {};
+      ctx->m_popup_arena.clear();
+    }
   }
 
   if (not is_leaf and expanded and not removed) {
