@@ -103,6 +103,9 @@ MetaGltf meta_gltf_generate(NotNull<Arena *> arena, Gltf gltf, Path filename) {
 
   for (usize gltf_mesh_index : range(gltf.meshes.m_size)) {
     String8 gltf_mesh_name = gltf.meshes[gltf_mesh_index].name;
+    if (!gltf_mesh_name) {
+      gltf_mesh_name = format(scratch, "{}", gltf_mesh_index);
+    }
 
     for (usize gltf_primitive_index :
          range(gltf.meshes[gltf_mesh_index].primitives.m_size)) {
