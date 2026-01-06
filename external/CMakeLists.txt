@@ -103,20 +103,9 @@ if (REN_BUILD_BAKING_TOOLS)
 endif()
 
 if (REN_BUILD_EXAMPLES)
-  if (CMAKE_RC_COMPILER)
-    cmake_path(GET CMAKE_RC_COMPILER STEM rc)
-    if (rc STREQUAL llvm-rc)
-      set(CMAKE_RC_FLAGS "/C 1252")
-    endif()
-  endif()
-  add_subdirectory(assimp)
-
   add_library(tinygltf tinygltf/tiny_gltf.cc)
-  target_include_directories(tinygltf
-    PUBLIC tinygltf
-    PRIVATE assimp/contrib/rapidjson/include/rapidjson
-  )
-target_link_libraries(tinygltf PRIVATE stb)
-  target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_STB_IMAGE_WRITE TINYGLTF_USE_CPP14 TINYGLTF_USE_RAPIDJSON)
+  target_include_directories(tinygltf PUBLIC tinygltf)
+  target_link_libraries(tinygltf PRIVATE stb)
+  target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_STB_IMAGE_WRITE TINYGLTF_USE_CPP14)
   target_compile_features(tinygltf PUBLIC cxx_std_14)
 endif()
