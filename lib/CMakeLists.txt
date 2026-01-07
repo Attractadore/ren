@@ -175,7 +175,7 @@ if (REN_BUILD_BAKING_TOOLS)
   target_link_libraries(ren-baking-internal PUBLIC ren-internal ren-baking)
 
   add_executable(ren-bake-ibl bake-ibl.cpp)
-  target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx stb)
+  target_link_libraries(ren-bake-ibl ren-baking-internal Microsoft::DirectXTex KTX::ktx stb_image)
 endif()
 
 add_subdirectory(sh)
