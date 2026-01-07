@@ -31,6 +31,18 @@ void load_recently_opened_list(NotNull<EditorContext *> ctx) {
   }
 }
 
+static Handle<EditorSceneNode>
+add_scene_node_from_ui(NotNull<EditorContext *> ctx,
+                       Handle<EditorSceneNode> parent_handle,
+                       Handle<EditorSceneNode> prev_handle, String8 name) {
+  Handle<EditorSceneNode> node_handle =
+      add_scene_node(ctx, parent_handle, prev_handle, name);
+  SceneHierarchyUI &ui = ctx->m_ui.m_scene_hierarchy;
+  ui.selected_node = node_handle;
+  ui.rename_node = true;
+  return node_handle;
+}
+
 static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
                                Handle<EditorSceneNode> node_handle) {
   ScratchArena scratch;
@@ -114,18 +126,18 @@ static void draw_scene_node_ui(NotNull<EditorContext *> ctx,
   bool force_expand = false;
   if (ImGui::BeginPopupContextItem()) {
     if (ImGui::Button("Add child node")) {
-      add_scene_node(ctx, node_handle, node.last_child, "New node");
+      add_scene_node_from_ui(ctx, node_handle, node.last_child, "New node");
       force_expand = true;
       ImGui::CloseCurrentPopup();
     }
 
     if (ImGui::Button("Add node before")) {
-      add_scene_node(ctx, node.parent, node.prev_sibling, "New node");
+      add_scene_node_from_ui(ctx, node.parent, node.prev_sibling, "New node");
       ImGui::CloseCurrentPopup();
     }
 
     if (ImGui::Button("Add node after")) {
-      add_scene_node(ctx, node.parent, node_handle, "New node");
+      add_scene_node_from_ui(ctx, node.parent, node_handle, "New node");
       ImGui::CloseCurrentPopup();
     }
 
@@ -208,7 +220,8 @@ static void draw_scene_hierarchy_ui(NotNull<EditorContext *> ctx) {
 
   if (ImGui::BeginPopupContextWindow()) {
     if (ImGui::Button("Add node")) {
-      add_scene_node(ctx, root_handle, root.last_child, "New root node");
+      add_scene_node_from_ui(ctx, root_handle, root.last_child,
+                             "New root node");
       ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
