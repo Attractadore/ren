@@ -24,27 +24,26 @@ DemoScene load_scene(ren::NotNull<ren::Arena *> frame_arena,
                      ren::NotNull<ren::Scene *> scene, ren::Path path) {
   ren::ScratchArena scratch;
 
-  ren::Result<ren::Gltf, ren::GltfErrorInfo> gltf =
-      ren::load_gltf_with_blobs(scratch, path);
+  ren::Result<ren::Gltf, ren::GltfErrorInfo> gltf = ren::load_gltf(
+      scratch, {
+                   .path = path,
+                   .load_buffers = true,
+                   .optimize_flags = ren::GltfOptimize::RemoveCameras |
+                                     ren::GltfOptimize::RemoveMaterials |
+                                     ren::GltfOptimize::RemoveImages |
+                                     ren::GltfOptimize::RemoveSkins |
+                                     ren::GltfOptimize::RemoveAnimations |
+                                     ren::GltfOptimize::RemoveRedundantMeshes |
+                                     ren::GltfOptimize::ConvertMeshAccessors |
+                                     ren::GltfOptimize::CollapseSceneHierarchy |
+                                     ren::GltfOptimize::RemoveRedundantNodes |
+                                     ren::GltfOptimize::RemoveEmptyScenes |
+                                     ren::GltfOptimize::NormalizeSceneBounds,
+               });
   if (!gltf) {
     fmt::println(stderr, "{}", gltf.error().message);
     exit(EXIT_FAILURE);
   }
-  // clang-format off
-  ren::gltf_optimize(scratch, &*gltf,
-      ren::GltfOptimize::RemoveCameras |
-      ren::GltfOptimize::RemoveMaterials |
-      ren::GltfOptimize::RemoveImages |
-      ren::GltfOptimize::RemoveSkins |
-      ren::GltfOptimize::RemoveAnimations |
-      ren::GltfOptimize::RemoveRedundantMeshes |
-      ren::GltfOptimize::ConvertMeshAccessors |
-      ren::GltfOptimize::CollapseSceneHierarchy |
-      ren::GltfOptimize::RemoveRedundantNodes |
-      ren::GltfOptimize::RemoveEmptyScenes | 
-      ren::GltfOptimize::NormalizeSceneBounds
-  );
-  // clang-format on
   if (gltf->meshes.is_empty()) {
     fmt::println(stderr, "Scene doesn't contain any (triangle) meshes");
     exit(EXIT_FAILURE);
@@ -65,7 +64,7 @@ DemoScene load_scene(ren::NotNull<ren::Arena *> frame_arena,
     const GltfMesh &mesh = gltf->meshes[mesh_index];
     for (usize primitive_index : range(mesh.primitives.size())) {
       ren::MeshInfo mesh_info = ren::gltf_primitive_to_mesh_info(
-          gltf->blobs[0], *gltf, mesh.primitives[primitive_index]);
+          gltf->buffers[0].bytes, *gltf, mesh.primitives[primitive_index]);
       ren::Blob blob = ren::bake_mesh_to_memory(scratch, mesh_info);
       primitive_handles[primitive_offsets[mesh_index] + primitive_index] =
           ren::create_mesh(frame_arena, scene, blob.data, blob.size);

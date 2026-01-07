@@ -280,23 +280,26 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                         result.error());
         }
 
-        Result<Gltf, GltfErrorInfo> gltf_result =
-            load_gltf_with_blobs(scratch, path);
+        Result<Gltf, GltfErrorInfo> gltf_result = load_gltf(
+            scratch, {
+                         .path = path,
+                         .load_buffers = true,
+                         .optimize_flags = GltfOptimize::RemoveEmptyScenes |
+                                           GltfOptimize::RemoveRedundantNodes |
+                                           GltfOptimize::RemoveCameras |
+                                           GltfOptimize::RemoveMaterials |
+                                           GltfOptimize::RemoveImages |
+                                           GltfOptimize::RemoveRedundantMeshes |
+                                           GltfOptimize::ConvertMeshAccessors |
+                                           GltfOptimize::RemoveSkins |
+                                           GltfOptimize::RemoveAnimations,
+                     });
         if (!gltf_result) {
           GltfErrorInfo error_info = gltf_result.error();
           return error_info.message.copy(&output);
         }
         Gltf gltf = *gltf_result;
-        ren_assert(gltf.meshes.m_size > 0);
-        gltf_optimize(
-            scratch, &gltf, bin_filename,
-            GltfOptimize::RemoveEmptyScenes |
-                GltfOptimize::RemoveRedundantNodes |
-                GltfOptimize::RemoveCameras | GltfOptimize::RemoveMaterials |
-                GltfOptimize::RemoveImages |
-                GltfOptimize::RemoveRedundantMeshes |
-                GltfOptimize::ConvertMeshAccessors | GltfOptimize::RemoveSkins |
-                GltfOptimize::RemoveAnimations);
+        gltf.buffers[0].uri = bin_filename;
 
         if (auto result = write(gltf_path, gltf_serialize(scratch, gltf));
             !result) {
@@ -304,7 +307,7 @@ JobFuture<Result<void, String8>> job_import_scene(NotNull<EditorContext *> ctx,
                         result.error());
         }
 
-        if (auto result = write(bin_path, gltf.blobs[0]); !result) {
+        if (auto result = write(bin_path, gltf.buffers[0].bytes); !result) {
           return format(&output, "Failed to write {}: {}", bin_path,
                         result.error());
         }

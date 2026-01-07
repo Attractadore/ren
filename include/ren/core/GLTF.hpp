@@ -94,6 +94,8 @@ enum GltfTopology {
   GLTF_TOPOLOGY_TRIANGLE_FAN = 6
 };
 
+String8 format_as(GltfTopology topology);
+
 struct GltfVersion {
   u32 major = 0;
   u32 minor = 0;
@@ -104,11 +106,87 @@ struct GltfAsset {
   String8 copyright;
 };
 
+enum GltfTextureWrap {
+  GLTF_TEXTURE_WRAP_REPEAT = 10497,
+  GLTF_TEXTURE_WRAP_CLAMP_TO_EDGE = 33071,
+  GLTF_TEXTURE_WRAP_MIRRORED_REPEAT = 33648,
+};
+
+enum GltfTextureFilter {
+  GLTF_TEXTURE_FILTER_NEAREST = 9728,
+  GLTF_TEXTURE_FILTER_LINEAR = 9729,
+  GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST = 9984,
+  GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST = 9985,
+  GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR = 9986,
+  GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR = 9987,
+};
+
+String8 format_as(GltfTextureFilter filter);
+
+struct GltfSampler {
+  String8 name;
+  GltfTextureFilter mag_filter = GLTF_TEXTURE_FILTER_LINEAR;
+  GltfTextureFilter min_filter = GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR;
+  GltfTextureWrap wrap_s = GLTF_TEXTURE_WRAP_REPEAT;
+  GltfTextureWrap wrap_t = GLTF_TEXTURE_WRAP_REPEAT;
+};
+
+struct GltfTexture {
+  i32 sampler = -1;
+  i32 source = -1;
+};
+
 struct GltfImage {
   String8 name;
   i32 buffer_view = -1;
   String8 mime_type;
   String8 uri;
+  Span<glm::u8vec4> pixels;
+  u32 width = 0;
+  u32 height = 0;
+};
+
+struct GltfTextureInfo {
+  i32 index = -1;
+  i32 tex_coord = 0;
+};
+
+struct GltfNormalTextureInfo {
+  i32 index = -1;
+  i32 tex_coord = 0;
+  float scale = 1.0f;
+};
+
+struct GltfOcclusionTextureInfo {
+  i32 index = -1;
+  i32 tex_coord = 0;
+  float strength = 1.0f;
+};
+
+struct GltfPbrMetallicRoughness {
+  glm::vec4 base_color_factor = {1.0f, 1.0f, 1.0f, 1.0f};
+  GltfTextureInfo base_color_texture;
+  float metallic_factor = 1.0f;
+  float roughness_factor = 1.0f;
+  GltfTextureInfo metallic_roughness_texture;
+};
+
+enum GltfAlphaMode {
+  GLTF_ALPHA_MODE_OPAQUE,
+  GLTF_ALPHA_MODE_MASK,
+  GLTF_ALPHA_MODE_BLEND,
+};
+
+struct GltfMaterial {
+  String8 name;
+  GltfPbrMetallicRoughness pbr_metallic_roughness;
+  GltfNormalTextureInfo normal_texture;
+  GltfOcclusionTextureInfo occlusion_texture;
+  GltfTextureInfo emissive_texture;
+  glm::vec3 emissive_factor = {0.0f, 0.0f, 0.0f};
+  GltfAlphaMode alphaMode = GLTF_ALPHA_MODE_OPAQUE;
+  float alphaCutoff = 0.5f;
+  bool doubleSided = false;
 };
 
 struct GltfAccessor {
@@ -133,6 +211,7 @@ struct GltfBuffer {
   String8 name;
   String8 uri;
   usize byte_length = 0;
+  Span<std::byte> bytes;
 };
 
 enum class GltfAttributeSemantic {
@@ -214,7 +293,6 @@ struct GltfScene {
 
 struct GltfMaterial;
 struct GltfTexture;
-struct GltfSampler;
 struct GltfSkin;
 struct GltfAnimation;
 struct GltfCamera;
@@ -232,20 +310,10 @@ struct Gltf {
   Span<GltfAccessor> accessors;
   Span<GltfBufferView> buffer_views;
   Span<GltfBuffer> buffers;
-  Span<Span<std::byte>> blobs;
   Span<GltfSkin> skins;
   Span<GltfAnimation> animations;
   Span<GltfCamera> cameras;
 };
-
-[[nodiscard]] Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena,
-                                                    Path path);
-[[nodiscard]] Result<void, GltfErrorInfo>
-load_gltf_blobs(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path parent_path);
-[[nodiscard]] Result<Gltf, GltfErrorInfo>
-load_gltf_with_blobs(NotNull<Arena *> arena, Path path);
-
-String8 gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf);
 
 // clang-format off
 REN_BEGIN_FLAGS_ENUM(GltfOptimize){
@@ -282,12 +350,69 @@ namespace ren {
 
 using GltfOptimizeFlags = Flags<GltfOptimize>;
 
-void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
-                   Path bin_filename, GltfOptimizeFlags flags);
+struct GltfLoadedImage {
+  Span<glm::u8vec4> pixels;
+  u32 width = 0;
+  u32 height = 0;
+};
 
-inline void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
-                          GltfOptimizeFlags flags) {
-  return gltf_optimize(arena, gltf, Path(), flags);
+struct GltfLoadImageErrorInfo {
+  String8 message;
+};
+
+using GltfLoadImageCallback = Result<GltfLoadedImage, GltfLoadImageErrorInfo> (
+        *)(NotNull<Arena *> arena, void *context, Span<const std::byte> buffer);
+
+#ifdef STBI_INCLUDE_STB_IMAGE_H
+#ifndef REN_GLTF_STBI_CALLBACK_DEFINED
+#define REN_GLTF_STBI_CALLBACK_DEFINED
+
+inline Result<GltfLoadedImage, GltfLoadImageErrorInfo>
+gltf_stbi_callback(NotNull<Arena *> arena, void *context,
+                   Span<const std::byte> buffer) {
+  int x, y, c;
+  stbi_uc *stbi_pixels = stbi_load_from_memory((const stbi_uc *)buffer.data(),
+                                               buffer.size(), &x, &y, &c, 4);
+  if (!stbi_pixels) {
+    return GltfLoadImageErrorInfo{
+        .message = String8::init(arena, stbi_failure_reason()),
+    };
+  }
+  Span<glm::u8vec4> pixels = Span<glm::u8vec4>::allocate(arena, x * y);
+  copy((const glm::u8vec4 *)stbi_pixels, x * y, pixels.data());
+  stbi_image_free(stbi_pixels);
+  return GltfLoadedImage{
+      .pixels = pixels,
+      .width = (u32)x,
+      .height = (u32)y,
+  };
 }
+
+#endif
+#endif
+
+struct GltfLoadInfo {
+  Path path;
+  bool load_buffers = false;
+  bool load_images = false;
+  GltfLoadImageCallback load_image_callback = nullptr;
+  void *load_image_context = nullptr;
+  GltfOptimizeFlags optimize_flags = EmptyFlags;
+};
+
+[[nodiscard]] Result<Gltf, GltfErrorInfo>
+load_gltf(NotNull<Arena *> arena, const GltfLoadInfo &load_info);
+
+[[nodiscard]] Result<void, GltfErrorInfo>
+gltf_load_buffers(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path);
+
+[[nodiscard]] Result<void, GltfErrorInfo>
+gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path,
+                 GltfLoadImageCallback cb, void *context);
+
+void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
+                   GltfOptimizeFlags flags);
+
+String8 gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf);
 
 } // namespace ren

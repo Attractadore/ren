@@ -46,7 +46,7 @@ Result<void, String8> compile_mesh(NotNull<Arena *> arena, Guid64 guid,
                   meta_path);
   }
 
-  Result<Gltf, GltfErrorInfo> gltf = load_gltf(scratch, gltf_path);
+  Result<Gltf, GltfErrorInfo> gltf = load_gltf(scratch, {.path = gltf_path});
   if (!gltf) {
     return gltf.error().message.copy(arena);
   }

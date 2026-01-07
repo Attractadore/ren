@@ -33,6 +33,56 @@ String8 format_as(GltfAttributeSemantic semantic) {
   unreachable();
 }
 
+String8 format_as(GltfTextureFilter filter) {
+  switch (filter) {
+  case GLTF_TEXTURE_FILTER_NEAREST:
+    return "NEAREST";
+  case GLTF_TEXTURE_FILTER_LINEAR:
+    return "LINEAR";
+  case GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+    return "NEAREST_MIPMAP_NEAREST";
+  case GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+    return "LINEAR_MIPMAP_NEAREST";
+  case GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+    return "NEAREST_MIPMAP_LINEAR";
+  case GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+    return "LINEAR_MIPMAP_LINEAR";
+  }
+  unreachable();
+}
+
+String8 format_as(GltfTextureWrap wrap) {
+  switch (wrap) {
+  case GLTF_TEXTURE_WRAP_REPEAT:
+    return "REPEAT";
+  case GLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+    return "CLAMP_TO_EDGE";
+  case GLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+    return "MIRRORED_REPEAT";
+  }
+  unreachable();
+}
+
+String8 format_as(GltfTopology topology) {
+  switch (topology) {
+  case GLTF_TOPOLOGY_POINTS:
+    return "POINTS";
+  case GLTF_TOPOLOGY_LINES:
+    return "LINES";
+  case GLTF_TOPOLOGY_LINE_LOOP:
+    return "LINE_LOOP";
+  case GLTF_TOPOLOGY_LINE_STRIP:
+    return "LINE_STRIP";
+  case GLTF_TOPOLOGY_TRIANGLES:
+    return "TRIANGLES";
+  case GLTF_TOPOLOGY_TRIANGLE_STRIP:
+    return "TRIANGLE_STRIPS";
+  case GLTF_TOPOLOGY_TRIANGLE_FAN:
+    return "TRIANGLE_FAN";
+  }
+  unreachable();
+}
+
 Optional<GltfAttribute>
 gltf_find_attribute_by_semantic(GltfPrimitive primitive,
                                 GltfAttributeSemantic semantic, i32 set_index) {
@@ -94,6 +144,7 @@ private:
   if (!json_try_cast<expected>(value)) {                                       \
     String8 path = String8::join(ctx->scratch, ctx->path, ".");                \
     path = path ? path : "document";                                           \
+    ren_trap();                                                                \
     return GltfErrorInfo{                                                      \
         .error = GltfError::InvalidFormat,                                     \
         .message = format(ctx->arena,                                          \
@@ -271,7 +322,7 @@ gltf_parse_node(NotNull<GltfParserContext *> ctx, JsonValue json) {
         }
         for (usize i : range(3)) {
           GLTF_JSON_PATH_SCOPE(i);
-          GLTF_JSON_CAST_OR_RETURN_ERROR(node.rotation[i], array[i],
+          GLTF_JSON_CAST_OR_RETURN_ERROR(node.scale[i], array[i],
                                          JsonType::Number);
         }
       }
@@ -390,6 +441,9 @@ gltf_parse_primitive(NotNull<GltfParserContext *> ctx, JsonValue json) {
             .accessor = (i32)json_integer(attribute_accessor),
         };
       }
+    } else if (key == "material") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(primitive.material, value,
+                                     JsonType::Integer);
     } else {
       GLTF_WARN_IGNORED;
     }
@@ -487,6 +541,245 @@ gltf_parse_image(NotNull<GltfParserContext *> ctx, JsonValue json) {
         "\"mimeType\" must be defined if \"bufferView\" is defined");
   }
   return image;
+}
+
+static Result<GltfTextureInfo, GltfErrorInfo>
+gltf_parse_texture_info(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfTextureInfo texture_info;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "index") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(texture_info.index, value,
+                                     JsonType::Integer);
+    } else if (key == "texCoord") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(texture_info.tex_coord, value,
+                                     JsonType::Integer);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return texture_info;
+}
+
+static Result<GltfOcclusionTextureInfo, GltfErrorInfo>
+gltf_parse_occlusion_texture_info(NotNull<GltfParserContext *> ctx,
+                                  JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfOcclusionTextureInfo occlusion_texture_info;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "index") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(occlusion_texture_info.index, value,
+                                     JsonType::Integer);
+    } else if (key == "texCoord") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(occlusion_texture_info.tex_coord, value,
+                                     JsonType::Integer);
+    } else if (key == "strength") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(occlusion_texture_info.strength, value,
+                                     JsonType::Number);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return occlusion_texture_info;
+}
+
+static Result<GltfNormalTextureInfo, GltfErrorInfo>
+gltf_parse_normal_texture_info(NotNull<GltfParserContext *> ctx,
+                               JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfNormalTextureInfo normal_texture_info;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "index") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(normal_texture_info.index, value,
+                                     JsonType::Integer);
+    } else if (key == "texCoord") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(normal_texture_info.tex_coord, value,
+                                     JsonType::Integer);
+    } else if (key == "scale") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(normal_texture_info.scale, value,
+                                     JsonType::Number);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return normal_texture_info;
+}
+
+static Result<GltfPbrMetallicRoughness, GltfErrorInfo>
+gltf_parse_pbr_metallic_roughness(NotNull<GltfParserContext *> ctx,
+                                  JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfPbrMetallicRoughness pbr_metallic_roughness;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "baseColorFactor") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> array, value,
+                                     JsonType::Array);
+      if (array.size() != 4) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 4");
+      }
+      for (usize i : range(4)) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_JSON_CAST_OR_RETURN_ERROR(
+            pbr_metallic_roughness.base_color_factor[i], array[i],
+            JsonType::Number);
+      }
+    } else if (key == "baseColorTexture") {
+      GLTF_TRY(pbr_metallic_roughness.base_color_texture,
+               gltf_parse_texture_info(ctx, value));
+    } else if (key == "roughnessFactor") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(pbr_metallic_roughness.roughness_factor,
+                                     value, JsonType::Number);
+    } else if (key == "metallicFactor") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(pbr_metallic_roughness.metallic_factor,
+                                     value, JsonType::Number);
+    } else if (key == "metallicRoughnessTexture") {
+      GLTF_TRY(pbr_metallic_roughness.metallic_roughness_texture,
+               gltf_parse_texture_info(ctx, value));
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return pbr_metallic_roughness;
+}
+
+static Result<GltfMaterial, GltfErrorInfo>
+gltf_parse_material(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfMaterial material;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "name") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(material.name, value, JsonType::String);
+    } else if (key == "pbrMetallicRoughness") {
+      GLTF_TRY(material.pbr_metallic_roughness,
+               gltf_parse_pbr_metallic_roughness(ctx, value));
+    } else if (key == "emissiveFactor") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(Span<const JsonValue> array, value,
+                                     JsonType::Array);
+      if (array.size() != 3) {
+        return GLTF_ERROR(GltfError::InvalidFormat, "Size must be 3");
+      }
+      for (usize i : range(3)) {
+        GLTF_JSON_PATH_SCOPE(i);
+        GLTF_JSON_CAST_OR_RETURN_ERROR(material.emissive_factor[i], array[i],
+                                       JsonType::Number);
+      }
+    } else if (key == "normalTexture") {
+      GLTF_TRY(material.normal_texture,
+               gltf_parse_normal_texture_info(ctx, value));
+    } else if (key == "occlusionTexture") {
+      GLTF_TRY(material.occlusion_texture,
+               gltf_parse_occlusion_texture_info(ctx, value));
+    } else if (key == "emissiveTexture") {
+      GLTF_TRY(material.emissive_texture, gltf_parse_texture_info(ctx, value));
+    } else if (key == "doubleSided") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(material.doubleSided, value,
+                                     JsonType::Boolean);
+    } else if (key == "alphaMode") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(String8 alpha_mode, value,
+                                     JsonType::String);
+      if (alpha_mode == "OPAQUE") {
+        material.alphaMode = GLTF_ALPHA_MODE_OPAQUE;
+      } else if (alpha_mode == "MASK") {
+        material.alphaMode = GLTF_ALPHA_MODE_MASK;
+      } else if (alpha_mode == "BLEND") {
+        material.alphaMode = GLTF_ALPHA_MODE_BLEND;
+      } else {
+        return GLTF_ERROR(GltfError::InvalidFormat,
+                          "Invalid alpha mode value {}", alpha_mode);
+      }
+    } else if (key == "alphaCutoff") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(material.alphaCutoff, value,
+                                     JsonType::Number);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return material;
+}
+
+static Result<GltfTexture, GltfErrorInfo>
+gltf_parse_texture(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfTexture texture;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "sampler") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(texture.sampler, value, JsonType::Integer);
+    } else if (key == "source") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(texture.source, value, JsonType::Integer);
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return texture;
+}
+
+static Result<GltfSampler, GltfErrorInfo>
+gltf_parse_sampler(NotNull<GltfParserContext *> ctx, JsonValue json) {
+  GLTF_JSON_VERIFY_CASTABLE_OR_RETURN_ERROR(json, JsonType::Object);
+  GltfSampler sampler;
+  for (auto [key, value] : json_object(json)) {
+    GLTF_JSON_PATH_SCOPE(key);
+    if (key == "wrapS") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(i64 wrap, value, JsonType::Integer);
+      switch (wrap) {
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid wrap value {}",
+                          wrap);
+      case GLTF_TEXTURE_WRAP_REPEAT:
+      case GLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+      case GLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+        break;
+      }
+      sampler.wrap_s = (GltfTextureWrap)wrap;
+    } else if (key == "wrapT") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(i64 wrap, value, JsonType::Integer);
+      switch (wrap) {
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat, "Invalid wrap value {}",
+                          wrap);
+      case GLTF_TEXTURE_WRAP_REPEAT:
+      case GLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+      case GLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+        break;
+      }
+      sampler.wrap_t = (GltfTextureWrap)wrap;
+    } else if (key == "magFilter") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(i64 filter, value, JsonType::Integer);
+      switch (filter) {
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat,
+                          "Invalid magnification filter value {}", filter);
+      case GLTF_TEXTURE_FILTER_NEAREST:
+      case GLTF_TEXTURE_FILTER_LINEAR:
+        break;
+      }
+      sampler.mag_filter = (GltfTextureFilter)filter;
+    } else if (key == "minFilter") {
+      GLTF_JSON_CAST_OR_RETURN_ERROR(i64 filter, value, JsonType::Integer);
+      switch (filter) {
+      default:
+        return GLTF_ERROR(GltfError::InvalidFormat,
+                          "Invalid minification filter value {}", filter);
+      case GLTF_TEXTURE_FILTER_NEAREST:
+      case GLTF_TEXTURE_FILTER_LINEAR:
+      case GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+      case GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+      case GLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+      case GLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+        break;
+      }
+      sampler.min_filter = (GltfTextureFilter)filter;
+    } else {
+      GLTF_WARN_IGNORED;
+    }
+  }
+  return sampler;
 }
 
 static Result<GltfAccessor, GltfErrorInfo>
@@ -669,6 +962,12 @@ gltf_parse_array(NotNull<GltfParserContext *> ctx, JsonValue json) {
         return gltf_parse_buffer_view(ctx, json_array[i]);
       } else if constexpr (std::is_same_v<T, GltfBuffer>) {
         return gltf_parse_buffer(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfMaterial>) {
+        return gltf_parse_material(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfTexture>) {
+        return gltf_parse_texture(ctx, json_array[i]);
+      } else if constexpr (std::is_same_v<T, GltfSampler>) {
+        return gltf_parse_sampler(ctx, json_array[i]);
       } else {
         static_assert(false);
       }
@@ -708,6 +1007,12 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<GltfParserContext *> ctx,
       GLTF_TRY(gltf.buffer_views, gltf_parse_array<GltfBufferView>(ctx, value));
     } else if (key == "buffers") {
       GLTF_TRY(gltf.buffers, gltf_parse_array<GltfBuffer>(ctx, value));
+    } else if (key == "materials") {
+      GLTF_TRY(gltf.materials, gltf_parse_array<GltfMaterial>(ctx, value));
+    } else if (key == "textures") {
+      GLTF_TRY(gltf.textures, gltf_parse_array<GltfTexture>(ctx, value));
+    } else if (key == "samplers") {
+      GLTF_TRY(gltf.samplers, gltf_parse_array<GltfSampler>(ctx, value));
     } else {
       GLTF_WARN_IGNORED;
     }
@@ -718,14 +1023,16 @@ Result<Gltf, GltfErrorInfo> gltf_parse(NotNull<GltfParserContext *> ctx,
   return gltf;
 }
 
-Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
+Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena,
+                                      const GltfLoadInfo &load_info) {
   ZoneScoped;
   ScratchArena scratch;
-  IoResult<Span<char>> buffer = read<char>(scratch, path);
+  IoResult<Span<char>> buffer = read<char>(scratch, load_info.path);
   if (!buffer) {
     return GltfErrorInfo{
         .error = GltfError::IO,
-        .message = format(arena, "Failed to read {}: {}", path, buffer.error()),
+        .message = format(arena, "Failed to read {}: {}", load_info.path,
+                          buffer.error()),
     };
   }
   Result<JsonValue, JsonErrorInfo> json =
@@ -734,55 +1041,131 @@ Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena, Path path) {
     JsonErrorInfo error_info = json.error();
     return GltfErrorInfo{
         .error = GltfError::JSON,
-        .message = format(arena, "{}:{}:{}: {}", path, error_info.line,
-                          error_info.column, error_info.error),
+        .message = format(arena, "{}:{}:{}: {}", load_info.path,
+                          error_info.line, error_info.column, error_info.error),
     };
   }
   GltfParserContext ctx = {
       .arena = arena,
       .scratch = scratch,
   };
-  return gltf_parse(&ctx, *json);
+  Result<Gltf, GltfErrorInfo> gltf = gltf_parse(&ctx, *json);
+  if (!gltf) {
+    return gltf.error();
+  }
+  if (load_info.load_buffers) {
+    Result<void, GltfErrorInfo> buffer_load_result =
+        gltf_load_buffers(arena, &*gltf, load_info.path);
+    if (!buffer_load_result) {
+      return buffer_load_result.error();
+    }
+  }
+  if (load_info.load_images) {
+    ren_assert(load_info.load_image_callback);
+    Result<void, GltfErrorInfo> image_load_result = gltf_load_images(
+        arena, &*gltf, load_info.path, load_info.load_image_callback,
+        load_info.load_image_context);
+    if (!image_load_result) {
+      return image_load_result.error();
+    }
+  }
+  if (load_info.optimize_flags != EmptyFlags) {
+    gltf_optimize(arena, &*gltf, load_info.optimize_flags);
+  }
+  return *gltf;
 }
 
-Result<void, GltfErrorInfo> load_gltf_blobs(NotNull<Arena *> arena,
-                                            NotNull<Gltf *> gltf,
-                                            Path parent_path) {
+Result<void, GltfErrorInfo> gltf_load_buffers(NotNull<Arena *> arena,
+                                              NotNull<Gltf *> gltf,
+                                              Path gltf_path) {
   ScratchArena scratch;
-  gltf->blobs = Span<Span<std::byte>>::allocate(arena, gltf->buffers.size());
-  for (usize buffer_index : range(gltf->buffers.size())) {
-    GltfBuffer buffer = gltf->buffers[buffer_index];
+  Path parent_path = gltf_path.parent();
+  for (GltfBuffer &buffer : gltf->buffers) {
     Path path = parent_path.concat(scratch, Path::init(scratch, buffer.uri));
-    IoResult<Span<std::byte>> blob = read<std::byte>(arena, path);
-    if (!blob) {
+    IoResult<Span<std::byte>> bytes = read<std::byte>(arena, path);
+    if (!bytes) {
       return GltfErrorInfo{
           .error = GltfError::IO,
-          .message =
-              format(arena, "Failed to load GLTF blobs: Failed to read {}: {}",
-                     path, blob.error()),
+          .message = format(
+              arena, "Failed to load GLTF buffers: Failed to read {}: {}", path,
+              bytes.error()),
       };
     }
-    gltf->blobs[buffer_index] = *blob;
+    buffer.bytes = *bytes;
   }
   return {};
 }
 
-Result<Gltf, GltfErrorInfo> load_gltf_with_blobs(NotNull<Arena *> arena,
-                                                 Path path) {
-  Result<Gltf, GltfErrorInfo> load_result = load_gltf(arena, path);
-  if (!load_result) {
-    return load_result.error();
+Result<void, GltfErrorInfo>
+gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path,
+                 GltfLoadImageCallback cb, void *context) {
+  ScratchArena scratch;
+  Path parent_path = gltf_path.parent();
+  for (usize image_index : range(gltf->images.size())) {
+    GltfImage &image = gltf->images[image_index];
+    Span<const std::byte> bytes;
+    if (image.uri) {
+      Path path = parent_path.concat(scratch, Path::init(scratch, image.uri));
+      IoResult<Span<std::byte>> read_result = read<std::byte>(scratch, path);
+      if (!read_result) {
+        return GltfErrorInfo{
+            .error = GltfError::IO,
+            .message = format(
+                arena, "Failed to load GLTF images: Failed to read {}: {}",
+                path, read_result.error()),
+        };
+      }
+      bytes = *read_result;
+    } else {
+      ren_assert(image.buffer_view != -1);
+      const GltfBufferView &view = gltf->buffer_views[image.buffer_view];
+      bytes = gltf->buffers[view.buffer].bytes.subspan(view.byte_offset,
+                                                       view.byte_length);
+    }
+    Result<GltfLoadedImage, GltfLoadImageErrorInfo> loaded_image =
+        cb(arena, context, bytes);
+    if (!loaded_image) {
+      String8 name = image.uri;
+      if (!name) {
+        name = image.name;
+      }
+      if (!name) {
+        name = format(scratch, "image {}", image_index);
+      }
+      return GltfErrorInfo{
+          .error = GltfError::IO,
+          .message = format(
+              arena, "Failed to load GLTF images: Failed to decode {}: {}",
+              name, loaded_image.error().message),
+      };
+    }
+    image.pixels = loaded_image->pixels;
+    image.width = loaded_image->width;
+    image.height = loaded_image->height;
   }
-  Result<void, GltfErrorInfo> blob_result =
-      load_gltf_blobs(arena, &*load_result, path.parent());
-  if (!blob_result) {
-    return blob_result.error();
-  }
-  return *load_result;
+  return {};
 }
 
-static JsonValue gltf_serialize_asset(NotNull<Arena *> arena,
-                                      const GltfAsset &asset) {
+template <typename T>
+static JsonValue gltf_serialize_array(NotNull<Arena *> arena, Span<T> array) {
+  Span<JsonValue> json = Span<JsonValue>::allocate(arena, array.size());
+  for (usize i : range(array.size())) {
+    json[i] = gltf_serialize(arena, array[i]);
+  }
+  return JsonValue::init(json);
+}
+
+template <int L>
+static JsonValue gltf_serialize(NotNull<Arena *> arena, glm::vec<L, float> v) {
+  auto json = Span<JsonValue>::allocate(arena, L);
+  for (usize i : range(L)) {
+    json[i] = JsonValue::from_float(v[i]);
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfAsset &asset) {
   DynamicArray<JsonKeyValue> json;
   json.push(arena, {"version", JsonValue::from_string("2.0")});
   if (asset.generator) {
@@ -795,8 +1178,8 @@ static JsonValue gltf_serialize_asset(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
-                                      const GltfScene &scene) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfScene &scene) {
   DynamicArray<JsonKeyValue> json;
   if (scene.name) {
     json.push(arena, {"name", JsonValue::from_string(arena, scene.name)});
@@ -812,7 +1195,7 @@ static JsonValue gltf_serialize_scene(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_node(NotNull<Arena *> arena, GltfNode node) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena, GltfNode node) {
   DynamicArray<JsonKeyValue> json;
 
   if (node.name) {
@@ -885,8 +1268,8 @@ static JsonValue gltf_serialize_node(NotNull<Arena *> arena, GltfNode node) {
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
-                                          const GltfPrimitive &primitive) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfPrimitive &primitive) {
   DynamicArray<JsonKeyValue> json;
 
   auto attributes =
@@ -926,8 +1309,7 @@ static JsonValue gltf_serialize_primitive(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
-                                     const GltfMesh &mesh) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena, const GltfMesh &mesh) {
   DynamicArray<JsonKeyValue> json;
 
   if (mesh.name) {
@@ -936,15 +1318,16 @@ static JsonValue gltf_serialize_mesh(NotNull<Arena *> arena,
 
   auto primitives = Span<JsonValue>::allocate(arena, mesh.primitives.size());
   for (usize i : range(primitives.size())) {
-    primitives[i] = gltf_serialize_primitive(arena, mesh.primitives[i]);
+    primitives[i] = gltf_serialize(arena, mesh.primitives[i]);
   }
-  json.push(arena, {"primitives", JsonValue::init(primitives)});
+  json.push(arena,
+            {"primitives", gltf_serialize_array(arena, mesh.primitives)});
 
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
-                                      const GltfImage &image) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfImage &image) {
   DynamicArray<JsonKeyValue> json;
 
   if (image.name) {
@@ -968,8 +1351,8 @@ static JsonValue gltf_serialize_image(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
-                                         const GltfAccessor &accessor) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfAccessor &accessor) {
   DynamicArray<JsonKeyValue> json;
 
   if (accessor.name) {
@@ -1007,8 +1390,8 @@ static JsonValue gltf_serialize_accessor(NotNull<Arena *> arena,
 
   return JsonValue::init(json);
 }
-static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
-                                            const GltfBufferView &view) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfBufferView &view) {
   DynamicArray<JsonKeyValue> json;
 
   if (view.name) {
@@ -1030,8 +1413,8 @@ static JsonValue gltf_serialize_buffer_view(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-static JsonValue gltf_serialize_buffer(NotNull<Arena *> arena,
-                                       const GltfBuffer &buffer) {
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfBuffer &buffer) {
   DynamicArray<JsonKeyValue> json;
 
   if (buffer.name) {
@@ -1047,35 +1430,141 @@ static JsonValue gltf_serialize_buffer(NotNull<Arena *> arena,
   return JsonValue::init(json);
 }
 
-template <typename T>
-static JsonValue gltf_serialize_array(NotNull<Arena *> arena, Span<T> array) {
-  Span<JsonValue> json = Span<JsonValue>::allocate(arena, array.size());
-  for (usize i : range(array.size())) {
-    if constexpr (std::is_same_v<T, GltfScene>) {
-      json[i] = gltf_serialize_scene(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfNode>) {
-      json[i] = gltf_serialize_node(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfMesh>) {
-      json[i] = gltf_serialize_mesh(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfImage>) {
-      json[i] = gltf_serialize_image(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfAccessor>) {
-      json[i] = gltf_serialize_accessor(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfBufferView>) {
-      json[i] = gltf_serialize_buffer_view(arena, array[i]);
-    } else if constexpr (std::is_same_v<T, GltfBuffer>) {
-      json[i] = gltf_serialize_buffer(arena, array[i]);
-    } else {
-      static_assert(false);
-    }
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfTextureInfo &texture_info) {
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 2);
+  json.push({"index", JsonValue::from_integer(texture_info.index)});
+  json.push({"texCoord", JsonValue::from_integer(texture_info.tex_coord)});
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfNormalTextureInfo &texture_info) {
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 3);
+  json.push({"index", JsonValue::from_integer(texture_info.index)});
+  json.push({"texCoord", JsonValue::from_integer(texture_info.tex_coord)});
+  if (texture_info.scale != 1.0f) {
+    json.push({"scale", JsonValue::from_float(texture_info.scale)});
   }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfOcclusionTextureInfo &texture_info) {
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 3);
+  json.push({"index", JsonValue::from_integer(texture_info.index)});
+  json.push({"texCoord", JsonValue::from_integer(texture_info.tex_coord)});
+  if (texture_info.strength != 1.0f) {
+    json.push({"strength", JsonValue::from_float(texture_info.strength)});
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue
+gltf_serialize(NotNull<Arena *> arena,
+               const GltfPbrMetallicRoughness &pbr_metallic_roughness) {
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 5);
+  json.push({"baseColorFactor",
+             gltf_serialize(arena, pbr_metallic_roughness.base_color_factor)});
+  if (pbr_metallic_roughness.base_color_texture.index != -1) {
+    json.push(
+        {"baseColorTexture",
+         gltf_serialize(arena, pbr_metallic_roughness.base_color_texture)});
+  }
+  json.push({"metallicFactor",
+             JsonValue::from_float(pbr_metallic_roughness.metallic_factor)});
+  json.push({"roughnessFactor",
+             JsonValue::from_float(pbr_metallic_roughness.roughness_factor)});
+  if (pbr_metallic_roughness.metallic_roughness_texture.index != -1) {
+    json.push({"metallicRoughnessTexture",
+               gltf_serialize(
+                   arena, pbr_metallic_roughness.metallic_roughness_texture)});
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                GltfAlphaMode alpha_mode) {
+  switch (alpha_mode) {
+  case GLTF_ALPHA_MODE_OPAQUE:
+    return JsonValue::from_string("OPAQUE");
+  case GLTF_ALPHA_MODE_MASK:
+    return JsonValue::from_string("MASK");
+  case GLTF_ALPHA_MODE_BLEND:
+    return JsonValue::from_string("BLEND");
+  }
+  unreachable();
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfMaterial &material) {
+  DynamicArray<JsonKeyValue> json;
+  if (material.name) {
+    json.push(arena, {"name", JsonValue::from_string(arena, material.name)});
+  }
+  json.push(arena, {"pbrMetallicRoughness",
+                    gltf_serialize(arena, material.pbr_metallic_roughness)});
+  if (material.normal_texture.index != -1) {
+    json.push(arena, {"normalTexture",
+                      gltf_serialize(arena, material.normal_texture)});
+  }
+  if (material.occlusion_texture.index != -1) {
+    json.push(arena, {"occlusionTexture",
+                      gltf_serialize(arena, material.occlusion_texture)});
+  }
+  if (material.emissive_texture.index != -1) {
+    json.push(arena, {"emissiveTexture",
+                      gltf_serialize(arena, material.emissive_texture)});
+  }
+  if (material.emissive_factor != glm::vec3{0.0f, 0.0f, 0.0f}) {
+    json.push(arena, {"emissiveFactor",
+                      gltf_serialize(arena, material.emissive_factor)});
+  }
+  if (material.alphaMode != GLTF_ALPHA_MODE_OPAQUE) {
+    json.push(arena, {"alphaMode", gltf_serialize(arena, material.alphaMode)});
+  }
+  if (material.alphaMode == GLTF_ALPHA_MODE_MASK) {
+    json.push(arena,
+              {"alphaCutoff", JsonValue::from_float(material.alphaCutoff)});
+  }
+  if (material.doubleSided) {
+    json.push(arena, {"doubleSided", JsonValue::from_boolean(true)});
+  }
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfSampler &sampler) {
+
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 5);
+  if (sampler.name) {
+    json.push({"name", JsonValue::from_string(arena, sampler.name)});
+  }
+  json.push({"wrapS", JsonValue::from_integer(sampler.wrap_s)});
+  json.push({"wrapT", JsonValue::from_integer(sampler.wrap_t)});
+  json.push({"magFilter", JsonValue::from_integer(sampler.mag_filter)});
+  json.push({"minFilter", JsonValue::from_integer(sampler.min_filter)});
+  return JsonValue::init(json);
+}
+
+static JsonValue gltf_serialize(NotNull<Arena *> arena,
+                                const GltfTexture &texture) {
+  DynamicArray<JsonKeyValue> json;
+  json.reserve(arena, 2);
+  json.push({"source", JsonValue::from_integer(texture.source)});
+  json.push({"sampler", JsonValue::from_integer(texture.sampler)});
   return JsonValue::init(json);
 }
 
 JsonValue to_json(NotNull<Arena *> arena, const Gltf &gltf) {
   DynamicArray<JsonKeyValue> json;
 
-  json.push(arena, {"asset", gltf_serialize_asset(arena, gltf.asset)});
+  json.push(arena, {"asset", gltf_serialize(arena, gltf.asset)});
 
   if (gltf.scene != -1) {
     json.push(arena, {"scene", JsonValue::from_integer(gltf.scene)});
@@ -1091,6 +1580,19 @@ JsonValue to_json(NotNull<Arena *> arena, const Gltf &gltf) {
 
   if (gltf.meshes.m_size > 0) {
     json.push(arena, {"meshes", gltf_serialize_array(arena, gltf.meshes)});
+  }
+
+  if (not gltf.materials.is_empty()) {
+    json.push(arena,
+              {"materials", gltf_serialize_array(arena, gltf.materials)});
+  }
+
+  if (not gltf.samplers.is_empty()) {
+    json.push(arena, {"samplers", gltf_serialize_array(arena, gltf.samplers)});
+  }
+
+  if (not gltf.textures.is_empty()) {
+    json.push(arena, {"textures", gltf_serialize_array(arena, gltf.textures)});
   }
 
   if (not gltf.images.is_empty()) {
@@ -1122,7 +1624,7 @@ String8 gltf_serialize(NotNull<Arena *> arena, const Gltf &gltf) {
 }
 
 void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
-                   Path bin_filename, GltfOptimizeFlags flags) {
+                   GltfOptimizeFlags flags) {
   ZoneScoped;
 
   ScratchArena scratch;
@@ -1214,6 +1716,41 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
   }
 
   Span<GltfMesh> meshes = gltf->meshes.copy(scratch);
+
+  Span<GltfMaterial> materials;
+  if (not flags.is_set(GltfOptimize::RemoveMaterials)) {
+    materials = gltf->materials.copy(scratch);
+  }
+
+  Span<const GltfImage> images;
+  if (not flags.is_set(GltfOptimize::RemoveImages)) {
+    images = gltf->images;
+  }
+
+  Span<const GltfSampler> samplers;
+  Span<const GltfTexture> textures;
+  if (flags.is_none_set(GltfOptimize::RemoveMaterials |
+                        GltfOptimize::RemoveMaterials)) {
+    samplers = gltf->samplers;
+    textures = gltf->textures;
+  }
+
+  if (flags.is_set(GltfOptimize::RemoveMaterials)) {
+    for (GltfMesh &mesh : meshes) {
+      for (GltfPrimitive &primitive : mesh.primitives) {
+        primitive.material = -1;
+      }
+    }
+  }
+
+  if (flags.is_set(GltfOptimize::RemoveImages)) {
+    for (GltfMaterial &material : materials) {
+      material.pbr_metallic_roughness.base_color_texture = {};
+      material.pbr_metallic_roughness.metallic_roughness_texture = {};
+      material.normal_texture = {};
+      material.occlusion_texture = {};
+    }
+  }
 
   if (flags.is_set(GltfOptimize::RemoveRedundantMeshes)) {
     Span<bool> keep_mesh = Span<bool>::allocate(scratch, meshes.size());
@@ -1436,6 +1973,13 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
     usize size = (buffer_view.byte_length + 3) & ~3;
     blob_size += size;
   }
+  for (const GltfImage &image : images) {
+    if (image.buffer_view == -1) {
+      continue;
+    }
+    const GltfBufferView &view = gltf->buffer_views[image.buffer_view];
+    blob_size += view.byte_length;
+  }
   Span<std::byte> blob = Span<std::byte>::allocate(arena, blob_size);
   usize blob_offset = 0;
 
@@ -1447,7 +1991,7 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
     GltfBufferView src_buffer_view =
         gltf->buffer_views[src_accessor.buffer_view];
     Span<const std::byte> src_blob =
-        gltf->blobs[src_buffer_view.buffer].subspan(
+        gltf->buffers[src_buffer_view.buffer].bytes.subspan(
             src_accessor.byte_offset + src_buffer_view.byte_offset);
 
     ren_assert(accessor.count == src_accessor.count);
@@ -1566,6 +2110,18 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
     }
     blob_offset = (blob_offset + dst_size + 3) & ~3;
   }
+
+  for (const GltfImage &image : images) {
+    if (image.buffer_view == -1) {
+      continue;
+    }
+    const GltfBufferView &view = gltf->buffer_views[image.buffer_view];
+    Span<const std::byte> src = gltf->buffers[view.buffer].bytes.subspan(
+        view.byte_offset, view.byte_length);
+    copy(src, &blob[blob_offset]);
+    blob_offset += src.size();
+  }
+
   ren_assert(blob_offset == blob.size());
 
   if (flags.is_set(GltfOptimize::NormalizeSceneBounds)) {
@@ -1754,14 +2310,19 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
   if (flags.is_set(GltfOptimize::RemoveImages)) {
     gltf->images = {};
   }
+
+  gltf->materials = materials.copy(arena);
+  gltf->textures = textures.copy(arena);
+  gltf->samplers = samplers.copy(arena);
+  gltf->images = images.copy(arena);
+
   gltf->accessors = Span(accessors).copy(arena);
   gltf->buffer_views = Span(buffer_views).copy(arena);
   gltf->buffers = Span({GltfBuffer{
-                           .uri = bin_filename,
                            .byte_length = blob.size(),
+                           .bytes = blob,
                        }})
                       .copy(arena);
-  gltf->blobs = Span({blob}).copy(arena);
 }
 
 } // namespace ren
