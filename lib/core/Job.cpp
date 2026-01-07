@@ -369,8 +369,12 @@ static void job_load_scheduler(JobSchedulerCommand cmd) {
 static void job_switch_to_scheduler(JobSchedulerCommand cmd) {
   Job *job = job_tls_running_job();
   ren_assert(job or cmd == JobSchedulerCommand::Schedule);
-  job_tls_set_scheduler_command(cmd);
-  fiber_switch_context(&job->context, *job_tls_scheduler_fiber());
+  if (job->is_main_job) {
+    job_schedule();
+  } else {
+    job_tls_set_scheduler_command(cmd);
+    fiber_switch_context(&job->context, *job_tls_scheduler_fiber());
+  }
 }
 
 enum class JobServerWorkerQueue {
@@ -578,6 +582,10 @@ void stop_job_server() {
 JobToken job_dispatch(Span<const JobDesc> jobs) {
   ZoneScoped;
 
+  if (jobs.is_empty()) {
+    return {};
+  }
+
   Job *parent = job_tls_running_job();
   ren_assert(parent);
 
@@ -645,6 +653,9 @@ JobToken job_dispatch(Span<const JobDesc> jobs) {
 }
 
 void job_wait(JobToken token) {
+  if (!token) {
+    return;
+  }
   // Acquired from previous owner by free list pop. Can be incremented by future
   // owner.
   u64 generation = std::atomic_ref(token.counter->generation)

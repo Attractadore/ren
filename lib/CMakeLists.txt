@@ -7,7 +7,6 @@ add_library(ren-core
   core/CmdLine.cpp
   core/Fiber.cpp
   core/FileSystem.cpp
-  core/GLTF.cpp
   core/JSON.cpp
   core/Job.cpp
   core/JobTLS.cpp
@@ -43,6 +42,10 @@ target_link_libraries(ren-core PUBLIC glm::glm fmt::fmt Tracy::TracyClient)
 target_compile_features(ren-core PUBLIC cxx_std_20)
 target_compile_definitions(ren-core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 add_library(ren::core ALIAS ren-core)
+
+add_library(ren-gltf core/GLTF.cpp)
+target_link_libraries(ren-gltf PUBLIC ren::core PRIVATE stb_image)
+add_library(ren::gltf ALIAS ren-gltf)
 
 if (REN_ASSERTIONS)
   message(STATUS "Enable assertions")
@@ -163,8 +166,8 @@ add_library(ren-baking
 target_include_directories(ren-baking PUBLIC ${REN_INCLUDE})
 target_link_libraries(ren-baking
   PUBLIC glm::glm tiny_imageformat
-  PRIVATE ren::core Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace
-)
+  PRIVATE ren::core ren::gltf Microsoft::DirectXTex KTX::ktx meshoptimizer::meshoptimizer mikktspace::mikktspace
+) 
 target_compile_features(ren-baking PUBLIC cxx_std_20)
 add_library(ren::baking ALIAS ren-baking)
 

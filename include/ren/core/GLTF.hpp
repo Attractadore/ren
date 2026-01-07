@@ -350,53 +350,10 @@ namespace ren {
 
 using GltfOptimizeFlags = Flags<GltfOptimize>;
 
-struct GltfLoadedImage {
-  Span<glm::u8vec4> pixels;
-  u32 width = 0;
-  u32 height = 0;
-};
-
-struct GltfLoadImageErrorInfo {
-  String8 message;
-};
-
-using GltfLoadImageCallback = Result<GltfLoadedImage, GltfLoadImageErrorInfo> (
-        *)(NotNull<Arena *> arena, void *context, Span<const std::byte> buffer);
-
-#ifdef STBI_INCLUDE_STB_IMAGE_H
-#ifndef REN_GLTF_STBI_CALLBACK_DEFINED
-#define REN_GLTF_STBI_CALLBACK_DEFINED
-
-inline Result<GltfLoadedImage, GltfLoadImageErrorInfo>
-gltf_stbi_callback(NotNull<Arena *> arena, void *context,
-                   Span<const std::byte> buffer) {
-  int x, y, c;
-  stbi_uc *stbi_pixels = stbi_load_from_memory((const stbi_uc *)buffer.data(),
-                                               buffer.size(), &x, &y, &c, 4);
-  if (!stbi_pixels) {
-    return GltfLoadImageErrorInfo{
-        .message = String8::init(arena, stbi_failure_reason()),
-    };
-  }
-  Span<glm::u8vec4> pixels = Span<glm::u8vec4>::allocate(arena, x * y);
-  copy((const glm::u8vec4 *)stbi_pixels, x * y, pixels.data());
-  stbi_image_free(stbi_pixels);
-  return GltfLoadedImage{
-      .pixels = pixels,
-      .width = (u32)x,
-      .height = (u32)y,
-  };
-}
-
-#endif
-#endif
-
 struct GltfLoadInfo {
   Path path;
   bool load_buffers = false;
   bool load_images = false;
-  GltfLoadImageCallback load_image_callback = nullptr;
-  void *load_image_context = nullptr;
   GltfOptimizeFlags optimize_flags = EmptyFlags;
 };
 
@@ -407,8 +364,7 @@ load_gltf(NotNull<Arena *> arena, const GltfLoadInfo &load_info);
 gltf_load_buffers(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path);
 
 [[nodiscard]] Result<void, GltfErrorInfo>
-gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path,
-                 GltfLoadImageCallback cb, void *context);
+gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path);
 
 void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
                    GltfOptimizeFlags flags);

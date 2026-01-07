@@ -12,7 +12,7 @@ add_executable(draw-triangle draw-triangle.cpp)
 target_link_libraries(draw-triangle app-base)
 
 add_executable(view-gltf view-gltf.cpp)
-target_link_libraries(view-gltf imgui-app stb_image)
+target_link_libraries(view-gltf ren::gltf imgui-app)
 
 add_executable(entity-stress-test entity-stress-test.cpp)
-target_link_libraries(entity-stress-test imgui-app)
+target_link_libraries(entity-stress-test ren::gltf imgui-app)

@@ -1,12 +1,14 @@
 #include "ren/core/GLTF.hpp"
 #include "ren/core/Format.hpp"
 #include "ren/core/JSON.hpp"
+#include "ren/core/Job.hpp"
 #include "ren/core/Optional.hpp"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
+#include <stb_image.h>
 #include <tracy/Tracy.hpp>
 
 namespace ren {
@@ -1061,10 +1063,8 @@ Result<Gltf, GltfErrorInfo> load_gltf(NotNull<Arena *> arena,
     }
   }
   if (load_info.load_images) {
-    ren_assert(load_info.load_image_callback);
-    Result<void, GltfErrorInfo> image_load_result = gltf_load_images(
-        arena, &*gltf, load_info.path, load_info.load_image_callback,
-        load_info.load_image_context);
+    Result<void, GltfErrorInfo> image_load_result =
+        gltf_load_images(arena, &*gltf, load_info.path);
     if (!image_load_result) {
       return image_load_result.error();
     }
@@ -1097,52 +1097,119 @@ Result<void, GltfErrorInfo> gltf_load_buffers(NotNull<Arena *> arena,
 }
 
 Result<void, GltfErrorInfo>
-gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path,
-                 GltfLoadImageCallback cb, void *context) {
+gltf_load_images(NotNull<Arena *> arena, NotNull<Gltf *> gltf, Path gltf_path) {
+  if (gltf->images.is_empty()) {
+    return {};
+  }
+
   ScratchArena scratch;
   Path parent_path = gltf_path.parent();
-  for (usize image_index : range(gltf->images.size())) {
-    GltfImage &image = gltf->images[image_index];
+
+  Span<JobDesc> jobs = Span<JobDesc>::allocate(scratch, gltf->images.size());
+
+  struct alignas(CACHE_LINE_SIZE) JobData {
+    GltfImage image;
+    String8 name;
     Span<const std::byte> bytes;
+    Path path;
+    stbi_uc *stbi_pixels = nullptr;
+    u32 width = 0;
+    u32 height = 0;
+    String8 error;
+  };
+
+  Span<JobData> job_data =
+      Span<JobData>::allocate(scratch, gltf->images.size());
+
+  for (usize image_index : range(gltf->images.size())) {
+    const GltfImage &image = gltf->images[image_index];
+    Span<const std::byte> bytes;
+    Path path;
     if (image.uri) {
-      Path path = parent_path.concat(scratch, Path::init(scratch, image.uri));
-      IoResult<Span<std::byte>> read_result = read<std::byte>(scratch, path);
-      if (!read_result) {
-        return GltfErrorInfo{
-            .error = GltfError::IO,
-            .message = format(
-                arena, "Failed to load GLTF images: Failed to read {}: {}",
-                path, read_result.error()),
-        };
-      }
-      bytes = *read_result;
+      path = parent_path.concat(scratch, Path::init(scratch, image.uri));
     } else {
       ren_assert(image.buffer_view != -1);
       const GltfBufferView &view = gltf->buffer_views[image.buffer_view];
       bytes = gltf->buffers[view.buffer].bytes.subspan(view.byte_offset,
                                                        view.byte_length);
     }
-    Result<GltfLoadedImage, GltfLoadImageErrorInfo> loaded_image =
-        cb(arena, context, bytes);
-    if (!loaded_image) {
-      String8 name = image.uri;
-      if (!name) {
-        name = image.name;
-      }
-      if (!name) {
-        name = format(scratch, "image {}", image_index);
-      }
-      return GltfErrorInfo{
-          .error = GltfError::IO,
-          .message = format(
-              arena, "Failed to load GLTF images: Failed to decode {}: {}",
-              name, loaded_image.error().message),
-      };
+    String8 name = image.uri;
+    if (!name) {
+      name = image.name;
     }
-    image.pixels = loaded_image->pixels;
-    image.width = loaded_image->width;
-    image.height = loaded_image->height;
+    if (!name) {
+      name = format(scratch, "image {}", image_index);
+    }
+
+    job_data[image_index] = {
+        .image = image,
+        .name = name,
+        .bytes = bytes,
+        .path = path,
+    };
+    jobs[image_index] = JobDesc{
+        .function =
+            [](void *void_payload) {
+              auto *payload = (JobData *)void_payload;
+              ScratchArena scratch;
+              Arena arena = Arena::from_tag(ArenaNamedTag::GltfLoadImages);
+              Span<const std::byte> buffer = payload->bytes;
+              if (payload->path) {
+                IoResult<Span<std::byte>> read_result =
+                    read<std::byte>(scratch, payload->path);
+                if (!read_result) {
+                  payload->error = format(
+                      &arena,
+                      "Failed to load GLTF images: Failed to read {}: {}",
+                      payload->path, read_result.error());
+                  return;
+                }
+                buffer = *read_result;
+
+                int x, y, c;
+                payload->stbi_pixels =
+                    stbi_load_from_memory((const stbi_uc *)buffer.data(),
+                                          buffer.size(), &x, &y, &c, 4);
+                if (!payload->stbi_pixels) {
+                  payload->error = format(
+                      &arena,
+                      "Failed to load GLTF images: Failed to decode {}: {}",
+                      payload->name, stbi_failure_reason());
+                  return;
+                }
+                payload->width = x;
+                payload->height = y;
+              }
+            },
+        .payload = &job_data[image_index],
+        .label = format_zero_terminated(scratch, "GLTF: Load {}", name),
+    };
   }
+  job_dispatch_and_wait(jobs);
+
+  String8 error;
+  for (usize image_index : range(gltf->images.size())) {
+    const JobData &result = job_data[image_index];
+    if (result.error and !error) {
+      error = result.error.copy(arena);
+    }
+    if (result.stbi_pixels) {
+      GltfImage &image = gltf->images[image_index];
+      image.pixels =
+          Span<glm::u8vec4>::allocate(arena, result.width * result.height);
+      image.width = result.width;
+      image.height = result.height;
+      copy((const glm::u8vec4 *)result.stbi_pixels, image.width * image.height,
+           image.pixels.data());
+      stbi_image_free(result.stbi_pixels);
+    }
+  }
+  job_reset_tag(ArenaNamedTag::GltfLoadImages);
+
+  if (error) {
+    return GltfErrorInfo{.error = GltfError::IO, .message = error};
+  }
+
   return {};
 }
 
@@ -1665,8 +1732,8 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
       }
     }
 
-    // TODO(mbargatin): delete dangling nodes that don't affect the hierarchy in
-    // any meaningful way.
+    // TODO(mbargatin): delete dangling nodes that don't affect the hierarchy
+    // in any meaningful way.
 
     Span<i32> node_remap = Span<i32>::allocate(scratch, nodes.size());
     DynamicArray<GltfNode> remapped_nodes;
@@ -1827,7 +1894,8 @@ void gltf_optimize(NotNull<Arena *> arena, NotNull<Gltf *> gltf,
 
     if (flags.is_set(GltfOptimize::ConvertMeshAccessors)) {
       if (semantic) {
-        // TODO(mbargatin): need to verify semantics when loading the GLTF file.
+        // TODO(mbargatin): need to verify semantics when loading the GLTF
+        // file.
         switch (*semantic) {
         case GltfAttributeSemantic::POSITION:
           ren_assert(accessor_type == GLTF_ACCESSOR_TYPE_VEC3);

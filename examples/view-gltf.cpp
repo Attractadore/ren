@@ -6,6 +6,7 @@
 #include "ren/core/CmdLine.hpp"
 #include "ren/core/FileSystem.hpp"
 #include "ren/core/Format.hpp"
+#include "ren/core/GLTF.hpp"
 #include "ren/core/Job.hpp"
 #include "ren/core/Span.hpp"
 
@@ -14,9 +15,6 @@
 #include <glm/gtc/color_space.hpp>
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <stb_image.h>
-
-#include "ren/core/GLTF.hpp"
 
 using namespace ren;
 
@@ -546,7 +544,6 @@ public:
                      .path = options.path,
                      .load_buffers = true,
                      .load_images = true,
-                     .load_image_callback = gltf_stbi_callback,
                      .optimize_flags = GltfOptimize::NormalizeSceneBounds |
                                        GltfOptimize::ConvertMeshAccessors,
                  });

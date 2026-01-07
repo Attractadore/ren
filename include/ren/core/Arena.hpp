@@ -8,6 +8,7 @@ namespace ren {
 
 enum class ArenaNamedTag {
   None,
+  GltfLoadImages,
   FrameData0,
   FrameData1,
   FrameDataLast = FrameData1,
